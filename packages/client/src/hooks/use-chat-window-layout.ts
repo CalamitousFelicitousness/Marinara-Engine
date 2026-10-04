@@ -28,7 +28,7 @@ export function readCurrentWindowLayout(): WindowLayoutSnapshot | null {
 }
 
 /**
- * Keeps the window store in step with the open chat (`null` while none is loaded): its saved layout
+ * Keeps the window store in step with the open chat (`null` when closed, `undefined` while loading): its saved layout
  * replaces the previous chat's when it opens or changes elsewhere (a profile applied, another tab),
  * and the user's changes save to it after a short pause. Bad or old saved data loads as the defaults.
  */
@@ -38,6 +38,7 @@ export function useChatWindowLayout(chat: Chat | null | undefined) {
   const mutateRef = useRef(updateMeta.mutate);
   mutateRef.current = updateMeta.mutate;
   const chatId = chat?.id ?? null;
+  const loading = chat === undefined;
   const savedLayout = chat ? serializeWindowLayoutSnapshot(readChatMetadata(chat).windowLayout) : EMPTY_LAYOUT;
   // The chat whose layout the store shows, and that layout as last loaded or saved.
   const syncedRef = useRef<{ chatId: string | null; layout: string }>({ chatId: null, layout: EMPTY_LAYOUT });
@@ -63,6 +64,9 @@ export function useChatWindowLayout(chat: Chat | null | undefined) {
 
   // Load before paint, so a chat's windows never flash in the previous chat's places.
   useLayoutEffect(() => {
+    // A query's loading gap is not a closed chat. Keep its layout until the next chat is ready, so
+    // pinned windows stay open and a pending move is saved to the chat that owns it.
+    if (loading) return;
     const synced = syncedRef.current;
     if (synced.chatId === chatId && synced.layout === savedLayout) return;
     if (synced.chatId !== chatId) flushRef.current();
@@ -73,7 +77,7 @@ export function useChatWindowLayout(chat: Chat | null | undefined) {
     }
     syncedRef.current = { chatId, layout: savedLayout };
     useFloatingWindowStore.getState().hydrate(savedLayout === EMPTY_LAYOUT ? null : JSON.parse(savedLayout));
-  }, [chatId, savedLayout]);
+  }, [chatId, savedLayout, loading]);
 
   // Save the user's changes to the chat whose layout they changed.
   useEffect(() => {

@@ -43,11 +43,9 @@ From **Settings**:
 From a game:
 
 1. Open a Game Mode chat.
-2. On a computer, click the **Game Assets** button (the folder icon). It starts in the row of buttons at the top right of the chat, and you can drag it anywhere.
+2. Click or tap the **Game Assets** button (the folder icon). It starts near the top right of the chat. You can drag it to another spot on a computer or phone.
 
-<!-- TODO(#7034 mobile): opening Game Assets on a phone -->
-
-The button only appears in chats that use Game Mode. It opens the **Game Assets** window with the **Asset Browser** inside.
+The button only appears in chats that use Game Mode. It opens **Game Assets** with the **Asset Browser** inside: a movable window on a computer, or a full-width panel on a phone.
 
 The toolbar at the top holds a breadcrumb that starts at **Game Assets**. Next to it are a **Grid view** and **List view** toggle, an **Upload** button, and a **New** button. It also has a **Rescan** button, an **Open in system folder** button, and a **Search in folder** box. A folder tree on the left lets you jump between categories on wider screens.
 

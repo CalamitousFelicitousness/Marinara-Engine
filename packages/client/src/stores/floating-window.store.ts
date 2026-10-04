@@ -2,7 +2,7 @@
 // Store: floating windows (open state, z-order, remembered layout)
 //
 // Every window built on <FloatingWindow> shares this store, keyed by window id.
-// Open state, hosts and stacking order are runtime only; the layout (geometry,
+// Open state, hosts and stacking order are runtime only; pinned windows reopen from the layout (geometry,
 // pinned, locked, popped-out drawers) belongs to the open chat, which loads it
 // with `hydrate` and saves `selectWindowLayoutSnapshot` (use-chat-window-layout).
 // ──────────────────────────────────────────────
@@ -92,6 +92,10 @@ export const useFloatingWindowStore = create<FloatingWindowState>()((set, get) =
     if (opener) openers.set(id, opener);
     if (!get().open[id] && options?.focus !== false) focusRequests.add(id);
     set((state) => ({
+      layouts:
+        !isPhoneWindowLayout() && state.layouts[id]?.minimized === true
+          ? { ...state.layouts, [id]: { ...state.layouts[id], minimized: false } }
+          : state.layouts,
       open: state.open[id] ? state.open : { ...state.open, [id]: true },
       stack: [...state.stack.filter((entry) => entry !== id), id],
     }));
@@ -103,11 +107,15 @@ export const useFloatingWindowStore = create<FloatingWindowState>()((set, get) =
     })),
   dismissWindow: (id, options) => {
     if (!get().open[id] || (!options?.force && isFloatingWindowPinned(id))) return false;
+    const layout = get().layouts[id];
+    // An explicit close wins over pinning on the next load. Cleanup-only closeWindow calls must
+    // stay transient: a drawer unmounting during a chat switch has not been closed by the user.
+    if (!isPhoneWindowLayout() && layout?.pinned) get().saveLayout(id, { ...layout, minimized: true });
     get().closeWindow(id);
     return true;
   },
   toggleWindow: (id, opener) => {
-    if (get().open[id]) get().closeWindow(id);
+    if (get().open[id]) get().dismissWindow(id, { force: true });
     else get().openWindow(id, opener);
   },
   registerHost: (id) => {
@@ -173,11 +181,26 @@ export const useFloatingWindowStore = create<FloatingWindowState>()((set, get) =
     })),
   hydrate: (snapshot) => {
     const parsed = parseWindowLayoutSnapshot(snapshot);
-    set({
-      layouts: parsed.windows,
-      detached: Object.fromEntries((parsed.detached ?? []).map((id) => [id, true as const])),
-      phoneBubbles: parsed.phoneBubbles ?? {},
-      bubbles: parsed.bubbles ?? {},
+    set((state) => {
+      const open = { ...state.open };
+      if (!isPhoneWindowLayout()) {
+        for (const [id, layout] of Object.entries(parsed.windows)) {
+          if (!layout.pinned) continue;
+          if (layout.minimized) delete open[id];
+          else open[id] = true;
+        }
+      }
+      return {
+        layouts: parsed.windows,
+        detached: Object.fromEntries((parsed.detached ?? []).map((id) => [id, true as const])),
+        phoneBubbles: parsed.phoneBubbles ?? {},
+        bubbles: parsed.bubbles ?? {},
+        open,
+        stack: [
+          ...state.stack.filter((id) => open[id]),
+          ...Object.keys(open).filter((id) => !state.stack.includes(id)),
+        ],
+      };
     });
   },
 }));

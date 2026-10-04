@@ -122,6 +122,33 @@ test.describe("Roleplay trackers on desktop", () => {
     }
   });
 
+  test("the default Trackers window uses a free gutter and becomes a button when the chat is narrow", async ({
+    page,
+    request,
+  }) => {
+    const chat = await createTrackerChat(request);
+    try {
+      await page.setViewportSize({ width: 2400, height: 1000 });
+      await prepare(page, chat.id, { trackerPanelEnabled: true, trackerPanelOpen: false });
+      await page.goto("/");
+      const window = page.locator('.mari-window[data-window="trackers"]');
+      const bubble = page.locator('.mari-window-bubble[data-window="trackers"]');
+      await expect(window).toBeVisible();
+      const rect = await window.boundingBox();
+      const transcript = await page.locator(".mari-roleplay-input-column").first().boundingBox();
+      expect(rect!.x + rect!.width).toBeLessThanOrEqual(transcript!.x);
+      await page.setViewportSize({ width: 1280, height: 800 });
+      await expect(bubble).toBeVisible();
+      await expect(window).toBeHidden();
+      await bubble.click();
+      await expect(window).toBeVisible();
+      await window.getByRole("button", { name: "Close Trackers", exact: true }).click();
+      await expect(bubble).toBeFocused();
+    } finally {
+      await request.delete(`/api/chats/${chat.id}?force=true`);
+    }
+  });
+
   test("with the Tracker Panel off, trackers show in a Tracker window with a drawer each", async ({
     page,
     request,
@@ -130,15 +157,31 @@ test.describe("Roleplay trackers on desktop", () => {
     try {
       await prepare(page, chat.id, { trackerPanelEnabled: false, trackerPanelOpen: false });
       await page.goto("/");
-      const trackerWindow = page.locator('[data-window="trackers"]');
-      await expect(trackerWindow).toBeVisible({ timeout: 30_000 });
+      const trackerWindow = page.locator('.mari-window[data-window="trackers"]');
+      const trackerBubble = page.locator('.mari-window-bubble[data-window="trackers"]');
+      await expect(trackerBubble).toBeVisible({ timeout: 30_000 });
+      await expect(trackerWindow).toBeHidden();
+      await trackerBubble.click();
+      await expect(trackerWindow).toBeVisible();
       await expect(trackerWindow).toHaveAttribute("data-pinned", "true");
       await expect(trackerWindow).toHaveAttribute("data-locked", "false");
-      // The window opened by itself, so focus stays where it was.
-      expect(await trackerWindow.evaluate((element) => element.contains(document.activeElement))).toBe(false);
+      // Opening the bubble gives keyboard focus to its window.
+      await expect(trackerWindow).toBeFocused();
       await expect(page.locator('[data-component="TrackerDataSidebar"]')).toHaveCount(0);
       const hud = page.locator('[data-tracker-panel-anchor="roleplay-hud"]').filter({ visible: true });
       await expect(hud.locator('[title="Persona Stats"]').filter({ visible: true })).toHaveCount(0);
+
+      // Even a pinned window stays above the composer and its open slash-command suggestions.
+      const composer = page.locator("textarea[data-chat-composer]").first();
+      await composer.fill("/");
+      await expect
+        .poll(async () => {
+          const windowRect = await trackerWindow.boundingBox();
+          const inputRect = await page.locator(".chat-input-container:visible").first().boundingBox();
+          return windowRect!.y + windowRect!.height <= inputRect!.y;
+        })
+        .toBe(true);
+      await composer.fill("");
 
       // One drawer per tracker, open by default with the full box; collapsed, each shows its miniature.
       const world = trackerWindow.locator('[data-drawer="tracker-world"]');
@@ -186,21 +229,27 @@ test.describe("Roleplay trackers on desktop", () => {
       await trackerWindow.locator('[data-window-control="pin"]').click();
       await expect(trackerWindow).toHaveAttribute("data-pinned", "false");
       await page.locator("[data-chat-composer]").first().click();
-      await expect(trackerWindow).toHaveCount(0);
+      await expect(trackerWindow).toBeHidden();
 
-      // Chat Settings turns it back on; Reset View restores its default place, pinned.
-      const settings = await openChatSettings(page);
-      const toggle = settings.locator('[data-tracker-window-toggle="chat-settings"]');
-      const windowSwitch = toggle.getByRole("checkbox", { name: "Tracker window", exact: true });
-      await expect(windowSwitch).not.toBeChecked();
-      await toggle.getByText("Tracker window", { exact: true }).click();
+      // A minimized window keeps its bubble; its own close action returns focus there.
+      await expect(trackerBubble).toBeVisible();
+      await trackerBubble.click();
       await expect(trackerWindow).toBeVisible();
-      await expect(windowSwitch).toBeChecked();
-      await expect(trackerWindow).toHaveAttribute("data-pinned", "false");
       await trackerWindow.getByRole("button", { name: "Close Trackers", exact: true }).click();
-      await expect(trackerWindow).toHaveCount(0);
-      await expect(windowSwitch).not.toBeChecked();
+      await expect(trackerWindow).toBeHidden();
+      await expect(trackerBubble).toBeFocused();
+
+      // The title-bar dice switches between the panel and the window; no separate toggle remains.
+      const settings = await openChatSettings(page);
+      await expect(settings.locator('[data-tracker-window-toggle="chat-settings"]')).toHaveCount(0);
+      const dice = settings.getByRole("button", { name: "Tracker Panel", exact: true });
+      await dice.click();
+      await expect(trackerBubble).toHaveCount(0);
+      await dice.click();
+      await expect(trackerBubble).toBeVisible();
       await resetChatView(page);
+      await expect(trackerBubble).toBeVisible();
+      await trackerBubble.click();
       await expect(trackerWindow).toBeVisible();
       await expect(trackerWindow).toHaveAttribute("data-pinned", "true");
     } finally {

@@ -198,6 +198,43 @@ test.describe("Chat Settings window on desktop", () => {
     }
   });
 
+  test("Chat Settings tips dismiss only for this chat and stay dismissed after reload", async ({ page, request }) => {
+    const first = await createChat(request, "conversation");
+    let second: { id: string; mode: ChatMode } | undefined;
+    try {
+      await prepare(page, first.id);
+      await page.goto("/");
+      await expect(page.locator('[data-chat-mode="conversation"]')).toBeVisible();
+      const settings = await openSettingsWindow(page);
+      const hints = settings.locator("[data-chat-settings-top-row]");
+      await expect(hints).toContainText("Your setups for chats are saved within the profiles below.");
+      await settings.getByRole("button", { name: "Hide these tips for this chat", exact: true }).click();
+      await expect(hints).toHaveCount(0);
+      await expect
+        .poll(async () => {
+          const chat = await (await request.get(`/api/chats/${first.id}`)).json();
+          const metadata = typeof chat.metadata === "string" ? JSON.parse(chat.metadata) : chat.metadata;
+          return metadata.chatSettingsHintDismissed;
+        })
+        .toBe(true);
+      await page.reload();
+      await expect(page.locator('[data-chat-mode="conversation"]')).toBeVisible();
+      await openSettingsWindow(page);
+      await expect(hints).toHaveCount(0);
+
+      second = await createChat(request, "conversation");
+      await setActiveChat(page, second.id);
+      if (!(await settings.isVisible())) await openSettingsWindow(page);
+      await expect(hints).toBeVisible();
+      await setActiveChat(page, first.id);
+      if (!(await settings.isVisible())) await openSettingsWindow(page);
+      await expect(hints).toHaveCount(0);
+    } finally {
+      await request.delete(`/api/chats/${first.id}?force=true`);
+      if (second) await request.delete(`/api/chats/${second.id}?force=true`);
+    }
+  });
+
   test("the Chat Settings button drags anywhere, stays with the chat and toggles the window", async ({
     page,
     request,
@@ -396,7 +433,7 @@ test.describe("Chat Settings window on desktop", () => {
       // Escape in a text field belongs to the field; anywhere else in a section it closes the window.
       await openSettingsWindow(page);
       const chatName = settings.locator('[data-chat-settings-section="chat-name"]');
-      const chatNameHeader = chatName.locator('> [role="button"]');
+      const chatNameHeader = chatName.locator("> .mari-drawer__header [data-drawer-toggle]");
       if ((await chatNameHeader.getAttribute("aria-expanded")) !== "true") await chatNameHeader.click();
       await chatName.locator(".mari-drawer__body button").first().click();
       await expect(chatName.locator("input")).toBeFocused();
@@ -524,12 +561,12 @@ test.describe("Chat Settings window on desktop", () => {
         trackerPanelEnabled: false,
         trackerPanelOpen: false,
         trackerPanelSide: "right",
-        trackerWindowOpen: true,
       });
       await page.goto("/");
       await expect(page.locator('[data-chat-mode="roleplay"]')).toBeVisible();
       const trackersWindow = page.locator('.mari-window[data-window="trackers"]');
-      await expect(trackersWindow).toBeVisible();
+      const trackersBubble = page.locator('.mari-window-bubble[data-window="trackers"]');
+      await expect(trackersBubble).toBeVisible();
       const settings = await openSettingsWindow(page);
       const defaultBox = await box(settings);
       // No switch row for the Tracker Panel; Reset View and the dice sit before pin and lock.
@@ -546,8 +583,8 @@ test.describe("Chat Settings window on desktop", () => {
       const dice = settings.getByRole("button", { name: "Tracker Panel", exact: true });
       await expect(dice).toHaveAttribute("title", "Tracker Panel");
       await expect(dice).toHaveAttribute("aria-pressed", "false");
-      // With the panel off the Tracker window switch still brings the Trackers window back.
-      await expect(settings.locator('[data-tracker-window-toggle="chat-settings"]')).toBeVisible();
+      // The dice is the only tracker visibility control in Chat Settings.
+      await expect(settings.locator('[data-tracker-window-toggle="chat-settings"]')).toHaveCount(0);
 
       // One click: on, highlighted and shown, and the Trackers window gives way.
       await dice.click();
@@ -583,7 +620,7 @@ test.describe("Chat Settings window on desktop", () => {
       await dice.click();
       await expect(dice).toHaveAttribute("aria-pressed", "false");
       await expect(page.locator('[data-component="TrackerDataSidebar"]:visible')).toHaveCount(0);
-      await expect(trackersWindow).toBeVisible();
+      await expect(trackersBubble).toBeVisible();
       expect(await ui()).toEqual([false, false, false]);
       await expect.poll(async () => (await box(settings)).x).toBeCloseTo(defaultBox.x, 0);
 
@@ -618,7 +655,9 @@ test.describe("Chat Settings window on desktop", () => {
 
       // The tip points at the Chat Settings button: dragging it is the thing to discover.
       const tip = page.locator("[data-chat-settings-move-tip]");
-      await expect(tip).toHaveText("Drag and drop to place Chat Settings wherever you want.");
+      await expect(tip).toHaveText(
+        "Drag and drop Chat Settings wherever you want. All sections within it can be moved out into separate buttons and windows for you to customize freely.",
+      );
       // It leaves focus alone, sits just under the button and stays clear of the window's buttons.
       await expect(tip.locator(":focus")).toHaveCount(0);
       const tipBox = await box(tip);
@@ -800,7 +839,10 @@ test.describe("Chat Settings window on desktop", () => {
       await expect(drawer).toHaveClass(/\bmari-drawer\b/u);
       await expect(drawer).toHaveAttribute("data-chat-settings-section", "chat-name");
       await expect(drawer).toHaveAttribute("data-detached", "false");
-      await expect(drawer.locator(".mari-drawer__header")).toHaveAttribute("role", "button");
+      await expect(drawer.getByRole("button", { name: "Chat Name", exact: true })).toHaveAttribute(
+        "data-drawer-toggle",
+        "",
+      );
       await expect(drawer.locator(".mari-drawer__title")).toHaveText("Chat Name");
       const sectionsOutsideDrawers = await settings.evaluate((element) =>
         Array.from(element.querySelectorAll("[data-chat-settings-section]"))

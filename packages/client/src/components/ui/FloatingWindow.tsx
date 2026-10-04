@@ -71,7 +71,7 @@ export interface FloatingWindowProps {
   closeAccessory?: ReactNode;
   closeLabel: string;
   /** Where the window opens before the user moves it, and where Reset View puts it back. */
-  getDefaultLayout: (bounds: WindowBounds) => WindowLayout;
+  getDefaultLayout: (bounds: WindowBounds, bubbleSize: number) => WindowLayout;
   /** Changing this re-reads the default once the page has updated (a panel the default avoids opened, say). */
   defaultLayoutKey?: string;
   minWidth?: number;
@@ -101,7 +101,7 @@ export interface FloatingWindowProps {
   minimizable?: {
     icon: ReactNode;
     label: string;
-    getPhoneBubble?: (bounds: WindowBounds) => WindowPoint;
+    getPhoneBubble?: (bounds: WindowBounds, bubbleSize: number) => WindowPoint;
     bubbleBadge?: ReactNode;
   };
   className?: string;
@@ -177,6 +177,21 @@ const KEEPS_ESCAPE_SELECTOR =
 
 const CENTER_CONTENT_SELECTOR = '[data-component="CenterContent"]';
 
+/** A closed host may no longer have an opener; keep keyboard users in the active chat. */
+export function focusWindowOpener(id: FloatingWindowId) {
+  const candidates = [
+    takeFloatingWindowOpener(id),
+    document.querySelector<HTMLElement>(`[data-window-opener="${CSS.escape(id)}"]`),
+    document.querySelector<HTMLElement>("[data-chat-settings-button]"),
+    document.querySelector<HTMLElement>("textarea[data-chat-composer]"),
+  ];
+  candidates
+    .find(
+      (element) => element?.isConnected && element.getClientRects().length > 0 && !element.closest("[hidden], [inert]"),
+    )
+    ?.focus({ preventScroll: true });
+}
+
 /**
  * The chat area below the topbar, inside the viewport, minus the window margin. Windows stay over
  * the chat: they never cover their own topbar toggle or a docked sidebar, and follow the chat area
@@ -186,11 +201,21 @@ export function readFloatingWindowBounds(): WindowBounds {
   if (typeof window === "undefined") return { left: 0, top: 0, right: 1024, bottom: 768 };
   const topbar = document.querySelector<HTMLElement>('[data-component="TopBar"]');
   const area = document.querySelector<HTMLElement>(CENTER_CONTENT_SELECTOR)?.getBoundingClientRect();
+  const composer = Array.from(document.querySelectorAll("[data-chat-mode] [data-chat-composer]"))
+    .map((element) =>
+      (
+        element.closest(".chat-input-container") ??
+        element.closest("[data-chat-resource-drop-exclude]") ??
+        element
+      ).getBoundingClientRect(),
+    )
+    .find((rect) => rect.width > 1 && rect.height > 1);
   return {
     left: Math.max(0, area?.left ?? 0) + WINDOW_MARGIN_PX,
     top: Math.max(0, topbar?.getBoundingClientRect().bottom ?? 0, area?.top ?? 0) + WINDOW_MARGIN_PX,
     right: Math.min(window.innerWidth, area?.right ?? window.innerWidth) - WINDOW_MARGIN_PX,
-    bottom: Math.min(window.innerHeight, area?.bottom ?? window.innerHeight) - WINDOW_MARGIN_PX,
+    bottom:
+      Math.min(window.innerHeight, area?.bottom ?? window.innerHeight, composer?.top ?? Infinity) - WINDOW_MARGIN_PX,
   };
 }
 
@@ -222,7 +247,13 @@ export function readPhoneBubbleBounds(): WindowBounds {
   const viewport = window.visualViewport;
   const visibleBottom = viewport ? viewport.offsetTop + viewport.height : window.innerHeight;
   const composer = Array.from(document.querySelectorAll("[data-chat-mode] [data-chat-composer]"))
-    .map((element) => (element.closest("[data-chat-resource-drop-exclude]") ?? element).getBoundingClientRect())
+    .map((element) =>
+      (
+        element.closest(".chat-input-container") ??
+        element.closest("[data-chat-resource-drop-exclude]") ??
+        element
+      ).getBoundingClientRect(),
+    )
     .find((rect) => rect.width > 1 && rect.height > 1);
   return {
     left: Math.max(base.left, insets.left + WINDOW_MARGIN_PX),
@@ -277,7 +308,7 @@ function useLiveBounds(read: () => WindowBounds, active: boolean): WindowBounds 
     viewport?.addEventListener("scroll", update);
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
     for (const element of document.querySelectorAll(
-      '[data-component="CenterContent"], [data-component="TopBar"], [data-chat-mode] [data-chat-resource-drop-exclude]',
+      '[data-component="CenterContent"], [data-component="TopBar"], [data-chat-mode] .chat-input-container',
     )) {
       observer?.observe(element);
     }
@@ -365,6 +396,7 @@ export function FloatingWindow({
   const openInStore = useFloatingWindowStore((state) => state.open[id] === true);
   const savedPhoneBubble = useFloatingWindowStore((state) => state.phoneBubbles[id]);
   const phoneBounds = usePhoneBubbleBounds(phoneBubble);
+  const [bubbleSize, setBubbleSize] = useState(phoneBubble ? PHONE_BUBBLE_SIZE_PX : WINDOW_BUBBLE_SIZE_PX);
 
   const limits = useMemo(() => ({ minWidth, minHeight }), [minHeight, minWidth]);
   // On a phone a popped-out drawer becomes a bubble, so sheets host drawers too.
@@ -405,9 +437,9 @@ export function FloatingWindow({
   }, [defaultLayoutKey]);
   // The default follows the viewport and Reset View until the user changes the window.
   const defaultLayout = useMemo(
-    () => getDefaultLayoutRef.current(bounds),
+    () => getDefaultLayoutRef.current(bounds, bubbleSize),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the revisions recompute the default on purpose
-    [bounds, resetRevision, defaultRevision],
+    [bounds, bubbleSize, resetRevision, defaultRevision],
   );
   const layout = savedLayout ?? defaultLayout;
   const pinned = !sheet && layout.pinned;
@@ -416,8 +448,9 @@ export function FloatingWindow({
   const canMinimize = !!minimizable && !sheet;
   const minimized = canMinimize ? layout.minimized === true : phoneBubble && !openInStore;
   const bubblePoint = clampWindowBubble(
-    layout.bubble ?? defaultLayout.bubble ?? { x: bounds.right - WINDOW_BUBBLE_SIZE_PX, y: bounds.top },
+    layout.bubble ?? defaultLayout.bubble ?? { x: bounds.right - bubbleSize, y: bounds.top },
     bounds,
+    bubbleSize,
   );
 
   // A phone bubble with no saved place and no default (a popped-out drawer) takes the first free spot.
@@ -426,8 +459,8 @@ export function FloatingWindow({
     if (!needsPhonePlace) return;
     useFloatingWindowStore
       .getState()
-      .savePhoneBubble(id, findFreeBubble(readPhoneBubbleBounds(), { size: PHONE_BUBBLE_SIZE_PX, except: id }));
-  }, [id, needsPhonePlace]);
+      .savePhoneBubble(id, findFreeBubble(readPhoneBubbleBounds(), { size: bubbleSize, except: id }));
+  }, [bubbleSize, id, needsPhonePlace]);
 
   // Re-clamp whenever the viewport or the chat area changes, so a window can never be lost off-screen.
   useEffect(() => {
@@ -444,9 +477,11 @@ export function FloatingWindow({
       });
     update();
     window.addEventListener("resize", update);
-    const area = document.querySelector(CENTER_CONTENT_SELECTOR);
-    const observer = area && typeof ResizeObserver !== "undefined" ? new ResizeObserver(update) : null;
-    if (area) observer?.observe(area);
+    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(update) : null;
+    for (const element of document.querySelectorAll(
+      `${CENTER_CONTENT_SELECTOR}, [data-component="TopBar"], [data-chat-mode] .chat-input-container`,
+    ))
+      observer?.observe(element);
     return () => {
       window.removeEventListener("resize", update);
       observer?.disconnect();
@@ -462,8 +497,7 @@ export function FloatingWindow({
     const current = layoutRef.current;
     // A window with no bubble place of its own (a popped-out drawer) gets one beside the other bubbles.
     const bubble =
-      current.bubble ??
-      (defaultLayout.bubble ? undefined : findFreeBubble(bounds, { size: WINDOW_BUBBLE_SIZE_PX, except: id }));
+      current.bubble ?? (defaultLayout.bubble ? undefined : findFreeBubble(bounds, { size: bubbleSize, except: id }));
     saveLayout(id, { ...current, minimized: true, ...(bubble ? { bubble } : {}) });
     useFloatingWindowStore.getState().closeWindow(id);
   };
@@ -508,10 +542,7 @@ export function FloatingWindow({
     return () => {
       // A placeholder swapped for the real window unmounts without a close request and keeps the opener.
       if (!restoreFocusOnUnmountRef.current) return;
-      const fallback = document.querySelector<HTMLElement>(`[data-window-opener="${id}"]`);
-      const target =
-        takeFloatingWindowOpener(id) ?? (fallback && fallback.getClientRects().length > 0 ? fallback : null);
-      target?.focus({ preventScroll: true });
+      focusWindowOpener(id);
     };
     // Mount and unmount only; switching presentation keeps focus where it is.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -643,40 +674,48 @@ export function FloatingWindow({
     }, 0);
   };
 
-  if (minimized && minimizable && !hidden) {
-    return phoneBubble ? (
-      <WindowBubble
-        buttonRef={bubbleRef}
-        id={id}
-        point={savedPhoneBubble ?? minimizable.getPhoneBubble?.(phoneBounds) ?? getPhoneBubbleSlot(phoneBounds, 0)}
-        bounds={phoneBounds}
-        size={PHONE_BUBBLE_SIZE_PX}
-        icon={minimizable.icon}
-        label={minimizable.label}
-        zIndex={PHONE_BUBBLE_Z_INDEX}
-        attributes={{ ...rootAttributes, "data-presentation": "sheet" }}
-        onMove={(point) => useFloatingWindowStore.getState().savePhoneBubble(id, point)}
-        onOpen={(bubble) => useFloatingWindowStore.getState().openWindow(id, bubble)}
-      >
-        {minimizable.bubbleBadge}
-      </WindowBubble>
-    ) : (
-      <WindowBubble
-        buttonRef={bubbleRef}
-        id={id}
-        point={bubblePoint}
-        bounds={bounds}
-        icon={minimizable.icon}
-        label={minimizable.label}
-        zIndex={FLOATING_WINDOW_Z_BASE}
-        attributes={rootAttributes}
-        onMove={(point) => saveLayout(id, { ...layoutRef.current, bubble: point })}
-        onOpen={restoreFromBubble}
-      >
-        {minimizable.bubbleBadge}
-      </WindowBubble>
-    );
-  }
+  const minimizedBubble =
+    minimized && minimizable && !hidden ? (
+      phoneBubble ? (
+        <WindowBubble
+          buttonRef={bubbleRef}
+          id={id}
+          point={
+            savedPhoneBubble ??
+            minimizable.getPhoneBubble?.(phoneBounds, bubbleSize) ??
+            getPhoneBubbleSlot(phoneBounds, 0, bubbleSize)
+          }
+          bounds={phoneBounds}
+          size={PHONE_BUBBLE_SIZE_PX}
+          onSizeChange={setBubbleSize}
+          icon={minimizable.icon}
+          label={minimizable.label}
+          zIndex={PHONE_BUBBLE_Z_INDEX}
+          attributes={{ ...rootAttributes, "data-presentation": "sheet" }}
+          onMove={(point) => useFloatingWindowStore.getState().savePhoneBubble(id, point)}
+          onOpen={(bubble) => useFloatingWindowStore.getState().openWindow(id, bubble)}
+        >
+          {minimizable.bubbleBadge}
+        </WindowBubble>
+      ) : (
+        <WindowBubble
+          buttonRef={bubbleRef}
+          id={id}
+          point={bubblePoint}
+          bounds={bounds}
+          onSizeChange={setBubbleSize}
+          icon={minimizable.icon}
+          label={minimizable.label}
+          zIndex={FLOATING_WINDOW_Z_BASE}
+          attributes={rootAttributes}
+          onMove={(point) => saveLayout(id, { ...layoutRef.current, bubble: point })}
+          onOpen={restoreFromBubble}
+        >
+          {minimizable.bubbleBadge}
+        </WindowBubble>
+      )
+    ) : null;
+  if (minimizedBubble && !drawerHost) return minimizedBubble;
 
   const rootStyle: CSSProperties | undefined = sheet
     ? sheetStyle
@@ -689,140 +728,143 @@ export function FloatingWindow({
       };
 
   return (
-    <div
-      ref={rootRef}
-      role="dialog"
-      aria-modal="false"
-      aria-labelledby={titleId}
-      tabIndex={-1}
-      hidden={hidden}
-      data-window={id}
-      data-pinned={pinned ? "true" : "false"}
-      data-locked={locked ? "true" : "false"}
-      data-detached="false"
-      data-presentation={presentation}
-      data-no-intuitive-swipe
-      {...rootAttributes}
-      className={cn("mari-window flex min-h-0 flex-col outline-none", className, sheet ? sheetClassName : "fixed")}
-      style={rootStyle}
-      onPointerDownCapture={() => bringToFront(id)}
-      onFocusCapture={() => bringToFront(id)}
-      onKeyDown={handleRootKeyDown}
-    >
+    <>
+      {minimizedBubble}
       <div
-        className={cn(
-          "mari-window__header flex shrink-0 items-center justify-between gap-2",
-          !sheet && !locked && "cursor-grab touch-none select-none active:cursor-grabbing",
-          headerClassName,
-        )}
-        role={sheet || locked ? undefined : "group"}
-        tabIndex={sheet || locked ? undefined : 0}
-        aria-label={sheet || locked ? undefined : t("window.controls.move")}
-        onPointerDown={handleHeaderPointerDown}
-        onPointerMove={updatePointerSession}
-        onPointerUp={endPointerSession}
-        onPointerCancel={endPointerSession}
-        onKeyDown={handleHeaderKeyDown}
+        ref={rootRef}
+        role="dialog"
+        aria-modal="false"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        hidden={hidden || minimized}
+        data-window={id}
+        data-pinned={pinned ? "true" : "false"}
+        data-locked={locked ? "true" : "false"}
+        data-detached="false"
+        data-presentation={presentation}
+        data-no-intuitive-swipe
+        {...rootAttributes}
+        className={cn("mari-window flex min-h-0 flex-col outline-none", className, sheet ? sheetClassName : "fixed")}
+        style={rootStyle}
+        onPointerDownCapture={() => bringToFront(id)}
+        onFocusCapture={() => bringToFront(id)}
+        onKeyDown={handleRootKeyDown}
       >
-        <span className="mari-window__title-row flex min-w-0 items-center gap-1.5">
-          {titleIcon}
-          <h2 id={titleId} className={cn("mari-window__title truncate", titleClassName)}>
-            {title}
-          </h2>
-          {titleAccessory}
-        </span>
-        <div className="mari-window__controls flex shrink-0 items-center">
-          {headerControls}
-          {canMinimize && (
+        <div
+          className={cn(
+            "mari-window__header flex shrink-0 items-center justify-between gap-2",
+            !sheet && !locked && "cursor-grab touch-none select-none active:cursor-grabbing",
+            headerClassName,
+          )}
+          role={sheet || locked ? undefined : "group"}
+          tabIndex={sheet || locked ? undefined : 0}
+          aria-label={sheet || locked ? undefined : t("window.controls.move")}
+          onPointerDown={handleHeaderPointerDown}
+          onPointerMove={updatePointerSession}
+          onPointerUp={endPointerSession}
+          onPointerCancel={endPointerSession}
+          onKeyDown={handleHeaderKeyDown}
+        >
+          <span className="mari-window__title-row flex min-w-0 items-center gap-1.5">
+            {titleIcon}
+            <h2 id={titleId} className={cn("mari-window__title truncate", titleClassName)}>
+              {title}
+            </h2>
+            {titleAccessory}
+          </span>
+          <div className="mari-window__controls flex shrink-0 items-center">
+            {headerControls}
+            {canMinimize && (
+              <button
+                type="button"
+                data-window-control="minimize"
+                aria-label={t("window.controls.minimize")}
+                title={t("window.controls.minimizeHint")}
+                className="mari-window__control"
+                onClick={() => minimizeRef.current(true)}
+              >
+                <Minus size="0.875rem" />
+              </button>
+            )}
+            {!sheet && (
+              <>
+                <button
+                  type="button"
+                  data-window-control="pin"
+                  aria-pressed={pinned}
+                  aria-label={t("window.controls.pin")}
+                  title={t(pinned ? "window.controls.unpinHint" : "window.controls.pinHint")}
+                  className="mari-window__control"
+                  onClick={() => commitLayout({ pinned: !pinned })}
+                >
+                  <Pin size="0.875rem" fill={pinned ? "currentColor" : "none"} />
+                </button>
+                <button
+                  type="button"
+                  data-window-control="lock"
+                  aria-pressed={locked}
+                  aria-label={t("window.controls.lock")}
+                  title={t(locked ? "window.controls.unlockHint" : "window.controls.lockHint")}
+                  className="mari-window__control"
+                  onClick={() => commitLayout({ locked: !locked })}
+                >
+                  {locked ? <Lock size="0.875rem" /> : <Unlock size="0.875rem" />}
+                </button>
+              </>
+            )}
+            {closeAccessory}
             <button
               type="button"
-              data-window-control="minimize"
-              aria-label={t("window.controls.minimize")}
-              title={t("window.controls.minimizeHint")}
+              data-window-control="close"
+              aria-label={closeLabel}
+              title={closeLabel}
               className="mari-window__control"
-              onClick={() => minimizeRef.current(true)}
+              onClick={() => requestClose("close-button")}
             >
-              <Minus size="0.875rem" />
+              <X size="1rem" />
             </button>
-          )}
-          {!sheet && (
-            <>
-              <button
-                type="button"
-                data-window-control="pin"
-                aria-pressed={pinned}
-                aria-label={t("window.controls.pin")}
-                title={t(pinned ? "window.controls.unpinHint" : "window.controls.pinHint")}
-                className="mari-window__control"
-                onClick={() => commitLayout({ pinned: !pinned })}
-              >
-                <Pin size="0.875rem" fill={pinned ? "currentColor" : "none"} />
-              </button>
-              <button
-                type="button"
-                data-window-control="lock"
-                aria-pressed={locked}
-                aria-label={t("window.controls.lock")}
-                title={t(locked ? "window.controls.unlockHint" : "window.controls.lockHint")}
-                className="mari-window__control"
-                onClick={() => commitLayout({ locked: !locked })}
-              >
-                {locked ? <Lock size="0.875rem" /> : <Unlock size="0.875rem" />}
-              </button>
-            </>
-          )}
-          {closeAccessory}
-          <button
-            type="button"
-            data-window-control="close"
-            aria-label={closeLabel}
-            title={closeLabel}
-            className="mari-window__control"
-            onClick={() => requestClose("close-button")}
-          >
-            <X size="1rem" />
-          </button>
+          </div>
         </div>
-      </div>
-      <div ref={bodyRef} className={cn("mari-window__body flex min-h-0 flex-1 flex-col", bodyClassName)}>
-        {drawerHost ? (
-          <DrawerHostContext.Provider value={drawerHostValue}>{children}</DrawerHostContext.Provider>
-        ) : (
-          children
-        )}
-      </div>
-      {!sheet &&
-        !locked &&
-        RESIZE_EDGES.map((edge) =>
-          edge === "se" ? (
-            <button
-              key={edge}
-              type="button"
-              data-edge={edge}
-              aria-label={t("window.controls.resize")}
-              className="mari-window__resize-handle"
-              onPointerDown={(event) => beginPointerSession(event, edge)}
-              onPointerMove={updatePointerSession}
-              onPointerUp={endPointerSession}
-              onPointerCancel={endPointerSession}
-              onKeyDown={handleResizeKeyDown}
-            >
-              {/* Shown while the pointer or focus is in the window: a cue that it resizes from here. */}
-              <span aria-hidden="true" className="mari-window__resize-grip" />
-            </button>
+        <div ref={bodyRef} className={cn("mari-window__body flex min-h-0 flex-1 flex-col", bodyClassName)}>
+          {drawerHost ? (
+            <DrawerHostContext.Provider value={drawerHostValue}>{children}</DrawerHostContext.Provider>
           ) : (
-            <div
-              key={edge}
-              data-edge={edge}
-              aria-hidden="true"
-              className="mari-window__resize-handle"
-              onPointerDown={(event) => beginPointerSession(event, edge)}
-              onPointerMove={updatePointerSession}
-              onPointerUp={endPointerSession}
-              onPointerCancel={endPointerSession}
-            />
-          ),
-        )}
-    </div>
+            children
+          )}
+        </div>
+        {!sheet &&
+          !locked &&
+          RESIZE_EDGES.map((edge) =>
+            edge === "se" ? (
+              <button
+                key={edge}
+                type="button"
+                data-edge={edge}
+                aria-label={t("window.controls.resize")}
+                className="mari-window__resize-handle"
+                onPointerDown={(event) => beginPointerSession(event, edge)}
+                onPointerMove={updatePointerSession}
+                onPointerUp={endPointerSession}
+                onPointerCancel={endPointerSession}
+                onKeyDown={handleResizeKeyDown}
+              >
+                {/* Shown while the pointer or focus is in the window: a cue that it resizes from here. */}
+                <span aria-hidden="true" className="mari-window__resize-grip" />
+              </button>
+            ) : (
+              <div
+                key={edge}
+                data-edge={edge}
+                aria-hidden="true"
+                className="mari-window__resize-handle"
+                onPointerDown={(event) => beginPointerSession(event, edge)}
+                onPointerMove={updatePointerSession}
+                onPointerUp={endPointerSession}
+                onPointerCancel={endPointerSession}
+              />
+            ),
+          )}
+      </div>
+    </>
   );
 }

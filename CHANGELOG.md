@@ -6,10 +6,12 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 - Chat tools now live in **Chat Settings**, which opens from a movable sliders button inside the chat. Each chat remembers where you put its buttons and windows (#7034, #7036).
   - **Chat Branches**, **Chat Summary**, **Active Context**, **Author's Notes**, **Agent activity** and **Gallery** have their own sections. **Search messages**, **Bookmarks** and **Trash** are together at the top.
-  - On a computer, move and resize Chat Settings or pop a section out into its own window. Pin a window to keep it open, or lock it to prevent accidental moves. Closing a popped-out section shrinks it to a button; **Put back** returns it to its original window.
+  - On a computer, move and resize Chat Settings or pop a section out into its own window. Pin a window to keep it open, or lock it to prevent accidental moves. Pinned windows reopen after a page refresh unless you closed or minimized them. Closing a popped-out section shrinks it to a button; **Put back** returns it to its original window.
   - On phones, Chat Settings and the other chat windows open as full-width panels. Popped-out sections and chat controls have movable buttons, and panels fit above the keyboard while you type.
-  - Game controls, connected chats and package controls open from movable buttons too. In Roleplay, the **Tracker Panel** button in Chat Settings turns the panel on or off. With it off, trackers appear in a **Trackers** window on computers and as compact widgets on phones.
+  - Game controls, connected chats and package controls open from movable buttons too. In Roleplay, the die in the Chat Settings title bar controls the **Tracker Panel**. When the panel is not shown, trackers appear in a **Trackers** window on computers and as compact widgets on phones. When there is not enough room beside the messages, Trackers starts as a button; saved layouts keep your chosen arrangement.
   - **Help** is beside the Chat Settings title. **Reset View** restores the starting layout after confirmation, and settings profiles can save your layout for reuse.
+  - Desktop Chat Settings includes tips for arranging windows and sections. Their **X** hides them for this chat; new chats show them unless a settings profile saved them as hidden.
+  - **Advanced Parameters** keeps showing the connection's current values when popped out. Rearranging windows no longer moves a chat to the top of the chat list. Windows and buttons stay within reach when sidebars, the keyboard or display size change, and closing windows keeps keyboard focus in the chat.
   - Custom themes can style windows, drawers and buttons with the shared classes and variables listed in the theming guide.
 
 - The Chats sidebar status prompt now reads **What's up?** to fit its field, and Advanced Settings labels the multiplayer section **Multiplayer WIP** (#7051).

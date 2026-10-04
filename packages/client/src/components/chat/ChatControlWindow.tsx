@@ -21,11 +21,10 @@ import {
   type WindowLayout,
 } from "../../lib/floating-window-layout";
 import { cn } from "../../lib/utils";
+import { BUBBLE_SNAP_GAP_PX } from "../../lib/window-bubble-snap";
 import { useUIStore } from "../../stores/ui.store";
 import { readChatWindowArea, readCssPixels } from "./chat-settings-window";
 
-/** Room between bubbles in their default row, like the old toolbar's button gap. */
-const BUBBLE_ROW_GAP_PX = 4;
 const TRACKER_CLEARANCE_VARIABLE = "--tracker-panel-overlay-clearance";
 
 /** Each control window's id; Game's ids are only used in Game chats. */
@@ -48,6 +47,7 @@ export function getChatControlDefaultLayout(
   slot: number,
   size: { width: number; height: number },
   rowOffset = 0,
+  bubbleSize = WINDOW_BUBBLE_SIZE_PX,
 ): WindowLayout {
   const area = readChatWindowArea(bounds);
   // A right-side Tracker Panel floats over the chat; keep the bubbles clear of it.
@@ -56,9 +56,9 @@ export function getChatControlDefaultLayout(
       ? readCssPixels(area.chatRoot, TRACKER_CLEARANCE_VARIABLE)
       : 0;
   const right = Math.min(bounds.right - trackerClearance, area.right);
-  const row = getBubbleRowSlot(bounds, slot, { right, size: WINDOW_BUBBLE_SIZE_PX, gap: BUBBLE_ROW_GAP_PX });
+  const row = getBubbleRowSlot(bounds, slot, { right, size: bubbleSize, gap: BUBBLE_SNAP_GAP_PX });
   const bubble = { x: row.x, y: row.y + rowOffset };
-  const geometry = placeWindowBesideBubble(size, bubble, bounds, { minWidth: 1, minHeight: 1 });
+  const geometry = placeWindowBesideBubble(size, bubble, bounds, { minWidth: 1, minHeight: 1 }, bubbleSize);
   return { ...geometry, pinned: false, locked: false, minimized: true, bubble };
 }
 
@@ -119,13 +119,15 @@ export function ChatControlWindow({
       minimizable={{
         icon,
         label: title,
-        getPhoneBubble: (bounds) => {
-          const point = getPhoneBubbleSlot(bounds, phoneSlot);
+        getPhoneBubble: (bounds, size) => {
+          const point = getPhoneBubbleSlot(bounds, phoneSlot, size);
           return { x: point.x, y: point.y + rowOffset };
         },
         bubbleBadge,
       }}
-      getDefaultLayout={(bounds) => getChatControlDefaultLayout(bounds, slot, { width, height }, rowOffset)}
+      getDefaultLayout={(bounds, bubbleSize) =>
+        getChatControlDefaultLayout(bounds, slot, { width, height }, rowOffset, bubbleSize)
+      }
       defaultLayoutKey={String(rowOffset)}
       minWidth={200}
       minHeight={96}

@@ -99,13 +99,85 @@ async function savedWindowLayout(request: APIRequestContext, chatId: string) {
   const metadata =
     typeof chat.metadata === "string" ? (JSON.parse(chat.metadata) as Record<string, unknown>) : chat.metadata;
   return ((metadata as Record<string, unknown> | undefined)?.windowLayout ?? null) as {
-    windows: Record<string, { minimized?: boolean; bubble?: { x: number; y: number } }>;
+    windows: Record<string, { pinned?: boolean; minimized?: boolean; bubble?: { x: number; y: number } }>;
   } | null;
 }
 
 test.describe("chat control windows on desktop", () => {
   test.beforeEach(({}, testInfo) => {
     test.skip(!testInfo.project.name.includes("desktop"), "Phones show these as bubbles (phone-bubbles.e2e.ts).");
+  });
+
+  test("Game inventory controls stay above a pinned chat window", async ({ page, request }) => {
+    const { gameId, partnerId } = await createGameWithConnectedChat(request);
+    try {
+      await prepare(page, gameId);
+      await page.goto("/");
+      const settings = await openChatSettings(page);
+      await settings.locator('[data-window-control="pin"]').click();
+      await page.getByRole("button", { name: "Inventory", exact: true }).first().click();
+      const inventory = page.getByRole("dialog", { name: "Inventory", exact: true });
+      await expect(inventory).toBeVisible();
+      await expect(settings).toBeHidden();
+      await inventory.getByRole("button", { name: "Close", exact: true }).click();
+      await expect(inventory).toHaveCount(0);
+      await expect(settings).toBeVisible();
+    } finally {
+      await request.delete(`/api/chats/${gameId}?force=true`);
+      await request.delete(`/api/chats/${partnerId}?force=true`);
+    }
+  });
+
+  test("theme-sized bubbles stay separated and inside the chat when their size changes", async ({ page, request }) => {
+    const { gameId, partnerId } = await createGameWithConnectedChat(request);
+    try {
+      await prepare(page, gameId);
+      await page.goto("/");
+      await expect(bubble(page, VOLUME)).toBeVisible();
+      const theme = await page.addStyleTag({
+        content: "html { font-size: 26px !important; --mari-window-bubble-size: 3rem; }",
+      });
+      const ids = [GAME_CONTROLS, SESSION, VOLUME, ASSETS, CONNECTED];
+      await expect.poll(async () => (await box(bubble(page, VOLUME))).width).toBeCloseTo(78, 0);
+      await expect
+        .poll(async () => {
+          const rectangles = await Promise.all(ids.map((id) => box(bubble(page, id))));
+          return rectangles.every((rect, index) =>
+            rectangles
+              .slice(index + 1)
+              .every(
+                (other) =>
+                  rect.x + rect.width <= other.x ||
+                  other.x + other.width <= rect.x ||
+                  rect.y + rect.height <= other.y ||
+                  other.y + other.height <= rect.y,
+              ),
+          );
+        })
+        .toBe(true);
+      const volume = bubble(page, VOLUME);
+      await volume.focus();
+      for (let index = 0; index < 30; index++) {
+        await volume.press("Shift+ArrowRight");
+        await volume.press("Shift+ArrowDown");
+      }
+      const assertInside = async () => {
+        const rect = await box(volume);
+        const area = await box(page.locator('[data-component="CenterContent"]'));
+        const composer = await box(page.locator("[data-chat-composer]").first());
+        expect(rect.x + rect.width).toBeLessThanOrEqual(area.x + area.width);
+        expect(rect.y + rect.height).toBeLessThanOrEqual(composer.y);
+      };
+      await assertInside();
+      await theme.evaluate((element) => {
+        element.textContent = "html { font-size: 26px !important; --mari-window-bubble-size: 4rem; }";
+      });
+      await expect.poll(async () => (await box(volume)).width).toBeCloseTo(104, 0);
+      await assertInside();
+    } finally {
+      await request.delete(`/api/chats/${gameId}?force=true`);
+      await request.delete(`/api/chats/${partnerId}?force=true`);
+    }
   });
 
   test("controls minimize to bubbles that drag, snap, restore and stay with the chat", async ({
@@ -203,16 +275,22 @@ test.describe("chat control windows on desktop", () => {
       await bubble(page, CONNECTED).click();
       const connected = controlWindow(page, CONNECTED);
       await expect(connected.getByRole("button", { name: /^Switch to/u })).toBeVisible();
+      await connected.locator('[data-window-control="pin"]').click();
       await expect
         .poll(async () => {
           const layout = await savedWindowLayout(request, gameId);
-          return [layout?.windows[GAME_CONTROLS]?.bubble ?? null, layout?.windows[CONNECTED]?.minimized ?? null];
+          return [
+            layout?.windows[GAME_CONTROLS]?.bubble ?? null,
+            layout?.windows[CONNECTED]?.minimized ?? null,
+            layout?.windows[CONNECTED]?.pinned ?? null,
+          ];
         })
-        .toEqual([{ x: gameControls.x, y: gameControls.y }, false]);
+        .toEqual([{ x: gameControls.x, y: gameControls.y }, false, true]);
 
       await page.reload();
       await expect(page.locator('[data-chat-mode="game"]')).toBeVisible({ timeout: 30_000 });
       await expect(controlWindow(page, CONNECTED)).toBeVisible();
+      await expect(controlWindow(page, CONNECTED)).toHaveAttribute("data-pinned", "true");
       const reloaded = await box(bubble(page, GAME_CONTROLS));
       expect(reloaded.x).toBeCloseTo(gameControls.x, 0);
       expect(reloaded.y).toBeCloseTo(gameControls.y, 0);

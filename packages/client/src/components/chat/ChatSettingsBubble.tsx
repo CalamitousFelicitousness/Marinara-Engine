@@ -8,7 +8,7 @@
 // while the chat is open, and shows a dot while the chat's agents run. A
 // Roleplay chat shows a one-time tip beside it until dismissed.
 // ──────────────────────────────────────────────
-import { useId } from "react";
+import { useId, useState } from "react";
 import { Settings2, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { ChatMode } from "@marinara-engine/shared";
@@ -43,7 +43,7 @@ export function ChatSettingsBubble({ chatId, mode }: { chatId: string; mode: Cha
   const phoneBounds = usePhoneBubbleBounds(phone);
   const windowBounds = useWindowBubbleBounds(!phone);
   const bounds = phone ? phoneBounds : windowBounds;
-  const size = phone ? PHONE_BUBBLE_SIZE_PX : WINDOW_BUBBLE_SIZE_PX;
+  const [size, setSize] = useState(phone ? PHONE_BUBBLE_SIZE_PX : WINDOW_BUBBLE_SIZE_PX);
   const saved = useFloatingWindowStore((state) =>
     phone ? state.phoneBubbles[CHAT_SETTINGS_BUTTON_ID] : state.bubbles[CHAT_SETTINGS_BUTTON_ID],
   );
@@ -62,7 +62,7 @@ export function ChatSettingsBubble({ chatId, mode }: { chatId: string; mode: Cha
     announceChatToolbarAction("settings");
     void preloadChatSettingsDrawer();
     const windows = useFloatingWindowStore.getState();
-    if (windows.open[CHAT_SETTINGS_WINDOW_ID]) windows.closeWindow(CHAT_SETTINGS_WINDOW_ID);
+    if (windows.open[CHAT_SETTINGS_WINDOW_ID]) windows.dismissWindow(CHAT_SETTINGS_WINDOW_ID, { force: true });
     else windows.openWindow(CHAT_SETTINGS_WINDOW_ID, button);
   };
 
@@ -73,6 +73,7 @@ export function ChatSettingsBubble({ chatId, mode }: { chatId: string; mode: Cha
         point={point}
         bounds={bounds}
         size={size}
+        onSizeChange={setSize}
         icon={<Settings2 size={phone ? 16 : 14} />}
         label={label}
         ariaLabel={label}

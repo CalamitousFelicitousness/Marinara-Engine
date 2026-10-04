@@ -138,9 +138,7 @@ If you try to make a video with no picture in the chat, Marinara shows this mess
 
 ## Game Mode scene video
 
-Game Mode has a second place to make a scene video: **Game Assets**. On a computer, click the **Game Assets** button over the game to open its window.
-
-<!-- TODO(#7034 mobile): opening Game Assets on a phone -->
+Game Mode has a second place to make a scene video: **Game Assets**. Click or tap the folder button near the top right of the chat. It opens as a window on a computer or a full-width panel on a phone.
 
 1. Open **Game Assets**.
 2. Click **Generate video**. Its tooltip reads "Generate a scene video from the latest illustration."

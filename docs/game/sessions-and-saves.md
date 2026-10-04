@@ -13,11 +13,9 @@ Your first session is **Session 1**. Ending it and starting again creates **Sess
 **Session** is where you end sessions, start new ones, and read your history.
 
 1. Start or open a Game Mode chat so the game surface is showing.
-2. On a computer, click the **Session** button (the feather icon). It starts in the row of buttons at the top right of the chat, and you can drag it anywhere (see [Control windows and their buttons](../chats/chat-settings.md#control-windows-and-their-buttons)).
-3. The **Session** window opens. Its first line shows **Session** with the current number and status.
+2. Click or tap the **Session** button (the feather icon). It starts near the top right of the chat. You can drag it to another spot (see [Control windows and their buttons](../chats/chat-settings.md#control-windows-and-their-buttons)).
+3. **Session** opens as a window on a computer or a full-width panel on a phone. Its first line shows **Session** with the current number and status.
 4. It has two tabs: **Session History** and **Journal**. Stay on **Session History** for session controls and setup sharing.
-
-<!-- TODO(#7034 mobile): opening Session on a phone -->
 
 ## Sharing the setup that created a game
 

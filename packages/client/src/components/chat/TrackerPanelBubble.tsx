@@ -6,7 +6,7 @@
 // shows it while the bubble's window id is open); closing the panel brings focus
 // back here. Its place saves with the chat like every other bubble.
 // ──────────────────────────────────────────────
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { TrackerPanelIcon } from "../ui/TrackerPanelIcon";
 import { WindowBubble } from "../ui/WindowBubble";
@@ -24,6 +24,7 @@ export function TrackerPanelBubble({ phoneSlot = 0 }: { phoneSlot?: number }) {
   const saved = useFloatingWindowStore((state) => state.phoneBubbles[TRACKER_PANEL_BUBBLE_ID]);
   const open = useFloatingWindowStore((state) => state.open[TRACKER_PANEL_BUBBLE_ID] === true);
   const bubbleRef = useRef<HTMLButtonElement | null>(null);
+  const [size, setSize] = useState(PHONE_BUBBLE_SIZE_PX);
   const wasOpenRef = useRef(open);
 
   // The panel closed: focus comes back to the bubble unless the user moved it elsewhere.
@@ -41,9 +42,10 @@ export function TrackerPanelBubble({ phoneSlot = 0 }: { phoneSlot?: number }) {
     <WindowBubble
       buttonRef={bubbleRef}
       id={TRACKER_PANEL_BUBBLE_ID}
-      point={saved ?? getPhoneBubbleSlot(bounds, phoneSlot)}
+      point={saved ?? getPhoneBubbleSlot(bounds, phoneSlot, size)}
       bounds={bounds}
       size={PHONE_BUBBLE_SIZE_PX}
+      onSizeChange={setSize}
       icon={<TrackerPanelIcon size="1.05rem" className="shrink-0" />}
       label={t("ui.panels.trackerpanelappearancedrawer.trackerPanel")}
       zIndex={PHONE_BUBBLE_Z_INDEX}

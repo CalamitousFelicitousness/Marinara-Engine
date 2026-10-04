@@ -20,7 +20,7 @@ export async function openChatSettings(page: Page): Promise<Locator> {
 }
 
 async function expand(drawer: Locator) {
-  const header = drawer.locator(":scope > .mari-drawer__header");
+  const header = drawer.locator(":scope > .mari-drawer__header [data-drawer-toggle]");
   await expect(header).toBeVisible();
   if ((await header.getAttribute("aria-expanded")) !== "true") await header.click();
   await expect(header).toHaveAttribute("aria-expanded", "true");

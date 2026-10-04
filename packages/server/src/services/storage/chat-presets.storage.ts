@@ -65,6 +65,7 @@ function sanitizePresetAgentMap(value: unknown) {
 }
 
 function sanitizePresetMetadataValue(key: string, value: unknown) {
+  if (key === "chatSettingsHintDismissed") return value === true;
   if (key === "activeAgentIds") return sanitizePresetAgentIds(value);
   if (key === "agentOverrides" || key === "agentPromptTemplateIds" || key === "customAgentImageSettings") {
     return sanitizePresetAgentMap(value);
@@ -331,6 +332,7 @@ export function createChatPresetsStorage(db: DB) {
           tags: [],
           enableAgents: true,
           activeToolIds: [],
+          chatSettingsHintDismissed: false,
         };
 
         const newMetadata: Record<string, unknown> = {

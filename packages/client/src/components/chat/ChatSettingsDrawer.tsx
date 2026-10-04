@@ -985,8 +985,6 @@ export function ChatSettingsDrawer({
   const trackerPanelClearance = useTrackerPanelClearance(!phoneLayout);
   const setTrackerPanelOpen = useUIStore((s) => s.setTrackerPanelOpen);
   const setTrackerPanelEnabled = useUIStore((s) => s.setTrackerPanelEnabled);
-  const trackerWindowOpen = useUIStore((s) => s.trackerWindowOpen);
-  const setTrackerWindowOpen = useUIStore((s) => s.setTrackerWindowOpen);
   const resetView = useFloatingWindowStore((s) => s.resetView);
 
   const { data: allCharacters } = useCharacters({ includeBuiltIn: true });
@@ -1054,8 +1052,6 @@ export function ChatSettingsDrawer({
     setTrackerPanelEnabled(true);
     setTrackerPanelOpen(true, chat.id);
   };
-  // With the Tracker Panel off, the trackers show in their own window, which this switch brings back.
-  const trackerWindowToggleAvailable = isRoleplayMode && !trackerPanelShown && metadata.enableAgents === true;
   const summaryRetrievalSettings = normalizeSemanticSummaryRetrievalSettings(metadata);
   // Package integrations only show while their package is installed and usable.
   const noodleInstalled = isCapabilityPackageAvailable(installedCapabilities, "noodle");
@@ -4982,37 +4978,31 @@ export function ChatSettingsDrawer({
         bodyRef={panelRef}
         onRequestClose={() => requestClose()}
       >
-        {/* With the Tracker Panel off, this brings the Trackers window back after it was closed. */}
-        {trackerWindowToggleAvailable && !phoneLayout && (
+        {/* Desktop-only: drag-and-drop hint (sidebar drag is disabled on mobile overlays) */}
+        {metadata.chatSettingsHintDismissed !== true && (
           <div
             data-chat-settings-top-row
-            data-tracker-window-toggle="chat-settings"
-            className="flex shrink-0 items-center gap-3 border-b border-[var(--border)] px-3 py-1.5"
+            className="flex shrink-0 items-start gap-2 border-b border-[var(--border)] px-4 py-2 text-[0.6875rem] leading-snug text-[var(--muted-foreground)] max-md:hidden"
           >
-            <SettingsSwitch
-              label={localizeUi("chat.settings.trackerWindow")}
-              help={localizeUi("chat.settings.trackerWindowHelp")}
-              checked={trackerWindowOpen}
-              onChange={setTrackerWindowOpen}
-              labelPosition="start"
-              className="gap-2 p-1"
-              labelClassName="text-xs font-medium"
-            />
+            <Info size="0.8125rem" className="mt-px shrink-0" />
+            {/* The slash-joined list has no spaces, so let it wrap in a narrow window. */}
+            <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
+              {localizeUi("chat.settings.dragDropHint")} {localizeUi("chat.settings.moveResizeHint")}{" "}
+              {localizeUi("chat.settings.dragOutHint")}
+              {modeSettingsSurfaces.showSettingsProfiles && <> {localizeUi("chat.settings.profilesHint")}</>}
+            </span>
+            <button
+              type="button"
+              onClick={() => updateMeta.mutate({ id: chat.id, chatSettingsHintDismissed: true })}
+              disabled={updateMeta.isPending}
+              aria-label={localizeUi("chat.settings.dismissHints")}
+              title={localizeUi("chat.settings.dismissHints")}
+              className="shrink-0 rounded p-1.5 hover:bg-[var(--muted)] hover:text-[var(--foreground)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--primary)] disabled:opacity-50"
+            >
+              <X size="0.875rem" aria-hidden="true" />
+            </button>
           </div>
         )}
-
-        {/* Desktop-only: drag-and-drop hint (sidebar drag is disabled on mobile overlays) */}
-        <div
-          data-chat-settings-top-row
-          className="flex shrink-0 items-start gap-2 border-b border-[var(--border)] px-4 py-2 text-[0.6875rem] leading-snug text-[var(--muted-foreground)] max-md:hidden"
-        >
-          <Info size="0.8125rem" className="mt-px shrink-0" />
-          {/* The slash-joined list has no spaces, so let it wrap in a narrow window. */}
-          <span className="min-w-0 [overflow-wrap:anywhere]">
-            {localizeUi("chat.settings.dragDropHint")} {localizeUi("chat.settings.moveResizeHint")}{" "}
-            {localizeUi("chat.settings.dragOutHint")}
-          </span>
-        </div>
 
         <div
           className={cn(

@@ -3,12 +3,12 @@
 //
 // Shown on a computer while the Tracker Panel is off (its dice in Chat Settings). Each tracker is
 // a drawer: collapsed it shows the tracker's miniature display, expanded its full
-// box. Agent activity sits at the bottom. Closing the window hides it until it
-// is turned back on in Chat Settings (or Reset View restores it). Each drawer
+// box. Agent activity sits at the bottom. Closing the window minimizes it to a button.
+// The Chat Settings dice switches between this window and the Tracker Panel. Each drawer
 // can pop out into its own window, which stays while the Trackers window is closed.
 // Beholder's launcher gets a control window of its own (a bubble), Tracker Panel or not.
 // ──────────────────────────────────────────────
-import { useCallback, useEffect, useRef, type ReactNode } from "react";
+import { useCallback, useEffect, type ReactNode } from "react";
 import {
   BarChart3,
   Backpack,
@@ -28,7 +28,6 @@ import { Drawer } from "../ui/Drawer";
 import { NEUTRAL_PANEL_SCROLL_AREA, NEUTRAL_SURFACE_VARIABLES } from "../ui/neutral-surface-styles";
 import { CapabilityElement } from "../capabilities/CapabilityElement";
 import { TrackerPanelIcon } from "../ui/TrackerPanelIcon";
-import { useHostHasDetachedDrawers } from "../ui/drawer-host";
 import { AgentActivitySection } from "../agents/AgentActivitySection";
 import { TrackerLockProvider } from "../../features/tracker-panel/components/TrackerLockContext";
 import {
@@ -80,13 +79,33 @@ const BUILT_IN_TRACKER_TYPES = [
 ];
 const DRAWER_MEMORY_PREFIX = "tracker-window:";
 
-/** Top-left of the chat, below its top controls: where the tracker strip used to be. Pinned. */
+/** Use the left gutter when it fits; otherwise begin as a button that leaves the transcript readable. */
 export function getTrackerWindowDefaultLayout(bounds: WindowBounds): WindowLayout {
   const remPx = readCssPixels(document.documentElement, "font-size") || 16;
   const area = readChatWindowArea(bounds);
   const width = Math.min(TRACKER_WINDOW_WIDTH_REM * remPx, area.right - area.left);
   const height = Math.min(TRACKER_WINDOW_HEIGHT_REM * remPx, area.bottom - area.top);
-  return { x: area.left, y: area.top, width, height, pinned: true, locked: false };
+  const contentLeft = Math.min(
+    ...Array.from(
+      area.chatRoot?.querySelectorAll(
+        ".mari-roleplay-message-body, .rpg-narrator-msg > div, .mari-roleplay-input-column",
+      ) ?? [],
+    )
+      .map((element) => element.getBoundingClientRect())
+      .filter((rect) => rect.width > 1 && rect.height > 1)
+      .map((rect) => rect.left),
+  );
+  const fitsBesideMessages = Number.isFinite(contentLeft) && area.left + width + 12 <= contentLeft;
+  return {
+    x: area.left,
+    y: area.top,
+    width,
+    height,
+    pinned: true,
+    locked: false,
+    minimized: !fitsBesideMessages,
+    bubble: { x: area.left, y: bounds.top },
+  };
 }
 
 /** Presses that do not count as "outside" the window: tracker popovers and dialogs render in portals. */
@@ -117,10 +136,6 @@ export function RoleplayTrackerWindow({
   const phoneLayout = useMatchMedia("(max-width: 767px)");
   // The Tracker Panel shows only while it is on (enabled) and open; otherwise this window holds the trackers.
   const trackerPanelShown = useUIStore((s) => s.trackerPanelEnabled && s.trackerPanelOpen);
-  const trackerWindowOpen = useUIStore((s) => s.trackerWindowOpen);
-  const setTrackerWindowOpen = useUIStore((s) => s.setTrackerWindowOpen);
-  const trackersPoppedOut = useHostHasDetachedDrawers(TRACKER_WINDOW_ID);
-  const resetRevision = useFloatingWindowStore((s) => s.resetRevision);
   const { data: installedCapabilities = [] } = useInstalledCapabilityPackages();
   const isAgentProcessing = useAgentStore((s) => s.processingChatIds.includes(props.chatId));
   const gameStateRefreshing = useGameStateStore((s) => s.isRefreshing);
@@ -133,15 +148,7 @@ export function RoleplayTrackerWindow({
     BUILT_IN_TRACKER_TYPES.some((type) => props.enabledAgentTypes.has(type)) ||
     packages.memoryNag.length + packages.other.length > 0;
 
-  // Reset View restores the default view, which includes this window.
-  const seenResetRevision = useRef(resetRevision);
-  useEffect(() => {
-    if (seenResetRevision.current === resetRevision) return;
-    seenResetRevision.current = resetRevision;
-    setTrackerWindowOpen(true);
-  }, [resetRevision, setTrackerWindowOpen]);
-
-  const showWindow = !phoneLayout && !trackerPanelShown && hasTrackers && (trackerWindowOpen || trackersPoppedOut);
+  const showWindow = !phoneLayout && !trackerPanelShown && hasTrackers;
   return (
     <>
       {packages.beholder.map((item, index) => (
@@ -167,9 +174,7 @@ export function RoleplayTrackerWindow({
         </ChatControlWindow>
       ))}
       {/* Popped-out trackers render from inside the window, so it stays mounted, hidden, while it is closed. */}
-      {showWindow && (
-        <TrackerWindow {...props} hidden={!trackerWindowOpen} onClose={() => setTrackerWindowOpen(false)} />
-      )}
+      {showWindow && <TrackerWindow {...props} />}
     </>
   );
 }
@@ -269,9 +274,7 @@ function TrackerWindow({
   onRerunTrackers,
   onRerunSingleTracker,
   messages,
-  hidden,
-  onClose,
-}: RoleplayTrackerWindowProps & { hidden: boolean; onClose: () => void }) {
+}: RoleplayTrackerWindowProps) {
   const { t } = useTranslation();
   const tracker = useRoleplayTrackerState(chatId, enabledAgentTypes, "tracker-window");
   const trackerTemperatureUnit = useUIStore((s) => s.trackerTemperatureUnit);
@@ -295,10 +298,9 @@ function TrackerWindow({
 
   // The window joins the stacking order while it shows; it opens by itself, so it leaves focus alone.
   useEffect(() => {
-    if (hidden) return;
     useFloatingWindowStore.getState().openWindow(TRACKER_WINDOW_ID, null, { focus: false });
     return () => useFloatingWindowStore.getState().closeWindow(TRACKER_WINDOW_ID);
-  }, [hidden]);
+  }, []);
 
   const packageProps = (item: InstalledCapabilityPackage) => ({ item, chatId, onRerunSingleTracker, busy });
   const runTrackersLabel = busy ? t("ui.chat.roleplayhud.trackersRunning") : t("ui.chat.roleplayhud.runTrackers");
@@ -306,7 +308,6 @@ function TrackerWindow({
   return (
     <FloatingWindow
       id={TRACKER_WINDOW_ID}
-      hidden={hidden}
       drawerHost={{
         title: t("chat.trackerWindow.title"),
         scrollClassName: cn(NEUTRAL_PANEL_SCROLL_AREA, "@container"),
@@ -331,6 +332,10 @@ function TrackerWindow({
         </>
       }
       closeLabel={t("chat.trackerWindow.close")}
+      minimizable={{
+        icon: <TrackerPanelIcon size="0.875rem" />,
+        label: t("chat.trackerWindow.title"),
+      }}
       getDefaultLayout={getTrackerWindowDefaultLayout}
       minWidth={260}
       minHeight={160}
@@ -339,7 +344,6 @@ function TrackerWindow({
       headerClassName="marinara-chat-popover__header"
       titleClassName="marinara-chat-popover__title text-xs font-semibold leading-tight"
       ignoreOutsidePointer={ignoreTrackerWindowOutsidePointer}
-      onRequestClose={onClose}
     >
       <TrackerLockProvider {...tracker.lockProviderProps}>
         <div className={cn(NEUTRAL_PANEL_SCROLL_AREA, "@container min-h-0 flex-1 overflow-y-auto overscroll-contain")}>

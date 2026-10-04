@@ -146,6 +146,16 @@ test("Chat Summary range fields fit long message numbers in a quiet box", async 
     expect.soft(layout.border).toBe(layout.sectionBorder);
     expect.soft(layout.widthShare).toBeGreaterThan(0.8);
     await page.screenshot({ path: info.outputPath("summary-range-fields.png") });
+    // Escape dismisses the template choices without closing the surrounding settings window.
+    const template = panel.getByRole("button", { name: "Summary prompt template", exact: true });
+    await template.click();
+    const choices = panel.getByRole("listbox");
+    await expect(choices).toBeVisible();
+    await choices.getByRole("option").first().focus();
+    await page.keyboard.press("Escape");
+    await expect(choices).toHaveCount(0);
+    await expect(panel).toBeVisible();
+    await expect(template).toBeFocused();
   } finally {
     await request.delete(`/api/chats/${id}?force=true`);
   }

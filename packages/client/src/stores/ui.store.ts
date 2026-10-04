@@ -592,8 +592,6 @@ interface UIState {
   trackerPanelEnabled: boolean;
   trackerPanelOpen: boolean;
   trackerPanelOpenByChatId: Record<string, boolean>;
-  /** Desktop, Tracker Panel off: whether the movable Tracker window is shown. */
-  trackerWindowOpen: boolean;
   trackerPanelSide: TrackerPanelSide;
   trackerPanelHideHudWidgets: boolean;
   trackerPanelUseExpressionSprites: boolean;
@@ -1027,7 +1025,6 @@ interface UIState {
   setTrackerPanelOpen: (open: boolean, chatId?: string | null) => void;
   restoreTrackerPanelOpenForChat: (chatId: string | null) => void;
   setTrackerPanelSide: (side: TrackerPanelSide) => void;
-  setTrackerWindowOpen: (open: boolean) => void;
   setTrackerPanelHideHudWidgets: (hidden: boolean) => void;
   setTrackerPanelUseExpressionSprites: (enabled: boolean) => void;
   setTrackerPanelThoughtBubbleDisplay: (display: TrackerThoughtBubbleDisplay) => void;
@@ -1549,7 +1546,6 @@ export function pickPersistedUIState(state: UIState) {
     trackerPanelEnabled: state.trackerPanelEnabled,
     trackerPanelOpen: state.trackerPanelOpen,
     trackerPanelOpenByChatId: state.trackerPanelOpenByChatId,
-    trackerWindowOpen: state.trackerWindowOpen,
     trackerPanelSide: state.trackerPanelSide,
     trackerPanelHideHudWidgets: state.trackerPanelHideHudWidgets,
     trackerPanelUseExpressionSprites: state.trackerPanelUseExpressionSprites,
@@ -1745,7 +1741,6 @@ export const useUIStore = create<UIState>()(
         trackerPanelEnabled: true,
         trackerPanelOpen: false,
         trackerPanelOpenByChatId: {},
-        trackerWindowOpen: true,
         trackerPanelSide: "right" as TrackerPanelSide,
         trackerPanelHideHudWidgets: false,
         trackerPanelUseExpressionSprites: false,
@@ -2040,7 +2035,6 @@ export const useUIStore = create<UIState>()(
           });
         },
         setTrackerPanelSide: (side) => set({ trackerPanelSide: side }),
-        setTrackerWindowOpen: (open) => set({ trackerWindowOpen: open }),
         setTrackerPanelHideHudWidgets: (hidden) => set({ trackerPanelHideHudWidgets: hidden }),
         setTrackerPanelUseExpressionSprites: (enabled) => set({ trackerPanelUseExpressionSprites: enabled }),
         setTrackerPanelThoughtBubbleDisplay: (display) =>
@@ -2809,7 +2803,6 @@ export const useUIStore = create<UIState>()(
             trackerPanelEnabled: true,
             trackerPanelOpen: false,
             trackerPanelOpenByChatId: {},
-            trackerWindowOpen: true,
             trackerPanelSide: "right" as TrackerPanelSide,
             trackerPanelHideHudWidgets: false,
             trackerPanelUseExpressionSprites: false,

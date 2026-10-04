@@ -6,7 +6,7 @@ This guide explains the Roleplay trackers: the small widgets on phones, the **Tr
 
 The HUD (heads-up display) is the row of buttons at the top of the chat area. On a phone it includes a small icon widget for each tracker. Each widget shows a piece of live story state, such as the time, your stats, or who is present. Marinara keeps these values up to date for you as the story moves.
 
-On a computer, the trackers are not in the HUD row. They show in the **Tracker Panel** when it is on in Settings, and otherwise in the **Trackers** window described below.
+On a computer, the trackers are not in the HUD row. They appear in the **Tracker Panel** while it is shown, and otherwise in the **Trackers** window described below.
 
 The values come from tracker agents. An agent is a small AI helper that runs in the background. Each tracker agent watches the story and updates one part of the HUD after each message. You do not have to ask for it.
 
@@ -38,17 +38,21 @@ The **Present Characters** widget shows up to three character emoji plus a "+N" 
 
 ## The Trackers window
 
-On a computer, while the **Tracker Panel** is off, a Roleplay chat's trackers show in a **Trackers** window. It opens at the top left of the chat. You can move it by its title bar, resize it from its edges, and use the buttons in its top-right corner:
+On a computer, when the **Tracker Panel** is not shown, a Roleplay chat's trackers use the **Trackers** window. If there is room beside your messages, it opens on the left. Otherwise, it starts as a small **Trackers** button at the top left of the chat. Click the button to open it. A chat with a saved layout keeps the arrangement you chose.
+
+You can move the window by its title bar, resize it from its edges, and use the buttons in its top-right corner:
 
 - **Pin** keeps it open when you click elsewhere. It starts pinned.
 - **Lock** stops it from moving or resizing.
-- **Close** hides it. To show it again, open **Chat Settings** and turn on **Tracker window** at the top, or use **Reset View** (the circular arrow in its title bar).
+- **Minimize** or **Close** shrinks it to the movable **Trackers** button. Click that button to reopen it where you left it.
+
+To use the Tracker Panel instead, click the die in the Chat Settings title bar. When the panel is not shown, the trackers remain available through their window or button. **Reset View** in Chat Settings clears the saved arrangement and chooses the starting window or button to fit the available space.
 
 While agents are working on the chat, a small dot shows beside the window's title (and on the **Chat Settings** button).
 
 Each tracker has its own collapsible section, called a drawer. Click a drawer's header to collapse it to the tracker's small widget preview, and click it again to see the whole tracker. Marinara remembers which drawers you collapsed.
 
-A tracker can also get its own window: click the pop-out button beside its arrow, or drag its title out of the Trackers window. The new window starts pinned and stays open when you close the Trackers window. Its **X** shrinks it to a small button with the tracker's icon, which reopens it where you left it. Click **Put back in Trackers** (the curved arrow just left of **X**), or drag it back onto the Trackers window, to return it. Each chat remembers which trackers are out and where.
+A tracker can also get its own window: click the pop-out button beside its arrow, or drag its title out of the Trackers window. The new window starts pinned and stays open when you minimize the Trackers window. Its **X** shrinks it to a small button with the tracker's icon, which reopens it where you left it. Click **Put back in Trackers** (the curved arrow just left of **X**), or drag it back onto the Trackers window, to return it. Each chat remembers which trackers are out and where.
 
 At the bottom, **Agent activity** shows what the chat's agents did. From there you can re-run the trackers, retry agents that failed, stop running agents, and **Clear Trackers**. The Tracker Panel has the same section at its bottom.
 

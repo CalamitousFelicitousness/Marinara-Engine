@@ -1898,7 +1898,18 @@ export function ChatSummaryPanel({
               {summaryPromptView === "summary" ? (
                 <div className="h-48 space-y-2 overflow-y-auto pr-0.5">
                   <div className="grid grid-cols-1 gap-1">
-                    <div className="relative min-w-0">
+                    <div
+                      className="relative min-w-0"
+                      onKeyDown={(event) => {
+                        if (event.key !== "Escape" || !templateSelectOpen) return;
+                        event.preventDefault();
+                        event.stopPropagation();
+                        setTemplateSelectOpen(false);
+                        event.currentTarget
+                          .querySelector<HTMLButtonElement>('button[aria-haspopup="listbox"]')
+                          ?.focus();
+                      }}
+                    >
                       <button
                         type="button"
                         onClick={() => setTemplateSelectOpen((open) => !open)}

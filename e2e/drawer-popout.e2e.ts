@@ -179,6 +179,15 @@ test.describe("Pop-out drawers on desktop", () => {
       await expect(docked).toBeVisible();
       await expect(docked.getByRole("button", { name: "Open Chat Name in its own window", exact: true })).toBeFocused();
 
+      // Putting back the last pop-out while its host is closed still returns focus into the chat.
+      await docked.getByRole("button", { name: "Open Chat Name in its own window", exact: true }).click();
+      await settings.getByRole("button", { name: "Close chat settings", exact: true }).click();
+      await expect(settings).toBeHidden();
+      await popped.getByRole("button", { name: "Put back in Chat Settings", exact: true }).click();
+      await expect(popped).toHaveCount(0);
+      await expect(page.locator("[data-chat-settings-button]")).toBeFocused();
+      await openSettingsWindow(page);
+
       // Reset View puts popped-out sections back too, and the chat forgets its layout.
       await docked.getByRole("button", { name: "Open Chat Name in its own window", exact: true }).click();
       await expect(popped).toBeVisible();
@@ -296,13 +305,13 @@ test.describe("Pop-out drawers on desktop", () => {
       const settings = await openSettingsWindow(page);
       const settingsBox = await box(settings);
       const header = settings.locator('[data-drawer="chat-name"] > .mari-drawer__header');
-      const expanded = await header.getAttribute("aria-expanded");
+      const expanded = await header.locator("[data-drawer-toggle]").getAttribute("aria-expanded");
 
       // A short drag that stays inside the window neither pops it out nor opens or closes it.
       const headerBox = await box(header);
       await drag(page, centre(headerBox), { x: centre(headerBox).x - 40, y: centre(headerBox).y + 30 });
       await expect(page.locator(`[data-window="${CHAT_NAME_WINDOW}"]`)).toHaveCount(0);
-      await expect(header).toHaveAttribute("aria-expanded", expanded ?? "false");
+      await expect(header.locator("[data-drawer-toggle]")).toHaveAttribute("aria-expanded", expanded ?? "false");
 
       // Past the window's edge it pops out, with its title bar where it was dropped.
       // High enough that the popped-out window fits below its title bar without being moved up.
@@ -342,10 +351,13 @@ test.describe("Pop-out drawers on desktop", () => {
         data: { manual: true, location: "Harbor market", time: "Evening" },
       });
       expect(state.ok()).toBeTruthy();
-      await prepare(page, chat.id, { trackerPanelEnabled: false, trackerPanelOpen: false, trackerWindowOpen: true });
+      await prepare(page, chat.id, { trackerPanelEnabled: false, trackerPanelOpen: false });
       await page.goto("/");
-      const trackerWindow = page.locator('[data-window="trackers"]');
-      await expect(trackerWindow).toBeVisible({ timeout: 30_000 });
+      const trackerWindow = page.locator('.mari-window[data-window="trackers"]');
+      const trackerBubble = page.locator('.mari-window-bubble[data-window="trackers"]');
+      await expect(trackerBubble).toBeVisible({ timeout: 30_000 });
+      await trackerBubble.click();
+      await expect(trackerWindow).toBeVisible();
       const world = trackerWindow.locator('[data-drawer="tracker-world"]');
       await world.getByRole("button", { name: "Open World State in its own window", exact: true }).click();
 
@@ -366,9 +378,9 @@ test.describe("Pop-out drawers on desktop", () => {
       // Put back returns it; turning the Trackers window on shows it there.
       await popped.getByRole("button", { name: "Put back in Trackers", exact: true }).click();
       await expect(popped).toHaveCount(0);
-      await expect(trackerWindow).toHaveCount(0);
-      const settings = await openSettingsWindow(page);
-      await settings.locator('[data-tracker-window-toggle="chat-settings"]').getByText("Tracker window").click();
+      await expect(trackerWindow).toBeHidden();
+      await expect(trackerBubble).toBeVisible();
+      await trackerBubble.click();
       await expect(trackerWindow.locator('[data-drawer="tracker-world"]')).toBeVisible();
     } finally {
       await request.delete(`/api/chats/${chat.id}?force=true`);
@@ -444,6 +456,174 @@ test.describe("Pop-out drawers on desktop", () => {
     }
   });
 
+  test("pinned Chat Settings stays open across an uncached chat switch", async ({ page, request }) => {
+    const first = await createChat(request);
+    const second = await createChat(request, {
+      windowLayout: {
+        version: 1,
+        windows: { "chat-settings": { x: 100, y: 120, width: 480, height: 500, pinned: true, locked: false } },
+      },
+    });
+    let releaseChat = () => {};
+    const chatReady = new Promise<void>((resolve) => {
+      releaseChat = resolve;
+    });
+    try {
+      await prepare(page, first.id);
+      await page.goto("/");
+      await expect(page.locator('[data-chat-mode="roleplay"]')).toBeVisible({ timeout: 30_000 });
+      const settings = await openSettingsWindow(page);
+      await settings.locator('[data-window-control="pin"]').click();
+      await expect
+        .poll(async () => (await readSavedLayout(request, first.id))?.windows?.["chat-settings"])
+        .toMatchObject({ pinned: true });
+
+      // Hold the detail request so the loading gap is real, not an already-cached chat transition.
+      await page.route(`**/api/chats/${second.id}`, async (route) => {
+        await chatReady;
+        await route.continue();
+      });
+      const loading = page.waitForRequest((entry) => entry.url().endsWith(`/api/chats/${second.id}`));
+      await setActiveChat(page, second.id);
+      await loading;
+      await expect(settings).toHaveCount(0);
+      releaseChat();
+      await settle(settings);
+      await expect(settings).toHaveAttribute("data-pinned", "true");
+      expect((await box(settings)).x).toBeCloseTo(100, 0);
+    } finally {
+      releaseChat();
+      await request.delete(`/api/chats/${first.id}?force=true`);
+      await request.delete(`/api/chats/${second.id}?force=true`);
+    }
+  });
+
+  test("pinned Chat Settings reopens after refresh until explicitly closed", async ({ page, request }) => {
+    const chat = await createChat(request);
+    try {
+      await prepare(page, chat.id);
+      await page.goto("/");
+      await expect(page.locator('[data-chat-mode="roleplay"]')).toBeVisible({ timeout: 30_000 });
+      const settings = await openSettingsWindow(page);
+      await settings.locator('[data-window-control="pin"]').click();
+      await expect
+        .poll(async () => (await readSavedLayout(request, chat.id))?.windows?.["chat-settings"])
+        .toMatchObject({ pinned: true });
+      const placed = await box(settings);
+
+      await page.reload();
+      await settle(settings);
+      await expect(settings).toHaveAttribute("data-pinned", "true");
+      expectSameBox(await box(settings), placed, "pinned window after refresh");
+
+      // Closing it deliberately must still win over the saved pin on the next load.
+      await settings.getByRole("button", { name: "Close chat settings", exact: true }).click();
+      await expect(settings).toHaveCount(0);
+      await expect
+        .poll(async () => (await readSavedLayout(request, chat.id))?.windows?.["chat-settings"])
+        .toMatchObject({ pinned: true, minimized: true });
+      await page.reload();
+      await expect(page.locator('[data-chat-mode="roleplay"]')).toBeVisible({ timeout: 30_000 });
+      await expect(settings).toHaveCount(0);
+
+      // Opening it again clears the saved close state, and unpinning keeps the old closed-on-load behavior.
+      await openSettingsWindow(page);
+      await expect
+        .poll(async () => (await readSavedLayout(request, chat.id))?.windows?.["chat-settings"])
+        .toMatchObject({ pinned: true, minimized: false });
+      await settings.locator('[data-window-control="pin"]').click();
+      await expect
+        .poll(async () => (await readSavedLayout(request, chat.id))?.windows?.["chat-settings"])
+        .toMatchObject({ pinned: false });
+      await page.reload();
+      await expect(page.locator('[data-chat-mode="roleplay"]')).toBeVisible({ timeout: 30_000 });
+      await expect(settings).toHaveCount(0);
+    } finally {
+      await request.delete(`/api/chats/${chat.id}?force=true`);
+    }
+  });
+
+  test("popped-out Advanced Parameters keeps inherited values and send toggles after reload", async ({
+    page,
+    request,
+  }) => {
+    const resources: string[] = [];
+    const create = async (path: string, data: Record<string, unknown>) => {
+      const response = await request.post(path, { data });
+      expect(response.ok()).toBeTruthy();
+      const row = (await response.json()) as { id: string };
+      resources.unshift(`${path}/${row.id}`);
+      return row;
+    };
+    try {
+      const connection = await create("/api/connections", {
+        name: "Pop-out parameters",
+        provider: "openai",
+        model: "gpt-4o",
+        baseUrl: "http://127.0.0.1:9/v1",
+        apiKey: "synthetic-ui-fixture-key",
+      });
+      const inheritedSend = {
+        temperature: true,
+        maxTokens: true,
+        topP: true,
+        frequencyPenalty: true,
+        presencePenalty: true,
+      };
+      const preset = await create("/api/prompts", {
+        name: "Inherited pop-out parameters",
+        parameters: { temperature: 1.37, maxTokens: 777, enabledParameters: inheritedSend },
+      });
+      const chat = await create("/api/chats", {
+        name: "Pop-out parameters",
+        mode: "roleplay",
+        characterIds: [],
+        connectionId: connection.id,
+        promptPresetId: preset.id,
+      });
+      await page.route(`**/api/connections/${connection.id}/models`, (route) =>
+        route.fulfill({ json: { models: [{ id: "gpt-4o", name: "Synthetic GPT-4o" }] } }),
+      );
+      await prepare(page, chat.id);
+      await page.goto("/");
+      await expect(page.locator('[data-chat-mode="roleplay"]')).toBeVisible({ timeout: 30_000 });
+      const settings = await openSettingsWindow(page);
+      const advanced = settings.locator('[data-drawer="advanced-parameters"]');
+      await expect(advanced.locator(".mari-drawer__header [data-drawer-toggle]")).toHaveAttribute(
+        "aria-expanded",
+        "false",
+      );
+      await advanced.locator('[data-drawer-control="pop-out"]').click();
+      const popped = page.locator('.mari-window[data-window="drawer:chat-settings:advanced-parameters"]');
+
+      for (const topP of ["0.9", "0.8"]) {
+        await settle(popped);
+        await expect(popped.getByRole("textbox", { name: "Temperature", exact: true })).toHaveValue("1.37");
+        await expect(popped.getByRole("textbox", { name: "Max Output Tokens", exact: true })).toHaveValue("777");
+        const input = popped.getByRole("textbox", { name: "Top P", exact: true });
+        await expect(input).toBeEnabled();
+        await input.fill(topP);
+        await input.press("Tab");
+        await expect
+          .poll(async () => {
+            const row = await (await request.get(`/api/chats/${chat.id}`)).json();
+            const metadata = typeof row.metadata === "string" ? JSON.parse(row.metadata) : row.metadata;
+            return metadata.chatParameters;
+          })
+          .toMatchObject({ topP: Number(topP), enabledParameters: inheritedSend });
+        if (topP === "0.9") {
+          await expect
+            .poll(async () => (await readSavedLayout(request, chat.id))?.detached)
+            .toContain("drawer:chat-settings:advanced-parameters");
+          await page.reload();
+          await expect(page.locator('[data-chat-mode="roleplay"]')).toBeVisible({ timeout: 30_000 });
+        }
+      }
+    } finally {
+      for (const resource of resources) await request.delete(resource);
+    }
+  });
+
   test("a settings profile saves the layout and applies it; profiles without one leave it alone", async ({
     page,
     request,
@@ -465,6 +645,8 @@ test.describe("Pop-out drawers on desktop", () => {
       const placed = await box(popped);
 
       // Save As stores the layout as shown, even before the chat has saved it.
+      await settings.getByRole("button", { name: "Hide these tips for this chat", exact: true }).click();
+      await expect(settings.locator("[data-chat-settings-top-row]")).toHaveCount(0);
       await settings.locator('button[title="Save current chat settings as a new profile"]').click();
       const dialog = page.getByRole("dialog").filter({ hasText: "Name for the new profile:" });
       await dialog.getByRole("textbox").fill(profileName);
@@ -486,6 +668,7 @@ test.describe("Pop-out drawers on desktop", () => {
       // The Default profile has no layout, so applying it leaves the layout as it is.
       await select.selectOption({ label: "Default" });
       await expect(select.locator("option:checked")).toHaveText("Default");
+      await expect(settings.locator("[data-chat-settings-top-row]")).toBeVisible();
       await expect(popped).toBeVisible();
       expectSameBox(await box(popped), placed, "after the Default profile");
       await expect(settings).toHaveAttribute("data-pinned", "true");
@@ -496,6 +679,7 @@ test.describe("Pop-out drawers on desktop", () => {
       await expect(settings).toHaveAttribute("data-pinned", "false");
       await expect.poll(() => readSavedLayout(request, chat.id)).toBeNull();
       await select.selectOption({ label: profileName });
+      await expect(settings.locator("[data-chat-settings-top-row]")).toHaveCount(0);
       await settle(popped);
       expectSameBox(await box(popped), placed, "from the saved profile");
       await expect(settings).toHaveAttribute("data-pinned", "true");

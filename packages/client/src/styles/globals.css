@@ -817,8 +817,10 @@
     cursor: grabbing;
   }
 
-  /* A chat's own full-screen dialog (Game's session logs, say) covers its bubbles, as it covers the chat. */
-  body:has([data-chat-mode] [role="dialog"][aria-modal="true"]) .mari-window-bubble {
+  /* Chat-local modals can live in a lower stacking context. Their controls must stay above windows. */
+  body:has([data-chat-mode] [role="dialog"][aria-modal="true"]) .mari-window-bubble,
+  body:has([data-chat-mode] [role="dialog"][aria-modal="true"])
+    .mari-window:not(:has([role="dialog"][aria-modal="true"])) {
     visibility: hidden;
   }
 

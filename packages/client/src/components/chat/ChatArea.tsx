@@ -547,10 +547,18 @@ const MultiplayerChat = lazy(() =>
 export const ChatArea = memo(function ChatArea() {
   const activeChatId = useChatStore((state) => state.activeChatId);
   const { data: chat, error, refetch } = useChat(activeChatId);
+  const metadata = chat ? readChatMetadata(chat) : {};
+  // Keep the local host registered while the next chat loads. Multiplayer registers its own host
+  // once the room is ready; its setup screen must not offer Chat Settings.
+  const hostsChatSettings = Boolean(activeChatId && !(metadata.multiplayerSetup === true || metadata.multiplayer));
+  useEffect(() => {
+    if (!hostsChatSettings) return;
+    return useFloatingWindowStore.getState().registerHost(CHAT_SETTINGS_WINDOW_ID);
+  }, [hostsChatSettings]);
   // The Chat Settings button shows while a chat that hosts Chat Settings is open.
   const chatSettingsHosted = useFloatingWindowStore((state) => (state.hosts[CHAT_SETTINGS_WINDOW_ID] ?? 0) > 0);
   // Windows and popped-out drawers follow the open chat's saved layout.
-  useChatWindowLayout(activeChatId && chat?.id === activeChatId ? chat : null);
+  useChatWindowLayout(activeChatId ? (chat?.id === activeChatId ? chat : undefined) : null);
   useEffect(() => {
     if (activeChatId && error instanceof ApiError && error.status === 404) {
       useChatStore.getState().setActiveChatId(null);
@@ -560,7 +568,6 @@ export const ChatArea = memo(function ChatArea() {
     return (
       <ChatOpeningState error={error} onRetry={refetch} onBack={() => useChatStore.getState().setActiveChatId(null)} />
     );
-  const metadata = chat ? readChatMetadata(chat) : {};
   const chatSettingsButton =
     chat && chatSettingsHosted ? <ChatSettingsBubble chatId={chat.id} mode={readChatMode(chat)} /> : null;
   if (chat && (metadata.multiplayerSetup === true || metadata.multiplayer)) {
@@ -687,7 +694,7 @@ const LocalChatArea = memo(function LocalChatArea() {
       setSettingsAnchor(nextOpen ? readFloatingPanelAnchor(event) : null);
       setSettingsInitialSection(nextOpen ? (options?.initialSection ?? null) : null);
       if (nextOpen) windows.openWindow(CHAT_SETTINGS_WINDOW_ID, event?.currentTarget ?? null);
-      else windows.closeWindow(CHAT_SETTINGS_WINDOW_ID);
+      else windows.dismissWindow(CHAT_SETTINGS_WINDOW_ID, { force: true });
     },
     [readFloatingPanelAnchor],
   );
@@ -761,12 +768,6 @@ const LocalChatArea = memo(function LocalChatArea() {
     };
   }, [closeFloatingChatDrawers]);
   const chat = chatDetail ?? null;
-  // While a chat is open here, the topbar shows the Chat Settings button.
-  const hostsChatSettings = Boolean(activeChatId && chat);
-  useEffect(() => {
-    if (!hostsChatSettings) return;
-    return useFloatingWindowStore.getState().registerHost(CHAT_SETTINGS_WINDOW_ID);
-  }, [hostsChatSettings]);
   const rawMode = (chat as unknown as { mode?: string })?.mode;
   // Remember the last known chat mode so that a transient `undefined` from
   // React Query (cache invalidation, Suspense remount, concurrent batching)

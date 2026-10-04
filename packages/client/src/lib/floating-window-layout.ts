@@ -38,7 +38,7 @@ export interface WindowGeometry {
 export interface WindowLayout extends WindowGeometry {
   pinned: boolean;
   locked: boolean;
-  /** Minimizable windows: shown as a small button (its bubble) instead of the window. Older layouts have none. */
+  /** Closed or shown as a small button instead of the window; prevents pinned windows reopening. Older layouts have none. */
   minimized?: boolean;
   /** Where a minimizable window's bubble sits (its top-left corner, viewport pixels). */
   bubble?: WindowPoint;
@@ -92,8 +92,8 @@ export function getBubbleRowSlot(
 }
 
 /** A phone bubble's default place: a row along the top of the chat, where its toolbar and menu buttons were. */
-export function getPhoneBubbleSlot(bounds: WindowBounds, slot: number): WindowPoint {
-  return getBubbleRowSlot(bounds, slot, { size: PHONE_BUBBLE_SIZE_PX, gap: PHONE_BUBBLE_GAP_PX });
+export function getPhoneBubbleSlot(bounds: WindowBounds, slot: number, size = PHONE_BUBBLE_SIZE_PX): WindowPoint {
+  return getBubbleRowSlot(bounds, slot, { size, gap: PHONE_BUBBLE_GAP_PX });
 }
 
 /** Saved with each chat (`chat.metadata.windowLayout`) and in chat settings profiles. */
@@ -316,6 +316,7 @@ export function placeDetachedDrawer(
   size: { width: number; height: number },
   bounds: WindowBounds,
   limits: WindowSizeLimits,
+  otherWindows: WindowGeometry[] = [],
 ): WindowGeometry {
   const { width, height } = size;
   let x = source.x + 24;
@@ -323,7 +324,34 @@ export function placeDetachedDrawer(
   else if (host && host.x + host.width + DETACHED_GAP_PX + width <= bounds.right) {
     x = host.x + host.width + DETACHED_GAP_PX;
   }
-  return clampWindowGeometry({ x, y: source.y, width, height }, bounds, limits);
+  const initial = clampWindowGeometry({ x, y: source.y, width, height }, bounds, limits);
+  const overlaps = (candidate: WindowGeometry) =>
+    otherWindows.some(
+      (other) =>
+        candidate.x < other.x + other.width &&
+        candidate.x + candidate.width > other.x &&
+        candidate.y < other.y + other.height &&
+        candidate.y + candidate.height > other.y,
+    );
+  if (!overlaps(initial)) return initial;
+  // When room is tight, cascade title bars instead of opening windows directly on top of each other.
+  const candidates = [initial];
+  for (let step = 1; step <= otherWindows.length + 1; step++) {
+    for (const direction of [1, -1]) {
+      const candidate = clampWindowGeometry(
+        { ...initial, x: initial.x + direction * step * 24, y: initial.y + direction * step * 24 },
+        bounds,
+        limits,
+      );
+      if (!overlaps(candidate)) return candidate;
+      candidates.push(candidate);
+    }
+  }
+  return (
+    candidates.find((candidate) =>
+      otherWindows.every((other) => Math.abs(candidate.x - other.x) >= 20 || Math.abs(candidate.y - other.y) >= 20),
+    ) ?? initial
+  );
 }
 
 const BUBBLE_WINDOW_GAP_PX = 8;
@@ -337,11 +365,12 @@ export function placeWindowBesideBubble(
   bubble: WindowPoint,
   bounds: WindowBounds,
   limits: WindowSizeLimits,
+  bubbleSize = WINDOW_BUBBLE_SIZE_PX,
 ): WindowGeometry {
   const { width, height } = size;
-  const alignRight = bubble.x + WINDOW_BUBBLE_SIZE_PX - width;
+  const alignRight = bubble.x + bubbleSize - width;
   const x = alignRight >= bounds.left ? alignRight : bubble.x;
-  const below = bubble.y + WINDOW_BUBBLE_SIZE_PX + BUBBLE_WINDOW_GAP_PX;
+  const below = bubble.y + bubbleSize + BUBBLE_WINDOW_GAP_PX;
   const y = below + height <= bounds.bottom ? below : bubble.y - BUBBLE_WINDOW_GAP_PX - height;
   return clampWindowGeometry({ x, y, width, height }, bounds, limits);
 }

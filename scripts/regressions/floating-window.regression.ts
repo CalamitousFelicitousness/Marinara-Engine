@@ -283,6 +283,52 @@ store.getState().openWindow(id);
 assert.equal(store.getState().dismissWindow(id), true, "an unpinned window closes");
 assert.equal(store.getState().dismissWindow(id), false, "a closed window has nothing to close");
 
+// A reload restores pinned windows, but an explicit close or minimize still wins.
+store.setState({ open: {}, stack: [] });
+takeFloatingWindowFocusRequest(id);
+store.getState().hydrate({
+  version: FLOATING_WINDOW_LAYOUT_VERSION,
+  windows: {
+    [id]: valid,
+    "control:session": { ...valid, minimized: false },
+    [settingsDrawer]: { ...valid, minimized: true },
+    unpinned: { ...valid, pinned: false },
+  },
+  detached: [settingsDrawer],
+});
+assert.equal(store.getState().open[id], true, "a saved pinned Chat Settings reopens without a click");
+assert.equal(store.getState().open["control:session"], true, "a pinned control window restores too");
+assert.equal(store.getState().open[settingsDrawer], undefined, "a minimized pinned drawer stays a bubble");
+assert.equal(store.getState().open.unpinned, undefined, "unpinned windows keep their existing open behavior");
+assert.ok(store.getState().stack.includes(id), "restored windows join the stacking order");
+assert.equal(takeFloatingWindowFocusRequest(id), false, "restoring a layout does not request keyboard focus");
+
+store.getState().closeWindow(id);
+assert.equal(store.getState().layouts[id]?.minimized, undefined, "unmount cleanup does not save a user close");
+store.getState().hydrate(selectWindowLayoutSnapshot(store.getState()));
+assert.equal(store.getState().open[id], true);
+store.getState().dismissWindow(id, { force: true });
+const closedSnapshot = selectWindowLayoutSnapshot(store.getState());
+assert.equal(closedSnapshot.windows[id]?.minimized, true, "explicitly closing a pinned window is remembered");
+store.setState({ open: {}, stack: [] });
+store.getState().hydrate(closedSnapshot);
+assert.equal(store.getState().open[id], undefined, "a deliberately closed pinned window stays closed after reload");
+store.getState().openWindow(id);
+assert.equal(store.getState().layouts[id]?.minimized, false, "opening it again clears the saved close state");
+store.getState().resetView();
+assert.deepEqual(store.getState().layouts, {}, "Reset View forgets saved open and closed preferences too");
+store.setState({ open: {}, stack: [] });
+const windowDescriptor = Object.getOwnPropertyDescriptor(globalThis, "window");
+Object.defineProperty(globalThis, "window", { configurable: true, value: { matchMedia: () => ({ matches: true }) } });
+try {
+  store.getState().hydrate({ version: FLOATING_WINDOW_LAYOUT_VERSION, windows: { [id]: valid } });
+  assert.equal(store.getState().open[id], undefined, "a desktop pin does not force a phone sheet open");
+} finally {
+  if (windowDescriptor) Object.defineProperty(globalThis, "window", windowDescriptor);
+  else Reflect.deleteProperty(globalThis, "window");
+  store.getState().resetView();
+}
+
 // ── Theming contract: stable classes, attributes and variables ──
 const floatingWindow = read("packages/client/src/components/ui/FloatingWindow.tsx");
 const drawer = read("packages/client/src/components/ui/Drawer.tsx");
@@ -328,11 +374,7 @@ for (const host of [
   "packages/client/src/components/chat/ChatSettingsDrawer.tsx",
   "packages/client/src/components/chat/RoleplayTrackerWindow.tsx",
 ]) {
-  assert.match(
-    read(host),
-    /<FloatingWindow\b(?:(?!>\n)[\s\S])*?\bhidden=\{[\s\S]*?\bdrawerHost=\{\{/u,
-    `${host} hosts pop-out drawers`,
-  );
+  assert.match(read(host), /<FloatingWindow\b(?:(?!>\n)[\s\S])*?\bdrawerHost=\{\{/u, `${host} hosts pop-out drawers`);
 }
 
 // Chat Settings renders through the shared window and its sections through the shared drawer.
@@ -472,6 +514,39 @@ assert.equal(
   useFloatingWindowStore.getState().layouts["control:volume"],
   undefined,
   "Reset View restores the defaults",
+);
+
+// Resolved theme sizes govern default rows, opening geometry and clamping, not only pointer dragging.
+const largeBubbleSize = 78;
+const largeFirst = getBubbleRowSlot(bounds, 0, { size: largeBubbleSize, gap: 8 });
+const largeSecond = getBubbleRowSlot(bounds, 1, { size: largeBubbleSize, gap: 8 });
+assert.equal(largeFirst.x - largeSecond.x, largeBubbleSize + 8);
+assert.deepEqual(clampWindowBubble({ x: 9000, y: 9000 }, bounds, largeBubbleSize), {
+  x: bounds.right - largeBubbleSize,
+  y: bounds.bottom - largeBubbleSize,
+});
+const beneathLargeBubble = placeWindowBesideBubble(
+  { width: 200, height: 120 },
+  largeFirst,
+  bounds,
+  { minWidth: 1, minHeight: 1 },
+  largeBubbleSize,
+);
+assert.equal(beneathLargeBubble.y, largeFirst.y + largeBubbleSize + 8);
+assert.equal(beneathLargeBubble.x + beneathLargeBubble.width, largeFirst.x + largeBubbleSize);
+const detachedSource = { x: 900, y: 200, width: 300, height: 200 };
+const firstDetached = placeDetachedDrawer(detachedSource, detachedSource, { width: 300, height: 300 }, bounds, limits);
+const secondDetached = placeDetachedDrawer(
+  detachedSource,
+  detachedSource,
+  { width: 300, height: 300 },
+  bounds,
+  limits,
+  [firstDetached],
+);
+assert.ok(
+  Math.abs(firstDetached.x - secondDetached.x) >= 20 || Math.abs(firstDetached.y - secondDetached.y) >= 20,
+  "subsequent pop-outs leave each title bar reachable",
 );
 
 // ── Phone bubbles: a row along the top from the right edge, places kept apart from the computer's ──

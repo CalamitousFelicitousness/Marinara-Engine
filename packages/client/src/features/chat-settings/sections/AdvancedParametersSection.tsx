@@ -1,7 +1,7 @@
 import { useEffectiveGenerationParameters } from "../../../hooks/use-effective-generation-parameters";
 import { useEffect, useMemo, useState } from "react";
 import { RotateCcw, Save, Gauge } from "lucide-react";
-import { Drawer } from "../../../components/ui/Drawer";
+import { Drawer, useDrawerContentVisible } from "../../../components/ui/Drawer";
 import { AgentSettingsActionButton } from "../../../components/chat/AgentSettingsControls";
 import {
   CHAT_PARAMETER_DEFAULTS,
@@ -89,7 +89,8 @@ export function AdvancedParametersSection({
   const imageCaptioningDefaults = parseConnectionImageCaptioningDefaults(conn?.defaultParameters);
   const saveDefaults = useSaveConnectionDefaults();
   const [expanded, setExpanded] = useState(false);
-  const preview = useEffectiveGenerationParameters(connectionId, expanded);
+  const contentVisible = useDrawerContentVisible("advanced-parameters", expanded);
+  const preview = useEffectiveGenerationParameters(connectionId, contentVisible);
   const awaitingDefaults = preview.canPreview && !preview.data;
   const defaults = getEditableGenerationParameters(
     strictModeDefaults,

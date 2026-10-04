@@ -14,7 +14,6 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  type KeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
@@ -33,7 +32,7 @@ import {
 } from "../../lib/floating-window-layout";
 import { isPhoneWindowLayout, PHONE_LAYOUT_QUERY, useFloatingWindowStore } from "../../stores/floating-window.store";
 import { useMatchMedia } from "../../hooks/use-match-media";
-import { FloatingWindow, PHONE_SHEET_CLASS, readFloatingWindowBounds } from "./FloatingWindow";
+import { FloatingWindow, focusWindowOpener, PHONE_SHEET_CLASS, readFloatingWindowBounds } from "./FloatingWindow";
 import { HelpTooltip } from "./HelpTooltip";
 import { useDrawerHost, type DrawerHost } from "./drawer-host";
 
@@ -83,6 +82,14 @@ function readDetachedSize(drawer: DOMRect, open: boolean, bounds: WindowBounds) 
 function popOutLayout(geometry: WindowGeometry): WindowLayout {
   // Popped-out drawers start pinned, so they stay while the user works elsewhere.
   return { ...geometry, pinned: true, locked: false };
+}
+
+/** Detached drawers render their body even when their original section is collapsed. */
+export function useDrawerContentVisible(id: string, open: boolean): boolean {
+  const host = useDrawerHost();
+  const windowId = host ? getDrawerWindowId(host.id, id) : null;
+  const detached = useFloatingWindowStore((state) => (windowId ? state.detached[windowId] === true : false));
+  return open || detached;
 }
 
 export function Drawer({
@@ -163,13 +170,21 @@ export function Drawer({
         size,
         bounds,
         DETACHED_LIMITS,
+        Array.from(document.querySelectorAll<HTMLElement>('.mari-window[data-detached="true"]'))
+          .filter((element) => !element.hidden && element.getClientRects().length > 0)
+          .map((element) => toGeometry(element.getBoundingClientRect())),
       );
     });
 
   // Drag-out: past the host window's edge, the drop point becomes the new window's title bar.
   const handleHeaderPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (!windowId || event.button !== 0 || event.pointerType === "touch") return;
-    if (event.target instanceof Element && event.target.closest(NO_DRAG_SELECTOR)) return;
+    if (
+      event.target instanceof Element &&
+      event.target.closest(NO_DRAG_SELECTOR) &&
+      !event.target.closest("[data-drawer-toggle]")
+    )
+      return;
     const header = event.currentTarget.getBoundingClientRect();
     dragRef.current = {
       pointerId: event.pointerId,
@@ -237,13 +252,6 @@ export function Drawer({
     onOpenChange(!open);
   };
 
-  const handleHeaderKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.target !== event.currentTarget) return;
-    if (event.key !== "Enter" && event.key !== " ") return;
-    event.preventDefault();
-    onOpenChange(!open);
-  };
-
   return (
     <div
       ref={rootRef}
@@ -255,12 +263,7 @@ export function Drawer({
       style={style}
     >
       <div
-        role="button"
-        tabIndex={0}
-        aria-expanded={open}
-        aria-controls={open ? bodyId : undefined}
         onClick={handleHeaderClick}
-        onKeyDown={handleHeaderKeyDown}
         onPointerDown={handleHeaderPointerDown}
         onPointerMove={handleHeaderPointerMove}
         onPointerUp={handleHeaderPointerUp}
@@ -270,8 +273,17 @@ export function Drawer({
           windowId && "select-none",
         )}
       >
-        {icon && <span className="mari-drawer__icon">{icon}</span>}
-        <span className="mari-drawer__title flex-1 text-xs font-semibold">{title}</span>
+        <button
+          type="button"
+          role="button"
+          data-drawer-toggle
+          aria-expanded={open}
+          aria-controls={open ? bodyId : undefined}
+          className="flex min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--marinara-chat-chrome-focus-ring)]"
+        >
+          {icon && <span className="mari-drawer__icon">{icon}</span>}
+          <span className="mari-drawer__title flex-1 text-xs font-semibold">{title}</span>
+        </button>
         {summary && !open && <span className="mari-drawer__summary flex shrink-0 items-center">{summary}</span>}
         {count != null && count > 0 && (
           <span className="mari-drawer__count rounded-full px-1.5 py-0.5 text-[0.625rem] font-medium">{count}</span>
@@ -291,7 +303,7 @@ export function Drawer({
                 data-window-opener={windowId}
                 aria-label={t("drawer.popOut.label", { title: titleText })}
                 title={t("drawer.popOut.hint")}
-                className="mari-drawer__popout inline-flex h-5 w-5 items-center max-md:-my-2 max-md:h-11 max-md:w-11 justify-center rounded-md text-[var(--mari-drawer-icon-color,var(--muted-foreground))] opacity-70 transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--marinara-chat-chrome-focus-ring)]"
+                className="mari-drawer__popout inline-flex h-5 w-5 items-center max-md:-my-2 max-md:h-11 max-md:w-11 justify-center rounded-md text-[var(--mari-drawer-icon-color,var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--marinara-chat-chrome-focus-ring)]"
                 onClick={handlePopOutClick}
               >
                 <ExternalLink size="0.75rem" />
@@ -381,11 +393,7 @@ function DetachedDrawerWindow({
   // Put back: the drawer returns to its host, and focus to its pop-out button there.
   const putBack = () => {
     dock();
-    requestAnimationFrame(() =>
-      document
-        .querySelector<HTMLElement>(`[data-window-opener="${CSS.escape(windowId)}"]`)
-        ?.focus({ preventScroll: true }),
-    );
+    requestAnimationFrame(() => focusWindowOpener(windowId));
   };
 
   const handleDragMove = (point: { x: number; y: number }, phase: "move" | "end") => {

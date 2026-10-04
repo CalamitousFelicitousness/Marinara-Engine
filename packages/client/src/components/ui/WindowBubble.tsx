@@ -8,6 +8,7 @@
 // ──────────────────────────────────────────────
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -49,6 +50,8 @@ export interface WindowBubbleProps {
   bounds: WindowBounds;
   /** Its size before it is measured (px). */
   size?: number;
+  /** Lets default rows and attached hints follow the size chosen by the theme or display setting. */
+  onSizeChange?: (size: number) => void;
   icon: ReactNode;
   /** Names the window it opens. */
   label: string;
@@ -74,6 +77,7 @@ export function WindowBubble({
   point,
   bounds,
   size = WINDOW_BUBBLE_SIZE_PX,
+  onSizeChange,
   icon,
   label,
   ariaLabel,
@@ -94,11 +98,27 @@ export function WindowBubble({
   const frameRef = useRef(0);
   const suppressClickRef = useRef(false);
   const [live, setLive] = useState<{ point: WindowPoint; guides: SnapGuide[] } | null>(null);
-  const placed = clampWindowBubble(live?.point ?? point, bounds, size);
+  const [renderedSize, setRenderedSize] = useState(size);
+  const placed = clampWindowBubble(live?.point ?? point, bounds, renderedSize);
+
+  useLayoutEffect(() => {
+    const element = bubbleRef.current;
+    if (!element) return;
+    const measure = () => {
+      const rect = element.getBoundingClientRect();
+      const next = Math.max(rect.width, rect.height) || size;
+      setRenderedSize(next);
+      onSizeChange?.(next);
+    };
+    measure();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(element);
+    return () => observer?.disconnect();
+  }, [bubbleRef, onSizeChange, size]);
 
   useEffect(() => () => cancelAnimationFrame(frameRef.current), []);
 
-  const measuredSize = () => bubbleRef.current?.getBoundingClientRect().width || size;
+  const measuredSize = () => renderedSize;
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
     if (event.button !== 0 || dragRef.current) return;

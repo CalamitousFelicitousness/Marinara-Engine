@@ -94,7 +94,11 @@ Custom theme CSS is cleaned before it runs, for safety. Styles that load a file 
 
 ## Styling chat windows and drawers
 
-**Chat Settings** opens as a window you can move and resize, and its sections are collapsible drawers. A drawer can pop out into a window of its own. The chat's other top controls (Game's Session, Volume, Assets and Game controls, the connected chat, package toolbars and Beholder) are small windows that minimize to buttons, called bubbles, which you can drag anywhere. On a phone, every popped-out drawer and the Tracker Panel are bubbles too, and windows open as full-width sheets. Every chat window, bubble and drawer uses the same class names, data attributes and variables, so one theme can restyle them all at once. Your theme’s rules override the defaults without `!important`.
+On a computer, **Chat Settings** opens as a movable window. Its collapsible sections are called **drawers**. A drawer can pop out into its own window, then minimize to a small movable button, called a **bubble**.
+
+Other chat tools use these windows and buttons too, including Game controls, Session, Volume, Game Assets, connected chats and package controls. On a phone, windows open as full-width panels, and the Tracker Panel has its own movable button.
+
+The classes, data attributes and variables below let a theme style these parts together. Your theme's rules override the defaults without `!important`.
 
 ### Classes
 
@@ -123,7 +127,7 @@ Custom theme CSS is cleaned before it runs, for safety. Styles that load a file 
 
 - `data-window` names a window and its bubble: `chat-settings`, `trackers`, the control windows `control:game`, `control:session`, `control:volume`, `control:assets`, `control:connected-chat` and `control:package:<package>`, and `drawer:<window>:<drawer>` for a popped-out drawer, for example `drawer:chat-settings:chat-name`.
 - `data-drawer` names a drawer, for example `chat-name`. Some names start with the chat mode, such as `roleplay-agents` or `conversation-agents`. Trackers use `tracker-world`, `tracker-persona`, `tracker-characters`, `tracker-quests`, `tracker-inventory`, `tracker-custom` and `agent-activity`.
-- `data-presentation` is `"window"`, or `"sheet"` for Chat Settings on a phone.
+- `data-presentation` is `"window"` on a desktop window or `"sheet"` on a phone panel.
 - `data-pinned` and `data-locked` are `"true"` while the window is pinned or locked.
 - `data-window-control` names each title bar button: `"minimize"`, `"pin"`, `"lock"`, `"close"` or `"put-back"`. A pressed pin or lock button also has `aria-pressed="true"`.
 - `data-edge` is `"n"`, `"s"`, `"e"`, `"w"`, `"ne"`, `"nw"`, `"se"` or `"sw"` on each resize handle.

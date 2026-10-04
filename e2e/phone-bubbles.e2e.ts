@@ -558,7 +558,7 @@ test.describe("chat windows on desktop (step 6)", () => {
   }) => {
     const chat = await createChat(request, "roleplay", { enableAgents: true, activeAgentIds: ["world-state"] });
     try {
-      await prepare(page, chat.id, { trackerPanelEnabled: false, trackerWindowOpen: true });
+      await prepare(page, chat.id, { trackerPanelEnabled: false });
       await page.goto("/");
       await expect(page.locator('[data-chat-mode="roleplay"]')).toBeVisible({ timeout: 30_000 });
       const button = chatSettingsButton(page);

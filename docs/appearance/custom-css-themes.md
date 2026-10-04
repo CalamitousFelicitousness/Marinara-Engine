@@ -11,7 +11,7 @@ The **Font** and **Shape** controls let you change those details separately. **P
 Below them are three color controls. Each has a color picker for a solid color and a gradient option for blending colors:
 
 - **Border & Buttons Color** changes outlines and button icons. Icons use the first color of a gradient.
-- **Background Color** fills buttons, windows and expandable sections.
+- **Background Color** fills buttons, windows, expandable sections and editable fields.
 - **Text Color** changes widget text. Gradients appear on headings and labels; text in editable fields uses the first color.
 
 The color controls leave decorative crests in their original colors.

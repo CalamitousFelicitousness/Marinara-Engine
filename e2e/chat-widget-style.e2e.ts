@@ -317,6 +317,17 @@ async function exerciseColorControls(page: Page, preset: Preset, theme: "dark" |
   await clickTopbarPanel(page, "settings");
   const settings = await openChatSettings(page);
   await expectGradientWidgets(page, settings, page.locator("[data-chat-settings-button]"));
+  // A custom foreground/background pair must remain paired on native fields in either app theme.
+  const profile = settings.getByRole("combobox", { name: "Profile", exact: true });
+  await expect(profile).toHaveCSS(
+    "background-image",
+    await resolvedStyle(page, "background-image", GRADIENT_COLORS.background),
+  );
+  await expect(profile).toHaveCSS("-webkit-text-fill-color", await resolvedStyle(page, "color", "#6c5ce7"));
+  await expect(profile.locator("option").first()).toHaveCSS(
+    "background-color",
+    await resolvedStyle(page, "background-color", "#667eea"),
+  );
   expect(
     await settings
       .locator(".mari-window__header")

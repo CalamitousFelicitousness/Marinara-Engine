@@ -12,6 +12,7 @@ export const CHAT_WIDGET_COLOR_PROPERTIES = [
   "--mari-widget-custom-border-solid",
   "--mari-widget-custom-background",
   "--mari-widget-custom-background-solid",
+  "--mari-widget-custom-background-image",
   "--mari-widget-custom-text",
   "--mari-widget-custom-text-solid",
   "--mari-widget-custom-text-image",
@@ -51,6 +52,9 @@ export function getChatWidgetColorStyle(colors: ChatWidgetColors = {}): WidgetCo
   if (background) {
     style["--mari-widget-custom-background"] = background;
     style["--mari-widget-custom-background-solid"] = solidFallback(background, "transparent");
+    style["--mari-widget-custom-background-image"] = isCssGradient(background)
+      ? background
+      : `linear-gradient(${background}, ${background})`;
   }
   if (text) {
     style["--mari-widget-custom-text"] = text;

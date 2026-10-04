@@ -5,6 +5,7 @@
   --mari-widget-custom-border-solid: initial;
   --mari-widget-custom-background: initial;
   --mari-widget-custom-background-solid: initial;
+  --mari-widget-custom-background-image: initial;
   --mari-widget-custom-text: initial;
   --mari-widget-custom-text-solid: initial;
   --mari-widget-custom-text-image: initial;
@@ -453,6 +454,26 @@
 
   :root[data-chat-widget-colors~="border"] .mari-window-bubble:focus-visible:not([data-chat-widget-preview] *) {
     box-shadow: 0 0 0 2px var(--mari-window-focus-ring, var(--mari-widget-custom-border-solid));
+  }
+
+  /* Native fields must follow the chosen surface when their text does too.
+     An image layer also covers existing utility background colors. */
+  :root[data-chat-widget-colors~="background"]
+    .mari-window
+    :is(
+      input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"]),
+      textarea,
+      select
+    ):not([data-chat-widget-preview] *),
+  [data-chat-widget-preview][data-chat-widget-colors~="background"]
+    .mari-window
+    :is(input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"]), textarea, select) {
+    background-image: var(--mari-widget-custom-background-image);
+  }
+
+  :root[data-chat-widget-colors~="background"] .mari-window option:not([data-chat-widget-preview] *),
+  [data-chat-widget-preview][data-chat-widget-colors~="background"] .mari-window option {
+    background-color: var(--mari-widget-custom-background-solid);
   }
 
   /* Text gradients belong on captions, never on a container: inherited

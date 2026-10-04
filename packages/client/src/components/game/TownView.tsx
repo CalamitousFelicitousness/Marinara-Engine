@@ -253,14 +253,12 @@ export function TownView({
       ctx.imageSmoothingEnabled = drawTile.image && resolution > scale * dpr;
       ctx.drawImage(base, 0, 0, base.width / resolution, base.height / resolution);
       ctx.imageSmoothingEnabled = false;
-      // Back to front, so a person two cells tall stands in front of whoever is behind them.
-      for (const { person, at } of [...crowd].sort((a, b) => a.at.y - b.at.y)) {
-        if (drawTile.character(ctx, { person: person.id }, at.x * T, at.y * T)) continue;
-        const pick = (hash(person.id) % 100) / 100;
-        if (!drawTile(ctx, "folk", at.x * T, at.y * T - 4, pick)) paintParty(ctx, at.x * T + 1, at.y * T - 3, false);
-      }
+      // Back to front (the party among them, after anyone on its own row), so a person two cells tall
+      // stands in front of whoever is behind them.
       const party = partyRef.current;
-      if (party) {
+      const partyRow = party ? Math.floor(party.y / T) : Infinity;
+      const drawParty = () => {
+        if (!party) return;
         const [x, y] = [Math.round(party.x) - 8, Math.round(party.y) - 14 - (step ? 1 : 0)];
         const drawn = drawTile.character(
           ctx,
@@ -271,7 +269,18 @@ export function TownView({
           frame,
         );
         if (!drawn && !drawTile(ctx, "party", x, y)) paintParty(ctx, x + 1, y + 1, step);
+      };
+      let partyDrawn = false;
+      for (const { person, at } of [...crowd].sort((a, b) => a.at.y - b.at.y)) {
+        if (!partyDrawn && at.y > partyRow) {
+          drawParty();
+          partyDrawn = true;
+        }
+        if (drawTile.character(ctx, { person: person.id }, at.x * T, at.y * T)) continue;
+        const pick = (hash(person.id) % 100) / 100;
+        if (!drawTile(ctx, "folk", at.x * T, at.y * T - 4, pick)) paintParty(ctx, at.x * T + 1, at.y * T - 3, false);
       }
+      if (!partyDrawn) drawParty();
       if (darkness > 0) {
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.globalCompositeOperation = "multiply";

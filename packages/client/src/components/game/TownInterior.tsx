@@ -103,7 +103,22 @@ export function TownInterior({ chatId, town, buildingId, hour, darkness, drawTil
       if (!drawTile(ctx, `in_${piece.kind}`, piece.x * T, piece.y * T))
         plain(PLAIN.furniture!, piece.x * T, piece.y * T, 3);
     }
+    // Back to front, the party (just inside the way out, facing into the rooms) among them.
+    const partyRow = interior.door.y - 1;
+    const drawParty = () => {
+      const [px, py] = [interior.door.x * T, (interior.door.y - 1) * T - 6];
+      if (
+        !drawTile.character(ctx, "party", interior.door.x * T, (interior.door.y - 1) * T, "up", 1) &&
+        !drawTile(ctx, "party", px, py)
+      )
+        paintParty(ctx, px + 1, py + 1, false);
+    };
+    let partyDrawn = false;
     for (const { person, at, asleep } of [...people].sort((a, b) => a.at.y - b.at.y)) {
+      if (!partyDrawn && at.y > partyRow) {
+        drawParty();
+        partyDrawn = true;
+      }
       if (drawTile.character(ctx, { person: person.id }, at.x * T, at.y * T, "down", 1, asleep)) continue;
       const pick = (hash(person.id) % 100) / 100;
       if (asleep) ctx.globalAlpha = 0.75;
@@ -111,14 +126,7 @@ export function TownInterior({ chatId, town, buildingId, hour, darkness, drawTil
         paintParty(ctx, at.x * T + 1, at.y * T - 3, false);
       ctx.globalAlpha = 1;
     }
-    // The party, just inside the way out.
-    const [px, py] = [interior.door.x * T, (interior.door.y - 1) * T - 6];
-    // Just come in: facing into the rooms.
-    if (
-      !drawTile.character(ctx, "party", interior.door.x * T, (interior.door.y - 1) * T, "up", 1) &&
-      !drawTile(ctx, "party", px, py)
-    )
-      paintParty(ctx, px + 1, py + 1, false);
+    if (!partyDrawn) drawParty();
     if (darkness > 0) {
       // Lamplight: warm, not the night outside.
       ctx.setTransform(1, 0, 0, 1, 0, 0);

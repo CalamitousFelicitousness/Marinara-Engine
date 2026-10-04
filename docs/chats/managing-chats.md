@@ -45,7 +45,7 @@ For all the ways to import and export chats, including bulk import and export fo
 The chat name is only visible to you. It is not sent to the AI and does not change the conversation.
 
 1. Open the chat.
-2. Open **Chat Settings** from the button in the middle of the top bar. On a phone, it is under **More options**, or **Game actions** in a Game.
+2. Open **Chat Settings** from the button in the middle of the top bar.
 3. In the **Chat Name** section, click the current name to turn it into a text box.
 4. Type the new name, then press Enter or click the checkmark button.
 

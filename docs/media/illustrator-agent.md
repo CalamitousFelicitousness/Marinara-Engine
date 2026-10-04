@@ -26,7 +26,7 @@ If no image connection can be found, the picture fails and the app asks you to c
 The Illustrator is off by default. In a **Roleplay** chat, add it like this:
 
 1. Open the chat you want to illustrate.
-2. Open **Chat Settings** (the button in the middle of the top bar; on a phone, under **More options** in the chat).
+2. Open **Chat Settings** (the button in the middle of the top bar).
 3. Find the **Agents** section and turn on **Enable Agents**.
 4. In the **Misc Agents** group, find **Illustrator** and add it with the Plus button.
 

@@ -68,7 +68,7 @@ The toolbar sits at the top of the chat area. It has buttons that open small pan
 - **Author's Notes**. A free-text note added to the prompt every turn. See below.
 - **Gallery**. Opens the chat's image and video gallery, where you can generate an illustration or background.
 
-**Chat Settings** opens from the button in the middle of the top bar on a computer, and from **More options** on a phone. See [Chat Settings Overview](../chats/chat-settings.md).
+**Chat Settings** opens from the button in the middle of the top bar. See [Chat Settings Overview](../chats/chat-settings.md).
 
 ### Author's Notes
 

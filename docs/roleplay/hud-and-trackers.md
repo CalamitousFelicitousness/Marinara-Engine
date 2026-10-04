@@ -38,11 +38,13 @@ The **Present Characters** widget shows up to three character emoji plus a "+N" 
 
 ## The Trackers window
 
-On a computer, with the **Tracker Panel** turned off in Settings, a Roleplay chat's trackers show in a **Trackers** window. It opens at the top left of the chat. You can move it by its title bar, resize it from its edges, and use the buttons in its top-right corner:
+On a computer, while the **Tracker Panel** is off, a Roleplay chat's trackers show in a **Trackers** window. It opens at the top left of the chat. You can move it by its title bar, resize it from its edges, and use the buttons in its top-right corner:
 
 - **Pin** keeps it open when you click elsewhere. It starts pinned.
 - **Lock** stops it from moving or resizing.
-- **Close** hides it. To show it again, open **Chat Settings** and turn on **Tracker window** at the top, or press **Reset View** there.
+- **Close** hides it. To show it again, open **Chat Settings** and turn on **Tracker window** at the top, or use **Reset View** (the circular arrow in its title bar).
+
+While agents are working on the chat, a small dot shows beside the window's title (and on the **Chat Settings** button in the top bar).
 
 Each tracker has its own drawer. Click a drawer's header to collapse it to the tracker's small widget preview, and click it again to see the whole tracker. Marinara remembers which drawers you collapsed.
 
@@ -93,7 +95,9 @@ The sparkle icon at the start of the HUD row opens the **Agents & Actions** menu
 
 The **Tracker Panel** is a larger side panel that shows the same tracker data as the compact HUD widgets. It gives the tracker cards more room and adds portrait and thought features. You set it up in **Settings**, under the **Appearance** tab, in the **Tracker Panel** section.
 
-To show or hide it in a Roleplay chat on a computer, open **Chat Settings** and use the **Tracker Panel** switch at the top. On a phone, tap the Tracker Panel button at the start of the HUD row.
+To turn it on in a Roleplay chat, open **Chat Settings** and click the **Tracker Panel** button (the die) in its title bar, next to pin and lock. It stays highlighted while the panel is on, and the panel shows beside the chat. Click it again to turn the panel off and hide it; the trackers then show in the Trackers window.
+
+On a phone, turning it on puts a Tracker Panel button on the chat that you can drag anywhere. Tap it to open the panel; closing the panel goes back to the button. With the panel off, the HUD row keeps the tracker widgets.
 
 The controls in the panel header also let you customize tracker structure:
 
@@ -106,7 +110,7 @@ Custom field names define the structure and remain stable across tracker runs. T
 
 These settings control it:
 
-- **Tracker Panel**: the master on or off toggle. It is on by default. When on, the label reads "Shown in the Roleplay HUD". When off, trackers show in the Trackers window on a computer.
+- **Tracker Panel**: the master on or off toggle, the same one the die in Chat Settings turns on and off. It is on by default. When on, the label reads "Shown in the Roleplay HUD". When off, trackers show in the Trackers window on a computer.
 - **Replace tracker HUD icons**: hides the compact icon strip on phones and lets the panel dock to the screen edge instead. The **Agents & Actions** button stays visible.
 - **Use expression sprites for tracker portraits**: lets tracker portraits use a character's expression sprite (their current emotion portrait) instead of the plain avatar, when one exists. Expression sprites are explained in [Character Sprites](../characters/sprites.md).
 - **Panel background**: a color or gradient picker for the panel's background.

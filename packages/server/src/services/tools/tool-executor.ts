@@ -48,6 +48,9 @@ export interface ToolExecutionResult {
   httpStatus?: number;
 }
 
+/** The most of a call's arguments `toolRoundsAsText` repeats. */
+const TOLD_ARGUMENTS_MAX = 300;
+
 /**
  * The tool loop's last request goes without tools, so the model has to answer, and a provider's plain
  * path cannot carry a tool exchange: Anthropic has no `tool` role and refuses an empty message, and
@@ -56,9 +59,6 @@ export interface ToolExecutionResult {
  * message, and the last of them says the tools are done (`done`: narration by default, or what the
  * caller needs instead, such as an agent's formatted answer).
  */
-/** The most of a call's arguments `toolRoundsAsText` repeats. */
-const TOLD_ARGUMENTS_MAX = 300;
-
 export function toolRoundsAsText(
   messages: readonly ChatMessage[],
   done = "No more tool calls this turn: continue your reply from where it stopped and narrate with these results, without repeating what you already wrote.",

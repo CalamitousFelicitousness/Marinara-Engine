@@ -1299,7 +1299,7 @@ async function executeAgentWithTools(
 
   // Said where support can see it: a run that ends here may have had more to do (a proxy that loses tool
   // results, or more entries than rounds).
-  logger.warn(`[agents] ${config.name} used all ${maxToolRounds} tool rounds; it answers now without tools`);
+  logger.warn("[agent] %s used all %d tool rounds; it answers now without tools", config.name, maxToolRounds);
   // Exhausted tool rounds: one final call without tools for the answer, its tool exchange as text
   // (a provider's plain path cannot carry tool calls or results; see toolRoundsAsText).
   const finalProviderMessages = prepareAgentProviderMessages(

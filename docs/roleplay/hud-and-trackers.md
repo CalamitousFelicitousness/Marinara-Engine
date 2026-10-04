@@ -44,11 +44,11 @@ On a computer, while the **Tracker Panel** is off, a Roleplay chat's trackers sh
 - **Lock** stops it from moving or resizing.
 - **Close** hides it. To show it again, open **Chat Settings** and turn on **Tracker window** at the top, or use **Reset View** (the circular arrow in its title bar).
 
-While agents are working on the chat, a small dot shows beside the window's title (and on the **Chat Settings** button in the top bar).
+While agents are working on the chat, a small dot shows beside the window's title (and on the **Chat Settings** button).
 
 Each tracker has its own drawer. Click a drawer's header to collapse it to the tracker's small widget preview, and click it again to see the whole tracker. Marinara remembers which drawers you collapsed.
 
-A tracker can also get its own window: click the pop-out button beside its arrow, or drag its title out of the Trackers window. The new window starts pinned and stays open when you close the Trackers window. Click its **X** button (**Put back in Trackers**), or drag it back onto the Trackers window, to return it. Each chat remembers which trackers are out and where.
+A tracker can also get its own window: click the pop-out button beside its arrow, or drag its title out of the Trackers window. The new window starts pinned and stays open when you close the Trackers window. Its **X** shrinks it to a small button with the tracker's icon, which reopens it where you left it. Click **Put back in Trackers** (the curved arrow just left of **X**), or drag it back onto the Trackers window, to return it. Each chat remembers which trackers are out and where.
 
 At the bottom, **Agent activity** shows what the chat's agents did. From there you can re-run the trackers, retry agents that failed, stop running agents, and **Clear Trackers**. The Tracker Panel has the same section at its bottom.
 

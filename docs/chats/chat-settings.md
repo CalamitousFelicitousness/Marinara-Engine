@@ -9,16 +9,18 @@ Every setting in this panel applies to the current chat only. Changing it does n
 You open Chat Settings from inside an open chat.
 
 1. Open any chat.
-2. Click the **Chat Settings** button in the middle of the top bar, on a computer or a phone. It only appears while a chat is open.
+2. Click the **Chat Settings** button (the sliders icon) in the chat, on a computer or a phone. It only appears while a chat is open, and starts centred at the top of the chat.
 3. The **Chat Settings** window opens.
 
 When you create a brand new chat, Chat Settings opens automatically so you can set it up right away.
+
+The button stays in the chat while Chat Settings is open; click it again, or the window's **X**, to close the window. Drag the button anywhere you like: it lines up with the chat's other buttons (hold Alt to place it freely), each chat remembers where it sits, and **Reset View** puts it back. While the chat's agents are working, a small dot shows on it. In a Roleplay chat, a tip beside it says it can be moved the first time; click the tip's **X** to hide it for good on that device.
 
 ## Moving, pinning and locking the window
 
 On a computer, Chat Settings is a window that floats over the chat. Its contents rearrange to fit its size.
 
-- **Move it** by dragging its title bar. With the title bar focused, the arrow keys move it too; hold Shift for bigger steps. In a Roleplay chat, a tip says so the first time; click its **X** to hide it for good on that device.
+- **Move it** by dragging its title bar. With the title bar focused, the arrow keys move it too; hold Shift for bigger steps.
 - **Resize it** by dragging any edge or corner. While the pointer is over the window, a small corner mark shows where to grab. The bottom-right corner can also be focused and resized with the arrow keys.
 - **Pin** (the pin button) keeps the window open when you click elsewhere. Unpinned, it closes when you click outside it, or when you press Escape anywhere except a text box or an open menu.
 - **Lock** (the padlock button) stops the window from moving or resizing until you unlock it.
@@ -42,7 +44,8 @@ Any section of Chat Settings can become its own window, so you can keep it open 
 - Click the pop-out button (the box with an arrow) beside the section's **?**, or drag the section's title out of the Chat Settings window and drop it where you want it.
 - The new window starts pinned. You can move, resize, pin and lock it like Chat Settings, and it stays open when you close Chat Settings.
 - While it is out, the section is gone from Chat Settings, so it is never shown twice.
-- To put it back, click its **X** button (**Put back in Chat Settings**), or drag its title bar onto the Chat Settings window.
+- Its **X** shrinks it to a small button showing the section's icon, which you can drag anywhere. Click the button to open the window again exactly where you left it. Unpinned, the window also shrinks to its button when you click elsewhere or press Escape. The button and the window keep separate places, and each chat remembers both.
+- To put the section back in Chat Settings, click **Put back in Chat Settings** (the curved arrow just left of **X**), or drag the window's title bar onto the Chat Settings window. **Reset View** puts every section back too.
 
 The drawers of the Trackers window pop out the same way. See [The Trackers window](../roleplay/hud-and-trackers.md#the-trackers-window).
 

@@ -272,6 +272,12 @@
     border-radius: var(--mari-drawer-radius, var(--mari-widget-drawer-radius, 0));
   }
 
+  /* Attached Mari sections form one continuous stack inside the outer frame. */
+  :root[data-chat-widget-preset="mari"] .mari-drawer[data-detached="false"],
+  [data-chat-widget-preview][data-chat-widget-preset="mari"] .mari-drawer {
+    border-radius: var(--mari-drawer-radius, 0);
+  }
+
   .mari-drawer__header {
     border-radius: inherit;
     font-family: inherit;

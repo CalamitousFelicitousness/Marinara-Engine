@@ -4680,6 +4680,7 @@ function ChatWidgetStylePreview({
   shape: ChatWidgetShape;
 }) {
   const { t } = useUiTranslation();
+  const presetIconClassName = preset === "default" ? undefined : "mari-rgb-static-icon";
   return (
     <span
       aria-hidden="true"
@@ -4693,21 +4694,29 @@ function ChatWidgetStylePreview({
       <span className="mari-window mari-widget-style-preview__window relative flex min-w-0 flex-col">
         <span className="mari-window__header flex min-w-0 items-center justify-between gap-1">
           <span className="mari-window__title min-w-0 truncate">{t("chat.help.targets.settings.title")}</span>
-          <X size="0.625rem" className="shrink-0" />
+          <X
+            size="0.625rem"
+            className={cn(
+              "shrink-0",
+              presetIconClassName,
+              preset !== "default" &&
+                "text-[var(--mari-window-control-color,var(--mari-widget-accent,var(--marinara-chat-chrome-panel-muted)))]",
+            )}
+          />
         </span>
         <span className="mari-window__body block p-1.5">
           <span className="mari-drawer block">
             <span className="mari-drawer__header flex min-w-0 items-center gap-1">
-              <FileText size="0.625rem" className="mari-drawer__icon shrink-0" />
+              <FileText size="0.625rem" className={cn("mari-drawer__icon shrink-0", presetIconClassName)} />
               <span className="mari-drawer__title min-w-0 flex-1 truncate">{t("settings.common.section")}</span>
-              <ChevronDown size="0.625rem" className="mari-drawer__arrow shrink-0" />
+              <ChevronDown size="0.625rem" className={cn("mari-drawer__arrow shrink-0", presetIconClassName)} />
             </span>
           </span>
         </span>
       </span>
       <span className="flex justify-center pt-3">
         <span className="mari-window-bubble relative">
-          <SlidersHorizontal size="0.875rem" />
+          <SlidersHorizontal size="0.875rem" className={presetIconClassName} />
         </span>
       </span>
     </span>

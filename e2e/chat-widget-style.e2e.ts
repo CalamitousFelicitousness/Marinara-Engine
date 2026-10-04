@@ -112,6 +112,29 @@ async function openAppearance(page: Page) {
     expect(insets.title).toBeGreaterThanOrEqual(12);
     expect(insets.close).toBeGreaterThanOrEqual(12);
   }
+  const root = page.locator("html");
+  const originalAnimation = await root.getAttribute("data-marinara-accent-animation");
+  const theme = (await root.getAttribute("data-theme")) as "dark" | "light";
+  await root.evaluate((element) => element.setAttribute("data-marinara-accent-animation", "pulse"));
+  try {
+    for (const preset of ["dottore", "mari"] as const) {
+      const preview = controls.locator(`[data-chat-widget-preview][data-chat-widget-preset="${preset}"]`);
+      const accent = await resolvedStyle(page, "color", PALETTES[theme][preset].accent);
+      for (const selector of [".mari-window__header > svg", ".mari-drawer__icon", ".mari-drawer__arrow"]) {
+        await expect(preview.locator(selector)).toHaveCSS("color", accent);
+      }
+      const bubble = preview.locator(".mari-window-bubble");
+      await expect(bubble.locator("svg")).toHaveCSS(
+        "color",
+        await bubble.evaluate((element) => getComputedStyle(element).color),
+      );
+    }
+  } finally {
+    await root.evaluate((element, value) => {
+      if (value === null) element.removeAttribute("data-marinara-accent-animation");
+      else element.setAttribute("data-marinara-accent-animation", value);
+    }, originalAnimation);
+  }
   return controls;
 }
 
@@ -275,14 +298,25 @@ async function expectCompactFramedWidgets(page: Page, preset: "dottore" | "mari"
     "url(",
   );
   expect(await header.evaluate((element) => getComputedStyle(element, "::after").content)).not.toBe("none");
-  const name = (await settings.locator('[data-drawer="chat-name"]').boundingBox())!;
-  const branches = (await settings.locator('[data-drawer="conversation-chat-branches"]').boundingBox())!;
-  expect(Math.abs(branches.y - (name.y + name.height))).toBeLessThanOrEqual(1);
+  // Read both rows in one frame while the phone sheet animates into place.
+  await expect
+    .poll(() =>
+      settings.evaluate((element) => {
+        const name = element.querySelector('[data-drawer="chat-name"]')!.getBoundingClientRect();
+        const branches = element.querySelector('[data-drawer="conversation-chat-branches"]')!.getBoundingClientRect();
+        return Math.abs(branches.top - name.bottom);
+      }),
+    )
+    .toBeLessThanOrEqual(1);
 
   const body = settings.locator(".mari-window__body");
-  const frame = (await settings.boundingBox())!;
-  const content = (await body.boundingBox())!;
-  expect(frame.y + frame.height - (content.y + content.height)).toBeGreaterThanOrEqual(4);
+  expect(
+    await settings.evaluate((element) => {
+      const frame = element.getBoundingClientRect();
+      const content = element.querySelector(".mari-window__body")!.getBoundingClientRect();
+      return frame.bottom - content.bottom;
+    }),
+  ).toBeGreaterThanOrEqual(4);
   const scroller = body.locator(":scope > .overflow-y-auto");
   await scroller.evaluate((element) => {
     element.scrollTop = (element.scrollHeight - element.clientHeight) / 2;
@@ -297,6 +331,11 @@ async function expectCompactFramedWidgets(page: Page, preset: "dottore" | "mari"
   });
 
   if (preset === "mari") {
+    expect(
+      await settings
+        .locator('.mari-drawer[data-detached="false"]')
+        .evaluateAll((elements) => elements.every((element) => getComputedStyle(element).borderRadius === "0px")),
+    ).toBe(true);
     expect(
       await page
         .locator("[data-chat-settings-button]")

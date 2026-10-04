@@ -2,7 +2,7 @@
 // Per-chat window layout
 //
 // Each chat keeps its own window layout (places, sizes, pinned and locked state,
-// popped-out drawers) in `chat.metadata.windowLayout`, so chat settings profiles
+// popped-out drawers, phone bubble places) in `chat.metadata.windowLayout`, so chat settings profiles
 // save and apply it with the rest of the chat's settings. This hook loads the open
 // chat's layout into the window store and saves the user's changes back.
 // ──────────────────────────────────────────────
@@ -78,7 +78,13 @@ export function useChatWindowLayout(chat: Chat | null | undefined) {
   // Save the user's changes to the chat whose layout they changed.
   useEffect(() => {
     const unsubscribe = useFloatingWindowStore.subscribe((state, previous) => {
-      if (state.layouts === previous.layouts && state.detached === previous.detached) return;
+      if (
+        state.layouts === previous.layouts &&
+        state.detached === previous.detached &&
+        state.phoneBubbles === previous.phoneBubbles
+      ) {
+        return;
+      }
       const { chatId: syncedChatId, layout } = syncedRef.current;
       if (!syncedChatId) return;
       if (serializeWindowLayoutSnapshot(selectWindowLayoutSnapshot(state)) === layout) {

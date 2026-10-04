@@ -4,7 +4,8 @@
 // Custom themes style the stable `mari-drawer…` classes, `data-drawer` /
 // `data-detached` and the `--mari-drawer-*` variables documented in globals.css.
 // Inside a drawer host (drawer-host.ts) a drawer with an id can pop out into its
-// own window, with its button or by dragging its header out of the host.
+// own window, with its button or by dragging its header out of the host. On a phone
+// it pops out into a bubble the user places anywhere, which opens it as a sheet.
 // ──────────────────────────────────────────────
 import {
   useEffect,
@@ -18,7 +19,7 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown, ExternalLink } from "lucide-react";
+import { ChevronDown, ExternalLink, Undo2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { cn } from "../../lib/utils";
 import {
@@ -30,8 +31,9 @@ import {
   type WindowGeometry,
   type WindowLayout,
 } from "../../lib/floating-window-layout";
-import { useFloatingWindowStore } from "../../stores/floating-window.store";
-import { FloatingWindow, readFloatingWindowBounds } from "./FloatingWindow";
+import { isPhoneWindowLayout, PHONE_LAYOUT_QUERY, useFloatingWindowStore } from "../../stores/floating-window.store";
+import { useMatchMedia } from "../../hooks/use-match-media";
+import { FloatingWindow, PHONE_SHEET_CLASS, readFloatingWindowBounds } from "./FloatingWindow";
 import { HelpTooltip } from "./HelpTooltip";
 import { useDrawerHost, type DrawerHost } from "./drawer-host";
 
@@ -142,7 +144,14 @@ export function Drawer({
     if (!windowId || !drawer) return;
     const bounds = readFloatingWindowBounds();
     const geometry = place(drawer, readDetachedSize(drawer, open, bounds), bounds);
-    useFloatingWindowStore.getState().detachDrawer(windowId, popOutLayout(geometry));
+    const windows = useFloatingWindowStore.getState();
+    const phone = isPhoneWindowLayout();
+    windows.detachDrawer(windowId, popOutLayout(geometry), { focus: !phone });
+    if (phone) {
+      // On a phone it becomes a bubble, and the sheet covering the chat closes so the bubble shows.
+      windows.closeWindow(windowId);
+      if (host) windows.dismissWindow(host.id, { force: true });
+    }
   };
 
   const handlePopOutClick = () =>
@@ -282,7 +291,7 @@ export function Drawer({
                 data-window-opener={windowId}
                 aria-label={t("drawer.popOut.label", { title: titleText })}
                 title={t("drawer.popOut.hint")}
-                className="mari-drawer__popout inline-flex h-5 w-5 items-center justify-center rounded-md text-[var(--mari-drawer-icon-color,var(--muted-foreground))] opacity-70 transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--marinara-chat-chrome-focus-ring)]"
+                className="mari-drawer__popout inline-flex h-5 w-5 items-center max-md:-my-2 max-md:h-11 max-md:w-11 justify-center rounded-md text-[var(--mari-drawer-icon-color,var(--muted-foreground))] opacity-70 transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--marinara-chat-chrome-focus-ring)]"
                 onClick={handlePopOutClick}
               >
                 <ExternalLink size="0.75rem" />
@@ -340,7 +349,8 @@ function readDockTarget(hostId: FloatingWindowId) {
 /**
  * A popped-out drawer: its body in its own window, rendered from where the drawer was (so it keeps its
  * state and context) into the host window's container (so it keeps the chat's theme). Closing it, or
- * dropping it back on the host window, puts it back.
+ * dropping it back on the host window, puts it back. On a phone it is a bubble that opens as a sheet:
+ * closing the sheet goes back to the bubble, and Put back returns the drawer to its host.
  */
 function DetachedDrawerWindow({
   host,
@@ -357,16 +367,18 @@ function DetachedDrawerWindow({
   const { t } = useTranslation();
   const anchorRef = useRef<HTMLSpanElement | null>(null);
   const [container, setContainer] = useState<Element | null>(null);
+  const phone = useMatchMedia(PHONE_LAYOUT_QUERY);
 
   useLayoutEffect(() => {
     setContainer(anchorRef.current?.closest(".mari-window")?.parentElement ?? document.body);
   }, []);
 
-  // The window joins the stacking order while it shows.
+  // The window joins the stacking order while it shows; on a phone its bubble waits for a tap.
   useEffect(() => {
+    if (phone) return;
     useFloatingWindowStore.getState().openWindow(windowId, null, { focus: false });
     return () => useFloatingWindowStore.getState().closeWindow(windowId);
-  }, [windowId]);
+  }, [phone, windowId]);
 
   const dock = () => useFloatingWindowStore.getState().dockDrawer(windowId);
 
@@ -396,7 +408,17 @@ function DetachedDrawerWindow({
             title={title}
             titleIcon={icon ? <span className="mari-drawer__icon flex shrink-0">{icon}</span> : undefined}
             titleAccessory={help ? <HelpTooltip text={help} side="bottom" /> : undefined}
-            closeLabel={t("drawer.popOut.close", { host: host.title })}
+            closeLabel={phone ? t("window.controls.close") : t("drawer.popOut.close", { host: host.title })}
+            presentation={phone ? "sheet" : "window"}
+            sheetClassName={PHONE_SHEET_CLASS}
+            minimizable={
+              phone
+                ? {
+                    icon: icon ?? <ExternalLink size="0.875rem" />,
+                    label: typeof title === "string" ? title : host.title,
+                  }
+                : undefined
+            }
             getDefaultLayout={getDetachedFallbackLayout}
             minWidth={DETACHED_LIMITS.minWidth}
             minHeight={DETACHED_LIMITS.minHeight}
@@ -409,6 +431,17 @@ function DetachedDrawerWindow({
             onRequestClose={dock}
             onDragMove={handleDragMove}
           >
+            {phone && (
+              <button
+                type="button"
+                data-drawer-control="put-back"
+                onClick={dock}
+                className="mari-chrome-control flex min-h-11 shrink-0 items-center justify-center gap-2 border-b border-[var(--border)] px-3 text-xs"
+              >
+                <Undo2 size="0.875rem" />
+                {t("drawer.popOut.close", { host: host.title })}
+              </button>
+            )}
             <div
               className={cn("flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain", host.scrollClassName)}
             >

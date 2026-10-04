@@ -1,6 +1,8 @@
 // #7036: shared floating windows keep a valid, on-screen layout and a stable theming contract.
 // #7034 step 4: drawers pop out into windows, and each chat saves its own layout.
 // #7034 step 3: chat control windows minimize to bubbles that snap into line and save with the chat.
+// #7034 step 6: phones show those windows, popped-out drawers and the Tracker Panel as bubbles whose
+// places save apart from the computer's.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -18,7 +20,9 @@ import {
   serializeWindowLayoutSnapshot,
   toWindowLayoutSnapshot,
   clampWindowBubble,
+  getPhoneBubbleSlot,
   placeWindowBesideBubble,
+  PHONE_BUBBLE_SIZE_PX,
 } from "../../packages/client/src/lib/floating-window-layout.js";
 import {
   CHAT_SETTINGS_WINDOW_ID,
@@ -468,10 +472,62 @@ assert.equal(
   "Reset View restores the defaults",
 );
 
-// The window draws the bubble with its theming hooks and keeps the header controls in order.
+// ── Phone bubbles: a column at the right edge, places kept apart from the computer's ──
+const phoneBounds = { left: 8, top: 64, right: 382, bottom: 700 };
+assert.deepEqual(getPhoneBubbleSlot(phoneBounds, 0), { x: 382 - PHONE_BUBBLE_SIZE_PX, y: 64 });
+assert.deepEqual(getPhoneBubbleSlot(phoneBounds, 2), { x: 382 - PHONE_BUBBLE_SIZE_PX, y: 64 + 2 * 44 });
+// A phone bubble is larger, so it clamps further from the far edges.
+assert.deepEqual(clampWindowBubble({ x: 900, y: 900 }, phoneBounds, PHONE_BUBBLE_SIZE_PX), { x: 346, y: 664 });
+const withPhoneBubbles = parseWindowLayoutSnapshot({
+  version: FLOATING_WINDOW_LAYOUT_VERSION,
+  windows: {},
+  phoneBubbles: { "control:volume": { x: 300, y: 120 }, "tracker-panel": { x: 12, y: 80 }, bad: { x: "a" } },
+});
+assert.deepEqual(withPhoneBubbles.phoneBubbles, {
+  "control:volume": { x: 300, y: 120 },
+  "tracker-panel": { x: 12, y: 80 },
+});
+assert.equal(isEmptyWindowLayoutSnapshot(withPhoneBubbles), false, "a layout with only phone places still saves");
+assert.equal(
+  "phoneBubbles" in toWindowLayoutSnapshot({}, [], {}),
+  false,
+  "no phone places leaves the snapshot as older versions wrote it",
+);
+const phoneStore = useFloatingWindowStore.getState();
+phoneStore.hydrate(withPhoneBubbles);
+phoneStore.savePhoneBubble("control:session", { x: 346, y: 108 });
+assert.deepEqual(selectWindowLayoutSnapshot(useFloatingWindowStore.getState()).phoneBubbles, {
+  "control:volume": { x: 300, y: 120 },
+  "tracker-panel": { x: 12, y: 80 },
+  "control:session": { x: 346, y: 108 },
+});
+assert.equal(
+  useFloatingWindowStore.getState().layouts["control:session"],
+  undefined,
+  "placing a phone bubble leaves the computer's layout alone",
+);
+// Putting a popped-out drawer back forgets its phone bubble too.
+const phoneDrawer = getDrawerWindowId(CHAT_SETTINGS_WINDOW_ID, "chat-name");
+phoneStore.detachDrawer(phoneDrawer, { x: 8, y: 64, width: 300, height: 300, pinned: true, locked: false });
+phoneStore.savePhoneBubble(phoneDrawer, { x: 346, y: 152 });
+useFloatingWindowStore.getState().dockDrawer(phoneDrawer);
+assert.equal(useFloatingWindowStore.getState().phoneBubbles[phoneDrawer], undefined);
+useFloatingWindowStore.getState().resetView();
+assert.deepEqual(useFloatingWindowStore.getState().phoneBubbles, {}, "Reset View puts phone bubbles back too");
+
+// The bubble draws with its theming hooks; the window keeps the header controls in order.
 const floatingWindowSource = read("packages/client/src/components/ui/FloatingWindow.tsx");
-assert.match(floatingWindowSource, /className="mari-window-bubble fixed"/u);
-assert.match(floatingWindowSource, /data-minimized="true"/u);
+const windowBubbleSource = read("packages/client/src/components/ui/WindowBubble.tsx");
+assert.match(windowBubbleSource, /className="mari-window-bubble fixed"/u);
+assert.match(windowBubbleSource, /data-minimized="true"/u);
+// A tap is never read as a drag: touch needs a longer move before the bubble follows it.
+assert.match(windowBubbleSource, /DRAG_START_PX = \{ mouse: 4, touch: 10 \}/u);
+assert.match(floatingWindowSource, /<WindowBubble[\s\S]*data-presentation": "sheet"/u);
+assert.match(
+  read("packages/client/src/styles/globals.css"),
+  /@media \(pointer: coarse\) \{\s*\.mari-window-bubble::before \{[\s\S]*2\.75rem/u,
+  "Touch gets a 44px tap area around every bubble",
+);
 assert.match(
   floatingWindowSource,
   /data-window-control="minimize"[\s\S]*data-window-control="pin"[\s\S]*data-window-control="lock"[\s\S]*data-window-control="close"/u,

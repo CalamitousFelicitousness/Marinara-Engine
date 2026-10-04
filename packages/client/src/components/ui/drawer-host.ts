@@ -7,7 +7,6 @@
 // ──────────────────────────────────────────────
 import { createContext, useContext } from "react";
 import type { FloatingWindowId } from "../../lib/floating-window-layout";
-import { useMatchMedia } from "../../hooks/use-match-media";
 import { selectHasDetachedDrawers, useFloatingWindowStore } from "../../stores/floating-window.store";
 
 export interface DrawerHost {
@@ -33,11 +32,9 @@ export function useDrawerHost() {
 }
 
 /**
- * True while a drawer of `hostId` is popped out on a computer. The host then stays mounted, hidden
- * when closed, because popped-out drawers render from inside it. Phones show every drawer docked.
+ * True while a drawer of `hostId` is popped out (a window on a computer, a bubble on a phone). The host
+ * then stays mounted, hidden when closed, because popped-out drawers render from inside it.
  */
 export function useHostHasDetachedDrawers(hostId: FloatingWindowId) {
-  const phoneLayout = useMatchMedia("(max-width: 767px)");
-  const detached = useFloatingWindowStore((state) => selectHasDetachedDrawers(state, hostId));
-  return detached && !phoneLayout;
+  return useFloatingWindowStore((state) => selectHasDetachedDrawers(state, hostId));
 }

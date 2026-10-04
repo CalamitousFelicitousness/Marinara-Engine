@@ -664,7 +664,8 @@
                 .mari-drawer__summary, .mari-drawer__help, .mari-drawer__actions,
                 .mari-drawer__popout, .mari-drawer__arrow, .mari-drawer__body;
                 .mari-drawer-ghost (the preview while a drawer is dragged out);
-                .mari-window-bubble (a minimized window's button) and
+                .mari-window-bubble (a minimized window's button, and every
+                phone bubble: [data-presentation="sheet"]) and
                 .mari-window-snap-guide (the line shown while a bubble snaps)
    Attributes:  [data-window="<id>"], [data-drawer="<id>"], [data-pinned],
                 [data-locked], [data-detached], [data-presentation="window|sheet"],
@@ -813,6 +814,21 @@
 
   .mari-window-bubble[data-dragging="true"] {
     cursor: grabbing;
+  }
+
+  /* Phones draw bubbles like their toolbar buttons. */
+  .mari-window-bubble[data-presentation="sheet"] {
+    width: var(--mari-window-bubble-size, 2.25rem);
+    height: var(--mari-window-bubble-size, 2.25rem);
+  }
+
+  /* Touch gets a 44px tap area around every bubble, centred on it, without changing its look. */
+  @media (pointer: coarse) {
+    .mari-window-bubble::before {
+      content: "";
+      position: absolute;
+      inset: min(0px, calc((100% - 2.75rem) / 2));
+    }
   }
 
   .mari-window-snap-guide {

@@ -3,8 +3,9 @@
 //
 // Each target names a control by selector; the overlay skips any that are not
 // visible right now, so one list covers desktop, phones, and the Chat Settings
-// window being open or closed. On a computer, Session, Volume, Assets, the
-// connected chat and package toolbars point at their windows' buttons (bubbles).
+// window being open or closed. Session, Volume, Assets, Game controls, the
+// connected chat, package toolbars and Beholder point at their windows' buttons
+// (bubbles), on phones too, where the Tracker Panel has a bubble as well.
 // Add new chat controls here.
 // ──────────────────────────────────────────────
 import type { ChatMode } from "@marinara-engine/shared";
@@ -23,6 +24,7 @@ export type ChatHelpTargetId =
   | "window-lock"
   | "window-close"
   | "tracker-panel"
+  | "tracker-panel-bubble"
   | "reset-view"
   | "messages"
   | "composer"
@@ -63,9 +65,9 @@ const TARGETS = {
   call: chatHelpTarget("call", "call"),
   "agent-controls": chatHelpTarget("agent-controls", "agentControls"),
   "connected-chat": chatHelpTarget("connected-chat", "connectedChat"),
-  // The topbar button on desktop, the toolbar button on phones.
+  // The topbar button, in the middle of the topbar.
   settings: chatHelpTarget("settings", "settings"),
-  // The ? beside the Chat Settings title on desktop, the toolbar button on phones.
+  // The ? beside the Chat Settings title (a phone closes Chat Settings to show the guide).
   help: chatHelpTarget("help", "help"),
   "window-title": chatHelpTarget("window-title", "windowTitle", `${CHAT_SETTINGS_WINDOW} .mari-window__title`),
   // Controls with their own tooltip reuse its sentence.
@@ -86,6 +88,11 @@ const TARGETS = {
   "tracker-panel": {
     ...chatHelpTarget("tracker-panel", "trackerPanel", '[data-tracker-panel-toggle="chat-settings"]'),
     bodyKey: "chat.settings.trackerPanelHelp",
+  },
+  // On a phone, the bubble the Tracker Panel switch shows.
+  "tracker-panel-bubble": {
+    ...chatHelpTarget("tracker-panel-bubble", "trackerPanelBubble", '[data-tracker-panel-toggle="bubble"]'),
+    titleKey: "chat.help.targets.trackerPanel.title",
   },
   "reset-view": { ...chatHelpTarget("reset-view", "resetView"), bodyKey: "chat.settings.resetViewHelp" },
   map: chatHelpTarget("map", "map", '[data-tour="game-map"]'),
@@ -136,6 +143,7 @@ const TARGETS_BY_MODE: Record<ChatMode, ChatHelpTargetDefinition[]> = {
   ],
   roleplay: [
     TARGETS.agents,
+    TARGETS["tracker-panel-bubble"],
     TARGETS["agent-controls"],
     TARGETS["connected-chat"],
     ...CHAT_SETTINGS_TARGETS,

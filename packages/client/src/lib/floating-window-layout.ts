@@ -51,12 +51,28 @@ export interface WindowPoint {
 
 /** A window bubble is a square this size (px), like the chat's toolbar buttons. */
 export const WINDOW_BUBBLE_SIZE_PX = 32;
+/** Phones draw bubbles a little larger, like their toolbar buttons (the tap area is 44px either way). */
+export const PHONE_BUBBLE_SIZE_PX = 36;
+/** Room between phone bubbles in their default column, the gap snapping leaves (their 44px tap areas meet). */
+export const PHONE_BUBBLE_GAP_PX = 8;
 
 /** Keeps a bubble inside `bounds`, so it can never be lost off-screen. */
-export function clampWindowBubble(point: WindowPoint, bounds: WindowBounds): WindowPoint {
+export function clampWindowBubble(
+  point: WindowPoint,
+  bounds: WindowBounds,
+  size: number = WINDOW_BUBBLE_SIZE_PX,
+): WindowPoint {
   return {
-    x: clamp(finiteOr(point.x, bounds.left), bounds.left, bounds.right - WINDOW_BUBBLE_SIZE_PX),
-    y: clamp(finiteOr(point.y, bounds.top), bounds.top, bounds.bottom - WINDOW_BUBBLE_SIZE_PX),
+    x: clamp(finiteOr(point.x, bounds.left), bounds.left, bounds.right - size),
+    y: clamp(finiteOr(point.y, bounds.top), bounds.top, bounds.bottom - size),
+  };
+}
+
+/** A phone bubble's default place: a column at the right edge, `slot` 0 at the top. */
+export function getPhoneBubbleSlot(bounds: WindowBounds, slot: number): WindowPoint {
+  return {
+    x: bounds.right - PHONE_BUBBLE_SIZE_PX,
+    y: bounds.top + slot * (PHONE_BUBBLE_SIZE_PX + PHONE_BUBBLE_GAP_PX),
   };
 }
 
@@ -66,6 +82,8 @@ export interface WindowLayoutSnapshot {
   windows: Record<FloatingWindowId, WindowLayout>;
   /** Drawers popped out into their own windows (their window ids). Older snapshots have none. */
   detached?: FloatingWindowId[];
+  /** Where each bubble sits on a phone, apart from the computer's places. Older snapshots have none. */
+  phoneBubbles?: Record<FloatingWindowId, WindowPoint>;
 }
 
 /** The area a window may occupy, with the margin already applied. */
@@ -192,7 +210,7 @@ function readStoredPoint(value: unknown): WindowPoint | null {
 export function parseWindowLayoutSnapshot(raw: unknown): WindowLayoutSnapshot {
   const empty: WindowLayoutSnapshot = { version: FLOATING_WINDOW_LAYOUT_VERSION, windows: {} };
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return empty;
-  const source = raw as { version?: unknown; windows?: unknown; detached?: unknown };
+  const source = raw as { version?: unknown; windows?: unknown; detached?: unknown; phoneBubbles?: unknown };
   if (source.version !== FLOATING_WINDOW_LAYOUT_VERSION) return empty;
   if (!source.windows || typeof source.windows !== "object" || Array.isArray(source.windows)) return empty;
   const windows: Record<FloatingWindowId, WindowLayout> = {};
@@ -208,7 +226,14 @@ export function parseWindowLayoutSnapshot(raw: unknown): WindowLayoutSnapshot {
           isStoredWindowId(id) && id.startsWith(DRAWER_WINDOW_PREFIX) && !!windows[id] && list.indexOf(id) === index,
       )
     : [];
-  return toWindowLayoutSnapshot(windows, detached);
+  const phoneBubbles: Record<FloatingWindowId, WindowPoint> = {};
+  if (source.phoneBubbles && typeof source.phoneBubbles === "object" && !Array.isArray(source.phoneBubbles)) {
+    for (const [id, value] of Object.entries(source.phoneBubbles as Record<string, unknown>)) {
+      const point = isStoredWindowId(id) ? readStoredPoint(value) : null;
+      if (point) phoneBubbles[id] = point;
+    }
+  }
+  return toWindowLayoutSnapshot(windows, detached, phoneBubbles);
 }
 
 function isStoredWindowId(id: unknown): id is FloatingWindowId {
@@ -218,15 +243,21 @@ function isStoredWindowId(id: unknown): id is FloatingWindowId {
 export function toWindowLayoutSnapshot(
   windows: Record<FloatingWindowId, WindowLayout>,
   detached: FloatingWindowId[] = [],
+  phoneBubbles: Record<FloatingWindowId, WindowPoint> = {},
 ): WindowLayoutSnapshot {
-  return detached.length > 0
-    ? { version: FLOATING_WINDOW_LAYOUT_VERSION, windows, detached }
-    : { version: FLOATING_WINDOW_LAYOUT_VERSION, windows };
+  const snapshot: WindowLayoutSnapshot = { version: FLOATING_WINDOW_LAYOUT_VERSION, windows };
+  if (detached.length > 0) snapshot.detached = detached;
+  if (Object.keys(phoneBubbles).length > 0) snapshot.phoneBubbles = phoneBubbles;
+  return snapshot;
 }
 
 /** True when a snapshot holds nothing, so the chat can store no layout at all. */
 export function isEmptyWindowLayoutSnapshot(snapshot: WindowLayoutSnapshot): boolean {
-  return Object.keys(snapshot.windows).length === 0 && !snapshot.detached?.length;
+  return (
+    Object.keys(snapshot.windows).length === 0 &&
+    !snapshot.detached?.length &&
+    Object.keys(snapshot.phoneBubbles ?? {}).length === 0
+  );
 }
 
 /** One string per layout, so two snapshots compare equal whatever order their fields were written in. */

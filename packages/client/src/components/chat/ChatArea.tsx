@@ -3200,7 +3200,6 @@ const LocalChatArea = memo(function LocalChatArea() {
             personaInfo={personaInfo}
             chatBackground={chatBackground}
             connectedChatName={connectedChatName}
-            onOpenSettings={handleOpenSettingsPanel}
             onCloseSettings={handleCloseSettingsPanel}
             onSwitchChat={chat.connectedChatId ? () => setActiveChatId(chat.connectedChatId!) : undefined}
             onDeleteMessage={handleDelete}
@@ -3445,7 +3444,6 @@ const LocalChatArea = memo(function LocalChatArea() {
           onAbandonScene={() => abandonScene(activeChatId)}
           onForkScene={forkScene}
           isForkingScene={isForking || isStreaming}
-          onOpenSettings={handleOpenSettingsPanel}
           onCloseSettings={handleCloseSettingsPanel}
           onOpenScheduleEditor={handleOpenScheduleEditor}
           onIllustrate={handleIllustrate}

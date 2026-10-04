@@ -66,6 +66,13 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { useTranslation as useUiTranslation } from "react-i18next";
+import { useMatchMedia } from "../../hooks/use-match-media";
+import {
+  PHONE_LAYOUT_QUERY,
+  TRACKER_PANEL_BUBBLE_ID,
+  useFloatingWindowStore,
+} from "../../stores/floating-window.store";
+import { closeTrackerPanel } from "../../lib/tracker-panel-surface";
 
 const ChatArea = lazy(() => import("../chat/ChatArea").then((module) => ({ default: module.ChatArea })));
 const CharacterEditor = lazy(() =>
@@ -413,6 +420,8 @@ export function AppShell() {
   const openAgentCatalog = useUIStore((s) => s.openAgentCatalog);
   const setTrackerPanelOpen = useUIStore((s) => s.setTrackerPanelOpen);
   const restoreTrackerPanelOpenForChat = useUIStore((s) => s.restoreTrackerPanelOpenForChat);
+  const phoneChatLayout = useMatchMedia(PHONE_LAYOUT_QUERY);
+  const phoneTrackerPanelOpen = useFloatingWindowStore((s) => s.open[TRACKER_PANEL_BUBBLE_ID] === true);
   const refreshLorebooks = useCallback(
     () => queryClient.invalidateQueries({ queryKey: lorebookKeys.all }),
     [queryClient],
@@ -920,7 +929,12 @@ export function AppShell() {
   const trackerPanelDetached = trackerPanelWindowTarget !== null;
   const trackerPanelSurfaceAvailable =
     trackerPanelModeAvailable && !botBrowserOpen && !gameAssetsBrowserOpen && !hasDetailView;
-  const trackerPanelVisible = trackerPanelActive && trackerPanelSurfaceAvailable && !trackerPanelDetached;
+  // On a phone the switch shows the Tracker Panel's bubble; the panel shows while the bubble has it open.
+  const trackerPanelVisible =
+    trackerPanelActive &&
+    trackerPanelSurfaceAvailable &&
+    !trackerPanelDetached &&
+    (!phoneChatLayout || phoneTrackerPanelOpen);
   const chatSurfaceActive =
     !botBrowserOpen &&
     !gameAssetsBrowserOpen &&
@@ -1519,7 +1533,7 @@ export function AppShell() {
       {trackerPanelVisible && shellOverlayMode && (
         <div
           className={cn("fixed inset-x-0 bottom-0 z-[45] bg-black/50 backdrop-blur-sm", MOBILE_SHELL_PANEL_TOP_CLASS)}
-          onClick={() => setTrackerPanelOpen(false, activeChatId)}
+          onClick={() => closeTrackerPanel(activeChatId)}
         />
       )}
 

@@ -31,12 +31,8 @@ import {
   lazy,
   memo,
   Suspense,
-  type CSSProperties,
-  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
-  type ReactNode,
 } from "react";
-import { createPortal } from "react-dom";
 import { useTranslation, useTranslation as useUiTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
 import { toast } from "sonner";
@@ -246,7 +242,6 @@ import {
   type GameImagePromptOverride,
   type GameImagePromptReviewItem,
 } from "./GameImagePromptReviewModal";
-import { ChatHelpButton } from "../chat/ChatHelpButton";
 import { CHAT_HELP_CLOSE_EVENT, CHAT_HELP_OPEN_REQUEST_EVENT, readChatHelpEventMode } from "../../lib/chat-help-events";
 import { GameStoryboardBackgroundVisual, GameStoryboardInlineViewer } from "./GameStoryboardViewer";
 import { GameVolumeMixer } from "./GameVolumeMixer";
@@ -275,26 +270,8 @@ import {
   type SceneAssetNpcAvatarCandidate,
 } from "./game-asset-generation-payload";
 import { PinnedImageOverlay } from "../chat/PinnedImageOverlay";
-import {
-  CHAT_FLOATING_PANEL_SELECTOR,
-  CHAT_TOOLBAR_ACTION_EVENT,
-  CHAT_TOOLBAR_ICON_GAP_CLASS,
-  CHAT_TOOLBAR_OVERFLOW_BUTTON_SIZE_CLASS,
-  CHAT_TOOLBAR_OVERFLOW_MENU_CLASS,
-  getChatToolbarButtonClass,
-  readAnnouncedChatToolbarPanelAction,
-  readChatToolbarFloatingPanelAnchor,
-  type ChatToolbarFloatingPanelAnchor,
-} from "../chat/ChatToolbarControls";
-import {
-  NEUTRAL_PANEL_CLOSE_BUTTON,
-  NEUTRAL_PANEL_CLOSE_ICON_SIZE,
-  NEUTRAL_PANEL_HEADER,
-  NEUTRAL_PANEL_SCROLL_AREA,
-  NEUTRAL_PANEL_SHELL,
-  NEUTRAL_PANEL_SUBTITLE,
-  NEUTRAL_PANEL_TITLE,
-} from "../ui/neutral-surface-styles";
+import { CHAT_TOOLBAR_ICON_GAP_CLASS } from "../chat/ChatToolbarControls";
+import { NEUTRAL_PANEL_SCROLL_AREA, NEUTRAL_PANEL_SUBTITLE } from "../ui/neutral-surface-styles";
 import type { ReadableTag } from "../../lib/game-tag-parser";
 import type { DirectionCommand, GameNpc, GameStoryboardViewerDisplayMode } from "@marinara-engine/shared";
 
@@ -372,17 +349,7 @@ function persistReplayPresentationCue(
     });
 }
 
-const GAME_MOBILE_ROOT_BUTTON = getChatToolbarButtonClass({
-  compact: true,
-  sizeClassName: CHAT_TOOLBAR_OVERFLOW_BUTTON_SIZE_CLASS,
-});
-const GAME_MOBILE_ICON_BUTTON = getChatToolbarButtonClass({ compact: true });
-const GAME_MOBILE_ACTIONS_MENU = cn(CHAT_TOOLBAR_OVERFLOW_MENU_CLASS, "absolute right-0 top-9");
 const GAME_MOBILE_CHOICE_STAGE_HEIGHT = "max-h-[clamp(8rem,30svh,14rem)] sm:max-h-[clamp(9rem,36svh,20rem)]";
-const GAME_MOBILE_ACTION_MENU = cn(NEUTRAL_PANEL_SHELL, "flex w-72 max-w-[calc(100vw-4rem)] flex-col gap-1 p-1.5");
-const GAME_MOBILE_FLOATING_PANEL =
-  "fixed z-[9999] h-[min(42rem,calc(100dvh-4.75rem))] w-[min(42rem,calc(100vw-4.75rem))]";
-const GAME_MOBILE_FLOATING_MENU = "fixed z-[9999] max-h-[min(32rem,calc(100dvh-4.75rem))] overflow-y-auto";
 const EXPERIENCE_UNDERLAY_LAYER = "underlay" as const;
 const EXPERIENCE_STARTUP_CONTEXT_MAX_LENGTH = 8_000;
 const EMPTY_SPEAKER_AVATARS: ReadonlyMap<string, { url: string }> = new Map();
@@ -410,25 +377,6 @@ type ExperienceChromeDeclaration = {
 };
 const GAME_ACTION_MENU_ITEM =
   "marinara-chat-popover__item flex items-center gap-2 rounded-lg px-3 py-2 text-left text-xs text-[var(--marinara-chat-chrome-panel-text)] transition-colors hover:bg-[var(--marinara-chat-chrome-highlight-bg-hover)] hover:text-[var(--marinara-chat-chrome-highlight-text)] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-transparent";
-function getGameMobileFloatingPanelStyle(anchor: ChatToolbarFloatingPanelAnchor): CSSProperties {
-  if (!anchor) {
-    return {
-      right: "0.75rem",
-      top: "calc(3.75rem + env(safe-area-inset-top))",
-    };
-  }
-
-  return {
-    right: `${anchor.right}px`,
-    top: `${anchor.top}px`,
-  };
-}
-
-function renderGameMobilePortal(node: ReactNode): ReactNode {
-  if (typeof document === "undefined") return node;
-  return createPortal(node, document.body);
-}
-
 type PreparedCombatState = {
   messageId: string;
   party: Combatant[];
@@ -2056,7 +2004,6 @@ function applyElementAttackTagsToCombatants(
 
 import {
   AlertTriangle,
-  ArrowRightLeft,
   BookOpen,
   Feather,
   Folder,
@@ -2064,14 +2011,12 @@ import {
   Image,
   ImagePlus,
   Loader2,
-  MoreHorizontal,
   PanelsTopLeft,
   Play,
   Plug,
   RefreshCw,
   RotateCcw,
   ScrollText,
-  Settings2,
   Square,
   Volume2,
   VolumeX,
@@ -2227,7 +2172,6 @@ interface GameSurfaceProps {
   personaInfo?: PersonaInfo;
   chatBackground?: string | null;
   connectedChatName?: string;
-  onOpenSettings: (event?: ReactMouseEvent<HTMLElement>) => void;
   onCloseSettings: () => void;
   onSwitchChat?: () => void;
   onDeleteMessage: (messageId: string) => void;
@@ -2247,7 +2191,6 @@ function GameSurfaceComponent({
   personaInfo,
   chatBackground,
   connectedChatName,
-  onOpenSettings,
   onCloseSettings,
   onSwitchChat,
   onDeleteMessage,
@@ -2829,24 +2772,17 @@ function GameSurfaceComponent({
     useGameAssetStore.getState().setCurrentMusic(null);
   }, [useMusicDjPlayerMusic]);
 
-  const [sessionPanelOpen, setSessionPanelOpen] = useState(false);
   const [sessionPanelTab, setSessionPanelTab] = useState<"history" | "journal">("history");
   // The Gallery drawer in an open Chat Settings window counts as an open game panel.
   const chatSettingsOpen = useFloatingWindowStore((state) => state.open[CHAT_SETTINGS_WINDOW_ID] === true);
   const galleryDrawerExpanded = useUIStore((state) => state.chatSettingsExpandedSections["game-gallery"] === true);
   const galleryDrawerOpen = chatSettingsOpen && galleryDrawerExpanded;
-  const [mobileRetryMenuAnchor, setMobileRetryMenuAnchor] = useState<ChatToolbarFloatingPanelAnchor>(null);
-  const [mobileSessionPanelAnchor, setMobileSessionPanelAnchor] = useState<ChatToolbarFloatingPanelAnchor>(null);
-  const [mobileVolumePopoverAnchor, setMobileVolumePopoverAnchor] = useState<ChatToolbarFloatingPanelAnchor>(null);
-  const [mobileGameAssetsPanelAnchor, setMobileGameAssetsPanelAnchor] = useState<ChatToolbarFloatingPanelAnchor>(null);
   const [combatLogsOpen, setCombatLogsOpen] = useState(false);
   const closeCombatLogs = useCallback(() => setCombatLogsOpen(false), []);
   const combatLogsBackdropDismiss = useBackdropDismiss(closeCombatLogs);
   const [spotifyRetryPending, setSpotifyRetryPending] = useState(false);
   const [youtubeRetryPending, setYoutubeRetryPending] = useState(false);
   const combatLogScrolledRef = useRef(false);
-  const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
-  const [mobileRetryMenuOpen, setMobileRetryMenuOpen] = useState(false);
   const [confirmEndSessionOpen, setConfirmEndSessionOpen] = useState(false);
   const [nextSessionRequest, setNextSessionRequest] = useState("");
   const [jsonRepairRequest, setJsonRepairRequest] = useState<JsonRepairRequest | null>(null);
@@ -2854,35 +2790,13 @@ function GameSurfaceComponent({
   const [prepareInitialWidgetsOpen, setPrepareInitialWidgetsOpen] = useState(false);
   const [savingSessionSummary, setSavingSessionSummary] = useState<number | null>(null);
   const [savingCurrentSessionSecrets, setSavingCurrentSessionSecrets] = useState(false);
-  const readFloatingPanelAnchor = useCallback((event?: ReactMouseEvent<HTMLElement>) => {
-    return readChatToolbarFloatingPanelAnchor(event?.currentTarget ?? null);
-  }, []);
-  const closeLocalFloatingWindows = useCallback(() => {
-    setSessionPanelOpen(false);
-    setMobileSessionPanelAnchor(null);
-    setGameAssetsPanelOpen(false);
-    setMobileGameAssetsPanelAnchor(null);
-    setMobileRetryMenuOpen(false);
-    setMobileRetryMenuAnchor(null);
-    setVolumePopoverOpen(false);
-    setMobileVolumePopoverAnchor(null);
-  }, []);
-  const dismissOtherFloatingWindows = useCallback(() => {
-    closeLocalFloatingWindows();
-    onCloseSettings();
-  }, [closeLocalFloatingWindows, onCloseSettings]);
   useEffect(() => {
     const handleHelpOpen = (event: Event) => {
-      if (readChatHelpEventMode(event) !== "game") return;
-      // Help opens from the Chat Settings window, which stays open under the overlay.
-      closeLocalFloatingWindows();
-      setChatHelpOpen(true);
-      if (window.innerWidth < 768) setMobileActionsOpen(true);
+      // Help opens from Chat Settings, which stays open under the overlay on a computer.
+      if (readChatHelpEventMode(event) === "game") setChatHelpOpen(true);
     };
     const handleHelpClose = (event: Event) => {
-      if (readChatHelpEventMode(event) !== "game") return;
-      setChatHelpOpen(false);
-      setMobileActionsOpen(false);
+      if (readChatHelpEventMode(event) === "game") setChatHelpOpen(false);
     };
     window.addEventListener(CHAT_HELP_OPEN_REQUEST_EVENT, handleHelpOpen);
     window.addEventListener(CHAT_HELP_CLOSE_EVENT, handleHelpClose);
@@ -2890,29 +2804,11 @@ function GameSurfaceComponent({
       window.removeEventListener(CHAT_HELP_OPEN_REQUEST_EVENT, handleHelpOpen);
       window.removeEventListener(CHAT_HELP_CLOSE_EVENT, handleHelpClose);
     };
-  }, [closeLocalFloatingWindows]);
-  // The topbar's Chat Settings button closes the game's own panels, as the old toolbar button did.
-  useEffect(() => {
-    const handleToolbarAction = (event: Event) => {
-      if (readAnnouncedChatToolbarPanelAction(event) === "settings") closeLocalFloatingWindows();
-    };
-    window.addEventListener(CHAT_TOOLBAR_ACTION_EVENT, handleToolbarAction);
-    return () => window.removeEventListener(CHAT_TOOLBAR_ACTION_EVENT, handleToolbarAction);
-  }, [closeLocalFloatingWindows]);
-  const handleOpenSettingsPanel = useCallback(
-    (event?: ReactMouseEvent<HTMLElement>) => {
-      closeLocalFloatingWindows();
-      onOpenSettings(event);
-    },
-    [closeLocalFloatingWindows, onOpenSettings],
-  );
+  }, []);
   const handleSwitchConnectedChat = useCallback(() => {
-    dismissOtherFloatingWindows();
-    onSwitchChat?.();
-  }, [dismissOtherFloatingWindows, onSwitchChat]);
-  const closeChatDrawers = useCallback(() => {
     onCloseSettings();
-  }, [onCloseSettings]);
+    onSwitchChat?.();
+  }, [onCloseSettings, onSwitchChat]);
   const [activeChoices, setActiveChoices] = useState<string[] | null>(null);
   const [experienceChoiceSlotEl, setExperienceChoiceSlotEl] = useState<HTMLDivElement | null>(null);
   const [activeQte, setActiveQte] = useState<{ actions: string[]; timer: number } | null>(null);
@@ -3198,8 +3094,6 @@ function GameSurfaceComponent({
   const [manualStoryboardReviewActive, setManualStoryboardReviewActive] = useState(false);
   const [imagePromptReviewMediaType, setImagePromptReviewMediaType] = useState<"image" | "video">("image");
   const imagePromptReviewResolveRef = useRef<((overrides: GameImagePromptOverride[] | null) => void) | null>(null);
-  const [volumePopoverOpen, setVolumePopoverOpen] = useState(false);
-  const [gameAssetsPanelOpen, setGameAssetsPanelOpen] = useState(false);
   const [persistedGameAudioSettings] = useState(readPersistedGameAudioSettings);
   const [masterVolume, setMasterVolume] = useState(persistedGameAudioSettings.masterVolume);
   const [musicVolume, setMusicVolume] = useState(persistedGameAudioSettings.musicVolume);
@@ -3210,14 +3104,10 @@ function GameSurfaceComponent({
   const [chatHelpOpen, setChatHelpOpen] = useState(false);
   useEffect(() => {
     setChatHelpOpen(false);
-    setMobileActionsOpen(false);
   }, [activeChatId]);
   const [compactHudWidgets, setCompactHudWidgets] = useState(() =>
     typeof window !== "undefined" ? window.innerWidth < 768 : false,
   );
-  const mobileVolumePopoverRef = useRef<HTMLDivElement>(null);
-  const mobileSessionPanelRef = useRef<HTMLDivElement>(null);
-  const mobileGameAssetsPanelRef = useRef<HTMLDivElement>(null);
   const hudSurfaceRef = useRef<HTMLDivElement>(null);
   // The surface is also tracked in state so the widget-layout effect below can
   // depend on it. GameSurface renders a messages-loading branch that mounts no
@@ -3241,15 +3131,7 @@ function GameSurfaceComponent({
   const storyboardViewerResizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
 
   const closeGameFloatingPanels = useCallback(() => {
-    setSessionPanelOpen(false);
-    setGameAssetsPanelOpen(false);
     setCombatLogsOpen(false);
-    setMobileRetryMenuOpen(false);
-    setMobileRetryMenuAnchor(null);
-    setMobileSessionPanelAnchor(null);
-    setMobileVolumePopoverAnchor(null);
-    setMobileGameAssetsPanelAnchor(null);
-    setVolumePopoverOpen(false);
     setInventoryOpen(false);
   }, []);
 
@@ -3276,7 +3158,7 @@ function GameSurfaceComponent({
   const [pendingNpcPortraitUploadName, setPendingNpcPortraitUploadName] = useState<string | null>(null);
   const [generatingNpcPortraitNames, setGeneratingNpcPortraitNames] = useState<Set<string>>(() => new Set());
 
-  // An open Session or Assets window pauses narration like their phone popovers do.
+  // An open Session or Assets window (a sheet on a phone) pauses narration.
   const sessionWindowRestored = useFloatingWindowStore((state) =>
     selectWindowRestored(state, CHAT_CONTROL_WINDOW_IDS.session),
   );
@@ -3286,28 +3168,22 @@ function GameSurfaceComponent({
   const narrationAutoPlayBlocked =
     !!activeReadable ||
     !!activeQte ||
-    sessionPanelOpen ||
     sessionWindowRestored ||
-    gameAssetsPanelOpen ||
     assetsWindowRestored ||
     galleryDrawerOpen ||
     combatLogsOpen ||
     inventoryOpen ||
     chatHelpOpen ||
-    confirmEndSessionOpen ||
-    mobileActionsOpen;
+    confirmEndSessionOpen;
   const narrationVoicePlaybackBlocked =
     !!activeReadable ||
-    sessionPanelOpen ||
     sessionWindowRestored ||
-    gameAssetsPanelOpen ||
     assetsWindowRestored ||
     galleryDrawerOpen ||
     combatLogsOpen ||
     inventoryOpen ||
     chatHelpOpen ||
-    confirmEndSessionOpen ||
-    mobileActionsOpen;
+    confirmEndSessionOpen;
   const effectiveGameVoiceVolume = audioMuted || masterVolume === 0 ? 0 : getEffectiveVolume(masterVolume, ttsVolume);
 
   useEffect(() => {
@@ -3597,16 +3473,12 @@ function GameSurfaceComponent({
     setActiveDirections([]);
   }, []);
 
-  const handleReplaySession = useCallback(
-    (sessionNumberToReplay: number) => {
-      audioManager.unlock();
-      setReplayBackgroundTag(null);
-      setReplaySessionNumber(sessionNumberToReplay);
-      setActiveSpeaker(null);
-      closeLocalFloatingWindows();
-    },
-    [closeLocalFloatingWindows],
-  );
+  const handleReplaySession = useCallback((sessionNumberToReplay: number) => {
+    audioManager.unlock();
+    setReplayBackgroundTag(null);
+    setReplaySessionNumber(sessionNumberToReplay);
+    setActiveSpeaker(null);
+  }, []);
 
   // Clean up audio + reset playback state when switching chats or replacing the game in the same chat.
   // On unmount, only dispose audio (stop sounds) but keep store state intact so that
@@ -6813,8 +6685,6 @@ function GameSurfaceComponent({
 
   const handleRetryYoutubeMusic = useCallback(async () => {
     if (!activeChatId || !useJsonMusicDjGameMusic || isStreaming || sceneAnalysis.isPending) return;
-    setMobileRetryMenuOpen(false);
-    setMobileActionsOpen(false);
     setYoutubeRetryPending(true);
     try {
       // Music DJ YouTube/Custom modes need no scene-candidate flow — re-running the agent (with the
@@ -6847,8 +6717,6 @@ function GameSurfaceComponent({
     if (!activeChatId || !useSpotifyGameMusic || isStreaming || sceneAnalysis.isPending) return;
     const msg = latestAssistantMsgRef.current;
     if (!msg?.content) return;
-    setMobileRetryMenuOpen(false);
-    setMobileActionsOpen(false);
 
     const assets = getScopedAssetMap();
     const tags = parseGmTags(msg.content);
@@ -11220,74 +11088,6 @@ function GameSurfaceComponent({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Close volume popover on outside click
-  useEffect(() => {
-    if (!volumePopoverOpen) return;
-    const handler = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (target instanceof Element && target.closest(CHAT_FLOATING_PANEL_SELECTOR)) return;
-      const inMobilePopover = mobileVolumePopoverRef.current?.contains(target) ?? false;
-      if (!inMobilePopover) {
-        setVolumePopoverOpen(false);
-      }
-    };
-    document.addEventListener("pointerdown", handler);
-    return () => document.removeEventListener("pointerdown", handler);
-  }, [volumePopoverOpen]);
-
-  useEffect(() => {
-    if (!sessionPanelOpen && !gameAssetsPanelOpen) return;
-    const handler = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (target instanceof Element && target.closest(CHAT_FLOATING_PANEL_SELECTOR)) return;
-      const inSessionPanel = mobileSessionPanelRef.current?.contains(target) ?? false;
-      const inAssetsPanel = mobileGameAssetsPanelRef.current?.contains(target) ?? false;
-      if (sessionPanelOpen && !inSessionPanel) {
-        setSessionPanelOpen(false);
-      }
-      if (gameAssetsPanelOpen && !inAssetsPanel) {
-        setGameAssetsPanelOpen(false);
-      }
-    };
-    document.addEventListener("pointerdown", handler);
-    return () => document.removeEventListener("pointerdown", handler);
-  }, [gameAssetsPanelOpen, sessionPanelOpen]);
-
-  const handleOpenSessionPanel = useCallback(
-    (tab: "history" | "journal" = "history", event?: ReactMouseEvent<HTMLElement>) => {
-      const nextOpen = tab === sessionPanelTab ? !sessionPanelOpen : true;
-      if (nextOpen) dismissOtherFloatingWindows();
-      closeChatDrawers();
-      setSessionPanelTab(tab);
-      setSessionPanelOpen(nextOpen);
-      setMobileSessionPanelAnchor(nextOpen ? readFloatingPanelAnchor(event) : null);
-      setGameAssetsPanelOpen(false);
-      setMobileGameAssetsPanelAnchor(null);
-      setMobileRetryMenuOpen(false);
-      setMobileRetryMenuAnchor(null);
-      setVolumePopoverOpen(false);
-      setMobileVolumePopoverAnchor(null);
-    },
-    [closeChatDrawers, dismissOtherFloatingWindows, readFloatingPanelAnchor, sessionPanelOpen, sessionPanelTab],
-  );
-
-  const handleOpenGameAssetsPanel = useCallback(
-    (event?: ReactMouseEvent<HTMLElement>) => {
-      const nextOpen = !gameAssetsPanelOpen;
-      if (nextOpen) dismissOtherFloatingWindows();
-      closeChatDrawers();
-      setGameAssetsPanelOpen(nextOpen);
-      setMobileGameAssetsPanelAnchor(nextOpen ? readFloatingPanelAnchor(event) : null);
-      setSessionPanelOpen(false);
-      setMobileSessionPanelAnchor(null);
-      setMobileRetryMenuOpen(false);
-      setMobileRetryMenuAnchor(null);
-      setVolumePopoverOpen(false);
-      setMobileVolumePopoverAnchor(null);
-    },
-    [closeChatDrawers, dismissOtherFloatingWindows, gameAssetsPanelOpen, readFloatingPanelAnchor],
-  );
-
   const handleBranchMessage = useCallback(
     (messageId: string) => {
       if (!activeChatId || branchChat.isPending) return;
@@ -12113,54 +11913,19 @@ function GameSurfaceComponent({
     handleStartNewSession();
   };
 
-  /** Session history and journal: a phone popover, or the Session window's content on a computer. */
-  const renderSessionPanel = (variant: "mobile" | "window") => {
-    const mobile = variant === "mobile";
-    const closeSessionPanel = mobile
-      ? () => setSessionPanelOpen(false)
-      : () => useFloatingWindowStore.getState().minimizeWindow(CHAT_CONTROL_WINDOW_IDS.session);
-    const panel = (
-      <div
-        data-chat-floating-panel={mobile ? true : undefined}
-        className={cn(
-          "flex min-h-0 flex-col overflow-hidden",
-          mobile ? cn(NEUTRAL_PANEL_SHELL, GAME_MOBILE_FLOATING_PANEL) : "flex-1",
-        )}
-        style={mobile ? getGameMobileFloatingPanelStyle(mobileSessionPanelAnchor) : undefined}
-      >
-        {!mobile && (
-          <div
-            className={cn(
-              NEUTRAL_PANEL_SUBTITLE,
-              "border-b border-[var(--marinara-chat-chrome-panel-divider)] px-3 py-2",
-            )}
-          >
-            {localizeUi("game.toolbar.session")} {displaySessionNumber} · {sessionStatus}
-          </div>
-        )}
-        {mobile && (
-          <div className={cn(NEUTRAL_PANEL_HEADER, "flex items-start gap-3")}>
-            <div className="min-w-0 flex-1">
-              <div className={NEUTRAL_PANEL_TITLE}>
-                <Feather size="0.8rem" className="shrink-0 text-[var(--muted-foreground)]" />
-                {localizeUi("game.toolbar.session")}
-              </div>
-              <div className={NEUTRAL_PANEL_SUBTITLE}>
-                {localizeUi("game.toolbar.session")} {displaySessionNumber} · {sessionStatus}
-              </div>
-            </div>
-            <div className="ml-auto flex shrink-0 items-center gap-1 pt-0.5">
-              <button
-                type="button"
-                onClick={() => setSessionPanelOpen(false)}
-                className={NEUTRAL_PANEL_CLOSE_BUTTON}
-                aria-label={localizeUi("ui.game.gamesurfacecomponent.closeSession")}
-              >
-                <X size={NEUTRAL_PANEL_CLOSE_ICON_SIZE} />
-              </button>
-            </div>
-          </div>
-        )}
+  /** Session history and journal: the Session window's content. */
+  const renderSessionPanel = () => {
+    const closeSessionPanel = () => useFloatingWindowStore.getState().minimizeWindow(CHAT_CONTROL_WINDOW_IDS.session);
+    return (
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div
+          className={cn(
+            NEUTRAL_PANEL_SUBTITLE,
+            "border-b border-[var(--marinara-chat-chrome-panel-divider)] px-3 py-2",
+          )}
+        >
+          {localizeUi("game.toolbar.session")} {displaySessionNumber} · {sessionStatus}
+        </div>
 
         <div className="flex gap-1 border-b border-[var(--marinara-chat-chrome-panel-divider)] p-2">
           {(["history", "journal"] as const).map((tab) => (
@@ -12267,8 +12032,6 @@ function GameSurfaceComponent({
         )}
       </div>
     );
-
-    return mobile ? renderGameMobilePortal(panel) : panel;
   };
 
   const handleStoryboardViewerSizeChange = () => {
@@ -12374,14 +12137,13 @@ function GameSurfaceComponent({
     </>
   );
 
-  const renderStoryboardBackgroundControls = (mobile = false) => {
+  const renderStoryboardBackgroundControls = () => {
     if (gameStoryboardViewerDisplayMode !== "background" || !activeStoryboardKeyframe?.video) return null;
 
     return (
       <span data-chat-help="scene-media" className="contents">
         <Suspense fallback={null}>
           <StoryboardBackgroundControls
-            mobile={mobile}
             playing={storyboardViewerPlaying}
             muted={storyboardViewerMuted}
             onReplay={handleStoryboardViewerReplay}
@@ -12411,18 +12173,10 @@ function GameSurfaceComponent({
     );
   };
 
-  /** Scene media and the game's asset browser: a phone popover, or the Assets window's content on a computer. */
-  const renderGameAssetsPanel = (variant: "mobile" | "window") => {
-    const mobile = variant === "mobile";
-    const panel = (
-      <div
-        data-chat-floating-panel={mobile ? true : undefined}
-        className={cn(
-          "flex min-h-0 flex-col overflow-hidden",
-          mobile ? cn(NEUTRAL_PANEL_SHELL, GAME_MOBILE_FLOATING_PANEL) : "flex-1",
-        )}
-        style={mobile ? getGameMobileFloatingPanelStyle(mobileGameAssetsPanelAnchor) : undefined}
-      >
+  /** Scene media and the game's asset browser: the Assets window's content. */
+  const renderGameAssetsPanel = () => {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--marinara-chat-chrome-panel-divider)] p-2">
           <button
             type="button"
@@ -12550,13 +12304,11 @@ function GameSurfaceComponent({
             </div>
           )}
           <Suspense fallback={null}>
-            <GameAssetsBrowserView embedded onClose={mobile ? () => setGameAssetsPanelOpen(false) : undefined} />
+            <GameAssetsBrowserView embedded />
           </Suspense>
         </div>
       </div>
     );
-
-    return mobile ? renderGameMobilePortal(panel) : panel;
   };
 
   return (
@@ -12628,218 +12380,7 @@ function GameSurfaceComponent({
                   replayActive && "hidden",
                 )}
               >
-                {/* On a computer these controls are windows that minimize to buttons (rendered below). */}
-                {/* Mobile controls */}
-                <div className="pointer-events-auto md:hidden">
-                  <div className="relative">
-                    <button
-                      onClick={() => {
-                        setMobileActionsOpen((open) => {
-                          const nextOpen = !open;
-                          if (!nextOpen) {
-                            setVolumePopoverOpen(false);
-                            setMobileVolumePopoverAnchor(null);
-                            setMobileRetryMenuOpen(false);
-                            setMobileRetryMenuAnchor(null);
-                            setSessionPanelOpen(false);
-                            setMobileSessionPanelAnchor(null);
-                            setGameAssetsPanelOpen(false);
-                            setMobileGameAssetsPanelAnchor(null);
-                          }
-                          return nextOpen;
-                        });
-                        setMobileRetryMenuOpen(false);
-                      }}
-                      className={GAME_MOBILE_ROOT_BUTTON}
-                      title={t("game.toolbar.actions")}
-                      aria-label={t("game.toolbar.actions")}
-                    >
-                      <MoreHorizontal size={15} />
-                    </button>
-
-                    {mobileActionsOpen && (
-                      <div data-chat-toolbar-overflow-menu className={GAME_MOBILE_ACTIONS_MENU}>
-                        <ChatHelpButton mode="game" compact />
-                        {renderStoryboardBackgroundControls(true)}
-                        <div>
-                          <button
-                            data-chat-help="retry"
-                            onClick={(event) => {
-                              const nextOpen = !mobileRetryMenuOpen;
-                              if (nextOpen) dismissOtherFloatingWindows();
-                              setMobileRetryMenuAnchor(nextOpen ? readFloatingPanelAnchor(event) : null);
-                              setMobileRetryMenuOpen(nextOpen);
-                              setSessionPanelOpen(false);
-                              setMobileSessionPanelAnchor(null);
-                              setGameAssetsPanelOpen(false);
-                              setMobileGameAssetsPanelAnchor(null);
-                              setVolumePopoverOpen(false);
-                              setMobileVolumePopoverAnchor(null);
-                            }}
-                            className={GAME_MOBILE_ICON_BUTTON}
-                            title={t("game.toolbar.retry")}
-                            aria-label={t("game.toolbar.retry")}
-                          >
-                            <RotateCcw
-                              size={14}
-                              className={sceneAnalysis.isPending || spotifyRetryPending ? "animate-spin" : ""}
-                            />
-                          </button>
-                          {mobileRetryMenuOpen &&
-                            renderGameMobilePortal(
-                              <div
-                                data-chat-floating-panel
-                                className={cn(GAME_MOBILE_ACTION_MENU, GAME_MOBILE_FLOATING_MENU)}
-                                style={getGameMobileFloatingPanelStyle(mobileRetryMenuAnchor)}
-                              >
-                                <div className="mb-1 flex items-center justify-between gap-2 border-b border-[var(--marinara-chat-chrome-panel-divider)] px-2 pb-1.5 pt-0.5">
-                                  <div className={NEUTRAL_PANEL_TITLE}>
-                                    <RotateCcw size="0.75rem" className="shrink-0 text-[var(--muted-foreground)]" />
-                                    <span>{t("game.toolbar.retry")}</span>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => setMobileRetryMenuOpen(false)}
-                                    className={NEUTRAL_PANEL_CLOSE_BUTTON}
-                                    aria-label={t("game.toolbar.closeRetry")}
-                                  >
-                                    <X size={NEUTRAL_PANEL_CLOSE_ICON_SIZE} />
-                                  </button>
-                                </div>
-                                {renderRetryItems(() => {
-                                  setMobileRetryMenuOpen(false);
-                                  setMobileActionsOpen(false);
-                                })}
-                              </div>,
-                            )}
-                        </div>
-                        <div ref={mobileSessionPanelRef}>
-                          <button
-                            data-chat-help="session"
-                            onClick={(event) => {
-                              handleOpenSessionPanel("history", event);
-                              setMobileRetryMenuOpen(false);
-                              setMobileRetryMenuAnchor(null);
-                            }}
-                            className={getChatToolbarButtonClass({
-                              compact: true,
-                              open: sessionPanelOpen,
-                            })}
-                            title={t("game.toolbar.session")}
-                            aria-label={t("game.toolbar.session")}
-                          >
-                            <Feather size={14} />
-                          </button>
-                          {sessionPanelOpen && renderSessionPanel("mobile")}
-                        </div>
-                        <div ref={mobileVolumePopoverRef}>
-                          <button
-                            data-chat-help="volume"
-                            onClick={(event) => {
-                              const nextOpen = !volumePopoverOpen;
-                              if (nextOpen) dismissOtherFloatingWindows();
-                              setMobileVolumePopoverAnchor(nextOpen ? readFloatingPanelAnchor(event) : null);
-                              setVolumePopoverOpen(nextOpen);
-                              setMobileRetryMenuOpen(false);
-                              setMobileRetryMenuAnchor(null);
-                              setSessionPanelOpen(false);
-                              setMobileSessionPanelAnchor(null);
-                              setGameAssetsPanelOpen(false);
-                              setMobileGameAssetsPanelAnchor(null);
-                            }}
-                            className={GAME_MOBILE_ICON_BUTTON}
-                            title={t("game.toolbar.volume")}
-                            aria-label={t("game.toolbar.volume")}
-                          >
-                            {audioMuted || masterVolume === 0 ? <VolumeX size={14} /> : <Volume2 size={14} />}
-                          </button>
-                          {volumePopoverOpen &&
-                            renderGameMobilePortal(
-                              <GameVolumeMixer
-                                className="fixed z-[9999] max-w-[calc(100vw-4rem)]"
-                                style={getGameMobileFloatingPanelStyle(mobileVolumePopoverAnchor)}
-                                audioMuted={audioMuted || masterVolume === 0}
-                                masterVolume={masterVolume}
-                                musicVolume={musicVolume}
-                                sfxVolume={sfxVolume}
-                                ttsVolume={ttsVolume}
-                                ambientVolume={ambientVolume}
-                                onMasterVolumeChange={handleMasterVolumeChange}
-                                onMusicVolumeChange={(value) =>
-                                  handleChannelVolumeChange("musicVolume", setMusicVolume, value)
-                                }
-                                onSfxVolumeChange={(value) =>
-                                  handleChannelVolumeChange("sfxVolume", setSfxVolume, value)
-                                }
-                                onTtsVolumeChange={(value) =>
-                                  handleChannelVolumeChange("ttsVolume", setTtsVolume, value)
-                                }
-                                onAmbientVolumeChange={(value) =>
-                                  handleChannelVolumeChange("ambientVolume", setAmbientVolume, value)
-                                }
-                                onToggleMute={handleToggleMute}
-                                onClose={() => setVolumePopoverOpen(false)}
-                                onAudioInteract={handleAudioInteract}
-                              />,
-                            )}
-                        </div>
-                        <div ref={mobileGameAssetsPanelRef}>
-                          <button
-                            data-chat-help="assets"
-                            onClick={(event) => {
-                              handleOpenGameAssetsPanel(event);
-                              setMobileRetryMenuOpen(false);
-                              setMobileRetryMenuAnchor(null);
-                            }}
-                            className={getChatToolbarButtonClass({
-                              compact: true,
-                              open: gameAssetsPanelOpen,
-                            })}
-                            title={t("game.toolbar.assets")}
-                            aria-label={t("game.toolbar.assets")}
-                          >
-                            <Folder size={14} />
-                          </button>
-                          {gameAssetsPanelOpen && renderGameAssetsPanel("mobile")}
-                        </div>
-                        {onSwitchChat ? (
-                          <button
-                            data-chat-help="connected-chat"
-                            onClick={() => {
-                              setMobileActionsOpen(false);
-                              handleSwitchConnectedChat();
-                            }}
-                            className={GAME_MOBILE_ICON_BUTTON}
-                            title={
-                              connectedChatName
-                                ? t("chat.toolbar.switchTo", { name: connectedChatName })
-                                : t("chat.toolbar.switchToConnected")
-                            }
-                            aria-label={
-                              connectedChatName
-                                ? t("chat.toolbar.switchTo", { name: connectedChatName })
-                                : t("chat.toolbar.switchToConnected")
-                            }
-                          >
-                            <ArrowRightLeft size={14} />
-                          </button>
-                        ) : null}
-                        <button
-                          data-chat-help="settings"
-                          data-chat-toolbar-panel-action="settings"
-                          onClick={(event) => {
-                            handleOpenSettingsPanel(event);
-                          }}
-                          className={GAME_MOBILE_ICON_BUTTON}
-                          title={t("chat.toolbar.settings")}
-                          aria-label={t("chat.toolbar.settings")}
-                        >
-                          <Settings2 size={14} />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
+                {/* These controls are windows that minimize to bubbles (rendered below). */}
               </div>
 
               {!replayActive && pendingReaction && (
@@ -13825,7 +13366,7 @@ function GameSurfaceComponent({
         onApplied={handleJsonRepairApplied}
       />
 
-      {/* On a computer, the top controls are windows that minimize to buttons (phones keep Game actions). */}
+      {/* The top controls are windows that minimize to bubbles; phones stack the bubbles at the right edge. */}
       {!introCinematicActive && !replayActive && (
         <>
           <ChatControlWindow
@@ -13835,6 +13376,7 @@ function GameSurfaceComponent({
               <RotateCcw size={14} className={sceneAnalysis.isPending || spotifyRetryPending ? "animate-spin" : ""} />
             }
             slot={4}
+            phoneSlot={0}
             width={288}
             height={220}
             helpTarget="game-controls"
@@ -13853,18 +13395,20 @@ function GameSurfaceComponent({
             title={t("game.toolbar.session")}
             icon={<Feather size={14} />}
             slot={3}
+            phoneSlot={1}
             width={672}
             height={640}
             helpTarget="session"
             scroll={false}
           >
-            {renderSessionPanel("window")}
+            {renderSessionPanel()}
           </ChatControlWindow>
           <ChatControlWindow
             id={CHAT_CONTROL_WINDOW_IDS.volume}
             title={t("game.toolbar.volume")}
             icon={audioMuted || masterVolume === 0 ? <VolumeX size={14} /> : <Volume2 size={14} />}
             slot={2}
+            phoneSlot={2}
             width={280}
             height={270}
             helpTarget="volume"
@@ -13890,15 +13434,16 @@ function GameSurfaceComponent({
             title={t("game.toolbar.assets")}
             icon={<Folder size={14} />}
             slot={1}
+            phoneSlot={3}
             width={864}
             height={640}
             helpTarget="assets"
             scroll={false}
           >
-            {renderGameAssetsPanel("window")}
+            {renderGameAssetsPanel()}
           </ChatControlWindow>
           {onSwitchChat ? (
-            <ChatConnectedChatWindow name={connectedChatName} onSwitch={handleSwitchConnectedChat} />
+            <ChatConnectedChatWindow name={connectedChatName} onSwitch={handleSwitchConnectedChat} phoneSlot={4} />
           ) : null}
         </>
       )}

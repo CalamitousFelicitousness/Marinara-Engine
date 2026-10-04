@@ -64,10 +64,11 @@ assert.match(
   /mari-tracker-panel[^"\n]*ring-\[var\(--marinara-app-accent-static\)\]/u,
   "Tracker Panel frames must use the configured app accent",
 );
+// #7034: on a phone the Tracker Panel launches from a bubble like every other chat control's.
 assert.match(
-  roleplayHud,
-  /function TrackerPanelToggleButton[\s\S]*?className=\{WIDGET\}[\s\S]*?<TrackerPanelIcon/u,
-  "the roleplay Tracker Panel launcher must reuse the shared tracker widget control",
+  readSource("packages/client/src/components/chat/TrackerPanelBubble.tsx"),
+  /<WindowBubble[\s\S]*?icon=\{<TrackerPanelIcon/u,
+  "the phone Tracker Panel launcher must reuse the shared bubble control",
 );
 assert.match(
   roleplayHud,
@@ -257,8 +258,9 @@ assert.match(
 );
 assert.match(
   conversationView,
-  /data-conversation-header-identity[\s\S]*?<ConversationPresenceCard[\s\S]*?data-chat-help="call"[\s\S]*?<div className="ml-2 flex/u,
-  "the Conversation call launcher must sit beside the character or group identity instead of the right action cluster",
+  /data-conversation-header-identity[\s\S]*?<ConversationPresenceCard[\s\S]*?data-chat-help="call"[\s\S]*?<\/div>/u,
+  // #7034: the right action cluster is gone (Chat Settings is in the topbar, the rest are bubbles); Calls stays.
+  "the Conversation call launcher must sit beside the character or group identity in the header",
 );
 assert.doesNotMatch(
   chatSettingsDrawer,

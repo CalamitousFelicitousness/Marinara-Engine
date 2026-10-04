@@ -4,13 +4,15 @@
 // Every chat window (Chat Settings, popped-out drawers, the Trackers window, the
 // chat's control windows) renders through this component so they behave and theme
 // alike. A minimizable window shrinks to a small button (its bubble) the user can
-// place anywhere. Custom themes style the stable `mari-window…` classes, the data
-// attributes and the `--mari-window-*` variables documented in globals.css.
+// place anywhere; on a phone it shows as its bubble and opens as a sheet. Custom
+// themes style the stable `mari-window…` classes, the data attributes and the
+// `--mari-window-*` variables documented in globals.css.
 // ──────────────────────────────────────────────
 import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -24,6 +26,8 @@ import { Lock, Minus, Pin, Unlock, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { cn } from "../../lib/utils";
 import {
+  PHONE_BUBBLE_GAP_PX,
+  PHONE_BUBBLE_SIZE_PX,
   RESIZE_EDGES,
   WINDOW_KEYBOARD_LARGE_STEP_PX,
   WINDOW_KEYBOARD_STEP_PX,
@@ -31,6 +35,7 @@ import {
   WINDOW_MARGIN_PX,
   clampWindowBubble,
   clampWindowGeometry,
+  getPhoneBubbleSlot,
   moveWindowGeometry,
   placeWindowBesideBubble,
   resizeWindowGeometry,
@@ -42,10 +47,12 @@ import {
   type WindowLayout,
 } from "../../lib/floating-window-layout";
 import { isModalOverlayOpen } from "../../lib/modal-overlay-registry";
-import { snapBubble, type SnapGuide } from "../../lib/window-bubble-snap";
+import { CHAT_VISUAL_VIEWPORT_CHANGE_EVENT } from "../../hooks/use-visual-viewport-chat-bottom";
 import { DrawerHostContext, type DrawerHost } from "./drawer-host";
+import { WindowBubble } from "./WindowBubble";
 import {
   FLOATING_WINDOW_Z_BASE,
+  PHONE_BUBBLE_Z_INDEX,
   takeFloatingWindowFocusRequest,
   takeFloatingWindowOpener,
   useFloatingWindowStore,
@@ -83,9 +90,17 @@ export interface FloatingWindowProps {
   /**
    * The window can shrink to a small button you place anywhere (its bubble), showing `icon`; `label`
    * names it. Closing it, Escape and, while unpinned, a press elsewhere shrink it back too.
-   * `getDefaultLayout` says whether it starts minimized and where its bubble starts.
+   * `getDefaultLayout` says whether it starts minimized and where its bubble starts. On a phone
+   * ("sheet") it shows as its bubble until tapped and its sheet closes back to the bubble;
+   * `getPhoneBubble` says where that bubble starts (the top of the right-edge column otherwise).
+   * `bubbleBadge` is drawn on the bubble.
    */
-  minimizable?: { icon: ReactNode; label: string };
+  minimizable?: {
+    icon: ReactNode;
+    label: string;
+    getPhoneBubble?: (bounds: WindowBounds) => WindowPoint;
+    bubbleBadge?: ReactNode;
+  };
   className?: string;
   sheetClassName?: string;
   sheetStyle?: CSSProperties;
@@ -106,10 +121,41 @@ export interface FloatingWindowProps {
   children: ReactNode;
 }
 
+/**
+ * A phone sheet below the topbar, as tall as its content up to the screen. Content that scrolls itself
+ * adds PHONE_FULL_SHEET_CLASS, which pins the bottom too, so it gets a bounded height to scroll in.
+ */
+export const PHONE_SHEET_CLASS =
+  "fixed inset-x-2 top-[calc(3.5rem+env(safe-area-inset-top))] z-[70] max-h-[calc(100dvh-4.25rem-env(safe-area-inset-top)-var(--mari-safe-area-inset-bottom,env(safe-area-inset-bottom)))] overflow-hidden";
+export const PHONE_FULL_SHEET_CLASS =
+  "bottom-[calc(0.75rem+var(--mari-safe-area-inset-bottom,env(safe-area-inset-bottom)))]";
+
+/**
+ * The first free place for a new phone bubble: down the right-edge column, then the columns to its
+ * left, skipping the bubbles already on screen (`except` is the bubble being placed).
+ */
+export function findFreePhoneBubble(bounds: WindowBounds, except?: FloatingWindowId): WindowPoint {
+  const taken = Array.from(document.querySelectorAll<HTMLElement>(".mari-window-bubble"))
+    .filter((element) => element.dataset.window !== except && element.getClientRects().length > 0)
+    .map((element) => element.getBoundingClientRect());
+  const step = PHONE_BUBBLE_SIZE_PX + PHONE_BUBBLE_GAP_PX;
+  for (let x = bounds.right - PHONE_BUBBLE_SIZE_PX; x >= bounds.left; x -= step) {
+    for (let y = bounds.top; y + PHONE_BUBBLE_SIZE_PX <= bounds.bottom; y += step) {
+      const free = taken.every(
+        (rect) =>
+          rect.right <= x ||
+          rect.left >= x + PHONE_BUBBLE_SIZE_PX ||
+          rect.bottom <= y ||
+          rect.top >= y + PHONE_BUBBLE_SIZE_PX,
+      );
+      if (free) return { x, y };
+    }
+  }
+  return getPhoneBubbleSlot(bounds, 0);
+}
+
 const DEFAULT_MIN_WIDTH = 320;
 const DEFAULT_MIN_HEIGHT = 240;
-/** A press on a bubble that moves less than this (px) opens its window instead of dragging it. */
-const BUBBLE_DRAG_START_PX = 4;
 const NO_DRAG_SELECTOR = "button, a, input, select, textarea, [contenteditable='true'], [data-window-no-drag]";
 // Escape in a text field belongs to the field (many cancel an edit with it); anywhere else in the
 // window it closes an unpinned window. Controls that use Escape themselves call preventDefault.
@@ -135,19 +181,98 @@ export function readFloatingWindowBounds(): WindowBounds {
   };
 }
 
+let safeAreaProbe: HTMLElement | null = null;
+
+/** The device's safe-area insets (notch, home indicator), read through a hidden probe. */
+function readSafeAreaInsets() {
+  if (!safeAreaProbe?.isConnected) {
+    safeAreaProbe = document.createElement("div");
+    safeAreaProbe.setAttribute("aria-hidden", "true");
+    safeAreaProbe.style.cssText =
+      "position:fixed;top:0;left:0;width:0;height:0;visibility:hidden;pointer-events:none;" +
+      "padding:env(safe-area-inset-top) env(safe-area-inset-right) " +
+      "var(--mari-safe-area-inset-bottom,env(safe-area-inset-bottom)) env(safe-area-inset-left)";
+    document.body.appendChild(safeAreaProbe);
+  }
+  const style = window.getComputedStyle(safeAreaProbe);
+  const read = (value: string) => Number.parseFloat(value) || 0;
+  return { right: read(style.paddingRight), bottom: read(style.paddingBottom), left: read(style.paddingLeft) };
+}
+
+/**
+ * Where phone bubbles may sit: the chat below the topbar, inside the safe area, above the on-screen
+ * keyboard and above the open chat's message box, so a bubble never covers it.
+ */
+export function readPhoneBubbleBounds(): WindowBounds {
+  const base = readFloatingWindowBounds();
+  const insets = readSafeAreaInsets();
+  const viewport = window.visualViewport;
+  const visibleBottom = viewport ? viewport.offsetTop + viewport.height : window.innerHeight;
+  const composer = Array.from(document.querySelectorAll("[data-chat-mode] [data-chat-composer]"))
+    .map((element) => (element.closest("[data-chat-resource-drop-exclude]") ?? element).getBoundingClientRect())
+    .find((rect) => rect.width > 1 && rect.height > 1);
+  return {
+    left: Math.max(base.left, insets.left + WINDOW_MARGIN_PX),
+    top: base.top,
+    right: Math.min(base.right, window.innerWidth - insets.right - WINDOW_MARGIN_PX),
+    bottom: Math.min(
+      base.bottom,
+      visibleBottom - insets.bottom - WINDOW_MARGIN_PX,
+      composer ? composer.top - WINDOW_MARGIN_PX : Infinity,
+    ),
+  };
+}
+
+function sameBounds(left: WindowBounds, right: WindowBounds) {
+  return (
+    left.left === right.left && left.top === right.top && left.right === right.right && left.bottom === right.bottom
+  );
+}
+
+/** Phone bubble bounds, kept current through rotation, the keyboard and the message box growing. */
+export function usePhoneBubbleBounds(active: boolean): WindowBounds {
+  const [bounds, setBounds] = useState(() =>
+    typeof window === "undefined" ? { left: 0, top: 0, right: 390, bottom: 844 } : readPhoneBubbleBounds(),
+  );
+  useEffect(() => {
+    if (!active) return;
+    let frame = 0;
+    const update = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const next = readPhoneBubbleBounds();
+        setBounds((current) => (sameBounds(current, next) ? current : next));
+      });
+    };
+    update();
+    const viewport = window.visualViewport;
+    window.addEventListener("resize", update);
+    window.addEventListener("orientationchange", update);
+    window.addEventListener(CHAT_VISUAL_VIEWPORT_CHANGE_EVENT, update);
+    viewport?.addEventListener("resize", update);
+    viewport?.addEventListener("scroll", update);
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
+    for (const element of document.querySelectorAll(
+      '[data-component="CenterContent"], [data-chat-mode] [data-chat-resource-drop-exclude]',
+    )) {
+      observer?.observe(element);
+    }
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("resize", update);
+      window.removeEventListener("orientationchange", update);
+      window.removeEventListener(CHAT_VISUAL_VIEWPORT_CHANGE_EVENT, update);
+      viewport?.removeEventListener("resize", update);
+      viewport?.removeEventListener("scroll", update);
+      observer?.disconnect();
+    };
+  }, [active]);
+  return bounds;
+}
+
 function sameGeometry(left: WindowGeometry, right: WindowGeometry) {
   return left.x === right.x && left.y === right.y && left.width === right.width && left.height === right.height;
 }
-
-type BubbleDrag = {
-  pointerId: number;
-  startX: number;
-  startY: number;
-  start: WindowPoint;
-  moved: boolean;
-  /** The other bubbles on screen, measured once when the drag starts. */
-  others: { x: number; y: number; width: number; height: number }[];
-};
 
 type PointerSession = {
   pointerId: number;
@@ -208,15 +333,16 @@ export function FloatingWindow({
   const onDragMoveRef = useRef(onDragMove);
   onDragMoveRef.current = onDragMove;
   const bubbleRef = useRef<HTMLButtonElement | null>(null);
-  const bubbleDragRef = useRef<BubbleDrag | null>(null);
-  const bubbleFrameRef = useRef(0);
-  const suppressBubbleClickRef = useRef(false);
   const focusBubbleRef = useRef(false);
-  const [liveBubble, setLiveBubble] = useState<{ point: WindowPoint; guides: SnapGuide[] } | null>(null);
+  // A phone shows a minimizable window as its bubble, and as a sheet while it is open.
+  const phoneBubble = sheet && !!minimizable;
+  const openInStore = useFloatingWindowStore((state) => state.open[id] === true);
+  const savedPhoneBubble = useFloatingWindowStore((state) => state.phoneBubbles[id]);
+  const phoneBounds = usePhoneBubbleBounds(phoneBubble);
 
   const limits = useMemo(() => ({ minWidth, minHeight }), [minHeight, minWidth]);
-  // Phones show every drawer in place, so a sheet hosts none.
-  const hostTitle = sheet ? undefined : drawerHost?.title;
+  // On a phone a popped-out drawer becomes a bubble, so sheets host drawers too.
+  const hostTitle = drawerHost?.title;
   const hostScrollClassName = drawerHost?.scrollClassName;
   const drawerHostValue = useMemo<DrawerHost | null>(
     () =>
@@ -262,13 +388,18 @@ export function FloatingWindow({
   const locked = !sheet && layout.locked;
   const geometry = clampWindowGeometry(liveGeometry ?? layout, bounds, limits);
   const canMinimize = !!minimizable && !sheet;
-  const minimized = canMinimize && layout.minimized === true;
+  const minimized = canMinimize ? layout.minimized === true : phoneBubble && !openInStore;
   const bubblePoint = clampWindowBubble(
-    liveBubble?.point ??
-      layout.bubble ??
-      defaultLayout.bubble ?? { x: bounds.right - WINDOW_BUBBLE_SIZE_PX, y: bounds.top },
+    layout.bubble ?? defaultLayout.bubble ?? { x: bounds.right - WINDOW_BUBBLE_SIZE_PX, y: bounds.top },
     bounds,
   );
+
+  // A phone bubble with no saved place and no default (a popped-out drawer) takes the first free spot.
+  const needsPhonePlace = phoneBubble && minimized && !hidden && !savedPhoneBubble && !minimizable?.getPhoneBubble;
+  useLayoutEffect(() => {
+    if (!needsPhonePlace) return;
+    useFloatingWindowStore.getState().savePhoneBubble(id, findFreePhoneBubble(readPhoneBubbleBounds(), id));
+  }, [id, needsPhonePlace]);
 
   // Re-clamp whenever the viewport or the chat area changes, so a window can never be lost off-screen.
   useEffect(() => {
@@ -311,6 +442,11 @@ export function FloatingWindow({
         minimizeRef.current(reason !== "outside-pointer");
         return;
       }
+      if (phoneBubble) {
+        focusBubbleRef.current = reason !== "outside-pointer";
+        useFloatingWindowStore.getState().closeWindow(id);
+        return;
+      }
       restoreFocusOnUnmountRef.current = reason !== "outside-pointer";
       const result = onRequestCloseRef.current?.(reason);
       void result?.then((closed) => {
@@ -318,16 +454,16 @@ export function FloatingWindow({
         if (!closed) restoreFocusOnUnmountRef.current = false;
       });
     },
-    [canMinimize],
+    [canMinimize, id, phoneBubble],
   );
 
   // An unpinned window opens next to its bubble; a pinned or locked one where it was left.
-  const restoreFromBubble = () => {
+  const restoreFromBubble = (bubble: HTMLButtonElement) => {
     const current = layoutRef.current;
     const placed =
       current.pinned || current.locked ? current : placeWindowBesideBubble(current, bubblePoint, bounds, limits);
     saveLayout(id, { ...current, ...placed, minimized: false });
-    useFloatingWindowStore.getState().openWindow(id, bubbleRef.current);
+    useFloatingWindowStore.getState().openWindow(id, bubble);
   };
 
   // Focus moves into the window when it opens and back to its opener when it closes. A remount (a
@@ -353,9 +489,9 @@ export function FloatingWindow({
 
   // A restored minimizable window stacks with the others; a minimized one hands focus to its bubble.
   useEffect(() => {
-    if (!canMinimize || hidden) return;
+    if ((!canMinimize && !phoneBubble) || hidden) return;
     if (!minimized) {
-      if (!useFloatingWindowStore.getState().stack.includes(id)) {
+      if (canMinimize && !useFloatingWindowStore.getState().stack.includes(id)) {
         useFloatingWindowStore.getState().openWindow(id, null, { focus: false });
       }
       return;
@@ -363,7 +499,7 @@ export function FloatingWindow({
     if (!focusBubbleRef.current) return;
     focusBubbleRef.current = false;
     bubbleRef.current?.focus({ preventScroll: true });
-  }, [canMinimize, hidden, id, minimized]);
+  }, [canMinimize, hidden, id, minimized, phoneBubble]);
 
   // An unpinned window closes when the user presses anywhere else.
   useEffect(() => {
@@ -382,13 +518,7 @@ export function FloatingWindow({
     return () => document.removeEventListener("pointerdown", handlePointerDown, true);
   }, [id, pinned, hidden, minimized, requestClose]);
 
-  useEffect(
-    () => () => {
-      cancelAnimationFrame(frameRef.current);
-      cancelAnimationFrame(bubbleFrameRef.current);
-    },
-    [],
-  );
+  useEffect(() => () => cancelAnimationFrame(frameRef.current), []);
 
   // Drag and keyboard pass geometry that is already clamped. Pin and lock keep the saved geometry, so a
   // window squeezed by a small viewport still returns to its place when the viewport grows again.
@@ -483,131 +613,38 @@ export function FloatingWindow({
     }, 0);
   };
 
-  // ── Bubble: a minimized window's button, dragged anywhere and snapped into line with the others ──
-  const commitBubble = (point: WindowPoint) => saveLayout(id, { ...layoutRef.current, bubble: point });
-
-  const handleBubblePointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
-    if (event.button !== 0 || bubbleDragRef.current) return;
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-    const others = Array.from(document.querySelectorAll<HTMLElement>(".mari-window-bubble"))
-      .filter((element) => element !== event.currentTarget && element.getClientRects().length > 0)
-      .map((element) => {
-        const rect = element.getBoundingClientRect();
-        return { x: rect.left, y: rect.top, width: rect.width, height: rect.height };
-      });
-    bubbleDragRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      start: bubblePoint,
-      moved: false,
-      others,
-    };
-  };
-
-  /** Where the bubble lands for this pointer position; Alt places it freely, without snapping. */
-  const readBubbleDrop = (drag: BubbleDrag, event: ReactPointerEvent<HTMLButtonElement>) => {
-    const raw = clampWindowBubble(
-      { x: drag.start.x + event.clientX - drag.startX, y: drag.start.y + event.clientY - drag.startY },
-      bounds,
-    );
-    if (event.altKey) return { point: raw, guides: [] };
-    const size = bubbleRef.current?.getBoundingClientRect();
-    const snapped = snapBubble(
-      { ...raw, width: size?.width ?? WINDOW_BUBBLE_SIZE_PX, height: size?.height ?? WINDOW_BUBBLE_SIZE_PX },
-      drag.others,
-    );
-    return { point: clampWindowBubble(snapped, bounds), guides: snapped.guides };
-  };
-
-  const handleBubblePointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
-    const drag = bubbleDragRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    const distance = Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY);
-    if (!drag.moved && distance < BUBBLE_DRAG_START_PX) return;
-    drag.moved = true;
-    const next = readBubbleDrop(drag, event);
-    cancelAnimationFrame(bubbleFrameRef.current);
-    bubbleFrameRef.current = requestAnimationFrame(() => setLiveBubble(next));
-  };
-
-  const handleBubblePointerUp = (event: ReactPointerEvent<HTMLButtonElement>) => {
-    const drag = bubbleDragRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    bubbleDragRef.current = null;
-    cancelAnimationFrame(bubbleFrameRef.current);
-    setLiveBubble(null);
-    if (!drag.moved || event.type === "pointercancel") return;
-    // The click that ends a drag must not open the window too.
-    suppressBubbleClickRef.current = true;
-    commitBubble(readBubbleDrop(drag, event).point);
-  };
-
-  const handleBubbleClick = () => {
-    if (suppressBubbleClickRef.current) {
-      suppressBubbleClickRef.current = false;
-      return;
-    }
-    restoreFromBubble();
-  };
-
-  // Arrow keys move the bubble like the window's title bar (no snapping); Enter and Space open it.
-  const handleBubbleKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
-    const delta = readArrowDelta(event);
-    if (!delta) return;
-    event.preventDefault();
-    commitBubble(clampWindowBubble({ x: bubblePoint.x + delta.dx, y: bubblePoint.y + delta.dy }, bounds));
-  };
-
   if (minimized && minimizable && !hidden) {
-    return (
-      <>
-        <button
-          ref={bubbleRef}
-          type="button"
-          data-window={id}
-          data-minimized="true"
-          data-dragging={liveBubble ? "true" : undefined}
-          {...rootAttributes}
-          className="mari-window-bubble fixed"
-          style={{ left: bubblePoint.x, top: bubblePoint.y, zIndex: FLOATING_WINDOW_Z_BASE }}
-          aria-label={t("window.bubble.label", { title: minimizable.label })}
-          title={t("window.bubble.hint", { title: minimizable.label })}
-          onPointerDown={handleBubblePointerDown}
-          onPointerMove={handleBubblePointerMove}
-          onPointerUp={handleBubblePointerUp}
-          onPointerCancel={handleBubblePointerUp}
-          onClick={handleBubbleClick}
-          onKeyDown={handleBubbleKeyDown}
-        >
-          {minimizable.icon}
-        </button>
-        {liveBubble?.guides.map((guide) => (
-          <div
-            key={`${guide.axis}:${guide.at}`}
-            aria-hidden="true"
-            data-axis={guide.axis}
-            className="mari-window-snap-guide"
-            style={
-              guide.axis === "x"
-                ? {
-                    left: guide.at,
-                    top: guide.from,
-                    width: 1,
-                    height: guide.to - guide.from,
-                    zIndex: FLOATING_WINDOW_Z_BASE,
-                  }
-                : {
-                    left: guide.from,
-                    top: guide.at,
-                    width: guide.to - guide.from,
-                    height: 1,
-                    zIndex: FLOATING_WINDOW_Z_BASE,
-                  }
-            }
-          />
-        ))}
-      </>
+    return phoneBubble ? (
+      <WindowBubble
+        buttonRef={bubbleRef}
+        id={id}
+        point={savedPhoneBubble ?? minimizable.getPhoneBubble?.(phoneBounds) ?? getPhoneBubbleSlot(phoneBounds, 0)}
+        bounds={phoneBounds}
+        size={PHONE_BUBBLE_SIZE_PX}
+        icon={minimizable.icon}
+        label={minimizable.label}
+        zIndex={PHONE_BUBBLE_Z_INDEX}
+        attributes={{ ...rootAttributes, "data-presentation": "sheet" }}
+        onMove={(point) => useFloatingWindowStore.getState().savePhoneBubble(id, point)}
+        onOpen={(bubble) => useFloatingWindowStore.getState().openWindow(id, bubble)}
+      >
+        {minimizable.bubbleBadge}
+      </WindowBubble>
+    ) : (
+      <WindowBubble
+        buttonRef={bubbleRef}
+        id={id}
+        point={bubblePoint}
+        bounds={bounds}
+        icon={minimizable.icon}
+        label={minimizable.label}
+        zIndex={FLOATING_WINDOW_Z_BASE}
+        attributes={rootAttributes}
+        onMove={(point) => saveLayout(id, { ...layoutRef.current, bubble: point })}
+        onOpen={restoreFromBubble}
+      >
+        {minimizable.bubbleBadge}
+      </WindowBubble>
     );
   }
 

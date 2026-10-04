@@ -32,6 +32,7 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { useUIStore } from "../../stores/ui.store";
 import { useChatStore } from "../../stores/chat.store";
+import { useAgentStore } from "../../stores/agent.store";
 import { CHAT_SETTINGS_WINDOW_ID, useFloatingWindowStore } from "../../stores/floating-window.store";
 import { announceChatToolbarAction } from "../chat/ChatToolbarControls";
 import { cn } from "../../lib/utils";
@@ -45,6 +46,7 @@ import {
   usePersonalExtensionContributions,
 } from "../../lib/personal-extension-contributions";
 import { PersonalExtensionContributionIcon } from "../extensions/PersonalExtensionContributionIcon";
+import { AgentsRunningDot } from "../agents/AgentsRunningDot";
 import {
   PersonalExtensionContributionsMenu,
   PersonalExtensionTopbarButtons,
@@ -143,6 +145,8 @@ export function TopBar({ mobileTopbarNavigation }: { mobileTopbarNavigation: boo
   const chatSettingsHosted = useFloatingWindowStore((s) => (s.hosts[CHAT_SETTINGS_WINDOW_ID] ?? 0) > 0);
   const chatSettingsOpen = useFloatingWindowStore((s) => s.open[CHAT_SETTINGS_WINDOW_ID] === true);
   const toggleFloatingWindow = useFloatingWindowStore((s) => s.toggleWindow);
+  const agentsRunning = useAgentStore((s) => (activeChatId ? s.processingChatIds.includes(activeChatId) : false));
+  const agentsRunningId = useId();
   const headerRef = useRef<HTMLElement | null>(null);
   const leftControlsRef = useRef<HTMLDivElement | null>(null);
   const rightNavRef = useRef<HTMLElement | null>(null);
@@ -188,9 +192,10 @@ export function TopBar({ mobileTopbarNavigation }: { mobileTopbarNavigation: boo
     !gameAssetsBrowserOpen &&
     !characterLibraryOpen;
 
-  // Chat Settings sits in the middle of the topbar while a chat is on screen.
+  // Chat Settings sits in the middle of the topbar while a chat is on screen (not under a phone's menus).
   const showChatSettingsButton =
     chatSettingsHosted &&
+    !isMobileOverlayActive &&
     !botBrowserOpen &&
     !gameAssetsBrowserOpen &&
     !characterLibraryOpen &&
@@ -425,7 +430,7 @@ export function TopBar({ mobileTopbarNavigation }: { mobileTopbarNavigation: boo
       <div
         className={cn(
           "mari-topbar-left flex min-w-0 flex-1 items-center gap-2",
-          showChatSettingsButton && "md:max-w-[calc(50%-2rem)]",
+          showChatSettingsButton && "max-w-[calc(50%-1.5rem)] md:max-w-[calc(50%-2rem)]",
         )}
       >
         <div
@@ -453,6 +458,7 @@ export function TopBar({ mobileTopbarNavigation }: { mobileTopbarNavigation: boo
           aria-label={t("chat.toolbar.settings")}
           aria-expanded={chatSettingsOpen}
           aria-haspopup="dialog"
+          aria-describedby={agentsRunning ? agentsRunningId : undefined}
           title={t("chat.toolbar.settings")}
           onPointerEnter={preloadChatSettings}
           onFocus={preloadChatSettings}
@@ -462,7 +468,7 @@ export function TopBar({ mobileTopbarNavigation }: { mobileTopbarNavigation: boo
           }}
           className={cn(
             TOPBAR_BUTTON_CLASS,
-            "absolute left-1/2 top-1/2 hidden -translate-x-1/2 -translate-y-1/2 md:flex",
+            "absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2",
             chatSettingsOpen
               ? TOPBAR_ACTIVE_BUTTON_CLASS
               : cn(
@@ -473,6 +479,7 @@ export function TopBar({ mobileTopbarNavigation }: { mobileTopbarNavigation: boo
           )}
         >
           <Settings2 size={15} className={TOPBAR_ACCENT_ICON_CLASS} />
+          {agentsRunning && <AgentsRunningDot id={agentsRunningId} className="right-1 top-1" />}
           {chatSettingsOpen && (
             <span className="mari-topbar-active-underline absolute -bottom-0.5 left-1/2 h-0.5 w-3 -translate-x-1/2 rounded-full" />
           )}

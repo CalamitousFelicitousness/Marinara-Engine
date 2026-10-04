@@ -971,7 +971,7 @@ export function ChatSettingsDrawer({
   const trackerPanelEnabled = useUIStore((s) => s.trackerPanelEnabled);
   const trackerPanelOpen = useUIStore((s) => s.trackerPanelOpen);
   const trackerPanelSide = useUIStore((s) => s.trackerPanelSide);
-  // Phones keep today's full-width sheet until the mobile step of the window redesign.
+  // Phones show Chat Settings as a full-width sheet.
   const phoneLayout = useMatchMedia("(max-width: 767px)");
   const trackerPanelClearance = useTrackerPanelClearance(!phoneLayout);
   const setTrackerPanelOpen = useUIStore((s) => s.setTrackerPanelOpen);
@@ -4885,14 +4885,18 @@ export function ChatSettingsDrawer({
   // Only the loaded settings add the Chat Settings classes below; themes and select styling target them.
   const windowProps = getChatSettingsWindowProps(anchor);
   const helpLayoutButton =
-    showHelpLayout && !phoneLayout && !chatHelpButtonHidden ? (
+    showHelpLayout && !chatHelpButtonHidden ? (
       <span data-chat-help="help" className="inline-flex">
         <HelpTooltip
           text={localizeUi("chat.settings.helpLayoutHint")}
           ariaLabel={localizeUi("chat.help.button")}
           side="bottom"
-          buttonClassName="h-6 w-6 justify-center"
-          onActivate={() => requestChatHelp(chatMode)}
+          buttonClassName="h-6 w-6 justify-center max-md:h-9 max-md:w-9"
+          onActivate={() => {
+            // A phone's sheet covers the chat, so it closes first and Help labels what is under it.
+            if (!phoneLayout) requestChatHelp(chatMode);
+            else void requestClose().then((closed) => closed && requestChatHelp(chatMode));
+          }}
         />
       </span>
     ) : null;
@@ -4916,50 +4920,48 @@ export function ChatSettingsDrawer({
         bodyRef={panelRef}
         onRequestClose={() => requestClose()}
       >
-        {!phoneLayout && (
-          <div
-            data-chat-settings-top-row
-            className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] px-3 py-1.5"
+        <div
+          data-chat-settings-top-row
+          className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] px-3 py-1.5"
+        >
+          {trackerPanelToggleAvailable ? (
+            <div data-tracker-panel-toggle="chat-settings" className="min-w-0">
+              <SettingsSwitch
+                label={localizeUi("ui.panels.trackerpanelappearancedrawer.trackerPanel")}
+                help={localizeUi("chat.settings.trackerPanelHelp")}
+                checked={trackerPanelOpen}
+                onChange={(checked) => setTrackerPanelOpen(checked, chat.id)}
+                labelPosition="start"
+                className="gap-2 p-1"
+                labelClassName="text-xs font-medium"
+              />
+            </div>
+          ) : trackerWindowToggleAvailable && !phoneLayout ? (
+            <div data-tracker-window-toggle="chat-settings" className="min-w-0">
+              <SettingsSwitch
+                label={localizeUi("chat.settings.trackerWindow")}
+                help={localizeUi("chat.settings.trackerWindowHelp")}
+                checked={trackerWindowOpen}
+                onChange={setTrackerWindowOpen}
+                labelPosition="start"
+                className="gap-2 p-1"
+                labelClassName="text-xs font-medium"
+              />
+            </div>
+          ) : (
+            <span aria-hidden="true" />
+          )}
+          <button
+            type="button"
+            data-chat-help="reset-view"
+            onClick={resetView}
+            title={localizeUi("chat.settings.resetViewHelp")}
+            className="mari-chrome-control mari-chrome-control--small px-2.5 text-[0.6875rem]"
           >
-            {trackerPanelToggleAvailable ? (
-              <div data-tracker-panel-toggle="chat-settings" className="min-w-0">
-                <SettingsSwitch
-                  label={localizeUi("ui.panels.trackerpanelappearancedrawer.trackerPanel")}
-                  help={localizeUi("chat.settings.trackerPanelHelp")}
-                  checked={trackerPanelOpen}
-                  onChange={(checked) => setTrackerPanelOpen(checked, chat.id)}
-                  labelPosition="start"
-                  className="gap-2 p-1"
-                  labelClassName="text-xs font-medium"
-                />
-              </div>
-            ) : trackerWindowToggleAvailable ? (
-              <div data-tracker-window-toggle="chat-settings" className="min-w-0">
-                <SettingsSwitch
-                  label={localizeUi("chat.settings.trackerWindow")}
-                  help={localizeUi("chat.settings.trackerWindowHelp")}
-                  checked={trackerWindowOpen}
-                  onChange={setTrackerWindowOpen}
-                  labelPosition="start"
-                  className="gap-2 p-1"
-                  labelClassName="text-xs font-medium"
-                />
-              </div>
-            ) : (
-              <span aria-hidden="true" />
-            )}
-            <button
-              type="button"
-              data-chat-help="reset-view"
-              onClick={resetView}
-              title={localizeUi("chat.settings.resetViewHelp")}
-              className="mari-chrome-control mari-chrome-control--small px-2.5 text-[0.6875rem]"
-            >
-              <RotateCcw size="0.75rem" />
-              {localizeUi("chat.settings.resetView")}
-            </button>
-          </div>
-        )}
+            <RotateCcw size="0.75rem" />
+            {localizeUi("chat.settings.resetView")}
+          </button>
+        </div>
 
         {/* Desktop-only: drag-and-drop hint (sidebar drag is disabled on mobile overlays) */}
         <div

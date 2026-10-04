@@ -6,9 +6,10 @@
 // box. Agent activity sits at the bottom. Closing the window hides it until it
 // is turned back on in Chat Settings (or Reset View restores it). Each drawer
 // can pop out into its own window, which stays while the Trackers window is closed.
+// Beholder's launcher gets a control window of its own (a bubble), Tracker Panel or not.
 // ──────────────────────────────────────────────
 import { useCallback, useEffect, useRef, type ReactNode } from "react";
-import { BarChart3, Backpack, MapPin, RefreshCw, Scroll, SlidersHorizontal, Sparkles, Users } from "lucide-react";
+import { BarChart3, Backpack, Eye, MapPin, RefreshCw, Scroll, SlidersHorizontal, Sparkles, Users } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { InstalledCapabilityPackage, Message } from "@marinara-engine/shared";
 import { FloatingWindow } from "../ui/FloatingWindow";
@@ -31,6 +32,8 @@ import { useUIStore } from "../../stores/ui.store";
 import type { WindowBounds, WindowLayout } from "../../lib/floating-window-layout";
 import { cn } from "../../lib/utils";
 import { readChatWindowArea, readCssPixels } from "./chat-settings-window";
+import { CHAT_CONTROL_WINDOW_IDS, ChatControlWindow } from "./ChatControlWindow";
+import { AgentsRunningDot } from "../agents/AgentsRunningDot";
 import {
   CharactersPanel,
   CombinedWorldPanel,
@@ -91,8 +94,15 @@ export interface RoleplayTrackerWindowProps {
   messages?: Message[];
 }
 
-/** Decides whether the Tracker window shows; renders nothing on phones or with the Tracker Panel on. */
-export function RoleplayTrackerWindow(props: RoleplayTrackerWindowProps) {
+/**
+ * Decides whether the Tracker window shows (never on phones or with the Tracker Panel on), and gives
+ * each Beholder package its control window, with its bubble at `beholderSlot` (`beholderPhoneSlot`).
+ */
+export function RoleplayTrackerWindow({
+  beholderSlot,
+  beholderPhoneSlot,
+  ...props
+}: RoleplayTrackerWindowProps & { beholderSlot: number; beholderPhoneSlot: number }) {
   const phoneLayout = useMatchMedia("(max-width: 767px)");
   const trackerPanelEnabled = useUIStore((s) => s.trackerPanelEnabled);
   const trackerWindowOpen = useUIStore((s) => s.trackerWindowOpen);
@@ -100,7 +110,10 @@ export function RoleplayTrackerWindow(props: RoleplayTrackerWindowProps) {
   const trackersPoppedOut = useHostHasDetachedDrawers(TRACKER_WINDOW_ID);
   const resetRevision = useFloatingWindowStore((s) => s.resetRevision);
   const { data: installedCapabilities = [] } = useInstalledCapabilityPackages();
-  // Beholder keeps its launcher in the HUD row, so it alone does not need the window.
+  const isAgentProcessing = useAgentStore((s) => s.processingChatIds.includes(props.chatId));
+  const gameStateRefreshing = useGameStateStore((s) => s.isRefreshing);
+  const busy = isAgentProcessing || props.isStreaming || gameStateRefreshing;
+  // Beholder has its own window, so it alone does not need this one.
   const packages = partitionTrackerCapabilityPackages(
     selectRoleplayTrackerPackages(installedCapabilities, props.enabledAgentTypes),
   );
@@ -116,9 +129,37 @@ export function RoleplayTrackerWindow(props: RoleplayTrackerWindowProps) {
     setTrackerWindowOpen(true);
   }, [resetRevision, setTrackerWindowOpen]);
 
-  if (phoneLayout || trackerPanelEnabled || !hasTrackers || !(trackerWindowOpen || trackersPoppedOut)) return null;
-  // Popped-out trackers render from inside the window, so it stays mounted, hidden, while it is closed.
-  return <TrackerWindow {...props} hidden={!trackerWindowOpen} onClose={() => setTrackerWindowOpen(false)} />;
+  const showWindow = !phoneLayout && !trackerPanelEnabled && hasTrackers && (trackerWindowOpen || trackersPoppedOut);
+  return (
+    <>
+      {packages.beholder.map((item, index) => (
+        <ChatControlWindow
+          key={item.id}
+          id={CHAT_CONTROL_WINDOW_IDS.beholder(item.id)}
+          title={item.manifest.name}
+          icon={<Eye size={14} />}
+          slot={beholderSlot + index}
+          phoneSlot={beholderPhoneSlot + index}
+          width={280}
+          height={140}
+          helpTarget="agent-controls"
+        >
+          <div className="flex flex-wrap items-center gap-0.5 p-2">
+            <RoleplayTrackerCapability
+              packageId={item.id}
+              chatId={props.chatId}
+              onRerunSingleTracker={props.onRerunSingleTracker}
+              isTrackerRetryBusy={busy}
+            />
+          </div>
+        </ChatControlWindow>
+      ))}
+      {/* Popped-out trackers render from inside the window, so it stays mounted, hidden, while it is closed. */}
+      {showWindow && (
+        <TrackerWindow {...props} hidden={!trackerWindowOpen} onClose={() => setTrackerWindowOpen(false)} />
+      )}
+    </>
+  );
 }
 
 function useRememberedDrawer(id: string, defaultOpen: boolean) {
@@ -261,18 +302,21 @@ function TrackerWindow({
       title={t("chat.trackerWindow.title")}
       titleIcon={<TrackerPanelIcon size="0.8125rem" className="shrink-0 text-[var(--muted-foreground)]" />}
       titleAccessory={
-        manualTrackers ? (
-          <button
-            type="button"
-            onClick={onRerunTrackers}
-            disabled={busy}
-            title={runTrackersLabel}
-            aria-label={runTrackersLabel}
-            className="mari-window__control"
-          >
-            <RefreshCw size="0.75rem" className={cn(busy && "animate-spin")} />
-          </button>
-        ) : null
+        <>
+          {isAgentProcessing && <AgentsRunningDot inline className="mx-1" />}
+          {manualTrackers ? (
+            <button
+              type="button"
+              onClick={onRerunTrackers}
+              disabled={busy}
+              title={runTrackersLabel}
+              aria-label={runTrackersLabel}
+              className="mari-window__control"
+            >
+              <RefreshCw size="0.75rem" className={cn(busy && "animate-spin")} />
+            </button>
+          ) : null}
+        </>
       }
       closeLabel={t("chat.trackerWindow.close")}
       getDefaultLayout={getTrackerWindowDefaultLayout}

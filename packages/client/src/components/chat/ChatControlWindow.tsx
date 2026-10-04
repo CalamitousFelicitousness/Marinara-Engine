@@ -1,19 +1,21 @@
 // ──────────────────────────────────────────────
 // Chat control windows: the chat's top controls as minimizable windows
 //
-// On a computer, Game's Session, Volume, Assets and Game controls, the connected
-// chat and Roleplay's package toolbars each open in a small window that minimizes
-// to a button (its bubble). They start minimized, with their bubbles in a row at the
-// chat's top right where the buttons used to be. Phones keep the chat's menus.
+// Game's Session, Volume, Assets and Game controls, the connected chat, package
+// toolbars and Beholder each open in a small window that minimizes to a button (its
+// bubble). They start minimized: on a computer the bubbles sit in a row at the chat's
+// top right where the buttons used to be; on a phone in a column at the right edge,
+// where its menu was, and each opens as a sheet.
 // ──────────────────────────────────────────────
 import type { ReactNode } from "react";
 import { ArrowRightLeft } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { FloatingWindow } from "../ui/FloatingWindow";
+import { FloatingWindow, PHONE_FULL_SHEET_CLASS, PHONE_SHEET_CLASS } from "../ui/FloatingWindow";
 import { NEUTRAL_PANEL_SCROLL_AREA, NEUTRAL_SURFACE_VARIABLES } from "../ui/neutral-surface-styles";
 import { useMatchMedia } from "../../hooks/use-match-media";
 import {
   WINDOW_BUBBLE_SIZE_PX,
+  getPhoneBubbleSlot,
   placeWindowBesideBubble,
   type WindowBounds,
   type WindowLayout,
@@ -29,6 +31,7 @@ const TRACKER_CLEARANCE_VARIABLE = "--tracker-panel-overlay-clearance";
 /** Each control window's id; Game's ids are only used in Game chats. */
 export const CHAT_CONTROL_WINDOW_IDS = {
   connectedChat: "control:connected-chat",
+  beholder: (packageId: string) => `control:beholder:${packageId}`,
   gameControls: "control:game",
   session: "control:session",
   volume: "control:volume",
@@ -71,31 +74,36 @@ export interface ChatControlWindowProps {
   icon: ReactNode;
   /** Its bubble's place in the default row, counted from the right. */
   slot: number;
+  /** Its bubble's place in the phone column, counted from the top (`slot` otherwise). */
+  phoneSlot?: number;
   /** The window's size when it first opens. */
   width: number;
   height: number;
   /** The Help layout target its bubble (and window) stand for. */
   helpTarget?: string;
-  /** Wraps the content in a scroll area; off for content that scrolls itself. */
+  /** Wraps the content in a scroll area; off for content that scrolls itself (it then fills a phone's screen). */
   scroll?: boolean;
+  /** Drawn on the bubble (a status dot, say). */
+  bubbleBadge?: ReactNode;
   children: ReactNode;
 }
 
-/** A chat control as a minimizable window; renders nothing on phones, which keep the chat's menus. */
+/** A chat control as a minimizable window (a bubble and a sheet on phones). */
 export function ChatControlWindow({
   id,
   title,
   icon,
   slot,
+  phoneSlot = slot,
   width,
   height,
   helpTarget,
   scroll = true,
+  bubbleBadge,
   children,
 }: ChatControlWindowProps) {
   const { t } = useTranslation();
   const phoneLayout = useMatchMedia("(max-width: 767px)");
-  if (phoneLayout) return null;
   return (
     <FloatingWindow
       id={id}
@@ -104,7 +112,14 @@ export function ChatControlWindow({
         <span className="flex shrink-0 text-[var(--muted-foreground)] [&_svg]:h-3.5 [&_svg]:w-3.5">{icon}</span>
       }
       closeLabel={t("window.controls.close")}
-      minimizable={{ icon, label: title }}
+      presentation={phoneLayout ? "sheet" : "window"}
+      sheetClassName={cn(PHONE_SHEET_CLASS, !scroll && PHONE_FULL_SHEET_CLASS)}
+      minimizable={{
+        icon,
+        label: title,
+        getPhoneBubble: (bounds) => getPhoneBubbleSlot(bounds, phoneSlot),
+        bubbleBadge,
+      }}
       getDefaultLayout={(bounds) => getChatControlDefaultLayout(bounds, slot, { width, height })}
       minWidth={200}
       minHeight={96}
@@ -127,7 +142,15 @@ export function ChatControlWindow({
 }
 
 /** The connected chat control (every mode): its window offers the switch to the other chat. */
-export function ChatConnectedChatWindow({ name, onSwitch }: { name?: string | null; onSwitch: () => void }) {
+export function ChatConnectedChatWindow({
+  name,
+  onSwitch,
+  phoneSlot,
+}: {
+  name?: string | null;
+  onSwitch: () => void;
+  phoneSlot?: number;
+}) {
   const { t } = useTranslation();
   const label = name ? t("chat.toolbar.switchTo", { name }) : t("chat.toolbar.switchToConnected");
   return (
@@ -136,6 +159,7 @@ export function ChatConnectedChatWindow({ name, onSwitch }: { name?: string | nu
       title={t("chat.toolbar.connectedChat")}
       icon={<ArrowRightLeft size={14} />}
       slot={0}
+      phoneSlot={phoneSlot}
       width={260}
       height={120}
       helpTarget="connected-chat"

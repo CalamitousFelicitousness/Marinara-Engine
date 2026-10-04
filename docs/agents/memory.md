@@ -19,7 +19,7 @@ You can use both systems at the same time. They do different jobs and do not con
 
 ### Turning Memory Recall on
 
-1. Open a chat and click the **Chat Settings** button in the chat header.
+1. Open a chat and click the **Chat Settings** button in the chat (it starts at the top right).
 2. Find the **Memory Recall** section (it has a brain icon).
 3. Turn on the **Enable Memory Recall** toggle.
 
@@ -151,7 +151,7 @@ Recall is selective and summaries can miss nuance. Keep important corrections in
 
 **Chat Summary** compresses older messages into short narrative recaps called summary entries. Each entry can be written by AI or by hand, and each can be turned on or off on its own. Saving a toggle leaves other entries usable; Activate All and Deactivate All save the selection together. This feature is only in Roleplay chats.
 
-To open it, click the **Chat Summary** button (a scroll icon) in the Roleplay chat header. This opens the **Chat Summary** popover.
+To open it, open **Chat Settings** and expand the **Chat Summary** section, under **Lorebooks**. On a computer, you can pop it out into its own window (see [Chat Settings Overview](../chats/chat-settings.md#popping-a-section-out-into-its-own-window)).
 
 ### Creating a summary entry
 
@@ -183,7 +183,7 @@ The **Maximum output size** field sets how long a generated summary can be. The 
 
 ### Display options
 
-The **Display** controls in the popover decide how summarized messages appear on screen:
+The **Display** controls in **Chat Summary** decide how summarized messages appear on screen:
 
 - **Hide summarised messages**: hides the raw messages once a summary covers them. Off by default.
 - **Recent message tail**: keeps this many of the newest messages fully visible even when hiding is on. The default is 10, and any non-negative whole number is accepted. Setting 0 hides the whole summarized batch. Higher values increase prompt size and model cost.

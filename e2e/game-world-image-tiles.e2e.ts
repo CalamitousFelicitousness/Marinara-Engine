@@ -57,6 +57,7 @@ function pngOf(width: number, height: number, colour: (x: number, y: number) => 
 test("an image pack chosen for its setting draws the overworld and the town", async ({ page, request }, testInfo) => {
   test.setTimeout(120_000);
   let chatId = "";
+  let packId = "";
   try {
     // Grass, a street and the square in single cells; a house four cells by three.
     const sheet = pngOf(336, 144, (x, y) =>
@@ -88,7 +89,7 @@ test("an image pack chosen for its setting draws the overworld and the town", as
     };
     const imported = await request.post("/api/game-tile-packs/import", { data: { definition: JSON.stringify(pack) } });
     expect(imported.ok(), await imported.text()).toBeTruthy();
-    const packId = (await imported.json()).pack.id as string;
+    packId = (await imported.json()).pack.id as string;
     expect(
       (await request.put("/api/game-tile-packs/selection", { data: { family: "fantasy", packId } })).ok(),
     ).toBeTruthy();
@@ -147,6 +148,6 @@ test("an image pack chosen for its setting draws the overworld and the town", as
     await request
       .put("/api/game-tile-packs/selection", { data: { family: "fantasy", packId: null } })
       .catch(() => undefined);
-    await request.delete("/api/game-tile-packs?id=local/e2e-art").catch(() => undefined);
+    if (packId) await request.delete(`/api/game-tile-packs?id=${encodeURIComponent(packId)}`).catch(() => undefined);
   }
 });

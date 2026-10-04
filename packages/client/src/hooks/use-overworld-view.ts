@@ -309,13 +309,16 @@ interface ImageAtlas {
  *  let go. */
 async function buildImageAtlas(pack: ImageTilePack): Promise<ImageAtlas> {
   const size = pack.tileSize;
-  const images = new Map<string, HTMLImageElement>();
-  for (const sheet of pack.sheets) {
-    const element = new Image();
-    element.src = sheet.png;
-    await element.decode();
-    images.set(sheet.id, element);
-  }
+  const images = new Map<string, HTMLImageElement>(
+    await Promise.all(
+      pack.sheets.map(async (sheet) => {
+        const element = new Image();
+        element.src = sheet.png;
+        await element.decode();
+        return [sheet.id, element] as const;
+      }),
+    ),
+  );
   const ROW = 2048;
   const placed: Array<{ id: string; index: number; tile: ImageTile; sx: number; sy: number }> = [];
   let [x, y, rowHeight] = [0, 0, 0];

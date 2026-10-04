@@ -519,6 +519,10 @@ export function App() {
   const hasAppDialogOpen = useDialogStore((s) => s.dialog !== null);
   const [whatsNewOpen, setWhatsNewOpen] = useState(false);
   const [whatsNewResolved, setWhatsNewResolved] = useState(false);
+  const [agentUpdateOpen, setAgentUpdateOpen] = useState(false);
+  const [agentUpdatesResolved, setAgentUpdatesResolved] = useState(false);
+  const handleAgentUpdatesResolved = useCallback(() => setAgentUpdatesResolved(true), []);
+  const [chatWindowIntroOpen, setChatWindowIntroOpen] = useState(false);
   const handleWhatsNewResolved = useCallback(() => setWhatsNewResolved(true), []);
   // Shares the modal's query via the cache; gating the prompter on the QUERY
   // (pending or a notice still waiting) instead of the modal's open state
@@ -1099,7 +1103,20 @@ export function App() {
       <PersonalExtensionInjector />
       <ChibiProfessorMariEasterEgg />
       <Suspense fallback={null}>
-        <LazyAppShell />
+        <LazyAppShell
+          chatWindowIntroAllowed={
+            whatsNewResolved &&
+            !hasModalOpen &&
+            !hasAppDialogOpen &&
+            !whatsNewOpen &&
+            !migrationNoticePending &&
+            !migrationNotice &&
+            agentUpdatesResolved &&
+            !agentUpdateOpen &&
+            (isLite || !showDownloadModal)
+          }
+          onChatWindowIntroOpenChange={setChatWindowIntroOpen}
+        />
       </Suspense>
       <WhatsNewModal
         presentationAllowed={!hasModalOpen && !hasAppDialogOpen && (isLite || !showDownloadModal)}
@@ -1112,6 +1129,8 @@ export function App() {
         }
       />
       <AgentUpdatePrompter
+        onOpenChange={setAgentUpdateOpen}
+        onResolved={handleAgentUpdatesResolved}
         presentationAllowed={
           whatsNewResolved &&
           !hasModalOpen &&
@@ -1119,6 +1138,7 @@ export function App() {
           !whatsNewOpen &&
           !migrationNoticePending &&
           !migrationNotice &&
+          !chatWindowIntroOpen &&
           (isLite || !showDownloadModal)
         }
       />

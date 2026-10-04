@@ -13,8 +13,11 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
   - **Help** is beside the Chat Settings title. **Reset View** restores the starting layout after confirmation, and settings profiles can save your layout for reuse. The **star** beside Reset View saves your arrangement and hidden tips for new chats of the same mode; a profile with its own saved layout takes priority.
   - Desktop Chat Settings includes tips for arranging windows and sections. Their **X** hides them for this chat; new chats show them unless a settings profile saved them as hidden. Dismissing the separate reminder beside the Chat Settings button keeps it hidden across chats and page refreshes.
   - **Advanced Parameters** keeps showing the connection's current values when popped out. Rearranging windows no longer moves a chat to the top of the chat list. Windows and buttons stay within reach when sidebars, the keyboard or display size change, and closing windows keeps keyboard focus in the chat.
+  - A short video introduces the customizable chat layout the first time you enter a chat after updating, on computers and phones. **Got it** keeps it dismissed across chats and page refreshes.
   - Custom themes can style windows, drawers and buttons with the shared classes and variables listed in the theming guide.
   - **Agent activity** matches the Tracker Panel's text sizes, spacing and backgrounds. The panel's border follows the pulsing accent color on computers and phones.
+
+- The Characters sidebar has its full-width **New Folder** button again. Removed **Possible duplicates**.
 
 - The Chats sidebar status prompt now reads **What's up?** to fit its field, and Advanced Settings labels the multiplayer section **Multiplayer WIP** (#7051).
 

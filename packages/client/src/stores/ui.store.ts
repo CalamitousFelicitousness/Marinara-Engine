@@ -188,6 +188,7 @@ function normalizeEchoChamberSides(value: unknown): Record<string, EchoChamberSi
 interface ImmediateUiStorageSnapshot {
   customCursorEnabled: boolean | undefined;
   chatSettingsMoveTipDismissed: boolean | undefined;
+  chatWindowIntroDismissed: boolean | undefined;
   echoChamberSides: string;
   echoChamberSizes: string;
 }
@@ -197,6 +198,7 @@ function readImmediateUiStorageSnapshot(value: string | null): ImmediateUiStorag
     return {
       customCursorEnabled: undefined,
       chatSettingsMoveTipDismissed: undefined,
+      chatWindowIntroDismissed: undefined,
       echoChamberSides: "{}",
       echoChamberSizes: "{}",
     };
@@ -207,6 +209,7 @@ function readImmediateUiStorageSnapshot(value: string | null): ImmediateUiStorag
       state?: {
         customCursorEnabled?: unknown;
         chatSettingsMoveTipDismissed?: unknown;
+        chatWindowIntroDismissed?: unknown;
         echoChamberSideByChatId?: unknown;
         echoChamberSizeByChatId?: unknown;
       };
@@ -218,6 +221,8 @@ function readImmediateUiStorageSnapshot(value: string | null): ImmediateUiStorag
         typeof parsed.state?.chatSettingsMoveTipDismissed === "boolean"
           ? parsed.state.chatSettingsMoveTipDismissed
           : undefined,
+      chatWindowIntroDismissed:
+        typeof parsed.state?.chatWindowIntroDismissed === "boolean" ? parsed.state.chatWindowIntroDismissed : undefined,
       echoChamberSides: JSON.stringify(normalizeEchoChamberSides(parsed.state?.echoChamberSideByChatId)),
       echoChamberSizes: JSON.stringify(normalizeEchoChamberSizes(parsed.state?.echoChamberSizeByChatId)),
     };
@@ -225,6 +230,7 @@ function readImmediateUiStorageSnapshot(value: string | null): ImmediateUiStorag
     return {
       customCursorEnabled: undefined,
       chatSettingsMoveTipDismissed: undefined,
+      chatWindowIntroDismissed: undefined,
       echoChamberSides: "{}",
       echoChamberSizes: "{}",
     };
@@ -237,6 +243,7 @@ function shouldFlushUiStorageImmediately(previousValue: string | null, nextValue
   return (
     previous.customCursorEnabled !== next.customCursorEnabled ||
     previous.chatSettingsMoveTipDismissed !== next.chatSettingsMoveTipDismissed ||
+    previous.chatWindowIntroDismissed !== next.chatWindowIntroDismissed ||
     previous.echoChamberSides !== next.echoChamberSides ||
     previous.echoChamberSizes !== next.echoChamberSizes
   );
@@ -682,8 +689,6 @@ interface UIState {
   noodleNavigation: NoodleNavigationState;
   /** When true, the main area shows the full-page character library */
   characterLibraryOpen: boolean;
-  /** Runtime-only flag to restore duplicate review after closing a character detail editor. */
-  characterDuplicatesOpen: boolean;
   /** Which resource collection the shared full-page card library displays */
   cardLibraryKind: CardLibraryKind;
   /** When true, the main area shows the full-page downloadable agent catalog */
@@ -985,6 +990,8 @@ interface UIState {
   linkApiBannerDismissed: boolean;
   /** The Chat Settings "drag to place it" tip was dismissed on this device. */
   chatSettingsMoveTipDismissed: boolean;
+  /** The once-only chat window introduction was dismissed across chats and devices. */
+  chatWindowIntroDismissed: boolean;
 
   // ── EchoChamber ──
   echoChamberOpen: boolean;
@@ -1116,7 +1123,6 @@ interface UIState {
   openCharacterLibrary: (characterId?: string) => void;
   openPersonaLibrary: () => void;
   closeCharacterLibrary: () => void;
-  setCharacterDuplicatesOpen: (open: boolean) => void;
   openAgentCatalog: (packageId?: string) => void;
   closeAgentCatalog: () => void;
   openBotBrowser: () => void;
@@ -1279,6 +1285,7 @@ interface UIState {
   setChatHelpButtonHidden: (v: boolean) => void;
   dismissLinkApiBanner: () => void;
   dismissChatSettingsMoveTip: () => void;
+  dismissChatWindowIntro: () => void;
   toggleEchoChamber: () => void;
   setEchoChamberSide: (side: EchoChamberSide) => void;
   setEchoChamberSideForChat: (chatId: string, side: EchoChamberSide) => void;
@@ -1483,6 +1490,7 @@ export function pickSyncedSettings(state: UIState) {
     chatHelpButtonHidden: state.chatHelpButtonHidden,
     linkApiBannerDismissed: state.linkApiBannerDismissed,
     chatSettingsMoveTipDismissed: state.chatSettingsMoveTipDismissed,
+    chatWindowIntroDismissed: state.chatWindowIntroDismissed,
     echoChamberOpen: state.echoChamberOpen,
     echoChamberSide: state.echoChamberSide,
     userStatusManual: state.userStatusManual,
@@ -1697,6 +1705,7 @@ export function pickPersistedUIState(state: UIState) {
     chatHelpButtonHidden: state.chatHelpButtonHidden,
     linkApiBannerDismissed: state.linkApiBannerDismissed,
     chatSettingsMoveTipDismissed: state.chatSettingsMoveTipDismissed,
+    chatWindowIntroDismissed: state.chatWindowIntroDismissed,
     echoChamberOpen: state.echoChamberOpen,
     echoChamberSide: state.echoChamberSide,
     echoChamberSideByChatId: state.echoChamberSideByChatId,
@@ -1803,7 +1812,6 @@ export const useUIStore = create<UIState>()(
         noodleSelectedPersonaId: null,
         noodleNavigation: { mode: "public", view: "home" },
         characterLibraryOpen: false,
-        characterDuplicatesOpen: false,
         cardLibraryKind: "characters" as CardLibraryKind,
         agentCatalogOpen: false,
         agentCatalogInitialPackageId: null,
@@ -1968,6 +1976,7 @@ export const useUIStore = create<UIState>()(
         chatHelpButtonHidden: false,
         linkApiBannerDismissed: false,
         chatSettingsMoveTipDismissed: false,
+        chatWindowIntroDismissed: false,
         echoChamberOpen: true,
         echoChamberSide: "bottom-right" as EchoChamberSide,
         echoChamberSideByChatId: {},
@@ -2459,7 +2468,6 @@ export const useUIStore = create<UIState>()(
             rightPanelOpen: isMobileShellViewport() ? false : state.rightPanelOpen,
           })),
         closeCharacterLibrary: () => set({ characterLibraryOpen: false, characterLibraryInitialId: null }),
-        setCharacterDuplicatesOpen: (open) => set({ characterDuplicatesOpen: open }),
         openAgentCatalog: (packageId) =>
           set((state) => ({
             agentCatalogOpen: true,
@@ -2961,6 +2969,7 @@ export const useUIStore = create<UIState>()(
           })),
         dismissLinkApiBanner: () => set({ linkApiBannerDismissed: true }),
         dismissChatSettingsMoveTip: () => set({ chatSettingsMoveTipDismissed: true }),
+        dismissChatWindowIntro: () => set({ chatWindowIntroDismissed: true }),
         toggleEchoChamber: () => set((s) => ({ echoChamberOpen: !s.echoChamberOpen })),
         setEchoChamberSide: (side) => set({ echoChamberSide: side }),
         setEchoChamberSideForChat: (chatId, side) => {

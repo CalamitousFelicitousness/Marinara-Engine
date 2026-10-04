@@ -4,6 +4,8 @@ Use **Chat Settings** to choose the connection, characters, agents and other set
 
 Most settings here belong to the current chat. Window positions are saved for each chat too. The **Tracker Panel** on/off setting also applies to your other Roleplay chats.
 
+The first time you enter a chat after this update, a short video shows how to arrange your buttons and windows. This introduction appears on computers and phones, including for existing users. Choose **Got it** when you are ready; it stays dismissed in your other chats and after a page refresh.
+
 ## Opening Chat Settings
 
 1. Open a chat.

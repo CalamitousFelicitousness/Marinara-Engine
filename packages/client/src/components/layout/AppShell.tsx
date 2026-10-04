@@ -78,9 +78,6 @@ const ChatArea = lazy(() => import("../chat/ChatArea").then((module) => ({ defau
 const CharacterEditor = lazy(() =>
   import("../characters/CharacterEditor").then((module) => ({ default: module.CharacterEditor })),
 );
-const CharacterDuplicatesModal = lazy(() =>
-  import("../characters/CharacterDuplicatesModal").then((module) => ({ default: module.CharacterDuplicatesModal })),
-);
 const CharacterLibraryView = lazy(() =>
   import("../characters/CharacterLibraryView").then((module) => ({ default: module.CharacterLibraryView })),
 );
@@ -239,8 +236,15 @@ function SidePanelFallback() {
   );
 }
 
-export function AppShell() {
+export function AppShell({
+  chatWindowIntroAllowed = false,
+  onChatWindowIntroOpenChange,
+}: {
+  chatWindowIntroAllowed?: boolean;
+  onChatWindowIntroOpenChange?: (open: boolean) => void;
+}) {
   const { t: localizeUi } = useUiTranslation();
+  const chatWindowIntroNavigationBlocked = useUIStore((state) => state.hasAnyDetailOpen());
   const queryClient = useQueryClient();
   const capabilityAgents = useCapabilityAgentRegistry();
   const installedCapabilities = useCapabilityClientModules();
@@ -605,58 +609,8 @@ export function AppShell() {
   }, [debouncedCheckOverflow]);
 
   const characterDetailId = useUIStore((s) => s.characterDetailId);
-  const characterDuplicatesOpen = useUIStore((s) => s.characterDuplicatesOpen);
-  const setCharacterDuplicatesOpen = useUIStore((s) => s.setCharacterDuplicatesOpen);
-  const openCharacterDetail = useUIStore((s) => s.openCharacterDetail);
-  const activeRightPanel = useUIStore((s) => s.rightPanel);
   const characterLibraryOpen = useUIStore((s) => s.characterLibraryOpen);
   const cardLibraryKind = useUIStore((s) => s.cardLibraryKind);
-  const detailReturnRightPanel = useUIStore((s) => s.detailReturnRightPanel);
-  const characterDuplicatesTriggerRef = useRef<HTMLElement | null>(null);
-  const rememberCharacterDuplicatesFocusTarget = useCallback(() => {
-    for (const selector of [
-      "[data-character-duplicates-trigger]",
-      '[data-tour="panel-characters"]',
-      "[data-topbar-more]",
-    ]) {
-      const candidate = Array.from(document.querySelectorAll<HTMLElement>(selector)).find(
-        (element) => element.isConnected && !element.hasAttribute("disabled") && element.getClientRects().length > 0,
-      );
-      if (candidate) {
-        characterDuplicatesTriggerRef.current = candidate;
-        return;
-      }
-    }
-    characterDuplicatesTriggerRef.current = null;
-  }, []);
-  const inCharacterContext =
-    (activeRightPanel === "characters" &&
-      (rightPanelOpen || (Boolean(characterDetailId) && detailReturnRightPanel === "characters"))) ||
-    (characterLibraryOpen && cardLibraryKind === "characters");
-  useLayoutEffect(() => {
-    if (characterDetailId) {
-      characterDuplicatesTriggerRef.current = document.querySelector<HTMLElement>(
-        '[data-component="MobileDetailSheet"], [data-component="DetailEditor"]',
-      );
-    } else if (characterDuplicatesOpen && inCharacterContext) {
-      rememberCharacterDuplicatesFocusTarget();
-    }
-  }, [characterDetailId, characterDuplicatesOpen, inCharacterContext, rememberCharacterDuplicatesFocusTarget]);
-  useLayoutEffect(() => {
-    if (!characterDuplicatesOpen || inCharacterContext) return;
-    const activeElement = document.activeElement;
-    if (
-      activeElement instanceof HTMLElement &&
-      activeElement !== document.body &&
-      activeElement.isConnected &&
-      !activeElement.closest('[data-component="Modal"]')
-    ) {
-      characterDuplicatesTriggerRef.current = activeElement;
-    } else {
-      rememberCharacterDuplicatesFocusTarget();
-    }
-    setCharacterDuplicatesOpen(false);
-  }, [characterDuplicatesOpen, inCharacterContext, rememberCharacterDuplicatesFocusTarget, setCharacterDuplicatesOpen]);
   const agentCatalogOpen = useUIStore((s) => s.agentCatalogOpen);
   const lorebookDetailId = useUIStore((s) => s.lorebookDetailId);
   const presetDetailId = useUIStore((s) => s.presetDetailId);
@@ -1467,7 +1421,18 @@ export function AppShell() {
               } as CSSProperties
             }
           >
-            <Suspense fallback={<MainPaneFallback />}>{(shellOverlayMode || !hasDetailView) && <ChatArea />}</Suspense>
+            <Suspense fallback={<MainPaneFallback />}>
+              {(shellOverlayMode || !hasDetailView) && (
+                <ChatArea
+                  chatWindowIntroAllowed={
+                    chatWindowIntroAllowed &&
+                    !chatWindowIntroNavigationBlocked &&
+                    (!shellOverlayMode || (!mobileNavigationPanel && !trackerPanelVisible))
+                  }
+                  onChatWindowIntroOpenChange={onChatWindowIntroOpenChange}
+                />
+              )}
+            </Suspense>
           </div>
           {/* Keep the detail host at one React tree position across the mobile breakpoint.
               Moving an editor between separate desktop/mobile branches remounts it and
@@ -1497,17 +1462,6 @@ export function AppShell() {
               </motion.aside>
             )}
           </AnimatePresence>
-          <MountOnceWhenOpened open={characterDuplicatesOpen}>
-            <CharacterDuplicatesModal
-              open={characterDuplicatesOpen && !characterDetailId && inCharacterContext}
-              onClose={() => {
-                rememberCharacterDuplicatesFocusTarget();
-                setCharacterDuplicatesOpen(false);
-              }}
-              onOpenCharacter={(id) => openCharacterDetail(id, { preserveCharacterLibrary: true })}
-              restoreFocusRef={characterDuplicatesTriggerRef}
-            />
-          </MountOnceWhenOpened>
         </div>
         {/* Floating avatar notification bubbles (right edge) */}
         <Suspense fallback={null}>

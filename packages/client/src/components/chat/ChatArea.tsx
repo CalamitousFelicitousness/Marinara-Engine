@@ -38,6 +38,8 @@ import { hasActiveTextSelection } from "../../lib/text-selection";
 import { readChatMetadata } from "../../lib/chat-wizard-defaults";
 import { useChatWindowLayout } from "../../hooks/use-chat-window-layout";
 import { ChatSettingsBubble } from "./ChatSettingsBubble";
+import { ChatWindowWelcomeModal } from "../modals/ChatWindowWelcomeModal";
+import { useGameModeStore } from "../../stores/game-mode.store";
 import { useGenerate } from "../../hooks/use-generate";
 import { useGenerateGallerySelfie } from "../../hooks/use-gallery";
 import {
@@ -544,7 +546,15 @@ const MultiplayerChat = lazy(() =>
   import("../../features/multiplayer/MultiplayerChat").then((module) => ({ default: module.MultiplayerChat })),
 );
 
-export const ChatArea = memo(function ChatArea() {
+interface ChatWindowIntroProps {
+  chatWindowIntroAllowed?: boolean;
+  onChatWindowIntroOpenChange?: (open: boolean) => void;
+}
+
+export const ChatArea = memo(function ChatArea({
+  chatWindowIntroAllowed,
+  onChatWindowIntroOpenChange,
+}: ChatWindowIntroProps) {
   const activeChatId = useChatStore((state) => state.activeChatId);
   const { data: chat, error, refetch } = useChat(activeChatId);
   const metadata = chat ? readChatMetadata(chat) : {};
@@ -580,7 +590,10 @@ export const ChatArea = memo(function ChatArea() {
   }
   return (
     <>
-      <LocalChatArea />
+      <LocalChatArea
+        chatWindowIntroAllowed={chatWindowIntroAllowed}
+        onChatWindowIntroOpenChange={onChatWindowIntroOpenChange}
+      />
       <SelectionLorebookButton />
       {chatSettingsButton}
     </>
@@ -591,7 +604,10 @@ function readChatMode(chat: { mode?: unknown }): ChatMode {
   return chat.mode === "conversation" || chat.mode === "game" ? chat.mode : "roleplay";
 }
 
-const LocalChatArea = memo(function LocalChatArea() {
+const LocalChatArea = memo(function LocalChatArea({
+  chatWindowIntroAllowed = false,
+  onChatWindowIntroOpenChange,
+}: ChatWindowIntroProps) {
   const { t: localizeUi } = useUiTranslation();
   useRenderTimer("chat-area"); // [#3104 diagnostic]
   const activeChatId = useChatStore((s) => s.activeChatId);
@@ -605,6 +621,8 @@ const LocalChatArea = memo(function LocalChatArea() {
   const isPageActive = usePageActivity();
   const regenerateMessageId = useChatStore((s) => s.regenerateMessageId);
   const chatBackground = useUIStore((s) => s.chatBackground);
+  const chatWindowIntroDismissed = useUIStore((s) => s.chatWindowIntroDismissed);
+  const gameSetupActive = useGameModeStore((state) => state.isSetupActive);
   const weatherEffects = useUIStore((s) => s.weatherEffects);
   const messagesPerPage = useUIStore((s) => s.messagesPerPage);
   const centerCompact = useUIStore((s) => s.centerCompact);
@@ -3175,6 +3193,28 @@ const LocalChatArea = memo(function LocalChatArea() {
     </Suspense>
   ) : null;
   const resourceDropOverlay = chat ? <ChatResourceDropOverlay chat={chat} /> : null;
+  const chatWindowIntro = (
+    <ChatWindowWelcomeModal
+      presentationAllowed={
+        chatWindowIntroAllowed &&
+        chat?.id === activeChatId &&
+        !isLoading &&
+        !wizardOpen &&
+        !shouldOpenWizard &&
+        !pendingNewChatMode &&
+        !peekPromptData &&
+        !deleteDialogMessageId &&
+        !scheduleModalCharacterId &&
+        !agentInjectionReview &&
+        !illustratorPromptReview &&
+        conversationSelfieReviewItems.length === 0 &&
+        roleplayVideoReviewItems.length === 0 &&
+        (chatMode !== "game" ||
+          (!gameSetupActive && Boolean(chatMeta.gameId) && chatMeta.gameSessionStatus !== "setup"))
+      }
+      onOpenChange={onChatWindowIntroOpenChange}
+    />
+  );
   const chatHelpMode = readChatHelpMode(chatMode);
   const chatHelpOverlay =
     chat && chatHelpMode ? (
@@ -3183,7 +3223,12 @@ const LocalChatArea = memo(function LocalChatArea() {
         activeChatId={chat.id}
         isFirstChat={(allChats ?? []).filter((candidate) => candidate.mode === chatMode).length === 1}
         autoOpenBlocked={
-          wizardOpen || settingsOpen || !!pendingNewChatMode || !!peekPromptData || !!deleteDialogMessageId
+          !chatWindowIntroDismissed ||
+          wizardOpen ||
+          settingsOpen ||
+          !!pendingNewChatMode ||
+          !!peekPromptData ||
+          !!deleteDialogMessageId
         }
       />
     ) : null;
@@ -3260,6 +3305,7 @@ const LocalChatArea = memo(function LocalChatArea() {
             onSelectAllBelowSelection={handleSelectAllBelowSelection}
           />
           {chatHelpOverlay}
+          {chatWindowIntro}
         </>
       </Suspense>
     );
@@ -3342,6 +3388,7 @@ const LocalChatArea = memo(function LocalChatArea() {
             onSelectAllBelowSelection={handleSelectAllBelowSelection}
             lastAssistantMessageId={lastAssistantMessageId}
           />
+          {chatWindowIntro}
         </Suspense>
         {illustratorPromptReviewModal}
         <ImagePromptReviewModal
@@ -3489,6 +3536,7 @@ const LocalChatArea = memo(function LocalChatArea() {
           onSelectAllBelowSelection={handleSelectAllBelowSelection}
           isGrouped={isGrouped}
         />
+        {chatWindowIntro}
       </Suspense>
       {agentInjectionReview && (
         <AgentInjectionReviewModal

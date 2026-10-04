@@ -777,6 +777,10 @@ try {
     );
     const fell = eventsOf(step.events, "damage").find((event) => event.targetId === "rats")!;
     assert.deepEqual([fell.rolls, fell.amount, fell.pool?.successes], [[3, 4], 0, 0], "no successes, no harm");
+    // And its dice are the pool's own die, or the file is refused.
+    doc.combat.elevation.falling.dice.sides = 6;
+    const refused = parseRulesetDefinition(doc);
+    assert.ok(!refused.ok && refused.issues.some((issue) => /so a fall's dice are d10s/.test(issue)));
   }
 
   console.info("game ruleset combat contest regressions passed.");

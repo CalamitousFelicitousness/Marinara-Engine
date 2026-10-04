@@ -196,6 +196,15 @@ assert.match(
   /<Drawer\b[\s\S]*?id="advanced-parameters"/u,
   "Advanced Parameters is a shared drawer too",
 );
+// Grids inside the window follow its width, not the screen's: a narrow window must not squeeze four columns.
+assert.match(
+  read("packages/client/src/components/chat/ChatSettingsDrawer.tsx"),
+  /<GameWidgetSetupEditor\b(?:(?!\/>)[\s\S])*?\bcontainerQueries\b/u,
+);
+assert.match(
+  read("packages/client/src/components/game/GameWidgetSetupEditor.tsx"),
+  /containerQueries\s*\?\s*"@lg:grid-cols-\[3\.25rem_minmax\(0,1fr\)_9rem_auto\]/u,
+);
 
 // Hosted multiplayer: Players opens Chat Settings at its Multiplayer section; the next open starts at the top.
 assert.match(

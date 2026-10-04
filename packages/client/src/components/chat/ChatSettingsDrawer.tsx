@@ -9297,6 +9297,7 @@ export function ChatSettingsDrawer({
                   widgets={gameWidgetDrafts}
                   onChange={(widgets) => setGameWidgetDrafts(normalizeGameHudWidgets(widgets, { mode: "draft" }))}
                   disabled={updateGameWidgets.isPending}
+                  containerQueries
                 />
                 <div className="flex flex-wrap items-center justify-end gap-2">
                   <AgentSettingsActionButton

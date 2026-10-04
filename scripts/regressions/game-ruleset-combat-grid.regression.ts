@@ -845,6 +845,49 @@ const cellsOf = (cells: Array<{ x: number; y: number }>) =>
   // A wall between him and the caster, with nothing between him and where the ball lands, is no cover.
   const fromCaster = blast(".......", ".....#.", ".......", ".......", ".......");
   assert.deepEqual(fromCaster.cover, [], "cover is read from where the burst lands");
+  // Held by somebody answering its use, the burst still takes cover from where it was aimed when it
+  // resolves: a watcher beside the caster lets it go, and the wall between Mote and the caster is
+  // still no cover from where the ball lands.
+  const watcher: RulesetCombatantInput = {
+    ...mote("watcher", "Watcher"),
+    block: {
+      health: 4,
+      defense: 5,
+      initiativeModifier: -2,
+      speed: 30,
+      actions: [
+        {
+          id: "jeer",
+          name: "Jeer",
+          budget: "reaction",
+          toHit: 0,
+          damage: { count: 1, sides: 1, flat: 0 },
+          reach: 5,
+          reaction: { on: "used" },
+        },
+      ],
+    },
+  };
+  const watched = fight(graded, [wizard(), mote(), watcher], [12, 9, 8], {
+    grid: drawn(".......", ".....#.", ".......", ".......", "......."),
+    placements: { corwin: { x: 6, y: 0 }, mote: { x: 4, y: 2 }, watcher: { x: 5, y: 0 } },
+  });
+  const held = act(graded, watched, {
+    actorId: "corwin",
+    optionId: optionNamed(graded, watched, "corwin", "Fireball").id,
+    targetIds: [],
+    at: { x: 0, y: 0 },
+  });
+  assert.equal(held.state.window?.trigger.kind, "used", "the watcher is asked first");
+  const letGo = act(
+    graded,
+    held.state,
+    { actorId: "watcher", optionId: RULESET_PASS_OPTION, targetIds: [], window: held.state.window!.id },
+    ...[4, 4, 4, 4, 4, 4, 4, 4],
+    10,
+  );
+  assert.deepEqual(eventsOf(letGo.events, "cover"), [], "the resumed ball keeps its aim");
+  assert.equal(firstOf(letGo.events, "save").modifier, 0);
   // And a save the ruleset does not name is not helped: cover names saves, never all of them.
   assert.match(
     refusalOf(
@@ -1437,17 +1480,17 @@ const cellsOf = (cells: Array<{ x: number; y: number }>) =>
   }
 
   // Letting it go by costs nothing and finishes the same walk.
-  const let_go = act(fiveE, held.state, {
+  const letGo = act(fiveE, held.state, {
     actorId: "snag",
     optionId: RULESET_PASS_OPTION,
     targetIds: [],
     window: window.id,
   });
-  assert.deepEqual(firstOf(let_go.events, "pass"), { type: "pass", actorId: "snag", window: window.id });
-  assert.equal(eventsOf(let_go.events, "opportunity").length, 0);
-  assert.equal(who(let_go.state, "snag").budgets.reaction, 1, "nothing was spent");
-  assert.deepEqual(firstOf(let_go.events, "move").to, { x: 5, y: 1 }, "and the walk still finished");
-  assert.equal(let_go.state.window, undefined);
+  assert.deepEqual(firstOf(letGo.events, "pass"), { type: "pass", actorId: "snag", window: window.id });
+  assert.equal(eventsOf(letGo.events, "opportunity").length, 0);
+  assert.equal(who(letGo.state, "snag").budgets.reaction, 1, "nothing was spent");
+  assert.deepEqual(firstOf(letGo.events, "move").to, { x: 5, y: 1 }, "and the walk still finished");
+  assert.equal(letGo.state.window, undefined);
 
   // One chance each for the WHOLE walk. A wall down the middle leaves one gap, so the only way past
   // Snag leaves its reach, comes back into it and leaves again: three steps that each provoke, and

@@ -3702,6 +3702,14 @@ async function applyRetryResultEffects(args: {
             const retryPersonaId = retryIdentitySource === "persona" ? retryIdentityId : null;
             const retryPersonaReference = retryPersonaId ? await chars.getPersona(retryPersonaId) : null;
             assertRetryActive();
+            // #7053: a character-backed user identity ("Add persona as character")
+            // carries its override on the identity, not on `_personaId`, which is
+            // reserved for persona-store rows. Read whichever id this identity
+            // actually uses, so both flavours reach the appearance block.
+            const retryIdentityOverride =
+              retryIdentitySource === "character"
+                ? readIllustratorImageAppearanceOverride(agentContext.memory, retryIdentityId)
+                : null;
             const retryCharacterIdentity =
               retryIdentitySource === "character" && retryIdentityId && agentContext.persona
                 ? {
@@ -3712,6 +3720,7 @@ async function applyRetryResultEffects(args: {
                         ? agentContext.memory._personaAvatarPath
                         : null,
                     appearance: agentContext.persona.appearance,
+                    appearanceOverride: retryIdentityOverride,
                   }
                 : null;
             const referenceResolution = await resolveIllustratorCharacterReferences({
@@ -5010,6 +5019,81 @@ export async function registerRetryAgentsRoute(
         ),
       );
 
+      // #7053: per-character image-prompt appearance overrides, read from each
+      // card's extensions. Built BEFORE the illustrator-only branch below: a retry
+      // targeting only a custom `trigger_image_generation` agent resolves no
+      // Illustrator prompt writer at all, yet its image prompt still needs the
+      // overrides. Also outside the `characterPromptInstruction` branch, because
+      // an empty instruction must not silently drop them.
+      let imageAppearanceOverrides: Record<string, string> | null = null;
+      try {
+        const retryImageAppearanceOverrides: Record<string, string> = {};
+        // Fetch concurrently: this runs inside the request path and each lookup
+        // touches storage, so a sequential await per character adds up on a large
+        // cast. A miss or failure is a no-op (no override).
+        const retryCharRows = await Promise.all(
+          agentContext.characters.map((character) => chars.getById(character.id).catch(() => null)),
+        );
+        agentContext.characters.forEach((character, index) => {
+          const charRow = retryCharRows[index];
+          if (!charRow) return;
+          // `parseSettingsRecord` is the file's tolerant record parse: a malformed
+          // card row degrades to "no override" instead of throwing out of
+          // override-building, which is a no-op for this feature.
+          const charData = parseSettingsRecord(charRow.data) as Record<string, unknown>;
+          const override = readImageAppearanceOverride(
+            charData.extensions && typeof charData.extensions === "object"
+              ? (charData.extensions as Record<string, unknown>)
+              : {},
+            null,
+          );
+          if (override) retryImageAppearanceOverrides[character.id] = override;
+        });
+        // Personas are keyed by their own id so both halves stay symmetric.
+        const retryPersonaIdForOverride = personaEntityId(agentContext.memory);
+        const retryPersonaOverride = agentContext.memory._personaImageAppearanceOverride;
+        if (
+          retryPersonaIdForOverride &&
+          agentContext.persona &&
+          typeof retryPersonaOverride === "string" &&
+          retryPersonaOverride
+        ) {
+          retryImageAppearanceOverrides[retryPersonaIdForOverride] = retryPersonaOverride;
+        }
+        // #7053: a character-backed user identity keys its override by
+        // `_userIdentityId`, not `_personaId`. The loop above only covers ids
+        // present in `agentContext.characters`; load the row when the identity is
+        // not among them so the user's own card keeps its override.
+        const retryIdentityIdForOverride =
+          typeof agentContext.memory._userIdentityId === "string" ? agentContext.memory._userIdentityId : null;
+        if (
+          retryIdentityIdForOverride &&
+          !retryImageAppearanceOverrides[retryIdentityIdForOverride] &&
+          agentContext.memory._userIdentitySource === "character"
+        ) {
+          const identityRow = await chars.getById(retryIdentityIdForOverride).catch(() => null);
+          const identityData = identityRow ? (parseSettingsRecord(identityRow.data) as Record<string, unknown>) : {};
+          const identityOverride = readImageAppearanceOverride(
+            identityData.extensions && typeof identityData.extensions === "object"
+              ? (identityData.extensions as Record<string, unknown>)
+              : {},
+            null,
+          );
+          if (identityOverride) retryImageAppearanceOverrides[retryIdentityIdForOverride] = identityOverride;
+        }
+        imageAppearanceOverrides =
+          Object.keys(retryImageAppearanceOverrides).length > 0 ? retryImageAppearanceOverrides : null;
+      } catch (error) {
+        if (abortController.signal.aborted) throw error;
+        logger.warn(error, "[retry-agents] Failed to resolve image appearance overrides");
+      }
+      if (imageAppearanceOverrides) {
+        agentContext.memory[IMAGE_APPEARANCE_OVERRIDES_MEMORY_KEY] = imageAppearanceOverrides;
+        if (preGenerationAgentContext) {
+          preGenerationAgentContext.memory[IMAGE_APPEARANCE_OVERRIDES_MEMORY_KEY] = imageAppearanceOverrides;
+        }
+      }
+
       const retryIllustratorPromptAgent = resolvedAgents.find((entry) => entry.resolved.type === "illustrator");
       if (retryIllustratorPromptAgent) {
         try {
@@ -5030,58 +5114,9 @@ export async function registerRetryAgentsRoute(
           if (abortController.signal.aborted) throw error;
           logger.warn(error, "[retry-agents] Failed to resolve image style instruction for the prompt writer");
         }
-        // #7053: per-character image-prompt appearance overrides, read from each
-        // card's extensions. Built outside the `characterPromptInstruction` branch
-        // below: the engine-appended appearance block reads this map whenever
-        // `attachCardAppearance` is on, and an empty prompt instruction (a card
-        // with no caption instruction) must not silently drop the overrides.
-        let imageAppearanceOverrides: Record<string, string> | null = null;
-        try {
-          const retryImageAppearanceOverrides: Record<string, string> = {};
-          // Fetch concurrently: this runs inside the request path and each
-          // lookup touches storage, so a sequential await per character adds
-          // up on a large cast. A miss or failure is a no-op (no override).
-          const retryCharRows = await Promise.all(
-            agentContext.characters.map((character) => chars.getById(character.id).catch(() => null)),
-          );
-          agentContext.characters.forEach((character, index) => {
-            const charRow = retryCharRows[index];
-            if (!charRow) return;
-            // `parseSettingsRecord` is the file's tolerant record parse: a
-            // malformed card row degrades to "no override" instead of throwing
-            // out of override-building, which is a no-op for this feature.
-            const charData = parseSettingsRecord(charRow.data) as Record<string, unknown>;
-            const override = readImageAppearanceOverride(
-              charData.extensions && typeof charData.extensions === "object"
-                ? (charData.extensions as Record<string, unknown>)
-                : {},
-              null,
-            );
-            if (override) retryImageAppearanceOverrides[character.id] = override;
-          });
-          // Personas are keyed by their own id so both halves stay symmetric.
-          const retryPersonaIdForOverride = personaEntityId(agentContext.memory);
-          const retryPersonaOverride = agentContext.memory._personaImageAppearanceOverride;
-          if (
-            retryPersonaIdForOverride &&
-            agentContext.persona &&
-            typeof retryPersonaOverride === "string" &&
-            retryPersonaOverride
-          ) {
-            retryImageAppearanceOverrides[retryPersonaIdForOverride] = retryPersonaOverride;
-          }
-          imageAppearanceOverrides =
-            Object.keys(retryImageAppearanceOverrides).length > 0 ? retryImageAppearanceOverrides : null;
-        } catch (error) {
-          if (abortController.signal.aborted) throw error;
-          logger.warn(error, "[retry-agents] Failed to resolve image appearance overrides");
-        }
-        if (imageAppearanceOverrides) {
-          agentContext.memory[IMAGE_APPEARANCE_OVERRIDES_MEMORY_KEY] = imageAppearanceOverrides;
-          if (preGenerationAgentContext) {
-            preGenerationAgentContext.memory[IMAGE_APPEARANCE_OVERRIDES_MEMORY_KEY] = imageAppearanceOverrides;
-          }
-        }
+        // #7053: the appearance override map is built above, before this
+        // Illustrator-only branch, so custom image agents and cards without a
+        // caption instruction both keep their overrides.
         try {
           const { instruction: characterPromptInstruction } = await runRetrySetupPhase(abortController.signal, () =>
             resolveIllustratorCharacterPromptInstruction({

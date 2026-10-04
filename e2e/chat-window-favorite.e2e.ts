@@ -162,8 +162,8 @@ for (const mode of ["conversation", "roleplay", "game"] as const) {
     } finally {
       if (profileId) await request.delete(`/api/chat-presets/${profileId}`);
       for (const id of chatIds) await request.delete(`/api/chats/${id}?force=true`);
-      await request.put(favoritePath(mode), { data: { value: original ?? "" } });
-      await request.put(favoritePath(otherMode), { data: { value: otherOriginal ?? "" } });
+      await request.put(favoritePath(mode), { data: { value: original ?? "null" } });
+      await request.put(favoritePath(otherMode), { data: { value: otherOriginal ?? "null" } });
     }
   });
 }

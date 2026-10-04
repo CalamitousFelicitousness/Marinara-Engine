@@ -3,9 +3,8 @@
 //
 // Game's Session, Volume, Assets and Game controls, the connected chat, package
 // toolbars and Beholder each open in a small window that minimizes to a button (its
-// bubble). They start minimized: on a computer the bubbles sit in a row at the chat's
-// top right where the buttons used to be; on a phone in a column at the right edge,
-// where its menu was, and each opens as a sheet.
+// bubble). They start minimized, their bubbles in a row at the chat's top right where
+// the buttons (and a phone's menu button) used to be. On a phone each opens as a sheet.
 // ──────────────────────────────────────────────
 import type { ReactNode } from "react";
 import { ArrowRightLeft } from "lucide-react";
@@ -74,7 +73,7 @@ export interface ChatControlWindowProps {
   icon: ReactNode;
   /** Its bubble's place in the default row, counted from the right. */
   slot: number;
-  /** Its bubble's place in the phone column, counted from the top (`slot` otherwise). */
+  /** Its bubble's place in the phone row, counted from the right (`slot` otherwise). */
   phoneSlot?: number;
   /** The window's size when it first opens. */
   width: number;

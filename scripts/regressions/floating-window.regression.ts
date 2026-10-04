@@ -472,10 +472,10 @@ assert.equal(
   "Reset View restores the defaults",
 );
 
-// ── Phone bubbles: a column at the right edge, places kept apart from the computer's ──
+// ── Phone bubbles: a row along the top from the right edge, places kept apart from the computer's ──
 const phoneBounds = { left: 8, top: 64, right: 382, bottom: 700 };
 assert.deepEqual(getPhoneBubbleSlot(phoneBounds, 0), { x: 382 - PHONE_BUBBLE_SIZE_PX, y: 64 });
-assert.deepEqual(getPhoneBubbleSlot(phoneBounds, 2), { x: 382 - PHONE_BUBBLE_SIZE_PX, y: 64 + 2 * 44 });
+assert.deepEqual(getPhoneBubbleSlot(phoneBounds, 2), { x: 382 - PHONE_BUBBLE_SIZE_PX - 2 * 44, y: 64 });
 // A phone bubble is larger, so it clamps further from the far edges.
 assert.deepEqual(clampWindowBubble({ x: 900, y: 900 }, phoneBounds, PHONE_BUBBLE_SIZE_PX), { x: 346, y: 664 });
 const withPhoneBubbles = parseWindowLayoutSnapshot({
@@ -525,7 +525,7 @@ assert.match(windowBubbleSource, /DRAG_START_PX = \{ mouse: 4, touch: 10 \}/u);
 assert.match(floatingWindowSource, /<WindowBubble[\s\S]*data-presentation": "sheet"/u);
 assert.match(
   read("packages/client/src/styles/globals.css"),
-  /@media \(pointer: coarse\) \{\s*\.mari-window-bubble::before \{[\s\S]*2\.75rem/u,
+  /@media \(pointer: coarse\) \{\s*\.mari-window-bubble::before \{[\s\S]*100% - 44px/u,
   "Touch gets a 44px tap area around every bubble",
 );
 assert.match(

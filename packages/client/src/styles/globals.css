@@ -816,10 +816,10 @@
     cursor: grabbing;
   }
 
-  /* Phones draw bubbles like their toolbar buttons. */
+  /* Phones draw bubbles like their toolbar buttons, in pixels so their default column lines up. */
   .mari-window-bubble[data-presentation="sheet"] {
-    width: var(--mari-window-bubble-size, 2.25rem);
-    height: var(--mari-window-bubble-size, 2.25rem);
+    width: var(--mari-window-bubble-size, 36px);
+    height: var(--mari-window-bubble-size, 36px);
   }
 
   /* Touch gets a 44px tap area around every bubble, centred on it, without changing its look. */
@@ -827,7 +827,7 @@
     .mari-window-bubble::before {
       content: "";
       position: absolute;
-      inset: min(0px, calc((100% - 2.75rem) / 2));
+      inset: min(0px, calc((100% - 44px) / 2));
     }
   }
 

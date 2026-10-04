@@ -53,7 +53,7 @@ export interface WindowPoint {
 export const WINDOW_BUBBLE_SIZE_PX = 32;
 /** Phones draw bubbles a little larger, like their toolbar buttons (the tap area is 44px either way). */
 export const PHONE_BUBBLE_SIZE_PX = 36;
-/** Room between phone bubbles in their default column, the gap snapping leaves (their 44px tap areas meet). */
+/** Room between phone bubbles in their default row, the gap snapping leaves (their 44px tap areas meet). */
 export const PHONE_BUBBLE_GAP_PX = 8;
 
 /** Keeps a bubble inside `bounds`, so it can never be lost off-screen. */
@@ -68,11 +68,14 @@ export function clampWindowBubble(
   };
 }
 
-/** A phone bubble's default place: a column at the right edge, `slot` 0 at the top. */
+/**
+ * A phone bubble's default place: a row along the top of the chat, where its toolbar and menu buttons
+ * were, `slot` 0 at the right edge (like the computer's row).
+ */
 export function getPhoneBubbleSlot(bounds: WindowBounds, slot: number): WindowPoint {
   return {
-    x: bounds.right - PHONE_BUBBLE_SIZE_PX,
-    y: bounds.top + slot * (PHONE_BUBBLE_SIZE_PX + PHONE_BUBBLE_GAP_PX),
+    x: bounds.right - PHONE_BUBBLE_SIZE_PX - slot * (PHONE_BUBBLE_SIZE_PX + PHONE_BUBBLE_GAP_PX),
+    y: bounds.top,
   };
 }
 

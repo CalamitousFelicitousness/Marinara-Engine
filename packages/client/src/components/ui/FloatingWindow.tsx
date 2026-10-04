@@ -131,16 +131,16 @@ export const PHONE_FULL_SHEET_CLASS =
   "bottom-[calc(0.75rem+var(--mari-safe-area-inset-bottom,env(safe-area-inset-bottom)))]";
 
 /**
- * The first free place for a new phone bubble: down the right-edge column, then the columns to its
- * left, skipping the bubbles already on screen (`except` is the bubble being placed).
+ * The first free place for a new phone bubble: along the top row from the right edge, then the rows
+ * below it, skipping the bubbles already on screen (`except` is the bubble being placed).
  */
 export function findFreePhoneBubble(bounds: WindowBounds, except?: FloatingWindowId): WindowPoint {
   const taken = Array.from(document.querySelectorAll<HTMLElement>(".mari-window-bubble"))
     .filter((element) => element.dataset.window !== except && element.getClientRects().length > 0)
     .map((element) => element.getBoundingClientRect());
   const step = PHONE_BUBBLE_SIZE_PX + PHONE_BUBBLE_GAP_PX;
-  for (let x = bounds.right - PHONE_BUBBLE_SIZE_PX; x >= bounds.left; x -= step) {
-    for (let y = bounds.top; y + PHONE_BUBBLE_SIZE_PX <= bounds.bottom; y += step) {
+  for (let y = bounds.top; y + PHONE_BUBBLE_SIZE_PX <= bounds.bottom; y += step) {
+    for (let x = bounds.right - PHONE_BUBBLE_SIZE_PX; x >= bounds.left; x -= step) {
       const free = taken.every(
         (rect) =>
           rect.right <= x ||
@@ -253,7 +253,7 @@ export function usePhoneBubbleBounds(active: boolean): WindowBounds {
     viewport?.addEventListener("scroll", update);
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
     for (const element of document.querySelectorAll(
-      '[data-component="CenterContent"], [data-chat-mode] [data-chat-resource-drop-exclude]',
+      '[data-component="CenterContent"], [data-component="TopBar"], [data-chat-mode] [data-chat-resource-drop-exclude]',
     )) {
       observer?.observe(element);
     }

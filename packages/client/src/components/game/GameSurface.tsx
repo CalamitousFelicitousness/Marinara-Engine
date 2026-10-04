@@ -12404,10 +12404,12 @@ function GameSurfaceComponent({
                   />
                 ) : null}
 
-                {/* Top-left: Map + Party portraits side by side */}
+                {/* Top-left: Map + Party portraits side by side, clear of a phone's row of control bubbles */}
                 <div
                   className={cn(
-                    "pointer-events-auto absolute left-3 right-14 z-20 flex min-w-0 items-start gap-2 md:right-auto",
+                    "pointer-events-auto absolute left-3 z-20 flex min-w-0 items-start gap-2 md:right-auto",
+                    // 8px margin plus 44px per bubble: Game controls, Session, Volume, Assets (and the connected chat).
+                    onSwitchChat ? "right-[228px]" : "right-[184px]",
                     tacticalCombatActive ? "top-14" : topOverlayOffsetClass,
                     replayActive && "hidden",
                     // The package draws its own header and party bar, so the built-in ones would collide.
@@ -13366,7 +13368,7 @@ function GameSurfaceComponent({
         onApplied={handleJsonRepairApplied}
       />
 
-      {/* The top controls are windows that minimize to bubbles; phones stack the bubbles at the right edge. */}
+      {/* The top controls are windows that minimize to bubbles in a row at the top right. */}
       {!introCinematicActive && !replayActive && (
         <>
           <ChatControlWindow
@@ -13376,7 +13378,6 @@ function GameSurfaceComponent({
               <RotateCcw size={14} className={sceneAnalysis.isPending || spotifyRetryPending ? "animate-spin" : ""} />
             }
             slot={4}
-            phoneSlot={0}
             width={288}
             height={220}
             helpTarget="game-controls"
@@ -13395,7 +13396,6 @@ function GameSurfaceComponent({
             title={t("game.toolbar.session")}
             icon={<Feather size={14} />}
             slot={3}
-            phoneSlot={1}
             width={672}
             height={640}
             helpTarget="session"
@@ -13408,7 +13408,6 @@ function GameSurfaceComponent({
             title={t("game.toolbar.volume")}
             icon={audioMuted || masterVolume === 0 ? <VolumeX size={14} /> : <Volume2 size={14} />}
             slot={2}
-            phoneSlot={2}
             width={280}
             height={270}
             helpTarget="volume"
@@ -13434,7 +13433,6 @@ function GameSurfaceComponent({
             title={t("game.toolbar.assets")}
             icon={<Folder size={14} />}
             slot={1}
-            phoneSlot={3}
             width={864}
             height={640}
             helpTarget="assets"
@@ -13443,7 +13441,7 @@ function GameSurfaceComponent({
             {renderGameAssetsPanel()}
           </ChatControlWindow>
           {onSwitchChat ? (
-            <ChatConnectedChatWindow name={connectedChatName} onSwitch={handleSwitchConnectedChat} phoneSlot={4} />
+            <ChatConnectedChatWindow name={connectedChatName} onSwitch={handleSwitchConnectedChat} />
           ) : null}
         </>
       )}

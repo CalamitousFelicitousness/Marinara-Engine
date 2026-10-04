@@ -1,6 +1,4 @@
-import { type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { cn } from "../../lib/utils";
-import { useLocalizedUiText } from "../../localization/use-localized-ui-text";
 
 type ChatToolbarButtonClassInput = {
   active?: boolean;
@@ -94,43 +92,5 @@ export function getChatToolbarButtonClass({
       open &&
       "marinara-chat-toolbar-button--open border-[var(--marinara-chat-chrome-button-border-active)] bg-[var(--marinara-chat-chrome-button-bg-hover)] text-[var(--marinara-chat-chrome-button-text-hover)]",
     className,
-  );
-}
-
-export function ChatToolbarButton({
-  className,
-  icon,
-  title,
-  onClick,
-  helpTarget,
-  panelAction,
-  size,
-}: {
-  className?: string;
-  icon: ReactNode;
-  title: string;
-  onClick: (event: ReactMouseEvent<HTMLButtonElement>) => void;
-  helpTarget?: string;
-  panelAction?: ChatToolbarPanelAction;
-  size?: "sm";
-}) {
-  const localize = useLocalizedUiText();
-  const localizedTitle = localize(title);
-
-  return (
-    <button
-      type="button"
-      onClick={(event) => {
-        announceChatToolbarAction(panelAction ?? null);
-        onClick(event);
-      }}
-      data-chat-help={helpTarget ?? panelAction}
-      data-chat-toolbar-panel-action={panelAction}
-      className={getChatToolbarButtonClass({ className, compact: size === "sm" })}
-      title={localizedTitle}
-      aria-label={localizedTitle}
-    >
-      {icon}
-    </button>
   );
 }

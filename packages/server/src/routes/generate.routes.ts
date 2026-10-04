@@ -226,6 +226,9 @@ import {
   worldTownVisitSchema,
   worldTownVisitTags,
   worldTownVisitText,
+  worldInterior,
+  worldInteriorWords,
+  worldKitArtFamily,
   type WorldTownVisit,
   lastGamePlace,
   rulesetMarketPlace,
@@ -4815,8 +4818,11 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 const visitTown = visit ? worldTown(promptWorld, visit.settlementId, present) : null;
                 // In the order they happened: a visit in a town the party then walked away from comes first.
                 const walkLine = walk ? `${worldWalkText(promptWorld, walk)}\n` : "";
+                const visitInside = visit && visitTown ? worldInterior(promptWorld, visitTown, visit.to) : null;
                 const visitLine =
-                  visit && visitTown ? `${worldTownVisitText(promptWorld, visitTown, visit, turnHour)}\n` : "";
+                  visit && visitTown
+                    ? `${worldTownVisitText(promptWorld, visitTown, visit, turnHour, visitInside ? worldInteriorWords(visitInside, worldKitArtFamily(promptWorld.kit)) : undefined)}\n`
+                    : "";
                 const walked =
                   walk && visit && visit.settlementId !== walk.to ? visitLine + walkLine : walkLine + visitLine;
                 if (!before?.name) {

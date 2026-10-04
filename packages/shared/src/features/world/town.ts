@@ -20,6 +20,7 @@ import { worldPersonByHand, type WorldEdits } from "./edits.js";
 import type { GameWorld } from "./game-world.js";
 import type { WorldPresent } from "./ledger.js";
 import { WORLD_PEOPLE_DEFAULTS, worldCast, type WorldPerson } from "./people.js";
+import { worldInteriorUse } from "./interior.js";
 
 export const WORLD_TOWN_KINDS = Object.freeze(["landmark", "place", "work", "home"] as const);
 export type WorldTownKind = (typeof WORLD_TOWN_KINDS)[number];
@@ -470,11 +471,26 @@ function layOutByHand(
   return issues;
 }
 
-/** Where a person is at an hour: at work by day (07-18), in the square at dusk (18-21), home at night.
- *  Someone with no workplace spends the day in the square. A building id, or "square". */
+/** Where a person is at an hour: at work by day (07-18); at dusk (18-21) in the square, at a tavern or
+ *  home, a third of the town each (by who they are, so the same person each evening); home at night.
+ *  Someone with no workplace spends the day in the square. A tavern's people keep it from 11 until
+ *  midnight. A building id, or "square". (W13: before, everyone was in the square at dusk.) */
 export function worldTownWhere(town: WorldTown, personId: string, hour: number): string {
-  if (hour >= 7 && hour < 18) return town.workOf[personId] ?? "square";
-  if (hour >= 18 && hour < 21) return "square";
+  const workId = town.workOf[personId];
+  const work = workId ? town.buildings.find((building) => building.id === workId) : undefined;
+  if (work && worldInteriorUse(work) === "tavern") return hour >= 11 ? work.id : (town.homeOf[personId] ?? "square");
+  if (hour >= 7 && hour < 18) return workId ?? "square";
+  if (hour >= 18 && hour < 21) {
+    const third = [...personId].reduce((h, c) => (Math.imul(h, 31) + c.charCodeAt(0)) >>> 0, 7) % 3;
+    if (third === 1) {
+      const tavern = town.buildings.find(
+        (building) => building.kind !== "home" && worldInteriorUse(building) === "tavern",
+      );
+      if (tavern) return tavern.id;
+    }
+    if (third === 2 && town.homeOf[personId]) return town.homeOf[personId]!;
+    return "square";
+  }
   return town.homeOf[personId] ?? "square";
 }
 
@@ -550,16 +566,23 @@ function spotWords(town: WorldTown, at: string): string {
   return residents.length ? `the home of ${residents.map((person) => person.name).join(" and ")}` : "a home";
 }
 
-/** What the Game Master is told of the visit its turn tells, with who is there at the hour. */
-export function worldTownVisitText(game: GameWorld, town: WorldTown, visit: WorldTownVisit, hour: number): string {
+/** What the Game Master is told of the visit its turn tells, with what is inside (W13, in words, from
+ *  `worldInteriorWords`) and who is there at the hour. */
+export function worldTownVisitText(
+  game: GameWorld,
+  town: WorldTown,
+  visit: WorldTownVisit,
+  hour: number,
+  inside?: string,
+): string {
   const settlement = game.world.places.find((place) => place.id === town.settlementId);
   const there = worldTownPeopleAt(town, visit.to, hour)
     .filter((person) => person.named)
     .slice(0, 6)
     .map((person) => `${person.name} (${person.role})`);
   return `In ${settlement?.name ?? "town"}, the party has walked to ${spotWords(town, visit.to)}.${
-    there.length ? ` There now: ${there.join(", ")}.` : ""
-  } That time is counted already: tell what the party finds there.`;
+    inside ? ` ${inside}` : ""
+  }${there.length ? ` There now: ${there.join(", ")}.` : ""} That time is counted already: tell what the party finds there.`;
 }
 
 /** The place tag a visit to a named place carries, so the place in force is that place. */

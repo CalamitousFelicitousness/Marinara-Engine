@@ -39,7 +39,15 @@ import type {
   TacticalEvent,
   RPGStatPool,
 } from "@marinara-engine/shared";
-import type { Chat, GameWorld, WorldRoute, WorldTown, WorldTownVisit, WorldWalk } from "@marinara-engine/shared";
+import type {
+  Chat,
+  GameWorld,
+  WorldRoute,
+  WorldInterior,
+  WorldTown,
+  WorldTownVisit,
+  WorldWalk,
+} from "@marinara-engine/shared";
 import { isJsonRecord } from "@marinara-engine/shared";
 
 // ── Query Keys ──
@@ -1042,6 +1050,18 @@ export function useTown(chatId: string, turnKey: string | null, enabled: boolean
     select: (data) => data.town,
     enabled: enabled && !!chatId,
     staleTime: 30_000,
+  });
+}
+
+/** The rooms of a building in the town the party is in (worldgen W13). */
+export function useTownInterior(chatId: string, buildingId: string | null) {
+  return useQuery({
+    queryKey: [...gameKeys.town(chatId), "interior", buildingId],
+    queryFn: () =>
+      api.get<{ interior: WorldInterior }>(`/game/${chatId}/town/interior?building=${encodeURIComponent(buildingId!)}`),
+    select: (data) => data.interior,
+    enabled: !!chatId && !!buildingId,
+    staleTime: 5 * 60_000,
   });
 }
 

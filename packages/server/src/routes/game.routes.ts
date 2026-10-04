@@ -277,6 +277,7 @@ import {
   worldTownMinutes,
   worldTownSpotFromMetadata,
   worldTownVisitFromMetadata,
+  worldInterior,
   worldPlaceByName,
   worldAddedPlace,
   type WorldTownVisit,
@@ -11028,6 +11029,20 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const world = chat.mode === "game" ? await loadGameWorld(app.db, chat.id, meta) : null;
     const found = world ? await townOf(req.params.chatId, meta, world) : null;
     return { town: found ? { ...found.town, at: found.at, visit: found.visit } : null };
+  });
+
+  // ── GET /game/:chatId/town/interior?building= (worldgen W13) ──
+  // The rooms of a building in the town the party is in, as the world keeps them.
+  app.get<{ Params: { chatId: string } }>("/:chatId/town/interior", async (req, reply) => {
+    const { building } = z.object({ building: z.string().min(1).max(16) }).parse(req.query);
+    const chat = await createChatsStorage(app.db).getById(req.params.chatId);
+    if (!chat) return reply.status(404).send({ error: "Chat not found" });
+    const meta = parseMeta(chat.metadata);
+    const world = chat.mode === "game" ? await loadGameWorld(app.db, chat.id, meta) : null;
+    const found = world ? await townOf(req.params.chatId, meta, world) : null;
+    if (!world || !found) return reply.status(400).send({ error: "The party is not in a town." });
+    const interior = worldInterior(world, found.town, building);
+    return interior ? { interior } : reply.status(404).send({ error: "No such building in this town." });
   });
 
   // ── POST /game/:chatId/town/visit ──

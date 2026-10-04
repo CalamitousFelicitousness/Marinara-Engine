@@ -5,7 +5,7 @@
  *     each other, the streets or the square, each with its door on a street. The places in it (the
  *     world's own and those the story added) are buildings, a bigger place has its hall, the trades it is
  *     known for have workplaces, and everyone has a home.
- *   - People are at work by day, in the square at dusk, at home at night.
+ *   - People are at work by day, out at dusk, at home at night.
  *   - A walk across town passes its minutes on the clock and is told on the next turn; a visit to a named
  *     place makes it the place in force; a regeneration tells it again.
  */
@@ -117,7 +117,13 @@ try {
   const worker = town.people.find((person) => town.workOf[person.id])!;
   assert.ok(worker, "someone works in the city");
   assert.equal(worldTownWhere(town, worker.id, 10), town.workOf[worker.id], "at work by day");
-  assert.equal(worldTownWhere(town, worker.id, 19), "square", "in the square at dusk");
+  // At dusk in the square, at a tavern or home (worldgen W13 split the evening).
+  assert.ok(
+    ["square", town.homeOf[worker.id], ...town.buildings.map((building) => building.id)].includes(
+      worldTownWhere(town, worker.id, 19),
+    ),
+    "somewhere in town at dusk",
+  );
   assert.equal(worldTownWhere(town, worker.id, 23), town.homeOf[worker.id], "home at night");
   const known = game.kit.people?.roles.find((role) => role.tags?.some((tag) => city.tags.includes(tag)));
   if (known && town.people.some((person) => person.role === known.label)) {

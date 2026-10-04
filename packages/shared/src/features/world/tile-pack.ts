@@ -5,6 +5,7 @@
 // Pixelforge, or shared as a file, has the same shape. A tile a pack lacks is drawn plain.
 // ──────────────────────────────────────────────
 import { z } from "zod";
+import { WORLD_FURNITURE } from "./interior.js";
 import { WORLD_GROUND_LOOKS } from "./overworld.js";
 
 /** Pixels across and down a tile. */
@@ -40,6 +41,11 @@ export const WORLD_TILE_IDS = Object.freeze([
   "folk",
   ...NINE.map((at) => `roof_${at}`),
   ...NINE.map((at) => `hall_${at}`),
+  // Inside buildings (worldgen W13): the floor, a wall, a doorway, and each piece of furniture.
+  "in_floor",
+  "in_wall",
+  "in_door",
+  ...WORLD_FURNITURE.map((kind) => `in_${kind}` as const),
 ] as const);
 export type WorldTileId = (typeof WORLD_TILE_IDS)[number];
 

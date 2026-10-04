@@ -6,10 +6,11 @@
 // Master. The clock runs here as it does on the overworld.
 // ──────────────────────────────────────────────
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
-import { ArrowLeft, Footprints, MapPin, X } from "lucide-react";
+import { ArrowLeft, DoorOpen, Footprints, MapPin, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
+  worldBuildingHasRooms,
   worldTownDoor,
   worldTownMinutes,
   worldTownPeopleAt,
@@ -28,6 +29,7 @@ import {
 import { useGameStateStore } from "../../stores/game-state.store";
 import { OVERWORLD_TILE, cellNoise, overworldDarkness, paintParty } from "../../lib/overworld-paint";
 import { cn } from "../../lib/utils";
+import { TownInterior } from "./TownInterior";
 
 interface TownViewProps {
   chatId: string;
@@ -87,6 +89,8 @@ export function TownView({
   /** Where the view looks, in town pixels; none: at the party. */
   const [lookAt, setLookAt] = useState<Point | null>(null);
   const [placesOpen, setPlacesOpen] = useState(false);
+  /** The building the party has gone inside (worldgen W13), if any: looking only, never saved. */
+  const [inside, setInside] = useState<string | null>(null);
   const scale = Math.max(2, Math.min(4, Math.floor(Math.min(size.width / 360, size.height / 240))));
 
   const clockMinutes = time ? (time.day * 24 + time.hour) * 60 + time.minute + pendingMinutes : null;
@@ -193,7 +197,10 @@ export function TownView({
     if (door) setLookAt(centreOf(door));
   };
   // When the party is somewhere new, the view goes with it.
-  useEffect(() => setLookAt(null), [town?.at]);
+  useEffect(() => {
+    setLookAt(null);
+    setInside(null);
+  }, [town?.at]);
 
   const draw = useCallback(
     (cam: Point, step = false) => {
@@ -344,6 +351,10 @@ export function TownView({
       )
       .map((building) => ({ at: building.id, title: spotTitle(building.id) })),
   ];
+  const canGoIn = (at: string) => {
+    const building = town.buildings.find((each) => each.id === at);
+    return Boolean(building && worldBuildingHasRooms(game, building));
+  };
   const chosenDoor = selected ? worldTownDoor(town, selected) : null;
   const chosenPeople = selected ? worldTownPeopleAt(town, selected, hour).filter((person) => person.named) : [];
   const visited = town.visit ? spotTitle(town.visit.to) : null;
@@ -365,6 +376,16 @@ export function TownView({
         data-component="TownView"
       >
         <canvas ref={canvasRef} className="absolute inset-0 h-full w-full [image-rendering:pixelated]" />
+        {inside && (
+          <TownInterior
+            chatId={chatId}
+            town={town}
+            buildingId={inside}
+            hour={hour}
+            darkness={darkness}
+            drawTile={drawTile}
+          />
+        )}
         <div className="absolute left-0 top-0" style={{ transform: `translate(${-resting.x}px, ${-resting.y}px)` }}>
           {[{ id: "square", ...town.square }, ...town.buildings].map((spot) => (
             <button
@@ -387,7 +408,7 @@ export function TownView({
 
       {/* Above the narration: the card, the places, leaving, and what the walk is doing. */}
       <div className="pointer-events-none absolute inset-0 z-[25] overflow-clip" data-component="TownView.Chrome">
-        {selected && cardAt && (
+        {!inside && selected && cardAt && (
           <div
             className={cn(
               "pointer-events-auto absolute z-10 w-60 -translate-x-1/2 rounded-xl border border-white/15 bg-black/80 p-3 text-xs text-white/85 shadow-xl backdrop-blur-md",
@@ -426,7 +447,22 @@ export function TownView({
               <div className="mt-1 text-white/50">{t("game.town.nobody")}</div>
             )}
             {selected === town.at ? (
-              <div className="mt-2 text-white/60">{t("game.town.partyHere")}</div>
+              <>
+                <div className="mt-2 text-white/60">{t("game.town.partyHere")}</div>
+                {canGoIn(selected) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setInside(selected);
+                      setSelectedState(null);
+                    }}
+                    className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-foreground)] transition-opacity hover:opacity-90"
+                  >
+                    <DoorOpen size={13} />
+                    {t("game.town.goInside")}
+                  </button>
+                )}
+              </>
             ) : (
               <>
                 <div className="mt-2 text-white/60">
@@ -448,6 +484,16 @@ export function TownView({
 
         <div className="pointer-events-auto absolute right-3 top-14 z-10 flex flex-col items-end gap-1.5">
           <div className="flex gap-1.5">
+            {inside && (
+              <button
+                type="button"
+                onClick={() => setInside(null)}
+                className="flex items-center gap-1.5 rounded-lg border border-white/15 bg-black/65 px-3 py-1.5 text-xs font-semibold text-white/85 shadow-lg backdrop-blur-md transition-colors hover:bg-black/80 hover:text-white"
+              >
+                <ArrowLeft size={13} />
+                {t("game.town.goOutside")}
+              </button>
+            )}
             <button
               type="button"
               onClick={onLeave}
@@ -476,6 +522,7 @@ export function TownView({
                   <button
                     type="button"
                     onClick={() => {
+                      setInside(null);
                       setSelected(at);
                       setPlacesOpen(false);
                     }}
@@ -495,7 +542,9 @@ export function TownView({
         </div>
 
         <div className="pointer-events-none absolute left-1/2 top-16 z-10 max-w-[60%] -translate-x-1/2 rounded-full bg-black/70 px-3 py-1 text-center text-xs font-semibold text-white shadow-lg">
-          {settlement?.name}
+          {inside
+            ? t("game.town.insideOf", { name: spotTitle(inside), town: settlement?.name ?? "" })
+            : settlement?.name}
         </div>
         {!walking && visited && (
           <div

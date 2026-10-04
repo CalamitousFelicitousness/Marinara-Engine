@@ -1,0 +1,407 @@
+/**
+ * Inside buildings (worldgen W13).
+ *
+ *   - Every building in every starter world's towns has rooms that hold together: walls round them, the
+ *     way out in the main room's bottom wall, furniture only on the floor and never on a doorway, every
+ *     room and everyone's spot reachable from the way in, a bed for each person who lives there and a
+ *     spot for each person who works there (up to the most a building seats).
+ *   - The same building gives the same rooms, and the rooms are pinned: a change to how they lay out must
+ *     bump WORLD_INTERIOR_VERSION (rooms are laid out when asked for, not kept in a world's snapshot).
+ *   - A part of town (a quarter, a district, a neighbourhood) has no rooms.
+ *   - What a building is furnished as follows its trade, tags and name, across settings.
+ *   - A tavern's people keep it in the evening; at dusk the rest of the town is in the square, a tavern
+ *     or home; by day and at night nothing changed.
+ *   - The rooms come through their route, and a walk's next turn tells the Game Master what is inside, in
+ *     the setting's words.
+ */
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { mkdtempSync, rmSync } from "node:fs";
+import { createServer } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import {
+  WORLD_GENERATOR_VERSION,
+  WORLD_INTERIOR_VERSION,
+  WORLD_STARTER_KITS,
+  WORLD_TILE_IDS,
+  WORLD_FURNITURE,
+  checkWorldBrief,
+  compileGameWorld,
+  createConnectionSchema,
+  layOutInterior,
+  parseWorldKit,
+  worldBuildingHasRooms,
+  worldInterior,
+  worldInteriorPeopleAt,
+  worldInteriorUse,
+  worldInteriorWords,
+  worldTown,
+  worldTownWhere,
+  type GameWorld,
+  type WorldInterior,
+  type WorldTown,
+} from "../../packages/shared/src/index.js";
+
+const dataDir = mkdtempSync(join(tmpdir(), "marinara-world-interiors-"));
+process.env.DATA_DIR = dataDir;
+process.env.FILE_STORAGE_DIR = join(dataDir, "storage");
+const { default: Fastify } = await import("../../packages/server/node_modules/fastify/fastify.js");
+const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
+const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
+const { createConnectionsStorage } = await import("../../packages/server/src/services/storage/connections.storage.js");
+const { gameRoutes } = await import("../../packages/server/src/routes/game.routes.js");
+const { generateRoutes } = await import("../../packages/server/src/routes/generate.routes.js");
+
+const gameOf = (id: string, seed: number): GameWorld => {
+  const parsed = parseWorldKit(WORLD_STARTER_KITS.find((each) => each.id === id)!);
+  assert.ok(parsed.ok);
+  const kit = parsed.kit;
+  const checked = checkWorldBrief(kit, {
+    briefVersion: 1,
+    premise: "x",
+    peopleNames: kit.cultures.map((culture) => ({
+      culture: culture.id,
+      given: ["Ama", "Tobin", "Hesk", "Mira", "Oswin", "Bryn", "Calla", "Doran"],
+      family: ["Holt", "Drey", "Marrow", "Vane"],
+      order: "given-family" as const,
+    })),
+  });
+  assert.ok(checked.ok);
+  const inputs = { kit, seed, grounding: "expand" as const, brief: checked.brief };
+  return { ...inputs, world: compileGameWorld(inputs) };
+};
+
+/** Checks one building's rooms hold together; returns nothing, throws on the first fault. */
+function checkRooms(town: WorldTown, interior: WorldInterior, label: string): void {
+  const { width, height, ground } = interior;
+  assert.equal(ground.length, width * height, `${label}: the rooms fill the building`);
+  const at = (x: number, y: number) => ground[y * width + x];
+  for (let x = 0; x < width; x++) {
+    assert.ok(at(x, 0) === "#", `${label}: walled along the top`);
+    assert.ok(at(x, height - 1) === "#" || at(x, height - 1) === "D", `${label}: walled along the bottom`);
+  }
+  for (let y = 0; y < height; y++) assert.ok(at(0, y) === "#" && at(width - 1, y) === "#", `${label}: walled sides`);
+  assert.equal(at(interior.door.x, interior.door.y), "D", `${label}: the way out is marked`);
+  assert.equal(interior.door.y, height - 1, `${label}: the way out is in the bottom wall`);
+  assert.equal([...ground].filter((c) => c === "D").length, 1, `${label}: one way out`);
+  const main = interior.rooms[0]!;
+  assert.equal(main.use, "main");
+  assert.ok(interior.door.x >= main.x && interior.door.x < main.x + main.w, `${label}: out of the main room`);
+  const pieces = new Map<number, string>();
+  for (const piece of interior.furniture) {
+    assert.ok(WORLD_FURNITURE.includes(piece.kind), `${label}: a known piece`);
+    assert.equal(at(piece.x, piece.y), ".", `${label}: ${piece.kind} on the floor`);
+    const cell = piece.y * width + piece.x;
+    assert.ok(!pieces.has(cell), `${label}: two pieces in one place`);
+    pieces.set(cell, piece.kind);
+  }
+  // Reachable from the step inside the way out, over floor nothing stands on.
+  const seen = new Set<number>();
+  const queue = [(interior.door.y - 1) * width + interior.door.x];
+  assert.ok(!pieces.has(queue[0]!), `${label}: the way in is clear`);
+  while (queue.length) {
+    const cell = queue.pop()!;
+    if (seen.has(cell)) continue;
+    seen.add(cell);
+    const [x, y] = [cell % width, Math.floor(cell / width)];
+    for (const [nx, ny] of [
+      [x + 1, y],
+      [x - 1, y],
+      [x, y + 1],
+      [x, y - 1],
+    ] as const) {
+      const next = ny * width + nx;
+      const c = at(nx, ny);
+      if ((c === "." || c === "d") && !pieces.has(next)) queue.push(next);
+    }
+  }
+  const reachable = (x: number, y: number) =>
+    seen.has(y * width + x) ||
+    [
+      [x + 1, y],
+      [x - 1, y],
+      [x, y + 1],
+      [x, y - 1],
+    ].some(([nx, ny]) => seen.has(ny! * width + nx!));
+  for (const room of interior.rooms) {
+    let any = false;
+    for (let y = room.y; y < room.y + room.h && !any; y++)
+      for (let x = room.x; x < room.x + room.w && !any; x++) any = seen.has(y * width + x);
+    assert.ok(any, `${label}: the ${room.use} room is reachable`);
+  }
+  for (const [id, seat] of Object.entries(interior.seats)) {
+    assert.equal(at(seat.x, seat.y), ".", `${label}: ${id}'s spot is on the floor`);
+    const on = pieces.get(seat.y * width + seat.x);
+    assert.ok(on === undefined || on === "bed", `${label}: ${id} stands on nothing but a bed`);
+    assert.ok(reachable(seat.x, seat.y), `${label}: ${id}'s spot is reachable`);
+  }
+  // Each resident has a bed and each worker a spot, up to the most a building seats (eight of each).
+  const building = town.buildings.find((each) => each.id === interior.buildingId)!;
+  const residents = building.people.filter((id) => town.homeOf[id] === building.id).slice(0, 8);
+  for (const id of residents) {
+    const seat = interior.seats[id];
+    assert.ok(seat, `${label}: ${id} has a bed`);
+    assert.equal(pieces.get(seat.y * width + seat.x), "bed", `${label}: ${id} sleeps in a bed`);
+  }
+  const workers = building.people
+    .filter((id) => town.workOf[id] === building.id || (town.homeOf[id] !== building.id && building.kind !== "home"))
+    .slice(0, 8);
+  for (const id of workers) assert.ok(interior.seats[id], `${label}: ${id} has a spot`);
+}
+
+try {
+  // ── Every building of every starter world, laid out ──
+  const pinned = createHash("sha256");
+  let buildings = 0;
+  for (const kit of WORLD_STARTER_KITS) {
+    const game = gameOf(kit.id, 31);
+    for (const settlement of game.world.places.filter((place) => place.rank !== undefined)) {
+      const town = worldTown(game, settlement.id)!;
+      for (const building of town.buildings) {
+        const label = `${kit.id} ${settlement.name} ${building.id}`;
+        const interior = layOutInterior(game, town, building);
+        assert.deepEqual(layOutInterior(game, town, building), interior, `${label}: the same rooms each time`);
+        checkRooms(town, interior, label);
+        pinned.update(JSON.stringify(interior));
+        buildings++;
+        // A part of town has none; every other building has these rooms.
+        const rooms = worldInterior(game, town, building.id);
+        if (worldBuildingHasRooms(game, building)) assert.deepEqual(rooms, interior, label);
+        else assert.equal(rooms, null, `${label}: a part of town has no rooms`);
+      }
+    }
+  }
+  assert.ok(buildings > 500, "many buildings checked");
+  assert.equal(
+    `${WORLD_INTERIOR_VERSION}:${pinned.digest("hex").slice(0, 16)}`,
+    "1:8cb23466b308b9b9",
+    "the rooms changed: bump WORLD_INTERIOR_VERSION and pin the new digest",
+  );
+
+  // ── Parts of town have no rooms; a story's tavern does ──
+  const modern = gameOf("modern_day", 31);
+  const city = modern.world.places.find(
+    (place) => place.rank !== undefined && worldTown(modern, place.id)!.buildings.some((b) => b.kind === "place"),
+  )!;
+  const modernTown = worldTown(modern, city.id)!;
+  const neighbourhood = modernTown.buildings.find((building) => building.kind === "place")!;
+  assert.equal(worldInterior(modern, modernTown, neighbourhood.id), null, "a neighbourhood has no rooms");
+  const named = (name: string) =>
+    worldBuildingHasRooms(modern, {
+      id: "x",
+      kind: "place",
+      x: 0,
+      y: 0,
+      w: 4,
+      h: 3,
+      door: { x: 0, y: 0 },
+      people: [],
+      name,
+    });
+  assert.equal(named("The Old Quarter"), false, "a story's quarter has no rooms");
+  assert.equal(named("The Harbour Inn"), true, "a story's inn has");
+  assert.equal(named("Mother Agatha's"), true, "a plain name has");
+
+  // ── Furnished for what it is, across settings ──
+  const use = (role: string, tags: string[] = []) => worldInteriorUse({ kind: "work", role }, tags);
+  const expected: Array<[string, string]> = [
+    ["innkeeper", "tavern"],
+    ["teahouse keeper", "tavern"],
+    ["bartender", "tavern"],
+    ["noodle cook", "tavern"],
+    ["capsule hotel clerk", "tavern"],
+    ["priest", "worship"],
+    ["monk", "worship"],
+    ["priest of an order", "worship"],
+    ["physician", "clinic"],
+    ["herbalist", "clinic"],
+    ["ripperdoc", "clinic"],
+    ["medic", "clinic"],
+    ["constable", "guard"],
+    ["security guard", "guard"],
+    ["frontier marshal", "guard"],
+    ["police officer", "guard"],
+    ["scholar", "study"],
+    ["researcher", "study"],
+    ["librarian", "study"],
+    ["smith", "workshop"],
+    ["blacksmith", "workshop"],
+    ["mechanic", "workshop"],
+    ["engineer", "workshop"],
+    ["merchant", "shop"],
+    ["street vendor", "shop"],
+    ["shopkeeper", "shop"],
+    ["shop clerk", "shop"],
+    ["sect disciple", "training"],
+    ["farmer", "store"],
+    ["fisher", "store"],
+    ["miner", "store"],
+    ["scavenger", "store"],
+    ["bard", "workroom"],
+  ];
+  for (const [role, kind] of expected) assert.equal(use(role), kind, `${role} works in a ${kind}`);
+  // Whole words only: a barber is no bar, an inner court no inn, the Forgotten no forge.
+  assert.equal(use("barber"), "shop");
+  assert.equal(use("inner court steward"), "workroom");
+  assert.equal(worldInteriorUse({ kind: "place", name: "The Forgotten Hall" }), "hall");
+  // Tags speak first: a place tagged an inn is a tavern whatever its name.
+  assert.equal(worldInteriorUse({ kind: "place", name: "The Golden Goose Smithy" }, ["inn"]), "tavern");
+  assert.equal(worldInteriorUse({ kind: "home" }), "home");
+  assert.equal(worldInteriorUse({ kind: "landmark" }), "hall");
+
+  // ── The tiles ──
+  for (const id of ["in_floor", "in_wall", "in_door", ...WORLD_FURNITURE.map((kind) => `in_${kind}`)])
+    assert.ok((WORLD_TILE_IDS as readonly string[]).includes(id), `${id} is a world tile`);
+
+  // ── The evening ──
+  const fantasy = gameOf("wuxia_xianxia", 31);
+  let tavernTown: WorldTown | undefined;
+  for (const place of fantasy.world.places.filter((each) => each.rank !== undefined)) {
+    const town = worldTown(fantasy, place.id)!;
+    if (town.buildings.some((b) => b.kind !== "home" && worldInteriorUse(b) === "tavern")) tavernTown = town;
+  }
+  assert.ok(tavernTown, "a town with a tavern");
+  const tavern = tavernTown.buildings.find((b) => b.kind !== "home" && worldInteriorUse(b) === "tavern")!;
+  const keeper = tavern.people.find((id) => tavernTown!.workOf[id] === tavern.id);
+  if (keeper) {
+    for (const hour of [11, 15, 19, 23])
+      assert.equal(worldTownWhere(tavernTown, keeper, hour), tavern.id, `kept at ${hour}`);
+    assert.equal(worldTownWhere(tavernTown, keeper, 3), tavernTown.homeOf[keeper] ?? "square", "home after midnight");
+  }
+  const evening = new Map<string, number>();
+  for (const person of tavernTown.people) {
+    if (tavernTown.workOf[person.id] === tavern.id) continue;
+    const where = worldTownWhere(tavernTown, person.id, 19);
+    const kind =
+      where === "square"
+        ? "square"
+        : where === tavern.id
+          ? "tavern"
+          : where === tavernTown.homeOf[person.id]
+            ? "home"
+            : "other";
+    evening.set(kind, (evening.get(kind) ?? 0) + 1);
+    assert.equal(
+      worldTownWhere(tavernTown, person.id, 10),
+      tavernTown.workOf[person.id] ?? "square",
+      "by day unchanged",
+    );
+    assert.equal(
+      worldTownWhere(tavernTown, person.id, 23),
+      tavernTown.homeOf[person.id] ?? "square",
+      "at night unchanged",
+    );
+  }
+  assert.equal(evening.get("other") ?? 0, 0, "nobody anywhere else at dusk");
+  assert.ok(
+    (evening.get("square") ?? 0) > 0 && (evening.get("tavern") ?? 0) > 0 && (evening.get("home") ?? 0) > 0,
+    "all three at dusk",
+  );
+  // The tavern's rooms hold its evening crowd's keepers, and its words are the setting's.
+  const tavernRooms = worldInterior(fantasy, tavernTown, tavern.id)!;
+  if (keeper) assert.ok(worldInteriorPeopleAt(tavernTown, tavernRooms, 19).some((each) => each.person.id === keeper));
+  const homeRooms = worldInterior(
+    fantasy,
+    tavernTown,
+    tavernTown.buildings.find((b) => b.kind === "home" && b.people.length)!.id,
+  )!;
+  assert.match(
+    worldInteriorWords(homeRooms, "wuxia"),
+    /^Inside, if the party is let in: .*a brazier/u,
+    "a wuxia home's brazier",
+  );
+  assert.match(worldInteriorWords(homeRooms), /a hearth/u);
+  const asleep = worldInteriorPeopleAt(tavernTown, homeRooms, 2);
+  assert.ok(asleep.length > 0 && asleep.every((each) => each.asleep), "asleep at home at night");
+
+  // ── Through the routes, with a stand-in model ──
+  const replies: string[] = [];
+  const prompts: string[] = [];
+  const standIn = createServer(async (req, res) => {
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) chunks.push(Buffer.from(chunk));
+    prompts.push(Buffer.concat(chunks).toString());
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(
+      JSON.stringify({
+        choices: [{ index: 0, finish_reason: "stop", message: { role: "assistant", content: replies.shift() ?? "" } }],
+      }),
+    );
+  });
+  await new Promise<void>((resolve) => standIn.listen(0, "127.0.0.1", resolve));
+  const address = standIn.address();
+  assert.ok(address && typeof address !== "string");
+  const db = await getDB();
+  const app = Fastify();
+  app.decorate("db", db);
+  await app.register(gameRoutes, { prefix: "/api/game" });
+  await app.register(generateRoutes, { prefix: "/api/generate" });
+  try {
+    const game = fantasy;
+    const settlement = game.world.places.find((place) => place.id === tavernTown.settlementId)!;
+    const connection = await createConnectionsStorage(db).create(
+      createConnectionSchema.parse({
+        name: "Stand-in",
+        provider: "custom",
+        baseUrl: `http://127.0.0.1:${address.port}/v1`,
+        model: "stand-in",
+        apiKey: "sk-stand-in",
+      }),
+    );
+    const chats = createChatsStorage(db);
+    const chat = await chats.create({ name: "Rooms", mode: "game", characterIds: [], connectionId: connection!.id });
+    const chatId = chat.id;
+    await chats.patchMetadata(chatId, {
+      gameId: `rooms-${chatId}`,
+      gameSessionStatus: "active",
+      gameIntroPresented: true,
+      gameWorldKit: game.kit,
+      gameWorld: { seed: game.seed, generatorVersion: WORLD_GENERATOR_VERSION, grounding: "expand", brief: game.brief },
+      gameTime: { day: 1, hour: 10, minute: 0 },
+    });
+    const rooms = (building: string) =>
+      app.inject({ method: "GET", url: `/api/game/${chatId}/town/interior?building=${encodeURIComponent(building)}` });
+    await chats.createMessage({
+      chatId,
+      role: "assistant",
+      content: `The gate. [place: name="${settlement.name}" result="ok"]`,
+    });
+    const got = await rooms(tavern.id);
+    assert.equal(got.statusCode, 200, got.body);
+    assert.deepEqual(got.json().interior, tavernRooms, "the route's rooms are the building's");
+    assert.equal((await rooms("nowhere")).statusCode, 404, "no such building");
+    assert.equal((await rooms("square")).statusCode, 404, "the square has no rooms");
+
+    // Walk to the tavern: the next turn tells the Game Master what is inside, in the setting's words.
+    const walked = await app.inject({
+      method: "POST",
+      url: `/api/game/${chatId}/town/visit`,
+      payload: { to: tavern.id },
+    });
+    assert.equal(walked.statusCode, 200, walked.body);
+    replies.push("Steam and chatter.");
+    prompts.length = 0;
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/generate/",
+      payload: { chatId, userMessage: "We step in.", streaming: false },
+    });
+    assert.equal(response.statusCode, 200, response.body);
+    const said = prompts.join("\n");
+    assert.ok(
+      said.includes(JSON.stringify(worldInteriorWords(tavernRooms, "wuxia")).slice(1, -1)),
+      "told what is inside",
+    );
+    assert.match(said, /That time is counted already/);
+  } finally {
+    await app.close();
+    await closeDB();
+    await new Promise<void>((resolve) => standIn.close(() => resolve()));
+  }
+
+  console.log("World interiors: every building's rooms hold together, are pinned, and are told to the Game Master.");
+} finally {
+  rmSync(dataDir, { recursive: true, force: true });
+}

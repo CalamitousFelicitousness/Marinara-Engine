@@ -153,6 +153,13 @@ try {
         /worn in other slots|slot "hands"/,
       ],
       [(doc: Record<string, any>) => (fake(doc).risky = "[ominous]"), /square brackets/],
+      [
+        (doc: Record<string, any>) =>
+          delete doc.catalogs
+            .find((catalog: { id: string }) => catalog.id === "kit")
+            .entries.find((entry: { id: string }) => entry.id === "hexed-ring").item.binds,
+        /binds and the fake does not/,
+      ],
     ] as const) {
       assert.match(refusal(honesty(edit)), message);
     }
@@ -294,6 +301,16 @@ try {
         [1, null],
       ],
     );
+    // The Game Master's totals keep them apart too: the fake line carries its truth, the real one none.
+    assert.deepEqual(
+      gameInventoryTotals(both.stacks)
+        .filter((total) => total.item === "kit/warming-tonic")
+        .map((total) => [total.quantity, total.truly ?? null]),
+      [
+        [2, "kit/bitter-tonic"],
+        [1, null],
+      ],
+    );
     // Given one of two, the fake stays a fake in the other bag.
     const given = run('[inventory: action="give" item="Warming tonic" count="1" to="Juno"]', bought.stacks);
     const junos = given.stacks.find((stack) => stack.holder === "Juno")!;
@@ -302,6 +319,44 @@ try {
     // A fake found out is another inventory, though it shows the same until then.
     const revealedCopy = bought.stacks.map((stack) => (stack.truly ? { ...stack, truly: undefined } : stack));
     assert.equal(sameGameInventory(bought.stacks, revealedCopy), false);
+  }
+
+  // Where only the fence has something (a watch pistol is a city's; the fence's lot is a fake one), a buy
+  // that names no seller is refused, and one that names the fence gets the fake.
+  {
+    const pistolDefinition = parsedOrThrow(
+      honesty((doc) => {
+        const kit = doc.catalogs.find((catalog: { id: string }) => catalog.id === "kit");
+        const pistol = kit.entries.find((entry: { id: string }) => entry.id === "watch-pistol").item;
+        kit.entries.push({
+          id: "rusty-pistol",
+          label: "Rusty pistol",
+          item: {
+            category: "arm",
+            slots: pistol.slots,
+            passesFor: "kit/watch-pistol",
+            cost: { amount: 1, unit: "shilling" },
+          },
+        });
+        doc.items.lootTables.find((table: { id: string }) => table.id === "fences_lot").entries = [
+          { item: "kit/rusty-pistol", weight: 1 },
+        ];
+      }),
+    );
+    const pistolBook = rulesetItemBook(pistolDefinition, entriesOf(pistolDefinition));
+    const pistolMarket = () => rulesetMarketQuoter(pistolDefinition, pistolBook, town, () => true, undefined, day);
+    const buyPistol = (tag: string) =>
+      applyGameInventoryTags(tag, coins(50), party, undefined, pistolBook, undefined, undefined, pistolMarket());
+    assert.equal(
+      readResolvedInventoryTags(buyPistol('[inventory: action="buy" item="Watch pistol"]').content)[0]?.ok,
+      false,
+    );
+    const fenced = buyPistol('[inventory: action="buy" item="Watch pistol" seller="fence"]');
+    assert.equal(
+      fenced.stacks.find((stack) => stack.item === "kit/watch-pistol")?.truly,
+      "kit/rusty-pistol",
+      fenced.content,
+    );
   }
 
   // The Game Master sees the truth beside it.

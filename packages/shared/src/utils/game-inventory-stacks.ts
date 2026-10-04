@@ -296,8 +296,8 @@ function keptByCurse(stack: GameInventoryStack, rules: GameInventoryItemRules | 
   return (
     rules?.actor === "player" &&
     stack.bound === true &&
-    (stack.truly ?? stack.item) !== undefined &&
-    rules.itemOf((stack.truly ?? stack.item)!)?.binds?.cursed === true
+    stack.item !== undefined &&
+    rules.itemOf(stack.item)?.binds?.cursed === true
   );
 }
 

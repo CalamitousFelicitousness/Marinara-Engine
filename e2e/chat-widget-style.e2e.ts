@@ -92,6 +92,7 @@ async function openAppearance(page: Page) {
   const controls = page.locator("[data-chat-widget-style-controls]");
   await controls.scrollIntoViewIfNeeded();
   await expect(controls).toBeVisible();
+  await expect(controls).toHaveCSS("border-top-width", "0px");
   const cards = controls.locator("[data-chat-widget-preset-option]");
   await expect(cards).toHaveCount(3);
   await expect
@@ -99,6 +100,18 @@ async function openAppearance(page: Page) {
       cards.evaluateAll((elements) => Math.min(...elements.map((element) => element.getBoundingClientRect().width))),
     )
     .toBeGreaterThanOrEqual(150);
+  for (const preset of ["dottore", "mari"]) {
+    const insets = await controls
+      .locator(`[data-chat-widget-preset-option="${preset}"] .mari-window`)
+      .evaluate((element) => {
+        const frame = element.getBoundingClientRect();
+        const title = element.querySelector(".mari-window__title")!.getBoundingClientRect();
+        const close = element.querySelector(".mari-window__header > svg")!.getBoundingClientRect();
+        return { title: title.left - frame.left, close: frame.right - close.right };
+      });
+    expect(insets.title).toBeGreaterThanOrEqual(12);
+    expect(insets.close).toBeGreaterThanOrEqual(12);
+  }
   return controls;
 }
 
@@ -196,6 +209,7 @@ async function expectCustomColorsKeepCutCorners(page: Page) {
     content: `.mari-window[data-window="chat-settings"] {
     --mari-window-bg: #18324b;
     --mari-window-border: #e4bc70;
+    --mari-window-header-bg: #e7faff;
   }`,
   });
   try {
@@ -209,6 +223,14 @@ async function expectCustomColorsKeepCutCorners(page: Page) {
         clip: getComputedStyle(element, "::after").clipPath,
       })),
     ).toEqual({ fill: "rgb(24, 50, 75)", border: "rgb(228, 188, 112)", clip: frameClip });
+    const header = settings.locator(".mari-window__header");
+    await expect(header).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    expect(
+      await header.evaluate((element) => ({
+        fill: getComputedStyle(element, "::before").backgroundColor,
+        clip: getComputedStyle(element, "::before").clipPath,
+      })),
+    ).toEqual({ fill: "rgb(231, 250, 255)", clip: expect.stringContaining("polygon(") });
   } finally {
     await customTheme.evaluate((element) => element.parentNode?.removeChild(element));
     await closeChatSettings(page);
@@ -244,6 +266,44 @@ async function exerciseWindow(page: Page, desktop: boolean) {
   await expect(popped).toHaveCount(0);
   await openChatSettings(page);
   await expect(settings.locator('[data-drawer="chat-name"]')).toBeVisible();
+}
+
+async function expectCompactFramedWidgets(page: Page, preset: "dottore" | "mari", theme: string) {
+  const settings = await openChatSettings(page);
+  const header = settings.locator(".mari-window__header");
+  expect(await header.evaluate((element) => getComputedStyle(element, "::before").backgroundImage)).not.toContain(
+    "url(",
+  );
+  expect(await header.evaluate((element) => getComputedStyle(element, "::after").content)).not.toBe("none");
+  const name = (await settings.locator('[data-drawer="chat-name"]').boundingBox())!;
+  const branches = (await settings.locator('[data-drawer="conversation-chat-branches"]').boundingBox())!;
+  expect(Math.abs(branches.y - (name.y + name.height))).toBeLessThanOrEqual(1);
+
+  const body = settings.locator(".mari-window__body");
+  const frame = (await settings.boundingBox())!;
+  const content = (await body.boundingBox())!;
+  expect(frame.y + frame.height - (content.y + content.height)).toBeGreaterThanOrEqual(4);
+  const scroller = body.locator(":scope > .overflow-y-auto");
+  await scroller.evaluate((element) => {
+    element.scrollTop = (element.scrollHeight - element.clientHeight) / 2;
+  });
+  await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  await page.screenshot({
+    path: test.info().outputPath(`chat-widgets-${preset}-${theme}-scrolled.png`),
+    animations: "disabled",
+  });
+  await scroller.evaluate((element) => {
+    element.scrollTop = 0;
+  });
+
+  if (preset === "mari") {
+    const ornament = await page.locator("[data-chat-settings-button]").evaluate((element) => {
+      const style = getComputedStyle(element, "::after");
+      return { images: style.backgroundImage, position: style.backgroundPosition };
+    });
+    expect(ornament.images.match(/url\(/gu)).toHaveLength(1);
+    expect(ornament.position).toBe("50% 0%");
+  }
 }
 
 for (const theme of ["dark", "light"] as const) {
@@ -296,6 +356,7 @@ for (const theme of ["dark", "light"] as const) {
         expect(appearance.bubble).not.toEqual(baseline.bubble);
         if (preset === "dottore") await expectCustomColorsKeepCutCorners(page);
         await exerciseWindow(page, testInfo.project.name.includes("desktop"));
+        await expectCompactFramedWidgets(page, preset, theme);
         await page.screenshot({
           path: testInfo.outputPath(`chat-widgets-${preset}-${theme}.png`),
           animations: "disabled",

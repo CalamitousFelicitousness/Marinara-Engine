@@ -1070,7 +1070,7 @@ const SETTINGS_SEARCHABLE_CONTROLS: readonly SettingsSearchableControlMeta[] = [
     sectionId: "app-style",
     label: "Chat widget style",
     description:
-      "Choose a look for movable chat buttons, windows and sections. Picking a preset resets Font and Shape.",
+      "Choose a look for movable chat buttons, windows and sections. Picking a preset resets Font and Shape. Professor Mari can create custom themes for you.",
     aliases: ["dottore", "mari", "preset", "window", "drawer", "button", "sci-fi", "fantasy"],
     kind: "Button group",
   },
@@ -5260,7 +5260,7 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
               <fieldset
                 id={getSettingsControlAnchorId("chat-widget-style")}
                 data-chat-widget-style-controls
-                className="@container min-w-0 scroll-mt-3 border-t border-[var(--border)] pt-4"
+                className="@container min-w-0 scroll-mt-3 pt-4"
               >
                 <legend className="px-0 text-xs font-medium">
                   {localizeUi("settings.controls.chatWidgetStyle.label")}

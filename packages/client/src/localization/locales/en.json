@@ -2757,7 +2757,7 @@
   "settings.controls.chatWidgetStyle.defaultDescription": "The current Marinara look.",
   "settings.controls.chatWidgetStyle.dottore": "Dottore",
   "settings.controls.chatWidgetStyle.dottoreDescription": "Technical lettering and cut corners.",
-  "settings.controls.chatWidgetStyle.help": "Choose a look for movable chat buttons, windows and sections. Picking a preset resets Font and Shape.",
+  "settings.controls.chatWidgetStyle.help": "Choose a look for movable chat buttons, windows and sections. Picking a preset resets Font and Shape. Professor Mari can create custom themes for you.",
   "settings.controls.chatWidgetStyle.label": "Chat widget style",
   "settings.controls.chatWidgetStyle.mari": "Mari",
   "settings.controls.chatWidgetStyle.mariDescription": "Storybook lettering and arched frames.",

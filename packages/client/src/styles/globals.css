@@ -752,7 +752,10 @@
       var(--mari-window-header-border, var(--mari-widget-border, var(--marinara-chat-chrome-panel-divider)));
     border-top-left-radius: inherit;
     border-top-right-radius: inherit;
-    background: var(--mari-window-header-bg, var(--mari-widget-header-bg, transparent));
+    background: var(
+      --mari-widget-header-shell-bg,
+      var(--mari-window-header-bg, var(--mari-widget-header-bg, transparent))
+    );
     padding: var(--mari-window-header-padding, var(--mari-widget-header-padding, 0.625rem 0.75rem));
   }
 

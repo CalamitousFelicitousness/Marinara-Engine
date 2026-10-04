@@ -486,6 +486,8 @@ export interface RulesetCombatant {
     /** The off-hand weapon (its place in `sheet.items`) this turn's attack was made with, which
      *  another off-hand weapon may follow on the off-hand budget. */
     offHand?: number;
+    /** Attacks made this turn, which a condition's cap on attacks a turn counts (combat C6d). */
+    attacks?: number;
   };
   /** At zero and out of the fight. `dying` is a party member a ruleset with a dying rule still
    *  rolls for; `stable` is one that has stopped rolling; `defeated` is one the fight is over for. */
@@ -1062,6 +1064,9 @@ export interface RulesetCombatOption {
   loaded?: { now: number; max: number };
   /** A second attack with a weapon in the off hand, on the ruleset's off-hand budget. */
   offHand?: true;
+  /** Paid out of a budget a condition grants for an attack of one strike (combat C6d, Haste's extra
+   *  action): the strikes the attack would otherwise put in hand are not given. */
+  oneStrike?: true;
   /** Whether the amount below is health GIVEN BACK rather than taken off. Without it a menu and an
    *  opponent's own choices cannot tell a heal from a blow, because both are an amount. */
   heals?: boolean;

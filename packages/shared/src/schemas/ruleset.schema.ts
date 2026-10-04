@@ -2493,7 +2493,9 @@ const combatBudgetSchema = z
     label,
     /** `turn` refills at the start of the holder's own turn; `round` when a new round begins. */
     per: z.enum(["turn", "round"]),
-    count: z.number().int().min(1).max(10).default(1),
+    /** How many a turn (or round) hands out. 0 (Capability API 1.71) is a budget only a condition's
+     *  `budgets` fills, as Haste's extra action is. */
+    count: z.number().int().min(0).max(10).default(1),
   })
   .strict();
 
@@ -2787,11 +2789,52 @@ const combatConditionSchema = z
     whileSourceInSight: z.union([z.literal(true), z.array(combatConditionEffectSchema).min(1).max(12)]).optional(),
     /** It comes off the moment whoever applied it goes down. */
     endsWhenSourceDown: z.boolean().optional(),
+    /**
+     * The action economy while it holds (Capability API 1.71, combat C6d), as Haste and Slow change it:
+     * - `budgets`: how many of a turn budget its holder gets, more or fewer, never below none;
+     * - `grants`: what a budget (often one declared with a count of 0, which only this fills) may be
+     *   spent on: the standard actions it names, an attack of one strike (`attacks`), an item's use
+     *   (`items`);
+     * - `exclusive`: two budgets of which a turn may spend only one: spending either empties the other;
+     * - `attacksPerTurn`: how many attacks its holder makes in a turn, whatever an action would give;
+     * - `onEnd`: what it leaves behind when it ends for good (not when it is put on again), as Haste's
+     *   lethargy is.
+     */
+    budgets: z
+      .array(z.object({ budget: sheetId, flat: z.number().int().min(-10).max(10) }).strict())
+      .min(1)
+      .max(4)
+      .optional(),
+    grants: z
+      .object({
+        budget: sheetId,
+        standard: z.array(combatStandardActionSchema).min(1).max(6).optional(),
+        attacks: z.literal(true).optional(),
+        items: z.literal(true).optional(),
+      })
+      .strict()
+      .optional(),
+    exclusive: z.tuple([sheetId, sheetId]).optional(),
+    attacksPerTurn: z.number().int().min(0).max(10).optional(),
+    onEnd: z
+      .object({ applies: z.array(catalogAppliesSchema).min(1).max(4) })
+      .strict()
+      .optional(),
   })
   .strict()
   .superRefine((entry, ctx) => {
     savesNeedSomethingToNarrow(entry, ctx);
     skillsNeedSomethingToNarrow(entry, ctx);
+    if (entry.grants && !entry.grants.standard && !entry.grants.attacks && !entry.grants.items) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["grants"],
+        message: "A grant says what its budget may be spent on: standard actions, attacks or items",
+      });
+    }
+    if (entry.exclusive && entry.exclusive[0] === entry.exclusive[1]) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["exclusive"], message: "Two different budgets" });
+    }
   });
 
 /** The effects an item may have while worn or carried: every effect a condition may have but the ones
@@ -4853,6 +4896,17 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       if (mapped.has(entry.condition)) issue([...path, "condition"], `Duplicate condition "${entry.condition}"`);
       mapped.add(entry.condition);
       effectNameIssues(entry, skills, saves, path, issue);
+      // The action economy it changes (1.71) is the ruleset's own: budgets it declares, conditions it has.
+      entry.budgets?.forEach((change, changeIndex) =>
+        checkBudget(change.budget, [...path, "budgets", changeIndex, "budget"]),
+      );
+      if (entry.grants) checkBudget(entry.grants.budget, [...path, "grants", "budget"]);
+      entry.exclusive?.forEach((budget, budgetIndex) => checkBudget(budget, [...path, "exclusive", budgetIndex]));
+      entry.onEnd?.applies.forEach((applied, appliedIndex) => {
+        if (!conditions.has(applied.condition)) {
+          issue([...path, "onEnd", "applies", appliedIndex, "condition"], `Unknown condition "${applied.condition}"`);
+        }
+      });
       // Gating an effect this condition does not have says nothing, and is nearly always a typo for
       // one it does.
       if (Array.isArray(entry.whileSourceInSight)) {

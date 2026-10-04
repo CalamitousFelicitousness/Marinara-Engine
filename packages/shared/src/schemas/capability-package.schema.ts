@@ -594,7 +594,12 @@ const capabilityPackageManifestBaseSchema = z
 //        may have height whatever a ruleset says. Not a soft seam, for the same reason as 1.20 through
 //        1.69: an Engine that cannot read it refuses the whole ruleset file, so a package that ships it
 //        declares 1.70. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 70 } as const);
+// 1.71: a ruleset's conditions may change the action economy (combat C6d, as Haste and Slow do):
+//        `budgets`, `grants`, `exclusive`, `attacksPerTurn` and `onEnd`, and a budget may have a count of
+//        0 for one only a condition fills. Not a soft seam, for the same reason as 1.20 through 1.70: an
+//        Engine that cannot read these refuses the whole ruleset file, so a package that ships any of
+//        them declares 1.71. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 71 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

@@ -1585,6 +1585,21 @@ export function getCapabilityPackageInstallIssue(
   if (!declaresApi(70) && plainRecord(ruleset?.combat)?.elevation !== undefined) {
     return "A ruleset that says what a board's height does requires schemaVersion 2 and capabilityApi 1.70 or newer";
   }
+  // The action economy conditions change, 1.71 (combat C6d): new keys on the strict condition, and a
+  // budget of no count, which an older Engine refuses.
+  const combatBlock = plainRecord(ruleset?.combat);
+  const economy = Array.isArray(combatBlock?.conditions)
+    ? combatBlock.conditions.some((entry) =>
+        ["budgets", "grants", "exclusive", "attacksPerTurn", "onEnd"].some(
+          (key) => plainRecord(entry)?.[key] !== undefined,
+        ),
+      )
+    : false;
+  const budgets = plainRecord(combatBlock?.economy)?.budgets;
+  const emptyBudget = Array.isArray(budgets) && budgets.some((budget) => plainRecord(budget)?.count === 0);
+  if (!declaresApi(71) && (economy || emptyBudget)) {
+    return "A ruleset whose conditions change the action economy, or with a budget of no count, requires schemaVersion 2 and capabilityApi 1.71 or newer";
+  }
   return null;
 }
 

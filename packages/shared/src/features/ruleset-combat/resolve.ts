@@ -33,6 +33,7 @@ import {
 import {
   currentRulesetActor,
   refreshRulesetBudgets,
+  rulesetConditionEconomy,
   refreshRulesetMovement,
   rulesetCombatant,
   rulesetCombatConditions,
@@ -960,6 +961,32 @@ function applyConditionId(
   ctx.events.push({ type: "condition", targetId: target.id, condition, active: true, reason: "applied" });
 }
 
+/**
+ * One of a budget spent, said out loud. Two budgets a condition makes exclusive (combat C6d, as Slow
+ * makes the action and the bonus action) are one choice a turn: spending either empties the other.
+ */
+function spendBudget(ctx: RulesetCombatContext, combatant: RulesetCombatant, budget: string): void {
+  combatant.budgets[budget] = Math.max(0, (combatant.budgets[budget] ?? 0) - 1);
+  ctx.events.push({ type: "budget", actorId: combatant.id, budget, left: combatant.budgets[budget]! });
+  for (const [one, two] of rulesetConditionEconomy(ctx.definition, ctx.combat, combatant, ctx.state).exclusive) {
+    const other = one === budget ? two : two === budget ? one : undefined;
+    if (other === undefined || (combatant.budgets[other] ?? 0) < 1) continue;
+    combatant.budgets[other] = 0;
+    ctx.events.push({ type: "budget", actorId: combatant.id, budget: other, left: 0 });
+  }
+}
+
+/** An attack made, which a condition's cap on attacks a turn counts (combat C6d). */
+function countAttack(combatant: RulesetCombatant): void {
+  combatant.flags.attacks = (combatant.flags.attacks ?? 0) + 1;
+}
+
+/** Whether a condition's cap on attacks a turn has been reached (combat C6d). */
+function attacksCapped(ctx: RulesetCombatContext, combatant: RulesetCombatant): boolean {
+  const cap = rulesetConditionEconomy(ctx.definition, ctx.combat, combatant, ctx.state).attacksPerTurn;
+  return cap !== undefined && (combatant.flags.attacks ?? 0) >= cap;
+}
+
 function removeCondition(
   ctx: RulesetCombatContext,
   target: RulesetCombatant,
@@ -969,6 +996,12 @@ function removeCondition(
   target.tracked = target.tracked.filter((entry) => entry.condition !== condition);
   if (target.sheet) writeRulesetSheet(ctx.definition, target, { op: "condition", condition, active: false });
   ctx.events.push({ type: "condition", targetId: target.id, condition, active: false, reason });
+  // What it leaves behind when it ends (combat C6d), as Haste's lethargy is. Putting it on again
+  // replaces it without ending it, so that never comes here.
+  const ending = ctx.combat.conditions?.find((entry) => entry.condition === condition)?.onEnd;
+  if (ending && !target.defeated) {
+    for (const applied of ending.applies) applyConditionId(ctx, target, applied.condition, applied);
+  }
 }
 
 /** Conditions the ruleset says any damage ends. */
@@ -1233,10 +1266,7 @@ export function applyRulesetCombatChoice(
 
   // The budget goes first: what a turn may hold is not a matter of how the dice fall.
   const budget = option.budget;
-  if (budget) {
-    working.budgets[budget] = Math.max(0, (working.budgets[budget] ?? 0) - 1);
-    ctx.events.push({ type: "budget", actorId: working.id, budget, left: working.budgets[budget]! });
-  }
+  if (budget) spendBudget(ctx, working, budget);
 
   if (option.kind === "standard") {
     // A standard action an ability allowed is paid for as that ability is: the budget it named,
@@ -1277,7 +1307,9 @@ export function applyRulesetCombatChoice(
   const inHand = working.strikesLeft ?? 0;
   // A spend that buys ONE strike is the spend every fight has always made, so it puts nothing in
   // hand and says nothing: a ruleset whose list declares one strike a spend reads as it always did.
-  if (striking?.strikes !== undefined && (inHand > 0 || striking.strikes > 1)) {
+  // An attack a condition's grant paid for is one strike (combat C6d), and puts none in hand.
+  if (striking && !striking.sequence && striking.toHit !== undefined) countAttack(working);
+  if (striking?.strikes !== undefined && !option.oneStrike && (inHand > 0 || striking.strikes > 1)) {
     const left = inHand > 0 ? inHand - 1 : striking.strikes - 1;
     if (left > 0) working.strikesLeft = left;
     else delete working.strikesLeft;
@@ -1650,8 +1682,7 @@ function takeReaction(
   const budget = offered.budget;
   if (budget !== undefined) {
     if ((taking.budgets[budget] ?? 0) < 1) return refusal(state, choice.actorId, "no-budget", choice.optionId);
-    taking.budgets[budget] = Math.max(0, (taking.budgets[budget] ?? 0) - 1);
-    ctx.events.push({ type: "budget", actorId: taking.id, budget, left: taking.budgets[budget]! });
+    spendBudget(ctx, taking, budget);
   }
   const paid = planRulesetCombatCost(definition, taking, action, choice.payWith);
   if (!paid) return refusal(state, choice.actorId, "insufficient", choice.optionId);
@@ -2115,9 +2146,9 @@ function opportunityStrike(
 ): void {
   const strike = rulesetOpportunityAttack(striker);
   if (!strike) return;
-  striker.budgets[budget] = Math.max(0, (striker.budgets[budget] ?? 0) - 1);
   ctx.events.push({ type: "opportunity", actorId: striker.id, targetId: mover.id, label: strike.label, budget });
-  ctx.events.push({ type: "budget", actorId: striker.id, budget, left: striker.budgets[budget]! });
+  spendBudget(ctx, striker, budget);
+  countAttack(striker);
   // A strike made in passing keeps the same books as one made on a turn: a use is a use.
   spendAvailability(ctx, striker, strike);
   resolveAction(ctx, striker, strike, [mover]);
@@ -2195,7 +2226,10 @@ function resolveSequence(
       // counts its uses spends one, a part that recharges is spent until its dice bring it back, and
       // a part that has none left simply does not happen.
       if (chosen.length === 0 || !rulesetSequencePartAvailable(actor, part)) continue;
+      // A cap on attacks a turn (combat C6d) ends the sequence at the attacks it allows.
+      if (part.toHit !== undefined && attacksCapped(ctx, actor)) break;
       spendAvailability(ctx, actor, part);
+      if (part.toHit !== undefined) countAttack(actor);
     }
     const hold = resolveAction(ctx, actor, part, chosen, undefined, resuming, styleId);
     if (hold) return { ...hold, part: index };
@@ -3067,6 +3101,13 @@ function beginNextTurn(definition: RulesetDefinition, combat: RulesetCombat, ctx
     // A condition that ended as the turn began no longer holds this turn's walk: nothing has been
     // spent yet, so the allowance is simply read again.
     refreshRulesetMovement(definition, combat, actor, ctx.state);
+    // And its budgets, as the conditions it holds now change them (combat C6d).
+    refreshRulesetBudgets(
+      combat,
+      actor.budgets,
+      "turn",
+      rulesetConditionEconomy(definition, combat, actor, ctx.state).budgets,
+    );
     if (actor.dying && !actor.stable && !actor.defeated) deathSave(ctx, actor);
   }
   const after = rulesetEncounterOutcome(ctx.state);

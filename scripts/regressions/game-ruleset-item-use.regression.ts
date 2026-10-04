@@ -497,6 +497,36 @@ try {
       maxHealth: 6,
     });
     assert.deepEqual(ada(first.state).itemsUsed, { 0: 1 });
+    // A condition's grant pays for an item's use once the Action is spent (combat C6d, as Haste's extra
+    // action uses an object): a spare budget of no count, which the condition fills.
+    {
+      const rushedEmber = parsedOrThrow(
+        variant(emberText, (doc) => {
+          doc.combat.economy.budgets.push({ id: "spare", label: "Spare action", per: "turn", count: 0 });
+          doc.sheet.live.conditions.push({ id: "rushed", label: "Rushed" });
+          doc.combat.conditions = [
+            ...(doc.combat.conditions ?? []),
+            { condition: "rushed", budgets: [{ budget: "spare", flat: 1 }], grants: { budget: "spare", items: true } },
+          ];
+        }),
+        "Ember Roads with a spare action",
+      );
+      const rushed = fight(
+        rushedEmber,
+        [held(poultice, "Poultice", false, 2)],
+        { ...hurt, conditions: ["rushed"] },
+        { friend: hurt },
+      );
+      const once = take(rushedEmber, rushed, "use:0", ["ada"], 3);
+      assert.equal(optionOf(rushedEmber, once.state, "use:0")?.budget, "spare", "the spare action pays now");
+      const twice = take(rushedEmber, once.state, "use:0", ["bo"], 3);
+      assert.deepEqual(
+        twice.events.filter((event) => event.type === "budget").map((event) => event.budget),
+        ["spare"],
+      );
+      assert.equal(optionOf(rushedEmber, twice.state, "use:0"), undefined, "and nothing pays for a third");
+      assert.equal(optionOf(ember, take(ember, start, "use:0", ["ada"], 3).state, "use:0"), undefined, "without it");
+    }
     const names = rulesetCombatNames(ember, { combatants: first.state.combatants } as never, t);
     assert.equal(
       rulesetCombatEventLine(firstOf(first.events, "uses"), names, t),

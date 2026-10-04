@@ -37,6 +37,7 @@ import {
   rulesetCheckMode,
   rulesetConditionModifiers,
   type RulesetConditionModifier,
+  rulesetConditionEconomy,
 } from "./encounter.js";
 import {
   rulesetAreaCells,
@@ -104,10 +105,29 @@ function grantedStandardOptions(
   definition: RulesetDefinition,
   combat: RulesetCombat,
   actor: RulesetCombatant,
+  state?: RulesetEncounterState,
 ): RulesetCombatOption[] {
   const declared = new Set<string>(combat.standard ?? []);
   const options: RulesetCombatOption[] = [];
   const seen = new Set<string>();
+  // What a condition lets a budget it grants be spent on (combat C6d, Haste's extra action): the
+  // standard actions it names, at no price of its own.
+  for (const grant of rulesetConditionEconomy(definition, combat, actor, state).grants) {
+    if (!grant.standard || (actor.budgets[grant.budget] ?? 0) < 1) continue;
+    for (const name of grant.standard) {
+      if (!declared.has(name)) continue;
+      const id = `standard:${name}@${grant.budget}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      options.push({
+        id,
+        kind: "standard",
+        label: name,
+        budget: grant.budget,
+        targets: name === "help" ? { side: "ally", count: 1 } : { side: "self", count: 0 },
+      });
+    }
+  }
   for (const action of actor.actions) {
     const granted = action.standard;
     if (!granted || (actor.budgets[granted.budget] ?? 0) < 1) continue;
@@ -1003,10 +1023,32 @@ function optionFrom(
   // Breaking free is only there while something holds on.
   if (action.contest?.from && !rulesetContestHolder(state, actor, action.contest)) return null;
   if (!actionDoesSomething(action)) return null;
+  // A cap on attacks a turn (combat C6d, as Slow's): one that has made them all makes no more, however
+  // many strikes an action would give.
+  const economy = rulesetConditionEconomy(definition, combat, actor, state);
+  const attacks = action.toHit !== undefined || !!action.sequence;
+  if (attacks && economy.attacksPerTurn !== undefined && (actor.flags.attacks ?? 0) >= economy.attacksPerTurn) {
+    return null;
+  }
   // Free of the economy, or paid for out of strikes a spend already bought. Either way no budget is
   // asked for, and the option says so by carrying none.
   const free = action.free === true || rulesetFreeStrike(actor, action);
-  if (!free && (actor.budgets[action.budget] ?? 0) < 1) return null;
+  // Its own budget spent, a condition's grant may pay instead (combat C6d): one weapon attack of a
+  // single strike, or an item's use, as Haste's extra action allows.
+  let budget = action.budget;
+  let oneStrike = false;
+  if (!free && (actor.budgets[budget] ?? 0) < 1) {
+    const weapon = action.kind === "attack" && action.toHit !== undefined && !action.catalog && !action.itemUse;
+    const grant = economy.grants.find(
+      (entry) =>
+        (actor.budgets[entry.budget] ?? 0) >= 1 &&
+        !action.sequence &&
+        ((entry.attacks === true && weapon) || (entry.items === true && !!action.itemUse)),
+    );
+    if (!grant) return null;
+    budget = grant.budget;
+    oneStrike = grant.attacks === true && weapon;
+  }
   if (!rulesetActionAvailable(actor, action)) return null;
   const paid = planRulesetCombatCost(definition, actor, action);
   if (!paid) return null;
@@ -1014,7 +1056,8 @@ function optionFrom(
     id: action.id,
     kind: action.kind,
     label: action.label,
-    ...(free ? {} : { budget: action.budget }),
+    ...(free ? {} : { budget }),
+    ...(oneStrike ? { oneStrike: true as const } : {}),
     targets: action.targets,
     ...(rulesetFreeStrike(actor, action) ? { strikes: actor.strikesLeft } : {}),
     ...(action.heal ? { heals: true } : {}),
@@ -1286,7 +1329,7 @@ export function rulesetCombatOptions(
       targets: action === "help" ? { side: "ally", count: 1 } : { side: "self", count: 0 },
     });
   }
-  options.push(...grantedStandardOptions(definition, combat, actor));
+  options.push(...grantedStandardOptions(definition, combat, actor, state));
   options.push(endTurn);
   return options;
 }

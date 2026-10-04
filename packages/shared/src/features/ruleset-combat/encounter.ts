@@ -1559,11 +1559,46 @@ function startingUses(actions: readonly RulesetCombatAction[]): Record<string, n
 
 type RulesetStatBlockLike = NonNullable<RulesetCombatant["block"]>;
 
-/** Full budgets, as a fresh turn and a fresh round hand them out. */
-export function refreshRulesetBudgets(combat: RulesetCombat, budgets: Record<string, number>, per: "turn" | "round") {
+/** Full budgets, as a fresh turn and a fresh round hand them out: the declared count, and what the
+ *  holder's conditions add or take away (combat C6d), never below none. */
+export function refreshRulesetBudgets(
+  combat: RulesetCombat,
+  budgets: Record<string, number>,
+  per: "turn" | "round",
+  changes?: ReadonlyMap<string, number>,
+) {
   for (const budget of combat.economy.budgets) {
-    if (budget.per === per) budgets[budget.id] = budget.count;
+    if (budget.per === per) budgets[budget.id] = Math.max(0, budget.count + (changes?.get(budget.id) ?? 0));
   }
+}
+
+/** What a combatant's conditions do to their action economy (combat C6d, as Haste and Slow do): turn
+ *  budgets added or taken away, what other budgets may be spent on, budgets of which a turn may spend
+ *  only one, and the fewest attacks a turn any of them allows. */
+export interface RulesetConditionEconomy {
+  budgets: Map<string, number>;
+  grants: NonNullable<RulesetCombatCondition["grants"]>[];
+  exclusive: Array<[string, string]>;
+  attacksPerTurn?: number;
+}
+export function rulesetConditionEconomy(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  combatant: RulesetCombatant,
+  state?: RulesetEncounterState,
+): RulesetConditionEconomy {
+  const economy: RulesetConditionEconomy = { budgets: new Map(), grants: [], exclusive: [] };
+  for (const entry of rulesetActiveConditions(definition, combat, combatant, state)) {
+    for (const change of entry.budgets ?? []) {
+      economy.budgets.set(change.budget, (economy.budgets.get(change.budget) ?? 0) + change.flat);
+    }
+    if (entry.grants) economy.grants.push(entry.grants);
+    if (entry.exclusive) economy.exclusive.push(entry.exclusive);
+    if (entry.attacksPerTurn !== undefined) {
+      economy.attacksPerTurn = Math.min(economy.attacksPerTurn ?? entry.attacksPerTurn, entry.attacksPerTurn);
+    }
+  }
+  return economy;
 }
 
 function fullBudgets(combat: RulesetCombat): Record<string, number> {
@@ -1815,6 +1850,12 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
   }
 
   placeRulesetCombatants(definition, combat, state, input.board);
+  // A turn's budgets as conditions held from before the fight change them (combat C6d): the first
+  // actor's turn begins now and never passes through the turn's own refill.
+  for (const combatant of state.combatants) {
+    const economy = rulesetConditionEconomy(definition, combat, combatant, state);
+    if (economy.budgets.size) refreshRulesetBudgets(combat, combatant.budgets, "turn", economy.budgets);
+  }
 
   state.order = rulesetInitiativeOrder(state.combatants);
   state.cursor = rolls;

@@ -56,7 +56,7 @@ export function getChatWidgetColorStyle(colors: ChatWidgetColors = {}): WidgetCo
     style["--mari-widget-custom-text"] = text;
     style["--mari-widget-custom-text-solid"] = solidFallback(text, "currentColor");
     style["--mari-widget-custom-text-image"] = isCssGradient(text) ? text : "none";
-    style["--mari-widget-custom-text-fill"] = isCssGradient(text) ? "transparent" : "currentColor";
+    style["--mari-widget-custom-text-fill"] = isCssGradient(text) ? "transparent" : text;
   }
   return style;
 }

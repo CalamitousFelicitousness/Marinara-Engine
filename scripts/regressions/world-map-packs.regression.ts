@@ -269,11 +269,20 @@ try {
   const imageTiles = await readMapPack("imagetiles");
   assert.ok(imageTiles?.ok && imageTiles.pack.tiles?.tilePackVersion === 2, JSON.stringify(imageTiles));
   assert.deepEqual(await readMapPack("imagetiles"), imageTiles, "read again from what was checked");
-  const badImageTiles = await readMapPack("badimagetiles");
-  assert.ok(
-    badImageTiles && !badImageTiles.ok && /does not decode/.test(badImageTiles.reason),
-    JSON.stringify(badImageTiles),
-  );
+  // Only an Engine that can decode sheets (sharp) finds that out.
+  const { getSharp } = await import("../../packages/server/src/services/image/sharp-runtime.js");
+  if (
+    await getSharp().then(
+      () => true,
+      () => false,
+    )
+  ) {
+    const badImageTiles = await readMapPack("badimagetiles");
+    assert.ok(
+      badImageTiles && !badImageTiles.ok && /does not decode/.test(badImageTiles.reason),
+      JSON.stringify(badImageTiles),
+    );
+  }
   const oldImageTiles = await readMapPack("oldimagetiles");
   assert.ok(
     oldImageTiles && !oldImageTiles.ok && /needs capabilityApi 1\.75/.test(oldImageTiles.reason),

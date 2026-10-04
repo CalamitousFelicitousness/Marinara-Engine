@@ -53,6 +53,7 @@
   --mari-widget-ornament-z: initial;
   --mari-widget-ornament-shadow: initial;
   --mari-widget-shadow: initial;
+  --mari-widget-filter: initial;
   --mari-widget-header-padding: initial;
   --mari-widget-crest-height: initial;
 }
@@ -165,7 +166,9 @@
   --mari-widget-bubble-radius: 0.25rem;
   --mari-widget-shell-bg: transparent;
   --mari-widget-header-shell-bg: transparent;
-  --mari-widget-shadow: 0 12px 32px rgb(0 0 0 / 0.25);
+  /* A rectangular box shadow leaves bright wedges outside the cut corners. */
+  --mari-widget-shadow: none;
+  --mari-widget-filter: drop-shadow(0 12px 16px rgb(0 0 0 / 0.25));
   --mari-widget-shell-border: transparent;
   --mari-widget-frame-content: "";
   --mari-widget-isolation: isolate;
@@ -242,6 +245,7 @@
       var(--mari-widget-font-override, var(--mari-widget-font-preset, inherit))
     );
     isolation: var(--mari-widget-custom-isolation, var(--mari-widget-isolation, auto));
+    filter: var(--mari-widget-filter, none);
   }
 
   /* Clip only the painted frame, never the root: resize handles, focus rings
@@ -556,4 +560,10 @@
     left: calc(50% - 0.5rem);
     top: -0.875rem;
   }
+}
+
+/* Title icons can carry utility colors; custom button colors must still reach them. */
+:root[data-chat-widget-colors~="border"] .mari-window__title-row > svg:not([data-chat-widget-preview] *),
+[data-chat-widget-preview][data-chat-widget-colors~="border"] .mari-window__title-row > svg {
+  color: var(--mari-window-control-color, var(--mari-widget-custom-border-solid));
 }

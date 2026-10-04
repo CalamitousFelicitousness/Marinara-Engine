@@ -1865,7 +1865,10 @@
 .mari-preset-native-select {
   color-scheme: dark;
   background-color: var(--marinara-preset-select-bg, var(--marinara-chat-chrome-panel-bg));
-  color: var(--marinara-preset-select-text, var(--marinara-chat-chrome-panel-text));
+  color: var(
+    --marinara-preset-select-text,
+    var(--mari-widget-field-option-text, var(--marinara-chat-chrome-panel-text))
+  );
 }
 
 [data-theme="light"] .mari-preset-native-select {

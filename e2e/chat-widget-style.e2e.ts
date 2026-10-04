@@ -324,6 +324,11 @@ async function exerciseColorControls(page: Page, preset: Preset, theme: "dark" |
     await resolvedStyle(page, "background-image", GRADIENT_COLORS.background),
   );
   await expect(profile).toHaveCSS("-webkit-text-fill-color", await resolvedStyle(page, "color", "#6c5ce7"));
+  await expect(profile).toHaveCSS("color", await resolvedStyle(page, "color", "#6c5ce7"));
+  await expect(settings.locator(".mari-window__title-row > svg")).toHaveCSS(
+    "color",
+    await resolvedStyle(page, "color", "#ff6b6b"),
+  );
   await expect(profile.locator("option:not(:checked)").first()).toHaveCSS(
     "background-color",
     await resolvedStyle(page, "background-color", "#667eea"),
@@ -493,6 +498,12 @@ async function expectCompactFramedWidgets(page: Page, preset: "dottore" | "mari"
     "url(",
   );
   expect(await header.evaluate((element) => getComputedStyle(element, "::after").content)).not.toBe("none");
+  if (preset === "dottore") {
+    // The shadow must follow the painted cut frame, while handles and the crest stay unclipped.
+    await expect(settings).toHaveCSS("box-shadow", "none");
+    await expect(settings).toHaveCSS("filter", /drop-shadow\(/);
+    await expect(settings).toHaveCSS("clip-path", "none");
+  }
   // Read both rows in one frame while the phone sheet animates into place.
   await expect
     .poll(() =>

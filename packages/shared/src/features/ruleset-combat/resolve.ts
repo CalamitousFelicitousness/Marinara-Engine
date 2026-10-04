@@ -1519,15 +1519,23 @@ function fall(ctx: RulesetCombatContext, actor: RulesetCombatant, target: Rulese
   if (!elevation || !falling) return;
   const count = Math.min(falling.max, Math.floor((levels * elevation.levelHeight) / falling.per) * falling.dice.count);
   if (count > 0) {
-    const rolls = rollRulesetDice(ctx.roll, count, falling.dice.sides);
-    applyDamage(ctx, target, {
+    // Thrown as the system throws harm: a pool's successes, soak taken off, or else the dice added up.
+    const harm = rulesetCombatIsPool(ctx.combat)
+      ? (({ rolls, flat, total, pool }) => ({ rolls, flat, amount: total, pool }))(
+          throwHarm(ctx, target, { count, sides: falling.dice.sides, flat: 0 }, falling.type, 0),
+        )
+      : (() => {
+          const rolls = rollRulesetDice(ctx.roll, count, falling.dice.sides);
+          return { rolls, flat: 0, amount: sumOf(rolls) };
+        })();
+    const dealt = applyDamage(ctx, target, {
       sourceId: actor.id,
       label: "fall",
       ...(falling.type ? { damageType: falling.type } : {}),
-      rolls,
-      flat: 0,
-      amount: sumOf(rolls),
+      ...harm,
     });
+    // As any blow is followed: going down, concentration, what damage ends.
+    afterBlow(ctx, target, dealt, false);
   }
   if (falling.prone && rulesetCombatStanding(target)) {
     applyConditionId(

@@ -517,13 +517,15 @@ export function tacticalMadeBoardIssues(size: TacticalBattlefieldSize, grid: Tac
   if (grid.tiles.some((row) => row.some((terrain, x) => inSpawnZone(grid, x) && terrain !== "plains"))) {
     issues.push("The two columns at each side are where the sides line up: they must be plains.");
   }
-  // Every open tile, flooded from the first column.
+  // Every open tile, flooded from ONE open tile of the first column: the column's tiles must reach each
+  // other too, which a cliff round some of them would prevent (combat C6b).
   const seen = new Set<string>();
   const queue: TacticalCoord[] = [];
   for (let y = 0; y < height; y++) {
     if (!isImpassable(grid, 0, y)) {
       seen.add(tileKey(0, y));
       queue.push({ x: 0, y });
+      break;
     }
   }
   while (queue.length) {

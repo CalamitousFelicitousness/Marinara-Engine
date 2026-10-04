@@ -4888,6 +4888,24 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
     if (prone !== undefined && !conditions.has(prone)) {
       issue(at("elevation", "falling", "prone"), `Unknown condition "${prone}"`);
     }
+    // A fall's harm is one of the ruleset's kinds, as every other harm is, or it misses what resists it.
+    const fallType = combat.elevation?.falling?.type;
+    if (
+      fallType !== undefined &&
+      combat.damageTypes &&
+      !combat.damageTypes.some((type) => type.trim().toLowerCase() === fallType.trim().toLowerCase())
+    ) {
+      issue(at("elevation", "falling", "type"), `Unknown damage type "${fallType}"`);
+    }
+    // And thrown as any harm is: a pool fight counts successes on its own die, so a fall's die is that one.
+    const fallDie = combat.elevation?.falling?.dice.sides;
+    const poolDie = def.resolution.kind === "dice-pool" ? def.resolution.die.sides : undefined;
+    if (fallDie !== undefined && poolDie !== undefined && fallDie !== poolDie) {
+      issue(
+        at("elevation", "falling", "dice", "sides"),
+        `A "dice-pool" fight throws d${poolDie}s, so a fall's dice are d${poolDie}s`,
+      );
+    }
 
     const mapped = new Set<string>();
     combat.conditions?.forEach((entry, index) => {

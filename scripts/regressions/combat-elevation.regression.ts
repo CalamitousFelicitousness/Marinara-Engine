@@ -17,6 +17,7 @@ import {
   climbCost,
   coverTier,
   createTacticalCombat,
+  decideTacticalAction,
   forecastAttack,
   foothillElevation,
   getMovementRange,
@@ -132,6 +133,25 @@ const arena = (grid: TacticalGrid, at: Record<string, { x: number; y: number }>,
   assert.deepEqual(getTargetsInRange(arena(raised, at, archer), "hero"), ["foe"], "one more cell from above");
   const shot = applyAction(arena(raised, at, archer), { type: "attack", unitId: "hero", targetId: "foe" });
   assert.ok(shot.ok, shot.ok ? "" : shot.error);
+  // Nor does a skill, for the player or the plain AI (a unit with no tactics, as older saves have).
+  const caster = arena(raised, at, {
+    hero: { attackRange: { min: 1, max: 1 } },
+    foe: { tactics: undefined, skills: [{ name: "Bolt", type: "attack", power: 2, mpCost: 0, range: 2 }] },
+  });
+  Object.assign(
+    caster.units.find((u) => u.id === "foe")!,
+    { x: 0, y: 0, movement: 0 },
+  );
+  Object.assign(
+    caster.units.find((u) => u.id === "hero")!,
+    { x: 3, y: 0 },
+  );
+  const chosen = decideTacticalAction(
+    caster,
+    caster.units.find((u) => u.id === "foe")!,
+    () => 0,
+  );
+  assert.ok(!(chosen.type === "skill"), `no skill from three cells: ${JSON.stringify(chosen)}`);
   // A melee strike gains no reach.
   const sword = { hero: { attackRange: { min: 1, max: 1 } } };
   assert.deepEqual(getTargetsInRange(arena(raised, { hero: { x: 0, y: 0 }, foe: { x: 2, y: 0 } }, sword), "hero"), []);
@@ -206,6 +226,9 @@ const arena = (grid: TacticalGrid, at: Record<string, { x: number; y: number }>,
   assert.deepEqual(tacticalMadeBoardIssues("small", fair), []);
   const made = madeTacticalBattlefield({ id: "b1", name: "The Shelf", size: "small", scene: "mountains", grid: fair });
   assert.ok(made.ok && made.grid.elevation?.[3]?.[6] === 2);
+  // A plateau in the first column, a cliff round it, is cut off too: the column's own tiles must meet.
+  const ledge = Array.from({ length: 8 }, (_, y) => (y < 4 ? "330000000000" : "000000000000"));
+  assert.match(tacticalMadeBoardIssues("small", worldBattlefieldGrid({ ...map, heights: ledge })).join(" "), /cut off/);
   // Heights of another shape than the tiles are refused.
   assert.match(
     tacticalMadeBoardIssues("small", { ...fair, elevation: fair.elevation!.slice(1) }).join(" "),

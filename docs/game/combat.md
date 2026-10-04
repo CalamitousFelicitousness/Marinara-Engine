@@ -19,7 +19,8 @@ A game's world can also have **hand-made battlefields**: boards painted tile by 
 | Plains                | Costs 1 movement point  | No bonus                                  |
 | Forest                | Costs 2 movement points | +1 defense, +15 percentage points evasion |
 | Ruins                 | Costs 1 movement point  | +1 defense, +10 percentage points evasion |
-| Mountain, water, wall | Blocks walking          | No bonus                                  |
+| Mountain, wall        | Blocks walking and sight | No bonus                                 |
+| Water                 | Blocks walking          | No bonus (it is seen across)              |
 
 Units with an established flying or teleportation capability can move differently:
 
@@ -29,7 +30,7 @@ Units with an established flying or teleportation capability can move differentl
 
 Both special movement modes use the current movement allowance and orthogonal tile distance. They retain the destination terrain's defense/evasion bonuses. This is a simple flat-grid movement model; altitude, ceilings, spell-specific costs and spell-specific sight requirements are not modeled.
 
-Tactical combat uses party and enemy phases, rather than individual tabletop initiative. Movement-blocking walls do not yet block ranged attacks by line of sight. Cover, tabletop rule profiles and full summoning combat are separate future work.
+Tactical combat uses party and enemy phases, rather than individual tabletop initiative. A ranged attack, a skill, a heal or an item needs a clear line of sight to its target: a wall or a mountain between them blocks it, while water, woods and ruins do not, and an area spreads only as far as it sees from where it lands. Cover and full summoning combat are separate future work.
 
 ## Classic battles
 

@@ -2087,8 +2087,10 @@ A burst is every cell within its size of the cell it was aimed at. A cone runs f
 that cell, as wide at each step as it is far. A line runs the same way, one cell wide. All three
 stop at anything solid.
 
-**Line of sight and cover.** A straight line of cells between the two of them: anything solid on it
-blocks a shot and stops an area spreading past it, and the target simply is not on the menu. Ground
+**Line of sight and cover.** A straight line of cells between the two of them: a wall or a mountain
+on it blocks a shot and stops an area spreading past it, and the target simply is not on the menu.
+Water is seen across: a shot crosses a river, and a line area carries on over it. The Engine's own
+fights use the same sight test. Ground
 that is worth something as cover adds `cover.bonus` to the defense the attack is rolled against, and
 the log says so. There is no three-quarter cover, no total cover and no elevation.
 

@@ -248,7 +248,8 @@ assert.equal(s.tactical!.units[1]!.spellSlots!["3"], 0);
 assert.equal(s.tactical!.units[1]!.mp, 0);
 commandCombatDirector(s, { type: "choose", candidateId: "pass" });
 assert.equal(s.tactical!.units[1]!.spellSlots!["3"], 0);
-// A wall blocks Counterspell even when ordinary ranged attacks keep their legacy reach.
+// A wall blocks sight (combat C6): the Fireball cannot be cast through it, so no Counterspell answers
+// it and nothing is spent.
 s = make();
 commandCombatDirector(s, { type: "begin", unitId: "hero" });
 commandCombatDirector(s, { type: "choose", candidateId: "pass" }, "gm");
@@ -257,12 +258,16 @@ s.tactical!.units[0]!.y = 1;
 s.tactical!.units[1]!.x = 3;
 s.tactical!.units[1]!.y = 1;
 s.tactical!.grid.tiles[1]![2] = "wall";
-commandCombatDirector(s, {
-  type: "tactical",
-  action: { type: "skill", unitId: "hero", skillName: "Fireball", targetId: "boss" },
-});
-assert.equal(s.window?.kind, "legendary");
-assert.equal(s.enemies[0]!.mp, 30, "blocked reaction never spends MP");
+assert.throws(
+  () =>
+    commandCombatDirector(s, {
+      type: "tactical",
+      action: { type: "skill", unitId: "hero", skillName: "Fireball", targetId: "boss" },
+    }),
+  /out of sight/,
+);
+assert.notEqual(s.window?.kind, "reaction");
+assert.equal(s.enemies[0]!.mp, 30, "a blocked reaction never spends MP");
 // Depleted MP + no slot gives no reaction, even when the spell would be lethal.
 s = make();
 commandCombatDirector(s, { type: "begin", unitId: "hero" });

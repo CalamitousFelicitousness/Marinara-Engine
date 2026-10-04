@@ -8,7 +8,7 @@ import { applyAction } from "./engine.js";
 // profiles retain the legacy policy below. Both policies use the same resolver;
 // AI companions and enemies re-evaluate the accepted state before each action.
 
-import { effectiveSpeed, manhattan } from "./math.js";
+import { effectiveSpeed, inReach, manhattan } from "./math.js";
 import { deterministicRng } from "./rng.js";
 import {
   aliveUnits,
@@ -60,8 +60,7 @@ function buildAttackOptions(state: TacticalCombatState, unit: TacticalUnit): Att
       traits?: import("../combat-conditions.js").CombatAttackTraits;
     },
   ): void => {
-    const d = manhattan(tile, target);
-    if (d < opts.rangeMin || d > opts.rangeMax) return;
+    if (!inReach(state.grid, tile, target, opts.rangeMin, opts.rangeMax)) return;
     const fc = forecastFrom(state, unit, target, tile, {
       power: opts.power,
       element: opts.element,
@@ -75,8 +74,7 @@ function buildAttackOptions(state: TacticalCombatState, unit: TacticalUnit): Att
     // reach back to `tile` at its own attack range.
     let counterRisk = 0;
     const survives = target.hp - fc.damage > 0;
-    const cd = manhattan(tile, target);
-    if (survives && cd >= target.attackRange.min && cd <= target.attackRange.max) {
+    if (survives && inReach(state.grid, target, tile, target.attackRange.min, target.attackRange.max)) {
       const back = forecastFrom(state, target, unit, { x: target.x, y: target.y }, { hitPenalty: 10 });
       counterRisk = (back.hitChance / 100) * back.damage;
     }

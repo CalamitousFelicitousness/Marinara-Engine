@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Game Mode fights now have **line of sight**: a ranged attack, a skill, a heal or an item thrown in a tactical fight needs a clear line to its target, so a wall or a mountain between them blocks it, and an area spreads only as far as it sees from where it lands. The enemy AI and reactions follow the same rule. Water no longer blocks sight in ruleset fights: a shot or a line spell crosses a river.
+
 - In a new game's setup, writing a setting kit or a world brief now counts the seconds and says a model can take a few minutes, so a long write no longer looks stuck. A repair note for a region given a size now says that only a settlement has one.
 
 - A Game Mode game made without a world can be **given one**, only if you want it: the journal's **World** tab offers **Make a world for this game**, with the same setting kit and world choices as a new game. The world starts from the next turn; the game's past turns, map and people stay as they are, and later sessions keep it.

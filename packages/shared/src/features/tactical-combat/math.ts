@@ -54,6 +54,45 @@ export function isImpassable(grid: TacticalGrid, x: number, y: number): boolean 
 }
 
 /** Movement points per turn from speed (class moveBonus is applied at unit creation). */
+/** Whether a cell blocks sight (combat C6): a wall or a mountain. Off the board reads as solid; a terrain
+ *  word this Engine does not know is seen across. */
+export function blocksSight(grid: TacticalGrid, x: number, y: number): boolean {
+  if (!inBounds(grid, x, y)) return true;
+  const terrain = grid.tiles[y]?.[x];
+  return terrain === undefined || TERRAIN_DATA[terrain]?.blocksSight === true;
+}
+
+/**
+ * Whether one cell can see another (combat C6): the straight line of cells between them, the two ends
+ * left out, with nothing on it that blocks sight. One test for every fight, the Engine's own and a
+ * ruleset's, so a shot, a counter and an area agree.
+ *
+ * The line is walked by the same integer stepping a grid is drawn with, from a fixed end, so the two
+ * cells always see each other or never do, whichever way round they are asked.
+ */
+export function hasLineOfSight(grid: TacticalGrid, a: TacticalCoord, b: TacticalCoord): boolean {
+  const forward = a.x < b.x || (a.x === b.x && a.y <= b.y);
+  const start = forward ? a : b;
+  const end = forward ? b : a;
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const steps = Math.max(Math.abs(dx), Math.abs(dy));
+  if (steps <= 1) return true;
+  for (let step = 1; step < steps; step++) {
+    const x = start.x + Math.round((dx * step) / steps);
+    const y = start.y + Math.round((dy * step) / steps);
+    if ((x === start.x && y === start.y) || (x === end.x && y === end.y)) continue;
+    if (blocksSight(grid, x, y)) return false;
+  }
+  return true;
+}
+
+/** Whether a strike from `from` reaches `to`: within the range and in sight. */
+export function inReach(grid: TacticalGrid, from: TacticalCoord, to: TacticalCoord, min: number, max: number): boolean {
+  const distance = manhattan(from, to);
+  return distance >= min && distance <= max && hasLineOfSight(grid, from, to);
+}
+
 export function deriveMovement(speed: number): number {
   return clamp(3 + Math.floor(speed / 10), 3, 6);
 }

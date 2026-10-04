@@ -81,16 +81,18 @@ export interface TerrainInfo {
   avoidBonus: number;
   /** Units may never enter or stop on this tile. */
   impassable?: boolean;
+  /** Nothing is seen through it (combat C6): a wall, a mountain. Water and woods are seen across. */
+  blocksSight?: true;
   label: string;
 }
 
 export const TERRAIN_DATA: Record<TacticalTerrain, TerrainInfo> = {
   plains: { moveCost: 1, defenseBonus: 0, avoidBonus: 0, label: "Plains" },
   forest: { moveCost: 2, defenseBonus: 1, avoidBonus: 15, label: "Forest" },
-  mountain: { moveCost: 99, defenseBonus: 0, avoidBonus: 0, impassable: true, label: "Mountain" },
+  mountain: { moveCost: 99, defenseBonus: 0, avoidBonus: 0, impassable: true, blocksSight: true, label: "Mountain" },
   ruin: { moveCost: 1, defenseBonus: 1, avoidBonus: 10, label: "Ruins" },
   water: { moveCost: 99, defenseBonus: 0, avoidBonus: 0, impassable: true, label: "Water" },
-  wall: { moveCost: 99, defenseBonus: 0, avoidBonus: 0, impassable: true, label: "Wall" },
+  wall: { moveCost: 99, defenseBonus: 0, avoidBonus: 0, impassable: true, blocksSight: true, label: "Wall" },
 };
 
 // ── Environment & formation ──

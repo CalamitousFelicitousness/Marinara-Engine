@@ -31,6 +31,8 @@ import {
   isImpassable,
   manhattan,
   terrainInfoAt,
+  hasLineOfSight,
+  inReach,
 } from "./math.js";
 import { deterministicRng } from "./rng.js";
 import { TACTICAL_ENVIRONMENTS } from "./environments.js";
@@ -293,10 +295,7 @@ export function getTargetsInRange(state: TacticalCombatState, unitId: string, fr
   const from = fromTile ?? { x: unit.x, y: unit.y };
   return aliveUnits(state)
     .filter((t) => t.side !== unit.side)
-    .filter((t) => {
-      const d = manhattan(from, t);
-      return d >= unit.attackRange.min && d <= unit.attackRange.max;
-    })
+    .filter((t) => inReach(state.grid, from, t, unit.attackRange.min, unit.attackRange.max))
     .map((t) => t.id);
 }
 
@@ -512,11 +511,11 @@ function resolveHit(
   return { hit: true, crit, damage, defeated };
 }
 
-/** True if `defender` can retaliate against `attacker` after surviving a strike. */
-function canCounter(attacker: TacticalUnit, defender: TacticalUnit): boolean {
+/** True if `defender` can retaliate against `attacker` after surviving a strike: in its reach and in
+ *  sight of it. */
+function canCounter(state: TacticalCombatState, attacker: TacticalUnit, defender: TacticalUnit): boolean {
   if (defender.hp <= 0) return false;
-  const d = manhattan(attacker, defender);
-  return d >= defender.attackRange.min && d <= defender.attackRange.max;
+  return inReach(state.grid, defender, attacker, defender.attackRange.min, defender.attackRange.max);
 }
 
 function skillReady(unit: TacticalUnit, skill: CombatSkill): boolean {
@@ -595,7 +594,7 @@ function performUnitAction(
       if (!target || target.hp <= 0) return;
       const outcome = resolveHit(state, unit, target, {}, events);
       // Counterattack.
-      if (outcome.hit && !outcome.defeated && canCounter(unit, target)) {
+      if (outcome.hit && !outcome.defeated && canCounter(state, unit, target)) {
         resolveHit(state, target, unit, { isCounter: true, hitPenalty: 10 }, events);
       }
       return;
@@ -685,9 +684,12 @@ function performUnitAction(
       const target = getUnit(state, action.targetId ?? "");
       if (!target || target.hp <= 0) return;
       if ((skill.areaRadius ?? 0) > 0) {
+        // It spreads from where it lands, as far as the radius and the sight lines from there reach.
         const targets = aliveUnits(state).filter(
           (other) =>
-            manhattan(target, other) <= skill.areaRadius! && (skill.friendlyFire === true || other.side !== unit.side),
+            manhattan(target, other) <= skill.areaRadius! &&
+            hasLineOfSight(state.grid, target, other) &&
+            (skill.friendlyFire === true || other.side !== unit.side),
         );
         for (const other of targets)
           resolveHit(
@@ -720,7 +722,7 @@ function performUnitAction(
         },
         events,
       );
-      if (outcome.hit && !outcome.defeated && canCounter(unit, target)) {
+      if (outcome.hit && !outcome.defeated && canCounter(state, unit, target)) {
         resolveHit(state, target, unit, { isCounter: true, hitPenalty: 10 }, events);
       }
       return;
@@ -861,6 +863,7 @@ export function validateTacticalUnitAction(
       if (d < unit.attackRange.min || d > unit.attackRange.max) {
         return { ok: false, error: `${target.name} is out of attack range.` };
       }
+      if (!hasLineOfSight(next.grid, fromTile, target)) return { ok: false, error: `${target.name} is out of sight.` };
       break;
     }
 
@@ -880,6 +883,8 @@ export function validateTacticalUnitAction(
         const d = manhattan(fromTile, target);
         const max = skill.range ?? Math.max(unit.attackRange.max, 2);
         if (d < 1 || d > max) return { ok: false, error: `${target.name} is out of skill range.` };
+        if (!hasLineOfSight(next.grid, fromTile, target))
+          return { ok: false, error: `${target.name} is out of sight.` };
       } else {
         // heal/buff/debuff — must target a valid unit (ally for heal/buff, enemy for debuff) within support range.
         const target = getUnit(next, action.targetId ?? unit.id);
@@ -889,6 +894,8 @@ export function validateTacticalUnitAction(
         if (!wantAlly && target.side === unit.side) return { ok: false, error: "That skill targets enemies." };
         const d = manhattan(fromTile, target);
         if (d > (skill.range ?? 2)) return { ok: false, error: `${target.name} is out of support range.` };
+        if (!hasLineOfSight(next.grid, fromTile, target))
+          return { ok: false, error: `${target.name} is out of sight.` };
       }
       break;
     }
@@ -898,6 +905,7 @@ export function validateTacticalUnitAction(
       if (!target || target.hp <= 0) return { ok: false, error: "Invalid item target." };
       const d = manhattan(fromTile, target);
       if (d > 2) return { ok: false, error: `${target.name} is out of item range.` };
+      if (!hasLineOfSight(next.grid, fromTile, target)) return { ok: false, error: `${target.name} is out of sight.` };
       break;
     }
 

@@ -9,6 +9,7 @@
 // the fight is built, through `rulesetInCells`.
 
 import { TERRAIN_DATA, type TacticalGrid } from "../tactical-combat/types.js";
+import { blocksSight, hasLineOfSight } from "../tactical-combat/math.js";
 import type { RulesetCombat, RulesetDefinition } from "../../schemas/ruleset.schema.js";
 import { rulesetShotsAvailable } from "./ammo.js";
 import { rulesetActiveConditions, rulesetCombatant, rulesetCombatEffects, rulesetCombatStanding } from "./encounter.js";
@@ -87,30 +88,10 @@ export function rulesetCellCover(grid: TacticalGrid, cell: RulesetCombatCell): n
   return (terrain === undefined ? undefined : TERRAIN_DATA[terrain]?.defenseBonus) ?? 0;
 }
 
-/**
- * Whether one cell can see another: the straight line of cells between them, with the two ends left
- * out. One solid cell on it blocks a shot and stops an area spreading past it.
- *
- * The line is walked by the same integer stepping a grid is drawn with, so it is symmetric and needs
- * no floating point beyond one division per step.
- */
+/** Whether one cell can see another: the Engine's one sight test (combat C6), which a wall or a mountain
+ *  blocks and water does not. Symmetric, so the two always see each other or never do. */
 export function rulesetLineOfSight(grid: TacticalGrid, a: RulesetCombatCell, b: RulesetCombatCell): boolean {
-  // Walked from a fixed end, so the two of them always see each other or never do, whichever way
-  // round they are asked.
-  const forward = a.x < b.x || (a.x === b.x && a.y <= b.y);
-  const start = forward ? a : b;
-  const end = forward ? b : a;
-  const dx = end.x - start.x;
-  const dy = end.y - start.y;
-  const steps = Math.max(Math.abs(dx), Math.abs(dy));
-  if (steps <= 1) return true;
-  for (let step = 1; step < steps; step++) {
-    const x = start.x + Math.round((dx * step) / steps);
-    const y = start.y + Math.round((dy * step) / steps);
-    if ((x === start.x && y === start.y) || (x === end.x && y === end.y)) continue;
-    if (rulesetCellBlocked(grid, x, y)) return false;
-  }
-  return true;
+  return hasLineOfSight(grid, a, b);
 }
 
 /**
@@ -169,11 +150,13 @@ function lineCells(
   grid: TacticalGrid,
 ): RulesetCombatCell[] {
   const cells: RulesetCombatCell[] = [];
-  // `rulesetCellBlocked` reads off the board as solid, so the line ends at the edge whatever its size.
+  // `blocksSight` reads off the board as solid, so the line ends at the edge whatever its size.
   for (let step = 1; step <= reach; step++) {
     const cell = { x: origin.x + dx * step, y: origin.y + dy * step };
-    // Something solid ends the line where it stands, rather than letting it carry on behind.
-    if (rulesetCellBlocked(grid, cell.x, cell.y)) break;
+    // What blocks sight ends the line where it stands, rather than letting it carry on behind; it
+    // carries on across water, where nobody stands.
+    if (blocksSight(grid, cell.x, cell.y)) break;
+    if (rulesetCellBlocked(grid, cell.x, cell.y)) continue;
     cells.push(cell);
   }
   return cells;

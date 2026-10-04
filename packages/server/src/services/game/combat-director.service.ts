@@ -4,6 +4,7 @@ import {
   type CombatWeather,
   type WorldElementSet,
   forecastTacticalAttack,
+  hasLineOfSight,
 } from "@marinara-engine/shared";
 import {
   assignCombatTactics,
@@ -604,17 +605,8 @@ function reactionOptions(s: CombatDirectorState, u: Unit, p: Pending): Candidate
         const a = u as TacticalUnit,
           b = target as TacticalUnit;
         if (Math.abs(a.x - b.x) + Math.abs(a.y - b.y) > (k.range ?? 2)) continue;
-        // Reactions require an unobstructed grid ray; ordinary ranged attacks retain legacy rules.
-        const steps = Math.max(Math.abs(b.x - a.x), Math.abs(b.y - a.y));
-        let blocked = false;
-        for (let i = 1; i < steps; i++)
-          if (
-            s.tactical.grid.tiles[Math.round(a.y + ((b.y - a.y) * i) / steps)]?.[
-              Math.round(a.x + ((b.x - a.x) * i) / steps)
-            ] === "wall"
-          )
-            blocked = true;
-        if (blocked) continue;
+        // A reaction needs sight of its target, by the Engine's one sight test (combat C6).
+        if (!hasLineOfSight(s.tactical.grid, a, b)) continue;
       }
       choices.push({
         id: String(choices.length),

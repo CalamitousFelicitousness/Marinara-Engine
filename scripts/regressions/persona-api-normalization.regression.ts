@@ -320,6 +320,41 @@ try {
   });
   assert.equal(nonObjectNativeImport.success, false, "a non-object native Persona payload may still fail");
 
+  // #7053: export -> import must round-trip the image-appearance override. The
+  // native importer builds its payload from an explicit field allow-list, so a
+  // field missing from it is dropped silently even though the export carried it.
+  const overrideText = "1boy, caucasian, tall male, muscular, black hair, green eyes";
+  const nativeOverrideImport = await requestJson("POST", "/api/import/marinara", 200, {
+    type: "marinara_persona",
+    version: 1,
+    data: {
+      name: "Native override round-trip",
+      appearance: "Prose appearance that image models should not receive.",
+      imageAppearanceEnabled: true,
+      imageAppearance: overrideText,
+    },
+  });
+  assert.equal(nativeOverrideImport.success, true, "a Persona export carrying the override must import");
+  const nativeOverrideRow = await rawPersonaRow(nativeOverrideImport.id);
+  assert.equal(
+    nativeOverrideRow.imageAppearanceEnabled,
+    "true",
+    "the persona override toggle must survive export -> import",
+  );
+  assert.equal(nativeOverrideRow.imageAppearance, overrideText, "the persona override text must survive export -> import");
+  assert.equal(nativeOverrideRow.appearance, "Prose appearance that image models should not receive.");
+
+  // Exports from before this feature carry neither field; those must still import
+  // and land on the documented disabled/empty defaults.
+  const nativeNoOverrideImport = await requestJson("POST", "/api/import/marinara", 200, {
+    type: "marinara_persona",
+    version: 1,
+    data: { name: "Native without override", appearance: "Older export prose." },
+  });
+  const nativeNoOverrideRow = await rawPersonaRow(nativeNoOverrideImport.id);
+  assert.equal(nativeNoOverrideRow.imageAppearanceEnabled, "false", "an older export imports as override-disabled");
+  assert.equal(nativeNoOverrideRow.imageAppearance, "", "an older export imports with no override text");
+
   // ── F6: specialized tracker writes validate recognized fields through the shared contract. ──
 
   const rawBeforeRejectedTrackerWrites = await rawPersonaRow(decodedPersona.id);

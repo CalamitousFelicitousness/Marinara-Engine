@@ -1142,8 +1142,27 @@ export function applyRulesetSheetOp(
       if (pool.listId !== step.listPools) return false;
       return !step.recharge || (pool.recharge !== undefined && step.recharge.includes(pool.recharge));
     });
+    // Shared (1.72): the fraction of the whole group's maximum, handed to its pools in the order the
+    // sheet lists them, each up to what it is missing.
+    let share =
+      step.shared && step.by && "fractionOfMax" in step.by
+        ? Math.max(
+            step.by.min,
+            roundRulesetNumber(
+              targets.reduce((total, target) => total + target.pool.max, 0) * step.by.fractionOfMax,
+              step.by.round,
+            ),
+          )
+        : null;
     for (const target of targets) {
-      const value = clamp(moved(target.value, target.pool.max, 0), 0, target.pool.max);
+      let value: number;
+      if (share !== null) {
+        const taken = Math.min(share, target.pool.max - target.value);
+        share -= taken;
+        value = target.value + taken;
+      } else {
+        value = clamp(moved(target.value, target.pool.max, 0), 0, target.pool.max);
+      }
       if (value !== target.value) changes.push(`${target.pool.label} ${value}/${target.pool.max}`);
       target.value = value;
       setPool(target.pool, value, target.temp);

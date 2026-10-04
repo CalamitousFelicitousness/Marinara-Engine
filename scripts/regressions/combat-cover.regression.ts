@@ -250,6 +250,12 @@ const arena = (paint: Record<string, TacticalTerrain>) => {
     });
     assert.match(issue(71, migrating) ?? "", /says how older sheets read on it requires .*capabilityApi 1\.72/);
     assert.equal(issue(72, migrating), null);
+    // And a rest that shares a pool group's fraction, 1.72 (C6e).
+    const sharing = doc((d) => {
+      d.rests[0].restore.push({ poolGroup: "slots", by: { fractionOfMax: 0.5 }, shared: true });
+    });
+    assert.match(issue(71, sharing) ?? "", /shares a pool group's fraction requires .*capabilityApi 1\.72/);
+    assert.equal(issue(72, sharing), null);
   } finally {
     rmSync(dataDir, { recursive: true, force: true });
   }

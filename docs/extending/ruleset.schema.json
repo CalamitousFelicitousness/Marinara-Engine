@@ -6006,6 +6006,10 @@
                   "maxLength": 40,
                   "pattern": "^[a-z][a-z0-9_]*$"
                 },
+                "shared": {
+                  "type": "boolean",
+                  "const": true
+                },
                 "to": {
                   "anyOf": [
                     {

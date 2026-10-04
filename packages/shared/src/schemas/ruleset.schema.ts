@@ -915,6 +915,10 @@ const restRestoreSchema = z
     kind: sheetId.optional(),
     /** A live state, put back with `to`: `"default"` or one of its values. */
     state: sheetId.optional(),
+    /** A pool group's fraction worked out on the group's whole maximum and shared out over its pools
+     *  in the order the sheet lists them, rather than on each pool alone (Capability API 1.72): 5e's
+     *  "half of the character's total number of" hit dice, kept in one pool per die. */
+    shared: z.literal(true).optional(),
     ...restAmountShape,
     /** The maximum, the minimum or a number; on a state step, `"default"` or one of its values. */
     to: z.union([z.literal("max"), z.literal("min"), z.number().int(), z.string().min(1).max(80)]).optional(),
@@ -948,6 +952,13 @@ const restRestoreSchema = z
     }
     if (op.recharge && op.listPools === undefined) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["recharge"], message: '"recharge" only filters listPools' });
+    }
+    if (op.shared && (op.poolGroup === undefined || !op.by || !("fractionOfMax" in op.by))) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["shared"],
+        message: '"shared" shares a fraction of a pool group\'s maximum: it needs poolGroup and by.fractionOfMax',
+      });
     }
   });
 

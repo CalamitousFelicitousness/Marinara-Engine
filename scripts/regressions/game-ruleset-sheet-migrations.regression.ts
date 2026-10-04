@@ -265,6 +265,54 @@ const stored = (fields: Record<string, unknown>, v = 1) => ({ v, build: { fields
   assert.equal(moved.build.fields.fighter_level, 4);
 }
 
+// ── A rest that shares a pool group's fraction (5e's half your total hit dice, one pool per die) ──
+{
+  const shared = parsedOrThrow(
+    layoutTwo((doc) => {
+      for (const pool of doc.sheet.live.pools) if (pool.id.startsWith("hit_dice_")) pool.group = "hit_dice";
+      const long = doc.rests.find((rest: { id: string }) => rest.id === "long");
+      long.restore = [
+        ...long.restore.filter((entry: { pool?: string }) => !entry.pool?.startsWith("hit_dice_")),
+        { poolGroup: "hit_dice", by: { fractionOfMax: 0.5, round: "down", min: 1 }, shared: true },
+      ];
+    }),
+  );
+  const restOf = (fields: Record<string, number>, spent: Record<string, number>) => {
+    const build = readRulesetSheetEnvelope(shared, stored({ ...fields, class: "" }, 2))!.build;
+    const pools = Object.fromEntries(Object.entries(spent).map(([id, value]) => [id, { value }]));
+    const rested = applyRulesetSheetOp(shared, build, { pools }, { op: "rest", rest: "long" });
+    assert.ok(rested.ok);
+    return Object.fromEntries(
+      readRulesetLive(shared, build, rested.live)
+        .pools.filter((pool) => pool.key.startsWith("hit_dice_"))
+        .map((pool) => [pool.key, pool.value]),
+    );
+  };
+  // Fighter 3 / Wizard 3, every die spent: half of six is three, the d10s first (the order listed).
+  assert.deepEqual(restOf({ level_fighter: 3, level_wizard: 3 }, { hit_dice_d10: 0, hit_dice_d6: 0 }), {
+    hit_dice_d10: 3,
+    hit_dice_d6: 0,
+  });
+  // Fighter 1 / Wizard 1: half of two is one, not one each.
+  assert.deepEqual(restOf({ level_fighter: 1, level_wizard: 1 }, { hit_dice_d10: 0, hit_dice_d6: 0 }), {
+    hit_dice_d10: 1,
+    hit_dice_d6: 0,
+  });
+  // What is not missing takes none of the share: it passes on to the next pool.
+  assert.deepEqual(restOf({ level_fighter: 4, level_wizard: 4 }, { hit_dice_d10: 3, hit_dice_d6: 0 }), {
+    hit_dice_d10: 4,
+    hit_dice_d6: 3,
+  });
+  assert.match(
+    refusal(
+      layoutTwo((doc) => {
+        doc.rests[0].restore.push({ pool: "hp", by: { fractionOfMax: 0.5 }, shared: true });
+      }),
+    ),
+    /"shared" shares a fraction of a pool group's maximum/,
+  );
+}
+
 // ── Import checks ──
 {
   const hop = (doc: Record<string, any>) => doc.sheet.migrations[0];

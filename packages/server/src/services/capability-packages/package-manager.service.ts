@@ -1253,6 +1253,7 @@ export function getCapabilityPackageInstallIssue(
           layers?: unknown;
           gm?: unknown;
           sheet?: unknown;
+          rests?: unknown;
         })
       : undefined;
   const api = manifest.schemaVersion === 2 ? manifest.capabilityApi : null;
@@ -1603,6 +1604,16 @@ export function getCapabilityPackageInstallIssue(
   // Sheet migrations, 1.72 (C6e-0): a new key on the strict sheet.
   if (!declaresApi(72) && plainRecord(ruleset?.sheet)?.migrations !== undefined) {
     return "A ruleset whose sheet says how older sheets read on it requires schemaVersion 2 and capabilityApi 1.72 or newer";
+  }
+  // A rest that shares a pool group's fraction, 1.72 (C6e): a new key on the strict restore step.
+  const sharedRest = Array.isArray(ruleset?.rests)
+    ? ruleset.rests.some((rest) => {
+        const restore = plainRecord(rest)?.restore;
+        return Array.isArray(restore) && restore.some((step) => plainRecord(step)?.shared !== undefined);
+      })
+    : false;
+  if (!declaresApi(72) && sharedRest) {
+    return "A ruleset whose rest shares a pool group's fraction requires schemaVersion 2 and capabilityApi 1.72 or newer";
   }
   return null;
 }

@@ -314,6 +314,10 @@ test.describe("Pop-out drawers on desktop", () => {
       await expect(settings.locator('[data-drawer="chat-name"]')).toHaveCount(0);
       await page.screenshot({ path: test.info().outputPath("drawer-bubble.png"), animations: "disabled" });
 
+      // Close the host before moving the button into its former footprint.
+      await settings.getByRole("button", { name: "Close chat settings", exact: true }).click();
+      await expect(settings).toBeHidden();
+
       // The button moves on its own; clicking it reopens the window exactly where it was left.
       const start = await box(bubble);
       await drag(page, centre(start), { x: centre(start).x - 200, y: centre(start).y + 300 });

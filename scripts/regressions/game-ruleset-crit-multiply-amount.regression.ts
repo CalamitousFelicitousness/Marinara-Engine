@@ -143,6 +143,9 @@ try {
       null,
       "not a rolled column",
     );
+    const twice = parsed(rolled({ column: "die" }, (doc) => (doc.sheet.lists.at(-1).columns[2].roll.count = 2)));
+    const twiceColumn = twice.sheet.lists.find((entry) => entry.id === "hp_rolls")!.columns[2]!;
+    assert.equal(rulesetListRollNotation(twice, build, twiceColumn, { die: "d8" }), "2d8", "its count of dice");
     const fixed = parsed(rolled(8));
     const fixedColumn = fixed.sheet.lists.find((entry) => entry.id === "hp_rolls")!.columns[2]!;
     assert.equal(rulesetListRollNotation(fixed, build, fixedColumn, {}), "1d8");

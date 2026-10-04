@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- In a new game's setup, writing a setting kit or a world brief now counts the seconds and says a model can take a few minutes, so a long write no longer looks stuck. A repair note for a region given a size now says that only a settlement has one.
+
 - A Game Mode game made without a world can be **given one**, only if you want it: the journal's **World** tab offers **Make a world for this game**, with the same setting kit and world choices as a new game. The world starts from the next turn; the game's past turns, map and people stay as they are, and later sessions keep it.
 
 - A Game Mode game keeps its **world as it was made**: the places, people, towns and history are saved with the game, so an update that changes how worlds are made never changes a world already in play. New sessions, branches and exported chats keep the same world, and how the world moved on in earlier sessions (its fortunes, rulers and wars) is kept as it played out. World files now carry the world as it was made too, so a downloaded world, a library world or a map pack's world opens the same after such an update. A world made by an earlier version of the world generator plays on as it was, but can no longer be edited.

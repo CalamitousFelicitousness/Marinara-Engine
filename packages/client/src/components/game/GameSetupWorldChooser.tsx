@@ -29,7 +29,7 @@ import { downloadJsonFile } from "../../lib/download-json";
 import { parseExperienceSeed } from "../../lib/game-experience-setup";
 import { cn } from "../../lib/utils";
 import { useUIStore } from "../../stores/ui.store";
-import { WordsField } from "./GameSetupWorldKitChooser";
+import { WordsField, useWritingSeconds } from "./GameSetupWorldKitChooser";
 import { GAME_SETUP_GHOST_BUTTON_CLASS, GAME_SETUP_INPUT_CLASS as INPUT } from "./game-setup-classes";
 
 /** What the wizard holds while a world is being made. */
@@ -213,6 +213,7 @@ export function GameSetupWorldChooser({
 }) {
   const { t } = useUiTranslation();
   const [busy, setBusy] = useState<"lore" | "brief" | null>(null);
+  const writingSeconds = useWritingSeconds(busy === "brief");
   const [message, setMessage] = useState<{ error: boolean; text: string } | null>(null);
   // As in the kit chooser: an answer lands only on the draft it was asked for.
   const latest = useRef(draft);
@@ -467,10 +468,16 @@ export function GameSetupWorldChooser({
               )}
             >
               <Sparkles size={13} />
-              {busy === "brief" ? t("game.world.setup.writing") : t("game.world.setup.writeBrief")}
+              {busy === "brief"
+                ? t("game.world.setup.writingFor", { seconds: writingSeconds })
+                : t("game.world.setup.writeBrief")}
             </button>
             <p className="text-[var(--muted-foreground)]">
-              {request ? t("game.world.setup.writeHelp") : t("game.world.setup.needsConnection")}
+              {busy === "brief"
+                ? t("game.world.setup.writingSlow")
+                : request
+                  ? t("game.world.setup.writeHelp")
+                  : t("game.world.setup.needsConnection")}
             </p>
             {message && (
               <p

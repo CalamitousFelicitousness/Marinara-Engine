@@ -171,7 +171,10 @@ export function checkWorldBrief(
     seen.add(key);
     const next: WorldBriefPlace = { ...place, tags: place.tags.filter((tag) => tags.has(tag)) };
     if (next.tags.length < place.tags.length) repairs.push(`${place.name}: a tag the kit does not have was left out`);
-    if (place.size !== undefined && (depth !== settlements || !sizes.has(place.size))) {
+    if (place.size !== undefined && depth !== settlements) {
+      delete next.size;
+      repairs.push(`${place.name}: its size was left out, since only a settlement has one`);
+    } else if (place.size !== undefined && !sizes.has(place.size)) {
       delete next.size;
       repairs.push(`${place.name}: its size was left out, the compile gives it one`);
     }

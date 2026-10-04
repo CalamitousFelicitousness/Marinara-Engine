@@ -811,6 +811,9 @@ test("A setting kit is off by default, can be picked, written for the setting, e
   gate = new Promise<void>((resolve) => (open = resolve));
   await wizard.getByRole("button", { name: "Write it for my setting", exact: true }).click();
   await expect.poll(() => writes.length).toBe(2);
+  // A long write says it is still going: the seconds count up, and it can take minutes.
+  await expect(wizard.getByRole("button", { name: /^Writing… [1-9]\d* s$/u })).toBeVisible({ timeout: 5_000 });
+  await expect(wizard.getByText("A model can take a few minutes to write this.", { exact: false })).toBeVisible();
   await wizard.getByRole("button", { name: /^Cyberpunk A megacity/u }).click();
   open();
   gate = null;

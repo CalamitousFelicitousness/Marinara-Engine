@@ -2,7 +2,7 @@
 // one the model writes for the player's own setting. A kit gives the Game Master the words this
 // kind of world uses and the kinds of change it allows. Every word can be changed here before the
 // game starts; the game keeps the kit it was created with.
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { Download, Sparkles, Upload } from "lucide-react";
 import {
@@ -144,6 +144,22 @@ export function WordsField({
   );
 }
 
+/** Seconds since a model began writing, while it writes: a kit or a brief can take minutes on some models,
+ *  and a count that moves says it is still going. */
+export function useWritingSeconds(active: boolean): number {
+  const [seconds, setSeconds] = useState(0);
+  useEffect(() => {
+    if (!active) {
+      setSeconds(0);
+      return;
+    }
+    const started = Date.now();
+    const timer = window.setInterval(() => setSeconds(Math.floor((Date.now() - started) / 1000)), 1000);
+    return () => window.clearInterval(timer);
+  }, [active]);
+  return seconds;
+}
+
 export function GameSetupWorldKitChooser({
   kit,
   onChange,
@@ -159,6 +175,7 @@ export function GameSetupWorldKitChooser({
 }) {
   const { t } = useUiTranslation();
   const [writing, setWriting] = useState(false);
+  const writingSeconds = useWritingSeconds(writing);
   const [writeError, setWriteError] = useState<string | null>(null);
   // Kit and world files (worldgen W9d): what was read, or why it could not be.
   const [fileNote, setFileNote] = useState<{ error: boolean; text: string } | null>(null);
@@ -401,10 +418,16 @@ export function GameSetupWorldKitChooser({
               )}
             >
               <Sparkles size={13} />
-              {writing ? t("game.worldKit.setup.writing") : t("game.worldKit.setup.write")}
+              {writing
+                ? t("game.worldKit.setup.writingFor", { seconds: writingSeconds })
+                : t("game.worldKit.setup.write")}
             </button>
             <p className="text-[var(--muted-foreground)]">
-              {writeRequest ? t("game.worldKit.setup.writeHelp") : t("game.worldKit.setup.writeNeedsConnection")}
+              {writing
+                ? t("game.world.setup.writingSlow")
+                : writeRequest
+                  ? t("game.worldKit.setup.writeHelp")
+                  : t("game.worldKit.setup.writeNeedsConnection")}
             </p>
             {writeError && (
               <p role="alert" className="text-[var(--destructive)]">

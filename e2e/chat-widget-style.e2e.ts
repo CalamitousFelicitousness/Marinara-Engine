@@ -92,6 +92,13 @@ async function openAppearance(page: Page) {
   const controls = page.locator("[data-chat-widget-style-controls]");
   await controls.scrollIntoViewIfNeeded();
   await expect(controls).toBeVisible();
+  const cards = controls.locator("[data-chat-widget-preset-option]");
+  await expect(cards).toHaveCount(3);
+  await expect
+    .poll(() =>
+      cards.evaluateAll((elements) => Math.min(...elements.map((element) => element.getBoundingClientRect().width))),
+    )
+    .toBeGreaterThanOrEqual(150);
   return controls;
 }
 

@@ -5260,7 +5260,7 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
               <fieldset
                 id={getSettingsControlAnchorId("chat-widget-style")}
                 data-chat-widget-style-controls
-                className="min-w-0 scroll-mt-3 border-t border-[var(--border)] pt-4"
+                className="@container min-w-0 scroll-mt-3 border-t border-[var(--border)] pt-4"
               >
                 <legend className="px-0 text-xs font-medium">
                   {localizeUi("settings.controls.chatWidgetStyle.label")}
@@ -5268,7 +5268,7 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
                 <p className="mb-3 text-xs leading-relaxed text-[var(--muted-foreground)]">
                   {localizeUi("settings.controls.chatWidgetStyle.help")}
                 </p>
-                <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+                <div className="grid grid-cols-1 gap-2 @min-[34rem]:grid-cols-3">
                   {(
                     [
                       {

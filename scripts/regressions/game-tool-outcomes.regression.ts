@@ -174,6 +174,16 @@ try {
   assert.match(toldText, /save_lorebook_entry\(\{"name":"B","content":"x{200,}…\): \{"ok":true\}/);
   assert.doesNotMatch(toldText, /x{400}/);
   assert.match(toldText, /\nlist_entries: \[\]/);
+  // A provider may hand a call no arguments at all: told by its bare name.
+  const bare = toolRoundsAsText([
+    {
+      role: "assistant",
+      content: "",
+      tool_calls: [{ id: "n1", type: "function", function: { name: "list_entries" } as never }],
+    },
+    { role: "tool", content: "[]", tool_call_id: "n1" },
+  ]);
+  assert.match(String(bare.at(-1)?.content), /\nlist_entries: \[\]/);
   const connection = await createConnectionsStorage(db).create({
     name: "Fixture",
     provider: "openai",

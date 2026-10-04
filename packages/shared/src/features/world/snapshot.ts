@@ -15,6 +15,7 @@ import { WORLD_GROUNDINGS, worldPreEdit, type GameWorld } from "./game-world.js"
 import { worldHistory, type WorldHistory } from "./history.js";
 import { worldCast, type WorldPerson } from "./people.js";
 import { WORLD_TOWN_KINDS, worldTownBase, type WorldTown } from "./town.js";
+import { WORLD_INTERIOR_USES } from "./furniture.js";
 
 export const WORLD_SNAPSHOT_VERSION = 1;
 
@@ -213,6 +214,7 @@ const townSchema = z
             name: word.optional(),
             role: word.optional(),
             people: z.array(id).max(10_000),
+            use: z.enum(WORLD_INTERIOR_USES).optional(),
           })
           .strict(),
       )

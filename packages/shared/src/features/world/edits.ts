@@ -16,7 +16,7 @@ import type { WorldKit } from "../../schemas/world-kit.schema.js";
 import { promptSafeText } from "../../schemas/ruleset.schema.js";
 import { compileLinks, worldTerrainEntries, type CompiledWorld, type WorldPlace } from "./compile.js";
 import { WORLD_BATTLEFIELDS_MAX, worldBattlefieldIssues, worldBattlefieldMapSchema } from "./battlefield-maps.js";
-import { WORLD_FURNITURE } from "./furniture.js";
+import { WORLD_FURNITURE, WORLD_INTERIOR_USES } from "./furniture.js";
 
 /** The most places a layer adds, people it renames or adds, and compiled places it changes. */
 export const WORLD_EDITS_MAX_ADDED = 200;
@@ -131,6 +131,8 @@ export const worldEditsSchema = z
             building: z.string().min(1).max(16),
             width: z.number().int().min(3).max(64),
             height: z.number().int().min(3).max(64),
+            /** What the rooms were furnished as when furnished (a home, a tavern ...). */
+            use: z.enum(WORLD_INTERIOR_USES).optional(),
             furniture: z
               .array(
                 z

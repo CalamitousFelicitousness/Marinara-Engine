@@ -189,6 +189,7 @@ try {
   const modernTown = worldTown(modern, city.id)!;
   const neighbourhood = modernTown.buildings.find((building) => building.kind === "place")!;
   assert.equal(worldInterior(modern, modernTown, neighbourhood.id), null, "a neighbourhood has no rooms");
+  assert.equal(neighbourhood.use, undefined, "and no use, so the evening never takes anyone there");
   const named = (name: string) =>
     worldBuildingHasRooms(modern, {
       id: "x",
@@ -243,6 +244,9 @@ try {
     ["bard", "workroom"],
   ];
   for (const [role, kind] of expected) assert.equal(use(role), kind, `${role} works in a ${kind}`);
+  // Accents do not hide a word: a café is a tavern.
+  assert.equal(use("café owner"), "tavern");
+  assert.equal(worldInteriorUse({ kind: "place", name: "Café Noir" }), "tavern");
   // Whole words only: a barber is no bar, an inner court no inn, the Forgotten no forge.
   assert.equal(use("barber"), "shop");
   assert.equal(use("inner court steward"), "workroom");
@@ -316,6 +320,27 @@ try {
   assert.match(worldInteriorWords(homeRooms), /a hearth/u);
   const asleep = worldInteriorPeopleAt(tavernTown, homeRooms, 2);
   assert.ok(asleep.length > 0 && asleep.every((each) => each.asleep), "asleep at home at night");
+  // Awake at home in the evening: beside their bed, not on it.
+  for (const building of tavernTown.buildings.filter((each) => each.kind === "home" && each.people.length)) {
+    const homeInside = worldInterior(fantasy, tavernTown, building.id)!;
+    for (const { at, asleep: sleeping } of worldInteriorPeopleAt(tavernTown, homeInside, 19)) {
+      assert.ok(!sleeping);
+      const bed = homeInside.furniture.some((piece) => piece.kind === "bed" && piece.x === at.x && piece.y === at.y);
+      const free = homeInside.furniture.filter((piece) => piece.kind === "bed").length < 8;
+      if (free) assert.ok(!bed, `${building.id}: awake, beside the bed`);
+    }
+  }
+  // The schedule reads each building's own use (from its place's tags too): a building made a tavern
+  // keeps its people there in the evening.
+  const retagged = structuredClone(tavernTown);
+  const workshop = retagged.buildings.find(
+    (each) => each.kind === "work" && each.use !== "tavern" && each.people.length,
+  );
+  if (workshop) {
+    workshop.use = "tavern";
+    const worker = workshop.people.find((id) => retagged.workOf[id] === workshop.id)!;
+    assert.equal(worldTownWhere(retagged, worker, 19), workshop.id, "its use, not its words");
+  }
 
   // ── Through the routes, with a stand-in model ──
   const replies: string[] = [];
@@ -479,7 +504,19 @@ try {
       .filter((cell) => cell.y === entry.y - 1 && (cell.x !== entry.x || true))
       .map((cell) => ({ ...cell, kind: "crate" }));
     await refused([{ ...sized, furniture: wall }], /walls off/, "a row of crates across the room");
-    await refused([{ ...sized, width: laid.width + 1, furniture: [] }], /furnished for rooms/, "the wrong size");
+    // Furnished for rooms of another size, or another kind of building (an id that now names another):
+    // kept, never blocking a save, and not applied.
+    for (const stale of [
+      { ...sized, width: laid.width + 1, furniture: [{ ...spot, kind: "crate" }] },
+      { ...sized, use: "worship", furniture: [{ ...spot, kind: "crate" }] },
+    ]) {
+      const kept = await save([stale]);
+      assert.equal(kept.statusCode, 200, kept.body);
+      assert.deepEqual((await rooms(tavern.id)).json().interior, tavernRooms, "not applied");
+    }
+    // Furnished for the rooms as they are: applied.
+    assert.equal((await save([{ ...sized, use: laid.use, furniture }])).statusCode, 200);
+    assert.deepEqual((await rooms(tavern.id)).json().interior.furniture, furniture);
     await refused([{ ...sized, building: "nowhere", furniture: [] }], /No building "nowhere"/, "no such building");
     await refused(
       [

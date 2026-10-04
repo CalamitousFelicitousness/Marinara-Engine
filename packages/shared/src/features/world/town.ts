@@ -20,7 +20,8 @@ import { worldPersonByHand, type WorldEdits } from "./edits.js";
 import type { GameWorld } from "./game-world.js";
 import type { WorldPresent } from "./ledger.js";
 import { WORLD_PEOPLE_DEFAULTS, worldCast, type WorldPerson } from "./people.js";
-import { worldInteriorEditIssues, worldInteriorUse } from "./interior.js";
+import { worldBuildingHasRooms, worldInteriorEditIssues, worldInteriorUse, worldNamedPlaceUse } from "./interior.js";
+import type { WorldInteriorUse } from "./furniture.js";
 
 export const WORLD_TOWN_KINDS = Object.freeze(["landmark", "place", "work", "home"] as const);
 export type WorldTownKind = (typeof WORLD_TOWN_KINDS)[number];
@@ -42,6 +43,10 @@ export interface WorldTownBuilding {
   role?: string;
   /** Who lives here (a home) or works here (anything else). */
   people: string[];
+  /** What its rooms are furnished as (worldgen W13), worked out once when the town is laid out (from
+   *  its place's tags, its trade and its name); none for a part of town, which has no rooms. A town kept
+   *  in a snapshot made before W13 has none, and it is worked out when asked for. */
+  use?: WorldInteriorUse;
 }
 
 export interface WorldTown {
@@ -178,6 +183,10 @@ function addStoryPlaces(town: WorldTown, places: ReadonlyArray<{ id: string; nam
       if (!empty) break;
       building = Object.assign(empty, { id: place.id, kind: "place" as const, placeId: place.id, name: place.name });
     }
+    // A place the story added has only its name to say what it is furnished as.
+    const use = worldNamedPlaceUse(place.name);
+    if (use) building.use = use;
+    else delete building.use;
     for (const person of town.people) if (person.placeId === place.id) building.people.push(person.id);
   }
 }
@@ -204,9 +213,15 @@ export function worldTownEditIssues(game: GameWorld, edits: WorldEdits): string[
     }
     for (const issue of laidOut.issues) issues.push(`${settlement!.name}: ${issue}`);
   }
-  // Buildings furnished by hand (W13b), against their rooms in the towns these edits lay out.
+  // Buildings furnished by hand (W13b), against their rooms in the towns these edits lay out (each town
+  // laid out once).
   if (edits.interiors?.length) {
-    issues.push(...worldInteriorEditIssues(next, edits, (settlementId) => worldTownBase(next, settlementId)));
+    const towns = new Map<string, WorldTown | null>();
+    const townOf = (settlementId: string) => {
+      if (!towns.has(settlementId)) towns.set(settlementId, worldTownBase(next, settlementId));
+      return towns.get(settlementId)!;
+    };
+    issues.push(...worldInteriorEditIssues(next, edits, townOf));
   }
   return [...new Set(issues)].slice(0, 20);
 }
@@ -363,6 +378,11 @@ function layOutTown(
     }
     for (const person of people) if (person.placeId === place.id) building.people.push(person.id);
   }
+  // What each building is furnished as, once (W13): the schedule and the rooms both read it.
+  for (const building of buildings) {
+    const place = building.placeId ? world.places.find((each) => each.id === building.placeId) : undefined;
+    if (worldBuildingHasRooms(game, building)) building.use = worldInteriorUse(building, place?.tags);
+  }
   // Someone whose workplace found no lot is in the square by day.
   for (const [personId, at] of Object.entries(workOf)) {
     if (!buildings.some((building) => building.id === at)) delete workOf[personId];
@@ -475,23 +495,33 @@ function layOutByHand(
   return issues;
 }
 
+/** A town's taverns, worked out once a town (the schedule asks for every person, every hour). */
+const usesOfTown = new WeakMap<WorldTown, { taverns: Set<string>; firstTavern: string | null }>();
+function townUses(town: WorldTown) {
+  let found = usesOfTown.get(town);
+  if (!found) {
+    // A building's own use; a town from a snapshot made before W13 has none, so its trade and name say.
+    const taverns = town.buildings
+      .filter((building) => building.kind !== "home" && (building.use ?? worldInteriorUse(building)) === "tavern")
+      .map((building) => building.id);
+    found = { taverns: new Set(taverns), firstTavern: taverns[0] ?? null };
+    usesOfTown.set(town, found);
+  }
+  return found;
+}
+
 /** Where a person is at an hour: at work by day (07-18); at dusk (18-21) in the square, at a tavern or
  *  home, a third of the town each (by who they are, so the same person each evening); home at night.
  *  Someone with no workplace spends the day in the square. A tavern's people keep it from 11 until
  *  midnight. A building id, or "square". (W13: before, everyone was in the square at dusk.) */
 export function worldTownWhere(town: WorldTown, personId: string, hour: number): string {
+  const { taverns, firstTavern } = townUses(town);
   const workId = town.workOf[personId];
-  const work = workId ? town.buildings.find((building) => building.id === workId) : undefined;
-  if (work && worldInteriorUse(work) === "tavern") return hour >= 11 ? work.id : (town.homeOf[personId] ?? "square");
+  if (workId && taverns.has(workId)) return hour >= 11 ? workId : (town.homeOf[personId] ?? "square");
   if (hour >= 7 && hour < 18) return workId ?? "square";
   if (hour >= 18 && hour < 21) {
     const third = [...personId].reduce((h, c) => (Math.imul(h, 31) + c.charCodeAt(0)) >>> 0, 7) % 3;
-    if (third === 1) {
-      const tavern = town.buildings.find(
-        (building) => building.kind !== "home" && worldInteriorUse(building) === "tavern",
-      );
-      if (tavern) return tavern.id;
-    }
+    if (third === 1 && firstTavern) return firstTavern;
     if (third === 2 && town.homeOf[personId]) return town.homeOf[personId]!;
     return "square";
   }

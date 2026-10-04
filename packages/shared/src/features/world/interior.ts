@@ -13,7 +13,7 @@
 // version on purpose. Rooms laid out by hand (W13b) are kept in the world's hand edits.
 // ──────────────────────────────────────────────
 import { worldStream } from "./compile.js";
-import type { WorldFurniture } from "./furniture.js";
+import type { WorldFurniture, WorldInteriorUse } from "./furniture.js";
 import type { GameWorld } from "./game-world.js";
 import type { WorldPerson } from "./people.js";
 import { worldTownWhere, type WorldTown, type WorldTownBuilding } from "./town.js";
@@ -21,21 +21,7 @@ import { worldTownWhere, type WorldTown, type WorldTownBuilding } from "./town.j
 /** Bumped whenever a building's rooms would lay out differently. */
 export const WORLD_INTERIOR_VERSION = 1;
 
-export const WORLD_INTERIOR_USES = Object.freeze([
-  "home",
-  "hall",
-  "tavern",
-  "shop",
-  "workshop",
-  "worship",
-  "clinic",
-  "guard",
-  "study",
-  "training",
-  "store",
-  "workroom",
-] as const);
-export type WorldInteriorUse = (typeof WORLD_INTERIOR_USES)[number];
+export { WORLD_INTERIOR_USES, type WorldInteriorUse } from "./furniture.js";
 
 export { WORLD_FURNITURE, type WorldFurniture } from "./furniture.js";
 
@@ -108,6 +94,16 @@ const MOST_PEOPLE = 8;
 
 const clamp = (value: number, [low, high]: readonly [number, number]) => Math.max(low, Math.min(high, value));
 
+/** Words without their accents (café, Café Noir), so the word lists' word boundaries hold. */
+const plain = (words: string) => words.normalize("NFD").replace(/\p{M}/gu, "");
+
+/** What a place the story added is furnished as, by its name alone, or nothing for a part of town. */
+export function worldNamedPlaceUse(name: string): WorldInteriorUse | undefined {
+  const words = plain(name);
+  if (PART_OF_TOWN.test(words) && !USE_WORDS.some(([, pattern]) => pattern.test(words))) return undefined;
+  return worldInteriorUse({ kind: "place", name });
+}
+
 /** The words of a part of town rather than a building: a place on such a layer has no rooms. */
 const PART_OF_TOWN =
   /\b(quarters?|districts?|neighbou?rhoods?|wards?|boroughs?|sectors?|zones?|precincts?|parishes?|suburbs?|outskirts|areas?|levels?|decks?|rings?|blocks?|streets?|squares?|plazas?|parks?|docks?|harbou?rs?|ports?|beach(?:es)?|grounds?|fields?|woods?|forests?|cemeter(?:y|ies)|graveyards?)\b/i;
@@ -120,7 +116,7 @@ export function worldInteriorUse(
 ): WorldInteriorUse {
   if (building.kind === "home") return "home";
   if (building.kind === "landmark") return "hall";
-  for (const words of [tags.join(" ").replace(/_/g, " "), building.role ?? "", building.name ?? ""]) {
+  for (const words of [tags.join(" ").replace(/_/g, " "), building.role ?? "", building.name ?? ""].map(plain)) {
     if (!words) continue;
     for (const [use, pattern] of USE_WORDS) if (pattern.test(words)) return use;
   }
@@ -136,8 +132,7 @@ export function worldBuildingHasRooms(game: GameWorld, building: WorldTownBuildi
   if (layer) return !PART_OF_TOWN.test(`${layer.label} ${layer.id}`);
   // A place the story added has only its name: "the Old Quarter" is a part of town, "the Harbour Inn" a
   // building.
-  const name = building.name ?? "";
-  return !PART_OF_TOWN.test(name) || USE_WORDS.some(([, pattern]) => pattern.test(name));
+  return worldNamedPlaceUse(building.name ?? "") !== undefined;
 }
 
 /** A building's rooms, laid out now. Null for no such building, or one that is a part of town. */
@@ -150,7 +145,7 @@ export function worldInterior(game: GameWorld, town: WorldTown, buildingId: stri
   );
   // Furnished by hand (W13b) when the rooms are still the size they were furnished at; a hand layout
   // that no longer fits is not applied (the editor says why).
-  return edit && interiorEditIssues(laidOut, edit).length === 0
+  return edit && worldInteriorEditFits(laidOut, edit) && interiorEditIssues(laidOut, edit).length === 0
     ? furnishByHand(town, building, laidOut, edit)
     : laidOut;
 }
@@ -187,13 +182,15 @@ export function worldInteriorOpen(interior: Pick<WorldInterior, "width" | "groun
   );
 }
 
+/** Whether a hand furnishing is for the rooms as they are now laid out: their size, and what they are
+ *  furnished as (a building's id can come to name another building after other hand edits). One that is
+ *  not is kept but not applied, and never blocks a save (the room editor says so). */
+export function worldInteriorEditFits(laidOut: WorldInterior, edit: WorldInteriorEdit): boolean {
+  return edit.width === laidOut.width && edit.height === laidOut.height && (!edit.use || edit.use === laidOut.use);
+}
+
 /** Why a hand furnishing does not fit the rooms as laid out, or nothing. Places count from 1. */
 function interiorEditIssues(laidOut: WorldInterior, edit: WorldInteriorEdit): string[] {
-  if (edit.width !== laidOut.width || edit.height !== laidOut.height) {
-    return [
-      `it was furnished for rooms ${edit.width} by ${edit.height}; they are now ${laidOut.width} by ${laidOut.height}.`,
-    ];
-  }
   const issues: string[] = [];
   const taken = new Set<number>();
   const entry = (laidOut.door.y - 1) * laidOut.width + laidOut.door.x;
@@ -283,7 +280,9 @@ export function worldInteriorEditIssues(
       issues.push(`"${building.name ?? edit.building}" is a part of town, with no rooms to furnish.`);
       continue;
     }
-    for (const issue of interiorEditIssues(layOutInterior(game, town, building), edit))
+    const laidOut = layOutInterior(game, town, building);
+    if (!worldInteriorEditFits(laidOut, edit)) continue;
+    for (const issue of interiorEditIssues(laidOut, edit))
       issues.push(`The rooms of "${building.name ?? edit.building}": ${issue}`);
   }
   return [...new Set(issues)].slice(0, 20);
@@ -295,7 +294,7 @@ type Item = { kind: WorldFurniture; where: "wall" | "floor" | "side"; for?: stri
 export function layOutInterior(game: GameWorld, town: WorldTown, building: WorldTownBuilding): WorldInterior {
   const random = worldStream(game.seed, "interior", town.settlementId, building.id);
   const place = building.placeId ? game.world.places.find((each) => each.id === building.placeId) : undefined;
-  const use = worldInteriorUse(building, place?.tags);
+  const use = building.use ?? worldInteriorUse(building, place?.tags);
   const tier = Math.min(3, Math.max(0, Math.round((town.width - 22) / 10)));
   const homeOf = (id: string) => town.homeOf[id] === building.id;
   const workOf = (id: string) => town.workOf[id] === building.id;
@@ -577,12 +576,36 @@ export function worldInteriorPeopleAt(
   const out: Array<{ person: WorldPerson; at: { x: number; y: number }; asleep: boolean }> = [];
   for (const person of town.people) {
     if (worldTownWhere(town, person.id, hour) !== interior.buildingId) continue;
-    const at = interior.seats[person.id];
-    if (!at) continue;
-    const night = hour < 7 || hour >= 21;
-    out.push({ person, at, asleep: night && town.homeOf[person.id] === interior.buildingId });
+    const seat = interior.seats[person.id];
+    if (!seat) continue;
+    const asleep = (hour < 7 || hour >= 21) && town.homeOf[person.id] === interior.buildingId;
+    // Awake at home: beside their bed, not on it.
+    const onBed = interior.furniture.some((piece) => piece.kind === "bed" && piece.x === seat.x && piece.y === seat.y);
+    const at = !asleep && onBed ? (besideBed(interior, seat, out) ?? seat) : seat;
+    out.push({ person, at, asleep });
   }
   return out;
+}
+
+/** Open floor beside a bed nobody else stands on, if any. */
+function besideBed(
+  interior: WorldInterior,
+  bed: { x: number; y: number },
+  others: ReadonlyArray<{ at: { x: number; y: number } }>,
+): { x: number; y: number } | null {
+  for (const [dx, dy] of [
+    [0, 1],
+    [1, 0],
+    [-1, 0],
+    [0, -1],
+  ] as const) {
+    const [x, y] = [bed.x + dx, bed.y + dy];
+    if (interior.ground[y * interior.width + x] !== ".") continue;
+    if (interior.furniture.some((piece) => piece.x === x && piece.y === y)) continue;
+    if (others.some((each) => each.at.x === x && each.at.y === y)) continue;
+    return { x, y };
+  }
+  return null;
 }
 
 const FURNITURE_WORDS: Record<WorldFurniture, [string, string]> = {

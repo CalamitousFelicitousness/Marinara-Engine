@@ -27,5 +27,7 @@ export function blurActiveChatFloatingUiControl(options?: { keepWindowFocus?: bo
 export function isDesktopShellNavigationTarget(target: EventTarget | null) {
   if (typeof window === "undefined" || window.matchMedia("(max-width: 767px)").matches) return false;
   const element = target instanceof Element ? target : target instanceof Node ? target.parentElement : null;
+  // A window toggle in the topbar, such as Chat Settings, is a chat control: pressing it closes chat popovers.
+  if (element?.closest("[data-window-opener]")) return false;
   return Boolean(element?.closest('[data-component="TopBar"]'));
 }

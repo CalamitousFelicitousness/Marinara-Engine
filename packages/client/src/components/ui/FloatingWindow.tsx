@@ -55,6 +55,8 @@ export interface FloatingWindowProps {
   closeLabel: string;
   /** Where the window opens before the user moves it, and where Reset View puts it back. */
   getDefaultLayout: (bounds: WindowBounds) => WindowLayout;
+  /** Changing this re-reads the default once the page has updated (a panel the default avoids opened, say). */
+  defaultLayoutKey?: string;
   minWidth?: number;
   minHeight?: number;
   /** "sheet" is today's phone panel: no move, resize, pin or lock, and it closes on an outside press. */
@@ -77,9 +79,10 @@ export interface FloatingWindowProps {
 const DEFAULT_MIN_WIDTH = 320;
 const DEFAULT_MIN_HEIGHT = 240;
 const NO_DRAG_SELECTOR = "button, a, input, select, textarea, [contenteditable='true'], [data-window-no-drag]";
-// Escape stays with these: text fields, and drawer contents, whose menus and editors close on Escape
-// through their own document listeners.
-const KEEPS_ESCAPE_SELECTOR = "input, textarea, select, [contenteditable='true'], .mari-drawer__body";
+// Escape in a text field belongs to the field (many cancel an edit with it); anywhere else in the
+// window it closes an unpinned window. Controls that use Escape themselves call preventDefault.
+const KEEPS_ESCAPE_SELECTOR =
+  "textarea, [contenteditable='true'], input:not([type='checkbox'], [type='radio'], [type='range'], [type='button'], [type='submit'], [type='reset'], [type='color'], [type='file'])";
 
 const CENTER_CONTENT_SELECTOR = '[data-component="CenterContent"]';
 
@@ -119,6 +122,7 @@ export function FloatingWindow({
   titleAccessory,
   closeLabel,
   getDefaultLayout,
+  defaultLayoutKey,
   minWidth = DEFAULT_MIN_WIDTH,
   minHeight = DEFAULT_MIN_HEIGHT,
   presentation = "window",
@@ -156,11 +160,19 @@ export function FloatingWindow({
   ignoreOutsidePointerRef.current = ignoreOutsidePointer;
 
   const limits = useMemo(() => ({ minWidth, minHeight }), [minHeight, minWidth]);
+  // Bumped after a defaultLayoutKey change has rendered, so the default reads the updated page.
+  const [defaultRevision, setDefaultRevision] = useState(0);
+  const defaultLayoutKeyRef = useRef(defaultLayoutKey);
+  useEffect(() => {
+    if (defaultLayoutKeyRef.current === defaultLayoutKey) return;
+    defaultLayoutKeyRef.current = defaultLayoutKey;
+    setDefaultRevision((revision) => revision + 1);
+  }, [defaultLayoutKey]);
   // The default follows the viewport and Reset View until the user changes the window.
   const defaultLayout = useMemo(
     () => getDefaultLayoutRef.current(bounds),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- resetRevision recomputes the default on purpose
-    [bounds, resetRevision],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the revisions recompute the default on purpose
+    [bounds, resetRevision, defaultRevision],
   );
   const layout = savedLayout ?? defaultLayout;
   const pinned = !sheet && layout.pinned;
@@ -237,11 +249,11 @@ export function FloatingWindow({
 
   useEffect(() => () => cancelAnimationFrame(frameRef.current), []);
 
+  // Drag and keyboard pass geometry that is already clamped. Pin and lock keep the saved geometry, so a
+  // window squeezed by a small viewport still returns to its place when the viewport grows again.
   const commitLayout = useCallback(
-    (patch: Partial<WindowLayout>) => {
-      saveLayout(id, { ...layout, ...clampWindowGeometry(layout, bounds, limits), ...patch });
-    },
-    [bounds, id, layout, limits, saveLayout],
+    (patch: Partial<WindowLayout>) => saveLayout(id, { ...layout, ...patch }),
+    [id, layout, saveLayout],
   );
 
   const beginPointerSession = (event: ReactPointerEvent<HTMLElement>, edge: ResizeEdge | null) => {

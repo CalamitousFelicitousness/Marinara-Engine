@@ -156,11 +156,7 @@ import {
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { ChatResourceDropOverlay } from "./ChatResourceDropOverlay";
 import { ChatHelpOverlay } from "./ChatHelpOverlay";
-import {
-  CHAT_SETTINGS_WINDOW_ID,
-  isFloatingWindowPinned,
-  useFloatingWindowStore,
-} from "../../stores/floating-window.store";
+import { CHAT_SETTINGS_WINDOW_ID, useFloatingWindowStore } from "../../stores/floating-window.store";
 import { readChatHelpMode } from "../../lib/chat-help-events";
 
 export type { CharacterMap };
@@ -689,9 +685,10 @@ const LocalChatArea = memo(function LocalChatArea() {
   // Other chat panels and toolbar actions dismiss Chat Settings unless it is pinned; `force` (its own
   // close button) always closes it.
   const handleCloseSettingsPanel = useCallback((options?: { force?: boolean }) => {
-    if (!options?.force && isFloatingWindowPinned(CHAT_SETTINGS_WINDOW_ID)) return;
-    blurActiveChatFloatingUiControl();
-    useFloatingWindowStore.getState().closeWindow(CHAT_SETTINGS_WINDOW_ID);
+    // React unmounts the window after this handler returns, so a field being edited still saves on blur.
+    if (useFloatingWindowStore.getState().dismissWindow(CHAT_SETTINGS_WINDOW_ID, options)) {
+      blurActiveChatFloatingUiControl();
+    }
   }, []);
   useEffect(() => {
     if (settingsOpen) return;

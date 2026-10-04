@@ -271,10 +271,12 @@ import { PinnedImageOverlay } from "../chat/PinnedImageOverlay";
 import { ChatBranchSelector } from "../chat/ChatBranchSelector";
 import {
   CHAT_FLOATING_PANEL_SELECTOR,
+  CHAT_TOOLBAR_ACTION_EVENT,
   CHAT_TOOLBAR_ICON_GAP_CLASS,
   CHAT_TOOLBAR_OVERFLOW_BUTTON_SIZE_CLASS,
   CHAT_TOOLBAR_OVERFLOW_MENU_CLASS,
   getChatToolbarButtonClass,
+  readAnnouncedChatToolbarPanelAction,
   readChatToolbarFloatingPanelAnchor,
   type ChatToolbarFloatingPanelAnchor,
 } from "../chat/ChatToolbarControls";
@@ -2902,6 +2904,14 @@ function GameSurfaceComponent({
       window.removeEventListener(CHAT_HELP_OPEN_REQUEST_EVENT, handleHelpOpen);
       window.removeEventListener(CHAT_HELP_CLOSE_EVENT, handleHelpClose);
     };
+  }, [closeLocalFloatingWindows]);
+  // The topbar's Chat Settings button closes the game's own panels, as the old toolbar button did.
+  useEffect(() => {
+    const handleToolbarAction = (event: Event) => {
+      if (readAnnouncedChatToolbarPanelAction(event) === "settings") closeLocalFloatingWindows();
+    };
+    window.addEventListener(CHAT_TOOLBAR_ACTION_EVENT, handleToolbarAction);
+    return () => window.removeEventListener(CHAT_TOOLBAR_ACTION_EVENT, handleToolbarAction);
   }, [closeLocalFloatingWindows]);
   const handleOpenGalleryPanel = useCallback(
     (event?: ReactMouseEvent<HTMLElement>) => {

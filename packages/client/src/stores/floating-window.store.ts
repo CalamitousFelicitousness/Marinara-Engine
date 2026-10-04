@@ -31,6 +31,8 @@ interface FloatingWindowState {
   resetRevision: number;
   openWindow: (id: FloatingWindowId, opener?: HTMLElement | null) => void;
   closeWindow: (id: FloatingWindowId) => void;
+  /** Closes a window unless it is pinned (`force` closes it anyway). Returns whether it closed. */
+  dismissWindow: (id: FloatingWindowId, options?: { force?: boolean }) => boolean;
   toggleWindow: (id: FloatingWindowId, opener?: HTMLElement | null) => void;
   registerHost: (id: FloatingWindowId) => () => void;
   bringToFront: (id: FloatingWindowId) => void;
@@ -91,6 +93,11 @@ export const useFloatingWindowStore = create<FloatingWindowState>()((set, get) =
       open: withoutKey(state.open, id),
       stack: state.stack.filter((entry) => entry !== id),
     })),
+  dismissWindow: (id, options) => {
+    if (!get().open[id] || (!options?.force && isFloatingWindowPinned(id))) return false;
+    get().closeWindow(id);
+    return true;
+  },
   toggleWindow: (id, opener) => {
     if (get().open[id]) get().closeWindow(id);
     else get().openWindow(id, opener);

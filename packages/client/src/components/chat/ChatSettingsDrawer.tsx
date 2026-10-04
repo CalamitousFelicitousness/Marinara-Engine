@@ -203,7 +203,7 @@ import { abortGenerationForChat, useChatStore } from "../../stores/chat.store";
 import { blurActiveChatFloatingUiControl } from "../../lib/chat-floating-ui-events";
 import { requestChatHelp } from "../../lib/chat-help-events";
 import { CHAT_SETTINGS_WINDOW_ID, useFloatingWindowStore } from "../../stores/floating-window.store";
-import { getChatSettingsWindowProps } from "./chat-settings-window";
+import { getChatSettingsWindowProps, useTrackerPanelClearance } from "./chat-settings-window";
 import { useMatchMedia } from "../../hooks/use-match-media";
 import { useDialogFocusScope } from "../../hooks/use-dialog-focus-scope";
 import { useTouchFolderDrag } from "../../hooks/use-touch-folder-drag";
@@ -923,10 +923,12 @@ export function ChatSettingsDrawer({
   const chatHelpButtonHidden = useUIStore((s) => s.chatHelpButtonHidden ?? false);
   const trackerPanelEnabled = useUIStore((s) => s.trackerPanelEnabled);
   const trackerPanelOpen = useUIStore((s) => s.trackerPanelOpen);
-  const setTrackerPanelOpen = useUIStore((s) => s.setTrackerPanelOpen);
-  const resetView = useFloatingWindowStore((s) => s.resetView);
+  const trackerPanelSide = useUIStore((s) => s.trackerPanelSide);
   // Phones keep today's full-width sheet until the mobile step of the window redesign.
   const phoneLayout = useMatchMedia("(max-width: 767px)");
+  const trackerPanelClearance = useTrackerPanelClearance(!phoneLayout);
+  const setTrackerPanelOpen = useUIStore((s) => s.setTrackerPanelOpen);
+  const resetView = useFloatingWindowStore((s) => s.resetView);
 
   const { data: allCharacters } = useCharacters({ includeBuiltIn: true });
   const { data: characterGroups } = useCharacterGroups();
@@ -4835,6 +4837,8 @@ export function ChatSettingsDrawer({
         titleAccessory={helpLayoutButton}
         closeLabel={localizeUi("ui.chat.chatsettingsdrawer.closeChatSettings")}
         {...windowProps}
+        // A window the user has not moved opens beside a right-side Tracker Panel, not over it.
+        defaultLayoutKey={`${trackerPanelSide}:${trackerPanelClearance}`}
         className={cn(windowProps.className, "mari-chat-settings-popover mari-chat-settings-drawer")}
         bodyRef={panelRef}
         onRequestClose={() => requestClose()}

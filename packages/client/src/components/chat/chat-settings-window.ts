@@ -4,10 +4,11 @@
 // Used by the Chat Settings window and by its loading placeholder, so both open
 // in the same place and the placeholder does not jump when the panel arrives.
 // ──────────────────────────────────────────────
-import type { CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { WINDOW_MARGIN_PX, type WindowBounds, type WindowLayout } from "../../lib/floating-window-layout";
 import { cn } from "../../lib/utils";
 import { isDesktopShellNavigationTarget } from "../../lib/chat-floating-ui-events";
+import { useUIStore } from "../../stores/ui.store";
 import { NEUTRAL_SURFACE_VARIABLES } from "../ui/neutral-surface-styles";
 import { isChatToolbarPanelTrigger, type ChatToolbarFloatingPanelAnchor } from "./ChatToolbarControls";
 
@@ -19,7 +20,10 @@ function readCssPixels(element: Element, property: string) {
   return Number.isFinite(value) ? value : 0;
 }
 
-/** Today's panel width beside the right edge of the chat, between its top controls and its message box. */
+/**
+ * Today's panel width beside the right edge of the chat (left of a right-side Tracker Panel), between
+ * its top controls and its message box.
+ */
 export function getChatSettingsDefaultLayout(bounds: WindowBounds): WindowLayout {
   const remPx = readCssPixels(document.documentElement, "font-size") || 16;
   const chatRoot = Array.from(document.querySelectorAll<HTMLElement>("[data-chat-mode]")).find((element) => {
@@ -27,11 +31,14 @@ export function getChatSettingsDefaultLayout(bounds: WindowBounds): WindowLayout
     return rect.width > 1 && rect.height > 1;
   });
   const rootRect = chatRoot?.getBoundingClientRect();
+  // A right-side Tracker Panel floats over the chat; AppShell publishes its width plus a gap.
+  const trackerClearance =
+    chatRoot && useUIStore.getState().trackerPanelSide === "right"
+      ? readCssPixels(chatRoot, TRACKER_CLEARANCE_VARIABLE)
+      : 0;
   const right = Math.min(
-    bounds.right,
-    (rootRect?.right ?? bounds.right + WINDOW_MARGIN_PX) -
-      (chatRoot ? readCssPixels(chatRoot, "--tracker-panel-hud-clear-right") : 0) -
-      CHAT_SETTINGS_WINDOW_GAP_PX,
+    bounds.right - trackerClearance,
+    (rootRect?.right ?? bounds.right + WINDOW_MARGIN_PX) - CHAT_SETTINGS_WINDOW_GAP_PX,
   );
   const topControlsBottom = Math.max(
     0,
@@ -46,6 +53,27 @@ export function getChatSettingsDefaultLayout(bounds: WindowBounds): WindowLayout
   const bottom = Math.min(bounds.bottom, composerTop ? composerTop - CHAT_SETTINGS_WINDOW_GAP_PX : bounds.bottom - 132);
   const width = Math.min(CHAT_SETTINGS_WINDOW_WIDTH_REM * remPx, right - bounds.left);
   return { x: right - width, y: top, width, height: bottom - top, pinned: false, locked: false };
+}
+
+const TRACKER_CLEARANCE_VARIABLE = "--tracker-panel-overlay-clearance";
+
+/**
+ * AppShell's Tracker Panel clearance, kept current. It changes when the panel opens, closes or settles
+ * on its width, so passing it as `defaultLayoutKey` keeps an unmoved window clear of the panel.
+ */
+export function useTrackerPanelClearance(enabled: boolean) {
+  const [clearance, setClearance] = useState("");
+  useEffect(() => {
+    if (!enabled) return;
+    const host = document.querySelector<HTMLElement>(`[style*="${TRACKER_CLEARANCE_VARIABLE}"]`);
+    if (!host) return;
+    const read = () => setClearance(host.style.getPropertyValue(TRACKER_CLEARANCE_VARIABLE));
+    read();
+    const observer = new MutationObserver(read);
+    observer.observe(host, { attributes: true, attributeFilter: ["style"] });
+    return () => observer.disconnect();
+  }, [enabled]);
+  return clearance;
 }
 
 /** Presses that do not count as "outside" Chat Settings. */

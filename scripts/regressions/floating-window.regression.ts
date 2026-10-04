@@ -139,6 +139,17 @@ store
   .hydrate({ version: FLOATING_WINDOW_LAYOUT_VERSION, windows: { [id]: valid, bad: { ...valid, x: "?" } } } as never);
 assert.deepEqual(store.getState().layouts, { [id]: valid });
 
+// Other panels dismiss an unpinned window only; its own close button forces it shut.
+store.getState().openWindow(id);
+assert.equal(store.getState().dismissWindow(id), false, "a pinned window stays when another panel opens");
+assert.equal(store.getState().open[id], true);
+assert.equal(store.getState().dismissWindow(id, { force: true }), true);
+assert.equal(store.getState().open[id], undefined);
+store.getState().resetView();
+store.getState().openWindow(id);
+assert.equal(store.getState().dismissWindow(id), true, "an unpinned window closes");
+assert.equal(store.getState().dismissWindow(id), false, "a closed window has nothing to close");
+
 // ── Theming contract: stable classes, attributes and variables ──
 const floatingWindow = read("packages/client/src/components/ui/FloatingWindow.tsx");
 const drawer = read("packages/client/src/components/ui/Drawer.tsx");
@@ -180,5 +191,16 @@ assert.match(
 assert.match(read("packages/client/src/components/chat/ChatSettingsDrawer.tsx"), /<FloatingWindow\b/u);
 assert.match(read("packages/client/src/components/chat/ChatCommonOverlays.tsx"), /<FloatingWindow\b/u);
 assert.match(read("packages/client/src/features/chat-settings/ChatSettingsSection.tsx"), /<Drawer\b/u);
+assert.match(
+  read("packages/client/src/features/chat-settings/sections/AdvancedParametersSection.tsx"),
+  /<Drawer\b[\s\S]*?id="advanced-parameters"/u,
+  "Advanced Parameters is a shared drawer too",
+);
+
+// Hosted multiplayer: Players opens Chat Settings at its Multiplayer section; the next open starts at the top.
+assert.match(
+  read("packages/client/src/features/multiplayer/MultiplayerChat.tsx"),
+  /useEffect\(\(\) => \{\s*if \(!settingsOpen\) setInitialSection\(null\);\s*\}, \[settingsOpen\]\);/u,
+);
 
 console.log("floating window regression passed");

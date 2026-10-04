@@ -306,15 +306,19 @@ test.describe("Chat Settings window on desktop", () => {
       await expect(settings).toHaveCount(0);
       await expect(button).toBeFocused();
 
-      // Inside a section, Escape belongs to that section's own menus and editors.
+      // Escape in a text field belongs to the field; anywhere else in a section it closes the window.
       await openSettingsWindow(page);
-      const chatNameHeader = settings.locator('[data-chat-settings-section="chat-name"] > [role="button"]');
+      const chatName = settings.locator('[data-chat-settings-section="chat-name"]');
+      const chatNameHeader = chatName.locator('> [role="button"]');
       if ((await chatNameHeader.getAttribute("aria-expanded")) !== "true") await chatNameHeader.click();
-      await settings.getByRole("button", { name: "Copy chat ID", exact: true }).focus();
+      await chatName.locator(".mari-drawer__body button").first().click();
+      await expect(chatName.locator("input")).toBeFocused();
       await page.keyboard.press("Escape");
       await expect(settings).toBeVisible();
-      await settings.getByRole("button", { name: "Close chat settings", exact: true }).click();
+      await settings.getByRole("button", { name: "Copy chat ID", exact: true }).focus();
+      await page.keyboard.press("Escape");
       await expect(settings).toHaveCount(0);
+      await expect(button).toBeFocused();
 
       // Reset View puts the window back where it started, unpinned and unlocked.
       await openSettingsWindow(page);
@@ -340,6 +344,7 @@ test.describe("Chat Settings window on desktop", () => {
       const handle = await box(settings.locator('.mari-window__resize-handle[data-edge="se"]'));
       await drag(page, { x: handle.x + handle.width / 2, y: handle.y + handle.height / 2 }, 400, 400);
       await expectInsideViewport(page, settings);
+      const beforeShrink = await box(settings);
 
       for (const size of [
         { width: 900, height: 600 },
@@ -352,7 +357,13 @@ test.describe("Chat Settings window on desktop", () => {
         await expectInsideViewport(page, settings);
         await expect(settings.getByRole("button", { name: "Close chat settings", exact: true })).toBeInViewport();
       }
+      // Pinning while squeezed keeps the saved place, so the window returns there when the viewport grows.
+      const pin = settings.getByRole("button", { name: "Pin window", exact: true });
+      await pin.click();
       await page.setViewportSize({ width: 1440, height: 900 });
+      await expect.poll(async () => (await box(settings)).height).toBeGreaterThan(beforeShrink.height - 2);
+      expectSameBox(await box(settings), beforeShrink, "back in place after pinning while squeezed");
+      await pin.click();
 
       const badLayouts = [
         "{not json",
@@ -390,25 +401,41 @@ test.describe("Chat Settings window on desktop", () => {
       await createChat(request, "game"),
     ];
     try {
+      // The panel's default side is the right, where the window opens too.
       await prepare(page, chats[0]!.id, {
         trackerPanelEnabled: true,
         trackerPanelOpen: false,
-        trackerPanelSide: "left",
+        trackerPanelSide: "right",
       });
       await page.goto("/");
       await expect(page.locator('[data-chat-mode="roleplay"]')).toBeVisible();
       const settings = await openSettingsWindow(page);
+      const defaultBox = await box(settings);
       const toggle = settings.locator('[data-tracker-panel-toggle="chat-settings"]');
       const trackerSwitch = toggle.getByRole("checkbox", { name: "Tracker Panel", exact: true });
       await expect(trackerSwitch).not.toBeChecked();
       await toggle.getByText("Tracker Panel", { exact: true }).click();
       await expect(trackerSwitch).toBeChecked();
-      const tracker = page.locator('[data-component="TrackerDataSidebar"]:visible');
+      const tracker = page.locator('[data-component="TrackerDataSidebarDesktop.right"]');
       await expect(tracker).toBeVisible();
       await expect(settings).toBeVisible();
+      // A window the user has not moved makes room for the panel instead of covering it.
+      const trackerLeft = async () => tracker.evaluate((element) => (element as HTMLElement).offsetLeft);
+      await expect
+        .poll(async () => (await box(settings)).x + (await box(settings)).width)
+        .toBeLessThanOrEqual(await trackerLeft());
+      const covered = await tracker.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        return (
+          document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)?.closest(".mari-window") !==
+          null
+        );
+      });
+      expect(covered, "the Tracker Panel is not under the window").toBe(false);
       await toggle.getByText("Tracker Panel", { exact: true }).click();
       await expect(trackerSwitch).not.toBeChecked();
-      await expect(tracker).toHaveCount(0);
+      await expect(page.locator('[data-component="TrackerDataSidebar"]:visible')).toHaveCount(0);
+      await expect.poll(async () => (await box(settings)).x).toBeCloseTo(defaultBox.x, 0);
 
       for (const chat of chats.slice(1)) {
         await settings.getByRole("button", { name: "Close chat settings", exact: true }).click();
@@ -586,6 +613,42 @@ test.describe("Chat Settings window on desktop", () => {
       await request.put("/api/themes/active", { data: { id: null } });
       await request.delete(`/api/themes/${theme.id}`);
       await request.delete(`/api/chats/${chat.id}?force=true`);
+    }
+  });
+
+  test("the topbar button closes the chat's popovers, as the old toolbar button did", async ({ page, request }) => {
+    const chats = [await createChat(request, "conversation"), await createChat(request, "game")];
+    const popovers = page.locator(".marinara-chat-popover:not(.mari-window)").filter({ visible: true });
+    try {
+      await prepare(page, chats[0]!.id);
+      await page.goto("/");
+      const conversation = page.locator('[data-chat-mode="conversation"]');
+      await expect(conversation).toBeVisible();
+      for (const name of ["Switch branch (1 branch)", "Active Context"]) {
+        await conversation.getByRole("button", { name, exact: true }).filter({ visible: true }).click();
+        await expect(popovers).toHaveCount(1);
+        await openSettingsWindow(page);
+        await expect(popovers, `${name} closes`).toHaveCount(0);
+        await settingsWindow(page).getByRole("button", { name: "Close chat settings", exact: true }).click();
+      }
+
+      await setActiveChat(page, chats[1]!.id);
+      const game = page.locator('[data-chat-mode="game"]');
+      await expect(game).toBeVisible();
+      for (const activate of ["pointer", "keyboard"] as const) {
+        await game.getByRole("button", { name: "Gallery", exact: true }).filter({ visible: true }).click();
+        await expect(popovers).toHaveCount(1);
+        if (activate === "pointer") await topbarSettings(page).click();
+        else {
+          await topbarSettings(page).focus();
+          await page.keyboard.press("Enter");
+        }
+        await expect(settingsWindow(page)).toBeVisible();
+        await expect(popovers, `Game Gallery closes (${activate})`).toHaveCount(0);
+        await settingsWindow(page).getByRole("button", { name: "Close chat settings", exact: true }).click();
+      }
+    } finally {
+      await Promise.all(chats.map((chat) => request.delete(`/api/chats/${chat.id}?force=true`)));
     }
   });
 

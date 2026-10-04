@@ -20,11 +20,7 @@ import {
 } from "../../hooks/use-multiplayer";
 import { useChatStore } from "../../stores/chat.store";
 import { useUIStore } from "../../stores/ui.store";
-import {
-  CHAT_SETTINGS_WINDOW_ID,
-  isFloatingWindowPinned,
-  useFloatingWindowStore,
-} from "../../stores/floating-window.store";
+import { CHAT_SETTINGS_WINDOW_ID, useFloatingWindowStore } from "../../stores/floating-window.store";
 import { useUpdateChatMetadata } from "../../hooks/use-chats";
 import { useCharacters } from "../../hooks/use-characters";
 import { parseCharacterDisplayData } from "../../lib/character-display";
@@ -194,6 +190,10 @@ function HostedMultiplayerChat({ chat }: { chat: Chat }) {
     return useFloatingWindowStore.getState().registerHost(CHAT_SETTINGS_WINDOW_ID);
   }, [hosting]);
   const [initialSection, setInitialSection] = useState<"multiplayer" | null>(null);
+  // Players opens Chat Settings at its Multiplayer section; the next open, from the topbar, starts at the top.
+  useEffect(() => {
+    if (!settingsOpen) setInitialSection(null);
+  }, [settingsOpen]);
   const [participantOpen, setParticipantOpen] = useState(false);
   const [gameStart, setGameStart] = useState<MultiplayerGameStart | undefined>(() =>
     chat.metadata.gameSetupConfig && chat.metadata.multiplayerGameSetup
@@ -259,9 +259,7 @@ function HostedMultiplayerChat({ chat }: { chat: Chat }) {
     useFloatingWindowStore.getState().openWindow(CHAT_SETTINGS_WINDOW_ID, opener);
   };
   const closeSettings = (options?: { force?: boolean }) => {
-    if (options?.force || !isFloatingWindowPinned(CHAT_SETTINGS_WINDOW_ID)) {
-      useFloatingWindowStore.getState().closeWindow(CHAT_SETTINGS_WINDOW_ID);
-    }
+    useFloatingWindowStore.getState().dismissWindow(CHAT_SETTINGS_WINDOW_ID, options);
   };
   const openPlayers = () => openSettings("multiplayer");
   if (status.isLoading || hostQuery.isLoading)

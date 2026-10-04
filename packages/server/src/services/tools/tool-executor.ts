@@ -53,9 +53,13 @@ export interface ToolExecutionResult {
  * path cannot carry a tool exchange: Anthropic has no `tool` role and refuses an empty message, and
  * Gemini wants every function call answered. So the exchange is retold as text. Each round's prose
  * stays the model's (its calls and their provider parts go), each round's results become one user
- * message, and the last of them says the tools are done for this turn.
+ * message, and the last of them says the tools are done (`done`: narration by default, or what the
+ * caller needs instead, such as an agent's formatted answer).
  */
-export function toolRoundsAsText(messages: readonly ChatMessage[]): ChatMessage[] {
+export function toolRoundsAsText(
+  messages: readonly ChatMessage[],
+  done = "No more tool calls this turn: continue your reply from where it stopped and narrate with these results, without repeating what you already wrote.",
+): ChatMessage[] {
   const told: ChatMessage[] = [];
   const names = new Map<string, string>();
   let results: string[] = [];
@@ -86,8 +90,6 @@ export function toolRoundsAsText(messages: readonly ChatMessage[]): ChatMessage[
     told.push(message);
   }
   tell();
-  const done =
-    "No more tool calls this turn: continue your reply from where it stopped and narrate with these results, without repeating what you already wrote.";
   const last = told.at(-1);
   if (last?.role === "user") told[told.length - 1] = { ...last, content: `${last.content}\n\n${done}` };
   else told.push({ role: "user", content: done });

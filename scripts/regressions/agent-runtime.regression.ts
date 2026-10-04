@@ -1008,3 +1008,65 @@ assert.match(
 );
 assert.match(groupHistory, /Nested markup\./);
 assert.doesNotMatch(groupHistory, /<\/?script/i, "nested markup must not reassemble into a tag after stripping");
+
+// An agent that keeps calling tools gets a few rounds, then answers without tools: its exchange goes as
+// text (a provider's plain path cannot carry tool calls or results), and it is asked for its answer.
+{
+  class ToolLoopingProvider extends RecordingProvider {
+    override async chatComplete(messages: ChatMessage[], options: ChatOptions): Promise<ChatCompletionResult> {
+      this.calls += 1;
+      this.messages.push(messages);
+      this.options.push(options);
+      if (options.tools?.length) {
+        return {
+          content: "",
+          toolCalls: [
+            {
+              id: `call-${this.calls}`,
+              type: "function",
+              function: { name: "look_up", arguments: JSON.stringify({ round: this.calls }) },
+            },
+          ],
+          finishReason: "tool_calls",
+          usage: { promptTokens: 10, completionTokens: 2, totalTokens: 12 },
+        };
+      }
+      return {
+        content: JSON.stringify({ text: "done" }),
+        toolCalls: [],
+        finishReason: "stop",
+        usage: { promptTokens: 10, completionTokens: 2, totalTokens: 12 },
+      };
+    }
+  }
+  const provider = new ToolLoopingProvider();
+  const previousMaxRounds = process.env.MAX_TOOL_ROUNDS;
+  delete process.env.MAX_TOOL_ROUNDS;
+  try {
+    const result = await executeAgent(makeAgent("tool-looper"), context, provider, "agent-model", {
+      tools: [{ type: "function", function: { name: "look_up", description: "look up", parameters: {} } }],
+      executeToolCall: async () => JSON.stringify({ found: "nothing" }),
+    });
+    assert.equal(provider.calls, 9, "eight tool rounds, then the answer without tools");
+    assert.equal(result.success, true);
+    const last = provider.messages.at(-1)!;
+    assert.equal(provider.options.at(-1)?.tools, undefined);
+    assert.ok(!last.some((message) => message.role === "tool" || message.tool_calls?.length));
+    assert.match(String(last.at(-1)?.content), /look_up: \{"found":"nothing"\}/);
+    assert.match(
+      String(last.at(-1)?.content),
+      /No more tool calls: give your answer now, in the format you were asked for\.$/,
+    );
+    // A lower MAX_TOOL_ROUNDS still wins.
+    process.env.MAX_TOOL_ROUNDS = "2";
+    const fewer = new ToolLoopingProvider();
+    await executeAgent(makeAgent("tool-looper"), context, fewer, "agent-model", {
+      tools: [{ type: "function", function: { name: "look_up", description: "look up", parameters: {} } }],
+      executeToolCall: async () => JSON.stringify({ found: "nothing" }),
+    });
+    assert.equal(fewer.calls, 3);
+  } finally {
+    if (previousMaxRounds === undefined) delete process.env.MAX_TOOL_ROUNDS;
+    else process.env.MAX_TOOL_ROUNDS = previousMaxRounds;
+  }
+}

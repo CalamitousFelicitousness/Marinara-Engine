@@ -4836,7 +4836,7 @@
   "ui.chat.chatinput.failedToReadValue1": "Failed to read {{value1}}",
   "ui.chat.chatinput.failedToTranslateMessagePostingOriginal": "Failed to translate message; posting original",
   "ui.chat.chatinput.failedToTranslateMessageSendingOriginal": "Failed to translate message — sending original",
-  "ui.chat.chatinput.itLooksLikeYouHavenTConnectedAnyModel": "It looks like you haven't connected any model yet. Please head to Chat Settings in the top right corner to do that first!",
+  "ui.chat.chatinput.itLooksLikeYouHavenTConnectedAnyModel": "It looks like you haven't connected any model yet. Please head to Chat Settings to do that first!",
   "ui.chat.chatinput.naturally": "Naturally",
   "ui.chat.chatinput.naturally_be60af6": "naturally",
   "ui.chat.chatinput.pushStoryDisarmed": "Push Story disarmed.",

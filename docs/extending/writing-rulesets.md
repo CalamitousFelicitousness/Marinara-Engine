@@ -1386,7 +1386,7 @@ same keys for a d20 system:
   need a single die, exactly as they do for checks. Saving throws inside a fight roll these same
   dice. `criticalFrom` widens the critical face: a value read off the attacker's sheet that is the
   lowest natural face counting as a critical, such as `{ "field": "critical_from" }` for a 5e Champion
-  whose sheet says 19. It is held to the die's highest face, never goes below 2, and needs a single die
+  whose sheet says 19. It is held to the die's highest face, a value under 2 means no range at all (the highest face only, as for a character whose field is left at 0), and it needs a single die
   with `naturals.max` set to `critical`. Capability API 1.76.
 - `economy`: required. `budgets` is what a turn may hold: an id, a label, `per` (`turn` refills at
   the start of the holder's own turn, `round` when a new round begins) and a `count`. The FIRST

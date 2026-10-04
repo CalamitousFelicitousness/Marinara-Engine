@@ -319,27 +319,41 @@ function RollCellButton({
 }) {
   const { t } = useUiTranslation();
   const [rolling, setRolling] = useState(false);
+  const [failed, setFailed] = useState(false);
   return (
-    <button
-      type="button"
-      disabled={!notation || rolling}
-      onClick={async () => {
-        if (!notation) return;
-        setRolling(true);
-        try {
-          const { result } = await api.post<{ result: DiceRollResult }>("/game/dice/roll", { notation });
-          onRolled(result.total);
-        } catch {
-          // Nothing is written when the roll did not happen; the button can be pressed again.
-        } finally {
-          setRolling(false);
+    <>
+      <button
+        type="button"
+        disabled={!notation || rolling}
+        onClick={async () => {
+          if (!notation) return;
+          setRolling(true);
+          setFailed(false);
+          try {
+            const { result } = await api.post<{ result: DiceRollResult }>("/game/dice/roll", { notation });
+            onRolled(result.total);
+          } catch {
+            // Nothing is written when the roll did not happen, and the button says so.
+            setFailed(true);
+          } finally {
+            setRolling(false);
+          }
+        }}
+        aria-label={
+          notation
+            ? t("ui.rulesets.sheet.rollCell", { cell: ariaLabel, notation })
+            : t("ui.rulesets.sheet.rollNeedsDieFor", { cell: ariaLabel })
         }
-      }}
-      aria-label={t("ui.rulesets.sheet.rollCell", { cell: ariaLabel, notation: notation ?? "" })}
-      className="self-start rounded-lg border border-[var(--border)] px-2 py-0.5 text-[0.6875rem] text-[var(--foreground)] hover:bg-[var(--accent)] disabled:opacity-50"
-    >
-      {notation ? t("ui.rulesets.sheet.roll", { notation }) : t("ui.rulesets.sheet.rollNeedsDie")}
-    </button>
+        className="self-start rounded-lg border border-[var(--border)] px-2 py-0.5 text-[0.6875rem] text-[var(--foreground)] hover:bg-[var(--accent)] disabled:opacity-50"
+      >
+        {notation ? t("ui.rulesets.sheet.roll", { notation }) : t("ui.rulesets.sheet.rollNeedsDie")}
+      </button>
+      {failed && (
+        <span role="status" className="text-[0.625rem] text-[var(--destructive)]">
+          {t("ui.rulesets.sheet.rollFailed")}
+        </span>
+      )}
+    </>
   );
 }
 
@@ -406,6 +420,31 @@ export function RulesetSheetEditor({
   // so the late recompute below is only for a sheet that is already being edited.
   const editedRef = useRef(false);
   const hintBaseId = useId();
+
+  // The sheet as it stands now, for a change that lands after an await (a rolled cell): the render that
+  // started it may be stale by then.
+  const latest = useRef({ build, envelope });
+  latest.current = { build, envelope };
+  /** A rolled total written into its cell, on the sheet as it stands when the roll comes back; nothing
+   *  when that row or cell has gone meanwhile. */
+  const writeRolled = (listId: string, index: number, columnId: string, value: number) => {
+    const now = latest.current;
+    const rows = (now.build.lists[listId] as ListRow[] | undefined) ?? [];
+    if (!rows[index]) return;
+    editedRef.current = true;
+    const patched = {
+      ...now.build,
+      lists: {
+        ...now.build.lists,
+        [listId]: rows.map((row, i) => (i === index ? { ...row, [columnId]: value } : row)),
+      },
+    };
+    onChange({
+      ...now.envelope,
+      v: rulesetSheetStamp(definition, now.envelope),
+      build: recomputeScaledRows(definition, patched, loadedCatalogs),
+    });
+  };
 
   const commit = (patch: Partial<RulesetSheetBuild>) => {
     editedRef.current = true;
@@ -675,7 +714,7 @@ export function RulesetSheetEditor({
                                 notation={rulesetListRollNotation(definition, build, column, row, evaluated)}
                                 ariaLabel={`${list.label} ${index + 1}: ${column.label}`}
                                 onRolled={(total) =>
-                                  updateRow(list.id, rows, index, column.id, clamp(total, column.min, column.max))
+                                  writeRolled(list.id, index, column.id, clamp(total, column.min, column.max))
                                 }
                               />
                             )}

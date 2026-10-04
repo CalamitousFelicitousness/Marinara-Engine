@@ -1600,13 +1600,12 @@ function sheetCombatant(
     stable: false,
     defeated: false,
     defense: Math.round(resolveRulesetValueRef(definition, build, combat.defense, evaluated)),
-    ...(combat.attackRoll?.criticalFrom
-      ? {
-          criticalFrom: Math.round(
-            resolveRulesetValueRef(definition, build, combat.attackRoll.criticalFrom, evaluated),
-          ),
-        }
-      : {}),
+    // A sheet that reads under 2 (a field left at 0 for whoever has no range) is no range at all.
+    ...(() => {
+      const ref = combat.attackRoll?.criticalFrom;
+      const from = ref ? Math.round(resolveRulesetValueRef(definition, build, ref, evaluated)) : NaN;
+      return Number.isFinite(from) && from >= 2 ? { criticalFrom: from } : {};
+    })(),
     saves,
     ...(checks ? { checks } : {}),
     ...(soak ? { soak } : {}),

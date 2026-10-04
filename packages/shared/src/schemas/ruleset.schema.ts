@@ -4480,7 +4480,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
           const unread = other.values.filter((value) => rulesetDieSides(value) === null);
           if (unread.length) issue(at, `"${unread[0]}" does not read as a die (d6, 8)`);
         } else if (other.type !== "number") issue(at, "Sides read a number column or an enum of dice");
-      } else checkRef(sides, at, derivedIds);
+      } else checkRef(sides, at, derivedIds, false);
     });
     checkSection(list.section, path);
     checkHideWhen(list.hideWhen, path);

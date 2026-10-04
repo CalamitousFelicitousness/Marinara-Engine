@@ -947,6 +947,8 @@ const labels = (definition: RulesetDefinition, state: RulesetEncounterState, id:
   assert.equal(swing(fiveE, 19), "hit", "without a range a 19 is a plain hit");
   assert.equal(swing(champion({ const: 25 }), 19), "hit", "held to the die's top face");
   assert.equal(swing(champion({ const: 25 }), 20), "critical");
+  assert.equal(swing(champion({ const: 0 }), 19), "hit", "a sheet reading under 2 has no range");
+  assert.equal(who(fight(champion({ const: 0 }), [fighter(), mote()], 20, 1), "brenna").criticalFrom, undefined);
   assert.equal(who(fight(champion({ const: 19 }), [fighter(), mote()], 20, 1), "brenna").criticalFrom, 19);
   // Held for a reaction to the hit, a natural 19 that would miss the defense stays the critical it was.
   {

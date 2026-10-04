@@ -164,7 +164,8 @@ export async function takeGameStartingGear(
       ...taken,
       [bagKey]: [...(taken[bagKey] ?? []).filter((id) => groupOf(id) !== group), gear.id],
     };
-    const list = resolution.adds.map((add) => `${add.count > 1 ? `${add.count} ` : ""}${add.name}`).join(", ");
+    // Written as the bag writes a stack: "Handaxe x2".
+    const list = resolution.adds.map((add) => (add.count > 1 ? `${add.name} x${add.count}` : add.name)).join(", ");
     return {
       stacks: worn.stacks,
       journal: added.journal,

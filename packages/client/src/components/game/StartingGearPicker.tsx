@@ -113,16 +113,18 @@ export function StartingGearPicker({
   const tooHeavy = room !== undefined && weight > room + 1e-9;
   const canTake = resolved?.ok === true && !tooHeavy && (!replaces || again) && !pending;
 
+  // Written as the bag writes a stack: "Handaxe x2".
+  const counted = (name: string, count: number) =>
+    count > 1 ? t("ui.game.inventoryslot.value1XValue2", { value1: name, value2: count }) : name;
   const lineText = (line: RulesetStartingGearLine): string => {
-    const count = line.count > 1 ? `${line.count} ` : "";
-    if (line.item) return `${count}${book.itemOf(line.item)?.name ?? line.item}`;
+    if (line.item) return counted(book.itemOf(line.item)?.name ?? line.item, line.count);
     if (line.coins) {
       const unit = definition.items?.currencies
         ?.flatMap((family) => family.units)
         .find((each) => each.id === line.coins);
       return `${line.count} ${unit?.label ?? line.coins}`;
     }
-    if (line.name) return `${count}${line.name}`;
+    if (line.name) return counted(line.name, line.count);
     return "";
   };
   const renderLine = (line: RulesetStartingGearLine, key: string) => {

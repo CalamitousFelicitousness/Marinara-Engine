@@ -337,8 +337,11 @@ try {
     assert.deepEqual(answer.taken, { "": ["traveller"] });
     const metadata = await metadataOf(chatId);
     assert.deepEqual(metadata.gameStartingGearTaken, { "": ["traveller"] });
-    assert.ok(
-      metadata.gameJournal.entries.some((entry: { title: string }) => entry.title === "Starting gear: Traveller"),
+    // The journal says what was taken as the bag writes it.
+    assert.equal(
+      metadata.gameJournal.entries.find((entry: { title: string }) => entry.title === "Starting gear: Traveller")
+        ?.content,
+      "Ada took marks x5, Road rations x3, Hand axe, Leather coat.",
     );
     assert.ok(metadata.gameJournal.inventoryLog.some((entry: { item: string }) => entry.item === "Hand axe"));
     // Once for each group: the calling's gear again is refused, the background's is not.

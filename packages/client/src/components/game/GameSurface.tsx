@@ -2376,7 +2376,8 @@ function GameSurfaceComponent({
     experienceSurfaceActive || (gameExperienceId !== null && installedCapabilityPackagesPending);
   // A game made without a world may be given one from the journal (worldgen W12), written for its own
   // setting with its own connection; never one an Experience decides.
-  const canMakeWorld = chatMeta.gameWorld == null && gameExperienceId === null;
+  const canMakeWorld =
+    chatMeta.gameWorld == null && gameExperienceId === null && chatMeta.gameSessionStatus !== "concluded";
   const makeWorldRequest = useMemo(() => {
     const setup = chatMeta.gameSetupConfig as GameSetupConfig | undefined;
     if (!chat.connectionId) return null;
@@ -12379,6 +12380,7 @@ function GameSurfaceComponent({
                 hasWorld={Boolean(chatMeta.gameWorld)}
                 canMakeWorld={canMakeWorld}
                 worldRequest={makeWorldRequest}
+                worldKit={gameKit}
                 worldTurnKey={narrationTurnKey(latestAssistantMsg)}
                 npcs={npcs}
                 onClose={() => setSessionPanelOpen(false)}

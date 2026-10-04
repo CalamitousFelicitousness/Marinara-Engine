@@ -97,6 +97,12 @@ export function createGameWorldSnapshotsStorage(db: DB) {
         .where(eq(gameWorldSnapshots.chatId, chatId));
     },
 
+    /** Takes a chat's snapshot away (a world that was not given after all). */
+    async remove(chatId: string): Promise<void> {
+      await db.delete(gameWorldSnapshots).where(eq(gameWorldSnapshots.chatId, chatId));
+      parsed.delete(chatId);
+    },
+
     /** The stored text as it is, for an export that carries it. */
     async raw(chatId: string): Promise<string | null> {
       return (await rowOf(chatId))?.snapshot ?? null;

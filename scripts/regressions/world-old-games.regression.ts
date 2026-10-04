@@ -20,6 +20,7 @@ import {
   checkWorldBrief,
   compileGameWorld,
   createConnectionSchema,
+  lastGamePlace,
   parseWorldKit,
   worldSnapshot,
 } from "../../packages/shared/src/index.js";
@@ -35,6 +36,7 @@ const { createConnectionsStorage } = await import("../../packages/server/src/ser
 const { createGameWorldSnapshotsStorage } =
   await import("../../packages/server/src/services/storage/game-world-snapshots.storage.js");
 const { gameRoutes } = await import("../../packages/server/src/routes/game.routes.js");
+const { gameRepliesBefore } = await import("../../packages/server/src/services/game/game-market.service.js");
 const { generateRoutes } = await import("../../packages/server/src/routes/generate.routes.js");
 
 const parsed = parseWorldKit(WORLD_STARTER_KITS.find((each) => each.id === "high_fantasy")!);
@@ -164,6 +166,77 @@ try {
     (await snapshots.get(unread))!.generatorVersion,
     WORLD_GENERATOR_VERSION + 1,
     "the snapshot it came with",
+  );
+
+  // The world starts now: a place the game was in that it does not list is left behind.
+  const atInn = await olderGame();
+  await chats.createMessage({
+    chatId: atInn,
+    role: "assistant",
+    characterId: null,
+    content: 'The common room. [place: name="Brindle Inn" result="ok"]',
+  });
+  assert.equal((await give(atInn, { worldKit: kit, world })).statusCode, 200);
+  assert.equal(lastGamePlace((await gameRepliesBefore(db, atInn)).scoped), null, "the old place is behind it");
+  prompts.length = 0;
+  await app.inject({
+    method: "POST",
+    url: "/api/generate/",
+    payload: { chatId: atInn, userMessage: "We look around.", streaming: false },
+  });
+  assert.doesNotMatch(
+    prompts.join("\n"),
+    /Brindle Inn, which this world does not list/,
+    "the prompt is at the world's start",
+  );
+
+  // Only the latest session takes a world: an older one would lose it at the next session's start.
+  const twoSessions = await olderGame();
+  const twoMeta = JSON.parse((await chats.getById(twoSessions))!.metadata as string);
+  await chats.patchMetadata(twoSessions, {
+    gameSessionStatus: "concluded",
+    gamePreviousSessionSummaries: [{ summary: "One." }],
+  });
+  const nextStarted = await app.inject({
+    method: "POST",
+    url: "/api/game/session/start",
+    payload: { gameId: twoMeta.gameId },
+  });
+  assert.equal(nextStarted.statusCode, 200, nextStarted.body);
+  const latestId = nextStarted.json().sessionChat.id as string;
+  const older409 = await give(twoSessions, { worldKit: kit, world });
+  assert.equal(older409.statusCode, 409, "an older session");
+  assert.match(older409.json().error, /latest session/);
+  assert.equal((await give(latestId, { worldKit: kit, world })).statusCode, 200, "the latest one");
+  assert.equal((await give(latestId, { worldKit: kit, world })).statusCode, 409, "and only once for the game");
+
+  // A game made with a setting kit keeps it.
+  const kitted = await olderGame({ gameWorldKit: kit });
+  const otherKit = parseWorldKit(WORLD_STARTER_KITS.find((each) => each.id !== "high_fantasy")!);
+  assert.ok(otherKit.ok);
+  const swapped = await give(kitted, {
+    worldKit: otherKit.kit,
+    world: { ...world, brief: checkWorldBrief(otherKit.kit, { briefVersion: 1, premise: "x" }).brief },
+  });
+  assert.equal(swapped.statusCode, 409, "another kit for a game with its own");
+  assert.equal((await give(kitted, { worldKit: kit, world })).statusCode, 200, "its own kit");
+
+  // Two saves at once: one world, in the snapshot and the metadata alike.
+  const raced = await olderGame();
+  const statuses = (
+    await Promise.all([
+      give(raced, { worldKit: kit, world }),
+      give(raced, { worldKit: kit, world: { ...world, seed: 778 } }),
+    ])
+  )
+    .map((response) => response.statusCode)
+    .sort();
+  assert.deepEqual(statuses, [200, 409], "one of two saves at once");
+  const racedMeta = JSON.parse((await chats.getById(raced))!.metadata as string);
+  assert.equal(
+    (await snapshots.get(raced))!.seed,
+    racedMeta.gameWorld.seed,
+    "the snapshot is the world the metadata names",
   );
 
   // A new session keeps the world.

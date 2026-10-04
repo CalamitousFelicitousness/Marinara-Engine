@@ -8,7 +8,7 @@ import { useTranslation as useUiTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
 import { Check, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
-import { parseWorldKit, type WorldKitInput } from "@marinara-engine/shared";
+import { parseWorldKit, type WorldKit, type WorldKitInput } from "@marinara-engine/shared";
 import { api } from "../../lib/api-client";
 import { useLorebooks } from "../../hooks/use-lorebooks";
 import { chatKeys } from "../../hooks/use-chats";
@@ -24,16 +24,20 @@ import {
 export function GameMakeWorld({
   chatId,
   request,
+  ownKit,
   onClose,
 }: {
   chatId: string;
   /** What the model writes for: the game's own setting and connection; null without a connection. */
   request: (WorldKitWriteRequest & WorldWriteRequest) | null;
+  /** The setting kit the game was made with, when it has one: the world is made in it, and its money,
+   *  elements and art stay the game's. */
+  ownKit: WorldKit | null;
   onClose: () => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
   const queryClient = useQueryClient();
-  const [kit, setKit] = useState<WorldKitInput | null>(null);
+  const [kit, setKit] = useState<WorldKitInput | null>(ownKit);
   const [draft, setDraft] = useState<WorldDraft | null>(null);
   const [saving, setSaving] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
@@ -83,18 +87,24 @@ export function GameMakeWorld({
       </div>
       <p className="text-xs leading-relaxed text-[var(--muted-foreground)]">{localizeUi("ui.game.makeworld.help")}</p>
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
-        <GameSetupWorldKitChooser
-          kit={kit}
-          onChange={(next) => {
-            setKit(next);
-            setFailed(null);
-          }}
-          onImportWorld={(importedKit, world, story, snapshot) => {
-            setKit(importedKit);
-            setDraft(worldDraftFromWorld(world, story, snapshot));
-          }}
-          writeRequest={request}
-        />
+        {ownKit ? (
+          <p className="text-xs text-[var(--muted-foreground)]">
+            {localizeUi("ui.game.makeworld.ownKit", { kit: ownKit.label })}
+          </p>
+        ) : (
+          <GameSetupWorldKitChooser
+            kit={kit}
+            onChange={(next) => {
+              setKit(next);
+              setFailed(null);
+            }}
+            onImportWorld={(importedKit, world, story, snapshot) => {
+              setKit(importedKit);
+              setDraft(worldDraftFromWorld(world, story, snapshot));
+            }}
+            writeRequest={request}
+          />
+        )}
         {checkedKit?.ok && (
           <GameSetupWorldChooser
             kit={checkedKit.kit}

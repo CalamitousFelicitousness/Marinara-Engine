@@ -6132,6 +6132,9 @@ function readNewGameWorld(input: {
 }
 type GameWorldInputRead = z.infer<typeof gameWorldSchema>;
 
+/** The chats being given a world right now (W12): one at a time each. */
+const worldsBeingGiven = new Set<string>();
+
 /** Why a world from an earlier generator cannot be edited or shared as a recipe (W11). */
 const OLD_GENERATOR_REFUSAL =
   "This world was made by an earlier version of the world generator. It plays on as it was made, but it can no longer be edited.";
@@ -11353,24 +11356,81 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const read = readNewGameWorld(body.data);
     if (!read.ok) return reply.status(400).send({ error: read.error, code: read.code });
     const worldKit = read.worldKit ?? body.data.worldKit;
-    // The world is kept before the metadata names it, as at a game's creation; a chat that keeps a world
-    // already is never given another over it.
-    const snapshots = createGameWorldSnapshotsStorage(app.db);
-    if (await snapshots.raw(chat.id)) return reply.status(409).send({ error: "This game has a world already." });
-    if (read.snapshot) await snapshots.put(chat.id, read.snapshot);
-    else await saveGameWorldSnapshot(app.db, chat.id, { gameWorld: read.gameWorld, gameWorldKit: worldKit });
-    const updated = await chats.patchMetadata(chat.id, (fresh) => {
-      if (fresh.gameWorld != null)
-        throw Object.assign(new Error("This game has a world already."), { statusCode: 409 });
-      return { gameWorldKit: worldKit, gameWorld: read.gameWorld, ...(read.story ? { gameStory: read.story } : {}) };
-    });
-    if (!updated) return reply.status(404).send({ error: "Chat not found" });
-    logger.info("[game/world] %s: a world was made for this game", chat.id);
-    const game = await loadGameWorld(app.db, chat.id, parseMeta(updated.metadata));
+    // A game made with a setting kit keeps it: its money, elements and art are that kit's.
+    const ownKit = gameWorldKitFromMetadata(meta);
+    if (ownKit && JSON.stringify(ownKit) !== JSON.stringify(worldKit)) {
+      return reply.status(409).send({ error: "This game keeps its own setting kit; make the world in it." });
+    }
+    // Only the game's latest session takes a world, and only while no session has one: the next session
+    // starts from the latest, so a world given to another would be lost, and a second one could follow.
+    const gameId = readTrimmedString(meta.gameId) ?? chat.groupId ?? null;
+    if (gameId) {
+      const sessions = await chats.listByGroup(gameId);
+      if (sessions.some((session) => parseMeta(session.metadata).gameWorld != null)) {
+        return reply.status(409).send({ error: "This game has a world already." });
+      }
+      if (selectSessionForNextStart(sessions)?.id !== chat.id) {
+        return reply.status(409).send({ error: "Give the game its world in its latest session." });
+      }
+    }
+    // One at a time for a chat, so two saves never leave its snapshot and its metadata naming two worlds.
+    if (worldsBeingGiven.has(chat.id)) return reply.status(409).send({ error: "This game is being given a world." });
+    worldsBeingGiven.add(chat.id);
+    try {
+      // The world is kept before the metadata names it, as at a game's creation; a chat that keeps a world
+      // already is never given another over it.
+      const snapshots = createGameWorldSnapshotsStorage(app.db);
+      if (await snapshots.raw(chat.id)) return reply.status(409).send({ error: "This game has a world already." });
+      const given = read.snapshot
+        ? gameWorldFromSnapshot(read.snapshot)
+        : { kit: worldKit, ...read.gameWorld!, world: compileGameWorld({ kit: worldKit, ...read.gameWorld! }) };
+      // The world starts now: a place the game was in that the world does not list is left behind, so the
+      // party is at the world's start until the Game Master says otherwise.
+      const placed = lastGamePlace((await gameRepliesBefore(app.db, chat.id)).scoped);
+      const lastMessage = (await chats.listMessages(chat.id)).at(-1);
+      const startsAfter =
+        placed?.name && !worldPlaceByName(given.world, placed.name) && lastMessage ? lastMessage.id : null;
+      if (read.snapshot) await snapshots.put(chat.id, read.snapshot);
+      else await saveGameWorldSnapshot(app.db, chat.id, { gameWorld: read.gameWorld, gameWorldKit: worldKit });
+      let updated: Awaited<ReturnType<typeof chats.patchMetadata>>;
+      try {
+        updated = await chats.patchMetadata(chat.id, (fresh) => {
+          if (fresh.gameWorld != null)
+            throw Object.assign(new Error("This game has a world already."), { statusCode: 409 });
+          return {
+            gameWorldKit: worldKit,
+            gameWorld: read.gameWorld,
+            ...(read.story ? { gameStory: read.story } : {}),
+            ...(startsAfter ? { gameWorldStartsAfter: startsAfter } : {}),
+          };
+        });
+      } catch (err) {
+        // The world was not given, so it is not kept either.
+        await snapshots.remove(chat.id);
+        throw err;
+      }
+      if (!updated) {
+        await snapshots.remove(chat.id);
+        return reply.status(404).send({ error: "Chat not found" });
+      }
+      return await shownWorld(chat.id, parseMeta(updated.metadata), reply);
+    } finally {
+      worldsBeingGiven.delete(chat.id);
+    }
+  });
+
+  /** The world as the screen reads it, after a world was given. */
+  const shownWorld = async (
+    chatId: string,
+    meta: Record<string, unknown>,
+    reply: { status: (code: number) => { send: (body: unknown) => unknown } },
+  ) => {
+    logger.info("[game/world] %s: a world was made for this game", chatId);
+    const game = await loadGameWorld(app.db, chatId, meta);
     if (!game) return reply.status(500).send({ error: "The world could not be read back." });
     const { frozen: _frozen, compiled: _compiled, ...shown } = game;
     return { world: shown };
-  });
+  };
 
   // ── GET /game/:chatId/overworld ──
   app.get<{ Params: { chatId: string } }>("/:chatId/overworld", async (req, reply) => {

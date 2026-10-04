@@ -67,11 +67,20 @@ export async function gameRepliesBefore(db: DB, chatId: string, replacing?: stri
   const end = replacing ? messages.findIndex((message) => message.id === replacing) : -1;
   const before = end >= 0 ? messages.slice(0, end) : messages;
   // Each session is its own chat: what the earlier ones did to the world comes first, as one reply.
-  const carried = worldLedgerCarry(readMetadata(chat?.metadata).gameLedgerCarry);
+  const meta = readMetadata(chat?.metadata);
+  const carried = worldLedgerCarry(meta.gameLedgerCarry);
   const all: string[] = carried?.tags ? [carried.tags] : [];
   let scopedFrom = all.length;
   let player: string | null = null;
+  // A world given to a game made without one (worldgen W12) starts after the message it was given at: the
+  // replies before it are of no place in the world, nor of its ledger.
+  const startsAfter = typeof meta.gameWorldStartsAfter === "string" ? meta.gameWorldStartsAfter : null;
+  let started = !startsAfter || !before.some((message) => message.id === startsAfter);
   for (const message of before) {
+    if (!started) {
+      started = message.id === startsAfter;
+      continue;
+    }
     if (parseExtra(message.extra).isConversationStart === true) scopedFrom = all.length;
     if (message.role === "user" && typeof message.content === "string") player = message.content;
     if (isGameMasterReply(message)) {

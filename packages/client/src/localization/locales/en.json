@@ -8289,6 +8289,7 @@
   "ui.game.makeworld.help": "Choose a setting kit and make a world in its words, as a new game does. The world starts now: this game's past turns, map and people stay as they are, and the Game Master knows the world from the next turn.",
   "ui.game.makeworld.intro": "This game was made without a world. You can give it one: places, people, towns and history the Game Master plays in, with the overworld and this tab. It is up to you, and the game plays on as it is without one.",
   "ui.game.makeworld.open": "Make a world for this game",
+  "ui.game.makeworld.ownKit": "This game was made with the setting kit {{kit}}, so its world is made in it.",
   "ui.game.makeworld.save": "Give the game this world",
   "ui.game.makeworld.saved": "The game has a world now.",
   "ui.game.makeworld.title": "A world for this game",

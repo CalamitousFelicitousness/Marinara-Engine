@@ -84,6 +84,8 @@ interface GameJournalProps {
    *  with what the model writes it for. */
   canMakeWorld?: boolean;
   worldRequest?: ComponentProps<typeof GameMakeWorld>["request"];
+  /** The setting kit the game was made with, when it has one: its world is made in it. */
+  worldKit?: ComponentProps<typeof GameMakeWorld>["ownKit"];
 }
 
 type TabId = "all" | "npcs" | "locations" | "inventory" | "library" | "notes" | "world";
@@ -206,6 +208,7 @@ export function GameJournal({
   worldTurnKey = null,
   canMakeWorld = false,
   worldRequest = null,
+  worldKit = null,
 }: GameJournalProps) {
   const [makingWorld, setMakingWorld] = useState(false);
   const { t: localizeUi } = useUiTranslation();
@@ -471,7 +474,12 @@ export function GameJournal({
 
       {makingWorld && (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-          <GameMakeWorld chatId={chatId} request={worldRequest} onClose={() => setMakingWorld(false)} />
+          <GameMakeWorld
+            chatId={chatId}
+            request={worldRequest}
+            ownKit={worldKit}
+            onClose={() => setMakingWorld(false)}
+          />
         </div>
       )}
 

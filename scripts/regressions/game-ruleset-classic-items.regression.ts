@@ -1186,7 +1186,8 @@ try {
       maxHp: 100,
       mp: 0,
       maxMp: 0,
-      attack: 10,
+      // Nobody falls before the item is used: the rat does no harm.
+      attack: side === "enemy" ? 0 : 10,
       defense: 5,
       speed: 5,
       level: 1,
@@ -1239,11 +1240,13 @@ try {
       },
     });
     assert.equal(alone.statusCode, 200, alone.body);
+    const aloneUses = (
+      alone.json().result.actions as Array<{ attackerId: string; skillName?: string; note?: string }>
+    ).filter((action) => action.attackerId === "hero" && action.skillName === "Poultice");
     assert.match(
-      (alone.json().result.actions as Array<{ skillName?: string; note?: string }>).find(
-        (action) => action.skillName === "Poultice",
-      )?.note ?? "",
+      aloneUses.map((action) => action.note ?? "").join(" "),
       /really Waystone/,
+      JSON.stringify(alone.json()),
     );
 
     // The combat director, Classic and Tactical: Ada's use comes out of the fake, the log says what it

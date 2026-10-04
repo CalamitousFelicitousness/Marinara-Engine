@@ -104,7 +104,7 @@ for (const theme of ["dark", "light"] as const) {
       await expect(panel).toBeVisible();
       const activity = panel.locator('[data-tracker-section="agent-activity"]');
       const activityHeader = activity.getByRole("button", { name: /Agent activity/i });
-      const customHeader = panel.getByRole("button", { name: /Custom Stats/i }).first();
+      const customHeader = panel.getByRole("button", { name: "Custom", exact: true });
       const custom = customHeader.locator("xpath=ancestor::section[1]");
       expect(await typography(activityHeader.locator("span").last())).toEqual(
         await typography(customHeader.locator("span").last()),
@@ -121,8 +121,11 @@ for (const theme of ["dark", "light"] as const) {
       const rowText = await typography(custom.getByText("Fine", { exact: true }));
       expect((await typography(action)).fontSize).toBe(rowText.fontSize);
       expect((await typography(action)).lineHeight).toBe(rowText.lineHeight);
-      await expect(action).toHaveCSS("padding-left", "4px");
-      await expect(action).toHaveCSS("padding-top", "4px");
+      const trackerInset = await customHeader
+        .locator("..")
+        .evaluate((element) => getComputedStyle(element).paddingLeft);
+      await expect(action).toHaveCSS("padding-left", trackerInset);
+      await expect(action).toHaveCSS("padding-top", trackerInset);
 
       // Exercise a real output card, not only the empty activity state.
       await page.evaluate(async () => {
@@ -138,7 +141,7 @@ for (const theme of ["dark", "light"] as const) {
       const output = activity.locator("[data-agent-output]");
       await expect(output).toContainText("The harbor is calm.");
       expect((await typography(output)).fontSize).toBe(rowText.fontSize);
-      await expect(output).toHaveCSS("padding-left", "4px");
+      await expect(output).toHaveCSS("padding-left", trackerInset);
       await expect(output).toHaveCSS(
         "border-radius",
         await customHeader.evaluate((element) => getComputedStyle(element).borderRadius),

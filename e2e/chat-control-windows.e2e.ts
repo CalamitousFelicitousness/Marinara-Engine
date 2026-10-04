@@ -162,11 +162,17 @@ test.describe("chat control windows on desktop", () => {
         await volume.press("Shift+ArrowDown");
       }
       const assertInside = async () => {
-        const rect = await box(volume);
-        const area = await box(page.locator('[data-component="CenterContent"]'));
-        const composer = await box(page.locator("[data-chat-composer]").first());
-        expect(rect.x + rect.width).toBeLessThanOrEqual(area.x + area.width);
-        expect(rect.y + rect.height).toBeLessThanOrEqual(composer.y);
+        await expect
+          .poll(async () => {
+            const rect = await box(volume);
+            const area = await box(page.locator('[data-component="CenterContent"]'));
+            const composer = await box(page.locator("[data-chat-composer]").first());
+            return {
+              rightOverflow: Math.max(0, rect.x + rect.width - (area.x + area.width)),
+              composerOverlap: Math.max(0, rect.y + rect.height - composer.y),
+            };
+          })
+          .toEqual({ rightOverflow: 0, composerOverlap: 0 });
       };
       await assertInside();
       await theme.evaluate((element) => {

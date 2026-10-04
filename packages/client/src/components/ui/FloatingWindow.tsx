@@ -283,6 +283,42 @@ export function useWindowBubbleBounds(active: boolean): WindowBounds {
   return useLiveBounds(readFloatingWindowBounds, active);
 }
 
+// Input can appear after Game controls or be replaced when the active chat changes.
+// Observe those mounts only; streaming text and animated style attributes do not matter here.
+function observeWindowBounds(update: () => void) {
+  const resize = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
+  const observed = new Set<Element>();
+  const refresh = () => {
+    for (const element of observed) {
+      if (!element.isConnected) {
+        resize?.unobserve(element);
+        observed.delete(element);
+      }
+    }
+    for (const element of document.querySelectorAll(
+      `${CENTER_CONTENT_SELECTOR}, [data-component="TopBar"], [data-chat-mode] .chat-input-container, [data-chat-input-container]`,
+    )) {
+      if (observed.has(element)) continue;
+      observed.add(element);
+      resize?.observe(element);
+    }
+    update();
+  };
+  const containsComposer = (node: Node) =>
+    node instanceof Element &&
+    (node.matches("[data-chat-composer]") || node.querySelector("[data-chat-composer]") !== null);
+  const mounts = new MutationObserver((records) => {
+    if (records.some((record) => [...record.addedNodes, ...record.removedNodes].some(containsComposer))) refresh();
+  });
+  const area = document.querySelector(CENTER_CONTENT_SELECTOR);
+  if (area) mounts.observe(area, { childList: true, subtree: true });
+  refresh();
+  return () => {
+    mounts.disconnect();
+    resize?.disconnect();
+  };
+}
+
 function useLiveBounds(read: () => WindowBounds, active: boolean): WindowBounds {
   const [bounds, setBounds] = useState(() =>
     typeof window === "undefined" ? { left: 0, top: 0, right: 390, bottom: 844 } : read(),
@@ -299,19 +335,13 @@ function useLiveBounds(read: () => WindowBounds, active: boolean): WindowBounds 
         setBounds((current) => (sameBounds(current, next) ? current : next));
       });
     };
-    update();
     const viewport = window.visualViewport;
     window.addEventListener("resize", update);
     window.addEventListener("orientationchange", update);
     window.addEventListener(CHAT_VISUAL_VIEWPORT_CHANGE_EVENT, update);
     viewport?.addEventListener("resize", update);
     viewport?.addEventListener("scroll", update);
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
-    for (const element of document.querySelectorAll(
-      '[data-component="CenterContent"], [data-component="TopBar"], [data-chat-mode] .chat-input-container, [data-chat-input-container]',
-    )) {
-      observer?.observe(element);
-    }
+    const stopObserving = observeWindowBounds(update);
     return () => {
       cancelAnimationFrame(frame);
       window.removeEventListener("resize", update);
@@ -319,7 +349,7 @@ function useLiveBounds(read: () => WindowBounds, active: boolean): WindowBounds 
       window.removeEventListener(CHAT_VISUAL_VIEWPORT_CHANGE_EVENT, update);
       viewport?.removeEventListener("resize", update);
       viewport?.removeEventListener("scroll", update);
-      observer?.disconnect();
+      stopObserving();
     };
   }, [active]);
   return bounds;
@@ -475,16 +505,11 @@ export function FloatingWindow({
           ? current
           : next;
       });
-    update();
     window.addEventListener("resize", update);
-    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(update) : null;
-    for (const element of document.querySelectorAll(
-      `${CENTER_CONTENT_SELECTOR}, [data-component="TopBar"], [data-chat-mode] .chat-input-container, [data-chat-input-container]`,
-    ))
-      observer?.observe(element);
+    const stopObserving = observeWindowBounds(update);
     return () => {
       window.removeEventListener("resize", update);
-      observer?.disconnect();
+      stopObserving();
     };
   }, [sheet]);
 

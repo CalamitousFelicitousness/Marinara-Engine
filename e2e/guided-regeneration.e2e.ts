@@ -5,13 +5,26 @@ import { seedUIState } from "./ui-state-fixture.js";
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 
 for (const mode of ["roleplay", "conversation"] as const) {
-  test(`${mode} guided regeneration consumes only its own composer draft`, async ({ page, request }, testInfo) => {
+  test(`${mode} guided regeneration keeps its guidance in the composer`, async ({ page, request }, testInfo) => {
     const chatIds: string[] = [];
+    let connectionId: string | undefined;
     let pending: Route | undefined;
     let requests = 0;
     try {
+      const connection = await request.post("/api/connections", {
+        data: {
+          name: "Guided regeneration",
+          provider: "custom",
+          baseUrl: "http://127.0.0.1:1/v1",
+          apiKey: "fixture",
+          model: "guided-fixture",
+          maxContext: 32768,
+        },
+      });
+      expect(connection.ok(), await connection.text()).toBeTruthy();
+      connectionId = (await connection.json()).id as string;
       for (const name of ["Guided regeneration", "Other draft"]) {
-        const response = await request.post("/api/chats", { data: { name, mode, characterIds: [] } });
+        const response = await request.post("/api/chats", { data: { name, mode, characterIds: [], connectionId } });
         expect(response.ok(), await response.text()).toBeTruthy();
         chatIds.push((await response.json()).id);
       }
@@ -31,6 +44,8 @@ for (const mode of ["roleplay", "conversation"] as const) {
         sidebarOpen: false,
         rightPanelOpen: false,
         guideGenerations: true,
+        intuitiveSwipeNavigation: true,
+        intuitiveSwipeRerollLatest: true,
         chatHelpSeenModes: ["conversation", "roleplay", "game"],
         enableStreaming: false,
       });
@@ -48,11 +63,29 @@ for (const mode of ["roleplay", "conversation"] as const) {
       const composer = page.locator("textarea[data-chat-composer]");
       const row = page.locator(`[data-message-id="${message.id}"]`);
       const confirm = page.getByRole("dialog", { name: "Regenerate Message", exact: true });
+      const send =
+        mode === "roleplay"
+          ? page.locator("button.mari-chat-send-btn")
+          : page.getByRole("button", { name: "Send", exact: true });
       const regenerate = async () => {
         await row.focus();
         await row.getByRole("button", { name: "Regenerate (guided)", exact: true }).click();
         if (mobile) await confirm.getByRole("button", { name: "Regenerate", exact: true }).click();
       };
+      const expectGuidedRequest = async (count: number, guidance: string) => {
+        await expect.poll(() => requests).toBe(count);
+        expect(pending!.request().postDataJSON()).toMatchObject({
+          chatId,
+          regenerateMessageId: message.id,
+          generationGuideSource: "guide",
+          generationGuide: expect.stringContaining(guidance),
+        });
+      };
+      const storedDraft = () =>
+        page.evaluate(async (id) => {
+          const { useChatStore } = await import("/src/stores/chat.store.ts" as string);
+          return useChatStore.getState().inputDrafts.get(id) ?? "";
+        }, chatId);
       const settled = () =>
         expect
           .poll(() =>
@@ -91,65 +124,54 @@ for (const mode of ["roleplay", "conversation"] as const) {
         await expect(composer).toHaveAttribute("data-chat-id", id);
       };
 
-      await composer.fill("  Let the lantern flicker.  ");
+      const guidance = "  Let the lantern flicker.  ";
+      await composer.fill(guidance);
       if (mobile) {
         await row.focus();
         await row.getByRole("button", { name: "Regenerate (guided)", exact: true }).click();
         await confirm.getByRole("button", { name: "Cancel", exact: true }).click();
-        await expect(composer).toHaveValue("  Let the lantern flicker.  ");
+        await expect(composer).toHaveValue(guidance);
         expect(requests).toBe(0);
       }
       await page.screenshot({ path: testInfo.outputPath("guidance-before.png") });
+
+      // A guided regeneration sends the guidance and leaves it in the composer and its saved draft.
       await regenerate();
-      await expect.poll(() => requests).toBe(1);
-      expect(pending!.request().postDataJSON()).toMatchObject({
-        chatId,
-        regenerateMessageId: message.id,
-        generationGuideSource: "guide",
-        generationGuide: expect.stringContaining("Let the lantern flicker."),
-      });
-      await expect(composer).toHaveValue("");
-      await page.screenshot({ path: testInfo.outputPath("guidance-consumed.png") });
+      await expectGuidedRequest(1, "Let the lantern flicker.");
+      await expect(composer).toHaveValue(guidance);
+      await succeed();
+      await expect(composer).toHaveValue(guidance);
+      await expect.poll(storedDraft).toBe(guidance);
+      await page.screenshot({ path: testInfo.outputPath("guidance-kept.png") });
+
+      // The kept guidance can be edited and used again; a failed attempt keeps it too.
+      const edited = "Let the lantern go out.";
+      await composer.fill(edited);
+      await regenerate();
+      await expectGuidedRequest(2, edited);
+      await expect(composer).toHaveValue(edited);
       await fail();
-      await expect(composer).toHaveValue("  Let the lantern flicker.  ");
+      await expect(composer).toHaveValue(edited);
 
-      // Late success and failure must leave a draft typed after the click intact.
-      for (const [index, finish] of [succeed, fail].entries()) {
-        await regenerate();
-        await expect.poll(() => requests).toBe(index + 2);
-        await expect(composer).toHaveValue("");
-        await composer.fill(`My next reply ${index}.`);
-        await row.focus();
-        await row.getByRole("button", { name: "Regenerate (guided)", exact: true }).click();
-        await expect(confirm).toBeHidden();
-        await expect(composer).toHaveValue(`My next reply ${index}.`);
-        expect(requests).toBe(index + 2);
-        await finish();
-        await expect(composer).toHaveValue(`My next reply ${index}.`);
-      }
+      // Rerolling the latest swipe with the arrow key uses the same guidance and keeps it.
+      await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+      await page.keyboard.press("ArrowRight");
+      await expectGuidedRequest(3, edited);
+      await succeed();
+      await expect(composer).toHaveValue(edited);
 
-      // A failed background attempt restores only the originating chat's empty draft.
+      // A background regeneration leaves the other chat's draft alone and the guidance survives reload.
       await regenerate();
-      await expect.poll(() => requests).toBe(4);
-      await expect(composer).toHaveValue("");
+      await expectGuidedRequest(4, edited);
       await switchChat(chatIds[1]!);
       await composer.fill("Keep the other chat's draft.");
-      await fail();
-      await expect(composer).toHaveValue("Keep the other chat's draft.");
-      await switchChat(chatId);
-      await expect(composer).toHaveValue("My next reply 1.");
-
-      // Guidance stays consumed after a successful background regeneration, including reload.
-      await regenerate();
-      await expect.poll(() => requests).toBe(5);
-      await expect(composer).toHaveValue("");
-      await switchChat(chatIds[1]!);
       await succeed();
       await expect(composer).toHaveValue("Keep the other chat's draft.");
       await switchChat(chatId);
-      await expect(composer).toHaveValue("");
+      await expect(composer).toHaveValue(edited);
       await page.reload();
-      await expect(composer).toHaveValue("");
+      await expect(composer).toHaveValue(edited);
+      await expect.poll(storedDraft).toBe(edited);
 
       // Turning guidance off means regeneration must not touch the composer.
       await page.evaluate(async () => {
@@ -161,18 +183,30 @@ for (const mode of ["roleplay", "conversation"] as const) {
       await row.focus();
       await row.getByRole("button", { name: "Regenerate", exact: true }).click();
       if (mobile) await confirm.getByRole("button", { name: "Regenerate", exact: true }).click();
-      await expect.poll(() => requests).toBe(6);
+      await expect.poll(() => requests).toBe(5);
       expect(pending!.request().postDataJSON().generationGuide).toBeUndefined();
       await expect(composer).toHaveValue("An unrelated normal draft.");
       await succeed();
       await expect(composer).toHaveValue("An unrelated normal draft.");
       await page.screenshot({ path: testInfo.outputPath("normal-draft-preserved-light.png") });
 
+      // A normal send still clears what it sends.
+      await page.evaluate(async () => {
+        const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+        useUIStore.getState().setGuideGenerations(true);
+      });
+      await composer.fill("A normal reply.");
+      await send.click();
+      await expect.poll(() => requests).toBe(6);
+      expect(pending!.request().postDataJSON()).toMatchObject({ chatId, userMessage: "A normal reply." });
+      await expect(composer).toHaveValue("");
+      await succeed();
+      await expect(composer).toHaveValue("");
+      await expect.poll(storedDraft).toBe("");
+
       if (mobile) {
-        await page.evaluate(async () => {
-          const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
-          useUIStore.getState().setGuideGenerations(true);
-        });
+        // A confirmation that outlives its chat must not regenerate with another chat's draft.
+        await composer.fill("Guidance for this chat.");
         await row.focus();
         await row.getByRole("button", { name: "Regenerate (guided)", exact: true }).click();
         await switchChat(chatIds[1]!);
@@ -188,6 +222,7 @@ for (const mode of ["roleplay", "conversation"] as const) {
         const removed = await request.delete(`/api/chats/${chatId}`);
         expect(removed.ok(), await removed.text()).toBeTruthy();
       }
+      if (connectionId) await request.delete(`/api/connections/${connectionId}`).catch(() => undefined);
     }
   });
 }

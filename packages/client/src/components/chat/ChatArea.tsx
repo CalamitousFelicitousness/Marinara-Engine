@@ -2136,28 +2136,15 @@ const LocalChatArea = memo(function LocalChatArea() {
       ) {
         return;
       }
-      // The confirmation can outlive this chat. Never consume another chat's draft.
+      // The confirmation can outlive this chat. Never use another chat's draft as guidance.
       if (useChatStore.getState().activeChatId !== activeChatId) return;
       const composer = document.querySelector<HTMLTextAreaElement>("textarea[data-chat-composer]");
       const currentInput = composer?.dataset.chatId === activeChatId ? composer.value : getCurrentInputSnapshot();
+      // Guidance stays in the composer so it can be adjusted for another regeneration (#7060).
       const isGuided = guideGenerations && currentInput.trim().length > 0;
-      const replaceGuidanceDraft = (expected: string, text: string) => {
-        const state = useChatStore.getState();
-        const input = document.querySelector<HTMLTextAreaElement>("textarea[data-chat-composer]");
-        if (state.activeChatId === activeChatId && input?.dataset.chatId === activeChatId) {
-          if (input.value !== expected) return;
-          input.value = text;
-          // Reuse each uncontrolled composer's draft debounce, sizing and input-state handling.
-          input.dispatchEvent(new Event("input", { bubbles: true }));
-        } else if ((state.inputDrafts.get(activeChatId) ?? "") !== expected) {
-          return;
-        }
-        state.setInputDraft(activeChatId, text);
-      };
-      if (isGuided) replaceGuidanceDraft(currentInput, "");
       try {
         // Regenerate as a new swipe on the existing message
-        const consumed = await generate(
+        await generate(
           isGuided
             ? {
                 chatId: activeChatId,
@@ -2168,9 +2155,7 @@ const LocalChatArea = memo(function LocalChatArea() {
               }
             : { chatId: activeChatId, connectionId: null, regenerateMessageId: messageId },
         );
-        if (isGuided && !consumed) replaceGuidanceDraft("", currentInput);
       } catch {
-        if (isGuided) replaceGuidanceDraft("", currentInput);
         // Error toast is shown by the generate hook
       }
     },

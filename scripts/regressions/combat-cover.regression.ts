@@ -225,6 +225,12 @@ const arena = (paint: Record<string, TacticalTerrain>) => {
       feat.mechanics = { ...feat.mechanics, save: { save: "dex_save", onSuccess: "negates", ignoresCover: true } };
     });
     assert.match(issue(68, spell) ?? "", gate, "an entry's save that ignores cover");
+    // And an item's use, as a scroll of that spell.
+    const scroll = doc((d) => {
+      const feat = d.catalogs.find((catalog: { id: string }) => catalog.id === "feats").entries[0];
+      feat.item = { use: { save: { save: "dex_save", onSuccess: "negates", ignoresCover: true } } };
+    });
+    assert.match(issue(68, scroll) ?? "", gate, "an item use's save that ignores cover");
   } finally {
     rmSync(dataDir, { recursive: true, force: true });
   }

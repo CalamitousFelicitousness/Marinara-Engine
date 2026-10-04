@@ -584,10 +584,11 @@ const capabilityPackageManifestBaseSchema = z
 //        1.64: an Engine that cannot read these refuses the whole ruleset or catalog file, so a package
 //        that ships any of them declares 1.65. No permission.
 // 1.69: a ruleset's `combat.cover` may grade cover (`threeQuarters`), help saves (`saves`) and count
-//        creatures in the way (`creatures`); cover is read from the attacker's position by corner lines
+//        creatures in the way (`creatures`), and a save (an entry's, a creature action's or an item use's)
+//        may ignore cover (`ignoresCover`); cover is read from the attacker's position by corner lines
 //        (combat C6a-2). Not a soft seam, for the same reason as 1.20 through 1.65: an Engine that cannot
-//        read these refuses the whole ruleset file, so a package that ships any of them declares 1.69.
-//        No permission.
+//        read these refuses the whole ruleset or catalog file, so a package that ships any of them
+//        declares 1.69. No permission.
 export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 69 } as const);
 
 const capabilityApiVersionSchema = z

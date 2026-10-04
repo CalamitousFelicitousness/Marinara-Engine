@@ -1039,19 +1039,20 @@ function rulesetCarriesMoney164(ruleset: { layers?: unknown; items?: unknown } |
 const COVER_ISSUE =
   "A ruleset that grades cover (three-quarters, saves, creatures) or has a save that ignores cover requires schemaVersion 2 and capabilityApi 1.69 or newer";
 
-/** A save that ignores cover, on an entry's mechanics or a creature's action, which is 1.69: a new key
- *  on the strict save. */
+/** A save that ignores cover, on an entry's mechanics, a creature's action or an item's use, which is
+ *  1.69: a new key on the strict save. */
 function entriesCarryCoverlessSaves(entries: unknown): boolean {
   return (
     Array.isArray(entries) &&
     entries.some((entry) => {
       const record = plainRecord(entry);
       const actions = plainRecord(record?.creature)?.actions;
-      return (
-        plainRecord(plainRecord(record?.mechanics)?.save)?.ignoresCover !== undefined ||
-        (Array.isArray(actions) &&
-          actions.some((action) => plainRecord(plainRecord(action)?.save)?.ignoresCover !== undefined))
-      );
+      const saves = [
+        plainRecord(record?.mechanics)?.save,
+        plainRecord(plainRecord(record?.item)?.use)?.save,
+        ...(Array.isArray(actions) ? actions.map((action) => plainRecord(action)?.save) : []),
+      ];
+      return saves.some((save) => plainRecord(save)?.ignoresCover !== undefined);
     })
   );
 }

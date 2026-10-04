@@ -2109,7 +2109,8 @@ only by what lies between it and the effect.
   anything else. The log says that too.
 - `cover.creatures` (1.69) makes anybody standing in the way half cover, friend or foe.
 - A save whose text says the target gains nothing from cover (5e's Sacred Flame) says
-  `"ignoresCover": true` (1.69), on an entry's `mechanics.save` or a creature action's `save`.
+  `"ignoresCover": true` (1.69), on an entry's `mechanics.save`, a creature action's `save` or an
+  item use's `save`.
 
 There is no elevation yet.
 

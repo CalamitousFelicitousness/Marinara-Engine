@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @source "./capability-package-safelist.html";
 @import "./themes/sillytavern.css";
+@import "./themes/chat-widgets.css";
 
 /* World state & tracker widgets: equal flex sizing on mobile */
 @media (max-width: 767px) {
@@ -728,30 +729,41 @@
 @layer components {
   .mari-window {
     border: var(--mari-window-border-width, 1px) solid
-      var(--mari-window-border, var(--marinara-chat-chrome-panel-border));
-    border-radius: var(--mari-window-radius, calc(var(--radius) + 0.25rem));
-    background: var(--mari-window-bg, var(--marinara-chat-chrome-panel-bg));
-    color: var(--mari-window-text, var(--marinara-chat-chrome-panel-text));
-    box-shadow: var(--mari-window-shadow, 0 25px 50px -12px rgb(0 0 0 / 0.4));
+      var(
+        --mari-widget-shell-border,
+        var(--mari-window-border, var(--mari-widget-border, var(--marinara-chat-chrome-panel-border)))
+      );
+    border-radius: var(--mari-window-radius, var(--mari-widget-radius, calc(var(--radius) + 0.25rem)));
+    background: var(
+      --mari-widget-shell-bg,
+      var(--mari-window-bg, var(--mari-widget-bg, var(--marinara-chat-chrome-panel-bg)))
+    );
+    color: var(--mari-window-text, var(--mari-widget-text, var(--marinara-chat-chrome-panel-text)));
+    box-shadow: var(
+      --mari-window-shadow,
+      var(--mari-widget-shadow, var(--mari-widget-frame-shadow, 0 25px 50px -12px rgb(0 0 0 / 0.4)))
+    );
     -webkit-backdrop-filter: var(--mari-window-backdrop-filter, blur(12px));
     backdrop-filter: var(--mari-window-backdrop-filter, blur(12px));
   }
 
   .mari-window__header {
-    border-bottom: 1px solid var(--mari-window-header-border, var(--marinara-chat-chrome-panel-divider));
+    border-bottom: 1px solid
+      var(--mari-window-header-border, var(--mari-widget-border, var(--marinara-chat-chrome-panel-divider)));
     border-top-left-radius: inherit;
     border-top-right-radius: inherit;
-    background: var(--mari-window-header-bg, transparent);
-    padding: var(--mari-window-header-padding, 0.625rem 0.75rem);
+    background: var(--mari-window-header-bg, var(--mari-widget-header-bg, transparent));
+    padding: var(--mari-window-header-padding, var(--mari-widget-header-padding, 0.625rem 0.75rem));
   }
 
   .mari-window__header:focus-visible {
     outline: none;
-    box-shadow: inset 0 0 0 2px var(--mari-window-focus-ring, var(--marinara-chat-chrome-focus-ring));
+    box-shadow: inset 0 0 0 2px
+      var(--mari-window-focus-ring, var(--mari-widget-accent, var(--marinara-chat-chrome-focus-ring)));
   }
 
   .mari-window__title {
-    color: var(--mari-window-header-text, var(--marinara-chat-chrome-panel-title));
+    color: var(--mari-window-header-text, var(--mari-widget-accent, var(--marinara-chat-chrome-panel-title)));
   }
 
   .mari-window__controls {
@@ -766,21 +778,27 @@
     align-items: center;
     justify-content: center;
     border-radius: var(--mari-window-control-radius, var(--radius));
-    color: var(--mari-window-control-color, var(--marinara-chat-chrome-panel-muted));
+    color: var(--mari-window-control-color, var(--mari-widget-accent, var(--marinara-chat-chrome-panel-muted)));
     transition:
       background-color 150ms ease,
       color 150ms ease;
   }
 
   .mari-window__control[aria-pressed="true"] {
-    background: var(--mari-window-control-bg-active, var(--marinara-chat-chrome-highlight-bg));
-    color: var(--mari-window-control-color-active, var(--marinara-chat-chrome-button-text-active));
+    background: var(--mari-window-control-bg-active, var(--mari-widget-soft, var(--marinara-chat-chrome-highlight-bg)));
+    color: var(
+      --mari-window-control-color-active,
+      var(--mari-widget-accent, var(--marinara-chat-chrome-button-text-active))
+    );
   }
 
   @media (hover: hover) {
     .mari-window__control:hover {
-      background: var(--mari-window-control-bg-hover, var(--marinara-chat-chrome-highlight-bg));
-      color: var(--mari-window-control-color-hover, var(--marinara-chat-chrome-panel-text));
+      background: var(
+        --mari-window-control-bg-hover,
+        var(--mari-widget-soft, var(--marinara-chat-chrome-highlight-bg))
+      );
+      color: var(--mari-window-control-color-hover, var(--mari-widget-text, var(--marinara-chat-chrome-panel-text)));
     }
   }
 
@@ -791,11 +809,24 @@
     height: var(--mari-window-bubble-size, 2rem);
     align-items: center;
     justify-content: center;
-    border: 1px solid var(--mari-window-bubble-border, var(--marinara-chat-chrome-button-border));
-    border-radius: var(--mari-window-bubble-radius, calc(var(--radius) + 0.125rem));
-    background: var(--mari-window-bubble-bg, var(--marinara-chat-chrome-button-bg));
-    color: var(--mari-window-bubble-text, var(--marinara-chat-chrome-button-text));
-    box-shadow: var(--mari-window-bubble-shadow, 0 4px 12px rgb(0 0 0 / 0.25));
+    border: 1px solid
+      var(
+        --mari-widget-button-shell,
+        var(--mari-window-bubble-border, var(--mari-widget-gold, var(--marinara-chat-chrome-button-border)))
+      );
+    border-radius: var(--mari-window-bubble-radius, var(--mari-widget-bubble-radius, calc(var(--radius) + 0.125rem)));
+    background: var(
+      --mari-widget-button-shell,
+      var(
+        --mari-window-bubble-bg,
+        var(--mari-widget-bubble-bg, var(--mari-widget-bg, var(--marinara-chat-chrome-button-bg)))
+      )
+    );
+    color: var(
+      --mari-window-bubble-text,
+      var(--mari-widget-button-text, var(--mari-widget-accent, var(--marinara-chat-chrome-button-text)))
+    );
+    box-shadow: var(--mari-window-bubble-shadow, var(--mari-widget-button-shadow, 0 4px 12px rgb(0 0 0 / 0.25)));
     -webkit-backdrop-filter: blur(12px);
     backdrop-filter: blur(12px);
     cursor: pointer;
@@ -808,8 +839,14 @@
 
   @media (hover: hover) {
     .mari-window-bubble:hover {
-      background: var(--mari-window-bubble-bg-hover, var(--marinara-chat-chrome-button-bg-hover));
-      color: var(--mari-window-bubble-text-hover, var(--marinara-chat-chrome-button-text-hover));
+      background: var(
+        --mari-widget-button-shell,
+        var(--mari-window-bubble-bg-hover, var(--mari-widget-soft, var(--marinara-chat-chrome-button-bg-hover)))
+      );
+      color: var(
+        --mari-window-bubble-text-hover,
+        var(--mari-widget-accent, var(--marinara-chat-chrome-button-text-hover))
+      );
     }
   }
 
@@ -849,7 +886,8 @@
   .mari-window__control:focus-visible,
   .mari-window__resize-handle:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 2px var(--mari-window-focus-ring, var(--marinara-chat-chrome-focus-ring));
+    box-shadow: 0 0 0 2px
+      var(--mari-window-focus-ring, var(--mari-widget-accent, var(--marinara-chat-chrome-focus-ring)));
   }
 
   /* The body clips its content to the window's rounded corners; the root does not
@@ -963,36 +1001,42 @@
   }
 
   .mari-drawer {
-    border-bottom: 1px solid var(--mari-drawer-border, var(--border));
-    background: var(--mari-drawer-bg, transparent);
+    border-bottom: 1px solid var(--mari-drawer-border, var(--mari-widget-border, var(--border)));
+    background: var(--mari-drawer-bg, var(--mari-widget-field, transparent));
   }
 
   .mari-drawer__header {
     padding: var(--mari-drawer-header-padding, 0.75rem 1rem);
-    background: var(--mari-drawer-header-bg, transparent);
+    background: var(--mari-drawer-header-bg, var(--mari-widget-field, transparent));
   }
 
   @media (hover: hover) {
     .mari-drawer__header:hover {
-      background: var(--mari-drawer-header-bg-hover, color-mix(in oklab, var(--accent) 50%, transparent));
+      background: var(
+        --mari-drawer-header-bg-hover,
+        var(--mari-widget-soft, color-mix(in oklab, var(--accent) 50%, transparent))
+      );
     }
   }
 
   .mari-drawer__icon {
-    color: var(--mari-drawer-icon-color, var(--muted-foreground));
+    color: var(--mari-drawer-icon-color, var(--mari-widget-accent, var(--muted-foreground)));
   }
 
   .mari-drawer__title {
-    color: var(--mari-drawer-title-color, inherit);
+    color: var(--mari-drawer-title-color, var(--mari-widget-text, inherit));
   }
 
   .mari-drawer__count {
-    background: var(--mari-drawer-count-bg, color-mix(in oklab, var(--primary) 15%, transparent));
-    color: var(--mari-drawer-count-text, var(--primary));
+    background: var(
+      --mari-drawer-count-bg,
+      var(--mari-widget-soft, color-mix(in oklab, var(--primary) 15%, transparent))
+    );
+    color: var(--mari-drawer-count-text, var(--mari-widget-accent, var(--primary)));
   }
 
   .mari-drawer__arrow {
-    color: var(--mari-drawer-arrow-color, var(--muted-foreground));
+    color: var(--mari-drawer-arrow-color, var(--mari-widget-accent, var(--muted-foreground)));
   }
 
   .mari-drawer__body {
@@ -1011,11 +1055,14 @@
 
   .mari-drawer-ghost {
     border: var(--mari-window-border-width, 1px) solid
-      var(--mari-window-border, var(--marinara-chat-chrome-panel-border));
-    border-radius: var(--mari-window-radius, calc(var(--radius) + 0.25rem));
-    background: var(--mari-window-bg, var(--marinara-chat-chrome-panel-bg));
-    color: var(--mari-window-header-text, var(--marinara-chat-chrome-panel-title));
-    box-shadow: var(--mari-window-shadow, 0 25px 50px -12px rgb(0 0 0 / 0.4));
+      var(--mari-window-border, var(--mari-widget-border, var(--marinara-chat-chrome-panel-border)));
+    border-radius: var(--mari-window-radius, var(--mari-widget-radius, calc(var(--radius) + 0.25rem)));
+    background: var(--mari-window-bg, var(--mari-widget-bg, var(--marinara-chat-chrome-panel-bg)));
+    color: var(--mari-window-header-text, var(--mari-widget-accent, var(--marinara-chat-chrome-panel-title)));
+    box-shadow: var(
+      --mari-window-shadow,
+      var(--mari-widget-shadow, var(--mari-widget-frame-shadow, 0 25px 50px -12px rgb(0 0 0 / 0.4)))
+    );
     opacity: 0.6;
   }
 
@@ -1024,7 +1071,7 @@
   }
 
   .mari-window[data-drop-target="true"] {
-    outline: 2px solid var(--mari-window-focus-ring, var(--marinara-chat-chrome-focus-ring));
+    outline: 2px solid var(--mari-window-focus-ring, var(--mari-widget-accent, var(--marinara-chat-chrome-focus-ring)));
     outline-offset: 2px;
   }
 }

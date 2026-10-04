@@ -23,6 +23,7 @@ import { resetProfessorMariNavigator } from "../lib/professor-mari-navigation";
 import { DEFAULT_APP_LANGUAGE, type AppLanguage } from "../localization/locale-types";
 import { deferEditorLeave } from "../lib/editor-leave";
 import { UI_PERSISTENCE } from "../lib/ui-persistence";
+import { normalizeChatWidgetFont } from "../lib/font-family";
 import type { ChatWizardDefaults, ChatWizardMode } from "../lib/chat-wizard-defaults";
 
 export type Panel =
@@ -67,6 +68,16 @@ function normalizeConnectionPanelSort(value: unknown): ConnectionPanelSort {
 }
 type FontSize = 12 | 14 | 16 | 17 | 19 | 22 | 26 | 30 | 34;
 export type VisualTheme = "default" | "sillytavern";
+export type ChatWidgetPreset = "default" | "dottore" | "mari";
+export type ChatWidgetShape = "preset" | "rounded" | "square" | "cut-corner" | "arched";
+
+export function normalizeChatWidgetPreset(value: unknown): ChatWidgetPreset {
+  return value === "dottore" || value === "mari" ? value : "default";
+}
+
+export function normalizeChatWidgetShape(value: unknown): ChatWidgetShape {
+  return value === "rounded" || value === "square" || value === "cut-corner" || value === "arched" ? value : "preset";
+}
 export type ConversationMessageStyle = "classic" | "bubble";
 export type ConversationAvatarShape = "circle" | "square";
 export type TrackerPanelSide = "left" | "right";
@@ -751,6 +762,9 @@ interface UIState {
   chatFontSize: number;
   /** Custom font family name (empty = default Inter) */
   fontFamily: string;
+  chatWidgetPreset: ChatWidgetPreset;
+  chatWidgetFont: string;
+  chatWidgetShape: ChatWidgetShape;
   enableStreaming: boolean;
   debugMode: boolean;
   /** When true, warn when an agent uses the configured default connection. */
@@ -1146,6 +1160,9 @@ interface UIState {
   setLanguage: (language: AppLanguage) => void;
   setChatFontSize: (size: number) => void;
   setFontFamily: (family: string) => void;
+  setChatWidgetPreset: (preset: ChatWidgetPreset) => void;
+  setChatWidgetFont: (font: string) => void;
+  setChatWidgetShape: (shape: ChatWidgetShape) => void;
   setEnableStreaming: (v: boolean) => void;
   setDebugMode: (v: boolean) => void;
   setShowPaidAgentConnectionWarning: (v: boolean) => void;
@@ -1382,6 +1399,9 @@ export function pickSyncedSettings(state: UIState) {
     conversationBackgroundImageOpacity: state.conversationBackgroundImageOpacity,
     language: state.language,
     fontFamily: state.fontFamily,
+    chatWidgetPreset: state.chatWidgetPreset,
+    chatWidgetFont: state.chatWidgetFont,
+    chatWidgetShape: state.chatWidgetShape,
     enableStreaming: state.enableStreaming,
     streamingSpeed: state.streamingSpeed,
     showPaidAgentConnectionWarning: state.showPaidAgentConnectionWarning,
@@ -1592,6 +1612,9 @@ export function pickPersistedUIState(state: UIState) {
     language: state.language,
     chatFontSize: state.chatFontSize,
     fontFamily: state.fontFamily,
+    chatWidgetPreset: state.chatWidgetPreset,
+    chatWidgetFont: state.chatWidgetFont,
+    chatWidgetShape: state.chatWidgetShape,
     enableStreaming: state.enableStreaming,
     debugMode: state.debugMode,
     showPaidAgentConnectionWarning: state.showPaidAgentConnectionWarning,
@@ -1845,6 +1868,9 @@ export const useUIStore = create<UIState>()(
         language: DEFAULT_APP_LANGUAGE as AppLanguage,
         chatFontSize: 16,
         fontFamily: "",
+        chatWidgetPreset: "default" as ChatWidgetPreset,
+        chatWidgetFont: "",
+        chatWidgetShape: "preset" as ChatWidgetShape,
         enableStreaming: true,
         debugMode: false,
         showPaidAgentConnectionWarning: true,
@@ -2625,6 +2651,10 @@ export const useUIStore = create<UIState>()(
         setLanguage: (language) => set({ language }),
         setChatFontSize: (size) => set({ chatFontSize: size }),
         setFontFamily: (family) => set({ fontFamily: family }),
+        setChatWidgetPreset: (preset) =>
+          set({ chatWidgetPreset: normalizeChatWidgetPreset(preset), chatWidgetFont: "", chatWidgetShape: "preset" }),
+        setChatWidgetFont: (font) => set({ chatWidgetFont: normalizeChatWidgetFont(font) }),
+        setChatWidgetShape: (shape) => set({ chatWidgetShape: normalizeChatWidgetShape(shape) }),
         setEnableStreaming: (v) => set({ enableStreaming: v }),
         setDebugMode: (v) => set({ debugMode: v }),
         setShowPaidAgentConnectionWarning: (v) => set({ showPaidAgentConnectionWarning: v }),
@@ -2848,6 +2878,9 @@ export const useUIStore = create<UIState>()(
             fontSize: 17 as FontSize,
             chatFontSize: 16,
             fontFamily: "",
+            chatWidgetPreset: "default" as ChatWidgetPreset,
+            chatWidgetFont: "",
+            chatWidgetShape: "preset" as ChatWidgetShape,
             conversationMessageStyle: "classic" as ConversationMessageStyle,
             conversationAvatarShape: "circle" as ConversationAvatarShape,
             chatFontColor: "",
@@ -3656,6 +3689,9 @@ export const useUIStore = create<UIState>()(
           conversationBackgroundImageOpacity: normalizeConversationBackgroundImageOpacity(
             persisted.conversationBackgroundImageOpacity,
           ),
+          chatWidgetPreset: normalizeChatWidgetPreset(persisted.chatWidgetPreset),
+          chatWidgetFont: normalizeChatWidgetFont(persisted.chatWidgetFont),
+          chatWidgetShape: normalizeChatWidgetShape(persisted.chatWidgetShape),
         };
       },
       partialize: pickPersistedUIState,

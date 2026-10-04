@@ -2,6 +2,14 @@
 
 This guide explains how to change the whole look of Marinara Engine with a custom CSS theme. You will learn how to create, import, export, and activate themes. You will also see which CSS variables you can change and how themes work with Card CSS.
 
+## Ready-made chat window styles
+
+For a quick change without writing CSS, open **Settings > Appearance > App** and find **Chat widget style** at the bottom of **App Style**. **Dottore** gives your chat controls cyan instrument frames and cut corners. **Mari** adds rose-and-gold frames with Primogem ornaments. Each has its own font, works in light and dark mode, and styles buttons, windows and expandable sections together.
+
+The **Font** and **Shape** controls let you change those details separately. **Preset font** and **Preset shape** follow the selected style. Choosing a preset resets these controls, and **Default** brings back the original look. Your window positions stay as you arranged them.
+
+Custom CSS themes can still override these presets. The public window and drawer variables below take precedence over the preset colors. Use `--mari-window-font-family` for window lettering, `--mari-drawer-radius` for section corners, and `--mari-window-ornament: none` to hide the title ornament. To remove all preset decoration, choose **Default** first.
+
 ## What a custom theme is
 
 A custom theme is a block of CSS that repaints Marinara. CSS, short for Cascading Style Sheets, is the code that sets colors, borders, and spacing across the app. A theme can change the page background, the accent color, cards, borders, text, and more.

@@ -21,7 +21,10 @@ import {
 } from "@marinara-engine/shared";
 import { api } from "../lib/api-client";
 import { normalizeConversationTimeZone } from "../lib/conversation-time-zone";
+import { normalizeChatWidgetFont } from "../lib/font-family";
 import {
+  normalizeChatWidgetPreset,
+  normalizeChatWidgetShape,
   normalizeTrackerPanelCollapsedSections,
   normalizeTrackerPanelSectionOrder,
   normalizeTrackerPanelSizeProfile,
@@ -287,6 +290,15 @@ export function useSettingsSync() {
                 parsed.settings.conversationTimeZone = normalizeConversationTimeZone(
                   parsed.settings.conversationTimeZone,
                 );
+              }
+              if ("chatWidgetPreset" in parsed.settings) {
+                parsed.settings.chatWidgetPreset = normalizeChatWidgetPreset(parsed.settings.chatWidgetPreset);
+              }
+              if ("chatWidgetFont" in parsed.settings) {
+                parsed.settings.chatWidgetFont = normalizeChatWidgetFont(parsed.settings.chatWidgetFont);
+              }
+              if ("chatWidgetShape" in parsed.settings) {
+                parsed.settings.chatWidgetShape = normalizeChatWidgetShape(parsed.settings.chatWidgetShape);
               }
 
               // Dismissal is permanent, even if it happened while this request was pending.

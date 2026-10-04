@@ -61,8 +61,8 @@ assert.match(
 );
 assert.match(
   appShell,
-  /mari-tracker-panel[^"\n]*ring-\[var\(--marinara-app-accent-static\)\]/u,
-  "Tracker Panel frames must use the configured app accent",
+  /mari-tracker-panel[^"\n]*ring-\[var\(--marinara-app-accent-solid\)\]/u,
+  "Tracker Panel frames must follow the live app accent",
 );
 // #7034: on a phone the Tracker Panel launches from a bubble like every other chat control's.
 assert.match(
@@ -216,9 +216,13 @@ assert.match(
   /aria-expanded=\{advancedMemoryEnabled \? memoryView === "advanced" : undefined\}/u,
   "Memory Recall access must expose its inline Advanced Memory disclosure state",
 );
+const noodleTimelineSwitch = chatSettingsDrawer.match(
+  /<SettingsSwitch\b(?:(?!\/>)[\s\S])*?checked=\{noodleTimelineContextEnabled\}(?:(?!\/>)[\s\S])*?\/>/u,
+)?.[0];
+assert.ok(noodleTimelineSwitch, "the Noodle timeline setting must retain its shared switch");
 assert.doesNotMatch(
-  chatSettingsDrawer,
-  /noodleTimelineContextEnabled[\s\S]*disabled=\{updateMeta\.isPending\}/u,
+  noodleTimelineSwitch,
+  /disabled=\{updateMeta\.isPending\}/u,
   "unrelated metadata writes must not visually disable the Noodle timeline switch",
 );
 assert.equal(

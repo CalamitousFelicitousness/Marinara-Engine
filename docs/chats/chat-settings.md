@@ -22,6 +22,12 @@ The small reminder beside the sliders button in Roleplay only needs to be dismis
 
 On a computer, click the **X** beside the layout tips (**Hide these tips for this chat**) to keep them hidden in this chat, even after a refresh or Reset View. You can also save this choice for new chats with the favorite layout star or a settings profile.
 
+## Changing how chat windows look
+
+Open **Settings > Appearance > App** and scroll to **Chat widget style** at the bottom of **App Style**. **Default** keeps the familiar Marinara look. **Dottore** adds cyan details, technical lettering and cut corners; **Mari** uses rose and gold, storybook lettering and arched frames. Both adapt to light and dark mode and style the movable buttons, windows and expandable sections in all three chat modes.
+
+Use **Font** or **Shape** below the presets to mix things up. Fonts you have installed in Marinara appear in the font list too. Choosing a preset again resets those two choices; choosing **Default** restores the usual appearance. These choices do not move your windows or change your saved chat layouts. They are saved with your app preferences and sync to browsers connected to the same server.
+
 ## Moving, pinning and locking the window
 
 On a computer, Chat Settings floats over the chat. Its contents rearrange to fit its size. The first time you open a window with its button, it appears below the button, adjusted to fit the chat. If it already has a saved position, it opens there instead.

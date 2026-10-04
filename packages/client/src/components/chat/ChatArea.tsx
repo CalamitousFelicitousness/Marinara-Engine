@@ -70,7 +70,6 @@ import { useGalleryStore } from "../../stores/gallery.store";
 import { toast } from "sonner";
 import { Check, X } from "lucide-react";
 import {
-  BUILT_IN_AGENTS,
   PROFESSOR_MARI_ID,
   buildGuidedGenerationInstructionMessage,
   normalizeAvatarCrop,
@@ -85,6 +84,7 @@ import { resolveLiveConversationStatus } from "../../lib/conversation-presence-s
 import { useUIStore } from "../../stores/ui.store";
 import { useAgentStore, EMPTY_AGENT_TYPES } from "../../stores/agent.store";
 import { illustratorRetryTargetsForFailures } from "../../lib/agent-failures";
+import { isBuiltInTrackerAgentType, resolveTrackerRerunTypes } from "../../lib/tracker-agents";
 import { Modal } from "../ui/Modal";
 import { useEncounter } from "../../hooks/use-encounter";
 import { useScene } from "../../hooks/use-scene";
@@ -160,10 +160,6 @@ import { CHAT_SETTINGS_WINDOW_ID, useFloatingWindowStore } from "../../stores/fl
 import { readChatHelpMode } from "../../lib/chat-help-events";
 
 export type { CharacterMap };
-
-const isBuiltInAgentType = (agentType: string) => BUILT_IN_AGENTS.some((agent) => agent.id === agentType);
-const isBuiltInTrackerAgentType = (agentType: string) =>
-  BUILT_IN_AGENTS.some((agent) => agent.id === agentType && agent.category === "tracker" && !agent.libraryHidden);
 
 function compareMessagesByCursor(left: MessageWithSwipes, right: MessageWithSwipes): number {
   const createdAtCompare = left.createdAt.localeCompare(right.createdAt);
@@ -2208,11 +2204,7 @@ const LocalChatArea = memo(function LocalChatArea() {
 
   const handleRerunTrackers = useCallback(async () => {
     if (!activeChatId || isStreaming || agentProcessing) return;
-    const manualTypes = Array.from(manualTrackerTypes);
-    const types =
-      manualTypes.length > 0
-        ? manualTypes
-        : Array.from(enabledAgentTypes).filter((type) => isBuiltInTrackerAgentType(type) || !isBuiltInAgentType(type));
+    const types = resolveTrackerRerunTypes(enabledAgentTypes, manualTrackerTypes);
     if (types.length === 0) return;
     await retryAgents(activeChatId, types);
   }, [activeChatId, isStreaming, agentProcessing, enabledAgentTypes, manualTrackerTypes, retryAgents]);

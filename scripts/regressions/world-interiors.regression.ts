@@ -206,6 +206,32 @@ try {
   assert.equal(named("The Harbour Inn"), true, "a story's inn has");
   assert.equal(named("Mother Agatha's"), true, "a plain name has");
 
+  // ── A place's tags decide what it is furnished as, and the evening follows ──
+  {
+    const parsedCyber = parseWorldKit(WORLD_STARTER_KITS.find((each) => each.id === "cyberpunk")!);
+    assert.ok(parsedCyber.ok);
+    const briefed = checkWorldBrief(parsedCyber.kit, { briefVersion: 1, premise: "x" });
+    assert.ok(briefed.ok);
+    const base = { kit: parsedCyber.kit, seed: 5, grounding: "expand" as const, brief: briefed.brief };
+    const stack = compileGameWorld(base).places.find((place) => (place.rank ?? 0) >= 2)!;
+    // A building with a plain name; only its tag says it is a club.
+    const edits = {
+      editsVersion: 1 as const,
+      added: [
+        { id: "e1", name: "The Neon Lotus", layer: "building", parentId: stack.id, at: stack.at, tags: ["club"] },
+      ],
+    };
+    const cyber: GameWorld = { ...base, edits, world: compileGameWorld({ ...base, edits }) };
+    const cyberTown = worldTown(cyber, stack.id)!;
+    const club = cyberTown.buildings.find((building) => building.placeId === "e1")!;
+    assert.equal(worldInteriorUse({ kind: "place", name: club.name }), "hall", "(its name alone says nothing)");
+    assert.equal(club.use, "tavern", "its tag makes it a tavern");
+    assert.equal(worldInterior(cyber, cyberTown, club.id)!.use, "tavern");
+    const keeper = club.people.find((id) => cyberTown.workOf[id] === club.id)!;
+    assert.ok(keeper, "(someone keeps it)");
+    assert.equal(worldTownWhere(cyberTown, keeper, 19), club.id, "its keepers keep it in the evening");
+  }
+
   // ── Furnished for what it is, across settings ──
   const use = (role: string, tags: string[] = []) => worldInteriorUse({ kind: "work", role }, tags);
   const expected: Array<[string, string]> = [

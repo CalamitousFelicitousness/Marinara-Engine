@@ -1042,6 +1042,21 @@ const chartavernProvider: ProviderConfig = {
 // Provider: Pygmalion
 // ════════════════════════════════════════════════
 
+/** Pygmalion rejected the saved login; the view logs out and asks for a new one. */
+class PygmalionSessionExpiredError extends Error {}
+
+async function throwIfPygmalionSessionExpired(res: Response) {
+  const data = res.status === 401 ? await res.json().catch(() => null) : null;
+  if (data?.sessionExpired) throw new PygmalionSessionExpiredError();
+}
+
+const PYGMALION_LOGIN_FAILURE_KEYS = new Map<unknown, string>([
+  ["invalid", "ui.botBrowser.botbrowserview.pygmalionTokenInvalid"],
+  ["rejected", "ui.botBrowser.botbrowserview.pygmalionTokenRejected"],
+  ["unreachable", "ui.botBrowser.botbrowserview.pygmalionUnreachable"],
+  ["busy", "ui.botBrowser.botbrowserview.pygmalionBusy"],
+]);
+
 const pygmalionProvider: ProviderConfig = {
   id: "pygmalion",
   name: "Pygmalion",
@@ -1075,7 +1090,10 @@ const pygmalionProvider: ProviderConfig = {
     if (p.excludeTags.length > 0) params.set("tagsExclude", p.excludeTags.join(","));
     if (p.nsfw) params.set("includeSensitive", "true");
     const res = await fetch(`/api/bot-browser/pygmalion/search?${params}`);
-    if (!res.ok) throw new Error("Search failed");
+    if (!res.ok) {
+      await throwIfPygmalionSessionExpired(res);
+      throw new Error("Search failed");
+    }
     const data = await res.json();
     const chars = data?.characters || [];
     const totalItems = parseInt(data?.totalItems || "0", 10);
@@ -1115,7 +1133,10 @@ const pygmalionProvider: ProviderConfig = {
   },
   fetchDetail: async (card) => {
     const res = await fetch(`/api/bot-browser/pygmalion/character?id=${card.id}`);
-    if (!res.ok) return null;
+    if (!res.ok) {
+      await throwIfPygmalionSessionExpired(res);
+      return null;
+    }
     const data = await res.json();
     const char = data?.character;
     if (!char) return null;
@@ -1684,6 +1705,12 @@ export function BotBrowserView() {
     [datacatNsfwAcked, performSwitch],
   );
 
+  const expirePygmalionSession = useCallback(() => {
+    setPygLoggedIn(false);
+    setNsfw(false);
+    toast.info(localizeUi("ui.botBrowser.botbrowserview.pygmalionSessionExpiredPleaseLogInAgain"));
+  }, [setPygLoggedIn, setNsfw, localizeUi]);
+
   useEffect(() => {
     const allTags = new Set<string>();
     for (const card of results) {
@@ -1735,12 +1762,14 @@ export function BotBrowserView() {
       setResults(result.cards);
       setTotalCount(result.totalCount);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Search failed");
+      if (err instanceof PygmalionSessionExpiredError) expirePygmalionSession();
+      else setError(err instanceof Error ? err.message : "Search failed");
       setResults([]);
     } finally {
       setLoading(false);
     }
   }, [
+    expirePygmalionSession,
     provider,
     query,
     page,
@@ -1792,8 +1821,9 @@ export function BotBrowserView() {
     try {
       const d = await provider.fetchDetail(card);
       setDetail(d);
-    } catch {
-      toast.error(localizeUi("ui.botBrowser.botbrowserview.failedToLoadCharacterDetails"));
+    } catch (err) {
+      if (err instanceof PygmalionSessionExpiredError) expirePygmalionSession();
+      else toast.error(localizeUi("ui.botBrowser.botbrowserview.failedToLoadCharacterDetails"));
       restoreResultsScrollRef.current = true;
       setSelectedCard(null);
     } finally {
@@ -2122,20 +2152,22 @@ export function BotBrowserView() {
   const handlePygmalionSetToken = async (token: string) => {
     setLoginLoading(true);
     try {
+      // The server checks the token with Pygmalion and keeps it only when Pygmalion accepts it.
       const res = await fetch("/api/bot-browser/pygmalion/set-token", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token }),
       });
-      const data = await res.json();
-      if (!res.ok || !data.ok) throw new Error(data.error || "Failed to save token");
+      const data = await res.json().catch(() => null);
+      if (typeof data?.active === "boolean") setPygLoggedIn(data.active);
+      if (!res.ok || !data?.ok) {
+        throw new Error(
+          localizeUi(
+            PYGMALION_LOGIN_FAILURE_KEYS.get(data?.reason) ?? "ui.botBrowser.botbrowserview.tokenValidationFailed",
+          ),
+        );
+      }
 
-      // Validate
-      const valRes = await fetch("/api/bot-browser/pygmalion/validate");
-      const valData = await valRes.json();
-      if (!valData.valid) throw new Error(valData.reason || "Token validation failed");
-
-      setPygLoggedIn(true);
       setShowLoginModal(false);
       setNsfw(true);
       setPage(1);
@@ -3116,17 +3148,26 @@ function LoginModal({
           {isPyg ? (
             <div className="flex flex-col gap-3">
               <div>
-                <label className="mb-1 block text-xs text-[var(--muted-foreground)]">
+                <label
+                  htmlFor="bot-browser-pygmalion-token"
+                  className="mb-1 block text-xs text-[var(--muted-foreground)]"
+                >
                   {localizeUi("ui.botBrowser.loginmodal.authToken")}
                 </label>
-                <textarea
+                <input
+                  id="bot-browser-pygmalion-token"
+                  type="password"
+                  autoComplete="off"
+                  spellCheck={false}
                   value={pygTokenInput}
                   onChange={(e) => setPygTokenInput(e.target.value)}
                   disabled={isLoggedIn || loginLoading}
                   placeholder={localizeUi("ui.botBrowser.loginmodal.pasteYourPygmalionAuthTokenHere")}
-                  rows={3}
-                  className="mari-chrome-field w-full resize-y px-3 py-2 font-mono text-xs disabled:opacity-50"
+                  className="mari-chrome-field w-full px-3 py-2 font-mono text-xs disabled:opacity-50"
                 />
+                <p className="mt-1.5 text-[0.7rem] leading-relaxed text-[var(--muted-foreground)]">
+                  {localizeUi("ui.botBrowser.loginmodal.pygmalionLoginStaysInMemory")}
+                </p>
               </div>
               <details open={showPygHelp} onToggle={(e) => setShowPygHelp((e.target as HTMLDetailsElement).open)}>
                 <summary className="cursor-pointer text-xs font-medium text-blue-400 hover:underline">

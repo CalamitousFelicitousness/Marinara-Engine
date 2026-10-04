@@ -138,6 +138,19 @@ try {
         /more stacks than one bag/,
       ],
       [(doc: Record<string, any>) => (doc.items.startingGear[2].id = "traveller"), /Duplicate starting gear/],
+      [
+        (doc: Record<string, any>) =>
+          (gear(doc).choices[1].options[1].lines[0].oneOf = ["outfitter/hand-axe", "outfitter/shovel"]),
+        /No item "shovel" in catalog/,
+      ],
+      [
+        (doc: Record<string, any>) =>
+          (doc.catalogs
+            .find((catalog: { id: string }) => catalog.id === "outfitter")
+            .entries.find((entry: { id: string }) => entry.id === "road-rations").item.service = true),
+        /"road-rations" is a service/,
+      ],
+      [(doc: Record<string, any>) => (gear(doc).lines[0].item = "outfitter/hand-axe"), /one of them/],
     ] as const) {
       assert.match(refusal(withGear(edit)), message);
     }
@@ -196,6 +209,7 @@ try {
     assert.equal(twoAxes.adds.find((add) => add.item === "outfitter/hand-axe")?.count, 2);
     // Refused: a choice without an option, a pick missing or not in its list, an unknown gear.
     assert.deepEqual(resolve([0]).ok, false);
+    assert.equal((resolve([0, 0, 1]) as { reason: string }).reason, "choice");
     assert.equal((resolve([0, 2]) as { reason: string }).reason, "choice");
     assert.equal((resolve([0, 1]) as { reason: string }).reason, "pick");
     assert.equal((resolve([0, 1], { "1.0": "outfitter/hunting-bow" }) as { reason: string }).reason, "pick");
@@ -213,6 +227,51 @@ try {
     assert.ok(withoutCoat.ok);
     assert.deepEqual(withoutCoat.dropped, ["Leather coat"]);
     assert.ok(!withoutCoat.adds.some((add) => add.item === "outfitter/leather-coat"));
+    const withoutSpear: RulesetItemBook = {
+      ...book,
+      entries: book.entries.filter((entry) => entry.item !== "outfitter/boar-spear"),
+    };
+    assert.equal(
+      (resolve([0, 1], { "1.0": "outfitter/boar-spear" }, withoutSpear) as { reason: string }).reason,
+      "pick",
+    );
+    // An item the ruleset does not have at all (a catalog in its own file that lost it) is refused.
+    const lost: RulesetItemBook = {
+      ...hidden,
+      itemOf: (ref) => (ref === "outfitter/leather-coat" ? undefined : book.itemOf(ref)),
+    };
+    assert.equal((resolve([0, 0], {}, lost) as { reason: string }).reason, "unknown-item");
+    // A coin a layer takes out is paid at the same worth in the largest coin left that pays it exactly.
+    const noMarks = parsedOrThrow(
+      withGear((doc) => doc.layers.push({ id: "no_marks", label: "No marks", currencies: { removeUnits: ["mark"] } })),
+    );
+    const paid = resolveRulesetStartingGear(
+      noMarks,
+      book,
+      { gear: "traveller", choices: [0, 0], picks: {} },
+      { "layer.no_marks": true },
+    );
+    assert.ok(paid.ok);
+    assert.deepEqual(
+      paid.adds.filter((add) => add.item?.startsWith("coin:")).map((add) => [add.item, add.count]),
+      [["coin:bit", 50]],
+    );
+    // One line that puts an item on is enough for the merged add to be put on.
+    const twoCoats = parsedOrThrow(
+      withGear((doc) =>
+        doc.items.startingGear.push({
+          id: "tailor",
+          label: "Tailor",
+          lines: [{ item: "outfitter/leather-coat" }, { item: "outfitter/leather-coat", equip: true }],
+        }),
+      ),
+    );
+    const coats = resolveRulesetStartingGear(twoCoats, book, { gear: "tailor", choices: [], picks: {} });
+    assert.ok(coats.ok);
+    assert.deepEqual(
+      coats.adds.map((add) => [add.item, add.count, add.equip ?? false]),
+      [["outfitter/leather-coat", 2, true]],
+    );
   }
 
   // ── The route ──
@@ -309,6 +368,9 @@ try {
     assert.deepEqual(juno.json().taken.juno, ["pilgrim"]);
     const stranger = await take({ chatId, holder: "Mallory", selection: { gear: "pilgrim", choices: [], picks: {} } });
     assert.equal(stranger.json().reason, "unknown-holder");
+    // The player's own card names the player's own bag, which has taken a background's gear.
+    const ada = await take({ chatId, holder: "Ada", selection: { gear: "pilgrim", choices: [], picks: {} } });
+    assert.equal(ada.json().reason, "taken");
     // Never trusted: a pick that is not one of its list.
     const forged = await take({
       chatId,

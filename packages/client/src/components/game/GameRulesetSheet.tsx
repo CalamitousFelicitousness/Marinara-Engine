@@ -16,7 +16,7 @@ import { useTranslation as useUiTranslation } from "react-i18next";
 import {
   applyRulesetSheetOp,
   readResolvedSheetCommandTags,
-  createRulesetSheetEnvelope,
+  rulesetSheetStamp,
   defaultRulesetSheetBuild,
   evaluateRulesetSheet,
   readRulesetLive,
@@ -382,7 +382,8 @@ export function GameRulesetSheet({
   ].filter((entry) => entry.tier !== undefined && entry.tier !== untrainedTier);
 
   const startEditing = () => {
-    setDraft(createRulesetSheetEnvelope(definition, build));
+    // Labelled with this layout, and never older than the sheet already was.
+    setDraft({ v: rulesetSheetStamp(definition, envelope), build });
     setRestNotice(null);
   };
 

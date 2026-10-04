@@ -1613,6 +1613,176 @@
           "type": "integer",
           "minimum": 1
         },
+        "migrations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "from": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "steps": {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "rename": {
+                          "type": "string",
+                          "enum": [
+                            "ability",
+                            "skill",
+                            "save",
+                            "field"
+                          ]
+                        },
+                        "from": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "to": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "$comment": {}
+                      },
+                      "required": [
+                        "rename",
+                        "from",
+                        "to"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "route": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "by": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "cases": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "words": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 40
+                                },
+                                "minItems": 1,
+                                "maxItems": 8
+                              },
+                              "to": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "$comment": {}
+                            },
+                            "required": [
+                              "words",
+                              "to"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "minItems": 1,
+                          "maxItems": 32
+                        },
+                        "else": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "default": {
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "string",
+                              "maxLength": 200
+                            }
+                          ]
+                        },
+                        "$comment": {}
+                      },
+                      "required": [
+                        "route",
+                        "by",
+                        "cases",
+                        "else"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "routeLive": {
+                          "type": "string",
+                          "enum": [
+                            "pool",
+                            "track"
+                          ]
+                        },
+                        "from": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "cases": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 32
+                        },
+                        "else": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "$comment": {}
+                      },
+                      "required": [
+                        "routeLive",
+                        "from",
+                        "cases",
+                        "else"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "minItems": 1,
+                "maxItems": 64
+              },
+              "$comment": {}
+            },
+            "required": [
+              "from",
+              "steps"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 1,
+          "maxItems": 32
+        },
         "sections": {
           "type": "array",
           "items": {

@@ -839,7 +839,7 @@ export async function combatDirectorRoutes(
           const personaId = chat.personaId || setupPersonaId;
           const persona = personaId ? await createCharactersStorage(app.db).getPersona(personaId) : null;
           const cards = meta.gameCharacterCards;
-          const builds = rulesetSheetBuildsByName(cards, persona?.name ?? null);
+          const builds = rulesetSheetBuildsByName(definition, cards, persona?.name ?? null);
           const itemBook = rulesetReadsItems(definition)
             ? await loadGameInventoryItemBook(app.db, { metadata: meta, resolved }, "player")
             : undefined;

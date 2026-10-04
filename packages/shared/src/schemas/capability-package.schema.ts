@@ -599,7 +599,12 @@ const capabilityPackageManifestBaseSchema = z
 //        0 for one only a condition fills. Not a soft seam, for the same reason as 1.20 through 1.70: an
 //        Engine that cannot read these refuses the whole ruleset file, so a package that ships any of
 //        them declares 1.71. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 71 } as const);
+// 1.72: a ruleset's `sheet.migrations` say how a sheet stored on an older layout reads on this one
+//        (C6e-0): fields, abilities, skills and saves renamed, one field routed by another's text, and
+//        a live pool or track routed to the one the migrated sheet shows. Not a soft seam, for the same
+//        reason as 1.20 through 1.71: an Engine that cannot read it refuses the whole ruleset file, so a
+//        package that ships it declares 1.72. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 72 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

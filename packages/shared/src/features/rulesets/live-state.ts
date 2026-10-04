@@ -32,6 +32,7 @@ import {
   lookupStepTable,
   resolveRulesetValueRef,
   roundRulesetNumber,
+  rulesetSheetMigrationSteps,
   type RulesetSheetItem,
 } from "./sheet-math.js";
 
@@ -570,7 +571,59 @@ function keepValid<T>(value: unknown, schema: z.ZodType<T>, maxEntries: number):
 /** Everything usable in a stored blob, as a fresh object: every key that still validates on its
  *  own, whether or not the definition still declares it. A pool the sheet hides today may be back
  *  tomorrow, and dropping its value here would silently refill it. */
-function readStoredLiveState(stored: unknown): RulesetLiveState {
+function readStoredLiveState(
+  definition: RulesetDefinition,
+  build: RulesetSheetBuild,
+  stored: unknown,
+): RulesetLiveState {
+  return migrateLiveState(definition, build, readStoredLiveStateAsIs(stored));
+}
+
+/**
+ * A stored live state as the current layout reads it (`routeLive`, Capability API 1.72). Live state
+ * has no version of its own, so every step runs on every read, and each is safe to: the old key
+ * always goes, and its value moves only while the new key is not there yet. A writer reads through
+ * here too, so the first write stores the new layout; a value written since (a spent die, a rest
+ * that left the new key at its default and so absent) is never overwritten by the old one, because
+ * the old one is gone by then.
+ *
+ * The value goes to the one of the step's cases the (already migrated) sheet shows: a pool with a
+ * maximum above 0, a track the sheet does not hide. None or several, and it goes to `else`.
+ */
+function migrateLiveState(
+  definition: RulesetDefinition,
+  build: RulesetSheetBuild,
+  state: RulesetLiveState,
+): RulesetLiveState {
+  const steps = rulesetSheetMigrationSteps(definition).flatMap((step) => ("routeLive" in step ? [step] : []));
+  if (steps.length === 0) return state;
+  let shownPools: Set<string> | null = null;
+  for (const step of steps) {
+    const bag = step.routeLive === "pool" ? state.pools : state.tracks;
+    if (!bag || !Object.prototype.hasOwnProperty.call(bag, step.from)) continue;
+    const value = bag[step.from]!;
+    delete bag[step.from];
+    let shown: string[];
+    if (step.routeLive === "pool") {
+      shownPools ??= new Set(
+        listRulesetLivePools(definition, build)
+          .filter((spec) => spec.max > 0)
+          .map((spec) => spec.key),
+      );
+      shown = step.cases.filter((id) => shownPools!.has(id));
+    } else {
+      shown = step.cases.filter((id) => {
+        const track = definition.sheet.live.tracks.find((entry) => entry.id === id);
+        return !!track && !isRulesetItemHidden(track, build, definition);
+      });
+    }
+    const target = shown.length === 1 ? shown[0]! : step.else;
+    if (!Object.prototype.hasOwnProperty.call(bag, target)) (bag as Record<string, typeof value>)[target] = value;
+  }
+  return state;
+}
+
+function readStoredLiveStateAsIs(stored: unknown): RulesetLiveState {
   const source =
     stored && typeof stored === "object" && !Array.isArray(stored) ? (stored as Record<string, unknown>) : {};
   const state: RulesetLiveState = {};
@@ -710,7 +763,7 @@ export function readRulesetLive(
   build: RulesetSheetBuild,
   stored: unknown,
 ): ResolvedRulesetLive {
-  return resolveLive(definition, build, readStoredLiveState(stored));
+  return resolveLive(definition, build, readStoredLiveState(definition, build, stored));
 }
 
 /** Every number the sheet yields, with its live tracks and pools read as they stand in `stored`:
@@ -839,7 +892,7 @@ export function applyRulesetSheetOp(
   // `use` is turned into plain spends by `planRulesetUse` before it gets here: it needs the
   // ruleset's catalogs, which this function deliberately does not take.
   if (op.op === "use") return { ok: false, reason: "malformed" };
-  const next = readStoredLiveState(stored);
+  const next = readStoredLiveState(definition, build, stored);
   const resolved = resolveLive(definition, build, next);
 
   const setPool = (spec: RulesetLivePoolSpec, value: number, temp: number): void => {

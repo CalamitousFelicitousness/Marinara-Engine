@@ -2123,7 +2123,7 @@ All community lanes sit behind **Allow custom Agent imports**. Nothing executes,
 
 - Official ids are bare (`5e-2014`). Community ids are namespaced by source (`<owner>/<id>` for a repository, `local/<id>` for a file), so two authors' `v20` never collide and nothing can shadow an official ruleset.
 - Definitions are stored by id and version. An update adds a version and never rewrites one. A game keeps resolving the version it pinned; the same version arriving with different bytes is refused with a message telling the author to bump it.
-- A sheet is read tolerantly against its ruleset's current schema: unknown fields are kept, missing fields take defaults, out-of-range values are clamped on edit, never on read. There are no migration scripts.
+- A sheet is read tolerantly against its ruleset's current schema: unknown fields are kept, missing fields take defaults, out-of-range values are clamped on edit, never on read. A layout that moves values to new ids declares `sheet.migrations` (Capability API 1.72, C6e-0), applied on read: builds by `readRulesetSheetEnvelope` (gated by the stored `v`, every step copying, a stamp never below the stored `v` via `rulesetSheetStamp`), live state inside the one stored-live reader (`readStoredLiveState`), which readers and writers share.
 - A community `RulesetRef` carries its source URL. A shared setup file or a dormant sheet can therefore tell the recipient where the missing ruleset came from, instead of only that it is missing.
 
 Characters travel on their own. A card exported with a community sheet keeps it, a recipient without that ruleset keeps it dormant, and it becomes live the moment they add the author's repository.

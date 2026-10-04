@@ -215,7 +215,7 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
   const lootTables: Record<string, string> = {};
   /** Invented opponents written as sheets, and the tier each is held to once it is built. */
   const heldToTier = new Map<string, NonNullable<typeof combat.threat>["tiers"][number]>();
-  const builds = rulesetSheetBuildsByName(input.cards, input.playerName);
+  const builds = rulesetSheetBuildsByName(definition, input.cards, input.playerName);
   const combatants: RulesetCombatantInput[] = [];
   for (const member of input.party) {
     const key = normalizeCharacterLookupName(member.name);

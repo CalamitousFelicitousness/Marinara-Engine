@@ -218,7 +218,7 @@ import {
   type MusicEnemyTier,
   scoreAmbient,
   normalizeCharacterLookupName,
-  rulesetSheetEnvelopeSchema,
+  readRulesetSheetEnvelope,
   type RulesetCatalogEntriesById,
   type RulesetCatalogPayload,
   type RulesetLiveState,
@@ -8886,10 +8886,8 @@ function GameSurfaceComponent({
     const playerKey = inventoryPlayerName ? gameInventoryBagKey(inventoryPlayerName) : "";
     const player =
       (playerKey ? named.find((entry) => gameInventoryBagKey(entry.name) === playerKey) : undefined) ?? named[0];
-    const buildOf = (card: Record<string, unknown>) => {
-      const parsed = rulesetSheetEnvelopeSchema.safeParse(card.rulesetSheet);
-      return parsed.success ? parsed.data.build : undefined;
-    };
+    const buildOf = (card: Record<string, unknown>) =>
+      readRulesetSheetEnvelope(gameRuleset.definition, card.rulesetSheet)?.build;
     const playerBuild = player ? buildOf(player.card) : undefined;
     return {
       ...(playerBuild ? { player: playerBuild } : {}),
@@ -10393,8 +10391,9 @@ function GameSurfaceComponent({
     const { cards, index } = findStoredGameCard(cardTitle);
     // A stored sheet this version cannot read is kept as it is. Showing the ruleset's defaults in
     // its place would invite a Save that overwrites it, so the block says so and offers nothing.
-    const parsed = index >= 0 ? rulesetSheetEnvelopeSchema.safeParse(cards[index]?.rulesetSheet) : null;
-    if (parsed && !parsed.success && cards[index]?.rulesetSheet != null) return { status: "unreadable" };
+    // Read on this version's layout, migrated where the ruleset says how (Capability API 1.72).
+    const envelope = index >= 0 ? readRulesetSheetEnvelope(gameRuleset.definition, cards[index]?.rulesetSheet) : null;
+    if (index >= 0 && !envelope && cards[index]?.rulesetSheet != null) return { status: "unreadable" };
     // What this card holds, as the server reads it for checks and fights: the player's card the
     // player's bag, every other card its own.
     const items =
@@ -10413,7 +10412,7 @@ function GameSurfaceComponent({
       // picker leaves hidden entries out by.
       layers: gameRuleset.layers,
       layerOptions: gameRuleset.layerOptions,
-      envelope: parsed?.success ? parsed.data : undefined,
+      envelope: envelope ?? undefined,
       live: gameSnapshot?.rulesetLive?.[normalizeCharacterLookupName(cardTitle)],
       onLiveChange: (next) => handleRulesetLiveChange(cardTitle, next),
       // Where the ruleset has items, a rest may bring charges back to what is carried.

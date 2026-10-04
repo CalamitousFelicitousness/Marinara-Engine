@@ -243,6 +243,13 @@ const arena = (paint: Record<string, TacticalTerrain>) => {
     assert.equal(issue(71, slowed), null);
     const spare = doc((d) => d.combat.economy.budgets.push({ id: "spare", label: "Spare", per: "turn", count: 0 }));
     assert.match(issue(70, spare) ?? "", economyGate);
+    // And sheet migrations, 1.72 (C6e-0).
+    const migrating = doc((d) => {
+      d.sheet.version = 2;
+      d.sheet.migrations = [{ from: 1, steps: [{ rename: "field", from: "experience", to: "xp" }] }];
+    });
+    assert.match(issue(71, migrating) ?? "", /says how older sheets read on it requires .*capabilityApi 1\.72/);
+    assert.equal(issue(72, migrating), null);
   } finally {
     rmSync(dataDir, { recursive: true, force: true });
   }

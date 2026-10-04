@@ -1600,6 +1600,10 @@ export function getCapabilityPackageInstallIssue(
   if (!declaresApi(71) && (economy || emptyBudget)) {
     return "A ruleset whose conditions change the action economy, or with a budget of no count, requires schemaVersion 2 and capabilityApi 1.71 or newer";
   }
+  // Sheet migrations, 1.72 (C6e-0): a new key on the strict sheet.
+  if (!declaresApi(72) && plainRecord(ruleset?.sheet)?.migrations !== undefined) {
+    return "A ruleset whose sheet says how older sheets read on it requires schemaVersion 2 and capabilityApi 1.72 or newer";
+  }
   return null;
 }
 

@@ -2552,6 +2552,45 @@ So the loop while you are drafting is: edit, raise `version`, import, start a ne
 
 If you change the shape of the sheet (add, remove, or rename things), raise `sheet.version` too. Existing sheets are read tolerantly: values the new sheet does not know are kept, and missing ones take their defaults.
 
+### Moving values to new ids: `sheet.migrations`
+
+Adding things needs nothing more. When a new layout moves a value somewhere else (a renamed field, one level that becomes a level per class, one pool of hit dice that becomes one per die), say how in `sheet.migrations` (Capability API 1.72), so every character made on the old layout keeps its numbers: in the library, in games, in old saves, branches and checkpoints, and in imported cards.
+
+```json
+"migrations": [
+  {
+    "from": 3,
+    "steps": [
+      { "rename": "field", "from": "xp", "to": "experience" },
+      {
+        "route": "level",
+        "by": "class",
+        "cases": [
+          { "words": ["fighter"], "to": "level_fighter" },
+          { "words": ["wizard"], "to": "level_wizard" }
+        ],
+        "else": "level_other",
+        "default": 1
+      },
+      {
+        "routeLive": "pool",
+        "from": "hit_dice",
+        "cases": ["hit_dice_d6", "hit_dice_d8", "hit_dice_d10", "hit_dice_d12"],
+        "else": "hit_dice_d8"
+      }
+    ]
+  }
+]
+```
+
+- Each entry moves a stored sheet from version `from` to `from + 1`, and runs for every sheet stored at that version or older, in order. Never remove one once it has shipped: a sheet stored long ago still needs it. A version that only adds needs none.
+- `rename` (an `ability`, `skill`, `save` or `field`): the value moves to its new id. A skill or save takes its bonus along. A rename may continue one from an earlier entry; the import follows the chain to where it ends.
+- `route`: one field's value goes to the field that another field's text names. The first case whose words appear in `by`'s text, as whole words and ignoring case, wins when exactly one case does. None, or several ("Fighter 3 / Wizard 2", which one number cannot be split between without asking), and it goes to `else`. `default` stands in for a sheet that never stored the value. Give the target fields a default of 0, or a routed value is added to it.
+- `routeLive` (a `pool` or `track` of the live state): the stored value goes to the one of `cases` the migrated sheet shows (a pool with a maximum above 0, a track the sheet does not hide), else to `else`.
+- Every step copies: the old value stays where it was, so an older version of your ruleset still reads the sheet as it did. A step never overwrites a value already in its target.
+- The import refuses an entry at or above `sheet.version`, two entries from the same version, a step that writes to an id the sheet does not have, and a step that reads from an id the sheet still has (an id moved away is never used again, which is what makes every step safe to run again).
+- Sheets are migrated whenever they are read, and the new layout is stored at the next edit. Live state has no version of its own, so `routeLive` runs on every read: the old key is dropped and its value moves only while the new key is not there yet, so a value spent or rested since is never overwritten. A fight already in progress when the new version arrives still ends, as before.
+
 ## Sharing your ruleset
 
 **As a file.** Send the JSON file to a friend. They import it the same way you did.

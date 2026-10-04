@@ -800,10 +800,58 @@ const liveSchema = z
   })
   .strict();
 
+/**
+ * One step of a sheet migration (Capability API 1.72): how a sheet stored on an older layout reads on
+ * this one. Every step COPIES: what it read from stays where it was, so a sheet read by an older
+ * version of the ruleset still reads as it did.
+ * - `rename`: an ability, skill, save (with its bonus) or field that has a new id.
+ * - `route`: one field's value to the field the text of another names, as a single class level
+ *   goes to that class's own level: the first case whose words are in `by`'s text, as whole words
+ *   ignoring case, when exactly one case matches; `else` when none or several do. `default` stands in
+ *   for a value the sheet never stored.
+ * - `routeLive`: one live pool's or track's value to the one of `cases` the migrated sheet shows (a
+ *   maximum above 0), else to `else`. Live state has no version, so this runs on every read: the old
+ *   key always goes, and the value moves only while the new key is not there yet.
+ */
+const sheetMigrationWordsSchema = z.array(z.string().trim().min(1).max(40)).min(1).max(8);
+const sheetMigrationStepSchema = z.union([
+  z.object({ rename: z.enum(["ability", "skill", "save", "field"]), from: sheetId, to: sheetId }).strict(),
+  z
+    .object({
+      route: sheetId,
+      by: sheetId,
+      cases: z
+        .array(z.object({ words: sheetMigrationWordsSchema, to: sheetId }).strict())
+        .min(1)
+        .max(32),
+      else: sheetId,
+      default: z.union([z.number().finite(), z.string().max(200)]).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      routeLive: z.enum(["pool", "track"]),
+      from: sheetId,
+      cases: z.array(sheetId).min(1).max(32),
+      else: sheetId,
+    })
+    .strict(),
+]);
+const sheetMigrationSchema = z
+  .object({
+    /** The stored layout this moves on from, to `from + 1`. */
+    from: z.number().int().min(1),
+    steps: z.array(sheetMigrationStepSchema).min(1).max(64),
+  })
+  .strict();
+
 export const rulesetSheetSchema = z
   .object({
     /** Bumped by the author when the sheet's shape changes. Stored sheets record it as `v`. */
     version: z.number().int().min(1),
+    /** How a sheet stored on an older layout reads on this one (Capability API 1.72). A version that
+     *  only adds needs none. Never removed once shipped: a sheet stored long ago still needs them. */
+    migrations: z.array(sheetMigrationSchema).min(1).max(32).optional(),
     sections: z
       .array(
         z
@@ -3744,6 +3792,51 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
   unique(def.rests, ["rests"], "rest");
   const poolGroups = new Set(sheet.live.pools.map((pool) => pool.group).filter((group): group is string => !!group));
 
+  // Sheet migrations (1.72). Each hop once and below this version. What a step writes to is on this
+  // sheet, and what it reads from is not: an id moved away is never used again, which is what makes
+  // every step safe to run again. A rename is followed through the renames after it to where it ends.
+  if (sheet.migrations) {
+    const hopPath = (index: number) => ["sheet", "migrations", index];
+    const seenHops = new Set<number>();
+    sheet.migrations.forEach((hop, index) => {
+      if (hop.from >= sheet.version)
+        issue([...hopPath(index), "from"], `A migration moves on from a version below ${sheet.version}`);
+      if (seenHops.has(hop.from)) issue([...hopPath(index), "from"], `Duplicate migration from version ${hop.from}`);
+      seenHops.add(hop.from);
+    });
+    const current = { ability: abilities, skill: skills, save: saves, field: fields, pool: pools, track: tracks };
+    const ordered = sheet.migrations
+      .map((hop, index) => ({ hop, index }))
+      .sort((a, b) => a.hop.from - b.hop.from)
+      .flatMap(({ hop, index }) =>
+        hop.steps.map((step, stepIndex) => ({ step, path: [...hopPath(index), "steps", stepIndex] })),
+      );
+    ordered.forEach(({ step, path }, position) => {
+      if ("rename" in step) {
+        if (current[step.rename].has(step.from))
+          issue([...path, "from"], `"${step.from}" is still a ${step.rename} of this sheet`);
+        let end = step.to;
+        for (const later of ordered.slice(position + 1)) {
+          if ("rename" in later.step && later.step.rename === step.rename && later.step.from === end)
+            end = later.step.to;
+        }
+        if (!current[step.rename].has(end)) issue([...path, "to"], `"${end}" is not a ${step.rename} of this sheet`);
+      } else if ("route" in step) {
+        step.cases.forEach((entry, caseIndex) => {
+          if (!fields.has(entry.to)) issue([...path, "cases", caseIndex, "to"], `Unknown field "${entry.to}"`);
+        });
+        if (!fields.has(step.else)) issue([...path, "else"], `Unknown field "${step.else}"`);
+      } else {
+        const kind = step.routeLive;
+        if (current[kind].has(step.from)) issue([...path, "from"], `"${step.from}" is still a ${kind} of this sheet`);
+        step.cases.forEach((id, caseIndex) => {
+          if (!current[kind].has(id)) issue([...path, "cases", caseIndex], `Unknown ${kind} "${id}"`);
+        });
+        if (!current[kind].has(step.else)) issue([...path, "else"], `Unknown ${kind} "${step.else}"`);
+      }
+    });
+  }
+
   // A skill and a save may not share an id: a check request names either, and the sheet command
   // addresses both, so one name must mean one thing.
   for (const [index, save] of sheet.saves.entries()) {
@@ -6653,7 +6746,8 @@ export function parseRulesetCatalogFile(
 
 /** A sheet as it is stored on a card, a persona or a game. Deliberately loose: it is read
  *  tolerantly against the ruleset's CURRENT schema (unknown keys kept, missing keys defaulted,
- *  out-of-range values clamped on edit and never on read), so there are no migration scripts. */
+ *  out-of-range values clamped on edit and never on read). A layout that moves values to new ids
+ *  says how in `sheet.migrations`, which every read applies (`readRulesetSheetEnvelope`). */
 export const rulesetSheetBuildSchema = z
   .object({
     abilities: z.record(z.number().finite()).default({}),
@@ -6672,6 +6766,8 @@ export const rulesetSheetEnvelopeSchema = z
 
 export type RulesetSheetBuild = z.infer<typeof rulesetSheetBuildSchema>;
 export type RulesetSheetEnvelope = z.infer<typeof rulesetSheetEnvelopeSchema>;
+export type RulesetSheetMigration = z.infer<typeof sheetMigrationSchema>;
+export type RulesetSheetMigrationStep = z.infer<typeof sheetMigrationStepSchema>;
 
 // ── Sheets as they travel on a character card or a persona ──
 

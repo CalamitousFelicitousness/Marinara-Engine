@@ -15,6 +15,7 @@ import {
   type RulesetHideWhen,
   type RulesetSheetBuild,
   type RulesetSheetEnvelope,
+  type RulesetSheetMigrationStep,
   type RulesetUntrained,
   type RulesetValueRef,
 } from "../../schemas/ruleset.schema.js";
@@ -70,11 +71,94 @@ export function createRulesetSheetEnvelope(
 
 /** The copy a new game takes of a starting build: the stored sheet when it reads as one, else a
  *  blank default, so every party member has a sheet from the first turn. Always a deep copy — a
- *  game edits its own sheet and nothing in a game writes back to the library. */
+ *  game edits its own sheet and nothing in a game writes back to the library. Migrated to this
+ *  layout first, and never labelled older than it was: a sheet a newer version wrote, copied by an
+ *  older one, keeps its own number, so the newer version still knows what it holds. */
 export function copyRulesetSheetForGame(definition: RulesetDefinition, stored: unknown): RulesetSheetEnvelope {
+  const read = readRulesetSheetEnvelope(definition, stored);
+  if (!read) return createRulesetSheetEnvelope(definition);
+  return { v: read.v, build: structuredClone(read.build) };
+}
+
+// ── Migrations (Capability API 1.72) ──
+//
+// A ruleset that moves a sheet's values to new ids says how in `sheet.migrations`, and every read of a
+// stored sheet applies them here: a pure function, so nothing is written by reading and a rewind, a
+// branch, an import or a library sheet all read the same way. The next edit stores the new layout.
+// Every step COPIES, so what a step read from stays where it was and an older version of the ruleset
+// still reads the sheet as it always did. Live state's own step (`routeLive`) is applied where live
+// state is read (live-state.ts).
+
+/** The steps a sheet stored at version `v` still has to take, hop by hop in order. */
+export function rulesetSheetMigrationSteps(definition: RulesetDefinition, v = 1): RulesetSheetMigrationStep[] {
+  const version = definition.sheet.version;
+  return [...(definition.sheet.migrations ?? [])]
+    .filter((hop) => hop.from >= v && hop.from < version)
+    .sort((a, b) => a.from - b.from)
+    .flatMap((hop) => hop.steps);
+}
+
+/** Whether `phrase` is in `text` as whole words, ignoring case. */
+function namesPhrase(text: string, phrase: string): boolean {
+  const escaped = phrase
+    .trim()
+    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    .replace(/\s+/g, "\\s+");
+  return new RegExp(`(^|[^\\p{L}\\p{N}])${escaped}($|[^\\p{L}\\p{N}])`, "iu").test(text);
+}
+
+/** A build stored at version `v`, as the current layout reads it. The same object when nothing moves. */
+export function migrateRulesetSheetBuild(
+  definition: RulesetDefinition,
+  build: RulesetSheetBuild,
+  v: number,
+): RulesetSheetBuild {
+  const steps = rulesetSheetMigrationSteps(definition, v).filter((step) => !("routeLive" in step));
+  if (steps.length === 0) return build;
+  const next = structuredClone(build);
+  const own = (record: Record<string, unknown>, key: string) => Object.prototype.hasOwnProperty.call(record, key);
+  const copy = <T>(record: Record<string, T>, from: string, to: string) => {
+    if (own(record, from) && !own(record, to)) record[to] = record[from]!;
+  };
+  for (const step of steps) {
+    if ("rename" in step) {
+      if (step.rename === "field") copy(next.fields, step.from, step.to);
+      else if (step.rename === "ability") copy(next.abilities, step.from, step.to);
+      else {
+        copy(step.rename === "skill" ? next.skills : next.saves, step.from, step.to);
+        copy(next.bonuses, step.from, step.to);
+      }
+    } else if ("route" in step) {
+      const value = own(next.fields, step.route) ? next.fields[step.route] : step.default;
+      if (value === undefined) continue;
+      const by = next.fields[step.by];
+      const text = typeof by === "string" ? by : "";
+      const named = new Set(
+        step.cases.filter((entry) => entry.words.some((word) => namesPhrase(text, word))).map((entry) => entry.to),
+      );
+      // One class named is that class; none, or several ("Fighter 3 / Wizard 2"), is the fallback,
+      // since one number cannot be split between them without asking.
+      const target = named.size === 1 ? [...named][0]! : step.else;
+      if (!own(next.fields, target)) next.fields[target] = value;
+    }
+  }
+  return next;
+}
+
+/** A stored sheet as this version of its ruleset reads it, migrated to the current layout, or null
+ *  when it is not a sheet at all. A sheet stored by a NEWER version is read as it stands. */
+export function readRulesetSheetEnvelope(definition: RulesetDefinition, stored: unknown): RulesetSheetEnvelope | null {
   const parsed = rulesetSheetEnvelopeSchema.safeParse(stored);
-  if (!parsed.success) return createRulesetSheetEnvelope(definition);
-  return { v: definition.sheet.version, build: structuredClone(parsed.data.build) };
+  if (!parsed.success) return null;
+  const { v, build } = parsed.data;
+  if (v >= definition.sheet.version) return parsed.data;
+  return { ...parsed.data, v: definition.sheet.version, build: migrateRulesetSheetBuild(definition, build, v) };
+}
+
+/** The version a sheet written now is labelled with: this layout, never below what it already was. */
+export function rulesetSheetStamp(definition: RulesetDefinition, stored?: { v?: unknown } | null): number {
+  const before = typeof stored?.v === "number" && Number.isInteger(stored.v) ? stored.v : 0;
+  return Math.max(before, definition.sheet.version);
 }
 
 export interface EvaluatedRulesetSheet {

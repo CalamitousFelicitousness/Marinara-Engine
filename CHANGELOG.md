@@ -6,6 +6,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Changed
 
+- Game Mode no longer pastes each party member's whole ruleset sheet into the end-of-session, recruit and character-sheet prompts. The model never edits a sheet there, so the prompts are smaller and the sheets stay as they were.
+
 - The Characters sidebar has its full-width **New Folder** button again. Removed **Possible duplicates**.
 
 - The Chats sidebar status prompt now reads **What's up?** to fit its field, and Advanced Settings labels the multiplayer section **Multiplayer WIP** (#7051).

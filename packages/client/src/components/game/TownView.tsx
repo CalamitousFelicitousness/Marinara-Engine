@@ -142,7 +142,11 @@ export function TownView({
       // An image pack's whole-building sprite, fitted inside the lot; else roofs and a front.
       const sprite = building.kind === "home" ? "house" : "hall";
       const box = { w: building.w * T, h: building.h * T };
-      if (drawTile(ctx!, sprite, building.x * T, building.y * T, (hash(building.id) % 100) / 100, box)) return;
+      if (
+        drawTile.image &&
+        drawTile(ctx!, sprite, building.x * T, building.y * T, (hash(building.id) % 100) / 100, box)
+      )
+        return;
       const roof = building.kind === "home" ? "roof" : "hall";
       const roofRows = building.h - 1;
       for (let row = 0; row < building.h; row++) {
@@ -390,6 +394,7 @@ export function TownView({
         role="region"
         aria-label={t("game.town.region")}
         data-component="TownView"
+        data-tiles={drawTile.loading ? "loading" : drawTile.image ? "image" : "drawn"}
       >
         <canvas ref={canvasRef} className="absolute inset-0 h-full w-full [image-rendering:pixelated]" />
         <div className="absolute left-0 top-0" style={{ transform: `translate(${-resting.x}px, ${-resting.y}px)` }}>

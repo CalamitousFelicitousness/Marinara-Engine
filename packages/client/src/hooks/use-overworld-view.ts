@@ -145,12 +145,12 @@ export type OverworldTileDrawer = ((
 /** `own`: the game's own tiles (an Experience's map pack), drawn instead of the family's; "loading" while
  *  they are still on their way, so the family's are never fetched and drawn first. */
 export function useOverworldAtlas(family: string | undefined, own?: TilePack | null | "loading"): OverworldTileDrawer {
-  const { data: library } = useTilePackLibrary();
+  const { data: library, isPending: libraryPending } = useTilePackLibrary();
   const chosen = (family && library?.selection[family]) || null;
   // By version, so a pack saved again is drawn anew.
   const version = (chosen && library?.packs.find((pack) => pack.id === chosen)?.version) || null;
   const builtIn = Boolean(family && library?.builtIn.includes(family));
-  const { data: fetched } = useQuery({
+  const { data: fetched, isError: fetchFailed } = useQuery({
     queryKey: tilePackKeys.pack(family ?? "", chosen, version),
     queryFn: async () => {
       if (chosen) {
@@ -198,9 +198,9 @@ export function useOverworldAtlas(family: string | undefined, own?: TilePack | n
   // An image pack's tiles, copied out of its decoded sheets into one compact atlas (only the cells its
   // tiles use), so the sheets themselves are not kept. Until they are in, the drawer says it is loading
   // and nothing is drawn, never the code-drawn look first.
-  const imageKey = image
-    ? `${image.id}@${image.version}#${image.sheets.map((sheet) => sheet.png.length).join(",")}`
-    : null;
+  // The pack's id and version, and a fingerprint of its tiles and sheets: two packs that share an id and a
+  // version (two Experiences' map packs, a package installed again) are never drawn from one atlas.
+  const imageKey = image ? `${image.id}@${image.version}#${imageFingerprint(image)}` : null;
   const [compact, setCompact] = useState<{ key: string; atlas: ImageAtlas } | null>(null);
   useEffect(() => {
     if (!image || !imageKey) return;
@@ -257,10 +257,14 @@ export function useOverworldAtlas(family: string | undefined, own?: TilePack | n
     }) as OverworldTileDrawer;
     draw.resolution = 1;
     draw.image = false;
-    draw.loading = own === "loading";
+    // Still finding out which pack to draw with (the library, or a pack chosen from it), so an image pack
+    // is never preceded by the drawn look.
+    draw.loading =
+      own === "loading" ||
+      (!own && Boolean(family) && (libraryPending || (Boolean(chosen) && !fetched && !fetchFailed)));
     draw.sprite = () => null;
     return draw;
-  }, [atlas, image, own, ready]);
+  }, [atlas, chosen, family, fetchFailed, fetched, image, libraryPending, own, ready]);
 }
 
 /** Canvas pixels per unit for a view's base canvases (the ground and buildings drawn once): an image
@@ -271,6 +275,21 @@ export function overworldBaseResolution(drawTile: OverworldTileDrawer, units: nu
   if (!drawTile.image) return 1;
   const most = Math.sqrt(16_000_000 / Math.max(1, units));
   return Math.max(1, Math.min(drawTile.resolution, Math.ceil(shown), Math.floor(most)));
+}
+
+/** A short fingerprint of an image pack's tiles and sheets (FNV-1a over its tiles and a sample of each
+ *  sheet's data), so a pack changed under the same id and version is decoded again. */
+function imageFingerprint(pack: ImageTilePack): string {
+  let hash = 0x811c9dc5;
+  const mix = (text: string, step = 1) => {
+    for (let at = 0; at < text.length; at += step) hash = Math.imul(hash ^ text.charCodeAt(at), 0x01000193);
+  };
+  mix(JSON.stringify(pack.tiles));
+  for (const sheet of pack.sheets) {
+    mix(`${sheet.id}:${sheet.png.length}`);
+    mix(sheet.png, 97);
+  }
+  return (hash >>> 0).toString(36);
 }
 
 /** A width and height scaled to fit inside a box, keeping their proportions. */
@@ -309,6 +328,8 @@ async function buildImageAtlas(pack: ImageTilePack): Promise<ImageAtlas> {
       rowHeight = Math.max(rowHeight, h);
     });
   }
+  // Larger than a browser can hold on one canvas: drawn plain rather than invisibly.
+  if (y + rowHeight > 8192) return { canvas: null, tiles: {}, size };
   const canvas = document.createElement("canvas");
   canvas.width = ROW;
   canvas.height = Math.max(1, y + rowHeight);

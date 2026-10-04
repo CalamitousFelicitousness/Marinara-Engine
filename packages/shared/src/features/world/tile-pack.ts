@@ -23,6 +23,8 @@ export const TILE_PACK_MAX_VARIANTS = 8;
 /** The largest share file the Engine reads: a drawn pack, and an image pack. */
 export const TILE_PACK_MAX_BYTES = 1_000_000;
 export const TILE_PACK_IMAGE_MAX_BYTES = 6_000_000;
+/** A whole image pack's file: its sheets, and room for its names and tiles beside them. */
+export const TILE_PACK_IMAGE_FILE_MAX_BYTES = TILE_PACK_IMAGE_MAX_BYTES + 300_000;
 /** The most pixels an image pack's sheets hold together (what a browser decodes to draw them). */
 export const TILE_PACK_IMAGE_MAX_PIXELS = 16_777_216;
 /** An image pack's cells, in pixels: the fewest and the most. */
@@ -206,7 +208,7 @@ export function pngDataUrlCheck(dataUrl: string): { width: number; height: numbe
 export function parseTilePack(input: unknown): TilePackRead {
   let value = input;
   if (typeof input === "string") {
-    if (input.length > TILE_PACK_IMAGE_MAX_BYTES)
+    if (input.length > TILE_PACK_IMAGE_FILE_MAX_BYTES)
       return { ok: false, issues: ["The file is larger than a tile pack can be."] };
     try {
       value = JSON.parse(input);
@@ -229,6 +231,11 @@ export function parseTilePack(input: unknown): TilePackRead {
   for (const [id, variants] of Object.entries(pack.tiles)) {
     if (!KNOWN.has(id)) {
       notes.push(`"${id}" is not a tile the Engine draws, so it was left out.`);
+      continue;
+    }
+    // A whole building is a sprite, which only an image pack has; a drawn pack's roofs and fronts stand in.
+    if (WORLD_IMAGE_ONLY_TILE_IDS.includes(id as WorldTileId)) {
+      notes.push(`"${id}" is drawn only from an image pack, so it was left out.`);
       continue;
     }
     variants.forEach((rows, index) => {

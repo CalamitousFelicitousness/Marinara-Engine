@@ -107,6 +107,32 @@ try {
     /The sheets are larger than a tile pack can be/,
     "sheets over 6 MB",
   );
+  // Sheets just under the cap: the whole file (names and tiles beside them) is still read.
+  const near = pngBytes(48, 48, () => [1, 2, 3, 255]);
+  const base64For = (bytes: number) => Math.ceil(bytes / 3) * 4;
+  const padTo = TILE_PACK_IMAGE_MAX_BYTES - 100 - "data:image/png;base64,".length;
+  let pad = Math.floor((padTo * 3) / 4) - near.length - 20;
+  while (base64For(pngBytes(48, 48, () => [1, 2, 3, 255], pad).length) + 22 > TILE_PACK_IMAGE_MAX_BYTES) pad -= 3;
+  const full = imageTilePack({
+    sheets: [{ id: "town", png: pngDataUrl(pngBytes(48, 48, () => [1, 2, 3, 255], pad)), width: 48, height: 48 }],
+    tiles: { grass: [{ sheet: "town", x: 0, y: 0 }] },
+  });
+  const fullText = JSON.stringify(full, null, 2);
+  assert.ok(fullText.length > TILE_PACK_IMAGE_MAX_BYTES, `(the file is over the sheets' cap: ${fullText.length})`);
+  assert.ok(parseTilePack(fullText).ok, "a file whose sheets are within the cap reads");
+  // A drawn pack has no whole-building sprite: left out and noted.
+  const drawnHouse = parseTilePack({
+    tilePackVersion: 1,
+    id: "drawn-house",
+    name: "Drawn",
+    family: "fantasy",
+    version: 1,
+    palette: ["#336633"],
+    tiles: { house: [Array.from({ length: 16 }, () => "0".repeat(16))] },
+  });
+  assert.ok(
+    drawnHouse.ok && !("house" in drawnHouse.pack.tiles) && drawnHouse.notes.some((note) => /image pack/.test(note)),
+  );
   // A tile the Engine does not draw is left out and noted.
   const extra = parseTilePack(
     imageTilePack({ tiles: { ...imageTilePack().tiles, dragon: [{ sheet: "town", x: 0, y: 0 }] } }),
@@ -159,6 +185,25 @@ try {
     });
     assert.equal(imported.statusCode, 200, imported.body);
     assert.equal(imported.json().pack.id, "local/shared-art");
+    // A save that is no pack at all is refused, not an error.
+    assert.equal((await app.inject({ method: "POST", url: "/api/game-tile-packs", payload: {} })).statusCode, 400);
+    assert.equal((await save("text")).statusCode, 400);
+    // A PNG whose structure is whole but whose pixels do not decode (its data is not compressed image
+    // data) is refused where the Engine can decode sheets.
+    const undecodable = Buffer.from(bytes);
+    const idat = undecodable.indexOf(Buffer.from("IDAT"));
+    const idatLength = undecodable.readUInt32BE(idat - 4);
+    undecodable.fill(0x41, idat + 4, idat + 4 + idatLength);
+    const { crc32 } = await import("node:zlib");
+    undecodable.writeUInt32BE(crc32(undecodable.subarray(idat, idat + 4 + idatLength)) >>> 0, idat + 4 + idatLength);
+    assert.ok(!("issue" in pngDataUrlCheck(pngDataUrl(undecodable))), "(its structure is whole)");
+    const { getSharp } = await import("../../packages/server/src/services/image/sharp-runtime.js");
+    const sharpHere = await getSharp().then(
+      () => true,
+      () => false,
+    );
+    assert.ok(sharpHere || process.platform === "android", "(sharp decodes here)");
+    if (sharpHere) assert.equal((await save(withSheet(pngDataUrl(undecodable)))).statusCode, 400, "does not decode");
     // A damaged sheet is refused through the route as well.
     assert.equal((await save(withSheet(pngDataUrl(damaged)))).statusCode, 400);
     // Chosen for its family like any pack.
@@ -185,6 +230,10 @@ try {
       Array.from({ length: IMAGE_PACK_VERSIONS_KEPT }, (_, at) => at + 4),
       "the oldest versions dropped",
     );
+    // A version older than every one kept would be dropped at once: refused, and nothing is lost.
+    const tooOld = await save(imageTilePack({ version: 2, name: "Riverlands art again" }));
+    assert.equal(tooOld.statusCode, 409, tooOld.body);
+    assert.equal(tooOld.json().code, "tile_pack_version_too_old");
     // A drawn pack keeps every version.
     for (let version = 1; version <= IMAGE_PACK_VERSIONS_KEPT + 2; version++) await save({ ...drawn, version });
     const drawnVersions = (

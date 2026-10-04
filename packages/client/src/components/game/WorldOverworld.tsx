@@ -472,6 +472,7 @@ export function WorldOverworld({
         role="region"
         aria-label={t("game.overworld.region")}
         data-component="WorldOverworld"
+        data-tiles={drawTile.loading ? "loading" : drawTile.image ? "image" : "drawn"}
       >
         <canvas
           ref={canvasRef}

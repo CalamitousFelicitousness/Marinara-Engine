@@ -14,8 +14,9 @@ function crc32(bytes: Buffer): number {
   return (crc ^ 0xffffffff) >>> 0;
 }
 
-/** A PNG of `width` by `height`, each pixel's RGBA from `colour(x, y)`. */
-export function pngBytes(width: number, height: number, colour: (x: number, y: number) => number[]): Buffer {
+/** A PNG of `width` by `height`, each pixel's RGBA from `colour(x, y)`, with `pad` bytes of text in a
+ *  comment chunk (to make it exactly as large as a lane needs). */
+export function pngBytes(width: number, height: number, colour: (x: number, y: number) => number[], pad = 0): Buffer {
   const raw = Buffer.alloc((width * 4 + 1) * height);
   for (let y = 0; y < height; y++)
     for (let x = 0; x < width; x++) raw.set(colour(x, y), y * (width * 4 + 1) + 1 + x * 4);
@@ -35,6 +36,7 @@ export function pngBytes(width: number, height: number, colour: (x: number, y: n
   return Buffer.concat([
     Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
     chunk("IHDR", header),
+    ...(pad ? [chunk("tEXt", Buffer.concat([Buffer.from("Comment\0"), Buffer.alloc(pad, 97)]))] : []),
     chunk("IDAT", deflateSync(raw)),
     chunk("IEND", Buffer.alloc(0)),
   ]);

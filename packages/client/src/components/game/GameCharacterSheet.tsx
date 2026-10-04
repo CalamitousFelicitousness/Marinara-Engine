@@ -104,6 +104,9 @@ interface GameCharacterSheetProps {
   onAvatarSelect?: (file: File) => Promise<void> | void;
   isRegenerating?: boolean;
   ruleset?: GameCharacterSheetRuleset;
+  /** The game has a ruleset, even while it loads: the header then never shows the game card's own
+   *  level, which is from before the ruleset. */
+  rulesetPinned?: boolean;
 }
 
 interface GameCardDraft {
@@ -338,6 +341,7 @@ export function GameCharacterSheet({
   onAvatarSelect,
   isRegenerating = false,
   ruleset,
+  rulesetPinned = false,
 }: GameCharacterSheetProps) {
   const { t: localizeUi } = useUiTranslation();
   const backdropDismiss = useBackdropDismiss(onClose);
@@ -346,11 +350,13 @@ export function GameCharacterSheet({
   const headerLevel = useMemo(
     () =>
       !ruleset
-        ? card.level
+        ? rulesetPinned
+          ? null
+          : card.level
         : ruleset.status === "ok"
           ? rulesetSheetLevel(ruleset.definition, ruleset.envelope, ruleset.live, ruleset.items)
           : null,
-    [card.level, ruleset],
+    [card.level, ruleset, rulesetPinned],
   );
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);

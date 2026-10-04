@@ -34,18 +34,24 @@ export function rulesetPoolGroupLabel(id: string): string {
 }
 
 /** The character's level by the ruleset's sheet, for the card's header: its derived value named
- *  `level`, while the sheet shows it; null when the ruleset has none, so the header shows no level
- *  rather than a stale one the game card kept. */
+ *  `level`, or else its number field named `level`, while the sheet shows it; null when the ruleset has
+ *  neither, so the header shows no level rather than a stale one the game card kept. */
 export function rulesetSheetLevel(
   definition: RulesetDefinition,
   envelope: RulesetSheetEnvelope | undefined,
   live: RulesetLiveState | undefined,
   items: ReadonlyArray<RulesetSheetItem> | undefined,
 ): number | null {
-  const level = definition.sheet.derived.find((entry) => entry.id === "level");
   const build = envelope?.build ?? defaultRulesetSheetBuild(definition);
+  const derived = definition.sheet.derived.find((entry) => entry.id === "level");
+  // A ruleset may keep the level as a number typed on the sheet rather than worked out.
+  const field = derived
+    ? undefined
+    : definition.sheet.fields.find((entry) => entry.id === "level" && entry.type === "number");
+  const level = derived ?? field;
   if (!level || isRulesetItemHidden(level, build, definition)) return null;
   const resolved = readRulesetLive(definition, build, live);
-  const value = evaluateRulesetSheet(definition, build, items ? { ...resolved, items } : resolved).derived.level;
+  const evaluated = evaluateRulesetSheet(definition, build, items ? { ...resolved, items } : resolved);
+  const value = derived ? evaluated.derived.level : evaluated.numbers.level;
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }

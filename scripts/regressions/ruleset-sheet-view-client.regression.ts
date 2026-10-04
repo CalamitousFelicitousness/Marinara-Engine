@@ -72,6 +72,10 @@ const dawn = { ...night, fields: { ...night.fields, watch: "dawn" } };
   assert.equal(rulesetPoolGroupLabel("hit_dice"), "Hit dice");
   assert.equal(rulesetPoolGroupLabel("SLOTS"), "Slots");
   assert.equal(rulesetPoolGroupLabel("spell-slots"), "Spell slots");
+  // The catalog's cost line names a pool group the same way.
+  const { catalogMechanicsLabels } = await import("../../packages/client/src/lib/ruleset-catalog.js");
+  const grouped = parsed((doc) => (doc.sheet.live.pools[0].group = "hit_dice"));
+  assert.equal(catalogMechanicsLabels(grouped, { units: undefined } as never).pools.hit_dice, "Hit dice");
 }
 
 {
@@ -97,6 +101,20 @@ const dawn = { ...night, fields: { ...night.fields, watch: "dawn" } };
     });
   });
   assert.equal(rulesetSheetLevel(hidden, undefined, undefined, undefined), null, "a hidden level: none shown");
+  // A level typed on the sheet as a number field (the 5e 0.1.0 package's) is read too.
+  const typed = parsed((doc) => {
+    doc.sheet.fields.push({ id: "level", label: "Level", type: "number", min: 1, max: 20, default: 1 });
+  });
+  const typedBase = defaultRulesetSheetBuild(typed);
+  assert.equal(
+    rulesetSheetLevel(
+      typed,
+      { v: 1, build: { ...typedBase, fields: { ...typedBase.fields, level: 5 } } },
+      undefined,
+      undefined,
+    ),
+    5,
+  );
 }
 
 console.log(

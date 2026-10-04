@@ -686,6 +686,8 @@ test("phones keep Chat Settings, Help and the Tracker Panel launcher in the chat
     await menu.getByRole("button", { name: "Chat Settings", exact: true }).click();
     const sheet = settingsWindow(page);
     await expect(sheet).toBeVisible();
+    // The loading placeholder shares the sheet; measure the real settings, not the one being replaced.
+    await expect(sheet.locator("[data-chat-settings-section]").first()).toBeVisible();
     await expect(sheet).toHaveAttribute("data-presentation", "sheet");
     await expect(sheet.locator("[data-window-control]")).toHaveCount(1);
     await expect(sheet.getByRole("button", { name: "Help", exact: true })).toHaveCount(0);

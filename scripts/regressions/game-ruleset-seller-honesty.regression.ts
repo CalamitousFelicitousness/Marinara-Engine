@@ -264,6 +264,29 @@ try {
     assert.doesNotMatch(block, /Bitter tonic \d|Hexed ring|Widow's ring/);
     assert.match(block, /A dishonest seller buys a fake as what it seems; an honest one sees through it/);
   }
+  {
+    // An honest seller whose stock table lands on a fake does not keep it.
+    const honestStock = parsedOrThrow(
+      honesty((doc) => {
+        doc.items.market.sellers.find((seller: { id: string }) => seller.id === "chandler").stock = {
+          table: "fences_lot",
+        };
+      }),
+    );
+    const honestBook = rulesetItemBook(honestStock, entriesOf(honestStock));
+    const honestTown = rulesetMarketPlace(honestStock.items!.market!, "market town")!;
+    assert.deepEqual(rulesetMarketShelf(honestStock, honestBook, honestTown, day.key).stock.get("chandler"), []);
+    // A fake whose target the game no longer sells (here its price is gone) is not offered.
+    const costless = {
+      ...book,
+      entries: book.entries.map((entry) =>
+        entry.item === "kit/warming-tonic"
+          ? { ...entry, entry: { ...entry.entry, item: { ...entry.entry.item!, cost: undefined } } }
+          : entry,
+      ),
+    };
+    assert.deepEqual(rulesetMarketShelf(definition, costless, town, day.key).stock.get("fence"), []);
+  }
 
   const party = { members: ["Juno"] };
   const coins = (count: number): GameInventoryStack[] => [
@@ -310,6 +333,23 @@ try {
         [2, "kit/bitter-tonic"],
         [1, null],
       ],
+    );
+    // Given to somebody who holds the real thing, the fake keeps a stack of its own.
+    const realForJuno: GameInventoryStack[] = [
+      ...bought.stacks,
+      { id: "j1", name: "Warming tonic", item: "kit/warming-tonic", quantity: 1, holder: "Juno" },
+    ];
+    const handed = run('[inventory: action="give" item="Warming tonic" count="1" to="Juno"]', realForJuno);
+    assert.deepEqual(
+      handed.stacks
+        .filter((stack) => stack.holder === "Juno")
+        .map((stack) => [stack.quantity, stack.truly ?? null])
+        .sort(),
+      [
+        [1, null],
+        [1, "kit/bitter-tonic"],
+      ],
+      handed.content,
     );
     // Given one of two, the fake stays a fake in the other bag.
     const given = run('[inventory: action="give" item="Warming tonic" count="1" to="Juno"]', bought.stacks);

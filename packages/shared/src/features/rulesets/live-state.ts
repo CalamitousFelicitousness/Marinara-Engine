@@ -601,7 +601,6 @@ function migrateLiveState(
   const trackOf = (id: string) => definition.sheet.live.tracks.find((entry) => entry.id === id);
   let shownPools: Set<string> | null = null;
   for (const step of steps) {
-    const cases = [...new Set(step.cases)];
     // A wound track keeps marks and a plain one a number, so a track's value goes where the targets
     // keep theirs (the import holds the targets to one shape). A source of the other shape has nowhere
     // to go, and is dropped all the same.
@@ -622,9 +621,9 @@ function migrateLiveState(
           .filter((spec) => spec.max > 0)
           .map((spec) => spec.key),
       );
-      shown = cases.filter((id) => shownPools!.has(id));
+      shown = step.cases.filter((id) => shownPools!.has(id));
     } else {
-      shown = cases.filter((id) => {
+      shown = step.cases.filter((id) => {
         const track = trackOf(id);
         return !!track && !isRulesetItemHidden(track, build, definition);
       });

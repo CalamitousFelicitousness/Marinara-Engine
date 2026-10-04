@@ -20,6 +20,7 @@ import {
   checkWorldBrief,
   compileGameWorld,
   createConnectionSchema,
+  gameInventoryNameKey,
   parseWorldKit,
   worldCast,
   worldPlaceInForce,
@@ -255,9 +256,10 @@ try {
       });
       await turn(traded, "They browse the stalls.");
       const last = (await chats.listMessages(traded)).filter((message) => message.role === "assistant").at(-1)!;
-      assert.match(
-        String(JSON.parse(last.extra as string).gameMarketPlace),
-        new RegExp(`^world\\|${here.name.toLowerCase()}\\|`, "u"),
+      assert.ok(
+        String(JSON.parse(last.extra as string).gameMarketPlace).startsWith(
+          `world|${gameInventoryNameKey(here.name)}|`,
+        ),
         last.extra as string,
       );
     }

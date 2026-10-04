@@ -47,6 +47,7 @@ export function getChatControlDefaultLayout(
   bounds: WindowBounds,
   slot: number,
   size: { width: number; height: number },
+  rowOffset = 0,
 ): WindowLayout {
   const area = readChatWindowArea(bounds);
   // A right-side Tracker Panel floats over the chat; keep the bubbles clear of it.
@@ -55,7 +56,8 @@ export function getChatControlDefaultLayout(
       ? readCssPixels(area.chatRoot, TRACKER_CLEARANCE_VARIABLE)
       : 0;
   const right = Math.min(bounds.right - trackerClearance, area.right);
-  const bubble = getBubbleRowSlot(bounds, slot, { right, size: WINDOW_BUBBLE_SIZE_PX, gap: BUBBLE_ROW_GAP_PX });
+  const row = getBubbleRowSlot(bounds, slot, { right, size: WINDOW_BUBBLE_SIZE_PX, gap: BUBBLE_ROW_GAP_PX });
+  const bubble = { x: row.x, y: row.y + rowOffset };
   const geometry = placeWindowBesideBubble(size, bubble, bounds, { minWidth: 1, minHeight: 1 });
   return { ...geometry, pinned: false, locked: false, minimized: true, bubble };
 }
@@ -82,6 +84,8 @@ export interface ChatControlWindowProps {
   scroll?: boolean;
   /** Drawn on the bubble (a status dot, say). */
   bubbleBadge?: ReactNode;
+  /** Moves the default row down (px), below a bar the chat shows at its top (Game's tactical combat). */
+  rowOffset?: number;
   children: ReactNode;
 }
 
@@ -97,6 +101,7 @@ export function ChatControlWindow({
   helpTarget,
   scroll = true,
   bubbleBadge,
+  rowOffset = 0,
   children,
 }: ChatControlWindowProps) {
   const { t } = useTranslation();
@@ -114,10 +119,14 @@ export function ChatControlWindow({
       minimizable={{
         icon,
         label: title,
-        getPhoneBubble: (bounds) => getPhoneBubbleSlot(bounds, phoneSlot),
+        getPhoneBubble: (bounds) => {
+          const point = getPhoneBubbleSlot(bounds, phoneSlot);
+          return { x: point.x, y: point.y + rowOffset };
+        },
         bubbleBadge,
       }}
-      getDefaultLayout={(bounds) => getChatControlDefaultLayout(bounds, slot, { width, height })}
+      getDefaultLayout={(bounds) => getChatControlDefaultLayout(bounds, slot, { width, height }, rowOffset)}
+      defaultLayoutKey={String(rowOffset)}
       minWidth={200}
       minHeight={96}
       autoFocus={false}
@@ -143,10 +152,12 @@ export function ChatConnectedChatWindow({
   name,
   onSwitch,
   phoneSlot,
+  rowOffset,
 }: {
   name?: string | null;
   onSwitch: () => void;
   phoneSlot?: number;
+  rowOffset?: number;
 }) {
   const { t } = useTranslation();
   const label = name ? t("chat.toolbar.switchTo", { name }) : t("chat.toolbar.switchToConnected");
@@ -157,6 +168,7 @@ export function ChatConnectedChatWindow({
       icon={<ArrowRightLeft size={14} />}
       slot={0}
       phoneSlot={phoneSlot}
+      rowOffset={rowOffset}
       width={260}
       height={120}
       helpTarget="connected-chat"

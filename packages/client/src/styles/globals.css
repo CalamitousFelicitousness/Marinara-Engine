@@ -817,7 +817,12 @@
     cursor: grabbing;
   }
 
-  /* Phones draw bubbles like their toolbar buttons, in pixels so their default column lines up. */
+  /* A chat's own full-screen dialog (Game's session logs, say) covers its bubbles, as it covers the chat. */
+  body:has([data-chat-mode] [role="dialog"][aria-modal="true"]) .mari-window-bubble {
+    visibility: hidden;
+  }
+
+  /* Phones draw bubbles like their toolbar buttons, in pixels so their default row lines up. */
   .mari-window-bubble[data-presentation="sheet"] {
     width: var(--mari-window-bubble-size, 36px);
     height: var(--mari-window-bubble-size, 36px);

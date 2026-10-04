@@ -257,6 +257,10 @@ import {
   gameWorldFromMetadata,
   worldMadeByThisGenerator,
   worldFold,
+  worldSnapshot,
+  readWorldSnapshot,
+  gameWorldFromSnapshot,
+  type WorldSnapshot,
   lastGamePlace,
   carryWorldLedger,
   worldLedgerCarry,
@@ -1934,6 +1938,9 @@ const gameSetupConfigSchema = z.object({
     .optional(),
   worldKit: worldKitSchema.optional(),
   world: gameWorldSchema.optional(),
+  /** The world as it was made (W11), for a world another generator made: checked whole when read, kept
+   *  as the game's snapshot, and never stored in the game's metadata. */
+  worldSnapshot: z.unknown().optional(),
   /** The world's story script (worldgen W10): read here, checked against the world once it is read. */
   story: storyScriptSchema.optional(),
   /** Opaque config owned by that experience — persisted verbatim, never read by the host. */
@@ -6035,7 +6042,7 @@ function editIssues(game: Omit<GameWorld, "world" | "edits">, edits: unknown): s
 
 /** Why a world from an earlier generator cannot be edited or shared as a recipe (W11). */
 const OLD_GENERATOR_REFUSAL =
-  "This world was made by an earlier version of the world generator. It plays on as it was made, but it can no longer be edited or shared as a file.";
+  "This world was made by an earlier version of the world generator. It plays on as it was made, but it can no longer be edited.";
 
 export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions = {}) {
   registerSequentialGameTasks(app, [
@@ -6615,7 +6622,33 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     // rather than stored as a world nothing can read.
     const requestedWorld = parsedCreateGameInput.setupConfig.world;
     let gameWorld: (typeof requestedWorld & {}) | null = null;
-    if (requestedWorld) {
+    // A world another generator made comes with its snapshot (W11) and is played as it was made: its kit,
+    // recipe and edits are the snapshot's.
+    let sentSnapshot: WorldSnapshot | null = null;
+    if (requestedWorld && requestedWorld.generatorVersion !== WORLD_GENERATOR_VERSION) {
+      const read =
+        parsedCreateGameInput.setupConfig.worldSnapshot != null
+          ? readWorldSnapshot(parsedCreateGameInput.setupConfig.worldSnapshot)
+          : null;
+      if (read && !read.ok) {
+        return rejectGenerationOutput(reply, 400, {
+          error: `The world's snapshot does not read: ${read.issues[0]}`,
+          code: "world_invalid",
+        });
+      }
+      if (read?.ok) {
+        sentSnapshot = read.snapshot;
+        parsedCreateGameInput.setupConfig.worldKit = sentSnapshot.kit;
+        gameWorld = {
+          seed: sentSnapshot.seed,
+          generatorVersion: sentSnapshot.generatorVersion,
+          grounding: sentSnapshot.grounding,
+          brief: sentSnapshot.brief,
+          ...(sentSnapshot.edits ? { edits: sentSnapshot.edits } : {}),
+        };
+      }
+    }
+    if (requestedWorld && !sentSnapshot) {
       const kit = parsedCreateGameInput.setupConfig.worldKit;
       const checked = kit ? checkWorldBrief(kit, requestedWorld.brief) : null;
       if (!kit || !checked?.ok || requestedWorld.generatorVersion !== WORLD_GENERATOR_VERSION) {
@@ -6649,7 +6682,12 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     if (requestedStory != null) {
       const kit = parsedCreateGameInput.setupConfig.worldKit;
       const inputs = gameWorld && kit ? { kit, ...gameWorld, edits: gameWorld.edits } : null;
-      const checked = inputs ? checkStoryScript({ ...inputs, world: compileGameWorld(inputs) }, requestedStory) : null;
+      const storyWorld = sentSnapshot
+        ? gameWorldFromSnapshot(sentSnapshot)
+        : inputs
+          ? { ...inputs, world: compileGameWorld(inputs) }
+          : null;
+      const checked = storyWorld ? checkStoryScript(storyWorld, requestedStory) : null;
       if (!checked?.ok) {
         return rejectGenerationOutput(reply, 400, {
           error: checked ? `The world's story does not fit it: ${checked.issues[0]}` : "A story needs a world.",
@@ -6680,10 +6718,11 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         mapPack = read.pack;
       }
     }
+    const { worldSnapshot: _sentSnapshot, ...setupInput } = parsedCreateGameInput.setupConfig;
     const setupConfig: GameSetupConfig = {
-      ...parsedCreateGameInput.setupConfig,
+      ...setupInput,
       ...(gameRuleset ? { ruleset: gameRuleset } : {}),
-      // The setup's own copy carries the world as read, never the brief as sent.
+      // The setup's own copy carries the world as read, never the brief as sent, nor its snapshot.
       world: gameWorld ?? undefined,
       story: gameStory ?? undefined,
       gameWorldMapMode:
@@ -6780,7 +6819,8 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       snapshotConnection(setupConfig.audioConnectionId),
     ]);
     // The world is made once, here, and kept as the chat's snapshot (W11) before any reader can see it.
-    if (gameWorld && setupConfig.worldKit) {
+    if (sentSnapshot) await createGameWorldSnapshotsStorage(app.db).put(sessionChat.id, sentSnapshot);
+    else if (gameWorld && setupConfig.worldKit) {
       await saveGameWorldSnapshot(app.db, sessionChat.id, { gameWorld, gameWorldKit: setupConfig.worldKit });
     }
     await chats.updateMetadata(sessionChat.id, {
@@ -11161,18 +11201,19 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     if (!chat) return reply.status(404).send({ error: "Chat not found" });
     const game = chat.mode === "game" ? await loadGameWorld(app.db, chat.id, parseMeta(chat.metadata)) : null;
     if (!game) return reply.status(404).send({ error: "This game has no world." });
-    if (!worldMadeByThisGenerator(game)) return reply.status(409).send({ error: OLD_GENERATOR_REFUSAL });
     return worldFile(
       chat.name,
       game.kit,
       {
         seed: game.seed,
-        generatorVersion: WORLD_GENERATOR_VERSION,
+        generatorVersion: game.frozen?.generatorVersion ?? WORLD_GENERATOR_VERSION,
         grounding: game.grounding,
         brief: game.brief,
         ...(game.edits ? { edits: game.edits } : {}),
       },
       gameStoryFromMetadata(parseMeta(chat.metadata), game),
+      // The world as it was made (W11), so the file reads the same after the generator changes.
+      worldSnapshot(game),
     );
   });
 

@@ -20,6 +20,9 @@ import {
   type WorldBriefInput,
   type WorldBriefPlace,
   type WorldKit,
+  gameWorldFromSnapshot,
+  worldSnapshot,
+  type WorldSnapshot,
 } from "@marinara-engine/shared";
 import { ApiError, api } from "../../lib/api-client";
 import { downloadJsonFile } from "../../lib/download-json";
@@ -48,6 +51,9 @@ export interface WorldDraft {
   /** The world's story script (worldgen W10), kept on the same terms as the hand edits: while the seed,
    *  grounding and brief stay as they were, and it fits the world. */
   story?: StoryScript;
+  /** The world as it was made (W11), for a world from a file another generator made: kept on the same
+   *  terms, since changing the seed or brief makes a new world with this Engine's generator. */
+  snapshot?: WorldSnapshot;
 }
 
 const editsKey = (seed: number, grounding: WorldDraft["grounding"], brief: WorldBriefInput | null) =>
@@ -62,6 +68,7 @@ export function worldDraftFromWorld(
     edits?: WorldEdits;
   },
   story?: StoryScript,
+  snapshot?: WorldSnapshot,
 ): WorldDraft {
   return {
     seed: String(world.seed),
@@ -76,7 +83,10 @@ export function worldDraftFromWorld(
     brief: world.brief,
     ...(world.edits ? { edits: world.edits } : {}),
     ...(story ? { story } : {}),
-    ...(world.edits || story ? { editsFor: editsKey(world.seed, world.grounding ?? "expand", world.brief) } : {}),
+    ...(snapshot ? { snapshot } : {}),
+    ...(world.edits || story || snapshot
+      ? { editsFor: editsKey(world.seed, world.grounding ?? "expand", world.brief) }
+      : {}),
   };
 }
 
@@ -108,6 +118,8 @@ export function worldDraftConfig(
       };
       /** The world's story, when it fits the world as made. */
       story?: StoryScript;
+      /** The world as another generator made it (W11), played as it is. */
+      snapshot?: WorldSnapshot;
       /** What of the brief the kit no longer fits, left out or changed. */
       repairs: string[];
       /** The draft's hand edits no longer fit it (its seed or brief changed), so they are left out. */
@@ -118,6 +130,25 @@ export function worldDraftConfig(
   | { ok: false; issues: string[] } {
   const seed = parseExperienceSeed(draft.seed);
   if (seed === null) return { ok: false, issues: ["seed"] };
+  // A world another generator made is the snapshot's while the draft keeps its seed and brief (W11).
+  const snapshot = draft.snapshot;
+  if (snapshot && draft.editsFor === editsKey(seed, draft.grounding, draft.brief)) {
+    const storyFits = draft.story && checkStoryScript(gameWorldFromSnapshot(snapshot), draft.story).ok;
+    return {
+      ok: true,
+      world: {
+        seed: snapshot.seed,
+        generatorVersion: snapshot.generatorVersion,
+        grounding: snapshot.grounding,
+        brief: snapshot.brief,
+        ...(snapshot.edits ? { edits: snapshot.edits } : {}),
+      },
+      ...(storyFits ? { story: draft.story } : {}),
+      snapshot,
+      repairs: [],
+      ...(draft.story && !storyFits ? { storyLeftOut: true as const } : {}),
+    };
+  }
   const brief = draft.brief ?? {
     briefVersion: 1 as const,
     premise: kit.summary,
@@ -184,7 +215,11 @@ export function GameSetupWorldChooser({
 
   const config = draft ? worldDraftConfig(kit, draft) : null;
   // The same compile the game will run; it keeps its own cache of recent worlds by their inputs.
-  const preview = config?.ok ? compileGameWorld({ kit, ...config.world }) : null;
+  const preview = config?.ok
+    ? config.snapshot
+      ? gameWorldFromSnapshot(config.snapshot).world
+      : compileGameWorld({ kit, ...config.world })
+    : null;
 
   const edit = (change: (next: WorldDraft) => void) => {
     if (!draft) return;
@@ -317,7 +352,14 @@ export function GameSetupWorldChooser({
               onClick={() =>
                 config?.ok &&
                 downloadJsonFile(
-                  worldFile(`${kit.label} ${config.world.seed}`, kit, config.world, config.story),
+                  worldFile(
+                    `${kit.label} ${config.world.seed}`,
+                    kit,
+                    config.world,
+                    config.story,
+                    // The world as made (W11), so the file reads the same after the generator changes.
+                    config.snapshot ?? (preview ? worldSnapshot({ kit, ...config.world, world: preview }) : null),
+                  ),
                   `${`${kit.label} ${config.world.seed}`.replace(/[^\w.-]+/g, "_")}.world.json`,
                 )
               }

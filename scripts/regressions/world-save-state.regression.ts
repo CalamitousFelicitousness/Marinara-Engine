@@ -31,6 +31,7 @@ import {
   gameWorldFromMetadata,
   gameWorldFromSnapshot,
   parseWorldKit,
+  readWorldFile,
   readWorldSnapshot,
   worldCast,
   worldEditsSchema,
@@ -313,6 +314,7 @@ const { importSTChat } = await import("../../packages/server/src/services/import
 const { gameRepliesBefore } = await import("../../packages/server/src/services/game/game-market.service.js");
 const { gameRoutes } = await import("../../packages/server/src/routes/game.routes.js");
 const { chatsRoutes } = await import("../../packages/server/src/routes/chats.routes.js");
+const { gameWorldsRoutes } = await import("../../packages/server/src/routes/game-worlds.routes.js");
 const { generateRoutes } = await import("../../packages/server/src/routes/generate.routes.js");
 const prompts: string[] = [];
 const standIn = createServer(async (req, res) => {
@@ -334,6 +336,7 @@ const app = Fastify();
 app.decorate("db", db);
 await app.register(gameRoutes, { prefix: "/api/game" });
 await app.register(chatsRoutes, { prefix: "/api/chats" });
+await app.register(gameWorldsRoutes, { prefix: "/api/game-worlds" });
 await app.register(generateRoutes, { prefix: "/api/generate" });
 try {
   const parsed = parseWorldKit(WORLD_STARTER_KITS.find((each) => each.id === "high_fantasy")!);
@@ -436,12 +439,75 @@ try {
     ["GET", "world/edit", undefined],
     ["GET", `world/town?settlement=${settlement.id}`, undefined],
     ["PUT", "world/edits", { edits: { editsVersion: 1 } }],
-    ["GET", "world/file", undefined],
   ] as const) {
     const refused = await app.inject({ method, url: `/api/game/${chatId}/${path}`, payload });
     assert.equal(refused.statusCode, 409, `${path} is refused for a world from an earlier generator`);
     assert.match(refused.json().error, /earlier version of the world generator/);
   }
+  // Its file carries the snapshot (W11d): read back, it is the world as made, kit, recipe and all.
+  const oldFile = await app.inject({ method: "GET", url: `/api/game/${chatId}/world/file` });
+  assert.equal(oldFile.statusCode, 200, oldFile.body);
+  assert.equal(oldFile.json().world.generatorVersion, WORLD_GENERATOR_VERSION + 1, "the generator that made it");
+  const fileRead = readWorldFile(oldFile.body);
+  assert.ok(fileRead.ok && fileRead.snapshot, "read from its snapshot");
+  assert.deepEqual(gameWorldFromSnapshot(fileRead.snapshot).world, asMade.world.world, "the world as made");
+  // Into the library, readable and played as it was made, never edited.
+  const library = await app.inject({ method: "POST", url: "/api/game-worlds/import", payload: { text: oldFile.body } });
+  assert.equal(library.statusCode, 200, library.body);
+  const libraryId = library.json().world.id as string;
+  assert.equal(library.json().world.reads, true, "the library reads it");
+  const libraryEdit = await app.inject({ method: "GET", url: `/api/game-worlds/${libraryId}/world/edit` });
+  assert.equal(libraryEdit.statusCode, 409, "the library will not edit it");
+  const libraryFile = await app.inject({ method: "GET", url: `/api/game-worlds/${libraryId}/world/file` });
+  assert.deepEqual(libraryFile.json().snapshot, fileRead.snapshot, "the library's file keeps the snapshot");
+  // A new game from it is the world as made; its setup never keeps the snapshot in metadata.
+  const fromFile = await app.inject({
+    method: "POST",
+    url: "/api/game/create",
+    payload: {
+      name: "From the file",
+      setupConfig: {
+        genre: "Fantasy",
+        setting: "A river kingdom",
+        tone: "Grim",
+        difficulty: "normal",
+        rating: "sfw",
+        playerGoals: "",
+        gmMode: "standalone",
+        partyCharacterIds: [],
+        worldKit: fileRead.kit,
+        world: fileRead.world,
+        worldSnapshot: fileRead.snapshot,
+      },
+    },
+  });
+  assert.equal(fromFile.statusCode, 200, fromFile.body);
+  const fromFileId = fromFile.json().sessionChat.id as string;
+  assert.deepEqual((await get(fromFileId, "world")).world.world, asMade.world.world, "a new game in the world as made");
+  const fromFileMeta = JSON.parse(fromFile.json().sessionChat.metadata);
+  assert.equal(fromFileMeta.gameWorld.generatorVersion, WORLD_GENERATOR_VERSION + 1);
+  assert.ok(!JSON.stringify(fromFileMeta).includes('"worldSnapshot"'), "no snapshot in the game's metadata");
+  // Without its snapshot, such a world is refused, as before.
+  const bare = await app.inject({
+    method: "POST",
+    url: "/api/game/create",
+    payload: {
+      name: "Bare",
+      setupConfig: {
+        genre: "Fantasy",
+        setting: "x",
+        tone: "Grim",
+        difficulty: "normal",
+        rating: "sfw",
+        playerGoals: "",
+        gmMode: "standalone",
+        partyCharacterIds: [],
+        worldKit: fileRead.kit,
+        world: fileRead.world,
+      },
+    },
+  });
+  assert.equal(bare.statusCode, 400, "another generator's world with no snapshot");
   // The Game Master is told of the snapshot's people, not people the changed recipe would make.
   const named = asMade.people.find((person: { named: boolean }) => person.named)!;
   const turn = await app.inject({

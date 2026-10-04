@@ -19,6 +19,7 @@ import {
   checkWorldBrief,
   compileGameWorld,
   parseWorldKit,
+  WORLD_FILE_VERSION,
   readWorldFile,
   readWorldKitFile,
   worldFile,
@@ -71,7 +72,10 @@ try {
   assert.match(refused(readWorldFile(text(worldKitFile(kit)))), /setting kit file, not a world file/);
   assert.match(refused(readWorldKitFile(text(worldFile("x", kit, world)))), /world file, not a setting kit file/);
   assert.match(refused(readWorldFile(text({ format: "something" }))), /not a setting kit or world file/);
-  assert.match(refused(readWorldFile(text({ ...worldFile("x", kit, world), version: 2 }))), /newer version/);
+  assert.match(
+    refused(readWorldFile(text({ ...worldFile("x", kit, world), version: WORLD_FILE_VERSION + 1 }))),
+    /newer version/,
+  );
   assert.match(refused(readWorldKitFile(text({ ...worldKitFile(kit), kit: { ...kit, layers: [] } }))), /layers/);
   assert.match(
     refused(readWorldFile(text(worldFile("x", kit, { ...world, generatorVersion: WORLD_GENERATOR_VERSION + 1 })))),

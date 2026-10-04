@@ -86,6 +86,84 @@ export function hasLineOfSight(grid: TacticalGrid, a: TacticalCoord, b: Tactical
   return true;
 }
 
+/** How much of a target the ground between it and a strike hides (combat C6a-2). */
+export type CoverTier = "none" | "half" | "three-quarters" | "total";
+
+/** Whether the segment from (x0, y0) to (x1, y1) passes through the inside of cell (x, y): along an
+ *  edge or through a corner does not count. Cells span [x, x + 1] by [y, y + 1]. */
+function crossesCell(x0: number, y0: number, x1: number, y1: number, x: number, y: number): boolean {
+  let low = 0;
+  let high = 1;
+  for (const [start, delta, min] of [
+    [x0, x1 - x0, x],
+    [y0, y1 - y0, y],
+  ] as const) {
+    if (delta === 0) {
+      if (start <= min || start >= min + 1) return false;
+      continue;
+    }
+    const a = (min - start) / delta;
+    const b = (min + 1 - start) / delta;
+    low = Math.max(low, Math.min(a, b));
+    high = Math.min(high, Math.max(a, b));
+  }
+  return high - low > 1e-9;
+}
+
+/**
+ * The cover a target at `to` has against a strike from `from`, by what stands BETWEEN them (combat
+ * C6a-2). It is the DMG's optional grid rule, not the SRD's, which leaves cover to the table:
+ *
+ * - no sight at all is total cover;
+ * - otherwise, from the striker's best corner, one line to each corner of the target's cell. Three or
+ *   four lines through a wall or a mountain are three-quarters cover; any line through one, or through
+ *   low cover (a cell with a defense bonus, or a cell `screens` names, such as one a creature stands
+ *   in), is half. Low cover alone never gives more than half.
+ *
+ * The two end cells are never between, so what the target stands on is the caller's to add.
+ */
+export function coverTier(
+  grid: TacticalGrid,
+  from: TacticalCoord,
+  to: TacticalCoord,
+  screens?: ReadonlySet<string>,
+): CoverTier {
+  if (!hasLineOfSight(grid, from, to)) return "total";
+  const corners = (cell: TacticalCoord) =>
+    [
+      [cell.x, cell.y],
+      [cell.x + 1, cell.y],
+      [cell.x, cell.y + 1],
+      [cell.x + 1, cell.y + 1],
+    ] as const;
+  let best = { solid: 5, low: 5 };
+  for (const [cx, cy] of corners(from)) {
+    let solid = 0;
+    let low = 0;
+    for (const [tx, ty] of corners(to)) {
+      let line: "solid" | "low" | undefined;
+      for (let y = Math.min(from.y, to.y); y <= Math.max(from.y, to.y) && line !== "solid"; y++)
+        for (let x = Math.min(from.x, to.x); x <= Math.max(from.x, to.x); x++) {
+          if ((x === from.x && y === from.y) || (x === to.x && y === to.y) || !crossesCell(cx, cy, tx, ty, x, y))
+            continue;
+          if (blocksSight(grid, x, y)) {
+            line = "solid";
+            break;
+          }
+          if (terrainInfoAt(grid, x, y).defenseBonus > 0 || screens?.has(`${x},${y}`)) line = "low";
+        }
+      if (line === "solid") solid++;
+      else if (line === "low") low++;
+    }
+    if (solid < best.solid || (solid === best.solid && low < best.low)) best = { solid, low };
+  }
+  return best.solid >= 3 ? "three-quarters" : best.solid + best.low > 0 ? "half" : "none";
+}
+
+/** What cover takes off a native hit chance, on the evasion scale terrain uses. Total cover never gets
+ *  this far: a target out of sight is refused before anything is rolled. */
+const COVER_AVOID: Record<CoverTier, number> = { none: 0, half: 15, "three-quarters": 30, total: 30 };
+
 /** Whether a strike from `from` reaches `to`: within the range and in sight. */
 export function inReach(grid: TacticalGrid, from: TacticalCoord, to: TacticalCoord, min: number, max: number): boolean {
   const distance = manhattan(from, to);
@@ -157,10 +235,11 @@ export function hitChance(
   weather?: CombatWeather,
   traits: CombatAttackTraits = attacker,
 ): number {
+  // The ground under the defender and the cover between the two do not add up: the better one counts.
   const raw =
     80 +
     (effectiveSpeed(attacker) - effectiveSpeed(defender)) * 2 -
-    terrainAvoid(grid, defender) -
+    Math.max(terrainAvoid(grid, defender), COVER_AVOID[coverTier(grid, attacker, defender)]) -
     (defender.defending ? 10 : 0);
   return clamp(clamp(Math.round(raw), 30, 100) - weatherHitPenalty(weather, traits), 5, 100);
 }

@@ -76,6 +76,7 @@ import {
   rulesetContestCheck,
   rulesetCostSteps,
   rulesetCriticalFromAdjacent,
+  rulesetCoverBonus,
   rulesetDefenseAgainst,
   rulesetFreeStrike,
   rulesetGrantedStandard,
@@ -139,6 +140,8 @@ interface RulesetCombatContext {
    *  systems that keep such a track that is what being taken out IS, so the blow puts them down;
    *  without it a fight on one could never end. Read, and cleared, when the blow is finished. */
   overwhelmed: Set<string>;
+  /** The cell an area was aimed at in this step, which a save against it takes cover from. */
+  aimedAt?: RulesetCombatCell;
 }
 
 /** A working copy, plus a roller that counts its dice so the state's cursor stays exact. */
@@ -701,8 +704,11 @@ function rollSave(
   save: string,
   difficulty: number,
   sourceId?: string,
+  /** Where an action's own save comes from, which cover is read against. Never for a save that ends
+   *  a condition or keeps concentration: nothing is coming at them. */
+  from?: RulesetCombatCell | null,
 ): boolean {
-  const modifier = combatant.saves[save] ?? 0;
+  const own = combatant.saves[save] ?? 0;
   // A condition that fails this save takes the roll away entirely, rather than rolling and ignoring
   // the dice, so a log never shows a number that decided nothing.
   if (rulesetCombatFailsSave(ctx.definition, ctx.combat, combatant, save, ctx.state)) {
@@ -713,7 +719,7 @@ function rollSave(
       save,
       rolls: [],
       kept: 0,
-      modifier,
+      modifier: own,
       total: 0,
       difficulty,
       success: false,
@@ -722,6 +728,11 @@ function rollSave(
     spendConditions(ctx, combatant, "own-save");
     return false;
   }
+  // Cover helps the saves the ruleset names, said before the roll it changes (combat C6a-2).
+  const cover =
+    from && ctx.combat.cover?.saves?.includes(save) ? rulesetCoverBonus(ctx.combat, ctx.state, combatant, from) : 0;
+  if (cover > 0) ctx.events.push({ type: "cover", targetId: combatant.id, bonus: cover, save });
+  const modifier = own + cover;
   const mode = rulesetSaveMode(ctx.definition, ctx.combat, combatant, save, ctx.state);
   if (rulesetCombatIsPool(ctx.combat)) {
     // The save's number is its pool, and its difficulty the successes it needs, never fewer than one.
@@ -1212,6 +1223,7 @@ export function applyRulesetCombatChoice(
   }
 
   const { ctx, finish } = begin(definition, combat, state, roller);
+  if (area && choice.at) ctx.aimedAt = { x: choice.at.x, y: choice.at.y };
   const working = rulesetCombatant(ctx.state, actor.id)!;
   const workingTargets = targets.map((target) => rulesetCombatant(ctx.state, target.id)!);
 
@@ -1325,6 +1337,7 @@ export function applyRulesetCombatChoice(
     actorId: working.id,
     optionId: action.id,
     targetIds: workingTargets.map((target) => target.id),
+    ...(ctx.aimedAt ? { at: ctx.aimedAt } : {}),
     ...(choice.payWith !== undefined ? { payWith: choice.payWith } : {}),
     ...(styleId ? { style: styleId } : {}),
     ...(mode ? { mode: mode.id } : {}),
@@ -1928,6 +1941,11 @@ function resumeAction(ctx: RulesetCombatContext, resume: RulesetActionResume): v
   if (!actor || !action) return;
   if (resume.cancelled) return;
   if (!rulesetCombatStanding(actor)) return;
+  // A saved fight can come back through an import, so only a real cell of this board is taken.
+  const grid = ctx.state.board?.grid;
+  const at = resume.at;
+  const onBoard = (n: number, size: number) => Number.isInteger(n) && n >= 0 && n < size;
+  if (grid && at && onBoard(at.x, grid.width) && onBoard(at.y, grid.height)) ctx.aimedAt = { x: at.x, y: at.y };
   // What resumes lands on the fight as it stands NOW rather than as it stood when it was aimed, so
   // anybody the fight is already over for is left out, the same way a sequence leaves them out. A
   // ruleset with a dying rule keeps a character on the board at zero, so this is about an opponent
@@ -2257,6 +2275,9 @@ function resolveAction(
   }
   const steps = payWith ? rulesetCostSteps(ctx.definition, action, payWith) : 0;
   const extra = action.use?.perCostStep && steps > 0 ? { amount: action.use.perCostStep, times: steps } : undefined;
+  // Where the action's own saves take cover from: a burst from where it landed, anything else (a cone,
+  // a line, a spell aimed at somebody) from its maker.
+  const saveFrom = action.area?.shape === "burst" && ctx.aimedAt ? ctx.aimedAt : rulesetPositionOf(actor);
 
   // An ability that asks for no attack roll (an area everyone saves against, darts that simply hit)
   // rolls its dice ONCE and every target takes that number. One that rolls to hit each target rolls
@@ -2302,7 +2323,7 @@ function resolveAction(
       // against their defense as it stands now, which is what an answer at this moment changes. A
       // natural face decided it whatever the defense.
       const roll = held.roll;
-      const guarded = rulesetDefenseAgainst(ctx.definition, ctx.combat, ctx.state, target);
+      const guarded = rulesetDefenseAgainst(ctx.definition, ctx.combat, ctx.state, target, actor);
       const landsAt = roll.critical ? "critical" : "hit";
       // A pool's successes meet what the defense now asks, never fewer than one.
       const needed = pooled ? Math.max(1, guarded.defense) : guarded.defense;
@@ -2336,7 +2357,7 @@ function resolveAction(
         optionId: action.id,
       });
       // What the ground the target stands on is worth, said out loud before the roll it changed.
-      const guarded = rulesetDefenseAgainst(ctx.definition, ctx.combat, ctx.state, target);
+      const guarded = rulesetDefenseAgainst(ctx.definition, ctx.combat, ctx.state, target, actor);
       if (guarded.cover > 0) {
         ctx.events.push({ type: "cover", targetId: target.id, bonus: guarded.cover, defense: guarded.defense });
       }
@@ -2472,7 +2493,7 @@ function resolveAction(
 
     let saved = false;
     if (action.save) {
-      saved = rollSave(ctx, target, action.save.save, action.save.difficulty, actor.id);
+      saved = rollSave(ctx, target, action.save.save, action.save.difficulty, actor.id, saveFrom);
       if (saved && action.save.onSuccess === "negates") {
         spendUsed();
         continue;
@@ -2581,7 +2602,9 @@ function resolveAction(
         pool: first.pool,
       });
       (action.damage.plus ?? []).forEach((clause) => {
-        const own = clause.save ? rollSave(ctx, target, clause.save.save, clause.save.difficulty, actor.id) : false;
+        const own = clause.save
+          ? rollSave(ctx, target, clause.save.save, clause.save.difficulty, actor.id, saveFrom)
+          : false;
         if (own && clause.save?.onSuccess === "none") return;
         const clauseHalved = clause.save ? own : halved;
         const type = clause.type ?? action.damage?.type;
@@ -2616,7 +2639,9 @@ function resolveAction(
       });
       (action.damage.plus ?? []).forEach((clause, index) => {
         // A clause with a save of its own asks the TARGET for it, whatever the action already asked.
-        const own = clause.save ? rollSave(ctx, target, clause.save.save, clause.save.difficulty, actor.id) : false;
+        const own = clause.save
+          ? rollSave(ctx, target, clause.save.save, clause.save.difficulty, actor.id, saveFrom)
+          : false;
         if (own && clause.save?.onSuccess === "none") return;
         // Halved by its own save when it has one, and by the action's save-for-half when it does not.
         const clauseHalved = clause.save ? own : halved;

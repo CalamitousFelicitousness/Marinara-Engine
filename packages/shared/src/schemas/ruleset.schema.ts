@@ -3130,9 +3130,21 @@ const combatSchema = z
       })
       .strict()
       .optional(),
-    /** What standing behind something adds to the defense an attack is rolled against. */
+    /**
+     * What standing behind something adds to the defense an attack is rolled against (Capability API
+     * 1.69 for everything past `bonus`). Cover is graded by corner lines from the attacker (combat
+     * C6a-2): `bonus` is half cover's, and `threeQuarters` the bigger one when the ruleset has it. A
+     * target out of sight is total cover and cannot be aimed at, so it needs no number. `saves` names
+     * the saves cover helps too, against an action's own save, from where the action comes; `creatures`
+     * makes anybody standing in the way half cover, friend or foe.
+     */
     cover: z
-      .object({ bonus: z.number().int().min(0).max(100) })
+      .object({
+        bonus: z.number().int().min(0).max(100),
+        threeQuarters: z.number().int().min(0).max(100).optional(),
+        saves: z.array(sheetId).min(1).max(12).optional(),
+        creatures: z.literal(true).optional(),
+      })
       .strict()
       .optional(),
     /** The budget a strike at somebody leaving one's reach is paid out of. A ruleset that declares
@@ -4786,6 +4798,9 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         if (!saves.has(save)) issue(at("standardEffects", "dodge", "saves", index), `Unknown save "${save}"`);
       });
     }
+    combat.cover?.saves?.forEach((save, index) => {
+      if (!saves.has(save)) issue(at("cover", "saves", index), `Unknown save "${save}"`);
+    });
 
     const mapped = new Set<string>();
     combat.conditions?.forEach((entry, index) => {

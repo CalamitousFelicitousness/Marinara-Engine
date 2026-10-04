@@ -583,7 +583,12 @@ const capabilityPackageManifestBaseSchema = z
 //        says where the party is with `[place:]`. Not a soft seam, for the same reason as 1.20 through
 //        1.64: an Engine that cannot read these refuses the whole ruleset or catalog file, so a package
 //        that ships any of them declares 1.65. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 68 } as const);
+// 1.69: a ruleset's `combat.cover` may grade cover (`threeQuarters`), help saves (`saves`) and count
+//        creatures in the way (`creatures`); cover is read from the attacker's position by corner lines
+//        (combat C6a-2). Not a soft seam, for the same reason as 1.20 through 1.65: an Engine that cannot
+//        read these refuses the whole ruleset file, so a package that ships any of them declares 1.69.
+//        No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 69 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

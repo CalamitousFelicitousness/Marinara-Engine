@@ -1206,6 +1206,7 @@
   "game.combat.ruleset.event.contestLost": "{{actor}} tries {{label}} on {{target}}: {{roll}} with {{check}} against {{against}} with {{targetCheck}}, and fails.",
   "game.combat.ruleset.event.contestWon": "{{actor}} tries {{label}} on {{target}}: {{roll}} with {{check}} against {{against}} with {{targetCheck}}, and wins.",
   "game.combat.ruleset.event.cover": "{{target}} is under cover, which adds {{bonus}} for a defense of {{defense}}.",
+  "game.combat.ruleset.event.coverSave": "{{target}} is under cover, which adds {{bonus}} to their {{save}}.",
   "game.combat.ruleset.event.damage": "{{target}} takes {{amount}} {{type}} damage, and is on {{health}} of {{maxHealth}}.",
   "game.combat.ruleset.event.damageCritical": "A critical hit.",
   "game.combat.ruleset.event.damageFloor": "Raised to the weapon's floor of {{floor}}.",

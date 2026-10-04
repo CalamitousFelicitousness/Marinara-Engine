@@ -493,7 +493,8 @@ try {
     const vest = (effect: RulesetCatalogItem["worn"]) => held({ ...coat, worn: effect }, "Odd coat");
     const guarded = fight(ember, [vest({ modifiers: [{ to: "defense", flat: 2 }] })]);
     const plain = fight(ember, [vest(undefined)]);
-    const against = (state: RulesetEncounterState) => rulesetDefenseAgainst(ember, ember.combat!, state, ada(state));
+    const against = (state: RulesetEncounterState) =>
+      rulesetDefenseAgainst(ember, ember.combat!, state, ada(state), undefined);
     assert.equal(against(guarded).defense, against(plain).defense + 2, "on top of the coat's own guard");
     assert.deepEqual(against(guarded).guards, [{ condition: "Odd coat", item: true, value: 2 }]);
     const allowance = (state: RulesetEncounterState) =>

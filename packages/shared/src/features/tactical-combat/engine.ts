@@ -308,12 +308,12 @@ function forecastFrom(
   from: TacticalCoord,
   opts: { power?: number; element?: string; hitPenalty?: number; traits?: CombatAttackTraits } = {},
 ): { damage: number; hitChance: number; critChance: number } {
-  // Temporarily view the attacker as standing on `from` for terrain-independent math
-  // (attacker terrain doesn't affect its own outgoing hit/damage, so position only
-  // matters for range — computeDamage reads defender terrain from real coords).
+  // The attacker as standing on `from`: its own ground changes nothing it deals, but the cover between
+  // it and the defender does (combat C6a-2). computeDamage reads the defender's ground from its coords.
+  const placed = { ...attacker, x: from.x, y: from.y };
   const hc = Math.max(
     0,
-    hitChance(state.grid, attacker, defender, state.weather, opts.traits ?? attacker) - (opts.hitPenalty ?? 0),
+    hitChance(state.grid, placed, defender, state.weather, opts.traits ?? attacker) - (opts.hitPenalty ?? 0),
   );
   const cc = critChance(attacker, defender);
   const dmg = computeDamage({
@@ -328,7 +328,6 @@ function forecastFrom(
     power: opts.power,
     element: opts.element,
   });
-  void from;
   return { damage: dmg, hitChance: hc, critChance: cc };
 }
 
@@ -364,6 +363,8 @@ interface HitOptions {
   isCounter?: boolean;
   statusEffect?: string;
   cooldownForStatus?: number;
+  /** Where cover is measured from when it is not the attacker's cell: where an area lands. */
+  coverFrom?: TacticalCoord;
 }
 
 interface HitOutcome {
@@ -396,9 +397,10 @@ function resolveHit(
   const label = opts.skillName ? `${attacker.name}'s ${opts.skillName}` : `${attacker.name}`;
   const verb = opts.isCounter ? "counters" : opts.skillName ? "strikes" : "attacks";
 
+  const from = opts.coverFrom ? { ...attacker, x: opts.coverFrom.x, y: opts.coverFrom.y } : attacker;
   const hc = Math.max(
     0,
-    hitChance(state.grid, attacker, defender, state.weather, opts.traits ?? attacker) - (opts.hitPenalty ?? 0),
+    hitChance(state.grid, from, defender, state.weather, opts.traits ?? attacker) - (opts.hitPenalty ?? 0),
   );
   if (rng() * 100 >= hc) {
     events.push({
@@ -703,6 +705,7 @@ function performUnitAction(
               skillName: skill.name,
               statusEffect: skill.statusEffect,
               cooldownForStatus: skill.cooldown,
+              coverFrom: target,
             },
             events,
           );

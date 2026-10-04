@@ -41,6 +41,7 @@ import {
   rulesetAttackMode,
   rulesetCellDistance,
   rulesetCombatant,
+  rulesetDefenseAgainst,
   rulesetCombatConditions,
   rulesetCombatFailsSave,
   rulesetCombatOptions,
@@ -776,6 +777,83 @@ const cellsOf = (cells: Array<{ x: number; y: number }>) =>
   const swing = act(ember, rough, { actorId: "juno", optionId: axe.id, targetIds: ["ash"] }, 4, 3, 2, 2);
   assert.equal(eventsOf(swing.events, "cover").length, 0);
   assert.equal(firstOf(swing.events, "attack").defense, who(rough, "ash").defense);
+}
+
+// ── Cover by degrees (combat C6a-2): read from the attacker, on a save too, and somebody in the way ──
+{
+  const graded = parsedOrThrow(
+    variant(fiveEText, (doc) => {
+      doc.combat.cover = { bonus: 2, threeQuarters: 5, saves: ["dex_save"], creatures: true };
+    }),
+    "the 5e example with cover by degrees",
+  );
+  // Brenna in one corner of a room, Mote four across and two down, and the room drawn round them.
+  const room = (definition: RulesetDefinition, ...rows: string[]) =>
+    fight(definition, [fighter(), mote(), snag()], [12, 9, 8], {
+      grid: drawn(...rows),
+      placements: { brenna: { x: 0, y: 0 }, mote: { x: 4, y: 2 }, snag: { x: 6, y: 0 } },
+    });
+  const coverOf = (definition: RulesetDefinition, state: RulesetEncounterState) =>
+    rulesetDefenseAgainst(definition, definition.combat!, state, who(state, "mote"), who(state, "brenna")).cover;
+  assert.equal(coverOf(graded, room(graded, ".......", ".......", ".......")), 0, "nothing between them");
+  assert.equal(coverOf(graded, room(graded, ".......", "....#..", ".......")), 2, "a wall beside him: half");
+  assert.equal(coverOf(graded, room(graded, ".......", "...#...", "..#....")), 5, "two walls: three-quarters");
+  assert.equal(coverOf(fiveE, room(fiveE, ".......", "...#...", "..#....")), 2, "one number serves for both");
+  assert.equal(coverOf(graded, room(graded, ".......", ".......", "....r..")), 2, "his own ground, as before");
+  // From right beside him nothing is between them, whatever stands beside him.
+  const close = room(graded, ".......", "....#..", ".......");
+  Object.assign(who(close, "brenna"), { x: 3, y: 2 });
+  assert.equal(coverOf(graded, close), 0, "cover is read from where the attacker stands");
+  // Somebody standing in the way is half cover where the ruleset says so, and nothing where it does not.
+  const crowd = (definition: RulesetDefinition) => {
+    const state = room(definition, ".......", ".......", ".......");
+    Object.assign(who(state, "snag"), { x: 2, y: 1 });
+    return coverOf(definition, state);
+  };
+  assert.deepEqual([crowd(graded), crowd(fiveE)], [2, 0], "a Snag between them");
+  // The roll is made against it and the log says so.
+  const walled = room(graded, ".......", "...#...", "..#....");
+  const javelin = optionNamed(graded, walled, "brenna", "Javelin");
+  const thrown = act(graded, walled, { actorId: "brenna", optionId: javelin.id, targetIds: ["mote"] }, 10, 3);
+  assert.deepEqual(firstOf(thrown.events, "cover"), { type: "cover", targetId: "mote", bonus: 5, defense: 10 });
+  assert.equal(firstOf(thrown.events, "attack").defense, 10);
+
+  // A Dexterity save takes cover from where a burst lands, not from who threw it.
+  const blast = (...rows: string[]) => {
+    const state = fight(graded, [wizard(), mote()], [12, 9], {
+      grid: drawn(...rows),
+      placements: { corwin: { x: 6, y: 0 }, mote: { x: 4, y: 2 } },
+    });
+    const ball = optionNamed(graded, state, "corwin", "Fireball");
+    const step = act(
+      graded,
+      state,
+      { actorId: "corwin", optionId: ball.id, targetIds: [], at: { x: 0, y: 0 } },
+      ...[4, 4, 4, 4, 4, 4, 4, 4],
+      10,
+    );
+    const refused = eventsOf(step.events, "refused")[0];
+    assert.equal(refused, undefined, JSON.stringify(refused));
+    return { cover: eventsOf(step.events, "cover"), save: firstOf(step.events, "save") };
+  };
+  const behind = blast(".......", "....#..", ".......", ".......", ".......");
+  assert.deepEqual(behind.cover, [{ type: "cover", targetId: "mote", bonus: 2, save: "dex_save" }]);
+  assert.equal(behind.save.modifier, 2, "his save is two better");
+  const open = blast(".......", ".......", ".......", ".......", ".......");
+  assert.deepEqual(open.cover, [], "in the open it adds nothing");
+  assert.equal(open.save.modifier, 0);
+  // A wall between him and the caster, with nothing between him and where the ball lands, is no cover.
+  const fromCaster = blast(".......", ".....#.", ".......", ".......", ".......");
+  assert.deepEqual(fromCaster.cover, [], "cover is read from where the burst lands");
+  // And a save the ruleset does not name is not helped: cover names saves, never all of them.
+  assert.match(
+    refusalOf(
+      variant(fiveEText, (doc) => {
+        doc.combat.cover = { bonus: 2, saves: ["luck_save"] };
+      }),
+    ),
+    /Unknown save "luck_save"/,
+  );
 }
 
 // ── A wall between them stops a shot and says which rule it broke ──

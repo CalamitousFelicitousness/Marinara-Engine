@@ -1,0 +1,123 @@
+/**
+ * Cover by degrees (combat C6a-2): one corner-line test for every fight, and what the Engine's own
+ * fights make of it.
+ *
+ *   - `coverTier` is the DMG's optional grid rule: no sight is total cover; from the striker's best
+ *     corner, three or four lines through a wall or a mountain are three-quarters, and any line
+ *     through one, through low cover or through a screen (a creature) is half. Low cover alone is
+ *     never more than half, and the two end cells are never between them.
+ *   - Native fights: half cover is 15 off the hit chance and three-quarters 30, the evasion scale
+ *     terrain uses, and the target's own ground and the cover between do not add up. The forecast
+ *     reads the attacker where it would strike from, and an area hit reads cover from where it lands.
+ */
+import assert from "node:assert/strict";
+
+import {
+  applyAction,
+  coverTier,
+  createTacticalCombat,
+  forecastAttack,
+  type Combatant,
+  type TacticalGrid,
+  type TacticalTerrain,
+} from "../../packages/shared/src/index.js";
+
+const board = (width: number, height: number, paint: Record<string, TacticalTerrain> = {}): TacticalGrid => ({
+  width,
+  height,
+  tiles: Array.from({ length: height }, (_, y) =>
+    Array.from({ length: width }, (_, x) => paint[`${x},${y}`] ?? ("plains" as TacticalTerrain)),
+  ),
+});
+const from = { x: 0, y: 0 };
+const to = { x: 4, y: 2 };
+
+// ── The test itself ──
+{
+  assert.equal(coverTier(board(7, 5), from, to), "none", "nothing between them");
+  assert.equal(coverTier(board(7, 5, { "2,1": "wall" }), from, to), "total", "a wall on the line of sight");
+  assert.equal(coverTier(board(7, 5, { "4,1": "wall" }), from, to), "half", "a wall beside the target");
+  assert.equal(coverTier(board(7, 5, { "2,2": "wall", "3,1": "wall" }), from, to), "three-quarters");
+  assert.equal(coverTier(board(7, 5, { "2,1": "forest" }), from, to), "half", "trees between them");
+  assert.equal(
+    coverTier(board(7, 5, { "4,2": "forest" }), from, to),
+    "none",
+    "what the target stands on is not between",
+  );
+  assert.equal(coverTier(board(7, 5), from, to, new Set(["2,1"])), "half", "somebody standing between them");
+  // Low cover never adds up to more than half, however much of it there is.
+  const thicket: Record<string, TacticalTerrain> = {};
+  for (let x = 1; x < 4; x++) for (let y = 0; y < 3; y++) thicket[`${x},${y}`] = "forest";
+  assert.equal(coverTier(board(7, 5, thicket), from, to), "half", "a whole wood between them is still half");
+  // Neighbours: nothing is between them, even with walls all round.
+  assert.equal(coverTier(board(3, 3, { "1,0": "wall", "0,1": "wall" }), from, { x: 1, y: 1 }), "none");
+}
+
+// ── The Engine's own fights ──
+const unit = (id: string, side: Combatant["side"] = "player"): Combatant => ({
+  id,
+  name: id,
+  side,
+  hp: 500,
+  maxHp: 500,
+  attack: 30,
+  defense: 0,
+  speed: 10,
+  level: 1,
+  mp: 60,
+  maxMp: 60,
+});
+const arena = (paint: Record<string, TacticalTerrain>) => {
+  const s = createTacticalCombat([unit("archer")], [unit("foe", "enemy"), unit("other", "enemy")], {
+    seed: 8,
+    difficulty: "normal",
+  });
+  s.grid = board(9, 5, paint);
+  Object.assign(
+    s.units.find((u) => u.id === "archer")!,
+    { x: 0, y: 0, attackRange: { min: 1, max: 6 } },
+  );
+  Object.assign(
+    s.units.find((u) => u.id === "foe")!,
+    { x: 4, y: 2 },
+  );
+  Object.assign(
+    s.units.find((u) => u.id === "other")!,
+    { x: 8, y: 4 },
+  );
+  return s;
+};
+{
+  const chance = (paint: Record<string, TacticalTerrain>) => forecastAttack(arena(paint), "archer", "foe").hitChance;
+  const open = chance({});
+  assert.equal(chance({ "4,1": "wall" }), open - 15, "half cover takes 15 off");
+  assert.equal(chance({ "2,2": "wall", "3,1": "wall" }), open - 30, "three-quarters takes 30 off");
+  // The better of the ground and the cover counts, never both.
+  assert.equal(chance({ "4,2": "forest" }), open - 15, "trees underfoot");
+  assert.equal(chance({ "4,2": "forest", "4,1": "wall" }), open - 15, "trees underfoot and a wall beside");
+  // A blast reads cover from where it lands: a second foe beside where it lands, half hidden from the
+  // caster by a wall but with nothing between it and the blast, is struck every time.
+  const struck = (seed: number) => {
+    const fight = arena({ "5,2": "wall" });
+    fight.seed = seed;
+    const archer = fight.units.find((u) => u.id === "archer")!;
+    archer.skills = [{ name: "Blast", mpCost: 5, power: 20, type: "attack", range: 7, areaRadius: 2 }];
+    // Fast enough that only cover can make it miss: 100 in the open, 85 behind half cover.
+    archer.speed = 20;
+    Object.assign(
+      fight.units.find((u) => u.id === "other")!,
+      { x: 5, y: 3 },
+    );
+    const done = applyAction(fight, { type: "skill", unitId: "archer", skillName: "Blast", targetId: "foe" });
+    assert.ok(done.ok, done.ok ? "" : done.error);
+    const about = done.events.filter((event) => "targetId" in event && event.targetId === "other");
+    return about.length > 0 && !done.events.some((event) => event.kind === "miss" && / other /.test(event.text));
+  };
+  assert.equal(coverTier(board(9, 5, { "5,2": "wall" }), from, { x: 5, y: 3 }), "half", "the caster sees it covered");
+  assert.ok(
+    Array.from({ length: 30 }, (_, seed) => struck(seed)).every(Boolean),
+    "the blast never misses it for cover it does not have from where it lands",
+  );
+}
+
+console.log("Combat cover: corner lines grade cover, and the Engine's own fights take it off the hit chance.");

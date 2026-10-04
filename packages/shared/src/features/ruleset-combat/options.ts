@@ -47,6 +47,7 @@ import {
   rulesetPositionOf,
   rulesetReachableCells,
 } from "./grid.js";
+import { coverTier } from "../tactical-combat/math.js";
 import type {
   RulesetConditionBonus,
   RulesetCombatAction,
@@ -375,8 +376,40 @@ export function rulesetAreaTargets(
 }
 
 /**
- * What an attack against this combatant is rolled against: their own defense, plus what the ground
- * they stand on is worth when the ruleset says cover adds anything.
+ * What cover adds for this combatant against something coming from `from` (combat C6a-2): half
+ * cover's bonus, or three-quarters' when the ruleset has one, graded by corner lines from `from`. Ground
+ * worth something as cover under the target is always at least half, as it was before cover had
+ * degrees. Nothing without a board, a position or a cover rule.
+ */
+export function rulesetCoverBonus(
+  combat: RulesetCombat,
+  state: RulesetEncounterState,
+  target: RulesetCombatant,
+  from: RulesetCombatCell | null,
+): number {
+  const cover = combat.cover;
+  const grid = state.board?.grid;
+  const at = rulesetPositionOf(target);
+  if (!cover || !grid || !at) return 0;
+  // Somebody standing in the way is half cover, friend or foe, when the ruleset says so.
+  const screens = cover.creatures
+    ? new Set(
+        state.combatants
+          .filter((one) => one.id !== target.id && rulesetCombatStanding(one))
+          .flatMap((one) => {
+            const cell = rulesetPositionOf(one);
+            return cell ? [`${cell.x},${cell.y}`] : [];
+          }),
+      )
+    : undefined;
+  const tier = from ? coverTier(grid, from, at, screens) : "none";
+  if (tier === "three-quarters" || tier === "total") return cover.threeQuarters ?? cover.bonus;
+  return tier === "half" || rulesetCellCover(grid, at) > 0 ? cover.bonus : 0;
+}
+
+/**
+ * What an attack against this combatant is rolled against: their own defense, plus the cover between
+ * them and the one attacking, when the ruleset says cover adds anything.
  *
  * One answer, so a forecast and the roll that follows it can never disagree about the number.
  */
@@ -385,6 +418,7 @@ export function rulesetDefenseAgainst(
   combat: RulesetCombat,
   state: RulesetEncounterState,
   target: RulesetCombatant,
+  attacker: RulesetCombatant | undefined,
 ): { defense: number; cover: number; guards: RulesetConditionBonus[] } {
   // What the target's own conditions add. Defense is never rolled, so each is its flat number.
   const guards = rulesetConditionModifiers(definition, combat, target, "defense", state).map(
@@ -397,11 +431,8 @@ export function rulesetDefenseAgainst(
     }),
   );
   const defense = target.defense + guards.reduce((total, guard) => total + guard.value, 0);
-  const grid = state.board?.grid;
-  const at = rulesetPositionOf(target);
-  const bonus = combat.cover?.bonus ?? 0;
-  if (!grid || !at || bonus <= 0 || rulesetCellCover(grid, at) <= 0) return { defense, cover: 0, guards };
-  return { defense: defense + bonus, cover: bonus, guards };
+  const cover = rulesetCoverBonus(combat, state, target, rulesetPositionOf(attacker));
+  return { defense: defense + cover, cover, guards };
 }
 
 /** What conditions add to one roll, as a forecast reads it: the flat part, and every die with the
@@ -878,7 +909,7 @@ function forecastFor(
   if (action.toHit !== undefined && target) {
     // The same number the roll will be made against: the target's own defense plus whatever the
     // ground they stand on is worth, and the same roll mode the distance between them asks for.
-    const defense = rulesetDefenseAgainst(definition, combat, state, target).defense;
+    const defense = rulesetDefenseAgainst(definition, combat, state, target, actor).defense;
     const mode = rulesetAttackMode(definition, combat, actor, target, { state, optionId: action.id });
     const bonus = rulesetBonusDice(rulesetConditionModifiers(definition, combat, actor, "attacks", state));
     const chance = rulesetCombatIsPool(combat)
@@ -1370,7 +1401,8 @@ export function rulesetAnswerDeflects(
     .reduce((total, modifier) => total + (modifier.to === "defense" ? (modifier.flat ?? 0) : 0), 0);
   if (gain === 0) return null;
   if (held.roll.natural) return false;
-  return held.roll.total < rulesetDefenseAgainst(definition, combat, state, actor).defense + gain;
+  const attacker = window.resume?.kind === "action" ? rulesetCombatant(state, window.resume.actorId) : undefined;
+  return held.roll.total < rulesetDefenseAgainst(definition, combat, state, actor, attacker).defense + gain;
 }
 
 /** Which moment a window is, for the reactions that wait for one. A walk and the turn between two

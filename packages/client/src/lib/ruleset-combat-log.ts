@@ -559,7 +559,13 @@ export function rulesetCombatEventLine(
         label: event.label,
       });
     case "cover":
-      return key("cover", { target: names.combatant(event.targetId), bonus: event.bonus, defense: event.defense });
+      return event.save
+        ? key("coverSave", {
+            target: names.combatant(event.targetId),
+            bonus: event.bonus,
+            save: names.save(event.save),
+          })
+        : key("cover", { target: names.combatant(event.targetId), bonus: event.bonus, defense: event.defense });
     case "shot":
       return event.of !== undefined
         ? key("shotLoaded", { label: event.label, left: event.left, of: event.of })

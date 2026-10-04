@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Game Mode fights now have **cover by degrees**: a wall half hiding a target, or woods and ruins between, makes it harder to hit (half cover), and a target mostly behind walls is harder still (three-quarters cover). Cover is read from where the attacker stands, so stepping round an obstacle takes it away, and the attack menu shows the new chance before you commit. A ruleset can give three-quarters cover its own bonus, let cover help a saving throw against an area from where it lands, and count a creature in the way as cover (Capability API 1.69).
 - Game Mode fights now have **line of sight**: a ranged attack, a skill, a heal or an item thrown in a tactical fight needs a clear line to its target, so a wall or a mountain between them blocks it, and an area spreads only as far as it sees from where it lands. The board highlights only targets in sight, the enemy AI and reactions follow the same rule, and an archer with a wall in the way walks round it. Water no longer blocks sight in ruleset fights: a shot or a line spell crosses a river.
 
 - In a new game's setup, writing a setting kit or a world brief now counts the seconds and says a model can take a few minutes, so a long write no longer looks stuck. A repair note for a region given a size now says that only a settlement has one.

@@ -75,7 +75,7 @@ function buildAttackOptions(state: TacticalCombatState, unit: TacticalUnit): Att
     let counterRisk = 0;
     const survives = target.hp - fc.damage > 0;
     if (survives && inReach(state.grid, target, tile, target.attackRange.min, target.attackRange.max)) {
-      const back = forecastFrom(state, target, unit, { x: target.x, y: target.y }, { hitPenalty: 10 });
+      const back = forecastFrom(state, target, { ...unit, ...tile }, { x: target.x, y: target.y }, { hitPenalty: 10 });
       counterRisk = (back.hitChance / 100) * back.damage;
     }
 

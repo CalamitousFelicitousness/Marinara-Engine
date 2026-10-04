@@ -15212,6 +15212,25 @@
               "minimum": 0,
               "maximum": 100
             },
+            "threeQuarters": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "saves": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 40,
+                "pattern": "^[a-z][a-z0-9_]*$"
+              },
+              "minItems": 1,
+              "maxItems": 12
+            },
+            "creatures": {
+              "type": "boolean",
+              "const": true
+            },
             "$comment": {}
           },
           "required": [

@@ -150,6 +150,7 @@ export {
   rulesetContestHolder,
   rulesetCostSteps,
   rulesetCriticalFromAdjacent,
+  rulesetCoverBonus,
   rulesetDefenseAgainst,
   rulesetForbiddenTargets,
   rulesetFreeStrike,

@@ -632,6 +632,8 @@ export interface RulesetActionResume {
   actorId: string;
   optionId: string;
   targetIds: string[];
+  /** The cell an area was aimed at, which a save against it takes cover from (combat C6a-2). */
+  at?: RulesetCombatCell;
   payWith?: string;
   /** The initiative style it was made in, so a held attack picks up in the same one. */
   style?: string;
@@ -986,7 +988,9 @@ export type RulesetCombatEvent =
       outcome: RulesetCombatAttackOutcome;
     }
   /** What the ground the target stands on added to the defense the next attack is rolled against. */
-  | { type: "cover"; targetId: string; bonus: number; defense: number }
+  /** Cover between the target and an attack (`defense` is what it is rolled against now), or between
+   *  them and where a save's action came from (`save` is the save it helps). */
+  | { type: "cover"; targetId: string; bonus: number; defense?: number; save?: string }
   /** A spending blow whose dice were below the target's hardness: it landed and did nothing. */
   | { type: "hardness"; targetId: string; sourceId: string; label: string; hardness: number; dice: number }
   /** A weapon was fired: what it has loaded now (`of` its clip), or, without a clip, how many of

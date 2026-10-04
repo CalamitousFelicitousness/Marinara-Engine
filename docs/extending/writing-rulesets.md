@@ -1510,7 +1510,7 @@ a count of successes.** So nothing is renamed:
   and botch on are your `resolution`'s. The wound track your `resolution.penaltyFrom` names takes its
   penalty off the pool, as it does off a check.
 - `defense` is how many successes an attack needs, and never fewer than one. A condition's modifier
-  to `defense`, and `cover.bonus`, add to it.
+  to `defense`, and cover (`cover.bonus`, or `cover.threeQuarters`), add to it.
 - Each success past the ones needed adds one damage die. A botch misses, whatever it counted. There
   are no criticals: a strong hit is worth its extra dice.
 - A save's number is its pool and its difficulty the successes it needs. A contest throws each side's
@@ -1983,7 +1983,7 @@ number you wrote; the Engine supplies the board and nothing else.
 ```json
 "distance": { "label": "ft", "perCell": 5 },
 "ranged": { "long": "disadvantage", "adjacentFoe": "disadvantage" },
-"cover": { "bonus": 2 },
+"cover": { "bonus": 2, "threeQuarters": 5, "saves": ["dex_save"], "creatures": true },
 "opportunity": { "budget": "reaction" }
 ```
 
@@ -2090,9 +2090,25 @@ stop at anything solid.
 **Line of sight and cover.** A straight line of cells between the two of them: a wall or a mountain
 on it blocks a shot and stops an area spreading past it, and the target simply is not on the menu.
 Water is seen across: a shot crosses a river, and a line area carries on over it. The Engine's own
-fights use the same sight test. Ground
-that is worth something as cover adds `cover.bonus` to the defense the attack is rolled against, and
-the log says so. There is no three-quarter cover, no total cover and no elevation.
+fights use the same sight test.
+
+Cover is read from where the attacker stands, by the corner lines of the DMG's optional grid rule:
+from the attacker's best corner, one line to each corner of the target's cell. Three or four lines
+through a wall or a mountain are three-quarters cover; any line through one, or through ground worth
+something as cover (woods, ruins), is half; low ground alone is never more than half. A target the
+attacker cannot see at all has total cover and is not on the menu. A target standing on ground worth
+something as cover has at least half, as it always had.
+
+- `cover.bonus` is what half cover adds to the defense an attack is rolled against, and the log says
+  so.
+- `cover.threeQuarters` (Capability API 1.69) is what three-quarters adds; without it, `bonus`
+  serves for both.
+- `cover.saves` (1.69) names the saves cover helps too, against an action's own save (never a save
+  that ends a condition or keeps concentration): from where a burst lands, and from its maker for
+  anything else. The log says that too.
+- `cover.creatures` (1.69) makes anybody standing in the way half cover, friend or foe.
+
+There is no elevation yet.
 
 **Strikes at somebody walking away.** Declare `opportunity.budget` and, when a combatant walks out
 of the reach of a standing enemy who can act, has that budget and has something melee to strike

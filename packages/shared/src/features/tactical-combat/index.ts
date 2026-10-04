@@ -28,7 +28,15 @@ export { decideTacticalAction, runEnemyPhase, applyTacticalTurn } from "./ai.js"
 
 export { summarizeTacticalBattlefield } from "./battlefield-summary.js";
 
-export { deriveMovement, elementMultiplier, DIFFICULTY_DAMAGE_MULT, hasLineOfSight, inReach } from "./math.js";
+export {
+  coverTier,
+  deriveMovement,
+  elementMultiplier,
+  DIFFICULTY_DAMAGE_MULT,
+  hasLineOfSight,
+  inReach,
+  type CoverTier,
+} from "./math.js";
 export { CLASS_PROFILES, deriveClass, normalizeClass, type ClassProfile } from "./classes.js";
 export {
   TACTICAL_BATTLEFIELD_GENERATOR_VERSION,

@@ -1,6 +1,6 @@
 # Chat Settings Overview
 
-This guide covers the **Chat Settings** window, the place where you tune one chat on its own. It explains the basics you set here: chat name, connection, and saved setting bundles. It then points you to the deeper guides for everything else the panel holds.
+This guide covers the **Chat Settings** window, the place where you tune one chat on its own. It explains how the window works and the basics you set here: chat name, connection, and saved setting bundles. It then points you to the deeper guides for everything else the panel holds.
 
 Every setting in this panel applies to the current chat only. Changing it does not affect your other chats.
 
@@ -14,7 +14,7 @@ You open Chat Settings from inside an open chat.
 
 When you create a brand new chat, Chat Settings opens automatically so you can set it up right away.
 
-## Moving, pinning and locking the window
+## The Chat Settings window
 
 On a computer, Chat Settings is a window that floats over the chat. Its contents rearrange to fit its size.
 
@@ -24,16 +24,17 @@ On a computer, Chat Settings is a window that floats over the chat. Its contents
 - **Lock** (the padlock button) stops the window from moving or resizing until you unlock it.
 - **Close** (the X button) closes the window.
 
-The window stays inside the chat area, even when you resize the browser or open a sidebar. Each chat remembers its own window layout: where Chat Settings and the Trackers window sit, their sizes, pin and lock, and which sections are popped out. A settings profile saves this layout too (see [Settings Profiles](#settings-profiles)).
+The window stays inside the chat area, even when you resize the browser or open a sidebar.
 
-Two controls sit at the top of the window:
+The top of the window holds a tracker switch and **Reset View**:
 
-- **Tracker Panel** shows or hides the Tracker Panel beside a Roleplay chat. It appears in Roleplay chats when the Tracker Panel is turned on in **Settings → Appearance** and the chat uses agents or Advanced Memory.
-- **Reset View** puts the window back where it started, unpinned and unlocked, and returns every popped-out section.
+- **Tracker Panel** shows or hides the Tracker Panel beside a Roleplay chat. It appears when the Tracker Panel is turned on in **Settings → Appearance** and the chat uses agents or Advanced Memory.
+- **Tracker window** shows or hides the **Trackers** window instead. It appears when the Tracker Panel is turned off in **Settings → Appearance** and the Roleplay chat uses agents. See [The Trackers window](../roleplay/hud-and-trackers.md#the-trackers-window).
+- **Reset View** puts every window of the chat back where it started. Chat Settings is unpinned and unlocked again, popped-out sections go back, the chat's control windows shrink back to their buttons in their starting row, and a closed Trackers window opens again.
 
 The **?** button beside the **Chat Settings** title opens the chat's Help layout, which labels each part of the chat. On a phone, Help stays in **More options**, or **Game actions** in a Game. You can hide it with **Hide chat Help button** in **Settings → General → App Behavior**.
 
-On a phone, Chat Settings opens as a full-width panel instead of a window.
+On a phone, Chat Settings opens as a sheet instead of a window.
 
 ## Popping a section out into its own window
 
@@ -45,6 +46,24 @@ On a computer, any section of Chat Settings can become its own window, so you ca
 - To put it back, click its **X** button (**Put back in Chat Settings**), or drag its title bar onto the Chat Settings window.
 
 The drawers of the Trackers window pop out the same way. See [The Trackers window](../roleplay/hud-and-trackers.md#the-trackers-window).
+
+<!-- TODO(#7034 mobile): what popped-out sections do on a phone -->
+
+## Control windows and their buttons
+
+On a computer, some of the chat's controls are small windows that shrink to buttons: a Game's **Game controls** (Retry and the storyboard controls), **Session**, **Volume** and **Game Assets**, the **Connected chat** switch in every mode, and the controls that agent packages add to a Roleplay chat. **Calls** in a Conversation stays a normal button.
+
+- The buttons start in a row at the top right of the chat. Click one, or press Enter or Space on it, to open its window beside it. A pinned or locked window opens where you left it.
+- Drag a button anywhere in the chat. It snaps into line with the other buttons; hold Alt while you drag to place it freely. The arrow keys move a focused button.
+- The window has minimize, pin, lock and close buttons. Minimize, close, Escape and, while it is unpinned, a click elsewhere shrink it back to its button.
+
+<!-- TODO(#7034 mobile): control buttons on a phone -->
+
+## Each chat keeps its own window layout
+
+Each chat remembers its own window layout: where each window sits and how big it is, whether it is pinned or locked, which sections are popped out, and which control windows are open and where their buttons sit. When you switch chats, the windows move to that chat's layout.
+
+A settings profile saves this layout too (see [Settings Profiles](#settings-profiles)). **Reset View** returns the chat to the starting layout.
 
 ## Chat Name
 
@@ -99,6 +118,18 @@ Three things are worth knowing.
 - This is the same storage `{{setvar}}` uses. A value set by a prompt section or a lorebook entry shows up here as a row you can edit, and such an entry overwrites the value you typed if it uses the same name.
 
 For everything else you can write in double braces, see [Prompt Macros](../prompts/macros.md).
+
+## Chat tools in Chat Settings
+
+The chat's tools are sections of Chat Settings too. Which ones you see depends on the chat mode.
+
+- **Search messages** sits at the top, under the settings profile. Type words or a `#` and a message number to find a message. Its **Bookmarks** and **Trash** tabs list bookmarked and deleted messages. It is not in Game chats.
+- **Chat Branches**, under **Chat Name**, switches, renames, exports and imports this chat's branches. See [Chat Branches](branches.md).
+- **Chat Summary**, under **Lorebooks**, reviews and creates summaries of a Roleplay chat. See [Memory Recall and Chat Summaries](../agents/memory.md#chat-summary-roleplay).
+- **Active Context**, under **Chat Summary**, shows the lorebooks and context active in this chat. See [Token Budgets and Recursion](../lorebooks/token-budgets.md#seeing-skipped-entries-in-active-context).
+- **Agent activity**, at the top of **Agents** in a Roleplay chat that uses agents or Advanced Memory, shows what the chat's agents did. See [Agent activity](../roleplay/getting-started.md#agent-activity).
+- **Author's Notes**, under **Agents**, holds a note the AI reads on every turn of a Roleplay chat. See [Author's Notes](../roleplay/getting-started.md#authors-notes).
+- **Gallery** holds the chat's images and videos. See [Scene Backgrounds and the Gallery](../media/scene-backgrounds.md).
 
 ## Other sections in the panel
 

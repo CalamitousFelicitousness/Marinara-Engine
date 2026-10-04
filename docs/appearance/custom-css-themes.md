@@ -94,34 +94,47 @@ Custom theme CSS is cleaned before it runs, for safety. Styles that load a file 
 
 ## Styling chat windows and drawers
 
-**Chat Settings** opens as a window you can move and resize, and its sections are collapsible drawers. A drawer can pop out into a window of its own. On a computer, the chat's other top controls (Game's Session, Volume, Assets and Game controls, the connected chat, Roleplay's package toolbars) are small windows that minimize to buttons, called bubbles, which you can drag anywhere. Every chat window, bubble and drawer uses the same class names, data attributes and variables, so one theme can restyle them all at once.
+On a computer, **Chat Settings**, the **Trackers** window, popped-out sections and the chat's control windows (a Game's Game controls, Session, Volume and Game Assets, the connected chat, and Roleplay package controls) are windows you can move and resize. Their sections are collapsible drawers, and a control window shrinks to a button, called a bubble, that you can place anywhere. On a phone, Chat Settings opens as a sheet. All of them share the class names, data attributes and variables below, so one theme can restyle them all at once. Your theme's rules win over the defaults without `!important`.
+
+### Classes
 
 | Part | Class |
 | --- | --- |
 | Window | `.mari-window` |
 | Title bar | `.mari-window__header` |
+| Title and its icon | `.mari-window__title-row` |
 | Title | `.mari-window__title` |
 | Minimize, pin, lock and close buttons | `.mari-window__controls` (each button is `.mari-window__control`) |
 | Window content | `.mari-window__body` |
 | Resize edges and corners | `.mari-window__resize-handle` |
 | Drawer | `.mari-drawer` |
-| Drawer header, title and content | `.mari-drawer__header`, `.mari-drawer__title`, `.mari-drawer__body` |
+| Drawer header and title | `.mari-drawer__header`, `.mari-drawer__title` |
+| Drawer icon, count badge and **?** | `.mari-drawer__icon`, `.mari-drawer__count`, `.mari-drawer__help` |
 | A collapsed drawer's preview (a tracker's small widget) | `.mari-drawer__summary` |
-| A drawer's pop-out button | `.mari-drawer__popout` |
+| Drawer buttons beside the arrow, and the pop-out button | `.mari-drawer__actions`, `.mari-drawer__popout` |
+| Drawer arrow and content | `.mari-drawer__arrow`, `.mari-drawer__body` |
 | The preview that follows the pointer while a drawer is dragged out | `.mari-drawer-ghost` |
 | A minimized window's button (bubble) | `.mari-window-bubble` |
 | The line shown while a dragged bubble lines up with another | `.mari-window-snap-guide` |
 
-These data attributes describe each window or drawer:
+### Data attributes
 
-- `data-window` names the window, for example `data-window="chat-settings"` or `data-window="trackers"`.
-- `data-drawer` names the drawer, for example `data-drawer="chat-name"`. Some names start with the chat mode, such as `roleplay-agents` or `conversation-agents`.
+- `data-window` names a window and its bubble: `chat-settings`, `trackers`, the control windows `control:game`, `control:session`, `control:volume`, `control:assets`, `control:connected-chat` and `control:package:<package>`, and `drawer:<window>:<drawer>` for a popped-out drawer, for example `drawer:chat-settings:chat-name`.
+- `data-drawer` names a drawer, for example `chat-name`. Some names start with the chat mode, such as `roleplay-agents` or `conversation-agents`. Trackers use `tracker-world`, `tracker-persona`, `tracker-characters`, `tracker-quests`, `tracker-inventory`, `tracker-custom` and `agent-activity`.
+- `data-presentation` is `"window"`, or `"sheet"` for Chat Settings on a phone.
 - `data-pinned` and `data-locked` are `"true"` while the window is pinned or locked.
-- `data-detached` is `"true"` when a drawer is shown in its own window, on both that window and the drawer inside it. A popped-out drawer's window is named `data-window="drawer:<window>:<drawer>"`, for example `data-window="drawer:chat-settings:chat-name"`, and `data-drawer-host` names the window it came from.
-- `data-dragging` is `"true"` on a drawer while its title is dragged, and `data-drop-target` is `"true"` on a window while a popped-out drawer is held over it, ready to go back.
-- A bubble has the `data-window` of its window and `data-minimized="true"`, for example `.mari-window-bubble[data-window="control:volume"]`. Control windows are named `control:game`, `control:session`, `control:volume`, `control:assets`, `control:connected-chat` and `control:package:<package>`. `data-dragging` is `"true"` on a bubble while it is dragged.
+- `data-window-control` is `"minimize"`, `"pin"`, `"lock"` or `"close"` on each title bar button. A pinned or locked button also has `aria-pressed="true"`.
+- `data-edge` is `"n"`, `"s"`, `"e"`, `"w"`, `"ne"`, `"nw"`, `"se"` or `"sw"` on each resize handle.
+- An open drawer's header has `aria-expanded="true"`.
+- `data-drawer-control="pop-out"` marks a drawer's pop-out button.
+- `data-detached` is `"true"` on a popped-out drawer's window and on the drawer inside it, and `data-drawer-host` on that window names the window it came from.
+- `data-dragging` is `"true"` on a drawer while its title is dragged and on a bubble while it is dragged. `data-outside` is `"true"` on the drag preview once dropping it would pop the drawer out, and `data-drop-target` is `"true"` on a window while a popped-out drawer is held over it, ready to go back.
+- A bubble has `data-minimized="true"` and its window's `data-window`, for example `.mari-window-bubble[data-window="control:volume"]`.
+- `data-axis` is `"x"` on a snap guide that runs up and down, and `"y"` on one that runs across.
 
-The variables below set the default look. Each one falls back to the shared chat chrome colors, so a theme only needs the ones it wants to change.
+### Variables
+
+Each variable falls back to the shared chat chrome colors, so a theme only needs the ones it wants to change.
 
 | Variable | What it controls |
 | --- | --- |
@@ -133,15 +146,15 @@ The variables below set the default look. Each one falls back to the shared chat
 | `--mari-window-backdrop-filter` | Blur behind the window |
 | `--mari-window-header-bg`, `--mari-window-header-text`, `--mari-window-header-border` | Title bar colors |
 | `--mari-window-header-padding` | Title bar spacing |
-| `--mari-window-control-color`, `--mari-window-control-color-hover`, `--mari-window-control-bg-hover` | Pin, lock and close buttons |
+| `--mari-window-control-color`, `--mari-window-control-color-hover`, `--mari-window-control-bg-hover` | Minimize, pin, lock and close buttons |
 | `--mari-window-control-color-active`, `--mari-window-control-bg-active` | A pinned or locked button |
 | `--mari-window-control-radius`, `--mari-window-control-gap` | Button rounding and spacing |
-| `--mari-window-focus-ring` | Keyboard focus outline |
+| `--mari-window-focus-ring` | Keyboard focus outline, and the outline of a window a drawer will go back into |
 | `--mari-window-resize-handle-size` | Width of the resize edges |
 | `--mari-window-bubble-size`, `--mari-window-bubble-radius`, `--mari-window-bubble-shadow` | Bubble size, rounding and shadow |
 | `--mari-window-bubble-bg`, `--mari-window-bubble-bg-hover`, `--mari-window-bubble-border` | Bubble background and border |
 | `--mari-window-bubble-text`, `--mari-window-bubble-text-hover` | Bubble icon color |
-| `--mari-window-snap-guide` | The line shown while a bubble snaps into line |
+| `--mari-window-snap-guide` | Snap guide color |
 | `--mari-drawer-bg`, `--mari-drawer-border` | Drawer background and divider |
 | `--mari-drawer-header-bg`, `--mari-drawer-header-bg-hover` | Drawer header colors |
 | `--mari-drawer-header-padding`, `--mari-drawer-body-padding-inline`, `--mari-drawer-body-padding-bottom` | Drawer spacing |
@@ -152,15 +165,11 @@ Set a variable in `:root` to change every window, or on a selector to change one
 
 ```css
 :root {
-  --mari-window-border: #f472b6;
   --mari-window-radius: 0.5rem;
+  --mari-window-bubble-bg: #3b0764;
 }
 
-[data-window="chat-settings"] {
-  --mari-window-header-bg: rgb(0 0 0 / 0.25);
-}
-
-.mari-drawer[data-drawer="chat-name"] {
+[data-window="chat-settings"] .mari-drawer[data-drawer="chat-name"] {
   --mari-drawer-border: transparent;
 }
 ```

@@ -179,7 +179,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 - Regenerating a reply no longer shows the previous swipe's translation under the new text while it streams, and the new swipe does not inherit it. Swiping back shows that translation again.
 
-- Guided regeneration keeps your direction in the chat box, so you can adjust it and regenerate once more. Sending a message still clears the box (#7060).
+- Guided regeneration keeps your direction in the chat box, so you can adjust it and regenerate once more; turn off **Keep guidance after regenerating** in Settings → General → Input & Editing to clear it instead. Sending a message still clears the box (#7060).
 
 - In Conversation chats, a message sent right after typing no longer comes back in the chat box when you return to the chat or reload.
 

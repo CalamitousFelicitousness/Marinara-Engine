@@ -1,11 +1,12 @@
 import { expect, test, type Route } from "@playwright/test";
 import { readFileSync } from "node:fs";
+import { clickTopbarPanel } from "./topbar-navigation.js";
 import { seedUIState } from "./ui-state-fixture.js";
 
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 
 for (const mode of ["roleplay", "conversation"] as const) {
-  test(`${mode} guided regeneration keeps its guidance in the composer`, async ({ page, request }, testInfo) => {
+  test(`${mode} guided regeneration keeps its guidance unless the setting clears it`, async ({ page, request }, testInfo) => {
     const chatIds: string[] = [];
     let connectionId: string | undefined;
     let pending: Route | undefined;
@@ -215,6 +216,72 @@ for (const mode of ["roleplay", "conversation"] as const) {
         await expect(composer).toHaveValue("Keep the other chat's draft.");
         expect(requests).toBe(6);
       }
+
+      // With Keep guidance after regenerating off, guided regeneration consumes its guidance (#6815).
+      await clickTopbarPanel(page, "settings");
+      await page.getByPlaceholder("Search settings").fill("keep guidance");
+      await page
+        .locator(".mari-settings-search-header button")
+        .filter({ hasText: "Keep guidance after regenerating" })
+        .first()
+        .click();
+      const keepGuidance = page.getByRole("checkbox", { name: "Keep guidance after regenerating", exact: true });
+      await expect(keepGuidance).toBeChecked();
+      await page
+        .locator("#settings-control-keep-guidance-after-regenerating")
+        .getByText("Keep guidance after regenerating", { exact: true })
+        .click();
+      await expect(keepGuidance).not.toBeChecked();
+      await page.screenshot({ path: testInfo.outputPath("keep-guidance-setting-off.png") });
+      await clickTopbarPanel(page, "settings");
+      await switchChat(chatId);
+
+      // The guidance is cleared while the attempt runs and restored after a failure.
+      await composer.fill(guidance);
+      await regenerate();
+      await expectGuidedRequest(7, "Let the lantern flicker.");
+      await expect(composer).toHaveValue("");
+      await page.screenshot({ path: testInfo.outputPath("guidance-consumed.png") });
+      await fail();
+      await expect(composer).toHaveValue(guidance);
+      await expect.poll(storedDraft).toBe(guidance);
+
+      // A successful attempt leaves the guidance and its saved draft cleared.
+      await regenerate();
+      await expectGuidedRequest(8, "Let the lantern flicker.");
+      await expect(composer).toHaveValue("");
+      await succeed();
+      await expect(composer).toHaveValue("");
+      await expect.poll(storedDraft).toBe("");
+
+      // Late success and failure must leave a draft typed after the click intact.
+      for (const [index, finish] of [succeed, fail].entries()) {
+        await composer.fill(edited);
+        await regenerate();
+        await expectGuidedRequest(9 + index, edited);
+        await expect(composer).toHaveValue("");
+        await composer.fill(`My next reply ${index}.`);
+        await row.focus();
+        await row.getByRole("button", { name: "Regenerate (guided)", exact: true }).click();
+        await expect(confirm).toBeHidden();
+        await expect(composer).toHaveValue(`My next reply ${index}.`);
+        expect(requests).toBe(9 + index);
+        await finish();
+        await expect(composer).toHaveValue(`My next reply ${index}.`);
+        await expect.poll(storedDraft).toBe(`My next reply ${index}.`);
+      }
+
+      // A failed background attempt restores only the originating chat's empty draft.
+      await composer.fill(edited);
+      await regenerate();
+      await expectGuidedRequest(11, edited);
+      await expect(composer).toHaveValue("");
+      await switchChat(chatIds[1]!);
+      await composer.fill("Keep the other chat's draft.");
+      await fail();
+      await expect(composer).toHaveValue("Keep the other chat's draft.");
+      await switchChat(chatId);
+      await expect(composer).toHaveValue(edited);
     } finally {
       if (pending) await pending.abort().catch(() => {});
       await page.close();

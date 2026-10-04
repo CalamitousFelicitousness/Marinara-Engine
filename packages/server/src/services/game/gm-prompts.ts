@@ -1306,7 +1306,7 @@ export function buildGmFormatReminder(
     const shown = name && own && own.toLowerCase() !== name.toLowerCase() ? `${name} (${own})` : name;
     if (!shown || typeof item?.truly !== "string") return shown;
     const truly = normalizePromptText(ctx.inventoryFakeNames?.[item.truly]) || item.truly;
-    return `${shown} [FAKE: really ${truly}]`;
+    return `${shown} (FAKE: really ${truly})`;
   };
   // A ruleset item also says what it is, from its ruleset: category, rarity, tags and visible stats;
   // a fake says what it truly is.

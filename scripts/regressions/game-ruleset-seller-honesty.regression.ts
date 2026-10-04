@@ -411,7 +411,7 @@ try {
       inventoryItemFacts: { "kit/bitter-tonic": rulesetItemPromptFacts(known.facts) },
       inventoryFakeNames: { "kit/bitter-tonic": "Bitter tonic" },
     } as Parameters<typeof buildGmFormatReminder>[0]);
-    assert.match(text, /Warming tonic[^\n]*\[FAKE: really Bitter tonic\]/);
+    assert.match(text, /Warming tonic[^\n]*\(FAKE: really Bitter tonic\)/);
     assert.match(text, /A line marked FAKE is not what the party thinks it is/);
   }
 

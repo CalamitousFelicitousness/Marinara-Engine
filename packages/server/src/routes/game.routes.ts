@@ -70,6 +70,8 @@ import {
 import { registerSequentialGameTasks, retainSequentialGameTask } from "../services/game/sequential-tasks.js";
 import { readImageDimensionsFromFile } from "../utils/image-metadata.js";
 import { createChatsStorage, METADATA_WRITE_ORDINALS_KEY } from "../services/storage/chats.storage.js";
+import { createGameWorldSnapshotsStorage } from "../services/storage/game-world-snapshots.storage.js";
+import { loadGameWorld, saveGameWorldSnapshot } from "../services/game/game-world.service.js";
 import { createConnectionsStorage } from "../services/storage/connections.storage.js";
 import { createCharactersStorage } from "../services/storage/characters.storage.js";
 import { createCharacterGalleryStorage } from "../services/storage/character-gallery.storage.js";
@@ -253,6 +255,7 @@ import {
   worldAssetsForFamily,
   gameWorldSchema,
   gameWorldFromMetadata,
+  worldMadeByThisGenerator,
   lastGamePlace,
   readWorldLedger,
   carryWorldLedger,
@@ -6030,6 +6033,10 @@ function editIssues(game: Omit<GameWorld, "world" | "edits">, edits: unknown): s
   return worldTownEditIssues({ ...game, world: compileGameWorld(game) }, parsed.data);
 }
 
+/** Why a world from an earlier generator cannot be edited or shared as a recipe (W11). */
+const OLD_GENERATOR_REFUSAL =
+  "This world was made by an earlier version of the world generator. It plays on as it was made, but it can no longer be edited or shared as a file.";
+
 export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions = {}) {
   registerSequentialGameTasks(app, [
     "/setup",
@@ -6772,6 +6779,10 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       snapshotConnection(setupConfig.videoConnectionId),
       snapshotConnection(setupConfig.audioConnectionId),
     ]);
+    // The world is made once, here, and kept as the chat's snapshot (W11) before any reader can see it.
+    if (gameWorld && setupConfig.worldKit) {
+      await saveGameWorldSnapshot(app.db, sessionChat.id, { gameWorld, gameWorldKit: setupConfig.worldKit });
+    }
     await chats.updateMetadata(sessionChat.id, {
       ...sessionMeta,
       gameId,
@@ -7100,7 +7111,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
           lorebookContext: setupLorebookContext,
           rulesetWorldGuidance,
           worldKit: gameWorldKitFromMetadata(meta),
-          world: gameWorldFromMetadata(meta),
+          world: await loadGameWorld(app.db, chatId, meta),
           language: setupConfig.language,
           gameSystemPrompt: setupGameSystemPrompt,
           gameSpecialInstructions: setupGameSpecialInstructions,
@@ -7694,6 +7705,8 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
             }
           : {}),
       };
+      // The new session plays in the same world: its snapshot comes with it (W11).
+      await createGameWorldSnapshotsStorage(app.db).copy(latestSession.id, newChat.id);
       await chats.updateMetadata(newChat.id, updatedNewMeta);
 
       let recapMessageId = "";
@@ -10857,7 +10870,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const chat = await createChatsStorage(app.db).getById(req.params.chatId);
     if (!chat) return reply.status(404).send({ error: "Chat not found" });
     const meta = parseMeta(chat.metadata);
-    const world = gameWorldFromMetadata(meta);
+    const world = await loadGameWorld(app.db, chat.id, meta);
     if (!world) return { journal: null };
     const replies = await gameRepliesBefore(app.db, req.params.chatId);
     // The place in force, as a turn reads it: the map's location when it is a world place (worldgen W7).
@@ -10921,7 +10934,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const chat = await createChatsStorage(app.db).getById(req.params.chatId);
     if (!chat) return reply.status(404).send({ error: "Chat not found" });
     const meta = parseMeta(chat.metadata);
-    const world = chat.mode === "game" ? gameWorldFromMetadata(meta) : null;
+    const world = chat.mode === "game" ? await loadGameWorld(app.db, chat.id, meta) : null;
     const found = world ? await townOf(req.params.chatId, meta, world) : null;
     return { town: found ? { ...found.town, at: found.at, visit: found.visit } : null };
   });
@@ -10936,7 +10949,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const chat = await chats.getById(chatId);
     if (!chat) return reply.status(404).send({ error: "Chat not found" });
     const meta = parseMeta(chat.metadata);
-    const world = chat.mode === "game" ? gameWorldFromMetadata(meta) : null;
+    const world = chat.mode === "game" ? await loadGameWorld(app.db, chat.id, meta) : null;
     const found = world ? await townOf(chatId, meta, world) : null;
     if (!found) return reply.status(400).send({ error: "The party is not in a town." });
     if (!worldTownDoor(found.town, to)) return reply.status(400).send({ error: "No such place in this town." });
@@ -11003,8 +11016,9 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
   app.get<{ Params: { chatId: string } }>("/:chatId/world/edit", async (req, reply) => {
     const chat = await createChatsStorage(app.db).getById(req.params.chatId);
     if (!chat) return reply.status(404).send({ error: "Chat not found" });
-    const game = chat.mode === "game" ? gameWorldFromMetadata(parseMeta(chat.metadata)) : null;
+    const game = chat.mode === "game" ? await loadGameWorld(app.db, chat.id, parseMeta(chat.metadata)) : null;
     if (!game) return reply.status(404).send({ error: "This game has no world." });
+    if (!worldMadeByThisGenerator(game)) return reply.status(409).send({ error: OLD_GENERATOR_REFUSAL });
     return { world: worldForEditor(game), edits: game.edits ?? null, links: game.world.links };
   });
 
@@ -11013,8 +11027,9 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const { settlement } = z.object({ settlement: z.string().min(1).max(16) }).parse(req.query);
     const chat = await createChatsStorage(app.db).getById(req.params.chatId);
     if (!chat) return reply.status(404).send({ error: "Chat not found" });
-    const game = chat.mode === "game" ? gameWorldFromMetadata(parseMeta(chat.metadata)) : null;
+    const game = chat.mode === "game" ? await loadGameWorld(app.db, chat.id, parseMeta(chat.metadata)) : null;
     if (!game) return reply.status(404).send({ error: "This game has no world." });
+    if (!worldMadeByThisGenerator(game)) return reply.status(409).send({ error: OLD_GENERATOR_REFUSAL });
     const found = worldTownForEditor(game, settlement);
     return found ?? reply.status(404).send({ error: "No such settlement in this world." });
   });
@@ -11030,8 +11045,9 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const chats = createChatsStorage(app.db);
     const chat = await chats.getById(chatId);
     if (!chat) return reply.status(404).send({ error: "Chat not found" });
-    const game = chat.mode === "game" ? gameWorldFromMetadata(parseMeta(chat.metadata)) : null;
+    const game = chat.mode === "game" ? await loadGameWorld(app.db, chat.id, parseMeta(chat.metadata)) : null;
     if (!game) return reply.status(404).send({ error: "This game has no world." });
+    if (!worldMadeByThisGenerator(game)) return reply.status(409).send({ error: OLD_GENERATOR_REFUSAL });
     // The layer against the world, then its towns laid out by hand against the towns it makes (W9h).
     const worldIssues = worldEditIssues(game, parsed.data);
     const issues = worldIssues.length ? worldIssues : worldTownEditIssues(game, parsed.data);
@@ -11053,6 +11069,8 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     });
     if (!updated) return reply.status(404).send({ error: "Chat not found" });
     if (storyRefusal) return reply.status(400).send(storyRefusal);
+    // The world with its new edits is the snapshot from now on (W11).
+    await saveGameWorldSnapshot(app.db, chatId, parseMeta(updated.metadata));
     const world = compileGameWorld({ ...game, edits });
     logger.info("[game/world] %s: hand edits %s", chatId, edits ? "saved" : "cleared");
     return { edits: edits ?? null, links: world.links };
@@ -11125,8 +11143,9 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
   app.get<{ Params: { chatId: string } }>("/:chatId/world/file", async (req, reply) => {
     const chat = await createChatsStorage(app.db).getById(req.params.chatId);
     if (!chat) return reply.status(404).send({ error: "Chat not found" });
-    const game = chat.mode === "game" ? gameWorldFromMetadata(parseMeta(chat.metadata)) : null;
+    const game = chat.mode === "game" ? await loadGameWorld(app.db, chat.id, parseMeta(chat.metadata)) : null;
     if (!game) return reply.status(404).send({ error: "This game has no world." });
+    if (!worldMadeByThisGenerator(game)) return reply.status(409).send({ error: OLD_GENERATOR_REFUSAL });
     return worldFile(
       chat.name,
       game.kit,
@@ -11150,7 +11169,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const chat = await createChatsStorage(app.db).getById(req.params.chatId);
     if (!chat) return reply.status(404).send({ error: "Chat not found" });
     const meta = parseMeta(chat.metadata);
-    const game = chat.mode === "game" ? gameWorldFromMetadata(meta) : null;
+    const game = chat.mode === "game" ? await loadGameWorld(app.db, chat.id, meta) : null;
     if (!game) return reply.status(404).send({ error: "This game has no world." });
     const story = gameStoryFromMetadata(meta, game);
     const replies = await gameRepliesBefore(app.db, req.params.chatId);
@@ -11169,14 +11188,15 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const chats = createChatsStorage(app.db);
     const chat = await chats.getById(chatId);
     if (!chat) return reply.status(404).send({ error: "Chat not found" });
-    const game = chat.mode === "game" ? gameWorldFromMetadata(parseMeta(chat.metadata)) : null;
+    const game = chat.mode === "game" ? await loadGameWorld(app.db, chat.id, parseMeta(chat.metadata)) : null;
     if (!game) return reply.status(404).send({ error: "This game has no world." });
     const input = (req.body as { story?: unknown } | undefined)?.story;
     // Checked against the world as it is when the story is written: hand edits saved meanwhile count.
     let refusal = null as { error: string; issues: string[] } | null;
     let story = null as StoryScript | null;
     const updated = await chats.patchMetadata(chatId, (fresh) => {
-      const now = gameWorldFromMetadata(fresh);
+      // A world from an earlier generator is checked as its snapshot keeps it.
+      const now = worldMadeByThisGenerator(game) ? gameWorldFromMetadata(fresh) : game;
       const checked = now ? checkStoryScript(now, input) : null;
       if (!checked?.ok) {
         const issues = checked?.issues ?? ["the game has no world"];
@@ -11197,7 +11217,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const chats = createChatsStorage(app.db);
     const chat = await chats.getById(req.params.chatId);
     if (!chat) return reply.status(404).send({ error: "Chat not found" });
-    if (chat.mode !== "game" || !gameWorldFromMetadata(parseMeta(chat.metadata))) {
+    if (chat.mode !== "game" || !(await loadGameWorld(app.db, chat.id, parseMeta(chat.metadata)))) {
       return reply.status(404).send({ error: "This game has no world." });
     }
     const updated = await chats.patchMetadata(req.params.chatId, () => ({ gameStory: null }));
@@ -11211,9 +11231,20 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const { place } = z.object({ place: z.string().min(1).max(16) }).parse(req.query);
     const chat = await createChatsStorage(app.db).getById(req.params.chatId);
     if (!chat) return reply.status(404).send({ error: "Chat not found" });
-    const game = chat.mode === "game" ? gameWorldFromMetadata(parseMeta(chat.metadata)) : null;
+    const game = chat.mode === "game" ? await loadGameWorld(app.db, chat.id, parseMeta(chat.metadata)) : null;
     if (!game) return reply.status(404).send({ error: "This game has no world." });
     return { people: worldPeopleOf(game, place) };
+  });
+
+  // ── GET /game/:chatId/world ── the game's world for its screen (W11): as its snapshot keeps it, so the
+  // screen never makes it again from the recipe.
+  app.get<{ Params: { chatId: string } }>("/:chatId/world", async (req, reply) => {
+    const chat = await createChatsStorage(app.db).getById(req.params.chatId);
+    if (!chat) return reply.status(404).send({ error: "Chat not found" });
+    const game = chat.mode === "game" ? await loadGameWorld(app.db, chat.id, parseMeta(chat.metadata)) : null;
+    if (!game) return { world: null };
+    const { frozen: _frozen, compiled: _compiled, ...shown } = game;
+    return { world: shown };
   });
 
   // ── GET /game/:chatId/overworld ──
@@ -11221,7 +11252,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const chat = await createChatsStorage(app.db).getById(req.params.chatId);
     if (!chat) return reply.status(404).send({ error: "Chat not found" });
     const meta = parseMeta(chat.metadata);
-    const world = chat.mode === "game" ? gameWorldFromMetadata(meta) : null;
+    const world = chat.mode === "game" ? await loadGameWorld(app.db, chat.id, meta) : null;
     if (!world) return { overworld: null };
     const { here, walk, present } = await overworldPlace(req.params.chatId, meta, world);
     return { overworld: { here, walk, ruined: present.ruined } };
@@ -11237,7 +11268,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const chat = await chats.getById(chatId);
     if (!chat) return reply.status(404).send({ error: "Chat not found" });
     const meta = parseMeta(chat.metadata);
-    const world = chat.mode === "game" ? gameWorldFromMetadata(meta) : null;
+    const world = chat.mode === "game" ? await loadGameWorld(app.db, chat.id, meta) : null;
     if (!world) return reply.status(400).send({ error: "This game has no world." });
     const { here, walk } = await overworldPlace(chatId, meta, world);
     const route = here ? worldRoute(world.world, here, to) : null;

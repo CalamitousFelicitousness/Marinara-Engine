@@ -39,7 +39,7 @@ import type {
   TacticalEvent,
   RPGStatPool,
 } from "@marinara-engine/shared";
-import type { Chat, WorldRoute, WorldTown, WorldTownVisit, WorldWalk } from "@marinara-engine/shared";
+import type { Chat, GameWorld, WorldRoute, WorldTown, WorldTownVisit, WorldWalk } from "@marinara-engine/shared";
 import { isJsonRecord } from "@marinara-engine/shared";
 
 // ── Query Keys ──
@@ -48,6 +48,7 @@ export const gameKeys = {
   all: ["game"] as const,
   sessions: (gameId: string) => [...gameKeys.all, "sessions", gameId] as const,
   overworld: (chatId: string) => [...gameKeys.all, "overworld", chatId] as const,
+  world: (chatId: string) => [...gameKeys.all, "world", chatId] as const,
   town: (chatId: string) => [...gameKeys.all, "town", chatId] as const,
 };
 
@@ -978,6 +979,18 @@ export interface OverworldState {
 }
 
 /** The overworld of a game with a world, read again after each turn (`turnKey`). */
+/** The game's world (worldgen W8, W11) as the server keeps it, never made again here from its recipe.
+ *  `recipe` names the stored recipe, so a world whose edits were saved is read again. */
+export function useGameWorld(chatId: string, recipe: string | null) {
+  return useQuery({
+    queryKey: [...gameKeys.world(chatId), recipe],
+    queryFn: () => api.get<{ world: GameWorld | null }>(`/game/${chatId}/world`),
+    select: (data) => data.world,
+    enabled: recipe !== null && !!chatId,
+    staleTime: Infinity,
+  });
+}
+
 export function useOverworld(chatId: string, turnKey: string | null, enabled: boolean) {
   return useQuery({
     queryKey: [...gameKeys.overworld(chatId), turnKey],

@@ -71,6 +71,12 @@ export function worldSnapshot(game: GameWorld): WorldSnapshot {
   };
 }
 
+/** Whether this Engine's generator made the world, so it may be edited or shared as a recipe: a world
+ *  from an earlier generator plays on as it was made, but a recipe of it would make another world. */
+export function worldMadeByThisGenerator(game: GameWorld): boolean {
+  return !game.frozen || game.frozen.generatorVersion === WORLD_GENERATOR_VERSION;
+}
+
 /** The game's world as its snapshot keeps it. Nothing is compiled again. */
 export function gameWorldFromSnapshot(snapshot: WorldSnapshot): GameWorld {
   return {

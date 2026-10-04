@@ -49,6 +49,7 @@ import {
   type DecisionMessage,
 } from "../services/generation/agent-activation-questions.js";
 import { registerSequentialGameTasks } from "../services/game/sequential-tasks.js";
+import { loadGameWorld } from "../services/game/game-world.service.js";
 import {
   createAdvancedMemoryService,
   selectAdvancedMemoryMessages,
@@ -187,7 +188,6 @@ import {
   getRoleplayCommandActivity,
   applyGameInventoryTags,
   applyGamePlaceTags,
-  gameWorldFromMetadata,
   worldKitSize,
   worldPlaceByName,
   worldPlaceInForce,
@@ -1945,7 +1945,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         (turnStoryRead ??=
           chatMode === "game" && !input.impersonate && !input.continueMessageId
             ? (async () => {
-                const game = gameWorldFromMetadata(chatMeta);
+                const game = await loadGameWorld(app.db, input.chatId, chatMeta);
                 const story = gameStoryFromMetadata(chatMeta, game);
                 if (!game || !story) return null;
                 const replies = await gameRepliesBefore(app.db, input.chatId, input.regenerateMessageId ?? null);
@@ -4528,6 +4528,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               chatId: input.chatId,
               chat,
               chatMetadata: gamePromptMetadata,
+              world: await loadGameWorld(app.db, input.chatId, gamePromptMetadata),
               characterIds,
               chars,
               chats,
@@ -4786,7 +4787,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           };
           // Where the party is in the game's world (worldgen W1): the place last said, when the world
           // lists it, else where the world starts the party until the Game Master says.
-          const promptWorld = gameWorldFromMetadata(chatMeta);
+          const promptWorld = await loadGameWorld(app.db, input.chatId, chatMeta);
           // The people the party has already met (worldgen W2), so the block offers only new ones.
           const promptMet = new Set(
             (Array.isArray(chatMeta.gameNpcs) ? (chatMeta.gameNpcs as GameNpc[]) : []).flatMap((npc) =>
@@ -9674,7 +9675,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             chatMode === "game" && !input.impersonate && turnGameRuleset?.status === "ok"
               ? turnGameRuleset.definition.items?.market
               : turnKitItems?.definition.items?.market;
-          const turnWorld = chatMode === "game" && !input.impersonate ? gameWorldFromMetadata(chatMeta) : null;
+          const turnWorld =
+            chatMode === "game" && !input.impersonate ? await loadGameWorld(app.db, input.chatId, chatMeta) : null;
           let turnPresent: WorldPresent | undefined;
           if (turnMarket || turnWorld) {
             const replies = await gameRepliesBefore(app.db, input.chatId, input.regenerateMessageId ?? null);

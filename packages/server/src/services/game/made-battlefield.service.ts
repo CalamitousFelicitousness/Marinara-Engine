@@ -1,6 +1,5 @@
 // Hand-made battlefields (worldgen W9g): the board painted for where a fight starts.
 import {
-  gameWorldFromMetadata,
   lastGamePlace,
   readWorldLedger,
   worldAddedPlace,
@@ -12,6 +11,7 @@ import {
   worldTownVisitFromMetadata,
   worldWalkFromMetadata,
 } from "@marinara-engine/shared";
+import { loadGameWorld } from "./game-world.service.js";
 import type { DB } from "../../db/connection.js";
 import { logger } from "../../lib/logger.js";
 import { resolveOwnerSpatialProjection } from "../spatial-context/projection.js";
@@ -37,7 +37,7 @@ export async function gameBattlefieldHere(db: DB, chatId: string, meta: Record<s
 }
 
 async function battlefieldHere(db: DB, chatId: string, meta: Record<string, unknown>, seed: number) {
-  const world = gameWorldFromMetadata(meta);
+  const world = await loadGameWorld(db, chatId, meta);
   if (!world?.edits?.battlefields?.length) return null;
   const replies = await gameRepliesBefore(db, chatId);
   const present = () => worldPresent(world, readWorldLedger(replies.all));

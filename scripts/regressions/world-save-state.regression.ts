@@ -10,14 +10,24 @@
  *   - A world with hand edits (places and people added, a person renamed, a town laid out by hand) and a
  *     place the story added in the same town reads back the same.
  *   - A damaged snapshot, or one from a later format, is refused.
+ *   - Through the routes: a game made with a world keeps its snapshot; with its recipe changed under it
+ *     and its generator version moved on (as after an update), the screen, the town, the journal, the
+ *     people and the Game Master's prompt are still its world, and it can no longer be edited or shared
+ *     as a recipe. A new session, a branch and an export imported again play in the same world; deleting
+ *     one chat leaves the others' worlds.
  */
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { createServer } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import {
   WORLD_GENERATOR_VERSION,
   WORLD_SNAPSHOT_VERSION,
   WORLD_STARTER_KITS,
   checkWorldBrief,
+  createConnectionSchema,
   gameWorldFromMetadata,
   gameWorldFromSnapshot,
   parseWorldKit,
@@ -186,6 +196,196 @@ assert.ok(storyPlaced >= WORLD_STARTER_KITS.length / 2, `the story's place stood
   refused((value) => ((value.kit as { id: unknown }).id = 5), /snapshot\.kit/);
   refused((value) => delete value.history, /history/);
   assert.equal(readWorldSnapshot(null).ok, false);
+}
+
+// ── Through the routes ──
+const dataDir = mkdtempSync(join(tmpdir(), "marinara-world-save-state-"));
+process.env.DATA_DIR = dataDir;
+process.env.FILE_STORAGE_DIR = join(dataDir, "storage");
+process.env.LOG_LEVEL = "silent";
+const { default: Fastify } = await import("../../packages/server/node_modules/fastify/fastify.js");
+const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
+const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
+const { createConnectionsStorage } = await import("../../packages/server/src/services/storage/connections.storage.js");
+const { createGameWorldSnapshotsStorage } =
+  await import("../../packages/server/src/services/storage/game-world-snapshots.storage.js");
+const { importSTChat } = await import("../../packages/server/src/services/import/st-chat.importer.js");
+const { gameRoutes } = await import("../../packages/server/src/routes/game.routes.js");
+const { chatsRoutes } = await import("../../packages/server/src/routes/chats.routes.js");
+const { generateRoutes } = await import("../../packages/server/src/routes/generate.routes.js");
+const prompts: string[] = [];
+const standIn = createServer(async (req, res) => {
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) chunks.push(Buffer.from(chunk));
+  prompts.push(Buffer.concat(chunks).toString());
+  res.writeHead(200, { "content-type": "application/json" });
+  res.end(
+    JSON.stringify({
+      choices: [{ index: 0, finish_reason: "stop", message: { role: "assistant", content: "The square is busy." } }],
+    }),
+  );
+});
+await new Promise<void>((resolve) => standIn.listen(0, "127.0.0.1", resolve));
+const address = standIn.address();
+assert.ok(address && typeof address !== "string");
+const db = await getDB();
+const app = Fastify();
+app.decorate("db", db);
+await app.register(gameRoutes, { prefix: "/api/game" });
+await app.register(chatsRoutes, { prefix: "/api/chats" });
+await app.register(generateRoutes, { prefix: "/api/generate" });
+try {
+  const parsed = parseWorldKit(WORLD_STARTER_KITS.find((each) => each.id === "high_fantasy")!);
+  assert.ok(parsed.ok);
+  const kit = parsed.kit;
+  const live = made(kit, 20261004);
+  const snapshots = createGameWorldSnapshotsStorage(db);
+  const chats = createChatsStorage(db);
+  const connection = await createConnectionsStorage(db).create(
+    createConnectionSchema.parse({
+      name: "Stand-in",
+      provider: "custom",
+      baseUrl: `http://127.0.0.1:${address.port}/v1`,
+      model: "stand-in",
+      apiKey: "sk-stand-in",
+    }),
+  );
+  const recipe = {
+    seed: live.seed,
+    generatorVersion: WORLD_GENERATOR_VERSION,
+    grounding: live.grounding,
+    brief: live.brief,
+  };
+  const created = await app.inject({
+    method: "POST",
+    url: "/api/game/create",
+    payload: {
+      name: "Snapshot",
+      connectionId: connection!.id,
+      setupConfig: {
+        genre: "Fantasy",
+        setting: "A river kingdom",
+        tone: "Grim",
+        difficulty: "normal",
+        rating: "sfw",
+        playerGoals: "",
+        gmMode: "standalone",
+        partyCharacterIds: [],
+        worldKit: kit,
+        world: recipe,
+      },
+    },
+  });
+  assert.equal(created.statusCode, 200, created.body);
+  const chatId = created.json().sessionChat.id as string;
+  const gameId = JSON.parse(created.json().sessionChat.metadata).gameId as string;
+  assert.ok(await snapshots.get(chatId), "a game made with a world keeps its snapshot");
+  const start = live.world.places.find((place) => place.id === live.world.startId)!;
+  const settlement = start.rank !== undefined ? start : live.world.places.find((place) => place.id === start.parentId)!;
+  await chats.patchMetadata(chatId, { gameSessionStatus: "active", gameIntroPresented: true });
+  await chats.createMessage({
+    chatId,
+    role: "assistant",
+    characterId: null,
+    content: `The gates. [place: name="${settlement.name}" result="ok"]`,
+  });
+  const get = async (id: string, path: string) => {
+    const response = await app.inject({ method: "GET", url: `/api/game/${id}/${path}` });
+    assert.equal(response.statusCode, 200, `${path}: ${response.body}`);
+    return response.json();
+  };
+  const seen = async (id: string) => ({
+    world: (await get(id, "world")).world,
+    town: (await get(id, "town")).town,
+    journal: (await get(id, "world-journal")).journal,
+    people: (await get(id, `world/people?place=${settlement.id}`)).people,
+  });
+  // Edits saved make the snapshot again: the world shows them at once.
+  const renamed = await app.inject({
+    method: "PUT",
+    url: `/api/game/${chatId}/world/edits`,
+    payload: { edits: { editsVersion: 1, places: [{ id: settlement.id, name: "Newbridge" }] } },
+  });
+  assert.equal(renamed.statusCode, 200, renamed.body);
+  assert.equal((await snapshots.get(chatId))!.edits?.places?.[0]?.name, "Newbridge", "the snapshot has the edits");
+  const asMade = await seen(chatId);
+  assert.equal(
+    asMade.world.world.places.find((place: { id: string }) => place.id === settlement.id).name,
+    "Newbridge",
+    "the screen's world has the edits",
+  );
+  assert.equal(asMade.world.world.startId, live.world.startId);
+  assert.equal(asMade.town.settlementId, settlement.id, "the party is in its town");
+  assert.ok(asMade.people.length > 0);
+
+  // The recipe changed under it, and the generator moved on (as after an update).
+  await chats.patchMetadata(chatId, {
+    gameWorld: {
+      ...recipe,
+      generatorVersion: WORLD_GENERATOR_VERSION + 1,
+      seed: recipe.seed + 1,
+      brief: { ...recipe.brief, peopleNames: [] },
+    },
+  });
+  // As an update leaves it: the snapshot made by a generator this Engine no longer is.
+  const kept = (await snapshots.get(chatId))!;
+  await snapshots.put(chatId, { ...kept, generatorVersion: WORLD_GENERATOR_VERSION + 1 });
+  assert.deepEqual(await seen(chatId), asMade, "the same world after the generator moved on");
+  for (const [method, path, payload] of [
+    ["GET", "world/edit", undefined],
+    ["GET", `world/town?settlement=${settlement.id}`, undefined],
+    ["PUT", "world/edits", { edits: { editsVersion: 1 } }],
+    ["GET", "world/file", undefined],
+  ] as const) {
+    const refused = await app.inject({ method, url: `/api/game/${chatId}/${path}`, payload });
+    assert.equal(refused.statusCode, 409, `${path} is refused for a world from an earlier generator`);
+    assert.match(refused.json().error, /earlier version of the world generator/);
+  }
+  // The Game Master is told of the snapshot's people, not people the changed recipe would make.
+  const named = asMade.people.find((person: { named: boolean }) => person.named)!;
+  const turn = await app.inject({
+    method: "POST",
+    url: "/api/generate/",
+    payload: { chatId, userMessage: "We look around.", streaming: false },
+  });
+  assert.equal(turn.statusCode, 200, turn.body);
+  assert.ok(prompts.join("\n").includes(named.name), "the prompt's people are the snapshot's");
+
+  // A new session plays in the same world.
+  await chats.patchMetadata(chatId, {
+    gameSessionStatus: "concluded",
+    gamePreviousSessionSummaries: [{ summary: "Done." }],
+  });
+  const started = await app.inject({ method: "POST", url: "/api/game/session/start", payload: { gameId } });
+  assert.equal(started.statusCode, 200, started.body);
+  const second = started.json().sessionChat.id as string;
+  assert.deepEqual((await get(second, "world")).world, asMade.world, "the new session's world");
+
+  // A branch, and an export imported again, too.
+  const branched = await app.inject({ method: "POST", url: `/api/chats/${chatId}/branch`, payload: {} });
+  assert.equal(branched.statusCode, 200, branched.body);
+  const branch = (branched.json().id ?? branched.json().chat?.id) as string;
+  assert.ok(branch, branched.body);
+  assert.deepEqual((await get(branch, "world")).world, asMade.world, "the branch's world");
+  const exported = await app.inject({ method: "GET", url: `/api/chats/${chatId}/export?format=jsonl` });
+  assert.equal(exported.statusCode, 200);
+  const imported = await importSTChat(exported.body, db);
+  assert.ok(!("error" in imported) || !imported.error, JSON.stringify(imported));
+  const importedId = ((imported as { chatId?: string; chat?: { id: string } }).chatId ??
+    (imported as { chat?: { id: string } }).chat?.id) as string;
+  assert.ok(importedId, JSON.stringify(imported));
+  await chats.update(importedId, { mode: "game" });
+  assert.deepEqual((await get(importedId, "world")).world, asMade.world, "the imported game's world");
+
+  // Deleting one chat takes only its own snapshot.
+  await chats.remove(branch);
+  assert.equal(await snapshots.raw(branch), null, "the branch's snapshot went with it");
+  assert.ok(await snapshots.get(chatId), "the others keep theirs");
+} finally {
+  await app.close();
+  await closeDB();
+  await new Promise<void>((resolve) => standIn.close(() => resolve()));
+  rmSync(dataDir, { recursive: true, force: true });
 }
 
 console.log(`world-save-state regression passed (largest snapshot ${Math.round(largest / 1024)} KB)`);

@@ -202,6 +202,7 @@ const SHARDED_TABLES = [
   "game_turn_storyboards",
   "game_turn_storyboard_keyframes",
   "game_dice_pools",
+  "game_world_snapshots",
   "game_rulesets",
   "game_ruleset_catalogs",
   "game_tile_packs",

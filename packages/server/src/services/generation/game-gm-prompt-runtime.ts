@@ -2,7 +2,6 @@ import { currentRoomGeneration, roomHostIdentity } from "../multiplayer/generati
 import {
   GAME_GM_BUILT_IN_PROMPT_TEMPLATES,
   gameStoryFromMetadata,
-  gameWorldFromMetadata,
   gameWorldKitFromMetadata,
   gameWorldBattlefields,
   normalizeAgentPromptTemplateOptions,
@@ -14,6 +13,7 @@ import {
   type GameMap,
   type GameNpc,
   type SessionSummary,
+  type GameWorld,
 } from "@marinara-engine/shared";
 import { buildGmSystemPrompt, type GmPromptContext } from "../game/gm-prompts.js";
 import { listPartySprites } from "../game/sprite.service.js";
@@ -152,6 +152,8 @@ export async function injectGameGmPromptRuntime(args: {
   chatId: string;
   chat: ChatLike;
   chatMetadata: Record<string, unknown>;
+  /** The game's world (worldgen W1), as `loadGameWorld` reads it. */
+  world: GameWorld | null;
   characterIds: string[];
   chars: CharactersStore;
   chats: ChatsStore;
@@ -375,7 +377,7 @@ export async function injectGameGmPromptRuntime(args: {
     /* non-fatal */
   }
 
-  const promptWorld = gameWorldFromMetadata(args.chatMetadata);
+  const promptWorld = args.world;
   const gmCtx: GmPromptContext = {
     gameActiveState: gameActiveState as GameActiveState,
     storyArc,

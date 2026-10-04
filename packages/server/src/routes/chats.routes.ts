@@ -87,6 +87,7 @@ import {
   withChatMetadataPatchQueue,
   withChatSwipeSelectionQueue,
 } from "../services/storage/chats.storage.js";
+import { createGameWorldSnapshotsStorage } from "../services/storage/game-world-snapshots.storage.js";
 import { createMessageTrashStorage, MessageTrashPinnedLimitError } from "../services/storage/message-trash.storage.js";
 import { createAppSettingsStorage } from "../services/storage/app-settings.storage.js";
 import { createCharactersStorage } from "../services/storage/characters.storage.js";
@@ -4317,6 +4318,8 @@ export async function chatsRoutes(app: FastifyInstance) {
       collectExportJournalNpcNames(metadata, charNameMap),
     );
     const persona = await buildPersonaSnapshotForChat(app, chat);
+    // A game's world travels as its snapshot (worldgen W11), so the imported game plays in the same world.
+    const worldSnapshotText = chat.mode === "game" ? await createGameWorldSnapshotsStorage(app.db).raw(chat.id) : null;
     const { buildPromptMacroContext, resolvePromptMessageMacros, normalizeChatMacroVariables } =
       await import("../services/prompt/index.js");
     const exportCharacterIds = resolveActiveCharacterIds(charIds, metadata, {
@@ -4455,6 +4458,7 @@ export async function chatsRoutes(app: FastifyInstance) {
             mode: chat.mode,
             spatialContextHistory,
             ...(advancedMemoryTransfer.length ? { advancedMemoryTransfer } : {}),
+            ...(worldSnapshotText ? { gameWorldSnapshot: JSON.parse(worldSnapshotText) } : {}),
           },
         },
       }),
@@ -4718,6 +4722,8 @@ export async function chatsRoutes(app: FastifyInstance) {
     });
 
     if (!newChat) return reply.status(500).send({ error: "Failed to create branch" });
+    // A branched game plays in the same world: its snapshot comes with it (worldgen W11).
+    await createGameWorldSnapshotsStorage(app.db).copy(sourceChat.id, newChat.id);
 
     // Copy metadata (preset, lorebooks, agents, persona settings, etc.) from source chat
     // but keep branch labels separate from the stable thread name.

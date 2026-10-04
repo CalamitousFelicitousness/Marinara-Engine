@@ -1,7 +1,6 @@
 import {
   assignCombatTactics,
   combatTacticsSchema,
-  gameWorldFromMetadata,
   gameWorldKitFromMetadata,
   worldAssetsForFamily,
   worldBattlefields,
@@ -88,6 +87,7 @@ import {
   useRemovePartyMember,
   gameKeys,
   patchChatMetadata,
+  useGameWorld,
 } from "../../hooks/use-game";
 import {
   gameStoryboardKeys,
@@ -374,6 +374,13 @@ function persistReplayPresentationCue(
     .catch((error) => {
       console.warn("[game-replay] Failed to load presentation-cue persistence", error);
     });
+}
+
+/** A short key for a stored world recipe, so a query is not keyed by the whole recipe. */
+function recipeKey(text: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < text.length; index++) hash = Math.imul(hash ^ text.charCodeAt(index), 0x01000193) >>> 0;
+  return `${text.length}:${hash.toString(36)}`;
 }
 
 const GAME_TOP_ICON_BUTTON = getChatToolbarButtonClass();
@@ -2298,10 +2305,12 @@ function GameSurfaceComponent({
   );
   const gameElements = useMemo(() => worldElementSet(gameKit), [gameKit]);
   // The game's world (worldgen W8), drawn as the overworld, and the real time the overworld has passed.
-  const gameWorld = useMemo(
-    () => gameWorldFromMetadata({ gameWorld: chatMeta.gameWorld, gameWorldKit: chatMeta.gameWorldKit }),
-    [chatMeta.gameWorld, chatMeta.gameWorldKit],
+  // The server's world, as its snapshot keeps it (W11), read again when its recipe is saved anew.
+  const gameWorldRecipe = useMemo(
+    () => (chatMeta.gameWorld == null ? null : recipeKey(JSON.stringify(chatMeta.gameWorld))),
+    [chatMeta.gameWorld],
   );
+  const gameWorld = useGameWorld(activeChatId, gameWorldRecipe).data ?? null;
   const overworldClockRef = useRef<WorldOverworldHandle | null>(null);
   // The setting's art family (worldgen W6f): another family's art, music and sounds are left out.
   const artFamily = worldKitArtFamily(gameKit);

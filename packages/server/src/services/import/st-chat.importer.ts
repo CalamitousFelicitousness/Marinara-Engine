@@ -2,14 +2,18 @@
 // Importer: SillyTavern Chat (JSONL)
 // ──────────────────────────────────────────────
 import type { DB } from "../../db/connection.js";
+import { logger } from "../../lib/logger.js";
 import { createChatsStorage } from "../storage/chats.storage.js";
 import { createSpatialContextStorage } from "../storage/spatial-context.storage.js";
+import { createGameWorldSnapshotsStorage } from "../storage/game-world-snapshots.storage.js";
+import { saveGameWorldSnapshot } from "../game/game-world.service.js";
 import {
   normalizeTextForMatch,
   normalizeChatSummaryEntries,
   compileChatSummaryEntries,
   SPATIAL_CONTEXT_LIMITS,
   type ChatMode,
+  readWorldSnapshot,
 } from "@marinara-engine/shared";
 import { copyAdvancedMemoryRecords, remapAdvancedMemoryMetadata } from "../advanced-memory-transfer.js";
 import {
@@ -459,6 +463,16 @@ export async function importSTChat(jsonlContent: string, db: DB, opts?: ImportST
     delete importedMetadata.spatialContextHistory;
     delete importedMetadata.advancedMemoryTransfer;
     delete importedMetadata.advancedMemoryState;
+    delete importedMetadata.gameWorldSnapshot;
+    // A game's world (worldgen W11): the snapshot it came with, checked whole, kept before the metadata
+    // that names the world; else, for a world this Engine's generator made, made now from its recipe.
+    if (importedMetadata.gameWorld != null) {
+      const read = readWorldSnapshot(marinaraMetadata.gameWorldSnapshot);
+      if (read.ok) await createGameWorldSnapshotsStorage(db).put(chat.id, read.snapshot);
+      else if (!(await saveGameWorldSnapshot(db, chat.id, importedMetadata))) {
+        logger.warn("Imported game chat %s has a world this Engine cannot read: %s", chat.id, read.issues[0]);
+      }
+    }
     await storage.patchMetadata(
       chat.id,
       {

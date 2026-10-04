@@ -48,6 +48,7 @@ import {
   RAINBOW_GRADIENT_PRESET,
 } from "./lib/css-colors";
 import { normalizeThemeCss } from "./lib/theme-css";
+import { getChatWidgetFontFamily, stripFontFamilyQuotes, toCssFontFamilyValue } from "./lib/font-family";
 import { useLegacyThemeMigration, useThemes } from "./hooks/use-themes";
 import { useSettingsSync } from "./hooks/use-settings-sync";
 import { useStorageMigrationNotice } from "./hooks/use-storage-migration-notice";
@@ -212,23 +213,6 @@ export class AppRecoveryBoundary extends Component<{ children: ReactNode }, { er
       </Translation>
     );
   }
-}
-
-function stripFontFamilyQuotes(family: string): string {
-  const trimmed = family.trim();
-  if (trimmed.length < 2) return trimmed;
-
-  const quote = trimmed[0];
-  if ((quote !== `"` && quote !== `'`) || trimmed[trimmed.length - 1] !== quote) {
-    return trimmed;
-  }
-
-  return trimmed.slice(1, -1).trim();
-}
-
-function toCssFontFamilyValue(family: string): string {
-  const cleanFamily = stripFontFamilyQuotes(family);
-  return `"${cleanFamily.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
 
 function customFontFaceKey(family: string, font: CustomFontFace): string {
@@ -492,6 +476,9 @@ export function App() {
   const language = useUIStore((s) => s.language);
   const visualTheme = useUIStore((s) => s.visualTheme);
   const fontFamily = useUIStore((s) => s.fontFamily);
+  const chatWidgetPreset = useUIStore((s) => s.chatWidgetPreset);
+  const chatWidgetFont = useUIStore((s) => s.chatWidgetFont);
+  const chatWidgetShape = useUIStore((s) => s.chatWidgetShape);
   const appBackgroundColor = useUIStore((s) => s.appBackgroundColor);
   const appAccentColor = useUIStore((s) => s.appAccentColor);
   const appAccentPulseMode = useUIStore((s) => s.appAccentPulseMode);
@@ -519,6 +506,10 @@ export function App() {
   const hasAppDialogOpen = useDialogStore((s) => s.dialog !== null);
   const [whatsNewOpen, setWhatsNewOpen] = useState(false);
   const [whatsNewResolved, setWhatsNewResolved] = useState(false);
+  const [agentUpdateOpen, setAgentUpdateOpen] = useState(false);
+  const [agentUpdatesResolved, setAgentUpdatesResolved] = useState(false);
+  const handleAgentUpdatesResolved = useCallback(() => setAgentUpdatesResolved(true), []);
+  const [chatWindowIntroOpen, setChatWindowIntroOpen] = useState(false);
   const handleWhatsNewResolved = useCallback(() => setWhatsNewResolved(true), []);
   // Shares the modal's query via the cache; gating the prompter on the QUERY
   // (pending or a notice still waiting) instead of the modal's open state
@@ -1047,6 +1038,25 @@ export function App() {
     }
   }, [fontFamily]);
 
+  useEffect(() => {
+    const root = document.documentElement;
+    if (chatWidgetPreset === "default") delete root.dataset.chatWidgetPreset;
+    else root.dataset.chatWidgetPreset = chatWidgetPreset;
+    const shape =
+      chatWidgetShape !== "preset"
+        ? chatWidgetShape
+        : chatWidgetPreset === "dottore"
+          ? "cut-corner"
+          : chatWidgetPreset === "mari"
+            ? "arched"
+            : null;
+    if (shape) root.dataset.chatWidgetShape = shape;
+    else delete root.dataset.chatWidgetShape;
+    const font = getChatWidgetFontFamily(chatWidgetFont);
+    if (font) root.style.setProperty("--mari-widget-font-override", font);
+    else root.style.removeProperty("--mari-widget-font-override");
+  }, [chatWidgetPreset, chatWidgetFont, chatWidgetShape]);
+
   // Register custom font faces without forcing every shard to load at startup.
   const { data: customFonts } = useQuery<CustomFontFace[]>({
     queryKey: ["custom-fonts"],
@@ -1099,7 +1109,20 @@ export function App() {
       <PersonalExtensionInjector />
       <ChibiProfessorMariEasterEgg />
       <Suspense fallback={null}>
-        <LazyAppShell />
+        <LazyAppShell
+          chatWindowIntroAllowed={
+            whatsNewResolved &&
+            !hasModalOpen &&
+            !hasAppDialogOpen &&
+            !whatsNewOpen &&
+            !migrationNoticePending &&
+            !migrationNotice &&
+            agentUpdatesResolved &&
+            !agentUpdateOpen &&
+            (isLite || !showDownloadModal)
+          }
+          onChatWindowIntroOpenChange={setChatWindowIntroOpen}
+        />
       </Suspense>
       <WhatsNewModal
         presentationAllowed={!hasModalOpen && !hasAppDialogOpen && (isLite || !showDownloadModal)}
@@ -1112,6 +1135,8 @@ export function App() {
         }
       />
       <AgentUpdatePrompter
+        onOpenChange={setAgentUpdateOpen}
+        onResolved={handleAgentUpdatesResolved}
         presentationAllowed={
           whatsNewResolved &&
           !hasModalOpen &&
@@ -1119,6 +1144,7 @@ export function App() {
           !whatsNewOpen &&
           !migrationNoticePending &&
           !migrationNotice &&
+          !chatWindowIntroOpen &&
           (isLite || !showDownloadModal)
         }
       />

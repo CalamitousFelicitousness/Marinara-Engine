@@ -11578,12 +11578,11 @@ test("Game character sheet Retry remains a draft until Save", async ({ page, req
     await sheet.getByRole("button", { name: "Retry", exact: true }).click();
     await expect(classInput).toHaveValue("Chronomancer");
     expect((await readStoredCard())?.class).toBe("Scout");
-    const layoutApplied = page.waitForResponse(
-      (response) =>
-        response.url().endsWith(metadataUrl) &&
-        Object.keys(response.request().postDataJSON() as Record<string, unknown>).length === 1 &&
-        Object.hasOwn(response.request().postDataJSON() as Record<string, unknown>, "windowLayout"),
-    );
+    const layoutApplied = page.waitForResponse((response) => {
+      if (!response.url().endsWith(metadataUrl) || response.request().method() !== "PATCH") return false;
+      const body = response.request().postDataJSON() as Record<string, unknown> | null;
+      return body !== null && Object.keys(body).length === 1 && Object.hasOwn(body, "windowLayout");
+    });
     releaseLayoutResponse();
     expect((await layoutApplied).ok()).toBeTruthy();
     await page.mouse.move(0, 0);

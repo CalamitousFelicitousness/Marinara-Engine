@@ -18,7 +18,9 @@ import {
   checkWorldBrief,
   compileGameWorld,
   createConnectionSchema,
+  DUNGEON_SETS,
   dungeonSetForPlace,
+  dungeonWayOutWords,
   parseWorldKit,
   type GameWorld,
 } from "../../packages/shared/src/index.js";
@@ -73,6 +75,13 @@ try {
   assert.equal(look("Reactor Core", "scifi"), "station_engine");
   assert.equal(look("Hydroponics Bay", "scifi"), "station_hydro");
   assert.equal(look("Cold War Bunker", "modern"), "station_corridor", "a bunker anywhere");
+
+  // The way out in words for leaving by it.
+  const wayOut = (id: string) => dungeonWayOutWords(DUNGEON_SETS.find((set) => set.id === id)!);
+  assert.equal(wayOut("cave_rock"), "the ladder");
+  assert.equal(wayOut("dungeon_crypt"), "the stairs");
+  assert.equal(wayOut("dungeon_sewer"), "the ladder");
+  assert.equal(wayOut("station_lab"), "the ladder hatch");
 
   // ── Through the routes ──
   const game = gameOf("high_fantasy", 21);

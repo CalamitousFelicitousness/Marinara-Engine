@@ -8,6 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   DUNGEON_EXIT_PROP,
+  dungeonWayOutWords,
   DUNGEON_SETS,
   characterFacing,
   characterFrameAt,
@@ -344,7 +345,7 @@ export function DungeonMapView({
             className="pointer-events-auto inline-flex items-center gap-1.5 rounded-lg border border-white/20 bg-black/70 px-3 py-1.5 text-xs font-semibold text-white hover:bg-black/85 disabled:opacity-50"
           >
             <DoorOpen size={13} aria-hidden="true" />
-            {t("game.dungeon.leave", { way: set.props[DUNGEON_EXIT_PROP] })}
+            {t("game.dungeon.leave", { way: dungeonWayOutWords(set) })}
           </button>
         )}
       </div>

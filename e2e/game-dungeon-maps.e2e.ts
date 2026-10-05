@@ -106,7 +106,7 @@ test("the Game Master opens a crypt, the party walks it, and leaves by the way o
     // The map the Engine made is the one the seed makes (nothing random on the way).
     const cells = dungeonFromGameDungeonMap(kept);
     await expect(page.getByText(/The Old Crypt · area 1/u)).toBeVisible();
-    const leave = page.getByRole("button", { name: "Leave by stairs down", exact: true });
+    const leave = page.getByRole("button", { name: "Leave by the stairs", exact: true });
     await expect(leave).toBeVisible();
 
     // A click on a cell in the last room walks there.

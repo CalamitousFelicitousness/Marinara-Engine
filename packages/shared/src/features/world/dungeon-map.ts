@@ -701,6 +701,13 @@ export function dungeonFromGameDungeonMap(map: GameDungeonMap): DungeonMap {
   };
 }
 
+/** The way out in words for leaving by it: "the stairs", "the ladder", "the ladder hatch" (the set's
+ *  word for the tile says which way it goes, which leaving does not). */
+export function dungeonWayOutWords(set: DungeonSet): string {
+  const tile = (set.props[DUNGEON_EXIT_PROP] ?? "way out").replace(/\s+(down|up)$/u, "");
+  return /^(an?|the) /u.test(tile) ? tile.replace(/^an? /u, "the ") : `the ${tile}`;
+}
+
 /** Words that make a place one to go down into, and the look each gives, in the order they are read
  *  (map editor Phase 3, generated maps for places). Station words only in a science fiction setting:
  *  elsewhere a station is a police or a train station. */

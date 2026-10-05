@@ -19,12 +19,15 @@ import {
   dungeonPath,
   dungeonSetFor,
   dungeonWalkable,
+  dungeonWalkMinutes,
   gameDungeonMapFromDungeon,
   gameDungeonMapFromMetadata,
   gameDungeonMapPromptText,
   gameDungeonSeed,
   generateDungeonMap,
+  parseGmTags,
   readGameDungeonTags,
+  RESERVED_GM_TAG_NAMES,
   stripGmTags,
 } from "../../packages/shared/src/index.js";
 
@@ -113,6 +116,10 @@ try {
   assert.deepEqual(readGameDungeonTags('[map: leave name="The Pit"]'), [{ leave: true }], "a named leave still leaves");
   assert.deepEqual(readGameDungeonTags('[map: kind="cave"]'), [], "a map is named");
   assert.equal(stripGmTags('Down we go. [map: kind="cave" name="Wolf Hollow"]').trim(), "Down we go.");
+  assert.equal(parseGmTags('Down we go. [map: kind="cave" name="Wolf Hollow"]').cleanContent.trim(), "Down we go.");
+  assert.ok(RESERVED_GM_TAG_NAMES.includes("map"), "a ruleset verb cannot take the map tag's name");
+  assert.equal(dungeonWalkMinutes(1), 1, "a single step still takes a minute");
+  assert.equal(dungeonWalkMinutes(45), 2);
   assert.equal(
     gameDungeonSeed("c1", "Wolf Hollow"),
     gameDungeonSeed("c1", "wolf hollow"),
@@ -229,11 +236,17 @@ try {
     assert.deepEqual((await meta()).gameDungeonMap.at, goal);
     const pending = (await meta()).gameDungeonWalk;
     assert.equal(pending.minutes, answer.minutes);
+    // A step back and forth before the turn: each a minute, joined to the walk not yet told.
+    for (const to of [answer.path.at(-2) ?? opened.at, goal])
+      assert.equal((await walk({ map: opened.id, ...to })).json().minutes, 1);
+    const joined = (await meta()).gameDungeonWalk;
+    assert.equal(joined.minutes, answer.minutes + 2, "joined to the walk not yet told");
+    assert.deepEqual(joined.from, pending.from, "from where the walk began");
     await turn("Bones crunch underfoot.");
     assert.match(prompts.join("\n"), /The party walked from area 1 to (area \d+|a passage) of Wolf Hollow/u);
     assert.equal((await meta()).gameDungeonWalk, null, "told, no longer pending");
     const toldIn = (await chats.listMessages(chatId)).filter((m: any) => m.role === "assistant").at(-1)!;
-    assert.equal(JSON.parse(toldIn.extra as string).dungeonWalk.id, pending.id, "kept with the reply");
+    assert.equal(JSON.parse(toldIn.extra as string).dungeonWalk.id, joined.id, "kept with the reply");
     await turn("Bones crack.", { regenerateMessageId: toldIn.id, userMessage: undefined });
     assert.match(prompts.join("\n"), /The party walked from area 1/u, "told again on a regeneration");
 

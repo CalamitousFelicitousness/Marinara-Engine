@@ -4873,7 +4873,11 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             const locksText = promptWorld
               ? worldSiteLocksText(
                   promptWorld,
-                  worldSiteLocks(promptWorld, gameStoryFromMetadata(chatMeta, promptWorld), await promptReplies()),
+                  worldSiteLocks(
+                    promptWorld,
+                    gameStoryFromMetadata(chatMeta, promptWorld),
+                    (await promptRepliesAll()).all,
+                  ),
                 )
               : "";
             return [text, toldText, locksText].filter(Boolean).join("\n") || undefined;

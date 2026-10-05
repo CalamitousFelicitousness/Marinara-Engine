@@ -1498,6 +1498,7 @@
   "game.mapPack.unreadable": "{{name}} cannot start a game: {{reason}}",
   "game.narration.itemUsed": "🎒 Item used",
   "game.narration.loot": "🎒 Loot",
+  "game.narration.siteOpened": "Opened",
   "game.narration.skillCheckUntrained": "{{skill}} check: not attempted, because the character has no training in it.",
   "game.overworld.close": "Close",
   "game.overworld.enter": "Enter {{name}}",

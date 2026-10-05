@@ -14,6 +14,7 @@ import { join } from "node:path";
 import {
   WORLD_GENERATOR_VERSION,
   WORLD_STARTER_KITS,
+  carryWorldLedger,
   checkWorldBrief,
   compileGameWorld,
   createConnectionSchema,
@@ -201,7 +202,7 @@ try {
     assert.equal(worldTrip(world, "e1", "e1"), null);
 
     // ── No story: nothing is closed ──
-    assert.deepEqual((await overworld()).locked, {});
+    assert.equal((await overworld()).locked, undefined, "an overworld with nothing closed reads as before");
 
     // ── The story names the barrow: it is closed ──
     await chats.patchMetadata(chatId, {
@@ -244,7 +245,7 @@ try {
 
     // ── The Game Master reveals the barrow; a regeneration without it closes it again ──
     await turn('The way to the barrow lies open. [map: reveal name="Old Barrow"]');
-    assert.deepEqual((await overworld()).locked, {}, "opened");
+    assert.equal((await overworld()).locked, undefined, "opened");
     assert.equal((await meta()).gameDungeonMap, null, "a reveal opens no map");
     const revealing = (await chats.listMessages(chatId)).filter((m: any) => m.role === "assistant").at(-1)!;
     await turn("Mist hides the way.", { regenerateMessageId: revealing.id, userMessage: undefined });
@@ -296,7 +297,12 @@ try {
     assert.equal((await overworld()).here, "e1");
     assert.equal((await enter("e1")).statusCode, 400, "not into a hidden site");
     const shown = await overworld();
-    assert.ok(!Object.keys(shown.locked).includes("e1"), "a hidden site is never sent as sealed");
+    assert.ok(!Object.keys(shown.locked ?? {}).includes("e1"), "a hidden site is never sent as sealed");
+    assert.deepEqual(shown.hidden, ["e1"]);
+    // A reveal is carried into the next session with the world's own tags.
+    const carried = carryWorldLedger(null, ['At last. [map: reveal name="Wolf Den Caves"]']);
+    assert.match(carried.tags, /\[map: reveal name="Wolf Den Caves"\]/u);
+    assert.deepEqual([...worldSiteLocks(lockedWorld, story, [carried.tags])], [], "open in the session after");
   } finally {
     await app.close();
     await closeDB();

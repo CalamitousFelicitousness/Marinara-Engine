@@ -124,9 +124,11 @@ export function formatNarration(content: string, boldDialogue = true): string {
     })
     .replace(/\[map:\s*([^\]]*)\]/gi, (_match, rawAttrs: string) => {
       const attrs = parseCommandAttributes(rawAttrs);
+      // A reveal opens a closed place to the party, not a map.
+      const reveal = /^\s*reveal\b/iu.test(rawAttrs) || attrs.action === "reveal";
       return commandBadge(
         "bg-stone-500/15 text-stone-200 ring-1 ring-stone-400/20",
-        "▦ Map",
+        reveal ? translate("game.narration.siteOpened") : "▦ Map",
         attrs.name || rawAttrs.trim(),
       );
     })

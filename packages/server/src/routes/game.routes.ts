@@ -11011,7 +11011,8 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const replies = await gameRepliesBefore(app.db, chatId);
     const present = worldPresent(world, replies.ledger);
     // The sites the story keeps closed until the Game Master opens them (design-game-overworld-sites.md).
-    const locks = worldSiteLocks(world, gameStoryFromMetadata(meta, world), replies.scoped);
+    // Reveals from every session (carried ones first), not only this one's.
+    const locks = worldSiteLocks(world, gameStoryFromMetadata(meta, world), replies.all);
     const walk = worldWalkFromMetadata(meta);
     if (walk) return { here: walk.to, walk, present, placeName: undefined, locks };
     const place = worldPlaceInForce(
@@ -11684,7 +11685,16 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     // A hidden site is never sent: the player does not know it is there.
     const locked = Object.fromEntries([...locks].filter(([, lock]) => lock === "sealed"));
     const hidden = new Set([...locks].filter(([, lock]) => lock === "hidden").map(([id]) => id));
-    return { overworld: { here, walk, ruined: present.ruined, locked, hidden: [...hidden] } };
+    return {
+      overworld: {
+        here,
+        walk,
+        ruined: present.ruined,
+        // Only when the story keeps a site closed: an overworld without any reads as it always did.
+        ...(Object.keys(locked).length ? { locked } : {}),
+        ...(hidden.size ? { hidden: [...hidden] } : {}),
+      },
+    };
   });
 
   // ── POST /game/:chatId/overworld/walk ──

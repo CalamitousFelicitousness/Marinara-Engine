@@ -13,6 +13,7 @@ import {
   type LorebookCategory,
   type QuoteFormat,
   type ScenePromptPreferences,
+  type ScenePackageOrigin,
 } from "@marinara-engine/shared";
 import type { LegacyNoodleNavigationState as NoodleNavigationState } from "../lib/legacy-noodle-navigation";
 import { isCssGradient, MARINARA_GRADIENT_PRESET, RAINBOW_GRADIENT_PRESET } from "../lib/css-colors";
@@ -922,6 +923,8 @@ interface UIState {
   summaryPopoverSettings: SummaryPopoverSettings;
   /** Last-used preferences for generating character/user-initiated roleplay scenes. */
   scenePromptPreferences: ScenePromptPreferences;
+  /** A package thread the Home browser should open once: where a scene came from. Not persisted. */
+  sceneOriginFocus: ScenePackageOrigin | null;
 
   // ── Text Appearance ──
   /** Color for chat message text (empty = theme default) */
@@ -1269,6 +1272,7 @@ interface UIState {
   setEditMessageOnDoubleClick: (v: boolean) => void;
   setSummaryPopoverSettings: (settings: Partial<SummaryPopoverSettings>) => void;
   setScenePromptPreferences: (preferences: ScenePromptPreferences) => void;
+  setSceneOriginFocus: (origin: ScenePackageOrigin | null) => void;
   setChatFontColor: (v: string) => void;
   setDefaultDialogueColor: (v: string) => void;
   setChatChromeTextColor: (v: string) => void;
@@ -2008,6 +2012,7 @@ export const useUIStore = create<UIState>()(
         editMessageOnDoubleClick: true,
         summaryPopoverSettings: DEFAULT_SUMMARY_POPOVER_SETTINGS,
         scenePromptPreferences: DEFAULT_SCENE_PROMPT_PREFERENCES,
+        sceneOriginFocus: null,
         chatFontColor: "",
         defaultDialogueColor: "",
         chatChromeTextColor: "",
@@ -2881,6 +2886,7 @@ export const useUIStore = create<UIState>()(
           })),
         setScenePromptPreferences: (preferences) =>
           set({ scenePromptPreferences: normalizeScenePromptPreferences(preferences) }),
+        setSceneOriginFocus: (origin) => set({ sceneOriginFocus: origin }),
         setChatFontColor: (v) => set({ chatFontColor: v }),
         setDefaultDialogueColor: (v) => set({ defaultDialogueColor: v }),
         setChatChromeTextColor: (v) => set({ chatChromeTextColor: normalizeChatChromeTextColor(v) }),

@@ -3163,7 +3163,8 @@ const LocalChatArea = memo(function LocalChatArea({
     : undefined;
   const activeSceneMeta = parseChatMetadata(activeSceneChat?.metadata);
   const hasActiveLinkedScene = activeSceneChat && activeSceneMeta.sceneStatus === "active";
-  const isSceneChat = chatMeta.sceneStatus === "active" || Boolean(chatMeta.sceneOriginChatId);
+  const isSceneChat =
+    chatMeta.sceneStatus === "active" || Boolean(chatMeta.sceneOriginChatId) || Boolean(chatMeta.scenePackageOrigin);
   const conversationSceneInfo =
     chatMeta.activeSceneChatId && hasActiveLinkedScene
       ? {
@@ -3176,6 +3177,7 @@ const LocalChatArea = memo(function LocalChatArea({
             variant: "scene" as const,
             sceneChatId: activeChatId,
             originChatId: chatMeta.sceneOriginChatId,
+            packageOrigin: chatMeta.scenePackageOrigin,
             description: chatMeta.sceneDescription,
           }
         : undefined;

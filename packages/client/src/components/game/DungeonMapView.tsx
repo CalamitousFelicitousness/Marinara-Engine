@@ -225,25 +225,41 @@ export function DungeonMapView({
       const duration = Math.min(WALK_LONGEST_MS, Math.max(300, result.path.length * WALK_MS_PER_CELL));
       setWalking(true);
       const started = performance.now();
-      const frame = (now: number) => {
-        const progress = Math.min(1, (now - started) / duration);
-        const along = progress * (points.length - 1);
-        const index = Math.min(points.length - 2, Math.floor(along));
-        const [a, b] = [points[index]!, points[index + 1]!];
-        const part = along - index;
-        partyRef.current = { x: a.x + (b.x - a.x) * part, y: a.y + (b.y - a.y) * part };
-        facingRef.current = characterFacing(b.x - a.x, b.y - a.y, facingRef.current);
-        drawRef.current(cameraRef.current(partyRef.current), characterFrameAt(now));
-        if (progress < 1) {
-          frameRef.current = requestAnimationFrame(frame);
-          return;
-        }
+      // The walk ends on its last frame, or by the clock when frames stall (a hidden tab, a draw that throws).
+      let ended = false;
+      const end = () => {
+        if (ended) return;
+        ended = true;
+        clearTimeout(fallback);
+        if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
         frameRef.current = null;
         walkingRef.current = false;
+        partyRef.current = centreOf(result.map.at);
         setWalking(false);
         const snapshot = useGameStateStore.getState().current;
         if (snapshot?.chatId === chatId)
           useGameStateStore.getState().setGameState({ ...snapshot, time: result.formatted });
+      };
+      const fallback = setTimeout(end, duration + 500);
+      const frame = (now: number) => {
+        const progress = Math.min(1, (now - started) / duration);
+        try {
+          const along = progress * (points.length - 1);
+          const index = Math.max(0, Math.min(points.length - 2, Math.floor(along)));
+          const [a, b] = [points[index]!, points[index + 1] ?? points[index]!];
+          const part = along - index;
+          partyRef.current = { x: a.x + (b.x - a.x) * part, y: a.y + (b.y - a.y) * part };
+          facingRef.current = characterFacing(b.x - a.x, b.y - a.y, facingRef.current);
+          drawRef.current(cameraRef.current(partyRef.current), characterFrameAt(now));
+        } catch {
+          end();
+          return;
+        }
+        if (progress < 1) {
+          frameRef.current = requestAnimationFrame(frame);
+          return;
+        }
+        end();
       };
       frameRef.current = requestAnimationFrame(frame);
     },
@@ -289,6 +305,8 @@ export function DungeonMapView({
         aria-label={t("game.dungeon.region")}
         data-component="DungeonMapView"
         data-tiles={drawTile.loading ? "loading" : drawTile.image ? "image" : "plain"}
+        data-walking={walking ? "true" : "false"}
+        data-can-walk={canWalk ? "true" : "false"}
         data-scale={scale}
         data-camera={`${Math.round(resting.x)},${Math.round(resting.y)}`}
       >

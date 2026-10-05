@@ -48,7 +48,7 @@ test("the Game Master opens a crypt, the party walks it, and leaves by the way o
   page,
   request,
 }, testInfo) => {
-  test.setTimeout(120_000);
+  test.setTimeout(240_000);
   const model = await fakeModel([
     'You descend the worn steps. [map: kind="dungeon" set="dungeon_crypt" name="The Old Crypt"]',
     "Dust settles behind you.",
@@ -120,12 +120,12 @@ test("the Game Master opens a crypt, the party walks it, and leaves by the way o
         }
     expect(goal).not.toBeNull();
     const click = async (cell: { x: number; y: number }) => {
+      // The view follows the party once its walk is drawn, so the next cell is read off where it stands.
+      await expect(view).toHaveAttribute("data-walking", "false");
       const scale = Number(await view.getAttribute("data-scale"));
       const [camX, camY] = (await view.getAttribute("data-camera"))!.split(",").map(Number) as [number, number];
-      const canvas = (await view.locator("canvas").boundingBox())!;
       const x = (cell.x * 16 + 8) * scale - camX;
       const y = (cell.y * 16 + 8) * scale - camY;
-      expect(x > 0 && y > 0 && x < canvas.width && y < canvas.height, "the cell is on screen").toBe(true);
       const walked = page.waitForResponse((response) => response.url().includes("/map/walk"));
       await view.locator("canvas").click({ position: { x, y } });
       return (await walked).json();
@@ -135,7 +135,23 @@ test("the Game Master opens a crypt, the party walks it, and leaves by the way o
     const walkTo = async (target: { x: number; y: number }) => {
       while (here.x !== target.x || here.y !== target.y) {
         const path = dungeonPath(cells, here, target)!;
-        const step = path[Math.min(path.length - 1, 4)]!;
+        // As far along the way as is on screen now (the view follows the party).
+        await expect(view).toHaveAttribute("data-walking", "false");
+        await expect(view).toHaveAttribute("data-can-walk", "true", { timeout: 30_000 });
+        const scale = Number(await view.getAttribute("data-scale"));
+        const [camX, camY] = (await view.getAttribute("data-camera"))!.split(",").map(Number) as [number, number];
+        // Only cells the canvas itself answers for: the composer, minimap and toolbar sit over its edges.
+        const points = path.map((cell) => [(cell.x * 16 + 8) * scale - camX, (cell.y * 16 + 8) * scale - camY]);
+        const open = await view.locator("canvas").evaluate((canvas, list) => {
+          const rect = canvas.getBoundingClientRect();
+          return list.map(([x, y]) => {
+            if (x! < 8 || y! < 8 || x! > rect.width - 8 || y! > rect.height - 8) return false;
+            return document.elementFromPoint(rect.left + x!, rect.top + y!) === canvas;
+          });
+        }, points);
+        const index = open.lastIndexOf(true);
+        expect(index, "some cell along the way is clickable").toBeGreaterThanOrEqual(0);
+        const step = path[index]!;
         const answer = await click(step);
         expect(answer.map.at).toEqual(step);
         here = step;

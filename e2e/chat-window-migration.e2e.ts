@@ -135,7 +135,7 @@ for (const mode of ["conversation", "roleplay", "game"] as const) {
         await page.locator("[data-chat-tools-menu-button]").click();
         await expect(page.locator(`[data-chat-tools-menu-item="${windowId(mode, "gallery")}"]`)).toBeVisible();
         await expect(page.locator(`[data-chat-tools-menu-item="${branchesId}"]`)).toHaveCount(0);
-        await page.locator("[data-chat-tools-menu]").locator('[data-window-control="close"]').click();
+        await page.locator("[data-chat-tools-menu-button]").click();
       }
       await expect(bubble(page, branchesId)).toHaveCount(0);
       const settings = await openChatSettings(page);

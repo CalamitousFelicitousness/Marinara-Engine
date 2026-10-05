@@ -177,7 +177,12 @@ export function WindowBubble({
     if (locked || event.button !== 0 || dragRef.current) return;
     event.currentTarget.setPointerCapture?.(event.pointerId);
     const others = Array.from(document.querySelectorAll<HTMLElement>(".mari-window-bubble"))
-      .filter((element) => element !== event.currentTarget && element.getClientRects().length > 0)
+      .filter(
+        (element) =>
+          element !== event.currentTarget &&
+          !element.closest("[data-chat-tools-menu]") &&
+          element.getClientRects().length > 0,
+      )
       .map((element) => {
         const rect = element.getBoundingClientRect();
         return { x: rect.left, y: rect.top, width: rect.width, height: rect.height };

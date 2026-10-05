@@ -74,6 +74,7 @@ try {
     assert.equal(look(name), null, `${name} is not one to go down into`);
   assert.equal(look("Glassblower", "fantasy", ["gemstone", "volcanic", "port"]), null, "only the tags mine and ruin");
   assert.equal(look("Police Station", "modern"), null, "a station is a station only in science fiction");
+  assert.equal(look("Aircraft Hangar", "modern"), null, "and a hangar a hangar");
   for (const name of ["Research Station", "Maglev Station", "Open Deck", "Rooftop Garden", "Research Lab"])
     assert.equal(look(name, "scifi"), null, `${name} is a building like any other`);
   assert.equal(look("Orbital Station Kepler", "scifi"), "station_corridor");

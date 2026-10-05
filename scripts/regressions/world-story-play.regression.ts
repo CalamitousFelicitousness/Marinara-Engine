@@ -45,6 +45,8 @@ import {
 
 const dataDir = mkdtempSync(join(tmpdir(), "marinara-world-story-play-"));
 process.env.DATA_DIR = dataDir;
+// Lite mode: no background download of the local embedding model keeping the process alive after a turn.
+process.env.MARINARA_LITE = "true";
 process.env.FILE_STORAGE_DIR = join(dataDir, "storage");
 process.env.LOG_LEVEL = "silent";
 

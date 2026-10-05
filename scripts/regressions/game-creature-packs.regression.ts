@@ -76,23 +76,28 @@ try {
   assert.ok(issuesOf("{not json")[0]!.includes("not JSON"));
   const [sheet] = pack().sheets;
   assert.ok(
-    issuesOf(pack({ sheets: [{ ...sheet, png: "data:image/png;base64,aGVsbG8gd29ybGQgaGVsbG8gd29ybGQ=" }] }))[0]!.includes(
-      "is not a PNG",
-    ),
+    issuesOf(
+      pack({ sheets: [{ ...sheet, png: "data:image/png;base64,aGVsbG8gd29ybGQgaGVsbG8gd29ybGQ=" }] }),
+    )[0]!.includes("is not a PNG"),
     "a sheet that is not a PNG",
   );
   assert.ok(
     issuesOf(pack({ sheets: [{ ...sheet, png: png(96, 384) }] }))[0]!.includes("is 96 by 384 pixels, not 192 by 384"),
     "a sheet not the size it says",
   );
-  assert.ok(issuesOf(pack({ sheets: [{ ...sheet, png: "https://example.com/goblin.png" }] })).length, "an outside picture");
+  assert.ok(
+    issuesOf(pack({ sheets: [{ ...sheet, png: "https://example.com/goblin.png" }] })).length,
+    "an outside picture",
+  );
   assert.ok(
     issuesOf(pack({ sheets: [{ ...sheet, png: `${png(192, 384)}"onerror="x` }] })).length,
     "anything after the base64",
   );
   assert.ok(issuesOf(pack({ sheets: [sheet, sheet] }))[0]!.includes('Two sheets are called "s1"'));
   assert.ok(
-    issuesOf(pack({ creatures: [creature("goblin"), creature("goblin")] }))[0]!.includes('Two creatures are called "goblin"'),
+    issuesOf(pack({ creatures: [creature("goblin"), creature("goblin")] }))[0]!.includes(
+      'Two creatures are called "goblin"',
+    ),
   );
   assert.ok(
     issuesOf(pack({ creatures: [creature("goblin", { variants: [{ sheet: "s2", x: 0, y: 0 }] })] }))[0]!.includes(
@@ -108,7 +113,12 @@ try {
   assert.ok(past({ variants: [{ sheet: "s1", x: 2, y: 1 }] })[0]!.includes("reaches past the edge"));
   assert.ok(past({ frames: 3, variants: [{ sheet: "s1", x: 0, y: 0 }] })[0]!.includes("reaches past the edge"));
   assert.ok(
-    past({ variants: [{ sheet: "s1", x: 2, y: 0 }, { sheet: "s1", x: 3, y: 0 }] })[0]!.includes("(look 2)"),
+    past({
+      variants: [
+        { sheet: "s1", x: 2, y: 0 },
+        { sheet: "s1", x: 3, y: 0 },
+      ],
+    })[0]!.includes("(look 2)"),
     "names the look",
   );
   const twice = parseCreaturePack(
@@ -123,7 +133,8 @@ try {
   app.decorate("db", db);
   await app.register(gameCreaturePacksRoutes, { prefix: "/api/game-tile-packs/creatures" });
   try {
-    const library = async () => (await app.inject({ method: "GET", url: "/api/game-tile-packs/creatures/library" })).json();
+    const library = async () =>
+      (await app.inject({ method: "GET", url: "/api/game-tile-packs/creatures/library" })).json();
     const chosen = async () => (await app.inject({ method: "GET", url: "/api/game-tile-packs/creatures" })).json();
     assert.deepEqual(await library(), { packs: [], selection: null });
     assert.deepEqual(await chosen(), { pack: null }, "no pack: fights keep their tokens");
@@ -136,11 +147,16 @@ try {
     assert.equal((await save(pack())).json().status, "unchanged");
     assert.equal((await save(pack({ name: "Other" }))).statusCode, 409, "a version is never rewritten");
     assert.equal((await save(pack({ version: 2, creatures: [creature("goblin")] }))).json().status, "added");
-    const served = (await app.inject({ method: "GET", url: "/api/game-tile-packs/creatures/pack?id=local/monsters" })).json()
-      .pack;
+    const served = (
+      await app.inject({ method: "GET", url: "/api/game-tile-packs/creatures/pack?id=local/monsters" })
+    ).json().pack;
     assert.deepEqual([served.version, served.creatures.length], [2, 1], "the latest version");
     assert.equal((await save(served)).json().status, "unchanged", "saved back as it was read");
-    assert.equal((await save(pack({ sheets: [{ ...sheet, width: 96 }] }))).statusCode, 400, "a pack that does not read");
+    assert.equal(
+      (await save(pack({ sheets: [{ ...sheet, width: 96 }] }))).statusCode,
+      400,
+      "a pack that does not read",
+    );
     assert.equal((await save(pack({ id: "a".repeat(78) }))).statusCode, 400, "an id too long to file");
 
     const file = JSON.stringify(pack({ id: "shared-monsters", name: "Shared" }), null, 2);
@@ -160,19 +176,23 @@ try {
     assert.equal((await choose("local/shared-monsters")).json().selection, "local/shared-monsters");
     assert.equal((await library()).selection, "local/shared-monsters");
     const fight = (await chosen()).pack;
-    assert.deepEqual([fight.id, fight.creatures.map((each: { id: string }) => each.id)], [
-      "local/shared-monsters",
-      ["goblin", "wolf", "owlbear"],
-    ]);
+    assert.deepEqual(
+      [fight.id, fight.creatures.map((each: { id: string }) => each.id)],
+      ["local/shared-monsters", ["goblin", "wolf", "owlbear"]],
+    );
     assert.equal((await choose(null)).json().selection, null);
     assert.deepEqual(await chosen(), { pack: null });
     await choose("local/shared-monsters");
-    const removed = await app.inject({ method: "DELETE", url: "/api/game-tile-packs/creatures?id=local/shared-monsters" });
+    const removed = await app.inject({
+      method: "DELETE",
+      url: "/api/game-tile-packs/creatures?id=local/shared-monsters",
+    });
     assert.equal(removed.statusCode, 200);
     assert.deepEqual(await chosen(), { pack: null }, "removing the chosen pack goes back to none");
     assert.equal((await library()).selection, null);
     assert.equal(
-      (await app.inject({ method: "DELETE", url: "/api/game-tile-packs/creatures?id=local/shared-monsters" })).statusCode,
+      (await app.inject({ method: "DELETE", url: "/api/game-tile-packs/creatures?id=local/shared-monsters" }))
+        .statusCode,
       404,
     );
   } finally {

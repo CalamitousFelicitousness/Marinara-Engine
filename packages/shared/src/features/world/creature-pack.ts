@@ -106,7 +106,8 @@ function pngSize(dataUrl: string): { width: number; height: number } | null {
   const signature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
   if (bytes.length < 24 || signature.some((byte, n) => bytes[n] !== byte)) return null;
   if (String.fromCharCode(...bytes.slice(12, 16)) !== "IHDR") return null;
-  const word = (at: number) => ((bytes[at]! << 24) | (bytes[at + 1]! << 16) | (bytes[at + 2]! << 8) | bytes[at + 3]!) >>> 0;
+  const word = (at: number) =>
+    ((bytes[at]! << 24) | (bytes[at + 1]! << 16) | (bytes[at + 2]! << 8) | bytes[at + 3]!) >>> 0;
   return { width: word(16), height: word(20) };
 }
 
@@ -159,12 +160,17 @@ export function parseCreaturePack(input: unknown): CreaturePackRead {
         issues.push(`${label}: no sheet "${look.sheet}".`);
         continue;
       }
-      const [right, bottom] = [(look.x + creature.frames * creature.w) * pack.tileSize, (look.y + 4 * creature.h) * pack.tileSize];
-      if (right > sheet.width || bottom > sheet.height) issues.push(`${label} reaches past the edge of the sheet "${sheet.id}".`);
+      const [right, bottom] = [
+        (look.x + creature.frames * creature.w) * pack.tileSize,
+        (look.y + 4 * creature.h) * pack.tileSize,
+      ];
+      if (right > sheet.width || bottom > sheet.height)
+        issues.push(`${label} reaches past the edge of the sheet "${sheet.id}".`);
     }
     for (const name of creature.match) {
       const earlier = matched.get(key(name));
-      if (earlier && earlier !== creature.id) notes.push(`"${name}" is matched by "${earlier}" first, not "${creature.id}".`);
+      if (earlier && earlier !== creature.id)
+        notes.push(`"${name}" is matched by "${earlier}" first, not "${creature.id}".`);
       else matched.set(key(name), creature.id);
     }
   }

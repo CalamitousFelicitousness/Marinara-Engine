@@ -1293,6 +1293,8 @@ test("movable button pixel size is independent, stays reachable and restores the
     await expect.poll(async () => (await readPreferences(page)).ready).toBe(true);
     await closeChatSettings(page);
     await expect(settingsButton).toBeVisible();
+    await expect(page.locator("textarea[data-chat-composer]")).toBeVisible();
+    await assertReachable();
     const baseline = await settingsButton.boundingBox();
     expect(baseline).not.toBeNull();
     const originalFont = await page.evaluate(async () => {

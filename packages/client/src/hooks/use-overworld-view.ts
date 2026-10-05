@@ -9,6 +9,7 @@ import {
   tilePackPixels,
   CHARACTER_FACINGS,
   worldWholeEdgeBlocks,
+  WORLD_PATTERN_TILE_IDS,
   type WorldEdgeTerrain,
   type CharacterFacing,
   type ImageCharacter,
@@ -261,8 +262,28 @@ export function useOverworldAtlas(family: string | undefined, own?: TilePack | n
       variants?.length ? variants[Math.min(variants.length - 1, Math.floor(pick * variants.length))]! : null;
     if (image) {
       const size = image.tileSize;
+      const patterns = new Set<string>(WORLD_PATTERN_TILE_IDS);
       const draw = ((ctx, id, x, y, pick = 0, box) => {
-        const tile = ready?.canvas ? variantOf(ready.tiles[id], pick) : null;
+        const variants = ready?.tiles[id];
+        // Ground drawn as a pattern: its cell for this position (x and y are whole cells in units here).
+        const pattern = !box && patterns.has(id) ? variants?.find((each) => each.w > 1 || each.h > 1) : undefined;
+        if (pattern && ready?.canvas) {
+          const [cx, cy] = [Math.round(x / OVERWORLD_TILE), Math.round(y / OVERWORLD_TILE)];
+          const [px, py] = [((cx % pattern.w) + pattern.w) % pattern.w, ((cy % pattern.h) + pattern.h) % pattern.h];
+          ctx.drawImage(
+            ready.canvas,
+            pattern.sx + px * size,
+            pattern.sy + py * size,
+            size,
+            size,
+            x,
+            y,
+            OVERWORLD_TILE,
+            OVERWORLD_TILE,
+          );
+          return true;
+        }
+        const tile = ready?.canvas ? variantOf(variants, pick) : null;
         if (!tile || !ready?.canvas) return false;
         const [dw, dh] = box
           ? fitInside(tile.w * OVERWORLD_TILE, tile.h * OVERWORLD_TILE, box.w, box.h)
@@ -278,6 +299,7 @@ export function useOverworldAtlas(family: string | undefined, own?: TilePack | n
       draw.image = true;
       draw.loading = !ready;
       draw.sprite = (id) => {
+        if (patterns.has(id)) return null;
         const tile = image.tiles[id]?.[0];
         return tile && ((tile.w ?? 1) > 1 || (tile.h ?? 1) > 1) ? { w: tile.w ?? 1, h: tile.h ?? 1 } : null;
       };

@@ -78,6 +78,17 @@ export const WORLD_TILE_IDS = Object.freeze([
   ...WORLD_EDGE_TERRAINS.map((terrain) => `edge_${terrain}` as const),
 ] as const);
 export type WorldTileId = (typeof WORLD_TILE_IDS)[number];
+/** Ground an image pack may draw as a pattern (user, 2026-10-05, ground art in many looks): a variant larger
+ *  than one cell is a texture laid over the ground by position (a cell at (x, y) draws the pattern's cell at
+ *  (x mod w, y mod h)), so a texture several cells across tiles without a seam or a visible repeat. The first
+ *  such variant is the pattern; the others are left aside, since mixing two would show where they meet. */
+export const WORLD_PATTERN_TILE_IDS: readonly WorldTileId[] = Object.freeze([
+  ...WORLD_GROUND_LOOKS,
+  "town_ground",
+  "street",
+  "square",
+  "in_floor",
+]);
 /** Tiles only an image pack draws (whole buildings as sprites); a drawn pack's roofs and fronts stand in. */
 export const WORLD_IMAGE_ONLY_TILE_IDS: readonly WorldTileId[] = Object.freeze([
   "house",

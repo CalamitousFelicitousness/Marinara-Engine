@@ -75,6 +75,12 @@ test("an image pack chosen for its setting draws the overworld and the town", as
       x % 48 < 8 || x % 48 >= 40 ? [0, 0, 0, 0] : y < 96 ? [20, 200, 220, 255] : [220, 200, 20, 255],
     );
     const edges = pngOf(384, 1440, (x) => (x < 192 ? [10, 60, 250, 255] : [240, 120, 10, 255]));
+    // A town ground pattern two cells across, each cell a colour of its own.
+    const PATTERN = [
+      [60, 200, 60],
+      [200, 60, 200],
+    ];
+    const ground = pngOf(96, 48, (x) => [...PATTERN[x >= 48 ? 1 : 0]!, 255]);
     const pack = {
       tilePackVersion: 2,
       id: "e2e-art",
@@ -89,11 +95,13 @@ test("an image pack chosen for its setting draws the overworld and the town", as
         // Edge blocks: water (left) and streets (right), each four cells by thirty (with the slanted corners and
         // curved runs) in a colour of its own.
         { id: "edges", png: `data:image/png;base64,${edges.toString("base64")}`, width: 384, height: 1440 },
+        { id: "ground", png: `data:image/png;base64,${ground.toString("base64")}`, width: 96, height: 48 },
       ],
       characters: [{ id: "walker", sheet: "people", x: 0, y: 0 }],
       tiles: {
         grass: [{ sheet: "town", x: 0, y: 0 }],
-        town_ground: [{ sheet: "town", x: 0, y: 0 }],
+        // A pattern: laid over the town's ground by position, not drawn as a sprite.
+        town_ground: [{ sheet: "ground", x: 0, y: 0, w: 2, h: 1 }],
         street: [{ sheet: "town", x: 1, y: 0 }],
         square: [{ sheet: "town", x: 2, y: 0 }],
         house: [{ sheet: "town", x: 3, y: 0, w: 4, h: 3 }],
@@ -158,6 +166,23 @@ test("an image pack chosen for its setting draws the overworld and the town", as
     await expect.poll(() => hasColour(town, [240, 120, 10])).toBe(true);
     // With street edges but no square edges, the square keeps its own tile.
     await expect.poll(() => hasColour(town, [180, 175, 165])).toBe(true);
+    // The town's ground laid as its pattern, by position: every other column of ground cells one colour, the
+    // rest the other, so the two show about as much (drawn as a sprite, one would cover nearly all).
+    const counts = await town
+      .locator("canvas")
+      .first()
+      .evaluate((canvas: HTMLCanvasElement, colours) => {
+        const { data } = canvas.getContext("2d")!.getImageData(0, 0, canvas.width, canvas.height);
+        const found = colours.map(() => 0);
+        for (let at = 0; at < data.length; at += 4 * 3)
+          colours.forEach(([r, g, b], index) => {
+            if (Math.abs(data[at]! - r!) < 6 && Math.abs(data[at + 1]! - g!) < 6 && Math.abs(data[at + 2]! - b!) < 6)
+              found[index]!++;
+          });
+        return found;
+      }, PATTERN);
+    expect(Math.min(...counts)).toBeGreaterThan(0);
+    expect(Math.max(...counts) / Math.min(...counts)).toBeLessThan(1.6);
     // Townsfolk drawn as the pack's walking person, facing down.
     await expect
       .poll(async () =>

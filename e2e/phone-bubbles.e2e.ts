@@ -312,6 +312,130 @@ test.describe("phone bubbles", () => {
     }
   });
 
+  for (const [theme, preset] of [
+    ["dark", "dottore"],
+    ["light", "mari"],
+  ] as const) {
+    test(`separate phone trackers use ${preset} styling and keep moved buttons and edits in ${theme} mode`, async ({
+      page,
+      request,
+    }, testInfo) => {
+      const chat = await createChat(request, "roleplay", {
+        enableAgents: true,
+        activeAgentIds: ["world-state", "persona-stats"],
+        windowLayout: null,
+      });
+      try {
+        expect(
+          (
+            await request.patch(`/api/chats/${chat.id}/game-state`, {
+              data: {
+                manual: true,
+                location: "Harbor market",
+                personaStats: [{ name: "Stamina", value: 6, max: 10, color: "#22c55e" }],
+              },
+            })
+          ).ok(),
+        ).toBeTruthy();
+        await prepare(page, chat.id, {
+          theme,
+          chatWidgetPreset: preset,
+          chatWidgetFont: "@mono",
+          chatWidgetBorderColor: "#f4cb78",
+          chatWidgetBackgroundColor: "#14243b",
+          chatWidgetTextColor: "#f5eed6",
+          trackerPanelEnabled: false,
+          trackerPanelOpen: false,
+          trackerPanelHideHudWidgets: true,
+        });
+        await page.goto("/");
+        const world = bubble(page, "control:tracker-world");
+        const player = bubble(page, "control:tracker-player");
+        await expect(world).toHaveCount(1);
+        await expect(player).toHaveCount(1);
+        await expect(world).toBeVisible();
+        await expect(player).toBeVisible();
+        await expect(world).toHaveAccessibleName("Open World State");
+        await expect(player).toHaveAccessibleName("Open Player & Tracker");
+        expect(
+          await world.evaluate(
+            (element) =>
+              element.closest(".rpg-hud") === null &&
+              element.parentElement?.matches('[data-component="ChatArea.Roleplay"]'),
+          ),
+        ).toBe(true);
+        const worldStart = await box(world);
+        const playerStart = await box(player);
+        expect(
+          Math.abs(worldStart.x - playerStart.x) >= worldStart.width ||
+            Math.abs(worldStart.y - playerStart.y) >= worldStart.height,
+        ).toBe(true);
+        await dragBubble(page, world, { x: 40, y: 240 });
+        const placed = await box(world);
+        await expect
+          .poll(async () => (await readSavedLayout(request, chat.id))?.phoneBubbles?.["control:tracker-world"] ?? null)
+          .toEqual({ x: placed.x, y: placed.y });
+        await world.click();
+        const window = sheet(page, "control:tracker-world");
+        await expect(window).toHaveAttribute("data-presentation", "sheet");
+        await expect(window.getByRole("button", { name: "Harbor market", exact: true })).toBeVisible();
+        await expect(window).toHaveCSS("font-family", /monospace/);
+        await expect(window.locator(".mari-window__title")).toHaveCSS("color", "rgb(245, 238, 214)");
+        await expect
+          .poll(() =>
+            window.evaluate((element) =>
+              [null, "::before", "::after"]
+                .map((pseudo) => {
+                  const style = getComputedStyle(element, pseudo);
+                  return `${style.backgroundColor} ${style.backgroundImage}`;
+                })
+                .join(" "),
+            ),
+          )
+          .toContain("rgb(20, 36, 59)");
+        await expect(window.locator('[data-window-control="close"] svg')).toHaveCSS("color", "rgb(244, 203, 120)");
+        await window.getByRole("button", { name: "Harbor market", exact: true }).click();
+        const location = window.getByPlaceholder("Location", { exact: true });
+        await location.fill("Lantern market");
+        await expect(location).toHaveCSS("-webkit-text-fill-color", "rgb(245, 238, 214)");
+        await location.press("Enter");
+        await expect
+          .poll(async () => (await (await request.get(`/api/chats/${chat.id}/game-state`)).json()).location)
+          .toBe("Lantern market");
+        await page.screenshot({
+          path: testInfo.outputPath(`${preset}-${theme}-phone-world-tracker.png`),
+          animations: "disabled",
+        });
+        await window.locator('[data-window-control="close"]').click();
+        await expect(world).toBeVisible();
+        await player.click();
+        const playerWindow = sheet(page, "control:tracker-player");
+        await expect(playerWindow.getByText("Stamina", { exact: true })).toBeVisible();
+        await expect(playerWindow).toHaveCSS("font-family", /monospace/);
+        await page.screenshot({
+          path: testInfo.outputPath(`${preset}-${theme}-phone-player-tracker.png`),
+          animations: "disabled",
+        });
+        await playerWindow.locator('[data-window-control="close"]').click();
+        await expectComposerClearAndNoSideScroll(page);
+        await page.reload();
+        await expect(world).toBeVisible();
+        await expect(world).toHaveCount(1);
+        await expect(player).toHaveCount(1);
+        await expect
+          .poll(async () => {
+            const actual = await box(world);
+            return { x: actual.x, y: actual.y };
+          })
+          .toEqual({ x: placed.x, y: placed.y });
+        await world.click();
+        await expect(window.getByRole("button", { name: "Lantern market", exact: true })).toBeVisible();
+      } finally {
+        await chat.remove();
+      }
+    });
+  }
+
   test("the Tracker Panel dice shows a bubble that opens the phone Tracker Panel", async ({
     page,
     request,
@@ -321,19 +445,26 @@ test.describe("phone bubbles", () => {
       activeAgentIds: ["world-state", "persona-stats"],
     });
     try {
-      await prepare(page, chat.id, { trackerPanelEnabled: false, trackerPanelOpen: false });
+      await prepare(page, chat.id, {
+        trackerPanelEnabled: false,
+        trackerPanelOpen: false,
+        trackerPanelHideHudWidgets: true,
+      });
       await page.goto("/");
       await expect(page.locator('[data-chat-mode="roleplay"]')).toBeVisible({ timeout: 30_000 });
       const trackerBubble = page.locator('.mari-window-bubble[data-tracker-panel-toggle="bubble"]');
       const panel = page.locator('[data-component="TrackerDataSidebarMobile"]');
       await expect(trackerBubble).toHaveCount(0);
-      // The tracker strip keeps today's widgets while the panel is off.
-      await expect(page.getByRole("button", { name: "World State" })).toBeVisible();
+      // The separate World and Player trackers use movable buttons while the panel is off.
+      await expect(bubble(page, "control:tracker-world")).toBeVisible();
+      await expect(bubble(page, "control:tracker-player")).toBeVisible();
 
       const settings = await openSettingsSheet(page);
       const dice = settings.getByRole("button", { name: "Tracker Panel", exact: true });
       await dice.click();
       await expect(dice).toHaveAttribute("aria-pressed", "true");
+      await expect(bubble(page, "control:tracker-world")).toHaveCount(0);
+      await expect(bubble(page, "control:tracker-player")).toHaveCount(0);
       // Switching it on leaves the panel closed: it waits behind its bubble.
       await settings.locator('[data-window-control="close"]').click();
       await expect(trackerBubble).toBeVisible();

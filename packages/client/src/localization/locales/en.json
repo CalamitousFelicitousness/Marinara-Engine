@@ -11673,6 +11673,7 @@
   "ui.rulesets.builder.base": "Base",
   "ui.rulesets.builder.baseFor": "Base score for {{name}}",
   "ui.rulesets.builder.bonus": "Bonus",
+  "ui.rulesets.builder.chooseEntries": "{{from}}: choose {{count}}",
   "ui.rulesets.builder.chooseSaves": "{{from}}: choose {{count}} saving throws",
   "ui.rulesets.builder.chooseScores": "{{from}}: choose {{count}} scores, {{amount}} each",
   "ui.rulesets.builder.chooseSkills": "{{from}}: choose {{count}} skills",

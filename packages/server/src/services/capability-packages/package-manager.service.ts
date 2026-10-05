@@ -1135,6 +1135,13 @@ function entriesCarryGrants(entries: unknown): boolean {
   return Array.isArray(entries) && entries.some((entry) => plainRecord(entry)?.grants !== undefined);
 }
 
+/** Entries of another catalog to choose (1.86): `entries`, a new key on the strict grants. */
+function entriesCarryEntryChoices(entries: unknown): boolean {
+  return (
+    Array.isArray(entries) && entries.some((entry) => plainRecord(plainRecord(entry)?.grants)?.entries !== undefined)
+  );
+}
+
 /** A sheet value added to a catalog entry's amount (1.78): `amountAdd`, a new key on strict mechanics. */
 function entriesCarryAmountAdd(entries: unknown): boolean {
   return (
@@ -1349,6 +1356,7 @@ export function getCapabilityPackageInstallIssue(
   let carriesHonesty = false;
   let carriesAmountAdd = false;
   let carriesGrants = false;
+  let carriesEntryChoices = false;
   // Every item by "<catalog>/<entry>", inline and in files, and the fakes among them, so a fake whose
   // target is in another catalog file is checked here, where every file can be read.
   const itemsByRef = new Map<string, RulesetCatalogItem>();
@@ -1443,6 +1451,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryHonesty(header.entries)) carriesHonesty = true;
       if (entriesCarryAmountAdd(header.entries)) carriesAmountAdd = true;
       if (entriesCarryGrants(header.entries)) carriesGrants = true;
+      if (entriesCarryEntryChoices(header.entries)) carriesEntryChoices = true;
       collectItems(header.id, header.entries);
       const asset = header.asset;
       if (typeof asset !== "string") continue;
@@ -1487,6 +1496,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryHonesty(fileEntries)) carriesHonesty = true;
       if (entriesCarryAmountAdd(fileEntries)) carriesAmountAdd = true;
       if (entriesCarryGrants(fileEntries)) carriesGrants = true;
+      if (entriesCarryEntryChoices(fileEntries)) carriesEntryChoices = true;
       collectItems(header.id, fileEntries);
     }
   }
@@ -1769,8 +1779,15 @@ export function getCapabilityPackageInstallIssue(
       const units = plainRecord(family)?.units;
       return Array.isArray(units) && units.some((unit) => plainRecord(unit)?.one !== undefined);
     });
-  // A catalog step's count read off the sheet, 1.85: a new key on the strict step.
+  // Entries of a catalog to choose, 1.86: a new key on the strict grants and a new step kind.
   const countSteps = plainRecord(plainRecord(ruleset?.sheet)?.builder)?.steps;
+  const choosing =
+    carriesEntryChoices ||
+    (Array.isArray(countSteps) && countSteps.some((step) => plainRecord(step)?.kind === "choices"));
+  if (!declaresApi(86) && choosing) {
+    return "A ruleset whose builder offers catalog entries to choose requires schemaVersion 2 and capabilityApi 1.86 or newer";
+  }
+  // A catalog step's count read off the sheet, 1.85: a new key on the strict step.
   const counted = Array.isArray(countSteps) && countSteps.some((step) => plainRecord(step)?.countFrom !== undefined);
   if (!declaresApi(85) && counted) {
     return "A ruleset whose builder reads a step's count off the sheet requires schemaVersion 2 and capabilityApi 1.85 or newer";

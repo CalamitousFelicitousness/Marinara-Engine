@@ -7053,6 +7053,38 @@
                       "kind"
                     ],
                     "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "label": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 40
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "choices"
+                      },
+                      "catalog": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "$comment": {}
+                    },
+                    "required": [
+                      "id",
+                      "label",
+                      "kind",
+                      "catalog"
+                    ],
+                    "additionalProperties": false
                   }
                 ]
               },
@@ -13760,6 +13792,68 @@
                       "properties": {
                         "$comment": {}
                       }
+                    },
+                    "entries": {
+                      "type": "object",
+                      "properties": {
+                        "choose": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "catalog": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "count": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 20
+                              },
+                              "filters": {
+                                "type": "object",
+                                "additionalProperties": {
+                                  "anyOf": [
+                                    {
+                                      "type": "number"
+                                    },
+                                    {
+                                      "type": "string",
+                                      "maxLength": 80
+                                    }
+                                  ]
+                                },
+                                "properties": {
+                                  "$comment": {}
+                                }
+                              },
+                              "ids": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "maxLength": 80
+                                },
+                                "minItems": 1,
+                                "maxItems": 120
+                              },
+                              "$comment": {}
+                            },
+                            "required": [
+                              "catalog",
+                              "count"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "minItems": 1,
+                          "maxItems": 6
+                        },
+                        "$comment": {}
+                      },
+                      "required": [
+                        "choose"
+                      ],
+                      "additionalProperties": false
                     },
                     "$comment": {}
                   },

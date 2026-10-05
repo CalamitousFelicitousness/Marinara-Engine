@@ -10,6 +10,7 @@ import {
   applyRulesetBuilder,
   rulesetBuilderAbilityIds,
   rulesetBuilderAbilitySlots,
+  rulesetBuilderEntrySlots,
   rulesetBuilderBaseScores,
   rulesetBuilderCatalogIds,
   rulesetBuilderOptions,
@@ -28,6 +29,7 @@ import {
   type RulesetBuilderMethod,
   type RulesetBuilderState,
   type RulesetBuilderStep,
+  type RulesetBuilderEntrySlot,
   type RulesetBuilderTrainedSlot,
   type RulesetCatalogEntriesById,
   type RulesetCatalogPayload,
@@ -60,11 +62,14 @@ function ChoiceSlot({
   slot,
   labelOf,
   onChange,
+  taken,
 }: {
   title: string;
-  slot: RulesetBuilderAbilitySlot | RulesetBuilderTrainedSlot;
+  slot: RulesetBuilderAbilitySlot | RulesetBuilderTrainedSlot | RulesetBuilderEntrySlot;
   labelOf: (id: string) => string;
   onChange: (chosen: string[]) => void;
+  /** Options another choice already holds, which this one cannot take too. */
+  taken?: ReadonlySet<string>;
 }) {
   const { t } = useUiTranslation();
   const full = slot.chosen.length >= slot.count;
@@ -85,7 +90,7 @@ function ChoiceSlot({
               key={id}
               type="button"
               aria-pressed={on}
-              disabled={!on && full}
+              disabled={!on && (full || !!taken?.has(id))}
               onClick={() => onChange(on ? slot.chosen.filter((each) => each !== id) : [...slot.chosen, id])}
               className={`${chipClass} ${on ? chipOn : chipOff}`}
             >
@@ -190,6 +195,10 @@ export function RulesetSheetBuilder({
     () => (ready ? rulesetBuilderTrainedSlots(definition, state, catalogs, build) : []),
     [build, catalogs, definition, ready, state],
   );
+  const entrySlots = useMemo(
+    () => (ready ? rulesetBuilderEntrySlots(definition, state, catalogs, build) : []),
+    [build, catalogs, definition, ready, state],
+  );
 
   // The sheet as it stands now, for the dice, which land after an await: the render that threw them may
   // be stale by then.
@@ -240,6 +249,24 @@ export function RulesetSheetBuilder({
             slot={slot}
             labelOf={slot.what === "skills" ? skillLabel : saveLabel}
             onChange={(chosen) => update({ ...state, trainedChoices: { ...state.trainedChoices, [slot.key]: chosen } })}
+          />
+        ))}
+      {entrySlots
+        .filter((slot) => slot.stepId === step.id)
+        .map((slot) => (
+          <ChoiceSlot
+            key={slot.key}
+            title={t("ui.rulesets.builder.chooseEntries", { from: slot.entry?.label ?? step.label, count: slot.count })}
+            slot={slot}
+            labelOf={(id) => (catalogs[slot.catalog] ?? []).find((entry) => entry.id === id)?.label ?? id}
+            taken={
+              new Set(
+                entrySlots
+                  .filter((other) => other.key !== slot.key && other.catalog === slot.catalog)
+                  .flatMap((other) => other.chosen),
+              )
+            }
+            onChange={(chosen) => update({ ...state, entryChoices: { ...state.entryChoices, [slot.key]: chosen } })}
           />
         ))}
     </>
@@ -632,6 +659,15 @@ export function RulesetSheetBuilder({
     );
   };
 
+  const choicesStep = () => (
+    <div className="space-y-2">
+      {slotsHere}
+      {entrySlots.every((slot) => slot.stepId !== step.id) && (
+        <p className="text-xs text-[var(--muted-foreground)]">{t("ui.rulesets.builder.nothingToChoose")}</p>
+      )}
+    </div>
+  );
+
   const gearStep = () => (
     <div className="space-y-1.5">
       <p className="text-xs text-[var(--muted-foreground)]">{t("ui.rulesets.builder.gearHint")}</p>
@@ -752,6 +788,8 @@ export function RulesetSheetBuilder({
             abilitiesStep(step)
           ) : step.kind === "trained" ? (
             trainedStep()
+          ) : step.kind === "choices" ? (
+            choicesStep()
           ) : (
             gearStep()
           )}

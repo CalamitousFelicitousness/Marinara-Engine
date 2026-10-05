@@ -1006,6 +1006,8 @@ const builderStepSchema = z.discriminatedUnion("kind", [
     })
     .strict(),
   z.object({ ...builderStepBase, kind: z.literal("startingGear") }).strict(),
+  /** Where the entries the picks grant from `catalog` are chosen (`grants.entries`, 1.86). */
+  z.object({ ...builderStepBase, kind: z.literal("choices"), catalog: sheetId }).strict(),
 ]);
 
 type BuilderMethodName = "pointBuy" | "standardArray" | "roll" | "manual";
@@ -1028,6 +1030,7 @@ export type RulesetBuilderStep =
       countFrom?: RulesetValueRef;
     })
   | (BuilderStepBase & { kind: "fields"; fields: string[]; optional?: string[] })
+  | (BuilderStepBase & { kind: "choices"; catalog: string })
   | (BuilderStepBase & {
       kind: "abilities";
       abilities?: string[];
@@ -2781,6 +2784,28 @@ const catalogGrantsSchema = z
       .optional(),
     /** Field values (a class's hit die, its spellcasting ability). */
     sets: z.record(z.union([z.number().finite(), z.string().max(200), z.boolean()])).optional(),
+    /** Entries of another catalog of rows for the player to choose, `count` of them, among those that
+     *  match `filters` and, when given, are one of `ids` (a language of your choice, one of three
+     *  artisan's tools; Capability API 1.86). Chosen at the builder's `choices` step for that catalog,
+     *  and their rows go on the sheet. */
+    entries: z
+      .object({
+        choose: z
+          .array(
+            z
+              .object({
+                catalog: sheetId,
+                count: z.number().int().min(1).max(20),
+                filters: z.record(z.union([z.number().finite(), z.string().max(80)])).optional(),
+                ids: z.array(z.string().max(80)).min(1).max(120).optional(),
+              })
+              .strict(),
+          )
+          .min(1)
+          .max(6),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -5248,6 +5273,11 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         });
       } else if (step.kind === "startingGear" && !def.items?.startingGear) {
         issue([...path, "kind"], "This ruleset has no starting gear");
+      } else if (step.kind === "choices") {
+        const catalog = catalogs.find((each) => each.id === step.catalog);
+        if (!catalog || (catalog.holds ?? "rows") !== "rows") {
+          issue([...path, "catalog"], `No catalog of rows "${step.catalog}"`);
+        }
       }
     });
     if (abilitySteps > 1) issue(["sheet", "builder", "steps"], "A builder sets the scores in one step");
@@ -7155,6 +7185,23 @@ function grantsIssues(
               : typeof value === "string";
     if (!fits) add([...path, "sets", id], `Field "${id}" cannot hold ${JSON.stringify(value)}`);
   }
+  // Entries to choose (1.86) are chosen at a `choices` step, which is what loads their catalog.
+  grants.entries?.choose.forEach((choice, index) => {
+    const at = [...path, "entries", "choose", index];
+    const hosted = sheet.builder?.steps.some((step) => step.kind === "choices" && step.catalog === choice.catalog);
+    if (!hosted) add([...at, "catalog"], `No builder "choices" step for catalog "${choice.catalog}"`);
+    const catalog = definition.catalogs?.find((each) => each.id === choice.catalog);
+    for (const [filterId, value] of Object.entries(choice.filters ?? {})) {
+      const filter = catalog?.filters?.find((each) => each.id === filterId);
+      if (!filter) add([...at, "filters", filterId], `Unknown filter "${filterId}" of catalog "${choice.catalog}"`);
+      else if ((filter.type === "number") !== (typeof value === "number")) {
+        add(
+          [...at, "filters", filterId],
+          `Filter "${filterId}" takes ${filter.type === "number" ? "a number" : "a word"}`,
+        );
+      }
+    }
+  });
 }
 
 export function rulesetCatalogEntryIssues(

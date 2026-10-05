@@ -53,6 +53,8 @@ export interface RulesetBuilderState {
   abilityChoices?: Record<string, string[]>;
   /** Skills or saves chosen for a grant's or a trained step's `choose`. */
   trainedChoices?: Record<string, string[]>;
+  /** Catalog entries chosen for a grant's `entries.choose` (1.86). */
+  entryChoices?: Record<string, string[]>;
   applied?: RulesetBuilderApplied;
   /** Picks describe the character as it already is: what they grant is recorded as given, and the
    *  sheet is not changed. For a character made before the builder, until the player says done. */
@@ -71,6 +73,7 @@ const stateShape = {
   picks: z.record(idList).optional(),
   abilityChoices: z.record(idList).optional(),
   trainedChoices: z.record(idList).optional(),
+  entryChoices: z.record(idList).optional(),
   describing: z.boolean().optional(),
   made: z.literal("builder").optional(),
   applied: z
@@ -222,6 +225,11 @@ export interface RulesetBuilderTrainedSlot extends RulesetBuilderChoiceSlot {
   tier: string;
 }
 
+export interface RulesetBuilderEntrySlot extends RulesetBuilderChoiceSlot {
+  /** The catalog the entries are chosen from; `from` holds their ids. */
+  catalog: string;
+}
+
 /** The tier a grant trains to: its own, the builder's, or the first above untrained the sheet offers
  *  for skills or saves. */
 function grantTier(
@@ -324,6 +332,38 @@ export function rulesetBuilderTrainedSlots(
       : [],
   );
   return [...granted, ...own];
+}
+
+/** Every choice of catalog entries the picks grant (1.86), shown at the first `choices` step for its
+ *  catalog. An entry a slot offers once is never offered twice: one chosen at another slot (or at
+ *  another grant's) is that slot's. */
+export function rulesetBuilderEntrySlots(
+  definition: RulesetDefinition,
+  state: RulesetBuilderState,
+  catalogs: RulesetCatalogEntriesById,
+  /** The sheet as it stands, which a step's `upTo` reads; no limit without it. */
+  build?: RulesetSheetBuild,
+): RulesetBuilderEntrySlot[] {
+  const steps = definition.sheet.builder?.steps ?? [];
+  const taken = new Set<string>();
+  return rulesetBuilderGranting(definition, state, catalogs, build).flatMap(({ step, entry }) =>
+    (entry.grants?.entries?.choose ?? []).map((choice, index) => {
+      const key = rulesetBuilderChoiceKey(step.id, entry.id, index);
+      const host = steps.find((each) => each.kind === "choices" && each.catalog === choice.catalog)?.id;
+      const from = (catalogs[choice.catalog] ?? [])
+        .filter(
+          (option) =>
+            Object.entries(choice.filters ?? {}).every(([filterId, value]) => filterHas(option, filterId, value)) &&
+            (!choice.ids || choice.ids.includes(option.id)),
+        )
+        .map((option) => option.id);
+      const chosen = [...new Set(state.entryChoices?.[key] ?? [])]
+        .filter((id) => from.includes(id) && !taken.has(`${choice.catalog}/${id}`))
+        .slice(0, choice.count);
+      for (const id of chosen) taken.add(`${choice.catalog}/${id}`);
+      return { key, stepId: host ?? step.id, entry, catalog: choice.catalog, count: choice.count, from, chosen };
+    }),
+  );
 }
 
 /** The abilities an abilities step sets. */
@@ -463,6 +503,12 @@ function desired(
   for (const slot of rulesetBuilderTrainedSlots(definition, state, catalogs, build)) {
     for (const id of slot.chosen) train(slot.what, id, slot.tier);
   }
+  for (const slot of rulesetBuilderEntrySlots(definition, state, catalogs, build)) {
+    for (const id of slot.chosen) {
+      const ref = catalogRowRef(slot.catalog, id);
+      if (!out.rows.includes(ref)) out.rows.push(ref);
+    }
+  }
   return out;
 }
 
@@ -485,7 +531,7 @@ export function rulesetSheetBuildIsBlank(definition: RulesetDefinition, build: R
 /** Every catalog the builder's steps read, so a caller can load them before applying anything. */
 export function rulesetBuilderCatalogIds(definition: RulesetDefinition): string[] {
   const ids = (definition.sheet.builder?.steps ?? []).flatMap((step) =>
-    step.kind === "catalog" ? [step.catalog] : [],
+    step.kind === "catalog" || step.kind === "choices" ? [step.catalog] : [],
   );
   return [...new Set(ids)];
 }
@@ -648,6 +694,12 @@ function applyRulesetBuilderOnce(
   for (const { step, entry } of rulesetBuilderGranting(definition, state, catalogs, build)) {
     entriesByRef.set(catalogRowRef(step.catalog, entry.id), entry);
   }
+  for (const slot of rulesetBuilderEntrySlots(definition, state, catalogs, build)) {
+    for (const id of slot.chosen) {
+      const entry = (catalogs[slot.catalog] ?? []).find((each) => each.id === id);
+      if (entry) entriesByRef.set(catalogRowRef(slot.catalog, id), entry);
+    }
+  }
   for (const ref of want.rows) {
     if (previous.rows.includes(ref)) {
       next.rows.push(ref);
@@ -721,6 +773,7 @@ export function rulesetBuilderRemaining(
   for (const slot of [
     ...rulesetBuilderAbilitySlots(definition, state, catalogs, build),
     ...rulesetBuilderTrainedSlots(definition, state, catalogs, build),
+    ...rulesetBuilderEntrySlots(definition, state, catalogs, build),
   ]) {
     add(slot.stepId, Math.min(slot.count, slot.from.length) - slot.chosen.length);
   }

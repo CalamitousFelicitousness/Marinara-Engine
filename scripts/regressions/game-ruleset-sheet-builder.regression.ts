@@ -30,6 +30,7 @@ import {
   rulesetPointBuySpent,
   rulesetBuilderMethod,
   rulesetBuilderStepCount,
+  rulesetBuilderEntrySlots,
   rulesetSheetBuildIsBlank,
   type RulesetBuilderState,
   type RulesetCatalogEntriesById,
@@ -709,6 +710,139 @@ try {
   }
   refused((doc) => (doc.sheet.builder.steps[0].countFrom = { derived: "nope" }), /nope/);
 
+  // ── 1.86: entries of another catalog to choose ──
+  const tongues = (doc: Record<string, any>) => {
+    doc.catalogs.push({
+      id: "tongues",
+      label: "Languages",
+      feeds: ["features"],
+      filters: [{ id: "type", label: "Type", type: "text" }],
+      entries: [
+        {
+          id: "common",
+          label: "Common",
+          filters: { type: "standard" },
+          rows: [{ list: "features", values: { name: "Common" } }],
+        },
+        {
+          id: "elvish",
+          label: "Elvish",
+          filters: { type: "standard" },
+          rows: [{ list: "features", values: { name: "Elvish" } }],
+        },
+        {
+          id: "abyssal",
+          label: "Abyssal",
+          filters: { type: "exotic" },
+          rows: [{ list: "features", values: { name: "Abyssal" } }],
+        },
+      ],
+    });
+    doc.sheet.builder.steps.push({ id: "languages", label: "Languages", kind: "choices", catalog: "tongues" });
+    const raceEntries = doc.catalogs.find((c: { id: string }) => c.id === "races").entries;
+    raceEntries.find((e: { id: string }) => e.id === "dwarf").grants.entries = {
+      choose: [{ catalog: "tongues", count: 1, filters: { type: "standard" } }],
+    };
+    doc.catalogs
+      .find((c: { id: string }) => c.id === "classes")
+      .entries.find((e: { id: string }) => e.id === "fighter").grants.entries = {
+      choose: [{ catalog: "tongues", count: 2, ids: ["elvish", "abyssal"] }],
+    };
+  };
+  {
+    const chosen = parsed(variant(tongues));
+    const tongueCatalogs: RulesetCatalogEntriesById = Object.fromEntries(
+      (chosen.catalogs ?? []).map((catalog) => [catalog.id, catalog.entries ?? []]),
+    );
+    assert.deepEqual(
+      rulesetBuilderCatalogIds(chosen),
+      ["races", "classes", "tongues"],
+      "a choices step loads its catalog",
+    );
+    const names = (build: RulesetSheetBuild) => (build.lists.features ?? []).map((row) => row.name);
+    let c = applyRulesetBuilder(
+      chosen,
+      defaultRulesetSheetBuild(chosen),
+      { picks: { race: ["dwarf"] } },
+      tongueCatalogs,
+    );
+    const [dwarfSlot] = rulesetBuilderEntrySlots(chosen, c.state, tongueCatalogs, c.build);
+    assert.deepEqual(
+      { stepId: dwarfSlot!.stepId, from: dwarfSlot!.from, count: dwarfSlot!.count },
+      { stepId: "languages", from: ["common", "elvish"], count: 1 },
+      "a standard language, chosen at the Languages step",
+    );
+    assert.equal(rulesetBuilderRemaining(chosen, c.build, c.state, tongueCatalogs).languages, 1);
+    const dwarfKey = dwarfSlot!.key;
+    c = applyRulesetBuilder(chosen, c.build, { ...c.state, entryChoices: { [dwarfKey]: ["abyssal"] } }, tongueCatalogs);
+    assert.ok(!names(c.build).includes("Abyssal"), "an exotic language is not the dwarf's to choose");
+    c = applyRulesetBuilder(chosen, c.build, { ...c.state, entryChoices: { [dwarfKey]: ["elvish"] } }, tongueCatalogs);
+    assert.ok(names(c.build).includes("Elvish"));
+    assert.equal(rulesetBuilderRemaining(chosen, c.build, c.state, tongueCatalogs).languages, 0);
+    // A second grant offers only its ids, and not what the first already holds.
+    c = applyRulesetBuilder(
+      chosen,
+      c.build,
+      { ...c.state, picks: { ...c.state.picks, class: ["fighter"] } },
+      tongueCatalogs,
+    );
+    const fighterSlot = rulesetBuilderEntrySlots(chosen, c.state, tongueCatalogs, c.build).find(
+      (slot) => slot.entry?.id === "fighter",
+    )!;
+    assert.deepEqual(fighterSlot.from, ["elvish", "abyssal"]);
+    c = applyRulesetBuilder(
+      chosen,
+      c.build,
+      { ...c.state, entryChoices: { ...c.state.entryChoices, [fighterSlot.key]: ["elvish", "abyssal"] } },
+      tongueCatalogs,
+    );
+    assert.deepEqual(
+      rulesetBuilderEntrySlots(chosen, c.state, tongueCatalogs, c.build).find((slot) => slot.key === fighterSlot.key)!
+        .chosen,
+      ["abyssal"],
+      "Elvish is the dwarf's",
+    );
+    assert.deepEqual(
+      names(c.build)
+        .filter((name) => ["Elvish", "Abyssal"].includes(name ?? ""))
+        .sort(),
+      ["Abyssal", "Elvish"],
+    );
+    assert.equal(
+      rulesetBuilderRemaining(chosen, c.build, c.state, tongueCatalogs).languages,
+      1,
+      "the fighter has one left",
+    );
+    // Unpicking the race frees Elvish for the fighter's own choice; unpicking both takes them back.
+    c = applyRulesetBuilder(chosen, c.build, { ...c.state, picks: { ...c.state.picks, race: [] } }, tongueCatalogs);
+    assert.deepEqual(
+      names(c.build)
+        .filter((name) => ["Elvish", "Abyssal"].includes(name ?? ""))
+        .sort(),
+      ["Abyssal", "Elvish"],
+    );
+    assert.equal(rulesetBuilderRemaining(chosen, c.build, c.state, tongueCatalogs).languages, 0);
+    c = applyRulesetBuilder(chosen, c.build, { ...c.state, picks: { ...c.state.picks, class: [] } }, tongueCatalogs);
+    assert.deepEqual(
+      names(c.build).filter((name) => ["Elvish", "Abyssal"].includes(name ?? "")),
+      [],
+    );
+  }
+  refused((doc) => {
+    tongues(doc);
+    doc.sheet.builder.steps.pop();
+  }, /No builder "choices" step for catalog "tongues"/);
+  refused(
+    (doc) => doc.sheet.builder.steps.push({ id: "spoken", label: "Spoken", kind: "choices", catalog: "nope" }),
+    /No catalog of rows "nope"/,
+  );
+  refused((doc) => {
+    tongues(doc);
+    doc.catalogs
+      .find((c: { id: string }) => c.id === "races")
+      .entries.find((e: { id: string }) => e.id === "dwarf").grants.entries.choose[0].filters = { nope: "x" };
+  }, /Unknown filter "nope" of catalog "tongues"/);
+
   // ── The gate ──
   const manifest = (minor: number, paths = ["ruleset.json"]) => ({
     schemaVersion: 2,
@@ -768,6 +902,15 @@ try {
   );
   assert.match(issue(84, countedDoc) ?? "", /count off the sheet.*1\.85/);
   assert.equal(issue(85, countedDoc), null);
+  const choosingDoc = variant(tongues);
+  assert.match(issue(85, choosingDoc) ?? "", /catalog entries to choose.*1\.86/);
+  assert.equal(issue(86, choosingDoc), null);
+  const choiceStepOnly = variant((doc) => {
+    tongues(doc);
+    for (const catalog of doc.catalogs)
+      for (const entry of catalog.entries ?? []) if (entry.grants) delete entry.grants.entries;
+  });
+  assert.match(issue(85, choiceStepOnly) ?? "", /1\.86/, "a choices step alone is 1.86's");
   assert.equal(issue(81, variant()), null, "a 1.81 builder is still 1.81's");
   assert.equal(issue(74, JSON.parse(fiveEText)), null, "an older package still validates");
 

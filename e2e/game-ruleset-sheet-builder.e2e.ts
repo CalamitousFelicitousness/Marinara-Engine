@@ -27,7 +27,10 @@ function ruleset(id: string): string {
           label: "Dwarf",
           summary: "Stout and hardy, at home underground.",
           rows: [{ list: "features", values: { name: "Darkvision", text: "See in the dark." } }],
-          grants: { abilities: { add: { con: 2 } } },
+          grants: {
+            abilities: { add: { con: 2 } },
+            entries: { choose: [{ catalog: "tongues", count: 1, filters: { type: "standard" } }] },
+          },
         },
         {
           id: "hill-dwarf",
@@ -39,6 +42,32 @@ function ruleset(id: string): string {
           id: "half-elf",
           label: "Half-Elf",
           grants: { abilities: { add: { cha: 2 }, choose: [{ count: 2, amount: 1, except: ["cha"] }] } },
+        },
+      ],
+    },
+    {
+      id: "tongues",
+      label: "Languages",
+      feeds: ["features"],
+      filters: [{ id: "type", label: "Type", type: "text" }],
+      entries: [
+        {
+          id: "elvish",
+          label: "Elvish",
+          filters: { type: "standard" },
+          rows: [{ list: "features", values: { name: "Elvish" } }],
+        },
+        {
+          id: "giant",
+          label: "Giant",
+          filters: { type: "standard" },
+          rows: [{ list: "features", values: { name: "Giant" } }],
+        },
+        {
+          id: "abyssal",
+          label: "Abyssal",
+          filters: { type: "exotic" },
+          rows: [{ list: "features", values: { name: "Abyssal" } }],
         },
       ],
     },
@@ -109,6 +138,7 @@ function ruleset(id: string): string {
         countFrom: { field: "level" },
       },
       { id: "skills", label: "Proficiencies", kind: "trained" },
+      { id: "languages", label: "Languages", kind: "choices", catalog: "tongues" },
     ],
   };
   return JSON.stringify(doc);
@@ -218,6 +248,15 @@ test("the guided builder applies picks, rolls and buys scores, and saves the she
     await page.getByRole("button", { name: "Select Dwarf" }).click();
     await expect(steps.getByRole("button", { name: "Race Nothing left to choose", exact: true })).toBeVisible();
     await expect(summary.getByText("Dwarf", { exact: true })).toBeVisible();
+    // The dwarf's language of choice: a standard one, at the Languages step.
+    await expect(steps.getByRole("button", { name: "Languages 1 choice left", exact: true })).toBeVisible();
+    await steps.getByRole("button", { name: /^Languages/ }).click();
+    const tongues = page.getByRole("group", { name: /Dwarf: choose 1/ });
+    await expect(tongues.getByRole("button", { name: "Abyssal", exact: true })).toHaveCount(0);
+    await tongues.getByRole("button", { name: "Elvish", exact: true }).click();
+    await expect(tongues.getByRole("button", { name: "Giant", exact: true })).toBeDisabled();
+    await expect(steps.getByRole("button", { name: "Languages Nothing left to choose", exact: true })).toBeVisible();
+    await steps.getByRole("button", { name: /^Race/ }).click();
     await page.getByRole("button", { name: "Next", exact: true }).click();
     await page.getByRole("button", { name: "Select Hill Dwarf" }).click();
     await page.getByRole("button", { name: "Next", exact: true }).click();

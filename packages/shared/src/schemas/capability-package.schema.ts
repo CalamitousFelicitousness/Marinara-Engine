@@ -660,7 +660,11 @@ const capabilityPackageManifestBaseSchema = z
 // 1.85: a builder's catalog step may read how many entries it asks for and takes off the sheet
 //        (`countFrom`, spells known at the character's level). Not a soft seam: an Engine that cannot
 //        read it refuses the ruleset file, so a package that ships it declares 1.85. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 85 } as const);
+// 1.86: a catalog entry may grant entries of another catalog to choose (`grants.entries.choose`, a
+//        language of your choice), chosen at a builder `choices` step. Not a soft seam: an Engine that
+//        cannot read either refuses the ruleset file or the catalog, so a package that ships them
+//        declares 1.86. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 86 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

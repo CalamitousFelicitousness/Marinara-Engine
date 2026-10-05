@@ -193,6 +193,7 @@ import {
 } from "../../lib/support-diagnostics";
 import { showConfirmDialog } from "../../lib/app-dialogs";
 import { downloadJsonFile, sanitizeExportFilenamePart } from "../../lib/download-json";
+import { saveExportFile } from "../../lib/file-download";
 import {
   HOST_DEVICE_FILE_MANAGER_MESSAGE,
   HostDeviceFileManagerError,
@@ -8456,14 +8457,11 @@ function AdvancedSettings() {
         }
         throw new Error(failure.message);
       }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = getDownloadFilename(res, profileExportFallbackNames[format]);
-      a.click();
-      URL.revokeObjectURL(url);
-      toast.success(profileExportSuccessMessages[format]);
+      const saveStatus = await saveExportFile(
+        await res.blob(),
+        getDownloadFilename(res, profileExportFallbackNames[format]),
+      );
+      if (saveStatus === "saved") toast.success(profileExportSuccessMessages[format]);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : localizeUi("ui.panels.advancedsettings.failedToExportProfile"));
     } finally {

@@ -4455,26 +4455,27 @@ function SpritesTab({
         const scopeLabel =
           modeLabel === "all" ? "sprites" : category === "full-body" ? "full-body-sprites" : "expressions";
         const folderName = sanitizeSpriteExportFolderName(`${characterName || "character"}-${scopeLabel}`, "sprites");
-        await exportSprites.mutateAsync({
+        const saveStatus = await exportSprites.mutateAsync({
           characterId,
           expressions: spritesToExport.map((sprite) => sprite.expression),
           folderName,
         });
-        toast.success(
-          modeLabel === "all"
-            ? localizeUi("ui.characters.spritestab.exportedValue1SpriteValue2AsAFolder", {
-                value1: spritesToExport.length,
-                value2: spritesToExport.length === 1 ? "" : localizeUi("ui.noodle.stageprofileview.s"),
-              })
-            : localizeUi("ui.characters.spritestab.exportedValue1Value2SpriteValue3AsAFolder", {
-                value1: spritesToExport.length,
-                value2:
-                  category === "full-body"
-                    ? localizeUi("ui.characters.spritestab.fullBody_0fbbc4a")
-                    : localizeUi("ui.characters.spritestab.expression"),
-                value3: spritesToExport.length === 1 ? "" : localizeUi("ui.noodle.stageprofileview.s"),
-              }),
-        );
+        if (saveStatus === "saved")
+          toast.success(
+            modeLabel === "all"
+              ? localizeUi("ui.characters.spritestab.exportedValue1SpriteValue2AsAFolder", {
+                  value1: spritesToExport.length,
+                  value2: spritesToExport.length === 1 ? "" : localizeUi("ui.noodle.stageprofileview.s"),
+                })
+              : localizeUi("ui.characters.spritestab.exportedValue1Value2SpriteValue3AsAFolder", {
+                  value1: spritesToExport.length,
+                  value2:
+                    category === "full-body"
+                      ? localizeUi("ui.characters.spritestab.fullBody_0fbbc4a")
+                      : localizeUi("ui.characters.spritestab.expression"),
+                  value3: spritesToExport.length === 1 ? "" : localizeUi("ui.noodle.stageprofileview.s"),
+                }),
+          );
       } catch (error) {
         toast.error(
           error instanceof Error

@@ -1154,15 +1154,17 @@ export function ConnectionEditor() {
       claudeFastMode: localClaudeFastMode,
     };
 
-    downloadJsonFile(
+    void downloadJsonFile(
       createConnectionExportEnvelope([exportRow]),
       `${sanitizeExportFilenamePart(localName || String(currentConnection.name ?? ""), "connection")}.connection.json`,
-    );
-    toast.success(
-      localizeUi("ui.connections.connectioneditor.exportedValue1", {
-        value1: localName || localizeUi("ui.connections.connectioneditor.connection"),
-      }),
-    );
+    ).then((saveStatus) => {
+      if (saveStatus === "saved")
+        toast.success(
+          localizeUi("ui.connections.connectioneditor.exportedValue1", {
+            value1: localName || localizeUi("ui.connections.connectioneditor.connection"),
+          }),
+        );
+    });
   }, [
     conn,
     localProvider,

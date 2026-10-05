@@ -169,20 +169,38 @@
 
 /* Shape alone must retain the current surface colors. These defaults match the
    existing owners; the color option supplies --mari-chat-resolved-bg above. */
+.mari-chat-style-surface {
+  --mari-chat-existing-border: var(--border);
+}
+.mari-chat-style-surface.border-foreground\/10 {
+  --mari-chat-existing-border: color-mix(in oklab, var(--foreground) 10%, transparent);
+}
 .mari-chat-input-box {
   --mari-chat-existing-bg: var(--mari-chat-owner-bg, var(--marinara-chat-chrome-input-bg));
+  --mari-chat-existing-border: var(--marinara-chat-chrome-input-border);
+}
+.mari-chat-input-box:focus-within,
+.mari-chat-input-box[class~="border-[var(--marinara-chat-chrome-input-border-focus)]"] {
+  --mari-chat-existing-border: var(--marinara-chat-chrome-input-border-focus);
+}
+/* The existing gradient chrome rule keeps this outline even while focused. */
+[data-marinara-chat-chrome-accent-mode="gradient"] .mari-chat-input-box {
+  --mari-chat-existing-border: var(--marinara-chat-chrome-input-border);
 }
 .mari-rp-bubble {
   --mari-chat-existing-bg: var(--mari-rp-bubble-bg);
+  --mari-chat-existing-border: var(--tw-ring-color);
 }
 .mari-message-narrator .mari-chat-style-surface {
   --mari-chat-existing-bg: rgb(0 0 0 / 0.4);
+  --mari-chat-existing-border: color-mix(in oklab, var(--color-amber-500) 10%, transparent);
 }
 .mari-game-narration-surface {
   --mari-chat-existing-bg: color-mix(in oklab, var(--card) 90%, transparent);
 }
 [data-theme="dark"] .mari-game-narration-surface {
   --mari-chat-existing-bg: rgb(0 0 0 / 0.5);
+  --mari-chat-existing-border: color-mix(in oklab, var(--color-white) 15%, transparent);
 }
 
 .mari-game-stacked-log {
@@ -190,6 +208,7 @@
 }
 [data-theme="dark"] .mari-game-stacked-log {
   --mari-chat-existing-bg: rgb(0 0 0 / 0.4);
+  --mari-chat-existing-border: color-mix(in oklab, var(--color-white) 10%, transparent);
 }
 
 /* Preserve the owners' normal, active and hover fills when only Shape is on. */
@@ -309,7 +328,10 @@
   padding: 0;
   mask: none;
   z-index: -2;
-  background: var(--mari-chat-resolved-border, var(--mari-chat-border, var(--marinara-chat-chrome-panel-border)));
+  background: var(
+    --mari-chat-resolved-border,
+    var(--mari-chat-border, var(--mari-chat-existing-border, var(--marinara-chat-chrome-panel-border)))
+  );
   clip-path: var(
     --mari-chat-frame-ring,
     polygon(

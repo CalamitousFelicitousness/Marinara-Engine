@@ -885,7 +885,15 @@ async function showStyleScope(page: Page, chat: ChatStyleFixture) {
 }
 
 async function surfaceAppearance(element: Locator) {
-  return element.evaluate((node) => {
+  return element.evaluate(async (node) => {
+    // Flush and finish finite paint transitions before comparing independent axes.
+    getComputedStyle(node).backgroundColor;
+    await Promise.all(
+      node
+        .getAnimations()
+        .filter((animation) => animation.effect?.getComputedTiming().endTime !== Infinity)
+        .map((animation) => animation.finished.catch(() => undefined)),
+    );
     const host = getComputedStyle(node);
     const after = getComputedStyle(node, "::after");
     const before = getComputedStyle(node, "::before");
@@ -898,6 +906,17 @@ async function surfaceAppearance(element: Locator) {
       borderImage: before.backgroundImage,
     };
   });
+}
+
+async function originalOutline(element: Locator, ring = false) {
+  return element.evaluate((node, useRing) => {
+    const style = getComputedStyle(node);
+    if (!useRing) return style.borderTopColor;
+    // RP paints a one-pixel box-shadow ring, not its border property.
+    const paintedRing = style.boxShadow.match(/((?:rgba?|oklch|oklab|color)\([^)]*\)) 0px 0px 0px 1px(?:,|$)/u);
+    if (!paintedRing) throw new Error(`Expected a painted RP ring: ${style.boxShadow}`);
+    return paintedRing[1]!;
+  }, ring);
 }
 
 for (const [preset, theme] of [
@@ -919,9 +938,12 @@ for (const [preset, theme] of [
         const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
         useUIStore.getState().setGameTextSpeed(100);
         useUIStore.getState().setGameDialogueDisplayMode("stacked");
+        useUIStore.getState().setConversationMessageStyle("bubble");
       });
-      const gameLog = page.locator("[data-game-skip-bg-nav].mari-game-narration-surface");
+      const gameLog = page.locator(".mari-game-stacked-log");
       let gameLogBaseline: Awaited<ReturnType<typeof surfaceAppearance>> | undefined;
+      let gameLogOutline = "";
+      const outlines = new Map<string, { surface: string; composer: string; focusedComposer: string }>();
       const baseline = new Map<
         string,
         {
@@ -935,12 +957,23 @@ for (const [preset, theme] of [
         if (chat.mode === "game") {
           await expect(gameLog).toBeVisible();
           gameLogBaseline = await surfaceAppearance(gameLog);
+          gameLogOutline = await originalOutline(gameLog);
         }
         baseline.set(chat.view, {
           surface: await surfaceAppearance(scope.surface),
           composer: await surfaceAppearance(scope.composer),
           font: await scope.text.evaluate((node) => getComputedStyle(node).fontFamily),
         });
+        if (chat.view === "classic" || chat.mode === "game") {
+          const surface = await originalOutline(scope.surface, chat.view === "classic");
+          const composer = await originalOutline(scope.composer);
+          await scope.input.focus();
+          await surfaceAppearance(scope.composer);
+          const focusedComposer = await originalOutline(scope.composer);
+          await scope.input.blur();
+          await surfaceAppearance(scope.composer);
+          outlines.set(chat.view, { surface, composer, focusedComposer });
+        }
       }
       await showStyleScope(page, fixture.chats[0]!);
       const baselinePath = info.outputPath(`chat-style-${preset}-baseline.png`);
@@ -982,12 +1015,29 @@ for (const [preset, theme] of [
       await expect(scope.text).toHaveCSS("font-family", original.font);
       if (preset === "dottore") {
         expect(await send.evaluate((node) => getComputedStyle(node, "::after").backgroundColor)).toBe(sendFill);
+        const frame = (element: Locator) =>
+          element.evaluate((node) => getComputedStyle(node, "::before").backgroundColor);
+        await expect.poll(() => frame(scope.surface)).toBe(outlines.get("classic")!.surface);
+        await expect.poll(() => frame(scope.composer)).toBe(outlines.get("classic")!.composer);
+        await scope.input.focus();
+        await expect.poll(() => frame(scope.composer)).toBe(outlines.get("classic")!.focusedComposer);
+        await scope.input.blur();
       }
 
-      await showStyleScope(
+      const gameScope = await showStyleScope(
         page,
         fixture.chats.find((chat) => chat.mode === "game")!,
       );
+      if (preset === "dottore") {
+        for (const [element, color] of [
+          [gameScope.surface, outlines.get("game")!.surface],
+          [gameLog, gameLogOutline],
+        ] as const) {
+          await expect
+            .poll(() => element.evaluate((node) => getComputedStyle(node, "::before").backgroundColor))
+            .toBe(color);
+        }
+      }
       const shapedLog = await surfaceAppearance(gameLog);
       expect(shapedLog.background).toBe(gameLogBaseline!.background);
       expect(shapedLog.image).toBe(gameLogBaseline!.image);
@@ -1050,6 +1100,30 @@ for (const [preset, theme] of [
           await scope.input.fill("");
         });
       }
+      // The default unboxed Conversation layout receives font and glyph colors too.
+      await page.evaluate(async () => {
+        const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+        useUIStore.getState().setConversationMessageStyle("classic");
+      });
+      const unboxed = page
+        .locator('[data-chat-mode="conversation"] .mari-message-content')
+        .filter({ hasText: SCOPE_MESSAGE })
+        .first();
+      await expect(unboxed).toBeVisible();
+      await expect(unboxed).not.toHaveClass(/mari-message-bubble/);
+      await expect(unboxed).toHaveCSS("font-family", /serif/);
+      await expect(unboxed.getByText(SCOPE_MESSAGE, { exact: true }).first()).toHaveCSS(
+        "background-image",
+        textGradient,
+      );
+      await page.evaluate(async () => {
+        const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+        useUIStore.getState().setConversationMessageStyle("bubble");
+      });
+      scope = await showStyleScope(
+        page,
+        fixture.chats.find((chat) => chat.mode === "conversation")!,
+      );
       // Public chat hooks override the preset without reshaping Conversation bubbles.
       const custom = await page.addStyleTag({
         content:

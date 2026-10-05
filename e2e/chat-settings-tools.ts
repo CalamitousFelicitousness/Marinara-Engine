@@ -77,7 +77,7 @@ export async function openChatTool(page: Page, id: string): Promise<Locator> {
     await expect(menuButton).toBeVisible();
     const menu = page.locator("[data-chat-tools-menu]");
     if (!(await menu.isVisible())) await menuButton.click();
-    await menu.locator(`[data-chat-tools-menu-item="${id}"] .mari-drawer__toggle`).click();
+    await menu.locator(`[data-chat-tools-menu-tool="${id}"]`).click();
   } else {
     await page.locator(`.mari-window-bubble[data-window="${id}"]`).click();
   }

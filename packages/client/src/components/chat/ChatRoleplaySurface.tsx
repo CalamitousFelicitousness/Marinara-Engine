@@ -989,6 +989,12 @@ export function ChatRoleplaySurface({
   const vnAutoPlay = useUIStore((s) => s.roleplayVnAutoPlay);
   const vnAutoPlayDelay = useUIStore((s) => s.roleplayVnAutoPlayDelay);
   const visualNovel = isRoleplay && (chatMeta.roleplayDisplayStyle ?? defaultDisplayStyle) === "visual-novel";
+  const chatPosition = useUIStore((s) => s.roleplayChatPosition);
+  const roleplayAvatarStyle = useUIStore((s) => s.roleplayAvatarStyle);
+  const roleplayAvatarScale = useUIStore((s) => s.roleplayAvatarScale);
+  const trackerPanelSide = useUIStore((s) => s.trackerPanelSide);
+  // Left and Right apply on wide screens only (see globals.css); a narrow chat pane keeps the centred column.
+  const sideChatPosition = chatPosition === "left" || chatPosition === "right" ? chatPosition : undefined;
   const [vnHistoryOpen, setVnHistoryOpen] = useState(false);
   const [vnHistoryHasDraft, setVnHistoryHasDraft] = useState(false);
   const [vnMediaTarget, setVnMediaTarget] = useState<HTMLDivElement | null>(null);
@@ -1672,7 +1678,21 @@ export function ChatRoleplaySurface({
         )}
         data-chat-mode="roleplay"
         data-roleplay-presentation={visualNovel ? "visual-novel" : "classic"}
-        style={{ isolation: "isolate" }}
+        data-chat-position={sideChatPosition}
+        data-roleplay-avatar-style={sideChatPosition ? roleplayAvatarStyle : undefined}
+        style={
+          {
+            isolation: "isolate",
+            // The compact pane keeps the transcript's narrow padding (px-3) at every width.
+            ...(centerCompact && { "--mari-roleplay-transcript-gutter": "0.75rem" }),
+            ...(sideChatPosition && {
+              "--roleplay-avatar-scale": roleplayAvatarScale,
+              // A docked Tracker Panel on the same side narrows the chat area the column moves into.
+              "--mari-chat-position-clearance":
+                trackerPanelSide === sideChatPosition ? "var(--tracker-panel-chat-clearance, 0px)" : "0px",
+            }),
+          } as CSSProperties
+        }
       >
         <CrossfadeBackground url={chatBackground} blurPx={chatBackgroundBlur} />
         <div className="rpg-overlay absolute inset-0" />
@@ -1814,7 +1834,7 @@ export function ChatRoleplaySurface({
                 inert={visualNovel && !vnHistoryOpen ? true : undefined}
                 className={cn(
                   "rpg-chat-messages-mobile mari-messages-scroll relative h-full overflow-y-auto overflow-x-hidden",
-                  centerCompact ? "px-3" : "px-3 md:px-8 lg:px-10 xl:px-12",
+                  "px-3 md:px-[var(--mari-roleplay-transcript-gutter)]",
                   visualNovel && !vnHistoryOpen && "invisible pointer-events-none",
                   visualNovel &&
                     vnHistoryOpen &&
@@ -2134,6 +2154,7 @@ export function ChatRoleplaySurface({
                   <EndSceneBar
                     sceneChatId={activeChatId}
                     originChatId={chatMeta.sceneOriginChatId}
+                    packageOrigin={chatMeta.scenePackageOrigin}
                     onConclude={onConcludeScene}
                     onAbandon={onAbandonScene}
                     onFork={onForkScene}

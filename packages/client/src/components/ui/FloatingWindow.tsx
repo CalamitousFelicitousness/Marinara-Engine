@@ -422,7 +422,10 @@ export function FloatingWindow({
   const stackIndex = useFloatingWindowStore((state) => state.stack.indexOf(id));
   const saveLayout = useFloatingWindowStore((state) => state.saveLayout);
   const bringToFront = useFloatingWindowStore((state) => state.bringToFront);
-  const [bounds, setBounds] = useState(readFloatingWindowBounds);
+  const bounds = useLiveBounds(
+    () => (window.innerWidth < 768 ? readPhoneBubbleBounds() : readFloatingWindowBounds()),
+    !sheet,
+  );
   const [liveGeometry, setLiveGeometry] = useState<WindowGeometry | null>(null);
   const pointerSessionRef = useRef<PointerSession | null>(null);
   const frameRef = useRef(0);
@@ -526,27 +529,6 @@ export function FloatingWindow({
       .getState()
       .saveBubble(id, { ...findFreeBubble(bounds, { size: bubbleSize, except: id }), automatic: true });
   }, [bounds, bubbleSize, id, needsDesktopPlace]);
-
-  // Re-clamp whenever the viewport or the chat area changes, so a window can never be lost off-screen.
-  useEffect(() => {
-    if (sheet) return;
-    const update = () =>
-      setBounds((current) => {
-        const next = readFloatingWindowBounds();
-        return current.left === next.left &&
-          current.top === next.top &&
-          current.right === next.right &&
-          current.bottom === next.bottom
-          ? current
-          : next;
-      });
-    window.addEventListener("resize", update);
-    const stopObserving = observeWindowBounds(update);
-    return () => {
-      window.removeEventListener("resize", update);
-      stopObserving();
-    };
-  }, [sheet]);
 
   const layoutRef = useRef(layout);
   layoutRef.current = layout;

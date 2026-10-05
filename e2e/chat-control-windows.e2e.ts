@@ -549,7 +549,7 @@ test("Game Character Profiles stays separate, movable and locked across reload w
     if (!desktop) {
       await page.locator("[data-chat-tools-menu-button]").click();
       await expect(page.locator(`[data-chat-tools-menu-item="${id}"]`)).toHaveCount(0);
-      await page.locator('[data-chat-tools-menu] [data-window-control="close"]').click();
+      await page.locator("[data-chat-tools-menu-button]").click();
     }
     await dragBubble(page, launcher, { x: 100, y: 200 });
     const placed = await box(launcher);

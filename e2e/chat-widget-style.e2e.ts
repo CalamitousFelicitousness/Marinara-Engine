@@ -19,12 +19,16 @@ const GRADIENT_COLORS = {
 };
 const PALETTES = {
   dark: {
-    dottore: { background: "oklch(0.205 0.023 224)", accent: "oklch(0.86 0.083 202)", field: "oklch(0.26 0.027 221)" },
-    mari: { background: "oklch(0.215 0.022 339)", accent: "oklch(0.81 0.087 13)", field: "oklch(0.26 0.032 351)" },
+    dottore: { background: "oklch(0.235 0.03 252)", accent: "oklch(0.83 0.095 218)", field: "oklch(0.275 0.035 250)" },
+    mari: { background: "oklch(0.235 0.035 275)", accent: "oklch(0.8 0.08 82)", field: "oklch(0.27 0.035 275)" },
   },
   light: {
-    dottore: { background: "oklch(0.965 0.012 220)", accent: "oklch(0.39 0.077 227)", field: "oklch(0.935 0.017 216)" },
-    mari: { background: "oklch(0.975 0.018 76)", accent: "oklch(0.46 0.125 9)", field: "oklch(0.95 0.021 63)" },
+    dottore: {
+      background: "oklch(0.965 0.014 238)",
+      accent: "oklch(0.415 0.075 230)",
+      field: "oklch(0.935 0.023 243)",
+    },
+    mari: { background: "oklch(0.975 0.012 80)", accent: "oklch(0.425 0.088 253)", field: "oklch(0.95 0.018 268)" },
   },
 } as const;
 
@@ -510,6 +514,14 @@ async function exerciseWindow(page: Page, desktop: boolean) {
 async function expectCompactFramedWidgets(page: Page, preset: "dottore" | "mari", theme: string) {
   const settings = await openChatSettings(page);
   const header = settings.locator(".mari-window__header");
+  const grip = settings.locator(".mari-window__resize-grip");
+  if (await grip.count()) {
+    await page.mouse.move(1, 1);
+    await expect(grip).toHaveCSS(
+      "color",
+      await resolvedStyle(page, "color", PALETTES[theme as "dark" | "light"][preset].accent),
+    );
+  }
   expect(await header.evaluate((element) => getComputedStyle(element, "::before").backgroundImage)).not.toContain(
     "url(",
   );

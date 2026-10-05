@@ -4,6 +4,14 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Each background in the background library now has a **Download** button that saves the image with its file name, built-in backgrounds included. On iPhone and iPad it opens the share sheet, or offers **Save file** if the sheet can't open straight away (#7129).
+- Exporting a character or persona with a large gallery no longer crashes the server, and an export that fails now shows an error instead of doing nothing. On iPhone and iPad, exports open the share sheet so you can save the file; if it can't open straight away, tap **Save file** on the message that appears. Character and persona ZIP exports keep every file when two share a name (#7115).
+- On phones, Echo Chamber can be moved and resized, and Chat tools expands into round buttons instead of drawer rows. Dottore and Mari chat widget presets use refreshed palettes inspired by their character references, and cut-corner windows keep their backgrounds inside the frame (#7121).
+
+- Downloaded packages can now start roleplay scenes from their own threads, such as a direct message in a social app, the same way `/scene` starts one from a Conversation. **Back** returns to the thread instead of a Conversation. When the package asks for it, the thread stays locked while the scene runs and the scene's recap goes back to the package when you end it. For package developers: capability API 1.66 adds `api.registerSceneOrigin` and the `scenes` permission (#7118).
+
+- Roleplay chats on wide screens can now sit on the left or right instead of the center: choose **Chat position** in **Settings > Appearance > Roleplay > Roleplay Presentation**. Messages and the input box move together and stay clear of open sidebars and a Tracker Panel on the same side. **Center** remains the default, and phones and Game mode are unchanged (#7106).
+
 - You can now change a connection's model straight from the **Connections** menu by the chat input: search or type a model ID, star favourites to pin them on top, and refresh the list when needed. On phones, tap a connection to see its models. Chat Settings → **Connection** has the same **Model** field. The model is saved to the connection, so agents and other chats that use it switch too. Fetched model lists are kept, so the menu doesn't ask the provider every time (#7098).
 
 - Chat input popups now follow **Apply preset font**, **Apply preset shape**, and **Apply preset colors**, including emoji and media pickers, autocomplete menus, character responses, Push Story options, quick replies, and Game dice and address controls. Each switch works independently, and leaving them off keeps the existing look (#7103).

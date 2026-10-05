@@ -12,6 +12,7 @@ import AdmZip from "adm-zip";
 import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import type { HomeCustomWidgetCatalog } from "@marinara-engine/shared";
+import { downloadExport } from "./export-save.js";
 import { forceColorValueEnablesColor } from "./playwright-color-environment.js";
 import { mockUILanguagePacks } from "./ui-language-fixtures.js";
 import { seedUIState } from "./ui-state-fixture.js";
@@ -5675,9 +5676,9 @@ test("character schedules export the live draft and import safely", async ({ pag
     expect((await storedSchedule())!.autonomousDailyCapOverride).toBeNull();
     await dialog.getByRole("spinbutton", { name: /^Daily safety limit/i }).fill("1000");
 
-    const downloadPromise = page.waitForEvent("download");
-    await dialog.getByRole("button", { name: "Export schedule", exact: true }).click();
-    const download = await downloadPromise;
+    const download = await downloadExport(page, () =>
+      dialog.getByRole("button", { name: "Export schedule", exact: true }).click(),
+    );
     expect(download.suggestedFilename()).toBe(`${characterName.replaceAll(" ", "_")}.marinara-schedule.json`);
     const downloadPath = await download.path();
     expect(downloadPath).not.toBeNull();

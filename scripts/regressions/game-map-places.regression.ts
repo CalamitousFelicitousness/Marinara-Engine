@@ -22,6 +22,7 @@ import {
   dungeonSetForPlace,
   dungeonWayOutWords,
   gameDungeonMapPromptText,
+  gameDungeonOnWayOut,
   gameDungeonWalkText,
   parseWorldKit,
   worldCast,
@@ -244,7 +245,10 @@ try {
     // Told to the Game Master without areas: what is on it, where the way out is, where the party is.
     const told = gameDungeonMapPromptText(kept);
     assert.match(told, /^MAP: Old Granary\. /u);
-    assert.match(told, /The way out is where the party came in\. The party is by the way out\.$/u);
+    assert.match(
+      told,
+      /^MAP: Old Granary\. A place made by hand, with liquid in it\. The way out is where the party came in\. The party is by the way out\.$/u,
+    );
     assert.doesNotMatch(told, /area \d|passage/u, "no areas on a map made by hand");
     assert.deepEqual(kept.spots, [
       { x: 2, y: 1, name: "By the pool", people: [{ id: smith.id, name: smith.name }], from: 8, to: 18 },
@@ -264,6 +268,11 @@ try {
     const leaveHand = () =>
       app.inject({ method: "POST", url: `/api/game/${chatId}/map/leave`, payload: { map: kept.id } });
     assert.equal((await leaveHand()).statusCode, 400, "the way out is where the party came in");
+    assert.equal(
+      gameDungeonOnWayOut({ ...kept, at: { x: 3, y: 1 }, props: kept.props.replace(/1/u, "5") }),
+      false,
+      "a way-out prop on a map made by hand is drawn only",
+    );
     await app.inject({
       method: "POST",
       url: `/api/game/${chatId}/map/walk`,

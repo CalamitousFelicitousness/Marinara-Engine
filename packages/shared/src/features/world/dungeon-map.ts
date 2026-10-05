@@ -584,12 +584,10 @@ export function generateDungeonMap(setId: string, seed: number, size: DungeonMap
 export function dungeonMapWords(map: DungeonMap): string {
   const set = DUNGEON_SETS.find((each) => each.id === map.set) ?? DUNGEON_SETS[0]!;
   if (!map.rooms.length) {
-    // A map made by hand has no areas: what is on it, all told.
-    const counts = new Map<number, number>();
-    for (const prop of map.props) if (prop >= 0) counts.set(prop, (counts.get(prop) ?? 0) + 1);
-    const things = [...counts].map(([prop, n]) => (n > 1 ? `${set.props[prop]} (${n})` : set.props[prop]!));
-    if (map.ground.includes("liquid")) things.push(set.liquid);
-    return `${set.label} (${set.floor}, ${set.wall})${things.length ? `: ${things.join(", ")}` : ""}. The way out is where the party came in.`;
+    // A map made by hand has no areas, and its pack's props are its own: what it is, not what stands
+    // there by the set's names (the place's name and the story say that).
+    const liquid = map.ground.includes("liquid") ? ", with liquid in it" : "";
+    return `A place made by hand${liquid}. The way out is where the party came in.`;
   }
   const rooms = map.rooms.map((room, index) => {
     const counts = new Map<number, number>();
@@ -742,6 +740,8 @@ export function dungeonFromGameDungeonMap(map: GameDungeonMap): DungeonMap {
  *  came in. */
 export function gameDungeonOnWayOut(map: GameDungeonMap): boolean {
   if (map.at.x === map.entrance.x && map.at.y === map.entrance.y) return true;
+  // A map made by hand: its props are drawn only, a way-out prop among them too.
+  if (map.hand) return false;
   return map.props[map.at.y * map.width + map.at.x] === String(DUNGEON_EXIT_PROP);
 }
 

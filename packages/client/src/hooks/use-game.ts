@@ -1144,3 +1144,16 @@ export function useDungeonLeave() {
     },
   });
 }
+
+/** Going down into a place in town the party stands at (a cave, a mine, a crypt, by its words). */
+export function useDungeonEnter() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { chatId: string; at: string }) =>
+      api.post<{ map: GameDungeonMap }>(`/game/${data.chatId}/map/enter`, { at: data.at }),
+    onSettled: (_res, _error, variables) => {
+      qc.invalidateQueries({ queryKey: gameKeys.dungeonMap(variables.chatId) });
+      qc.invalidateQueries({ queryKey: chatKeys.detail(variables.chatId) });
+    },
+  });
+}

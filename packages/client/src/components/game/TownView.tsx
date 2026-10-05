@@ -6,7 +6,7 @@
 // Master. The clock runs here as it does on the overworld.
 // ──────────────────────────────────────────────
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
-import { ArrowLeft, DoorOpen, Footprints, MapPin, X } from "lucide-react";
+import { ArrowDownToLine, ArrowLeft, DoorOpen, Footprints, MapPin, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
@@ -15,6 +15,7 @@ import {
   worldTownDoor,
   worldTownMinutes,
   worldTownPath,
+  dungeonSetForPlace,
   worldTownPeopleAt,
   type GameWorld,
   characterFacing,
@@ -25,7 +26,7 @@ import {
   type WorldTownBuilding,
   worldSeason,
 } from "@marinara-engine/shared";
-import { useTown, useTownVisit } from "../../hooks/use-game";
+import { useDungeonEnter, useTown, useTownVisit } from "../../hooks/use-game";
 import {
   overworldBaseResolution,
   overworldCamera,
@@ -85,6 +86,7 @@ export function TownView({
   const { t } = useTranslation();
   const { data: town } = useTown(chatId, turnKey, true);
   const visitMutation = useTownVisit();
+  const enterMutation = useDungeonEnter();
   const drawTile = useOverworldAtlas(family, tilePack, time ? worldSeason(time.day) : undefined);
   const walkingRef = useRef(false);
   const [walking, setWalking] = useState(false);
@@ -441,6 +443,14 @@ export function TownView({
       )
       .map((building) => ({ at: building.id, title: spotTitle(building.id) })),
   ];
+  /** A place in town to go down into (a cave, a mine, a crypt, a sewer, by its words; map editor Phase 3). */
+  const canGoDown = (at: string) => {
+    const building = town.buildings.find((each) => each.id === at);
+    if (!building) return false;
+    const place = building.placeId ? game.world.places.find((each) => each.id === building.placeId) : undefined;
+    const name = building.name ?? place?.name;
+    return Boolean(name && dungeonSetForPlace({ name, tags: place?.tags }, family));
+  };
   const canGoIn = (at: string) => {
     const building = town.buildings.find((each) => each.id === at);
     return Boolean(building && worldBuildingHasRooms(game, building));
@@ -555,6 +565,28 @@ export function TownView({
                   >
                     <DoorOpen size={13} />
                     {t("game.town.goInside")}
+                  </button>
+                )}
+                {canGoDown(selected) && (
+                  <button
+                    type="button"
+                    disabled={!canWalk || walking || enterMutation.isPending}
+                    onClick={() => {
+                      enterMutation.mutate(
+                        { chatId, at: selected },
+                        {
+                          onSuccess: () => setSelectedState(null),
+                          onError: (error) =>
+                            toast.error(
+                              error instanceof Error && error.message ? error.message : t("game.town.goDownFailed"),
+                            ),
+                        },
+                      );
+                    }}
+                    className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-foreground)] transition-opacity hover:opacity-90 disabled:opacity-40"
+                  >
+                    <ArrowDownToLine size={13} />
+                    {t("game.town.goDown")}
                   </button>
                 )}
               </>

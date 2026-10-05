@@ -281,6 +281,10 @@ import {
   worldTownSpotFromMetadata,
   worldTownVisitFromMetadata,
   DUNGEON_EXIT_PROP,
+  dungeonSetForPlace,
+  generateDungeonMap,
+  gameDungeonSeed,
+  gameDungeonMapFromDungeon,
   dungeonFromGameDungeonMap,
   dungeonPath,
   dungeonWalkMinutes,
@@ -11176,6 +11180,42 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     });
     if (!updated || !left) return reply.status(404).send({ error: "Chat not found" });
     return { left };
+  });
+
+  // POST /game/:chatId/map/enter: the party goes down into the place in town it stands at (a cave, a
+  // mine, a crypt, a sewer, by its words; map editor Phase 3): its map, laid out from the game and the
+  // place's name as the Game Master's `[map:]` would be, or the one the party is already on.
+  app.post<{ Params: { chatId: string } }>("/:chatId/map/enter", async (req, reply) => {
+    const { chatId } = req.params;
+    const body = z.object({ at: z.string().min(1).max(16) }).parse(req.body);
+    const chats = createChatsStorage(app.db);
+    const chat = await chats.getById(chatId);
+    if (!chat) return reply.status(404).send({ error: "Chat not found" });
+    const meta = parseMeta(chat.metadata);
+    const world = chat.mode === "game" ? await loadGameWorld(app.db, chat.id, meta) : null;
+    const found = world ? await townOf(chatId, meta, world) : null;
+    if (!world || !found) return reply.status(400).send({ error: "The party is not in a town." });
+    if (found.at !== body.at) return reply.status(400).send({ error: "The party is not there." });
+    const building = found.town.buildings.find((each) => each.id === body.at);
+    const place = building?.placeId ? world.world.places.find((each) => each.id === building.placeId) : undefined;
+    const name = building?.name ?? place?.name;
+    const family = worldKitArtFamily(gameWorldKitFromMetadata(meta) ?? undefined);
+    const set = building && name ? dungeonSetForPlace({ name, tags: place?.tags }, family) : null;
+    if (!building || !name || !set) return reply.status(400).send({ error: "There is no going down here." });
+    const placeKey = building.placeId ?? `${found.town.settlementId}:${building.id}`;
+    let map: GameDungeonMap | undefined;
+    const updated = await chats.patchMetadata(chatId, (fresh) => {
+      const current = gameDungeonMapFromMetadata(fresh);
+      if (current?.place === placeKey) {
+        map = current;
+        return { gameDungeonView: "map" };
+      }
+      const made = generateDungeonMap(set.id, gameDungeonSeed(chatId, name), "medium");
+      map = { ...gameDungeonMapFromDungeon(made, name, randomUUID()), place: placeKey };
+      return { gameDungeonMap: map, gameDungeonWalk: null, gameDungeonLeft: null, gameDungeonView: "map" };
+    });
+    if (!updated || !map) return reply.status(404).send({ error: "Chat not found" });
+    return { map };
   });
 
   // ── The world editor (worldgen W9c): a game's world as compiled, its hand edits, a place's people ──

@@ -609,6 +609,8 @@ export const gameDungeonMapSchema = z
     /** Changes when the party enters another map, so a walk on the old one is never applied to it. */
     id: z.string().min(1).max(80),
     name: z.string().trim().min(1).max(80),
+    /** The world place it is a map of, when it was entered from one (a building in town). */
+    place: z.string().min(1).max(80).optional(),
     set: z.string().max(40),
     seed: z.number().int(),
     width: z.number().int().min(8).max(64),
@@ -697,6 +699,41 @@ export function dungeonFromGameDungeonMap(map: GameDungeonMap): DungeonMap {
     rooms: map.rooms,
     entrance: map.entrance,
   };
+}
+
+/** Words that make a place one to go down into, and the look each gives, in the order they are read
+ *  (map editor Phase 3, generated maps for places). Station words only in a science fiction setting:
+ *  elsewhere a station is a police or a train station. */
+const PLACE_LOOKS: ReadonlyArray<[RegExp, string]> = [
+  [/\b(lava|magma|volcan\w*|molten)\b/u, "cave_lava"],
+  [/\b(ice|icy|frozen|glacier|frost)\b/u, "cave_ice"],
+  [/\b(crystal\w*|gem\w*|geode)\b/u, "cave_crystal"],
+  [/\b(crypts?|tombs?|catacombs?|barrows?|ossuary|mausoleum)\b/u, "dungeon_crypt"],
+  [/\b(sewers?|drains?|cisterns?|tunnels?|basements?|cellars?|undercroft)\b/u, "dungeon_sewer"],
+  [/\b(ruins?|ruined)\b/u, "dungeon_temple"],
+  [/\b(dungeons?|vaults?|labyrinth|oubliette)\b/u, "dungeon_crypt"],
+  [/\b(caves?|caverns?|grotto|grottoes|mines?|mineshaft|warrens?|hollows?|lairs?|delve)\b/u, "cave_rock"],
+];
+const STATION_LOOKS: ReadonlyArray<[RegExp, string]> = [
+  [/\b(labs?|laborator\w*)\b/u, "station_lab"],
+  [/\b(reactors?|engines?|engineering)\b/u, "station_engine"],
+  [/\b(hydroponics?|gardens?|greenhouse)\b/u, "station_hydro"],
+  [/\b(stations?|derelict|bunkers?|hangars?|decks?|outpost)\b/u, "station_corridor"],
+];
+
+/** The look of a map for a place, by its name and tags, or null for a place that is not one to go down
+ *  into (a house, an inn, a market). */
+export function dungeonSetForPlace(
+  place: { name?: string; tags?: readonly string[] },
+  family: string | undefined,
+): DungeonSet | null {
+  const words = [place.name ?? "", ...(place.tags ?? [])].join(" ").toLowerCase();
+  const looks = family === "scifi" ? [...STATION_LOOKS, ...PLACE_LOOKS] : PLACE_LOOKS;
+  const found = looks.find(([pattern]) => pattern.test(words));
+  if (found) return DUNGEON_SETS.find((set) => set.id === found[1])!;
+  // A bunker or a derelict is a station's corridors in any setting.
+  if (/\b(bunkers?|derelict)\b/u.test(words)) return DUNGEON_SETS.find((set) => set.id === "station_corridor")!;
+  return null;
 }
 
 /** The set a map of this kind uses in a setting of this art family: a station for a science fiction

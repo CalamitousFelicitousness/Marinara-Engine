@@ -49,6 +49,8 @@ You can only use one of these at a time. Turning on **RGB Mode** turns off **Acc
 
 At the bottom of **App Style**, choose **Default**, **Dottore** or **Mari** for movable chat buttons, windows and sections. You can change the font, frame shape and three main colors separately. Color pickers also support gradients.
 
+**Button size (px)** changes movable chat buttons and their icons without changing Display Size. Enter a size from 32 to 96 pixels. Leave the field empty, or use its reset button, to keep the current default. The size is saved with your appearance preferences and stays the same when you choose another preset.
+
 Below the color pickers, **Apply preset font**, **Apply preset shape** and **Apply preset colors** let the rest of the chat match. They start off and work independently. They cover messages, input boxes and chat controls; Conversation messages get the optional font and colors while keeping their own shape. Your custom font, shape and color choices are included. For examples and custom themes, see [Custom CSS Themes](custom-css-themes.md#ready-made-chat-window-styles).
 
 ## Custom Mouse Pointer

@@ -906,6 +906,27 @@
     visibility: hidden;
   }
 
+  .mari-window-bubble__icon {
+    display: contents;
+  }
+
+  /* An explicit pixel size also grows SVG icons and character portraits, independent of Display Size. */
+  :root[data-chat-widget-button-size] .mari-window-bubble__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: calc(var(--mari-window-bubble-size) * 0.5);
+    height: calc(var(--mari-window-bubble-size) * 0.5);
+    font-size: calc(var(--mari-window-bubble-size) * 0.3125);
+    line-height: 1;
+  }
+
+  :root[data-chat-widget-button-size] .mari-window-bubble__icon > * {
+    width: 100% !important;
+    height: 100% !important;
+    font-size: inherit !important;
+  }
+
   /* Phones draw bubbles like their toolbar buttons, in pixels so their default row lines up. */
   .mari-window-bubble[data-presentation="sheet"] {
     width: var(--mari-window-bubble-size, 36px);

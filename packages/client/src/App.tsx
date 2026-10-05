@@ -484,6 +484,7 @@ export function App() {
   const chatWidgetPreset = useUIStore((s) => s.chatWidgetPreset);
   const chatWidgetFont = useUIStore((s) => s.chatWidgetFont);
   const chatWidgetShape = useUIStore((s) => s.chatWidgetShape);
+  const chatWidgetButtonSize = useUIStore((s) => s.chatWidgetButtonSize);
   const chatWidgetBorderColor = useUIStore((s) => s.chatWidgetBorderColor);
   const chatWidgetBackgroundColor = useUIStore((s) => s.chatWidgetBackgroundColor);
   const chatWidgetTextColor = useUIStore((s) => s.chatWidgetTextColor);
@@ -1067,6 +1068,17 @@ export function App() {
     if (font) root.style.setProperty("--mari-widget-font-override", font);
     else root.style.removeProperty("--mari-widget-font-override");
   }, [chatWidgetPreset, chatWidgetFont, chatWidgetShape]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (chatWidgetButtonSize === null) {
+      delete root.dataset.chatWidgetButtonSize;
+      root.style.removeProperty("--mari-window-bubble-size");
+    } else {
+      root.dataset.chatWidgetButtonSize = String(chatWidgetButtonSize);
+      root.style.setProperty("--mari-window-bubble-size", `${chatWidgetButtonSize}px`);
+    }
+  }, [chatWidgetButtonSize]);
 
   useEffect(() => {
     const colors = getChatWidgetColorStyle({

@@ -24,6 +24,7 @@ import { normalizeConversationTimeZone } from "../lib/conversation-time-zone";
 import { normalizeChatWidgetFont } from "../lib/font-family";
 import {
   normalizeChatWidgetColor,
+  normalizeChatWidgetButtonSize,
   normalizeChatWidgetPreset,
   normalizeChatWidgetShape,
   normalizeTrackerPanelCollapsedSections,
@@ -300,6 +301,11 @@ export function useSettingsSync() {
               }
               if ("chatWidgetShape" in parsed.settings) {
                 parsed.settings.chatWidgetShape = normalizeChatWidgetShape(parsed.settings.chatWidgetShape);
+              }
+              if ("chatWidgetButtonSize" in parsed.settings) {
+                parsed.settings.chatWidgetButtonSize = normalizeChatWidgetButtonSize(
+                  parsed.settings.chatWidgetButtonSize,
+                );
               }
               for (const key of ["chatWidgetApplyFont", "chatWidgetApplyShape", "chatWidgetApplyColors"] as const) {
                 if (key in parsed.settings) parsed.settings[key] = parsed.settings[key] === true;

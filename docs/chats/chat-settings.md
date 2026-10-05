@@ -28,6 +28,8 @@ Open **Settings > Appearance > App** and scroll to **Chat widget style** at the 
 
 Use **Font**, **Shape** and the three color pickers below the presets to mix things up. Fonts you have installed in Marinara appear in the font list too. Choosing a preset again resets the font, shape and custom colors. These choices do not move your windows or change your saved chat layouts. They are saved with your app preferences and sync to browsers connected to the same server.
 
+**Button size (px)** changes movable chat buttons and their icons without changing Display Size. Enter a size from 32 to 96 pixels. Leave the field empty, or use its reset button, to keep the current default. The size is saved with your appearance preferences and stays the same when you choose another preset.
+
 To make the rest of the chat match, turn on **Apply preset font**, **Apply preset shape** or **Apply preset colors**. Each switch works on its own and includes your custom choices above it. They apply to messages, input boxes and chat controls; Conversation messages use the optional font and colors but keep their own shape. All three start off. Turn one off to return that part of the chat to its usual styling. See [Custom CSS Themes](../appearance/custom-css-themes.md#ready-made-chat-window-styles) for more detail.
 
 ## Moving, pinning and locking the window

@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- **Button size (px)** in Chat widget style lets you resize movable chat buttons and their icons independently of Display Size. Leave it at Default to keep the existing desktop and phone sizes. The setting also covers trackers, Chat tools, Map and Character Profiles, and enlarged buttons stay within the chat area (#7092).
+
 - Chat widget styles can also supply the font, shape and colors for chat messages, input boxes and controls through three separate switches. Conversation messages keep their own shape. On phones, sections moved out of Chat Settings are grouped in a movable three-dot menu with a lock and a saved button order; tracker buttons stay separate. The phone Map button and Character Profiles on both computers and phones are separate movable controls, with the selected widget style and saved positions and locks. Game character sheet drafts stay open with their unsaved changes when the window layout saves (#7081).
 
 - Restoring a settings profile with **Long-Term Memory** while the Long-Term Memory package is active now waits for memory reads or rebuilds in progress, then reloads the restored memory instead of continuing to serve the pre-restore copy. If the installed package is too old to coordinate this, Marinara refuses the restore with a message to update or disable it rather than publishing memory the package cannot see (#7043).

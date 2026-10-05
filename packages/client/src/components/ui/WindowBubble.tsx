@@ -288,7 +288,7 @@ export function WindowBubble({
         onKeyDown={handleKeyDown}
       >
         <span className="mari-window-bubble__paint pointer-events-none" aria-hidden="true" />
-        {icon}
+        <span className="mari-window-bubble__icon">{icon}</span>
         {children}
       </button>
       {live?.guides.map((guide) => (

@@ -1233,3 +1233,149 @@ for (const [preset, theme] of [
     }
   });
 }
+
+test("movable button pixel size is independent, stays reachable and restores the current default", async ({
+  page,
+  request,
+  browser,
+}, info) => {
+  test.setTimeout(180_000);
+  const original = (await (await request.get(UI_SETTINGS_PATH)).json()) as { value: string | null };
+  const fixture = await createStyleScopes(request);
+  const game = fixture.chats.find((chat) => chat.mode === "game")!;
+  const freshContext = await browser.newContext({ viewport: page.viewportSize()! });
+  const settingsButton = page.locator("[data-chat-settings-button]");
+  const readSize = async () => {
+    const saved = (await (await request.get(UI_SETTINGS_PATH)).json()) as { value: string | null };
+    return (JSON.parse(saved.value || "{}") as { chatWidgetButtonSize?: number | null }).chatWidgetButtonSize;
+  };
+  const closeAppearance = async () => {
+    await page.getByRole("button", { name: "Close panel", exact: true }).click();
+    await expect(
+      page.locator('[data-component="RightPanelDesktopSlot"], [data-component="RightPanelMobile"]'),
+    ).toBeHidden();
+  };
+  const assertReachable = async () => {
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const area = document.querySelector('[data-component="CenterContent"]')!.getBoundingClientRect();
+          const composer = document.querySelector("textarea[data-chat-composer]")!.getBoundingClientRect();
+          const boxes = [...document.querySelectorAll<HTMLElement>(".mari-window-bubble[data-window]")]
+            .filter((node) => node.getClientRects().length && getComputedStyle(node).visibility !== "hidden")
+            .map((node) => node.getBoundingClientRect());
+          return (
+            boxes.length >= 4 &&
+            boxes.every(
+              (box, index) =>
+                box.left >= area.left - 1 &&
+                box.right <= area.right + 1 &&
+                box.bottom <= composer.top + 1 &&
+                boxes
+                  .slice(index + 1)
+                  .every(
+                    (other) =>
+                      box.right <= other.left + 1 ||
+                      other.right <= box.left + 1 ||
+                      box.bottom <= other.top + 1 ||
+                      other.bottom <= box.top + 1,
+                  ),
+            )
+          );
+        }),
+      )
+      .toBe(true);
+  };
+  try {
+    expect((await request.put(UI_SETTINGS_PATH, { data: { value: "" } })).ok()).toBeTruthy();
+    await prepare(page, game.id, "dark");
+    await page.goto("/");
+    await expect.poll(async () => (await readPreferences(page)).ready).toBe(true);
+    await closeChatSettings(page);
+    await expect(settingsButton).toBeVisible();
+    const baseline = await settingsButton.boundingBox();
+    expect(baseline).not.toBeNull();
+    const originalFont = await page.evaluate(async () => {
+      const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+      return useUIStore.getState().fontSize;
+    });
+    await page.screenshot({ path: info.outputPath("button-size-default.png"), animations: "disabled" });
+    let controls = await openAppearance(page);
+    const field = controls.getByLabel("Button size (px)", { exact: true });
+    await expect(field).toHaveValue("");
+    await expect(field).toHaveAttribute("placeholder", "Default");
+    await field.fill("64");
+    await field.press("Enter");
+    await expect(settingsButton).toHaveCSS("width", "64px");
+    await expect(settingsButton.locator("svg")).toHaveCSS("width", "32px");
+    expect(
+      await page.evaluate(async () => {
+        const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+        return useUIStore.getState().fontSize;
+      }),
+    ).toBe(originalFont);
+    for (const preset of ["dottore", "mari"] as const) {
+      await controls.locator(`[data-chat-widget-preset-option="${preset}"]`).click();
+      await expect(field).toHaveValue("64");
+      await expect(settingsButton).toHaveCSS("width", "64px");
+    }
+    await controls.locator('[data-chat-widget-preset-option="dottore"]').click();
+    await field.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: info.outputPath("button-size-setting.png"), animations: "disabled" });
+    await closeAppearance();
+    const profile = page.locator('.mari-window-bubble[data-window="control:character-profiles"]');
+    await expect(profile).toHaveCSS("width", "64px");
+    await expect(profile.locator(".mari-window-bubble__icon > span")).toHaveCSS("width", "32px");
+    if (info.project.name.includes("mobile")) {
+      await expect(page.locator('.mari-window-bubble[data-window="control:map"]')).toHaveCSS("width", "64px");
+      await expect(page.locator("[data-chat-tools-menu-button]")).toHaveCSS("width", "64px");
+    }
+    await assertReachable();
+    await page.screenshot({ path: info.outputPath("button-size-64.png"), animations: "disabled" });
+    await expect.poll(readSize).toBe(64);
+    await page.evaluate(async () => {
+      const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+      useUIStore.getState().setFontSize(22);
+    });
+    await expect(settingsButton).toHaveCSS("width", "64px");
+    await expect(settingsButton.locator("svg")).toHaveCSS("width", "32px");
+    await page.reload();
+    await expect(settingsButton).toHaveCSS("width", "64px");
+    await prepare(freshContext, game.id, "dark");
+    const freshPage = await freshContext.newPage();
+    await freshPage.goto(new URL("/", page.url()).toString());
+    await expect(freshPage.locator("[data-chat-settings-button]")).toHaveCSS("width", "64px");
+    await freshContext.close();
+
+    controls = await openAppearance(page);
+    await controls.getByLabel("Button size (px)", { exact: true }).fill("999");
+    await controls.getByLabel("Button size (px)", { exact: true }).press("Enter");
+    await expect(controls.getByLabel("Button size (px)", { exact: true })).toHaveValue("96");
+    await closeAppearance();
+    await expect(settingsButton).toHaveCSS("width", "96px");
+    await assertReachable();
+    controls = await openAppearance(page);
+    await controls.getByLabel("Button size (px)", { exact: true }).fill("1");
+    await controls.getByLabel("Button size (px)", { exact: true }).press("Enter");
+    await expect(settingsButton).toHaveCSS("width", "32px");
+    await controls.getByLabel("Button size (px)", { exact: true }).fill("");
+    await controls.getByLabel("Button size (px)", { exact: true }).press("Enter");
+    await expect(page.locator("html")).not.toHaveAttribute("data-chat-widget-button-size");
+    await controls.getByLabel("Button size (px)", { exact: true }).fill("64");
+    await controls.getByLabel("Button size (px)", { exact: true }).press("Enter");
+    await controls.getByRole("button", { name: "Reset button size to default", exact: true }).click();
+    await expect(controls.getByLabel("Button size (px)", { exact: true })).toHaveValue("");
+    await expect.poll(readSize).toBeNull();
+    await page.evaluate(async (font) => {
+      const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+      useUIStore.getState().setFontSize(font);
+    }, originalFont);
+    await closeAppearance();
+    await expect.poll(async () => (await settingsButton.boundingBox())!.width).toBeCloseTo(baseline!.width, 0);
+  } finally {
+    await freshContext.close();
+    await page.close();
+    await request.put(UI_SETTINGS_PATH, { data: { value: original.value ?? "" } });
+    await fixture.remove();
+  }
+});

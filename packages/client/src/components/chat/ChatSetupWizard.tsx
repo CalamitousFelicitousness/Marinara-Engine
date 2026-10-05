@@ -1160,8 +1160,13 @@ function ConversationQuickSetup({ chat, onFinish, defaultsApplied, defaultsActio
     [connectionOptions, selectedConnectionId],
   );
   const parameterDefaults = useMemo(
-    () => getEditableGenerationParameters(CHAT_PARAMETER_DEFAULTS, selectedConnection?.defaultParameters),
-    [selectedConnection?.defaultParameters],
+    () =>
+      getEditableGenerationParameters(
+        CHAT_PARAMETER_DEFAULTS,
+        selectedConnection?.defaultParameters,
+        selectedConnection?.provider,
+      ),
+    [selectedConnection?.defaultParameters, selectedConnection?.provider],
   );
   const [customizeParameters, setCustomizeParameters] = useState(
     () => !!parseEditableGenerationParameters(metadata.chatParameters),
@@ -2136,8 +2141,13 @@ function RoleplaySetupWizard({ chat, onFinish, defaultsApplied, defaultsAction }
     [connectionOptions, chat.connectionId],
   );
   const parameterDefaults = useMemo(
-    () => getEditableGenerationParameters(ROLEPLAY_PARAMETER_DEFAULTS, selectedConnection?.defaultParameters),
-    [selectedConnection?.defaultParameters],
+    () =>
+      getEditableGenerationParameters(
+        ROLEPLAY_PARAMETER_DEFAULTS,
+        selectedConnection?.defaultParameters,
+        selectedConnection?.provider,
+      ),
+    [selectedConnection?.defaultParameters, selectedConnection?.provider],
   );
 
   const metadata = useMemo(() => {

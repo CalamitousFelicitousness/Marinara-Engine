@@ -1774,6 +1774,7 @@
   "generationParameters.effective.value": "Effective: {{value}} · {{source}}",
   "generationParameters.preset.hint": "Starting settings for chats that use this preset. Connection defaults, a chat's own settings, mode rules, and output limits can override them.",
   "generationParameters.preset.title": "Generation parameters",
+  "generationParameters.reasoningEffort.codexHelp": "How long Codex thinks before answering; Default keeps Codex's own level for the model.",
   "generationParameters.source.chat": "this chat",
   "generationParameters.source.connection": "from connection",
   "generationParameters.source.defaults": "built-in default",

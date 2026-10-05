@@ -792,11 +792,11 @@ function PersonaPicker({
                             )}
                           >
                             {character.avatarPath ? (
-                              <img
+                              <CroppedAvatarImage
                                 src={character.avatarPath}
                                 alt=""
-                                className="h-7 w-7 shrink-0 rounded-full object-cover"
-                                style={getAvatarCropStyle(parseCharacterDisplayData(character).avatarCrop)}
+                                className="h-7 w-7 rounded-full"
+                                crop={parseCharacterDisplayData(character).avatarCrop ?? null}
                               />
                             ) : (
                               <PersonaAvatar persona={null} />

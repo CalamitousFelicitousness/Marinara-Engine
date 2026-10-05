@@ -42,7 +42,7 @@ export function TrackerPanelBubble({ phoneSlot = 0 }: { phoneSlot?: number }) {
     <WindowBubble
       buttonRef={bubbleRef}
       id={TRACKER_PANEL_BUBBLE_ID}
-      point={saved ?? getPhoneBubbleSlot(bounds, phoneSlot, size)}
+      point={saved ?? { ...getPhoneBubbleSlot(bounds, phoneSlot, size), automatic: true }}
       bounds={bounds}
       size={PHONE_BUBBLE_SIZE_PX}
       onSizeChange={setSize}

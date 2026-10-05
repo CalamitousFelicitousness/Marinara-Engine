@@ -392,11 +392,6 @@
     z-index: 1;
   }
 
-  :root[data-chat-widget-colors~="border"] .mari-drawer[data-detached="true"]:not([data-chat-widget-preview] *)::before,
-  [data-chat-widget-preview][data-chat-widget-colors~="border"] .mari-drawer[data-detached="true"]::before {
-    padding-bottom: 0;
-  }
-
   :root[data-chat-widget-colors~="border"] .mari-window button svg:not([data-chat-widget-preview] *),
   [data-chat-widget-preview][data-chat-widget-colors~="border"] .mari-window button svg {
     color: var(--mari-window-control-color, var(--mari-widget-custom-border-solid));
@@ -566,4 +561,43 @@
 :root[data-chat-widget-colors~="border"] .mari-window__title-row > svg:not([data-chat-widget-preview] *),
 [data-chat-widget-preview][data-chat-widget-colors~="border"] .mari-window__title-row > svg {
   color: var(--mari-window-control-color, var(--mari-widget-custom-border-solid));
+}
+
+/* Small phone trackers reuse the editable tracker content. Keep its local surface
+   tokens in the widget palette without changing the standalone Tracker Panel. */
+.mari-window[data-mobile-tracker-window] {
+  --foreground: var(
+    --mari-window-text,
+    var(--mari-widget-custom-text-solid, var(--mari-widget-text, var(--marinara-chat-chrome-panel-text)))
+  );
+  --muted-foreground: var(
+    --mari-window-text,
+    var(--mari-widget-custom-text-solid, var(--mari-widget-muted, var(--marinara-chat-chrome-panel-muted)))
+  );
+  --border: var(
+    --mari-window-border,
+    var(--mari-widget-custom-border-solid, var(--mari-widget-border, var(--marinara-chat-chrome-panel-border)))
+  );
+  --background: var(--mari-widget-custom-background-solid, var(--mari-widget-bg, var(--marinara-chat-chrome-panel-bg)));
+  --popover: var(--background);
+  --muted: var(--mari-widget-custom-background-solid, var(--mari-widget-soft, var(--marinara-chat-chrome-highlight-bg)));
+  --accent: var(--muted);
+}
+
+.mari-window[data-mobile-tracker-window] .marinara-chat-popover__header {
+  border-color: var(--border);
+}
+
+.mari-window[data-mobile-tracker-window] .marinara-chat-popover__title {
+  color: var(
+    --mari-window-header-text,
+    var(--mari-widget-custom-text-solid, var(--mari-widget-accent, var(--marinara-chat-chrome-panel-title)))
+  );
+}
+
+.mari-window[data-mobile-tracker-window] svg[class*="--marinara-chat-chrome-accent"] {
+  color: var(
+    --mari-window-control-color,
+    var(--mari-widget-custom-border-solid, var(--mari-widget-accent, var(--marinara-chat-chrome-accent)))
+  );
 }

@@ -230,7 +230,8 @@ export function ConnectionModelPicker({
           type="button"
           data-model-pin
           aria-pressed={pinned}
-          aria-label={t(pinned ? "connections.modelPicker.unpin" : "connections.modelPicker.pin", { model: label })}
+          // A toggle keeps one name; aria-pressed says whether it is pinned.
+          aria-label={t("connections.modelPicker.pin", { model: label })}
           title={t(pinned ? "connections.modelPicker.unpin" : "connections.modelPicker.pin", { model: label })}
           onClick={() => togglePin(row.id, !pinned)}
           className={cn(
@@ -270,7 +271,7 @@ export function ConnectionModelPicker({
       ) : (
         <>
           <div className="flex min-w-0 items-center gap-1.5 px-3 pb-1.5">
-            <label className="flex min-h-9 min-w-0 flex-1 items-center gap-2 rounded-lg border border-foreground/10 bg-foreground/[0.04] px-2.5 text-foreground/55 focus-within:border-foreground/25">
+            <label className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg border sm:min-h-9 border-foreground/10 bg-foreground/[0.04] px-2.5 text-foreground/55 focus-within:border-foreground/25">
               <Search size="0.875rem" className="shrink-0" aria-hidden />
               <span className="sr-only">{t("connections.modelPicker.searchLabel")}</span>
               <input
@@ -299,7 +300,7 @@ export function ConnectionModelPicker({
               disabled={refresh.isPending || modelList.isFetching}
               aria-label={t("connections.modelPicker.refresh")}
               title={t("connections.modelPicker.refresh")}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-foreground/10 text-foreground/55 outline-none transition-colors hover:bg-foreground/10 hover:text-foreground/80 focus-visible:ring-1 focus-visible:ring-foreground/25 disabled:opacity-60"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-foreground/10 sm:h-9 sm:w-9 text-foreground/55 outline-none transition-colors hover:bg-foreground/10 hover:text-foreground/80 focus-visible:ring-1 focus-visible:ring-foreground/25 disabled:opacity-60"
             >
               <RefreshCw
                 size="0.875rem"

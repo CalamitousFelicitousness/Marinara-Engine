@@ -53,7 +53,7 @@ function ConnectionModelField({ connection }: { connection: ChatConnectionOption
           model: connection.model || t("chat.settings.connectionModel.none"),
         })}
         onClick={() => setOpen((value) => !value)}
-        className="flex min-h-9 w-full items-center gap-2 rounded-lg bg-foreground/5 px-3 py-2 text-left text-xs outline-none ring-1 ring-foreground/10 transition-shadow focus-visible:ring-foreground/25"
+        className="flex min-h-11 w-full items-center gap-2 rounded-lg sm:min-h-9 bg-foreground/5 px-3 py-2 text-left text-xs outline-none ring-1 ring-foreground/10 transition-shadow focus-visible:ring-foreground/25"
       >
         <span className={cn("min-w-0 flex-1 truncate", !connection.model && "text-foreground/45")}>
           {connection.model || t("chat.settings.connectionModel.none")}

@@ -11434,6 +11434,7 @@ test("Game character sheet Retry remains a draft until Save", async ({ page, req
   let characterId: string | undefined;
   let personaId: string | undefined;
   let chatId: string | undefined;
+  let releaseLayoutResponse = () => {};
 
   try {
     const providerAddress = providerServer.address();
@@ -11539,6 +11540,30 @@ test("Game character sheet Retry remains a draft until Save", async ({ page, req
       return (metadata.gameCharacterCards as Array<Record<string, unknown>>)[0];
     };
 
+    // Keep the launcher's real layout response in flight until a regenerated draft exists.
+    // An unrelated metadata refresh must not discard that in-progress sheet edit.
+    let layoutResponseHeld = false;
+    let layoutResponseReady = false;
+    const layoutResponseGate = new Promise<void>((resolve) => {
+      releaseLayoutResponse = resolve;
+    });
+    const metadataUrl = `/api/chats/${chat.id}/metadata`;
+    await page.route(`**${metadataUrl}`, async (route) => {
+      const body = route.request().postDataJSON() as Record<string, unknown> | null;
+      if (
+        !layoutResponseHeld &&
+        route.request().method() === "PATCH" &&
+        body &&
+        Object.keys(body).length === 1 &&
+        Object.hasOwn(body, "windowLayout")
+      ) {
+        layoutResponseHeld = true;
+        const response = await route.fetch();
+        layoutResponseReady = true;
+        await layoutResponseGate;
+        await route.fulfill({ response });
+      } else await route.continue();
+    });
     await page.goto("/");
     await page.locator('.mari-window-bubble[data-window="control:character-profiles"]').click();
     await page.getByTitle(`${characterName} - Click to open character sheet`).filter({ visible: true }).click();
@@ -11551,8 +11576,19 @@ test("Game character sheet Retry remains a draft until Save", async ({ page, req
     await sheet.getByRole("button", { name: "Retry", exact: true }).click();
     await expect(classInput).toHaveValue("Chronomancer");
     expect((await readStoredCard())?.class).toBe("Scout");
+    await expect.poll(() => layoutResponseReady).toBe(true);
+    const layoutApplied = page.waitForResponse(
+      (response) =>
+        response.url().endsWith(metadataUrl) &&
+        Object.keys(response.request().postDataJSON() as Record<string, unknown>).length === 1 &&
+        Object.hasOwn(response.request().postDataJSON() as Record<string, unknown>, "windowLayout"),
+    );
+    releaseLayoutResponse();
+    expect((await layoutApplied).ok()).toBeTruthy();
     await page.mouse.move(0, 0);
     await expect(page.locator("[data-sonner-toast]")).toHaveCount(0);
+    await expect(classInput).toHaveValue("Chronomancer");
+    await expect(sheet.getByRole("button", { name: "Cancel", exact: true })).toBeVisible();
 
     await sheet.getByRole("button", { name: "Cancel", exact: true }).click();
     await sheet.getByRole("button", { name: "Edit sheet" }).click();
@@ -11566,6 +11602,12 @@ test("Game character sheet Retry remains a draft until Save", async ({ page, req
     await expect(page.getByRole("heading", { name: characterName })).toHaveCount(0);
     await expect.poll(async () => (await readStoredCard())?.class).toBe("Chronomancer");
     expect((await readStoredCard())?.rpgStats).toEqual(originalCard.rpgStats);
+    await page.locator('.mari-window-bubble[data-window="control:character-profiles"]').click();
+    await page.getByTitle(`${characterName} - Click to open character sheet`).filter({ visible: true }).click();
+    await sheet.getByRole("button", { name: "Edit sheet" }).click();
+    await expect(classInput).toHaveValue("Chronomancer");
+    await sheet.getByRole("button", { name: "Cancel", exact: true }).click();
+    await sheet.getByRole("button", { name: "Close character sheet", exact: true }).click();
 
     const personaRetryResponse = await request.post("/api/game/character-sheet/regenerate", {
       data: {
@@ -11597,6 +11639,7 @@ test("Game character sheet Retry remains a draft until Save", async ({ page, req
     expect(personaPrompt).toContain("A memory-weaver who maps the drowned city's forgotten roads.");
     expect(personaPrompt).toContain(`Regenerate only ${personaName}'s character sheet now.`);
   } finally {
+    releaseLayoutResponse();
     await Promise.all([
       chatId ? request.delete(`/api/chats/${chatId}`).catch(() => undefined) : Promise.resolve(),
       personaId ? request.delete(`/api/characters/personas/${personaId}`).catch(() => undefined) : Promise.resolve(),

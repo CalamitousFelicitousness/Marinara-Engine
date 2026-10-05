@@ -154,6 +154,8 @@ const { executeAgent, executeAgentBatch } = await import("../../packages/server/
 const { resolveAgentPipelineAgents } =
   await import("../../packages/server/src/services/generation/agent-resolution.js");
 const { OpenAIProvider } = await import("../../packages/server/src/services/llm/providers/openai.provider.js");
+const { ConnectionFallbackProvider } =
+  await import("../../packages/server/src/services/llm/connection-fallback-provider.js");
 const { writeManualIllustratorPromptPlan } =
   await import("../../packages/server/src/services/generation/illustrator-manual-prompt-generation.js");
 const retryRoute = await import("../../packages/server/src/routes/generate/retry-agents-route.js");
@@ -646,6 +648,50 @@ try {
       smallBody.max_tokens > 1000 && smallBody.max_tokens < 3000,
       `room shrinks to fit: ${smallBody.max_tokens}`,
     );
+
+    // A larger primary must leave the same prompt intact if the smaller fallback takes over.
+    const primary = new OpenAIProvider(`${base}/v1`, "fixture-key", 200_000);
+    primary.chatComplete = async () => {
+      throw new Error("Primary unavailable");
+    };
+    const fallbackConnection = {
+      id: "small-fallback",
+      provider: "custom",
+      baseUrl: `${base}/v1`,
+      apiKey: "fixture-key",
+      model: "fixture-model",
+      maxContext: SMALL_CONTEXT,
+    };
+    const fallbackAgent = {
+      ...smallIllustrator!,
+      provider: new ConnectionFallbackProvider(
+        primary,
+        smallIllustrator!.provider,
+        fallbackConnection,
+        "agents",
+        () => {},
+      ),
+    };
+    await writeManualIllustratorPromptPlan({ illustratorAgent: fallbackAgent, context });
+    const fallbackBody = requests.at(-1)!.body;
+    assert.deepEqual(fallbackBody.messages, smallBody.messages, "fallback thinking room never truncates the prompt");
+    assert.equal(fallbackBody.max_tokens, smallBody.max_tokens, "thinking room respects the smaller fallback");
+
+    for (const [primaryContext, fallbackContext, expected] of [
+      [200_000, SMALL_CONTEXT, SMALL_CONTEXT],
+      [SMALL_CONTEXT, 200_000, SMALL_CONTEXT],
+      [undefined, SMALL_CONTEXT, SMALL_CONTEXT],
+      [SMALL_CONTEXT, undefined, SMALL_CONTEXT],
+      [undefined, undefined, null],
+    ] as const) {
+      const provider = new ConnectionFallbackProvider(
+        new OpenAIProvider(base, "fixture-key", primaryContext),
+        new OpenAIProvider(base, "fixture-key", fallbackContext),
+        fallbackConnection,
+        "agents",
+      );
+      assert.equal(provider.maxContextValue, expected, "known context limits survive fallback wrapping");
+    }
     reply = '{"weather":"rain"}';
   }
 

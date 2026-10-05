@@ -141,6 +141,12 @@ assert.ok(
   "never through a hedge",
 );
 
+// Off the streets, open ground is walked round water, never through it.
+const pond = townOf(["sts", "s~s", "s.s", "..."], [house("h1", 1, 3, { x: 2, y: 0 })]);
+const roundPond = worldTownPath(pond, "square", "h1")!;
+stepsOk({ x: 0, y: 0 }, roundPond, "pond");
+assert.equal(roundPond.length, 6, "round the pond, not across it");
+
 // Boxed in: the old way, along the row then down the column.
 const boxed = townOf(["sw...", "ww...", "....s"], [house("h1", 3, 0, { x: 4, y: 2 })]);
 assert.deepEqual(

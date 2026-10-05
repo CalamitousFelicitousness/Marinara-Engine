@@ -104,7 +104,7 @@ The AI avatar option appears only when you have at least one image-generation co
 1. Hover the avatar tile and click the small **Generate avatar** wand button.
 2. The **Generate Character Avatar** window opens.
 3. Pick an **Image Generation Connection**.
-4. Review or edit the **Avatar Prompt**. It is pre-filled from your Appearance text. If Appearance is empty, it uses Description, then Personality.
+4. Review or edit the **Avatar Prompt**. If **Image Appearance Override** is on and filled, its text is used as the starting prompt. Otherwise, Marinara uses **Appearance**, then **Description**, then **Personality**, taking the first field that contains text.
 5. If the card already has an avatar, you can check **Use current avatar as a reference**.
 6. Click **Generate**. To try again, click **Regenerate**.
 7. When you like the result, click **Use Avatar**.

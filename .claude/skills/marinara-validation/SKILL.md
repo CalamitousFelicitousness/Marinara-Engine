@@ -214,6 +214,20 @@ that lane exits before reaching `prompt-attachments`, `context-fit`, or
 node ./scripts/run-regressions.mjs --filter scripts/regressions/author-note-presets.regression.ts
 ```
 
+### Regression suite: 535/541, as of 2026-10-05
+
+**Measured 2026-10-05, app stopped.** The same six lanes as 2026-10-03 fail:
+`launcher/update` by fork design, the four Windows-only lanes
+(`decision-sidecar-runtime`, `gallery-previews`, `lorebook-images`,
+`server-signal-shutdown`), and `ruleset-combat-director`.
+
+`ruleset-combat-director.regression.ts` now times out every run, alone or in
+the full suite. It prints its success line inside the 30 s budget, then the
+process keeps running: run directly with `packages/server/node_modules/.bin/tsx`
+it took 75.6 s to exit at a clean `HEAD` (`5ff7cca9f`). The assertions pass; the
+exit is what is slow. Read a timeout on this lane as pre-existing, and confirm
+that the success line appears in the log before the kill.
+
 ### Regression suite: 534/540, as of 2026-10-03
 
 **Measured after the 2026-10-03 sync, app stopped.** Four of the five
@@ -225,9 +239,8 @@ passed. Two more, neither worth re-investigating:
   the guard is `open(..., O_RDONLY | O_NOFOLLOW)`, and Windows ignores
   `O_NOFOLLOW`. The fork is byte-identical to upstream on
   `services/lorebook/` and the lane.
-- `ruleset-combat-director.regression.ts` passes alone in about 28.5 s against
-  the 30 s budget and timed out inside the full run, like
-  `advanced-memory-core` below. Re-run it alone first.
+- `ruleset-combat-director.regression.ts` timed out inside the full run. By
+  2026-10-05 it times out alone too; see the section above.
 
 `e2e/chat-insights.e2e.ts:72` (`chat search, stats and story exports work with
 private content filtered`) fails at its last step: the Game-mode jump notice

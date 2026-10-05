@@ -312,6 +312,7 @@ import {
   stripReputationTags,
   checkWorldBrief,
   WORLD_GENERATOR_VERSION,
+  worldGeneratorReads,
   RULESET_REF_MAX_OPTIONS,
   type RulesetDefinition,
   type RulesetRef,
@@ -6095,7 +6096,7 @@ function readNewGameWorld(input: {
   // A world another generator made comes with its snapshot (W11) and is played as it was made: its kit,
   // recipe and edits are the snapshot's.
   let snapshot: WorldSnapshot | null = null;
-  if (requestedWorld && requestedWorld.generatorVersion !== WORLD_GENERATOR_VERSION) {
+  if (requestedWorld && !worldGeneratorReads(requestedWorld.generatorVersion)) {
     const read = input.worldSnapshot != null ? readWorldSnapshot(input.worldSnapshot) : null;
     if (read && !read.ok) {
       return { ok: false, error: `The world's snapshot does not read: ${read.issues[0]}`, code: "world_invalid" };
@@ -6114,12 +6115,12 @@ function readNewGameWorld(input: {
   }
   if (requestedWorld && !snapshot) {
     const checked = worldKit ? checkWorldBrief(worldKit, requestedWorld.brief) : null;
-    if (!worldKit || !checked?.ok || requestedWorld.generatorVersion !== WORLD_GENERATOR_VERSION) {
+    if (!worldKit || !checked?.ok || !worldGeneratorReads(requestedWorld.generatorVersion)) {
       return {
         ok: false,
         error: !worldKit
           ? "A world needs a setting kit."
-          : requestedWorld.generatorVersion !== WORLD_GENERATOR_VERSION
+          : !worldGeneratorReads(requestedWorld.generatorVersion)
             ? "This world was made by another version of the generator."
             : `The world's brief does not hold together: ${checked && !checked.ok ? checked.issues[0] : ""}`,
         code: "world_invalid",
@@ -6128,7 +6129,13 @@ function readNewGameWorld(input: {
     // Hand edits (worldgen W9c) sent with a world are held to what a saved edit layer is.
     const unfit = requestedWorld.edits
       ? editIssues(
-          { kit: worldKit, seed: requestedWorld.seed, grounding: requestedWorld.grounding, brief: checked.brief },
+          {
+            kit: worldKit,
+            seed: requestedWorld.seed,
+            grounding: requestedWorld.grounding,
+            brief: checked.brief,
+            generatorVersion: requestedWorld.generatorVersion,
+          },
           requestedWorld.edits,
         )
       : [];
@@ -11295,7 +11302,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       if (meta.gameWorld == null) continue;
       const kit = gameWorldKitFromMetadata(meta);
       const stored = gameWorldSchema.safeParse(meta.gameWorld);
-      if (!kit || !stored.success || stored.data.generatorVersion !== WORLD_GENERATOR_VERSION) continue;
+      if (!kit || !stored.success || !worldGeneratorReads(stored.data.generatorVersion)) continue;
       worlds.push({
         chatId: chat.id,
         name: chat.name,
@@ -11469,7 +11476,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       game.kit,
       {
         seed: game.seed,
-        generatorVersion: game.frozen?.generatorVersion ?? WORLD_GENERATOR_VERSION,
+        generatorVersion: game.frozen?.generatorVersion ?? game.generatorVersion ?? WORLD_GENERATOR_VERSION,
         grounding: game.grounding,
         brief: game.brief,
         ...(game.edits ? { edits: game.edits } : {}),

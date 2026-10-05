@@ -295,6 +295,8 @@ const wuxia: WorldKitInput = {
     { id: "province", label: "province" },
     { id: "prefecture", label: "prefecture" },
     { id: "town", label: "town", settlements: true },
+    // A ward of a town, and the caves and ruined shrines a few steps out of it (the sites of generator 2).
+    { id: "ward", label: "ward" },
   ],
   sizes: named("village", "market town", "county seat", "prefecture city", "capital"),
   groupKinds: named(

@@ -9,7 +9,7 @@
 import { z } from "zod";
 import { WORLD_CHANGE_KINDS, parseWorldKit, type WorldKit } from "../../schemas/world-kit.schema.js";
 import { worldBriefSchema } from "../../schemas/world-brief.schema.js";
-import { WORLD_GENERATOR_VERSION, WORLD_PROSPERITIES, type CompiledWorld } from "./compile.js";
+import { WORLD_GENERATOR_VERSION, WORLD_PROSPERITIES, worldGeneratorReads, type CompiledWorld } from "./compile.js";
 import { WORLD_TOWN_DECO_MAX, WORLD_TOWN_PROPS, worldEditsSchema } from "./edits.js";
 import { WORLD_GROUNDINGS, worldPreEdit, type GameWorld } from "./game-world.js";
 import { worldHistory, type WorldHistory } from "./history.js";
@@ -62,7 +62,7 @@ export function worldSnapshot(game: GameWorld): WorldSnapshot {
   const compiled = worldPreEdit(game);
   return {
     snapshotVersion: WORLD_SNAPSHOT_VERSION,
-    generatorVersion: WORLD_GENERATOR_VERSION,
+    generatorVersion: game.generatorVersion ?? WORLD_GENERATOR_VERSION,
     kit: game.kit,
     seed: game.seed,
     grounding: game.grounding,
@@ -78,7 +78,7 @@ export function worldSnapshot(game: GameWorld): WorldSnapshot {
 /** Whether this Engine's generator made the world, so it may be edited or shared as a recipe: a world
  *  from an earlier generator plays on as it was made, but a recipe of it would make another world. */
 export function worldMadeByThisGenerator(game: GameWorld): boolean {
-  return !game.frozen || game.frozen.generatorVersion === WORLD_GENERATOR_VERSION;
+  return !game.frozen || worldGeneratorReads(game.frozen.generatorVersion);
 }
 
 /** The game's world as its snapshot keeps it. Nothing is compiled again. */
@@ -88,6 +88,7 @@ export function gameWorldFromSnapshot(snapshot: WorldSnapshot): GameWorld {
     seed: snapshot.seed,
     grounding: snapshot.grounding,
     brief: snapshot.brief,
+    generatorVersion: snapshot.generatorVersion,
     ...(snapshot.edits ? { edits: snapshot.edits } : {}),
     world: snapshot.world ?? snapshot.compiled,
     compiled: snapshot.compiled,

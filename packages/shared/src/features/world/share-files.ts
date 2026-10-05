@@ -10,7 +10,7 @@
 // ──────────────────────────────────────────────
 import { parseWorldKit, type WorldKit } from "../../schemas/world-kit.schema.js";
 import { checkWorldBrief, type WorldBrief } from "../../schemas/world-brief.schema.js";
-import { WORLD_GENERATOR_VERSION } from "./compile.js";
+import { worldGeneratorReads } from "./compile.js";
 import type { WorldEdits } from "./edits.js";
 import { compileGameWorld, gameWorldSchema, worldEditIssues, type WORLD_GROUNDINGS } from "./game-world.js";
 import { gameWorldFromSnapshot, readWorldSnapshot, type WorldSnapshot } from "./snapshot.js";
@@ -149,7 +149,7 @@ export function readWorldFile(
   // snapshot name the same generator; one that says otherwise does not hold together.
   const recipe = file.value.world as { generatorVersion?: unknown } | undefined;
   const madeBy = (file.value.snapshot as { generatorVersion?: unknown } | null | undefined)?.generatorVersion;
-  if (recipe?.generatorVersion !== WORLD_GENERATOR_VERSION && file.value.snapshot != null) {
+  if (!worldGeneratorReads(recipe?.generatorVersion) && file.value.snapshot != null) {
     if (madeBy !== recipe?.generatorVersion) {
       return { ok: false, issues: ["The world file's snapshot and recipe name different generators."] };
     }
@@ -164,13 +164,20 @@ export function readWorldFile(
       issues: stored.error.issues.slice(0, 5).map((issue) => `world.${issue.path.join(".")}: ${issue.message}`),
     };
   }
-  if (stored.data.generatorVersion !== WORLD_GENERATOR_VERSION) {
+  if (!worldGeneratorReads(stored.data.generatorVersion)) {
     return { ok: false, issues: ["This world was made by another version of the generator."] };
   }
   const brief = checkWorldBrief(kit.kit, stored.data.brief);
   if (!brief.ok) return { ok: false, issues: brief.issues.slice(0, 5) };
   const notes = [...brief.repairs];
-  const inputs = { kit: kit.kit, seed: stored.data.seed, grounding: stored.data.grounding, brief: brief.brief };
+  // Made again as the generator version that made it: a version 1 world has no sites.
+  const inputs = {
+    kit: kit.kit,
+    seed: stored.data.seed,
+    grounding: stored.data.grounding,
+    brief: brief.brief,
+    generatorVersion: stored.data.generatorVersion,
+  };
   let edits = stored.data.edits;
   if (edits) {
     // A board that cannot be fought on is left out on its own, never with the rest of the layer.
@@ -212,7 +219,7 @@ export function readWorldFile(
     kit: kit.kit,
     world: {
       seed: inputs.seed,
-      generatorVersion: WORLD_GENERATOR_VERSION,
+      generatorVersion: inputs.generatorVersion,
       grounding: inputs.grounding,
       brief: brief.brief,
       ...(edits ? { edits } : {}),

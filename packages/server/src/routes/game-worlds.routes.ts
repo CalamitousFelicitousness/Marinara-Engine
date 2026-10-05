@@ -56,6 +56,7 @@ function readRow(row: GameWorldRow): { game: GameWorld; story: StoryScript | nul
     seed: read.world.seed,
     grounding: read.world.grounding,
     brief: read.world.brief,
+    generatorVersion: read.world.generatorVersion,
     ...(read.world.edits ? { edits: read.world.edits } : {}),
   };
   return { game: { ...inputs, world: compileGameWorld(inputs) }, story: read.story ?? null };
@@ -70,7 +71,7 @@ function fileOf(name: string, game: GameWorld | Omit<GameWorld, "world">, story:
       full.kit,
       {
         seed: full.seed,
-        generatorVersion: full.frozen?.generatorVersion ?? WORLD_GENERATOR_VERSION,
+        generatorVersion: full.frozen?.generatorVersion ?? full.generatorVersion ?? WORLD_GENERATOR_VERSION,
         grounding: full.grounding,
         brief: full.brief,
         ...(full.edits && !worldEditsEmpty(full.edits) ? { edits: full.edits } : {}),

@@ -20,6 +20,11 @@ export interface StartSceneOptions {
   initiatorCharName?: string | null;
   background?: string | null;
   planHint?: string | null;
+  /**
+   * A plan the caller prepared itself (a package that writes its own scenes). Skips the preference
+   * dialog and the Engine planner; the scene is created exactly as planned.
+   */
+  plan?: SceneFullPlan | null;
   connectionId?: string | null;
   onCreated?: (response: SceneCreateResponse) => void;
 }
@@ -79,32 +84,41 @@ export function requestScenePromptPreferences(
 
 export async function startSceneWithPromptPreferences(options: StartSceneOptions): Promise<SceneCreateResponse | null> {
   // A package origin has no Conversation to pick a cast or persona from; its provider supplies both.
-  const preferences = await requestScenePromptPreferences(options.initiatorCharName ?? null, options.chatId);
-  if (!preferences) return null;
+  const preferences = options.plan
+    ? null
+    : await requestScenePromptPreferences(options.initiatorCharName ?? null, options.chatId);
+  if (!options.plan && !preferences) return null;
 
-  const toastId = toast.loading("Planning scene...", { icon: "🎬" });
-  let plan: SceneFullPlan | null = null;
-  try {
-    const planningPrompt = [options.prompt, options.planHint ? `Suggested plot plan:\n${options.planHint}` : ""]
-      .map((part) => part.trim())
-      .filter(Boolean)
-      .join("\n\n");
-    const planRes = await api.post<ScenePlanResponse>("/scene/plan", {
-      debugMode: useUIStore.getState().debugMode,
-      ...(options.packageOrigin ? { packageOrigin: options.packageOrigin } : { chatId: options.chatId }),
-      prompt: planningPrompt,
-      connectionId: options.connectionId ?? null,
-      promptPreferences: preferences,
-    });
-    plan = planRes.plan;
-    if (!plan) {
-      toast.error(planRes.error || "Scene planning returned empty result. Try again.", { id: toastId });
+  const toastId = toast.loading(options.plan ? "Creating scene..." : "Planning scene...", { icon: "🎬" });
+  let plan: SceneFullPlan | null = options.plan ? { ...options.plan } : null;
+  if (!plan)
+    try {
+      const planningPrompt = [options.prompt, options.planHint ? `Suggested plot plan:\n${options.planHint}` : ""]
+        .map((part) => part.trim())
+        .filter(Boolean)
+        .join("\n\n");
+      const planRes = await api.post<ScenePlanResponse>("/scene/plan", {
+        debugMode: useUIStore.getState().debugMode,
+        ...(options.packageOrigin ? { packageOrigin: options.packageOrigin } : { chatId: options.chatId }),
+        prompt: planningPrompt,
+        connectionId: options.connectionId ?? null,
+        promptPreferences: preferences,
+      });
+      plan = planRes.plan;
+      if (!plan) {
+        toast.error(planRes.error || "Scene planning returned empty result. Try again.", { id: toastId });
+        return null;
+      }
+    } catch (error) {
+      // A package origin can refuse for its own reasons (no character to cast, package not active); say which.
+      toast.error(
+        options.packageOrigin && error instanceof Error && error.message
+          ? error.message
+          : "Failed to plan scene. Check your API connection.",
+        { id: toastId },
+      );
       return null;
     }
-  } catch {
-    toast.error("Failed to plan scene. Check your API connection.", { id: toastId });
-    return null;
-  }
 
   if (options.background) {
     plan.background = options.background;
@@ -117,10 +131,10 @@ export async function startSceneWithPromptPreferences(options: StartSceneOptions
       initiatorCharId: options.initiatorCharId ?? null,
       plan,
       connectionId: options.connectionId ?? null,
-      promptPresetId: preferences.promptPresetId ?? null,
-      presetChoices: preferences.presetChoices,
-      participantCharacterIds: preferences.participantCharacterIds,
-      personaId: preferences.personaId,
+      promptPresetId: preferences?.promptPresetId ?? null,
+      presetChoices: preferences?.presetChoices,
+      participantCharacterIds: preferences?.participantCharacterIds,
+      personaId: preferences?.personaId,
     });
 
     useChatStore.getState().setActiveChatId(response.chatId);
@@ -132,9 +146,10 @@ export async function startSceneWithPromptPreferences(options: StartSceneOptions
     return response;
   } catch (error) {
     // A package thread can already be in a scene; say so instead of a generic failure.
-    toast.error(error instanceof Error && error.message ? error.message : "Failed to create scene chat.", {
-      id: toastId,
-    });
+    toast.error(
+      options.packageOrigin && error instanceof Error && error.message ? error.message : "Failed to create scene chat.",
+      { id: toastId },
+    );
     return null;
   }
 }

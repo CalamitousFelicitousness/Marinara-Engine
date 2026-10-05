@@ -86,6 +86,8 @@ export interface SceneMeta {
   sceneRating: "sfw" | "nsfw";
   /** Lifecycle status. */
   sceneStatus: "active" | "concluded";
+  /** The recap, kept on a concluded package-origin scene so the package can reconcile a missed release. */
+  sceneSummary?: string;
 }
 
 /** The comprehensive plan the LLM generates for a scene. */

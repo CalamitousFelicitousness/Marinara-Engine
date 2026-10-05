@@ -50,6 +50,7 @@ import {
   type AchievementEvent,
   type HomeCustomWidget,
   type HomeCustomWidgetCatalog,
+  type SceneFullPlan,
   homeAgentWidgetsSchema,
 } from "@marinara-engine/shared";
 import { useTranslation } from "react-i18next";
@@ -2966,6 +2967,7 @@ export function HomeBrowserHub({
                   originId: string;
                   prompt?: string;
                   planHint?: string | null;
+                  plan?: SceneFullPlan | null;
                   initiatorCharacterId?: string | null;
                   initiatorName?: string | null;
                 }) =>
@@ -2973,6 +2975,7 @@ export function HomeBrowserHub({
                     packageOrigin: { packageId: activeTab, originId: String(options?.originId ?? "") },
                     prompt: typeof options?.prompt === "string" ? options.prompt : "",
                     planHint: typeof options?.planHint === "string" ? options.planHint : null,
+                    plan: options?.plan && typeof options.plan === "object" ? options.plan : null,
                     initiatorCharId:
                       typeof options?.initiatorCharacterId === "string" ? options.initiatorCharacterId : null,
                     initiatorCharName: typeof options?.initiatorName === "string" ? options.initiatorName : null,

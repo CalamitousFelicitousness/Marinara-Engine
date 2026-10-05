@@ -20,6 +20,7 @@ const { buildApp } = await import("../../packages/server/src/app.js");
 const { registerCapabilitySceneOrigin } =
   await import("../../packages/server/src/services/capability-packages/capability-scene-origin.service.js");
 const { capabilityPackageManifestSchema } = await import("../../packages/shared/src/index.js");
+const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
 const app = await buildApp();
 
 const requests: Array<{ messages: Array<{ content: string }> }> = [];
@@ -53,6 +54,8 @@ try {
   });
 
   // The fixture package: one lock per thread, every end recorded.
+  const chatsStore = createChatsStorage(app.db);
+  const stillExisted: string[] = [];
   const locks = new Map<string, string>();
   const ends: Array<{ originId: string; end: SceneOriginEnd }> = [];
   let claimThrows = false;
@@ -77,6 +80,7 @@ try {
       return true;
     },
     async release(originId, end) {
+      if (end.kind !== "concluded" && (await chatsStore.getById(end.sceneChatId))) stillExisted.push(end.kind);
       if (locks.get(originId) !== end.sceneChatId) return;
       locks.delete(originId);
       ends.push({ originId, end });
@@ -177,6 +181,18 @@ try {
     ],
   );
   assert.equal(locks.size, 0);
+  assert.deepEqual(stillExisted, [], "A thread unlocks only after its scene chat is gone");
+
+  // A package can write the scene itself: its plan is used as is.
+  const own = await api("POST", "/api/scene/create", {
+    packageOrigin: origin("thread-2"),
+    initiatorCharId: creator.id,
+    plan: { ...plan, name: "Scene: Written by the package", firstMessage: "Package opening." },
+  });
+  const ownMessages = await api("GET", `/api/chats/${own.chatId}/messages`);
+  assert.ok(ownMessages.at(-1).content.endsWith("Package opening."));
+  await api("POST", "/api/scene/abandon", { sceneChatId: own.chatId });
+  ends.pop();
 
   // Refusals.
   const refuse = async (url: string, body: object, status: number) => {
@@ -187,6 +203,7 @@ try {
   await refuse("/api/scene/plan", { packageOrigin: { packageId: "Bad Id", originId: "t" }, prompt: "" }, 400);
   await refuse("/api/scene/plan", { packageOrigin: { packageId: "other-pkg", originId: "t" }, prompt: "" }, 404);
   await refuse("/api/scene/plan", { packageOrigin: origin("gone"), prompt: "" }, 404);
+  await refuse("/api/scene/create", { packageOrigin: origin("thread-1"), plan: { name: 1 } }, 400);
   claimThrows = true;
   const before = ((await api("GET", "/api/chats")) as unknown[]).length;
   await refuse("/api/scene/create", payload, 503);
@@ -200,6 +217,9 @@ try {
   const orphanEnd = await api("POST", "/api/scene/conclude", { sceneChatId: orphan, connectionId: conn.id });
   assert.equal(orphanEnd.summary, "A quiet ending.");
   assert.equal(ends.length, 4, "No release reaches an unregistered package");
+  const orphanChat = await api("GET", `/api/chats/${orphan}`);
+  assert.equal(orphanChat.metadata.sceneStatus, "concluded");
+  assert.equal(orphanChat.metadata.sceneSummary, "A quiet ending.", "A missed release can be reconciled");
   await refuse("/api/scene/create", payload, 404);
 
   // The `scenes` permission needs capability API 1.66.

@@ -367,8 +367,9 @@ export async function sceneRoutes(app: FastifyInstance) {
         personaId,
         personaCharacterId: null,
         mode: "conversation",
+        // An unknown connection is treated as none, like an unknown persona.
         connectionId:
-          typeof context.connectionId === "string" && context.connectionId
+          typeof context.connectionId === "string" && (await connections.getById(context.connectionId))
             ? context.connectionId
             : ((await connections.getDefault())?.id ?? null),
         lorebookIds: Array.isArray(context.lorebookIds)
@@ -461,6 +462,16 @@ export async function sceneRoutes(app: FastifyInstance) {
   // stores conversation history as hidden context in metadata.
   app.post<{ Body: SceneCreateRequest }>("/create", async (req, reply) => {
     const { originChatId, initiatorCharId, plan, connectionId, promptPresetId } = req.body;
+    // A package may hand over a plan it wrote itself, so the fields the chat is built from are checked.
+    if (
+      !plan ||
+      typeof plan !== "object" ||
+      (["name", "description", "firstMessage", "systemPrompt"] as const).some(
+        (field) => typeof plan[field] !== "string",
+      ) ||
+      !plan.name.trim()
+    )
+      return reply.status(400).send({ error: "Invalid scene plan" });
 
     const origin = await resolveSceneOrigin(originChatId, req.body.packageOrigin, "Origin chat not found");
     if ("error" in origin) return reply.status(origin.status).send({ error: origin.error });
@@ -761,8 +772,12 @@ export async function sceneRoutes(app: FastifyInstance) {
       }
     }
 
-    // 3. Mark scene as concluded
-    await chats.updateMetadata(sceneChatId, { ...sceneMeta, sceneStatus: "concluded" });
+    // 3. Mark scene as concluded. A package origin can read the recap here if it missed the release.
+    await chats.updateMetadata(sceneChatId, {
+      ...sceneMeta,
+      sceneStatus: "concluded",
+      ...(packageOrigin ? { sceneSummary: summary } : {}),
+    });
 
     // 4. Clean up origin chat metadata — remove scene busy state, or hand a package origin its recap
     if (originChatId) await releaseSceneParticipants(originChatId, sceneChatId);
@@ -803,13 +818,15 @@ export async function sceneRoutes(app: FastifyInstance) {
 
     // 1. Clean up origin chat metadata — remove scene busy state
     if (originChatId) await releaseSceneParticipants(originChatId, sceneChatId);
-    else await releaseScenePackageOrigin(packageOrigin!, { kind: "abandoned", sceneChatId });
 
     // 2. Disconnect the chats
     await chats.disconnectChat(sceneChatId);
 
     // 3. Delete the scene chat entirely
     await chats.remove(sceneChatId);
+
+    // 4. A package thread unlocks only once the scene chat is gone, so it can never take a second scene early.
+    if (packageOrigin) await releaseScenePackageOrigin(packageOrigin, { kind: "abandoned", sceneChatId });
 
     return { originChatId, packageOrigin } satisfies SceneAbandonResponse;
   });

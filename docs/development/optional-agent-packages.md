@@ -1119,10 +1119,14 @@ export async function activate({ api }) {
 
 The browser view (`home-browser-tab`) receives these props:
 
-- `startScene({ originId, prompt?, planHint?, initiatorCharacterId?, initiatorName? })` opens the
-  scene prompt-preference dialog, plans and creates the scene, and opens its chat. It resolves to
-  `{ chatId }`, or `null` when the user cancels or creating fails (the user sees why). The host binds
-  the package id, so a package can only start scenes from its own threads.
+- `startScene({ originId, prompt?, planHint?, plan?, initiatorCharacterId?, initiatorName? })` opens the
+  scene prompt-preference dialog, plans and creates the scene, and opens its chat. Pass `plan` (a
+  `SceneFullPlan`: name, description, hidden scenario, first message, scene system prompt, rating,
+  relationship history, participation guide, background, cast) to write the scene yourself; the
+  dialog and the Engine planner are skipped and the scene is created exactly as planned. It resolves to
+  `{ chatId }`, or `null` when the user cancels or creating fails (the user sees why). The helper always
+  uses the package's own id. It is a convenience, not a boundary: the scene routes accept any package
+  id, so `getContext` must return only what the player may see in that thread anyway.
 - `openChat(chatId)` goes to a chat, for a "Go to scene" button on a locked thread.
 - `focusSceneOriginId` is the thread to show when the user comes back from a scene (Back, End Scene,
   Discard). Call `onFocusSceneOriginHandled()` once you have shown it.
@@ -1139,7 +1143,7 @@ Rules worth knowing:
   `abandoned`, `deleted` or `converted`. It must be idempotent and must ignore a scene that does not
   hold the lock. A release that throws, or that arrives while the package is inactive, is logged and
   dropped: the scene chat stays ended either way, so reconcile a stale lock by reading the scene chat
-  (`sceneStatus` in its metadata) with `chat-read`.
+  with `chat-read`. Its metadata has `sceneStatus`, and a concluded scene also has `sceneSummary`.
 - The Engine writes nothing into a Conversation for a package origin. Character memory is stored on
   conclude exactly as for a Conversation scene.
 

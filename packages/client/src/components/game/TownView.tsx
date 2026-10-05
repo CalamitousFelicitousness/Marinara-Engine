@@ -22,6 +22,7 @@ import {
   type TilePack,
   type WorldPerson,
   type WorldTownBuilding,
+  worldSeason,
 } from "@marinara-engine/shared";
 import { useTown, useTownVisit } from "../../hooks/use-game";
 import {
@@ -83,7 +84,7 @@ export function TownView({
   const { t } = useTranslation();
   const { data: town } = useTown(chatId, turnKey, true);
   const visitMutation = useTownVisit();
-  const drawTile = useOverworldAtlas(family, tilePack);
+  const drawTile = useOverworldAtlas(family, tilePack, time ? worldSeason(time.day) : undefined);
   const walkingRef = useRef(false);
   const [walking, setWalking] = useState(false);
   const { pendingMinutes, flush } = useOverworldClock(chatId, clockRunning, () => walkingRef.current, handleRef);

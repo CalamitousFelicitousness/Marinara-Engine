@@ -32,6 +32,7 @@ import {
   type CharacterFacing,
   type TilePack,
   type WorldPlace,
+  worldSeason,
 } from "@marinara-engine/shared";
 import { useOverworld, useOverworldWalk } from "../../hooks/use-game";
 import {
@@ -144,7 +145,8 @@ export function WorldOverworld({
   const lit = darkness > 0.25;
 
   // ── The family's tiles: drawn plain until (and unless) they load ──
-  const drawTile = useOverworldAtlas(family, tilePack);
+  // Drawn in the season of the game's day (seasonal tiles, where the pack has them).
+  const drawTile = useOverworldAtlas(family, tilePack, time ? worldSeason(time.day) : undefined);
 
   // ── What is drawn once: the ground and its ways, then the settlements ──
   // In world units (16 a cell) at `resolution` canvas pixels a unit (an image pack's detail, as far as

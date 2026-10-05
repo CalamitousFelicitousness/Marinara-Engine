@@ -89,6 +89,19 @@ export const WORLD_FRINGE_ORDER: readonly WorldGroundLook[] = Object.freeze([
   "mountains",
 ]);
 
+/** Seasons, for drawing only (user, 2026-10-05: "seasonal variants for foliage"). Game Mode keeps no
+ *  calendar beyond the game's day count (a kit's calendar names months but gives them no length), so a season
+ *  is WORLD_SEASON_DAYS days, the first day of a game the first day of spring. */
+export const WORLD_SEASONS = Object.freeze(["spring", "summer", "autumn", "winter"] as const);
+export type WorldSeason = (typeof WORLD_SEASONS)[number];
+export const WORLD_SEASON_DAYS = 90;
+
+/** The season of a game day (1 is the first). */
+export function worldSeason(day: number): WorldSeason {
+  const index = Math.floor((Math.max(1, Math.floor(day)) - 1) / WORLD_SEASON_DAYS) % WORLD_SEASONS.length;
+  return WORLD_SEASONS[index]!;
+}
+
 /** The look a pack without its own tile for a look draws instead. */
 export const WORLD_GROUND_LOOK_FALLBACK: Readonly<Partial<Record<WorldGroundLook, WorldGroundLook>>> = Object.freeze({
   conifer_forest: "forest",

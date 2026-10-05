@@ -13,7 +13,7 @@
 import { z } from "zod";
 import { WORLD_FURNITURE } from "./furniture.js";
 import { WORLD_EDGE_BLOCK_ROWS, WORLD_EDGE_TERRAINS } from "./edges.js";
-import { WORLD_GROUND_LOOKS } from "./overworld.js";
+import { WORLD_GROUND_LOOKS, WORLD_SEASONS } from "./overworld.js";
 
 /** Pixels across and down a tile. */
 export const TILE_PACK_SIZE = 16;
@@ -234,6 +234,18 @@ export type TilePack = DrawnTilePack | ImageTilePack;
 export type TilePackRead = { ok: true; pack: TilePack; notes: string[] } | { ok: false; issues: string[] };
 
 const KNOWN = new Set<string>(WORLD_TILE_IDS);
+/** Tiles an image pack may give seasonal variants, as `<id>@<season>` (drawn in that season, the plain id
+ *  otherwise): the ground and its fringes, the town's ground and its trees. */
+export const WORLD_SEASONAL_TILE_IDS: readonly WorldTileId[] = Object.freeze([
+  ...WORLD_GROUND_LOOKS,
+  ...WORLD_GROUND_LOOKS.map((look) => `fringe_${look}` as const),
+  "town_ground",
+  "tree",
+]);
+const IMAGE_KNOWN = new Set<string>([
+  ...WORLD_TILE_IDS,
+  ...WORLD_SEASONAL_TILE_IDS.flatMap((id) => WORLD_SEASONS.map((season) => `${id}@${season}`)),
+]);
 
 let crcTable: Uint32Array | null = null;
 function crc32(bytes: Uint8Array, from: number, to: number): number {
@@ -367,7 +379,7 @@ function parseImageTilePack(value: unknown): TilePackRead {
     issues.push(`The sheets hold more than ${TILE_PACK_IMAGE_MAX_PIXELS.toLocaleString("en")} pixels together.`);
   const tiles: ImageTilePack["tiles"] = {};
   for (const [id, variants] of Object.entries(pack.tiles)) {
-    if (!KNOWN.has(id)) {
+    if (!IMAGE_KNOWN.has(id)) {
       notes.push(`"${id}" is not a tile the Engine draws, so it was left out.`);
       continue;
     }

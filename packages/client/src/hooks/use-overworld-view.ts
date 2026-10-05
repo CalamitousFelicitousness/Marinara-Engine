@@ -12,6 +12,7 @@ import {
   WORLD_PATTERN_TILE_IDS,
   WORLD_GROUND_LOOK_FALLBACK,
   type WorldGroundLook,
+  type WorldSeason,
   type WorldEdgeTerrain,
   type CharacterFacing,
   type ImageCharacter,
@@ -199,7 +200,11 @@ export type OverworldTileDrawer = ((
  *  out once on a canvas. A family with neither is drawn plain. */
 /** `own`: the game's own tiles (an Experience's map pack), drawn instead of the family's; "loading" while
  *  they are still on their way, so the family's are never fetched and drawn first. */
-export function useOverworldAtlas(family: string | undefined, own?: TilePack | null | "loading"): OverworldTileDrawer {
+export function useOverworldAtlas(
+  family: string | undefined,
+  own?: TilePack | null | "loading",
+  season?: WorldSeason,
+): OverworldTileDrawer {
   const { data: library, isPending: libraryPending } = useTilePackLibrary();
   const chosen = (family && library?.selection[family]) || null;
   // By version, so a pack saved again is drawn anew.
@@ -278,13 +283,16 @@ export function useOverworldAtlas(family: string | undefined, own?: TilePack | n
   return useMemo(() => {
     // A look the pack has no tile for (a newer forest) draws the one it stands in for.
     const fallbackOf = (id: string) => WORLD_GROUND_LOOK_FALLBACK[id as WorldGroundLook];
+    // A tile's seasonal variant (`<id>@<season>`) in its season, where the pack has one.
+    const seasonal = <T>(tiles: Record<string, T> | undefined, id: string) =>
+      (season ? tiles?.[`${id}@${season}`] : undefined) ?? tiles?.[id];
     const variantOf = <T>(variants: readonly T[] | undefined, pick: number) =>
       variants?.length ? variants[Math.min(variants.length - 1, Math.floor(pick * variants.length))]! : null;
     if (image) {
       const size = image.tileSize;
       const patterns = new Set<string>(WORLD_PATTERN_TILE_IDS);
       const draw = ((ctx, id, x, y, pick = 0, box) => {
-        const variants = ready?.tiles[id] ?? ready?.tiles[fallbackOf(id) ?? ""];
+        const variants = seasonal(ready?.tiles, id) ?? seasonal(ready?.tiles, fallbackOf(id) ?? "");
         // Ground drawn as a pattern: its cell for this position (x and y are whole cells in units here).
         const pattern = !box && patterns.has(id) ? variants?.find((each) => each.w > 1 || each.h > 1) : undefined;
         if (pattern && ready?.canvas) {
@@ -320,7 +328,7 @@ export function useOverworldAtlas(family: string | undefined, own?: TilePack | n
       draw.loading = !ready;
       draw.sprite = (id) => {
         if (patterns.has(id)) return null;
-        const tile = image.tiles[id]?.[0];
+        const tile = seasonal(image.tiles, id)?.[0];
         return tile && ((tile.w ?? 1) > 1 || (tile.h ?? 1) > 1) ? { w: tile.w ?? 1, h: tile.h ?? 1 } : null;
       };
       // The party wears the first character it may; townsfolk one of theirs, by who they are (the party's
@@ -357,7 +365,7 @@ export function useOverworldAtlas(family: string | undefined, own?: TilePack | n
         return variants?.length ? Math.min(...variants.map((block) => block.length / 4)) : 0;
       };
       const fringeOf = (look: string) =>
-        ready?.edges?.[`fringe_${look}`] ?? ready?.edges?.[`fringe_${fallbackOf(look) ?? ""}`];
+        seasonal(ready?.edges, `fringe_${look}`) ?? seasonal(ready?.edges, `fringe_${fallbackOf(look) ?? ""}`);
       draw.hasFringe = (look) => Boolean(fringeOf(look)?.length);
       let through: HTMLCanvasElement | null = null;
       draw.fringe = (ctx, look, piece, x, y, pickAt, pick = 0) => {
@@ -409,7 +417,7 @@ export function useOverworldAtlas(family: string | undefined, own?: TilePack | n
       return draw;
     }
     const draw = ((ctx, id, x, y, pick = 0) => {
-      const at = variantOf(atlas?.index[id] ?? atlas?.index[fallbackOf(id) ?? ""], pick);
+      const at = variantOf(seasonal(atlas?.index, id) ?? seasonal(atlas?.index, fallbackOf(id) ?? ""), pick);
       if (!atlas || at === null) return false;
       const sx = (at % ATLAS_COLUMNS) * OVERWORLD_TILE;
       const sy = Math.floor(at / ATLAS_COLUMNS) * OVERWORLD_TILE;
@@ -431,7 +439,7 @@ export function useOverworldAtlas(family: string | undefined, own?: TilePack | n
     draw.edgeRows = () => 0;
     draw.edge = () => false;
     return draw;
-  }, [atlas, chosen, family, fetchFailed, fetched, image, libraryPending, own, ready]);
+  }, [atlas, chosen, family, fetchFailed, fetched, image, libraryPending, own, ready, season]);
 }
 
 /** Canvas pixels per unit for a view's base canvases (the ground and buildings drawn once): an image

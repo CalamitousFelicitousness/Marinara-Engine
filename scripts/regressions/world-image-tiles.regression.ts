@@ -26,6 +26,8 @@ import {
   worldRoadCells,
   worldWholeEdgeBlocks,
   WORLD_FRINGE_ORDER,
+  WORLD_SEASON_DAYS,
+  worldSeason,
   WORLD_GROUND_LOOKS,
   WORLD_TILE_IDS,
   worldEdgeSlanted,
@@ -287,6 +289,32 @@ try {
     "each look once in the fringe order",
   );
   assert.ok(WORLD_FRINGE_ORDER.indexOf("forest") > WORLD_FRINGE_ORDER.indexOf("grass"), "a forest overhangs the grass");
+  // Seasons, for drawing: the game's day, a season every WORLD_SEASON_DAYS, from spring.
+  assert.deepEqual(
+    [1, WORLD_SEASON_DAYS, WORLD_SEASON_DAYS + 1, 3 * WORLD_SEASON_DAYS + 1, 4 * WORLD_SEASON_DAYS + 1, 0].map(
+      worldSeason,
+    ),
+    ["spring", "spring", "summer", "winter", "spring", "spring"],
+  );
+  const seasonalRead = parseTilePack(
+    withEdges({
+      "grass@winter": [{ sheet: "edges", x: 0, y: 0 }],
+      "fringe_forest@autumn": [{ sheet: "edges", x: 0, y: 0, w: 4, h: 4 }],
+      "house@winter": [{ sheet: "edges", x: 0, y: 0 }],
+      "grass@monsoon": [{ sheet: "edges", x: 0, y: 0 }],
+    }),
+  );
+  assert.ok(seasonalRead.ok);
+  if (seasonalRead.ok) {
+    assert.ok(seasonalRead.pack.tiles["grass@winter"], "seasonal ground kept");
+    assert.ok(seasonalRead.pack.tiles["fringe_forest@autumn"], "a seasonal fringe kept");
+    assert.ok(!seasonalRead.pack.tiles["house@winter"], "a house has no seasons");
+    assert.ok(!seasonalRead.pack.tiles["grass@monsoon"], "nor is there a fifth season");
+    assert.ok(
+      seasonalRead.notes.some((note) => note.includes("house@winter")),
+      "noted",
+    );
+  }
   // A drawn pack has no edge tiles (their blocks are image sprites): left out and noted.
   const drawnEdges = parseTilePack({
     tilePackVersion: 1,

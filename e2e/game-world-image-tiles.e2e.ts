@@ -311,3 +311,84 @@ test("a fringe spills a ground look past its cells onto the ground beside it", a
       await request.delete(`/api/game-tile-packs?id=${encodeURIComponent(id)}`).catch(() => undefined);
   }
 });
+
+test("a seasonal tile is drawn in its season, the plain one otherwise", async ({ page, request }) => {
+  test.setTimeout(180_000);
+  const chats: string[] = [];
+  let packId = "";
+  try {
+    const [SUMMER, WINTER] = [
+      [70, 150, 70],
+      [235, 240, 245],
+    ];
+    const sheet = pngOf(96, 48, (x) => [...(x < 48 ? SUMMER : WINTER)!, 255]);
+    const pack = {
+      tilePackVersion: 2,
+      id: "e2e-seasons",
+      name: "e2e-seasons",
+      family: "fantasy",
+      version: 1,
+      tileSize: 48,
+      sheets: [{ id: "grass", png: `data:image/png;base64,${sheet.toString("base64")}`, width: 96, height: 48 }],
+      tiles: { grass: [{ sheet: "grass", x: 0, y: 0 }], "grass@winter": [{ sheet: "grass", x: 1, y: 0 }] },
+    };
+    const imported = await request.post("/api/game-tile-packs/import", { data: { definition: JSON.stringify(pack) } });
+    expect(imported.ok(), await imported.text()).toBeTruthy();
+    packId = (await imported.json()).pack.id as string;
+    await request.put("/api/game-tile-packs/selection", { data: { family: "fantasy", packId } });
+    const colours = async (day: number) => {
+      const created = await request.post("/api/chats", { data: { name: "Seasons", mode: "game", characterIds: [] } });
+      const chatId = ((await created.json()) as { id: string }).id;
+      chats.push(chatId);
+      await request.patch(`/api/chats/${chatId}/metadata`, {
+        data: {
+          gameId: `seasons-${chatId}`,
+          gameSessionStatus: "active",
+          gameIntroPresented: true,
+          gameImageAutoGenerationEnabled: false,
+          enableAgents: false,
+          enableTools: false,
+          gameWorldKit: kit,
+          gameWorld,
+          gameTime: { day, hour: 12, minute: 0 },
+        },
+      });
+      await openGame(page, chatId);
+      const overworld = page.getByRole("region", { name: "Overworld", exact: true });
+      await expect(overworld).toHaveAttribute("data-tiles", "image", { timeout: 40_000 });
+      await page.waitForTimeout(500);
+      return overworld
+        .locator("canvas")
+        .first()
+        .evaluate(
+          (canvas: HTMLCanvasElement, wanted) => {
+            const { data } = canvas.getContext("2d")!.getImageData(0, 0, canvas.width, canvas.height);
+            const found = wanted.map(() => 0);
+            for (let at = 0; at < data.length; at += 4 * 5)
+              wanted.forEach(([r, g, b], index) => {
+                if (
+                  Math.abs(data[at]! - r!) < 6 &&
+                  Math.abs(data[at + 1]! - g!) < 6 &&
+                  Math.abs(data[at + 2]! - b!) < 6
+                )
+                  found[index]!++;
+              });
+            return found;
+          },
+          [SUMMER, WINTER],
+        );
+    };
+    const [summerGrass, summerSnow] = await colours(1);
+    expect(summerGrass).toBeGreaterThan(0);
+    expect(summerSnow).toBe(0);
+    const [winterGrass, winterSnow] = await colours(300);
+    expect(winterSnow).toBeGreaterThan(0);
+    expect(winterGrass).toBe(0);
+  } finally {
+    for (const chatId of chats) await request.delete(`/api/chats/${chatId}`).catch(() => undefined);
+    await request
+      .put("/api/game-tile-packs/selection", { data: { family: "fantasy", packId: null } })
+      .catch(() => undefined);
+    if (packId) await request.delete(`/api/game-tile-packs?id=${encodeURIComponent(packId)}`).catch(() => undefined);
+  }
+});

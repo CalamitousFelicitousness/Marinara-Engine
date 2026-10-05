@@ -11566,6 +11566,8 @@ test("Game character sheet Retry remains a draft until Save", async ({ page, req
     });
     await page.goto("/");
     await page.locator('.mari-window-bubble[data-window="control:character-profiles"]').click();
+    await page.locator('.mari-window[data-window="control:character-profiles"] [data-window-control="lock"]').click();
+    await expect.poll(() => layoutResponseReady).toBe(true);
     await page.getByTitle(`${characterName} - Click to open character sheet`).filter({ visible: true }).click();
     const sheet = page.locator('[data-component="GameCharacterSheet"]');
     await expect(sheet).toBeVisible();
@@ -11576,7 +11578,6 @@ test("Game character sheet Retry remains a draft until Save", async ({ page, req
     await sheet.getByRole("button", { name: "Retry", exact: true }).click();
     await expect(classInput).toHaveValue("Chronomancer");
     expect((await readStoredCard())?.class).toBe("Scout");
-    await expect.poll(() => layoutResponseReady).toBe(true);
     const layoutApplied = page.waitForResponse(
       (response) =>
         response.url().endsWith(metadataUrl) &&

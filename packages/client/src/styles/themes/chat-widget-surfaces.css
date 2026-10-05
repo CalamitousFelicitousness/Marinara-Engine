@@ -229,6 +229,18 @@
   --mari-chat-control-existing-bg: var(--marinara-chat-chrome-button-bg-active);
   --mari-chat-control-existing-border: var(--marinara-chat-chrome-button-border-active);
 }
+.mari-vn-history-control {
+  --mari-chat-control-existing-bg: var(--marinara-chat-chrome-panel-bg);
+  --mari-chat-control-existing-border: var(--border);
+}
+.mari-map-generate-control {
+  --mari-chat-control-existing-bg: var(--marinara-chat-chrome-button-bg);
+  --mari-chat-control-existing-border: var(--marinara-chat-chrome-button-border);
+}
+.mari-map-generate-control:hover {
+  --mari-chat-control-existing-bg: var(--marinara-chat-chrome-button-bg-hover);
+  --mari-chat-control-existing-border: var(--marinara-chat-chrome-button-border-hover);
+}
 .marinara-chat-toolbar-button {
   --mari-chat-control-existing-bg: var(--marinara-chat-chrome-button-bg);
 }

@@ -16,6 +16,7 @@ import {
   rulesetBuilderPicks,
   rulesetBuilderRemaining,
   rulesetBuilderTrainedSlots,
+  rulesetBuilderMethod,
   rulesetSheetBuildIsBlank,
   defaultRulesetSheetBuild,
   isRulesetItemHidden,
@@ -99,9 +100,9 @@ function ChoiceSlot({
 export function RulesetSheetBuilder({
   definition,
   layerOptions,
-  build,
-  state,
-  evaluated,
+  build: rawBuild,
+  state: rawState,
+  evaluated: rawEvaluated,
   onApply,
 }: {
   definition: RulesetDefinition;
@@ -152,27 +153,45 @@ export function RulesetSheetBuilder({
     combine,
   });
 
+  // A character made some other way is described first: picks record what it already is and change
+  // nothing, until the player says the picks should change the sheet.
+  const describing =
+    rawState.describing ?? (rawState.applied === undefined && !rulesetSheetBuildIsBlank(definition, rawBuild));
+  const state = useMemo(() => ({ ...rawState, describing }), [describing, rawState]);
+  // A new character the builder has not written to yet is shown as the builder would make it (its
+  // default method's scores, say), and nothing is stored until the player changes something.
+  const preview = useMemo(
+    () =>
+      ready && !describing && rawState.applied === undefined
+        ? applyRulesetBuilder(definition, rawBuild, state, catalogs)
+        : null,
+    [catalogs, definition, describing, rawBuild, rawState.applied, ready, state],
+  );
+  const build = preview?.build ?? rawBuild;
+  const evaluated = useMemo(
+    () => (preview ? evaluateRulesetSheet(definition, preview.build) : rawEvaluated),
+    [definition, preview, rawEvaluated],
+  );
+  const increases = (preview?.state ?? rawState).applied?.increases ?? {};
+
   const step = builder.steps[Math.min(stepIndex, builder.steps.length - 1)]!;
   const remaining = useMemo(
     () => (ready ? rulesetBuilderRemaining(definition, build, state, catalogs) : {}),
     [build, catalogs, definition, ready, state],
   );
   const abilitySlots = useMemo(
-    () => (ready ? rulesetBuilderAbilitySlots(definition, state, catalogs) : []),
-    [catalogs, definition, ready, state],
+    () => (ready ? rulesetBuilderAbilitySlots(definition, state, catalogs, build) : []),
+    [build, catalogs, definition, ready, state],
   );
   const trainedSlots = useMemo(
-    () => (ready ? rulesetBuilderTrainedSlots(definition, state, catalogs) : []),
-    [catalogs, definition, ready, state],
+    () => (ready ? rulesetBuilderTrainedSlots(definition, state, catalogs, build) : []),
+    [build, catalogs, definition, ready, state],
   );
 
   // The sheet as it stands now, for the dice, which land after an await: the render that threw them may
   // be stale by then.
-  const latest = useRef({ build, state });
-  latest.current = { build, state };
-  // A character made some other way is described first: picks record what it already is and change
-  // nothing, until the player says the picks should change the sheet.
-  const describing = state.describing ?? (state.applied === undefined && !rulesetSheetBuildIsBlank(definition, build));
+  const latest = useRef({ build: rawBuild, state });
+  latest.current = { build: rawBuild, state };
   const update = (next: RulesetBuilderState) => {
     if (!ready) return;
     const applied = applyRulesetBuilder(
@@ -224,16 +243,16 @@ export function RulesetSheetBuilder({
   );
 
   const catalogStep = (current: StepOf<"catalog">) => {
-    const picked = rulesetBuilderPicks(definition, current.id, state, catalogs).map((entry) => entry.id);
+    const picked = rulesetBuilderPicks(definition, current.id, state, catalogs, build).map((entry) => entry.id);
     const shown = visible.get(current.catalog);
-    const options = rulesetBuilderOptions(definition, current, state, catalogs).filter(
+    const options = rulesetBuilderOptions(definition, current, state, catalogs, build).filter(
       (entry) => picked.includes(entry.id) || !shown || shown.has(entry.id),
     );
     // An entry picked at another step on the same catalog is that step's.
     const elsewhere = new Map<string, string>();
     for (const other of builder.steps) {
       if (other.kind !== "catalog" || other.id === current.id || other.catalog !== current.catalog) continue;
-      for (const entry of rulesetBuilderPicks(definition, other.id, state, catalogs))
+      for (const entry of rulesetBuilderPicks(definition, other.id, state, catalogs, build))
         elsewhere.set(entry.id, other.label);
     }
     const toggle = (id: string) => {
@@ -327,12 +346,25 @@ export function RulesetSheetBuilder({
               onChange={(value) =>
                 // A value the builder answers for, changed here, is still the builder's: a later pick
                 // that no longer asks for it takes it back.
-                onApply(
-                  { ...build, fields: { ...build.fields, [id]: value } },
-                  state.applied && id in state.applied.fields
-                    ? { ...state, applied: { ...state.applied, fields: { ...state.applied.fields, [id]: value } } }
-                    : state,
-                )
+                {
+                  const typed = { ...rawBuild, fields: { ...rawBuild.fields, [id]: value } };
+                  // A sheet the builder has not written to yet takes its picks with the first change.
+                  if (!rawState.applied) {
+                    if (!ready) return;
+                    const applied = applyRulesetBuilder(definition, typed, state, catalogs);
+                    onApply({ ...applied.build, fields: { ...applied.build.fields, [id]: value } }, applied.state);
+                    return;
+                  }
+                  onApply(
+                    typed,
+                    id in rawState.applied.fields
+                      ? {
+                          ...rawState,
+                          applied: { ...rawState.applied, fields: { ...rawState.applied.fields, [id]: value } },
+                        }
+                      : rawState,
+                  );
+                }
               }
               ariaLabel={field.label}
             />
@@ -347,9 +379,8 @@ export function RulesetSheetBuilder({
     const methods = (["pointBuy", "standardArray", "roll", "manual"] as const).filter(
       (method) => current.methods[method] !== undefined,
     );
-    const method = state.method && current.methods[state.method] ? state.method : undefined;
+    const method = rulesetBuilderMethod(definition, state);
     const base = rulesetBuilderBaseScores(definition, state);
-    const increases = state.applied?.increases ?? {};
     const pointBuy = current.methods.pointBuy;
     const spent = method === "pointBuy" && pointBuy ? rulesetPointBuySpent(pointBuy, base, ids) : null;
     const values = method === "standardArray" ? (current.methods.standardArray ?? []) : (state.rolled ?? []);

@@ -1776,6 +1776,15 @@ export function getCapabilityPackageInstallIssue(
   if (!declaresApi(81) && (plainRecord(ruleset?.sheet)?.builder !== undefined || carriesGrants)) {
     return BUILDER_ISSUE;
   }
+  // A builder step's starting method and a catalog step's limit by a sheet value, 1.82: new keys on the
+  // strict steps.
+  const builderSteps = plainRecord(plainRecord(ruleset?.sheet)?.builder)?.steps;
+  const safer =
+    Array.isArray(builderSteps) &&
+    builderSteps.some((step) => plainRecord(step)?.default !== undefined || plainRecord(step)?.upTo !== undefined);
+  if (!declaresApi(82) && safer) {
+    return "A ruleset whose builder starts on a method or limits a step by a sheet value requires schemaVersion 2 and capabilityApi 1.82 or newer";
+  }
   return null;
 }
 

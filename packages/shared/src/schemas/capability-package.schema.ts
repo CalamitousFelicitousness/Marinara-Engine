@@ -647,7 +647,11 @@ const capabilityPackageManifestBaseSchema = z
 //        take starting gear), and a catalog entry may say what a pick through it `grants` (score
 //        increases, training, field values). Not a soft seam: an Engine that cannot read either refuses
 //        the ruleset file or the catalog, so a package that ships them declares 1.81. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 81 } as const);
+// 1.82: a builder's abilities step may start on a `default` method, and a catalog step may offer only
+//        entries up to a value read off the sheet (`upTo`, features up to the character's level). Not a
+//        soft seam: an Engine that cannot read either refuses the ruleset file, so a package that ships
+//        them declares 1.82. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 82 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

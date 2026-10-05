@@ -28,6 +28,7 @@ import {
   rulesetBuilderTrainedSlots,
   rulesetCatalogEntryIssues,
   rulesetPointBuySpent,
+  rulesetBuilderMethod,
   rulesetSheetBuildIsBlank,
   type RulesetBuilderState,
   type RulesetCatalogEntriesById,
@@ -514,6 +515,95 @@ try {
   );
   refused((doc) => doc.catalogs.push({ id: "empty", label: "Empty", entries: [] }), /names the lists it "feeds"/);
 
+  // ── 1.82: a default method, and a step limited by a sheet value ──
+  {
+    const safe = parsed(
+      variant((doc) => {
+        doc.sheet.builder.steps[4].default = "pointBuy";
+        doc.catalogs
+          .find((c: { id: string }) => c.id === "races")
+          .filters.push({ id: "tier", label: "Tier", type: "number" });
+        const entries = doc.catalogs.find((c: { id: string }) => c.id === "races").entries;
+        entries.find((e: { id: string }) => e.id === "hill-dwarf").filters.tier = 3;
+        doc.sheet.builder.steps[1].upTo = { filter: "tier", value: { field: "level" } };
+      }),
+    );
+    const blank = defaultRulesetSheetBuild(safe);
+    const catalogs: RulesetCatalogEntriesById = Object.fromEntries(
+      (safe.catalogs ?? []).map((catalog) => [catalog.id, catalog.entries ?? []]),
+    );
+    // A new character starts on point buy; one being described does not.
+    assert.equal(rulesetBuilderMethod(safe, { describing: false }), "pointBuy");
+    assert.equal(rulesetBuilderMethod(safe, { describing: true }), undefined);
+    assert.equal(rulesetBuilderMethod(safe, {}), undefined, "nor one not yet known to be new");
+    assert.equal(
+      rulesetBuilderMethod(safe, { describing: false, method: "manual" }),
+      "manual",
+      "the player's own wins",
+    );
+    let { build: b, state: st } = applyRulesetBuilder(safe, blank, { describing: false }, catalogs);
+    assert.deepEqual(
+      ["str", "dex", "con", "int", "wis", "cha"].map((id) => b.abilities[id]),
+      [8, 8, 8, 8, 8, 8],
+      "the scores read as point buy from the start",
+    );
+    assert.equal(rulesetBuilderRemaining(safe, b, st, catalogs).scores, 1);
+    // A subrace of tier 3 is offered from level 3.
+    const subStep = safe.sheet.builder!.steps[1]!;
+    assert.ok(subStep.kind === "catalog");
+    const offered = (level: number) =>
+      rulesetBuilderOptions(safe, subStep, { picks: { race: ["dwarf"] } }, catalogs, {
+        ...b,
+        fields: { ...b.fields, level },
+      }).map((entry) => entry.id);
+    assert.deepEqual(offered(1), []);
+    assert.deepEqual(offered(3), ["hill-dwarf"]);
+    assert.deepEqual(
+      rulesetBuilderOptions(safe, subStep, { picks: { race: ["dwarf"] } }, catalogs).map((entry) => entry.id),
+      ["hill-dwarf"],
+      "no limit without a sheet to read",
+    );
+    // A pick made at level 3 counts for nothing at level 1, and is kept.
+    ({ build: b, state: st } = applyRulesetBuilder(
+      safe,
+      { ...b, fields: { ...b.fields, level: 3 } },
+      { ...st, picks: { race: ["dwarf"], subrace: ["hill-dwarf"] } },
+      catalogs,
+    ));
+    assert.equal(b.abilities.wis, 9);
+    ({ build: b, state: st } = applyRulesetBuilder(safe, { ...b, fields: { ...b.fields, level: 1 } }, st, catalogs));
+    assert.equal(b.abilities.wis, 8);
+    assert.deepEqual(st.picks?.subrace, ["hill-dwarf"]);
+    // Entries without the filter always pass.
+    const raceStep = safe.sheet.builder!.steps[0]!;
+    assert.ok(raceStep.kind === "catalog");
+    assert.deepEqual(
+      rulesetBuilderOptions(safe, { ...raceStep, upTo: { filter: "tier", value: { const: 0 } } }, {}, catalogs, b).map(
+        (entry) => entry.id,
+      ),
+      ["dwarf", "half-elf"],
+    );
+  }
+  refused((doc) => (doc.sheet.builder.steps[4].default = "nope"), /Invalid enum value/);
+  refused((doc) => {
+    delete doc.sheet.builder.steps[4].methods.manual;
+    doc.sheet.builder.steps[4].default = "manual";
+  }, /"manual" is not one of this step's methods/);
+  refused(
+    (doc) => (doc.sheet.builder.steps[1].upTo = { filter: "parent", value: { const: 1 } }),
+    /No number filter "parent"/,
+  );
+  refused(
+    (doc) => (doc.sheet.builder.steps[1].upTo = { filter: "nope", value: { const: 1 } }),
+    /No number filter "nope"/,
+  );
+  refused((doc) => {
+    doc.catalogs
+      .find((c: { id: string }) => c.id === "races")
+      .filters.push({ id: "tier", label: "Tier", type: "number" });
+    doc.sheet.builder.steps[1].upTo = { filter: "tier", value: { derived: "nope" } };
+  }, /nope/);
+
   // ── The gate ──
   const manifest = (minor: number, paths = ["ruleset.json"]) => ({
     schemaVersion: 2,
@@ -557,6 +647,18 @@ try {
   const paths = ["ruleset.json", "catalogs/races.json"];
   assert.match(issue(80, filed, files, paths) ?? "", /1\.81/);
   assert.equal(issue(81, filed, files, paths), null);
+  const defaulted = variant((doc) => (doc.sheet.builder.steps[4].default = "pointBuy"));
+  assert.match(issue(81, defaulted) ?? "", /starts on a method.*1\.82/);
+  assert.equal(issue(82, defaulted), null);
+  const limited = variant((doc) => {
+    doc.catalogs
+      .find((c: { id: string }) => c.id === "races")
+      .filters.push({ id: "tier", label: "Tier", type: "number" });
+    doc.sheet.builder.steps[1].upTo = { filter: "tier", value: { field: "level" } };
+  });
+  assert.match(issue(81, limited) ?? "", /1\.82/);
+  assert.equal(issue(82, limited), null);
+  assert.equal(issue(81, variant()), null, "a 1.81 builder is still 1.81's");
   assert.equal(issue(74, JSON.parse(fiveEText)), null, "an older package still validates");
 
   console.log("Ruleset builder: steps, grants, methods, take-backs, remaining choices and the 1.81 gate.");

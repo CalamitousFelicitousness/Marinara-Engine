@@ -20,7 +20,7 @@ import {
   type RulesetDefinition,
   type RulesetSheetBuild,
 } from "../../schemas/ruleset.schema.js";
-import { defaultRulesetSheetBuild } from "./sheet-math.js";
+import { defaultRulesetSheetBuild, resolveRulesetValueRef } from "./sheet-math.js";
 
 type Scalar = number | string | boolean;
 type StepOf<K extends RulesetBuilderStep["kind"]> = Extract<RulesetBuilderStep, { kind: K }>;
@@ -112,12 +112,20 @@ export function rulesetBuilderOptions(
   step: StepOf<"catalog">,
   state: RulesetBuilderState,
   catalogs: RulesetCatalogEntriesById,
+  /** The sheet as it stands, which a step's `upTo` reads; no limit without it. */
+  build?: RulesetSheetBuild,
 ): RulesetCatalogEntry[] {
   const entries = catalogs[step.catalog] ?? [];
-  const parentPicks = step.within ? rulesetBuilderPicks(definition, step.within.step, state, catalogs) : null;
+  // Read off the sheet as it stands; an entry without the filter is never held back by it.
+  const limit = step.upTo && build ? resolveRulesetValueRef(definition, build, step.upTo.value) : null;
+  const parentPicks = step.within ? rulesetBuilderPicks(definition, step.within.step, state, catalogs, build) : null;
   return entries.filter((entry) => {
     for (const [filterId, value] of Object.entries(step.filters ?? {})) {
       if (!filterHas(entry, filterId, value)) return false;
+    }
+    if (step.upTo && limit !== null) {
+      const at = entry.filters?.[step.upTo.filter];
+      if (typeof at === "number" && at > limit) return false;
     }
     if (step.within && parentPicks) {
       if (!parentPicks.some((picked) => filterHas(entry, step.within!.filter, picked.id))) return false;
@@ -137,11 +145,13 @@ export function rulesetBuilderPicks(
   stepId: string,
   state: RulesetBuilderState,
   catalogs: RulesetCatalogEntriesById,
+  /** The sheet as it stands, which a step's `upTo` reads; no limit without it. */
+  build?: RulesetSheetBuild,
 ): RulesetCatalogEntry[] {
   const step = stepById(definition, stepId);
   if (!step || step.kind !== "catalog") return [];
   // `within` only ever names an earlier step (the ruleset is refused otherwise), so this ends.
-  const offered = rulesetBuilderOptions(definition, step, state, catalogs);
+  const offered = rulesetBuilderOptions(definition, step, state, catalogs, build);
   const byId = new Map(offered.map((entry) => [entry.id, entry]));
   return (state.picks?.[stepId] ?? [])
     .map((id) => byId.get(id))
@@ -154,12 +164,14 @@ export function rulesetBuilderGranting(
   definition: RulesetDefinition,
   state: RulesetBuilderState,
   catalogs: RulesetCatalogEntriesById,
+  /** The sheet as it stands, which a step's `upTo` reads; no limit without it. */
+  build?: RulesetSheetBuild,
 ): { step: StepOf<"catalog">; entry: RulesetCatalogEntry }[] {
   // One entry picked at two steps on one catalog (a feat and a bonus feat) grants once.
   const seen = new Set<string>();
   return (definition.sheet.builder?.steps ?? []).flatMap((step) =>
     step.kind === "catalog"
-      ? rulesetBuilderPicks(definition, step.id, state, catalogs)
+      ? rulesetBuilderPicks(definition, step.id, state, catalogs, build)
           .filter((entry) => {
             const ref = catalogRowRef(step.catalog, entry.id);
             if (seen.has(ref)) return false;
@@ -212,10 +224,12 @@ export function rulesetBuilderAbilitySlots(
   definition: RulesetDefinition,
   state: RulesetBuilderState,
   catalogs: RulesetCatalogEntriesById,
+  /** The sheet as it stands, which a step's `upTo` reads; no limit without it. */
+  build?: RulesetSheetBuild,
 ): RulesetBuilderAbilitySlot[] {
   const host = definition.sheet.builder?.steps.find((step) => step.kind === "abilities")?.id;
   const all = definition.sheet.abilities.map((ability) => ability.id);
-  return rulesetBuilderGranting(definition, state, catalogs).flatMap(({ step, entry }) =>
+  return rulesetBuilderGranting(definition, state, catalogs, build).flatMap(({ step, entry }) =>
     (entry.grants?.abilities?.choose ?? []).map((choice, index) => {
       const key = rulesetBuilderChoiceKey(step.id, entry.id, index);
       const from = all.filter((id) => !choice.except?.includes(id));
@@ -239,6 +253,8 @@ export function rulesetBuilderTrainedSlots(
   definition: RulesetDefinition,
   state: RulesetBuilderState,
   catalogs: RulesetCatalogEntriesById,
+  /** The sheet as it stands, which a step's `upTo` reads; no limit without it. */
+  build?: RulesetSheetBuild,
 ): RulesetBuilderTrainedSlot[] {
   const steps = definition.sheet.builder?.steps ?? [];
   const host = steps.find((step) => step.kind === "trained")?.id;
@@ -266,7 +282,7 @@ export function rulesetBuilderTrainedSlots(
       tier,
     };
   };
-  const granted = rulesetBuilderGranting(definition, state, catalogs).flatMap(({ step, entry }) =>
+  const granted = rulesetBuilderGranting(definition, state, catalogs, build).flatMap(({ step, entry }) =>
     (entry.grants?.trained?.choose ?? []).map((choice, index) =>
       slot(
         rulesetBuilderChoiceKey(step.id, entry.id, index),
@@ -314,6 +330,18 @@ export function rulesetPointBuySpent(
   return spent;
 }
 
+/** The method the scores are set by: the player's, else the step's `default` (1.82) for a character the
+ *  builder makes, never for one it describes; none when the step does not offer it. */
+export function rulesetBuilderMethod(
+  definition: RulesetDefinition,
+  state: RulesetBuilderState,
+): RulesetBuilderMethod | undefined {
+  const step = definition.sheet.builder?.steps.find((each): each is StepOf<"abilities"> => each.kind === "abilities");
+  if (!step) return undefined;
+  const method = state.method ?? (state.describing === false ? step.default : undefined);
+  return method && step.methods[method] ? method : undefined;
+}
+
 /** The scores the chosen method gives, before any increase. An ability the method has not set yet
  *  is left out, and keeps what the sheet has. */
 export function rulesetBuilderBaseScores(
@@ -321,23 +349,24 @@ export function rulesetBuilderBaseScores(
   state: RulesetBuilderState,
 ): Record<string, number> {
   const step = definition.sheet.builder?.steps.find((each): each is StepOf<"abilities"> => each.kind === "abilities");
-  if (!step || !state.method || !step.methods[state.method]) return {};
+  const method = rulesetBuilderMethod(definition, state);
+  if (!step || !method) return {};
   const ids = rulesetBuilderAbilityIds(definition, step);
   const base: Record<string, number> = {};
-  if (state.method === "pointBuy" || state.method === "manual") {
+  if (method === "pointBuy" || method === "manual") {
     const costs = step.methods.pointBuy?.costs;
     const lowest = costs?.[0]?.[0];
     const highest = costs?.[costs.length - 1]?.[0];
     for (const id of ids) {
       const value = state.base?.[id];
-      if (state.method === "pointBuy" && lowest !== undefined && highest !== undefined) {
+      if (method === "pointBuy" && lowest !== undefined && highest !== undefined) {
         // A score typed by hand and then bought starts from the nearest score on the table.
         base[id] = typeof value === "number" ? clamp(value, lowest, highest) : lowest;
       } else if (typeof value === "number") base[id] = value;
     }
     return base;
   }
-  const values = state.method === "standardArray" ? (step.methods.standardArray ?? []) : (state.rolled ?? []);
+  const values = method === "standardArray" ? (step.methods.standardArray ?? []) : (state.rolled ?? []);
   const taken = new Set<number>();
   for (const id of ids) {
     const index = state.assign?.[id];
@@ -382,6 +411,8 @@ function desired(
   definition: RulesetDefinition,
   state: RulesetBuilderState,
   catalogs: RulesetCatalogEntriesById,
+  /** The sheet as it stands, which a step's `upTo` reads; no limit without it. */
+  build?: RulesetSheetBuild,
 ): RulesetBuilderApplied {
   const out: RulesetBuilderApplied = { increases: {}, scores: {}, skills: {}, saves: {}, fields: {}, rows: [] };
   const abilities = new Set(definition.sheet.abilities.map((ability) => ability.id));
@@ -396,7 +427,7 @@ function desired(
   const train = (what: "skills" | "saves", id: string, tier: string) => {
     if (known[what].has(id)) out[what][id] = tier;
   };
-  for (const { step, entry } of rulesetBuilderGranting(definition, state, catalogs)) {
+  for (const { step, entry } of rulesetBuilderGranting(definition, state, catalogs, build)) {
     const grants = entry.grants;
     for (const [id, by] of Object.entries(grants?.abilities?.add ?? {})) bump(id, by);
     for (const what of ["skills", "saves"] as const)
@@ -406,13 +437,13 @@ function desired(
   }
   for (const step of definition.sheet.builder?.steps ?? []) {
     if (step.kind !== "catalog") continue;
-    const value = stepFieldValue(definition, step, rulesetBuilderPicks(definition, step.id, state, catalogs));
+    const value = stepFieldValue(definition, step, rulesetBuilderPicks(definition, step.id, state, catalogs, build));
     if (value !== undefined && step.field) out.fields[step.field] = value;
   }
-  for (const slot of rulesetBuilderAbilitySlots(definition, state, catalogs)) {
+  for (const slot of rulesetBuilderAbilitySlots(definition, state, catalogs, build)) {
     for (const id of slot.chosen) bump(id, slot.amount);
   }
-  for (const slot of rulesetBuilderTrainedSlots(definition, state, catalogs)) {
+  for (const slot of rulesetBuilderTrainedSlots(definition, state, catalogs, build)) {
     for (const id of slot.chosen) train(slot.what, id, slot.tier);
   }
   return out;
@@ -462,7 +493,7 @@ export function applyRulesetBuilder(
     fields: {},
     rows: [],
   };
-  const want = desired(definition, state, catalogs);
+  const want = desired(definition, state, catalogs, build);
   if (state.describing) {
     // Describing: every pick's grants are recorded as given (so a later change takes them back, as far
     // as the sheet still shows them), and nothing is written, now or when describing ends.
@@ -565,7 +596,7 @@ export function applyRulesetBuilder(
       (rows) => Array.isArray(rows) && rows.some((row) => row?.[RULESET_CATALOG_ROW_KEY] === ref),
     );
   const entriesByRef = new Map<string, RulesetCatalogEntry>();
-  for (const { step, entry } of rulesetBuilderGranting(definition, state, catalogs)) {
+  for (const { step, entry } of rulesetBuilderGranting(definition, state, catalogs, build)) {
     entriesByRef.set(catalogRowRef(step.catalog, entry.id), entry);
   }
   for (const ref of want.rows) {
@@ -610,8 +641,11 @@ export function rulesetBuilderRemaining(
     add(step.id, 0);
     if (step.kind === "catalog") {
       // Never more than the step can offer: a race with no subraces leaves nothing to choose.
-      const offered = rulesetBuilderOptions(definition, step, state, catalogs).length;
-      add(step.id, Math.min(step.min, offered) - rulesetBuilderPicks(definition, step.id, state, catalogs).length);
+      const offered = rulesetBuilderOptions(definition, step, state, catalogs, build).length;
+      add(
+        step.id,
+        Math.min(step.min, offered) - rulesetBuilderPicks(definition, step.id, state, catalogs, build).length,
+      );
     } else if (step.kind === "fields") {
       add(
         step.id,
@@ -622,7 +656,7 @@ export function rulesetBuilderRemaining(
         }).length,
       );
     } else if (step.kind === "abilities") {
-      const method = state.method && step.methods[state.method] ? state.method : undefined;
+      const method = rulesetBuilderMethod(definition, state);
       const ids = rulesetBuilderAbilityIds(definition, step);
       if (!method) add(step.id, 1);
       else if (method === "pointBuy") {
@@ -635,8 +669,8 @@ export function rulesetBuilderRemaining(
     }
   }
   for (const slot of [
-    ...rulesetBuilderAbilitySlots(definition, state, catalogs),
-    ...rulesetBuilderTrainedSlots(definition, state, catalogs),
+    ...rulesetBuilderAbilitySlots(definition, state, catalogs, build),
+    ...rulesetBuilderTrainedSlots(definition, state, catalogs, build),
   ]) {
     add(slot.stepId, Math.min(slot.count, slot.from.length) - slot.chosen.length);
   }

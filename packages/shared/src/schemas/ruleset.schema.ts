@@ -905,6 +905,17 @@ const builderPointBuySchema = z
   })
   .strict();
 
+/** A catalog step's limit by a sheet value (1.82). */
+export interface RulesetBuilderUpTo {
+  filter: string;
+  value: RulesetValueRef;
+}
+// Typed by hand: inferred, the value ref inside it makes every type holding a builder step too long for
+// the compiler to write out.
+const rulesetBuilderUpToSchema: z.ZodType<RulesetBuilderUpTo, z.ZodTypeDef, unknown> = z
+  .object({ filter: sheetId, value: rulesetValueRefSchema })
+  .strict();
+
 const builderStepBase = { id: sheetId, label: promptSafeText(40) };
 
 /** One step of the guided builder. The steps are offered in order, each says how many choices it
@@ -925,6 +936,9 @@ const builderStepSchema = z.discriminatedUnion("kind", [
       filters: z.record(z.union([z.number().finite(), z.string().max(80)])).optional(),
       /** Only entries whose `filter` names an entry picked at an earlier step (a subrace by its race). */
       within: z.object({ step: sheetId, filter: sheetId }).strict().optional(),
+      /** Only entries whose number `filter` is at most `value`, read off the sheet as it stands (features
+       *  up to the character's level; Capability API 1.82). An entry without the filter is offered. */
+      upTo: rulesetBuilderUpToSchema.optional(),
     })
     .strict(),
   z
@@ -962,6 +976,8 @@ const builderStepSchema = z.discriminatedUnion("kind", [
         })
         .strict()
         .refine((methods) => Object.keys(methods).length > 0, { message: "An abilities step offers a method" }),
+      /** The method a new character starts on, until the player picks another (Capability API 1.82). */
+      default: z.enum(["pointBuy", "standardArray", "roll", "manual"]).optional(),
     })
     .strict(),
   z
@@ -987,7 +1003,47 @@ const builderStepSchema = z.discriminatedUnion("kind", [
   z.object({ ...builderStepBase, kind: z.literal("startingGear") }).strict(),
 ]);
 
-const sheetBuilderSchema = z
+type BuilderMethodName = "pointBuy" | "standardArray" | "roll" | "manual";
+interface BuilderStepBase {
+  id: string;
+  label: string;
+}
+/** One step of the guided builder (see `builderStepSchema`). Typed by hand: inferred, the value ref in
+ *  `upTo` makes the ruleset's own type too long for the compiler to write out. */
+export type RulesetBuilderStep =
+  | (BuilderStepBase & {
+      kind: "catalog";
+      catalog: string;
+      min: number;
+      max: number;
+      field?: string;
+      filters?: Record<string, string | number>;
+      within?: { step: string; filter: string };
+      upTo?: RulesetBuilderUpTo;
+    })
+  | (BuilderStepBase & { kind: "fields"; fields: string[]; optional?: string[] })
+  | (BuilderStepBase & {
+      kind: "abilities";
+      abilities?: string[];
+      methods: {
+        pointBuy?: { budget: number; costs: [number, number][] };
+        standardArray?: number[];
+        roll?: { count: number; sides: number; keep: number };
+        manual?: true;
+      };
+      default?: BuilderMethodName;
+    })
+  | (BuilderStepBase & {
+      kind: "trained";
+      choose?: { what: "skills" | "saves"; count: number; from?: string[] }[];
+    })
+  | (BuilderStepBase & { kind: "startingGear" });
+export interface RulesetSheetBuilder {
+  steps: RulesetBuilderStep[];
+  tier?: string;
+}
+
+const sheetBuilderSchema: z.ZodType<RulesetSheetBuilder, z.ZodTypeDef, unknown> = z
   .object({
     steps: z.array(builderStepSchema).min(1).max(RULESET_BUILDER_STEPS_MAX),
     /** The tier a skill or save the builder trains is set to, unless a grant names its own. The first
@@ -5095,6 +5151,13 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
             );
           }
         }
+        if (step.upTo) {
+          const filter = filterOf(step.upTo.filter);
+          if (!filter || filter.type !== "number") {
+            issue([...path, "upTo", "filter"], `No number filter "${step.upTo.filter}"`);
+          }
+          checkRef(step.upTo.value, [...path, "upTo", "value"], derivedIds, false);
+        }
         if (step.within) {
           if (!catalogSteps.has(step.within.step)) {
             issue([...path, "within", "step"], `No catalog step "${step.within.step}" before this one`);
@@ -5122,6 +5185,9 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
             issue([...path, "abilities", abilityIndex], `"${id}" is named twice`);
           }
         });
+        if (step.default !== undefined && step.methods[step.default] === undefined) {
+          issue([...path, "default"], `"${step.default}" is not one of this step's methods`);
+        }
         const set = sheet.abilities.filter((ability) => !step.abilities || step.abilities.includes(ability.id));
         const array = step.methods.standardArray;
         if (array && array.length !== set.length) {
@@ -6122,8 +6188,7 @@ export function parseRulesetDefinition(input: unknown): RulesetParseResult {
 export type RulesetCatalogHeader = z.infer<typeof catalogSchema>;
 export type RulesetCatalogEntry = z.infer<typeof catalogEntrySchema>;
 export type RulesetCatalogGrants = z.infer<typeof catalogGrantsSchema>;
-export type RulesetSheetBuilder = z.infer<typeof sheetBuilderSchema>;
-export type RulesetBuilderStep = z.infer<typeof builderStepSchema>;
+
 export type RulesetCatalogItem = z.infer<typeof catalogItemSchema>;
 /** One item as a catalog entry writes it, for reading an invented item back off a game. */
 export const rulesetCatalogItemSchema = catalogItemSchema;

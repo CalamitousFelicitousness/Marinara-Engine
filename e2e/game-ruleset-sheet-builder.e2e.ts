@@ -96,6 +96,16 @@ function ruleset(id: string): string {
           roll: { count: 4, sides: 6, keep: 3 },
           manual: true,
         },
+        default: "pointBuy",
+      },
+      {
+        id: "features",
+        label: "Features",
+        kind: "catalog",
+        catalog: "feats",
+        min: 0,
+        max: 3,
+        upTo: { filter: "level", value: { field: "level" } },
       },
       { id: "skills", label: "Proficiencies", kind: "trained" },
     ],
@@ -188,6 +198,15 @@ test("the guided builder applies picks, rolls and buys scores, and saves the she
     );
     await expect(steps.getByRole("button", { name: "Subrace Nothing left to choose", exact: true })).toBeVisible();
     const summary = page.getByRole("complementary", { name: "Character" });
+
+    // A new character opens on point buy, and features up to its level.
+    await steps.getByRole("button", { name: /^Ability Scores/ }).click();
+    await expect(page.getByRole("radio", { name: "Point buy" })).toHaveAttribute("aria-checked", "true");
+    await expect(page.getByText("27 of 27 points left")).toBeVisible();
+    await steps.getByRole("button", { name: /^Features/ }).click();
+    await expect(page.getByRole("button", { name: "Select Sly Strike" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Select Second Effort" })).toHaveCount(0);
+    await steps.getByRole("button", { name: /^Race/ }).click();
 
     // A race: its info, its increase, its field.
     await page.getByRole("button", { name: "Show what Dwarf is" }).click();

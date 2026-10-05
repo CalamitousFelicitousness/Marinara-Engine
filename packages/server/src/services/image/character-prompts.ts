@@ -217,15 +217,12 @@ export function buildIllustratorImageAppearanceOverrides(
   return entries.length > 0 ? Object.fromEntries(entries) : null;
 }
 
-/**
- * The persona id used as the override-map key. `AgentContext["persona"]` has no
- * id field, so the routes carry it on memory (`_personaId`, set alongside
- * `_userIdentityId`). Returns null for character identities and anonymous users,
- * which have no persona override.
- */
+/** The user identity's image-map key; `_personaId` remains a persona-store id. */
 export function personaEntityId(memory: Record<string, unknown> | undefined): string | null {
-  const id = memory?.["_personaId"];
-  return typeof id === "string" && id ? id : null;
+  const id = memory?._userIdentityId;
+  if (typeof id === "string" && id) return id;
+  const personaId = memory?._personaId;
+  return typeof personaId === "string" && personaId ? personaId : null;
 }
 
 const ENSEMBLE_SEGMENT = /\[([^\]]+)\]\s*([^[]*)/g;
@@ -254,12 +251,15 @@ export function splitEnsembleAppearance(appearance: string): CharacterAppearance
 
 /**
  * Appearance reference handed to the prompt writer when Attach Card Appearance
- * is on and native captions are in play. The writer is the final arbiter: it
- * copies fixed traits into the matching caption, treats clothing as a default
+ * is on. The writer copies fixed traits into the image prompt or matching
+ * native caption, treats clothing as a default
  * the tracker or scene overrides, and ignores characters who are not visible.
  * Nothing here is appended to the image prompt by the server.
  */
-export function buildCharacterAppearanceReferenceBlock(sources: CharacterAppearanceSource[]): string {
+export function buildCharacterAppearanceReferenceBlock(
+  sources: CharacterAppearanceSource[],
+  nativeCaptions = true,
+): string {
   const lines: string[] = [];
   let used = 0;
   let truncated = false;
@@ -283,9 +283,11 @@ export function buildCharacterAppearanceReferenceBlock(sources: CharacterAppeara
   return [
     "<character_appearance_reference>",
     "Card and persona Appearance fields for this chat, one line per character. Use them only for characters who are visible in the scene.",
-    "Fixed traits (body, face, hair, eyes, skin, markings) go verbatim into that character's caption when they are already Danbooru tags; convert prose into Danbooru tags.",
+    nativeCaptions
+      ? "Fixed traits (body, face, hair, eyes, skin, markings) go verbatim into that character's caption when they are already Danbooru tags; convert prose into Danbooru tags."
+      : "Use these fixed traits (body, face, hair, eyes, skin, markings) instead of the normal card appearance in the image prompt. Follow the selected image model's prompt format.",
     "Clothing and accessory tags here are the character's default outfit. The tracker's current outfit or what the scene describes overrides them; drop the default clothing tags when it does.",
-    "Do not repeat these traits in the base prompt.",
+    nativeCaptions ? "Do not repeat these traits in the base prompt." : "",
     ...lines,
     truncated ? "(Reference truncated: remaining characters omitted.)" : "",
     "</character_appearance_reference>",

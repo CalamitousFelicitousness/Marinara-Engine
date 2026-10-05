@@ -214,6 +214,10 @@ console.log("illustrator character prompts regression (manual + executor) passed
   assert.match(block, /verbatim/i, "fixed traits are to be copied verbatim into the caption");
   assert.match(block, /outfit|clothing/i, "clothing tags are a default the scene or tracker overrides");
   assert.equal(buildCharacterAppearanceReferenceBlock([]), "", "no appearance means no block");
+  const customReference = buildCharacterAppearanceReferenceBlock([{ name: "Blake", appearance: "silver hair" }], false);
+  assert.match(customReference, /\[Blake\] silver hair/);
+  assert.match(customReference, /instead of the normal card appearance/);
+  assert.doesNotMatch(customReference, /Danbooru|caption|Do not repeat/);
 
   const oversized = buildCharacterAppearanceReferenceBlock(
     Array.from({ length: 40 }, (_, index) => ({ name: `Colonist ${index + 1}`, appearance: "x".repeat(400) })),
@@ -417,8 +421,8 @@ console.log("illustrator character prompts regression (manual + executor) passed
       undefined,
       "<character_appearance_reference>x</character_appearance_reference>",
     ),
-    "",
-    "no caption instruction means no reference block either",
+    "<character_appearance_reference>x</character_appearance_reference>",
+    "custom image agents keep appearance references without a native caption instruction",
   );
 }
 

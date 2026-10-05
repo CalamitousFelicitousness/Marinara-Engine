@@ -5413,6 +5413,16 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             countUpcomingAssistantMessage: createsAssistantMessage,
           }));
 
+        // Keep image-only appearances available to custom image agents and native
+        // caption fallbacks, even when no built-in Illustrator instruction exists.
+        const imageAppearanceOverrides = buildIllustratorImageAppearanceOverrides(charInfo, {
+          id: userIdentityId,
+          imageAppearanceOverride: identity?.imageAppearanceOverride || undefined,
+        });
+        if (imageAppearanceOverrides) {
+          agentContext.memory[IMAGE_APPEARANCE_OVERRIDES_MEMORY_KEY] = imageAppearanceOverrides;
+        }
+
         const illustratorPromptAgent = resolvedAgents.find((agent) => agent.type === "illustrator");
         if (illustratorPromptAgent) {
           try {
@@ -5441,17 +5451,6 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   ? chatMeta.illustratorIncludeCharacterAppearance
                   : illustratorPromptAgent.settings.includeCharacterAppearance === true;
               if (attachCardAppearance) agentContext.memory._illustratorCaptionAppearanceReference = true;
-              // #7053: image-prompt appearance overrides, applied ONLY to the
-              // illustrator's caption appearance reference so roleplay lore and
-              // `{{appearance}}` macros keep the normal card appearance. Personas
-              // are keyed by their own id so both halves stay symmetric.
-              const imageAppearanceOverrides = buildIllustratorImageAppearanceOverrides(charInfo, {
-                id: personaId,
-                imageAppearanceOverride: identity?.imageAppearanceOverride || undefined,
-              });
-              if (imageAppearanceOverrides) {
-                agentContext.memory[IMAGE_APPEARANCE_OVERRIDES_MEMORY_KEY] = imageAppearanceOverrides;
-              }
             }
           } catch (error) {
             logger.warn(error, "[illustrator] Failed to resolve character prompt instruction for the prompt writer");

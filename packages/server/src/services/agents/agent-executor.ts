@@ -1702,6 +1702,7 @@ function buildBatchSystemPrompt(
     configs.map((c) => c.type),
     contextSources,
     anyAgentProducesImagePrompt(configs),
+    configs.some((config) => agentAttachesCardAppearance(config, context)),
   );
   if (extras) {
     parts.push(``);
@@ -2200,7 +2201,13 @@ function buildStandardAgentMessages(config: AgentExecConfig, template: string, c
   systemParts.push(`Fulfill the requested task here and return the output in the format specified:`);
   systemParts.push(template);
   systemParts.push(`</agents>`);
-  const extras = buildAgentExtras(context, [config.type], contextSources, agentProducesImagePrompt(config));
+  const extras = buildAgentExtras(
+    context,
+    [config.type],
+    contextSources,
+    agentProducesImagePrompt(config),
+    agentAttachesCardAppearance(config, context),
+  );
   if (extras) {
     systemParts.push(``);
     systemParts.push(extras);
@@ -2261,7 +2268,13 @@ function buildKnowledgeRetrievalAgentMessages(
   systemParts.push(`<agents>`);
   systemParts.push(template);
   systemParts.push(`</agents>`);
-  const extras = buildAgentExtras(context, [config.type], ALL_AGENT_CONTEXT_SOURCES, agentProducesImagePrompt(config));
+  const extras = buildAgentExtras(
+    context,
+    [config.type],
+    ALL_AGENT_CONTEXT_SOURCES,
+    agentProducesImagePrompt(config),
+    agentAttachesCardAppearance(config, context),
+  );
   if (extras) {
     systemParts.push(``);
     systemParts.push(extras);
@@ -2663,15 +2676,15 @@ function buildCommittedTrackerStateContext(
  * Native NovelAI character-caption instruction resolved by the host for this chat's
  * image connection. The block is already fully formed; it is only passed through
  * when the host set it, so non-NovelAI connections never see the schema extension.
+ * Card appearance references are independent and also serve custom image agents.
  */
 export function buildIllustratorCharacterPromptInstructionBlock(
   instruction: unknown,
   appearanceReference?: unknown,
 ): string {
   const block = typeof instruction === "string" ? instruction.trim() : "";
-  if (!block) return "";
   const reference = typeof appearanceReference === "string" ? appearanceReference.trim() : "";
-  return reference ? `${block}\n${reference}` : block;
+  return [block, reference].filter(Boolean).join("\n");
 }
 
 export function buildIllustratorImageStyleInstructionBlock(styleInstruction: unknown): string {
@@ -2985,6 +2998,12 @@ function agentProducesImagePrompt(config: AgentExecConfig): boolean {
   return config.type === "illustrator" || customAgentHasCapability(config.settings, "trigger_image_generation");
 }
 
+function agentAttachesCardAppearance(config: AgentExecConfig, context: AgentContext): boolean {
+  return config.type === "illustrator"
+    ? context.memory._illustratorCaptionAppearanceReference === true
+    : agentProducesImagePrompt(config) && config.settings.includeCharacterAppearance === true;
+}
+
 function anyAgentProducesImagePrompt(configs: readonly AgentExecConfig[]): boolean {
   return configs.some((config) => agentProducesImagePrompt(config));
 }
@@ -2998,6 +3017,7 @@ function buildAgentExtras(
   agentTypes: string[] = [],
   sources: CustomAgentContextSources = ALL_AGENT_CONTEXT_SOURCES,
   imageCapable = agentTypes.includes("illustrator"),
+  attachCardAppearance = false,
 ): string {
   const parts: string[] = [];
   const wrapFormat = normalizeAgentContextWrapFormat(context.wrapFormat);
@@ -3103,9 +3123,9 @@ function buildAgentExtras(
     // for IMAGE prompts only. Confined to this illustrator block on purpose —
     // `context.characters[].appearance` is shared with buildLoreBlock and the
     // `{{appearance}}` macros, which must keep the normal appearance.
-    const appearanceReference =
-      context.memory._illustratorCaptionAppearanceReference === true
-        ? buildCharacterAppearanceReferenceBlock([
+    const appearanceReference = attachCardAppearance
+      ? buildCharacterAppearanceReferenceBlock(
+          [
             ...context.characters.map((char) => ({
               name: char.name,
               appearance: readIllustratorImageAppearanceOverride(context.memory, char.id) ?? char.appearance ?? "",
@@ -3125,8 +3145,11 @@ function buildAgentExtras(
                   },
                 ]
               : []),
-          ])
-        : "";
+          ],
+          typeof context.memory._illustratorCharacterPromptInstruction === "string" &&
+            context.memory._illustratorCharacterPromptInstruction.trim().length > 0,
+        )
+      : "";
     const characterPromptBlock = buildIllustratorCharacterPromptInstructionBlock(
       context.memory._illustratorCharacterPromptInstruction,
       appearanceReference,

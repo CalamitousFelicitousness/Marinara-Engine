@@ -10,6 +10,13 @@
 // connection's own **Show subscription usage** toggle: a pay-as-you-go user who
 // never enables the meter has no subscription cost to compare against, and the
 // pills would be noise.
+//
+// Drawn as `.mari-editor-chip` so the shape matches the tag chips used elsewhere
+// (PresetEditor, CharacterEditor, LorebookEditor) rather than inventing a local
+// one. Colour comes only from the user's Accent Color: covered at the normal rate
+// is an accent outline, a boosted rate adds an accent tint and a stronger border,
+// and a model outside the subscription stays muted. No fixed colours, so the pills
+// follow Accent Pulse and RGB Mode like the rest of the chrome.
 
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { cn } from "../../lib/utils";
@@ -39,10 +46,17 @@ export function SubscriptionCostPill({ model }: { model: SubscriptionCostFields 
     return (
       <span
         className={cn(
-          "rounded-md px-1.5 py-0.5 text-[0.5625rem] font-semibold",
+          "mari-editor-chip px-1.5 py-0.5 text-[0.5625rem]",
+          // One accent family, so the pills follow the user's Accent Color (and Accent Pulse or
+          // RGB Mode with it). Covered at the normal rate is a plain outline; a boosted rate adds
+          // the accent tint and a stronger border to show it draws more from the allowance.
+          //
+          // Every declaration that the chip also sets is marked important: `.mari-editor-chip`
+          // sits later in the same components layer, so at equal specificity it would otherwise
+          // win and flatten both pills to the same neutral chip.
           boosted
-            ? "bg-[var(--marinara-editor-accent)]/15 text-[var(--marinara-editor-accent)]"
-            : "bg-emerald-400/15 text-emerald-400",
+            ? "!border-[color-mix(in_srgb,var(--marinara-chat-chrome-accent)_55%,transparent)] !bg-[color-mix(in_srgb,var(--marinara-chat-chrome-accent)_18%,transparent)] !text-[var(--marinara-chat-chrome-accent)]"
+            : "!border-[color-mix(in_srgb,var(--marinara-chat-chrome-accent)_38%,var(--border))] !bg-transparent !text-[var(--marinara-chat-chrome-accent)]",
         )}
         title={localizeUi(
           boosted
@@ -59,7 +73,7 @@ export function SubscriptionCostPill({ model }: { model: SubscriptionCostFields 
   if (model.subscriptionIncluded === false) {
     return (
       <span
-        className="rounded-md bg-[var(--secondary)] px-1.5 py-0.5 text-[0.5625rem] font-medium text-[var(--muted-foreground)]"
+        className="mari-editor-chip px-1.5 py-0.5 text-[0.5625rem] !text-[var(--muted-foreground)]"
         title={localizeUi("ui.connections.connectioneditor.notInSubscriptionHint")}
       >
         {localizeUi("ui.connections.connectioneditor.paid")}

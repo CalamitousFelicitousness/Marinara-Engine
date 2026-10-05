@@ -2154,6 +2154,7 @@ export function ChatRoleplaySurface({
                   <EndSceneBar
                     sceneChatId={activeChatId}
                     originChatId={chatMeta.sceneOriginChatId}
+                    packageOrigin={chatMeta.scenePackageOrigin}
                     onConclude={onConcludeScene}
                     onAbandon={onAbandonScene}
                     onFork={onForkScene}

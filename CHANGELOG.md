@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Roleplay chats on wide screens can now sit on the left or right instead of the center: choose **Chat position** in **Settings > Appearance > Roleplay > Roleplay Presentation**. Messages and the input box move together and stay clear of open sidebars and a Tracker Panel on the same side. **Center** remains the default, and phones and Game mode are unchanged (#7106).
+
 - Chat input popups now follow **Apply preset font**, **Apply preset shape**, and **Apply preset colors**, including emoji and media pickers, autocomplete menus, character responses, Push Story options, quick replies, and Game dice and address controls. Each switch works independently, and leaving them off keeps the existing look (#7103).
 
 - The **Character Schedule Manager**, and the schedule editor it opens, now show each character's portrait the way you cropped it in the character editor instead of the uncropped image. In the manager's list the portrait stays in its small round slot (#7100).

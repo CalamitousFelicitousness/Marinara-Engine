@@ -6309,14 +6309,34 @@ strong {
 
 [data-chat-mode="roleplay"] {
   --mari-roleplay-message-column-width: 58rem;
+  --mari-roleplay-row-gutter: clamp(0.25rem, 1.5vw, 1.5rem);
+}
+
+/* The transcript's side padding on a wide chat pane (a narrow pane uses 0.75rem). */
+@media (min-width: 768px) {
+  [data-chat-mode="roleplay"] {
+    --mari-roleplay-transcript-gutter: 2rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  [data-chat-mode="roleplay"] {
+    --mari-roleplay-transcript-gutter: 2.5rem;
+  }
+}
+
+@media (min-width: 1280px) {
+  [data-chat-mode="roleplay"] {
+    --mari-roleplay-transcript-gutter: 3rem;
+  }
 }
 
 [data-chat-mode="roleplay"] .rpg-narrator-msg,
 [data-chat-mode="roleplay"] .mari-roleplay-message-row {
   justify-content: center;
   width: 100%;
-  padding-left: clamp(0.25rem, 1.5vw, 1.5rem);
-  padding-right: clamp(0.25rem, 1.5vw, 1.5rem);
+  padding-left: var(--mari-roleplay-row-gutter);
+  padding-right: var(--mari-roleplay-row-gutter);
 }
 
 [data-chat-mode="roleplay"] .rpg-narrator-msg {
@@ -6419,6 +6439,78 @@ strong {
 
   [data-chat-mode="roleplay"] .mari-roleplay-message-body--editing {
     width: 100%;
+  }
+}
+
+/* Chat position Left / Right (Center has no attribute and keeps the layout above). The transcript's
+   children share one box: the column plus, on each side, a row gutter and an avatar slot with its two
+   gaps, so every row type keeps its column exactly where the composer is. The box sits against the
+   chosen edge of the visible chat area, the composer follows its column, and both fall back to the
+   centred layout when the area has no width to spare. */
+@media (min-width: 768px) {
+  [data-chat-mode="roleplay"][data-chat-position] {
+    --mari-chat-position-avatar-space: calc(2.5rem * var(--roleplay-avatar-scale, 1) + 1.5rem);
+    --mari-chat-position-unit: calc(
+      var(--mari-roleplay-message-column-width) + 2 *
+        (var(--mari-roleplay-row-gutter) + var(--mari-chat-position-avatar-space))
+    );
+    --mari-chat-position-composer-width: min(
+      100% - var(--mari-chat-position-clearance, 0px),
+      var(--mari-roleplay-message-column-width)
+    );
+  }
+
+  [data-chat-mode="roleplay"][data-chat-position][data-roleplay-avatar-style="rectangles"] {
+    --mari-chat-position-avatar-space: calc(2.75rem * var(--roleplay-avatar-scale, 1) + 1.5rem);
+  }
+
+  [data-chat-mode="roleplay"][data-chat-position][data-roleplay-avatar-style="none"] {
+    --mari-chat-position-avatar-space: 0rem;
+  }
+
+  /* The box already keeps choices clear of the Tracker Panel. */
+  [data-chat-mode="roleplay"][data-roleplay-presentation="classic"][data-chat-position] [data-chat-scroll] {
+    --tracker-panel-overlay-clearance: 0px;
+  }
+
+  [data-chat-mode="roleplay"][data-roleplay-presentation="classic"][data-chat-position] [data-chat-scroll] > * {
+    width: min(var(--mari-chat-position-unit), 100% - var(--mari-chat-position-clearance, 0px));
+    margin-left: var(--mari-chat-position-clearance, 0px);
+    margin-right: auto;
+  }
+
+  /* 100cqw is the chat pane (CenterContent is a size container), so the right edge ignores the
+     transcript's scrollbar, as the composer does. */
+  [data-chat-mode="roleplay"][data-roleplay-presentation="classic"][data-chat-position="right"]
+    [data-chat-scroll]
+    > * {
+    margin-left: max(
+      0px,
+      100cqw - 2 * var(--mari-roleplay-transcript-gutter) - var(--mari-chat-position-clearance, 0px) -
+        var(--mari-chat-position-unit)
+    );
+  }
+
+  /* The composer, and the Visual Novel history above it. */
+  [data-chat-mode="roleplay"][data-chat-position] .mari-roleplay-input-column {
+    width: var(--mari-chat-position-composer-width);
+    margin-right: auto;
+  }
+
+  [data-chat-mode="roleplay"][data-chat-position="left"] .mari-roleplay-input-column {
+    margin-left: min(
+      (100% - var(--mari-chat-position-composer-width) + var(--mari-chat-position-clearance, 0px)) / 2,
+      var(--mari-roleplay-transcript-gutter) + var(--mari-chat-position-clearance, 0px) +
+        (var(--mari-chat-position-unit) - var(--mari-chat-position-composer-width)) / 2
+    );
+  }
+
+  [data-chat-mode="roleplay"][data-chat-position="right"] .mari-roleplay-input-column {
+    margin-left: max(
+      (100% - var(--mari-chat-position-composer-width) - var(--mari-chat-position-clearance, 0px)) / 2,
+      100% - var(--mari-roleplay-transcript-gutter) - var(--mari-chat-position-clearance, 0px) -
+        (var(--mari-chat-position-unit) + var(--mari-chat-position-composer-width)) / 2
+    );
   }
 }
 

@@ -789,7 +789,7 @@ try {
     const fighterSlot = rulesetBuilderEntrySlots(chosen, c.state, tongueCatalogs, c.build).find(
       (slot) => slot.entry?.id === "fighter",
     )!;
-    assert.deepEqual(fighterSlot.from, ["elvish", "abyssal"]);
+    assert.deepEqual(fighterSlot.from, ["abyssal"], "its ids, less Elvish, which the dwarf holds");
     c = applyRulesetBuilder(
       chosen,
       c.build,
@@ -810,8 +810,8 @@ try {
     );
     assert.equal(
       rulesetBuilderRemaining(chosen, c.build, c.state, tongueCatalogs).languages,
-      1,
-      "the fighter has one left",
+      0,
+      "the fighter waits on nothing it cannot choose",
     );
     // Unpicking the race frees Elvish for the fighter's own choice; unpicking both takes them back.
     c = applyRulesetBuilder(chosen, c.build, { ...c.state, picks: { ...c.state.picks, race: [] } }, tongueCatalogs);
@@ -826,6 +826,33 @@ try {
     assert.deepEqual(
       names(c.build).filter((name) => ["Elvish", "Abyssal"].includes(name ?? "")),
       [],
+    );
+    // An entry that writes no rows is never offered: choosing it would change nothing.
+    const rowless = parsed(
+      variant((doc) => {
+        tongues(doc);
+        doc.catalogs
+          .find((each: { id: string }) => each.id === "tongues")
+          .entries.push({ id: "silence", label: "Silence", grants: { sets: { hit_die: "d6" } } });
+        doc.catalogs
+          .find((each: { id: string }) => each.id === "races")
+          .entries.find((e: { id: string }) => e.id === "dwarf").grants.entries.choose[0] = {
+          catalog: "tongues",
+          count: 1,
+        };
+      }),
+    );
+    const rowlessCatalogs: RulesetCatalogEntriesById = Object.fromEntries(
+      (rowless.catalogs ?? []).map((catalog) => [catalog.id, catalog.entries ?? []]),
+    );
+    const quiet = applyRulesetBuilder(
+      rowless,
+      defaultRulesetSheetBuild(rowless),
+      { picks: { race: ["dwarf"] } },
+      rowlessCatalogs,
+    );
+    assert.ok(
+      !rulesetBuilderEntrySlots(rowless, quiet.state, rowlessCatalogs, quiet.build)[0]!.from.includes("silence"),
     );
   }
   refused((doc) => {

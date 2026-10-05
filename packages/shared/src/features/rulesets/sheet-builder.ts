@@ -335,8 +335,9 @@ export function rulesetBuilderTrainedSlots(
 }
 
 /** Every choice of catalog entries the picks grant (1.86), shown at the first `choices` step for its
- *  catalog. An entry a slot offers once is never offered twice: one chosen at another slot (or at
- *  another grant's) is that slot's. */
+ *  catalog. Only entries that write rows are offered, since rows are all a choice puts on the sheet. An
+ *  entry is never chosen twice: one chosen at an earlier slot is that slot's, and is not offered to
+ *  the others, so a slot never waits on a choice nobody can make. */
 export function rulesetBuilderEntrySlots(
   definition: RulesetDefinition,
   state: RulesetBuilderState,
@@ -346,13 +347,14 @@ export function rulesetBuilderEntrySlots(
 ): RulesetBuilderEntrySlot[] {
   const steps = definition.sheet.builder?.steps ?? [];
   const taken = new Set<string>();
-  return rulesetBuilderGranting(definition, state, catalogs, build).flatMap(({ step, entry }) =>
-    (entry.grants?.entries?.choose ?? []).map((choice, index) => {
+  const slots = rulesetBuilderGranting(definition, state, catalogs, build).flatMap(({ step, entry }) =>
+    (entry.grants?.entries?.choose ?? []).map((choice, index): RulesetBuilderEntrySlot => {
       const key = rulesetBuilderChoiceKey(step.id, entry.id, index);
       const host = steps.find((each) => each.kind === "choices" && each.catalog === choice.catalog)?.id;
       const from = (catalogs[choice.catalog] ?? [])
         .filter(
           (option) =>
+            (option.rows?.length ?? 0) > 0 &&
             Object.entries(choice.filters ?? {}).every(([filterId, value]) => filterHas(option, filterId, value)) &&
             (!choice.ids || choice.ids.includes(option.id)),
         )
@@ -364,6 +366,13 @@ export function rulesetBuilderEntrySlots(
       return { key, stepId: host ?? step.id, entry, catalog: choice.catalog, count: choice.count, from, chosen };
     }),
   );
+  // What another slot holds is not this one's to offer.
+  return slots.map((slot) => {
+    const elsewhere = new Set(
+      slots.filter((other) => other !== slot && other.catalog === slot.catalog).flatMap((other) => other.chosen),
+    );
+    return { ...slot, from: slot.from.filter((id) => slot.chosen.includes(id) || !elsewhere.has(id)) };
+  });
 }
 
 /** The abilities an abilities step sets. */

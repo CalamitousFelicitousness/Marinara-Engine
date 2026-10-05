@@ -62,14 +62,11 @@ function ChoiceSlot({
   slot,
   labelOf,
   onChange,
-  taken,
 }: {
   title: string;
   slot: RulesetBuilderAbilitySlot | RulesetBuilderTrainedSlot | RulesetBuilderEntrySlot;
   labelOf: (id: string) => string;
   onChange: (chosen: string[]) => void;
-  /** Options another choice already holds, which this one cannot take too. */
-  taken?: ReadonlySet<string>;
 }) {
   const { t } = useUiTranslation();
   const full = slot.chosen.length >= slot.count;
@@ -90,7 +87,7 @@ function ChoiceSlot({
               key={id}
               type="button"
               aria-pressed={on}
-              disabled={!on && (full || !!taken?.has(id))}
+              disabled={!on && full}
               onClick={() => onChange(on ? slot.chosen.filter((each) => each !== id) : [...slot.chosen, id])}
               className={`${chipClass} ${on ? chipOn : chipOff}`}
             >
@@ -259,13 +256,6 @@ export function RulesetSheetBuilder({
             title={t("ui.rulesets.builder.chooseEntries", { from: slot.entry?.label ?? step.label, count: slot.count })}
             slot={slot}
             labelOf={(id) => (catalogs[slot.catalog] ?? []).find((entry) => entry.id === id)?.label ?? id}
-            taken={
-              new Set(
-                entrySlots
-                  .filter((other) => other.key !== slot.key && other.catalog === slot.catalog)
-                  .flatMap((other) => other.chosen),
-              )
-            }
             onChange={(chosen) => update({ ...state, entryChoices: { ...state.entryChoices, [slot.key]: chosen } })}
           />
         ))}

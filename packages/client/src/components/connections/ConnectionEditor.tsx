@@ -3151,9 +3151,7 @@ export function ConnectionEditor() {
             <FieldGroup
               label={localizeUi("ui.connections.connectioneditor.defaultChatParameters")}
               icon={<Zap size="0.875rem" className="mari-chrome-accent-icon mari-accent-animated" />}
-              help={localizeUi(
-                "ui.connections.connectioneditor.defaultGenerationSettingsForChatsThatUseThisConnection",
-              )}
+              help={localizeUi("ui.connections.connectioneditor.defaultGenerationSettingsForChatsAndAgents")}
             >
               <SettingsSwitch
                 label={localizeUi("ui.connections.connectioneditor.useCustomDefaultsForThisConnection")}

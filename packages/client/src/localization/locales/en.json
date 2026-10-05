@@ -6784,7 +6784,7 @@
   "ui.connections.connectioneditor.dailyInputTokens": "Daily input tokens",
   "ui.connections.connectioneditor.default": "Default:",
   "ui.connections.connectioneditor.defaultChatParameters": "Default Chat Parameters",
-  "ui.connections.connectioneditor.defaultGenerationSettingsForChatsThatUseThisConnection": "Default generation settings for chats that use this connection. Individual chats can still override these in Chat Settings.",
+  "ui.connections.connectioneditor.defaultGenerationSettingsForChatsAndAgents": "Default generation settings for chats and agents that use this connection. Individual chats can still override these in Chat Settings.",
   "ui.connections.connectioneditor.defaultVoice": "Default Voice",
   "ui.connections.connectioneditor.deleteConnection": "Delete connection",
   "ui.connections.connectioneditor.deleteConnection_bb12f0e": "Delete Connection",

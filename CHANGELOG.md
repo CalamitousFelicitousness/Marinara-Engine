@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Agents now use the generation settings saved on their connection under **Use custom defaults for this connection**: Top P, Top K, Frequency, Presence, Reasoning Effort, Verbosity, OpenRouter Service Tier, Custom Parameters and headers, and extra parameters such as Top A. A parameter with a Send switch is sent only while the switch is on. This covers agents on the chat's own connection, retries, knowledge agents, the Illustrator's prompt writer and installed agent packages. A Reasoning Effort you pick (custom defaults start at **Maximum**) now replaces the "off" that JSON agents asked for, and agents that think get extra output room so their answers aren't cut short; with no level saved, agents behave as before. Claude requests with thinking on no longer send Top K, which Claude rejects (#7131).
+
 - Professor Mari clears an earlier request error when you try again, so a corrected connection or successful reply no longer leaves the old error visible until the server restarts (#7126).
 
 - NanoGPT connections now show each model's subscription cost in the **Connections** menu by the chat input, not just in the connection editor: `1x` when the model is covered at the normal rate, a higher multiplier such as `2x` when each token sent draws more from your weekly allowance, and **Paid** when the model bills to your balance instead. These pills follow the connection's **Show subscription usage** switch, which is off by default, so they appear only on connections you have set to track usage (#7109).

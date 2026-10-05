@@ -115,7 +115,8 @@ function expectOneColumn(layout: Layout) {
     expect(Math.abs(column.right - layout.composer.right)).toBeLessThanOrEqual(slack);
   }
   expect(layout.pageOverflow).toBeLessThanOrEqual(0);
-  expect(layout.transcriptOverflow).toBeLessThanOrEqual(0);
+  // At Right a visible scrollbar lets the rows reach into the transcript's side padding, by at most its width.
+  expect(layout.transcriptOverflow).toBeLessThanOrEqual(layout.scrollbar);
 }
 
 /** A phone keeps the full-width column: nothing spills sideways. */

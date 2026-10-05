@@ -157,6 +157,30 @@ try {
       assert.equal(response.statusCode, 200, response.body);
     };
 
+    // ── Not sites: a cave on its town's own cell (a building in town), a region with a cave's name ──
+    const unitEdits = await app.inject({
+      method: "PUT",
+      url: `/api/game/${chatId}/world/edits`,
+      payload: {
+        edits: {
+          editsVersion: 1,
+          places: [{ id: province.id, name: "The Sunken Caverns" }],
+          added: [...added, { id: "e3", name: "Old Mine", layer: "quarter", parentId: city.id, at: city.at }],
+        },
+      },
+    });
+    assert.equal(unitEdits.statusCode, 200, unitEdits.body);
+    const unitWorld = (await app.inject({ method: "GET", url: `/api/game/${chatId}/world` })).json().world as GameWorld;
+    assert.ok(!worldIsSite(unitWorld, "e3"), "on its settlement's own cell: in town, not out in the world");
+    assert.ok(!worldIsSite(unitWorld, province.id), "a region holding settlements is never a site");
+    assert.ok(worldIsSite(unitWorld, "e1"));
+    const reset = await app.inject({
+      method: "PUT",
+      url: `/api/game/${chatId}/world/edits`,
+      payload: { edits: { editsVersion: 1, added } },
+    });
+    assert.equal(reset.statusCode, 200, reset.body);
+
     // ── Which places are sites ──
     const sites = worldSites(world).map((place) => place.id);
     assert.ok(sites.includes("e1") && sites.includes("e2"), "the cave and the barrow are sites");
@@ -229,6 +253,7 @@ try {
     await turn('You find the barrow. [map: reveal name="Old Barrow"]');
     const toBarrow = await walk("e2");
     assert.equal(toBarrow.statusCode, 200, toBarrow.body);
+    assert.equal((await enter("e1")).statusCode, 400, "only into the site the party is at");
 
     // ── The creator's own locks (edits.sites): hidden until revealed, or open though the story names it ──
     const locked = await app.inject({
@@ -265,6 +290,11 @@ try {
       [],
       "a reveal shows a hidden site",
     );
+    // At a closed site, the party still does not go in.
+    await chats.patchMetadata(chatId, { gameWorldWalk: null });
+    await turn('Back to the caves. [place: name="Wolf Den Caves"]');
+    assert.equal((await overworld()).here, "e1");
+    assert.equal((await enter("e1")).statusCode, 400, "not into a hidden site");
     const shown = await overworld();
     assert.ok(!Object.keys(shown.locked).includes("e1"), "a hidden site is never sent as sealed");
   } finally {

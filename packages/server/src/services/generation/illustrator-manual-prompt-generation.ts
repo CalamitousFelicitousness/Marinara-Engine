@@ -2,9 +2,11 @@ import { DEFAULT_GENERATION_PARAMS, type AgentContext } from "@marinara-engine/s
 import { NOVELAI_V5_MAX_CHARACTER_PROMPTS } from "../image/character-prompts.js";
 import { logger } from "../../lib/logger.js";
 import {
-  applyAgentMaxTokensCaps,
+  agentRequestOptions,
+  gateAgentTemperature,
   normalizeAgentContextSize,
   renderAgentPromptTemplate,
+  resolveAgentCallMaxTokens,
 } from "../agents/agent-executor.js";
 import type { ResolvedAgent } from "../agents/agent-pipeline.js";
 import { measureContextBudget, type ChatCompletionResult, type ChatMessage } from "../llm/base-provider.js";
@@ -220,10 +222,10 @@ export function buildManualIllustratorPromptMessages(args: {
 }
 
 function resolveManualIllustratorMaxTokens(agent: ResolvedAgent): number {
-  return applyAgentMaxTokensCaps(
+  return resolveAgentCallMaxTokens(
     agent.provider,
+    agent,
     normalizeAgentMaxTokens(agent.settings.maxTokens, DEFAULT_MANUAL_ILLUSTRATION_MAX_TOKENS),
-    agent.maxOutputTokens,
   );
 }
 
@@ -268,14 +270,15 @@ export async function writeManualIllustratorPromptPlan(args: {
     }
     return args.illustratorAgent.provider.chatComplete(requestMessages, {
       model: args.illustratorAgent.model,
-      temperature: 0.55,
+      // The prompt writer keeps its own temperature; the connection decides whether one is sent (#7131).
+      temperature: gateAgentTemperature(args.illustratorAgent, 0.55),
       maxTokens,
       maxContext,
       preserveContext: true,
       enableCaching: args.illustratorAgent.enableCaching,
       anthropicExtendedCacheTtl: args.illustratorAgent.anthropicExtendedCacheTtl,
       cachingAtDepth: args.illustratorAgent.cachingAtDepth,
-      customParameters: args.illustratorAgent.customParameters,
+      ...agentRequestOptions(args.illustratorAgent, false),
       signal: args.signal,
     });
   };

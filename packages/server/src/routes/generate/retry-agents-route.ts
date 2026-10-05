@@ -35,7 +35,14 @@ import {
   type GameMap,
   type WrapFormat,
   type GenerationParameterSendMap,
+  type ManagedGenerationParameterDefinition,
+  CUSTOM_GENERATION_PARAMETERS_SETTINGS_KEY,
+  parseManagedGenerationParameterDefinitions,
 } from "@marinara-engine/shared";
+import {
+  resolveAgentConnectionParameters,
+  type AgentGenerationParameters,
+} from "../../services/generation/agent-generation-parameters.js";
 import { and, eq } from "../../db/file-query.js";
 import { listCharacterSprites } from "../../services/game/sprite.service.js";
 import { DATA_DIR } from "../../utils/data-dir.js";
@@ -168,7 +175,6 @@ import {
   collectLatestTrackerCharacterHistory,
   isMessageHiddenFromAI,
   parseExtra,
-  parseStoredGenerationParameters,
   parseGameStateRow,
   parseSnapshotPlayerStats,
   preserveTrackerCharacterUiFields,
@@ -1595,7 +1601,8 @@ function resolveRetryAgentConnectionRequest(args: {
   });
 }
 
-async function resolveRetryAgents(args: {
+/** Exported for the agent-connection-parameters regression. */
+export async function resolveRetryAgents(args: {
   agentTypes: string[];
   manualIllustration?: boolean;
   chat: any;
@@ -1604,6 +1611,7 @@ async function resolveRetryAgents(args: {
   agentPromptTemplateIds?: unknown;
   activeMusicPlayerSource?: "spotify" | "youtube" | "custom" | null;
   allowExternalAgentImports: boolean;
+  managedParameterDefinitions?: ManagedGenerationParameterDefinition[];
   onFallback?: GenerationFallbackNotifier;
 }): Promise<ResolvedRetryAgents> {
   const { agentTypes, chat, conns, agentsStore, agentPromptTemplateIds, activeMusicPlayerSource, onFallback } = args;
@@ -1698,6 +1706,7 @@ async function resolveRetryAgents(args: {
       enableCaching: boolean;
       anthropicExtendedCacheTtl: boolean;
       cachingAtDepth: number;
+      generation?: AgentGenerationParameters;
     } | null;
     unavailableReason?: string;
     connectionName?: string;
@@ -1722,7 +1731,15 @@ async function resolveRetryAgents(args: {
     }
 
     const knownModel = findKnownModel(storedConn.provider as APIProvider, model);
-    const storedParameters = parseStoredGenerationParameters(storedConn.defaultParameters);
+    // The same resolution first runs use, so a retried agent sends what it sent the first time (#7131).
+    const connectionParameters = resolveAgentConnectionParameters({
+      provider: storedConn.provider,
+      model,
+      maxContext: storedConn.maxContext,
+      maxTokensOverride: storedConn.maxTokensOverride,
+      defaultParameters: storedConn.defaultParameters,
+      managedParameterDefinitions: args.managedParameterDefinitions,
+    });
     connForPromptDefaults ??= storedConn;
     const primaryProvider = createLLMProvider(
       storedConn.provider,
@@ -1740,9 +1757,10 @@ async function resolveRetryAgents(args: {
         connectionId,
         provider: wrapRetryAgentProvider(primaryProvider, connectionId ?? storedConn.id),
         model,
-        customParameters: storedParameters?.customParameters ?? {},
-        temperature: storedParameters?.temperature,
-        enabledParameters: storedParameters?.enabledParameters,
+        customParameters: connectionParameters.customParameters,
+        temperature: connectionParameters.temperature,
+        enabledParameters: connectionParameters.enabledParameters,
+        generation: connectionParameters.generation,
         suppressModelParameters: shouldSuppressUnknownModelParameters(storedConn.provider, model),
         maxOutputTokens: knownModel?.maxOutput && knownModel.maxOutput > 0 ? Math.floor(knownModel.maxOutput) : null,
         maxParallelJobs: Number(storedConn.maxParallelJobs) || 1,
@@ -1978,6 +1996,7 @@ async function resolveRetryAgents(args: {
         enableCaching: agentConnection.entry.enableCaching,
         anthropicExtendedCacheTtl: agentConnection.entry.anthropicExtendedCacheTtl,
         cachingAtDepth: agentConnection.entry.cachingAtDepth,
+        generation: agentConnection.entry.generation,
         provider: agentConnection.entry.provider,
         model: agentConnection.entry.model,
         maxParallelJobs: agentConnection.entry.maxParallelJobs,
@@ -2068,6 +2087,7 @@ async function resolveRetryAgents(args: {
         enableCaching: builtInConnection.entry.enableCaching,
         anthropicExtendedCacheTtl: builtInConnection.entry.anthropicExtendedCacheTtl,
         cachingAtDepth: builtInConnection.entry.cachingAtDepth,
+        generation: builtInConnection.entry.generation,
         provider: builtInConnection.entry.provider,
         model: builtInConnection.entry.model,
         maxParallelJobs: builtInConnection.entry.maxParallelJobs,
@@ -4660,6 +4680,11 @@ export async function registerRetryAgentsRoute(
       const customAgentImportPolicy = await runRetrySetupPhase(abortController.signal, () =>
         getCustomAgentImportPolicy(app.db),
       );
+      const managedParameterDefinitions = await runRetrySetupPhase(abortController.signal, async () =>
+        parseManagedGenerationParameterDefinitions(
+          await createAppSettingsStorage(app.db).get(CUSTOM_GENERATION_PARAMETERS_SETTINGS_KEY),
+        ),
+      );
       const { conn, enabledConfigs, resolvedAgents, warnings } = await runRetrySetupPhase(abortController.signal, () =>
         resolveRetryAgents({
           agentTypes,
@@ -4671,6 +4696,7 @@ export async function registerRetryAgentsRoute(
           agentPromptTemplateIds,
           activeMusicPlayerSource,
           allowExternalAgentImports: customAgentImportPolicy.enabled,
+          managedParameterDefinitions,
           onFallback,
         }),
       );

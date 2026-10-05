@@ -24,6 +24,7 @@ import {
 } from "@marinara-engine/shared";
 import { logger, logDebugOverride } from "../../../lib/logger.js";
 import { isDebugAgentsEnabled } from "../../../config/runtime-config.js";
+import { resolveThinkingHeadroom } from "../../generation/output-token-limits.js";
 
 const DEFAULT_CACHING_AT_DEPTH = 5;
 
@@ -65,17 +66,7 @@ export function resolveAnthropicAdaptiveEffort(options: Pick<ChatOptions, "model
 }
 
 function resolveAdaptiveThinkingHeadroom(options: ChatOptions, visibleMaxTokens: number): number {
-  const effort = resolveAnthropicAdaptiveEffort(options);
-  const effortHeadroom: Record<string, number> = {
-    low: 1024,
-    medium: 4096,
-    high: 8192,
-    xhigh: 12288,
-    max: 16384,
-  };
-  const requested = effortHeadroom[effort] ?? 8192;
-  const boundedByVisibleBudget = Math.max(1024, Math.floor(visibleMaxTokens * 2));
-  return Math.min(requested, boundedByVisibleBudget);
+  return resolveThinkingHeadroom(resolveAnthropicAdaptiveEffort(options), visibleMaxTokens);
 }
 
 function applyAdaptiveThinkingConfig(
@@ -513,12 +504,12 @@ export class AnthropicProvider extends BaseLLMProvider {
         const supportsAdaptive = /claude-(opus|sonnet)-4-[56]/.test(modelLower);
         if (supportsAdaptive) {
           applyAdaptiveThinkingConfig(body, options, maxTokens);
-          delete body.temperature;
+          stripAnthropicSamplingParameters(body);
         } else {
           const budgetTokens = Math.max(1024, Math.min(maxTokens, 16000));
           body.thinking = { type: "enabled", budget_tokens: budgetTokens };
           body.max_tokens = maxTokens + budgetTokens;
-          delete body.temperature;
+          stripAnthropicSamplingParameters(body);
         }
       }
     }
@@ -873,15 +864,15 @@ export class AnthropicProvider extends BaseLLMProvider {
         const supportsAdaptive = /claude-(opus|sonnet)-4-[56]/.test(modelLower);
         if (supportsAdaptive) {
           applyAdaptiveThinkingConfig(body, options, outputMaxTokens);
-          // Cannot use temperature with extended thinking
-          delete body.temperature;
+          // Extended thinking rejects temperature and top_k
+          stripAnthropicSamplingParameters(body);
         } else {
           const budgetTokens = Math.max(1024, Math.min(outputMaxTokens, 16000));
           body.thinking = { type: "enabled", budget_tokens: budgetTokens };
           // Anthropic requires max_tokens to be > budget_tokens
           body.max_tokens = outputMaxTokens + budgetTokens;
-          // Cannot use temperature with extended thinking
-          delete body.temperature;
+          // Extended thinking rejects temperature and top_k
+          stripAnthropicSamplingParameters(body);
         }
       }
     }

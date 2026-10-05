@@ -4,7 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
-- The **Character Schedule Manager**, and the schedule editor it opens, now show each character's portrait the way you cropped it in the character editor instead of the uncropped image. In the manager's list the portrait stays in its small round slot (#ISSUE).
+- The **Character Schedule Manager**, and the schedule editor it opens, now show each character's portrait the way you cropped it in the character editor instead of the uncropped image. In the manager's list the portrait stays in its small round slot (#7100).
 
 - **Button size (px)** in Chat widget style lets you resize movable chat buttons and their icons independently of Display Size. Leave it at Default to keep the existing desktop and phone sizes. The setting also covers trackers, Chat tools, Map and Character Profiles, and enlarged buttons stay within the chat area (#7092).
 

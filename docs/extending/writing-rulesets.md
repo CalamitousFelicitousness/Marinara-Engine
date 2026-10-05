@@ -760,6 +760,7 @@ The block goes in `items` at the top level of the file. This is Ember Roads', a 
   - Coins of one family change into each other by `value`, which counts the family's smallest coin. So the smallest coin is worth 1, and no two coins of a family are worth the same.
   - Two families never change into each other. A second nation's coin, or a setting's favours, is a family of its own.
   - A coin's id is unique across every family, because an item's cost names the coin alone.
+  - A coin's `label` is its name for any number of it (`pennies`); `one` (Capability API 1.84) is its name for exactly one (`penny`), said wherever a price, a purse or a market names one coin. Without it the `label` stands for one too.
   - `perWeight` (optional, and only beside `carry`) is how many of the family's coins weigh one unit of the carry stat.
   - Coins are the party's money, carried in the bags like any item (see Money, below).
 - `rarityCaps`: optional, one per rarity at most. The most an item the Game Master invents may give at that rarity: the largest value of each number stat named in `stats`, inside that stat's own range, and a whole number for a stat that takes whole numbers, and `bonus` (Capability API 1.53), the largest flat bonus one of its worn or carried modifiers may add. At a rarity with a `bonus`, a bonus in dice is left out, since dice cannot be held to a number; a penalty is never capped. An invented item is held to it; the items your catalogs list are yours and never capped.

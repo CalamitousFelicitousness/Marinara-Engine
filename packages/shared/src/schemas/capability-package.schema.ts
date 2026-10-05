@@ -654,7 +654,10 @@ const capabilityPackageManifestBaseSchema = z
 // 1.83: a sheet may have up to 240 derived values (120 before). Not a soft seam: an Engine that cannot
 //        read it refuses the whole ruleset file, so a package with more than 120 declares 1.83.
 //        No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 83 } as const);
+// 1.84: a currency unit may name one of itself (`one: "penny"` beside `label: "pennies"`), said for an
+//        amount of exactly one. Not a soft seam: an Engine that cannot read it refuses the ruleset
+//        file, so a package that ships it declares 1.84. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 84 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

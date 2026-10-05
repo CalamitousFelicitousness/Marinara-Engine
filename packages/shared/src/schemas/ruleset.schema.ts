@@ -2175,8 +2175,21 @@ const itemSlotSchema = z.object({ id: sheetId, label, count: z.number().int().mi
 
 /** One coin of a family. `value` is how many of the family's smallest unit it is worth. */
 const currencyUnitSchema = z
-  .object({ id: sheetId, label: promptSafeText(40), value: z.number().int().min(1).max(1_000_000) })
+  .object({
+    id: sheetId,
+    /** The coin's name for any number of them but one ("pennies"). */
+    label: promptSafeText(40),
+    /** Its name for exactly one ("penny"), Capability API 1.84. `label` stands for one too without it. */
+    one: promptSafeText(40).optional(),
+    value: z.number().int().min(1).max(1_000_000),
+  })
   .strict();
+
+/** An amount of a coin as said: "1 penny", "3 pennies". A coin that names no `one` says its `label` for
+ *  one too, as it always has. */
+export function rulesetCoinAmount(unit: { label: string; one?: string }, amount: number): string {
+  return `${amount} ${amount === 1 && unit.one ? unit.one : unit.label}`;
+}
 
 /** Coins that change into each other by value. Two families never do: a second nation's coin, or a
  *  setting's favours, is a family of its own. `perWeight` is how many of its coins weigh one unit of

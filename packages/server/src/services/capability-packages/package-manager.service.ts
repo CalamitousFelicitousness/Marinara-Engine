@@ -1761,6 +1761,17 @@ export function getCapabilityPackageInstallIssue(
   if (!declaresApi(79) && Array.isArray(derivedValues) && derivedValues.length > RULESET_DERIVED_MAX_BEFORE_179) {
     return `A ruleset with more than ${RULESET_DERIVED_MAX_BEFORE_179} derived values requires schemaVersion 2 and capabilityApi 1.79 or newer`;
   }
+  // A coin's name for one, 1.84: a new key on the strict currency unit.
+  const currencies = plainRecord(ruleset?.items)?.currencies;
+  const singular =
+    Array.isArray(currencies) &&
+    currencies.some((family) => {
+      const units = plainRecord(family)?.units;
+      return Array.isArray(units) && units.some((unit) => plainRecord(unit)?.one !== undefined);
+    });
+  if (!declaresApi(84) && singular) {
+    return "A ruleset whose coins name one of themselves requires schemaVersion 2 and capabilityApi 1.84 or newer";
+  }
   // More derived values again, 1.83: an older Engine refused a sheet with more than 120.
   if (!declaresApi(83) && Array.isArray(derivedValues) && derivedValues.length > RULESET_DERIVED_MAX_BEFORE_183) {
     return `A ruleset with more than ${RULESET_DERIVED_MAX_BEFORE_183} derived values requires schemaVersion 2 and capabilityApi 1.83 or newer`;

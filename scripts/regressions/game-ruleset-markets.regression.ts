@@ -36,6 +36,8 @@ import {
   rulesetMarketLevel,
   rulesetMarketPlace,
   rulesetMarketPrice,
+  rulesetCoinAmount,
+  rulesetPurseText,
   rulesetMarketPromptText,
   rulesetMarketQuoter,
   rulesetMarketSellersAt,
@@ -622,6 +624,42 @@ const manifest = (minor: number) => ({
   permissions: [],
   restartRequired: false,
 });
+
+// ── 1.84: a coin's name for one ──
+{
+  const named = (doc: Record<string, any>) => {
+    const units = doc.items.currencies[0].units;
+    units.find((unit: { id: string }) => unit.id === "penny").one = "penny";
+    units.find((unit: { id: string }) => unit.id === "shilling").one = "shilling";
+  };
+  const singular = parsedOrThrow(variant(gravewatchText, named), "Gravewatch with singular coins");
+  const singularBook = rulesetItemBook(singular, entriesOf(singular));
+  const lines = rulesetMarketPromptText(singular, singularBook, { name: "Millbrook", size: "town" })!.split("\n");
+  assert.equal(
+    lines[1],
+    "- chandler: Shot and powder 1 penny, Warming tonic 4 pennies, A bed at the watch-house 6 pennies (a service), Lantern-keeper's coat 8 shillings",
+    "one penny, four pennies",
+  );
+  assert.equal(
+    lines[3],
+    "- chapel of the Vigil (to wardens of Nerve 3 or more only): Page of the vigil litany 1 shilling",
+  );
+  assert.equal(rulesetCoinAmount({ label: "crowns" }, 1), "1 crowns", "a coin with no name for one keeps its label");
+  assert.equal(rulesetCoinAmount({ label: "pennies", one: "penny" }, 0), "0 pennies");
+  const shot = singularBook.itemNamed("Shot and powder");
+  assert.deepEqual(shot?.facts.cost, { amount: 1, unit: "penny" }, "the item's own price");
+  assert.equal(
+    rulesetPurseText(singularBook, coins([["pennies", "penny", 1]]), undefined),
+    "Coin worth 1 penny",
+    "a purse of one",
+  );
+  refused((doc) => (doc.items.currencies[0].units[0].one = "x".repeat(41)), /one/, "a name for one is a short word");
+  const gate = (minor: number, doc: Record<string, any>) =>
+    getCapabilityPackageInstallIssue(manifest(minor) as any, doc);
+  assert.match(gate(83, variant(gravewatchDayText, named)) ?? "", /coins name one of themselves.*1\.84/);
+  assert.equal(gate(84, variant(gravewatchDayText, named)), null);
+  assert.equal(gate(83, variant(gravewatchDayText)), null, "without it, nothing new");
+}
 
 // ── Install gate: 1.65 ──
 {

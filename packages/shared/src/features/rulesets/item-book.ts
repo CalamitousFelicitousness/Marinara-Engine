@@ -7,6 +7,7 @@
 // loads and the browser from the ones it fetches, so both read an item the same way.
 // ──────────────────────────────────────────────
 import {
+  rulesetCoinAmount,
   RULESET_ITEM_CHARGES_MAX,
   rulesetItemIssues,
   type RulesetCatalogEntry,
@@ -449,11 +450,15 @@ export function rulesetPurseText(
   holder: string | undefined,
 ): string {
   const bag = gameInventoryBagKey(holder);
-  const families = new Map<string, { label: string; worth: number; smallest: string }>();
+  const families = new Map<string, { label: string; worth: number; smallest: { label: string; one?: string } }>();
   for (const coin of book.coins) {
     const family = coin.coin!.family;
-    const known = families.get(family) ?? { label: coin.facts.category, worth: 0, smallest: coin.name };
-    if (coin.coin!.value === 1) known.smallest = coin.name;
+    const known = families.get(family) ?? {
+      label: coin.facts.category,
+      worth: 0,
+      smallest: { label: coin.name, one: coin.coin!.one },
+    };
+    if (coin.coin!.value === 1) known.smallest = { label: coin.name, one: coin.coin!.one };
     known.worth +=
       coin.coin!.value *
       stacks
@@ -463,7 +468,7 @@ export function rulesetPurseText(
   }
   return [...families.values()]
     .filter((family) => family.worth > 0)
-    .map((family) => `${family.label} worth ${family.worth} ${family.smallest}`)
+    .map((family) => `${family.label} worth ${rulesetCoinAmount(family.smallest, family.worth)}`)
     .join(", ");
 }
 
@@ -618,7 +623,7 @@ export interface RulesetItemBookEntry extends GameInventoryRulesetItem {
   /** Set on an item the Game Master invented, with what the Engine changed from its proposal. */
   invented?: { notes: string[] };
   /** Set on one of the ruleset's coins: its family, and what it is worth in the family's smallest. */
-  coin?: { family: string; value: number };
+  coin?: { family: string; value: number; /** Its name for exactly one (1.84). */ one?: string };
 }
 
 /** The sheets a book reads what each character carries and binds off: the player's own, and every
@@ -655,11 +660,14 @@ function itemPrice(
   if (!family || !named) return cost;
   const left = rulesetLayeredCurrencies(definition, layerOptions).find((each) => each.id === family.id);
   if (!left) return undefined;
-  if (left.units.some((unit) => unit.id === named.id)) return { amount: cost.amount, unit: named.label };
+  if (left.units.some((unit) => unit.id === named.id)) {
+    return { amount: cost.amount, unit: cost.amount === 1 && named.one ? named.one : named.label };
+  }
   // The family's smallest coin, worth 1, is always left, so some coin pays the worth exactly.
   const worth = cost.amount * named.value;
   const unit = [...left.units].sort((a, b) => b.value - a.value).find((each) => worth % each.value === 0)!;
-  return { amount: worth / unit.value, unit: unit.label };
+  const amount = worth / unit.value;
+  return { amount, unit: amount === 1 && unit.one ? unit.one : unit.label };
 }
 
 function statText(stat: RulesetItemStat, value: string | number | boolean): string | undefined {
@@ -829,7 +837,7 @@ export function rulesetItemBook(
         catalogId: "",
         entry: { id: unit.id, label: unit.label },
         facts: { category: family.label, tags: [], stats: [] },
-        coin: { family: family.id, value: unit.value },
+        coin: { family: family.id, value: unit.value, ...(unit.one ? { one: unit.one } : {}) },
       };
       all.set(read.item, read);
       if (!left.has(unit.id)) continue;

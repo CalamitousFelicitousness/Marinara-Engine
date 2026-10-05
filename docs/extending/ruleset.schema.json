@@ -14542,6 +14542,11 @@
                       "minLength": 1,
                       "maxLength": 40
                     },
+                    "one": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40
+                    },
                     "value": {
                       "type": "integer",
                       "minimum": 1,

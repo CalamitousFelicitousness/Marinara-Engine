@@ -84,7 +84,8 @@ export function rulesetStartingGearCoins(
   const unit = kept.units.some((each) => each.id === named.id)
     ? named
     : [...kept.units].sort((a, b) => b.value - a.value).find((each) => (line.count * named.value) % each.value === 0)!;
-  return { unit: unit.id, label: unit.label, count: (line.count * named.value) / unit.value };
+  const count = (line.count * named.value) / unit.value;
+  return { unit: unit.id, label: count === 1 && unit.one ? unit.one : unit.label, count };
 }
 
 /** Whether a character's sheet is what the gear is for. Gear that names nobody fits nobody in

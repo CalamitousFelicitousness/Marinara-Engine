@@ -71,7 +71,9 @@
   -webkit-text-fill-color: var(--mari-chat-resolved-text);
 }
 
-:root[data-chat-widget-apply-colors="true"] :is(.mari-chat-style-surface, .mari-chat-style-conversation) {
+:root[data-chat-widget-apply-colors="true"] :is(.mari-chat-style-surface, .mari-chat-style-conversation),
+/* Outrank the gradient accent's popover paint (globals.css 4a) on chat popovers that opt in. */
+:root[data-chat-widget-apply-colors="true"] .marinara-chat-popover.mari-chat-style-surface {
   --mari-chat-surface-paint: var(--mari-chat-resolved-bg);
   background: var(--mari-chat-resolved-bg);
   border-color: var(--mari-chat-resolved-border-solid);
@@ -235,6 +237,14 @@
   --mari-chat-existing-bg: rgb(0 0 0 / 0.4);
   --mari-chat-existing-border: color-mix(in oklab, var(--color-white) 10%, transparent);
 }
+/* Game HUD widgets and character sheets draw the chat chrome panel. */
+.mari-game-panel-surface {
+  --mari-chat-existing-border: var(--marinara-chat-chrome-panel-border);
+}
+.mari-game-side-line {
+  --mari-chat-existing-bg: color-mix(in oklab, var(--color-black) 75%, transparent);
+  --mari-chat-existing-border: color-mix(in oklab, var(--color-white) 15%, transparent);
+}
 
 /* Preserve the owners' normal, active and hover fills when only Shape is on. */
 .mari-chat-style-control,
@@ -377,9 +387,11 @@
   box-shadow: none;
 }
 
-/* Popup lists paint selected rows to their edges. Keep those fills inside the
-   cut frame without clipping the media or controls on ordinary chat surfaces. */
-:root[data-chat-widget-apply-shape="true"][data-chat-widget-shape="cut-corner"] .mari-chat-input-popup {
+/* Popup lists, Game widget headers and character sheet banners paint to their
+   edges. Keep those fills inside the cut frame without clipping the media or
+   controls on ordinary chat surfaces. */
+:root[data-chat-widget-apply-shape="true"][data-chat-widget-shape="cut-corner"]
+  :is(.mari-chat-input-popup, .mari-game-panel-surface) {
   clip-path: var(--mari-chat-frame-clip, var(--mari-widget-frame-clip));
 }
 

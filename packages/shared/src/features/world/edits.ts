@@ -57,6 +57,10 @@ export const WORLD_MAP_PROPS = Object.freeze([
   "dn_prop7",
 ] as const);
 export const WORLD_MAP_PROPS_MAX = 256;
+/** A site's lock on the overworld, as its creator sets it (a cave, mine or ruin outside any town; Engine's
+ *  overworld sites): hidden (off the map until the Game Master reveals it), sealed (shown, closed until
+ *  revealed) or open (never locked, even when the story names it). */
+export const WORLD_SITE_LOCKS = Object.freeze(["hidden", "sealed", "open"] as const);
 /** Spots on a hand-made map where people stand, by the hour (map editor Phase 3, B3). */
 export const WORLD_MAP_SPOTS_MAX = 32;
 export const WORLD_MAP_SPOT_PEOPLE_MAX = 8;
@@ -71,7 +75,8 @@ const cell = z.object({ x: z.number().int().min(0).max(255), y: z.number().int()
 
 export const worldEditsSchema = z
   .object({
-    /** 3 when the layer lays towns out freely or holds maps of places (map editor Phases 2 and 3), 2 when it
+    /** 3 when the layer lays towns out freely, holds maps of places (map editor Phases 2 and 3) or sites'
+     *  locks, 2 when it
      *  holds rooms drawn by hand (W13c), so an older Engine refuses it; 1 otherwise. */
     editsVersion: z.union([z.literal(1), z.literal(2), z.literal(3)]),
     /** The ground as painted: one character per cell, "." where it is as compiled, else the base-36
@@ -286,6 +291,12 @@ export const worldEditsSchema = z
       )
       .max(WORLD_MAPS_MAX)
       .optional(),
+    /** Sites locked or opened by hand (`editsVersion` 3): a place outside any town and its lock. Checked when
+     *  saved (`worldSiteEditIssues`). */
+    sites: z
+      .array(z.object({ place: placeId, lock: z.enum(WORLD_SITE_LOCKS) }).strict())
+      .max(WORLD_EDITS_MAX_PEOPLE)
+      .optional(),
   })
   .strict();
 export type WorldEdits = z.infer<typeof worldEditsSchema>;
@@ -295,14 +306,18 @@ export type WorldEditsInput = z.input<typeof worldEditsSchema>;
 export const worldPersonByHand = (id: string) => /-e\d+$/.test(id);
 
 /** A layer as saved: `editsVersion` 3 when it lays towns out freely (placed buildings, decorations, the new
- *  ground kinds) or holds maps of places, 2 when it holds rooms drawn by hand (W13c), so an older Engine refuses
+ *  ground kinds) or holds maps of places or sites' locks, 2 when it holds rooms drawn by hand (W13c), so an older Engine refuses
  *  it rather than misreading it; 1 otherwise, so a layer without them stays readable by older Engines. */
 export function worldEditsVersioned(edits: WorldEdits): WorldEdits {
   const freeTowns = edits.towns?.some(
     (each) => each.place?.length || each.deco?.length || /[fp~bh]/.test(each.ground ?? ""),
   );
   const version =
-    freeTowns || edits.maps?.length ? 3 : edits.interiors?.some((each) => each.ground !== undefined) ? 2 : 1;
+    freeTowns || edits.maps?.length || edits.sites?.length
+      ? 3
+      : edits.interiors?.some((each) => each.ground !== undefined)
+        ? 2
+        : 1;
   return edits.editsVersion === version ? edits : { ...edits, editsVersion: version };
 }
 
@@ -318,7 +333,8 @@ export function worldEditsEmpty(edits: WorldEdits | null | undefined): boolean {
       !edits.battlefields?.length &&
       !edits.towns?.length &&
       !edits.interiors?.length &&
-      !edits.maps?.length)
+      !edits.maps?.length &&
+      !edits.sites?.length)
   );
 }
 

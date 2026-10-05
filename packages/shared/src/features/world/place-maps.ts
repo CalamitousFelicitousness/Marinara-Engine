@@ -5,7 +5,7 @@
 // floor and liquid, the cell the party steps in at, a pack's props laid about it (drawn only), and spots
 // where people stand by the hour.
 // ──────────────────────────────────────────────
-import { WORLD_MAP_MAX, type WorldEdits } from "./edits.js";
+import { WORLD_MAP_MAX, type WORLD_SITE_LOCKS, type WorldEdits } from "./edits.js";
 import type { GameWorld } from "./game-world.js";
 import { worldCast } from "./people.js";
 
@@ -135,6 +135,27 @@ export function worldMapEditIssues(game: GameWorld, edits: WorldEdits): string[]
           issues.push(`${name}: the spot "${spot.name}" names nobody "${person}".`);
       }
     }
+  }
+  return issues;
+}
+
+/** A site's lock as its creator set it, or null when it is left to the game (sealed when the story names
+ *  it, else open). */
+export function worldSiteLock(game: GameWorld, placeId: string): (typeof WORLD_SITE_LOCKS)[number] | null {
+  return game.edits?.sites?.find((site) => site.place === placeId)?.lock ?? null;
+}
+
+/** Why a layer's sites' locks do not fit its world, or nothing: each on a place of the world that is not a
+ *  settlement (a town is never locked), one lock a place. `game` is the world these edits make. */
+export function worldSiteEditIssues(game: GameWorld, edits: WorldEdits): string[] {
+  const issues: string[] = [];
+  const seen = new Set<string>();
+  for (const site of edits.sites ?? []) {
+    const place = game.world.places.find((each) => each.id === site.place);
+    if (!place) issues.push(`No place "${site.place}" to lock.`);
+    else if (place.rank !== undefined) issues.push(`${place.name} is a settlement: a town is never locked.`);
+    else if (seen.has(site.place)) issues.push(`${place.name} is locked twice.`);
+    seen.add(site.place);
   }
   return issues;
 }

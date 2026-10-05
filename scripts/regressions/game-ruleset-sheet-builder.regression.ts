@@ -399,6 +399,16 @@ try {
     assert.equal(b.lists.features?.length, 1, "never twice");
     ({ build: b, state: st } = applyRulesetBuilder(definition, b, { ...st, picks: { race: [] } }, catalogs));
     assert.equal(b.lists.features?.length, 1, "and the player's row stays");
+    // A full list takes no rows, and the pick's rows come once there is room.
+    const small = parsed(
+      variant((doc) => (doc.sheet.lists.find((list: { id: string }) => list.id === "features").maxItems = 1)),
+    );
+    b = { ...defaultRulesetSheetBuild(small), lists: { features: [{ name: "Tough", text: "" }] } };
+    ({ build: b, state: st } = applyRulesetBuilder(small, b, { picks: { race: ["dwarf"] } }, catalogs));
+    assert.equal(b.lists.features?.length, 1);
+    b = { ...b, lists: { features: [] } };
+    ({ build: b, state: st } = applyRulesetBuilder(small, b, { ...st }, catalogs));
+    assert.equal(b.lists.features?.[0]?._catalog, "races/dwarf", "tried again once there is room");
     // A score near its top takes back only what it was raised by.
     b = { ...fresh(), abilities: { ...fresh().abilities, con: 29 } };
     ({ build: b, state: st } = applyRulesetBuilder(definition, b, { picks: { race: ["dwarf"] } }, catalogs));
@@ -432,6 +442,10 @@ try {
     );
     ({ build: b } = applyRulesetBuilder(twice, fresh(), { picks: { race: ["dwarf"], again: ["dwarf"] } }, catalogs));
     assert.equal(b.abilities.con, 12);
+    // A step takes no more than its max.
+    ({ build: b } = applyRulesetBuilder(definition, fresh(), { picks: { race: ["dwarf", "half-elf"] } }, catalogs));
+    assert.equal(b.fields.race, "Dwarf");
+    assert.equal(b.abilities.cha, 10);
     // One unreadable key costs only itself.
     assert.deepEqual(readRulesetBuilderState({ builder: { method: "manual", picks: "nope", rolled: [12] } }), {
       method: "manual",

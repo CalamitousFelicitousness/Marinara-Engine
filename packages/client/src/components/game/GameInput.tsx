@@ -460,19 +460,25 @@ export function GameInput({
             </button>
           ))}
           <div className="flex items-center gap-1">
-            <input
-              type="text"
-              value={customDice}
-              onChange={(e) => setCustomDice(e.target.value)}
-              placeholder={localizeUi("ui.game.gameinput.text3d82")}
-              className="h-[26px] w-16 rounded bg-foreground/10 px-1.5 text-xs font-mono text-foreground/70 outline-none ring-1 ring-foreground/10 placeholder:text-foreground/35 focus:ring-foreground/20"
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && customDice.trim()) {
-                  handleDiceRoll(customDice.trim());
-                  setCustomDice("");
-                }
-              }}
-            />
+            {/* Native inputs cannot paint the cut-corner control pseudo-element. */}
+            <span
+              data-chat-dice-input
+              className="mari-chat-style-control mari-chat-dice-control inline-flex h-[26px] w-16 rounded bg-foreground/10 text-xs font-mono text-foreground/70 ring-1 ring-foreground/10 focus-within:ring-foreground/20 [--mari-chat-input-bg:transparent]"
+            >
+              <input
+                type="text"
+                value={customDice}
+                onChange={(e) => setCustomDice(e.target.value)}
+                placeholder={localizeUi("ui.game.gameinput.text3d82")}
+                className="h-full w-full min-w-0 rounded-[inherit] bg-transparent px-1.5 outline-none placeholder:text-foreground/35"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && customDice.trim()) {
+                    handleDiceRoll(customDice.trim());
+                    setCustomDice("");
+                  }
+                }}
+              />
+            </span>
             <button
               type="button"
               onClick={() => {

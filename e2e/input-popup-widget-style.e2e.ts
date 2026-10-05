@@ -167,6 +167,19 @@ for (const [preset, theme] of [
         useUIStore.getState().setGameDialogueDisplayMode("stacked");
       });
       let area = await showChat(page, fixture.chats[0]!);
+      const draft = area.locator("textarea[data-chat-composer]").first();
+      const replyTrigger = area.getByRole("button", { name: "Quick replies", exact: true });
+      const openReplyControl = async () => {
+        await draft.fill("A draft for the quick actions.");
+        await replyTrigger.click();
+        const control = page.locator('[data-chat-input-popup="quick-reply"]').getByRole("menuitem").first();
+        await inViewport(control);
+        await page.mouse.move(1, 1);
+        return control;
+      };
+      const replyBaseline = await appearance(await openReplyControl());
+      await replyTrigger.click();
+      await draft.fill("");
       const characterTrigger = area.getByRole("button", { name: "Trigger character response", exact: true });
       await characterTrigger.click();
       const characterPopup = page.getByText("Trigger Response", { exact: true }).locator("..");
@@ -204,6 +217,28 @@ for (const [preset, theme] of [
       expect(styled.radius).toBe(shape.radius);
       expect(styled.background).toBe(colors.background);
       await characterTrigger.click();
+
+      await application(page, []);
+      const reply = await openReplyControl();
+      expect(await appearance(reply)).toEqual(replyBaseline);
+      for (const axis of ["font", "shape", "colors"] as const) {
+        await application(page, [axis]);
+        const painted = await appearance(reply);
+        expect(painted.font).toBe(axis === "font" ? lettering.font : replyBaseline.font);
+        expect(painted.background).toBe(axis === "colors" ? colors.background : replyBaseline.background);
+        if (axis === "shape") {
+          expect([painted.radius, painted.clip]).not.toEqual([replyBaseline.radius, replyBaseline.clip]);
+        } else {
+          expect([painted.radius, painted.clip]).toEqual([replyBaseline.radius, replyBaseline.clip]);
+        }
+      }
+      await application(page, ["font", "shape", "colors"]);
+      const combinedReply = await appearance(reply);
+      expect(combinedReply.font).toBe(lettering.font);
+      expect(combinedReply.background).toBe(colors.background);
+      expect([combinedReply.radius, combinedReply.clip]).not.toEqual([replyBaseline.radius, replyBaseline.clip]);
+      await replyTrigger.click();
+      await draft.fill("");
 
       // Exercise the actual icon-opened menus, including body portals and the
       // separate mobile media sheet. Match rendered paint, not CSS class names.
@@ -285,6 +320,32 @@ for (const [preset, theme] of [
             const diceTrigger = area.getByRole("button", { name: "Roll dice", exact: true });
             await diceTrigger.click();
             await check(page.locator('[data-chat-input-popup="dice"]'));
+            const diceField = page.locator("[data-chat-dice-input]");
+            await check(diceField, true);
+            const diceAppearance = await appearance(diceField);
+            expect(diceAppearance.radius).toBe(combinedReply.radius);
+            expect(diceAppearance.clip).toBe(combinedReply.clip);
+            await expect(diceField.getByRole("textbox")).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+            await expect(diceField.getByRole("textbox")).toHaveCSS("background-image", "none");
+            await diceField.getByRole("textbox").fill("2d6+1");
+            await expect(diceField.getByRole("textbox")).toHaveValue("2d6+1");
+            await diceField.getByRole("textbox").fill("");
+            const frameWidth = () =>
+              diceField.evaluate((element) => getComputedStyle(element, "::after").borderTopWidth);
+            if (preset === "dottore") {
+              await expect(diceField).toHaveCSS("box-shadow", "none");
+              await expect.poll(frameWidth).toBe("2px");
+              await diceField.screenshot({
+                path: info.outputPath(`dice-input-${gradients ? "gradient" : "preset"}-focused.png`),
+              });
+            }
+            await diceField.getByRole("textbox").blur();
+            if (preset === "dottore") {
+              await expect.poll(frameWidth).toBe("1px");
+              await diceField.screenshot({
+                path: info.outputPath(`dice-input-${gradients ? "gradient" : "preset"}-normal.png`),
+              });
+            }
             const path = info.outputPath(`input-popup-${preset}-game-${gradients ? "gradient" : "preset"}.png`);
             await page.screenshot({ path, animations: "disabled" });
             await info.attach(`${preset} Game dice ${gradients ? "gradient" : "preset"}`, {

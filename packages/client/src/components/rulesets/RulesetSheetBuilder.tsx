@@ -16,6 +16,8 @@ import {
   rulesetBuilderPicks,
   rulesetBuilderRemaining,
   rulesetBuilderTrainedSlots,
+  rulesetSheetBuildIsBlank,
+  defaultRulesetSheetBuild,
   isRulesetItemHidden,
   evaluateRulesetSheet,
   rulesetPointBuySpent,
@@ -168,9 +170,17 @@ export function RulesetSheetBuilder({
   // be stale by then.
   const latest = useRef({ build, state });
   latest.current = { build, state };
+  // A character made some other way is described first: picks record what it already is and change
+  // nothing, until the player says the picks should change the sheet.
+  const describing = state.describing ?? (state.applied === undefined && !rulesetSheetBuildIsBlank(definition, build));
   const update = (next: RulesetBuilderState) => {
     if (!ready) return;
-    const applied = applyRulesetBuilder(definition, latest.current.build, next, catalogs);
+    const applied = applyRulesetBuilder(
+      definition,
+      latest.current.build,
+      { ...next, describing: next.describing ?? describing },
+      catalogs,
+    );
     onApply(applied.build, applied.state);
   };
   const infoBaseId = useId();
@@ -314,7 +324,16 @@ export function RulesetSheetBuilder({
             <TypedInput
               spec={field}
               value={build.fields[id]}
-              onChange={(value) => onApply({ ...build, fields: { ...build.fields, [id]: value } }, state)}
+              onChange={(value) =>
+                // A value the builder answers for, changed here, is still the builder's: a later pick
+                // that no longer asks for it takes it back.
+                onApply(
+                  { ...build, fields: { ...build.fields, [id]: value } },
+                  state.applied && id in state.applied.fields
+                    ? { ...state, applied: { ...state.applied, fields: { ...state.applied.fields, [id]: value } } }
+                    : state,
+                )
+              }
               ariaLabel={field.label}
             />
           </label>
@@ -590,6 +609,7 @@ export function RulesetSheetBuilder({
   // never crowd the scores.
   const summary = definition.gm.sheetSummary;
   const fieldById = new Map(definition.sheet.fields.map((field) => [field.id, field]));
+  const blankFields = defaultRulesetSheetBuild(definition).fields;
   const shownFields = [
     ...builder.steps.flatMap((each) =>
       each.kind === "catalog" && each.field
@@ -605,7 +625,7 @@ export function RulesetSheetBuilder({
       const field = fieldById.get(id);
       const value = build.fields[id];
       if (!field || value === undefined || value === "" || isRulesetItemHidden(field, build, definition)) return [];
-      if (!always && field.type === "number" && value === (field.default ?? 0)) return [];
+      if (!always && field.type === "number" && value === blankFields[id]) return [];
       const text = field.type === "enum" ? (field.valueLabels?.[String(value)] ?? String(value)) : String(value);
       return [{ id, label: field.label, text }];
     });
@@ -654,6 +674,17 @@ export function RulesetSheetBuilder({
         </ol>
       </nav>
 
+      {describing && ready && (
+        <div
+          role="note"
+          className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--border)] bg-[var(--card)] px-2 py-1.5"
+        >
+          <p className="text-[0.6875rem] text-[var(--muted-foreground)]">{t("ui.rulesets.builder.describing")}</p>
+          <button type="button" onClick={() => update({ ...state, describing: false })} className={buttonClass}>
+            {t("ui.rulesets.builder.describingDone")}
+          </button>
+        </div>
+      )}
       <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_14rem]">
         <section aria-label={step.label} className="min-w-0 space-y-2">
           <h4 className="text-xs font-semibold text-[var(--foreground)]">{step.label}</h4>

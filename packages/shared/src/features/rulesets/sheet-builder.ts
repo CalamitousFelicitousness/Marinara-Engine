@@ -20,6 +20,7 @@ import {
   type RulesetDefinition,
   type RulesetSheetBuild,
 } from "../../schemas/ruleset.schema.js";
+import { defaultRulesetSheetBuild } from "./sheet-math.js";
 
 type Scalar = number | string | boolean;
 type StepOf<K extends RulesetBuilderStep["kind"]> = Extract<RulesetBuilderStep, { kind: K }>;
@@ -53,6 +54,9 @@ export interface RulesetBuilderState {
   /** Skills or saves chosen for a grant's or a trained step's `choose`. */
   trainedChoices?: Record<string, string[]>;
   applied?: RulesetBuilderApplied;
+  /** Picks describe the character as it already is: what they grant is recorded as given, and the
+   *  sheet is not changed. For a character made before the builder, until the player says done. */
+  describing?: boolean;
 }
 
 const idList = z.array(z.string().max(80)).max(120);
@@ -64,6 +68,7 @@ const stateShape = {
   picks: z.record(idList).optional(),
   abilityChoices: z.record(idList).optional(),
   trainedChoices: z.record(idList).optional(),
+  describing: z.boolean().optional(),
   applied: z
     .object({
       increases: z.record(z.number().finite()).default({}),
@@ -413,6 +418,22 @@ function desired(
   return out;
 }
 
+/** Whether a build is still the ruleset's blank sheet: nothing typed, trained or listed. A character
+ *  that is not was made some other way, and the builder starts by describing it. */
+export function rulesetSheetBuildIsBlank(definition: RulesetDefinition, build: RulesetSheetBuild): boolean {
+  const blank = defaultRulesetSheetBuild(definition);
+  const same = (a: Record<string, unknown>, b: Record<string, unknown>) =>
+    [...new Set([...Object.keys(a), ...Object.keys(b)])].every((key) => a[key] === b[key]);
+  return (
+    same(build.abilities, blank.abilities) &&
+    same(build.fields, blank.fields) &&
+    Object.keys(build.skills).length === 0 &&
+    Object.keys(build.saves).length === 0 &&
+    Object.values(build.bonuses ?? {}).every((value) => !value) &&
+    Object.values(build.lists).every((rows) => !Array.isArray(rows) || rows.length === 0)
+  );
+}
+
 /** Every catalog the builder's steps read, so a caller can load them before applying anything. */
 export function rulesetBuilderCatalogIds(definition: RulesetDefinition): string[] {
   const ids = (definition.sheet.builder?.steps ?? []).flatMap((step) =>
@@ -442,6 +463,11 @@ export function applyRulesetBuilder(
     rows: [],
   };
   const want = desired(definition, state, catalogs);
+  if (state.describing) {
+    // Describing: every pick's grants are recorded as given (so a later change takes them back, as far
+    // as the sheet still shows them), and nothing is written, now or when describing ends.
+    return { build, state: { ...state, applied: { ...want, scores: {} } } };
+  }
   // What this run actually writes, which is all the next run takes back: a value the sheet already
   // had of the player's own is never recorded, so unpicking never takes it.
   const next: RulesetBuilderApplied = { increases: {}, scores: {}, skills: {}, saves: {}, fields: {}, rows: [] };
@@ -499,14 +525,24 @@ export function applyRulesetBuilder(
   const saves = trained("saves");
 
   // Fields: written when the builder's answer changes, cleared when it has none and the sheet still
-  // shows the old one.
+  // shows the old one. A field the player filled in themselves (a level 5 typed before a class was
+  // picked) is never written over: only one still blank, or one the builder already answers for.
+  const blankFields = defaultRulesetSheetBuild(definition).fields;
   const fields = { ...build.fields };
   for (const [id, value] of Object.entries(previous.fields)) {
     if (want.fields[id] === undefined && fields[id] === value) delete fields[id];
   }
   for (const [id, value] of Object.entries(want.fields)) {
     if (previous.fields[id] === value) next.fields[id] = value;
-    else if (previous.fields[id] !== undefined || fields[id] !== value) {
+    // Already the answer, and only because it is the sheet's blank: the builder's from now on.
+    else if (fields[id] === value && value === blankFields[id]) next.fields[id] = value;
+    else if (
+      fields[id] !== value &&
+      (previous.fields[id] !== undefined ||
+        fields[id] === undefined ||
+        fields[id] === "" ||
+        fields[id] === blankFields[id])
+    ) {
       fields[id] = value;
       next.fields[id] = value;
     }

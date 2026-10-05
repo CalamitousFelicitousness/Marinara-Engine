@@ -28,6 +28,7 @@ import {
   rulesetBuilderTrainedSlots,
   rulesetCatalogEntryIssues,
   rulesetPointBuySpent,
+  rulesetSheetBuildIsBlank,
   type RulesetBuilderState,
   type RulesetCatalogEntriesById,
   type RulesetDefinition,
@@ -85,7 +86,7 @@ const classes = {
     {
       id: "wizard",
       label: "Wizard",
-      grants: { trained: { saves: ["int_save", "wis_save"] }, sets: { hit_die: "d6" } },
+      grants: { trained: { saves: ["int_save", "wis_save"] }, sets: { hit_die: "d6", level: 1 } },
     },
   ],
 };
@@ -455,6 +456,49 @@ try {
     ({ build: b } = applyRulesetBuilder(definition, fresh(), { picks: { race: ["dwarf", "half-elf"] } }, catalogs));
     assert.equal(b.fields.race, "Dwarf");
     assert.equal(b.abilities.cha, 10);
+    // A character made without the builder: described, it is not changed by picking what it is.
+    const made: RulesetSheetBuild = {
+      ...fresh(),
+      abilities: { ...fresh().abilities, con: 12 },
+      fields: { ...fresh().fields, level: 5, hit_die: "d6", race: "Dwarf", class: "Wizard" },
+      saves: { int_save: "proficient", wis_save: "proficient" },
+    };
+    ({ build: b, state: st } = applyRulesetBuilder(
+      definition,
+      made,
+      { describing: true, picks: { race: ["dwarf"], class: ["wizard"] } },
+      catalogs,
+    ));
+    assert.deepEqual(b, made, "describing changes nothing");
+    ({ build: b, state: st } = applyRulesetBuilder(definition, b, { ...st, describing: false }, catalogs));
+    assert.deepEqual(b, made, "and neither does ending it");
+    ({ build: b, state: st } = applyRulesetBuilder(
+      definition,
+      b,
+      { ...st, picks: { ...st.picks, race: [] } },
+      catalogs,
+    ));
+    assert.equal(b.abilities.con, 10, "a described pick is taken back like any other");
+    assert.equal(b.fields.race, undefined);
+    assert.equal(b.fields.level, 5, "a level typed in is never written over");
+    // Not described: a class still never writes over a level the player typed.
+    ({ build: b } = applyRulesetBuilder(
+      definition,
+      { ...fresh(), fields: { ...fresh().fields, level: 5 } },
+      { picks: { class: ["wizard"] } },
+      catalogs,
+    ));
+    assert.equal(b.fields.level, 5);
+    assert.equal(b.fields.hit_die, "d6", "a blank field is the builder's to fill");
+    // A value the builder answers for, changed in its own step, goes when the pick that asked for it does.
+    ({ build: b, state: st } = applyRulesetBuilder(definition, fresh(), { picks: { class: ["wizard"] } }, catalogs));
+    assert.equal(st.applied?.fields.level, 1, "the blank level the class asks for is the builder's");
+    b = { ...b, fields: { ...b.fields, level: 3 } };
+    st = { ...st, applied: { ...st.applied!, fields: { ...st.applied!.fields, level: 3 } } };
+    ({ build: b } = applyRulesetBuilder(definition, b, { ...st, picks: { class: ["fighter"] } }, catalogs));
+    assert.equal(b.fields.level, undefined, "taken back with the class");
+    assert.equal(rulesetSheetBuildIsBlank(definition, fresh()), true);
+    assert.equal(rulesetSheetBuildIsBlank(definition, made), false);
     // One unreadable key costs only itself.
     assert.deepEqual(readRulesetBuilderState({ builder: { method: "manual", picks: "nope", rolled: [12] } }), {
       method: "manual",

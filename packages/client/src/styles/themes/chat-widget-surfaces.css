@@ -176,6 +176,15 @@
 .mari-chat-style-surface.border-foreground\/10 {
   --mari-chat-existing-border: color-mix(in oklab, var(--foreground) 10%, transparent);
 }
+.mari-chat-input-popup {
+  --mari-chat-existing-bg: var(--card);
+}
+.mari-chat-input-popup[data-chat-input-popup="story"] {
+  --mari-chat-existing-border: var(--marinara-chat-chrome-panel-border);
+}
+.mari-chat-input-popup[data-chat-input-popup="address"] {
+  --mari-chat-existing-bg: color-mix(in oklab, var(--card) 95%, transparent);
+}
 .mari-chat-input-box {
   --mari-chat-existing-bg: var(--mari-chat-owner-bg, var(--marinara-chat-chrome-input-bg));
   --mari-chat-existing-border: var(--marinara-chat-chrome-input-border);
@@ -217,6 +226,21 @@
 .marinara-chat-input-shell button,
 [data-roleplay-vn-navigation] button {
   --mari-chat-control-existing-bg: transparent;
+}
+.mari-chat-quick-reply {
+  --mari-chat-control-existing-bg: var(--card);
+  --mari-chat-control-existing-border: color-mix(in oklab, var(--foreground) 20%, transparent);
+}
+.mari-chat-quick-reply:disabled {
+  --mari-chat-control-existing-bg: color-mix(in oklab, var(--card) 75%, transparent);
+  --mari-chat-control-existing-border: color-mix(in oklab, var(--foreground) 10%, transparent);
+}
+.mari-chat-quick-reply:not(:disabled):hover,
+.mari-chat-dice-control {
+  --mari-chat-control-existing-bg: color-mix(in oklab, var(--foreground) 10%, transparent);
+}
+.mari-chat-dice-control:hover {
+  --mari-chat-control-existing-bg: color-mix(in oklab, var(--foreground) 15%, transparent);
 }
 .mari-message-swipes button:hover {
   --mari-chat-control-existing-bg: var(--marinara-chat-message-action-bg-hover);
@@ -336,6 +360,12 @@
   background: transparent;
   border-color: transparent;
   box-shadow: none;
+}
+
+/* Popup lists paint selected rows to their edges. Keep those fills inside the
+   cut frame without clipping the media or controls on ordinary chat surfaces. */
+:root[data-chat-widget-apply-shape="true"][data-chat-widget-shape="cut-corner"] .mari-chat-input-popup {
+  clip-path: var(--mari-chat-frame-clip, var(--mari-widget-frame-clip));
 }
 
 :root[data-chat-widget-apply-shape="true"][data-chat-widget-shape="cut-corner"]

@@ -443,8 +443,9 @@ export function GameInput({
       {/* Dice picker */}
       {showDice && (
         <div
+          data-chat-input-popup="dice"
           className={cn(
-            "flex flex-wrap items-center gap-1.5 border-b border-foreground/10 py-2",
+            "mari-chat-style-surface flex flex-wrap items-center gap-1.5 border-b border-foreground/10 py-2 [--mari-chat-existing-bg:transparent]",
             inline ? "px-0" : "px-4",
           )}
         >
@@ -453,7 +454,7 @@ export function GameInput({
               type="button"
               key={d}
               onClick={() => handleDiceRoll(d)}
-              className="rounded bg-foreground/10 px-2 py-1 text-xs font-mono text-foreground/70 transition-colors hover:bg-foreground/15"
+              className="mari-chat-style-control mari-chat-dice-control rounded bg-foreground/10 px-2 py-1 text-xs font-mono text-foreground/70 transition-colors hover:bg-foreground/15"
             >
               🎲 {d}
             </button>
@@ -480,7 +481,7 @@ export function GameInput({
                   setCustomDice("");
                 }
               }}
-              className="flex h-[26px] items-center rounded bg-foreground/10 px-1.5 text-foreground/70 hover:bg-foreground/15"
+              className="mari-chat-style-control mari-chat-dice-control flex h-[26px] items-center rounded bg-foreground/10 px-1.5 text-foreground/70 hover:bg-foreground/15"
             >
               <Send size={14} />
             </button>
@@ -578,7 +579,8 @@ export function GameInput({
           {addressMenuOpen && (
             <div
               ref={addressMenuRef}
-              className="absolute bottom-full left-0 z-20 mb-2 flex min-w-[11rem] flex-col gap-1 rounded-xl border border-foreground/10 bg-[var(--card)]/95 p-1.5 shadow-lg backdrop-blur"
+              data-chat-input-popup="address"
+              className="mari-chat-style-surface mari-chat-input-popup absolute bottom-full left-0 z-20 mb-2 flex min-w-[11rem] flex-col gap-1 rounded-xl border border-foreground/10 bg-[var(--card)]/95 p-1.5 shadow-lg backdrop-blur"
             >
               {hasPartyMembers && (
                 <button
@@ -755,6 +757,7 @@ export function GameInput({
             <Smile size={18} />
           </button>
           <EmojiPicker
+            popupClassName="mari-chat-style-surface mari-chat-input-popup"
             open={emojiOpen}
             onClose={() => setEmojiOpen(false)}
             onSelect={handleEmojiSelect}

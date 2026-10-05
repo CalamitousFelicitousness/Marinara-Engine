@@ -68,6 +68,7 @@ export type CreateConnectionPayload = {
   apiKey: string;
   baseUrl?: string;
   model?: string;
+  pinnedModels?: string[];
   maxContext?: number;
   isDefault?: boolean;
   fallbackForMain?: boolean;

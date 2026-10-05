@@ -24,22 +24,23 @@ test("a TypeSafe Decision connection can be given another address, and Test uses
     );
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const address = server.address();
-  if (!address || typeof address === "string") throw new Error("Missing mock server port");
-  const origin = `http://127.0.0.1:${address.port}`;
-  const created = await request.post("/api/connections", {
-    data: {
-      name: `TypeSafe address ${testInfo.project.name}`,
-      provider: "decision",
-      decisionSource: "typesafe",
-      baseUrl: "https://api.typesafe.ai",
-      apiKey: "ts-e2e",
-      model: "jev-latest",
-    },
-  });
-  expect(created.ok()).toBeTruthy();
-  const { id } = await created.json();
+  let id: string | undefined;
   try {
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("Missing mock server port");
+    const origin = `http://127.0.0.1:${address.port}`;
+    const created = await request.post("/api/connections", {
+      data: {
+        name: `TypeSafe address ${testInfo.project.name}`,
+        provider: "decision",
+        decisionSource: "typesafe",
+        baseUrl: "https://api.typesafe.ai",
+        apiKey: "ts-e2e",
+        model: "jev-latest",
+      },
+    });
+    expect(created.ok()).toBeTruthy();
+    ({ id } = await created.json());
     await page.route("**/api/app-settings/ui", (route) => route.fulfill({ json: { value: "" } }));
     await seedUIState(page, { hasCompletedOnboarding: true, sidebarOpen: false, rightPanelOpen: false, theme: "dark" });
     await page.addInitScript((version) => localStorage.setItem("marinara:whats-new:seen-version", version), version);
@@ -69,8 +70,11 @@ test("a TypeSafe Decision connection can be given another address, and Test uses
     await expect(baseUrl).toBeDisabled();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   } finally {
-    await request.delete(`/api/connections/${id}`);
-    server.closeAllConnections();
-    await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+    try {
+      if (id) await request.delete(`/api/connections/${id}`);
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+    }
   }
 });

@@ -194,6 +194,28 @@ try {
     );
     assert.equal((await resolveDecisionConnection(row({ baseUrl }), noLink)).error, "invalid_url", baseUrl);
   }
+  // The TypeSafe key is never sent unencrypted to an address off this machine or network.
+  for (const baseUrl of ["http://decisions.example.com", "http://203.0.113.7:8791"]) {
+    assert.equal((await resolveDecisionConnection(row({ baseUrl }), noLink)).error, "needs_https", baseUrl);
+  }
+  for (const baseUrl of [
+    "https://decisions.example.com",
+    "http://localhost:8791",
+    "http://[::1]:8791",
+    "http://192.168.1.20:8791",
+    "http://jev.local:8791",
+  ]) {
+    assert.ok((await resolveDecisionConnection(row({ baseUrl }), noLink)).connection, baseUrl);
+  }
+  assert.ok(
+    (
+      await resolveDecisionConnection(
+        row({ decisionSource: "custom", baseUrl: "http://decisions.example.com" }),
+        noLink,
+      )
+    ).connection,
+    "a Custom server's own key keeps its current rules",
+  );
   // The provider URL policy refuses these before any connection is attempted. Matching the
   // flag name in the refusal tells it apart from an address that merely can't be reached.
   for (const baseUrl of ["http://10.0.0.2:8791", "http://169.254.169.254"]) {

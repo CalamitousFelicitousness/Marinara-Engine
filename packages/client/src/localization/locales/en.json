@@ -861,6 +861,7 @@
   "connections.decision.errors.invalid_url": "Enter a valid base URL.",
   "connections.decision.errors.missing_key": "Enter an API key or link an existing connection.",
   "connections.decision.errors.missing_model": "Enter the model name the server should use.",
+  "connections.decision.errors.needs_https": "Your TypeSafe key is sent to this address, so it must start with https:// unless it is a local address such as localhost or 192.168.x.x.",
   "connections.decision.errors.needs_relinking": "Linked connection is missing or incompatible. Choose another or enter a key.",
   "connections.decision.errors.network": "The endpoint could not be reached or was blocked by the connection policy.",
   "connections.decision.errors.no_answer": "The model did not answer yes or no.",

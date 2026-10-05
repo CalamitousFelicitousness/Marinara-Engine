@@ -973,8 +973,32 @@ try {
       );
   });
   assert.ok(parseRulesetDefinition(twoUses).ok, "two scaled rows under two names parse");
-  assert.match(issue(86, twoUses) ?? "", /scales several rows of one list.*1\.87/);
+  assert.match(issue(86, twoUses) ?? "", /scales a row beside others of its list.*1\.87/);
   assert.equal(issue(87, twoUses), null);
+  const besideOne = variant((doc) => {
+    const raceCatalog = doc.catalogs.find((c: { id: string }) => c.id === "races");
+    raceCatalog.feeds.push("counters");
+    raceCatalog.entries
+      .find((e: { id: string }) => e.id === "dwarf")
+      .rows.push(
+        {
+          list: "counters",
+          values: { name: "Stone Song", max: 0, recharge: "long" },
+          scaled: {
+            max: {
+              from: { field: "level" },
+              table: [
+                [1, 0],
+                [3, 1],
+              ],
+            },
+          },
+        },
+        { list: "counters", values: { name: "Deep Song", max: 1, recharge: "long" } },
+      );
+  });
+  assert.match(issue(86, besideOne) ?? "", /1\.87/, "one scaled row beside an unscaled one is 1.87's too");
+  assert.equal(issue(87, besideOne), null);
   assert.equal(issue(81, variant()), null, "a 1.81 builder is still 1.81's");
   assert.equal(issue(74, JSON.parse(fiveEText)), null, "an older package still validates");
 

@@ -502,20 +502,22 @@ function supportsEngineVersion(entry: CapabilityCatalogPackage, engineVersion: s
 /** Whether any row of these entries names a column the ruleset keeps up to date. Read structurally
  *  rather than parsed: the install gate looks at documents nothing has validated yet, and a shape it
  *  does not recognise is not its problem to report. */
-/** An entry with more than one scaled row for one list, told apart by name (1.87). */
+/** An entry with a scaled row beside any other row of its list, told apart by name (1.87): an older
+ *  Engine refused a scaled row that was not its entry's only one there, scaled or not. */
 function entriesCarrySeveralScaledRows(entries: unknown): boolean {
   return (
     Array.isArray(entries) &&
     entries.some((entry) => {
       const rows = plainRecord(entry)?.rows;
       if (!Array.isArray(rows)) return false;
-      const scaledPerList = new Map<string, number>();
+      const perList = new Map<string, { rows: number; scaled: boolean }>();
       for (const row of rows) {
         const record = plainRecord(row);
-        if (record?.scaled === undefined || typeof record.list !== "string") continue;
-        scaledPerList.set(record.list, (scaledPerList.get(record.list) ?? 0) + 1);
+        if (typeof record?.list !== "string") continue;
+        const seen = perList.get(record.list) ?? { rows: 0, scaled: false };
+        perList.set(record.list, { rows: seen.rows + 1, scaled: seen.scaled || record.scaled !== undefined });
       }
-      return [...scaledPerList.values()].some((count) => count > 1);
+      return [...perList.values()].some((list) => list.rows > 1 && list.scaled);
     })
   );
 }
@@ -1802,7 +1804,7 @@ export function getCapabilityPackageInstallIssue(
     });
   // Several scaled rows for one list in one entry, told apart by name, 1.87: an older Engine refused it.
   if (!declaresApi(87) && carriesSeveralScaled) {
-    return "A ruleset whose catalog entry scales several rows of one list requires schemaVersion 2 and capabilityApi 1.87 or newer";
+    return "A ruleset whose catalog entry scales a row beside others of its list requires schemaVersion 2 and capabilityApi 1.87 or newer";
   }
   // Entries of a catalog to choose, 1.86: a new key on the strict grants and a new step kind.
   const countSteps = plainRecord(plainRecord(ruleset?.sheet)?.builder)?.steps;

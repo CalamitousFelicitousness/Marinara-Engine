@@ -163,6 +163,10 @@
   border-radius: var(--mari-chat-radius, var(--mari-window-radius, var(--mari-widget-radius, 1rem)));
 }
 
+:root[data-chat-widget-apply-shape="true"] [data-chat-input-popup="dice"].px-0 {
+  padding-inline: 0.75rem;
+}
+
 :root[data-chat-widget-apply-shape="true"]
   :is(.mari-chat-style-control, .marinara-chat-input-shell button, [data-roleplay-vn-navigation] button) {
   border-radius: var(--mari-chat-control-radius, var(--mari-widget-drawer-radius, 0.5rem));

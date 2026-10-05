@@ -11701,6 +11701,7 @@
   "ui.rulesets.builder.pickCount_other": "Select up to {{count}} ({{picked}} selected)",
   "ui.rulesets.builder.pickEarlier": "Make the earlier pick first: the choices here depend on it.",
   "ui.rulesets.builder.pickedAt": "Picked at {{step}}",
+  "ui.rulesets.builder.pickNoneYet": "Nothing to select at this point yet ({{picked}} selected)",
   "ui.rulesets.builder.pointsLeft": "{{left}} of {{budget}} points left",
   "ui.rulesets.builder.pointsOffTable": "A score is outside what point buy can buy. Lower or raise it to start counting.",
   "ui.rulesets.builder.raise": "Raise {{name}}",

@@ -29,6 +29,7 @@ import {
   rulesetCatalogEntryIssues,
   rulesetPointBuySpent,
   rulesetBuilderMethod,
+  rulesetBuilderStepCount,
   rulesetSheetBuildIsBlank,
   type RulesetBuilderState,
   type RulesetCatalogEntriesById,
@@ -670,6 +671,44 @@ try {
     doc.sheet.builder.steps[1].upTo = { filter: "tier", value: { derived: "nope" } };
   }, /nope/);
 
+  // ── 1.85: a step's count read off the sheet ──
+  {
+    const counted = parsed(
+      variant((doc) => {
+        Object.assign(doc.sheet.builder.steps[0], { min: 0, max: 3, countFrom: { field: "level" } });
+      }),
+    );
+    const countCatalogs: RulesetCatalogEntriesById = Object.fromEntries(
+      (counted.catalogs ?? []).map((catalog) => [catalog.id, catalog.entries ?? []]),
+    );
+    const raceStep = counted.sheet.builder!.steps[0]!;
+    assert.ok(raceStep.kind === "catalog");
+    const at = (level: number, build = defaultRulesetSheetBuild(counted)) => ({
+      ...build,
+      fields: { ...build.fields, level },
+    });
+    assert.deepEqual(rulesetBuilderStepCount(counted, raceStep, at(2)), { min: 2, max: 2 });
+    assert.deepEqual(rulesetBuilderStepCount(counted, raceStep, at(9)), { min: 3, max: 3 }, "never above max");
+    assert.deepEqual(rulesetBuilderStepCount(counted, raceStep, at(-4)), { min: 0, max: 0 });
+    assert.deepEqual(rulesetBuilderStepCount(counted, raceStep), { min: 0, max: 3 }, "no sheet, its own min and max");
+    const picks = { race: ["dwarf", "half-elf"] };
+    let c = applyRulesetBuilder(counted, at(0), { method: "manual", picks }, countCatalogs);
+    assert.equal(rulesetBuilderRemaining(counted, c.build, c.state, countCatalogs).race, 0);
+    assert.equal(c.build.abilities.con, 10, "a count of 0 takes nothing");
+    c = applyRulesetBuilder(counted, at(2, c.build), c.state, countCatalogs);
+    assert.deepEqual([c.build.abilities.con, c.build.abilities.cha], [12, 12], "both count at 2");
+    c = applyRulesetBuilder(counted, at(1, c.build), c.state, countCatalogs);
+    assert.deepEqual(
+      [c.build.abilities.con, c.build.abilities.cha],
+      [12, 10],
+      "the later pick counts for nothing at 1",
+    );
+    assert.deepEqual(c.state.picks?.race, ["dwarf", "half-elf"], "and is kept");
+    c = applyRulesetBuilder(counted, at(3, c.build), { ...c.state, picks: { race: ["dwarf"] } }, countCatalogs);
+    assert.equal(rulesetBuilderRemaining(counted, c.build, c.state, countCatalogs).race, 2, "the count is waited on");
+  }
+  refused((doc) => (doc.sheet.builder.steps[0].countFrom = { derived: "nope" }), /nope/);
+
   // ── The gate ──
   const manifest = (minor: number, paths = ["ruleset.json"]) => ({
     schemaVersion: 2,
@@ -724,6 +763,11 @@ try {
   });
   assert.match(issue(81, limited) ?? "", /1\.82/);
   assert.equal(issue(82, limited), null);
+  const countedDoc = variant((doc) =>
+    Object.assign(doc.sheet.builder.steps[0], { max: 3, countFrom: { field: "level" } }),
+  );
+  assert.match(issue(84, countedDoc) ?? "", /count off the sheet.*1\.85/);
+  assert.equal(issue(85, countedDoc), null);
   assert.equal(issue(81, variant()), null, "a 1.81 builder is still 1.81's");
   assert.equal(issue(74, JSON.parse(fiveEText)), null, "an older package still validates");
 

@@ -1769,6 +1769,12 @@ export function getCapabilityPackageInstallIssue(
       const units = plainRecord(family)?.units;
       return Array.isArray(units) && units.some((unit) => plainRecord(unit)?.one !== undefined);
     });
+  // A catalog step's count read off the sheet, 1.85: a new key on the strict step.
+  const countSteps = plainRecord(plainRecord(ruleset?.sheet)?.builder)?.steps;
+  const counted = Array.isArray(countSteps) && countSteps.some((step) => plainRecord(step)?.countFrom !== undefined);
+  if (!declaresApi(85) && counted) {
+    return "A ruleset whose builder reads a step's count off the sheet requires schemaVersion 2 and capabilityApi 1.85 or newer";
+  }
   if (!declaresApi(84) && singular) {
     return "A ruleset whose coins name one of themselves requires schemaVersion 2 and capabilityApi 1.84 or newer";
   }

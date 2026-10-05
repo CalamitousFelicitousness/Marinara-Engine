@@ -657,7 +657,10 @@ const capabilityPackageManifestBaseSchema = z
 // 1.84: a currency unit may name one of itself (`one: "penny"` beside `label: "pennies"`), said for an
 //        amount of exactly one. Not a soft seam: an Engine that cannot read it refuses the ruleset
 //        file, so a package that ships it declares 1.84. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 84 } as const);
+// 1.85: a builder's catalog step may read how many entries it asks for and takes off the sheet
+//        (`countFrom`, spells known at the character's level). Not a soft seam: an Engine that cannot
+//        read it refuses the ruleset file, so a package that ships it declares 1.85. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 85 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

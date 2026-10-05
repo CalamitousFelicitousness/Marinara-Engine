@@ -940,6 +940,10 @@ const builderStepSchema = z.discriminatedUnion("kind", [
       /** Only entries whose number `filter` is at most `value`, read off the sheet as it stands (features
        *  up to the character's level; Capability API 1.82). An entry without the filter is offered. */
       upTo: rulesetBuilderUpToSchema.optional(),
+      /** How many entries the step asks for and at most takes, read off the sheet as it stands, in
+       *  place of `min` and never above `max` (spells known at the character's level; Capability API
+       *  1.85). Picks past it are kept but count for nothing. */
+      countFrom: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
     })
     .strict(),
   z
@@ -1021,6 +1025,7 @@ export type RulesetBuilderStep =
       filters?: Record<string, string | number>;
       within?: { step: string; filter: string };
       upTo?: RulesetBuilderUpTo;
+      countFrom?: RulesetValueRef;
     })
   | (BuilderStepBase & { kind: "fields"; fields: string[]; optional?: string[] })
   | (BuilderStepBase & {
@@ -5172,6 +5177,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
           }
           checkRef(step.upTo.value, [...path, "upTo", "value"], derivedIds, false);
         }
+        if (step.countFrom) checkRef(step.countFrom, [...path, "countFrom"], derivedIds, false);
         if (step.within) {
           if (!catalogSteps.has(step.within.step)) {
             issue([...path, "within", "step"], `No catalog step "${step.within.step}" before this one`);

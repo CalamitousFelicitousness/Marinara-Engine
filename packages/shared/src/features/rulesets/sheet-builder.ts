@@ -138,6 +138,19 @@ export function rulesetBuilderOptions(
   });
 }
 
+/** How many entries a catalog step asks for and at most takes: its `countFrom` read off the sheet as it
+ *  stands (1.85), whole and between 0 and its `max`, or else its own `min` and `max`. */
+export function rulesetBuilderStepCount(
+  definition: RulesetDefinition,
+  step: StepOf<"catalog">,
+  build?: RulesetSheetBuild,
+): { min: number; max: number } {
+  if (!step.countFrom || !build) return { min: step.min, max: step.max };
+  const value = resolveRulesetValueRef(definition, build, step.countFrom);
+  const count = Number.isFinite(value) ? Math.min(Math.max(Math.floor(value), 0), step.max) : 0;
+  return { min: count, max: count };
+}
+
 function stepById(definition: RulesetDefinition, stepId: string): RulesetBuilderStep | undefined {
   return definition.sheet.builder?.steps.find((step) => step.id === stepId);
 }
@@ -160,7 +173,7 @@ export function rulesetBuilderPicks(
   return (state.picks?.[stepId] ?? [])
     .map((id) => byId.get(id))
     .filter((entry): entry is RulesetCatalogEntry => !!entry)
-    .slice(0, step.max);
+    .slice(0, rulesetBuilderStepCount(definition, step, build).max);
 }
 
 /** Every pick that counts, with the step that made it, in step order. */
@@ -680,7 +693,8 @@ export function rulesetBuilderRemaining(
       const offered = rulesetBuilderOptions(definition, step, state, catalogs, build).length;
       add(
         step.id,
-        Math.min(step.min, offered) - rulesetBuilderPicks(definition, step.id, state, catalogs, build).length,
+        Math.min(rulesetBuilderStepCount(definition, step, build).min, offered) -
+          rulesetBuilderPicks(definition, step.id, state, catalogs, build).length,
       );
     } else if (step.kind === "fields") {
       add(

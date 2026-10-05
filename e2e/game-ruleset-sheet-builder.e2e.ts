@@ -106,6 +106,7 @@ function ruleset(id: string): string {
         min: 0,
         max: 3,
         upTo: { filter: "level", value: { field: "level" } },
+        countFrom: { field: "level" },
       },
       { id: "skills", label: "Proficiencies", kind: "trained" },
     ],
@@ -206,6 +207,9 @@ test("the guided builder applies picks, rolls and buys scores, and saves the she
     await steps.getByRole("button", { name: /^Features/ }).click();
     await expect(page.getByRole("button", { name: "Select Sly Strike" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Select Second Effort" })).toHaveCount(0);
+    // As many features as the level says (countFrom).
+    await expect(page.getByText("Select one (0 selected)")).toBeVisible();
+    await expect(steps.getByRole("button", { name: "Features 1 choice left", exact: true })).toBeVisible();
     await steps.getByRole("button", { name: /^Race/ }).click();
 
     // A race: its info, its increase, its field.
@@ -280,6 +284,7 @@ test("the guided builder applies picks, rolls and buys scores, and saves the she
     await level.press("Tab");
     await page.getByRole("tab", { name: "Guided", exact: true }).click();
     await steps.getByRole("button", { name: /^Features/ }).click();
+    await expect(page.getByText("Select up to 2 (0 selected)")).toBeVisible();
     await page.getByRole("button", { name: "Select Second Effort" }).click();
     await page.getByRole("tab", { name: "All fields", exact: true }).click();
     const featureName = page.locator('input[aria-label="Features and traits 1: Name"]');

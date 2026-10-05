@@ -14,6 +14,7 @@ import {
   rulesetBuilderCatalogIds,
   rulesetBuilderOptions,
   rulesetBuilderPicks,
+  rulesetBuilderStepCount,
   rulesetBuilderRemaining,
   rulesetBuilderTrainedSlots,
   rulesetBuilderMethod,
@@ -268,6 +269,8 @@ export function RulesetSheetBuilder({
           : [...stored.filter((each) => each !== id), id];
       update({ ...state, picks: { ...state.picks, [current.id]: next } });
     };
+    // A count read off the sheet (1.85) moves with the character; the step's own max otherwise.
+    const most = rulesetBuilderStepCount(definition, current, build).max;
     if (options.length === 0) {
       return (
         <p className="text-xs text-[var(--muted-foreground)]">
@@ -278,13 +281,15 @@ export function RulesetSheetBuilder({
     return (
       <div className="space-y-2">
         <p className="text-[0.6875rem] text-[var(--muted-foreground)]">
-          {t("ui.rulesets.builder.pickCount", { count: current.max, picked: picked.length })}
+          {most === 0
+            ? t("ui.rulesets.builder.pickNoneYet", { picked: picked.length })
+            : t("ui.rulesets.builder.pickCount", { count: most, picked: picked.length })}
         </p>
         <ul className="grid gap-1.5 sm:grid-cols-2">
           {options.map((entry) => {
             const on = picked.includes(entry.id);
             const takenAt = on ? undefined : elsewhere.get(entry.id);
-            const full = (!on && current.max > 1 && picked.length >= current.max) || takenAt !== undefined;
+            const full = (!on && (current.max > 1 || most === 0) && picked.length >= most) || takenAt !== undefined;
             const infoId = `${current.id}:${entry.id}`;
             const infoDomId = `${infoBaseId}-${current.id}-${entry.id}`;
             return (

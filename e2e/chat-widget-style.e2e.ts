@@ -1114,6 +1114,14 @@ for (const [preset, theme] of [
       ).toBeHidden();
       for (const chat of fixture.chats) {
         await showStyleScope(page, chat);
+        if (chat.view === "visual-novel" || (chat.mode === "game" && info.project.name === "desktop-chromium")) {
+          const control = page.locator(".mari-vn-history-control:visible, .mari-map-generate-control:visible");
+          await expect(control).toHaveCount(1);
+          await expect(control).toHaveCSS("font-family", selectedFont);
+          const painted = await surfaceAppearance(control);
+          expect(painted.background).toBe(colored.background);
+          if (preset === "dottore") expect(painted.clip).toContain("polygon");
+        }
         const path = info.outputPath(`chat-style-${preset}-${chat.view}.png`);
         await page.screenshot({ path, animations: "disabled" });
         await info.attach(`${preset} ${chat.view} chat style`, { path, contentType: "image/png" });
@@ -1146,6 +1154,15 @@ for (const [preset, theme] of [
           const paintedText = (await glyph.count()) ? glyph : scope.text;
           await expect(paintedText).toHaveCSS("background-image", textGradient);
           await expect(paintedText).toHaveCSS("-webkit-text-fill-color", "rgba(0, 0, 0, 0)");
+
+          if (chat.view === "visual-novel" || (chat.mode === "game" && info.project.name === "desktop-chromium")) {
+            const control = page.locator(".mari-vn-history-control:visible, .mari-map-generate-control:visible");
+            await expect(control).toHaveCSS("font-family", /serif/);
+            const painted = await surfaceAppearance(control);
+            expect(painted.clip).toContain("polygon");
+            expect(painted.image).toContain(background);
+            await expect(control.locator("svg")).toHaveCSS("color", "rgb(255, 107, 107)");
+          }
 
           if (chat.view === "classic" || chat.mode === "conversation") {
             const pager = page.locator(`[data-chat-mode="${chat.mode}"] .mari-message-swipes`).first();

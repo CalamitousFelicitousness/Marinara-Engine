@@ -1049,7 +1049,6 @@ export function ChatSettingsDrawer({
   const toggleTrackerPanel = () => {
     if (trackerPanelShown) {
       setTrackerPanelOpen(false, chat.id);
-      setTrackerPanelEnabled(false);
       return;
     }
     // Open needs the panel enabled first.

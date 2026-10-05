@@ -38,7 +38,15 @@ export interface WorldInterior {
   ground: string;
   /** The way out, in the bottom wall: where the party stands on coming in. */
   door: { x: number; y: number };
-  rooms: Array<{ x: number; y: number; w: number; h: number; use: WorldInteriorRoom }>;
+  rooms: Array<{
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    use: WorldInteriorRoom;
+    /** A room drawn by hand need not be a rectangle: its floor cells (index y * width + x), when given. */
+    cells?: number[];
+  }>;
   furniture: Array<{ x: number; y: number; kind: WorldFurniture }>;
   /** Where each person who belongs here is while here, by person id: a work spot, or their bed. */
   seats: Record<string, { x: number; y: number }>;
@@ -143,9 +151,16 @@ export function worldInterior(game: GameWorld, town: WorldTown, buildingId: stri
   const edit = game.edits?.interiors?.find(
     (each) => each.settlement === town.settlementId && each.building === buildingId,
   );
+  if (!edit) return laidOut;
+  // Rooms drawn by hand (W13c): in place of the laid-out rooms while the building is still what they were
+  // drawn for; one that no longer passes its checks falls back to the laid-out rooms.
+  if (edit.ground !== undefined) {
+    if (edit.use && edit.use !== laidOut.use) return laidOut;
+    return handRoomIssues(edit).length === 0 ? drawnByHand(town, building, laidOut.use, edit) : laidOut;
+  }
   // Furnished by hand (W13b) when the rooms are still the size they were furnished at; a hand layout
   // that no longer fits is not applied (the editor says why).
-  return edit && worldInteriorEditFits(laidOut, edit) && interiorEditIssues(laidOut, edit).length === 0
+  return worldInteriorEditFits(laidOut, edit) && interiorEditIssues(laidOut, edit).length === 0
     ? furnishByHand(town, building, laidOut, edit)
     : laidOut;
 }
@@ -187,6 +202,164 @@ export function worldInteriorOpen(interior: Pick<WorldInterior, "width" | "groun
  *  not is kept but not applied, and never blocks a save (the room editor says so). */
 export function worldInteriorEditFits(laidOut: WorldInterior, edit: WorldInteriorEdit): boolean {
   return edit.width === laidOut.width && edit.height === laidOut.height && (!edit.use || edit.use === laidOut.use);
+}
+
+/** The largest rooms drawn by hand, each way (the inside view does not pan), and the most rooms. */
+export const WORLD_HAND_ROOM_MAX = 32;
+export const WORLD_HAND_ROOM_MOST_ROOMS = 8;
+/** The most cells all of a world's hand-drawn rooms hold together. */
+export const WORLD_HAND_ROOM_CELLS = 65_536;
+/** Pieces a worker works at, by preference; a worker stands beside the next one free. */
+const WORK_PIECES: readonly WorldFurniture[] = ["counter", "workbench", "desk", "altar", "furnace", "table", "rack"];
+
+/** A hand-drawn room's floor regions, split at its doorways: each region's cells, the region holding the
+ *  step inside first. */
+function handRegions(width: number, ground: string, entry: number): number[][] {
+  const seen = new Set<number>();
+  const regions: number[][] = [];
+  const fill = (start: number) => {
+    const cells: number[] = [];
+    const queue = [start];
+    seen.add(start);
+    while (queue.length) {
+      const at = queue.pop()!;
+      cells.push(at);
+      for (const next of [at + 1, at - 1, at + width, at - width]) {
+        if (ground[next] !== "." || seen.has(next)) continue;
+        if ((next === at + 1 || next === at - 1) && Math.floor(next / width) !== Math.floor(at / width)) continue;
+        seen.add(next);
+        queue.push(next);
+      }
+    }
+    return cells.sort((a, b) => a - b);
+  };
+  if (ground[entry] === ".") regions.push(fill(entry));
+  for (let at = 0; at < ground.length; at++) if (ground[at] === "." && !seen.has(at)) regions.push(fill(at));
+  return regions;
+}
+
+/** Why rooms drawn by hand cannot be used, or nothing. Places count from 1. */
+function handRoomIssues(edit: WorldInteriorEdit): string[] {
+  const { width, height } = edit;
+  const ground = edit.ground ?? "";
+  const issues: string[] = [];
+  if (width > WORLD_HAND_ROOM_MAX || height > WORLD_HAND_ROOM_MAX)
+    return [`the rooms are ${width} by ${height}; rooms drawn by hand are at most ${WORLD_HAND_ROOM_MAX} each way.`];
+  if (ground.length !== width * height) return [`the drawing has ${ground.length} cells, not ${width} by ${height}.`];
+  const doors = [...ground].flatMap((c, at) => (c === "D" ? [at] : []));
+  if (doors.length !== 1) return [`the rooms need exactly one way out, not ${doors.length}.`];
+  const door = doors[0]!;
+  const [dx, dy] = [door % width, Math.floor(door / width)];
+  if (dy !== height - 1 || dx === 0 || dx === width - 1)
+    issues.push("the way out is in the bottom wall, not a corner.");
+  else if (ground[door - width] !== ".") issues.push("the way out has floor inside it.");
+  for (let at = 0; at < ground.length; at++) {
+    const [x, y] = [at % width, Math.floor(at / width)];
+    const edge = x === 0 || y === 0 || x === width - 1 || y === height - 1;
+    if (edge && ground[at] !== "#" && at !== door) {
+      issues.push(`the rooms are open at column ${x + 1}, row ${y + 1}: their edge is wall but for the way out.`);
+      break;
+    }
+    if (ground[at] !== "d") continue;
+    const across = ground[at - 1] === "." && ground[at + 1] === ".";
+    const down = ground[at - width] === "." && ground[at + width] === ".";
+    if (!across && !down)
+      issues.push(`the doorway at column ${x + 1}, row ${y + 1} does not lead from floor to floor.`);
+  }
+  if (issues.length) return issues;
+  const entry = door - width;
+  if (handRegions(width, ground, entry).length > WORLD_HAND_ROOM_MOST_ROOMS)
+    issues.push(`the rooms are more than ${WORLD_HAND_ROOM_MOST_ROOMS}.`);
+  const taken = new Set<number>();
+  for (const piece of edit.furniture) {
+    const at = piece.y * width + piece.x;
+    const where = `column ${piece.x + 1}, row ${piece.y + 1}`;
+    if (piece.x >= width || piece.y >= height || ground[at] !== ".")
+      issues.push(`the ${piece.kind} at ${where} is not on the floor.`);
+    else if (at === entry) issues.push(`the ${piece.kind} at ${where} stands in the way in.`);
+    else if (taken.has(at)) issues.push(`two pieces stand at ${where}.`);
+    taken.add(at);
+  }
+  if (!issues.length && !worldInteriorOpen({ width, ground, door: { x: dx, y: dy }, furniture: edit.furniture }))
+    issues.push("the walls or the furniture cut off part of the rooms (or a bed) from the way in.");
+  return issues;
+}
+
+/** Rooms drawn by hand (W13c) as Game Mode uses them: their rooms (split at doorways; the one with the way
+ *  in is the front room, one with a bed a room to sleep in, the rest back rooms), and where everyone who
+ *  belongs there is: each who lives there in a bed in turn; each who works there beside the next work
+ *  piece (by WORK_PIECES); anyone left on the open floor nearest the way in. */
+function drawnByHand(
+  town: WorldTown,
+  building: WorldTownBuilding,
+  use: WorldInteriorUse,
+  edit: WorldInteriorEdit,
+): WorldInterior {
+  const { width, height } = edit;
+  const ground = edit.ground!;
+  const doorAt = ground.indexOf("D");
+  const door = { x: doorAt % width, y: Math.floor(doorAt / width) };
+  const entry = doorAt - width;
+  const furniture = edit.furniture.map((piece) => ({ ...piece }));
+  const rooms: WorldInterior["rooms"] = handRegions(width, ground, entry).map((cells, index) => {
+    const xs = cells.map((at) => at % width);
+    const ys = cells.map((at) => Math.floor(at / width));
+    const [x, y] = [Math.min(...xs), Math.min(...ys)];
+    const inside = new Set(cells);
+    const hasBed = furniture.some((piece) => piece.kind === "bed" && inside.has(piece.y * width + piece.x));
+    const roomUse: WorldInteriorRoom = index === 0 ? "main" : hasBed && use !== "clinic" ? "sleep" : "back";
+    return { x, y, w: Math.max(...xs) - x + 1, h: Math.max(...ys) - y + 1, use: roomUse, cells };
+  });
+  const covered = new Set(furniture.map((piece) => piece.y * width + piece.x));
+  const used = new Set<number>([entry]);
+  const open = (at: number) => ground[at] === "." && !covered.has(at) && !used.has(at);
+  // Open floor by walking distance from the way in.
+  const byDistance: number[] = [];
+  const queue = [entry];
+  const reached = new Set(queue);
+  while (queue.length) {
+    const at = queue.shift()!;
+    byDistance.push(at);
+    for (const next of [at + 1, at - 1, at + width, at - width]) {
+      if (reached.has(next) || (ground[next] !== "." && ground[next] !== "d") || covered.has(next)) continue;
+      reached.add(next);
+      queue.push(next);
+    }
+  }
+  const seats: WorldInterior["seats"] = {};
+  const take = (at: number) => {
+    used.add(at);
+    return { x: at % width, y: Math.floor(at / width) };
+  };
+  const homeOf = (id: string) => town.homeOf[id] === building.id;
+  const residents = building.people.filter(homeOf).slice(0, MOST_PEOPLE);
+  const workers = building.people
+    .filter((id) => town.workOf[id] === building.id || (!homeOf(id) && building.kind !== "home"))
+    .slice(0, MOST_PEOPLE);
+  const beds = furniture.filter((piece) => piece.kind === "bed");
+  residents.forEach((id, index) => {
+    const bed = beds[index];
+    if (bed) seats[id] = { x: bed.x, y: bed.y };
+  });
+  const workPieces = WORK_PIECES.flatMap((kind) => furniture.filter((piece) => piece.kind === kind));
+  for (const id of workers) {
+    if (seats[id]) continue;
+    // The next work piece with open floor beside it (each piece seats one).
+    while (workPieces.length) {
+      const piece = workPieces.shift()!;
+      const at = piece.y * width + piece.x;
+      const beside = [at + width, at - width, at - 1, at + 1].find((next) => open(next) && reached.has(next));
+      if (beside === undefined) continue;
+      seats[id] = take(beside);
+      break;
+    }
+  }
+  for (const id of [...residents, ...workers]) {
+    if (seats[id]) continue;
+    const at = byDistance.find((each) => open(each));
+    if (at !== undefined) seats[id] = take(at);
+  }
+  return { buildingId: building.id, use, width, height, ground, door, rooms, furniture, seats };
 }
 
 /** Why a hand furnishing does not fit the rooms as laid out, or nothing. Places count from 1. */
@@ -281,10 +454,20 @@ export function worldInteriorEditIssues(
       continue;
     }
     const laidOut = layOutInterior(game, town, building);
+    if (edit.ground !== undefined) {
+      // Drawn for another kind of building (its id has come to name another): kept, not applied.
+      if (edit.use && edit.use !== laidOut.use) continue;
+      for (const issue of handRoomIssues(edit))
+        issues.push(`The rooms of "${building.name ?? edit.building}": ${issue}`);
+      continue;
+    }
     if (!worldInteriorEditFits(laidOut, edit)) continue;
     for (const issue of interiorEditIssues(laidOut, edit))
       issues.push(`The rooms of "${building.name ?? edit.building}": ${issue}`);
   }
+  const cells = (edits.interiors ?? []).reduce((sum, edit) => sum + (edit.ground?.length ?? 0), 0);
+  if (cells > WORLD_HAND_ROOM_CELLS)
+    issues.push(`Rooms drawn by hand hold ${cells} cells together; a world holds at most ${WORLD_HAND_ROOM_CELLS}.`);
   return [...new Set(issues)].slice(0, 20);
 }
 
@@ -666,7 +849,12 @@ export function worldInteriorWords(interior: WorldInterior, family?: string): st
     const counts = new Map<WorldFurniture, number>();
     for (const piece of interior.furniture) {
       if (piece.kind === "chair" || piece.kind === "rug" || piece.kind === "plant" || piece.kind === "lamp") continue;
-      if (piece.x < room.x || piece.x >= room.x + room.w || piece.y < room.y || piece.y >= room.y + room.h) continue;
+      if (
+        room.cells
+          ? !room.cells.includes(piece.y * interior.width + piece.x)
+          : piece.x < room.x || piece.x >= room.x + room.w || piece.y < room.y || piece.y >= room.y + room.h
+      )
+        continue;
       counts.set(piece.kind, (counts.get(piece.kind) ?? 0) + 1);
     }
     const things = [...counts].map(([kind, n]) => words[kind]![n > 1 ? 1 : 0]);

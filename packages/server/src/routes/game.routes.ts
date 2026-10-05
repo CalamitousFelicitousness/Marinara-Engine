@@ -18,6 +18,7 @@ import {
   storyState,
   type StoryScript,
   worldEditsEmpty,
+  worldEditsVersioned,
   worldEditIssues,
   worldTownEditIssues,
   worldEditsSchema,
@@ -11173,7 +11174,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const worldIssues = worldEditIssues(game, parsed.data);
     const issues = worldIssues.length ? worldIssues : worldTownEditIssues(game, parsed.data);
     if (issues.length) return reply.status(400).send({ error: issues.join(" "), issues });
-    const edits = worldEditsEmpty(parsed.data) ? undefined : parsed.data;
+    const edits = worldEditsEmpty(parsed.data) ? undefined : worldEditsVersioned(parsed.data);
     // The game's story (worldgen W10) names places and people: edits that take one away are refused, as
     // the story stands when the edits are written (one saved meanwhile counts).
     let storyRefusal = null as { error: string; issues: string[] } | null;

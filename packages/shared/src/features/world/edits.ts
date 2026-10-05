@@ -34,7 +34,8 @@ const cell = z.object({ x: z.number().int().min(0).max(255), y: z.number().int()
 
 export const worldEditsSchema = z
   .object({
-    editsVersion: z.literal(1),
+    /** 2 when the layer holds rooms drawn by hand (W13c), so an older Engine refuses it; 1 otherwise. */
+    editsVersion: z.union([z.literal(1), z.literal(2)]),
     /** The ground as painted: one character per cell, "." where it is as compiled, else the base-36
      *  index of a kit terrain class. */
     ground: z
@@ -133,6 +134,14 @@ export const worldEditsSchema = z
             height: z.number().int().min(3).max(64),
             /** What the rooms were furnished as when furnished (a home, a tavern ...). */
             use: z.enum(WORLD_INTERIOR_USES).optional(),
+            /** Rooms drawn by hand (W13c, `editsVersion` 2): the walls, floor and doorways, one character per
+             *  cell ("#" wall, "." floor, "d" a doorway between rooms, "D" the way out), in place of the
+             *  laid-out rooms, at their own size (at most WORLD_HAND_ROOM_MAX each way). */
+            ground: z
+              .string()
+              .max(64 * 64)
+              .regex(/^[#.dD]*$/, "Rooms drawn by hand are one of # . d D per cell")
+              .optional(),
             furniture: z
               .array(
                 z
@@ -156,6 +165,13 @@ export type WorldEditsInput = z.input<typeof worldEditsSchema>;
 
 /** True for a person added by hand (`<placeId>-e<n>`); drawn people are `<placeId>-<n>`. */
 export const worldPersonByHand = (id: string) => /-e\d+$/.test(id);
+
+/** A layer as saved: `editsVersion` 2 when it holds rooms drawn by hand (W13c), so an older Engine refuses it
+ *  rather than misreading it; 1 otherwise, so a layer without them stays readable by older Engines. */
+export function worldEditsVersioned(edits: WorldEdits): WorldEdits {
+  const version = edits.interiors?.some((each) => each.ground !== undefined) ? 2 : 1;
+  return edits.editsVersion === version ? edits : { ...edits, editsVersion: version };
+}
 
 /** True when a layer changes nothing. */
 export function worldEditsEmpty(edits: WorldEdits | null | undefined): boolean {

@@ -17,13 +17,15 @@ import { worldCast, type WorldPerson } from "./people.js";
 import { WORLD_TOWN_KINDS, worldTownBase, type WorldTown } from "./town.js";
 import { WORLD_INTERIOR_USES } from "./furniture.js";
 
-export const WORLD_SNAPSHOT_VERSION = 1;
+/** 2 (W13c): hand edits may hold rooms drawn by hand (`editsVersion` 2); version 1 snapshots read as
+ *  they are. An older Engine refuses a version 2 snapshot as made by a newer Marinara Engine. */
+export const WORLD_SNAPSHOT_VERSION = 2;
 
 /** A town as the snapshot keeps it: everything but its people, who are its places' casts. */
 export type WorldSnapshotTown = Omit<WorldTown, "people">;
 
 export interface WorldSnapshot {
-  snapshotVersion: typeof WORLD_SNAPSHOT_VERSION;
+  snapshotVersion: 1 | typeof WORLD_SNAPSHOT_VERSION;
   /** The generator that made it, for the record: a snapshot is read the same whatever made it. */
   generatorVersion: number;
   kit: WorldKit;
@@ -229,7 +231,7 @@ const townSchema = z
 
 const snapshotShape = z
   .object({
-    snapshotVersion: z.literal(WORLD_SNAPSHOT_VERSION),
+    snapshotVersion: z.union([z.literal(1), z.literal(WORLD_SNAPSHOT_VERSION)]),
     generatorVersion: z.number().int().min(1),
     kit: z.unknown(),
     seed: z.number().int().min(0).max(0xffffffff),

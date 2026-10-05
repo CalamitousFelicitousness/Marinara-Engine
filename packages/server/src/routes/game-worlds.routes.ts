@@ -23,6 +23,7 @@ import {
   worldEditIssues,
   worldTownEditIssues,
   worldEditsEmpty,
+  worldEditsVersioned,
   worldEditsSchema,
   worldFile,
   worldKitArtFamily,
@@ -251,7 +252,7 @@ export async function gameWorldsRoutes(app: FastifyInstance) {
       const issue = parsed.error.issues[0];
       return reply.status(400).send({ error: `The edits do not read: ${issue?.path.join(".")}: ${issue?.message}` });
     }
-    const edits = worldEditsEmpty(parsed.data) ? undefined : parsed.data;
+    const edits = worldEditsEmpty(parsed.data) ? undefined : worldEditsVersioned(parsed.data);
     const updated = await store.update(req.params.id, (row) => {
       const read = readRow(row);
       if (!read) return { refused: "This world no longer reads." };

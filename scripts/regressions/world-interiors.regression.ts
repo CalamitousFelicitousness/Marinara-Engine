@@ -40,6 +40,10 @@ import {
   worldTown,
   worldTownWhere,
   worldEditsEmpty,
+  worldEditsVersioned,
+  worldEditsSchema,
+  worldInteriorEditIssues,
+  WORLD_HAND_ROOM_MAX,
   type GameWorld,
   type WorldInterior,
   type WorldTown,
@@ -355,6 +359,115 @@ try {
       const free = homeInside.furniture.filter((piece) => piece.kind === "bed").length < 8;
       if (free) assert.ok(!bed, `${building.id}: awake, beside the bed`);
     }
+  }
+  // ── Rooms drawn by hand (W13c): walls, floor and doorways painted, furniture anywhere ──
+  {
+    const home = tavernTown.buildings.find(
+      (each) => each.kind === "home" && each.people.filter((id) => tavernTown.homeOf[id] === each.id).length >= 2,
+    )!;
+    const laid = layOutInterior(fantasy, tavernTown, home);
+    // Two rooms joined by a doorway; the way out under the front room.
+    const drawn = ["#########", "#...#...#", "#...d...#", "#...#...#", "#...#...#", "##D######"].join("");
+    const handEdit = (over: Record<string, unknown> = {}) => ({
+      settlement: tavernTown.settlementId,
+      building: home.id,
+      width: 9,
+      height: 6,
+      use: laid.use,
+      ground: drawn,
+      furniture: [
+        { x: 6, y: 1, kind: "bed" as const },
+        { x: 6, y: 4, kind: "bed" as const },
+        { x: 1, y: 1, kind: "table" as const },
+        { x: 3, y: 3, kind: "hearth" as const },
+      ],
+      ...over,
+    });
+    const withRooms = (entry: Record<string, unknown>) => {
+      const edits = worldEditsSchema.parse({ editsVersion: 2, interiors: [entry] });
+      return { game: { ...fantasy, edits } as GameWorld, edits };
+    };
+    const { game: handGame, edits: handEdits } = withRooms(handEdit());
+    assert.deepEqual(
+      worldInteriorEditIssues(handGame, handEdits, () => tavernTown),
+      [],
+      "drawn rooms pass",
+    );
+    const rooms = worldInterior(handGame, tavernTown, home.id)!;
+    assert.equal(rooms.ground, drawn, "the drawn rooms, in place of the laid-out ones");
+    assert.deepEqual(rooms.door, { x: 2, y: 5 });
+    assert.deepEqual(
+      rooms.rooms.map((room) => room.use),
+      ["main", "sleep"],
+      "split at the doorway: the front room, and the room with the beds",
+    );
+    // Everyone who lives there has a place: the beds in turn, the rest on open floor near the way in.
+    const residents = home.people.filter((id) => tavernTown.homeOf[id] === home.id).slice(0, 8);
+    const seatCells = residents.map((id) => {
+      const seat = rooms.seats[id];
+      assert.ok(seat, `${id} has a place in the drawn rooms`);
+      const c = rooms.ground[seat!.y * 9 + seat!.x];
+      assert.ok(c === ".", `${id} stands on the floor`);
+      return seat!.y * 9 + seat!.x;
+    });
+    assert.equal(new Set(seatCells).size, seatCells.length, "no two people on one cell");
+    assert.deepEqual(rooms.seats[residents[0]!], { x: 6, y: 1 }, "the first resident in the first bed");
+    assert.match(worldInteriorWords(rooms), /a front room with a table and a hearth and a room to sleep in with beds/u);
+    // Asleep at night in the drawn rooms' beds.
+    assert.ok(worldInteriorPeopleAt(tavernTown, rooms, 2).some((each) => each.asleep));
+    // Saved as editsVersion 2 (an older Engine refuses it); without drawn rooms, 1.
+    assert.equal(worldEditsVersioned({ editsVersion: 1, interiors: [handEdit()] } as never).editsVersion, 2);
+    assert.equal(worldEditsVersioned({ editsVersion: 2, interiors: [] } as never).editsVersion, 1);
+    // What is wrong with a drawing, said plainly; a drawing that fails falls back to the laid-out rooms.
+    const issuesOf = (over: Record<string, unknown>) => {
+      const { game, edits } = withRooms(handEdit(over));
+      return { issues: worldInteriorEditIssues(game, edits, () => tavernTown).join(" "), game };
+    };
+    const swap = (at: number, c: string) => drawn.slice(0, at) + c + drawn.slice(at + 1);
+    for (const [over, words, label] of [
+      [
+        { ground: ["##D######", "#...#...#", "#...d...#", "#...#...#", "#...#...#", "#########"].join("") },
+        /way out is in the bottom wall/u,
+        "the way out in the top wall",
+      ],
+      [{ ground: swap(9 * 3, ".") }, /open at column 1, row 4/u, "an open edge"],
+      [{ ground: swap(9 * 1 + 1, "d") }, /doorway at column 2, row 2/u, "a doorway into a wall"],
+      [
+        { furniture: [{ x: 0, y: 0, kind: "bed" }] },
+        /bed at column 1, row 1 is not on the floor/u,
+        "furniture on a wall",
+      ],
+      [{ furniture: [{ x: 2, y: 4, kind: "crate" }] }, /stands in the way in/u, "furniture in the way in"],
+      [{ furniture: [{ x: 4, y: 2, kind: "crate" }] }, /not on the floor/u, "furniture in a doorway"],
+      [
+        {
+          furniture: [
+            { x: 5, y: 2, kind: "crate" },
+            { x: 6, y: 1, kind: "bed" },
+          ],
+        },
+        /cut off/u,
+        "the doorway blocked from inside",
+      ],
+      [
+        { width: WORLD_HAND_ROOM_MAX + 1, ground: "#".repeat((WORLD_HAND_ROOM_MAX + 1) * 6) },
+        /at most 32/u,
+        "too wide",
+      ],
+      [{ ground: drawn.slice(0, 50) }, /not 9 by 6/u, "a drawing that does not fill"],
+    ] as const) {
+      const { issues, game } = issuesOf(over as Record<string, unknown>);
+      assert.match(issues, words, label);
+      assert.equal(
+        worldInterior(game, tavernTown, home.id)!.ground,
+        laid.ground,
+        `${label}: the laid-out rooms instead`,
+      );
+    }
+    // Drawn for another kind of building (its id came to name another): kept, not applied, not refused.
+    const other = issuesOf({ use: laid.use === "home" ? "tavern" : "home" });
+    assert.equal(other.issues, "", "drawn for another kind of building: no complaint");
+    assert.equal(worldInterior(other.game, tavernTown, home.id)!.ground, laid.ground, "and not applied");
   }
   // The schedule reads each building's own use (from its place's tags too): a building made a tavern
   // keeps its people there in the evening.

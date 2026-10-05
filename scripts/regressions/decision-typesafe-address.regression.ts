@@ -194,34 +194,27 @@ try {
     );
     assert.equal((await resolveDecisionConnection(row({ baseUrl }), noLink)).error, "invalid_url", baseUrl);
   }
-  // The TypeSafe key is never sent unencrypted to an address off this machine or network.
-  // A local-looking name is refused too: DNS could send it to a public server.
+  // A TypeSafe address follows the same rules as any other connection's Base URL (#7134):
+  // remote http, local names and https all resolve, exactly as they do for a Custom source.
   for (const baseUrl of [
     "http://decisions.example.com",
     "http://203.0.113.7:8791",
     "http://jev.local:8791",
-    "http://box.internal:8791",
-  ]) {
-    assert.equal((await resolveDecisionConnection(row({ baseUrl }), noLink)).error, "needs_https", baseUrl);
-  }
-  for (const baseUrl of [
+    "http://host.docker.internal:8791",
     "https://decisions.example.com",
     "http://localhost:8791",
     "http://[::1]:8791",
     "http://192.168.1.20:8791",
-    "https://jev.local:8791",
   ]) {
-    assert.ok((await resolveDecisionConnection(row({ baseUrl }), noLink)).connection, baseUrl);
+    const typesafe = await resolveDecisionConnection(row({ baseUrl }), noLink);
+    assert.ok(typesafe.connection, `${baseUrl}: ${typesafe.error}`);
+    assert.equal(typesafe.connection.endpoint, `${baseUrl}/v1/systemone`);
+    assert.equal(
+      Boolean((await resolveDecisionConnection(row({ decisionSource: "custom", baseUrl }), noLink)).connection),
+      true,
+      `same verdict as Custom for ${baseUrl}`,
+    );
   }
-  assert.ok(
-    (
-      await resolveDecisionConnection(
-        row({ decisionSource: "custom", baseUrl: "http://decisions.example.com" }),
-        noLink,
-      )
-    ).connection,
-    "a Custom server's own key keeps its current rules",
-  );
   // The provider URL policy refuses these before any connection is attempted. Matching the
   // flag name in the refusal tells it apart from an address that merely can't be reached.
   for (const baseUrl of ["http://10.0.0.2:8791", "http://169.254.169.254"]) {

@@ -83,6 +83,7 @@ import { DraftNumberInput } from "../ui/DraftNumberInput";
 import { decisionConnectionTestMessage } from "../../lib/decision-test-message";
 import { AtlasCloudModelOptions } from "./AtlasCloudModelOptions";
 import { NanoGptUsageWidget } from "./NanoGptUsageWidget";
+import { SubscriptionCostPill } from "./SubscriptionCostPill";
 import { HelpTooltip } from "../ui/HelpTooltip";
 import { SettingsCheckbox, SettingsSwitch } from "../panels/settings/SettingControls";
 import {
@@ -2673,37 +2674,7 @@ export function ConnectionEditor() {
                                 {modelFetchSourceLabel}
                               </span>
                             )}
-                            {/* Subscription cost. Included models always show a
-                                multiplier (green at 1x), so "covered at normal
-                                cost" stays distinct from "no data at all". */}
-                            {m.subscriptionIncluded === true && (
-                              <span
-                                className={cn(
-                                  "rounded-md px-1.5 py-0.5 text-[0.5625rem] font-semibold",
-                                  (m.inputTokenMultiplier ?? 1) > 1
-                                    ? "bg-[var(--marinara-editor-accent)]/15 text-[var(--marinara-editor-accent)]"
-                                    : "bg-emerald-400/15 text-emerald-400",
-                                )}
-                                title={localizeUi(
-                                  (m.inputTokenMultiplier ?? 1) > 1
-                                    ? "ui.connections.connectioneditor.inputTokenMultiplierHint_boosted"
-                                    : "ui.connections.connectioneditor.inputTokenMultiplierHint",
-                                  { multiplier: String(m.inputTokenMultiplier ?? 1) },
-                                )}
-                              >
-                                {localizeUi("ui.connections.connectioneditor.multiplierBadge", {
-                                  multiplier: String(m.inputTokenMultiplier ?? 1),
-                                })}
-                              </span>
-                            )}
-                            {m.subscriptionIncluded === false && (
-                              <span
-                                className="rounded-md bg-[var(--secondary)] px-1.5 py-0.5 text-[0.5625rem] font-medium text-[var(--muted-foreground)]"
-                                title={localizeUi("ui.connections.connectioneditor.notInSubscriptionHint")}
-                              >
-                                {localizeUi("ui.connections.connectioneditor.paid")}
-                              </span>
-                            )}
+                            {localShowUsageWidget && <SubscriptionCostPill model={m} />}
                             {localModel === m.id && <Check size="0.75rem" className="text-sky-400" />}
                           </div>
                           <span className="text-[0.625rem] text-[var(--muted-foreground)]">{m.id}</span>

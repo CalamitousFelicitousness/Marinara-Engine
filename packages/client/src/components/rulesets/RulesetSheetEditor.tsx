@@ -19,36 +19,28 @@ import {
   scaledRowColumns,
   RULESET_CATALOG_ROW_KEY,
   rulesetListRollNotation,
+  readRulesetBuilderState,
+  type RulesetBuilderState,
   type DiceRollResult,
   type RulesetCatalogEntriesById,
   type RulesetCatalogPayload,
   type RulesetDefinition,
-  type RulesetField,
   type RulesetLayerOptions,
-  type RulesetListColumn,
   type RulesetSheetBuild,
   type RulesetSheetEnvelope,
   type RulesetSheetItem,
 } from "@marinara-engine/shared";
 import { RulesetCatalogPicker } from "./RulesetCatalogPicker";
+import { RulesetSheetBuilder } from "./RulesetSheetBuilder";
 import { RulesetCatalogRefreshModal } from "./RulesetCatalogRefreshModal";
 import { rulesetCatalogQuery } from "../../hooks/use-capability-packages";
 import { applyCatalogRefresh, planCatalogRefresh, type CatalogRefreshRow } from "../../lib/ruleset-catalog";
 import { rulesetCheckValueText } from "../../lib/ruleset-resolution";
 import { DraftNumberInput } from "../ui/DraftNumberInput";
 import { api } from "../../lib/api-client";
-import { DraftTextarea } from "../ui/DraftTextarea";
+import { clamp, inputClass, labelClass, TypedInput, type Scalar } from "./RulesetTypedInput";
 
-type Scalar = number | string | boolean;
 type ListRow = Record<string, Scalar>;
-
-const inputClass =
-  "w-full min-w-0 rounded-lg border border-[var(--border)] bg-[var(--input)] px-2 py-1 text-xs text-[var(--foreground)]";
-const labelClass = "text-[0.6875rem] font-medium text-[var(--muted-foreground)]";
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(Math.max(value, min), max);
-}
 
 /** The build an envelope carries, on this version's layout (migrated as the stored sheet, before
  *  any default fills a gap a migration would have filled), completed with the ruleset's defaults for
@@ -66,115 +58,6 @@ function readBuild(definition: RulesetDefinition, envelope: RulesetSheetEnvelope
     fields: { ...defaults.fields, ...build.fields },
     lists: { ...build.lists },
   };
-}
-
-function TypedInput({
-  spec,
-  value,
-  onChange,
-  ariaLabel,
-  disabled = false,
-  title,
-  describedBy,
-}: {
-  spec: RulesetField | RulesetListColumn;
-  value: Scalar | undefined;
-  onChange: (value: Scalar) => void;
-  ariaLabel: string;
-  /** Set for a cell the ruleset keeps itself. The control stays in place and stops taking edits. */
-  disabled?: boolean;
-  /** The hint behind such a cell, for a pointer. */
-  title?: string;
-  /** The id of the visible text that says the same thing. A disabled control cannot be focused, so
-   *  a `title` alone never reaches a keyboard or a screen reader. */
-  describedBy?: string;
-}) {
-  if (spec.type === "number") {
-    return (
-      <DraftNumberInput
-        value={
-          typeof value === "number" && Number.isFinite(value) ? value : (spec.default ?? clamp(0, spec.min, spec.max))
-        }
-        onCommit={(next) => onChange(clamp(next, spec.min, spec.max))}
-        min={spec.min}
-        max={spec.max}
-        integer={spec.integer}
-        disabled={disabled}
-        title={title}
-        ariaLabel={ariaLabel}
-        ariaDescribedBy={describedBy}
-        className={`${inputClass} text-center`}
-      />
-    );
-  }
-  if (spec.type === "boolean") {
-    return (
-      <input
-        type="checkbox"
-        checked={value === true}
-        onChange={(event) => onChange(event.target.checked)}
-        disabled={disabled}
-        title={title}
-        aria-label={ariaLabel}
-        aria-describedby={describedBy}
-        className="h-4 w-4 accent-[var(--primary)]"
-      />
-    );
-  }
-  if (spec.type === "enum") {
-    // On purpose the control shows the value the sheet EVALUATES to. A stored string the ruleset
-    // no longer offers reads as the default in the sheet math, so showing the stale string beside
-    // modifiers computed from the default would misreport them. The stored string itself is left
-    // untouched until the user picks a value.
-    const current = typeof value === "string" && spec.values.includes(value) ? value : (spec.default ?? spec.values[0]);
-    return (
-      <select
-        value={current}
-        onChange={(event) => onChange(event.target.value)}
-        disabled={disabled}
-        title={title}
-        aria-label={ariaLabel}
-        aria-describedby={describedBy}
-        className={inputClass}
-      >
-        {spec.values.map((option) => (
-          <option key={option} value={option}>
-            {spec.valueLabels?.[option] ?? option}
-          </option>
-        ))}
-      </select>
-    );
-  }
-  if (spec.type === "longtext") {
-    return (
-      <DraftTextarea
-        value={typeof value === "string" ? value : ""}
-        onCommit={(next) => onChange(next.slice(0, spec.maxLength))}
-        maxLength={spec.maxLength}
-        rows={2}
-        disabled={disabled}
-        title={title}
-        aria-label={ariaLabel}
-        aria-describedby={describedBy}
-        className={inputClass}
-      />
-    );
-  }
-  const maxLength = spec.type === "text" ? spec.maxLength : 40;
-  return (
-    <input
-      type="text"
-      value={typeof value === "string" ? value : ""}
-      onChange={(event) => onChange(event.target.value.slice(0, maxLength))}
-      maxLength={maxLength}
-      placeholder={spec.type === "dice" ? spec.example : undefined}
-      disabled={disabled}
-      title={title}
-      aria-label={ariaLabel}
-      aria-describedby={describedBy}
-      className={inputClass}
-    />
-  );
 }
 
 /** Entries under the section headings the ruleset puts them in, each group drawn by `render`. A sheet
@@ -471,6 +354,21 @@ export function RulesetSheetEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadedCatalogs]);
 
+  // The guided builder (1.81), beside the full form when the ruleset declares one. Its choices ride in
+  // the envelope next to the build, so a step can be reopened.
+  const builderState = useMemo(() => readRulesetBuilderState(envelope), [envelope]);
+  const [view, setView] = useState<"guided" | "all">(sheet.builder ? "guided" : "all");
+  const viewBaseId = useId();
+  const commitBuilder = (next: RulesetSheetBuild, state: RulesetBuilderState) => {
+    editedRef.current = true;
+    onChange({
+      ...envelope,
+      v: rulesetSheetStamp(definition, envelope),
+      builder: state,
+      build: recomputeScaledRows(definition, next, loadedCatalogs),
+    });
+  };
+
   const hidden = (item: Parameters<typeof isRulesetItemHidden>[0]) => isRulesetItemHidden(item, build, definition);
   const offered = (ids: string[] | undefined) =>
     ids ? resolution.proficiencyTiers.filter((tier) => ids.includes(tier.id)) : resolution.proficiencyTiers;
@@ -541,8 +439,49 @@ export function RulesetSheetEditor({
       lists: { ...build.lists, [listId]: rows.map((row, i) => (i === index ? { ...row, [columnId]: value } : row)) },
     });
 
+  const tabs = sheet.builder ? (
+    <div role="tablist" aria-label={t("ui.rulesets.builder.views")} className="flex gap-1.5">
+      {(["guided", "all"] as const).map((each) => (
+        <button
+          key={each}
+          type="button"
+          role="tab"
+          id={`${viewBaseId}-${each}`}
+          aria-selected={view === each}
+          onClick={() => setView(each)}
+          className={`rounded-lg border px-2 py-1 text-[0.6875rem] ${
+            view === each
+              ? "border-[var(--primary)] bg-[var(--primary)]/15 text-[var(--foreground)]"
+              : "border-[var(--border)] text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
+          }`}
+        >
+          {t(each === "guided" ? "ui.rulesets.builder.guided" : "ui.rulesets.builder.allFields")}
+        </button>
+      ))}
+    </div>
+  ) : null;
+
+  if (sheet.builder && view === "guided") {
+    return (
+      <div className="space-y-3">
+        {tabs}
+        <div role="tabpanel" id={`${viewBaseId}-panel`} aria-labelledby={`${viewBaseId}-guided`}>
+          <RulesetSheetBuilder
+            definition={definition}
+            layerOptions={layerOptions}
+            build={build}
+            state={builderState}
+            evaluated={evaluated}
+            onApply={commitBuilder}
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
+      {tabs}
       {sheet.abilities.length > 0 && (
         <SectionedEntries
           definition={definition}

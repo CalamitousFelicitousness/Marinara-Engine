@@ -632,6 +632,54 @@ Separate catalog files come in a package: one published through the official cat
 
 The limits are 12 catalogs per ruleset, 2000 entries per catalog either way, and 1 MB for one catalog file.
 
+### The guided builder: making a character in steps
+
+A sheet may declare `sheet.builder` (Capability API 1.81). The sheet editor, in the character and persona editors and in a game's **Edit sheet**, then opens on a **Guided** view beside the full form (**All fields**): the steps across the top, each with a badge counting the choices it still waits on, **Back** and **Next** that never block (a player may leave choices for later), and the character as it stands beside them.
+
+```json
+"builder": {
+  "tier": "proficient",
+  "steps": [
+    { "id": "race", "label": "Race", "kind": "catalog", "catalog": "races", "field": "race" },
+    { "id": "subrace", "label": "Subrace", "kind": "catalog", "catalog": "races", "min": 0,
+      "within": { "step": "race", "filter": "parent" } },
+    { "id": "class", "label": "Class", "kind": "catalog", "catalog": "classes", "field": "class" },
+    { "id": "level", "label": "Level", "kind": "fields", "fields": ["level", "background"] },
+    { "id": "scores", "label": "Ability Scores", "kind": "abilities", "methods": {
+      "pointBuy": { "budget": 27, "costs": [[8, 0], [9, 1], [10, 2], [11, 3], [12, 4], [13, 5], [14, 7], [15, 9]] },
+      "standardArray": [15, 14, 13, 12, 10, 8],
+      "roll": { "count": 4, "sides": 6, "keep": 3 },
+      "manual": true } },
+    { "id": "skills", "label": "Proficiencies", "kind": "trained" },
+    { "id": "gear", "label": "Equipment", "kind": "startingGear" }
+  ]
+}
+```
+
+Up to 16 steps, each `{ id, label, kind, ... }`:
+
+- `catalog`: entries of a catalog of rows, shown as cards with their `summary` behind **Info**. `min` (default 1) is how many the step asks for and `max` (default 1) the most it takes; with `max` 1 a new pick replaces the old one. `field` names a text or enum field the picked labels are written to (an enum field takes the entry's id or label, whichever is one of its values). `filters` fixes values of the catalog's filters, and `within: { step, filter }` offers only entries whose `filter` names an entry picked at that earlier step, as a subrace names its race; unpick the race and its subrace counts for nothing.
+- `fields`: a short form of named fields. Its badge counts the ones still empty.
+- `abilities`: the scores (`abilities`, all of them when left out), set by any of `methods`: `pointBuy` (a `budget` and the cost of every score from the lowest, where every score starts, up one at a time), `standardArray` (one value to each score), `roll` (`count` dice of `sides`, keeping the highest `keep`, thrown by the Engine's own dice, one roll per score, then handed out like an array) and `manual`. What the picks add goes on top: the step shows base, bonus, total and modifier. One abilities step at most.
+- `trained`: the skill and save choices the picks offer, and the step's own `choose: [{ "what": "skills", "count": 2, "from": [...] }]` (any of them when `from` is left out).
+- `startingGear`: lists the ruleset's starting gear. Gear is taken in a game, from the inventory, as always.
+
+What a pick gives is its entry's `grants`, read only by the builder:
+
+```json
+{ "id": "half-elf", "label": "Half-Elf", "grants": {
+  "abilities": { "add": { "cha": 2 }, "choose": [{ "count": 2, "amount": 1, "except": ["cha"] }] },
+  "trained": { "skills": [], "saves": [], "choose": [{ "what": "skills", "count": 2 }] },
+  "sets": { "speed": 30 } } }
+```
+
+- `abilities.add` adds to scores; `abilities.choose` lets the player pick `count` scores (never one twice, never one in `except`) that get `amount` each. The choice is shown at the abilities step, or where the entry was picked when there is none.
+- `trained` trains skills and saves, and offers choices, shown at the first trained step or where the entry was picked. They are trained to the grant's `tier`, else the builder's `tier`, else the first tier above untrained the sheet offers for skills or saves.
+- `sets` writes field values: a class's hit die, its spellcasting ability.
+- A pick also writes the entry's `rows`, once. An entry may carry `grants` and no `rows` at all (a class whose features come from another catalog), and a catalog whose entries all just grant needs no `feeds`; the catalog picker never offers such entries.
+
+Unpicking takes back what a pick gave: its increases, its training, its field values and its rows. An edit made in **All fields** stays until the builder's own answer for that value changes, and a skill a player raised by hand to a higher tier stays theirs. The player's choices are kept beside the sheet, so a step can be reopened later.
+
 ## Items: what a party carries
 
 Armor, weapons, potions, gear, ammunition and money are items. An optional `items` block declares the words every item of your ruleset is written in, and a catalog with `holds: "items"` lists the items themselves. Both need Capability API 1.49; the block's `rarityCaps` and `propose`, which govern the items the Game Master invents, need 1.51, a value that reads the items a character holds (`itemStat`) needs 1.52, what an item does to checks while worn or carried, with the block's `bonus` caps, needs 1.53, what an item asks of its wearer and the abilities it changes need 1.54, a weapon's `attack` needs 1.55, what an item does in a fight needs 1.56, what a weapon shoots and holds loaded needs 1.57, a weapon's modes, off-hand attack, floor and conditions on a hit need 1.58, what using an item does in a fight, with the charges it holds, needs 1.59, a use that restores a pool needs 1.60, charges regained on a rest or an item that breaks when emptied need 1.61, a use that asks a check first (`gate`) needs 1.62, loot tables and a creature's loot need 1.63, a loot line that drops coins or a layer that takes coins out needs 1.64, a market, an item's `sold` place and a `service` need 1.65, a market day (a purse, `buyBack`, a seller's `stock`, a `limited` count, or a `sold` that names no place) needs 1.66, and a rider that fires on held weapons (`weapons`) needs 1.67.

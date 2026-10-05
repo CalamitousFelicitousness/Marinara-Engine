@@ -29,6 +29,8 @@ export type RulesetBuilderMethod = "pointBuy" | "standardArray" | "roll" | "manu
 /** What the builder wrote into the build last time it ran, so the next run can take it back. */
 export interface RulesetBuilderApplied {
   increases: Record<string, number>;
+  /** The scores the builder wrote from a method's base, so an edit made since is kept until they change. */
+  scores: Record<string, number>;
   skills: Record<string, string>;
   saves: Record<string, string>;
   fields: Record<string, Scalar>;
@@ -66,6 +68,7 @@ const stateSchema = z
     applied: z
       .object({
         increases: z.record(z.number().finite()).default({}),
+        scores: z.record(z.number().finite()).default({}),
         skills: z.record(z.string().max(40)).default({}),
         saves: z.record(z.string().max(40)).default({}),
         fields: z.record(z.union([z.number().finite(), z.string().max(4000), z.boolean()])).default({}),
@@ -358,7 +361,7 @@ function desired(
   state: RulesetBuilderState,
   catalogs: RulesetCatalogEntriesById,
 ): RulesetBuilderApplied {
-  const out: RulesetBuilderApplied = { increases: {}, skills: {}, saves: {}, fields: {}, rows: [] };
+  const out: RulesetBuilderApplied = { increases: {}, scores: {}, skills: {}, saves: {}, fields: {}, rows: [] };
   const abilities = new Set(definition.sheet.abilities.map((ability) => ability.id));
   const known = {
     skills: new Set(definition.sheet.skills.map((skill) => skill.id)),
@@ -416,6 +419,7 @@ export function applyRulesetBuilder(
 ): { build: RulesetSheetBuild; state: RulesetBuilderState } {
   const previous: RulesetBuilderApplied = state.applied ?? {
     increases: {},
+    scores: {},
     skills: {},
     saves: {},
     fields: {},
@@ -423,17 +427,24 @@ export function applyRulesetBuilder(
   };
   const next = desired(definition, state, catalogs);
 
-  // Scores: the method's base where it set one, else what the sheet has without the old increases.
+  // Scores: the method's base plus the increases, written when that total changes; else what the sheet
+  // has, moved by the change in increases. Either way a score typed in the full form since is kept
+  // until the builder's own answer for it changes.
   const base = rulesetBuilderBaseScores(definition, state);
   const abilities = { ...build.abilities };
   for (const ability of definition.sheet.abilities) {
     const id = ability.id;
     const before = previous.increases[id] ?? 0;
     const after = next.increases[id] ?? 0;
-    if (base[id] === undefined && before === after) continue;
+    if (base[id] !== undefined) {
+      const total = clamp(base[id]! + after, ability.min, ability.max);
+      next.scores[id] = total;
+      if (previous.scores[id] !== total) abilities[id] = total;
+      continue;
+    }
+    if (before === after) continue;
     const current = typeof abilities[id] === "number" ? abilities[id]! : ability.default;
-    const from = base[id] ?? current - before;
-    abilities[id] = clamp(from + after, ability.min, ability.max);
+    abilities[id] = clamp(current - before + after, ability.min, ability.max);
   }
 
   // Training: a tier the builder gave is set when its answer changes, and taken back only while the

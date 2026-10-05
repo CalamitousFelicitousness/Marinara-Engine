@@ -338,7 +338,12 @@ try {
   left = rulesetBuilderRemaining(definition, build, state, catalogs);
   assert.equal(left.scores, 0, "the budget is spent");
   assert.equal(left.race, 0);
-  apply({ ...state, base: { ...state.base, str: 14 } });
+  build = { ...build, abilities: { ...build.abilities, int: 17 } };
+  apply({ ...state });
+  assert.equal(build.abilities.int, 17, "a score typed in the full form survives");
+  apply({ ...state, base: { ...state.base, int: 13 } });
+  assert.equal(build.abilities.int, 13, "until the builder's own answer for it changes");
+  apply({ ...state, base: { ...state.base, int: 12, str: 14 } });
   assert.equal(rulesetBuilderRemaining(definition, build, state, catalogs).scores, 1, "points left over");
   apply({ ...state, base: { ...state.base, str: 16 } });
   assert.equal(rulesetBuilderRemaining(definition, build, state, catalogs).scores, 1, "off the table");

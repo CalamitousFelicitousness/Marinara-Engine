@@ -130,6 +130,7 @@ import { isGenerationSendBlocked } from "../../lib/generation-stream-policy";
 import { showConfirmDialog } from "../../lib/app-dialogs";
 import { CHAT_FLOATING_UI_DISMISS_EVENT } from "../../lib/chat-floating-ui-events";
 import { cn, generateClientId } from "../../lib/utils";
+import { gameInventoryRefusalKeys } from "../../lib/game-inventory-refusal";
 import {
   filterAudioGenerationConnections,
   filterLanguageGenerationConnections,
@@ -3554,7 +3555,8 @@ function GameSurfaceComponent({
   /**
    * What the Game Master's inventory tags did, announced as the player reaches them. The server
    * already applied every tag when it saved the reply, so nothing here changes the inventory: the
-   * screen picks up the new stacks with the chat, and a tag the server refused is not announced.
+   * screen picks up the new stacks with the chat. A refused buy or sale is told, since the narration
+   * may already have said it happened; any other refused tag is not announced.
    */
   const announceInventoryUpdates = useCallback(
     (updates: InventoryTag[]) => {
@@ -3629,8 +3631,20 @@ function GameSurfaceComponent({
           : localizeUi("ui.game.gamesurfacecomponent.inventoryYouGained", { item });
       };
       // Putting something on or binding it is shown like a gain; nothing is lost by either.
-      const notifications = updates.flatMap((update) =>
-        (update.ok && update.count > 0) || (update.revealed && update.action === "sell")
+      const notifications = updates.flatMap((update) => {
+        const refused = gameInventoryRefusalKeys(update);
+        if (refused) {
+          return [
+            {
+              gain: false,
+              text: localizeUi(refused.message, {
+                item: inventoryLabel(update.item, update.count),
+                why: localizeUi(refused.reason),
+              }),
+            },
+          ];
+        }
+        return (update.ok && update.count > 0) || (update.revealed && update.action === "sell")
           ? [
               {
                 gain:
@@ -3643,8 +3657,8 @@ function GameSurfaceComponent({
                 text: describe(update, inventoryLabel(update.item, update.count)),
               },
             ]
-          : [],
-      );
+          : [];
+      });
       if (notifications.length > 0) {
         setInventoryNotifications(notifications);
         if (notificationTimerRef.current) clearTimeout(notificationTimerRef.current);

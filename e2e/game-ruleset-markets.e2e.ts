@@ -139,6 +139,8 @@ test("the Game Master buys at a market town: priced, paid with change, a service
       });
       await expect(page.getByText(/^You bought A bed at the watch-house for 6 pennies\.$/)).toBeVisible();
       await expect(page.getByText(/bought Watch pistol/)).toHaveCount(0);
+      // The refusal is told, since the narration may already have said it was bought.
+      await expect(page.getByText(/^Watch pistol was not bought: it is not sold here\.$/)).toBeVisible();
       await page.screenshot({ path: testInfo.outputPath("market-bought.png") });
       // Two crowns and a third broken for the coat, 3 shillings back; a shilling broken for the bed,
       // 6 pennies back. The coat is in the bag; the bed and the pistol are not.

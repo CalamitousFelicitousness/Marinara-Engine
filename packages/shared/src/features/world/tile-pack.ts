@@ -99,6 +99,9 @@ export const WORLD_TILE_IDS = Object.freeze([
   ...WORLD_EDGE_TERRAINS.map((terrain) => `edge_${terrain}` as const),
   // Fringes (image packs): for a ground look, sixteen masks through which it spills onto its neighbours.
   ...WORLD_GROUND_LOOKS.map((look) => `fringe_${look}` as const),
+  // A site on the overworld the party can walk into (a cave, mine or ruin outside any town): its marker, a
+  // pack's own (image packs; each variant a kind of site, picked per place).
+  "site",
   // Towns laid out freely (image packs; map editor Phase 2): a bridge over water, a hedge or fence, and a
   // pack's eight decorations. Fields draw as the farmland look, paths and water with their edge tiles.
   "bridge",
@@ -131,6 +134,7 @@ export const WORLD_IMAGE_ONLY_TILE_IDS: readonly WorldTileId[] = Object.freeze([
   "hall",
   ...WORLD_EDGE_TERRAINS.map((terrain) => `edge_${terrain}` as const),
   ...WORLD_GROUND_LOOKS.map((look) => `fringe_${look}` as const),
+  "site",
   "bridge",
   "hedge",
   ...WORLD_TOWN_PROPS,

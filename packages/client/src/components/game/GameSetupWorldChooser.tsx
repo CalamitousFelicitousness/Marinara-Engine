@@ -7,6 +7,7 @@ import { useTranslation as useUiTranslation } from "react-i18next";
 import { Download, Shuffle, Sparkles } from "lucide-react";
 import {
   WORLD_GENERATOR_VERSION,
+  worldGeneratorReads,
   checkStoryScript,
   checkWorldBrief,
   compileGameWorld,
@@ -74,7 +75,10 @@ export function worldDraftFromWorld(
   story?: StoryScript,
   snapshot?: WorldSnapshot,
 ): WorldDraft {
-  const olderGenerator = world.generatorVersion !== undefined && world.generatorVersion !== WORLD_GENERATOR_VERSION;
+  // An older version this Engine still makes (a world made before sites); one it does not make comes with
+  // its snapshot instead, and a new world from it is this Engine's.
+  const olderGenerator =
+    worldGeneratorReads(world.generatorVersion) && world.generatorVersion !== WORLD_GENERATOR_VERSION;
   return {
     seed: String(world.seed),
     grounding: world.grounding ?? "expand",

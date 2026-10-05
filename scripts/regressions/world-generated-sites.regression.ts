@@ -203,6 +203,12 @@ try {
     const reseeded = worldDraftConfig(fantasy.kit, { ...draft, seed: "22" });
     assert.ok(reseeded.ok);
     assert.equal(reseeded.world.generatorVersion, WORLD_GENERATOR_VERSION, "a new seed is a new world");
+    const unknown = worldDraftConfig(
+      { ...fantasy.kit, label: "Other kit" },
+      worldDraftFromWorld({ seed: 21, generatorVersion: 99, grounding: "expand", brief: fantasyBrief.brief }),
+    );
+    assert.ok(unknown.ok);
+    assert.equal(unknown.world.generatorVersion, WORLD_GENERATOR_VERSION, "never a version this Engine does not make");
     const fresh = worldDraftConfig(fantasy.kit, worldDraftFromWorld({ seed: 21, brief: fantasyBrief.brief }));
     assert.ok(fresh.ok);
     assert.equal(fresh.world.generatorVersion, WORLD_GENERATOR_VERSION);

@@ -129,7 +129,7 @@ Open the reply's command information and choose **Restore original message** to 
 
 ## Echo Chamber
 
-**Echo Chamber** is an optional agent that adds a live audience reacting to your scene. It works like a streaming chat that posts a new reaction on a timer. Turn it on in **Chat Settings**, under **Agents**, on the **Echo Chamber** card. On a computer, drag its title bar to move it, resize it from an edge, or pin it to keep it open. **X** closes it to a movable button. On a phone, Echo keeps a compact view above the messages; **X** closes it to a movable button there too. Echo follows your **Chat widget style** in **Settings → Appearance → App**, and each chat remembers its layout.
+**Echo Chamber** is an optional agent that adds a live audience reacting to your scene. It works like a streaming chat that posts a new reaction on a timer. Turn it on in **Chat Settings**, under **Agents**, on the **Echo Chamber** card. On a computer, drag its title bar to move it, resize it from an edge, or pin it to keep it open. **X** closes it to a movable button. On a phone, Echo starts as a compact window above the messages. Drag its title bar to move it, or drag an edge or corner to resize it. Pin it to keep it open when you tap elsewhere, or lock it to prevent accidental moves. **X** closes it to a movable button there too. Echo follows your **Chat widget style** in **Settings → Appearance → App**, and each chat remembers its layout.
 
 ## CYOA choices
 

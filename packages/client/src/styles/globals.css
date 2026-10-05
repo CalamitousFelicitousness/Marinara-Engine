@@ -755,8 +755,8 @@
       --mari-window-shadow,
       var(--mari-widget-shadow, var(--mari-widget-frame-shadow, 0 25px 50px -12px rgb(0 0 0 / 0.4)))
     );
-    -webkit-backdrop-filter: var(--mari-window-backdrop-filter, blur(12px));
-    backdrop-filter: var(--mari-window-backdrop-filter, blur(12px));
+    -webkit-backdrop-filter: var(--mari-widget-shell-backdrop-filter, var(--mari-window-backdrop-filter, blur(12px)));
+    backdrop-filter: var(--mari-widget-shell-backdrop-filter, var(--mari-window-backdrop-filter, blur(12px)));
   }
 
   .mari-window__header {
@@ -1034,10 +1034,11 @@
     height: 1.5rem;
     align-items: center;
     justify-content: center;
-    border: 1px solid var(--mari-widget-custom-border-solid, var(--marinara-chat-chrome-button-border));
+    border: 1px solid
+      var(--mari-widget-custom-border-solid, var(--mari-widget-border, var(--marinara-chat-chrome-button-border)));
     border-radius: calc(var(--radius) - 0.125rem);
-    background: var(--mari-widget-custom-background, var(--marinara-chat-chrome-button-bg));
-    color: var(--mari-widget-custom-border-solid, var(--marinara-chat-chrome-button-text));
+    background: var(--mari-widget-custom-background, var(--mari-widget-bg, var(--marinara-chat-chrome-button-bg)));
+    color: var(--mari-widget-custom-border-solid, var(--mari-widget-accent, var(--marinara-chat-chrome-button-text)));
     box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.2);
     opacity: 0;
     pointer-events: none;
@@ -1058,9 +1059,18 @@
   }
 
   .mari-window__resize-handle:is(:hover, :focus-visible) .mari-window__resize-grip {
-    border-color: var(--mari-widget-custom-border-solid, var(--marinara-chat-chrome-button-border-hover));
-    background: var(--mari-widget-custom-background, var(--marinara-chat-chrome-button-bg-hover));
-    color: var(--mari-widget-custom-border-solid, var(--marinara-chat-chrome-button-text-hover));
+    border-color: var(
+      --mari-widget-custom-border-solid,
+      var(--mari-widget-accent, var(--marinara-chat-chrome-button-border-hover))
+    );
+    background: var(
+      --mari-widget-custom-background,
+      var(--mari-widget-soft, var(--marinara-chat-chrome-button-bg-hover))
+    );
+    color: var(
+      --mari-widget-custom-border-solid,
+      var(--mari-widget-text, var(--marinara-chat-chrome-button-text-hover))
+    );
   }
 
   @media (prefers-reduced-motion: reduce) {

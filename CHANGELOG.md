@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- On phones, Echo Chamber can be moved and resized, and Chat tools expands into round buttons instead of drawer rows. Dottore and Mari chat widget presets use refreshed palettes inspired by their character references, and cut-corner windows keep their backgrounds inside the frame (#7121).
+
 - Downloaded packages can now start roleplay scenes from their own threads, such as a direct message in a social app, the same way `/scene` starts one from a Conversation. The thread stays locked while the scene runs, **Back** returns to the thread instead of a Conversation, and the scene's recap goes back to the package when you end it. For package developers: capability API 1.66 adds `api.registerSceneOrigin` and the `scenes` permission (#7118).
 
 - Roleplay chats on wide screens can now sit on the left or right instead of the center: choose **Chat position** in **Settings > Appearance > Roleplay > Roleplay Presentation**. Messages and the input box move together and stay clear of open sidebars and a Tracker Panel on the same side. **Center** remains the default, and phones and Game mode are unchanged (#7106).

@@ -195,7 +195,13 @@ try {
     assert.equal((await resolveDecisionConnection(row({ baseUrl }), noLink)).error, "invalid_url", baseUrl);
   }
   // The TypeSafe key is never sent unencrypted to an address off this machine or network.
-  for (const baseUrl of ["http://decisions.example.com", "http://203.0.113.7:8791"]) {
+  // A local-looking name is refused too: DNS could send it to a public server.
+  for (const baseUrl of [
+    "http://decisions.example.com",
+    "http://203.0.113.7:8791",
+    "http://jev.local:8791",
+    "http://box.internal:8791",
+  ]) {
     assert.equal((await resolveDecisionConnection(row({ baseUrl }), noLink)).error, "needs_https", baseUrl);
   }
   for (const baseUrl of [
@@ -203,7 +209,7 @@ try {
     "http://localhost:8791",
     "http://[::1]:8791",
     "http://192.168.1.20:8791",
-    "http://jev.local:8791",
+    "https://jev.local:8791",
   ]) {
     assert.ok((await resolveDecisionConnection(row({ baseUrl }), noLink)).connection, baseUrl);
   }

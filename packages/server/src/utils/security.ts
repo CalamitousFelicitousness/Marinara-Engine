@@ -241,10 +241,13 @@ function isMdnsHostname(hostname: string): boolean {
   return normalizeHostnameForAddress(hostname).replace(/\.$/, "").toLowerCase().endsWith(".local");
 }
 
-/** A local name, or a loopback or private-network IP literal. Needs no DNS lookup. */
+/**
+ * `localhost`, or a loopback or private-network IP literal. Other local-looking names
+ * (`.local`, `.internal`) are excluded: DNS decides where they go, and it could be public.
+ */
 export function isLocalAddressHostname(hostname: string): boolean {
-  const address = normalizeHostnameForAddress(hostname);
-  return isLocalHostname(hostname) || isLoopbackIp(address) || isNonRoutableNetworkIp(address);
+  const address = normalizeHostnameForAddress(hostname).replace(/\.$/, "").toLowerCase();
+  return LOCALHOST_NAMES.has(address) || isLoopbackIp(address) || isNonRoutableNetworkIp(address);
 }
 
 export function normalizeLoopbackUrl(url: string | URL): string {

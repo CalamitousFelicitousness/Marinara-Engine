@@ -1637,9 +1637,12 @@ export function BotBrowserView() {
 
   const expirePygmalionSession = useCallback(() => {
     setPygLoggedIn(false);
-    setNsfw(false);
+    // A late response may arrive after a source switch: clear Pygmalion's own NSFW setting,
+    // and the visible toggle only while Pygmalion is still the active source.
+    setPersistNsfw("pygmalion", false);
+    if (sourceIdRef.current === "pygmalion") setNsfwRaw(false);
     toast.info(localizeUi("ui.botBrowser.botbrowserview.pygmalionSessionExpiredPleaseLogInAgain"));
-  }, [setPygLoggedIn, setNsfw, localizeUi]);
+  }, [setPygLoggedIn, localizeUi]);
 
   useEffect(() => {
     const allTags = new Set<string>();
@@ -1990,7 +1993,9 @@ export function BotBrowserView() {
       setPendingImport(null);
     } catch (error) {
       setPendingImport({ card });
-      toast.error(error instanceof Error ? error.message : localizeUi("ui.botBrowser.botbrowserview.importFailed"));
+      if (error instanceof PygmalionSessionExpiredError) expirePygmalionSession();
+      else
+        toast.error(error instanceof Error ? error.message : localizeUi("ui.botBrowser.botbrowserview.importFailed"));
     } finally {
       setImporting(false);
     }
@@ -2003,7 +2008,9 @@ export function BotBrowserView() {
       await importPreparedCard(pendingImport.prepared, pendingImport.target, importEmbeddedLorebook);
       setPendingImport(null);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : localizeUi("ui.botBrowser.botbrowserview.importFailed"));
+      if (error instanceof PygmalionSessionExpiredError) expirePygmalionSession();
+      else
+        toast.error(error instanceof Error ? error.message : localizeUi("ui.botBrowser.botbrowserview.importFailed"));
     } finally {
       setImporting(false);
     }
@@ -2381,6 +2388,7 @@ export function BotBrowserView() {
               tagImportMode={tagImportMode}
               onTagImportModeChange={setTagImportMode}
               onDetailUpdate={setDetail}
+              onPygmalionSessionExpired={expirePygmalionSession}
             />
           ) : (
             <div className="flex flex-col gap-4">
@@ -3246,6 +3254,7 @@ function DetailView({
   tagImportMode,
   onTagImportModeChange,
   onDetailUpdate,
+  onPygmalionSessionExpired,
 }: {
   card: BrowseCard;
   detail: CardDetail | null;
@@ -3257,6 +3266,7 @@ function DetailView({
   tagImportMode: TagImportMode;
   onTagImportModeChange: (mode: TagImportMode) => void;
   onDetailUpdate?: (detail: CardDetail) => void;
+  onPygmalionSessionExpired?: () => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
   const [zoomed, setZoomed] = useState(false);
@@ -3306,7 +3316,8 @@ function DetailView({
       URL.revokeObjectURL(url);
       toast.success(localizeUi("ui.botBrowser.detailview.downloadedValue1AsPngCharacterCard", { value1: card.name }));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : localizeUi("ui.botBrowser.detailview.downloadFailed"));
+      if (err instanceof PygmalionSessionExpiredError) onPygmalionSessionExpired?.();
+      else toast.error(err instanceof Error ? err.message : localizeUi("ui.botBrowser.detailview.downloadFailed"));
     } finally {
       setDownloading(false);
     }

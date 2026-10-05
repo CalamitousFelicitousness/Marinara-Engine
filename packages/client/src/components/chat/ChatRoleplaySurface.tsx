@@ -1689,7 +1689,7 @@ export function ChatRoleplaySurface({
               "--roleplay-avatar-scale": roleplayAvatarScale,
               // A docked Tracker Panel on the same side narrows the chat area the column moves into.
               "--mari-chat-position-clearance":
-                trackerPanelSide === sideChatPosition ? "var(--tracker-panel-overlay-clearance, 0px)" : "0px",
+                trackerPanelSide === sideChatPosition ? "var(--tracker-panel-chat-clearance, 0px)" : "0px",
             }),
           } as CSSProperties
         }

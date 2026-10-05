@@ -328,18 +328,30 @@ test("Chat position keeps the column clear of a Tracker Panel on the same side",
     });
     const tracker = page.locator('[data-component="TrackerDataSidebarDesktop.left"]');
     await expect(tracker).toBeVisible();
-    await expect(async () => {
-      const box = (await tracker.boundingBox())!;
-      const layout = await readLayout(page);
-      expect(layout.position).toBe("left");
-      // The panel keeps its full Standard width (340px) rather than squeezing into the gutter.
-      expect(Math.round(box.width)).toBe(340);
-      expectOneColumn(layout);
-      for (const column of [layout.composer, ...layout.columns, ...layout.avatars]) {
-        expect(column.left).toBeGreaterThanOrEqual(box.x + box.width);
-      }
-    }).toPass({ timeout: 10_000 });
+    const expectClearOfTracker = async (oneColumn: boolean) => {
+      await expect(async () => {
+        const before = (await tracker.boundingBox())!;
+        await page.waitForTimeout(300);
+        const box = (await tracker.boundingBox())!;
+        const layout = await readLayout(page);
+        expect(layout.position).toBe("left");
+        // The panel keeps its full Standard width (340px), and the column and panel settle instead of
+        // resizing each other.
+        expect(Math.round(box.width)).toBe(340);
+        expect(box).toEqual(before);
+        if (oneColumn) expectOneColumn(layout);
+        for (const column of [layout.composer, ...layout.columns, ...layout.avatars]) {
+          expect(column.left).toBeGreaterThanOrEqual(box.x + box.width);
+        }
+      }).toPass({ timeout: 10_000 });
+    };
+    await expectClearOfTracker(true);
     await shot(page, "left-tracker-panel");
+    // A pane too narrow for the panel and a full column: the column narrows, the panel keeps its width.
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.locator('[data-tour="sidebar-toggle"]').click();
+    await expectClearOfTracker(false);
+    await shot(page, "left-tracker-panel-chats-sidebar");
   } finally {
     await cleanup();
   }

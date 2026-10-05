@@ -962,16 +962,15 @@ export function ChatRoleplaySurface({
     chatCharIds,
     personaInfo,
   };
-  // On a phone the Tracker Panel switch shows a bubble, first in the column of control bubbles.
+  // Panel-enabled chats use the Trackers button to reopen their selected surface.
   const phoneLayout = useMatchMedia("(max-width: 767px)");
   const trackerPanelEnabled = useUIStore((s) => s.trackerPanelEnabled);
   const trackerPanelOpen = useUIStore((s) => s.trackerPanelOpen);
   const showTrackerPanelBubble =
-    phoneLayout &&
     trackerPanelEnabled &&
     trackerPanelOpen &&
     (chatMeta.enableAgents === true || chatMeta.advancedMemory?.enabled === true);
-  const phoneSlotOffset = showTrackerPanelBubble ? 1 : 0;
+  const phoneSlotOffset = phoneLayout && showTrackerPanelBubble ? 1 : 0;
   useRenderTimer("rp-surface"); // [#3104 diagnostic]
   const isMobileToolbarViewport = useIsMobileToolbarViewport();
   const streamedMessageId = useChatStore((s) => s.streamedMessageIds.get(activeChatId) ?? null);
@@ -2200,7 +2199,7 @@ export function ChatRoleplaySurface({
       </div>
 
       {/* Package toolbars, Beholder and the connected chat are windows that minimize to bubbles. */}
-      {showTrackerPanelBubble && <TrackerPanelBubble />}
+      {showTrackerPanelBubble && <TrackerPanelBubble chatId={activeChatId} />}
       {conversationToolbarPackages.map((item, index) => (
         <ChatControlWindow
           key={`${item.id}-toolbar-window`}

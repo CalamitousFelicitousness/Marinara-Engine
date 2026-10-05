@@ -54,6 +54,9 @@ export interface WorldDraft {
   /** The world as it was made (W11), for a world from a file another generator made: kept on the same
    *  terms, since changing the seed or brief makes a new world with this Engine's generator. */
   snapshot?: WorldSnapshot;
+  /** The generator version of a world read from a file, a setup or a map pack: kept on the same terms
+   *  as the hand edits, so a world made before sites is made again without them. */
+  generatorVersion?: number;
 }
 
 const editsKey = (seed: number, grounding: WorldDraft["grounding"], brief: WorldBriefInput | null) =>
@@ -66,10 +69,12 @@ export function worldDraftFromWorld(
     grounding?: WorldDraft["grounding"];
     brief: WorldBriefInput;
     edits?: WorldEdits;
+    generatorVersion?: number;
   },
   story?: StoryScript,
   snapshot?: WorldSnapshot,
 ): WorldDraft {
+  const olderGenerator = world.generatorVersion !== undefined && world.generatorVersion !== WORLD_GENERATOR_VERSION;
   return {
     seed: String(world.seed),
     grounding: world.grounding ?? "expand",
@@ -84,7 +89,8 @@ export function worldDraftFromWorld(
     ...(world.edits ? { edits: world.edits } : {}),
     ...(story ? { story } : {}),
     ...(snapshot ? { snapshot } : {}),
-    ...(world.edits || story || snapshot
+    ...(olderGenerator ? { generatorVersion: world.generatorVersion } : {}),
+    ...(world.edits || story || snapshot || olderGenerator
       ? { editsFor: editsKey(world.seed, world.grounding ?? "expand", world.brief) }
       : {}),
   };
@@ -163,10 +169,16 @@ export function worldDraftConfig(
   };
   const checked = checkWorldBrief(kit, brief);
   if (!checked.ok) return { ok: false, issues: checked.issues };
-  const world = { seed, generatorVersion: WORLD_GENERATOR_VERSION, grounding: draft.grounding, brief: checked.brief };
   // Hand edits are made for one compile: they stay while they fit it, and are left out once the seed or
-  // the brief changes under them.
+  // the brief changes under them. So does the generator version a world was made by: a new seed or brief
+  // is a new world, made by this Engine's generator.
   const unchanged = draft.editsFor === editsKey(seed, draft.grounding, draft.brief);
+  const world = {
+    seed,
+    generatorVersion: (unchanged && draft.generatorVersion) || WORLD_GENERATOR_VERSION,
+    grounding: draft.grounding,
+    brief: checked.brief,
+  };
   const fits = draft.edits && unchanged && worldEditIssues({ kit, ...world }, draft.edits).length === 0;
   const made = fits ? { ...world, edits: draft.edits } : world;
   // A story names the world's places and people (by id), so it stays only with the very world it was

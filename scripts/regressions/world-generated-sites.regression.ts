@@ -186,6 +186,47 @@ try {
   assert.ok(worldSites(gameWorldFromMetadata(recipe(2))!).length > 0, "a version 2 recipe has them");
   assert.equal(gameWorldFromMetadata(recipe(3)), null, "a version this Engine does not know is refused");
 
+  // A version 1 world read in a new game's setup (a world file, a setup file, a library world, a map
+  // pack) is made again as version 1; a new seed or brief makes a version 2 world.
+  {
+    const { worldDraftFromWorld, worldDraftConfig } =
+      await import("../../packages/client/src/components/game/GameSetupWorldChooser.tsx");
+    const draft = worldDraftFromWorld({
+      seed: 21,
+      generatorVersion: 1,
+      grounding: "expand",
+      brief: fantasyBrief.brief,
+    });
+    const kept = worldDraftConfig(fantasy.kit, draft);
+    assert.ok(kept.ok);
+    assert.equal(kept.world.generatorVersion, 1, "the setup keeps the world's version");
+    const reseeded = worldDraftConfig(fantasy.kit, { ...draft, seed: "22" });
+    assert.ok(reseeded.ok);
+    assert.equal(reseeded.world.generatorVersion, WORLD_GENERATOR_VERSION, "a new seed is a new world");
+    const fresh = worldDraftConfig(fantasy.kit, worldDraftFromWorld({ seed: 21, brief: fantasyBrief.brief }));
+    assert.ok(fresh.ok);
+    assert.equal(fresh.world.generatorVersion, WORLD_GENERATOR_VERSION);
+  }
+
+  // A map pack's world is its version too: the same seed and brief on version 2 is not its map.
+  {
+    const { mapPackLockIssue } = await import("../../packages/server/src/services/game/map-pack.service.js");
+    const shipped = { seed: 21, generatorVersion: 1, grounding: "expand" as const, brief: fantasyBrief.brief };
+    const pack = {
+      packageId: "p",
+      name: "Old Maps",
+      kit: fantasy.kit,
+      worlds: [{ world: shipped }],
+      tiles: [],
+    } as never;
+    assert.equal(mapPackLockIssue(pack, { worldKit: fantasy.kit, world: shipped }), null, "its own world");
+    assert.match(
+      mapPackLockIssue(pack, { worldKit: fantasy.kit, world: { ...shipped, generatorVersion: 2 } }) ?? "",
+      /sets the game's world to one of its own maps/u,
+      "not the same seed made by another version",
+    );
+  }
+
   const db = await getDB();
   const app = Fastify();
   app.decorate("db", db);

@@ -85,7 +85,7 @@ export function mapPackLockIssue(
   pack: MapPack,
   setup: {
     worldKit?: unknown;
-    world?: { seed: number; grounding?: string; brief: unknown; edits?: unknown } | null;
+    world?: { seed: number; generatorVersion?: number; grounding?: string; brief: unknown; edits?: unknown } | null;
     story?: unknown;
   },
 ): string | null {
@@ -98,6 +98,8 @@ export function mapPackLockIssue(
     ? pack.worlds.some(
         ({ world: shipped, story }) =>
           shipped.seed === world.seed &&
+          // The version that made it too: the same seed on another generator is another world.
+          shipped.generatorVersion === world.generatorVersion &&
           shipped.grounding === (world.grounding ?? "expand") &&
           sameJson(shipped.brief, world.brief) &&
           sameJson(shipped.edits ?? null, world.edits ?? null) &&

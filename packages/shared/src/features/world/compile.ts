@@ -632,7 +632,8 @@ export function compileWorld({
 
   // Generator 2: sites out of the settlements, after everything else, so the rest is made as before.
   // Never in a strict world, which holds the brief's places and nothing invented beside them.
-  if (generatorVersion >= 2 && !strict) places.push(...compileSites(seed, kit, places, kindOf, width, height, settlementsDepth));
+  if (generatorVersion >= 2 && !strict)
+    places.push(...compileSites(seed, kit, places, kindOf, width, height, settlementsDepth));
 
   return {
     generatorVersion,

@@ -12,6 +12,8 @@
  *   - A map made by hand for a place (not a settlement): walled all round, entered on floor, every floor cell
  *     reachable, props and spots on floor, a spot's people people of the world, one map a place; spots say
  *     who stands where by the hour. Too big a map is refused by the schema.
+ *   - A site (a place outside any town) is locked by hand hidden, sealed or open; a settlement, no place or
+ *     a place locked twice is refused; a layer with locks is editsVersion 3.
  */
 import assert from "node:assert/strict";
 
@@ -32,6 +34,7 @@ import {
   worldMapEditIssues,
   worldPlaceMap,
   worldPlaceMapSpotsAt,
+  worldSiteLock,
   worldSnapshot,
   worldTown,
   worldTownDoorCell,
@@ -273,4 +276,38 @@ assert.ok(
   "too wide for the schema",
 );
 
-console.log("World free towns: buildings placed freely, new ground and decorations checked, maps of places kept.");
+// ── Sites' locks ──
+const locks = worldEditsVersioned({ editsVersion: 1, sites: [{ place: cave.id, lock: "hidden" }] });
+assert.equal(locks.editsVersion, 3, "a lock is editsVersion 3");
+assert.deepEqual(worldTownEditIssues(game, locks), [], "a site hidden");
+assert.equal(worldSiteLock(withEdits(game, locks), cave.id), "hidden");
+assert.equal(worldSiteLock(game, cave.id), null, "left to the game");
+has(
+  worldTownEditIssues(game, { editsVersion: 3, sites: [{ place: city.id, lock: "sealed" }] }),
+  /a town is never locked/,
+  "a settlement",
+);
+has(
+  worldTownEditIssues(game, { editsVersion: 3, sites: [{ place: "nowhere", lock: "open" }] }),
+  /No place/,
+  "no place",
+);
+has(
+  worldTownEditIssues(game, {
+    editsVersion: 3,
+    sites: [
+      { place: cave.id, lock: "open" },
+      { place: cave.id, lock: "sealed" },
+    ],
+  }),
+  /locked twice/,
+  "twice",
+);
+assert.ok(
+  !worldEditsSchema.safeParse({ editsVersion: 3, sites: [{ place: cave.id, lock: "closed" }] }).success,
+  "no such lock",
+);
+
+console.log(
+  "World free towns: buildings placed freely, new ground and decorations checked, maps of places and sites' locks kept.",
+);

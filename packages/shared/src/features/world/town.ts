@@ -28,7 +28,7 @@ import type { WorldPresent } from "./ledger.js";
 import { WORLD_PEOPLE_DEFAULTS, worldCast, type WorldPerson } from "./people.js";
 import { worldBuildingHasRooms, worldInteriorEditIssues, worldInteriorUse, worldNamedPlaceUse } from "./interior.js";
 import type { WorldInteriorUse } from "./furniture.js";
-import { worldMapEditIssues } from "./place-maps.js";
+import { worldMapEditIssues, worldSiteEditIssues } from "./place-maps.js";
 
 export const WORLD_TOWN_KINDS = Object.freeze(["landmark", "place", "work", "home"] as const);
 export type WorldTownKind = (typeof WORLD_TOWN_KINDS)[number];
@@ -236,6 +236,8 @@ export function worldTownEditIssues(game: GameWorld, edits: WorldEdits): string[
   }
   // Maps made by hand for places (map editor Phase 3).
   if (edits.maps?.length) issues.push(...worldMapEditIssues(next, edits));
+  // Sites locked or opened by hand.
+  if (edits.sites?.length) issues.push(...worldSiteEditIssues(next, edits));
   return [...new Set(issues)].slice(0, 20);
 }
 

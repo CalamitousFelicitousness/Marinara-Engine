@@ -10,6 +10,7 @@ import {
   DUNGEON_EXIT_PROP,
   dungeonWayOutWords,
   gameDungeonOnWayOut,
+  gameDungeonSpotsAt,
   DUNGEON_SETS,
   characterFacing,
   characterFrameAt,
@@ -59,6 +60,7 @@ export function DungeonMapView({
   turnKey,
   canWalk,
   onLeft,
+  hour,
 }: {
   chatId: string;
   turnKey: string | null;
@@ -66,6 +68,8 @@ export function DungeonMapView({
   canWalk: boolean;
   /** The party left by the way out. */
   onLeft: () => void;
+  /** The game's hour, for who stands on a hand-made map's spots. */
+  hour?: number;
 }) {
   const { t } = useTranslation();
   const { data } = useDungeonMap(chatId, turnKey, true);
@@ -158,6 +162,15 @@ export function DungeonMapView({
   );
   const resting = camera(partyRef.current ?? { x: mapSize.width / 2, y: mapSize.height / 2 });
 
+  const standing = useMemo(
+    () =>
+      kept && hour !== undefined
+        ? gameDungeonSpotsAt(kept, hour).flatMap((spot) =>
+            spot.people[0] ? [{ at: { x: spot.x, y: spot.y }, person: spot.people[0] }] : [],
+          )
+        : [],
+    [hour, kept],
+  );
   const draw = useCallback(
     (cam: Point, frame = 1) => {
       const canvas = canvasRef.current;
@@ -173,6 +186,12 @@ export function DungeonMapView({
       ctx.imageSmoothingEnabled = drawTile.image && resolution > scale * dpr;
       ctx.drawImage(base, 0, 0, base.width / resolution, base.height / resolution);
       ctx.imageSmoothingEnabled = false;
+      // On a map made by hand, someone at each spot in use at the hour (map editor Phase 3).
+      for (const { at, person } of standing) {
+        if (drawTile.character(ctx, { person: person.id }, at.x * T, at.y * T)) continue;
+        const pick = ([...person.id].reduce((h, c) => (Math.imul(h, 31) + c.charCodeAt(0)) >>> 0, 7) % 100) / 100;
+        if (!drawTile(ctx, "folk", at.x * T, at.y * T - 4, pick)) paintParty(ctx, at.x * T + 1, at.y * T - 3, false);
+      }
       const party = partyRef.current;
       if (party) {
         const drawn = drawTile.character(
@@ -187,7 +206,7 @@ export function DungeonMapView({
         if (!drawn && !drawTile(ctx, "party", x, y)) paintParty(ctx, x + 1, y + 1, frame !== 1);
       }
     },
-    [base, drawTile, resolution, scale, size.height, size.width],
+    [base, drawTile, resolution, scale, size.height, size.width, standing],
   );
   const drawRef = useRef(draw);
   drawRef.current = draw;

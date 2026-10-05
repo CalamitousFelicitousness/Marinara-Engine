@@ -628,6 +628,25 @@ export const gameDungeonMapSchema = z
     pack: z.string().max(120).optional(),
     /** Made by hand (map editor Phase 3): props drawn only, and the way out is where the party came in. */
     hand: z.literal(true).optional(),
+    /** Where people stand on a map made by hand, by the hour (map editor Phase 3, B3), with their names as
+     *  they were when the party went in. */
+    spots: z
+      .array(
+        z
+          .object({
+            x: z.number().int().min(0).max(63),
+            y: z.number().int().min(0).max(47),
+            name: z.string().trim().min(1).max(80),
+            people: z
+              .array(z.object({ id: z.string().min(1).max(32), name: z.string().trim().min(1).max(120) }).strict())
+              .max(8),
+            from: z.number().int().min(0).max(23).optional(),
+            to: z.number().int().min(1).max(24).optional(),
+          })
+          .strict(),
+      )
+      .max(32)
+      .optional(),
     seed: z.number().int(),
     // As small as a map made by hand may be (WORLD_MAP_MAX's floor, map editor Phase 3).
     width: z.number().int().min(4).max(64),
@@ -734,7 +753,20 @@ export function gameDungeonMapFromPlaceMap(
   set: DungeonSet,
   id: string,
   place: string,
+  /** A person's name by their id, for the people on the map's spots (one with none is left off). */
+  personName: (id: string) => string | undefined = () => undefined,
 ): GameDungeonMap {
+  const spots = (map.spots ?? []).map((spot) => ({
+    x: spot.x,
+    y: spot.y,
+    name: spot.name,
+    people: (spot.people ?? []).flatMap((person) => {
+      const named = personName(person);
+      return named ? [{ id: person, name: named }] : [];
+    }),
+    ...(spot.from !== undefined ? { from: spot.from } : {}),
+    ...(spot.to !== undefined ? { to: spot.to } : {}),
+  }));
   const props = Array.from({ length: map.width * map.height }, () => "-");
   for (const prop of map.props ?? []) props[prop.y * map.width + prop.x] = prop.tile.replace(/^dn_prop/u, "");
   return {
@@ -752,7 +784,17 @@ export function gameDungeonMapFromPlaceMap(
     rooms: [],
     entrance: map.entry,
     at: map.entry,
+    ...(spots.length ? { spots } : {}),
   };
+}
+
+/** The spots of a kept map whose people stand there at an hour (all day when a spot names no hours;
+ *  hours wrap past midnight), as `worldPlaceMapSpotsAt` reads a map made by hand. */
+export function gameDungeonSpotsAt(map: GameDungeonMap, hour: number): NonNullable<GameDungeonMap["spots"]> {
+  return (map.spots ?? []).filter((spot) => {
+    const [from, to] = [spot.from ?? 0, spot.to ?? 24];
+    return from <= to ? hour >= from && hour < to : hour >= from || hour < to;
+  });
 }
 
 /** The way out in words for leaving by it: "the stairs", "the ladder", "the ladder hatch" (the set's
@@ -827,7 +869,7 @@ export function dungeonWalkMinutes(steps: number): number {
 }
 
 /** The map and where the party stands, for the Game Master. */
-export function gameDungeonMapPromptText(map: GameDungeonMap): string {
+export function gameDungeonMapPromptText(map: GameDungeonMap, hour?: number): string {
   const cells = dungeonFromGameDungeonMap(map);
   const area = dungeonAreaAt(map, map.at.x, map.at.y);
   const where = !map.rooms.length
@@ -837,7 +879,14 @@ export function gameDungeonMapPromptText(map: GameDungeonMap): string {
     : area
       ? `in area ${area}`
       : "in a passage between areas";
-  return `MAP: ${map.name}. ${dungeonMapWords(cells)} The party is ${where}.`;
+  // Who stands where now, on a map made by hand with spots.
+  const here =
+    hour === undefined
+      ? []
+      : gameDungeonSpotsAt(map, hour).flatMap((spot) =>
+          spot.people.length ? [`${spot.name}: ${spot.people.map((person) => person.name).join(", ")}`] : [],
+        );
+  return `MAP: ${map.name}. ${dungeonMapWords(cells)} The party is ${where}.${here.length ? ` Here now: ${here.join("; ")}.` : ""}`;
 }
 
 /** A walk on the map, told to the Game Master on the next turn. */

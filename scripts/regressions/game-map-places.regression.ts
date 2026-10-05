@@ -24,6 +24,7 @@ import {
   gameDungeonMapPromptText,
   gameDungeonWalkText,
   parseWorldKit,
+  worldCast,
   type GameWorld,
 } from "../../packages/shared/src/index.js";
 
@@ -202,6 +203,8 @@ try {
 
     // A place with a map made for it by hand (map editor Phase 3): that map is gone down into, whatever
     // its name, its props never in the way, and out where the party came in.
+    // Someone of the city stands by the pool by day.
+    const smith = worldCast(game, city.id)[0]!;
     const rows = ["########", "#......#", "#..~~..#", "#......#", "#......#", "########"];
     const handMap = {
       id: "m1",
@@ -212,6 +215,7 @@ try {
       ground: rows.join(""),
       entry: { x: 1, y: 4 },
       props: [{ tile: "dn_prop1", x: 3, y: 1 }],
+      spots: [{ id: "s1", x: 2, y: 1, name: "By the pool", people: [smith.id], from: 8, to: 18 }],
     };
     const saved = await app.inject({
       method: "PUT",
@@ -242,6 +246,11 @@ try {
     assert.match(told, /^MAP: Old Granary\. /u);
     assert.match(told, /The way out is where the party came in\. The party is by the way out\.$/u);
     assert.doesNotMatch(told, /area \d|passage/u, "no areas on a map made by hand");
+    assert.deepEqual(kept.spots, [
+      { x: 2, y: 1, name: "By the pool", people: [{ id: smith.id, name: smith.name }], from: 8, to: 18 },
+    ]);
+    assert.match(gameDungeonMapPromptText(kept, 9), new RegExp(`Here now: By the pool: ${smith.name}\\.$`, "u"));
+    assert.doesNotMatch(gameDungeonMapPromptText(kept, 20), /Here now/u, "nobody there at night");
     assert.equal(
       gameDungeonWalkText(kept, { id: "w", map: kept.id, from: kept.at, to: { x: 3, y: 1 }, minutes: 1 }),
       "The party walked across Old Granary (1 minute).",

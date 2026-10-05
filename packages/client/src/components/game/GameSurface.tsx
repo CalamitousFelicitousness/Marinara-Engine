@@ -13465,6 +13465,7 @@ function GameSurfaceComponent({
                       turnKey={narrationTurnKey(latestAssistantMsg)}
                       canWalk={!isStreaming && narrationDone && sessionInteractive}
                       onLeft={() => undefined}
+                      hour={typeof gameTimeMeta?.hour === "number" ? normalizeGameHour(gameTimeMeta.hour) : undefined}
                     />
                   </Suspense>
                 )}

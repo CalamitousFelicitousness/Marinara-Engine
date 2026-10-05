@@ -286,6 +286,7 @@ import {
   gameDungeonMapSchema,
   gameDungeonOnWayOut,
   worldPlaceMap,
+  worldCast,
   generateDungeonMap,
   gameDungeonSeed,
   gameDungeonMapFromDungeon,
@@ -11224,7 +11225,14 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       if (hand) {
         // A hand-made map the game cannot keep (made for a later Engine) is never half kept.
         const kept = gameDungeonMapSchema.safeParse(
-          gameDungeonMapFromPlaceMap(hand, name, set, randomUUID(), placeKey),
+          gameDungeonMapFromPlaceMap(
+            hand,
+            name,
+            set,
+            randomUUID(),
+            placeKey,
+            (person) => worldCast(world, person.replace(/-e?\d+$/u, "")).find((each) => each.id === person)?.name,
+          ),
         );
         if (!kept.success) throw Object.assign(new Error("This place's map can't be read."), { statusCode: 400 });
         map = kept.data;

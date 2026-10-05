@@ -4863,7 +4863,10 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             const told = await turnDungeonPromise;
             const map = gameDungeonMapFromMetadata(chatMeta);
             const toldText = gameDungeonToldText(map, told.walk, told.left);
-            return [map ? gameDungeonMapPromptText(map) : "", toldText].filter(Boolean).join("\n") || undefined;
+            // The hour, for who stands on a hand-made map's spots now.
+            const hour = (chatMeta.gameTime as { hour?: unknown } | undefined)?.hour;
+            const text = map ? gameDungeonMapPromptText(map, typeof hour === "number" ? hour : undefined) : "";
+            return [text, toldText].filter(Boolean).join("\n") || undefined;
           })();
           const promptWhereYouAre = promptWorld
             ? await (async () => {

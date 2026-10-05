@@ -121,13 +121,17 @@ function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === "AbortError";
 }
 
-/** Use the desktop save dialog when the browser has one; false means the plain download should run instead. */
-async function saveWithFilePicker(blob: Blob, filename: string): Promise<boolean> {
+/**
+ * Use the desktop save dialog when the browser has one. "unavailable" means the plain download should run
+ * instead; once the user has chosen a file, a write failure throws rather than starting a second download.
+ */
+async function saveWithFilePicker(blob: Blob, filename: string): Promise<ExportSaveStatus | "unavailable"> {
   const pickerWindow = window as SaveFilePickerWindow;
-  if (!window.isSecureContext || typeof pickerWindow.showSaveFilePicker !== "function") return false;
+  if (!window.isSecureContext || typeof pickerWindow.showSaveFilePicker !== "function") return "unavailable";
   const extension = filename.includes(".") ? filename.slice(filename.lastIndexOf(".")).toLowerCase() : "";
+  let handle: Awaited<ReturnType<NonNullable<SaveFilePickerWindow["showSaveFilePicker"]>>>;
   try {
-    const handle = await pickerWindow.showSaveFilePicker({
+    handle = await pickerWindow.showSaveFilePicker({
       suggestedName: filename,
       types: extension
         ? [
@@ -138,13 +142,14 @@ async function saveWithFilePicker(blob: Blob, filename: string): Promise<boolean
           ]
         : undefined,
     });
-    const writable = await handle.createWritable();
-    await writable.write(blob);
-    await writable.close();
-    return true;
   } catch (error) {
-    return isAbortError(error);
+    // Cancelled, or the dialog could not open (for example without a recent tap): download instead.
+    return isAbortError(error) ? "cancelled" : "unavailable";
   }
+  const writable = await handle.createWritable();
+  await writable.write(blob);
+  await writable.close();
+  return "saved";
 }
 
 function canShareFile(file: File): boolean {
@@ -187,33 +192,49 @@ export async function showExportError(error: unknown): Promise<void> {
 }
 
 /**
+ * How an export save ended: "saved" (written, shared, or a download started), "prompted" (iOS shows a
+ * Save file toast, finished by a later tap), "cancelled" by the user, or "failed" (an error toast is shown).
+ */
+export type ExportSaveStatus = "saved" | "prompted" | "cancelled" | "failed";
+
+/**
  * Save an exported file: the Android shell bridge, the iOS share sheet (or a Save file toast when the
  * export's fetch used up the tap), the desktop save dialog when requested, or a plain browser download.
- * Never rejects; a failure shows an error instead.
+ * Never rejects; a failure shows an error and resolves "failed".
  */
 export async function saveExportFile(
   blob: Blob,
   filename: string,
   options: { savePicker?: boolean } = {},
-): Promise<void> {
+): Promise<ExportSaveStatus> {
   try {
-    if (typeof getAndroidFileBridge()?.saveFile === "function") return await saveBlobToDevice(blob, filename);
+    if (typeof getAndroidFileBridge()?.saveFile === "function") {
+      await saveBlobToDevice(blob, filename);
+      return "saved";
+    }
     if (isIosDevice()) {
       const file = new File([blob], filename, { type: blob.type || "application/octet-stream" });
       if (canShareFile(file)) {
         try {
           await navigator.share({ files: [file] });
-          return;
+          return "saved";
         } catch (error) {
-          if (isAbortError(error)) return;
+          if (isAbortError(error)) return "cancelled";
           // Usually NotAllowedError: the tap's activation ran out while the export was fetched.
         }
       }
-      return await offerIosFileSave(file);
+      await offerIosFileSave(file);
+      return "prompted";
     }
-    if (options.savePicker && (await saveWithFilePicker(blob, filename))) return;
+    if (options.savePicker) {
+      const status = await saveWithFilePicker(blob, filename);
+      if (status !== "unavailable") return status;
+    }
     triggerBrowserDownload(blob, filename);
+    return "saved";
   } catch (error) {
+    if (isAbortError(error)) return "cancelled";
     await showExportError(error);
+    return "failed";
   }
 }

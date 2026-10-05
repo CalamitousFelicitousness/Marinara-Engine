@@ -107,5 +107,5 @@ export function downloadZipFile(files: ZipFileInput[], filename: string) {
   writeUint32(output, centralDirectoryOffset);
   writeUint16(output, 0);
 
-  void saveExportFile(new Blob([new Uint8Array(output)], { type: "application/zip" }), filename);
+  return saveExportFile(new Blob([new Uint8Array(output)], { type: "application/zip" }), filename);
 }

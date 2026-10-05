@@ -321,12 +321,14 @@ function exportGameHudWidgets(widgets: readonly HudWidget[], filename?: string) 
     exportedAt: new Date().toISOString(),
     widgets: normalizedWidgets,
   };
-  downloadJsonFile(payload, buildWidgetExportFilename(filename));
-  toast.success(
-    translate("ui.game.gamewidgetsetupeditor.exportedWidgets", {
-      count: normalizedWidgets.length,
-    }),
-  );
+  void downloadJsonFile(payload, buildWidgetExportFilename(filename)).then((saveStatus) => {
+    if (saveStatus === "saved")
+      toast.success(
+        translate("ui.game.gamewidgetsetupeditor.exportedWidgets", {
+          count: normalizedWidgets.length,
+        }),
+      );
+  });
 }
 
 async function importGameHudWidgetsFromFile(file: File) {

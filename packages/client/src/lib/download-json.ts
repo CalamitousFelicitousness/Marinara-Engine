@@ -9,6 +9,7 @@ export function sanitizeExportFilenamePart(value: string | null | undefined, fal
   return normalized || fallback;
 }
 
+/** Save JSON as a file; resolves "saved" only when the file was saved or its download started. */
 export function downloadJsonFile(data: unknown, filename: string) {
-  void saveExportFile(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }), filename);
+  return saveExportFile(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }), filename);
 }

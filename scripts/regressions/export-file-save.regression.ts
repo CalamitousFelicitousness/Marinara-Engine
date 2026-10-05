@@ -19,7 +19,9 @@ type ShareOutcome = "success" | "NotAllowedError" | "AbortError";
 type Scenario = {
   device: "iphone" | "desktop" | "android";
   share?: ShareOutcome[];
-  picker?: boolean;
+  /** The desktop save dialog: saves, is cancelled, cannot open, or fails writing the chosen file. */
+  picker?: "saves" | "cancel" | "blocked" | "write-fails" | "write-cancel";
+  bridgeFails?: boolean;
 };
 
 const IPHONE = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148";
@@ -32,7 +34,7 @@ let pickerNames: string[] = [];
 let bridgeFiles: string[][] = [];
 let revokeDelays: number[] = [];
 
-function install({ device, share, picker }: Scenario) {
+function install({ device, share, picker, bridgeFails }: Scenario) {
   shares = [];
   anchors = [];
   pickerNames = [];
@@ -66,11 +68,26 @@ function install({ device, share, picker }: Scenario) {
   if (picker) {
     windowStub.showSaveFilePicker = async (options: { suggestedName: string }) => {
       pickerNames.push(options.suggestedName);
-      return { createWritable: async () => ({ write: async () => undefined, close: async () => undefined }) };
+      if (picker === "cancel") throw new DOMException("Picker probe", "AbortError");
+      if (picker === "blocked") throw new DOMException("Picker probe", "SecurityError");
+      return {
+        createWritable: async () => ({
+          write: async () => {
+            if (picker === "write-fails") throw new DOMException("Disk is full", "QuotaExceededError");
+            if (picker === "write-cancel") throw new DOMException("Picker probe", "AbortError");
+          },
+          close: async () => undefined,
+        }),
+      };
     };
   }
   if (device === "android") {
-    windowStub.MarinaraAndroid = { saveFile: (...args: string[]) => bridgeFiles.push(args) };
+    windowStub.MarinaraAndroid = {
+      saveFile: (...args: string[]) => {
+        if (bridgeFails) throw new Error("Bridge probe failed");
+        bridgeFiles.push(args);
+      },
+    };
   }
   Object.defineProperty(globalThis, "window", { configurable: true, value: windowStub });
   Object.defineProperty(globalThis, "document", {
@@ -109,9 +126,12 @@ async function saveToast(): Promise<SaveToast | undefined> {
   return (toast.getToasts() as SaveToast[]).find((entry) => entry.title === translate("ui.app.fileSave.ready"));
 }
 
-async function exportCharacter() {
-  await api.download("/characters/marinara/export?format=native");
+function exportCharacter() {
+  return api.download("/characters/marinara/export?format=native");
 }
+
+const exportErrors = () =>
+  (toast.getToasts() as SaveToast[]).filter((entry) => entry.title === "Couldn't export the file.");
 
 async function tapSaveFile(entry: SaveToast | undefined) {
   assert.ok(entry?.action, "a Save file toast is offered");
@@ -125,7 +145,7 @@ assert.equal(translate("ui.app.fileSave.ready"), "Your file is ready.");
 
 // iPhone with the share sheet: the export file is shared straight away.
 install({ device: "iphone", share: ["success"] });
-await exportCharacter();
+assert.equal(await exportCharacter(), "saved");
 assert.deepEqual(
   shares.map((file) => [file.name, file.type]),
   [["Marinara.marinara.json", "application/json"]],
@@ -135,8 +155,7 @@ assert.deepEqual(anchors, []);
 
 // Exports built in the tap (JSON and ZIP helpers) share the same way.
 install({ device: "iphone", share: ["success"] });
-downloadJsonFile({ name: "Marinara" }, "schedule.json");
-await nextTurn();
+assert.equal(await downloadJsonFile({ name: "Marinara" }, "schedule.json"), "saved");
 assert.deepEqual(
   shares.map((file) => file.name),
   ["schedule.json"],
@@ -144,7 +163,7 @@ assert.deepEqual(
 
 // The fetch used up the tap: iOS refuses the share, so a Save file toast offers a fresh one.
 install({ device: "iphone", share: ["NotAllowedError", "success"] });
-await exportCharacter();
+assert.equal(await exportCharacter(), "prompted", "only offering Save file is not a finished save");
 await tapSaveFile(await saveToast());
 assert.deepEqual(
   shares.map((file) => file.name),
@@ -164,7 +183,7 @@ assert.deepEqual(anchors, []);
 
 // No share sheet (plain http on the LAN): the toast's tap runs the browser download.
 install({ device: "iphone" });
-await exportCharacter();
+assert.equal(await exportCharacter(), "prompted");
 assert.deepEqual(anchors, [], "iOS does not start a download outside a tap");
 await tapSaveFile(await saveToast());
 assert.deepEqual(anchors, [{ download: "Marinara.marinara.json", target: "_blank" }]);
@@ -172,26 +191,25 @@ assert.deepEqual(revokeDelays, [60_000], "the download URL outlives the tap");
 
 // Cancelling the share sheet stays silent.
 install({ device: "iphone", share: ["AbortError"] });
-await exportCharacter();
+assert.equal(await exportCharacter(), "cancelled");
 assert.equal(shares.length, 1);
 assert.equal(await saveToast(), undefined);
 assert.deepEqual(anchors, []);
 
 // Desktop: the save dialog when the browser has one, otherwise a download kept alive for 60 s.
-install({ device: "desktop", picker: true });
-await exportCharacter();
+install({ device: "desktop", picker: "saves" });
+assert.equal(await exportCharacter(), "saved");
 assert.deepEqual(pickerNames, ["Marinara.marinara.json"]);
 assert.deepEqual(anchors, []);
 install({ device: "desktop" });
-await exportCharacter();
+assert.equal(await exportCharacter(), "saved", "a started download counts as saved");
 assert.deepEqual(
   anchors.map((anchor) => anchor.download),
   ["Marinara.marinara.json"],
 );
 assert.deepEqual(revokeDelays, [60_000]);
 install({ device: "desktop" });
-downloadJsonFile({ name: "Marinara" }, "schedule.json");
-await nextTurn();
+assert.equal(await downloadJsonFile({ name: "Marinara" }, "schedule.json"), "saved");
 assert.deepEqual(
   anchors.map((anchor) => anchor.download),
   ["schedule.json"],
@@ -201,11 +219,39 @@ assert.equal(await saveToast(), undefined);
 
 // Android shell: the native bridge saves the export.
 install({ device: "android" });
-await exportCharacter();
+assert.equal(await exportCharacter(), "saved");
 assert.deepEqual(bridgeFiles, [
   [Buffer.from('{"name":"Marinara"}').toString("base64"), "application/json", "Marinara.marinara.json"],
 ]);
 assert.deepEqual(anchors, []);
+
+// Save dialog: cancelling stays silent; a dialog that cannot open falls back to one download; once a file
+// was chosen, a write failure is reported once and never starts a second download.
+install({ device: "desktop", picker: "cancel" });
+assert.equal(await exportCharacter(), "cancelled");
+assert.deepEqual(anchors, []);
+install({ device: "desktop", picker: "blocked" });
+assert.equal(await exportCharacter(), "saved");
+assert.deepEqual(
+  anchors.map((anchor) => anchor.download),
+  ["Marinara.marinara.json"],
+);
+for (let turn = 0; turn < 20; turn += 1) await nextTurn();
+assert.equal(exportErrors().length, 0);
+install({ device: "desktop", picker: "write-fails" });
+assert.equal(await exportCharacter(), "failed");
+assert.deepEqual(anchors, [], "a failed write does not start a second download");
+assert.equal(exportErrors().length, 1);
+assert.equal(exportErrors()[0]!.description, "Disk is full");
+install({ device: "desktop", picker: "write-cancel" });
+assert.equal(await exportCharacter(), "cancelled");
+assert.deepEqual(anchors, []);
+assert.equal(exportErrors().length, 0);
+
+// A save that fails after the download shows exactly one error and reports "failed", so no success follows.
+install({ device: "android", bridgeFails: true });
+assert.equal(await exportCharacter(), "failed");
+assert.equal(exportErrors().length, 1);
 
 // Any failed export (server error, 502 or a dropped connection) shows one plain error and still rejects.
 for (const failure of [
@@ -214,11 +260,22 @@ for (const failure of [
   async () => {
     throw new TypeError("Failed to fetch");
   },
+  // The connection drops while the file is still streaming.
+  async () =>
+    new Response(
+      new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('{"type":"marinara_character"'));
+          controller.error(new TypeError("network connection was lost"));
+        },
+      }),
+      { headers: { "Content-Disposition": 'attachment; filename="Marinara.marinara.json"' } },
+    ),
 ]) {
   install({ device: "desktop" });
   globalThis.fetch = failure as typeof fetch;
   await assert.rejects(exportCharacter());
-  const errors = (toast.getToasts() as SaveToast[]).filter((entry) => entry.title === "Couldn't export the file.");
+  const errors = exportErrors();
   assert.equal(errors.length, 1, "a failed export shows an error");
   assert.ok(String(errors[0]!.description).length > 0, "the error says what went wrong");
   assert.deepEqual(anchors, []);

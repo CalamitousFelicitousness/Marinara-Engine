@@ -3,7 +3,7 @@
 // ──────────────────────────────────────────────
 
 import { CSRF_HEADER, CSRF_HEADER_VALUE } from "@marinara-engine/shared";
-import { saveExportFile, showExportError } from "./file-download";
+import { saveExportFile, showExportError, type ExportSaveStatus } from "./file-download";
 import { showGenerationFallbackHeader, showGenerationFallbackToast } from "./generation-fallback-notice";
 
 const BASE = "/api";
@@ -314,20 +314,29 @@ async function readDownloadFilename(res: Response, fallbackFilename: string) {
   return match?.[1] ? decodeURIComponent(match[1]) : fallbackFilename;
 }
 
-/** Fetch and save an export; any failure shows one error toast, then still reaches the caller. */
-async function saveDownload(fetchResponse: () => Promise<Response>, fallbackFilename: string): Promise<void> {
+/**
+ * Fetch and save an export. A failed request or body read shows one error toast and rejects; otherwise the
+ * save's status says whether the file was saved, offered for a later tap on iOS, cancelled or failed.
+ */
+async function saveDownload(
+  fetchResponse: () => Promise<Response>,
+  fallbackFilename: string,
+): Promise<ExportSaveStatus> {
+  let blob: Blob;
+  let filename: string;
   try {
     const res = await fetchResponse();
     if (!res.ok) {
       const payload = await res.json().catch(() => ({ error: res.statusText }));
       throw new ApiError(res.status, payload.error ?? "Download failed", payload);
     }
-    const filename = await readDownloadFilename(res, fallbackFilename);
-    await saveExportFile(await res.blob(), filename, { savePicker: true });
+    filename = await readDownloadFilename(res, fallbackFilename);
+    blob = await res.blob();
   } catch (error) {
     await showExportError(error);
     throw error;
   }
+  return saveExportFile(blob, filename, { savePicker: true });
 }
 
 export const api = {

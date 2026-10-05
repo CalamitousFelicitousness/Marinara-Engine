@@ -8457,8 +8457,11 @@ function AdvancedSettings() {
         }
         throw new Error(failure.message);
       }
-      await saveExportFile(await res.blob(), getDownloadFilename(res, profileExportFallbackNames[format]));
-      toast.success(profileExportSuccessMessages[format]);
+      const saveStatus = await saveExportFile(
+        await res.blob(),
+        getDownloadFilename(res, profileExportFallbackNames[format]),
+      );
+      if (saveStatus === "saved") toast.success(profileExportSuccessMessages[format]);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : localizeUi("ui.panels.advancedsettings.failedToExportProfile"));
     } finally {

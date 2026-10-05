@@ -701,13 +701,15 @@ export function AgentsPanel() {
         selectedAgents.length === 1 && firstAgent
           ? createAgentFolderPackageFilename(getAgentLibraryDisplayName(firstAgent), "agent")
           : "marinara-agents.zip";
-      downloadZipFile(files, filename);
-      toast.success(
-        localizeUi("ui.panels.agentspanel.exportedValue1AgentValue2", {
-          value1: selectedAgents.length,
-          value2: selectedAgents.length === 1 ? "" : localizeUi("ui.noodle.stageprofileview.s"),
-        }),
-      );
+      void downloadZipFile(files, filename).then((saveStatus) => {
+        if (saveStatus === "saved")
+          toast.success(
+            localizeUi("ui.panels.agentspanel.exportedValue1AgentValue2", {
+              value1: selectedAgents.length,
+              value2: selectedAgents.length === 1 ? "" : localizeUi("ui.noodle.stageprofileview.s"),
+            }),
+          );
+      });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : localizeUi("ui.panels.agentspanel.failedToExportAgents"));
     } finally {

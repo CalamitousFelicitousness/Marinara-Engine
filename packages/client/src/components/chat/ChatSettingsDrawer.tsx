@@ -10409,8 +10409,8 @@ function MemoryRecallMemoriesModal({
     }
 
     try {
-      await exportMemories.mutateAsync();
-      toast.success(localizeUi("ui.chat.memoryrecallmemoriesmodal.memoryRecallExported"));
+      const saveStatus = await exportMemories.mutateAsync();
+      if (saveStatus === "saved") toast.success(localizeUi("ui.chat.memoryrecallmemoriesmodal.memoryRecallExported"));
     } catch (err) {
       toast.error(
         err instanceof Error

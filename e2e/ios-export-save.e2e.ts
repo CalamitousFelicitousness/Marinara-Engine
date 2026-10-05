@@ -98,6 +98,7 @@ for (const owner of ["character", "persona"] as const) {
         await exportNative();
         await expect(readyToast).toBeVisible();
         await expect(readyToast).toContainText(filename);
+        // Longer than the app's 6 s toast duration (TOAST_DURATION_MS in App.tsx), not just Sonner's 4 s default.
         await page.waitForTimeout(7_000);
         await expect(saveFile, "the toast stays until it is used").toBeVisible();
         await setShareMode(page, "success");

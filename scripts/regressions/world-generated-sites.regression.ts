@@ -124,6 +124,39 @@ try {
     }
   }
 
+  // A site never takes a name the world has: a brief naming "Bayside Caves", "Bayside Ruins" and "Bayside
+  // Tunnels" in its city leaves the generator to skip one there, never to repeat it.
+  {
+    const parsed = parseWorldKit(WORLD_STARTER_KITS.find((kit) => kit.id === "modern_day")!);
+    assert.ok(parsed.ok);
+    const [, , city, inner] = parsed.kit.layers.map((layer) => layer.id);
+    const brief = checkWorldBrief(parsed.kit, {
+      briefVersion: 1,
+      premise: "x",
+      places: [
+        { name: "Bayside", layer: city!, tags: [] },
+        ...["Caves", "Ruins", "Tunnels"].map((word) => ({
+          name: `Bayside ${word}`,
+          layer: inner!,
+          parent: "Bayside",
+          tags: [],
+        })),
+      ],
+    });
+    assert.ok(brief.ok, JSON.stringify(!brief.ok && brief.issues));
+    let beside = 0;
+    for (let seed = 1; seed <= 40; seed++) {
+      const world = compileWorld({ seed, kit: parsed.kit, brief: brief.brief });
+      const v1 = compileWorld({ seed, kit: parsed.kit, brief: brief.brief, generatorVersion: 1 });
+      const names = world.places.map((place) => place.name.toLowerCase());
+      assert.equal(new Set(names).size, names.length, `seed ${seed}: names stay unique`);
+      const bayside = world.places.find((place) => place.name === "Bayside")!;
+      if (world.places.slice(v1.places.length).some((site) => site.parentId === bayside.id)) beside++;
+    }
+    // Bayside's own names taken, a site the generator would have put beside it is skipped.
+    assert.equal(beside, 0, "no site beside Bayside: every name it could take is the brief's");
+  }
+
   // Wuxia's ward layer changes nothing a version 1 recipe made with the kit as it was.
   const wuxia = parseWorldKit(WORLD_STARTER_KITS.find((kit) => kit.id === "wuxia_xianxia")!);
   assert.ok(wuxia.ok);

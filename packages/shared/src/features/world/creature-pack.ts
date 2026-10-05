@@ -35,7 +35,11 @@ export const creaturePackSchema = z
         z
           .object({
             id,
-            png: z.string().startsWith(PNG_DATA_URL, "A sheet is a PNG data URL"),
+            // Base64 and nothing else after the header, so a sheet is only ever its own picture.
+            png: z
+              .string()
+              .startsWith(PNG_DATA_URL, "A sheet is a PNG data URL")
+              .regex(/^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/u, "A sheet is a PNG data URL"),
             width: z.number().int().min(1).max(CREATURE_PACK_MAX.sheetPx),
             height: z.number().int().min(1).max(CREATURE_PACK_MAX.sheetPx),
           })

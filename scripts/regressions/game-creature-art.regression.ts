@@ -83,6 +83,14 @@ assert.equal(
   false,
   "art is a PNG in the pack, never fetched",
 );
+assert.equal(
+  creaturePackSchema.safeParse({
+    ...pack,
+    sheets: [{ ...pack.sheets[0], png: "data:image/png;base64,AAAA),url(https://evil.example/x.gif" }],
+  }).success,
+  false,
+  "nothing after the picture's own base64",
+);
 
 // ── Which creature a fighter is ──
 const art = (who: Parameters<typeof findCreatureArt>[1]) => findCreatureArt(pack, who)?.id ?? null;

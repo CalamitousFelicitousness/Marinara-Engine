@@ -1166,7 +1166,10 @@ export function TacticalCombatUI({
   }, [liveState, animUnits, stagedMove, selectedUnitId, optimisticMove]);
   // Creature art (design-game-creature-art.md): the library's creature pack, and which way each fighter faces.
   const creaturePack = useCreaturePack();
-  const facings = useCreatureFacings(renderUnits.map(({ unit, x, y }) => ({ id: unit.id, x, y, side: unit.side })));
+  const facings = useCreatureFacings(
+    renderUnits.map(({ unit, x, y }) => ({ id: unit.id, x, y, side: unit.side })),
+    String(liveState?.seed ?? ""),
+  );
 
   // ── Loading / error states (translucent so the scene shows through) ──
   if (starting) {

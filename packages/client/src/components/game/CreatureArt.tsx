@@ -41,10 +41,22 @@ interface Placed {
 
 /** Which way each fighter faces: the way it last moved, else toward the other side's fighters. Kept
  *  between renders, so a fighter that stands still keeps facing where it last turned. */
-export function useCreatureFacings(units: readonly Placed[]): ReadonlyMap<string, CreatureFacing> {
+export function useCreatureFacings(
+  units: readonly Placed[],
+  /** Which fight it is: a new one starts every fighter afresh, even one with an id the last had. */
+  fight: string,
+): ReadonlyMap<string, CreatureFacing> {
   const last = useRef(new Map<string, { x: number; y: number; facing: CreatureFacing }>());
+  const lastFight = useRef(fight);
   const key = units.map((unit) => `${unit.id}:${unit.x},${unit.y}`).join("|");
   return useMemo(() => {
+    if (lastFight.current !== fight) {
+      last.current.clear();
+      lastFight.current = fight;
+    }
+    // Only the fighters still on the board are remembered.
+    const here = new Set(units.map((unit) => unit.id));
+    for (const id of [...last.current.keys()]) if (!here.has(id)) last.current.delete(id);
     const out = new Map<string, CreatureFacing>();
     for (const unit of units) {
       const before = last.current.get(unit.id);
@@ -65,7 +77,7 @@ export function useCreatureFacings(units: readonly Placed[]): ReadonlyMap<string
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+  }, [key, fight]);
 }
 
 /** A creature's frame, filling a box one cell wide and placed by its size: absolutely positioned inside
@@ -107,7 +119,7 @@ export function CreatureArtFigure({
         bottom: `calc(50% - ${percent(0.5)})`,
         width: percent(box.width),
         height: percent(box.height),
-        backgroundImage: `url(${sheet.png})`,
+        backgroundImage: `url("${sheet.png}")`,
         backgroundRepeat: "no-repeat",
         backgroundSize: `${(sheet.width / frame.sw) * 100}% ${(sheet.height / frame.sh) * 100}%`,
         backgroundPosition: `${position(frame.sx, sheet.width, frame.sw)} ${position(frame.sy, sheet.height, frame.sh)}`,

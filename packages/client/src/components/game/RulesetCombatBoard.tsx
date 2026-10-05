@@ -212,6 +212,8 @@ export function RulesetCombatBoard({
     cells.flatMap((cell) =>
       cell.occupant ? [{ id: cell.occupant.id, x: cell.x, y: cell.y, side: cell.occupant.side }] : [],
     ),
+    // A ruleset fight has no id of its own on screen: its fighters, as it began, tell one from the next.
+    view.order.join(","),
   );
 
   // What the strip under the board says: the square being read, or, failing that, the one line a
@@ -461,6 +463,7 @@ export function RulesetCombatBoard({
                     <CreatureArtFigure
                       pack={creaturePack}
                       creature={creature}
+                      // Fights of one ruleset share the key: a fighter keeps its look across them.
                       variant={creatureArtVariant(creature, view.ruleset.id, combatant.id)}
                       facing={facings.get(combatant.id) ?? "down"}
                       cellFraction={1 / 0.84}

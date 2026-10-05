@@ -1,5 +1,6 @@
 import { CombatWeatherSummary } from "./CombatWeatherSummary";
 import { CombatAiControls } from "./CombatAiControls";
+import { CreatureArtFigure, useCreatureFacings, useCreaturePack } from "./CreatureArt";
 // ──────────────────────────────────────────────
 // Game: Tactical (grid) Combat UI
 //
@@ -74,6 +75,11 @@ import {
   type TacticalCoord,
   type TacticalBattlefieldBrief,
   type TacticalClass,
+  findCreatureArt,
+  creatureArtVariant,
+  type CreatureFacing,
+  type CreaturePack,
+  type CreaturePackCreature,
 } from "@marinara-engine/shared";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import {
@@ -1158,6 +1164,9 @@ export function TacticalCombatUI({
         .filter((r) => r.hp > 0)
     );
   }, [liveState, animUnits, stagedMove, selectedUnitId, optimisticMove]);
+  // Creature art (design-game-creature-art.md): the library's creature pack, and which way each fighter faces.
+  const creaturePack = useCreaturePack();
+  const facings = useCreatureFacings(renderUnits.map(({ unit, x, y }) => ({ id: unit.id, x, y, side: unit.side })));
 
   // ── Loading / error states (translucent so the scene shows through) ──
   if (starting) {
@@ -1498,6 +1507,11 @@ export function TacticalCombatUI({
           {/* Unit tokens (KO'd units exit-fade off the board) */}
           <AnimatePresence>
             {renderUnits.map(({ unit, x, y, hp, staged }) => {
+              // An enemy with no picture of its own is drawn with its creature art when the pack has it.
+              const creature =
+                unit.side === "enemy" && resolveSprite(unit.sprite).kind !== "url"
+                  ? findCreatureArt(creaturePack, { name: unit.name })
+                  : null;
               const isSel = selectedUnitId === unit.id;
               const isTarget = ui.kind === "target" && targetIds.has(unit.id);
               const isForecastTarget = forecastTargetId === unit.id;
@@ -1513,6 +1527,16 @@ export function TacticalCombatUI({
                   key={unit.id}
                   unit={unit}
                   hp={hp}
+                  art={
+                    creature && creaturePack
+                      ? {
+                          pack: creaturePack,
+                          creature,
+                          variant: creatureArtVariant(creature, String(liveState?.seed ?? ""), unit.id),
+                          facing: facings.get(unit.id) ?? "down",
+                        }
+                      : undefined
+                  }
                   gridW={gridW}
                   gridH={gridH}
                   x={x}
@@ -2054,6 +2078,8 @@ interface UnitTokenProps {
   ready: boolean;
   ariaLabel: string;
   onClick: () => void;
+  /** Its creature art, when the creature pack has it (design-game-creature-art.md). */
+  art?: { pack: CreaturePack; creature: CreaturePackCreature; variant: number; facing: CreatureFacing };
 }
 
 function UnitToken({
@@ -2070,6 +2096,7 @@ function UnitToken({
   ready,
   ariaLabel,
   onClick,
+  art,
 }: UnitTokenProps) {
   const left = ((x + 0.5) / gridW) * 100;
   const top = ((y + 0.5) / gridH) * 100;
@@ -2124,7 +2151,10 @@ function UnitToken({
           animation: ready ? "tc-ready-glow 1.8s ease-in-out infinite" : undefined,
         }}
       >
-        {sprite.kind === "url" ? (
+        {art ? (
+          // The token is 0.9 of a cell: its art is drawn at the creature's own size, standing on the cell.
+          <CreatureArtFigure {...art} cellFraction={1 / 0.9} label={unit.name} />
+        ) : sprite.kind === "url" ? (
           <img src={sprite.value} alt={unit.name} className="h-full w-full rounded-full object-cover" />
         ) : sprite.kind === "emoji" ? (
           <span className="text-[min(4vw,1.5rem)] leading-none">{sprite.value}</span>

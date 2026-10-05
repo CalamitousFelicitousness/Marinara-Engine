@@ -23,7 +23,7 @@ export const CHAT_SETTINGS_WINDOW_ID = "chat-settings";
 /** The Chat Settings button in the chat, the way into Chat Settings (its place saves as a standalone bubble). */
 export const CHAT_SETTINGS_BUTTON_ID = "chat-settings-button";
 export const TRACKER_WINDOW_ID = "trackers";
-/** The phone Tracker Panel: its bubble's place, and its open state while it shows. */
+/** The Tracker Panel: its button's place, and runtime visibility independent of the chat's preference. */
 export const TRACKER_PANEL_BUBBLE_ID = "tracker-panel";
 /** Above the chat HUD (z-40/50), below menus (9000+), modals (10000) and the Help overlay (10050). */
 export const FLOATING_WINDOW_Z_BASE = 70;

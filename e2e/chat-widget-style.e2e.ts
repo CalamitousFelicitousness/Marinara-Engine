@@ -1105,8 +1105,13 @@ for (const [preset, theme] of [
       controls = await openAppearance(page);
       await setChatStyleApplication(controls, "font", true);
       await setChatStyleApplication(controls, "shape", true);
-      await clickTopbarPanel(page, "settings");
-      await expect(page.locator('[data-component="RightPanel"]')).toBeHidden();
+      await page
+        .locator('[data-component="RightPanel"]')
+        .getByRole("button", { name: "Close panel", exact: true })
+        .click();
+      await expect(
+        page.locator('[data-component="RightPanelDesktopSlot"], [data-component="RightPanelMobile"]'),
+      ).toBeHidden();
       for (const chat of fixture.chats) {
         await showStyleScope(page, chat);
         const path = info.outputPath(`chat-style-${preset}-${chat.view}.png`);

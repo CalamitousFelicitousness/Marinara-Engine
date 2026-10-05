@@ -41,6 +41,7 @@ import {
 import { useChatStore } from "../../stores/chat.store";
 import { useUIStore, type ResourcePanelSort } from "../../stores/ui.store";
 import { api, ApiError } from "../../lib/api-client";
+import { EXPORT_FAILED_TOAST_ID } from "../../lib/file-download";
 import { confirmNonEmptyFolderDelete, showConfirmDialog } from "../../lib/app-dialogs";
 import { ChoiceSelectionModal } from "../presets/ChoiceSelectionModal";
 import { SelectionActionBar } from "../ui/SelectionActionBar";
@@ -518,7 +519,9 @@ export function PresetsPanel() {
         }),
       );
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : localizeUi("ui.panels.presetspanel.failedToExportPresets"));
+      toast.error(error instanceof Error ? error.message : localizeUi("ui.panels.presetspanel.failedToExportPresets"), {
+        id: EXPORT_FAILED_TOAST_ID,
+      });
     } finally {
       setExportingSelected(false);
     }

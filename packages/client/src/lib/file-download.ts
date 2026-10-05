@@ -1,4 +1,5 @@
-import { getAndroidBridgeToken } from "@/lib/android-bridge";
+import { toast } from "sonner";
+import { getAndroidBridgeToken } from "./android-bridge";
 import { isIosWebKitBrowser } from "./generation-stream-policy";
 
 type MarinaraAndroidFileBridge = {
@@ -104,4 +105,115 @@ export async function downloadUrlToDevice(url: string, filename: string): Promis
   const response = await fetch(url);
   if (!response.ok) throw new Error(`Download failed (${response.status})`);
   await saveBlobToDevice(await response.blob(), filename);
+}
+
+type SaveFilePickerWindow = Window &
+  typeof globalThis & {
+    showSaveFilePicker?: (options?: {
+      suggestedName?: string;
+      types?: Array<{ description?: string; accept: Record<string, string[]> }>;
+    }) => Promise<{
+      createWritable: () => Promise<{ write: (data: Blob) => Promise<void>; close: () => Promise<void> }>;
+    }>;
+  };
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
+/** Use the desktop save dialog when the browser has one; false means the plain download should run instead. */
+async function saveWithFilePicker(blob: Blob, filename: string): Promise<boolean> {
+  const pickerWindow = window as SaveFilePickerWindow;
+  if (!window.isSecureContext || typeof pickerWindow.showSaveFilePicker !== "function") return false;
+  const extension = filename.includes(".") ? filename.slice(filename.lastIndexOf(".")).toLowerCase() : "";
+  try {
+    const handle = await pickerWindow.showSaveFilePicker({
+      suggestedName: filename,
+      types: extension
+        ? [
+            {
+              description: `${extension.slice(1).toUpperCase()} file`,
+              accept: { [blob.type || "application/octet-stream"]: [extension] },
+            },
+          ]
+        : undefined,
+    });
+    const writable = await handle.createWritable();
+    await writable.write(blob);
+    await writable.close();
+    return true;
+  } catch (error) {
+    return isAbortError(error);
+  }
+}
+
+function canShareFile(file: File): boolean {
+  return typeof navigator.share === "function" && navigator.canShare?.({ files: [file] }) === true;
+}
+
+/** Offer a fresh tap: iOS only opens the share sheet or a download from a recent user gesture. */
+async function offerIosFileSave(file: File): Promise<void> {
+  const { translate } = await import("../localization/i18n");
+  toast(translate("ui.app.fileSave.ready"), {
+    id: `file-save:${file.name}`,
+    description: file.name,
+    duration: Infinity,
+    action: {
+      label: translate("ui.app.fileSave.save"),
+      onClick: () => {
+        if (!canShareFile(file)) {
+          triggerBrowserDownload(file, file.name);
+          return;
+        }
+        navigator.share({ files: [file] }).catch((error: unknown) => {
+          if (!isAbortError(error)) toast.error(translate("ui.app.fileSave.failed"));
+        });
+      },
+    },
+  });
+}
+
+/** Shared by every export error toast, so a caller's own wording replaces this one instead of stacking. */
+export const EXPORT_FAILED_TOAST_ID = "file-export-failed";
+
+/** Show one plain error for a failed export; cancelling is not a failure. */
+export async function showExportError(error: unknown): Promise<void> {
+  if (isAbortError(error)) return;
+  const { translate } = await import("../localization/i18n");
+  toast.error(translate("ui.app.fileSave.exportFailed"), {
+    id: EXPORT_FAILED_TOAST_ID,
+    description: error instanceof Error && error.message ? error.message : undefined,
+  });
+}
+
+/**
+ * Save an exported file: the Android shell bridge, the iOS share sheet (or a Save file toast when the
+ * export's fetch used up the tap), the desktop save dialog when requested, or a plain browser download.
+ * Never rejects; a failure shows an error instead.
+ */
+export async function saveExportFile(
+  blob: Blob,
+  filename: string,
+  options: { savePicker?: boolean } = {},
+): Promise<void> {
+  try {
+    if (typeof getAndroidFileBridge()?.saveFile === "function") return await saveBlobToDevice(blob, filename);
+    if (isIosDevice()) {
+      const file = new File([blob], filename, { type: blob.type || "application/octet-stream" });
+      if (canShareFile(file)) {
+        try {
+          await navigator.share({ files: [file] });
+          return;
+        } catch (error) {
+          if (isAbortError(error)) return;
+          // Usually NotAllowedError: the tap's activation ran out while the export was fetched.
+        }
+      }
+      return await offerIosFileSave(file);
+    }
+    if (options.savePicker && (await saveWithFilePicker(blob, filename))) return;
+    triggerBrowserDownload(blob, filename);
+  } catch (error) {
+    await showExportError(error);
+  }
 }

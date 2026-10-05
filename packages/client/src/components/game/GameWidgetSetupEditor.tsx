@@ -10,6 +10,7 @@ import {
   type HudWidgetConfig,
   type HudWidgetType,
 } from "@marinara-engine/shared";
+import { downloadJsonFile } from "../../lib/download-json";
 import { cn } from "../../lib/utils";
 import { translate } from "../../localization/i18n";
 import { DraftNumberInput } from "../ui/DraftNumberInput";
@@ -320,15 +321,7 @@ function exportGameHudWidgets(widgets: readonly HudWidget[], filename?: string) 
     exportedAt: new Date().toISOString(),
     widgets: normalizedWidgets,
   };
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = buildWidgetExportFilename(filename);
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
+  downloadJsonFile(payload, buildWidgetExportFilename(filename));
   toast.success(
     translate("ui.game.gamewidgetsetupeditor.exportedWidgets", {
       count: normalizedWidgets.length,

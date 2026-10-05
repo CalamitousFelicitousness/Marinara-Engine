@@ -43,6 +43,7 @@ import { handleFolderRenameKeyDown, useFolderRenameGesture } from "../../hooks/u
 import { useTouchFolderDrag } from "../../hooks/use-touch-folder-drag";
 import { cn, getAvatarCropStyle } from "../../lib/utils";
 import { api } from "../../lib/api-client";
+import { EXPORT_FAILED_TOAST_ID } from "../../lib/file-download";
 import { SelectionActionBar } from "../ui/SelectionActionBar";
 import { SmoothFolderContent } from "../ui/SmoothFolderContent";
 import { TouchDragHandle } from "../ui/TouchDragHandle";
@@ -509,6 +510,7 @@ export function PersonasPanel() {
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : localizeUi("ui.panels.personaspanel.failedToExportPersonas"),
+        { id: EXPORT_FAILED_TOAST_ID },
       );
     } finally {
       setExportingSelected(false);

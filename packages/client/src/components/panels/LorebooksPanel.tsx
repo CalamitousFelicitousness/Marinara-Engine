@@ -48,6 +48,7 @@ import type { Lorebook, LorebookCategory, LorebookEntry, LorebookFolder } from "
 import { confirmNonEmptyFolderDelete, showConfirmDialog } from "../../lib/app-dialogs";
 import { cn } from "../../lib/utils";
 import { api } from "../../lib/api-client";
+import { EXPORT_FAILED_TOAST_ID } from "../../lib/file-download";
 import { getChatCharacterIds } from "../../lib/chat-macros";
 import { buildLorebookDuplicateInput } from "../../lib/lorebook-duplicate";
 import {
@@ -393,6 +394,7 @@ export function LorebooksPanel() {
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : localizeUi("ui.panels.lorebookspanel.failedToExportLorebooks"),
+        { id: EXPORT_FAILED_TOAST_ID },
       );
     } finally {
       setExportingSelected(false);

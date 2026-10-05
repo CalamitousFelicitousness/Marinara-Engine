@@ -45,8 +45,16 @@ export const setActiveTrackerPresetSchema = z.object({
   presetId: z.string().min(1).nullable(),
 });
 
-/** Auto-adopt: seed new chats with tracker rows already in use elsewhere. */
+/** Auto-adopt: seed new chats with the rows learned from manual tracker edits. */
 export const setTrackerAutoAdoptSchema = z.object({ enabled: z.boolean() });
+
+/** The learned row list auto-adopt seeds from. Same row shapes and bounds as a preset. */
+export const trackerAdoptedRowsSchema = trackerPresetShape.pick({
+  characterFields: true,
+  characterStats: true,
+  personaFields: true,
+  personaStats: true,
+});
 
 /**
  * Explicit apply-to-chat. Omitting `presetId` uses whatever the chat already
@@ -65,3 +73,4 @@ export type ReorderTrackerPresetsInput = z.infer<typeof reorderTrackerPresetsSch
 export type SetActiveTrackerPresetInput = z.infer<typeof setActiveTrackerPresetSchema>;
 export type ApplyTrackerPresetInput = z.infer<typeof applyTrackerPresetSchema>;
 export type SetTrackerAutoAdoptInput = z.infer<typeof setTrackerAutoAdoptSchema>;
+export type TrackerAdoptedRows = z.infer<typeof trackerAdoptedRowsSchema>;

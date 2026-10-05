@@ -7,7 +7,7 @@
 // `chats.routes.ts#seedNewRoleplayChatTrackerDefaults`, and again on demand
 // from `POST /api/tracker-presets/apply`. Kept out of `chats.routes.ts` so an
 // upstream merge cannot silently revert it: that file is upstream-owned and
-// actively edited, and the only fork lines in it are the two call sites.
+// actively edited, and the only fork lines in it are the call sites.
 //
 // Why seeding at all: `trackerCustomFieldDefaults` is never declared to the
 // tracker agent as configuration -- `buildLoreBlock` emits "Configured RPG
@@ -22,6 +22,9 @@ import {
   normalizePersonaStats,
   normalizeCharacterTrackerCustomFieldDefaults,
   normalizeRpgStatPools,
+  trackerAdoptedRowsSchema,
+  TRACKER_PRESET_MAX_FIELDS,
+  TRACKER_PRESET_MAX_STATS,
   type CharacterData,
   type CharacterStat,
   type CustomTrackerField,
@@ -31,13 +34,13 @@ import {
   type PresentCharacter,
   type RPGStatPool,
   type RPGStatsConfig,
+  type TrackerAdoptedRows,
   type TrackerPreset,
 } from "@marinara-engine/shared";
-import { desc } from "../../db/file-query.js";
-import { gameStateSnapshots } from "../../db/schema/index.js";
 import { logger } from "../../lib/logger.js";
 import { createAppSettingsStorage } from "../storage/app-settings.storage.js";
 import { createCharactersStorage } from "../storage/characters.storage.js";
+import { createChatsStorage } from "../storage/chats.storage.js";
 import { createGameStateStorage } from "../storage/game-state.storage.js";
 import { createTrackerPresetsStorage } from "../storage/tracker-presets.storage.js";
 import { resolveActivePersonaCandidate } from "../../routes/generate/generate-route-utils.js";
@@ -279,7 +282,7 @@ export async function applyTrackerPresetToChat(
   // behind whatever the preset already names, so an explicit preset still owns
   // the layout order and its starting values. With no preset at all the adopted
   // rows stand alone, which is the zero-ceremony path.
-  const adopted = (await isTrackerAutoAdoptEnabled(app)) ? await collectAdoptedTrackerRows(app) : null;
+  const adopted = (await isTrackerAutoAdoptEnabled(app)) ? await readAdoptedTrackerRows(app) : null;
   const preset = withAdoptedRows(resolved, adopted);
   if (!preset) return EMPTY_RESULT;
 
@@ -553,74 +556,244 @@ export async function extractTrackerPresetFromChat(
 }
 
 // ──────────────────────────────────────────────
-// Auto-adopt: learn tracker rows from recent chats
+// Auto-adopt: rows learned from manual tracker edits
 // ──────────────────────────────────────────────
 
 /** App-settings key. "true" enables adoption; anything else disables it. */
 export const TRACKER_AUTO_ADOPT_SETTINGS_KEY = "trackerAutoAdoptFields";
 
-/** Snapshots scanned when adopting. Bounded so chat creation stays cheap. */
-const AUTO_ADOPT_SNAPSHOT_LIMIT = 40;
+/** App-settings key holding the learned rows as JSON. */
+export const TRACKER_ADOPTED_ROWS_SETTINGS_KEY = "trackerAdoptedRows";
+
+/** Longest row name the adopted-rows schema accepts. */
+const ADOPTED_ROW_NAME_MAX = 120;
+
+function emptyAdoptedRows(): TrackerAdoptedRows {
+  return { characterFields: [], characterStats: [], personaFields: [], personaStats: [] };
+}
 
 export async function isTrackerAutoAdoptEnabled(app: FastifyInstance): Promise<boolean> {
   return (await createAppSettingsStorage(app.db).get(TRACKER_AUTO_ADOPT_SETTINGS_KEY)) === "true";
 }
 
-/**
- * Union the tracker rows in use across the most recent snapshots, any chat.
- *
- * The point is a zero-ceremony path: add a field once in any chat's tracker
- * panel and every later chat starts with it, no preset to build or apply.
- *
- * Note what this can and cannot see. The stock Character Tracker prompt forbids
- * the agent from adding custom fields ("Do not add, rename, or remove custom
- * fields"), so rows normally enter state because a person added them in the
- * panel or a preset seeded them. A custom prompt that lifts that restriction
- * makes the agent a source too, which is also when a one-off invented field can
- * spread; that is the trade-off this setting carries.
- */
-export async function collectAdoptedTrackerRows(app: FastifyInstance): Promise<ExtractedTrackerPreset> {
-  const rows = (await app.db
-    .select()
-    .from(gameStateSnapshots)
-    .orderBy(desc(gameStateSnapshots.createdAt))
-    .limit(AUTO_ADOPT_SNAPSHOT_LIMIT)) as Array<Record<string, unknown>> | undefined;
-  if (!rows?.length) return EMPTY_EXTRACTION;
-
-  const fieldNames: string[] = [];
-  const statRows: unknown[] = [];
-  const personaFieldNames: unknown[] = [];
-  const personaStatRows: unknown[] = [];
-  let characters = 0;
-
-  for (const row of rows) {
-    for (const character of parseSnapshotList<PresentCharacter>(row.presentCharacters, [])) {
-      const fields =
-        character?.customFields && typeof character.customFields === "object" && !Array.isArray(character.customFields)
-          ? Object.keys(character.customFields as Record<string, string>)
-          : [];
-      const stats = Array.isArray(character?.stats) ? character.stats : [];
-      if (fields.length === 0 && stats.length === 0) continue;
-      fieldNames.push(...fields);
-      statRows.push(...stats);
-      characters += 1;
-    }
-    const playerStats = parseSnapshotRecord<PlayerStats>(row.playerStats);
-    if (Array.isArray(playerStats?.customTrackerFields)) {
-      personaFieldNames.push(...(playerStats.customTrackerFields as CustomTrackerField[]).map((f) => f?.name));
-    }
-    personaStatRows.push(...parseSnapshotList<CharacterStat>(row.personaStats, []));
-  }
-
-  return {
-    characterFields: collectNames(fieldNames),
-    characterStats: collectStats(statRows),
-    personaFields: collectNames(personaFieldNames),
-    personaStats: collectStats(personaStatRows),
-    characters,
-  };
-}
-
 export async function setTrackerAutoAdoptEnabled(app: FastifyInstance, enabled: boolean): Promise<void> {
   await createAppSettingsStorage(app.db).set(TRACKER_AUTO_ADOPT_SETTINGS_KEY, enabled ? "true" : "false");
+}
+
+export async function readAdoptedTrackerRows(app: FastifyInstance): Promise<TrackerAdoptedRows> {
+  const raw = await createAppSettingsStorage(app.db).get(TRACKER_ADOPTED_ROWS_SETTINGS_KEY);
+  if (!raw) return emptyAdoptedRows();
+  try {
+    const parsed = trackerAdoptedRowsSchema.safeParse(JSON.parse(raw));
+    if (parsed.success) return parsed.data;
+    logger.warn("[tracker] Stored adopted tracker rows failed validation; reading them as empty");
+  } catch (err) {
+    logger.warn(err, "[tracker] Stored adopted tracker rows are not valid JSON; reading them as empty");
+  }
+  return emptyAdoptedRows();
+}
+
+export async function writeAdoptedTrackerRows(
+  app: FastifyInstance,
+  rows: TrackerAdoptedRows,
+): Promise<TrackerAdoptedRows> {
+  const parsed = trackerAdoptedRowsSchema.parse(rows);
+  await createAppSettingsStorage(app.db).set(TRACKER_ADOPTED_ROWS_SETTINGS_KEY, JSON.stringify(parsed));
+  return parsed;
+}
+
+/** The tracker columns a manual edit can carry. `undefined` means the edit leaves that column alone. */
+export interface TrackerRowState {
+  presentCharacters?: unknown;
+  personaStats?: unknown;
+  playerStats?: unknown;
+}
+
+type NamedRow = Record<string, unknown> & { name: string };
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function namedRows(value: unknown): NamedRow[] {
+  return (Array.isArray(value) ? value : []).filter(
+    (row): row is NamedRow => isPlainRecord(row) && typeof row.name === "string" && !!comparableTrackerName(row.name),
+  );
+}
+
+/** Character identity across one edit: card id when there is one, else the name. */
+function characterMatchKey(character: Record<string, unknown>): string {
+  const id = typeof character.characterId === "string" ? character.characterId.trim() : "";
+  if (id) return `id:${id}`;
+  const name = typeof character.name === "string" ? comparableTrackerName(character.name) : "";
+  return name ? `name:${name}` : "";
+}
+
+/** Rows to learn and names to forget, accumulated across every character in one edit. */
+class RowDelta<T> {
+  readonly added: T[] = [];
+  readonly removed = new Set<string>();
+
+  compare(before: readonly T[], after: readonly T[], nameOf: (row: T) => string): void {
+    const beforeKeys = new Set(before.map((row) => comparableTrackerName(nameOf(row))));
+    const afterKeys = new Set(after.map((row) => comparableTrackerName(nameOf(row))));
+    for (const row of after) {
+      if (!beforeKeys.has(comparableTrackerName(nameOf(row)))) this.added.push(row);
+    }
+    for (const key of beforeKeys) {
+      if (key && !afterKeys.has(key)) this.removed.add(key);
+    }
+  }
+
+  /** Forget first, then append unseen rows, so a rename moves the row rather than dropping it. */
+  fold<R extends { name: string }>(rows: readonly R[], normalized: readonly R[], cap: number): R[] {
+    const next = rows.filter((row) => !this.removed.has(comparableTrackerName(row.name)));
+    const known = new Set(next.map((row) => comparableTrackerName(row.name)));
+    for (const row of normalized) {
+      if (next.length >= cap) break;
+      const key = comparableTrackerName(row.name);
+      if (!key || known.has(key) || row.name.length > ADOPTED_ROW_NAME_MAX) continue;
+      known.add(key);
+      next.push(row);
+    }
+    return next;
+  }
+}
+
+/**
+ * Fold one manual tracker edit into the learned rows.
+ *
+ * A row name that appears on a character present both before and after the
+ * edit is learned; one that disappears is forgotten. Characters the edit adds
+ * or removes are skipped, so deleting a character or clearing the tracker never
+ * empties the list. Persona bars and fields follow the same rule. Values are
+ * not learned: fields start blank and bars start full, as in an extracted preset.
+ *
+ * Returns null when the edit changes no row names.
+ */
+export function foldManualTrackerEdit(
+  rows: TrackerAdoptedRows,
+  before: TrackerRowState,
+  after: TrackerRowState,
+): TrackerAdoptedRows | null {
+  const characterFields = new RowDelta<string>();
+  const characterStats = new RowDelta<NamedRow>();
+  const personaFields = new RowDelta<NamedRow>();
+  const personaStats = new RowDelta<NamedRow>();
+
+  if (after.presentCharacters !== undefined) {
+    const previous = new Map<string, Record<string, unknown>>();
+    for (const character of parseSnapshotList<unknown>(before.presentCharacters, [])) {
+      if (!isPlainRecord(character)) continue;
+      const key = characterMatchKey(character);
+      if (key) previous.set(key, character);
+    }
+    for (const character of parseSnapshotList<unknown>(after.presentCharacters, [])) {
+      if (!isPlainRecord(character)) continue;
+      const prior = previous.get(characterMatchKey(character));
+      if (!prior) continue;
+      characterFields.compare(
+        isPlainRecord(prior.customFields) ? Object.keys(prior.customFields) : [],
+        isPlainRecord(character.customFields) ? Object.keys(character.customFields) : [],
+        (name) => name,
+      );
+      characterStats.compare(namedRows(prior.stats), namedRows(character.stats), (row) => row.name);
+    }
+  }
+
+  if (Array.isArray(after.personaStats)) {
+    personaStats.compare(
+      namedRows(parseSnapshotList<unknown>(before.personaStats, [])),
+      namedRows(after.personaStats),
+      (row) => row.name,
+    );
+  }
+
+  const afterPlayer = isPlainRecord(after.playerStats) ? after.playerStats : null;
+  if (afterPlayer && Array.isArray(afterPlayer.customTrackerFields)) {
+    const beforePlayer = parseSnapshotRecord<Record<string, unknown>>(before.playerStats);
+    personaFields.compare(
+      namedRows(beforePlayer?.customTrackerFields),
+      namedRows(afterPlayer.customTrackerFields),
+      (row) => row.name,
+    );
+  }
+
+  const next: TrackerAdoptedRows = {
+    characterFields: characterFields.fold(
+      rows.characterFields,
+      collectNames(characterFields.added),
+      TRACKER_PRESET_MAX_FIELDS,
+    ),
+    characterStats: characterStats.fold(
+      rows.characterStats,
+      collectStats(characterStats.added),
+      TRACKER_PRESET_MAX_STATS,
+    ),
+    personaFields: personaFields.fold(
+      rows.personaFields,
+      collectNames(personaFields.added.map((row) => row.name)),
+      TRACKER_PRESET_MAX_FIELDS,
+    ),
+    personaStats: personaStats.fold(rows.personaStats, collectStats(personaStats.added), TRACKER_PRESET_MAX_STATS),
+  };
+  return JSON.stringify(next) === JSON.stringify(rows) ? null : next;
+}
+
+/**
+ * Capture the snapshot a manual game-state PATCH is about to overwrite and
+ * return the step that learns from the edit once the write succeeds.
+ *
+ * Called only from that route, which panel and HUD edits go through; agent,
+ * seeding and preset writes go straight to storage, so their rows are never
+ * learned. The baseline mirrors the route's own target: the message+swipe
+ * snapshot, else the last assistant message's, else the latest, which is also
+ * what `updateByMessage` clones when the target has no row yet.
+ */
+export async function prepareTrackerRowLearning(
+  app: FastifyInstance,
+  chatId: string,
+  edit: {
+    manual: boolean;
+    clearOverrides: boolean;
+    target: { messageId: string; swipeIndex: number } | null;
+    fields: TrackerRowState;
+  },
+): Promise<(() => Promise<void>) | null> {
+  if (!edit.manual || edit.clearOverrides) return null;
+  const { presentCharacters, personaStats, playerStats } = edit.fields;
+  if (presentCharacters === undefined && personaStats === undefined && playerStats === undefined) return null;
+  if (!(await isTrackerAutoAdoptEnabled(app))) return null;
+
+  const gameStateStore = createGameStateStorage(app.db);
+  let target = edit.target;
+  if (!target) {
+    const messages = await createChatsStorage(app.db).listMessages(chatId);
+    const lastAssistant = [...messages].reverse().find((message) => message.role === "assistant");
+    if (lastAssistant) target = { messageId: lastAssistant.id, swipeIndex: lastAssistant.activeSwipeIndex };
+  }
+  const baseline =
+    (target ? await gameStateStore.getByChatAndMessage(chatId, target.messageId, target.swipeIndex) : null) ??
+    (await gameStateStore.getLatest(chatId));
+  if (!baseline) return null;
+  const before: TrackerRowState = {
+    presentCharacters: baseline.presentCharacters,
+    personaStats: baseline.personaStats,
+    playerStats: baseline.playerStats,
+  };
+
+  return async () => {
+    // Learning is a side effect of an edit that is already stored, so a failure
+    // is logged rather than turned into a failed PATCH.
+    try {
+      const next = foldManualTrackerEdit(await readAdoptedTrackerRows(app), before, {
+        presentCharacters,
+        personaStats,
+        playerStats,
+      });
+      if (next) await writeAdoptedTrackerRows(app, next);
+    } catch (err) {
+      logger.error(err, "[tracker] Failed to learn tracker rows from a manual edit of chat %s", chatId);
+    }
+  };
 }

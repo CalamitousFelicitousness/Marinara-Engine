@@ -8,6 +8,7 @@ import {
   reorderTrackerPresetsSchema,
   setActiveTrackerPresetSchema,
   setTrackerAutoAdoptSchema,
+  trackerAdoptedRowsSchema,
   updateTrackerPresetSchema,
 } from "@marinara-engine/shared";
 import { createChatsStorage } from "../services/storage/chats.storage.js";
@@ -17,8 +18,10 @@ import {
   extractTrackerPresetFromChat,
   isTrackerAutoAdoptEnabled,
   setTrackerAutoAdoptEnabled,
+  readAdoptedTrackerRows,
   readChatCharacterIds,
   readChatTrackerPresetId,
+  writeAdoptedTrackerRows,
 } from "../services/tracker/tracker-preset.service.js";
 
 export async function trackerPresetsRoutes(app: FastifyInstance) {
@@ -49,6 +52,15 @@ export async function trackerPresetsRoutes(app: FastifyInstance) {
     const input = setTrackerAutoAdoptSchema.parse(req.body);
     await setTrackerAutoAdoptEnabled(app, input.enabled);
     return { enabled: input.enabled };
+  });
+
+  /** The rows auto-adopt seeds new chats with, learned from manual tracker edits. */
+  app.get("/adopted-rows", async () => {
+    return readAdoptedTrackerRows(app);
+  });
+
+  app.put("/adopted-rows", async (req) => {
+    return writeAdoptedTrackerRows(app, trackerAdoptedRowsSchema.parse(req.body));
   });
 
   app.put("/reorder", async (req) => {

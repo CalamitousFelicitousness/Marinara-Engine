@@ -7,7 +7,7 @@
 //
 // Saving is explicit. The draft is local until Save, matching the author's-note
 // preset panel, so switching rows never writes a half-typed field name.
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Copy, Layers, Loader2, Plus, Sparkles, Trash2, Wand2, X } from "lucide-react";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -21,7 +21,9 @@ import {
   useCreateTrackerPreset,
   useDeleteTrackerPreset,
   useSetActiveTrackerPreset,
+  useSetTrackerAdoptedRows,
   useSetTrackerAutoAdopt,
+  useTrackerAdoptedRows,
   useTrackerAutoAdopt,
   useTrackerPresets,
   useUpdateTrackerPreset,
@@ -39,13 +41,18 @@ const INHERIT = "__inherit__";
 type FieldRow = CharacterTrackerCustomFieldDefault;
 type StatRow = RPGStatPool;
 
-interface PresetDraft {
-  name: string;
+interface RowLists {
   characterFields: FieldRow[];
   characterStats: StatRow[];
   personaFields: FieldRow[];
   personaStats: StatRow[];
 }
+
+interface PresetDraft extends RowLists {
+  name: string;
+}
+
+const EMPTY_ROWS: RowLists = { characterFields: [], characterStats: [], personaFields: [], personaStats: [] };
 
 const ROW_ACTIONS =
   "absolute right-2 top-1/2 -translate-y-1/2 flex shrink-0 items-center gap-0.5 rounded-lg bg-[var(--sidebar)] px-1 py-0.5 opacity-0 shadow-sm ring-1 ring-[var(--border)] transition-opacity group-hover:opacity-100 max-md:opacity-100";
@@ -54,14 +61,17 @@ const INPUT =
 const GHOST_BUTTON =
   "inline-flex items-center gap-1 rounded-sm bg-[var(--foreground)]/8 px-2 py-1 text-[0.625rem] font-medium text-[var(--foreground)]/75 ring-1 ring-[var(--border)]/70 transition-colors hover:bg-[var(--foreground)]/12 hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] active:scale-95 disabled:cursor-not-allowed disabled:opacity-60";
 
-function toDraft(preset: TrackerPreset): PresetDraft {
+function toRowLists(rows: Partial<RowLists> | undefined): RowLists {
   return {
-    name: preset.name,
-    characterFields: [...(preset.characterFields ?? [])],
-    characterStats: [...(preset.characterStats ?? [])],
-    personaFields: [...(preset.personaFields ?? [])],
-    personaStats: [...(preset.personaStats ?? [])],
+    characterFields: [...(rows?.characterFields ?? [])],
+    characterStats: [...(rows?.characterStats ?? [])],
+    personaFields: [...(rows?.personaFields ?? [])],
+    personaStats: [...(rows?.personaStats ?? [])],
   };
+}
+
+function toDraft(preset: TrackerPreset): PresetDraft {
+  return { name: preset.name, ...toRowLists(preset) };
 }
 
 /**
@@ -80,14 +90,17 @@ function appendNewRows<T extends { name: string }>(draftRows: T[], incoming: T[]
 }
 
 /** Drop half-typed rows so a nameless field never reaches the tracker. */
-function cleanDraft(draft: PresetDraft) {
+function cleanRows(rows: RowLists): RowLists {
   return {
-    name: draft.name.trim() || "Untitled preset",
-    characterFields: draft.characterFields.filter((row) => row.name.trim()),
-    characterStats: draft.characterStats.filter((row) => row.name.trim()),
-    personaFields: draft.personaFields.filter((row) => row.name.trim()),
-    personaStats: draft.personaStats.filter((row) => row.name.trim()),
+    characterFields: rows.characterFields.filter((row) => row.name.trim()),
+    characterStats: rows.characterStats.filter((row) => row.name.trim()),
+    personaFields: rows.personaFields.filter((row) => row.name.trim()),
+    personaStats: rows.personaStats.filter((row) => row.name.trim()),
   };
+}
+
+function cleanDraft(draft: PresetDraft) {
+  return { name: draft.name.trim() || "Untitled preset", ...cleanRows(draft) };
 }
 
 function FieldRows({
@@ -212,6 +225,76 @@ function Group({
   );
 }
 
+/** The four row lists a preset and the learned auto-adopt list share. */
+function RowGroups({ rows, onChange }: { rows: RowLists; onChange: (rows: RowLists) => void }) {
+  const { t: localizeUi } = useUiTranslation();
+  const fieldNamePlaceholder = localizeUi("ui.panels.trackerpresetsettings.fieldNamePlaceholder");
+  const startingValuePlaceholder = localizeUi("ui.panels.trackerpresetsettings.startingValuePlaceholder");
+  const statNamePlaceholder = localizeUi("ui.panels.trackerpresetsettings.statNamePlaceholder");
+
+  return (
+    <>
+      <Group
+        label={localizeUi("ui.panels.trackerpresetsettings.characterFields")}
+        hint={localizeUi("ui.panels.trackerpresetsettings.characterFieldsHint")}
+        onAdd={() => onChange({ ...rows, characterFields: [...rows.characterFields, { name: "", value: "" }] })}
+      >
+        <FieldRows
+          rows={rows.characterFields}
+          onChange={(characterFields) => onChange({ ...rows, characterFields })}
+          namePlaceholder={fieldNamePlaceholder}
+          valuePlaceholder={startingValuePlaceholder}
+        />
+      </Group>
+
+      <Group
+        label={localizeUi("ui.panels.trackerpresetsettings.characterStats")}
+        hint={localizeUi("ui.panels.trackerpresetsettings.characterStatsHint")}
+        onAdd={() =>
+          onChange({
+            ...rows,
+            characterStats: [...rows.characterStats, { name: "", value: 100, max: 100, color: "#a78bfa" }],
+          })
+        }
+      >
+        <StatRows
+          rows={rows.characterStats}
+          onChange={(characterStats) => onChange({ ...rows, characterStats })}
+          namePlaceholder={statNamePlaceholder}
+        />
+      </Group>
+
+      <Group
+        label={localizeUi("ui.panels.trackerpresetsettings.personaFields")}
+        onAdd={() => onChange({ ...rows, personaFields: [...rows.personaFields, { name: "", value: "" }] })}
+      >
+        <FieldRows
+          rows={rows.personaFields}
+          onChange={(personaFields) => onChange({ ...rows, personaFields })}
+          namePlaceholder={fieldNamePlaceholder}
+          valuePlaceholder={startingValuePlaceholder}
+        />
+      </Group>
+
+      <Group
+        label={localizeUi("ui.panels.trackerpresetsettings.personaStats")}
+        onAdd={() =>
+          onChange({
+            ...rows,
+            personaStats: [...rows.personaStats, { name: "", value: 100, max: 100, color: "#38bdf8" }],
+          })
+        }
+      >
+        <StatRows
+          rows={rows.personaStats}
+          onChange={(personaStats) => onChange({ ...rows, personaStats })}
+          namePlaceholder={statNamePlaceholder}
+        />
+      </Group>
+    </>
+  );
+}
+
 export function TrackerPresetSettings() {
   const { t: localizeUi } = useUiTranslation();
   const activeChatId = useChatStore((s) => s.activeChatId);
@@ -222,6 +305,20 @@ export function TrackerPresetSettings() {
   const setActive = useSetActiveTrackerPreset();
   const { data: autoAdopt } = useTrackerAutoAdopt();
   const setAutoAdopt = useSetTrackerAutoAdopt();
+  const { data: adoptedRows } = useTrackerAdoptedRows(autoAdopt === true);
+  const setAdoptedRows = useSetTrackerAdoptedRows();
+  const [adoptedOpen, setAdoptedOpen] = useState(false);
+  const [adoptedDraft, setAdoptedDraft] = useState<RowLists>(EMPTY_ROWS);
+  // The draft follows the server list only while unedited, so a refetch
+  // mid-edit cannot wipe keystrokes.
+  const syncedAdoptedRef = useRef(JSON.stringify(EMPTY_ROWS));
+  useEffect(() => {
+    const previous = syncedAdoptedRef.current;
+    const next = toRowLists(adoptedRows);
+    syncedAdoptedRef.current = JSON.stringify(next);
+    setAdoptedDraft((current) => (JSON.stringify(current) === previous ? next : current));
+  }, [adoptedRows]);
+  const adoptedDirty = JSON.stringify(adoptedDraft) !== JSON.stringify(toRowLists(adoptedRows));
   // Comma-separated while typing so a half-written entry is not normalized away
   // on every keystroke; committed on blur or Enter.
   const trackerBlankValues = useUIStore((state) => state.trackerBlankValues);
@@ -298,6 +395,16 @@ export function TrackerPresetSettings() {
       toast.error(localizeUi("ui.panels.trackerpresetsettings.presetSaveFailed"));
     }
   }, [draft, editing, localizeUi, updatePreset]);
+
+  const handleSaveAdopted = useCallback(async () => {
+    try {
+      const saved = await setAdoptedRows.mutateAsync(cleanRows(adoptedDraft));
+      setAdoptedDraft(toRowLists(saved));
+      toast.success(localizeUi("ui.panels.trackerpresetsettings.learnedRowsSaved"));
+    } catch {
+      toast.error(localizeUi("ui.panels.trackerpresetsettings.learnedRowsSaveFailed"));
+    }
+  }, [adoptedDraft, localizeUi, setAdoptedRows]);
 
   const handleApply = useCallback(async () => {
     if (!activeChatId) return;
@@ -425,6 +532,58 @@ export function TrackerPresetSettings() {
         onChange={(enabled) => setAutoAdopt.mutate(enabled)}
         help={localizeUi("ui.panels.trackerpresetsettings.autoAdoptHelp")}
       />
+
+      {autoAdopt === true && (
+        <div
+          className={cn(
+            "rounded-md bg-[var(--secondary)]/42 ring-1 transition-colors",
+            adoptedOpen ? "ring-[var(--primary)]/60" : "ring-transparent hover:bg-[var(--accent)]/40",
+          )}
+        >
+          <button
+            type="button"
+            onClick={() => setAdoptedOpen(!adoptedOpen)}
+            aria-expanded={adoptedOpen}
+            className="flex w-full min-w-0 flex-col items-start gap-0.5 px-2 py-1.5 text-left"
+          >
+            <span className="truncate text-[0.6875rem] font-medium text-[var(--foreground)]">
+              {localizeUi("ui.panels.trackerpresetsettings.learnedRows")}
+            </span>
+            <span className="text-[0.5625rem] text-[var(--muted-foreground)]">
+              {localizeUi("ui.panels.trackerpresetsettings.rowSummaryValue1Value2Value3Value4", {
+                value1: adoptedRows?.characterFields.length ?? 0,
+                value2: adoptedRows?.characterStats.length ?? 0,
+                value3: adoptedRows?.personaFields.length ?? 0,
+                value4: adoptedRows?.personaStats.length ?? 0,
+              })}
+            </span>
+          </button>
+          {adoptedOpen && (
+            <div className="flex flex-col gap-2 px-2 pb-2">
+              <p className="px-0.5 text-[0.5625rem] leading-relaxed text-[var(--muted-foreground)]">
+                {localizeUi("ui.panels.trackerpresetsettings.learnedRowsHint")}
+              </p>
+              <RowGroups rows={adoptedDraft} onChange={setAdoptedDraft} />
+              <div className="flex items-center justify-end gap-1.5 px-0.5">
+                {adoptedDirty && (
+                  <span className="text-[0.5625rem] text-[var(--primary)]">
+                    {localizeUi("ui.panels.trackerpresetsettings.edited")}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={handleSaveAdopted}
+                  disabled={!adoptedDirty || setAdoptedRows.isPending}
+                  className={GHOST_BUTTON}
+                >
+                  {setAdoptedRows.isPending && <Loader2 size="0.625rem" className="animate-spin" />}
+                  {localizeUi("ui.panels.trackerpresetsettings.save")}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       <label className="grid gap-1">
         <span className="px-0.5 text-[0.625rem] text-[var(--muted-foreground)]">
@@ -575,63 +734,7 @@ export function TrackerPresetSettings() {
             </div>
           )}
 
-          <Group
-            label={localizeUi("ui.panels.trackerpresetsettings.characterFields")}
-            hint={localizeUi("ui.panels.trackerpresetsettings.characterFieldsHint")}
-            onAdd={() => setDraft({ ...draft, characterFields: [...draft.characterFields, { name: "", value: "" }] })}
-          >
-            <FieldRows
-              rows={draft.characterFields}
-              onChange={(characterFields) => setDraft({ ...draft, characterFields })}
-              namePlaceholder={localizeUi("ui.panels.trackerpresetsettings.fieldNamePlaceholder")}
-              valuePlaceholder={localizeUi("ui.panels.trackerpresetsettings.startingValuePlaceholder")}
-            />
-          </Group>
-
-          <Group
-            label={localizeUi("ui.panels.trackerpresetsettings.characterStats")}
-            hint={localizeUi("ui.panels.trackerpresetsettings.characterStatsHint")}
-            onAdd={() =>
-              setDraft({
-                ...draft,
-                characterStats: [...draft.characterStats, { name: "", value: 100, max: 100, color: "#a78bfa" }],
-              })
-            }
-          >
-            <StatRows
-              rows={draft.characterStats}
-              onChange={(characterStats) => setDraft({ ...draft, characterStats })}
-              namePlaceholder={localizeUi("ui.panels.trackerpresetsettings.statNamePlaceholder")}
-            />
-          </Group>
-
-          <Group
-            label={localizeUi("ui.panels.trackerpresetsettings.personaFields")}
-            onAdd={() => setDraft({ ...draft, personaFields: [...draft.personaFields, { name: "", value: "" }] })}
-          >
-            <FieldRows
-              rows={draft.personaFields}
-              onChange={(personaFields) => setDraft({ ...draft, personaFields })}
-              namePlaceholder={localizeUi("ui.panels.trackerpresetsettings.fieldNamePlaceholder")}
-              valuePlaceholder={localizeUi("ui.panels.trackerpresetsettings.startingValuePlaceholder")}
-            />
-          </Group>
-
-          <Group
-            label={localizeUi("ui.panels.trackerpresetsettings.personaStats")}
-            onAdd={() =>
-              setDraft({
-                ...draft,
-                personaStats: [...draft.personaStats, { name: "", value: 100, max: 100, color: "#38bdf8" }],
-              })
-            }
-          >
-            <StatRows
-              rows={draft.personaStats}
-              onChange={(personaStats) => setDraft({ ...draft, personaStats })}
-              namePlaceholder={localizeUi("ui.panels.trackerpresetsettings.statNamePlaceholder")}
-            />
-          </Group>
+          <RowGroups rows={draft} onChange={(rows) => setDraft({ ...draft, ...rows })} />
 
           <div className="flex items-center justify-end gap-1.5 px-0.5">
             {dirty && (

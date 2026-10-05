@@ -7,6 +7,7 @@ import type {
   CreateTrackerPresetInput,
   PersonaStatBar,
   RPGStatPool,
+  TrackerAdoptedRows,
   TrackerPreset,
   UpdateTrackerPresetInput,
 } from "@marinara-engine/shared";
@@ -16,6 +17,7 @@ const trackerPresetKeys = {
   all: ["tracker-presets"] as const,
   active: ["tracker-presets", "active"] as const,
   autoAdopt: ["tracker-presets", "auto-adopt"] as const,
+  adoptedRows: ["tracker-presets", "adopted-rows"] as const,
 };
 
 export interface TrackerPresetApplyResult {
@@ -117,8 +119,8 @@ export function useExtractTrackerPreset() {
 }
 
 /**
- * Auto-adopt: seed new chats with tracker rows already in use elsewhere, with
- * no preset to build or apply.
+ * Auto-adopt: seed new chats with the rows learned from manual tracker edits,
+ * with no preset to build or apply.
  */
 export function useTrackerAutoAdopt() {
   return useQuery({
@@ -133,6 +135,29 @@ export function useSetTrackerAutoAdopt() {
     mutationFn: (enabled: boolean) => api.put<{ enabled: boolean }>("/tracker-presets/auto-adopt", { enabled }),
     onSuccess: (result) => {
       qc.setQueryData(trackerPresetKeys.autoAdopt, result.enabled);
+    },
+  });
+}
+
+/**
+ * The learned rows. The server changes them on every manual tracker edit that
+ * adds or removes a row, so this refetches whenever the settings panel mounts.
+ */
+export function useTrackerAdoptedRows(enabled: boolean) {
+  return useQuery({
+    queryKey: trackerPresetKeys.adoptedRows,
+    queryFn: () => api.get<TrackerAdoptedRows>("/tracker-presets/adopted-rows"),
+    enabled,
+    staleTime: 0,
+  });
+}
+
+export function useSetTrackerAdoptedRows() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (rows: TrackerAdoptedRows) => api.put<TrackerAdoptedRows>("/tracker-presets/adopted-rows", rows),
+    onSuccess: (result) => {
+      qc.setQueryData(trackerPresetKeys.adoptedRows, result);
     },
   });
 }

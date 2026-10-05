@@ -399,10 +399,9 @@ try {
   assert.equal(skipped.applied, false);
   assert.equal(await gameStates.getLatest(convo.id), null, "no snapshot is created for a non-roleplay chat");
 
-  // ── Auto-adopt: rows in use anywhere seed a brand-new chat, with no preset ──
-  // The zero-ceremony path. Note the stock Character Tracker prompt forbids the
-  // agent from adding custom fields, so rows normally enter state because a
-  // person added one in the tracker panel; adoption is what spreads it.
+  // ── Auto-adopt: the learned row list seeds a brand-new chat, with no preset ──
+  // The zero-ceremony path. How rows get into the list is pinned by
+  // tracker-adopted-rows.regression.ts; this covers how the list seeds.
   assert.equal((await app.inject({ method: "GET", url: "/api/tracker-presets/auto-adopt" })).json().enabled, false);
 
   await app.inject({ method: "PUT", url: "/api/tracker-presets/active", payload: { presetId: null } });
@@ -424,6 +423,37 @@ try {
   await app.inject({ method: "PUT", url: "/api/tracker-presets/auto-adopt", payload: { enabled: true } });
   assert.equal((await app.inject({ method: "GET", url: "/api/tracker-presets/auto-adopt" })).json().enabled, true);
 
+  // Rows other chats are tracking are not adopted; only the learned list is.
+  const unlearned = await applyTrackerPresetToChat(app as never, {
+    chatId: (await chats.create({
+      name: "Adopt on, nothing learned",
+      mode: "roleplay",
+      characterIds: [card.id],
+      groupId: null,
+      personaId: null,
+      promptPresetId: null,
+      connectionId: null,
+    }))!.id,
+    mode: "roleplay",
+    characterIds: [card.id],
+  });
+  assert.equal(unlearned.applied, false, "an empty learned list seeds nothing, whatever other chats track");
+
+  const learned = await app.inject({
+    method: "PUT",
+    url: "/api/tracker-presets/adopted-rows",
+    payload: {
+      characterFields: [
+        { name: "Scent", value: "" },
+        { name: "Outfit", value: "" },
+      ],
+      characterStats: [],
+      personaFields: [],
+      personaStats: [],
+    },
+  });
+  assert.equal(learned.statusCode, 200);
+
   const adoptChat = await chats.create({
     name: "Adopted",
     mode: "roleplay",
@@ -442,10 +472,11 @@ try {
   assert.equal(adoptResult.applied, true, "adoption seeds a chat even with no preset selected");
 
   const adoptedRows = await latestCharacters(adoptChat.id);
-  const adoptedNames = Object.keys(adoptedRows[0]!.customFields);
-  for (const expected of ["Outfit", "Injuries", "Scent", "Familiar"]) {
-    assert.ok(adoptedNames.includes(expected), `adopted rows must include ${expected}`);
-  }
+  assert.deepEqual(
+    Object.keys(adoptedRows[0]!.customFields),
+    ["Scent", "Outfit", "Familiar"],
+    "learned rows lead in list order; the card's own field is appended behind them",
+  );
   assert.equal(
     adoptedRows[0]!.customFields.Outfit,
     "school uniform",

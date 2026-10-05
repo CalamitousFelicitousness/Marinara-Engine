@@ -859,8 +859,9 @@ already lists `personaStats` among its structured fields.
 Application runs from `services/tracker/tracker-preset.service.ts`, kept out of `chats.routes.ts`
 on purpose. That file is upstream-owned and actively edited, and `buildRoleplayTrackerDefaultCharacters`
 was last touched by an upstream review commit, so the fork's only lines there are two calls to
-`applyTrackerPresetToChat` plus the metadata read. The card-owned seeding pass is untouched and
-still runs first; the preset layers under whatever it wrote.
+`applyTrackerPresetToChat` plus the metadata read, and the two auto-adopt learning calls in the
+`PATCH /:id/game-state` handler (one before the write, one after). The card-owned seeding pass is
+untouched and still runs first; the preset layers under whatever it wrote.
 
 `trackerPresetId` is deliberately not validated in the `PATCH /chats/:id/metadata` route, to add no
 lines to that upstream-hot handler. `readChatTrackerPresetId` is the guard instead: anything that
@@ -880,21 +881,41 @@ service against real storage and pins the additive merge, idempotent re-apply, c
 versus global fallback, persona seeding, and the cleared pointer on delete.
 
 **Adopt tracker rows automatically.** An app setting (`trackerAutoAdoptFields`) that removes the
-preset from the loop entirely: at seed time the union of tracker rows across the 40 most recent
-game-state snapshots, any chat, is folded in as an extra layer. Add a field once in any chat's
-tracker panel and every later chat starts with it.
+preset from the loop entirely: new Roleplay chats are seeded from a learned row list
+(`trackerAdoptedRows`, the same four lists as a preset), folded in as an extra layer. Add a field
+once in any chat's tracker panel and every later chat starts with it; delete it in any panel and
+new chats stop getting it. The list is shown and editable under the toggle in Tracker preset
+settings, through `GET`/`PUT /api/tracker-presets/adopted-rows`.
 
-Adoption is a layer inside the existing pipeline rather than a second path: adopted rows are
+The list is learned from manual edits, never from tracker state. `PATCH /api/chats/:id/game-state`
+is the one path panel and HUD edits take; agent, seeding, and preset writes go straight to storage.
+`prepareTrackerRowLearning` reads the snapshot the PATCH is about to overwrite, and once the write
+lands `foldManualTrackerEdit` compares row names: a name that appears on a character present before
+and after the edit is learned, one that disappears is forgotten. Characters the edit adds or removes
+are skipped and `clearOverrides` edits are ignored, so Clear and character deletion never empty the
+list. Only `manual: true` writes count, and only while the setting is on. Values are not learned:
+fields start blank and bars start full.
+
+Tracker state cannot be the source. Every seeded chat's first snapshot carries the adopted rows, the
+tracker agent keeps every field it sees, each message gets its own snapshot, and agent runs merge
+over the chat's earlier snapshots (`mergeTrackerStats`). A scan of recent snapshots therefore
+re-adopts its own output, and a row inside the scan window can never age out.
+
+Adoption is a layer inside the existing pipeline rather than a second path: learned rows are
 appended behind whatever a selected preset already names, so an explicit preset keeps its layout
-order and starting values, and with no preset selected the adopted rows stand alone. The chain
-stays `preset -> adopted -> card -> live state`.
+order and starting values, and with no preset selected the learned rows stand alone. The chain
+stays `preset -> learned -> card -> live state`.
 
 Worth knowing why this matters at all: the stock Character Tracker prompt (the `character-tracker`
 capability package) ends with "Do not add, rename, or remove custom fields", so the agent never
 creates a custom field, it only echoes existing ones. Rows enter tracker state because a person
 added one in the panel or something seeded it. That is why seeding is the mechanism rather than a
-convenience, and why adoption spreads hand-added rows rather than agent-invented ones unless the
-user's custom prompt lifts that restriction.
+convenience.
+
+Covered by `scripts/regressions/tracker-adopted-rows.regression.ts`, which drives learning through
+the real PATCH route: seeded rows are never learned, a deletion sticks while other chats still hold
+the row, Clear leaves the list alone, and an explicit message target compares against that swipe's
+snapshot rather than the newest one.
 
 **Build from this chat.** The preset editor can derive its rows from a chat's live tracker:
 `GET /api/tracker-presets/from-chat/:chatId` reads the latest game-state snapshot and returns the

@@ -114,7 +114,11 @@ import {
   heldDecision,
   readDecisionTimers,
 } from "../services/decision/decision-timers.js";
-import { applyTrackerPresetToChat, readChatTrackerPresetId } from "../services/tracker/tracker-preset.service.js";
+import {
+  applyTrackerPresetToChat,
+  prepareTrackerRowLearning,
+  readChatTrackerPresetId,
+} from "../services/tracker/tracker-preset.service.js";
 import { gameGmPromptDecisionTexts } from "../services/generation/game-gm-prompt-runtime.js";
 import { DECISION_SETTINGS_KEYS } from "../services/decision/decision-default.js";
 import {
@@ -2918,6 +2922,17 @@ export async function chatsRoutes(app: FastifyInstance) {
       if (live && !live.success) return reply.status(400).send({ error: "rulesetLive is not valid live sheet state" });
       fields.rulesetLive = live ? live.data : null;
     }
+    // Fork: auto-adopt learns the rows a manual edit adds or removes. Reads the
+    // pre-write snapshot here, learns after the write. See services/tracker/tracker-preset.service.ts.
+    const learnTrackerRows = await prepareTrackerRowLearning(app, req.params.id, {
+      manual,
+      clearOverrides,
+      target:
+        targetMessageId !== null && targetSwipeIndex !== null
+          ? { messageId: targetMessageId, swipeIndex: targetSwipeIndex }
+          : null,
+      fields,
+    });
     // Target the same snapshot the GET endpoint returns — the one for the last
     // assistant message's active swipe — so edits persist to the row the user
     // actually sees. Falls back to updateLatest when no messages exist yet.
@@ -2999,6 +3014,7 @@ export async function chatsRoutes(app: FastifyInstance) {
       updated = await gameStateStore.getLatest(req.params.id);
     }
     if (!updated) return reply.status(404).send({ error: "No game state found" });
+    await learnTrackerRows?.();
     // The row stores live sheet state as JSON text; callers get the same object the GET returns.
     return projectGameSnapshotLocation(
       { ...updated, rulesetLive: parseStoredRulesetLive(updated.rulesetLive) },

@@ -142,6 +142,9 @@ export function WorldOverworld({
     );
   }, [game, hiddenKey]);
   const sealed = (id: string) => overworld?.locked?.[id] === "sealed";
+  const sealedKey = Object.keys(overworld?.locked ?? {})
+    .sort()
+    .join(",");
   // Settlements and sites nearest the party first, by the days the way takes; those no way reaches last.
   const settlements = useMemo(() => {
     const days = (place: WorldPlace) =>
@@ -309,7 +312,10 @@ export function WorldOverworld({
       if (siteIds.has(place.id)) {
         // A pack's site marker, one of its variants by the place (one per kind of site), else a cave mouth.
         const pick = ([...place.id].reduce((h, c) => (Math.imul(h, 31) + c.charCodeAt(0)) >>> 0, 7) % 100) / 100;
+        // A sealed site is drawn faded: on the map, but not to be gone to yet.
+        ctx.globalAlpha = sealedKey.split(",").includes(place.id) ? 0.45 : 1;
         if (!drawTile(ctx, "site", x, y, pick)) paintSite(ctx, place.at.x, place.at.y);
+        ctx.globalAlpha = 1;
         continue;
       }
       const tier = settlementTier(place, top);
@@ -318,7 +324,7 @@ export function WorldOverworld({
       }
     }
     return canvas;
-  }, [drawTile, lit, resolution, ruined, settlements, siteIds, top, world.height, world.width]);
+  }, [drawTile, lit, resolution, ruined, sealedKey, settlements, siteIds, top, world.height, world.width]);
 
   // Beyond the world's edge, the ground its edge has most of (the sea around an island, open space).
   const beyond = useMemo(() => {

@@ -64,7 +64,10 @@ async function prepare(page: Page, chatId: string | null, ui: Record<string, unk
 async function readSavedLayout(request: APIRequestContext, chatId: string) {
   const chat = (await (await request.get(`/api/chats/${chatId}`)).json()) as { metadata: unknown };
   const metadata = (typeof chat.metadata === "string" ? JSON.parse(chat.metadata) : chat.metadata) as {
-    windowLayout?: { windows?: Record<string, { x: number; y: number; width: number; height: number }> } | null;
+    windowLayout?: {
+      windows?: Record<string, { x: number; y: number; width: number; height: number }>;
+      bubbles?: Record<string, { x: number; y: number }>;
+    } | null;
   };
   return metadata.windowLayout ?? null;
 }
@@ -587,7 +590,7 @@ test.describe("Chat Settings window on desktop", () => {
               element.getAttribute("data-chat-settings-control") ?? element.getAttribute("data-window-control"),
           ),
         );
-      expect(controls).toEqual(["reset-view", "tracker-panel", "pin", "lock", "close"]);
+      expect(controls).toEqual(["reset-view", "favorite-layout", "tracker-panel", "pin", "lock", "close"]);
       const dice = settings.getByRole("button", { name: "Tracker Panel", exact: true });
       await expect(dice).toHaveAttribute("title", "Tracker Panel");
       await expect(dice).toHaveAttribute("aria-pressed", "false");
@@ -1120,5 +1123,158 @@ test("phones open Chat Settings from its button as a sheet with Help and the Tra
     await page.screenshot({ path: testInfo.outputPath("mobile-settings-help-icons.png"), animations: "disabled" });
   } finally {
     await request.delete(`/api/chats/${chat.id}?force=true`);
+  }
+});
+
+test("sidebars keep saved buttons separately reachable and restore their positions", async ({
+  page,
+  request,
+}, testInfo) => {
+  test.skip(!testInfo.project.name.includes("desktop"), "Desktop sidebars resize the chat area.");
+  await page.setViewportSize({ width: 1365, height: 900 });
+  const ids = ["chat-branches", "active-context", "gallery", "message-search"].map(
+    (section) => `drawer:chat-settings:conversation-${section}`,
+  );
+  const points = [1265, 1225, 16, 56].map((x) => ({ x, y: 110 }));
+  const layout = {
+    version: 1,
+    detached: ids,
+    windows: Object.fromEntries(
+      ids.map((id) => [
+        id,
+        { x: 600, y: 160, width: 400, height: 350, pinned: false, locked: id === ids[0], minimized: true },
+      ]),
+    ),
+    bubbles: {
+      "chat-settings-button": { x: 1305, y: 110 },
+      ...Object.fromEntries(ids.map((id, index) => [id, points[index]])),
+    },
+  };
+  const chat = await createChat(request, "conversation", { enableAgents: false, windowLayout: layout });
+  try {
+    await prepare(page, chat.id, { chatSettingsMoveTipDismissed: true, sidebarWidth: 320, rightPanelWidth: 320 });
+    await page.goto("/");
+    const buttons = page.locator(".mari-window-bubble");
+    await expect(buttons).toHaveCount(5);
+    const readPositions = () =>
+      buttons.evaluateAll((elements) =>
+        Object.fromEntries(
+          elements.map((element) => {
+            const rect = element.getBoundingClientRect();
+            return [element.getAttribute("data-window"), { x: rect.x, y: rect.y }];
+          }),
+        ),
+      );
+    const initial = await readPositions();
+    const expectReachable = async () => {
+      await expect
+        .poll(() =>
+          buttons.evaluateAll((elements) => {
+            const area = document.querySelector('[data-component="CenterContent"]')!.getBoundingClientRect();
+            const rectangles = elements.map((element) => element.getBoundingClientRect());
+            return elements.flatMap((element, index) => {
+              const rect = rectangles[index]!;
+              const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+              const inside = rect.left >= area.left + 7 && rect.right <= area.right - 7;
+              const separate = rectangles.every(
+                (other, otherIndex) =>
+                  otherIndex === index ||
+                  rect.right <= other.left ||
+                  rect.left >= other.right ||
+                  rect.bottom <= other.top ||
+                  rect.top >= other.bottom,
+              );
+              return inside && separate && (hit === element || element.contains(hit))
+                ? []
+                : [element.getAttribute("data-window")];
+            });
+          }),
+        )
+        .toEqual([]);
+    };
+    await expectReachable();
+    const topbar = page.locator('[data-component="TopBar"]');
+    await topbar.getByTitle("Settings", { exact: true }).click();
+    await expect(page.locator('[data-component="RightPanelDesktopSlot"]')).toHaveAttribute("aria-hidden", "false");
+    await expect
+      .poll(async () => (await box(page.locator('[data-component="RightPanelDesktopSlot"]'))).width)
+      .toBe(320);
+    await expectReachable();
+    await topbar.getByTitle("Chats", { exact: true }).click();
+    await expect(page.locator('[data-component="ChatSidebarSlot"]')).toHaveAttribute("aria-hidden", "false");
+    await expect.poll(async () => (await box(page.locator('[data-component="ChatSidebarSlot"]'))).width).toBe(320);
+    await expectReachable();
+    await expect.poll(() => readSavedLayout(request, chat.id)).toEqual(layout);
+    const locked = page.locator(`.mari-window-bubble[data-window="${ids[0]}"]`);
+    await expect(locked).toHaveAttribute("data-locked", "true");
+    const lockedPosition = await box(locked);
+    await locked.press("ArrowLeft");
+    expectSameBox(await box(locked), lockedPosition, "locked button after sidebar reflow");
+    await locked.click();
+    const opened = page.locator(`.mari-window[data-window="${ids[0]}"]`);
+    await expect(opened).toBeVisible();
+    await opened.locator('[data-window-control="close"]').click();
+    await expectReachable();
+    await topbar.getByTitle("Settings", { exact: true }).click();
+    await expectReachable();
+    await topbar.getByTitle("Chats", { exact: true }).click();
+    await expect.poll(readPositions).toEqual(initial);
+    // Opening/closing a drawer may add its legacy window.bubble fallback; the saved places stay intact.
+    await expect.poll(() => readSavedLayout(request, chat.id)).toMatchObject(layout);
+    await expect.poll(async () => (await readSavedLayout(request, chat.id))?.bubbles).toEqual(layout.bubbles);
+  } finally {
+    await request.delete(`/api/chats/${chat.id}`);
+  }
+});
+
+test("sidebars keep the default Settings button clear of a saved button", async ({ page, request }, testInfo) => {
+  test.skip(!testInfo.project.name.includes("desktop"), "Desktop sidebars resize the chat area.");
+  await page.setViewportSize({ width: 1365, height: 900 });
+  const id = "drawer:chat-settings:conversation-chat-branches";
+  const chat = await createChat(request, "conversation");
+  try {
+    await prepare(page, chat.id, { sidebarWidth: 320, rightPanelWidth: 320 });
+    await page.goto("/");
+    await expect(chatSettingsButton(page)).toBeVisible();
+    const originalSettings = await box(chatSettingsButton(page));
+    const savedPoint = { x: originalSettings.x - 320, y: originalSettings.y };
+    const layout = {
+      version: 1,
+      detached: [id],
+      windows: { [id]: { x: 600, y: 160, width: 400, height: 350, pinned: false, locked: true, minimized: true } },
+      bubbles: { [id]: savedPoint },
+    };
+    expect(
+      (await request.patch(`/api/chats/${chat.id}/metadata`, { data: { windowLayout: layout } })).ok(),
+    ).toBeTruthy();
+    await page.reload();
+    const saved = page.locator(`.mari-window-bubble[data-window="${id}"]`);
+    await expect(saved).toBeVisible();
+    const before = await box(saved);
+    await page.locator('[data-component="TopBar"]').getByTitle("Settings", { exact: true }).click();
+    await expect
+      .poll(async () => (await box(page.locator('[data-component="RightPanelDesktopSlot"]'))).width)
+      .toBe(320);
+    await expect
+      .poll(() =>
+        page.locator(".mari-window-bubble").evaluateAll((elements) =>
+          elements.every((element) => {
+            const rect = element.getBoundingClientRect();
+            const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+            return hit === element || element.contains(hit);
+          }),
+        ),
+      )
+      .toBe(true);
+    expectSameBox(await box(saved), before, "the saved button keeps its position");
+    const movedSettings = await box(chatSettingsButton(page));
+    expect(
+      Math.abs(movedSettings.x - before.x) >= before.width || Math.abs(movedSettings.y - before.y) >= before.height,
+    ).toBe(true);
+    await page.locator('[data-component="TopBar"]').getByTitle("Settings", { exact: true }).click();
+    await expect.poll(async () => (await box(chatSettingsButton(page))).x).toBe(originalSettings.x);
+    await expect.poll(() => readSavedLayout(request, chat.id)).toEqual(layout);
+  } finally {
+    await request.delete(`/api/chats/${chat.id}`);
   }
 });

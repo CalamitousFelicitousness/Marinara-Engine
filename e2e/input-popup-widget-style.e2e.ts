@@ -345,8 +345,11 @@ for (const [preset, theme] of [
       await info.attach("Input popup at assertion failure", { path, contentType: "image/png" });
       throw error;
     } finally {
-      await page.close();
-      await fixture.remove();
+      try {
+        await page.close();
+      } finally {
+        await fixture.remove();
+      }
     }
   });
 }

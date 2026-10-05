@@ -11678,6 +11678,7 @@
   "ui.rulesets.builder.chooseSkills": "{{from}}: choose {{count}} skills",
   "ui.rulesets.builder.describing": "This character was made without the builder, so your picks only describe it as it is and change nothing on the sheet.",
   "ui.rulesets.builder.describingDone": "Done: let picks change the sheet",
+  "ui.rulesets.builder.describingScores": "The scores stay as they are while the builder describes this character. Choose a method once you are done describing.",
   "ui.rulesets.builder.done": "Nothing left to choose",
   "ui.rulesets.builder.gearHint": "Take starting gear in a game, from the inventory's Starting gear button. This ruleset offers:",
   "ui.rulesets.builder.guided": "Guided",

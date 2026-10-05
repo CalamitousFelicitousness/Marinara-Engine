@@ -57,6 +57,9 @@ export interface RulesetBuilderState {
   /** Picks describe the character as it already is: what they grant is recorded as given, and the
    *  sheet is not changed. For a character made before the builder, until the player says done. */
   describing?: boolean;
+  /** Set once the builder starts a blank sheet: only such a character takes a step's `default` method
+   *  (1.82). One it described never does, so ending describing keeps its scores. */
+  made?: "builder";
 }
 
 const idList = z.array(z.string().max(80)).max(120);
@@ -69,6 +72,7 @@ const stateShape = {
   abilityChoices: z.record(idList).optional(),
   trainedChoices: z.record(idList).optional(),
   describing: z.boolean().optional(),
+  made: z.literal("builder").optional(),
   applied: z
     .object({
       increases: z.record(z.number().finite()).default({}),
@@ -338,7 +342,7 @@ export function rulesetBuilderMethod(
 ): RulesetBuilderMethod | undefined {
   const step = definition.sheet.builder?.steps.find((each): each is StepOf<"abilities"> => each.kind === "abilities");
   if (!step) return undefined;
-  const method = state.method ?? (state.describing === false ? step.default : undefined);
+  const method = state.method ?? (state.made === "builder" && !state.describing ? step.default : undefined);
   return method && step.methods[method] ? method : undefined;
 }
 
@@ -482,6 +486,33 @@ export function rulesetBuilderCatalogIds(definition: RulesetDefinition): string[
 export function applyRulesetBuilder(
   definition: RulesetDefinition,
   build: RulesetSheetBuild,
+  given: RulesetBuilderState,
+  catalogs: RulesetCatalogEntriesById,
+): { build: RulesetSheetBuild; state: RulesetBuilderState } {
+  // A blank sheet the builder starts is the builder's, and keeps the method it starts on (1.82), so a
+  // later change to the ruleset's default never moves its scores.
+  let state = given;
+  if (!state.describing && !state.made && state.applied === undefined && rulesetSheetBuildIsBlank(definition, build)) {
+    state = { ...state, made: "builder" };
+  }
+  if (state.made === "builder" && !state.describing && !state.method) {
+    const method = rulesetBuilderMethod(definition, state);
+    if (method) state = { ...state, method };
+  }
+  // A pick can change what a step's `upTo` reads (a class that sets the level), so the builder's
+  // answer is worked out again on what it wrote until it settles.
+  let result = applyRulesetBuilderOnce(definition, build, state, catalogs);
+  for (let pass = 0; pass < 3; pass++) {
+    const again = applyRulesetBuilderOnce(definition, result.build, result.state, catalogs);
+    if (JSON.stringify(again) === JSON.stringify(result)) break;
+    result = again;
+  }
+  return result;
+}
+
+function applyRulesetBuilderOnce(
+  definition: RulesetDefinition,
+  build: RulesetSheetBuild,
   state: RulesetBuilderState,
   catalogs: RulesetCatalogEntriesById,
 ): { build: RulesetSheetBuild; state: RulesetBuilderState } {
@@ -497,7 +528,12 @@ export function applyRulesetBuilder(
   if (state.describing) {
     // Describing: every pick's grants are recorded as given (so a later change takes them back, as far
     // as the sheet still shows them), and nothing is written, now or when describing ends.
-    return { build, state: { ...state, applied: { ...want, scores: {} } } };
+    // A value the player changed in the builder's own fields step stays theirs to the builder.
+    const fields = { ...want.fields };
+    for (const [id, value] of Object.entries(previous.fields)) {
+      if (id in fields && build.fields[id] === value) fields[id] = value;
+    }
+    return { build, state: { ...state, applied: { ...want, fields, scores: {} } } };
   }
   // What this run actually writes, which is all the next run takes back: a value the sheet already
   // had of the player's own is never recorded, so unpicking never takes it.

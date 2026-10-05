@@ -173,11 +173,13 @@ export function RulesetSheetBuilder({
     [definition, preview, rawEvaluated],
   );
   const increases = (preview?.state ?? rawState).applied?.increases ?? {};
+  // What the reads below see: the preview's state (its method, once the builder starts the sheet).
+  const shownState = useMemo(() => (preview ? { ...preview.state, describing } : state), [describing, preview, state]);
 
   const step = builder.steps[Math.min(stepIndex, builder.steps.length - 1)]!;
   const remaining = useMemo(
-    () => (ready ? rulesetBuilderRemaining(definition, build, state, catalogs) : {}),
-    [build, catalogs, definition, ready, state],
+    () => (ready ? rulesetBuilderRemaining(definition, build, shownState, catalogs) : {}),
+    [build, catalogs, definition, ready, shownState],
   );
   const abilitySlots = useMemo(
     () => (ready ? rulesetBuilderAbilitySlots(definition, state, catalogs, build) : []),
@@ -257,7 +259,13 @@ export function RulesetSheetBuilder({
     }
     const toggle = (id: string) => {
       const on = picked.includes(id);
-      const next = on ? picked.filter((each) => each !== id) : current.max === 1 ? [id] : [...picked, id];
+      // Against every stored pick, so one the sheet has fallen below (`upTo`) is kept, not dropped.
+      const stored = state.picks?.[current.id] ?? [];
+      const next = on
+        ? stored.filter((each) => each !== id)
+        : current.max === 1
+          ? [id]
+          : [...stored.filter((each) => each !== id), id];
       update({ ...state, picks: { ...state.picks, [current.id]: next } });
     };
     if (options.length === 0) {
@@ -355,15 +363,17 @@ export function RulesetSheetBuilder({
                     onApply({ ...applied.build, fields: { ...applied.build.fields, [id]: value } }, applied.state);
                     return;
                   }
-                  onApply(
-                    typed,
+                  if (!ready) return;
+                  // Applied again on the new value, which a step's `upTo` may read (a lower level).
+                  const owned =
                     id in rawState.applied.fields
                       ? {
-                          ...rawState,
+                          ...state,
                           applied: { ...rawState.applied, fields: { ...rawState.applied.fields, [id]: value } },
                         }
-                      : rawState,
-                  );
+                      : state;
+                  const applied = applyRulesetBuilder(definition, typed, owned, catalogs);
+                  onApply(applied.build, applied.state);
                 }
               }
               ariaLabel={field.label}
@@ -379,8 +389,8 @@ export function RulesetSheetBuilder({
     const methods = (["pointBuy", "standardArray", "roll", "manual"] as const).filter(
       (method) => current.methods[method] !== undefined,
     );
-    const method = rulesetBuilderMethod(definition, state);
-    const base = rulesetBuilderBaseScores(definition, state);
+    const method = rulesetBuilderMethod(definition, shownState);
+    const base = rulesetBuilderBaseScores(definition, shownState);
     const pointBuy = current.methods.pointBuy;
     const spent = method === "pointBuy" && pointBuy ? rulesetPointBuySpent(pointBuy, base, ids) : null;
     const values = method === "standardArray" ? (current.methods.standardArray ?? []) : (state.rolled ?? []);
@@ -414,6 +424,9 @@ export function RulesetSheetBuilder({
     };
     return (
       <div className="space-y-2">
+        {describing && (
+          <p className="text-[0.6875rem] text-[var(--muted-foreground)]">{t("ui.rulesets.builder.describingScores")}</p>
+        )}
         <div role="radiogroup" aria-label={t("ui.rulesets.builder.method")} className="flex flex-wrap gap-1.5">
           {methods.map((each) => (
             <button
@@ -421,6 +434,7 @@ export function RulesetSheetBuilder({
               type="button"
               role="radio"
               aria-checked={method === each}
+              disabled={describing}
               tabIndex={method === each || (!method && each === methods[0]) ? 0 : -1}
               onClick={() => choose(each)}
               onKeyDown={(event) => {
@@ -473,7 +487,7 @@ export function RulesetSheetBuilder({
             )}
           </div>
         )}
-        {method && (
+        {method && !describing && (
           <div className="space-y-1">
             <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,6.5rem)_2.5rem_2.5rem_2.5rem] gap-1.5 text-[0.625rem] text-[var(--muted-foreground)]">
               <span />

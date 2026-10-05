@@ -533,15 +533,17 @@ try {
       (safe.catalogs ?? []).map((catalog) => [catalog.id, catalog.entries ?? []]),
     );
     // A new character starts on point buy; one being described does not.
-    assert.equal(rulesetBuilderMethod(safe, { describing: false }), "pointBuy");
-    assert.equal(rulesetBuilderMethod(safe, { describing: true }), undefined);
-    assert.equal(rulesetBuilderMethod(safe, {}), undefined, "nor one not yet known to be new");
+    assert.equal(rulesetBuilderMethod(safe, { made: "builder" }), "pointBuy");
+    assert.equal(rulesetBuilderMethod(safe, { made: "builder", describing: true }), undefined);
+    assert.equal(rulesetBuilderMethod(safe, { describing: false }), undefined, "nor one the builder did not start");
     assert.equal(
       rulesetBuilderMethod(safe, { describing: false, method: "manual" }),
       "manual",
       "the player's own wins",
     );
     let { build: b, state: st } = applyRulesetBuilder(safe, blank, { describing: false }, catalogs);
+    assert.equal(st.made, "builder", "a blank sheet is the builder's");
+    assert.equal(st.method, "pointBuy", "and keeps the method it starts on");
     assert.deepEqual(
       ["str", "dex", "con", "int", "wis", "cha"].map((id) => b.abilities[id]),
       [8, 8, 8, 8, 8, 8],
@@ -574,6 +576,70 @@ try {
     ({ build: b, state: st } = applyRulesetBuilder(safe, { ...b, fields: { ...b.fields, level: 1 } }, st, catalogs));
     assert.equal(b.abilities.wis, 8);
     assert.deepEqual(st.picks?.subrace, ["hill-dwarf"]);
+    // A described character never takes the default, so ending describing keeps its scores.
+    const typedIn: RulesetSheetBuild = {
+      ...blank,
+      abilities: { str: 16, dex: 14, con: 15, int: 10, wis: 12, cha: 8 },
+      fields: { ...blank.fields, race: "Dwarf" },
+    };
+    let d = applyRulesetBuilder(safe, typedIn, { describing: true, picks: { race: ["dwarf"] } }, catalogs);
+    d = applyRulesetBuilder(safe, d.build, { ...d.state, describing: false }, catalogs);
+    assert.deepEqual(d.build.abilities, typedIn.abilities, "Done keeps a described character's scores");
+    d = applyRulesetBuilder(safe, d.build, { ...d.state, picks: { race: [] } }, catalogs);
+    assert.equal(d.build.abilities.con, 13, "and a later change still takes back what was described");
+    // A pick that changes what upTo reads settles in one change.
+    const vet = parsed(
+      variant((doc) => {
+        doc.catalogs
+          .find((c: { id: string }) => c.id === "races")
+          .filters.push({ id: "tier", label: "Tier", type: "number" });
+        doc.catalogs
+          .find((c: { id: string }) => c.id === "races")
+          .entries.find((e: { id: string }) => e.id === "hill-dwarf").filters.tier = 3;
+        doc.catalogs
+          .find((c: { id: string }) => c.id === "classes")
+          .entries.push({
+            id: "vet",
+            label: "Veteran",
+            grants: { sets: { level: 3 } },
+          });
+        doc.sheet.builder.steps[1].upTo = { filter: "tier", value: { field: "level" } };
+      }),
+    );
+    const vetCatalogs: RulesetCatalogEntriesById = Object.fromEntries(
+      (vet.catalogs ?? []).map((catalog) => [catalog.id, catalog.entries ?? []]),
+    );
+    let v = applyRulesetBuilder(
+      vet,
+      defaultRulesetSheetBuild(vet),
+      { picks: { race: ["dwarf"], class: ["vet"] } },
+      vetCatalogs,
+    );
+    assert.equal(v.build.fields.level, 3);
+    v = applyRulesetBuilder(
+      vet,
+      v.build,
+      { ...v.state, picks: { ...v.state.picks, subrace: ["hill-dwarf"] } },
+      vetCatalogs,
+    );
+    assert.equal(v.build.abilities.wis, 11);
+    v = applyRulesetBuilder(vet, v.build, { ...v.state, picks: { ...v.state.picks, class: [] } }, vetCatalogs);
+    assert.equal(v.build.fields.level, undefined, "the level the class set goes with it");
+    assert.equal(v.build.abilities.wis, 10, "the subrace above the new level gives nothing back at once");
+    assert.equal(v.state.applied?.increases.wis, undefined);
+    // Describing keeps a value the player changed in the builder's own step.
+    const plain = defaultRulesetSheetBuild(definition);
+    const e = applyRulesetBuilder(
+      definition,
+      { ...plain, fields: { ...plain.fields, hit_die: "d12" } },
+      {
+        describing: true,
+        picks: { class: ["wizard"] },
+        applied: { increases: {}, scores: {}, skills: {}, saves: {}, fields: { hit_die: "d12" }, rows: [] },
+      },
+      catalogs,
+    );
+    assert.equal(e.state.applied?.fields.hit_die, "d12");
     // Entries without the filter always pass.
     const raceStep = safe.sheet.builder!.steps[0]!;
     assert.ok(raceStep.kind === "catalog");

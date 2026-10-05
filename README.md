@@ -159,8 +159,7 @@ Agents are optional AI helpers that work alongside your chats: they track the wo
 - **Tracker Agents** keep track of the world, the cast, and your persona: World State, Expression Engine, Quest Tracker, Background, Character Tracker, Persona Stats, Custom Tracker, Inventory Tracker, Beholder, Memory Nag, and World Maps. Quartermaster and Relationship Tracker are previews.
 - **Misc Agents** add pictures, music, memory, and extras: Illustrator, Storyboard, Music DJ, Long-Term Memory, Lorebook Keeper, Echo Chamber, Combat, CYOA Choices, Immersive HTML, Haptic Feedback, and Calls (audio and video calls in Conversation mode).
 - **Conversation games** let you play against your characters: UNO, Chess, Poker, 8-Ball Pool, Tic-Tac-Toe, and Rock-Paper-Scissors.
-- **Apps** open in their own Home tab: Noodle (a social feed where your characters post), Slurp (a private creator app for your characters), and Gacha Forge (a gacha game built from a world you describe). Modern Life Sim is a preview.
-- **Experiences** run a whole Game Mode game their own way, with their own world, HUD, and menus. When you have one installed, pick it under **Experiences** while creating a new game.
+- **Apps** are whole experiences built on your characters, each with its own Home tab: Noodle (a social feed where your characters post), Slurp (a private creator app for your characters), and Gacha Forge (a gacha game built from a world you describe). Modern Life Sim is a preview.
 - **Custom Agents:** build your own with your own prompt, timing, tools, and output type, or copy an official agent and change it. Importing agents made by other people is off by default: turn on **Allow custom Agent imports** in **Settings → Advanced → Danger Zone**, then review the permissions each one asks for.
 
 See the [Downloadable Agents Reference](docs/agents/built-in-agents.md) and [Creating Custom Agents](docs/agents/custom-agents.md).

@@ -58,10 +58,15 @@ try {
         );
         // Every cell the party can stand on is reached from the way in (one flood, four ways).
         const reached = new Set([map.entrance.y * map.width + map.entrance.x]);
-        for (const queue = [...reached]; queue.length; ) {
+        for (const queue = [...reached]; queue.length;) {
           const i = queue.pop()!;
           const [x, y] = [i % map.width, Math.floor(i / map.width)];
-          for (const [nx, ny] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]] as const) {
+          for (const [nx, ny] of [
+            [x + 1, y],
+            [x - 1, y],
+            [x, y + 1],
+            [x, y - 1],
+          ] as const) {
             const n = ny * map.width + nx;
             if (nx < 0 || ny < 0 || nx >= map.width || ny >= map.height || reached.has(n)) continue;
             if (!dungeonWalkable(map, nx, ny)) continue;

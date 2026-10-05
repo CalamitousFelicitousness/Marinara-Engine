@@ -4,7 +4,7 @@ This guide explains how to change the whole look of Marinara Engine with a custo
 
 ## Ready-made chat window styles
 
-For a quick change without writing CSS, open **Settings > Appearance > App** and find **Chat widget style** at the bottom of **App Style**. **Dottore** gives your chat controls cyan instrument frames and cut corners. **Mari** adds rose-and-gold frames with Primogems on window titles. Its buttons use the same background as its windows. Each preset has its own font, works in light and dark mode, and styles buttons, windows and expandable sections together.
+For a quick change without writing CSS, open **Settings > Appearance > App** and find **Chat widget style** at the bottom of **App Style**. **Dottore** gives your chat controls icy blue instrument frames, pale metal edges and cut corners. **Mari** adds gold-trimmed storybook frames, gemstone blues and Primogems on window titles. Its buttons use the same background as its windows. Each preset has its own font, works in light and dark mode, and styles buttons, windows and expandable sections together.
 
 The **Font** and **Shape** controls let you change those details separately. **Preset font** and **Preset shape** follow the selected style.
 
@@ -122,7 +122,7 @@ Custom theme CSS is cleaned before it runs, for safety. Styles that load a file 
 
 On a computer, **Chat Settings** opens as a movable window. Its collapsible sections are called **drawers**. A drawer can pop out into its own window, then minimize to a small movable button, called a **bubble**.
 
-Other chat tools use these windows and buttons too, including Game controls, Session, Volume, Game Assets, connected chats and package controls. On a phone, windows open as full-width panels. Tools moved out of Chat Settings are listed in the movable **Chat tools** three-dot menu; tracker buttons stay separate.
+Other chat tools use these windows and buttons too, including Game controls, Session, Volume, Game Assets, connected chats and package controls. On a phone, most windows open as full-width panels; Echo Chamber stays a compact window that you can move and resize. Tools moved out of Chat Settings are listed in the movable **Chat tools** three-dot menu; tracker buttons stay separate.
 
 The classes, data attributes and variables below let a theme style these parts together. Your theme's rules override the defaults without `!important`.
 
@@ -248,7 +248,7 @@ For example, with **Apply preset font** and **Apply preset colors** on:
 
 Unset variables follow the widget settings and preset. The matching switch must be on for these variables to apply through the built-in styling. Conversation messages keep their own shape even when **Apply preset shape** is on. Custom themes can also target the classes directly; keep focus outlines, menus and message content outside any decorative clipping.
 
-On phones, the three-dot menu uses the existing window and button classes. Its button is `[data-chat-tools-menu-button]`, the open menu is `[data-chat-tools-menu]`, and each tool row has `data-chat-tools-menu-item` set to its window ID. The menu always follows the widget style, independently of the three switches for the rest of the chat.
+On phones, the three-dot menu expands into round buttons. Its trigger is `[data-chat-tools-menu-button]`, the open stack is `[data-chat-tools-menu]`, and each list item has `data-chat-tools-menu-item` set to its window ID. Tool buttons use `.mari-window-bubble.mari-chat-tools-button` and `data-chat-tools-menu-tool` with that same ID. The stack has no window frame; its buttons follow widget colors and button size, independently of the three switches for the rest of the chat, while keeping their round shape.
 
 ## Size and name limits
 

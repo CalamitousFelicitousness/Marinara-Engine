@@ -270,8 +270,9 @@ import {
   worldJournal,
   worldPlaceInForce,
   worldPresent,
-  worldOverworldHere,
-  worldRoute,
+  worldOverworldSpot,
+  worldTrip,
+  worldIsSite,
   worldWalkFromMetadata,
   worldWalkJoined,
   worldTown,
@@ -11015,7 +11016,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       (await resolveOwnerSpatialProjection(chatId, {}, meta))?.currentLocationId,
     );
     return {
-      here: worldOverworldHere(world, present, place?.name)?.id ?? null,
+      here: worldOverworldSpot(world, present, place?.name)?.id ?? null,
       walk: null,
       present,
       placeName: place?.name,
@@ -11191,16 +11192,33 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
   // place's name as the Game Master's `[map:]` would be, or the one the party is already on.
   app.post<{ Params: { chatId: string } }>("/:chatId/map/enter", async (req, reply) => {
     const { chatId } = req.params;
-    const body = z.object({ at: z.string().min(1).max(16) }).parse(req.body);
+    const body = z
+      .object({ at: z.string().min(1).max(16).optional(), place: z.string().min(1).max(16).optional() })
+      .refine((value) => Boolean(value.at) !== Boolean(value.place), "A building in town or a site, one of them")
+      .parse(req.body);
     const chats = createChatsStorage(app.db);
     const chat = await chats.getById(chatId);
     if (!chat) return reply.status(404).send({ error: "Chat not found" });
     const meta = parseMeta(chat.metadata);
     const world = chat.mode === "game" ? await loadGameWorld(app.db, chat.id, meta) : null;
-    const found = world ? await townOf(chatId, meta, world) : null;
-    if (!world || !found) return reply.status(400).send({ error: "The party is not in a town." });
-    if (found.at !== body.at) return reply.status(400).send({ error: "The party is not there." });
-    const building = found.town.buildings.find((each) => each.id === body.at);
+    if (!world) return reply.status(400).send({ error: "This game has no world." });
+    // A site out in the world (design-game-overworld-sites.md): the one the party is at on the overworld.
+    // Else a building in the town the party is in, where it stands.
+    let building: { id: string; placeId?: string; name?: string } | undefined;
+    let placeKey: string;
+    if (body.place) {
+      const { here } = await overworldPlace(chatId, meta, world);
+      if (here !== body.place || !worldIsSite(world, body.place))
+        return reply.status(400).send({ error: "The party is not there." });
+      building = { id: body.place, placeId: body.place };
+      placeKey = body.place;
+    } else {
+      const found = await townOf(chatId, meta, world);
+      if (!found) return reply.status(400).send({ error: "The party is not in a town." });
+      if (found.at !== body.at) return reply.status(400).send({ error: "The party is not there." });
+      building = found.town.buildings.find((each) => each.id === body.at);
+      placeKey = building?.placeId ?? `${found.town.settlementId}:${building?.id}`;
+    }
     const place = building?.placeId ? world.world.places.find((each) => each.id === building.placeId) : undefined;
     const name = building?.name ?? place?.name;
     const family = worldKitArtFamily(gameWorldKitFromMetadata(meta) ?? undefined);
@@ -11212,7 +11230,6 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         ? (dungeonSetForPlace({ name, tags: place?.tags }, family) ?? (hand ? dungeonSetFor(undefined, family) : null))
         : null;
     if (!building || !name || !set) return reply.status(400).send({ error: "There is no going down here." });
-    const placeKey = building.placeId ?? `${found.town.settlementId}:${building.id}`;
     let map: GameDungeonMap | undefined;
     const updated = await chats.patchMetadata(chatId, (fresh) => {
       const current = gameDungeonMapFromMetadata(fresh);
@@ -11669,7 +11686,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const world = chat.mode === "game" ? await loadGameWorld(app.db, chat.id, meta) : null;
     if (!world) return reply.status(400).send({ error: "This game has no world." });
     const { here, walk } = await overworldPlace(chatId, meta, world);
-    const route = here ? worldRoute(world.world, here, to) : null;
+    const route = here ? worldTrip(world, here, to) : null;
     if (!route) return reply.status(400).send({ error: "No way leads there from where the party is." });
     let walked: WorldWalk | undefined;
     let time: GameTime | undefined;

@@ -261,3 +261,14 @@ export function overworldDarkness(hour: number, minute = 0): number {
   if (at < 18) return 0;
   return 0.55 * ((at - 18) / 3);
 }
+
+/** A site's marker (a cave, a mine, a ruin out in the world): a dark mouth in a mound of rock. */
+export function paintSite(ctx: Ctx, cx: number, cy: number) {
+  const x = cx * 16;
+  const y = cy * 16;
+  px(ctx, "#2b2520", x + 2, y + 5, 12, 10);
+  px(ctx, "#8a8172", x + 3, y + 6, 10, 8);
+  px(ctx, "#a69c8b", x + 5, y + 5, 6, 2);
+  px(ctx, "#111014", x + 6, y + 9, 4, 5);
+  px(ctx, "#111014", x + 7, y + 8, 2, 1);
+}

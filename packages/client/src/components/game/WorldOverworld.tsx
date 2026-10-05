@@ -25,7 +25,8 @@ import {
   worldEdgeMask,
   WORLD_FRINGE_ORDER,
   worldGroundLooks,
-  worldRoute,
+  worldSites,
+  worldTrip,
   type GameWorld,
   characterFacing,
   characterFrameAt,
@@ -34,7 +35,7 @@ import {
   type WorldPlace,
   worldSeason,
 } from "@marinara-engine/shared";
-import { useOverworld, useOverworldWalk } from "../../hooks/use-game";
+import { useDungeonEnter, useOverworld, useOverworldWalk } from "../../hooks/use-game";
 import {
   overworldCamera,
   overworldBaseResolution,
@@ -50,6 +51,7 @@ import {
   paintGround,
   paintParty,
   paintSettlement,
+  paintSite,
   paintShore,
   paintWay,
 } from "../../lib/overworld-paint";
@@ -108,6 +110,7 @@ export function WorldOverworld({
   const { t } = useTranslation();
   const { data: overworld } = useOverworld(chatId, turnKey, true);
   const walkMutation = useOverworldWalk();
+  const enterMutation = useDungeonEnter();
 
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -127,15 +130,17 @@ export function WorldOverworld({
   const here = overworld?.here ?? null;
   const ruined = useMemo(() => new Set(overworld?.ruined ?? []), [overworld?.ruined]);
   const scale = Math.max(2, Math.min(4, Math.floor(Math.min(size.width / 400, size.height / 260))));
-  // Settlements nearest the party first, by the days the way takes; those no way reaches last.
+  // The world's sites (a cave, a mine, a ruin out in the world), gone to and into as settlements are.
+  const siteIds = useMemo(() => new Set(worldSites(game).map((place) => place.id)), [game]);
+  // Settlements and sites nearest the party first, by the days the way takes; those no way reaches last.
   const settlements = useMemo(() => {
     const days = (place: WorldPlace) =>
-      place.id === here ? -1 : here ? (worldRoute(world, here, place.id)?.days ?? Infinity) : 0;
+      place.id === here ? -1 : here ? (worldTrip(game, here, place.id)?.days ?? Infinity) : 0;
     return world.places
-      .filter((place) => place.rank !== undefined)
+      .filter((place) => place.rank !== undefined || siteIds.has(place.id))
       .map((place) => ({ place, days: days(place) }))
       .sort((a, b) => a.days - b.days || a.place.name.localeCompare(b.place.name));
-  }, [here, world]);
+  }, [game, here, siteIds, world]);
 
   // ── The clock (Pixelforge's): a game minute every five real seconds while the overworld waits ──
   const { pendingMinutes, flush } = useOverworldClock(chatId, clockRunning, () => walkingRef.current, handleRef);
@@ -291,13 +296,17 @@ export function WorldOverworld({
         ctx.fillStyle = glow;
         ctx.fillRect(x - 6, y - 5, 28, 28);
       }
+      if (siteIds.has(place.id)) {
+        paintSite(ctx, place.at.x, place.at.y);
+        continue;
+      }
       const tier = settlementTier(place, top);
       if (!drawTile(ctx, ruined.has(place.id) ? "ruin" : `marker${tier}`, x, y)) {
         paintSettlement(ctx, place.at.x, place.at.y, tier, ruined.has(place.id), lit);
       }
     }
     return canvas;
-  }, [drawTile, lit, resolution, ruined, settlements, top, world.height, world.width]);
+  }, [drawTile, lit, resolution, ruined, settlements, siteIds, top, world.height, world.width]);
 
   // Beyond the world's edge, the ground its edge has most of (the sea around an island, open space).
   const beyond = useMemo(() => {
@@ -466,8 +475,8 @@ export function WorldOverworld({
 
   // ── Walking ──
   const route = useMemo(
-    () => (here && selected && selected !== here ? worldRoute(world, here, selected) : null),
-    [here, selected, world],
+    () => (here && selected && selected !== here ? worldTrip(game, here, selected) : null),
+    [game, here, selected],
   );
   const startWalk = useCallback(
     async (to: string) => {
@@ -553,7 +562,9 @@ export function WorldOverworld({
   const sizeLabel = (place: WorldPlace) =>
     kit.sizes.find((entry) => entry.id === place.size)?.label ?? place.size ?? "";
   const placeWords = (place: WorldPlace) =>
-    [sizeLabel(place), ...(ruined.has(place.id) ? [t("game.overworld.ruined")] : [])].join(", ");
+    siteIds.has(place.id)
+      ? t("game.overworld.siteWords")
+      : [sizeLabel(place), ...(ruined.has(place.id) ? [t("game.overworld.ruined")] : [])].join(", ");
   const walkedTo = overworld?.walk ? byId.get(overworld.walk.to) : undefined;
   const chosen = selected ? byId.get(selected) : undefined;
   const cell = OVERWORLD_TILE * scale;
@@ -592,7 +603,7 @@ export function WorldOverworld({
         >
           {settlements.map(({ place }) => {
             const isHere = place.id === here && !walking;
-            const tier = settlementTier(place, top);
+            const tier = siteIds.has(place.id) ? 0 : settlementTier(place, top);
             const words = placeWords(place);
             return (
               <div
@@ -659,16 +670,39 @@ export function WorldOverworld({
             {chosen.id === here ? (
               <>
                 <div className="mt-2 text-white/60">{t("game.overworld.here")}</div>
-                {onEnterTown && (
+                {siteIds.has(chosen.id) ? (
                   <button
                     type="button"
-                    disabled={walking}
-                    onClick={onEnterTown}
+                    disabled={!canWalk || walking || enterMutation.isPending}
+                    onClick={() =>
+                      enterMutation.mutate(
+                        { chatId, place: chosen.id },
+                        {
+                          onSuccess: () => setSelected(null),
+                          onError: (error) =>
+                            toast.error(
+                              error instanceof Error && error.message ? error.message : t("game.overworld.enterFailed"),
+                            ),
+                        },
+                      )
+                    }
                     className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-foreground)] transition-opacity hover:opacity-90 disabled:opacity-40"
                   >
                     <DoorOpen size={13} />
                     {t("game.overworld.enter", { name: chosen.name })}
                   </button>
+                ) : (
+                  onEnterTown && (
+                    <button
+                      type="button"
+                      disabled={walking}
+                      onClick={onEnterTown}
+                      className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-foreground)] transition-opacity hover:opacity-90 disabled:opacity-40"
+                    >
+                      <DoorOpen size={13} />
+                      {t("game.overworld.enter", { name: chosen.name })}
+                    </button>
+                  )
                 )}
               </>
             ) : route ? (

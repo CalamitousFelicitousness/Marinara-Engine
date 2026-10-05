@@ -24,7 +24,7 @@ On a computer, click the **X** beside the layout tips (**Hide these tips for thi
 
 ## Changing how chat windows look
 
-Open **Settings > Appearance > App** and scroll to **Chat widget style** at the bottom of **App Style**. **Default** keeps the familiar Marinara look. **Dottore** adds cyan details, technical lettering and cut corners; **Mari** uses rose and gold, storybook lettering and arched frames. Both adapt to light and dark mode and style the movable buttons, windows and expandable sections in all three chat modes.
+Open **Settings > Appearance > App** and scroll to **Chat widget style** at the bottom of **App Style**. **Default** keeps the familiar Marinara look. **Dottore** combines icy blues and pale metal with technical lettering and cut corners; **Mari** pairs gemstone blues and warm gold with storybook lettering and arched frames. Both adapt to light and dark mode and style the movable buttons, windows and expandable sections in all three chat modes.
 
 Use **Font**, **Shape** and the three color pickers below the presets to mix things up. Fonts you have installed in Marinara appear in the font list too. Choosing a preset again resets the font, shape and custom colors. These choices do not move your windows or change your saved chat layouts. They are saved with your app preferences and sync to browsers connected to the same server.
 
@@ -67,15 +67,15 @@ On a computer, you can also drag a section's title out of Chat Settings. The new
 - **Put back in Chat Settings** (the curved arrow beside **X**) returns the section to Chat Settings. You can also drag its window onto Chat Settings.
 - An unpinned section shrinks to its button when you click elsewhere or press Escape, unless you are typing in a text box or using an open menu.
 
-On a phone, popping out a section closes Chat Settings and adds it to the **Chat tools** three-dot menu. Tap the dots, then the section's name to open its panel. Close the panel to use the menu again, or tap **Put back in Chat Settings** to return the section.
+On a phone, popping out a section closes Chat Settings and adds it to the **Chat tools** three-dot menu. Tap the dots, then the section's round icon button to open its panel. Close the panel to use the menu again, or tap **Put back in Chat Settings** to return the section.
 
 Trackers can pop out of the Trackers window in the same way. Their return button is called **Put back in Trackers**.
 
 ## The phone's Chat tools menu
 
-The movable three-dot button keeps tools you have taken out of Chat Settings in one place. Tap it to show the list, then tap a tool to open it. Tracker buttons, the Game Map button and Character Profiles stay separate, so you can reach them directly.
+The movable three-dot button keeps tools you have taken out of Chat Settings in one place. Tap it to roll out a column of round icon buttons, then tap a tool to open it. Tap the dots again to fold the buttons away. Tracker buttons, the Game Map button and Character Profiles stay separate, so you can reach them directly.
 
-Drag the three-dot button to move the whole menu. Open the menu and use the lock at the top to keep it in place. While unlocked, drag a tool's reorder handle up or down to change the list order. With a keyboard, focus the handle and use the up or down arrow key. Locking the menu prevents both moving and reordering; you can still open its tools.
+Drag the three-dot button to move the whole menu. Open the menu and use the lock at the top to keep it in place. While unlocked, drag a tool button up or down to change its place in the column. With a keyboard, focus the button and use the up or down arrow key. Locking the menu prevents both moving and reordering; you can still open its tools.
 
 Each chat saves the menu's position, lock and order. Favorite layouts and settings profiles include them too. The menu follows your chat widget style, just like the windows it opens.
 

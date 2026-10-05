@@ -60,6 +60,8 @@ const FLOATING_PANEL_STACK_GAP = 8;
 const TOP_BUTTON_GAP = 6; // Matches the tracker panel gap below the top controls.
 const DESKTOP_PANEL_WIDTH = 236;
 const DEFAULT_DESKTOP_PANEL_MAX_HEIGHT = 352;
+const DEFAULT_MOBILE_PANEL_HEIGHT = 112;
+const MIN_MOBILE_PANEL_WIDTH = 240;
 const MIN_PANEL_WIDTH = 176;
 const MIN_PANEL_HEIGHT = 96;
 const ECHO_WINDOW_ID = "echo-chamber";
@@ -373,6 +375,17 @@ export function EchoChamberPanel({ hiddenOnMobile = false }: EchoChamberPanelPro
   const getDefaultLayout = useCallback(
     (bounds: WindowBounds): WindowLayout => {
       const area = getRoleplayAreaRect();
+      if (isMobile) {
+        return {
+          x: bounds.left + 8,
+          y: (area?.top ?? bounds.top) + Number(posStyle.top ?? WIDGET_BAR_H),
+          width: rememberedPanelSize?.width ?? bounds.right - bounds.left - 16,
+          height: rememberedPanelSize?.height ?? DEFAULT_MOBILE_PANEL_HEIGHT,
+          pinned: true,
+          locked: false,
+          minimized: !echoChamberOpen,
+        };
+      }
       const isTop = echoChamberSide.startsWith("top");
       const isLeft = echoChamberSide.endsWith("left");
       const position = getDesktopPanelPosition(
@@ -401,6 +414,8 @@ export function EchoChamberPanel({ hiddenOnMobile = false }: EchoChamberPanelPro
       defaultPanelHeight,
       echoChamberOpen,
       echoChamberSide,
+      isMobile,
+      posStyle.top,
       rememberedPanelSize,
       trackerPanelEnabled,
       trackerPanelOpen,
@@ -592,27 +607,26 @@ export function EchoChamberPanel({ hiddenOnMobile = false }: EchoChamberPanelPro
         rememberedPanelSize,
         defaultPanelHeight,
         echoChamberOpen,
+        isMobile,
       ])}
-      minWidth={MIN_PANEL_WIDTH}
-      minHeight={MIN_PANEL_HEIGHT}
-      presentation={isMobile ? "sheet" : "window"}
+      minWidth={isMobile ? MIN_MOBILE_PANEL_WIDTH : MIN_PANEL_WIDTH}
+      minHeight={isMobile ? DEFAULT_MOBILE_PANEL_HEIGHT : MIN_PANEL_HEIGHT}
       autoFocus={false}
       className="pointer-events-auto min-w-0"
-      sheetClassName="absolute z-[71] max-h-28"
-      sheetStyle={posStyle}
       headerClassName="flex-wrap"
       titleClassName="text-[0.625rem] font-semibold uppercase tracking-wider"
       bodyClassName="overflow-hidden"
       rootAttributes={rootAttributes}
       minimizable={isMobile ? undefined : { icon: <MessageCircle size="1rem" />, label: title }}
-      ignoreOutsidePointer={isMobile ? () => true : undefined}
-      onRequestClose={() => {
+      onRequestClose={(reason) => {
         saveLayout(ECHO_WINDOW_ID, {
           ...(savedLayout ?? getDefaultLayout(readFloatingWindowBounds())),
           minimized: true,
         });
         useFloatingWindowStore.getState().closeWindow(ECHO_WINDOW_ID);
-        requestAnimationFrame(() => phoneBubbleRef.current?.focus({ preventScroll: true }));
+        if (reason !== "outside-pointer") {
+          requestAnimationFrame(() => phoneBubbleRef.current?.focus({ preventScroll: true }));
+        }
       }}
       headerControls={
         <>

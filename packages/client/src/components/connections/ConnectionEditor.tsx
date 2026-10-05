@@ -73,6 +73,12 @@ import {
   createConnectionExportEnvelope,
   type ConnectionTransferRow,
 } from "../../lib/connection-transfer";
+import {
+  connectionFieldsForModelPick,
+  filterConnectionModelOptions,
+  mergeConnectionModelOptions,
+  normalizeGrokCliEditorModel,
+} from "../../lib/connection-model-selection";
 import { DraftNumberInput } from "../ui/DraftNumberInput";
 import { decisionConnectionTestMessage } from "../../lib/decision-test-message";
 import { AtlasCloudModelOptions } from "./AtlasCloudModelOptions";
@@ -159,7 +165,6 @@ const MAX_CACHING_AT_DEPTH = 100;
 const DEFAULT_MAX_PARALLEL_JOBS = 1;
 const MAX_PARALLEL_JOBS = 16;
 const GROK_CLI_DEFAULT_CONTEXT_TOKENS = 32_000;
-const STALE_GROK_CLI_MODEL_IDS = new Set(["grok-build-latest", "grok-build-0.1"]);
 const DEFAULT_VIDEO_MODELS: Record<VideoDefaultsService, string> = {
   gemini_omni: "gemini-omni-flash-preview",
   google_veo: "veo-3.1-generate-preview",
@@ -301,10 +306,6 @@ function providerSupportsDirectEmbeddingConfig(provider: APIProvider): boolean {
     provider !== "anthropic" &&
     !isLocalAuthConnectionProvider(provider)
   );
-}
-
-function normalizeGrokCliEditorModel(provider: APIProvider, model: string): string {
-  return provider === "grok_subscription" && STALE_GROK_CLI_MODEL_IDS.has(model.trim()) ? "" : model;
 }
 
 function normalizeConnectionMaxContext(provider: APIProvider, value: unknown): number {
@@ -760,34 +761,12 @@ export function ConnectionEditor() {
   }, [localProvider, selectedVideoProvider, selectedImageService]);
 
   // Merge known models with remote models (remote first, deduped)
-  const allModels = useMemo(() => {
-    const remote = remoteModels.map((m) => ({
-      id: m.id,
-      name: m.name,
-      context: m.context ?? 0,
-      maxOutput: m.maxOutput ?? 0,
-      capabilities: m.capabilities,
-      subscriptionIncluded: m.subscriptionIncluded,
-      inputTokenMultiplier: m.inputTokenMultiplier,
-      isRemote: true as const,
-    }));
-    const remoteIds = new Set(remote.map((m) => m.id));
-    const known = providerModels
-      .filter((m) => !remoteIds.has(m.id))
-      .map((m) => ({
-        ...m,
-        subscriptionIncluded: undefined as boolean | undefined,
-        inputTokenMultiplier: undefined as number | undefined,
-        isRemote: false as const,
-      }));
-    return [...remote, ...known];
-  }, [providerModels, remoteModels]);
+  const allModels = useMemo(
+    () => mergeConnectionModelOptions(remoteModels, providerModels),
+    [providerModels, remoteModels],
+  );
 
-  const filteredModels = useMemo(() => {
-    if (!modelSearch.trim()) return allModels;
-    const q = modelSearch.toLowerCase();
-    return allModels.filter((m) => m.id.toLowerCase().includes(q) || m.name.toLowerCase().includes(q));
-  }, [allModels, modelSearch]);
+  const filteredModels = useMemo(() => filterConnectionModelOptions(allModels, modelSearch), [allModels, modelSearch]);
 
   const selectedModelInfo = useMemo(() => {
     return allModels.find((m) => m.id === localModel) ?? null;
@@ -1444,7 +1423,9 @@ export function ConnectionEditor() {
 
   const selectModel = useCallback(
     (model: { id: string; context?: number; maxOutput?: number; isRemote?: boolean }) => {
-      setLocalModel(model.id);
+      // The quick model pickers save the same fields (see connectionFieldsForModelPick).
+      const fields = connectionFieldsForModelPick(localProvider, model);
+      setLocalModel(fields.model);
       if (localProvider === "video_generation") {
         const provider = videoSourceToProviderOption(
           localVideoGenerationSource || localVideoService || inferVideoSource(model.id, localBaseUrl),
@@ -1452,8 +1433,8 @@ export function ConnectionEditor() {
         setLocalVideoGenerationSource(provider);
         setLocalVideoService(videoProviderServiceForModel(provider, model.id, localBaseUrl));
       }
-      if (model.context) setLocalMaxContext(Number(model.context));
-      if (model.isRemote && model.maxOutput) setLocalMaxTokensOverride(Number(model.maxOutput));
+      if (fields.maxContext) setLocalMaxContext(fields.maxContext);
+      if (fields.maxTokensOverride) setLocalMaxTokensOverride(fields.maxTokensOverride);
       setShowModelDropdown(false);
       setModelSearch("");
       testScopeRef.current++;

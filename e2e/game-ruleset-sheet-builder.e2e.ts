@@ -274,6 +274,20 @@ test("the guided builder applies picks, rolls and buys scores, and saves the she
     await expect(page.locator('input[aria-label="Strength"]')).toHaveValue("15");
     await expect(page.locator('input[aria-label="Charisma"]')).toHaveValue("10");
 
+    // A level raised in All fields offers a feature; lowered there, it takes the feature back at once.
+    const level = page.locator('input[aria-label="Level"]');
+    await level.fill("2");
+    await level.press("Tab");
+    await page.getByRole("tab", { name: "Guided", exact: true }).click();
+    await steps.getByRole("button", { name: /^Features/ }).click();
+    await page.getByRole("button", { name: "Select Second Effort" }).click();
+    await page.getByRole("tab", { name: "All fields", exact: true }).click();
+    const featureName = page.locator('input[aria-label="Features and traits 1: Name"]');
+    await expect(featureName).toHaveValue("Second Effort");
+    await level.fill("1");
+    await level.press("Tab");
+    await expect(featureName).toHaveCount(0);
+
     await page.getByRole("button", { name: "Save sheet", exact: true }).click();
     await expect
       .poll(async () => {

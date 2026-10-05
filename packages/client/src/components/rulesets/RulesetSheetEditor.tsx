@@ -20,6 +20,8 @@ import {
   RULESET_CATALOG_ROW_KEY,
   rulesetListRollNotation,
   readRulesetBuilderState,
+  applyRulesetBuilder,
+  rulesetBuilderCatalogIds,
   type RulesetBuilderState,
   type DiceRollResult,
   type RulesetCatalogEntriesById,
@@ -329,15 +331,47 @@ export function RulesetSheetEditor({
     });
   };
 
+  // A builder whose steps are limited by a sheet value (`upTo`, 1.82) is applied again on an edit here,
+  // so lowering a level takes back at once what a pick above it gave. Its catalogs share the Guided
+  // view's cache; while they load, an edit waits for the builder's next change as before.
+  const builderLimits = sheet.builder?.steps.some((step) => step.kind === "catalog" && step.upTo) ?? false;
+  const builderCatalogIds = useMemo(
+    () => (builderLimits ? rulesetBuilderCatalogIds(definition) : []),
+    [builderLimits, definition],
+  );
+  const combineBuilderCatalogs = useCallback(
+    (results: readonly { data: RulesetCatalogPayload | undefined }[]) => {
+      const loaded: RulesetCatalogEntriesById = {};
+      results.forEach((result, index) => {
+        const catalogId = builderCatalogIds[index];
+        if (catalogId && result.data) loaded[catalogId] = result.data.entries;
+      });
+      return { catalogs: loaded, ready: results.every((result) => !!result.data) };
+    },
+    [builderCatalogIds],
+  );
+  const builderCatalogs = useQueries({
+    queries: builderCatalogIds.map((catalogId) => rulesetCatalogQuery(definition.id, catalogId, definition.version)),
+    combine: combineBuilderCatalogs,
+  });
+
   const commit = (patch: Partial<RulesetSheetBuild>) => {
     editedRef.current = true;
     // The one change path, so every edit leaves the ruleset's own cells right. The helper hands
     // back the very build it was given when nothing scaled changes, which is what today's editor
     // stored, so an ordinary edit behaves exactly as it always has.
-    const patched = { ...build, ...patch };
+    let patched = { ...build, ...patch };
+    const state = readRulesetBuilderState(envelope);
+    let builder: RulesetBuilderState | undefined;
+    if (builderLimits && state.applied && !state.describing && builderCatalogs.ready) {
+      const applied = applyRulesetBuilder(definition, patched, state, builderCatalogs.catalogs);
+      patched = applied.build;
+      builder = applied.state;
+    }
     onChange({
       ...envelope,
       v: rulesetSheetStamp(definition, envelope),
+      ...(builder ? { builder } : {}),
       build: recomputeScaledRows(definition, patched, loadedCatalogs),
     });
   };

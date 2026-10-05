@@ -93,6 +93,7 @@ export * from "./features/world/overworld.js";
 export * from "./features/world/town.js";
 export * from "./features/world/interior.js";
 export * from "./features/world/edges.js";
+export * from "./features/world/place-maps.js";
 export * from "./features/world/snapshot.js";
 export * from "./features/world/tile-pack.js";
 export * from "./features/world/edits.js";

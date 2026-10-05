@@ -10,22 +10,23 @@ import { z } from "zod";
 import { WORLD_CHANGE_KINDS, parseWorldKit, type WorldKit } from "../../schemas/world-kit.schema.js";
 import { worldBriefSchema } from "../../schemas/world-brief.schema.js";
 import { WORLD_GENERATOR_VERSION, WORLD_PROSPERITIES, type CompiledWorld } from "./compile.js";
-import { worldEditsSchema } from "./edits.js";
+import { WORLD_TOWN_DECO_MAX, WORLD_TOWN_PROPS, worldEditsSchema } from "./edits.js";
 import { WORLD_GROUNDINGS, worldPreEdit, type GameWorld } from "./game-world.js";
 import { worldHistory, type WorldHistory } from "./history.js";
 import { worldCast, type WorldPerson } from "./people.js";
 import { WORLD_TOWN_KINDS, worldTownBase, type WorldTown } from "./town.js";
 import { WORLD_INTERIOR_USES } from "./furniture.js";
 
-/** 2 (W13c): hand edits may hold rooms drawn by hand (`editsVersion` 2); version 1 snapshots read as
- *  they are. An older Engine refuses a version 2 snapshot as made by a newer Marinara Engine. */
-export const WORLD_SNAPSHOT_VERSION = 2;
+/** 3 (map editor Phases 2 and 3): towns may hold placed buildings, the new ground kinds and decorations
+ *  (`editsVersion` 3); 2 (W13c): hand edits may hold rooms drawn by hand (`editsVersion` 2). Older snapshots
+ *  read as they are. An older Engine refuses a newer snapshot as made by a newer Marinara Engine. */
+export const WORLD_SNAPSHOT_VERSION = 3;
 
 /** A town as the snapshot keeps it: everything but its people, who are its places' casts. */
 export type WorldSnapshotTown = Omit<WorldTown, "people">;
 
 export interface WorldSnapshot {
-  snapshotVersion: 1 | typeof WORLD_SNAPSHOT_VERSION;
+  snapshotVersion: 1 | 2 | typeof WORLD_SNAPSHOT_VERSION;
   /** The generator that made it, for the record: a snapshot is read the same whatever made it. */
   generatorVersion: number;
   kit: WorldKit;
@@ -225,13 +226,17 @@ const townSchema = z
     workOf: z.record(id, id),
     stalls: z.array(cell).max(1_000),
     lots: z.array(z.object(lotShape).strict()).max(10_000),
+    deco: z
+      .array(z.object({ tile: z.enum(WORLD_TOWN_PROPS), x: lotShape.x, y: lotShape.y }).strict())
+      .max(WORLD_TOWN_DECO_MAX)
+      .optional(),
   })
   .strict()
   .refine((town) => town.ground.length === town.width * town.height, "A town's ground does not fill it");
 
 const snapshotShape = z
   .object({
-    snapshotVersion: z.union([z.literal(1), z.literal(WORLD_SNAPSHOT_VERSION)]),
+    snapshotVersion: z.union([z.literal(1), z.literal(2), z.literal(WORLD_SNAPSHOT_VERSION)]),
     generatorVersion: z.number().int().min(1),
     kit: z.unknown(),
     seed: z.number().int().min(0).max(0xffffffff),

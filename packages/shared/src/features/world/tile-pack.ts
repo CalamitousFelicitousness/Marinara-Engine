@@ -14,6 +14,7 @@ import { z } from "zod";
 import { WORLD_FURNITURE } from "./furniture.js";
 import { WORLD_EDGE_BLOCK_ROWS, WORLD_EDGE_TERRAINS, WORLD_MAP_EDGE_TERRAINS } from "./edges.js";
 import { WORLD_GROUND_LOOKS, WORLD_SEASONS } from "./overworld.js";
+import { WORLD_TOWN_PROPS } from "./edits.js";
 
 /** Pixels across and down a tile. */
 export const TILE_PACK_SIZE = 16;
@@ -98,6 +99,11 @@ export const WORLD_TILE_IDS = Object.freeze([
   ...WORLD_EDGE_TERRAINS.map((terrain) => `edge_${terrain}` as const),
   // Fringes (image packs): for a ground look, sixteen masks through which it spills onto its neighbours.
   ...WORLD_GROUND_LOOKS.map((look) => `fringe_${look}` as const),
+  // Towns laid out freely (image packs; map editor Phase 2): a bridge over water, a hedge or fence, and a
+  // pack's eight decorations. Fields draw as the farmland look, paths and water with their edge tiles.
+  "bridge",
+  "hedge",
+  ...WORLD_TOWN_PROPS,
   // Maps of places (image packs; map editor Phase 3): a cave, dungeon or station set's floor, wall and liquid,
   // the liquid's edges, and eight props (WORLD_DUNGEON_PROP_COUNT; the sixth, dn_prop5, is the way out). Generic
   // ids, so one map plays with any set's pack.
@@ -125,6 +131,9 @@ export const WORLD_IMAGE_ONLY_TILE_IDS: readonly WorldTileId[] = Object.freeze([
   "hall",
   ...WORLD_EDGE_TERRAINS.map((terrain) => `edge_${terrain}` as const),
   ...WORLD_GROUND_LOOKS.map((look) => `fringe_${look}` as const),
+  "bridge",
+  "hedge",
+  ...WORLD_TOWN_PROPS,
   ...dungeonTileIds(),
 ]);
 

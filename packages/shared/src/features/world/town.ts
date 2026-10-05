@@ -16,12 +16,19 @@
 import { z } from "zod";
 import { worldStream, type WorldPlace } from "./compile.js";
 import { compileGameWorld } from "./game-world.js";
-import { worldPersonByHand, type WorldEdits } from "./edits.js";
+import {
+  WORLD_TOWN_WALKABLE,
+  worldPersonByHand,
+  type WORLD_TOWN_DOOR_SIDES,
+  type WORLD_TOWN_PROPS,
+  type WorldEdits,
+} from "./edits.js";
 import type { GameWorld } from "./game-world.js";
 import type { WorldPresent } from "./ledger.js";
 import { WORLD_PEOPLE_DEFAULTS, worldCast, type WorldPerson } from "./people.js";
 import { worldBuildingHasRooms, worldInteriorEditIssues, worldInteriorUse, worldNamedPlaceUse } from "./interior.js";
 import type { WorldInteriorUse } from "./furniture.js";
+import { worldMapEditIssues } from "./place-maps.js";
 
 export const WORLD_TOWN_KINDS = Object.freeze(["landmark", "place", "work", "home"] as const);
 export type WorldTownKind = (typeof WORLD_TOWN_KINDS)[number];
@@ -53,7 +60,8 @@ export interface WorldTown {
   settlementId: string;
   width: number;
   height: number;
-  /** One character per cell, row by row: "." open ground, "s" street, "q" the square. */
+  /** One character per cell, row by row: "." open ground, "s" street, "q" the square; by hand also o, t, w
+   *  and (Phase 2) f, p, ~, b, h (WORLD_TOWN_GROUND). */
   ground: string;
   square: { x: number; y: number; w: number; h: number };
   buildings: WorldTownBuilding[];
@@ -66,6 +74,8 @@ export interface WorldTown {
   stalls: Array<{ x: number; y: number }>;
   /** Every lot a building can stand on (worldgen W9h): where a building may be moved by hand. */
   lots: WorldTownLot[];
+  /** Decorations laid by hand (map editor Phase 2): a pack's props, drawn only. */
+  deco?: Array<{ tile: (typeof WORLD_TOWN_PROPS)[number]; x: number; y: number }>;
 }
 
 /** A lot: its cells (the roof the top rows, the front the bottom row) and the street cell before its door. */
@@ -193,7 +203,8 @@ function addStoryPlaces(town: WorldTown, places: ReadonlyArray<{ id: string; nam
 
 /**
  * Why towns laid out by hand do not fit, or nothing: each against its town as the world with these edits
- * lays it out (the story's places aside). The edits are a world's whole layer, as a world editor saves it.
+ * lays it out (the story's places aside); with them, rooms furnished or drawn by hand and maps of places.
+ * The edits are a world's whole layer, as a world editor saves it.
  */
 export function worldTownEditIssues(game: GameWorld, edits: WorldEdits): string[] {
   // The world these edits make, from its recipe: never a snapshot's people or towns (W11), which are
@@ -223,6 +234,8 @@ export function worldTownEditIssues(game: GameWorld, edits: WorldEdits): string[
     };
     issues.push(...worldInteriorEditIssues(next, edits, townOf));
   }
+  // Maps made by hand for places (map editor Phase 3).
+  if (edits.maps?.length) issues.push(...worldMapEditIssues(next, edits));
   return [...new Set(issues)].slice(0, 20);
 }
 
@@ -405,7 +418,8 @@ function layOutTown(
         for (let xx = lot.x; xx < lot.x + lot.w; xx++) if (at(xx, yy) !== ".") return false;
       return true;
     });
-  const issues = entry ? layOutByHand(entry, buildings, standable, cells, width, [square, ...stalls]) : [];
+  const deco: NonNullable<WorldTown["deco"]> = [];
+  const issues = entry ? layOutByHand(entry, buildings, standable, cells, width, [square, ...stalls], deco) : [];
 
   return {
     town: {
@@ -420,6 +434,7 @@ function layOutTown(
       people,
       stalls,
       lots: standable.map(({ x, y, w, h, door }) => ({ x, y, w, h, door: { ...door } })),
+      ...(deco.length ? { deco } : {}),
     },
     issues,
   };
@@ -427,9 +442,12 @@ function layOutTown(
 
 /**
  * A town's hand layout applied to it as laid out: each move in turn (a building to a free lot, or the
- * two swapped when another stands on it; a building may move again later), then the painted ground,
- * sparing every building and the street before its door, the middle of the square (its well, where walks
- * to it end) and the market's stalls. What does not fit is skipped, and said. Places count from 1.
+ * two swapped when another stands on it; a building may move again later), then the buildings placed
+ * anywhere free (map editor Phase 2; a placed building's move is dropped), then the painted ground, sparing
+ * every building and the cell before its door (which may be paved: street, square or path), the middle of
+ * the square (its well, where walks to it end) and the market's stalls, then the decorations. What does not
+ * fit is skipped, and said. A layout using Phase 2's placements, ground kinds or decorations must also leave
+ * every door reachable from the square. Places count from 1.
  */
 function layOutByHand(
   entry: WorldTownEdit,
@@ -438,12 +456,17 @@ function layOutByHand(
   cells: string[],
   width: number,
   [square, ...stalls]: [WorldTown["square"], ...WorldTown["stalls"]],
+  deco: NonNullable<WorldTown["deco"]>,
 ): string[] {
   const issues: string[] = [];
+  const height = cells.length / width;
   const overlaps = (a: WorldTownLot, b: WorldTownLot) =>
     a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
   const where = (x: number, y: number) => `column ${x + 1}, row ${y + 1}`;
+  const nameOf = (building: WorldTownBuilding) => building.name ?? building.id;
+  const placed = new Set((entry.place ?? []).map((each) => each.building));
   for (const move of entry.moves ?? []) {
+    if (placed.has(move.building)) continue;
     const building = buildings.find((each) => each.id === move.building);
     if (!building) {
       issues.push(`no building "${move.building}" in town.`);
@@ -456,13 +479,58 @@ function layOutByHand(
     }
     const there = buildings.find((each) => each !== building && overlaps(each, lot));
     if (there && !(there.x === lot.x && there.y === lot.y && there.w === lot.w && there.h === lot.h)) {
-      issues.push(`the lot at ${where(lot.x, lot.y)} is partly under "${there.name ?? there.id}".`);
+      issues.push(`the lot at ${where(lot.x, lot.y)} is partly under "${nameOf(there)}".`);
       continue;
     }
     const from = { x: building.x, y: building.y, w: building.w, h: building.h, door: { ...building.door } };
     Object.assign(building, { x: lot.x, y: lot.y, w: lot.w, h: lot.h, door: { ...lot.door } });
     if (there) Object.assign(there, from);
   }
+  // ── Buildings placed anywhere free (Phase 2) ──
+  const middle = { x: square.x + Math.floor(square.w / 2), y: square.y + Math.floor(square.h / 2) };
+  const isStall = (x: number, y: number) => stalls.some((stall) => stall.x === x && stall.y === y);
+  const seenPlace = new Set<string>();
+  for (const spot of entry.place ?? []) {
+    const building = buildings.find((each) => each.id === spot.building);
+    if (!building) {
+      issues.push(`no building "${spot.building}" in town (the town has changed since it was placed).`);
+      continue;
+    }
+    if (seenPlace.has(building.id)) {
+      issues.push(`"${nameOf(building)}" is placed twice.`);
+      continue;
+    }
+    seenPlace.add(building.id);
+    const [w, h] = [building.w, building.h];
+    const at = { x: spot.x, y: spot.y, w, h, door: worldTownDoorCell(spot.x, spot.y, w, h, spot.door ?? "s") };
+    // A building stands a cell in from the town's edge, on open ground, clear of the square's middle, the
+    // stalls, other buildings and every door; its own door opens inside the town, under no building.
+    let problem = "";
+    if (at.x < 1 || at.y < 1 || at.x + w > width - 1 || at.y + h > height - 1) problem = "it reaches the town's edge";
+    for (let yy = at.y; !problem && yy < at.y + h; yy++)
+      for (let xx = at.x; !problem && xx < at.x + w; xx++) {
+        if (cells[yy * width + xx] !== ".") problem = `it stands on the street or square at ${where(xx, yy)}`;
+        else if ((xx === middle.x && yy === middle.y) || isStall(xx, yy))
+          problem = `it stands on the square at ${where(xx, yy)}`;
+      }
+    const others = buildings.filter((each) => each !== building);
+    const under = !problem && others.find((each) => overlaps(each, at));
+    if (under) problem = `it overlaps "${nameOf(under)}"`;
+    const blocking =
+      !problem &&
+      others.find(
+        (each) => each.door.x >= at.x && each.door.x < at.x + w && each.door.y >= at.y && each.door.y < at.y + h,
+      );
+    if (blocking) problem = `it stands before the door of "${nameOf(blocking)}"`;
+    const doorUnder = !problem && others.find((each) => overlaps(each, { ...at.door, w: 1, h: 1, door: at.door }));
+    if (doorUnder) problem = `its door opens into "${nameOf(doorUnder)}"`;
+    if (problem) {
+      issues.push(`"${nameOf(building)}" can't stand at ${where(spot.x, spot.y)}: ${problem}.`);
+      continue;
+    }
+    Object.assign(building, at);
+  }
+  // ── The painted ground ──
   const ground = entry.ground;
   if (ground) {
     if (ground.length !== cells.length) {
@@ -472,17 +540,19 @@ function layOutByHand(
       return issues;
     }
     const kept = new Set<number>();
+    const doors = new Set<number>();
     for (const building of buildings) {
       for (let yy = building.y; yy < building.y + building.h; yy++)
         for (let xx = building.x; xx < building.x + building.w; xx++) kept.add(yy * width + xx);
-      kept.add(building.door.y * width + building.door.x);
+      doors.add(building.door.y * width + building.door.x);
     }
-    kept.add((square.y + Math.floor(square.h / 2)) * width + square.x + Math.floor(square.w / 2));
+    kept.add(middle.y * width + middle.x);
     for (const stall of stalls) kept.add(stall.y * width + stall.x);
     for (let cell = 0; cell < cells.length; cell++) {
       const painted = ground[cell]!;
       if (painted === ".") continue;
-      if (kept.has(cell)) {
+      // A door's cell may be paved (street, square or path), and nothing else.
+      if (kept.has(cell) || (doors.has(cell) && !"sqp".includes(painted))) {
         if (!issues.some((issue) => issue.startsWith("a building, the street before a door")))
           issues.push(
             `a building, the street before a door, the middle of the square or a stall is painted over at ${where(cell % width, Math.floor(cell / width))}.`,
@@ -491,8 +561,94 @@ function layOutByHand(
       }
       cells[cell] = painted;
     }
+    // A bridge crosses water: water on both sides of it, left and right or above and below.
+    const water = (x: number, y: number) => x >= 0 && y >= 0 && x < width && y < height && cells[y * width + x] === "~";
+    for (let cell = 0; cell < cells.length; cell++) {
+      if (cells[cell] !== "b") continue;
+      const [x, y] = [cell % width, Math.floor(cell / width)];
+      if (!((water(x - 1, y) && water(x + 1, y)) || (water(x, y - 1) && water(x, y + 1))))
+        issues.push(`the bridge at ${where(x, y)} crosses no water.`);
+    }
+  }
+  // ── Decorations, drawn only ──
+  const decoCells = new Set<number>();
+  for (const each of entry.deco ?? []) {
+    const cell = each.y * width + each.x;
+    const onBuilding = buildings.some(
+      (building) =>
+        (each.x >= building.x &&
+          each.x < building.x + building.w &&
+          each.y >= building.y &&
+          each.y < building.y + building.h) ||
+        (building.door.x === each.x && building.door.y === each.y),
+    );
+    if (each.x >= width || each.y >= height)
+      issues.push(`a decoration at ${where(each.x, each.y)} is outside the town.`);
+    else if (onBuilding) issues.push(`a decoration at ${where(each.x, each.y)} is on a building or before its door.`);
+    else if (each.x === middle.x && each.y === middle.y) issues.push(`a decoration is on the middle of the square.`);
+    else if (decoCells.has(cell)) issues.push(`two decorations share ${where(each.x, each.y)}.`);
+    else {
+      decoCells.add(cell);
+      deco.push({ tile: each.tile, x: each.x, y: each.y });
+    }
+  }
+  // ── Every door reachable from the square (Phase 2 layouts) ──
+  const free = entry.place?.length || entry.deco?.length || /[fp~bh]/.test(entry.ground ?? "");
+  if (free) {
+    const reached = worldTownReach({ width, height, ground: cells.join(""), buildings, stalls, square });
+    for (const building of buildings)
+      if (!reached.has(building.door.y * width + building.door.x))
+        issues.push(`the door of "${nameOf(building)}" can't be reached from the square.`);
   }
   return issues;
+}
+
+/** The cell before a building's door, for a door on its south side (under its second column, as on the
+ *  laid-out lots) or on its west or east side (beside its second row from the bottom). */
+export function worldTownDoorCell(
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  side: (typeof WORLD_TOWN_DOOR_SIDES)[number],
+): { x: number; y: number } {
+  if (side === "w") return { x: x - 1, y: y + h - 2 };
+  if (side === "e") return { x: x + w, y: y + h - 2 };
+  return { x: x + Math.min(1, w - 1), y: y + h };
+}
+
+/** The cells a walk reaches from the middle of the square, four ways, over walkable ground (WORLD_TOWN_WALKABLE:
+ *  open ground, street, square, kept clear, field, path, bridge), never through a building or a stall; each
+ *  door's cell counts as reached when a walk gets to it. */
+export function worldTownReach(
+  town: Pick<WorldTown, "width" | "height" | "ground" | "buildings" | "stalls" | "square">,
+): Set<number> {
+  const { width, height } = town;
+  const blocked = new Set<number>();
+  for (const building of town.buildings)
+    for (let y = building.y; y < building.y + building.h; y++)
+      for (let x = building.x; x < building.x + building.w; x++) blocked.add(y * width + x);
+  for (const stall of town.stalls) blocked.add(stall.y * width + stall.x);
+  const start = (town.square.y + Math.floor(town.square.h / 2)) * width + town.square.x + Math.floor(town.square.w / 2);
+  const reached = new Set<number>([start]);
+  const queue = [start];
+  while (queue.length) {
+    const cell = queue.shift()!;
+    const [x, y] = [cell % width, Math.floor(cell / width)];
+    for (const [nx, ny] of [
+      [x + 1, y],
+      [x - 1, y],
+      [x, y + 1],
+      [x, y - 1],
+    ] as const) {
+      if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+      const next = ny * width + nx;
+      if (reached.has(next) || blocked.has(next) || !WORLD_TOWN_WALKABLE.includes(town.ground[next]!)) continue;
+      reached.add(next);
+      queue.push(next);
+    }
+  }
+  return reached;
 }
 
 /** A town's taverns, worked out once a town (the schedule asks for every person, every hour). */

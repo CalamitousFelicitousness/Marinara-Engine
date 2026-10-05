@@ -26,6 +26,7 @@ import {
   worldRoadCells,
   worldWholeEdgeBlocks,
   WORLD_FRINGE_ORDER,
+  WORLD_PATTERN_TILE_IDS,
   WORLD_SEASON_DAYS,
   worldSeason,
   WORLD_GROUND_LOOKS,
@@ -289,6 +290,11 @@ try {
     "each look once in the fringe order",
   );
   assert.ok(WORLD_FRINGE_ORDER.indexOf("forest") > WORLD_FRINGE_ORDER.indexOf("grass"), "a forest overhangs the grass");
+  // Patterns: the ground, a town's ground, streets and square, and a room's floor and walls.
+  assert.ok(
+    ["grass", "town_ground", "in_floor", "in_wall"].every((id) => WORLD_PATTERN_TILE_IDS.includes(id as never)),
+  );
+  assert.ok(!WORLD_PATTERN_TILE_IDS.includes("house" as never), "a house is a sprite");
   // Seasons, for drawing: the game's day, a season every WORLD_SEASON_DAYS, from spring.
   assert.deepEqual(
     [1, WORLD_SEASON_DAYS, WORLD_SEASON_DAYS + 1, 3 * WORLD_SEASON_DAYS + 1, 4 * WORLD_SEASON_DAYS + 1, 0].map(

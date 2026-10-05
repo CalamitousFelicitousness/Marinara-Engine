@@ -90,6 +90,7 @@ export const WORLD_PATTERN_TILE_IDS: readonly WorldTileId[] = Object.freeze([
   "street",
   "square",
   "in_floor",
+  "in_wall",
 ]);
 /** Tiles only an image pack draws (whole buildings as sprites); a drawn pack's roofs and fronts stand in. */
 export const WORLD_IMAGE_ONLY_TILE_IDS: readonly WorldTileId[] = Object.freeze([

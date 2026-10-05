@@ -273,6 +273,15 @@ try {
   }
   unregisterLight();
 
+  // A provider that never answers cannot hang a scene route.
+  const unregisterSlow = registerCapabilitySceneOrigin("slow-pkg", {
+    getContext: () => new Promise(() => undefined),
+  });
+  const started = Date.now();
+  await refuse("/api/scene/plan", { packageOrigin: { packageId: "slow-pkg", originId: "x" }, prompt: "" }, 503);
+  assert.ok(Date.now() - started < 12_000, "The route gives up on a silent provider");
+  unregisterSlow();
+
   // The `scenes` permission needs capability API 1.66.
   const manifest = {
     schemaVersion: 2 as const,

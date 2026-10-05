@@ -41,7 +41,9 @@ import type {
 import { resolveBaseUrl as resolveSceneConnectionBaseUrl } from "./generate/generate-route-utils.js";
 import { assemblePrompt } from "../services/prompt/assembler.js";
 import { parsePromptPresetChoices } from "../services/generation/conversation-context-utils.js";
+import { withDeadline } from "../services/capability-packages/capability-prompt-context.service.js";
 import {
+  SCENE_ORIGIN_TIMEOUT_MS,
   getCapabilitySceneOrigin,
   parseScenePackageData,
   parseStoredScenePackageData,
@@ -343,14 +345,24 @@ export async function sceneRoutes(app: FastifyInstance) {
     chatId: unknown,
     packageOriginValue: unknown,
     notFound: string,
-  ): Promise<SceneOrigin | { status: 400 | 404; error: string }> {
+  ): Promise<SceneOrigin | { status: 400 | 404 | 503; error: string }> {
     if (packageOriginValue !== undefined && packageOriginValue !== null) {
       if (chatId) return { status: 400, error: "Choose a Conversation or a package origin, not both" };
       const packageOrigin = parseScenePackageOrigin(packageOriginValue);
       if (!packageOrigin) return { status: 400, error: "Invalid package origin" };
       const provider = getCapabilitySceneOrigin(packageOrigin.packageId);
       if (!provider) return { status: 404, error: "This package cannot start scenes right now" };
-      const context = await provider.getContext(packageOrigin.originId);
+      let context: Awaited<ReturnType<typeof provider.getContext>>;
+      try {
+        context = await withDeadline(
+          provider.getContext(packageOrigin.originId),
+          "Scene origin context",
+          SCENE_ORIGIN_TIMEOUT_MS,
+        );
+      } catch (error) {
+        logger.warn({ err: error, ...packageOrigin }, "[scene] Package origin context failed");
+        return { status: 503, error: "This package cannot start scenes right now" };
+      }
       if (!context) return { status: 404, error: notFound };
       const characterIds: string[] = [];
       for (const id of new Set(Array.isArray(context.characterIds) ? context.characterIds : [])) {
@@ -579,11 +591,15 @@ export async function sceneRoutes(app: FastifyInstance) {
         // A package without `claim` holds no lock: every scene it starts is admitted.
         if (provider && !provider.claim) claim = "claimed";
         else if (provider)
-          claim = (await provider.claim!(packageOrigin.originId, {
-            sceneChatId: sceneChat.id,
-            characterIds: finalParticipantIds,
-            data: packageData,
-          }))
+          claim = (await withDeadline(
+            provider.claim!(packageOrigin.originId, {
+              sceneChatId: sceneChat.id,
+              characterIds: finalParticipantIds,
+              data: packageData,
+            }),
+            "Scene origin claim",
+            SCENE_ORIGIN_TIMEOUT_MS,
+          ))
             ? "claimed"
             : "busy";
       } catch (error) {
@@ -1012,6 +1028,7 @@ export async function sceneRoutes(app: FastifyInstance) {
         await chats.disconnectChat(sceneChatId);
         await chats.remove(sceneChatId);
       } else if (mode === "convert" && packageOrigin) {
+        await chats.disconnectChat(sceneChatId);
         await chats.remove(sceneChatId);
         await releaseScenePackageOrigin(packageOrigin, {
           kind: "converted",

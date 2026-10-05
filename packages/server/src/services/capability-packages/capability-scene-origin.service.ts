@@ -12,6 +12,14 @@ import type {
   ScenePackageOrigin,
 } from "@marinara-engine/shared";
 import { logger } from "../../lib/logger.js";
+import { withDeadline } from "./capability-prompt-context.service.js";
+
+/**
+ * How long a scene route waits for a package's provider. A provider that never answers must not hang
+ * the route: a late claim is treated as refused (the scene chat is removed, so the package's own
+ * reconciliation finds no scene behind it), a late release is logged and dropped.
+ */
+export const SCENE_ORIGIN_TIMEOUT_MS = 8000;
 
 const providersByPackage = new Map<string, SceneOriginProvider>();
 
@@ -77,7 +85,7 @@ export async function releaseScenePackageOrigin(origin: ScenePackageOrigin, end:
     return;
   }
   try {
-    await provider.release!(origin.originId, end);
+    await withDeadline(provider.release!(origin.originId, end), "Scene origin release", SCENE_ORIGIN_TIMEOUT_MS);
   } catch (error) {
     logger.warn({ err: error, ...origin, sceneChatId: end.sceneChatId }, "[scene] Package origin release failed");
   }

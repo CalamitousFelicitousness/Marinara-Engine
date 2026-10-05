@@ -1147,7 +1147,8 @@ Rules worth knowing:
   character is refused. An unknown `personaId` is treated as none. `notes` is cut at 8,000 characters
   and is given to the planner and, with the transcript, to the scene writer as hidden context.
 - `claim` runs after the scene chat exists. `false` discards it with a 409; a throw discards it with
-  a 503.
+  a 503. `getContext`, `claim` and `release` each have 8 seconds: a late `getContext` or `claim`
+  counts as a failure (503, the scene chat is removed), a late `release` is logged and dropped.
 - `release` gets `concluded` (with `summary`, `description`, `scenario`, `rating` and the cast),
   `abandoned`, `deleted` or `converted`. It must be idempotent and must ignore a scene that does not
   hold the lock. A release that throws, or that arrives while the package is inactive, is logged and

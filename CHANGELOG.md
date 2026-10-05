@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Long-Term Memory recall now reads only the actual conversation history. Preset prompts, agent injections and other non-history text no longer fill the package's recent-message window. Normal generation prompts and other agents' inputs remain unchanged (#7044).
+
 - In the Card Browser, the **Pygmalion** **Auth Token** box now hides what you paste and turns away values with spaces or line breaks. Marinara checks the token with Pygmalion before keeping it, and a failed login says whether Pygmalion couldn't be reached, rejected the token or was busy. If Pygmalion stops accepting the token while you browse, you're asked to log in again instead of seeing a search error. Pygmalion requests and avatars now go only to Pygmalion's servers, and error messages and logs no longer include your token (#7074).
 
 - On phones, the small **World State** and **Player & Tracker** controls now use your chat widget style and open from movable buttons. **Echo Chamber** follows the same styling, with a movable, resizable window on computers and its compact view on phones. Detached tracker lists keep their bottom border in Default, Dottore and Mari styles, including custom gradients. Opening a sidebar keeps movable chat buttons inside the remaining chat area without stacking them on top of one another; closing it restores their saved positions. The large Tracker Panel keeps its existing layout. Fixed the staging regression check that still expected the removed minus button (#7075).

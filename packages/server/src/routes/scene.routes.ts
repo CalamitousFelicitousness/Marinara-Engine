@@ -587,26 +587,40 @@ export async function sceneRoutes(app: FastifyInstance) {
       const packageOrigin = origin.packageOrigin!;
       const provider = getCapabilitySceneOrigin(packageOrigin.packageId);
       let claim: "claimed" | "busy" | "failed" = "failed";
+      let pendingClaim: Promise<boolean> | null = null;
       try {
         // A package without `claim` holds no lock: every scene it starts is admitted.
         if (provider && !provider.claim) claim = "claimed";
-        else if (provider)
-          claim = (await withDeadline(
+        else if (provider) {
+          pendingClaim = Promise.resolve(
             provider.claim!(packageOrigin.originId, {
               sceneChatId: sceneChat.id,
               characterIds: finalParticipantIds,
               data: packageData,
             }),
-            "Scene origin claim",
-            SCENE_ORIGIN_TIMEOUT_MS,
-          ))
+          );
+          claim = (await withDeadline(pendingClaim, "Scene origin claim", SCENE_ORIGIN_TIMEOUT_MS))
             ? "claimed"
             : "busy";
+        }
       } catch (error) {
         logger.warn({ err: error, ...packageOrigin }, "[scene] Package origin claim failed");
       }
       if (claim !== "claimed") {
         await chats.remove(sceneChat.id);
+        // A claim that answers after the deadline may still take the lock: hand it straight back.
+        if (claim === "failed" && pendingClaim)
+          void pendingClaim
+            .then((claimedLate) =>
+              claimedLate
+                ? releaseScenePackageOrigin(packageOrigin, {
+                    kind: "deleted",
+                    sceneChatId: sceneChat.id,
+                    data: packageData,
+                  })
+                : undefined,
+            )
+            .catch(() => undefined);
         return reply.status(claim === "busy" ? 409 : 503).send({
           error:
             claim === "busy" ? "This thread already has an active Scene" : "This package cannot start scenes right now",

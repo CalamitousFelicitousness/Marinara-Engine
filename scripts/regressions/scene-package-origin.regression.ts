@@ -282,6 +282,25 @@ try {
   assert.ok(Date.now() - started < 12_000, "The route gives up on a silent provider");
   unregisterSlow();
 
+  // A claim that answers after the deadline: the scene is gone, so the late lock is handed back.
+  const lateEnds: SceneOriginEnd[] = [];
+  const unregisterLate = registerCapabilitySceneOrigin("late-pkg", {
+    getContext: async () => ({ characterIds: [creator.id], personaId: null, transcript: [] }),
+    claim: () => new Promise<boolean>((resolve) => setTimeout(() => resolve(true), 8_500)),
+    release: async (_originId, end) => {
+      lateEnds.push(end);
+    },
+  });
+  await refuse(
+    "/api/scene/create",
+    { packageOrigin: { packageId: "late-pkg", originId: "t" }, plan: planned.plan, initiatorCharId: creator.id },
+    503,
+  );
+  for (let waited = 0; lateEnds.length === 0 && waited < 3_000; waited += 100)
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.equal(lateEnds[0]?.kind, "deleted", "A late claim is released at once");
+  unregisterLate();
+
   // The `scenes` permission needs capability API 1.66.
   const manifest = {
     schemaVersion: 2 as const,

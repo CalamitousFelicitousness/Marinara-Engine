@@ -214,7 +214,7 @@ assert.ok(older.ok, "a version 2 snapshot reads");
 assert.ok(!readWorldSnapshot({ ...snapshot, snapshotVersion: 4 }).ok, "a version 4 snapshot is refused");
 
 // ── Tile ids ──
-for (const id of ["bridge", "hedge", ...WORLD_TOWN_PROPS])
+for (const id of ["site", "bridge", "hedge", ...WORLD_TOWN_PROPS])
   assert.ok(
     WORLD_TILE_IDS.includes(id as never) && WORLD_IMAGE_ONLY_TILE_IDS.includes(id as never),
     `${id} is an image-only tile`,

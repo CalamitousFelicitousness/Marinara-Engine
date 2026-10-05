@@ -49,8 +49,9 @@ const STATE_CONFIG: Record<GameActiveState, { icon: typeof Compass; label: strin
 const MAP_ZOOM_MIN = 0.75;
 const MAP_ZOOM_MAX = 1.8;
 const MAP_ZOOM_STEP = 0.25;
+// The panel shares the narration box's colors, so it reuses that box's chat style owner.
 const GAME_MAP_PANEL_CLASS =
-  "rounded-lg border border-[var(--border)] bg-[var(--card)]/90 text-[var(--foreground)] shadow-lg backdrop-blur-md dark:border-white/15 dark:bg-black/50";
+  "mari-chat-style-surface mari-game-narration-surface rounded-lg border border-[var(--border)] bg-[var(--card)]/90 text-[var(--foreground)] shadow-lg backdrop-blur-md dark:border-white/15 dark:bg-black/50";
 const GAME_MAP_DIVIDER_CLASS = "border-[var(--border)]";
 const GAME_MAP_FIELD_CLASS =
   "rounded-md border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] outline-none transition-colors focus:border-[var(--primary)]/50";
@@ -705,7 +706,9 @@ export function GameMapPanel({
         "game-map-container flex flex-col gap-1 overflow-hidden p-2",
         effectiveMapView === "world" ? "w-80" : "w-52",
         effectiveMapView === "world" && "max-h-[min(34rem,60svh)]",
-        !locked && "cursor-grab ring-1 ring-[var(--marinara-chat-chrome-focus-ring)] active:cursor-grabbing",
+        // Cut corners drop the ring's box-shadow, so the frame carries the unlocked cue.
+        !locked &&
+          "cursor-grab ring-1 ring-[var(--marinara-chat-chrome-focus-ring)] [--mari-chat-border:var(--marinara-chat-chrome-focus-ring)] active:cursor-grabbing",
       )}
     >
       <div

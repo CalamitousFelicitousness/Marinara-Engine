@@ -234,6 +234,9 @@ async function writeIllustratorBackgroundPlan(args: {
         args.illustratorAgent.provider,
         args.illustratorAgent,
         BACKGROUND_PLAN_MAX_TOKENS,
+        {
+          messages,
+        },
       ),
       enableCaching: args.illustratorAgent.enableCaching,
       anthropicExtendedCacheTtl: args.illustratorAgent.anthropicExtendedCacheTtl,

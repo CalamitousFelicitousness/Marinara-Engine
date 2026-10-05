@@ -4,6 +4,10 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- In Game Mode, HUD widgets, the map panel on computers, characters' side remarks and character sheets now follow **Apply preset font**, **Apply preset shape** and **Apply preset colors**, like the dialogue box beside them. Widget numbers keep the game's own accent colors. With the switches off, nothing changes (#7136).
+
+- Claude agents now keep signed thinking across tool calls, and Opus 4/4.1 batches stay within the model output limit when reasoning is enabled. Agent thinking headroom respects small context windows, including fallback connections, and connection Send switches remain effective on shared-connection agents and retries (#7131).
+
 - Agents now use the generation settings saved on their connection under **Use custom defaults for this connection**: Top P, Top K, Frequency, Presence, Reasoning Effort, Verbosity, OpenRouter Service Tier, Custom Parameters and headers, and extra parameters such as Top A. A parameter with a Send switch is sent only while the switch is on. This covers agents on the chat's own connection, retries, knowledge agents, the Illustrator's prompt writer and installed agent packages. A Reasoning Effort you pick (custom defaults start at **Maximum**) now replaces the "off" that JSON agents asked for, and agents that think get extra output room so their answers aren't cut short; with no level saved, agents behave as before. Claude requests with thinking on no longer send Top K, which Claude rejects (#7131).
 
 - Professor Mari clears an earlier request error when you try again, so a corrected connection or successful reply no longer leaves the old error visible until the server restarts (#7126).

@@ -908,7 +908,7 @@
   "connections.decision.thinkingLabel": "Thinking",
   "connections.decision.timeLimit": "Time limit (seconds)",
   "connections.decision.timeLimitHelp": "How long to wait for each answer during chats, from {{min}} to {{max}} seconds (default {{default}}). Answers that come later count as no. Raise it for a slow provider, but questions asked before a reply can delay that reply by this much each.",
-  "connections.decision.typesafeAddressHelp": "To use another server that runs TypeSafe's API, enter its address in Base URL below, without /v1/systemone; leave it blank for TypeSafe itself.",
+  "connections.decision.typesafeAddressHelp": "To use another server that runs TypeSafe's API, replace the Base URL below with its address, without /v1/systemone.",
   "connections.decision.unavailable.needs_relinking": "Needs relinking",
   "connections.decision.unavailable.no_model": "No model downloaded — set up in Local Model",
   "connections.decision.unavailable.not_enabled": "Not enabled — set up in Local Model",

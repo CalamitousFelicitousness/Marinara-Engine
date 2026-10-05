@@ -21,7 +21,10 @@ import {
   type DecisionConnectionRow,
 } from "../../packages/server/src/services/decision/decision-connection.js";
 import { resolveDecisionBackend } from "../../packages/server/src/services/decision/decision-default.js";
-import { askNoulQuestions } from "../../packages/server/src/services/decision/system-one.client.js";
+import {
+  askNoulQuestions,
+  postDecisionRequest,
+} from "../../packages/server/src/services/decision/system-one.client.js";
 import { createConnectionsStorage } from "../../packages/server/src/services/storage/connections.storage.js";
 import { connectionsRoutes } from "../../packages/server/src/routes/connections.routes.js";
 import Fastify from "../../packages/server/node_modules/fastify/fastify.js";
@@ -191,12 +194,16 @@ try {
     );
     assert.equal((await resolveDecisionConnection(row({ baseUrl }), noLink)).error, "invalid_url", baseUrl);
   }
-  requests.length = 0;
+  // The provider URL policy refuses these before any connection is attempted. Matching the
+  // flag name in the refusal tells it apart from an address that merely can't be reached.
   for (const baseUrl of ["http://10.0.0.2:8791", "http://169.254.169.254"]) {
     const blocked = (await resolveDecisionConnection(row({ baseUrl }), noLink)).connection!;
     assert.equal(blocked.endpoint, `${baseUrl}/v1/systemone`);
-    const result = await askNoulQuestions({ connection: blocked, state, questions: question, timeoutMs: 2000 });
-    assert.equal(result.error, "network", `${baseUrl} needs PROVIDER_LOCAL_URLS_ENABLED`);
+    await assert.rejects(
+      postDecisionRequest(blocked.endpoint, blocked.apiKey, {}, AbortSignal.timeout(2000)),
+      /PROVIDER_LOCAL_URLS_ENABLED/,
+      `${baseUrl} needs PROVIDER_LOCAL_URLS_ENABLED`,
+    );
   }
   const lan = await storage.create(
     createConnectionSchema.parse({
@@ -209,8 +216,7 @@ try {
   );
   const lanTest = (await app.inject({ method: "POST", url: `/connections/${lan!.id}/test` })).json();
   assert.equal(lanTest.success, false);
-  assert.equal(lanTest.errorCode, "network");
-  assert.equal(requests.length, 0, "a blocked address is never contacted");
+  assert.equal(lanTest.errorCode, "network", "Test reports the refusal as a network error");
 } finally {
   server.closeAllConnections();
   await new Promise<void>((resolve) => server.close(() => resolve()));

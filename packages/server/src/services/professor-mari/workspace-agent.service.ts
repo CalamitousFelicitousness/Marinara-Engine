@@ -2666,6 +2666,7 @@ export class ProfessorMariWorkspaceService {
     this.abortController?.abort();
     this.abortController = controller;
     this.active = true;
+    this.lastError = null;
 
     const workspaceTrace: MariWorkspaceTraceItem[] = [];
     let assistantText = "";

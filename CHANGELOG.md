@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Game Mode fights can draw enemies with **creature art** from a creature pack chosen in the tile pack library: a ruleset's creatures by their bestiary entry, any other enemy by its name, each with its own look, facing the way it moved, and at its own size. An enemy with no art keeps its token. See [Tactical battles and terrain](docs/game/combat.md#tactical-battles-and-terrain).
 - A ruleset's conditions can now change the **action economy**, as Haste and Slow do: an extra action limited to some things (one weapon attack, dashing, hiding, using an item, or only items with a given tag), two actions of which a turn takes only one, a cap of one attack a turn, and something left behind when a condition ends, such as Haste's lethargy (Capability API 1.71).
 - When a ruleset fight ends, the conditions it put on for a number of rounds, or held by a spell's concentration (Bless, Haste, Slow), now come off the character's sheet instead of staying there into the next fight.
 - Battlefields now have **height**: foothills rise around mountains, and hand-made boards can be painted with raised ground and cliffs. Climbing costs an extra step, nobody walks up or down a cliff, a ridge between two fighters blocks sight, and striking down from higher ground hits more often and shoots one cell further. A ruleset can say what higher ground gives its attacks and what a fall does to somebody shoved off a ledge (Capability API 1.70).

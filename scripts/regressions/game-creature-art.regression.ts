@@ -177,4 +177,30 @@ assert.deepEqual(rulesetCombatant(state, "rats")?.creature, { catalogId: "night"
 assert.ok(rulesetCombatant(state, "thing"), "the block's opponent is in the fight");
 assert.equal(rulesetCombatant(state, "thing")!.creature, undefined, "a block has no bestiary entry");
 
+// One described in the ruleset's own terms (a sheet) keeps it too.
+const fiveE = parseRulesetDefinition(JSON.parse(read("../../docs/development/ruleset-5e-2014.example.json")));
+assert.ok(fiveE.ok, fiveE.ok ? "" : fiveE.issues.join("; "));
+const fiveCatalogs = Object.fromEntries(
+  (fiveE.definition.catalogs ?? []).map((catalog) => [catalog.id, catalog.entries ?? []]),
+);
+const sergeantFight = createRulesetEncounter({
+  definition: fiveE.definition,
+  seed: 3,
+  combatants: [
+    {
+      id: "sergeant",
+      name: "Toll Sergeant",
+      side: "enemy",
+      creature: { catalogId: "creatures", entryId: "toll-sergeant" },
+    },
+  ],
+  bestiary: fiveCatalogs,
+  roller: () => 5,
+});
+assert.ok(rulesetCombatant(sergeantFight, "sergeant")?.block?.sheet, "a sheet creature");
+assert.deepEqual(rulesetCombatant(sergeantFight, "sergeant")?.creature, {
+  catalogId: "creatures",
+  entryId: "toll-sergeant",
+});
+
 console.log("Creature art: the pack, matching by bestiary entry and name, looks, facings, frames, and the entry kept.");

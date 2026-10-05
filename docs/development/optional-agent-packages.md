@@ -1133,6 +1133,10 @@ The browser view (`home-browser-tab`) receives these props:
 
 Rules worth knowing:
 
+- Only `getContext` is required. A package that just wants to start scenes leaves out `claim` and
+  `release`: nothing is locked, any number of scenes can run from the same origin, and nothing is
+  delivered when they end (**Back** still returns to the package). Leave out only `release` to lock
+  without hearing the outcome, or only `claim` to hear outcomes without a lock.
 - One provider per package; registering again replaces it, and deactivating removes it.
 - `characterIds` must be Engine characters; unknown IDs are dropped, and a context without one known
   character is refused. An unknown `personaId` is treated as none. `notes` is cut at 8,000 characters

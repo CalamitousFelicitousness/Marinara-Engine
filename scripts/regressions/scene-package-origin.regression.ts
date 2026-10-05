@@ -222,6 +222,28 @@ try {
   assert.equal(orphanChat.metadata.sceneSummary, "A quiet ending.", "A missed release can be reconciled");
   await refuse("/api/scene/create", payload, 404);
 
+  // A package that only starts scenes: no claim, no release, no lock.
+  const unregisterLight = registerCapabilitySceneOrigin("light-pkg", {
+    getContext: async () => ({ characterIds: [creator.id], personaId: null, transcript: [] }),
+  });
+  const light = { packageId: "light-pkg", originId: "anywhere" };
+  const lightPayload = { packageOrigin: light, plan: planned.plan, initiatorCharId: creator.id };
+  const both = await Promise.all(
+    [0, 1].map(() => app.inject({ method: "POST", url: "/api/scene/create", payload: lightPayload })),
+  );
+  assert.deepEqual(
+    both.map((response) => response.statusCode),
+    [200, 200],
+    "Without claim nothing is locked",
+  );
+  for (const response of both) {
+    const sceneChatId = response.json().chatId;
+    providerContent = "Done.";
+    const ended = await api("POST", "/api/scene/conclude", { sceneChatId, connectionId: conn.id });
+    assert.deepEqual(ended.packageOrigin, light);
+  }
+  unregisterLight();
+
   // The `scenes` permission needs capability API 1.66.
   const manifest = {
     schemaVersion: 2 as const,

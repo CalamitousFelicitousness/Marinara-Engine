@@ -569,8 +569,10 @@ export async function sceneRoutes(app: FastifyInstance) {
       const provider = getCapabilitySceneOrigin(packageOrigin.packageId);
       let claim: "claimed" | "busy" | "failed" = "failed";
       try {
-        if (provider)
-          claim = (await provider.claim(packageOrigin.originId, {
+        // A package without `claim` holds no lock: every scene it starts is admitted.
+        if (provider && !provider.claim) claim = "claimed";
+        else if (provider)
+          claim = (await provider.claim!(packageOrigin.originId, {
             sceneChatId: sceneChat.id,
             characterIds: finalParticipantIds,
           }))

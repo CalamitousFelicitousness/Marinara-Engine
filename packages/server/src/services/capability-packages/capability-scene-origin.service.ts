@@ -15,8 +15,8 @@ export function registerCapabilitySceneOrigin(packageId: string, provider: Scene
   if (
     !provider ||
     typeof provider.getContext !== "function" ||
-    typeof provider.claim !== "function" ||
-    typeof provider.release !== "function"
+    (provider.claim !== undefined && typeof provider.claim !== "function") ||
+    (provider.release !== undefined && typeof provider.release !== "function")
   ) {
     throw new Error("Capability scene-origin provider is invalid");
   }
@@ -47,12 +47,14 @@ export function parseScenePackageOrigin(value: unknown): ScenePackageOrigin | nu
  */
 export async function releaseScenePackageOrigin(origin: ScenePackageOrigin, end: SceneOriginEnd): Promise<void> {
   const provider = getCapabilitySceneOrigin(origin.packageId);
+  // A package that only starts scenes asked for no outcome.
+  if (provider && !provider.release) return;
   if (!provider) {
     logger.warn({ ...origin, sceneChatId: end.sceneChatId }, "[scene] Package origin is not active; release skipped");
     return;
   }
   try {
-    await provider.release(origin.originId, end);
+    await provider.release!(origin.originId, end);
   } catch (error) {
     logger.warn({ err: error, ...origin, sceneChatId: end.sceneChatId }, "[scene] Package origin release failed");
   }

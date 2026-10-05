@@ -51,17 +51,21 @@ export type SceneOriginEnd =
   /** Discarded, deleted, or converted into a standalone roleplay: no recap. */
   | { kind: "abandoned" | "deleted" | "converted"; sceneChatId: string };
 
-/** Registered by a package through `api.registerSceneOrigin`. */
+/**
+ * Registered by a package through `api.registerSceneOrigin`. Only `getContext` is required: a package
+ * that just starts scenes leaves out `claim` (no lock, any number of scenes at once) and `release`
+ * (nothing is delivered when a scene ends).
+ */
 export interface SceneOriginProvider {
   /** Planning context for the origin, or null when it no longer exists. */
   getContext(originId: string): Promise<SceneOriginContext | null>;
   /** Lock the origin for this scene. Return false when it already has an active scene. */
-  claim(originId: string, scene: { sceneChatId: string; characterIds: string[] }): Promise<boolean>;
+  claim?(originId: string, scene: { sceneChatId: string; characterIds: string[] }): Promise<boolean>;
   /**
    * Unlock the origin and receive the outcome. Must ignore an end for a scene that does not hold
    * the lock, and must be idempotent: a retry or a later delete can deliver the same scene again.
    */
-  release(originId: string, end: SceneOriginEnd): Promise<void>;
+  release?(originId: string, end: SceneOriginEnd): Promise<void>;
 }
 
 /** Metadata stored on the scene's roleplay chat. */

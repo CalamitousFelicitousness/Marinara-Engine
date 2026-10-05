@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- NanoGPT connections now show each model's subscription cost in the **Connections** menu by the chat input, not just in the connection editor: `1x` when the model is covered at the normal rate, a higher multiplier such as `2x` when each token sent draws more from your weekly allowance, and **Paid** when the model bills to your balance instead. These pills follow the connection's **Show subscription usage** switch, which is off by default, so they appear only on connections you have set to track usage (#7109).
+
 - The **Trackers** button opens Tracker Panel when it is enabled for the chat, and the standard tracker window otherwise. On phones, selecting Tracker Panel also hides the old HUD tracker widgets, regardless of **Dock Tracker Panel to edge**. Detached character trackers use readable character cards that rearrange as their window is resized, with a single heading (#7128).
 
 - Each background in the background library now has a **Download** button that saves the image with its file name, built-in backgrounds included. On iPhone and iPad it opens the share sheet, or offers **Save file** if the sheet can't open straight away (#7129).

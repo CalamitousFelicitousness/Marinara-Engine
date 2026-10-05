@@ -21,6 +21,7 @@ import {
   mergeConnectionModelOptions,
 } from "../../lib/connection-model-selection";
 import { isConnectionFlagTrue } from "../../lib/connection-filters";
+import { SubscriptionCostPill } from "./SubscriptionCostPill";
 import { cn } from "../../lib/utils";
 
 /** The connection row fields the picker reads. */
@@ -31,12 +32,26 @@ export type ModelPickerConnection = {
   model?: string | null;
   pinnedModels?: unknown;
   profileImportReviewRequired?: unknown;
+  /**
+   * NanoGPT: the connection's own "Show subscription usage" toggle. The cost
+   * pills ride on it so a pay-as-you-go user is not shown subscription costs.
+   * Stored as a "true"/"false" string, so it needs the shared flag helper.
+   */
+  showUsageWidget?: unknown;
 };
 
 /** Rows drawn at once in "All models"; searching narrows a longer list. */
 const MAX_LISTED_MODELS = 300;
 
-type PickerRow = { id: string; name: string; context?: number; maxOutput?: number; isRemote?: boolean };
+type PickerRow = {
+  id: string;
+  name: string;
+  context?: number;
+  maxOutput?: number;
+  isRemote?: boolean;
+  subscriptionIncluded?: boolean;
+  inputTokenMultiplier?: number;
+};
 
 const errorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error ?? ""));
 
@@ -71,6 +86,9 @@ export function ConnectionModelPicker({
   const provider = (connection.provider ?? "") as APIProvider;
   const providerName = PROVIDERS[provider]?.name ?? connection.provider ?? "";
   const reviewRequired = isConnectionFlagTrue(connection.profileImportReviewRequired);
+  // The cost pills are quoted against a subscription, so they follow the same
+  // per-connection toggle as the usage meter itself.
+  const showSubscriptionCost = isConnectionFlagTrue(connection.showUsageWidget);
   const currentModel = connection.model?.trim() ?? "";
   const pinnedIds = useMemo(() => parsePinnedModels(connection.pinnedModels), [connection.pinnedModels]);
 
@@ -225,7 +243,10 @@ export function ConnectionModelPicker({
           )}
         >
           <span className="flex min-w-0 flex-1 flex-col">
-            <span className="truncate text-xs font-medium text-foreground/90">{label}</span>
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span className="truncate text-xs font-medium text-foreground/90">{label}</span>
+              {showSubscriptionCost && <SubscriptionCostPill model={row} />}
+            </span>
             {label !== row.id && <span className="truncate text-[0.625rem] text-foreground/50">{row.id}</span>}
           </span>
           {current && (

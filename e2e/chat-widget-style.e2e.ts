@@ -1039,7 +1039,20 @@ for (const [preset, theme] of [
         }
       }
       const shapedLog = await surfaceAppearance(gameLog);
-      expect(shapedLog.background).toBe(gameLogBaseline!.background);
+      // Tailwind's oklab black/40 and the equivalent rgba paint serialize differently.
+      const logFillPixels = await page.evaluate(
+        (colors) =>
+          colors.map((color) => {
+            const canvas = document.createElement("canvas");
+            canvas.width = canvas.height = 1;
+            const context = canvas.getContext("2d")!;
+            context.fillStyle = color;
+            context.fillRect(0, 0, 1, 1);
+            return Array.from(context.getImageData(0, 0, 1, 1).data);
+          }),
+        [shapedLog.background, gameLogBaseline!.background],
+      );
+      expect(logFillPixels[0]).toEqual(logFillPixels[1]);
       expect(shapedLog.image).toBe(gameLogBaseline!.image);
 
       await showStyleScope(page, fixture.chats[0]!);

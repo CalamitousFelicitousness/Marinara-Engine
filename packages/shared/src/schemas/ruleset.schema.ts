@@ -2511,24 +2511,46 @@ const itemToHitSchema = z
   })
   .strict();
 
+/** A weapon's damage: its dice, the best of its abilities, a bonus, a type, and what its holder's sheet
+ *  adds (1.92) or rerolls (1.93). Typed by name, so the definition's own type stays short enough to
+ *  write down. */
+const itemAttackDamageBaseSchema = z
+  .object({
+    dice: orItemStat(catalogDice).optional(),
+    abilities: itemAttackAbilitiesSchema.optional(),
+    bonus: orItemStat(z.number().int().min(-100).max(100)).optional(),
+    type: orItemStat(promptSafeText(40)).optional(),
+    /** A number read off the holder's sheet and added to the damage as it stands, as `toHit`'s is
+     *  (Capability API 1.92): 5e's Dueling +2 through a derived value. */
+    sheetBonus: itemToHitValueRefSchema.optional(),
+    /** The sheet bonus counts only while the weapon is held in one hand: not a versatile weapon
+     *  wielded two-handed (its hands are free for it) and not one that takes two of a slot. */
+    oneHanded: z.literal(true).optional(),
+    /** Read off the holder's sheet: damage dice at or below it are thrown again once, the new face
+     *  standing, only while the weapon is wielded two-handed (a versatile weapon with its hands
+     *  free, or one that takes two of a slot) and only in a summed fight (Capability API 1.93):
+     *  5e's Great Weapon Fighting through a derived value that is 2 for the style and 0 without. */
+    rerollUpTo: itemToHitValueRefSchema.optional(),
+  })
+  .strict();
+/** A value written on the item, or read from one of its own stats. */
+type OrItemStat<T> = T | { stat: string };
+export interface RulesetItemAttackDamage {
+  dice?: OrItemStat<string>;
+  abilities?: OrItemStat<string[]>;
+  bonus?: OrItemStat<number>;
+  type?: OrItemStat<string>;
+  sheetBonus?: RulesetValueRef;
+  oneHanded?: true;
+  rerollUpTo?: RulesetValueRef;
+}
+const itemAttackDamageSchema: z.ZodType<RulesetItemAttackDamage, z.ZodTypeDef, unknown> = itemAttackDamageBaseSchema;
+
 export const rulesetItemAttackSchema = z
   .object({
     budget: sheetId,
     toHit: itemToHitSchema.default({}),
-    damage: z
-      .object({
-        dice: orItemStat(catalogDice).optional(),
-        abilities: itemAttackAbilitiesSchema.optional(),
-        bonus: orItemStat(z.number().int().min(-100).max(100)).optional(),
-        type: orItemStat(promptSafeText(40)).optional(),
-        /** A number read off the holder's sheet and added to the damage as it stands, as `toHit`'s is
-         *  (Capability API 1.92): 5e's Dueling +2 through a derived value. */
-        sheetBonus: itemToHitValueRefSchema.optional(),
-        /** The sheet bonus counts only while the weapon is held in one hand: not a versatile weapon
-         *  wielded two-handed (its hands are free for it) and not one that takes two of a slot. */
-        oneHanded: z.literal(true).optional(),
-      })
-      .strict(),
+    damage: itemAttackDamageSchema,
     reach: itemAttackDistanceSchema.optional(),
     range: z
       .object({ normal: itemAttackDistanceSchema, long: itemAttackDistanceSchema.optional() })
@@ -7069,6 +7091,12 @@ function attackIssues(
       add([...at, "damage", "sheetBonus", issue.key], issue.message);
     }
   }
+  if (attack.damage.rerollUpTo) {
+    const sheetNames = rulesetSheetNames(definition.sheet, definition.items);
+    for (const issue of rulesetValueRefIssues(attack.damage.rerollUpTo, sheetNames, sheetNames.derived, true)) {
+      add([...at, "damage", "rerollUpTo", issue.key], issue.message);
+    }
+  }
   if (attack.damage.oneHanded && !attack.damage.sheetBonus) {
     add([...at, "damage", "oneHanded"], "oneHanded says when the damage's sheetBonus counts, so it needs one");
   }
@@ -7089,6 +7117,9 @@ function attackIssues(
   const pooled = definition.resolution.kind === "dice-pool";
   // A summed fight's hit already deals its dice; a pool fight's deals its successes, and dice on top.
   if (!pooled && attack.damage.dice === undefined) add([...at, "damage", "dice"], "A weapon deals dice");
+  if (pooled && attack.damage.rerollUpTo) {
+    add([...at, "damage", "rerollUpTo"], "A pool fight's damage is successes, not faces, so it has nothing to reroll");
+  }
   if (!combat.distance) {
     for (const key of ["reach", "range"] as const) {
       if (attack[key] !== undefined) {

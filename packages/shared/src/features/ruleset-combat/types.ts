@@ -56,6 +56,9 @@ export interface RulesetCombatDamage extends RulesetCombatAmount {
    *  after soak, a summed fight's damage. A spending blow throws its maker's number and is never
    *  raised to it. */
   floor?: number;
+  /** The first amount's own dice at or below this are thrown again once, the new face standing: a
+   *  weapon wielded two-handed by a fighter whose sheet gives it (1.93, 5e's Great Weapon Fighting). */
+  reroll?: number;
 }
 
 /** A condition a hit or a failed save puts on its target. */

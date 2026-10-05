@@ -1042,6 +1042,88 @@ try {
     const gate = /add damage off the sheet.*capabilityApi 1\.92/;
     assert.match(getCapabilityPackageInstallIssue(manifest(91) as any, withDamage) ?? "", gate);
     assert.equal(getCapabilityPackageInstallIssue(manifest(92) as any, withDamage), null);
+
+    // ── Low damage dice thrown again, two-handed (1.93: 5e's Great Weapon Fighting) ──
+    const greatSpear = dueling(spear, { rerollUpTo: { const: 2 } });
+    const rerollOf = (items: RulesetSheetItem[], label: string) =>
+      weaponsOf(emberFight(items)).find((action) => action.label === label)!.damage!.reroll;
+    assert.equal(rerollOf([held(greatSpear, "Boar spear")], "Boar spear"), 2, "a versatile spear in both hands");
+    assert.equal(
+      rerollOf([held(greatSpear, "Boar spear"), held(axe, "Hand axe")], "Boar spear"),
+      undefined,
+      "one hand: none",
+    );
+    assert.equal(
+      rerollOf([held(dueling(bow, { rerollUpTo: { const: 2 } }), "Hunting bow")], "Hunting bow"),
+      2,
+      "two of a slot",
+    );
+    assert.equal(
+      rerollOf([held(dueling(spear, { rerollUpTo: { const: 0 } }), "Boar spear")], "Boar spear"),
+      undefined,
+      "0: none",
+    );
+    assert.equal(
+      rerollOf([held(dueling(spear, { rerollUpTo: { const: 99 } }), "Boar spear")], "Boar spear"),
+      7,
+      "never every face",
+    );
+    // A 1 is thrown again and the new face stands; a 3 is not. The two-handed spear deals a d8.
+    const swing = (item: RulesetCatalogItem, faces: number[]) => {
+      const queue = [...faces];
+      const state = emberFight([held(item, "Boar spear")]);
+      const result = applyRulesetCombatChoice(
+        ember,
+        state,
+        { actorId: "juno", optionId: "item:0", targetIds: ["hound"] },
+        (sides) => (sides === 8 ? (queue.shift() ?? 8) : 6),
+      );
+      return result.events.find((event) => event.type === "damage") as { rolls?: number[] } | undefined;
+    };
+    assert.deepEqual(swing(greatSpear, [1, 5])?.rolls, [5], "a 1 becomes the 5 thrown again");
+    assert.deepEqual(swing(greatSpear, [3, 5])?.rolls, [3], "a 3 stands");
+    assert.deepEqual(swing(spear, [1, 5])?.rolls, [1], "without it the 1 stands");
+    assert.deepEqual(swing(greatSpear, [2, 4])?.rolls, [4], "a 2 is thrown again too");
+    // A critical's extra dice are thrown again the same way.
+    const critical = parsedOrThrow(
+      variant(emberText, (doc) => {
+        doc.combat.attackRoll = {
+          dice: { count: 1, sides: 20 },
+          naturals: { max: "critical" },
+          critical: "double-dice",
+        };
+      }),
+      "a d20 fight with criticals",
+    );
+    const queue = [1, 5, 2, 7];
+    const critState = emberFight([held(greatSpear, "Boar spear")], { brawn: 2, wits: 1 }, critical);
+    const crit = applyRulesetCombatChoice(
+      critical,
+      critState,
+      { actorId: "juno", optionId: "item:0", targetIds: ["hound"] },
+      (sides) => (sides === 8 ? (queue.shift() ?? 8) : sides),
+    ).events.find((event) => event.type === "damage") as { rolls?: number[]; critical?: boolean } | undefined;
+    assert.deepEqual([crit?.critical, crit?.rolls], [true, [5, 7]], "the critical's 2 is thrown again as well");
+    // Refused: an unknown value, and in a pool fight. Gated at 1.93.
+    refused(
+      emberText,
+      attack("boar-spear", (a) => (a.damage.rerollUpTo = { derived: "gwf" })),
+      /Unknown derived value "gwf"/,
+      "reroll off nothing",
+    );
+    refused(
+      gravewatchText,
+      attack("grave-spade", (a) => (a.damage.rerollUpTo = { const: 2 })),
+      /nothing to reroll/,
+      "reroll in a pool fight",
+    );
+    const withReroll = variant(emberText, (doc) => {
+      itemEntry(doc, "boar-spear").item.attack.damage.rerollUpTo = { const: 2 };
+    });
+    parsedOrThrow(withReroll, "a weapon that rerolls");
+    const rerollGate = /reroll low damage dice.*capabilityApi 1\.93/;
+    assert.match(getCapabilityPackageInstallIssue(manifest(92) as any, withReroll) ?? "", rerollGate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(93) as any, withReroll), null);
   }
 
   console.log(

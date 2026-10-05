@@ -981,6 +981,14 @@ function itemAttackActions(
         ...(ammo ? { ammo } : {}),
       });
     }
+    // Low damage dice thrown again once, off the holder's sheet, only while the weapon is wielded
+    // two-handed (1.93: Great Weapon Fighting's 1s and 2s). A pool fight's damage is successes, not
+    // faces, so it has none.
+    const rerollRead =
+      !pooled && attack.damage.rerollUpTo !== undefined && twoHanded
+        ? Math.trunc(resolveRulesetValueRef(definition, build, attack.damage.rerollUpTo, evaluated))
+        : 0;
+    const rerollUpTo = Number.isFinite(rerollRead) ? Math.max(0, Math.min(rerollRead, dice.sides - 1)) : 0;
     const floorRead = read(attack.floor);
     const floor = typeof floorRead === "number" && Number.isFinite(floorRead) && floorRead >= 1 ? floorRead : 0;
     // A damage ability read as the off hand reads it where the ruleset says so: added only when it
@@ -996,6 +1004,7 @@ function itemAttackActions(
       ...(type ? { type } : {}),
       ...(item.tags?.length ? { qualities: [...item.tags] } : {}),
       ...(floor ? { floor: Math.trunc(floor) } : {}),
+      ...(rerollUpTo > 0 ? { reroll: rerollUpTo } : {}),
     });
     const offHand = attack.offHand && combat.offHand ? combat.offHand : undefined;
     const weapon: RulesetCombatAction = {

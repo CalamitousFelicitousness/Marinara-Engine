@@ -685,7 +685,11 @@ const capabilityPackageManifestBaseSchema = z
 //        fighter's off hand on the full ability when their sheet says so. Not a soft seam: an Engine
 //        that cannot read either refuses the ruleset or the catalog, so a package that ships them
 //        declares 1.92. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 92 } as const);
+// 1.93: a weapon's damage may reroll its low dice once, off its holder's sheet, while wielded
+//        two-handed (`attack.damage.rerollUpTo`, 5e's Great Weapon Fighting). Not a soft seam: an Engine
+//        that cannot read it refuses the catalog, so a package that ships it declares 1.93. No
+//        permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 93 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

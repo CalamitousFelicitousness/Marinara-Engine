@@ -111,7 +111,8 @@
   :is(.mari-chat-style-control, .marinara-chat-input-shell button, [data-roleplay-vn-navigation] button):is(
     :hover,
     [aria-pressed="true"],
-    [aria-expanded="true"]
+    [aria-expanded="true"],
+    .mari-swipe-input:focus-within
   ) {
   --mari-chat-control-paint: var(
     --mari-chat-control-bg-hover,
@@ -216,6 +217,17 @@
 .marinara-chat-input-shell button,
 [data-roleplay-vn-navigation] button {
   --mari-chat-control-existing-bg: transparent;
+}
+.mari-message-swipes button:hover {
+  --mari-chat-control-existing-bg: var(--marinara-chat-message-action-bg-hover);
+}
+.mari-swipe-input {
+  --mari-chat-control-existing-bg: color-mix(in srgb, var(--marinara-chat-chrome-text) 5%, transparent);
+  --mari-chat-control-existing-border: var(--marinara-chat-message-action-bg-hover);
+}
+.mari-swipe-input:focus-within {
+  --mari-chat-control-existing-bg: var(--marinara-chat-chrome-button-bg-active);
+  --mari-chat-control-existing-border: var(--marinara-chat-chrome-button-border-active);
 }
 .marinara-chat-toolbar-button {
   --mari-chat-control-existing-bg: var(--marinara-chat-chrome-button-bg);
@@ -401,7 +413,10 @@
 
 :root[data-chat-widget-apply-shape="true"][data-chat-widget-shape="cut-corner"]
   :is(.mari-chat-style-control, .marinara-chat-input-shell button, [data-roleplay-vn-navigation] button)::after {
-  --mari-chat-control-edge: var(--mari-chat-resolved-border-solid, var(--marinara-chat-chrome-button-border));
+  --mari-chat-control-edge: var(
+    --mari-chat-resolved-border-solid,
+    var(--mari-chat-control-existing-border, var(--marinara-chat-chrome-button-border))
+  );
   content: "";
   position: absolute;
   inset: 0;

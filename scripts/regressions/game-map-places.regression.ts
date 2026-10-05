@@ -61,7 +61,7 @@ try {
   const look = (name: string, family = "fantasy", tags: string[] = []) =>
     dungeonSetForPlace({ name, tags }, family)?.id ?? null;
   assert.equal(look("The Old Mine"), "cave_rock");
-  assert.equal(look("Wolf Hollow"), "cave_rock");
+  assert.equal(look("Wolf Den Caves"), "cave_rock");
   assert.equal(look("Frozen Grotto"), "cave_ice");
   assert.equal(look("The Ember Caves of Magma Deep"), "cave_lava", "lava before cave");
   assert.equal(look("Crystal Cavern"), "cave_crystal");
@@ -69,13 +69,16 @@ try {
   assert.equal(look("City Sewers", "modern"), "dungeon_sewer");
   assert.equal(look("Ruined Chapel"), "dungeon_temple");
   assert.equal(look("Old Watchtower", "fantasy", ["ruin"]), "dungeon_temple", "a ruin by its tags");
-  assert.equal(look("The Gilded Gull"), null, "an inn is not one to go down into");
-  assert.equal(look("Temple of the Dawn"), null, "nor a temple still standing");
+  assert.equal(look("Deep Shaft", "fantasy", ["mine"]), "cave_rock", "a mine by its tags");
+  for (const name of ["The Gilded Gull", "Temple of the Dawn", "Frozen Flagon", "Gem Merchant", "Hollow Oak Inn"])
+    assert.equal(look(name), null, `${name} is not one to go down into`);
+  assert.equal(look("Glassblower", "fantasy", ["gemstone", "volcanic", "port"]), null, "only the tags mine and ruin");
   assert.equal(look("Police Station", "modern"), null, "a station is a station only in science fiction");
+  for (const name of ["Research Station", "Maglev Station", "Open Deck", "Rooftop Garden", "Research Lab"])
+    assert.equal(look(name, "scifi"), null, `${name} is a building like any other`);
   assert.equal(look("Orbital Station Kepler", "scifi"), "station_corridor");
-  assert.equal(look("Research Lab", "scifi"), "station_lab");
-  assert.equal(look("Reactor Core", "scifi"), "station_engine");
-  assert.equal(look("Hydroponics Bay", "scifi"), "station_hydro");
+  assert.equal(look("Derelict Research Lab", "scifi"), "station_lab");
+  assert.equal(look("Reactor Bunker", "scifi"), "station_engine");
   assert.equal(look("Cold War Bunker", "modern"), "station_corridor", "a bunker anywhere");
 
   // The way out in words for leaving by it.
@@ -176,6 +179,17 @@ try {
     const again = (await enter(mine.id)).json().map;
     assert.notEqual(again.id, map.id, "a new visit");
     assert.equal(again.ground, map.ground, "the same place, the same map");
+
+    // On another map (one the Game Master opened), going down is refused and that map kept.
+    const other = { ...again, id: "gm-map", name: "The Pit", place: undefined };
+    await chats.patchMetadata(chatId, {
+      gameDungeonMap: other,
+      gameDungeonWalk: { id: "w1", map: "gm-map", from: other.at, to: other.at, minutes: 3 },
+    });
+    assert.equal((await enter(mine.id)).statusCode, 409, "leave the other map first");
+    assert.equal((await meta()).gameDungeonMap.id, "gm-map", "that map is kept");
+    assert.equal((await meta()).gameDungeonWalk.minutes, 3, "and its walk not yet told");
+    await chats.patchMetadata(chatId, { gameDungeonMap: again, gameDungeonWalk: null });
 
     // An inn is not one to go down into.
     await app.inject({ method: "POST", url: `/api/game/${chatId}/map/leave`, payload: { map: again.id } });

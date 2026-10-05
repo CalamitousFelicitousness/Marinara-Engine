@@ -610,7 +610,7 @@ export const gameDungeonMapSchema = z
     id: z.string().min(1).max(80),
     name: z.string().trim().min(1).max(80),
     /** The world place it is a map of, when it was entered from one (a building in town). */
-    place: z.string().min(1).max(80).optional(),
+    place: z.string().min(1).max(160).optional(),
     set: z.string().max(40),
     seed: z.number().int(),
     width: z.number().int().min(8).max(64),
@@ -708,38 +708,44 @@ export function dungeonWayOutWords(set: DungeonSet): string {
   return /^(an?|the) /u.test(tile) ? tile.replace(/^an? /u, "the ") : `the ${tile}`;
 }
 
-/** Words that make a place one to go down into, and the look each gives, in the order they are read
- *  (map editor Phase 3, generated maps for places). Station words only in a science fiction setting:
- *  elsewhere a station is a police or a train station. */
+/** Words in a place's name that make it one to go down into (map editor Phase 3, generated maps for
+ *  places), and the look each gives. Only these: a "Frozen Flagon" or a "Gem Merchant" stays an inn and
+ *  a shop. Station words only in a science fiction setting, and only for a station that is a ruin or a
+ *  shelter: a research station or a maglev station in town is a building like any other. */
+const PLACE_CORE =
+  /\b(caves?|caverns?|grotto|grottoes|mines?|mineshaft|crypts?|tombs?|catacombs?|barrows?|ossuary|mausoleum|sewers?|cisterns?|tunnels?|undercroft|ruins?|ruined|dungeons?|labyrinth|oubliette|warrens?|lairs?|delve)\b/u;
+const SHELTER_CORE = /\b(derelict|bunkers?|hangars?|orbital|space station)\b/u;
+/** Of a place to go down into, the look its words give, in the order they are read; else by its kind. */
 const PLACE_LOOKS: ReadonlyArray<[RegExp, string]> = [
-  [/\b(lava|magma|volcan\w*|molten)\b/u, "cave_lava"],
-  [/\b(ice|icy|frozen|glacier|frost)\b/u, "cave_ice"],
-  [/\b(crystal\w*|gem\w*|geode)\b/u, "cave_crystal"],
+  [/\b(lava|magma|volcanic|volcano|molten)\b/u, "cave_lava"],
+  [/\b(ice|icy|frozen|glacier)\b/u, "cave_ice"],
+  [/\b(crystal|crystals|crystalline|geode)\b/u, "cave_crystal"],
   [/\b(crypts?|tombs?|catacombs?|barrows?|ossuary|mausoleum)\b/u, "dungeon_crypt"],
-  [/\b(sewers?|drains?|cisterns?|tunnels?|basements?|cellars?|undercroft)\b/u, "dungeon_sewer"],
+  [/\b(sewers?|cisterns?|tunnels?|undercroft)\b/u, "dungeon_sewer"],
   [/\b(ruins?|ruined)\b/u, "dungeon_temple"],
-  [/\b(dungeons?|vaults?|labyrinth|oubliette)\b/u, "dungeon_crypt"],
-  [/\b(caves?|caverns?|grotto|grottoes|mines?|mineshaft|warrens?|hollows?|lairs?|delve)\b/u, "cave_rock"],
+  [/\b(dungeons?|labyrinth|oubliette)\b/u, "dungeon_crypt"],
 ];
 const STATION_LOOKS: ReadonlyArray<[RegExp, string]> = [
   [/\b(labs?|laborator\w*)\b/u, "station_lab"],
   [/\b(reactors?|engines?|engineering)\b/u, "station_engine"],
-  [/\b(hydroponics?|gardens?|greenhouse)\b/u, "station_hydro"],
-  [/\b(stations?|derelict|bunkers?|hangars?|decks?|outpost)\b/u, "station_corridor"],
+  [/\b(hydroponics?|greenhouse)\b/u, "station_hydro"],
 ];
 
-/** The look of a map for a place, by its name and tags, or null for a place that is not one to go down
- *  into (a house, an inn, a market). */
+/** The look of a map for a place, by its name (and the tags "mine" and "ruin"), or null for a place
+ *  that is not one to go down into (a house, an inn, a market). */
 export function dungeonSetForPlace(
   place: { name?: string; tags?: readonly string[] },
   family: string | undefined,
 ): DungeonSet | null {
-  const words = [place.name ?? "", ...(place.tags ?? [])].join(" ").toLowerCase();
-  const looks = family === "scifi" ? [...STATION_LOOKS, ...PLACE_LOOKS] : PLACE_LOOKS;
-  const found = looks.find(([pattern]) => pattern.test(words));
-  if (found) return DUNGEON_SETS.find((set) => set.id === found[1])!;
-  // A bunker or a derelict is a station's corridors in any setting.
-  if (/\b(bunkers?|derelict)\b/u.test(words)) return DUNGEON_SETS.find((set) => set.id === "station_corridor")!;
+  const name = (place.name ?? "").toLowerCase();
+  const tags = (place.tags ?? []).map((tag) => tag.toLowerCase());
+  const byId = (id: string) => DUNGEON_SETS.find((set) => set.id === id)!;
+  // A bunker or a derelict is a station's corridors in any setting; a station only in science fiction.
+  if (SHELTER_CORE.test(name) && (family === "scifi" || /\b(derelict|bunkers?)\b/u.test(name)))
+    return byId(STATION_LOOKS.find(([pattern]) => pattern.test(name))?.[1] ?? "station_corridor");
+  if (PLACE_CORE.test(name)) return byId(PLACE_LOOKS.find(([pattern]) => pattern.test(name))?.[1] ?? "cave_rock");
+  if (tags.includes("ruin")) return byId("dungeon_temple");
+  if (tags.includes("mine")) return byId("cave_rock");
   return null;
 }
 

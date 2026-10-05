@@ -11210,6 +11210,8 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         map = current;
         return { gameDungeonView: "map" };
       }
+      // Another map the party is on (one the Game Master opened) is never thrown away for this one.
+      if (current) throw Object.assign(new Error("The party is on another map; leave it first."), { statusCode: 409 });
       const made = generateDungeonMap(set.id, gameDungeonSeed(chatId, name), "medium");
       map = { ...gameDungeonMapFromDungeon(made, name, randomUUID()), place: placeKey };
       return { gameDungeonMap: map, gameDungeonWalk: null, gameDungeonLeft: null, gameDungeonView: "map" };

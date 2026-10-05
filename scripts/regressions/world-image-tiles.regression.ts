@@ -26,6 +26,8 @@ import {
   worldRoadCells,
   worldWholeEdgeBlocks,
   worldEdgeSlanted,
+  worldEdgePiece,
+  WORLD_EDGE_CURVE_OFFSETS,
   WORLD_EDGE_SLANT_PIECE_BY_MASK,
   type ImageTilePack,
   type TilePack,
@@ -102,7 +104,7 @@ try {
   refused(imageTilePack({ tileSize: 112 }), /tileSize/, "a cell larger than 96");
   refused(
     imageTilePack({ tiles: { grass: [{ sheet: "town", x: 0, y: 0, w: 9 }] } }),
-    /w/,
+    /spans 9 by 1 cells; at most 8 each way/,
     "a sprite wider than eight cells",
   );
   // 16 megapixels across all sheets: five of 2048 x 2048 (about 21) is too many.
@@ -233,9 +235,14 @@ try {
 
   // ── Edge tiles: a terrain's blocks of sixteen pieces, four cells by four ──
   const blocks = pngBytes(192, 288, () => [10, 60, 250, 255]);
+  const tall = pngBytes(192, 1440, () => [10, 60, 250, 255]);
   const withEdges = (tiles: Record<string, unknown[]>) =>
     imageTilePack({
-      sheets: [...imageTilePack().sheets, { id: "edges", png: pngDataUrl(blocks), width: 192, height: 288 }],
+      sheets: [
+        ...imageTilePack().sheets,
+        { id: "edges", png: pngDataUrl(blocks), width: 192, height: 288 },
+        { id: "tall", png: pngDataUrl(tall), width: 192, height: 1440 },
+      ],
       tiles: { ...imageTilePack().tiles, ...tiles },
     } as Partial<ImageTilePack>);
   assert.ok(parseTilePack(withEdges({ edge_water: [{ sheet: "edges", x: 0, y: 0, w: 4, h: 4 }] })).ok, "a 4 x 4 block");
@@ -245,10 +252,16 @@ try {
   );
   refused(
     withEdges({ edge_water: [{ sheet: "edges", x: 0, y: 0, w: 4, h: 3 }] }),
-    /an edge tile's block is 4 by 4, or 4 by 6/,
+    /an edge tile's block is 4 by 4, 4 by 6, or 4 by 30/,
     "a block of the wrong size",
   );
   refused(withEdges({ edge_water: [{ sheet: "edges", x: 0, y: 0, w: 4, h: 5 }] }), /4 by 6/, "nor five rows");
+  assert.ok(
+    parseTilePack(withEdges({ edge_water: [{ sheet: "tall", x: 0, y: 0, w: 4, h: 30 }] })).ok,
+    "a 4 x 30 block, with its curved runs",
+  );
+  refused(withEdges({ edge_water: [{ sheet: "tall", x: 0, y: 0, w: 4, h: 31 }] }), /h/, "nor 31");
+  refused(withEdges({ house: [{ sheet: "tall", x: 0, y: 0, w: 4, h: 9 }] }), /at most 8 each way/, "a sprite 9 tall");
   // A drawn pack has no edge tiles (their blocks are image sprites): left out and noted.
   const drawnEdges = parseTilePack({
     tilePackVersion: 1,
@@ -284,6 +297,75 @@ try {
     [16, 17, 18, 19, 20, 21, 22, 23],
   );
   assert.equal(WORLD_EDGE_SLANT_PIECE_BY_MASK.filter((piece) => piece >= 0).length, 8);
+  // Curved runs: what a piece says about its corner (its mask, and where it crosses each border).
+  const decode = (piece: number) => {
+    const at = { L: 0, R: 0, T: 0, B: 0 };
+    let mask = WORLD_EDGE_PIECE_BY_MASK.indexOf(piece);
+    if (piece >= 16 && piece < 24) mask = WORLD_EDGE_SLANT_PIECE_BY_MASK.indexOf(piece);
+    if (piece >= 24 && piece < 56) {
+      const [si, [a, b]] = [(piece - 24) >> 3, WORLD_EDGE_CURVE_OFFSETS[(piece - 24) & 7]!];
+      mask = [12, 3, 10, 5][si]!;
+      if (si < 2) [at.L, at.R] = [a, b];
+      else [at.T, at.B] = [a, b];
+    }
+    if (piece >= 56 && piece < 120) {
+      const [ki, [a, b]] = [(piece - 56) >> 3, WORLD_EDGE_CURVE_OFFSETS[(piece - 56) & 7]!];
+      mask = [1, 2, 4, 8, 14, 13, 11, 7][ki]!;
+      const q = ki & 3;
+      if (q >> 1) at.B = a;
+      else at.T = a;
+      if (q & 1) at.R = b;
+      else at.L = b;
+    }
+    return { mask, ...at };
+  };
+  // Every pair of neighbouring pieces agrees where they meet, and each piece is its corner's.
+  const agrees = (filled: (x: number, y: number) => boolean, size: number, label: string) => {
+    const pieceAt = (x: number, y: number) => worldEdgePiece(filled, x, y, size, size, 30);
+    let curved = 0;
+    for (let y = 0; y <= size; y++)
+      for (let x = 0; x <= size; x++) {
+        const piece = pieceAt(x, y);
+        const mask = worldEdgeMask(filled, x, y, size, size);
+        if (piece < 0) {
+          assert.ok(mask === 0, `${label}: a piece at ${x},${y}`);
+          continue;
+        }
+        const here = decode(piece);
+        assert.equal(here.mask, mask, `${label}: the piece at ${x},${y} is its corner's`);
+        if (piece >= 24) curved++;
+        const right = pieceAt(x + 1, y);
+        if (x < size && right >= 0) assert.equal(decode(right).L, here.R, `${label}: ${x},${y} meets the next across`);
+        const below = pieceAt(x, y + 1);
+        if (y < size && below >= 0) assert.equal(decode(below).T, here.B, `${label}: ${x},${y} meets the next down`);
+      }
+    return curved;
+  };
+  const oval = (x: number, y: number) => (x - 7.5) ** 2 / 36 + (y - 7.5) ** 2 / 12 < 1;
+  assert.ok(agrees(oval, 16, "an oval") > 4, "an oval takes curved pieces");
+  assert.ok(agrees((x, y) => y >= 7 - Math.floor(x / 2), 16, "a gentle run") > 4, "a gentle run takes them");
+  const diagonal = (x: number, y: number) => x + y >= 9;
+  agrees(diagonal, 16, "a 45 degree run");
+  // Away from the map's edge (where it meets the edge's straight run), its corners are the slants.
+  for (const [x, y] of [
+    [4, 5],
+    [5, 5],
+    [6, 4],
+    [6, 3],
+  ] as const) {
+    const piece = worldEdgePiece(diagonal, x, y, 16, 16, 30);
+    assert.ok(piece >= 16 && piece < 24, `a 45 degree run slants at ${x},${y} (${piece})`);
+  }
+  assert.equal(agrees(inLake, 6, "a rectangle"), 0, "a rectangle keeps its plain pieces");
+  assert.equal(worldEdgePiece(inLake, 2, 2, 6, 6, 30), WORLD_EDGE_PIECE_BY_MASK[8], "its corner stays rounded");
+  assert.equal(worldEdgePiece(stairs, 3, 3, 8, 8, 30), 19, "a staircase's corner slants with curves on hand too");
+  assert.equal(worldEdgePiece(stairs, 3, 3, 8, 8, 4), WORLD_EDGE_PIECE_BY_MASK[8], "a 16-piece block: rounded");
+  const run = (x: number, y: number) => y >= 7 - Math.floor(x / 2);
+  const somewhere = Array.from({ length: 17 * 17 }, (_, i) => [i % 17, Math.floor(i / 17)] as const);
+  assert.ok(
+    somewhere.every(([x, y]) => worldEdgePiece(run, x, y, 16, 16, 6) < 24),
+    "a 24-piece block never asks for a curve",
+  );
   const sea = (x: number) => x === 0;
   assert.equal(
     worldEdgeMask((x) => sea(x), 0, 0, 6, 6),
@@ -320,6 +402,8 @@ try {
   assert.deepEqual(worldWholeEdgeBlocks([holed]), [], "none whole");
   const slanting = Array.from({ length: 24 }, () => piece);
   assert.deepEqual(worldWholeEdgeBlocks([slanting, slanting.slice(0, 20)]), [slanting], "with its slants, or without");
+  const curving = Array.from({ length: 120 }, () => piece);
+  assert.deepEqual(worldWholeEdgeBlocks([curving, curving.slice(0, 100)]), [curving], "with its curves");
   const there = worldRoadCells({ x: 1, y: 1 }, { x: 4, y: 4 }, () => false);
   const back = worldRoadCells({ x: 4, y: 4 }, { x: 1, y: 1 }, () => false);
   assert.deepEqual(back, [...there].reverse(), "a way and its way back lie on the same cells");

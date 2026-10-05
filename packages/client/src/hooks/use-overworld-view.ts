@@ -8,9 +8,7 @@ import {
   OVERWORLD_SECONDS_PER_GAME_MINUTE,
   tilePackPixels,
   CHARACTER_FACINGS,
-  WORLD_EDGE_PIECE_BY_MASK,
   worldWholeEdgeBlocks,
-  WORLD_EDGE_SLANT_PIECE_BY_MASK,
   type WorldEdgeTerrain,
   type CharacterFacing,
   type ImageCharacter,
@@ -161,19 +159,20 @@ export type OverworldTileDrawer = ((
   ) => boolean;
   /** Whether the pack has edge tiles for a terrain (water, road, street, square). */
   hasEdges: (terrain: WorldEdgeTerrain) => boolean;
+  /** How long every one of a terrain's edge blocks is (4, 6 with slants, 30 with curves; 0 for none), for
+   *  worldEdgePiece. */
+  edgeRows: (terrain: WorldEdgeTerrain) => number;
   /**
-   * Draws the edge piece for a corner's mask (1-15) centred on the corner at (x, y) (in units, where four
-   * cells meet), from the variant `pick` (0..1) chooses; `slanted` takes the corner's slanted piece where the
-   * variant has one (else the rounded one). False when the pack has none for the terrain.
+   * Draws an edge block's piece (worldEdgePiece) centred on the corner at (x, y) (in units, where four cells
+   * meet), from the variant `pick` (0..1) chooses. False when the pack has none for the terrain.
    */
   edge: (
     ctx: CanvasRenderingContext2D,
     terrain: WorldEdgeTerrain,
-    mask: number,
+    piece: number,
     x: number,
     y: number,
     pick?: number,
-    slanted?: boolean,
   ) => boolean;
 };
 
@@ -311,13 +310,14 @@ export function useOverworldAtlas(family: string | undefined, own?: TilePack | n
         return true;
       };
       draw.hasEdges = (terrain) => Boolean(ready?.edges?.[`edge_${terrain}`]?.length);
-      draw.edge = (ctx, terrain, mask, x, y, pick = 0, slanted = false) => {
+      draw.edgeRows = (terrain) => {
         const variants = ready?.edges?.[`edge_${terrain}`];
-        const piece = WORLD_EDGE_PIECE_BY_MASK[mask] ?? -1;
+        return variants?.length ? Math.min(...variants.map((block) => block.length / 4)) : 0;
+      };
+      draw.edge = (ctx, terrain, piece, x, y, pick = 0) => {
+        const variants = ready?.edges?.[`edge_${terrain}`];
         if (!variants?.length || piece < 0 || !ready?.canvas) return false;
-        const block = variants[Math.min(variants.length - 1, Math.floor(pick * variants.length))];
-        const slant = slanted ? (WORLD_EDGE_SLANT_PIECE_BY_MASK[mask] ?? -1) : -1;
-        const at = block?.[slant >= 0 && block[slant] ? slant : piece];
+        const at = variants[Math.min(variants.length - 1, Math.floor(pick * variants.length))]?.[piece];
         if (!at) return false;
         const half = OVERWORLD_TILE / 2;
         ctx.drawImage(ready.canvas, at.sx, at.sy, size, size, x - half, y - half, OVERWORLD_TILE, OVERWORLD_TILE);
@@ -343,6 +343,7 @@ export function useOverworldAtlas(family: string | undefined, own?: TilePack | n
     draw.sprite = () => null;
     draw.character = () => false;
     draw.hasEdges = () => false;
+    draw.edgeRows = () => 0;
     draw.edge = () => false;
     return draw;
   }, [atlas, chosen, family, fetchFailed, fetched, image, libraryPending, own, ready]);
@@ -420,7 +421,7 @@ async function buildImageAtlas(pack: ImageTilePack): Promise<ImageAtlas> {
   for (const [id, variants] of Object.entries(pack.tiles)) {
     variants.forEach((tile, index) => {
       if (id.startsWith("edge_")) {
-        for (let piece = 0; piece < ((tile.h ?? 4) === 6 ? 24 : 16); piece++) {
+        for (let piece = 0; piece < 4 * (tile.h ?? 4); piece++) {
           if (x + size + 2 > ROW) [x, y, rowHeight] = [0, y + rowHeight, 0];
           pieces.push({ id, index, piece, tile, sx: x + 1, sy: y + 1 });
           x += size + 2;

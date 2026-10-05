@@ -18,10 +18,10 @@ import { DoorOpen, Footprints, MapPin, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
-  worldEdgeMask,
+  WORLD_EDGE_PIECE_BY_MASK,
   worldGroundCells,
   worldRoadCells,
-  worldEdgeSlanted,
+  worldEdgePiece,
   worldGroundLooks,
   worldRoute,
   type GameWorld,
@@ -205,18 +205,18 @@ export function WorldOverworld({
     }
     /** A dual-grid pass: every corner of the map whose four cells are partly or wholly the terrain. */
     const edgePass = (terrain: "water" | "road", filled: (x: number, y: number) => boolean) => {
+      const rows = drawTile.edgeRows(terrain);
       for (let y = 0; y <= height; y++)
         for (let x = 0; x <= width; x++) {
-          const mask = worldEdgeMask(filled, x, y, width, height);
-          if (mask)
+          const piece = worldEdgePiece(filled, x, y, width, height, rows);
+          if (piece >= 0)
             drawTile.edge(
               ctx,
               terrain,
-              mask,
+              piece,
               x * OVERWORLD_TILE,
               y * OVERWORLD_TILE,
               cellNoise(x, y)(terrain === "water" ? 71 : 73),
-              worldEdgeSlanted(filled, x, y, width, height, mask),
             );
         }
     };
@@ -295,7 +295,8 @@ export function WorldOverworld({
     const wetLook =
       lookIndex >= 0 &&
       (game.kit.terrain?.find((entry) => entry.id === world.terrain[lookIndex])?.kind ?? "open") === "water";
-    if (wetLook && drawTile.edge(ctx, "water", 15, OVERWORLD_TILE / 2, OVERWORLD_TILE / 2)) return canvas;
+    if (wetLook && drawTile.edge(ctx, "water", WORLD_EDGE_PIECE_BY_MASK[15]!, OVERWORLD_TILE / 2, OVERWORLD_TILE / 2))
+      return canvas;
     if (!drawTile(ctx, look, 0, 0)) paintGround(ctx, look as (typeof looks)[number], 0, 0, cellNoise(0, 0));
     return canvas;
   }, [drawTile, game, world]);

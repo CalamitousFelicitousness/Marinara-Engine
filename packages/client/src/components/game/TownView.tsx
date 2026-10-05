@@ -11,8 +11,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
   worldBuildingHasRooms,
-  worldEdgeMask,
-  worldEdgeSlanted,
+  worldEdgePiece,
   worldTownDoor,
   worldTownMinutes,
   worldTownPeopleAt,
@@ -156,19 +155,12 @@ export function TownView({
     // The streets (the square counted as street), then the square over them, as dual-grid passes.
     const cellOf = (x: number, y: number) => town.ground[y * town.width + x];
     const edgePass = (terrain: "street" | "square", filled: (x: number, y: number) => boolean) => {
+      const rows = drawTile.edgeRows(terrain);
       for (let y = 0; y <= town.height; y++)
         for (let x = 0; x <= town.width; x++) {
-          const mask = worldEdgeMask(filled, x, y, town.width, town.height);
-          if (mask)
-            drawTile.edge(
-              ctx,
-              terrain,
-              mask,
-              x * T,
-              y * T,
-              cellNoise(x, y)(terrain === "street" ? 75 : 77),
-              worldEdgeSlanted(filled, x, y, town.width, town.height, mask),
-            );
+          const piece = worldEdgePiece(filled, x, y, town.width, town.height, rows);
+          if (piece >= 0)
+            drawTile.edge(ctx, terrain, piece, x * T, y * T, cellNoise(x, y)(terrain === "street" ? 75 : 77));
         }
     };
     if (streetEdges) edgePass("street", (x, y) => cellOf(x, y) === "s" || cellOf(x, y) === "q");

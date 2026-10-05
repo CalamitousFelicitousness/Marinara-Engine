@@ -12,7 +12,7 @@
 // ──────────────────────────────────────────────
 import { z } from "zod";
 import { WORLD_FURNITURE } from "./furniture.js";
-import { WORLD_EDGE_TERRAINS } from "./edges.js";
+import { WORLD_EDGE_BLOCK_ROWS, WORLD_EDGE_TERRAINS } from "./edges.js";
 import { WORLD_GROUND_LOOKS } from "./overworld.js";
 
 /** Pixels across and down a tile. */
@@ -35,6 +35,8 @@ export const TILE_PACK_IMAGE_CELL = [16, 96] as const;
 export const TILE_PACK_IMAGE_SHEETS = 16;
 export const TILE_PACK_IMAGE_SHEET_PX = 4096;
 export const TILE_PACK_IMAGE_SPAN = 8;
+/** An edge tile's block runs longer than a sprite: up to 30 cells down, with its slants and curves. */
+export const TILE_PACK_EDGE_BLOCK_MAX_ROWS = 30;
 /** The most characters an image pack has, and colours a character's recolour region lists. */
 export const TILE_PACK_MAX_CHARACTERS = 64;
 export const TILE_PACK_RECOLOUR_COLOURS = 8;
@@ -109,7 +111,8 @@ export type DrawnTilePack = z.infer<typeof tilePackSchema>;
 
 const PNG_DATA_URL = "data:image/png;base64,";
 const sheetId = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,39}$/, "A sheet's id is lowercase letters, digits, _ and -");
-const span = z.number().int().min(1).max(TILE_PACK_IMAGE_SPAN);
+// Sprites span at most TILE_PACK_IMAGE_SPAN cells (checked by id below); edge blocks run longer.
+const span = z.number().int().min(1).max(TILE_PACK_EDGE_BLOCK_MAX_ROWS);
 
 export const imageTilePackSchema = z
   .object({
@@ -363,9 +366,15 @@ function parseImageTilePack(value: unknown): TilePackRead {
       const [w, h] = [tile.w ?? 1, tile.h ?? 1];
       if ((tile.x + w) * pack.tileSize > sheet.width || (tile.y + h) * pack.tileSize > sheet.height)
         issues.push(`${id} variant ${index + 1} reaches past the edge of the sheet "${sheet.id}".`);
-      // An edge tile is a block of sixteen pieces, four cells by four, or four by six with its slanted corners.
-      if (id.startsWith("edge_") && (w !== 4 || (h !== 4 && h !== 6)))
-        issues.push(`${id} variant ${index + 1} is ${w} by ${h} cells; an edge tile's block is 4 by 4, or 4 by 6.`);
+      // An edge tile is a block of sixteen pieces, four cells by four, or longer with its slanted corners (4 by
+      // 6) and its curved runs (4 by 30); a sprite spans at most TILE_PACK_IMAGE_SPAN cells each way.
+      if (id.startsWith("edge_")) {
+        if (w !== 4 || !(WORLD_EDGE_BLOCK_ROWS as readonly number[]).includes(h))
+          issues.push(
+            `${id} variant ${index + 1} is ${w} by ${h} cells; an edge tile's block is 4 by 4, 4 by 6, or 4 by 30.`,
+          );
+      } else if (w > TILE_PACK_IMAGE_SPAN || h > TILE_PACK_IMAGE_SPAN)
+        issues.push(`${id} variant ${index + 1} spans ${w} by ${h} cells; at most ${TILE_PACK_IMAGE_SPAN} each way.`);
     });
     tiles[id] = variants;
   }

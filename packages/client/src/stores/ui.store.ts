@@ -633,6 +633,7 @@ interface UIState {
   rightPanelWidth: number;
   rightPanel: Panel;
   trackerPanelEnabled: boolean;
+  /** This chat uses the Tracker Panel; its runtime visibility lives in the floating-window store. */
   trackerPanelOpen: boolean;
   trackerPanelOpenByChatId: Record<string, boolean>;
   trackerPanelSide: TrackerPanelSide;

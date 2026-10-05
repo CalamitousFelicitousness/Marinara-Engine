@@ -44,8 +44,20 @@ export const WORLD_GROUND_LOOKS = Object.freeze([
   "mountains",
   "craters",
   "gravity_well",
+  // More forests (user, 2026-10-05: "Cold regions will need coniferous forests at least"): an image pack
+  // without one draws the forest instead (WORLD_GROUND_LOOK_FALLBACK).
+  "conifer_forest",
+  "autumn_forest",
+  "jungle",
 ] as const);
 export type WorldGroundLook = (typeof WORLD_GROUND_LOOKS)[number];
+
+/** The look a pack without its own tile for a look draws instead. */
+export const WORLD_GROUND_LOOK_FALLBACK: Readonly<Partial<Record<WorldGroundLook, WorldGroundLook>>> = Object.freeze({
+  conifer_forest: "forest",
+  autumn_forest: "forest",
+  jungle: "forest",
+});
 
 type WorldTerrainKind = (typeof WORLD_TERRAIN_KINDS)[number];
 
@@ -74,7 +86,10 @@ const LOOK_WORDS: Record<WorldTerrainKind, Array<[RegExp, WorldGroundLook]>> = {
     [/sprawl|city|urban|core|downtown|corporate|district/, "city"],
     [/farm|field|orchard|vineyard|pasture/, "farmland"],
     [/prairie|plain|steppe|savanna|meadow/, "plains"],
-    [/forest|wood|jungle|grove|taiga/, "forest"],
+    [/taiga|conifer|pine|spruce|boreal|fir\b|firs/, "conifer_forest"],
+    [/jungle|rainforest|tropic/, "jungle"],
+    [/autumn|maple|birch/, "autumn_forest"],
+    [/forest|wood|grove/, "forest"],
     [/hill|highland|moor|upland/, "hills"],
     [/marsh|swamp|bog|fen|wetland/, "marsh"],
     [/scrub|brush|heath|badland/, "scrub"],

@@ -575,6 +575,31 @@ function grounds(p) {
       speckle(t, p.stone, 4, s + 90);
       return t;
     }),
+    // More forests (user, 2026-10-05): conifers for cold regions, autumn broadleaf, and jungle.
+    conifer_forest: [70, 71].map((s) => {
+      const t = ground(p, "grassDark", "leafDark", "leaf", s, 0.6);
+      pine(t, Math.floor(noise(s, 0, 5) * 3), 0, p);
+      pine(t, 9 + Math.floor(noise(s, 1, 5) * 2), 2 + Math.floor(noise(s, 2, 5) * 2), p);
+      pine(t, 4 + Math.floor(noise(s, 3, 5) * 3), 9, p);
+      return t;
+    }),
+    autumn_forest: [72, 73].map((s) => {
+      const autumn = { ...p, leaf: "#c27a34", leafLight: "#dda04a", leafDark: "#8e4a22" };
+      const t = ground(p, "grassDark", "soil", "grass", s, 0.6);
+      roundTree(t, Math.floor(noise(s, 0, 5) * 3), 0, autumn);
+      roundTree(t, 9 + Math.floor(noise(s, 1, 5) * 2), 2 + Math.floor(noise(s, 2, 5) * 2), autumn);
+      roundTree(t, 4 + Math.floor(noise(s, 3, 5) * 3), 9, autumn);
+      return t;
+    }),
+    jungle: [74, 75].map((s) => {
+      const lush = { ...p, leaf: "#2f7a36", leafLight: "#4fa048", leafDark: "#1d5226" };
+      const t = ground(lush, "leafDark", "leaf", "leafDark", s, 0.7);
+      roundTree(t, Math.floor(noise(s, 0, 5) * 2), 0, lush);
+      roundTree(t, 8 + Math.floor(noise(s, 1, 5) * 2), 1, lush);
+      roundTree(t, 2 + Math.floor(noise(s, 2, 5) * 3), 7, lush);
+      roundTree(t, 9, 9, lush);
+      return t;
+    }),
     dead_forest: [45, 46].map((s) => {
       const t = ground(p, "soil", "sandDark", "soilDark", s, 0.5);
       bareTree(t, 2 + (s % 3), 2, p);

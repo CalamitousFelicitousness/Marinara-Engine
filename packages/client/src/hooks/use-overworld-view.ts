@@ -10,6 +10,8 @@ import {
   CHARACTER_FACINGS,
   worldWholeEdgeBlocks,
   WORLD_PATTERN_TILE_IDS,
+  WORLD_GROUND_LOOK_FALLBACK,
+  type WorldGroundLook,
   type WorldEdgeTerrain,
   type CharacterFacing,
   type ImageCharacter,
@@ -258,13 +260,15 @@ export function useOverworldAtlas(family: string | undefined, own?: TilePack | n
   }, [imageKey]);
   const ready = image && compact?.key === imageKey ? compact.atlas : null;
   return useMemo(() => {
+    // A look the pack has no tile for (a newer forest) draws the one it stands in for.
+    const fallbackOf = (id: string) => WORLD_GROUND_LOOK_FALLBACK[id as WorldGroundLook];
     const variantOf = <T>(variants: readonly T[] | undefined, pick: number) =>
       variants?.length ? variants[Math.min(variants.length - 1, Math.floor(pick * variants.length))]! : null;
     if (image) {
       const size = image.tileSize;
       const patterns = new Set<string>(WORLD_PATTERN_TILE_IDS);
       const draw = ((ctx, id, x, y, pick = 0, box) => {
-        const variants = ready?.tiles[id];
+        const variants = ready?.tiles[id] ?? ready?.tiles[fallbackOf(id) ?? ""];
         // Ground drawn as a pattern: its cell for this position (x and y are whole cells in units here).
         const pattern = !box && patterns.has(id) ? variants?.find((each) => each.w > 1 || each.h > 1) : undefined;
         if (pattern && ready?.canvas) {
@@ -348,7 +352,7 @@ export function useOverworldAtlas(family: string | undefined, own?: TilePack | n
       return draw;
     }
     const draw = ((ctx, id, x, y, pick = 0) => {
-      const at = variantOf(atlas?.index[id], pick);
+      const at = variantOf(atlas?.index[id] ?? atlas?.index[fallbackOf(id) ?? ""], pick);
       if (!atlas || at === null) return false;
       const sx = (at % ATLAS_COLUMNS) * OVERWORLD_TILE;
       const sy = Math.floor(at / ATLAS_COLUMNS) * OVERWORLD_TILE;

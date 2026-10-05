@@ -37,6 +37,7 @@ import {
   worldRoute,
   worldSetOutFrom,
   worldTerrainLook,
+  WORLD_GROUND_LOOK_FALLBACK,
   worldWalkJoined,
   worldWalkTags,
   worldWalkText,
@@ -117,6 +118,16 @@ try {
   assert.equal(worldTerrainLook({ id: "entry_3", kind: "water" }), "sea", "no words: by kind");
   assert.equal(worldTerrainLook({ id: "entry_4", kind: "barrier" }), "mountains");
   assert.equal(worldTerrainLook({ id: "entry_5", kind: "open" }), "grass");
+  // More forests: conifers for cold regions, jungle, autumn; a plain forest stays a forest.
+  assert.equal(worldTerrainLook({ id: "taiga", kind: "open" }), "conifer_forest");
+  assert.equal(worldTerrainLook({ id: "pine_woods", kind: "open" }), "conifer_forest");
+  assert.equal(worldTerrainLook({ id: "deep_jungle", kind: "open" }), "jungle");
+  assert.equal(worldTerrainLook({ id: "autumn_woods", kind: "open" }), "autumn_forest");
+  assert.equal(worldTerrainLook({ id: "old_forest", kind: "open" }), "forest");
+  assert.equal(worldTerrainLook({ id: "dead_forest", kind: "open" }), "dead_forest");
+  assert.equal(worldTerrainLook({ id: "bamboo_forest", kind: "open" }), "bamboo");
+  for (const look of ["conifer_forest", "autumn_forest", "jungle"] as const)
+    assert.equal(WORLD_GROUND_LOOK_FALLBACK[look], "forest", `${look}: a pack without it draws the forest`);
 
   // ── Each family's tile pack (W9a): every tile the overworld and the towns draw, as the script draws it ──
   const packOf = (root: string, family: string) =>

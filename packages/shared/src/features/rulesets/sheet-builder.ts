@@ -580,6 +580,7 @@ export function rulesetBuilderRemaining(
       add(
         step.id,
         step.fields.filter((id) => {
+          if (step.optional?.includes(id)) return false;
           const value = build.fields[id];
           return value === undefined || value === "";
         }).length,

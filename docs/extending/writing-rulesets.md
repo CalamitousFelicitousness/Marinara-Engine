@@ -634,7 +634,7 @@ The limits are 12 catalogs per ruleset, 2000 entries per catalog either way, and
 
 ### The guided builder: making a character in steps
 
-A sheet may declare `sheet.builder` (Capability API 1.81). The sheet editor, in the character and persona editors and in a game's **Edit sheet**, then opens on a **Guided** view beside the full form (**All fields**): the steps across the top, each with a badge counting the choices it still waits on, **Back** and **Next** that never block (a player may leave choices for later), and the character as it stands beside them.
+A sheet may declare `sheet.builder` (Capability API 1.81). The sheet editor, in the character and persona editors and in a game's **Edit sheet**, then opens on a **Guided** view beside the full form (**All fields**): the steps across the top, each with a badge counting the choices it still waits on, **Back** and **Next** that never block (a player may leave choices for later), and the character as it stands beside them: what the steps wrote, the scores, the values `gm.sheetSummary` names (armor class, proficiency bonus) and the trained saves and skills.
 
 ```json
 "builder": {
@@ -659,7 +659,7 @@ A sheet may declare `sheet.builder` (Capability API 1.81). The sheet editor, in 
 Up to 16 steps, each `{ id, label, kind, ... }`:
 
 - `catalog`: entries of a catalog of rows, shown as cards with their `summary` behind **Info**. `min` (default 1) is how many the step asks for and `max` (default 1) the most it takes; with `max` 1 a new pick replaces the old one. `field` names a text or enum field the picked labels are written to (an enum field takes the entry's id or label, whichever is one of its values). `filters` fixes values of the catalog's filters, and `within: { step, filter }` offers only entries whose `filter` names an entry picked at that earlier step, as a subrace names its race; unpick the race and its subrace counts for nothing.
-- `fields`: a short form of named fields. Its badge counts the ones still empty.
+- `fields`: a short form of named fields. Its badge counts the ones still empty, except those listed in `optional` (a subclass chosen at a later level).
 - `abilities`: the scores (`abilities`, all of them when left out), set by any of `methods`: `pointBuy` (a `budget` no more than buying every score to the top costs, and the cost of every score from the lowest, where every score starts, up one at a time; a score typed by hand starts from the nearest score on the table), `standardArray` (one value to each score), `roll` (`count` dice of `sides`, keeping the highest `keep`, thrown by the Engine's own dice, one roll per score, then handed out like an array) and `manual`. What the picks add goes on top: the step shows base, bonus, total and modifier. One abilities step at most.
 - `trained`: the skill and save choices the picks offer, and the step's own `choose: [{ "what": "skills", "count": 2, "from": [...] }]` (any of them when `from` is left out).
 - `startingGear`: lists the ruleset's starting gear. Gear is taken in a game, from the inventory, as always.

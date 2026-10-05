@@ -73,6 +73,7 @@ function ruleset(id: string): string {
         within: { step: "race", filter: "parent" },
       },
       { id: "class", label: "Class", kind: "catalog", catalog: "classes", field: "class" },
+      { id: "level", label: "Level", kind: "fields", fields: ["level", "xp", "subclass"], optional: ["subclass"] },
       {
         id: "scores",
         label: "Ability Scores",
@@ -200,6 +201,11 @@ test("the guided builder applies picks, rolls and buys scores, and saves the she
     await page.getByRole("button", { name: "Select Fighter" }).click();
     await expect(summary.getByText("Fighter", { exact: true })).toBeVisible();
     await expect(steps.getByRole("button", { name: "Proficiencies 2 choices left", exact: true })).toBeVisible();
+    // A fields step waits on nothing optional, and the summary shows the sheet's own summary numbers.
+    await expect(steps.getByRole("button", { name: "Level Nothing left to choose", exact: true })).toBeVisible();
+    await expect(summary.getByText("Proficiency bonus", { exact: true })).toBeVisible();
+    await expect(summary.getByText("Armor Class", { exact: true })).toBeVisible();
+    await expect(summary.getByText("Spell save DC", { exact: true })).toHaveCount(0);
 
     // Scores: rolled with the Engine's dice and handed out, then bought instead.
     await page.getByRole("button", { name: /^Ability Scores/ }).click();

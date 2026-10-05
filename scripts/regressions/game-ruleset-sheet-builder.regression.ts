@@ -166,6 +166,15 @@ try {
   refused((doc) => (doc.sheet.builder.steps[0].filters = { nope: "x" }), /Unknown filter "nope"/);
   refused((doc) => (doc.sheet.builder.steps[0].min = 3), /at most its max/);
   refused((doc) => doc.sheet.builder.steps[3].fields.push("nope"), /Unknown field "nope"/);
+  refused((doc) => (doc.sheet.builder.steps[3].optional = ["xp"]), /"xp" is not one of this step's fields/);
+  {
+    const optional = parsed(variant((doc) => (doc.sheet.builder.steps[3].optional = ["background"])));
+    assert.equal(
+      rulesetBuilderRemaining(optional, defaultRulesetSheetBuild(optional), {}, {}).level,
+      0,
+      "an optional field is not waited on",
+    );
+  }
   refused((doc) => doc.sheet.builder.steps[4].methods.standardArray.pop(), /one value to each of the 6 scores/);
   refused((doc) => doc.sheet.builder.steps.push({ ...doc.sheet.builder.steps[4], id: "again" }), /one step/);
   refused((doc) => (doc.sheet.builder.steps[4].methods = {}), /offers a method/);

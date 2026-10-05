@@ -932,6 +932,8 @@ const builderStepSchema = z.discriminatedUnion("kind", [
       ...builderStepBase,
       kind: z.literal("fields"),
       fields: z.array(sheetId).min(1).max(20),
+      /** Fields of the step its badge does not wait on, such as a subclass chosen at a later level. */
+      optional: z.array(sheetId).min(1).max(20).optional(),
     })
     .strict(),
   z
@@ -5106,6 +5108,10 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       } else if (step.kind === "fields") {
         step.fields.forEach((id, fieldIndex) => {
           if (!fields.has(id)) issue([...path, "fields", fieldIndex], `Unknown field "${id}"`);
+        });
+        step.optional?.forEach((id, optionalIndex) => {
+          if (!step.fields.includes(id))
+            issue([...path, "optional", optionalIndex], `"${id}" is not one of this step's fields`);
         });
       } else if (step.kind === "abilities") {
         abilitySteps += 1;

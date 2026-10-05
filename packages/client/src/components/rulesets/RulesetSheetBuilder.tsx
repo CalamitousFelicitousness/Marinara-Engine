@@ -16,6 +16,7 @@ import {
   rulesetBuilderPicks,
   rulesetBuilderRemaining,
   rulesetBuilderTrainedSlots,
+  isRulesetItemHidden,
   evaluateRulesetSheet,
   rulesetPointBuySpent,
   type DiceRollResult,
@@ -583,9 +584,37 @@ export function RulesetSheetBuilder({
       .filter(([, tier]) => tier !== untrained)
       .map(([id]) => (what === "skills" ? skillLabel(id) : saveLabel(id)));
   };
-  const pickedFields = builder.steps.flatMap((each) =>
-    each.kind === "catalog" && each.field ? [each.field] : each.kind === "fields" ? each.fields : [],
-  );
+  // The character as the summary shows it: what the steps wrote, then what the ruleset's own sheet
+  // summary names (the numbers a player checks at a glance, such as armor class and speed). A number a
+  // fields step asks for is left out while it still stands at its default, so ten class levels at 0
+  // never crowd the scores.
+  const summary = definition.gm.sheetSummary;
+  const fieldById = new Map(definition.sheet.fields.map((field) => [field.id, field]));
+  const shownFields = [
+    ...builder.steps.flatMap((each) =>
+      each.kind === "catalog" && each.field
+        ? [{ id: each.field, always: true }]
+        : each.kind === "fields"
+          ? each.fields.map((id) => ({ id, always: false }))
+          : [],
+    ),
+    ...summary.fields.map((id) => ({ id, always: true })),
+  ]
+    .filter((entry, index, all) => all.findIndex((other) => other.id === entry.id) === index)
+    .flatMap(({ id, always }) => {
+      const field = fieldById.get(id);
+      const value = build.fields[id];
+      if (!field || value === undefined || value === "" || isRulesetItemHidden(field, build, definition)) return [];
+      if (!always && field.type === "number" && value === (field.default ?? 0)) return [];
+      const text = field.type === "enum" ? (field.valueLabels?.[String(value)] ?? String(value)) : String(value);
+      return [{ id, label: field.label, text }];
+    });
+  const shownDerived = summary.derived.flatMap((id) => {
+    const entry = definition.sheet.derived.find((each) => each.id === id);
+    const value = evaluated.derived[id];
+    if (!entry || value === undefined || isRulesetItemHidden(entry, build, definition)) return [];
+    return [{ id, label: entry.label, text: String(value) }];
+  });
 
   return (
     <div className="space-y-3">
@@ -672,21 +701,14 @@ export function RulesetSheetBuilder({
           className="space-y-2 rounded-lg border border-[var(--border)] bg-[var(--card)] p-2"
         >
           <h4 className="text-xs font-semibold text-[var(--foreground)]">{t("ui.rulesets.builder.summary")}</h4>
-          {pickedFields.length > 0 && (
+          {shownFields.length > 0 && (
             <dl className="space-y-0.5 text-[0.6875rem]">
-              {[...new Set(pickedFields)].map((id) => {
-                const field = definition.sheet.fields.find((each) => each.id === id);
-                const value = build.fields[id];
-                if (!field || value === undefined || value === "") return null;
-                return (
-                  <div key={id} className="flex justify-between gap-2">
-                    <dt className="text-[var(--muted-foreground)]">{field.label}</dt>
-                    <dd className="truncate text-right text-[var(--foreground)]">
-                      {field.type === "enum" ? (field.valueLabels?.[String(value)] ?? String(value)) : String(value)}
-                    </dd>
-                  </div>
-                );
-              })}
+              {shownFields.map((entry) => (
+                <div key={entry.id} className="flex justify-between gap-2">
+                  <dt className="text-[var(--muted-foreground)]">{entry.label}</dt>
+                  <dd className="truncate text-right text-[var(--foreground)]">{entry.text}</dd>
+                </div>
+              ))}
             </dl>
           )}
           {definition.sheet.abilities.length > 0 && (
@@ -703,6 +725,16 @@ export function RulesetSheetBuilder({
                 </div>
               ))}
             </div>
+          )}
+          {shownDerived.length > 0 && (
+            <dl className="grid grid-cols-2 gap-1 text-[0.6875rem]">
+              {shownDerived.map((entry) => (
+                <div key={entry.id} className="rounded border border-[var(--border)] px-1.5 py-0.5">
+                  <dt className="truncate text-[0.625rem] text-[var(--muted-foreground)]">{entry.label}</dt>
+                  <dd className="text-xs font-semibold tabular-nums text-[var(--foreground)]">{entry.text}</dd>
+                </div>
+              ))}
+            </dl>
           )}
           {(["saves", "skills"] as const).map((what) => {
             const names = trainedNames(what);

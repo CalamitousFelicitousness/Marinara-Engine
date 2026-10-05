@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Roleplay chats on wide screens can now sit on the left or right instead of the center: choose **Chat position** in **Settings > Appearance > Roleplay > Roleplay Presentation**. Messages and the input box move together and stay clear of open sidebars and a Tracker Panel on the same side. **Center** remains the default, and phones and Game mode are unchanged (#7106).
+
 - You can now change a connection's model straight from the **Connections** menu by the chat input: search or type a model ID, star favourites to pin them on top, and refresh the list when needed. On phones, tap a connection to see its models. Chat Settings → **Connection** has the same **Model** field. The model is saved to the connection, so agents and other chats that use it switch too. Fetched model lists are kept, so the menu doesn't ask the provider every time (#7098).
 
 - Chat input popups now follow **Apply preset font**, **Apply preset shape**, and **Apply preset colors**, including emoji and media pickers, autocomplete menus, character responses, Push Story options, quick replies, and Game dice and address controls. Each switch works independently, and leaving them off keeps the existing look (#7103).

@@ -22,6 +22,7 @@ import {
   type GameDialogueDisplayMode,
   type ChatListBackgroundMode,
   type RoleplayAvatarStyle,
+  type RoleplayChatPosition,
   type TrackerDataPanelSection,
   type TrackerPanelSizeProfile,
   type TrackerStatDisplayMode,
@@ -1367,6 +1368,14 @@ const SETTINGS_SEARCHABLE_CONTROLS: readonly SettingsSearchableControlMeta[] = [
     kind: "Slider",
   },
   {
+    id: "roleplay-chat-position",
+    sectionId: "roleplay-messages",
+    label: "Chat position",
+    description: "Where the chat sits on wide screens. Has no effect on phones.",
+    aliases: ["roleplay", "layout", "left", "right", "center", "centre", "align", "side", "column", "desktop"],
+    kind: "Button group",
+  },
+  {
     id: "roleplay-message-opacity",
     sectionId: "roleplay-messages",
     label: "Roleplay Messages Background Opacity",
@@ -1922,6 +1931,8 @@ function formatStorageBytes(bytes: number): string {
     maximumFractionDigits: 1,
   }).format(safeBytes / 1_000_000_000);
 }
+
+const ROLEPLAY_CHAT_POSITIONS: RoleplayChatPosition[] = ["left", "center", "right"];
 
 const ROLEPLAY_AVATAR_STYLE_OPTIONS: Array<{ id: RoleplayAvatarStyle; label: string; desc: string }> = [
   {
@@ -5071,6 +5082,8 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
   const setRoleplaySpriteScale = useUIStore((s) => s.setRoleplaySpriteScale);
   const roleplayDisplayStyle = useUIStore((s) => s.roleplayDisplayStyle);
   const setRoleplayDisplayStyle = useUIStore((s) => s.setRoleplayDisplayStyle);
+  const roleplayChatPosition = useUIStore((s) => s.roleplayChatPosition);
+  const setRoleplayChatPosition = useUIStore((s) => s.setRoleplayChatPosition);
   const roleplayVnPortraitScale = useUIStore((s) => s.roleplayVnPortraitScale);
   const setRoleplayVnPortraitScale = useUIStore((s) => s.setRoleplayVnPortraitScale);
   const roleplayVnSpriteScale = useUIStore((s) => s.roleplayVnSpriteScale);
@@ -6244,6 +6257,40 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
             {...getSettingsSectionAnchorProps("roleplay-messages")}
           >
             <div className="flex flex-col gap-3">
+              <div id={getSettingsControlAnchorId("roleplay-chat-position")} className="grid scroll-mt-3 gap-1.5">
+                <span className="inline-flex items-center gap-1 text-xs font-medium">
+                  {localizeUi("settings.controls.roleplayChatPosition.label")}
+                  <HelpTooltip text={localizeUi("settings.controls.roleplayChatPosition.help")} />
+                </span>
+                <div
+                  role="group"
+                  aria-label={localizeUi("settings.controls.roleplayChatPosition.label")}
+                  className="grid grid-cols-3 gap-0.5 rounded-lg border border-[var(--border)] bg-[var(--secondary)]/45 p-0.5"
+                >
+                  {ROLEPLAY_CHAT_POSITIONS.map((position) => {
+                    // An unknown synced value shows as Center, which is how the chat treats it.
+                    const selected =
+                      position ===
+                      (ROLEPLAY_CHAT_POSITIONS.includes(roleplayChatPosition) ? roleplayChatPosition : "center");
+                    return (
+                      <button
+                        key={position}
+                        type="button"
+                        onClick={() => setRoleplayChatPosition(position)}
+                        aria-pressed={selected}
+                        className={cn(
+                          "flex min-h-8 min-w-0 items-center justify-center rounded-md px-1.5 text-[0.6875rem] font-semibold transition-all",
+                          selected
+                            ? "bg-[var(--primary)]/12 text-[var(--foreground)] ring-1 ring-[var(--primary)]/45"
+                            : "text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]",
+                        )}
+                      >
+                        {localizeUi(`settings.controls.roleplayChatPosition.${position}`)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
               <ToggleSetting
                 anchorId={getSettingsControlAnchorId("roleplay-vn-display")}
                 label={localizeUi("settings.roleplayVn.enabled")}

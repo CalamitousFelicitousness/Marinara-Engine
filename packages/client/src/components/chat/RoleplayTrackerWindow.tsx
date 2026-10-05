@@ -278,6 +278,8 @@ function TrackerWindow({
   const { t } = useTranslation();
   const tracker = useRoleplayTrackerState(chatId, enabledAgentTypes, "tracker-window");
   const trackerTemperatureUnit = useUIStore((s) => s.trackerTemperatureUnit);
+  // Moving the chat changes the free gutter the default layout looks for.
+  const chatPosition = useUIStore((s) => s.roleplayChatPosition);
   const isAgentProcessing = useAgentStore((s) => s.processingChatIds.includes(chatId));
   const gameStateRefreshing = useGameStateStore((s) => s.isRefreshing);
   const busy = isAgentProcessing || isStreaming || gameStateRefreshing;
@@ -334,6 +336,7 @@ function TrackerWindow({
         label: t("chat.trackerWindow.title"),
       }}
       getDefaultLayout={getTrackerWindowDefaultLayout}
+      defaultLayoutKey={chatPosition}
       minWidth={260}
       minHeight={160}
       autoFocus={false}

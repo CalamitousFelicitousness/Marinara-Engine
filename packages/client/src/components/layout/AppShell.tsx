@@ -1213,6 +1213,9 @@ export function AppShell({
       ? trackerPanelResolvedWidth + TRACKER_PANEL_HUD_GAP
       : 0;
   const trackerPanelHudClearance = trackerPanelHideHudWidgets ? trackerPanelOverlayClearance : 0;
+  // Room a Roleplay column placed on the panel's side (Chat position) leaves for it. It uses the chosen
+  // width, not the width measured beside that column, so the two never resize each other.
+  const trackerPanelChatClearance = trackerPanelOverlayClearance > 0 ? trackerPanelWidth + TRACKER_PANEL_CHAT_GAP : 0;
   const trackerPanelContentScale = resolveTrackerPanelContentScale(trackerPanelWidth, trackerPanelResolvedWidth);
   const trackerPanelPortal =
     trackerPanelActive &&
@@ -1418,6 +1421,7 @@ export function AppShell({
                 "--tracker-panel-hud-clear-left": `${trackerPanelSide === "left" ? trackerPanelHudClearance : 0}px`,
                 "--tracker-panel-hud-clear-right": `${trackerPanelSide === "right" ? trackerPanelHudClearance : 0}px`,
                 "--tracker-panel-overlay-clearance": `${trackerPanelOverlayClearance}px`,
+                "--tracker-panel-chat-clearance": `${trackerPanelChatClearance}px`,
               } as CSSProperties
             }
           >

@@ -92,6 +92,7 @@ The **Tracker Panel** section styles the Roleplay tracker side panel. That panel
 
 The **Roleplay Messages** section styles messages in Roleplay chats.
 
+- **Chat position** chooses where the messages and the input box sit on wide screens: **Left**, **Center** (the default), or **Right**. They move together, and an open sidebar or a Tracker Panel on the same side moves them along so the chat never sits underneath. On phones and narrow windows the chat keeps the full width, and Game mode keeps its dialogue box centered.
 - **Roleplay Messages Background Opacity** is a slider from 0% to 100%. The default is 90%. Lower it to let the background show through the message bubbles.
 - **Roleplay Avatars** picks the avatar style beside each message. The four options are **None**, **Small Circles** (the default), **Small Rectangles**, and **Glued Side Panel**.
 - **Scrollable Avatars** (default off) keeps avatars visible while you scroll through a long message.

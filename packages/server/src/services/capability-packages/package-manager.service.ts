@@ -1169,6 +1169,18 @@ function entriesCarryToHitSheetBonus(entries: unknown): boolean {
   );
 }
 
+/** A weapon's damage that reads a bonus off its holder's sheet (1.92): `sheetBonus` (and `oneHanded`),
+ *  new keys on the strict damage. */
+function entriesCarryDamageSheetBonus(entries: unknown): boolean {
+  return (
+    Array.isArray(entries) &&
+    entries.some((entry) => {
+      const damage = plainRecord(plainRecord(plainRecord(plainRecord(entry)?.item)?.attack)?.damage);
+      return damage?.sheetBonus !== undefined || damage?.oneHanded !== undefined;
+    })
+  );
+}
+
 /** Entries a builder step keeps one of (1.89): `exclusive`, a new key on the strict entry. */
 function entriesCarryExclusive(entries: unknown): boolean {
   return Array.isArray(entries) && entries.some((entry) => plainRecord(entry)?.exclusive !== undefined);
@@ -1421,6 +1433,7 @@ export function getCapabilityPackageInstallIssue(
   let carriesSeveralScaled = false;
   let carriesRepeatChoices = false;
   let carriesChoiceCaps = false;
+  let carriesDamageSheetBonus = false;
   let carriesExclusive = false;
   let carriesSheetBonus = false;
   // Every item by "<catalog>/<entry>", inline and in files, and the fakes among them, so a fake whose
@@ -1521,6 +1534,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarrySeveralScaledRows(header.entries)) carriesSeveralScaled = true;
       if (entriesCarryRepeatChoices(header.entries)) carriesRepeatChoices = true;
       if (entriesCarryChoiceCaps(header.entries)) carriesChoiceCaps = true;
+      if (entriesCarryDamageSheetBonus(header.entries)) carriesDamageSheetBonus = true;
       if (entriesCarryExclusive(header.entries)) carriesExclusive = true;
       if (entriesCarryToHitSheetBonus(header.entries)) carriesSheetBonus = true;
       collectItems(header.id, header.entries);
@@ -1571,6 +1585,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarrySeveralScaledRows(fileEntries)) carriesSeveralScaled = true;
       if (entriesCarryRepeatChoices(fileEntries)) carriesRepeatChoices = true;
       if (entriesCarryChoiceCaps(fileEntries)) carriesChoiceCaps = true;
+      if (entriesCarryDamageSheetBonus(fileEntries)) carriesDamageSheetBonus = true;
       if (entriesCarryExclusive(fileEntries)) carriesExclusive = true;
       if (entriesCarryToHitSheetBonus(fileEntries)) carriesSheetBonus = true;
       collectItems(header.id, fileEntries);
@@ -1858,6 +1873,12 @@ export function getCapabilityPackageInstallIssue(
   // An item's to-hit read off its holder's sheet, 1.90: a new key on the strict to-hit.
   if (!declaresApi(90) && carriesSheetBonus) {
     return "A ruleset whose items add a bonus to hit read off their holder's sheet requires schemaVersion 2 and capabilityApi 1.90 or newer";
+  }
+  // A weapon's damage off the holder's sheet, and an off hand kept full by the sheet, 1.92: new keys
+  // on the strict damage and the strict combat.offHand.
+  const fullWhen = plainRecord(plainRecord(plainRecord(ruleset?.combat)?.offHand))?.fullWhen;
+  if (!declaresApi(92) && (carriesDamageSheetBonus || fullWhen !== undefined)) {
+    return "A ruleset whose weapons add damage off the sheet, or whose off hand reads the sheet, requires schemaVersion 2 and capabilityApi 1.92 or newer";
   }
   // A score choice with a cap, 1.91: a new key on the strict choice.
   if (!declaresApi(91) && carriesChoiceCaps) {

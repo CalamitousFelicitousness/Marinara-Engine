@@ -2521,6 +2521,12 @@ export const rulesetItemAttackSchema = z
         abilities: itemAttackAbilitiesSchema.optional(),
         bonus: orItemStat(z.number().int().min(-100).max(100)).optional(),
         type: orItemStat(promptSafeText(40)).optional(),
+        /** A number read off the holder's sheet and added to the damage as it stands, as `toHit`'s is
+         *  (Capability API 1.92): 5e's Dueling +2 through a derived value. */
+        sheetBonus: itemToHitValueRefSchema.optional(),
+        /** The sheet bonus counts only while the weapon is held in one hand: not a versatile weapon
+         *  wielded two-handed (its hands are free for it) and not one that takes two of a slot. */
+        oneHanded: z.literal(true).optional(),
       })
       .strict(),
     reach: itemAttackDistanceSchema.optional(),
@@ -3787,7 +3793,13 @@ const combatSchema = z
      *  damage keeps a positive ability (`penalty-only` adds the ability only when it takes away, as
      *  5e's two-weapon fighting does). A ruleset that declares none has no off-hand attacks. */
     offHand: z
-      .object({ budget: sheetId, ability: z.enum(["full", "penalty-only"]).default("full") })
+      .object({
+        budget: sheetId,
+        ability: z.enum(["full", "penalty-only"]).default("full"),
+        /** Read off the fighter's sheet: above 0, that fighter's off hand keeps the full ability
+         *  whatever `ability` says (Capability API 1.92), as 5e's Two-Weapon Fighting style does. */
+        fullWhen: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
+      })
       .strict()
       .optional(),
     attacks: z.array(combatAttackSourceSchema).max(8).optional(),
@@ -5590,6 +5602,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
     }
     if (combat.opportunity) checkBudget(combat.opportunity.budget, at("opportunity", "budget"));
     if (combat.offHand) checkBudget(combat.offHand.budget, at("offHand", "budget"));
+    if (combat.offHand?.fullWhen) checkRef(combat.offHand.fullWhen, at("offHand", "fullWhen"), derivedIds);
 
     // Contests: the checks they read, the budget they spend and the conditions they touch all exist,
     // and what they measure in distance needs a cell to measure it in.
@@ -7050,6 +7063,15 @@ function attackIssues(
   value(attack.damage.abilities, "abilities", [...at, "damage", "abilities"]);
   value(attack.damage.bonus, "number", [...at, "damage", "bonus"]);
   value(attack.damage.type, "type", [...at, "damage", "type"]);
+  if (attack.damage.sheetBonus) {
+    const sheetNames = rulesetSheetNames(definition.sheet, definition.items);
+    for (const issue of rulesetValueRefIssues(attack.damage.sheetBonus, sheetNames, sheetNames.derived, true)) {
+      add([...at, "damage", "sheetBonus", issue.key], issue.message);
+    }
+  }
+  if (attack.damage.oneHanded && !attack.damage.sheetBonus) {
+    add([...at, "damage", "oneHanded"], "oneHanded says when the damage's sheetBonus counts, so it needs one");
+  }
   value(attack.reach, "number", [...at, "reach"]);
   value(attack.range?.normal, "number", [...at, "range", "normal"]);
   value(attack.range?.long, "number", [...at, "range", "long"]);

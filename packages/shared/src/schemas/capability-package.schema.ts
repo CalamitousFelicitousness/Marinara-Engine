@@ -680,7 +680,12 @@ const capabilityPackageManifestBaseSchema = z
 // 1.91: a builder grant's score choice may cap the scores it raises (`abilities.choose[].upTo`, an
 //        ability score improvement's "not above 20"). Not a soft seam: an Engine that cannot read it
 //        refuses the catalog, so a package that ships it declares 1.91. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 91 } as const);
+// 1.92: a weapon's damage may add a number read off its holder's sheet, only while held in one hand
+//        when it says `oneHanded` (`attack.damage.sheetBonus`), and `combat.offHand.fullWhen` keeps a
+//        fighter's off hand on the full ability when their sheet says so. Not a soft seam: an Engine
+//        that cannot read either refuses the ruleset or the catalog, so a package that ships them
+//        declares 1.92. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 92 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

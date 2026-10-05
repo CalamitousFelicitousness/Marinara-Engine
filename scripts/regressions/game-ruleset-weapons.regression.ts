@@ -962,6 +962,88 @@ try {
     assert.equal(getCapabilityPackageInstallIssue(manifest(90, paths) as any, inFile, files), null);
   }
 
+  // ── Damage the holder brings off their own sheet, in one hand (1.92: 5e's Dueling) ──
+  {
+    const attack = (id: string, edit: (attack: Record<string, any>) => void) => (doc: Record<string, any>) =>
+      edit(itemEntry(doc, id).item.attack);
+    const dueling = (item: RulesetCatalogItem, damage: Record<string, unknown>): RulesetCatalogItem => ({
+      ...item,
+      attack: { ...item.attack!, damage: { ...item.attack!.damage, ...damage } } as never,
+    });
+    const flatOf = (items: RulesetSheetItem[], label: string) =>
+      weaponsOf(emberFight(items)).find((action) => action.label === label)!.damage!.flat;
+    const plainAxe = flatOf([held(axe, "Hand axe")], "Hand axe");
+    assert.equal(flatOf([held(dueling(axe, { sheetBonus: { const: 2 } }), "Hand axe")], "Hand axe"), plainAxe + 2);
+    assert.equal(
+      flatOf([held(dueling(axe, { sheetBonus: { const: 2.9 } }), "Hand axe")], "Hand axe"),
+      plainAxe + 2,
+      "cut toward zero",
+    );
+    // A versatile spear alone is wielded with both hands: no one-handed bonus. Beside an axe it is
+    // held in one, and the bonus counts.
+    const duelSpear = dueling(spear, { sheetBonus: { const: 2 }, oneHanded: true });
+    const spearAlone = flatOf([held(spear, "Boar spear")], "Boar spear");
+    assert.equal(flatOf([held(duelSpear, "Boar spear")], "Boar spear"), spearAlone, "two-handed: none");
+    assert.equal(
+      flatOf([held(duelSpear, "Boar spear"), held(axe, "Hand axe")], "Boar spear"),
+      flatOf([held(spear, "Boar spear"), held(axe, "Hand axe")], "Boar spear") + 2,
+      "one-handed: +2",
+    );
+    // One that takes two hands is never one-handed.
+    const duelBow = dueling(bow, { sheetBonus: { const: 2 }, oneHanded: true });
+    assert.equal(
+      flatOf([held(duelBow, "Hunting bow")], "Hunting bow"),
+      flatOf([held(bow, "Hunting bow")], "Hunting bow"),
+    );
+    // Without oneHanded it counts however the weapon is held.
+    assert.equal(
+      flatOf([held(dueling(spear, { sheetBonus: { const: 2 } }), "Boar spear")], "Boar spear"),
+      spearAlone + 2,
+    );
+    // The facts name it by its name on the sheet.
+    assert.match(
+      rulesetItemFacts(ember, dueling(axe, { sheetBonus: { abilityMod: "wits" } })).attack!.damage,
+      /Wits modifier/,
+    );
+    // Refused: an unknown value, and oneHanded with nothing to gate.
+    refused(
+      emberText,
+      attack("hand-axe", (a) => (a.damage.sheetBonus = { derived: "duel" })),
+      /Unknown derived value "duel"/,
+      "damage sheet bonus off nothing",
+    );
+    refused(
+      emberText,
+      attack("hand-axe", (a) => (a.damage.oneHanded = true)),
+      /oneHanded says when the damage's sheetBonus counts/,
+      "oneHanded alone",
+    );
+    // Gated at 1.92.
+    const withDamage = variant(emberText, (doc) => {
+      itemEntry(doc, "hand-axe").item.attack.damage.sheetBonus = { const: 2 };
+    });
+    parsedOrThrow(withDamage, "a weapon with a damage sheet bonus");
+    const manifest = (minor: number) => ({
+      schemaVersion: 2,
+      capabilityApi: { major: 1, minor },
+      builtAgainst: { engineVersion: "2.4.6", engineCommit: "0".repeat(40) },
+      id: "ruleset-damage-bonus",
+      name: "Damage bonus",
+      version: "0.1.0",
+      description: "A packaged ruleset whose weapons add damage off their holder's sheet.",
+      engine: { min: "2.4.6", maxExclusive: "4.0.0" },
+      kind: ["ruleset"],
+      entrypoints: {},
+      contributions: { assets: { paths: ["ruleset.json"] } },
+      files: [{ path: "ruleset.json", sha256: "0".repeat(64), bytes: 10 }],
+      permissions: [],
+      restartRequired: false,
+    });
+    const gate = /add damage off the sheet.*capabilityApi 1\.92/;
+    assert.match(getCapabilityPackageInstallIssue(manifest(91) as any, withDamage) ?? "", gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(92) as any, withDamage), null);
+  }
+
   console.log(
     "Ruleset weapons: import checks, the 1.55 gate, weapons in summed and pool fights, a weapon's own target, what gets through a resistance, item facts and invented weapons passed.",
   );

@@ -394,7 +394,13 @@ function rulesetItemAttackFacts(
     ]),
     ...(attack.toHit.proficiency ? { proficiency: true as const } : {}),
     ...(typeof target === "number" ? { target } : {}),
-    damage: factSum([dice(attack.damage.dice), abilities(attack.damage.abilities), number(attack.damage.bonus)]),
+    damage: factSum([
+      dice(attack.damage.dice),
+      abilities(attack.damage.abilities),
+      number(attack.damage.bonus),
+      // What the holder brings off their own sheet (1.92), by its name there.
+      attack.damage.sheetBonus ? sheetBonusWords(definition, attack.damage.sheetBonus) : "",
+    ]),
     ...(type ? { type } : {}),
     ...(reach > 0 ? { reach } : {}),
     ...(normal > 0 ? { range: { normal, ...(long > normal ? { long } : {}) } } : {}),

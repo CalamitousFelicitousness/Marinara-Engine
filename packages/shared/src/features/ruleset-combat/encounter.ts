@@ -938,7 +938,15 @@ function itemAttackActions(
     const damageAbility = dealtWith.length
       ? Math.max(...dealtWith.map((ability) => evaluated.abilityMods[ability] ?? ABILITY_COLUMN_MISS))
       : 0;
-    const bonus = number(read(attack.damage.bonus));
+    // What the holder brings to the damage off their own sheet (1.92: a duelist's +2), only while the
+    // weapon is held in one hand when it says so: a versatile weapon wielded two-handed, or one that
+    // takes two of a slot, is not.
+    const twoHanded = free || Object.values(item.slots ?? {}).some((count) => count >= 2);
+    const sheetDamage =
+      attack.damage.sheetBonus !== undefined && !(attack.damage.oneHanded && twoHanded)
+        ? Math.trunc(resolveRulesetValueRef(definition, build, attack.damage.sheetBonus, evaluated))
+        : 0;
+    const bonus = number(read(attack.damage.bonus)) + (Number.isFinite(sheetDamage) ? sheetDamage : 0);
     const typeRead = read(attack.damage.type);
     const type = typeof typeRead === "string" && typeRead.trim() ? typeRead.trim() : undefined;
     const strikes = attack.strikes
@@ -1016,7 +1024,17 @@ function itemAttackActions(
         ...single,
         id: `offhand:${index}`,
         budget: offHand.budget,
-        damage: damageOf(offHand.ability === "penalty-only" ? Math.min(0, damageAbility) : damageAbility),
+        // The off hand keeps the full ability for a fighter whose sheet says so (1.92: Two-Weapon
+        // Fighting), whatever the ruleset's rule for everyone else.
+        damage: damageOf(
+          offHand.ability === "penalty-only" &&
+            !(
+              offHand.fullWhen !== undefined &&
+              resolveRulesetValueRef(definition, build, offHand.fullWhen, evaluated) > 0
+            )
+            ? Math.min(0, damageAbility)
+            : damageAbility,
+        ),
         offHandOf: index,
       });
     }

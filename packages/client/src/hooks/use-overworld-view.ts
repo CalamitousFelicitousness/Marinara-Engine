@@ -483,11 +483,18 @@ async function buildImageAtlas(pack: ImageTilePack): Promise<ImageAtlas> {
     if (!source) continue;
     const [px, py] = [(tile.x + (piece % 4)) * size, (tile.y + Math.floor(piece / 4)) * size];
     ctx.drawImage(source, px, py, size, size, sx, sy, size, size);
-    // The piece's own edge pixels, one more each side.
-    ctx.drawImage(canvas, sx, sy, 1, size, sx - 1, sy, 1, size);
-    ctx.drawImage(canvas, sx + size - 1, sy, 1, size, sx + size, sy, 1, size);
-    ctx.drawImage(canvas, sx - 1, sy, size + 2, 1, sx - 1, sy - 1, size + 2, 1);
-    ctx.drawImage(canvas, sx - 1, sy + size - 1, size + 2, 1, sx - 1, sy + size, size + 2, 1);
+    // The piece's own edge pixels, one more each side (and its corner pixels at the corners), copied from the
+    // sheet: copying them from the atlas itself would read the canvas back once a piece, which with a few
+    // hundred pieces took minutes.
+    const last = size - 1;
+    ctx.drawImage(source, px, py, 1, size, sx - 1, sy, 1, size);
+    ctx.drawImage(source, px + last, py, 1, size, sx + size, sy, 1, size);
+    ctx.drawImage(source, px, py, size, 1, sx, sy - 1, size, 1);
+    ctx.drawImage(source, px, py + last, size, 1, sx, sy + size, size, 1);
+    ctx.drawImage(source, px, py, 1, 1, sx - 1, sy - 1, 1, 1);
+    ctx.drawImage(source, px + last, py, 1, 1, sx + size, sy - 1, 1, 1);
+    ctx.drawImage(source, px, py + last, 1, 1, sx - 1, sy + size, 1, 1);
+    ctx.drawImage(source, px + last, py + last, 1, 1, sx + size, sy + size, 1, 1);
     ((edges[id] ??= [])[index] ??= [])[piece] = { sx, sy };
   }
   // Only whole blocks are drawn (a variant whose sheet did not load is left out, not drawn with holes).

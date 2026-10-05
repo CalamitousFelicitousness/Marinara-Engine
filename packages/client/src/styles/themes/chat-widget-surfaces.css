@@ -93,6 +93,17 @@
   pointer-events: none;
 }
 
+/* The dice field's ordinary focus ring is rectangular. Its cut frame supplies
+   the outline instead, with a thicker edge while the native input has focus. */
+:root[data-chat-widget-apply-shape="true"][data-chat-widget-shape="cut-corner"] [data-chat-dice-input] {
+  --mari-chat-control-existing-border: color-mix(in oklab, var(--foreground) 10%, transparent);
+  box-shadow: none;
+}
+:root[data-chat-widget-apply-shape="true"][data-chat-widget-shape="cut-corner"]
+  [data-chat-dice-input]:focus-within::after {
+  border-width: 2px;
+}
+
 :root[data-chat-widget-apply-colors="true"]
   :is(.mari-chat-style-surface, .mari-chat-style-conversation):not(.fixed, .absolute, .sticky) {
   position: relative;

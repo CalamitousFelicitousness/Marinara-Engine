@@ -706,8 +706,17 @@ function itemToHit(
   const proficient =
     toHit.proficiency !== undefined && resolveRulesetValueRef(definition, build, toHit.proficiency, evaluated) > 0;
   const target = read(toHit.target);
+  // What the holder brings to it off their own sheet (Capability API 1.90: an archer's +2 to ranged).
+  const fromSheet =
+    toHit.sheetBonus !== undefined
+      ? Math.trunc(resolveRulesetValueRef(definition, build, toHit.sheetBonus, evaluated))
+      : 0;
   return {
-    toHit: base + (proficient ? evaluated.proficiencyBonus : 0) + number(read(toHit.bonus)),
+    toHit:
+      base +
+      (proficient ? evaluated.proficiencyBonus : 0) +
+      number(read(toHit.bonus)) +
+      (Number.isFinite(fromSheet) ? fromSheet : 0),
     ...(pooled && typeof target === "number" && Number.isFinite(target) ? { target } : {}),
   };
 }

@@ -216,6 +216,12 @@ export function rulesetItemAttackStats(attack: RulesetItemAttack): string[] {
 
 /** A sum as the item facts write one: the first part as it is, then each with its sign. Nothing is
  *  0. */
+/** What a sheet bonus is called in an item's facts: the value's name on the sheet ("Archery"). */
+function sheetBonusWords(definition: RulesetDefinition, ref: RulesetValueRef): string {
+  const label = rulesetValueRefLabel(definition, ref);
+  return label.of ? `${label.what} ${label.of}` : label.what;
+}
+
 function factSum(parts: ReadonlyArray<string | number>): string {
   const kept = parts.filter((part) => part !== "" && part !== 0);
   if (kept.length === 0) return "0";
@@ -383,6 +389,8 @@ function rulesetItemAttackFacts(
       abilities(attack.toHit.abilities),
       typeof skill === "string" ? labelOf(definition.sheet.skills, skill) : "",
       number(attack.toHit.bonus),
+      // What the holder brings off their own sheet (1.90), by its name there.
+      attack.toHit.sheetBonus ? sheetBonusWords(definition, attack.toHit.sheetBonus) : "",
     ]),
     ...(attack.toHit.proficiency ? { proficiency: true as const } : {}),
     ...(typeof target === "number" ? { target } : {}),

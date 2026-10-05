@@ -244,6 +244,12 @@ try {
         /Unknown derived value "martial"/,
       ],
       [
+        "a sheet bonus off an unknown value (1.90)",
+        emberText,
+        attack("hand-axe", (a) => (a.toHit.sheetBonus = { derived: "aim" })),
+        /Unknown derived value "aim"/,
+      ],
+      [
         "a distance with no cell to measure it in",
         emberText,
         (doc) => {
@@ -876,6 +882,84 @@ try {
     assert.equal(pocket.item.slots, undefined);
     assert.equal(pocket.item.attack, undefined);
     assert.match(pocket.notes.join(" "), /never worn, and the attack it started from was left out/);
+  }
+
+  // ── What the holder brings to a weapon off their own sheet (1.90: 5e's Archery) ──
+  {
+    const archer = (sheetBonus: Record<string, unknown>): RulesetCatalogItem => ({
+      ...axe,
+      attack: { ...axe.attack!, toHit: { ...axe.attack!.toHit, sheetBonus } as never },
+    });
+    const plain = weaponsOf(emberFight([held(axe, "Hand axe")]))[0]!.toHit!;
+    assert.equal(
+      weaponsOf(emberFight([held(archer({ const: 2 }), "Hand axe")]))[0]!.toHit,
+      plain + 2,
+      "+2 as it stands",
+    );
+    assert.equal(
+      weaponsOf(emberFight([held(archer({ abilityMod: "wits" }), "Hand axe")], { brawn: 2, wits: 3 }))[0]!.toHit,
+      weaponsOf(emberFight([held(axe, "Hand axe")], { brawn: 2, wits: 3 }))[0]!.toHit! + 3,
+      "read off the holder's own sheet",
+    );
+    assert.equal(
+      weaponsOf(emberFight([held(archer({ const: 2.7 }), "Hand axe")]))[0]!.toHit,
+      plain + 2,
+      "a fraction is cut toward zero",
+    );
+    assert.equal(
+      weaponsOf(emberFight([held(archer({ const: 0 }), "Hand axe")]))[0]!.toHit,
+      plain,
+      "nothing for no one",
+    );
+    // The item's facts name it by its name on the sheet.
+    assert.equal(rulesetItemFacts(ember, archer({ abilityMod: "wits" })).attack!.toHit, "Brawn + Wits modifier");
+    // Checked at import like any of the weapon's values, and gated at 1.90 in the ruleset file and a catalog file.
+    const withBonus = variant(emberText, (doc) => {
+      itemEntry(doc, "hand-axe").item.attack.toHit.sheetBonus = { abilityMod: "wits" };
+    });
+    parsedOrThrow(withBonus, "a weapon with a sheet bonus");
+    const manifest = (minor: number, paths = ["ruleset.json"]) => ({
+      schemaVersion: 2,
+      capabilityApi: { major: 1, minor },
+      builtAgainst: { engineVersion: "2.4.6", engineCommit: "0".repeat(40) },
+      id: "ruleset-sheet-bonus",
+      name: "Sheet bonus",
+      version: "0.1.0",
+      description: "A packaged ruleset whose weapons add a bonus off their holder's sheet.",
+      engine: { min: "2.4.6", maxExclusive: "4.0.0" },
+      kind: ["ruleset"],
+      entrypoints: {},
+      contributions: { assets: { paths } },
+      files: paths.map((path) => ({ path, sha256: "0".repeat(64), bytes: 10 })),
+      permissions: [],
+      restartRequired: false,
+    });
+    const gate = /bonus to hit read off their holder's sheet.*capabilityApi 1\.90/;
+    assert.match(getCapabilityPackageInstallIssue(manifest(89) as any, withBonus) ?? "", gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(90) as any, withBonus), null);
+    assert.doesNotMatch(getCapabilityPackageInstallIssue(manifest(89) as any, variant(emberText)) ?? "", gate);
+    // An item's use that rolls to hit reads it the same way, and asks the same.
+    const onUse = variant(emberText, (doc) => {
+      itemEntry(doc, "hand-axe").item.use = { toHit: { sheetBonus: { const: 2 } } };
+    });
+    assert.match(getCapabilityPackageInstallIssue(manifest(89) as any, onUse) ?? "", gate, "an item's use");
+    const outfitter = itemCatalogOf(withBonus);
+    const inFile = {
+      ...withBonus,
+      catalogs: withBonus.catalogs.map((catalog: { id: string }) =>
+        catalog.id === outfitter.id
+          ? { ...catalog, entries: undefined, asset: `catalogs/${outfitter.id}.json` }
+          : catalog,
+      ),
+    };
+    const paths = ["ruleset.json", `catalogs/${outfitter.id}.json`];
+    const files = new Map<string, unknown>([[`catalogs/${outfitter.id}.json`, { entries: outfitter.entries }]]);
+    assert.match(
+      getCapabilityPackageInstallIssue(manifest(89, paths) as any, inFile, files) ?? "",
+      gate,
+      "a catalog file",
+    );
+    assert.equal(getCapabilityPackageInstallIssue(manifest(90, paths) as any, inFile, files), null);
   }
 
   console.log(

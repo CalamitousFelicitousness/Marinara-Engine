@@ -673,7 +673,11 @@ const capabilityPackageManifestBaseSchema = z
 // 1.89: a catalog entry may name an `exclusive` group: a builder step keeps one pick of a group, so a
 //        feat can take an ability score improvement's place. Not a soft seam: an Engine that cannot
 //        read it refuses the catalog, so a package that ships it declares 1.89. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 89 } as const);
+// 1.90: an item's to-hit (a weapon's attack, an item's use) may add a number read off its holder's sheet
+//        (`toHit.sheetBonus`, 5e's Archery: +2 to attacks with ranged weapons). Not a soft seam: an
+//        Engine that cannot read it refuses the catalog, so a package that ships it declares 1.90. No
+//        permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 90 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

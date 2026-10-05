@@ -1155,6 +1155,20 @@ function entriesCarryGrants(entries: unknown): boolean {
   return Array.isArray(entries) && entries.some((entry) => plainRecord(entry)?.grants !== undefined);
 }
 
+/** An item's to-hit that reads a bonus off its holder's sheet (1.90): `sheetBonus`, a new key on the
+ *  strict to-hit of a weapon's attack and of an item's use. */
+function entriesCarryToHitSheetBonus(entries: unknown): boolean {
+  return (
+    Array.isArray(entries) &&
+    entries.some((entry) => {
+      const item = plainRecord(plainRecord(entry)?.item);
+      return (["attack", "use"] as const).some(
+        (key) => plainRecord(plainRecord(item?.[key])?.toHit)?.sheetBonus !== undefined,
+      );
+    })
+  );
+}
+
 /** Entries a builder step keeps one of (1.89): `exclusive`, a new key on the strict entry. */
 function entriesCarryExclusive(entries: unknown): boolean {
   return Array.isArray(entries) && entries.some((entry) => plainRecord(entry)?.exclusive !== undefined);
@@ -1396,6 +1410,7 @@ export function getCapabilityPackageInstallIssue(
   let carriesSeveralScaled = false;
   let carriesRepeatChoices = false;
   let carriesExclusive = false;
+  let carriesSheetBonus = false;
   // Every item by "<catalog>/<entry>", inline and in files, and the fakes among them, so a fake whose
   // target is in another catalog file is checked here, where every file can be read.
   const itemsByRef = new Map<string, RulesetCatalogItem>();
@@ -1494,6 +1509,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarrySeveralScaledRows(header.entries)) carriesSeveralScaled = true;
       if (entriesCarryRepeatChoices(header.entries)) carriesRepeatChoices = true;
       if (entriesCarryExclusive(header.entries)) carriesExclusive = true;
+      if (entriesCarryToHitSheetBonus(header.entries)) carriesSheetBonus = true;
       collectItems(header.id, header.entries);
       const asset = header.asset;
       if (typeof asset !== "string") continue;
@@ -1542,6 +1558,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarrySeveralScaledRows(fileEntries)) carriesSeveralScaled = true;
       if (entriesCarryRepeatChoices(fileEntries)) carriesRepeatChoices = true;
       if (entriesCarryExclusive(fileEntries)) carriesExclusive = true;
+      if (entriesCarryToHitSheetBonus(fileEntries)) carriesSheetBonus = true;
       collectItems(header.id, fileEntries);
     }
   }
@@ -1824,6 +1841,10 @@ export function getCapabilityPackageInstallIssue(
       const units = plainRecord(family)?.units;
       return Array.isArray(units) && units.some((unit) => plainRecord(unit)?.one !== undefined);
     });
+  // An item's to-hit read off its holder's sheet, 1.90: a new key on the strict to-hit.
+  if (!declaresApi(90) && carriesSheetBonus) {
+    return "A ruleset whose items add a bonus to hit read off their holder's sheet requires schemaVersion 2 and capabilityApi 1.90 or newer";
+  }
   // Entries a builder step keeps one of, 1.89: a new key on the strict entry.
   if (!declaresApi(89) && carriesExclusive) {
     return "A ruleset whose catalog entries are exclusive of each other requires schemaVersion 2 and capabilityApi 1.89 or newer";

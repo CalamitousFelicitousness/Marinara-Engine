@@ -2491,14 +2491,22 @@ const itemAttackDistanceSchema = orItemStat(z.number().finite().min(0).max(10000
  * the dice it deals with a hand free beside it (`versatile`), and how many strikes one spend buys.
  */
 /** What an item adds to hit: the best of some `abilities`, a `skill`, the proficiency bonus where
- *  `proficiency` reads above 0 off the holder's sheet, a `bonus`, and in a pool fight its own per-die
- *  `target`. A weapon's attack reads it, and so does an item's use that rolls to hit. */
+ *  `proficiency` reads above 0 off the holder's sheet, a `bonus`, what `sheetBonus` reads off the
+ *  holder's sheet (Capability API 1.90), and in a pool fight its own per-die `target`. A weapon's attack
+ *  reads it, and so does an item's use that rolls to hit. */
+// Named, so the whole definition's type stays short enough to write down (the builder's rows do the same).
+const itemToHitValueRefSchema = rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>;
 const itemToHitSchema = z
   .object({
     abilities: itemAttackAbilitiesSchema.optional(),
     skill: orItemStat(sheetId).optional(),
-    proficiency: rulesetValueRefSchema.optional(),
+    proficiency: itemToHitValueRefSchema.optional(),
     bonus: orItemStat(z.number().int().min(-100).max(100)).optional(),
+    /** A number read off the holder's sheet and added as it stands (whole numbers; a fraction is cut
+     *  toward zero): what the holder brings to every weapon of a kind rather than what the weapon is,
+     *  as 5e's Archery fighting style adds +2 to attacks with ranged weapons through a derived value
+     *  that is 2 for an archer and 0 for anyone else (Capability API 1.90). */
+    sheetBonus: itemToHitValueRefSchema.optional(),
     target: orItemStat(z.number().int().min(1).max(100)).optional(),
   })
   .strict();
@@ -6838,10 +6846,12 @@ function toHitIssues(
   value(toHit.skill, "skill", [...at, "skill"]);
   value(toHit.bonus, "number", [...at, "bonus"]);
   value(toHit.target, "number", [...at, "target"]);
-  if (toHit.proficiency) {
+  for (const key of ["proficiency", "sheetBonus"] as const) {
+    const ref = toHit[key];
+    if (!ref) continue;
     const names = rulesetSheetNames(definition.sheet, definition.items);
-    for (const issue of rulesetValueRefIssues(toHit.proficiency, names, names.derived, true)) {
-      add([...at, "proficiency", issue.key], issue.message);
+    for (const issue of rulesetValueRefIssues(ref, names, names.derived, true)) {
+      add([...at, key, issue.key], issue.message);
     }
   }
   if (toHit.target !== undefined) {

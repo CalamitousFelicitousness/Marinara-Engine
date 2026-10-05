@@ -512,6 +512,7 @@ test("Game Character Profiles stays separate, movable and locked across reload w
   const character = (await response.json()) as { id: string };
   const id = "control:character-profiles";
   try {
+    expect((await request.patch(`/api/chats/${gameId}`, { data: { characterIds: [character.id] } })).ok()).toBeTruthy();
     expect(
       (
         await request.patch(`/api/chats/${gameId}/metadata`, {

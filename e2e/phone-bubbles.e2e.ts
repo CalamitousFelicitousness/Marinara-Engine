@@ -230,8 +230,14 @@ test.describe("phone bubbles", () => {
       } else {
         await page.mouse.move(start.x, start.y);
         await page.mouse.down();
-        await page.mouse.move(end.x, end.y, { steps: 12 });
-        await page.mouse.up();
+        try {
+          await page.mouse.move(end.x, end.y, { steps: 12 });
+          // WebKit may deliver all moves within one frame; keep the real drag active
+          // until Framer has applied its pointer update, then verify the released order.
+          await expect.poll(order).toEqual(initial);
+        } finally {
+          await page.mouse.up();
+        }
       }
       await expect.poll(order).toEqual(initial);
       await launcher.focus();

@@ -346,7 +346,8 @@ try {
   apply({ ...state, base: { ...state.base, int: 12, str: 14 } });
   assert.equal(rulesetBuilderRemaining(definition, build, state, catalogs).scores, 1, "points left over");
   apply({ ...state, base: { ...state.base, str: 16 } });
-  assert.equal(rulesetBuilderRemaining(definition, build, state, catalogs).scores, 1, "off the table");
+  assert.equal(build.abilities.str, 15, "off the table, the nearest score on it");
+  assert.equal(rulesetBuilderRemaining(definition, build, state, catalogs).scores, 0);
   // The array: one value to one score, a second claim is no claim.
   apply({ ...state, method: "standardArray", assign: { str: 0, dex: 0, con: 2 } });
   assert.equal(build.abilities.str, 15);
@@ -375,6 +376,76 @@ try {
   assert.deepEqual(readRulesetBuilderState({ builder: "nonsense" }), {});
   assert.deepEqual(readRulesetBuilderState(undefined), {});
   assert.deepEqual(readRulesetBuilderState({ builder: { method: "manual", extra: 1 } }), { method: "manual" });
+
+  // ── Only what the builder wrote is taken back ──
+  {
+    const fresh = () => defaultRulesetSheetBuild(definition);
+    // A skill trained by hand before a pick that grants it stays when the pick goes.
+    let b: RulesetSheetBuild = { ...fresh(), saves: { str_save: "proficient" } };
+    let st: RulesetBuilderState = {};
+    ({ build: b, state: st } = applyRulesetBuilder(definition, b, { picks: { class: ["fighter"] } }, catalogs));
+    ({ build: b, state: st } = applyRulesetBuilder(definition, b, { ...st, picks: { class: [] } }, catalogs));
+    assert.equal(b.saves.str_save, "proficient", "a save the player trained stays theirs");
+    assert.equal(b.saves.con_save, undefined, "the one the builder trained goes");
+    // A field the player had already set to the granted value stays.
+    b = { ...fresh(), fields: { ...fresh().fields, hit_die: "d10" } };
+    ({ build: b, state: st } = applyRulesetBuilder(definition, b, { picks: { class: ["fighter"] } }, catalogs));
+    ({ build: b, state: st } = applyRulesetBuilder(definition, b, { ...st, picks: { class: [] } }, catalogs));
+    assert.equal(b.fields.hit_die, "d10");
+    // A row the player added from the catalog stays.
+    const own = { name: "Darkvision", text: "See in the dark.", _catalog: "races/dwarf" };
+    b = { ...fresh(), lists: { features: [own] } };
+    ({ build: b, state: st } = applyRulesetBuilder(definition, b, { picks: { race: ["dwarf"] } }, catalogs));
+    assert.equal(b.lists.features?.length, 1, "never twice");
+    ({ build: b, state: st } = applyRulesetBuilder(definition, b, { ...st, picks: { race: [] } }, catalogs));
+    assert.equal(b.lists.features?.length, 1, "and the player's row stays");
+    // A score near its top takes back only what it was raised by.
+    b = { ...fresh(), abilities: { ...fresh().abilities, con: 29 } };
+    ({ build: b, state: st } = applyRulesetBuilder(definition, b, { picks: { race: ["dwarf"] } }, catalogs));
+    assert.equal(b.abilities.con, 30);
+    ({ build: b, state: st } = applyRulesetBuilder(definition, b, { ...st, picks: { race: [] } }, catalogs));
+    assert.equal(b.abilities.con, 29);
+    // Typed by hand, then bought: the nearest score on the table.
+    ({ build: b, state: st } = applyRulesetBuilder(
+      definition,
+      fresh(),
+      { method: "manual", base: { str: 17, dex: 3 } },
+      catalogs,
+    ));
+    ({ build: b, state: st } = applyRulesetBuilder(definition, b, { ...st, method: "pointBuy" }, catalogs));
+    assert.deepEqual([b.abilities.str, b.abilities.dex], [15, 8]);
+    // A race with no subraces leaves nothing to choose, even at a step that asks for one.
+    const asks = parsed(variant((doc) => (doc.sheet.builder.steps[1].min = 1)));
+    assert.equal(rulesetBuilderRemaining(asks, fresh(), { picks: { race: ["half-elf"] } }, catalogs).subrace, 0);
+    assert.equal(rulesetBuilderRemaining(asks, fresh(), { picks: { race: ["dwarf"] } }, catalogs).subrace, 1);
+    // One entry picked at two steps grants once.
+    const twice = parsed(
+      variant((doc) =>
+        doc.sheet.builder.steps.splice(1, 0, {
+          id: "again",
+          label: "Again",
+          kind: "catalog",
+          catalog: "races",
+          min: 0,
+        }),
+      ),
+    );
+    ({ build: b } = applyRulesetBuilder(twice, fresh(), { picks: { race: ["dwarf"], again: ["dwarf"] } }, catalogs));
+    assert.equal(b.abilities.con, 12);
+    // One unreadable key costs only itself.
+    assert.deepEqual(readRulesetBuilderState({ builder: { method: "manual", picks: "nope", rolled: [12] } }), {
+      method: "manual",
+      rolled: [12],
+    });
+  }
+  refused((doc) => (doc.sheet.builder.steps[4].abilities = ["str", "str"]), /named twice/);
+  refused((doc) => (doc.sheet.builder.steps[4].methods.standardArray[0] = 40), /40 is outside a score's bounds/);
+  refused((doc) => (doc.sheet.builder.steps[4].methods.pointBuy.budget = 60), /more than buying every score up/);
+  refused(
+    (doc) => (doc.sheet.builder.steps[4].methods.roll = { count: 4, sides: 20, keep: 2 }),
+    /outside a score's bounds/,
+  );
+  refused((doc) => doc.catalogs.push({ id: "empty", label: "Empty", entries: [] }), /names the lists it "feeds"/);
 
   // ── The gate ──
   const manifest = (minor: number, paths = ["ruleset.json"]) => ({

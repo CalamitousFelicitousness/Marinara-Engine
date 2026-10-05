@@ -359,11 +359,13 @@ export function RulesetSheetEditor({
   const builderState = useMemo(() => readRulesetBuilderState(envelope), [envelope]);
   const [view, setView] = useState<"guided" | "all">(sheet.builder ? "guided" : "all");
   const viewBaseId = useId();
+  // Read off the sheet as it stands now: the builder's dice land after an await.
   const commitBuilder = (next: RulesetSheetBuild, state: RulesetBuilderState) => {
     editedRef.current = true;
+    const now = latest.current.envelope;
     onChange({
-      ...envelope,
-      v: rulesetSheetStamp(definition, envelope),
+      ...now,
+      v: rulesetSheetStamp(definition, now),
       builder: state,
       build: recomputeScaledRows(definition, next, loadedCatalogs),
     });
@@ -448,6 +450,15 @@ export function RulesetSheetEditor({
           role="tab"
           id={`${viewBaseId}-${each}`}
           aria-selected={view === each}
+          aria-controls={`${viewBaseId}-panel`}
+          tabIndex={view === each ? 0 : -1}
+          onKeyDown={(event) => {
+            if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+            event.preventDefault();
+            const other = each === "guided" ? "all" : "guided";
+            setView(other);
+            document.getElementById(`${viewBaseId}-${other}`)?.focus();
+          }}
           onClick={() => setView(each)}
           className={`rounded-lg border px-2 py-1 text-[0.6875rem] ${
             view === each
@@ -482,232 +493,241 @@ export function RulesetSheetEditor({
   return (
     <div className="space-y-4">
       {tabs}
-      {sheet.abilities.length > 0 && (
-        <SectionedEntries
-          definition={definition}
-          entries={sheet.abilities}
-          render={(group) => (
-            <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
-              {group.map((ability) => (
-                <label
-                  key={ability.id}
-                  className="flex min-w-0 flex-col items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--card)] p-2"
-                >
-                  <span className={`${labelClass} max-w-full truncate`} title={ability.label}>
-                    {ability.short ?? ability.label}
-                  </span>
-                  <DraftNumberInput
-                    value={evaluated.abilityScores[ability.id] ?? ability.default}
-                    onCommit={(next) =>
-                      commit({ abilities: { ...build.abilities, [ability.id]: clamp(next, ability.min, ability.max) } })
-                    }
-                    min={ability.min}
-                    max={ability.max}
-                    integer
-                    ariaLabel={ability.label}
-                    className={`${inputClass} text-center`}
-                  />
-                  <span className="text-xs font-semibold tabular-nums text-[var(--foreground)]">
-                    {rulesetCheckValueText(definition, evaluated.abilityMods[ability.id] ?? 0, t)}
-                  </span>
-                </label>
-              ))}
-            </div>
-          )}
-        />
-      )}
-
-      {sectionGroups.map(({ section, fields, derived, lists }) => (
-        <div key={section.id || "other"} className="space-y-2">
-          <h4 className="text-xs font-semibold text-[var(--foreground)]">{section.label}</h4>
-          {(fields.length > 0 || derived.length > 0) && (
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {fields.map((field) => (
-                <label
-                  key={field.id}
-                  className={`flex min-w-0 flex-col gap-1 ${field.type === "longtext" ? "col-span-full" : ""}`}
-                >
-                  <span className={labelClass}>{field.label}</span>
-                  <TypedInput
-                    spec={field}
-                    value={build.fields[field.id]}
-                    onChange={(value) => commit({ fields: { ...build.fields, [field.id]: value } })}
-                    ariaLabel={field.label}
-                  />
-                </label>
-              ))}
-              {derived.map((entry) => (
-                <div key={entry.id} className="flex min-w-0 flex-col gap-1">
-                  <span className={labelClass}>{entry.label}</span>
-                  <span className="rounded-lg border border-dashed border-[var(--border)] px-2 py-1 text-center text-xs font-semibold tabular-nums text-[var(--foreground)]">
-                    {evaluated.derived[entry.id] ?? 0}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-          {lists.map((list) => {
-            const rows = (Array.isArray(build.lists[list.id]) ? build.lists[list.id] : []) as ListRow[];
-            // A catalog of creatures feeds no list, so the picker never offers it anywhere.
-            const feeding = catalogs.filter((catalog) => catalog.feeds?.includes(list.id));
-            const atLimit = rows.length >= list.maxItems;
-            const locked = scaledCells.get(list.id);
-            const stale = refreshByList.get(list.id) ?? [];
-            return (
-              <div key={list.id} className="space-y-1.5">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className={labelClass}>
-                    {list.label} ({rows.length}/{list.maxItems})
-                  </span>
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {/* One button per catalog that feeds this list, named when there is more than one. */}
-                    {feeding.map((catalog) => (
-                      <button
-                        key={catalog.id}
-                        type="button"
-                        disabled={atLimit}
-                        title={
-                          atLimit
-                            ? t("game.ruleset.catalog.listFull", { list: list.label, max: list.maxItems })
-                            : undefined
-                        }
-                        onClick={() => setPickerId(catalog.id)}
-                        className="inline-flex items-center gap-1 rounded-lg border border-[var(--border)] px-2 py-1 text-[0.6875rem] text-[var(--foreground)] hover:bg-[var(--accent)] disabled:opacity-50"
-                      >
-                        <BookOpen size={12} aria-hidden="true" />
-                        {feeding.length > 1
-                          ? t("game.ruleset.catalog.addFromNamed", { name: catalog.label })
-                          : t("game.ruleset.catalog.addFrom")}
-                      </button>
-                    ))}
-                    <button
-                      type="button"
-                      disabled={atLimit}
-                      onClick={() =>
+      <div
+        className="space-y-4"
+        {...(sheet.builder
+          ? { role: "tabpanel", id: `${viewBaseId}-panel`, "aria-labelledby": `${viewBaseId}-all` }
+          : {})}
+      >
+        {sheet.abilities.length > 0 && (
+          <SectionedEntries
+            definition={definition}
+            entries={sheet.abilities}
+            render={(group) => (
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+                {group.map((ability) => (
+                  <label
+                    key={ability.id}
+                    className="flex min-w-0 flex-col items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--card)] p-2"
+                  >
+                    <span className={`${labelClass} max-w-full truncate`} title={ability.label}>
+                      {ability.short ?? ability.label}
+                    </span>
+                    <DraftNumberInput
+                      value={evaluated.abilityScores[ability.id] ?? ability.default}
+                      onCommit={(next) =>
                         commit({
-                          lists: {
-                            ...build.lists,
-                            [list.id]: [
-                              ...rows,
-                              Object.fromEntries(
-                                list.columns
-                                  .filter((column) => column.default !== undefined)
-                                  .map((column) => [column.id, column.default as Scalar]),
-                              ),
-                            ],
-                          },
+                          abilities: { ...build.abilities, [ability.id]: clamp(next, ability.min, ability.max) },
                         })
                       }
-                      className="inline-flex items-center gap-1 rounded-lg border border-[var(--border)] px-2 py-1 text-[0.6875rem] text-[var(--foreground)] hover:bg-[var(--accent)] disabled:opacity-50"
-                    >
-                      <Plus size={12} aria-hidden="true" />
-                      {t("ui.rulesets.sheet.addRow")}
-                    </button>
-                  </div>
-                </div>
-                {/* Deliberately not a live region: it is recounted as the sheet is typed in, and a
-                    notice that re-announces on every keystroke is worse than one that waits. */}
-                {stale.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-[0.6875rem] text-[var(--muted-foreground)]">
-                      {t("ui.rulesets.sheet.refreshNotice", { count: stale.length })}
+                      min={ability.min}
+                      max={ability.max}
+                      integer
+                      ariaLabel={ability.label}
+                      className={`${inputClass} text-center`}
+                    />
+                    <span className="text-xs font-semibold tabular-nums text-[var(--foreground)]">
+                      {rulesetCheckValueText(definition, evaluated.abilityMods[ability.id] ?? 0, t)}
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => setRefreshListId(list.id)}
-                      aria-label={t("ui.rulesets.sheet.refreshReviewFor", { list: list.label })}
-                      className="rounded-lg border border-[var(--border)] px-2 py-1 text-[0.6875rem] text-[var(--foreground)] hover:bg-[var(--accent)]"
-                    >
-                      {t("ui.rulesets.sheet.refreshReview")}
-                    </button>
-                  </div>
-                )}
-                {rows.map((row, index) => (
-                  <div
-                    key={index}
-                    className="flex items-start gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] p-2"
+                  </label>
+                ))}
+              </div>
+            )}
+          />
+        )}
+
+        {sectionGroups.map(({ section, fields, derived, lists }) => (
+          <div key={section.id || "other"} className="space-y-2">
+            <h4 className="text-xs font-semibold text-[var(--foreground)]">{section.label}</h4>
+            {(fields.length > 0 || derived.length > 0) && (
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {fields.map((field) => (
+                  <label
+                    key={field.id}
+                    className={`flex min-w-0 flex-col gap-1 ${field.type === "longtext" ? "col-span-full" : ""}`}
                   >
-                    <div className="grid min-w-0 flex-1 grid-cols-2 gap-1.5 sm:grid-cols-3">
-                      {list.columns.map((column) => {
-                        // A cell the ruleset keeps follows this character's own numbers, so it is
-                        // shown where it always was and simply does not take edits.
-                        const setByRuleset = locked?.get(index)?.includes(column.id) ?? false;
-                        const hintId = setByRuleset ? `${hintBaseId}-${list.id}-${index}-${column.id}` : undefined;
-                        return (
-                          <label
-                            key={column.id}
-                            className={`flex min-w-0 flex-col gap-0.5 ${column.type === "longtext" ? "col-span-full" : ""}`}
-                          >
-                            <span className={labelClass}>{column.label}</span>
-                            <TypedInput
-                              spec={column}
-                              value={row[column.id]}
-                              onChange={(value) => updateRow(list.id, rows, index, column.id, value)}
-                              ariaLabel={`${list.label} ${index + 1}: ${column.label}`}
-                              disabled={setByRuleset}
-                              title={setByRuleset ? t("ui.rulesets.sheet.scaledHint") : undefined}
-                              describedBy={hintId}
-                            />
-                            {column.type === "number" && column.roll && !setByRuleset && (
-                              <RollCellButton
-                                notation={rulesetListRollNotation(definition, build, column, row, evaluated)}
-                                ariaLabel={`${list.label} ${index + 1}: ${column.label}`}
-                                onRolled={(total) =>
-                                  writeRolled(list.id, index, column.id, clamp(total, column.min, column.max))
-                                }
-                              />
-                            )}
-                            {hintId && (
-                              <span id={hintId} className="text-[0.625rem] text-[var(--muted-foreground)]">
-                                {t("ui.rulesets.sheet.scaledHint")}
-                              </span>
-                            )}
-                          </label>
-                        );
-                      })}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        commit({ lists: { ...build.lists, [list.id]: rows.filter((_, i) => i !== index) } })
-                      }
-                      aria-label={t("ui.rulesets.sheet.removeRow", { list: list.label, index: index + 1 })}
-                      className="rounded-lg p-1 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--destructive)]"
-                    >
-                      <Trash2 size={14} aria-hidden="true" />
-                    </button>
+                    <span className={labelClass}>{field.label}</span>
+                    <TypedInput
+                      spec={field}
+                      value={build.fields[field.id]}
+                      onChange={(value) => commit({ fields: { ...build.fields, [field.id]: value } })}
+                      ariaLabel={field.label}
+                    />
+                  </label>
+                ))}
+                {derived.map((entry) => (
+                  <div key={entry.id} className="flex min-w-0 flex-col gap-1">
+                    <span className={labelClass}>{entry.label}</span>
+                    <span className="rounded-lg border border-dashed border-[var(--border)] px-2 py-1 text-center text-xs font-semibold tabular-nums text-[var(--foreground)]">
+                      {evaluated.derived[entry.id] ?? 0}
+                    </span>
                   </div>
                 ))}
               </div>
-            );
-          })}
-        </div>
-      ))}
+            )}
+            {lists.map((list) => {
+              const rows = (Array.isArray(build.lists[list.id]) ? build.lists[list.id] : []) as ListRow[];
+              // A catalog of creatures feeds no list, so the picker never offers it anywhere.
+              const feeding = catalogs.filter((catalog) => catalog.feeds?.includes(list.id));
+              const atLimit = rows.length >= list.maxItems;
+              const locked = scaledCells.get(list.id);
+              const stale = refreshByList.get(list.id) ?? [];
+              return (
+                <div key={list.id} className="space-y-1.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className={labelClass}>
+                      {list.label} ({rows.length}/{list.maxItems})
+                    </span>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {/* One button per catalog that feeds this list, named when there is more than one. */}
+                      {feeding.map((catalog) => (
+                        <button
+                          key={catalog.id}
+                          type="button"
+                          disabled={atLimit}
+                          title={
+                            atLimit
+                              ? t("game.ruleset.catalog.listFull", { list: list.label, max: list.maxItems })
+                              : undefined
+                          }
+                          onClick={() => setPickerId(catalog.id)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-[var(--border)] px-2 py-1 text-[0.6875rem] text-[var(--foreground)] hover:bg-[var(--accent)] disabled:opacity-50"
+                        >
+                          <BookOpen size={12} aria-hidden="true" />
+                          {feeding.length > 1
+                            ? t("game.ruleset.catalog.addFromNamed", { name: catalog.label })
+                            : t("game.ruleset.catalog.addFrom")}
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        disabled={atLimit}
+                        onClick={() =>
+                          commit({
+                            lists: {
+                              ...build.lists,
+                              [list.id]: [
+                                ...rows,
+                                Object.fromEntries(
+                                  list.columns
+                                    .filter((column) => column.default !== undefined)
+                                    .map((column) => [column.id, column.default as Scalar]),
+                                ),
+                              ],
+                            },
+                          })
+                        }
+                        className="inline-flex items-center gap-1 rounded-lg border border-[var(--border)] px-2 py-1 text-[0.6875rem] text-[var(--foreground)] hover:bg-[var(--accent)] disabled:opacity-50"
+                      >
+                        <Plus size={12} aria-hidden="true" />
+                        {t("ui.rulesets.sheet.addRow")}
+                      </button>
+                    </div>
+                  </div>
+                  {/* Deliberately not a live region: it is recounted as the sheet is typed in, and a
+                    notice that re-announces on every keystroke is worse than one that waits. */}
+                  {stale.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-[0.6875rem] text-[var(--muted-foreground)]">
+                        {t("ui.rulesets.sheet.refreshNotice", { count: stale.length })}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setRefreshListId(list.id)}
+                        aria-label={t("ui.rulesets.sheet.refreshReviewFor", { list: list.label })}
+                        className="rounded-lg border border-[var(--border)] px-2 py-1 text-[0.6875rem] text-[var(--foreground)] hover:bg-[var(--accent)]"
+                      >
+                        {t("ui.rulesets.sheet.refreshReview")}
+                      </button>
+                    </div>
+                  )}
+                  {rows.map((row, index) => (
+                    <div
+                      key={index}
+                      className="flex items-start gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] p-2"
+                    >
+                      <div className="grid min-w-0 flex-1 grid-cols-2 gap-1.5 sm:grid-cols-3">
+                        {list.columns.map((column) => {
+                          // A cell the ruleset keeps follows this character's own numbers, so it is
+                          // shown where it always was and simply does not take edits.
+                          const setByRuleset = locked?.get(index)?.includes(column.id) ?? false;
+                          const hintId = setByRuleset ? `${hintBaseId}-${list.id}-${index}-${column.id}` : undefined;
+                          return (
+                            <label
+                              key={column.id}
+                              className={`flex min-w-0 flex-col gap-0.5 ${column.type === "longtext" ? "col-span-full" : ""}`}
+                            >
+                              <span className={labelClass}>{column.label}</span>
+                              <TypedInput
+                                spec={column}
+                                value={row[column.id]}
+                                onChange={(value) => updateRow(list.id, rows, index, column.id, value)}
+                                ariaLabel={`${list.label} ${index + 1}: ${column.label}`}
+                                disabled={setByRuleset}
+                                title={setByRuleset ? t("ui.rulesets.sheet.scaledHint") : undefined}
+                                describedBy={hintId}
+                              />
+                              {column.type === "number" && column.roll && !setByRuleset && (
+                                <RollCellButton
+                                  notation={rulesetListRollNotation(definition, build, column, row, evaluated)}
+                                  ariaLabel={`${list.label} ${index + 1}: ${column.label}`}
+                                  onRolled={(total) =>
+                                    writeRolled(list.id, index, column.id, clamp(total, column.min, column.max))
+                                  }
+                                />
+                              )}
+                              {hintId && (
+                                <span id={hintId} className="text-[0.625rem] text-[var(--muted-foreground)]">
+                                  {t("ui.rulesets.sheet.scaledHint")}
+                                </span>
+                              )}
+                            </label>
+                          );
+                        })}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          commit({ lists: { ...build.lists, [list.id]: rows.filter((_, i) => i !== index) } })
+                        }
+                        aria-label={t("ui.rulesets.sheet.removeRow", { list: list.label, index: index + 1 })}
+                        className="rounded-lg p-1 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--destructive)]"
+                      >
+                        <Trash2 size={14} aria-hidden="true" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        ))}
 
-      <TrainedRows
-        title={t("ui.rulesets.sheet.skills")}
-        entries={sheet.skills}
-        tiers={offered(sheet.skillTiers)}
-        chosen={evaluated.skillTiers}
-        modifiers={evaluated.skillMods}
-        bonuses={build.bonuses}
-        bonusRange={sheet.bonusRange}
-        definition={definition}
-        onTier={(id, tier) => commit({ skills: { ...build.skills, [id]: tier } })}
-        onBonus={(id, bonus) => commit({ bonuses: { ...build.bonuses, [id]: bonus } })}
-      />
-      <TrainedRows
-        title={t("ui.rulesets.sheet.saves")}
-        entries={sheet.saves}
-        tiers={offered(sheet.saveTiers)}
-        chosen={evaluated.saveTiers}
-        modifiers={evaluated.saveMods}
-        bonuses={build.bonuses}
-        bonusRange={sheet.bonusRange}
-        definition={definition}
-        onTier={(id, tier) => commit({ saves: { ...build.saves, [id]: tier } })}
-        onBonus={(id, bonus) => commit({ bonuses: { ...build.bonuses, [id]: bonus } })}
-      />
+        <TrainedRows
+          title={t("ui.rulesets.sheet.skills")}
+          entries={sheet.skills}
+          tiers={offered(sheet.skillTiers)}
+          chosen={evaluated.skillTiers}
+          modifiers={evaluated.skillMods}
+          bonuses={build.bonuses}
+          bonusRange={sheet.bonusRange}
+          definition={definition}
+          onTier={(id, tier) => commit({ skills: { ...build.skills, [id]: tier } })}
+          onBonus={(id, bonus) => commit({ bonuses: { ...build.bonuses, [id]: bonus } })}
+        />
+        <TrainedRows
+          title={t("ui.rulesets.sheet.saves")}
+          entries={sheet.saves}
+          tiers={offered(sheet.saveTiers)}
+          chosen={evaluated.saveTiers}
+          modifiers={evaluated.saveMods}
+          bonuses={build.bonuses}
+          bonusRange={sheet.bonusRange}
+          definition={definition}
+          onTier={(id, tier) => commit({ saves: { ...build.saves, [id]: tier } })}
+          onBonus={(id, bonus) => commit({ bonuses: { ...build.bonuses, [id]: bonus } })}
+        />
+      </div>
 
       {openPicker && (
         <RulesetCatalogPicker

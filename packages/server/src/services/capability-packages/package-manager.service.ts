@@ -1772,14 +1772,8 @@ export function getCapabilityPackageInstallIssue(
     return "A ruleset with a list column filled by a roll requires schemaVersion 2 and capabilityApi 1.80 or newer";
   }
   // The guided builder, 1.81: a new key on the strict sheet, and `grants` on the strict entry.
-  // A catalog of rows that feeds no list is one whose entries only grant, and an older Engine refused it.
-  const unfed =
-    Array.isArray(ruleset?.catalogs) &&
-    ruleset.catalogs.some((catalog) => {
-      const header = plainRecord(catalog);
-      return !!header && (header.holds ?? "rows") === "rows" && header.feeds === undefined;
-    });
-  if (!declaresApi(81) && (plainRecord(ruleset?.sheet)?.builder !== undefined || carriesGrants || unfed)) {
+  // A catalog of rows that feeds no list holds only entries that grant, which `grants` already gates.
+  if (!declaresApi(81) && (plainRecord(ruleset?.sheet)?.builder !== undefined || carriesGrants)) {
     return BUILDER_ISSUE;
   }
   return null;

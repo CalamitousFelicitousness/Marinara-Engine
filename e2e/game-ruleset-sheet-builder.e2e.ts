@@ -210,7 +210,7 @@ test("the guided builder applies picks, rolls and buys scores, and saves the she
     });
     await page.getByRole("button", { name: "Roll scores (4d6, keep 3)" }).click();
     await expect(page.getByRole("button", { name: "Roll again (4d6, keep 3)" })).toBeVisible();
-    expect(rolls).toBe(6);
+    await expect.poll(() => rolls).toBe(6);
     const rolled = (await page.getByText(/^Rolled: /).textContent())!.replace("Rolled: ", "").split(", ").map(Number);
     expect(rolled).toHaveLength(6);
     for (const value of rolled) expect(value >= 3 && value <= 18).toBe(true);

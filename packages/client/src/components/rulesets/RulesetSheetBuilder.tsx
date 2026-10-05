@@ -3,7 +3,7 @@
 // beside them. Everything it writes goes through the shared builder, which keeps the build the one
 // sheet the rest of the Engine reads and takes back what an unpicked entry gave.
 import { Check, ChevronLeft, ChevronRight, Dices, Minus, Plus } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useId, useMemo, useRef, useState } from "react";
 import { useQueries } from "@tanstack/react-query";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import {
@@ -121,22 +121,30 @@ export function RulesetSheetBuilder({
   const catalogIds = useMemo(() => rulesetBuilderCatalogIds(definition), [definition]);
   const combine = useCallback(
     (results: readonly { data: RulesetCatalogPayload | undefined; isError: boolean }[]) => {
+      // Picks are read against the whole catalog, so an entry this game's layers hide still counts for
+      // what it gave; only what is offered is narrowed by them.
       const loaded: RulesetCatalogEntriesById = {};
+      const visible = new Map<string, Set<string>>();
       results.forEach((result, index) => {
         const catalogId = catalogIds[index]!;
         if (result.data) {
-          loaded[catalogId] = visibleCatalogEntries(definition, layerOptions, catalogId, result.data.entries);
+          loaded[catalogId] = result.data.entries;
+          visible.set(
+            catalogId,
+            new Set(visibleCatalogEntries(definition, layerOptions, catalogId, result.data.entries).map((e) => e.id)),
+          );
         }
       });
       return {
         catalogs: loaded,
+        visible,
         ready: results.every((result) => !!result.data),
         failed: results.some((result) => result.isError),
       };
     },
     [catalogIds, definition, layerOptions],
   );
-  const { catalogs, ready, failed } = useQueries({
+  const { catalogs, visible, ready, failed } = useQueries({
     queries: catalogIds.map((catalogId) => rulesetCatalogQuery(definition.id, catalogId, definition.version)),
     combine,
   });
@@ -155,11 +163,16 @@ export function RulesetSheetBuilder({
     [catalogs, definition, ready, state],
   );
 
+  // The sheet as it stands now, for the dice, which land after an await: the render that threw them may
+  // be stale by then.
+  const latest = useRef({ build, state });
+  latest.current = { build, state };
   const update = (next: RulesetBuilderState) => {
     if (!ready) return;
-    const applied = applyRulesetBuilder(definition, build, next, catalogs);
+    const applied = applyRulesetBuilder(definition, latest.current.build, next, catalogs);
     onApply(applied.build, applied.state);
   };
+  const infoBaseId = useId();
 
   const abilityLabel = (id: string) => definition.sheet.abilities.find((ability) => ability.id === id)?.label ?? id;
   const skillLabel = (id: string) => definition.sheet.skills.find((skill) => skill.id === id)?.label ?? id;
@@ -200,8 +213,18 @@ export function RulesetSheetBuilder({
   );
 
   const catalogStep = (current: StepOf<"catalog">) => {
-    const options = rulesetBuilderOptions(definition, current, state, catalogs);
     const picked = rulesetBuilderPicks(definition, current.id, state, catalogs).map((entry) => entry.id);
+    const shown = visible.get(current.catalog);
+    const options = rulesetBuilderOptions(definition, current, state, catalogs).filter(
+      (entry) => picked.includes(entry.id) || !shown || shown.has(entry.id),
+    );
+    // An entry picked at another step on the same catalog is that step's.
+    const elsewhere = new Map<string, string>();
+    for (const other of builder.steps) {
+      if (other.kind !== "catalog" || other.id === current.id || other.catalog !== current.catalog) continue;
+      for (const entry of rulesetBuilderPicks(definition, other.id, state, catalogs))
+        elsewhere.set(entry.id, other.label);
+    }
     const toggle = (id: string) => {
       const on = picked.includes(id);
       const next = on ? picked.filter((each) => each !== id) : current.max === 1 ? [id] : [...picked, id];
@@ -222,8 +245,10 @@ export function RulesetSheetBuilder({
         <ul className="grid gap-1.5 sm:grid-cols-2">
           {options.map((entry) => {
             const on = picked.includes(entry.id);
-            const full = !on && current.max > 1 && picked.length >= current.max;
+            const takenAt = on ? undefined : elsewhere.get(entry.id);
+            const full = (!on && current.max > 1 && picked.length >= current.max) || takenAt !== undefined;
             const infoId = `${current.id}:${entry.id}`;
+            const infoDomId = `${infoBaseId}-${current.id}-${entry.id}`;
             return (
               <li
                 key={entry.id}
@@ -236,6 +261,7 @@ export function RulesetSheetBuilder({
                       <button
                         type="button"
                         aria-expanded={openInfo === infoId}
+                        aria-controls={infoDomId}
                         onClick={() => setOpenInfo(openInfo === infoId ? null : infoId)}
                         aria-label={t("ui.rulesets.builder.infoFor", { name: entry.label })}
                         className={`${chipClass} ${chipOff}`}
@@ -257,8 +283,15 @@ export function RulesetSheetBuilder({
                     </button>
                   </div>
                 </div>
+                {takenAt && (
+                  <p className="text-[0.6875rem] text-[var(--muted-foreground)]">
+                    {t("ui.rulesets.builder.pickedAt", { step: takenAt })}
+                  </p>
+                )}
                 {openInfo === infoId && entry.summary && (
-                  <p className="text-[0.6875rem] text-[var(--muted-foreground)]">{entry.summary}</p>
+                  <p id={infoDomId} className="text-[0.6875rem] text-[var(--muted-foreground)]">
+                    {entry.summary}
+                  </p>
                 )}
               </li>
             );
@@ -320,7 +353,7 @@ export function RulesetSheetBuilder({
           const kept = [...result.rolls].sort((a, b) => b - a).slice(0, spec.keep);
           totals.push(kept.reduce((sum, value) => sum + value, 0));
         }
-        update({ ...state, method: "roll", rolled: totals, assign: {} });
+        update({ ...latest.current.state, method: "roll", rolled: totals, assign: {} });
       } catch {
         // Nothing is written when the dice did not come back, and the step says so.
         setRollFailed(true);
@@ -337,7 +370,24 @@ export function RulesetSheetBuilder({
               type="button"
               role="radio"
               aria-checked={method === each}
+              tabIndex={method === each || (!method && each === methods[0]) ? 0 : -1}
               onClick={() => choose(each)}
+              onKeyDown={(event) => {
+                const by =
+                  event.key === "ArrowRight" || event.key === "ArrowDown"
+                    ? 1
+                    : event.key === "ArrowLeft" || event.key === "ArrowUp"
+                      ? -1
+                      : 0;
+                if (!by) return;
+                event.preventDefault();
+                const next = methods[(methods.indexOf(each) + by + methods.length) % methods.length]!;
+                choose(next);
+                (
+                  event.currentTarget.parentElement?.querySelector(`[data-method="${next}"]`) as HTMLElement | null
+                )?.focus();
+              }}
+              data-method={each}
               className={`${chipClass} ${method === each ? chipOn : chipOff}`}
             >
               {t(`ui.rulesets.builder.methods.${each}`)}
@@ -549,14 +599,20 @@ export function RulesetSheetBuilder({
                 >
                   {each.label}
                   {ready && left > 0 ? (
-                    <span
-                      className="rounded-full bg-[var(--primary)] px-1.5 text-[0.625rem] font-semibold text-[var(--primary-foreground)]"
-                      aria-label={t("ui.rulesets.builder.remaining", { count: left })}
-                    >
-                      {left}
-                    </span>
+                    <>
+                      <span
+                        aria-hidden="true"
+                        className="rounded-full bg-[var(--primary)] px-1.5 text-[0.625rem] font-semibold text-[var(--primary-foreground)]"
+                      >
+                        {left}
+                      </span>
+                      <span className="sr-only">{t("ui.rulesets.builder.remaining", { count: left })}</span>
+                    </>
                   ) : ready ? (
-                    <Check size={12} aria-label={t("ui.rulesets.builder.done")} />
+                    <>
+                      <Check size={12} aria-hidden="true" />
+                      <span className="sr-only">{t("ui.rulesets.builder.done")}</span>
+                    </>
                   ) : null}
                 </button>
               </li>

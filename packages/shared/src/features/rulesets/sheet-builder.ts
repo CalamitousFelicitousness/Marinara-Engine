@@ -56,33 +56,37 @@ export interface RulesetBuilderState {
 }
 
 const idList = z.array(z.string().max(80)).max(120);
-const stateSchema = z
-  .object({
-    method: z.enum(["pointBuy", "standardArray", "roll", "manual"]).optional(),
-    base: z.record(z.number().finite()).optional(),
-    rolled: z.array(z.number().finite()).max(40).optional(),
-    assign: z.record(z.number().int().min(0).max(40)).optional(),
-    picks: z.record(idList).optional(),
-    abilityChoices: z.record(idList).optional(),
-    trainedChoices: z.record(idList).optional(),
-    applied: z
-      .object({
-        increases: z.record(z.number().finite()).default({}),
-        scores: z.record(z.number().finite()).default({}),
-        skills: z.record(z.string().max(40)).default({}),
-        saves: z.record(z.string().max(40)).default({}),
-        fields: z.record(z.union([z.number().finite(), z.string().max(4000), z.boolean()])).default({}),
-        rows: z.array(z.string().max(200)).max(200).default([]),
-      })
-      .optional(),
-  })
-  .strip();
+const stateShape = {
+  method: z.enum(["pointBuy", "standardArray", "roll", "manual"]).optional(),
+  base: z.record(z.number().finite()).optional(),
+  rolled: z.array(z.number().finite()).max(40).optional(),
+  assign: z.record(z.number().int().min(0).max(40)).optional(),
+  picks: z.record(idList).optional(),
+  abilityChoices: z.record(idList).optional(),
+  trainedChoices: z.record(idList).optional(),
+  applied: z
+    .object({
+      increases: z.record(z.number().finite()).default({}),
+      scores: z.record(z.number().finite()).default({}),
+      skills: z.record(z.string().max(40)).default({}),
+      saves: z.record(z.string().max(40)).default({}),
+      fields: z.record(z.union([z.number().finite(), z.string().max(4000), z.boolean()])).default({}),
+      rows: z.array(z.string().max(200)).max(1000).default([]),
+    })
+    .optional(),
+};
 
-/** The builder state an envelope carries, read tolerantly: anything it cannot read is no choice yet. */
+/** The builder state an envelope carries, read tolerantly key by key: a key it cannot read is no choice
+ *  yet, and never costs the others. */
 export function readRulesetBuilderState(envelope: unknown): RulesetBuilderState {
   const raw = envelope && typeof envelope === "object" ? (envelope as { builder?: unknown }).builder : undefined;
-  const parsed = stateSchema.safeParse(raw ?? {});
-  return parsed.success ? (parsed.data as RulesetBuilderState) : {};
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const state: Record<string, unknown> = {};
+  for (const [key, schema] of Object.entries(stateShape)) {
+    const parsed = schema.safeParse((raw as Record<string, unknown>)[key]);
+    if (parsed.success && parsed.data !== undefined) state[key] = parsed.data;
+  }
+  return state as RulesetBuilderState;
 }
 
 /** The key a grant's choice is kept under: the step and entry that granted it, and which choice. A
@@ -146,9 +150,18 @@ export function rulesetBuilderGranting(
   state: RulesetBuilderState,
   catalogs: RulesetCatalogEntriesById,
 ): { step: StepOf<"catalog">; entry: RulesetCatalogEntry }[] {
+  // One entry picked at two steps on one catalog (a feat and a bonus feat) grants once.
+  const seen = new Set<string>();
   return (definition.sheet.builder?.steps ?? []).flatMap((step) =>
     step.kind === "catalog"
-      ? rulesetBuilderPicks(definition, step.id, state, catalogs).map((entry) => ({ step, entry }))
+      ? rulesetBuilderPicks(definition, step.id, state, catalogs)
+          .filter((entry) => {
+            const ref = catalogRowRef(step.catalog, entry.id);
+            if (seen.has(ref)) return false;
+            seen.add(ref);
+            return true;
+          })
+          .map((entry) => ({ step, entry }))
       : [],
   );
 }
@@ -307,11 +320,15 @@ export function rulesetBuilderBaseScores(
   const ids = rulesetBuilderAbilityIds(definition, step);
   const base: Record<string, number> = {};
   if (state.method === "pointBuy" || state.method === "manual") {
-    const lowest = step.methods.pointBuy?.costs[0]?.[0];
+    const costs = step.methods.pointBuy?.costs;
+    const lowest = costs?.[0]?.[0];
+    const highest = costs?.[costs.length - 1]?.[0];
     for (const id of ids) {
       const value = state.base?.[id];
-      if (typeof value === "number") base[id] = value;
-      else if (state.method === "pointBuy" && lowest !== undefined) base[id] = lowest;
+      if (state.method === "pointBuy" && lowest !== undefined && highest !== undefined) {
+        // A score typed by hand and then bought starts from the nearest score on the table.
+        base[id] = typeof value === "number" ? clamp(value, lowest, highest) : lowest;
+      } else if (typeof value === "number") base[id] = value;
     }
     return base;
   }
@@ -374,18 +391,17 @@ function desired(
   const train = (what: "skills" | "saves", id: string, tier: string) => {
     if (known[what].has(id)) out[what][id] = tier;
   };
+  for (const { step, entry } of rulesetBuilderGranting(definition, state, catalogs)) {
+    const grants = entry.grants;
+    for (const [id, by] of Object.entries(grants?.abilities?.add ?? {})) bump(id, by);
+    for (const what of ["skills", "saves"] as const)
+      for (const id of grants?.trained?.[what] ?? []) train(what, id, grantTier(definition, grants, what));
+    for (const [id, value] of Object.entries(grants?.sets ?? {})) if (fieldIds.has(id)) out.fields[id] = value;
+    if (entry.rows) out.rows.push(catalogRowRef(step.catalog, entry.id));
+  }
   for (const step of definition.sheet.builder?.steps ?? []) {
     if (step.kind !== "catalog") continue;
-    const picks = rulesetBuilderPicks(definition, step.id, state, catalogs);
-    for (const entry of picks) {
-      const grants = entry.grants;
-      for (const [id, by] of Object.entries(grants?.abilities?.add ?? {})) bump(id, by);
-      for (const what of ["skills", "saves"] as const)
-        for (const id of grants?.trained?.[what] ?? []) train(what, id, grantTier(definition, grants, what));
-      for (const [id, value] of Object.entries(grants?.sets ?? {})) if (fieldIds.has(id)) out.fields[id] = value;
-      if (entry.rows) out.rows.push(catalogRowRef(step.catalog, entry.id));
-    }
-    const value = stepFieldValue(definition, step, picks);
+    const value = stepFieldValue(definition, step, rulesetBuilderPicks(definition, step.id, state, catalogs));
     if (value !== undefined && step.field) out.fields[step.field] = value;
   }
   for (const slot of rulesetBuilderAbilitySlots(definition, state, catalogs)) {
@@ -425,57 +441,81 @@ export function applyRulesetBuilder(
     fields: {},
     rows: [],
   };
-  const next = desired(definition, state, catalogs);
+  const want = desired(definition, state, catalogs);
+  // What this run actually writes, which is all the next run takes back: a value the sheet already
+  // had of the player's own is never recorded, so unpicking never takes it.
+  const next: RulesetBuilderApplied = { increases: {}, scores: {}, skills: {}, saves: {}, fields: {}, rows: [] };
 
   // Scores: the method's base plus the increases, written when that total changes; else what the sheet
-  // has, moved by the change in increases. Either way a score typed in the full form since is kept
-  // until the builder's own answer for it changes.
+  // has, moved by the change in increases, as far as the score's bounds let it (and only that far is
+  // taken back). Either way a score typed in the full form since is kept until the builder's own answer
+  // for it changes.
   const base = rulesetBuilderBaseScores(definition, state);
   const abilities = { ...build.abilities };
   for (const ability of definition.sheet.abilities) {
     const id = ability.id;
     const before = previous.increases[id] ?? 0;
-    const after = next.increases[id] ?? 0;
+    const after = want.increases[id] ?? 0;
     if (base[id] !== undefined) {
       const total = clamp(base[id]! + after, ability.min, ability.max);
       next.scores[id] = total;
+      next.increases[id] = total - base[id]!;
       if (previous.scores[id] !== total) abilities[id] = total;
       continue;
     }
-    if (before === after) continue;
     const current = typeof abilities[id] === "number" ? abilities[id]! : ability.default;
-    abilities[id] = clamp(current - before + after, ability.min, ability.max);
+    const without = current - before;
+    const total = clamp(without + after, ability.min, ability.max);
+    if (total - without !== 0) next.increases[id] = total - without;
+    if (total !== current) abilities[id] = total;
   }
 
   // Training: a tier the builder gave is set when its answer changes, and taken back only while the
-  // sheet still shows it; a tier the player raised by hand is theirs.
+  // sheet still shows it; a tier the player set by hand is theirs.
   const untrained = definition.resolution.proficiencyTiers[0]!.id;
   const trained = (what: "skills" | "saves") => {
     const out = { ...build[what] };
     for (const [id, tier] of Object.entries(previous[what])) {
-      if (next[what][id] === undefined && out[id] === tier) delete out[id];
+      if (want[what][id] === undefined && out[id] === tier) delete out[id];
     }
-    for (const [id, tier] of Object.entries(next[what])) {
-      if (previous[what][id] === tier) continue;
+    for (const [id, tier] of Object.entries(want[what])) {
       const current = out[id];
-      if (current === undefined || current === untrained || current === previous[what][id]) out[id] = tier;
+      if (previous[what][id] === tier) {
+        next[what][id] = tier;
+        continue;
+      }
+      if (
+        current === undefined ||
+        current === untrained ||
+        (previous[what][id] !== undefined && current === previous[what][id])
+      ) {
+        out[id] = tier;
+        next[what][id] = tier;
+      }
     }
     return out;
   };
+  const skills = trained("skills");
+  const saves = trained("saves");
 
   // Fields: written when the builder's answer changes, cleared when it has none and the sheet still
   // shows the old one.
   const fields = { ...build.fields };
   for (const [id, value] of Object.entries(previous.fields)) {
-    if (next.fields[id] === undefined && fields[id] === value) delete fields[id];
+    if (want.fields[id] === undefined && fields[id] === value) delete fields[id];
   }
-  for (const [id, value] of Object.entries(next.fields)) {
-    if (previous.fields[id] !== value) fields[id] = value;
+  for (const [id, value] of Object.entries(want.fields)) {
+    if (previous.fields[id] === value) next.fields[id] = value;
+    else if (previous.fields[id] !== undefined || fields[id] !== value) {
+      fields[id] = value;
+      next.fields[id] = value;
+    }
   }
 
-  // Rows: an entry's rows go when it is unpicked and come when it is picked, never twice.
+  // Rows: an entry's rows go when it is unpicked and come when it is picked, never twice. A row the
+  // player had already added from the catalog is theirs.
   let lists: RulesetSheetBuild["lists"] = { ...build.lists };
-  const gone = new Set(previous.rows.filter((ref) => !next.rows.includes(ref)));
+  const gone = new Set(previous.rows.filter((ref) => !want.rows.includes(ref)));
   if (gone.size > 0) {
     lists = Object.fromEntries(
       Object.entries(lists).map(([listId, rows]) => [
@@ -492,22 +532,30 @@ export function applyRulesetBuilder(
   for (const { step, entry } of rulesetBuilderGranting(definition, state, catalogs)) {
     entriesByRef.set(catalogRowRef(step.catalog, entry.id), entry);
   }
-  for (const ref of next.rows) {
-    if (previous.rows.includes(ref) || has(ref)) continue;
+  for (const ref of want.rows) {
+    if (previous.rows.includes(ref)) {
+      next.rows.push(ref);
+      continue;
+    }
+    if (has(ref)) continue;
     const entry = entriesByRef.get(ref);
     if (!entry) continue;
     const catalogId = ref.slice(0, ref.indexOf("/"));
+    let wrote = false;
     for (const { list, row } of rowsFromCatalogEntry(catalogId, entry)) {
       const spec = definition.sheet.lists.find((each) => each.id === list);
       const rows = Array.isArray(lists[list]) ? lists[list]! : [];
-      // A full list takes no more; the pick still counts for everything else it grants.
+      // A full list takes no more; the pick still counts for everything else it grants, and its rows
+      // are tried again on the next change.
       if (!spec || rows.length >= spec.maxItems) continue;
       lists = { ...lists, [list]: [...rows, row] };
+      wrote = true;
     }
+    if (wrote) next.rows.push(ref);
   }
 
   return {
-    build: { ...build, abilities, skills: trained("skills"), saves: trained("saves"), fields, lists },
+    build: { ...build, abilities, skills, saves, fields, lists },
     state: { ...state, applied: next },
   };
 }
@@ -525,7 +573,9 @@ export function rulesetBuilderRemaining(
   for (const step of definition.sheet.builder?.steps ?? []) {
     add(step.id, 0);
     if (step.kind === "catalog") {
-      add(step.id, step.min - rulesetBuilderPicks(definition, step.id, state, catalogs).length);
+      // Never more than the step can offer: a race with no subraces leaves nothing to choose.
+      const offered = rulesetBuilderOptions(definition, step, state, catalogs).length;
+      add(step.id, Math.min(step.min, offered) - rulesetBuilderPicks(definition, step.id, state, catalogs).length);
     } else if (step.kind === "fields") {
       add(
         step.id,

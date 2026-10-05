@@ -2806,7 +2806,10 @@ const catalogSchema = z
           message: `A catalog of ${catalog.holds} writes no rows, so it feeds no list`,
         });
       }
-    } else if (catalog.feeds === undefined && !catalog.entries?.every((entry) => entry.grants && !entry.rows)) {
+    } else if (
+      catalog.feeds === undefined &&
+      !(catalog.entries?.length && catalog.entries.every((entry) => entry.grants && !entry.rows))
+    ) {
       // Only a catalog whose entries all just grant through the guided builder (1.81, a class) writes
       // no rows; an asset's entries are checked against no feeds when they are read.
       if (catalog.entries) {
@@ -5109,14 +5112,35 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         if (sheet.abilities.length === 0) issue([...path, "kind"], "This sheet has no ability scores");
         step.abilities?.forEach((id, abilityIndex) => {
           if (!abilities.has(id)) issue([...path, "abilities", abilityIndex], `Unknown ability "${id}"`);
+          if (step.abilities!.indexOf(id) !== abilityIndex) {
+            issue([...path, "abilities", abilityIndex], `"${id}" is named twice`);
+          }
         });
-        const set = step.abilities ?? sheet.abilities.map((ability) => ability.id);
+        const set = sheet.abilities.filter((ability) => !step.abilities || step.abilities.includes(ability.id));
         const array = step.methods.standardArray;
         if (array && array.length !== set.length) {
           issue(
             [...path, "methods", "standardArray"],
             `The array hands out one value to each of the ${set.length} scores`,
           );
+        }
+        // Every value a method gives is one each of its scores can hold, so what the step shows is what
+        // the sheet keeps.
+        const fits = (value: number) => set.every((ability) => value >= ability.min && value <= ability.max);
+        array?.forEach((value, index) => {
+          if (!fits(value)) issue([...path, "methods", "standardArray", index], `${value} is outside a score's bounds`);
+        });
+        const pointBuy = step.methods.pointBuy;
+        pointBuy?.costs.forEach(([score], index) => {
+          if (!fits(score))
+            issue([...path, "methods", "pointBuy", "costs", index], `${score} is outside a score's bounds`);
+        });
+        if (pointBuy && pointBuy.budget > pointBuy.costs[pointBuy.costs.length - 1]![1] * set.length) {
+          issue([...path, "methods", "pointBuy", "budget"], "The budget is more than buying every score up can spend");
+        }
+        const roll = step.methods.roll;
+        if (roll && !(fits(roll.keep) && fits(roll.keep * roll.sides))) {
+          issue([...path, "methods", "roll"], "A roll can come to a number outside a score's bounds");
         }
       } else if (step.kind === "trained") {
         step.choose?.forEach((choice, choiceIndex) => {

@@ -660,7 +660,7 @@ Up to 16 steps, each `{ id, label, kind, ... }`:
 
 - `catalog`: entries of a catalog of rows, shown as cards with their `summary` behind **Info**. `min` (default 1) is how many the step asks for and `max` (default 1) the most it takes; with `max` 1 a new pick replaces the old one. `field` names a text or enum field the picked labels are written to (an enum field takes the entry's id or label, whichever is one of its values). `filters` fixes values of the catalog's filters, and `within: { step, filter }` offers only entries whose `filter` names an entry picked at that earlier step, as a subrace names its race; unpick the race and its subrace counts for nothing.
 - `fields`: a short form of named fields. Its badge counts the ones still empty.
-- `abilities`: the scores (`abilities`, all of them when left out), set by any of `methods`: `pointBuy` (a `budget` and the cost of every score from the lowest, where every score starts, up one at a time), `standardArray` (one value to each score), `roll` (`count` dice of `sides`, keeping the highest `keep`, thrown by the Engine's own dice, one roll per score, then handed out like an array) and `manual`. What the picks add goes on top: the step shows base, bonus, total and modifier. One abilities step at most.
+- `abilities`: the scores (`abilities`, all of them when left out), set by any of `methods`: `pointBuy` (a `budget` no more than buying every score to the top costs, and the cost of every score from the lowest, where every score starts, up one at a time; a score typed by hand starts from the nearest score on the table), `standardArray` (one value to each score), `roll` (`count` dice of `sides`, keeping the highest `keep`, thrown by the Engine's own dice, one roll per score, then handed out like an array) and `manual`. What the picks add goes on top: the step shows base, bonus, total and modifier. One abilities step at most.
 - `trained`: the skill and save choices the picks offer, and the step's own `choose: [{ "what": "skills", "count": 2, "from": [...] }]` (any of them when `from` is left out).
 - `startingGear`: lists the ruleset's starting gear. Gear is taken in a game, from the inventory, as always.
 
@@ -678,7 +678,9 @@ What a pick gives is its entry's `grants`, read only by the builder:
 - `sets` writes field values: a class's hit die, its spellcasting ability.
 - A pick also writes the entry's `rows`, once. An entry may carry `grants` and no `rows` at all (a class whose features come from another catalog), and a catalog whose entries all just grant needs no `feeds`; the catalog picker never offers such entries.
 
-Unpicking takes back what a pick gave: its increases, its training, its field values and its rows. An edit made in **All fields** stays until the builder's own answer for that value changes, and a skill a player raised by hand to a higher tier stays theirs. The player's choices are kept beside the sheet, so a step can be reopened later.
+Unpicking takes back what a pick gave, and only that: its increases (as far as a score's bounds let them go up), its training, its field values and its rows. What the sheet already had of the player's own (a skill trained by hand, a row added from the catalog picker) stays theirs, and an edit made in **All fields** stays until the builder's own answer for that value changes. An entry picked at two steps on one catalog grants once, and one a game's layers hide still counts for what it gave. The player's choices are kept beside the sheet, so a step can be reopened later.
+
+Without `tier`, training goes to the first tier above untrained the sheet offers; a sheet that offers a half tier (as 5e's skills do) sets `"tier": "proficient"`.
 
 ## Items: what a party carries
 

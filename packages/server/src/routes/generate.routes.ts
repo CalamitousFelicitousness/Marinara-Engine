@@ -236,6 +236,7 @@ import {
   gameDungeonWalkSchema,
   generateDungeonMap,
   readGameDungeonTags,
+  type GameDungeonMap,
   type GameDungeonWalk,
   worldInterior,
   worldInteriorWords,
@@ -1958,28 +1959,34 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           : Promise.resolve(null);
       // A walk on a dungeon map and a leaving this turn tells, as the town visit is told. A regeneration
       // tells again what the reply it replaces told.
-      const turnDungeonPromise: Promise<{ walk: GameDungeonWalk | null; left: string | null }> =
+      const turnDungeonPromise: Promise<{
+        walk: GameDungeonWalk | null;
+        left: string | null;
+        restore?: { map: GameDungeonMap | null; view: string | null };
+      }> =
         chatMode === "game" && !input.impersonate && !input.continueMessageId
           ? (async () => {
               if (input.regenerateMessageId) {
                 const replaced = parseExtra((await chats.getMessage(input.regenerateMessageId))?.extra);
-                // The reply being replaced opened or left a map: the map goes back to how it stood before
-                // it, so this telling starts where that one did.
+                // The reply being replaced opened or left a map: this telling starts from the map as it
+                // stood before it. Only in the prompt for now: it is kept once the new reply is saved, so a
+                // regeneration that fails leaves the reply it would replace as it was.
                 const before = replaced.dungeonBefore as { map?: unknown; view?: unknown } | undefined;
+                let restore: { map: GameDungeonMap | null; view: string | null } | undefined;
                 if (before && typeof before === "object") {
-                  const map = gameDungeonMapFromMetadata({ gameDungeonMap: before.map });
-                  const view = typeof before.view === "string" ? before.view : null;
-                  await chats.patchMetadata(input.chatId, () => ({
-                    gameDungeonMap: map,
-                    gameDungeonView: view,
-                    gameDungeonWalk: null,
-                  }));
-                  chatMeta.gameDungeonMap = map;
-                  chatMeta.gameDungeonView = view;
+                  restore = {
+                    map: gameDungeonMapFromMetadata({ gameDungeonMap: before.map }),
+                    view: typeof before.view === "string" ? before.view : null,
+                  };
+                  chatMeta.gameDungeonMap = restore.map;
+                  chatMeta.gameDungeonView = restore.view;
+                  chatMeta.gameDungeonWalk = null;
+                  chatMeta.gameDungeonLeft = null;
                 }
                 const walk = gameDungeonWalkSchema.safeParse(replaced.dungeonWalk);
                 const left = typeof replaced.dungeonLeft === "string" ? replaced.dungeonLeft : null;
-                if (walk.success || left) return { walk: walk.success ? walk.data : null, left };
+                if (walk.success || left) return { walk: walk.success ? walk.data : null, left, restore };
+                if (restore) return { walk: null, left: null, restore };
               }
               return {
                 walk: gameDungeonWalkFromMetadata(chatMeta),
@@ -10451,11 +10458,20 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               const told = await turnDungeonPromise;
               const tags = readGameDungeonTags(fullResponse);
               const last = tags.at(-1);
-              if (told.walk || told.left || last) {
+              if (told.walk || told.left || last || told.restore) {
                 const family = worldKitArtFamily(gameWorldKitFromMetadata(chatMeta) ?? undefined);
                 let before: { map: unknown; view: unknown } | undefined;
-                await chats.patchMetadata(input.chatId, (fresh) => {
+                await chats.patchMetadata(input.chatId, (stored) => {
                   const patch: Record<string, unknown> = {};
+                  // A regeneration first puts the map back as it stood before the reply it replaced.
+                  if (told.restore)
+                    Object.assign(patch, {
+                      gameDungeonMap: told.restore.map,
+                      gameDungeonView: told.restore.view,
+                      gameDungeonWalk: null,
+                      gameDungeonLeft: null,
+                    });
+                  const fresh = { ...stored, ...patch };
                   const current = gameDungeonMapFromMetadata(fresh);
                   if (told.walk && gameDungeonWalkFromMetadata(fresh)?.id === told.walk.id)
                     patch.gameDungeonWalk = null;

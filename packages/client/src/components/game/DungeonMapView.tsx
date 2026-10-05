@@ -201,12 +201,15 @@ export function DungeonMapView({
 
   // ── Walking ──
   const frameRef = useRef<number | null>(null);
-  useEffect(
-    () => () => {
-      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
-    },
-    [],
-  );
+  const endWalkRef = useRef<(() => void) | null>(null);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      endWalkRef.current?.();
+    };
+  }, []);
   const walkTo = useCallback(
     async (to: Point) => {
       if (!kept || !cells || !canWalk || walkingRef.current) return;
@@ -221,6 +224,10 @@ export function DungeonMapView({
         toast.error(error instanceof Error && error.message ? error.message : t("game.dungeon.walkFailed"));
         return;
       }
+      if (!mountedRef.current) {
+        walkingRef.current = false;
+        return;
+      }
       const points = [centreOf(kept.at), ...result.path.map(centreOf)];
       const duration = Math.min(WALK_LONGEST_MS, Math.max(300, result.path.length * WALK_MS_PER_CELL));
       setWalking(true);
@@ -230,6 +237,7 @@ export function DungeonMapView({
       const end = () => {
         if (ended) return;
         ended = true;
+        endWalkRef.current = null;
         clearTimeout(fallback);
         if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
         frameRef.current = null;
@@ -241,6 +249,7 @@ export function DungeonMapView({
           useGameStateStore.getState().setGameState({ ...snapshot, time: result.formatted });
       };
       const fallback = setTimeout(end, duration + 500);
+      endWalkRef.current = end;
       const frame = (now: number) => {
         const progress = Math.min(1, (now - started) / duration);
         try {

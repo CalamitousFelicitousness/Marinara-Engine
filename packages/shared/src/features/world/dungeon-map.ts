@@ -631,7 +631,13 @@ export const gameDungeonMapSchema = z
   .strict()
   .refine((map) => map.ground.length === map.width * map.height && map.props.length === map.width * map.height, {
     message: "A map's cells fill its width and height",
-  });
+  })
+  .refine(
+    (map) =>
+      [map.at, map.entrance].every((p) => p.x >= 0 && p.y >= 0 && p.x < map.width && p.y < map.height) &&
+      !/[\p{Cc}]/u.test(map.name),
+    { message: "A map's party and way in stand on it, and its name is one line" },
+  );
 export type GameDungeonMap = z.infer<typeof gameDungeonMapSchema>;
 
 /** A walk on the map not yet told to the Game Master: from where to where, and how long it took. */
@@ -743,7 +749,12 @@ export function readGameDungeonTags(text: string): GameDungeonTag[] {
       tags.push({ leave: true });
       continue;
     }
-    const value = (key: string) => body.match(new RegExp(`\\b${key}\\s*=\\s*"([^"]{0,80})"`, "iu"))?.[1]?.trim();
+    // One line of plain text: a name goes into the Game Master's prompt.
+    const value = (key: string) =>
+      body
+        .match(new RegExp(`\\b${key}\\s*=\\s*"([^"]{0,80})"`, "iu"))?.[1]
+        ?.replace(/[\p{Cc}\s]+/gu, " ")
+        .trim();
     const name = value("name");
     if (!name) continue;
     tags.push({ name, kind: value("kind")?.toLowerCase(), set: value("set") });

@@ -126,6 +126,8 @@ The **Connection** section picks which AI provider and model answers in this cha
 
 Pick a saved connection from the dropdown. You can also pick **Random**. It chooses a different connection each time from the connections you marked for your random pool.
 
+Below the dropdown, the **Model** field shows the model the selected connection uses. Click it to open the same model list as the Quick Connection Switcher: search or type a model ID, pin models with the star, refresh the list, and click a model to use it. The model is saved to the connection, so every chat, agent and helper that uses this connection switches to it too. The field is hidden for **Random** and for the built-in Local Model. See [The random pool and Quick Connection Switcher](../connections/organizing-connections.md#the-random-pool-and-quick-connection-switcher) for details.
+
 To learn how to create a connection in the first place, see [Connecting to an AI Provider](../connections/connecting-to-a-provider.md).
 
 ## Settings Profiles

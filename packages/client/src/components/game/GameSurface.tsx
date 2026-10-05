@@ -13197,6 +13197,7 @@ function GameSurfaceComponent({
       {/* Character sheet modal */}
       {characterSheetOpen && characterSheetCharId && partyCards[characterSheetCharId] && (
         <GameCharacterSheet
+          key={`${activeChatId}:${characterSheetCharId}`}
           card={partyCards[characterSheetCharId]}
           onClose={closeCharacterSheet}
           onRegenerate={async () => {

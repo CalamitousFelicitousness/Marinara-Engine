@@ -38,6 +38,14 @@ A town can also be **laid out by hand** with a maker such as Pixelforge, as part
 
 Pick a building or the square, or choose from **Places in town**, to see who is there now and how many minutes away it is. **Walk there** takes the party across town: the minutes pass on the clock, and **your next turn tells the Game Master** where the party went and who is there. A visit to a named place, such as an inn the story added, makes it the place the party is in. **Leave town** goes back to the overworld. The game remembers which view you were in.
 
+### Dungeons, caves and stations
+
+When the story goes underground or aboard, the Game Master can open a **map of the place**: a dungeon, a cave or a station, drawn over the scene. Each one is laid out from the game and the place's name, so the same place always has the same rooms, and going back to a place the party is already in keeps the map as it was. The Game Master also picks its look from eleven: rock, ice, crystal and lava caves; a crypt, a sewer and a temple; and a station's corridors, lab, engine deck and hydroponics. With a tile pack for that look in the tile pack library, the map is drawn with its art; without one, it is drawn in plain colours.
+
+Click a place on the map, or use the arrow keys, to walk there by the shortest way. The minutes pass on the clock (about a minute for every thirty steps), and **your next turn tells the Game Master** which area the party walked from and to. The label at the top says which area the party is in. **Show the scene** and **Show the map** switch between the map and the scene; the game remembers which you were in.
+
+To leave, walk back to the way out (stairs, a ladder or a hatch, by the look of the place) and choose **Leave**. The Game Master can also end the map when the story leaves the place. Regenerating a turn that opened, walked or left a map puts the map back as it was before that turn. Games without a map play as before.
+
 ## Grid view and node view
 
 The map has two views. Marinara Engine picks the view for you based on the kind of place the map represents. You do not switch views by hand.

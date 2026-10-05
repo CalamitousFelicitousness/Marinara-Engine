@@ -2,7 +2,8 @@
 // Sites on the overworld (design-game-overworld-sites.md): a cave, a mine, a crypt, a ruin or any place
 // with a map made for it, out in the world rather than in a town. A site is worked out from the world,
 // never stored: a place with its own cell that is not a settlement, not in one and holds none, and is one
-// to go into. Trips to and from a site leave the world's ways on foot for the nearest settlement.
+// to go into, with a cell of its own out of its settlement's (a cave a few steps out of a village). Trips to
+// and from a site leave the world's ways on foot at its settlement (or, in none, the nearest).
 // ──────────────────────────────────────────────
 import { worldKitArtFamily } from "./art-family.js";
 import { WORLD_DAYS_PER_CELL, type WorldLink, type WorldPlace } from "./compile.js";
@@ -11,7 +12,7 @@ import { worldSettlementOf } from "./engine.js";
 import { worldPlaceByName, type GameWorld } from "./game-world.js";
 import type { WorldPresent } from "./ledger.js";
 import { worldOverworldHere, worldRoute, type WorldRoute } from "./overworld.js";
-import { worldPlaceMap } from "./place-maps.js";
+import { worldPlaceMap, worldSiteLock } from "./place-maps.js";
 import type { StoryScript } from "./story.js";
 
 const sitesOfGame = new WeakMap<GameWorld, WorldPlace[]>();
@@ -27,13 +28,13 @@ export function worldSites(game: GameWorld): WorldPlace[] {
     for (const settlement of places.filter((place) => place.rank !== undefined))
       for (let up = byId.get(settlement.parentId ?? ""); up; up = byId.get(up.parentId ?? "")) holding.add(up.id);
     const family = worldKitArtFamily(game.kit);
-    found = places.filter(
-      (place) =>
-        place.rank === undefined &&
-        !holding.has(place.id) &&
-        !worldSettlementOf(game, place.id) &&
-        (worldPlaceMap(game, place.id) !== null || dungeonSetForPlace(place, family) !== null),
-    );
+    found = places.filter((place) => {
+      if (place.rank !== undefined || holding.has(place.id)) return false;
+      // Out of its settlement's own cell (a cave a few steps out of a village), or in no settlement.
+      const settlement = worldSettlementOf(game, place.id);
+      if (settlement && settlement.at.x === place.at.x && settlement.at.y === place.at.y) return false;
+      return worldPlaceMap(game, place.id) !== null || dungeonSetForPlace(place, family) !== null;
+    });
     sitesOfGame.set(game, found);
   }
   return found;
@@ -44,9 +45,11 @@ export function worldIsSite(game: GameWorld, placeId: string | undefined): boole
   return placeId !== undefined && worldSites(game).some((site) => site.id === placeId);
 }
 
-/** The settlement a site's trips leave the world's ways at: the nearest by a straight line (ties to the one
- *  the world lists first). */
+/** The settlement a site's trips leave the world's ways at: its own, else the nearest by a straight line
+ *  (ties to the one the world lists first). */
 export function worldSiteAnchor(game: GameWorld, site: WorldPlace): WorldPlace | undefined {
+  const own = worldSettlementOf(game, site.id);
+  if (own) return own;
   const away = (other: WorldPlace) => Math.hypot(other.at.x - site.at.x, other.at.y - site.at.y);
   return game.world.places
     .filter((place) => place.rank !== undefined)
@@ -138,7 +141,12 @@ export function worldSiteLocks(
   replies: readonly string[],
 ): Map<string, WorldSiteLock> {
   const locks = new Map<string, WorldSiteLock>();
-  for (const id of storySiteIds(game, story)) locks.set(id, "sealed");
+  // The creator's lock (Pixelforge's `edits.sites`) where there is one; else sealed when the story names it.
+  const named = storySiteIds(game, story);
+  for (const site of worldSites(game)) {
+    const lock = worldSiteLock(game, site.id) ?? (named.has(site.id) ? "sealed" : "open");
+    if (lock !== "open") locks.set(site.id, lock);
+  }
   if (!locks.size) return locks;
   for (const reply of replies)
     for (const tag of readGameDungeonTags(reply)) {

@@ -273,6 +273,7 @@ import {
   worldOverworldSpot,
   worldTrip,
   worldIsSite,
+  worldSettlementOf,
   worldSiteLocks,
   worldWalkFromMetadata,
   worldWalkJoined,
@@ -11031,7 +11032,12 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
   // Laid out from the world, with where in it the party stands: where it last walked to there, else the
   // building of the place in force when that is a place in town, else the square.
   const townOf = async (chatId: string, meta: Record<string, unknown>, world: GameWorld) => {
-    const { here, present, placeName } = await overworldPlace(chatId, meta, world);
+    const { here: overworldAt, present, placeName } = await overworldPlace(chatId, meta, world);
+    // At a site a few steps out of its settlement, the party is still by that settlement's town.
+    const here =
+      overworldAt && worldIsSite(world, overworldAt)
+        ? (worldSettlementOf(world, overworldAt)?.id ?? null)
+        : overworldAt;
     const town = here ? worldTown(world, here, present) : null;
     if (!town) return null;
     const spot = worldTownSpotFromMetadata(meta);

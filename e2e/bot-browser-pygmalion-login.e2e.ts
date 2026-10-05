@@ -52,6 +52,7 @@ test("Pygmalion login masks the token, explains failures and handles an expired 
   await expect(field).toHaveAttribute("spellcheck", "false");
   await expect(field).toHaveAttribute("autocomplete", "off");
   await expect(page.getByText(/Marinara keeps it in memory until restart or Log Out/u)).toBeVisible();
+  await expect(field).toHaveAccessibleDescription(/Marinara keeps it in memory until restart or Log Out/u);
   await field.fill("rejected-token");
   const screenshot = testInfo.outputPath("pygmalion-login-modal.png");
   await page.screenshot({ path: screenshot });

@@ -3029,6 +3029,7 @@ function LoginModal({
                 </label>
                 <input
                   id="bot-browser-pygmalion-token"
+                  aria-describedby="bot-browser-pygmalion-token-help"
                   type="password"
                   autoComplete="off"
                   spellCheck={false}
@@ -3038,7 +3039,10 @@ function LoginModal({
                   placeholder={localizeUi("ui.botBrowser.loginmodal.pasteYourPygmalionAuthTokenHere")}
                   className="mari-chrome-field w-full px-3 py-2 font-mono text-xs disabled:opacity-50"
                 />
-                <p className="mt-1.5 text-[0.7rem] leading-relaxed text-[var(--muted-foreground)]">
+                <p
+                  id="bot-browser-pygmalion-token-help"
+                  className="mt-1.5 text-[0.7rem] leading-relaxed text-[var(--muted-foreground)]"
+                >
                   {localizeUi("ui.botBrowser.loginmodal.pygmalionLoginStaysInMemory")}
                 </p>
               </div>

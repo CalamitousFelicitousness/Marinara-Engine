@@ -82,11 +82,13 @@ async function fetchWithToken(reply: FastifyReply, procedure: string, message: R
   } catch (err) {
     const detail = failureDetail(err);
     logger.warn("[bot-browser] Pygmalion %s request failed: %s", procedure, detail);
-    const failure = typeof detail === "number" ? failureForStatus(detail) : "unreachable";
-    if (failure === "rejected") {
+    // Connect answers 401 (unauthenticated) for a token it no longer accepts. A 403 is permission_denied
+    // for one item, which any page could request, so it must not end the login.
+    if (detail === 401) {
       if (pygToken === token) pygToken = "";
-      return reply.status(401).send({ error: "Pygmalion session expired", reason: failure, sessionExpired: true });
+      return reply.status(401).send({ error: "Pygmalion session expired", reason: "rejected", sessionExpired: true });
     }
+    const failure = typeof detail === "number" ? failureForStatus(detail) : "unreachable";
     return reply.status(FAILURES[failure].status).send({ error: FAILURES[failure].error, reason: failure });
   }
 }
@@ -258,7 +260,8 @@ export async function botBrowserPygmalionRoutes(app: FastifyInstance) {
     try {
       const res = await safeFetch(url, {
         signal: controller.signal,
-        policy: { allowedProtocols: ["https:"] },
+        // Redirect hops must stay on the host that passed the check above.
+        policy: { allowedProtocols: ["https:"], allowedHostnames: [url.hostname] },
         maxResponseBytes: 25 * 1024 * 1024,
       });
       if (!res.ok) return reply.status(404).send({ error: "Avatar not found" });

@@ -35,11 +35,17 @@ const PNG = Buffer.from(
   "hex",
 );
 
-type Mode = "ok" | "unauthorized" | "redirect" | "throw";
+type Mode = "ok" | "unauthorized" | "forbidden" | "redirect" | "throw";
 let mode: Mode = "ok";
 const requests: Array<{ url: URL; authorization: string | null }> = [];
 
 async function upstream(url: URL, authorization: string | null): Promise<Response> {
+  if (url.hostname === ASSETS_HOST && url.pathname === "/avatars/moved.png") {
+    return new Response(null, { status: 302, headers: { location: "/avatars/a.png" } });
+  }
+  if (url.hostname === ASSETS_HOST && url.pathname === "/avatars/away.png") {
+    return new Response(null, { status: 302, headers: { location: "https://evil.example/x.png" } });
+  }
   if (url.hostname === ASSETS_HOST || url.hostname === "evil.example") {
     return new Response(PNG, { headers: { "content-type": "image/png" } });
   }
@@ -55,6 +61,7 @@ async function upstream(url: URL, authorization: string | null): Promise<Respons
   if (mode === "unauthorized" || token === REJECTED) {
     return Response.json({ code: "unauthenticated", message: `bad token ${token}` }, { status: 401 });
   }
+  if (mode === "forbidden") return Response.json({ code: "permission_denied" }, { status: 403 });
   if (token === BUSY) return Response.json({ code: "unavailable" }, { status: 503 });
   return Response.json({ characters: [], totalItems: "0", character: { id: "c1" } });
 }
@@ -180,20 +187,32 @@ try {
     assert.equal(await sessionActive(), false, `${path} 401 clears the token`);
   }
 
-  // 7. The avatar proxy fetches only Pygmalion images; relative paths keep working.
+  // A 403 is permission_denied for one item, which any page can ask for, so the login stays.
+  await login();
+  mode = "forbidden";
+  const forbidden = await call("GET", "/character?id=private-char");
+  assert.notEqual(JSON.parse(forbidden.body).sessionExpired, true, forbidden.body);
+  assertNoSecret(forbidden.body, "403 character");
+  assert.equal(await sessionActive(), true, "a 403 keeps the login");
+
+  // 7. The avatar proxy fetches only Pygmalion images; relative paths and same-host redirects keep working.
   requests.length = 0;
   const foreign = await call("GET", `/avatar/${encodeURIComponent("https://evil.example/x.png")}`);
   assert.equal(foreign.status, 400, foreign.body);
-  for (const path of ["avatars/a.png", encodeURIComponent(`https://${ASSETS_HOST}/avatars/b.png`)]) {
+  for (const path of [
+    "avatars/a.png",
+    "avatars/moved.png",
+    encodeURIComponent(`https://${ASSETS_HOST}/avatars/b.png`),
+  ]) {
     const response = await call("GET", `/avatar/${path}`);
     assert.equal(response.status, 200, `${path}: ${response.body}`);
   }
+  const away = await call("GET", "/avatar/avatars/away.png");
+  assert.notEqual(away.status, 200, `an avatar redirect off Pygmalion must not be followed: ${away.body}`);
   assert.deepEqual(
-    requests.map(({ url, authorization }) => [url.hostname, authorization]),
-    [
-      [ASSETS_HOST, null],
-      [ASSETS_HOST, null],
-    ],
+    [...new Set(requests.map(({ url, authorization }) => `${url.hostname} ${authorization}`))],
+    [`${ASSETS_HOST} null`],
+    "avatar requests go only to Pygmalion, without the token",
   );
 
   assertNoSecret(logLines.join("\n"), "server logs");

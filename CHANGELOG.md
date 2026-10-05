@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Agents now use the generation settings saved on their connection under **Use custom defaults for this connection**: Top P, Top K, Frequency, Presence, Reasoning Effort, Verbosity, OpenRouter Service Tier, Custom Parameters and headers, and extra parameters such as Top A. A parameter with a Send switch is sent only while the switch is on. This covers agents on the chat's own connection, retries, knowledge agents, the Illustrator's prompt writer and installed agent packages. A Reasoning Effort you pick (custom defaults start at **Maximum**) now replaces the "off" that JSON agents asked for, and agents that think get extra output room so their answers aren't cut short; with no level saved, agents behave as before. Claude requests with thinking on no longer send Top K, which Claude rejects (#7131).
+
 - Exporting a character or persona with a large gallery no longer crashes the server, and an export that fails now shows an error instead of doing nothing. On iPhone and iPad, exports open the share sheet so you can save the file; if it can't open straight away, tap **Save file** on the message that appears. Character and persona ZIP exports keep every file when two share a name (#7115).
 - On phones, Echo Chamber can be moved and resized, and Chat tools expands into round buttons instead of drawer rows. Dottore and Mari chat widget presets use refreshed palettes inspired by their character references, and cut-corner windows keep their backgrounds inside the frame (#7121).
 

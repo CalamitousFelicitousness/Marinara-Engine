@@ -49,6 +49,12 @@
 </p>
 
 <p align="center">
+  <img src="docs/screenshots/Desktop_Tracker_Panel.png" width="90%" alt="Tracker Panel beside a Roleplay chat" />
+  <br/>
+  <em>Tracker Panel — world state, the cast's moods and stats, quests, and your persona, docked beside the chat</em>
+</p>
+
+<p align="center">
   <img src="docs/screenshots/Desktop_Main_Menu.png" width="45%" alt="Home" />
   &nbsp;&nbsp;
   <img src="docs/screenshots/Desktop_Tutorial.png" width="45%" alt="Onboarding Tutorial" />
@@ -67,6 +73,12 @@
 </p>
 
 <p align="center">
+  <img src="docs/screenshots/Desktop_Noodle_Timeline.png" width="90%" alt="Noodle timeline" />
+  <br/>
+  <em>Noodle — a social feed where your characters post, reply, and share photos</em>
+</p>
+
+<p align="center">
   <img src="docs/screenshots/Desktop_Model_Picker.png" width="45%" alt="Model picker in the chat input" />
   &nbsp;&nbsp;
   <img src="docs/screenshots/Desktop_Chat_Settings_Window.png" width="45%" alt="Chat Settings window" />
@@ -76,15 +88,12 @@
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/Desktop_Appearance.png" width="90%" alt="Appearance settings with chat widget styles" />
-  <br/>
-  <em>Make it yours — fonts, colors, and chat widget styles</em>
+  <img src="docs/screenshots/Desktop_Appearance.png" width="45%" alt="Appearance settings with chat widget styles" />
+  &nbsp;&nbsp;
+  <img src="docs/screenshots/Desktop_Custom_Theme.png" width="45%" alt="Persona 5-inspired custom theme" />
 </p>
-
 <p align="center">
-  <img src="docs/screenshots/Browser_Tab.png" width="90%" alt="Card Browser" />
-  <br/>
-  <em>Card Browser — Search and import character cards from Chub.ai, JannyAI, Pygmalion, Wyvern, and more</em>
+  <em>Make it yours — fonts, colors, and chat widget styles &nbsp;&nbsp;·&nbsp;&nbsp; Fully custom theming: a Persona 5-inspired look by Umi, made with custom CSS and pop-out Chat Settings windows</em>
 </p>
 
 <p align="center">

@@ -2314,6 +2314,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           chatProvider: routingChatProvider,
           chatConnectionId: connId ?? conn.id,
           chatModel: conn.model,
+          chatConnectionProvider: conn.provider,
+          chatDefaultParameters: conn.defaultParameters,
+          managedParameterDefinitions,
           chatCustomParameters: storedParameters?.customParameters ?? {},
           chatTemperature: storedParameters?.temperature,
           chatEnabledParameters: storedParameters?.enabledParameters,
@@ -4145,6 +4148,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           chatProvider: agentChatProvider,
           chatConnectionId: connId ?? "",
           chatModel: conn.model,
+          chatConnectionProvider: conn.provider,
+          chatDefaultParameters: conn.defaultParameters,
+          managedParameterDefinitions,
           chatCustomParameters: connectionParams?.customParameters ?? {},
           chatTemperature: temperature,
           chatEnabledParameters: enabledParameters,
@@ -6427,16 +6433,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                     type: "agent_start",
                     data: { phase: "pre_generation", agentType: "knowledge-retrieval" },
                   });
-                  const krConfig = {
-                    id: knowledgeRetrievalAgent!.id,
-                    type: knowledgeRetrievalAgent!.type,
-                    name: knowledgeRetrievalAgent!.name,
-                    isCustomAgent: knowledgeRetrievalAgent!.isCustomAgent,
-                    phase: knowledgeRetrievalAgent!.phase,
-                    promptTemplate: knowledgeRetrievalAgent!.promptTemplate,
-                    connectionId: knowledgeRetrievalAgent!.connectionId,
-                    settings: knowledgeRetrievalAgent!.settings,
-                  };
+                  // The whole resolved agent, so its connection's saved parameters apply too (#7131).
+                  const krConfig = { ...knowledgeRetrievalAgent! };
                   const sourceMaterial = agentContext.memory._knowledgeRetrievalMaterial as string;
                   const krResult = await executeKnowledgeRetrieval(
                     krConfig,
@@ -6482,16 +6480,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                     type: "agent_start",
                     data: { phase: "pre_generation", agentType: "knowledge-router" },
                   });
-                  const routerConfig = {
-                    id: knowledgeRouterAgent!.id,
-                    type: knowledgeRouterAgent!.type,
-                    name: knowledgeRouterAgent!.name,
-                    isCustomAgent: knowledgeRouterAgent!.isCustomAgent,
-                    phase: knowledgeRouterAgent!.phase,
-                    promptTemplate: knowledgeRouterAgent!.promptTemplate,
-                    connectionId: knowledgeRouterAgent!.connectionId,
-                    settings: knowledgeRouterAgent!.settings,
-                  };
+                  const routerConfig = { ...knowledgeRouterAgent! };
                   const routerResult = await executeKnowledgeRouter(
                     routerConfig,
                     agentContext,

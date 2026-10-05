@@ -9,7 +9,15 @@ import {
   readIllustratorImageAppearanceOverride,
 } from "../image/character-prompts.js";
 import { basename, extname, join, relative, resolve } from "node:path";
-import type { BaseLLMProvider, ChatMessage, LLMToolDefinition, LLMToolCall, LLMUsage } from "../llm/base-provider.js";
+import type {
+  BaseLLMProvider,
+  ChatMessage,
+  ChatOptions,
+  LLMToolDefinition,
+  LLMToolCall,
+  LLMUsage,
+} from "../llm/base-provider.js";
+import { withThinkingHeadroom, type AgentGenerationParameters } from "../generation/agent-generation-parameters.js";
 import type {
   AgentResult,
   AgentContext,
@@ -125,6 +133,8 @@ export interface AgentExecConfig {
   enableCaching?: boolean;
   anthropicExtendedCacheTtl?: boolean;
   cachingAtDepth?: number;
+  /** The connection's other saved generation parameters, resolved like the main chat's (#7131). */
+  generation?: AgentGenerationParameters;
   /** Distinguishes user-created agents from built-ins when selecting prompt context. */
   isCustomAgent: boolean;
 }
@@ -580,9 +590,68 @@ function normalizeAgentTemperature(value: unknown, fallback = DEFAULT_AGENT_TEMP
 }
 
 function resolveAgentTemperature(config: AgentExecConfig): number | undefined {
+  if (config.type === "beholder") return gateAgentTemperature(config, 0);
+  return gateAgentTemperature(config, normalizeAgentTemperature(config.temperature));
+}
+
+/** Send an agent's temperature only where the connection's send switch and the model allow one. */
+export function gateAgentTemperature(
+  config: Pick<AgentExecConfig, "suppressModelParameters" | "enabledParameters" | "generation">,
+  temperature: number,
+): number | undefined {
   if (config.suppressModelParameters || config.enabledParameters?.temperature === false) return undefined;
-  if (config.type === "beholder") return 0;
-  return normalizeAgentTemperature(config.temperature);
+  return config.generation?.omitTemperature ? undefined : temperature;
+}
+
+type AgentRequestOptions = Pick<
+  ChatOptions,
+  | "customParameters"
+  | "enabledParameters"
+  | "suppressModelParameters"
+  | "topP"
+  | "topK"
+  | "minP"
+  | "frequencyPenalty"
+  | "presencePenalty"
+  | "verbosity"
+  | "serviceTier"
+  | "reasoningEffort"
+  | "enableThinking"
+>;
+
+/**
+ * The connection-derived options every agent call sends (#7131). A reasoning level or Off chosen on the connection
+ * wins; without one, a JSON reply keeps asking for reasoning off and other calls leave the provider default alone.
+ */
+export function agentRequestOptions(config: AgentExecConfig, jsonResponse: boolean): AgentRequestOptions {
+  const generation = config.generation ?? {};
+  const options: AgentRequestOptions = {
+    customParameters: agentCustomParameters(config),
+    enabledParameters: config.enabledParameters,
+    suppressModelParameters: config.suppressModelParameters,
+    topP: generation.topP,
+    topK: generation.topK,
+    minP: generation.minP,
+    frequencyPenalty: generation.frequencyPenalty,
+    presencePenalty: generation.presencePenalty,
+    verbosity: generation.verbosity,
+    serviceTier: generation.serviceTier,
+  };
+  if (generation.reasoning) return { ...options, ...generation.reasoning };
+  return jsonResponse ? { ...options, ...jsonResponseReasoningOverride(config.enabledParameters) } : options;
+}
+
+/** The agent's own output budget, plus thinking room when the call thinks, capped by the connection and model. */
+export function resolveAgentCallMaxTokens(
+  provider: BaseLLMProvider,
+  config: Pick<AgentExecConfig, "generation" | "enabledParameters" | "maxOutputTokens">,
+  visibleMaxTokens: number,
+): number {
+  return applyAgentMaxTokensCaps(
+    provider,
+    withThinkingHeadroom(visibleMaxTokens, config.generation, config.enabledParameters),
+    config.maxOutputTokens,
+  );
 }
 
 function agentCustomParameters(config: AgentExecConfig): Record<string, unknown> | undefined {
@@ -612,6 +681,7 @@ function agentBatchRequestSignature(config: AgentExecConfig): string {
     anthropicExtendedCacheTtl: config.anthropicExtendedCacheTtl === true,
     cachingAtDepth: config.cachingAtDepth ?? null,
     maxOutputTokens: config.maxOutputTokens ?? null,
+    generation: config.generation ?? null,
   });
 }
 
@@ -792,14 +862,9 @@ export async function executeAgent(
     );
 
     const temperature = resolveAgentTemperature(config);
-    const maxTokens = applyAgentMaxTokensCaps(
-      provider,
-      normalizeAgentMaxTokens(config.settings.maxTokens),
-      config.maxOutputTokens,
-    );
+    const maxTokens = resolveAgentCallMaxTokens(provider, config, normalizeAgentMaxTokens(config.settings.maxTokens));
     const streamResponses = context.streaming !== false;
-    const customParameters = agentCustomParameters(config);
-    const reasoningOverride = jsonAgentReasoningOverride(config);
+    const requestOptions = agentRequestOptions(config, agentResponseIsJson(config));
     const responseFormatOverride = jsonAgentResponseFormatOverride(config, model);
 
     // If tools are available, use the tool call loop.
@@ -816,7 +881,7 @@ export async function executeAgent(
         temperature,
         maxTokens,
         toolContext,
-        reasoningOverride,
+        requestOptions,
         streamResponses,
         startTime,
         context,
@@ -837,7 +902,8 @@ export async function executeAgent(
         temperature,
         maxTokens,
         streamResponses,
-        customParameters,
+        // Lanes never asked for reasoning off, so without a connection level they keep the provider default.
+        requestOptions: agentRequestOptions(config, false),
         startTime,
       });
     }
@@ -847,7 +913,9 @@ export async function executeAgent(
     for (const msg of messages) {
       logger.debug(`[agent] [${msg.role}] ${msg.content}`);
     }
-    logger.debug(`[agent] ═══ END PROMPT — temperature=${temperature} maxTokens=${maxTokens} ═══\n`);
+    logger.debug(
+      `[agent] ═══ END PROMPT — temperature=${temperature} maxTokens=${maxTokens} reasoning=${requestOptions.reasoningEffort ?? "default"} ═══\n`,
+    );
     emitAgentDebug(context, {
       stage: "request",
       ...agentDebugBase(config, model, temperature, maxTokens),
@@ -863,11 +931,8 @@ export async function executeAgent(
       enableCaching: config.enableCaching,
       anthropicExtendedCacheTtl: config.anthropicExtendedCacheTtl,
       cachingAtDepth: config.cachingAtDepth,
-      customParameters,
-      enabledParameters: config.enabledParameters,
-      ...reasoningOverride,
+      ...requestOptions,
       ...responseFormatOverride,
-      suppressModelParameters: config.suppressModelParameters,
       stream: streamResponses,
       onToken: streamResponses
         ? (chunk) => {
@@ -915,11 +980,8 @@ export async function executeAgent(
         enableCaching: config.enableCaching,
         anthropicExtendedCacheTtl: config.anthropicExtendedCacheTtl,
         cachingAtDepth: config.cachingAtDepth,
-        customParameters,
-        enabledParameters: config.enabledParameters,
-        ...reasoningOverride,
+        ...requestOptions,
         ...responseFormatOverride,
-        suppressModelParameters: config.suppressModelParameters,
         stream: streamResponses,
         onToken: streamResponses
           ? (chunk) => {
@@ -1005,7 +1067,7 @@ async function executeBeholderLanePasses(args: {
   temperature: number | undefined;
   maxTokens: number;
   streamResponses: boolean;
-  customParameters: Record<string, unknown> | undefined;
+  requestOptions: AgentRequestOptions;
   startTime: number;
 }): Promise<AgentResult> {
   const { config, context, provider, model, lanePrompts, temperature, maxTokens, streamResponses, startTime } = args;
@@ -1040,9 +1102,7 @@ async function executeBeholderLanePasses(args: {
         enableCaching: config.enableCaching,
         anthropicExtendedCacheTtl: config.anthropicExtendedCacheTtl,
         cachingAtDepth: config.cachingAtDepth,
-        customParameters: args.customParameters,
-        enabledParameters: config.enabledParameters,
-        suppressModelParameters: config.suppressModelParameters,
+        ...args.requestOptions,
         stream: streamResponses,
         onToken: streamResponses
           ? (chunk) => {
@@ -1128,9 +1188,7 @@ async function executeBeholderLanePasses(args: {
         enableCaching: config.enableCaching,
         anthropicExtendedCacheTtl: config.anthropicExtendedCacheTtl,
         cachingAtDepth: config.cachingAtDepth,
-        customParameters: args.customParameters,
-        enabledParameters: config.enabledParameters,
-        suppressModelParameters: config.suppressModelParameters,
+        ...args.requestOptions,
         stream: false,
         signal: agentCallSignal(context.signal),
       });
@@ -1175,7 +1233,7 @@ async function executeAgentWithTools(
   temperature: number | undefined,
   maxTokens: number,
   toolContext: AgentToolContext,
-  reasoningOverride: JsonReasoningOverride,
+  requestOptions: AgentRequestOptions,
   streamResponses: boolean,
   startTime: number,
   context: AgentContext,
@@ -1184,7 +1242,6 @@ async function executeAgentWithTools(
   const loopMessages = [...initialMessages];
   let totalTokens = 0;
   const debugAgentsEnabled = isDebugAgentsEnabled() && logger.isLevelEnabled("debug");
-  const customParameters = agentCustomParameters(config);
   const responseFormatOverride = jsonAgentResponseFormatOverride(config, model);
   // Fresh per-call so AGENT_CALL_TIMEOUT_MS caps each LLM call, not the whole
   // tool loop; earlier rounds must not eat a later round's budget.
@@ -1209,13 +1266,10 @@ async function executeAgentWithTools(
       enableCaching: config.enableCaching,
       anthropicExtendedCacheTtl: config.anthropicExtendedCacheTtl,
       cachingAtDepth: config.cachingAtDepth,
-      customParameters,
-      enabledParameters: config.enabledParameters,
-      ...reasoningOverride,
+      ...requestOptions,
       // No responseFormat on tool rounds: a JSON grammar would constrain the
       // completion before the model can emit its tool-call tokens. The final
       // no-tools round below carries it instead.
-      suppressModelParameters: config.suppressModelParameters,
       stream: streamResponses,
       tools: toolContext.tools,
       signal: nextCallSignal(),
@@ -1306,11 +1360,8 @@ async function executeAgentWithTools(
     enableCaching: config.enableCaching,
     anthropicExtendedCacheTtl: config.anthropicExtendedCacheTtl,
     cachingAtDepth: config.cachingAtDepth,
-    customParameters,
-    enabledParameters: config.enabledParameters,
-    ...reasoningOverride,
+    ...requestOptions,
     ...responseFormatOverride,
-    suppressModelParameters: config.suppressModelParameters,
     stream: streamResponses,
     signal: nextCallSignal(),
   });
@@ -1460,8 +1511,8 @@ export async function executeAgentBatch(
   const startTime = Date.now();
   const perAgentTokens = configs.map((c) => normalizeAgentMaxTokens(c.settings.maxTokens));
   const temperature = resolveAgentTemperature(configs[0]!);
-  const customParameters = agentCustomParameters(configs[0]!);
-  const reasoningOverride = jsonResponseReasoningOverride(configs[0]!.enabledParameters);
+  // The request signature split above guarantees every member resolves the same options.
+  const requestOptions = agentRequestOptions(configs[0]!, true);
   // A batch response is always one JSON map keyed by agent name, so on the
   // sidecar the whole call is grammar-constrained regardless of member types.
   const responseFormatOverride = localSidecarJsonResponseFormat(model);
@@ -1470,7 +1521,7 @@ export async function executeAgentBatch(
   const cachingAtDepth = configs[0]!.cachingAtDepth;
   const rawBatchMaxTokens = perAgentTokens.reduce((sum, tokens) => sum + tokens, 0);
   const modelMaxOutput = configs[0]!.maxOutputTokens;
-  const batchMaxTokens = applyAgentMaxTokensCaps(provider, rawBatchMaxTokens, modelMaxOutput);
+  const batchMaxTokens = resolveAgentCallMaxTokens(provider, configs[0]!, rawBatchMaxTokens);
 
   try {
     // Build merged system prompt (includes the union of context requested by
@@ -1544,11 +1595,8 @@ export async function executeAgentBatch(
         enableCaching,
         anthropicExtendedCacheTtl,
         cachingAtDepth,
-        customParameters,
-        enabledParameters: configs[0]!.enabledParameters,
-        ...reasoningOverride,
+        ...requestOptions,
         ...responseFormatOverride,
-        suppressModelParameters: configs[0]!.suppressModelParameters,
         stream: streamResponses,
         onToken: streamResponses
           ? (chunk) => {
@@ -3472,6 +3520,8 @@ export function resolveAgentResultType(config: Pick<AgentExecConfig, "type" | "s
  *
  * Ask for reasoning off, unless the agent's own connection deliberately turned
  * that parameter's send-switch off (in which case the provider default stands).
+ * This is only the default: a level the user chose on the connection wins
+ * (#7131), and resolveAgentCallMaxTokens then leaves room for the thinking.
  */
 type JsonReasoningOverride = {
   reasoningEffort?: "none";
@@ -3486,13 +3536,6 @@ function jsonResponseReasoningOverride(
     reasoningEffort: "none",
     enabledParameters: { ...(enabledParameters ?? {}), reasoningEffort: true },
   };
-}
-
-function jsonAgentReasoningOverride(
-  config: Pick<AgentExecConfig, "type" | "settings" | "enabledParameters">,
-): JsonReasoningOverride {
-  if (!agentResponseIsJson(config)) return {};
-  return jsonResponseReasoningOverride(config.enabledParameters);
 }
 
 type JsonResponseFormatOverride = { responseFormat?: { type: "json_object" } };
@@ -3567,8 +3610,9 @@ const JSON_AGENTS = new Set([
  * main prompt.
  */
 function sanitizeTextAgentResponse(text: string): string {
-  const cleaned = text
-    .replace(/<committed_tracker_state\b[^>]*>[\s\S]*?<\/committed_tracker_state\s*>/gi, "")
+  // A reasoning level chosen on the connection can make a local endpoint answer with its thinking inline (#7131).
+  const cleaned = extractLeadingThinkingBlocks(text)
+    .content.replace(/<committed_tracker_state\b[^>]*>[\s\S]*?<\/committed_tracker_state\s*>/gi, "")
     .replace(/<assistant_response\b[^>]*>[\s\S]*?<\/assistant_response\s*>/gi, "")
     .trim();
 

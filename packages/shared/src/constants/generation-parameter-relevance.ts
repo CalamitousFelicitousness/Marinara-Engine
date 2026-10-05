@@ -235,7 +235,8 @@ export function relevantGenerationParameters(context: GenerationParameterContext
       hide("topP", "topK", "frequencyPenalty", "presencePenalty");
     }
 
-    if (provider === "anthropic" && effortActive) hide("temperature");
+    // Claude thinking rejects temperature and top_k, so the request drops both (anthropic.provider.ts).
+    if (provider === "anthropic" && effortActive) hide("temperature", "topK");
 
     if (provider === "openai_chatgpt" && !isOpenAIReasoningModel(model)) hide("reasoningEffort");
 

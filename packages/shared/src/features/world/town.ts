@@ -736,9 +736,10 @@ export function worldTownDoor(town: WorldTown, at: string): { x: number; y: numb
 /** Ground a walk across town takes first: streets, the square, ground kept clear, and (map editor
  *  Phase 2) paths and bridges. */
 const TOWN_WALK_FIRST = new Set(["s", "q", "o", "p", "b"]);
-/** Ground walked only when there is no way on the first: open ground and fields. Trees, wells, water,
- *  hedges and anything unknown block. */
-const TOWN_WALK_ALSO = new Set([".", "f"]);
+/** Ground walked only when there is no way on the first: the rest of what the hand layout's checks call
+ *  walkable (`WORLD_TOWN_WALKABLE`: open ground and fields too). Trees, wells, water, hedges and anything
+ *  unknown block. */
+const TOWN_WALK_ANY = new Set(WORLD_TOWN_WALKABLE);
 
 /** The cells a building stands on, which no walk crosses. (A stall is walked past: one can stand on
  *  the mouth of a street leaving the square.) */
@@ -803,7 +804,7 @@ export function worldTownPath(town: WorldTown, from: string, to: string): Array<
   if (a.x === b.x && a.y === b.y) return [];
   const found =
     townPathOn(town, a, b, (ground) => TOWN_WALK_FIRST.has(ground)) ??
-    townPathOn(town, a, b, (ground) => TOWN_WALK_FIRST.has(ground) || TOWN_WALK_ALSO.has(ground));
+    townPathOn(town, a, b, (ground) => TOWN_WALK_ANY.has(ground));
   if (found) return found;
   const path: Array<{ x: number; y: number }> = [];
   for (let x = a.x; x !== b.x;) path.push({ x: (x += Math.sign(b.x - a.x)), y: a.y });

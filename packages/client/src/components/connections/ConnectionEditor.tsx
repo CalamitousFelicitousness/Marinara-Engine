@@ -546,7 +546,9 @@ export function ConnectionEditor() {
     setLocalDefaultParametersEnabled(
       !!parseEditableGenerationParameters(c.defaultParameters) || Object.keys(imageCaptioningDefaults).length > 0,
     );
-    setLocalDefaultParameters(getEditableGenerationParameters(CONNECTION_PARAMETER_DEFAULTS, c.defaultParameters));
+    setLocalDefaultParameters(
+      getEditableGenerationParameters(CONNECTION_PARAMETER_DEFAULTS, c.defaultParameters, c.provider as string),
+    );
     setLocalImageCaptioningEnabled(imageCaptioningDefaults.imageCaptioningEnabled === true);
     setLocalImageCaptioningConnectionId(imageCaptioningDefaults.imageCaptioningConnectionId ?? "");
     const nextImageDefaults = defaultsService
@@ -1695,7 +1697,9 @@ export function ConnectionEditor() {
                     );
                     setLocalMaxTokensOverride(null);
                     setLocalDefaultParametersEnabled(false);
-                    setLocalDefaultParameters(CONNECTION_PARAMETER_DEFAULTS);
+                    setLocalDefaultParameters(
+                      getEditableGenerationParameters(CONNECTION_PARAMETER_DEFAULTS, null, key),
+                    );
                     if (key === "decision") {
                       setLocalDecisionSource("typesafe");
                       setLocalCredentialsFrom("");

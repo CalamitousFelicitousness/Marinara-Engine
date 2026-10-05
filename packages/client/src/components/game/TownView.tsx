@@ -14,6 +14,7 @@ import {
   worldEdgePiece,
   worldTownDoor,
   worldTownMinutes,
+  worldTownPath,
   worldTownPeopleAt,
   type GameWorld,
   characterFacing,
@@ -377,11 +378,10 @@ export function TownView({
         walkingRef.current = false;
         return;
       }
-      // Along the street the party is on, then the one it turns into.
-      const corner = { x: target.x, y: from.y };
-      const points = [centreOf(from), centreOf(corner), centreOf(target)];
-      const cells = Math.abs(target.x - from.x) + Math.abs(target.y - from.y);
-      const duration = Math.min(WALK_LONGEST_MS, Math.max(400, cells * WALK_MS_PER_CELL));
+      // Along the way the town's streets take (an older server sends none: worked out here the same way).
+      const way = result.path?.length ? result.path : (worldTownPath(town, town.at, to) ?? [target]);
+      const points = [centreOf(from), ...way.map(centreOf)];
+      const duration = Math.min(WALK_LONGEST_MS, Math.max(400, way.length * WALK_MS_PER_CELL));
       walkingRef.current = true;
       setWalking(true);
       arrivalRef.current = () => {
@@ -391,18 +391,15 @@ export function TownView({
           useGameStateStore.getState().setGameState({ ...snapshot, time: result.formatted });
       };
       const started = performance.now();
-      const firstLeg = Math.abs(corner.x - from.x) / Math.max(1, cells);
       const frame = (now: number) => {
         const progress = Math.min(1, (now - started) / duration);
-        const [a, b, c] = points as [Point, Point, Point];
-        const onFirst = progress < firstLeg;
-        partyRef.current = onFirst
-          ? { x: a.x + (b.x - a.x) * (progress / firstLeg), y: a.y }
-          : { x: b.x, y: b.y + (c.y - b.y) * ((progress - firstLeg) / Math.max(0.0001, 1 - firstLeg)) };
-        // Facing along the leg it is on (a leg of no length keeps the facing it had).
-        facingRef.current = onFirst
-          ? characterFacing(b.x - a.x, 0, facingRef.current)
-          : characterFacing(0, c.y - b.y, facingRef.current);
+        const along = progress * (points.length - 1);
+        const index = Math.max(0, Math.min(points.length - 2, Math.floor(along)));
+        const [a, b] = [points[index]!, points[index + 1] ?? points[index]!];
+        const part = along - index;
+        partyRef.current = { x: a.x + (b.x - a.x) * part, y: a.y + (b.y - a.y) * part };
+        // Facing along the step it is on (a step of no length keeps the facing it had).
+        facingRef.current = characterFacing(b.x - a.x, b.y - a.y, facingRef.current);
         drawRef.current(cameraRef.current(partyRef.current), characterFrameAt(now));
         if (progress < 1) {
           frameRef.current = requestAnimationFrame(frame);

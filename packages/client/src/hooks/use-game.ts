@@ -1073,10 +1073,14 @@ export function useTownVisit() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (data: { chatId: string; to: string }) =>
-      api.post<{ visit: WorldTownVisit; at: string; minutes: number; formatted: string }>(
-        `/game/${data.chatId}/town/visit`,
-        { to: data.to },
-      ),
+      api.post<{
+        visit: WorldTownVisit;
+        at: string;
+        /** The way walked, as the cells after the door the party left (older servers: none). */
+        path?: Array<{ x: number; y: number }>;
+        minutes: number;
+        formatted: string;
+      }>(`/game/${data.chatId}/town/visit`, { to: data.to }),
     // The party is where it walked at once, so the town never shows it back where it set out.
     onSuccess: (res, variables) => {
       qc.setQueriesData<{ town: TownState | null }>({ queryKey: gameKeys.town(variables.chatId) }, (old) =>

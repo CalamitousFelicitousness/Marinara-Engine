@@ -577,11 +577,89 @@ export function worldTownDoor(town: WorldTown, at: string): { x: number; y: numb
   return town.buildings.find((building) => building.id === at)?.door ?? null;
 }
 
-/** The minutes a walk across town takes, from one spot to another (at least one). */
-export function worldTownMinutes(town: WorldTown, from: string, to: string): number {
+/** Ground a walk across town takes first: streets, the square, ground kept clear, and (map editor
+ *  Phase 2) paths and bridges. */
+const TOWN_WALK_FIRST = new Set(["s", "q", "o", "p", "b"]);
+/** Ground walked only when there is no way on the first: open ground and fields. Trees, wells, water,
+ *  hedges and anything unknown block. */
+const TOWN_WALK_ALSO = new Set([".", "f"]);
+
+/** The cells a building stands on, which no walk crosses. (A stall is walked past: one can stand on
+ *  the mouth of a street leaving the square.) */
+const standingOfTown = new WeakMap<WorldTown, Set<number>>();
+function townStanding(town: WorldTown): Set<number> {
+  let found = standingOfTown.get(town);
+  if (!found) {
+    found = new Set<number>();
+    for (const building of town.buildings)
+      for (let y = building.y; y < building.y + building.h; y++)
+        for (let x = building.x; x < building.x + building.w; x++) found.add(y * town.width + x);
+    standingOfTown.set(town, found);
+  }
+  return found;
+}
+
+function townPathOn(
+  town: WorldTown,
+  start: { x: number; y: number },
+  goal: { x: number; y: number },
+  walkable: (ground: string) => boolean,
+): Array<{ x: number; y: number }> | null {
+  const { width, height } = town;
+  const standing = townStanding(town);
+  const [from, to] = [start.y * width + start.x, goal.y * width + goal.x];
+  // The two ends are walked whatever is painted there: a door, the square's middle.
+  const open = (cell: number) => cell === to || (!standing.has(cell) && walkable(town.ground[cell] ?? ""));
+  const prev = new Map<number, number>([[from, from]]);
+  const queue = [from];
+  for (let head = 0; head < queue.length; head++) {
+    const cell = queue[head]!;
+    if (cell === to) break;
+    const [x, y] = [cell % width, Math.floor(cell / width)];
+    for (const [nx, ny] of [
+      [x + 1, y],
+      [x - 1, y],
+      [x, y + 1],
+      [x, y - 1],
+    ] as const) {
+      if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+      const next = ny * width + nx;
+      if (prev.has(next) || !open(next)) continue;
+      prev.set(next, cell);
+      queue.push(next);
+    }
+  }
+  if (!prev.has(to)) return null;
+  const path: Array<{ x: number; y: number }> = [];
+  for (let cell = to; cell !== from; cell = prev.get(cell)!)
+    path.unshift({ x: cell % width, y: Math.floor(cell / width) });
+  return path;
+}
+
+/** The way a walk across town takes, from one spot's door to another's, as the cells after the start
+ *  (map editor Phase 2): the shortest four-way way on streets, the square and paths, else across open
+ *  ground too, never through a building, a tree, a well, water or a hedge. With no way at all (a
+ *  hand layout boxed a door in) the old way: along the street the party is on, then the one it turns
+ *  into. Null for a spot not in the town; empty when the two are the same. */
+export function worldTownPath(town: WorldTown, from: string, to: string): Array<{ x: number; y: number }> | null {
   const [a, b] = [worldTownDoor(town, from), worldTownDoor(town, to)];
-  if (!a || !b) return 1;
-  return Math.max(1, Math.round((Math.abs(a.x - b.x) + Math.abs(a.y - b.y)) / WORLD_TOWN_CELLS_PER_MINUTE));
+  if (!a || !b) return null;
+  if (a.x === b.x && a.y === b.y) return [];
+  const found =
+    townPathOn(town, a, b, (ground) => TOWN_WALK_FIRST.has(ground)) ??
+    townPathOn(town, a, b, (ground) => TOWN_WALK_FIRST.has(ground) || TOWN_WALK_ALSO.has(ground));
+  if (found) return found;
+  const path: Array<{ x: number; y: number }> = [];
+  for (let x = a.x; x !== b.x;) path.push({ x: (x += Math.sign(b.x - a.x)), y: a.y });
+  for (let y = a.y; y !== b.y;) path.push({ x: b.x, y: (y += Math.sign(b.y - a.y)) });
+  return path;
+}
+
+/** The minutes a walk across town takes, from one spot to another (at least one): its way's cells. */
+export function worldTownMinutes(town: WorldTown, from: string, to: string): number {
+  const path = worldTownPath(town, from, to);
+  if (!path) return 1;
+  return Math.max(1, Math.round(path.length / WORLD_TOWN_CELLS_PER_MINUTE));
 }
 
 /** The people at a spot at an hour. */

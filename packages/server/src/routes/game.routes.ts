@@ -277,6 +277,7 @@ import {
   worldTown,
   worldTownDoor,
   worldTownMinutes,
+  worldTownPath,
   worldTownSpotFromMetadata,
   worldTownVisitFromMetadata,
   DUNGEON_EXIT_PROP,
@@ -11070,6 +11071,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     if (!found) return reply.status(400).send({ error: "The party is not in a town." });
     if (!worldTownDoor(found.town, to)) return reply.status(400).send({ error: "No such place in this town." });
     if (to === found.at) return reply.status(400).send({ error: "The party is already there." });
+    const path = worldTownPath(found.town, found.at, to) ?? [];
     const minutes = worldTownMinutes(found.town, found.at, to);
     let visit: WorldTownVisit | undefined;
     let time: GameTime | undefined;
@@ -11091,7 +11093,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     await updateLatestGameStateWithTrackerLocks(createGameStateStorage(app.db), chatId, {
       time: formatGameTime(time),
     });
-    return { visit, at: to, minutes, time, formatted: formatGameTime(time) };
+    return { visit, at: to, path, minutes, time, formatted: formatGameTime(time) };
   });
 
   // ── Dungeon, cave and station maps ──

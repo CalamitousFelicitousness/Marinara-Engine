@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- The **Character Schedule Manager**, and the schedule editor it opens, now show each character's portrait the way you cropped it in the character editor instead of the uncropped image. In the manager's list the portrait stays in its small round slot (#ISSUE).
+
 - **Button size (px)** in Chat widget style lets you resize movable chat buttons and their icons independently of Display Size. Leave it at Default to keep the existing desktop and phone sizes. The setting also covers trackers, Chat tools, Map and Character Profiles, and enlarged buttons stay within the chat area (#7092).
 
 - Chat widget styles can also supply the font, shape and colors for chat messages, input boxes and controls through three separate switches. Conversation messages keep their own shape. On phones, sections moved out of Chat Settings are grouped in a movable three-dot menu with a lock and a saved button order; tracker buttons stay separate. The phone Map button and Character Profiles on both computers and phones are separate movable controls, with the selected widget style and saved positions and locks. Game character sheet drafts stay open with their unsaved changes when the window layout saves (#7081).

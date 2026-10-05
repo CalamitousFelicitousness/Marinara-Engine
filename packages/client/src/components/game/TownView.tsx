@@ -66,7 +66,16 @@ const PLAIN = {
   hall: "#7c776b",
   wall: "#efe2c2",
   door: "#5a3b22",
+  // Towns laid out freely (map editor Phase 2).
+  field: "#a3b25a",
+  path: "#a88d63",
+  water: "#3d6fa8",
+  bridge: "#8b6a43",
+  hedge: "#3f7a34",
 };
+
+/** Each edge pass's own noise, so neighbouring terrains do not pick the same variants. */
+const EDGE_SALT = { street: 75, square: 77, road: 79, water: 81 } as const;
 
 const centreOf = (cell: Point): Point => ({ x: cell.x * T + T / 2, y: cell.y * T + T / 2 });
 const hash = (text: string) => [...text].reduce((h, c) => (Math.imul(h, 31) + c.charCodeAt(0)) >>> 0, 7);
@@ -131,6 +140,8 @@ export function TownView({
     const standing: Array<{ bottom: number; draw: () => void }> = [];
     const streetEdges = drawTile.hasEdges("street");
     const squareEdges = drawTile.hasEdges("square");
+    const roadEdges = drawTile.hasEdges("road");
+    const waterEdges = drawTile.hasEdges("water");
     for (let y = 0; y < town.height; y++) {
       for (let x = 0; x < town.width; x++) {
         const cell = town.ground[y * town.width + x];
@@ -148,7 +159,24 @@ export function TownView({
             : cell === "q"
               ? ["square", PLAIN.square]
               : ["town_ground", PLAIN.ground];
-        if (!drawTile(ctx, id, x * T, y * T, pick)) plain(colour, x * T, y * T);
+        // A hand layout's own ground (map editor Phase 2): fields as farmland, paths and water drawn by
+        // their edge pieces when the pack has them (under-painted as open ground), else in their colours.
+        if (cell === "f") {
+          if (!drawTile(ctx, "farmland", x * T, y * T, pick) && !drawTile(ctx, "town_ground", x * T, y * T, pick))
+            plain(PLAIN.field, x * T, y * T);
+        } else if (cell === "p" && !roadEdges) {
+          plain(PLAIN.path, x * T, y * T);
+        } else if ((cell === "~" || cell === "b") && !waterEdges) {
+          plain(PLAIN.water, x * T, y * T);
+        } else if (!drawTile(ctx, id, x * T, y * T, pick)) plain(colour, x * T, y * T);
+        if (cell === "h")
+          standing.push({
+            bottom: y,
+            draw: () =>
+              drawTile(ctx, "hedge", x * T, y * T) ||
+              drawTile(ctx, "tree", x * T, y * T) ||
+              plain(PLAIN.hedge, x * T, y * T),
+          });
         // A tree here and there on the open ground away from the streets, and where a hand layout
         // (worldgen W9h) planted one or dug a well; "o" is open ground kept clear.
         if (cell === "t" || (cell === "." && pick > 0.86))
@@ -158,15 +186,16 @@ export function TownView({
     }
     // The streets (the square counted as street), then the square over them, as dual-grid passes.
     const cellOf = (x: number, y: number) => town.ground[y * town.width + x];
-    const edgePass = (terrain: "street" | "square", filled: (x: number, y: number) => boolean) => {
+    const edgePass = (terrain: "street" | "square" | "road" | "water", filled: (x: number, y: number) => boolean) => {
       const rows = drawTile.edgeRows(terrain);
       for (let y = 0; y <= town.height; y++)
         for (let x = 0; x <= town.width; x++) {
           const piece = worldEdgePiece(filled, x, y, town.width, town.height, rows);
-          if (piece >= 0)
-            drawTile.edge(ctx, terrain, piece, x * T, y * T, cellNoise(x, y)(terrain === "street" ? 75 : 77));
+          if (piece >= 0) drawTile.edge(ctx, terrain, piece, x * T, y * T, cellNoise(x, y)(EDGE_SALT[terrain]));
         }
     };
+    if (waterEdges) edgePass("water", (x, y) => cellOf(x, y) === "~" || cellOf(x, y) === "b");
+    if (roadEdges) edgePass("road", (x, y) => cellOf(x, y) === "p");
     if (streetEdges) edgePass("street", (x, y) => cellOf(x, y) === "s" || cellOf(x, y) === "q");
     if (squareEdges) edgePass("square", (x, y) => cellOf(x, y) === "q");
     else if (streetEdges) {
@@ -178,9 +207,17 @@ export function TownView({
             ctx.fillRect(x * T, y * T, T, T);
           }
     }
+    // Bridges over the water, flat on the ground.
+    for (let y = 0; y < town.height; y++)
+      for (let x = 0; x < town.width; x++)
+        if (cellOf(x, y) === "b" && !drawTile(ctx, "bridge", x * T, y * T) && !drawTile(ctx, "street", x * T, y * T))
+          plain(PLAIN.bridge, x * T, y * T);
     for (const building of town.buildings) {
       standing.push({ bottom: building.y + building.h - 1, draw: () => drawBuilding(building) });
     }
+    // A hand layout's decorations: drawn only where the pack has them.
+    for (const each of town.deco ?? [])
+      standing.push({ bottom: each.y, draw: () => drawTile(ctx, each.tile, each.x * T, each.y * T) });
     function drawBuilding(building: WorldTownBuilding) {
       // An image pack's whole-building sprite, fitted inside the lot; else roofs and a front.
       const sprite = building.kind === "home" ? "house" : "hall";

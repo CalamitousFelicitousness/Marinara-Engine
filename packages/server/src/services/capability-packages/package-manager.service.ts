@@ -1155,6 +1155,17 @@ function entriesCarryGrants(entries: unknown): boolean {
   return Array.isArray(entries) && entries.some((entry) => plainRecord(entry)?.grants !== undefined);
 }
 
+/** A score choice that may name one score twice (1.88): `repeat`, a new key on the strict choice. */
+function entriesCarryRepeatChoices(entries: unknown): boolean {
+  return (
+    Array.isArray(entries) &&
+    entries.some((entry) => {
+      const choose = plainRecord(plainRecord(plainRecord(entry)?.grants)?.abilities)?.choose;
+      return Array.isArray(choose) && choose.some((choice) => plainRecord(choice)?.repeat !== undefined);
+    })
+  );
+}
+
 /** Entries of another catalog to choose (1.86): `entries`, a new key on the strict grants. */
 function entriesCarryEntryChoices(entries: unknown): boolean {
   return (
@@ -1378,6 +1389,7 @@ export function getCapabilityPackageInstallIssue(
   let carriesGrants = false;
   let carriesEntryChoices = false;
   let carriesSeveralScaled = false;
+  let carriesRepeatChoices = false;
   // Every item by "<catalog>/<entry>", inline and in files, and the fakes among them, so a fake whose
   // target is in another catalog file is checked here, where every file can be read.
   const itemsByRef = new Map<string, RulesetCatalogItem>();
@@ -1474,6 +1486,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryGrants(header.entries)) carriesGrants = true;
       if (entriesCarryEntryChoices(header.entries)) carriesEntryChoices = true;
       if (entriesCarrySeveralScaledRows(header.entries)) carriesSeveralScaled = true;
+      if (entriesCarryRepeatChoices(header.entries)) carriesRepeatChoices = true;
       collectItems(header.id, header.entries);
       const asset = header.asset;
       if (typeof asset !== "string") continue;
@@ -1520,6 +1533,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryGrants(fileEntries)) carriesGrants = true;
       if (entriesCarryEntryChoices(fileEntries)) carriesEntryChoices = true;
       if (entriesCarrySeveralScaledRows(fileEntries)) carriesSeveralScaled = true;
+      if (entriesCarryRepeatChoices(fileEntries)) carriesRepeatChoices = true;
       collectItems(header.id, fileEntries);
     }
   }
@@ -1802,6 +1816,10 @@ export function getCapabilityPackageInstallIssue(
       const units = plainRecord(family)?.units;
       return Array.isArray(units) && units.some((unit) => plainRecord(unit)?.one !== undefined);
     });
+  // A score choice that may name one score twice, 1.88: a new key on the strict choice.
+  if (!declaresApi(88) && carriesRepeatChoices) {
+    return "A ruleset whose catalog entry offers a score choice that repeats requires schemaVersion 2 and capabilityApi 1.88 or newer";
+  }
   // Several scaled rows for one list in one entry, told apart by name, 1.87: an older Engine refused it.
   if (!declaresApi(87) && carriesSeveralScaled) {
     return "A ruleset whose catalog entry scales a row beside others of its list requires schemaVersion 2 and capabilityApi 1.87 or newer";

@@ -13690,6 +13690,9 @@
                                 },
                                 "maxItems": 20
                               },
+                              "repeat": {
+                                "type": "boolean"
+                              },
                               "$comment": {}
                             },
                             "required": [

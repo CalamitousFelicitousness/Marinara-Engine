@@ -2750,6 +2750,9 @@ const catalogGrantsSchema = z
                 count: z.number().int().min(1).max(6),
                 amount: z.number().int().min(-20).max(20),
                 except: z.array(sheetId).max(20).optional(),
+                /** A score may be chosen more than once, `amount` each time (Capability API 1.88): count 2
+                 *  and amount 1 is +2 to one score or +1 to two, as an ability score improvement. */
+                repeat: z.boolean().optional(),
               })
               .strict(),
           )
@@ -7138,7 +7141,7 @@ function grantsIssues(
         add([...path, "abilities", "choose", index, "except", idIndex], `Unknown ability "${id}"`);
     });
     const open = sheet.abilities.filter((ability) => !choice.except?.includes(ability.id)).length;
-    if (choice.count > open)
+    if (choice.repeat ? open < 1 : choice.count > open)
       add([...path, "abilities", "choose", index, "count"], `Only ${open} scores are left to choose`);
   });
   const known = {

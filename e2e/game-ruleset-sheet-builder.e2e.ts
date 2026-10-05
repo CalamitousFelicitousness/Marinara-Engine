@@ -15,6 +15,11 @@ function ruleset(id: string): string {
     readFileSync(new URL("../docs/development/ruleset-5e-2014.example.json", import.meta.url), "utf8"),
   );
   doc.id = id;
+  // A feature whose score choice repeats (1.88): +2 to one score or +1 to two.
+  const feats = doc.catalogs.find((catalog: { id: string }) => catalog.id === "feats");
+  feats.entries.find((entry: { id: string }) => entry.id === "sly-strike").grants = {
+    abilities: { choose: [{ count: 2, amount: 1, repeat: true }] },
+  };
   doc.catalogs.push(
     {
       id: "races",
@@ -240,6 +245,19 @@ test("the guided builder applies picks, rolls and buys scores, and saves the she
     // As many features as the level says (countFrom).
     await expect(page.getByText("Select one (0 selected)")).toBeVisible();
     await expect(steps.getByRole("button", { name: "Features 1 choice left", exact: true })).toBeVisible();
+    // A score choice that repeats: one score twice, a minus takes one back. Then the feature goes again.
+    await page.getByRole("button", { name: "Select Sly Strike" }).click();
+    await steps.getByRole("button", { name: /^Ability Scores/ }).click();
+    const twice = page.getByRole("group", { name: /Sly Strike: choose 2 scores/ });
+    await twice.getByRole("button", { name: "Strength", exact: true }).click();
+    await twice.getByRole("button", { name: "Strength", exact: true }).click();
+    await expect(twice.getByRole("button", { name: "Strength ×2", exact: true })).toBeDisabled();
+    await expect(steps.getByRole("button", { name: "Ability Scores 1 choice left", exact: true })).toBeVisible();
+    await twice.getByRole("button", { name: "Take back one from Strength", exact: true }).click();
+    await expect(twice.getByRole("button", { name: "Strength", exact: true })).toBeEnabled();
+    await steps.getByRole("button", { name: /^Features/ }).click();
+    await page.getByRole("button", { name: "Remove Sly Strike", exact: true }).click();
+    await expect(page.getByText("Select one (0 selected)")).toBeVisible();
     await steps.getByRole("button", { name: /^Race/ }).click();
 
     // A race: its info, its increase, its field.

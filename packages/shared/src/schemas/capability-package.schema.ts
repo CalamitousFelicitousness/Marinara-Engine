@@ -667,7 +667,10 @@ const capabilityPackageManifestBaseSchema = z
 // 1.87: a catalog entry may scale several rows of one list when each carries its own name in the
 //        list's name column (two uses of one racial trait). Not a soft seam: an Engine that cannot read
 //        it refuses the catalog, so a package that ships it declares 1.87. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 87 } as const);
+// 1.88: a builder grant's score choice may name one score more than once (`abilities.choose[].repeat`,
+//        an ability score improvement's +2 to one or +1 to two). Not a soft seam: an Engine that cannot
+//        read it refuses the catalog, so a package that ships it declares 1.88. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 88 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

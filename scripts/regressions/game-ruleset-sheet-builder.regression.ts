@@ -870,6 +870,102 @@ try {
       .entries.find((e: { id: string }) => e.id === "dwarf").grants.entries.choose[0].filters = { nope: "x" };
   }, /Unknown filter "nope" of catalog "tongues"/);
 
+  // ── 1.88: a score choice that repeats (an ability score improvement) ──
+  {
+    const improved = parsed(
+      variant((doc) => {
+        doc.catalogs
+          .find((c: { id: string }) => c.id === "classes")
+          .entries.find((e: { id: string }) => e.id === "fighter").grants.abilities = {
+          choose: [{ count: 2, amount: 1, repeat: true }],
+        };
+      }),
+    );
+    const asiCatalogs: RulesetCatalogEntriesById = Object.fromEntries(
+      (improved.catalogs ?? []).map((catalog) => [catalog.id, catalog.entries ?? []]),
+    );
+    const start = { method: "manual" as const, base: { str: 15, dex: 10, con: 10, int: 10, wis: 10, cha: 10 } };
+    let a = applyRulesetBuilder(
+      improved,
+      defaultRulesetSheetBuild(improved),
+      { ...start, picks: { class: ["fighter"] } },
+      asiCatalogs,
+    );
+    const [slot] = rulesetBuilderAbilitySlots(improved, a.state, asiCatalogs, a.build);
+    assert.equal(slot!.repeat, true);
+    assert.equal(rulesetBuilderRemaining(improved, a.build, a.state, asiCatalogs).scores, 2);
+    a = applyRulesetBuilder(
+      improved,
+      a.build,
+      { ...a.state, abilityChoices: { [slot!.key]: ["str", "str"] } },
+      asiCatalogs,
+    );
+    assert.equal(a.build.abilities.str, 17, "+2 to one score");
+    assert.equal(rulesetBuilderRemaining(improved, a.build, a.state, asiCatalogs).scores, 0);
+    a = applyRulesetBuilder(
+      improved,
+      a.build,
+      { ...a.state, abilityChoices: { [slot!.key]: ["str", "dex"] } },
+      asiCatalogs,
+    );
+    assert.deepEqual([a.build.abilities.str, a.build.abilities.dex], [16, 11], "or +1 to two");
+    a = applyRulesetBuilder(
+      improved,
+      a.build,
+      { ...a.state, abilityChoices: { [slot!.key]: ["str", "str", "str"] } },
+      asiCatalogs,
+    );
+    assert.equal(a.build.abilities.str, 17, "never more than the count");
+    // Without repeat, a score named twice counts once, as always.
+    const once = parsed(
+      variant((doc) => {
+        doc.catalogs
+          .find((c: { id: string }) => c.id === "classes")
+          .entries.find((e: { id: string }) => e.id === "fighter").grants.abilities = {
+          choose: [{ count: 2, amount: 1 }],
+        };
+      }),
+    );
+    const onceCatalogs: RulesetCatalogEntriesById = Object.fromEntries(
+      (once.catalogs ?? []).map((catalog) => [catalog.id, catalog.entries ?? []]),
+    );
+    let o = applyRulesetBuilder(
+      once,
+      defaultRulesetSheetBuild(once),
+      { ...start, picks: { class: ["fighter"] } },
+      onceCatalogs,
+    );
+    const [onceSlot] = rulesetBuilderAbilitySlots(once, o.state, onceCatalogs, o.build);
+    o = applyRulesetBuilder(
+      once,
+      o.build,
+      { ...o.state, abilityChoices: { [onceSlot!.key]: ["str", "str"] } },
+      onceCatalogs,
+    );
+    assert.equal(o.build.abilities.str, 16);
+    // A repeating choice may ask for more than the open scores: one is enough, and the badge waits on
+    // every pick of it.
+    const narrow = parsed(
+      variant((doc) => {
+        doc.catalogs
+          .find((c: { id: string }) => c.id === "classes")
+          .entries.find((e: { id: string }) => e.id === "fighter").grants.abilities = {
+          choose: [{ count: 4, amount: 1, repeat: true, except: ["dex", "con", "int", "wis", "cha"] }],
+        };
+      }),
+    );
+    const narrowCatalogs: RulesetCatalogEntriesById = Object.fromEntries(
+      (narrow.catalogs ?? []).map((catalog) => [catalog.id, catalog.entries ?? []]),
+    );
+    const n = applyRulesetBuilder(
+      narrow,
+      defaultRulesetSheetBuild(narrow),
+      { ...start, picks: { class: ["fighter"] } },
+      narrowCatalogs,
+    );
+    assert.equal(rulesetBuilderRemaining(narrow, n.build, n.state, narrowCatalogs).scores, 4);
+  }
+
   // ── The gate ──
   const manifest = (minor: number, paths = ["ruleset.json"]) => ({
     schemaVersion: 2,
@@ -999,6 +1095,15 @@ try {
   });
   assert.match(issue(86, besideOne) ?? "", /1\.87/, "one scaled row beside an unscaled one is 1.87's too");
   assert.equal(issue(87, besideOne), null);
+  const repeating = variant((doc) => {
+    doc.catalogs
+      .find((c: { id: string }) => c.id === "classes")
+      .entries.find((e: { id: string }) => e.id === "fighter").grants.abilities = {
+      choose: [{ count: 2, amount: 1, repeat: true }],
+    };
+  });
+  assert.match(issue(87, repeating) ?? "", /score choice that repeats.*1\.88/);
+  assert.equal(issue(88, repeating), null);
   assert.equal(issue(81, variant()), null, "a 1.81 builder is still 1.81's");
   assert.equal(issue(74, JSON.parse(fiveEText)), null, "an older package still validates");
 

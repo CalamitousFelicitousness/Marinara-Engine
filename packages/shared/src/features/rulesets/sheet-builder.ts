@@ -218,6 +218,8 @@ export interface RulesetBuilderChoiceSlot {
 
 export interface RulesetBuilderAbilitySlot extends RulesetBuilderChoiceSlot {
   amount: number;
+  /** One score may be chosen more than once (1.88). */
+  repeat?: boolean;
 }
 
 export interface RulesetBuilderTrainedSlot extends RulesetBuilderChoiceSlot {
@@ -258,7 +260,9 @@ export function rulesetBuilderAbilitySlots(
     (entry.grants?.abilities?.choose ?? []).map((choice, index) => {
       const key = rulesetBuilderChoiceKey(step.id, entry.id, index);
       const from = all.filter((id) => !choice.except?.includes(id));
-      const chosen = [...new Set(state.abilityChoices?.[key] ?? [])].filter((id) => from.includes(id));
+      // A choice that repeats (1.88) may name one score more than once; any other names each once.
+      const stored = (state.abilityChoices?.[key] ?? []).filter((id) => from.includes(id));
+      const chosen = choice.repeat ? stored : [...new Set(stored)];
       return {
         key,
         stepId: host ?? step.id,
@@ -267,6 +271,7 @@ export function rulesetBuilderAbilitySlots(
         amount: choice.amount,
         from,
         chosen: chosen.slice(0, choice.count),
+        ...(choice.repeat ? { repeat: true } : {}),
       };
     }),
   );
@@ -784,7 +789,8 @@ export function rulesetBuilderRemaining(
     ...rulesetBuilderTrainedSlots(definition, state, catalogs, build),
     ...rulesetBuilderEntrySlots(definition, state, catalogs, build),
   ]) {
-    add(slot.stepId, Math.min(slot.count, slot.from.length) - slot.chosen.length);
+    const repeats = "repeat" in slot && !!slot.repeat;
+    add(slot.stepId, (repeats ? slot.count : Math.min(slot.count, slot.from.length)) - slot.chosen.length);
   }
   return remaining;
 }

@@ -56,7 +56,8 @@ const chipOff = "border-[var(--border)] text-[var(--foreground)] hover:bg-[var(-
 const buttonClass =
   "inline-flex items-center gap-1 rounded-lg border border-[var(--border)] px-2 py-1 text-[0.6875rem] text-[var(--foreground)] hover:bg-[var(--accent)] disabled:opacity-50";
 
-/** A choice of `count` among `from`, as toggles: a full choice takes no more until one is let go. */
+/** A choice of `count` among `from`, as toggles: a full choice takes no more until one is let go. A
+ *  choice that repeats (1.88) adds one each press, and takes one back with the chip's minus. */
 function ChoiceSlot({
   title,
   slot,
@@ -70,7 +71,8 @@ function ChoiceSlot({
 }) {
   const { t } = useUiTranslation();
   const full = slot.chosen.length >= slot.count;
-  const left = Math.max(0, Math.min(slot.count, slot.from.length) - slot.chosen.length);
+  const repeat = "repeat" in slot && !!slot.repeat;
+  const left = Math.max(0, (repeat ? slot.count : Math.min(slot.count, slot.from.length)) - slot.chosen.length);
   return (
     <fieldset className="space-y-1.5 rounded-lg border border-[var(--border)] p-2">
       <legend className="px-1 text-[0.6875rem] font-semibold text-[var(--foreground)]">
@@ -82,6 +84,35 @@ function ChoiceSlot({
       <div className="flex flex-wrap gap-1.5">
         {slot.from.map((id) => {
           const on = slot.chosen.includes(id);
+          if (repeat) {
+            const times = slot.chosen.filter((each) => each === id).length;
+            return (
+              <span key={id} className="inline-flex items-center gap-0.5">
+                <button
+                  type="button"
+                  aria-pressed={times > 0}
+                  disabled={full}
+                  onClick={() => onChange([...slot.chosen, id])}
+                  className={`${chipClass} ${times > 0 ? chipOn : chipOff}`}
+                >
+                  {times > 1 ? t("ui.rulesets.builder.pickedTimes", { name: labelOf(id), count: times }) : labelOf(id)}
+                </button>
+                {times > 0 && (
+                  <button
+                    type="button"
+                    aria-label={t("ui.rulesets.builder.takeBackOne", { name: labelOf(id) })}
+                    onClick={() => {
+                      const at = slot.chosen.lastIndexOf(id);
+                      onChange(slot.chosen.filter((_, index) => index !== at));
+                    }}
+                    className={`${chipClass} ${chipOff}`}
+                  >
+                    <Minus size={10} aria-hidden="true" />
+                  </button>
+                )}
+              </span>
+            );
+          }
           return (
             <button
               key={id}

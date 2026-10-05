@@ -59,6 +59,7 @@ try {
   const locks = new Map<string, string>();
   const ends: Array<{ originId: string; end: SceneOriginEnd }> = [];
   let claimThrows = false;
+  const claimedData: unknown[] = [];
   const provider: SceneOriginProvider = {
     async getContext(originId) {
       if (originId === "gone") return null;
@@ -75,6 +76,9 @@ try {
     },
     async claim(originId, scene) {
       if (claimThrows) throw new Error("storage down");
+      claimedData.push(scene.data);
+      // A scene that asked not to lock is admitted without one.
+      if (scene.data?.lock === false) return true;
       if (locks.has(originId)) return false;
       locks.set(originId, scene.sceneChatId);
       return true;
@@ -151,6 +155,7 @@ try {
   assert.deepEqual(ends[0], {
     originId: "thread-1",
     end: {
+      data: null,
       kind: "concluded",
       sceneChatId: created.chatId,
       summary: providerContent,
@@ -194,11 +199,35 @@ try {
   await api("POST", "/api/scene/abandon", { sceneChatId: own.chatId });
   ends.pop();
 
-  // Refusals.
   const refuse = async (url: string, body: object, status: number) => {
     const response = await app.inject({ method: "POST", url, payload: body });
     assert.equal(response.statusCode, status, `${url} ${JSON.stringify(body)}: ${response.body}`);
   };
+  // Per-scene settings: stored with the scene, handed to claim and release, and free to skip the lock.
+  const unlocked = await api("POST", "/api/scene/create", {
+    ...payload,
+    packageOrigin: origin("thread-3"),
+    packageData: { lock: false, reach: "hint" },
+  });
+  const second = await api("POST", "/api/scene/create", {
+    ...payload,
+    packageOrigin: origin("thread-3"),
+    packageData: { lock: false },
+  });
+  assert.notEqual(unlocked.chatId, second.chatId, "Scenes that skip the lock run side by side");
+  assert.deepEqual(claimedData.slice(-2), [{ lock: false, reach: "hint" }, { lock: false }]);
+  const unlockedChat = await api("GET", `/api/chats/${unlocked.chatId}`);
+  assert.deepEqual(unlockedChat.metadata.scenePackageData, { lock: false, reach: "hint" });
+  const endsBefore = ends.length;
+  locks.set("thread-3", unlocked.chatId); // let the fixture record this release
+  await api("POST", "/api/scene/abandon", { sceneChatId: unlocked.chatId });
+  assert.deepEqual(ends.at(-1)?.end.data, { lock: false, reach: "hint" }, "release gets the scene's own data");
+  ends.splice(endsBefore);
+  await api("POST", "/api/scene/abandon", { sceneChatId: second.chatId });
+  await refuse("/api/scene/create", { ...payload, packageData: "x" }, 400);
+  await refuse("/api/scene/create", { ...payload, packageData: { big: "x".repeat(5000) } }, 400);
+
+  // Refusals.
   await refuse("/api/scene/plan", { chatId: "x", packageOrigin: origin("thread-1"), prompt: "" }, 400);
   await refuse("/api/scene/plan", { packageOrigin: { packageId: "Bad Id", originId: "t" }, prompt: "" }, 400);
   await refuse("/api/scene/plan", { packageOrigin: { packageId: "other-pkg", originId: "t" }, prompt: "" }, 404);

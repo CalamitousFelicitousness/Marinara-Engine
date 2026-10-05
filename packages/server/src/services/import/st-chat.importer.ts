@@ -266,6 +266,7 @@ function sanitizeImportedMarinaraMetadata(
   delete sanitized.activeSceneChatId;
   delete sanitized.sceneOriginChatId;
   delete sanitized.scenePackageOrigin;
+  delete sanitized.scenePackageData;
   delete sanitized.sceneStatus;
   delete sanitized.branchParentChatId;
   delete sanitized.branchParentMessageId;

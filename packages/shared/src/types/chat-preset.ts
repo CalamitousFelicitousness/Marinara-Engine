@@ -74,6 +74,7 @@ export const CHAT_PRESET_EXCLUDED_METADATA_KEYS: readonly string[] = [
   "autonomousUnreadAt",
   "sceneOriginChatId",
   "scenePackageOrigin",
+  "scenePackageData",
   "sceneInitiatorCharId",
   "sceneDescription",
   "sceneScenario",

@@ -5,7 +5,12 @@
 // (a direct-message thread, for example) can be a scene origin too: the provider supplies the planning
 // context, holds the lock while the scene runs and receives the outcome. Contract: `SceneOriginProvider`.
 // ──────────────────────────────────────────────
-import type { SceneOriginEnd, SceneOriginProvider, ScenePackageOrigin } from "@marinara-engine/shared";
+import type {
+  SceneOriginEnd,
+  SceneOriginProvider,
+  ScenePackageData,
+  ScenePackageOrigin,
+} from "@marinara-engine/shared";
 import { logger } from "../../lib/logger.js";
 
 const providersByPackage = new Map<string, SceneOriginProvider>();
@@ -39,6 +44,24 @@ export function parseScenePackageOrigin(value: unknown): ScenePackageOrigin | nu
     return null;
   if (typeof originId !== "string" || !originId.trim() || originId.length > 200) return null;
   return { packageId, originId };
+}
+
+/** A package's per-scene settings: a plain JSON object of at most 4,000 characters, or null. */
+export function parseScenePackageData(value: unknown): ScenePackageData | null | "invalid" {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "object" || Array.isArray(value)) return "invalid";
+  try {
+    const json = JSON.stringify(value);
+    return json.length <= 4000 ? (JSON.parse(json) as ScenePackageData) : "invalid";
+  } catch {
+    return "invalid";
+  }
+}
+
+/** The settings a scene chat stored, from its metadata. */
+export function parseStoredScenePackageData(meta: Record<string, unknown>): ScenePackageData | null {
+  const data = parseScenePackageData(meta.scenePackageData);
+  return data === "invalid" ? null : data;
 }
 
 /**

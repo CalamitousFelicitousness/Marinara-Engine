@@ -43,6 +43,8 @@ import { assemblePrompt } from "../services/prompt/assembler.js";
 import { parsePromptPresetChoices } from "../services/generation/conversation-context-utils.js";
 import {
   getCapabilitySceneOrigin,
+  parseScenePackageData,
+  parseStoredScenePackageData,
   parseScenePackageOrigin,
   releaseScenePackageOrigin,
 } from "../services/capability-packages/capability-scene-origin.service.js";
@@ -462,6 +464,9 @@ export async function sceneRoutes(app: FastifyInstance) {
   // stores conversation history as hidden context in metadata.
   app.post<{ Body: SceneCreateRequest }>("/create", async (req, reply) => {
     const { originChatId, initiatorCharId, plan, connectionId, promptPresetId } = req.body;
+    const packageData = parseScenePackageData(req.body.packageData);
+    if (packageData === "invalid" || (packageData && !req.body.packageOrigin))
+      return reply.status(400).send({ error: "Package data must be a small JSON object for a package origin" });
     // A package may hand over a plan it wrote itself, so the fields the chat is built from are checked.
     if (
       !plan ||
@@ -529,7 +534,9 @@ export async function sceneRoutes(app: FastifyInstance) {
     const existingMeta = parseMetadata(sceneChat);
     await chats.updateMetadata(sceneChat.id, {
       ...existingMeta,
-      ...(origin.chat ? { sceneOriginChatId: origin.chat.id } : { scenePackageOrigin: origin.packageOrigin }),
+      ...(origin.chat
+        ? { sceneOriginChatId: origin.chat.id }
+        : { scenePackageOrigin: origin.packageOrigin, ...(packageData ? { scenePackageData: packageData } : {}) }),
       sceneInitiatorCharId: initiatorCharId,
       sceneDescription: plan.description,
       sceneScenario: plan.scenario,
@@ -575,6 +582,7 @@ export async function sceneRoutes(app: FastifyInstance) {
           claim = (await provider.claim!(packageOrigin.originId, {
             sceneChatId: sceneChat.id,
             characterIds: finalParticipantIds,
+            data: packageData,
           }))
             ? "claimed"
             : "busy";
@@ -785,6 +793,7 @@ export async function sceneRoutes(app: FastifyInstance) {
     if (originChatId) await releaseSceneParticipants(originChatId, sceneChatId);
     else
       await releaseScenePackageOrigin(packageOrigin!, {
+        data: parseStoredScenePackageData(sceneMeta),
         kind: "concluded",
         sceneChatId,
         summary,
@@ -828,7 +837,12 @@ export async function sceneRoutes(app: FastifyInstance) {
     await chats.remove(sceneChatId);
 
     // 4. A package thread unlocks only once the scene chat is gone, so it can never take a second scene early.
-    if (packageOrigin) await releaseScenePackageOrigin(packageOrigin, { kind: "abandoned", sceneChatId });
+    if (packageOrigin)
+      await releaseScenePackageOrigin(packageOrigin, {
+        kind: "abandoned",
+        sceneChatId,
+        data: parseStoredScenePackageData(sceneMeta),
+      });
 
     return { originChatId, packageOrigin } satisfies SceneAbandonResponse;
   });
@@ -999,7 +1013,11 @@ export async function sceneRoutes(app: FastifyInstance) {
         await chats.remove(sceneChatId);
       } else if (mode === "convert" && packageOrigin) {
         await chats.remove(sceneChatId);
-        await releaseScenePackageOrigin(packageOrigin, { kind: "converted", sceneChatId });
+        await releaseScenePackageOrigin(packageOrigin, {
+          kind: "converted",
+          sceneChatId,
+          data: parseStoredScenePackageData(sceneMeta),
+        });
       }
     } catch (err) {
       try {

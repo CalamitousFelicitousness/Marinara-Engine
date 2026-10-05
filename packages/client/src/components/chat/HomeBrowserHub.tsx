@@ -2968,6 +2968,7 @@ export function HomeBrowserHub({
                   prompt?: string;
                   planHint?: string | null;
                   plan?: SceneFullPlan | null;
+                  data?: Record<string, unknown> | null;
                   initiatorCharacterId?: string | null;
                   initiatorName?: string | null;
                 }) =>
@@ -2976,6 +2977,7 @@ export function HomeBrowserHub({
                     prompt: typeof options?.prompt === "string" ? options.prompt : "",
                     planHint: typeof options?.planHint === "string" ? options.planHint : null,
                     plan: options?.plan && typeof options.plan === "object" ? options.plan : null,
+                    packageData: options?.data && typeof options.data === "object" ? options.data : null,
                     initiatorCharId:
                       typeof options?.initiatorCharacterId === "string" ? options.initiatorCharacterId : null,
                     initiatorCharName: typeof options?.initiatorName === "string" ? options.initiatorName : null,

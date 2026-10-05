@@ -1119,7 +1119,7 @@ export async function activate({ api }) {
 
 The browser view (`home-browser-tab`) receives these props:
 
-- `startScene({ originId, prompt?, planHint?, plan?, initiatorCharacterId?, initiatorName? })` opens the
+- `startScene({ originId, prompt?, planHint?, plan?, data?, initiatorCharacterId?, initiatorName? })` opens the
   scene prompt-preference dialog, plans and creates the scene, and opens its chat. Pass `plan` (a
   `SceneFullPlan`: name, description, hidden scenario, first message, scene system prompt, rating,
   relationship history, participation guide, background, cast) to write the scene yourself; the
@@ -1133,6 +1133,11 @@ The browser view (`home-browser-tab`) receives these props:
 
 Rules worth knowing:
 
+- `data` is this scene's own settings, a plain JSON object of at most 4,000 characters. The Engine
+  keeps it with the scene and passes it to `claim(originId, { sceneChatId, characterIds, data })` and
+  to `release` as `end.data`, so each scene can decide for itself: `claim` may admit a scene without
+  locking (return `true` and store nothing), and `release` may unlock without taking the recap, or
+  take it at the reach the scene asked for.
 - Only `getContext` is required. A package that just wants to start scenes leaves out `claim` and
   `release`: nothing is locked, any number of scenes can run from the same origin, and nothing is
   delivered when they end (**Back** still returns to the package). Leave out only `release` to lock

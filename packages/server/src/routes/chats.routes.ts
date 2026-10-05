@@ -207,6 +207,7 @@ import { resolveLorebookTokenBudget } from "../services/generation/lorebook-gene
 import { resolveGameGmPromptTemplate } from "../services/generation/game-gm-prompt-runtime.js";
 import {
   parseScenePackageOrigin,
+  parseStoredScenePackageData,
   releaseScenePackageOrigin,
 } from "../services/capability-packages/capability-scene-origin.service.js";
 import {
@@ -2051,10 +2052,14 @@ export async function chatsRoutes(app: FastifyInstance) {
     // If this is a scene chat, clean up the origin chat's scene pointer
     const chat = await storage.getById(req.params.id);
     let scenePackageOrigin: ReturnType<typeof parseScenePackageOrigin> = null;
+    let scenePackageData: ReturnType<typeof parseStoredScenePackageData> = null;
     if (chat) {
       const meta = parseExtra(chat.metadata) as Record<string, unknown>;
       // A package origin is told after the chat is gone, so its thread never unlocks while the scene still exists.
-      if (meta.sceneStatus === "active") scenePackageOrigin = parseScenePackageOrigin(meta.scenePackageOrigin);
+      if (meta.sceneStatus === "active") {
+        scenePackageOrigin = parseScenePackageOrigin(meta.scenePackageOrigin);
+        scenePackageData = parseStoredScenePackageData(meta);
+      }
       const originId = meta.sceneOriginChatId;
       if (typeof originId === "string" && originId) {
         const origin = await storage.getById(originId);
@@ -2078,7 +2083,11 @@ export async function chatsRoutes(app: FastifyInstance) {
     await storage.disconnectChat(req.params.id);
     await storage.remove(req.params.id);
     if (scenePackageOrigin)
-      await releaseScenePackageOrigin(scenePackageOrigin, { kind: "deleted", sceneChatId: req.params.id });
+      await releaseScenePackageOrigin(scenePackageOrigin, {
+        kind: "deleted",
+        sceneChatId: req.params.id,
+        data: scenePackageData,
+      });
     return reply.status(204).send();
   });
 

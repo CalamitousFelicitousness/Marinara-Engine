@@ -2,6 +2,7 @@ import { toast } from "sonner";
 import type {
   SceneCreateResponse,
   SceneFullPlan,
+  ScenePackageData,
   ScenePackageOrigin,
   ScenePlanResponse,
   ScenePromptPreferences,
@@ -15,6 +16,8 @@ export interface StartSceneOptions {
   chatId?: string;
   /** The package thread the scene branches from. */
   packageOrigin?: ScenePackageOrigin;
+  /** The package's per-scene settings, handed back to its `claim` and `release`. */
+  packageData?: ScenePackageData | null;
   prompt: string;
   initiatorCharId?: string | null;
   initiatorCharName?: string | null;
@@ -127,7 +130,9 @@ export async function startSceneWithPromptPreferences(options: StartSceneOptions
   toast.loading("Creating scene...", { id: toastId, icon: "🎬" });
   try {
     const response = await api.post<SceneCreateResponse>("/scene/create", {
-      ...(options.packageOrigin ? { packageOrigin: options.packageOrigin } : { originChatId: options.chatId }),
+      ...(options.packageOrigin
+        ? { packageOrigin: options.packageOrigin, ...(options.packageData ? { packageData: options.packageData } : {}) }
+        : { originChatId: options.chatId }),
       initiatorCharId: options.initiatorCharId ?? null,
       plan,
       connectionId: options.connectionId ?? null,

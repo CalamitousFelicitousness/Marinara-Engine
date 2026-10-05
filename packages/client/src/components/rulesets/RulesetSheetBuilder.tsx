@@ -518,7 +518,11 @@ export function RulesetSheetBuilder({
                   key={id}
                   className="grid grid-cols-[minmax(0,1fr)_minmax(0,6.5rem)_2.5rem_2.5rem_2.5rem] items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] px-2 py-1"
                 >
-                  <span className="min-w-0 truncate text-xs text-[var(--foreground)]">{ability.label}</span>
+                  <span className="min-w-0 truncate text-xs text-[var(--foreground)]" title={ability.label}>
+                    {/* A phone's row is narrow: the short name there, the full one where it fits. */}
+                    <span className="sm:hidden">{ability.short ?? ability.label}</span>
+                    <span className="hidden sm:inline">{ability.label}</span>
+                  </span>
                   {control}
                   <span className="text-center text-xs tabular-nums text-[var(--muted-foreground)]">
                     {increase !== 0 ? signed(increase) : ""}

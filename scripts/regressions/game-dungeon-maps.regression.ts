@@ -33,6 +33,8 @@ import {
 
 const dataDir = mkdtempSync(join(tmpdir(), "marinara-dungeon-maps-"));
 process.env.DATA_DIR = dataDir;
+// No local embedding model: memory recall would start fetching one after each turn and hold the process open.
+process.env.MARINARA_LITE = "true";
 process.env.FILE_STORAGE_DIR = join(dataDir, "storage");
 
 const { default: Fastify } = await import("../../packages/server/node_modules/fastify/fastify.js");

@@ -617,9 +617,10 @@ const skillSchema = z
 const saveSchema = skillSchema;
 
 const derivedBase = { id: sheetId, label, section: sheetId.optional(), hideWhen: hideWhenSchema.optional() };
-/** The most derived values a sheet may have: 120 since Capability API 1.79, which a package with more
- *  than `RULESET_DERIVED_MAX_BEFORE_179` declares. */
-export const RULESET_DERIVED_MAX = 120;
+/** The most derived values a sheet may have: 240 since Capability API 1.83 (120 since 1.79), which a
+ *  package with more than `RULESET_DERIVED_MAX_BEFORE_183` (or `_179`) declares. */
+export const RULESET_DERIVED_MAX = 240;
+export const RULESET_DERIVED_MAX_BEFORE_183 = 120;
 export const RULESET_DERIVED_MAX_BEFORE_179 = 60;
 export const rulesetDerivedSchema = z.discriminatedUnion("op", [
   z.object({ ...derivedBase, op: z.literal("sum"), of: z.array(rulesetValueRefSchema).min(1).max(12) }).strict(),
@@ -1084,7 +1085,7 @@ export const rulesetSheetSchema = z
       .strict()
       .default({ min: -20, max: 40 }),
     fields: z.array(rulesetFieldSchema).max(160).default([]),
-    /** Up to 120 (Capability API 1.79; 60 before it). */
+    /** Up to 240 (Capability API 1.83; 120 from 1.79, 60 before it). */
     derived: z.array(rulesetDerivedSchema).max(RULESET_DERIVED_MAX).default([]),
     lists: z.array(listSchema).max(20).default([]),
     live: liveSchema.default({}),

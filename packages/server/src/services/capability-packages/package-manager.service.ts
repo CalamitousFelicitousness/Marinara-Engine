@@ -33,6 +33,7 @@ import {
   type InstalledCapabilityPackage,
   rulesetFakeIssue,
   RULESET_DERIVED_MAX_BEFORE_179,
+  RULESET_DERIVED_MAX_BEFORE_183,
   type RulesetCatalogItem,
 } from "@marinara-engine/shared";
 import { WORLD_SHARE_FILE_MAX_BYTES } from "@marinara-engine/shared";
@@ -1759,6 +1760,10 @@ export function getCapabilityPackageInstallIssue(
   // More derived values than an older Engine reads, 1.79: it refused a sheet with more than 60.
   if (!declaresApi(79) && Array.isArray(derivedValues) && derivedValues.length > RULESET_DERIVED_MAX_BEFORE_179) {
     return `A ruleset with more than ${RULESET_DERIVED_MAX_BEFORE_179} derived values requires schemaVersion 2 and capabilityApi 1.79 or newer`;
+  }
+  // More derived values again, 1.83: an older Engine refused a sheet with more than 120.
+  if (!declaresApi(83) && Array.isArray(derivedValues) && derivedValues.length > RULESET_DERIVED_MAX_BEFORE_183) {
+    return `A ruleset with more than ${RULESET_DERIVED_MAX_BEFORE_183} derived values requires schemaVersion 2 and capabilityApi 1.83 or newer`;
   }
   // A list column a player fills by rolling, 1.80: a new key on the strict column.
   const lists = plainRecord(ruleset?.sheet)?.lists;

@@ -651,7 +651,10 @@ const capabilityPackageManifestBaseSchema = z
 //        entries up to a value read off the sheet (`upTo`, features up to the character's level). Not a
 //        soft seam: an Engine that cannot read either refuses the ruleset file, so a package that ships
 //        them declares 1.82. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 82 } as const);
+// 1.83: a sheet may have up to 240 derived values (120 before). Not a soft seam: an Engine that cannot
+//        read it refuses the whole ruleset file, so a package with more than 120 declares 1.83.
+//        No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 83 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

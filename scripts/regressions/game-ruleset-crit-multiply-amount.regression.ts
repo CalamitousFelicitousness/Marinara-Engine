@@ -248,10 +248,15 @@ try {
           doc.sheet.derived.push({ id: `extra_${i}`, label: `Extra ${i}`, op: "sum", of: [{ const: 1 }] });
       });
     assert.equal(parseRulesetDefinition(many(120)).ok, true, "120 derived values read");
-    assert.equal(parseRulesetDefinition(many(121)).ok, false, "121 do not");
+    assert.equal(parseRulesetDefinition(many(240)).ok, true, "240 since 1.83");
+    assert.equal(parseRulesetDefinition(many(241)).ok, false, "241 do not");
     assert.match(issue(78, many(61)) ?? "", /more than 60 derived values.*1\.79/);
     assert.equal(issue(79, many(61)), null);
     assert.equal(issue(78, many(60)), null, "60 is still 1.78's");
+    // 1.83: more than 120, up to 240.
+    assert.match(issue(82, many(121)) ?? "", /more than 120 derived values.*1\.83/);
+    assert.equal(issue(83, many(121)), null);
+    assert.equal(issue(82, many(120)), null, "120 is still 1.79's");
     assert.match(issue(79, rolled({ column: "die" })) ?? "", /list column filled by a roll.*1\.80/);
     assert.equal(issue(80, rolled({ column: "die" })), null);
   }

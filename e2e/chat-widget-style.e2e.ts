@@ -982,6 +982,15 @@ for (const [preset, theme] of [
       await choosePreset(page, preset);
       let scope = await showStyleScope(page, fixture.chats[0]!);
       const original = baseline.get("classic")!;
+      const swipes = page.locator('[data-chat-mode="roleplay"] .mari-message-swipes').first();
+      const swipeFrame = swipes.locator(".mari-swipe-input");
+      const swipeInput = swipeFrame.locator("input");
+      const swipeArrow = swipes.getByRole("button").first();
+      const originalSwipe = {
+        frame: await surfaceAppearance(swipeFrame),
+        arrow: await surfaceAppearance(swipeArrow),
+        font: await swipeInput.evaluate((node) => getComputedStyle(node).fontFamily),
+      };
       const send = page.locator(".mari-chat-send-btn").first();
       const sendFill = await send.evaluate((node) => getComputedStyle(node).backgroundColor);
       expect(await surfaceAppearance(scope.surface)).toEqual(original.surface);
@@ -995,6 +1004,10 @@ for (const [preset, theme] of [
       expect(selectedFont).not.toBe(original.font);
       await expect(scope.text).toHaveCSS("font-family", selectedFont);
       await expect(scope.input).toHaveCSS("font-family", selectedFont);
+      await expect(swipes).toHaveCSS("font-family", selectedFont);
+      await expect(swipeInput).toHaveCSS("font-family", selectedFont);
+      expect(await surfaceAppearance(swipeFrame)).toEqual(originalSwipe.frame);
+      expect(await surfaceAppearance(swipeArrow)).toEqual(originalSwipe.arrow);
       expect(await surfaceAppearance(scope.surface)).toEqual(original.surface);
       expect(await surfaceAppearance(scope.composer)).toEqual(original.composer);
 
@@ -1013,6 +1026,16 @@ for (const [preset, theme] of [
         else expect(shaped.radius).not.toBe(old.radius);
       }
       await expect(scope.text).toHaveCSS("font-family", original.font);
+      await expect(swipeInput).toHaveCSS("font-family", originalSwipe.font);
+      for (const [target, old] of [
+        [swipeFrame, originalSwipe.frame],
+        [swipeArrow, originalSwipe.arrow],
+      ] as const) {
+        const shaped = await surfaceAppearance(target);
+        expect(shaped.background).toBe(old.background);
+        if (preset === "dottore") expect(shaped.clip).toContain("polygon");
+        else expect(shaped.radius).not.toBe(old.radius);
+      }
       if (preset === "dottore") {
         expect(await send.evaluate((node) => getComputedStyle(node, "::after").backgroundColor)).toBe(sendFill);
         const frame = (element: Locator) =>
@@ -1069,6 +1092,16 @@ for (const [preset, theme] of [
       );
       await expect(scope.text).toHaveCSS("font-family", original.font);
 
+      for (const [target, old] of [
+        [swipeFrame, originalSwipe.frame],
+        [swipeArrow, originalSwipe.arrow],
+      ] as const) {
+        const painted = await surfaceAppearance(target);
+        expect(painted.radius).toBe(old.radius);
+        expect(painted.clip).toBe(old.clip);
+        expect(painted.background).toBe(colored.background);
+      }
+
       controls = await openAppearance(page);
       await setChatStyleApplication(controls, "font", true);
       await setChatStyleApplication(controls, "shape", true);
@@ -1108,6 +1141,18 @@ for (const [preset, theme] of [
           const paintedText = (await glyph.count()) ? glyph : scope.text;
           await expect(paintedText).toHaveCSS("background-image", textGradient);
           await expect(paintedText).toHaveCSS("-webkit-text-fill-color", "rgba(0, 0, 0, 0)");
+
+          if (chat.view === "classic" || chat.mode === "conversation") {
+            const pager = page.locator(`[data-chat-mode="${chat.mode}"] .mari-message-swipes`).first();
+            await expect(pager.locator("input")).toHaveCSS("font-family", /serif/);
+            await expect(pager.locator("input")).toHaveCSS("-webkit-text-fill-color", "rgb(108, 92, 231)");
+            await expect(pager.locator(":scope > span.tabular-nums")).toHaveCSS("background-image", textGradient);
+            for (const control of [pager.locator(".mari-swipe-input"), pager.getByRole("button").first()]) {
+              const painted = await surfaceAppearance(control);
+              expect(painted.clip).toContain("polygon");
+              expect(painted.image).toContain(background);
+            }
+          }
 
           await scope.input.fill("A readable draft");
           await expect(scope.input).toHaveValue("A readable draft");
@@ -1155,6 +1200,11 @@ for (const [preset, theme] of [
         expect(await surfaceAppearance(reset.surface)).toEqual(baseline.get(chat.view)!.surface);
         expect(await surfaceAppearance(reset.composer)).toEqual(baseline.get(chat.view)!.composer);
         await expect(reset.text).toHaveCSS("font-family", baseline.get(chat.view)!.font);
+        if (chat.view === "classic") {
+          expect(await surfaceAppearance(swipeFrame)).toEqual(originalSwipe.frame);
+          expect(await surfaceAppearance(swipeArrow)).toEqual(originalSwipe.arrow);
+          await expect(swipeInput).toHaveCSS("font-family", originalSwipe.font);
+        }
       }
     } finally {
       await fixture.remove();

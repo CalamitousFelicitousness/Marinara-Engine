@@ -76,6 +76,8 @@ export type GameInventoryRowTarget =
 
 export interface GameInventoryCommitted<T> {
   stacks: GameInventoryStack[];
+  /** What the change found out (a fake its holder's sheet shows for what it is), as lines to show. */
+  foundOut?: string[];
   /** The game state's stats after the change, when a row with a detailed inventory was written. */
   playerStats?: PlayerStats;
   value: T;
@@ -294,11 +296,16 @@ export async function applyGameInventoryChangeHeld<T>(
   const before = normalizeGameInventoryStacks(metadata.gameInventory);
   const changed = change(before, metadata);
   // A worn or carried fake that the sheet shows for what it is, is found out with the change that
-  // made it so (1.74, the user's ruling).
-  const found = changed.stacks !== before ? await revealFakesTheSheetShows(db, chatId, metadata, changed.stacks) : null;
-  const outcome = found
-    ? { ...changed, stacks: found.stacks, events: [...(changed.events ?? []), ...found.events] }
-    : changed;
+  // made it so (1.74, the user's ruling). Never at the cost of the change itself.
+  let found: Awaited<ReturnType<typeof revealFakesTheSheetShows>> = null;
+  if (changed.stacks !== before) {
+    try {
+      found = await revealFakesTheSheetShows(db, chatId, metadata, changed.stacks);
+    } catch (error) {
+      logger.warn(error, "[game/inventory] Could not tell whether a fake shows on a sheet in chat %s", chatId);
+    }
+  }
+  const outcome = found ? withFoundOut(changed, found) : changed;
   if (outcome.stacks === before && outcome.journal.length === 0 && !outcome.events?.length && !outcome.metadata) {
     return { stacks: before, value: outcome.value };
   }
@@ -320,9 +327,42 @@ export async function applyGameInventoryChangeHeld<T>(
     },
     { metadataQueueHeld: true },
   );
-  if (outcome.stacks === before || target.kind === "none") return { stacks: outcome.stacks, value: outcome.value };
+  const foundOut = found ? { foundOut: found.events.map((event) => event.content) } : {};
+  if (outcome.stacks === before || target.kind === "none") {
+    return { stacks: outcome.stacks, value: outcome.value, ...foundOut };
+  }
   const playerStats = await followOnRow(db, chatId, before, outcome.stacks, target);
-  return { stacks: outcome.stacks, ...(playerStats ? { playerStats } : {}), value: outcome.value };
+  return { stacks: outcome.stacks, ...(playerStats ? { playerStats } : {}), value: outcome.value, ...foundOut };
+}
+
+/** A change with what it found out: the revealed stacks, the journal's lines, and a telling's record (a
+ *  Game Master's turn) that remembers the revealed stacks too, so a swipe still finds its turn. */
+export function withFoundOut<T>(
+  changed: GameInventoryChange<T>,
+  found: { stacks: GameInventoryStack[]; events: Array<{ title: string; content: string }> },
+): GameInventoryChange<T> {
+  const turn = changed.metadata?.gameInventoryTurn as { swipes?: Record<string, GameInventoryStack[]> } | undefined;
+  const metadata =
+    turn?.swipes && changed.metadata
+      ? {
+          ...changed.metadata,
+          gameInventoryTurn: {
+            ...turn,
+            swipes: Object.fromEntries(
+              Object.entries(turn.swipes).map(([index, stacks]) => [
+                index,
+                stacks === changed.stacks ? found.stacks : stacks,
+              ]),
+            ),
+          },
+        }
+      : changed.metadata;
+  return {
+    ...changed,
+    stacks: found.stacks,
+    events: [...(changed.events ?? []), ...found.events],
+    ...(metadata ? { metadata } : {}),
+  };
 }
 
 /**
@@ -350,26 +390,52 @@ async function revealFakesTheSheetShows(
     context.cards.map((card) => card.name),
     context.playerName,
   );
+  // Only a card with a sheet of its own: a sheet nobody has is not one anybody reads a fake off.
+  const sheeted = new Set(
+    (Array.isArray(metadata.gameCharacterCards) ? (metadata.gameCharacterCards as Array<Record<string, unknown>>) : [])
+      .filter((card) => card.rulesetSheet != null && typeof card.name === "string")
+      .map((card) => normalizeCharacterLookupName(card.name as string)),
+  );
+  // As the sheet stands in play: its live state, which a requirement or a stat may read.
+  const latest = await createGameStateStorage(db).getLatest(chatId);
+  const liveByName =
+    latest?.rulesetLive && typeof latest.rulesetLive === "object"
+      ? (latest.rulesetLive as Record<string, unknown>)
+      : {};
   let next = stacks;
   const events: Array<{ title: string; content: string }> = [];
   for (const card of context.cards) {
+    if (!sheeted.has(normalizeCharacterLookupName(card.name))) continue;
     const held = itemsOf(card.name);
-    // Read without the live state: what a fake changes is the sheet's arithmetic, not where a pool stands.
-    const live = readRulesetLive(definition, card.build, undefined);
+    if (!held.some((each) => each.truly)) continue;
+    const live = readRulesetLive(definition, card.build, liveByName[normalizeCharacterLookupName(card.name)] as never);
     for (const index of rulesetFakesTheSheetShows(
       definition,
       card.build,
       held,
-      (items, sheet) => rulesetItemSources(definition, card.build, items, sheet),
+      // What a check reads of them: a fight's own parts (resistances, immunities) are not a check's.
+      (items, sheet) =>
+        rulesetItemSources(definition, card.build, items, sheet)
+          .map(
+            ({
+              resist: _resist,
+              vulnerable: _vulnerable,
+              immune: _immune,
+              conditionImmunities: _conditions,
+              ...check
+            }) => check,
+          )
+          // A source with nothing left a check reads is no source to a check.
+          .filter((check) => Object.keys(check).some((key) => key !== "name" && key !== "$comment")),
       live,
     )) {
       const fake = held[index]!;
       if (!fake.stack || !fake.truly) continue;
       next = revealGameInventoryFake(next, fake.stack.id, book);
-      events.push({
-        title: "Found out",
-        content: `${card.name}'s ${fake.name ?? fake.stack.ref} was really ${fake.truly.name}.`,
-      });
+      const shown = fake.name ?? fake.stack.ref;
+      // The player's own bag is theirs, whoever's card reads it.
+      const whose = fake.stack.holder === undefined ? "Your" : `${card.name}'s`;
+      events.push({ title: `${shown} found out`, content: `${whose} ${shown} was really ${fake.truly.name}.` });
     }
   }
   return events.length ? { stacks: next, events } : null;

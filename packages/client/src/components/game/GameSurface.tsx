@@ -7819,15 +7819,19 @@ function GameSurfaceComponent({
     [activeChatId, queryClient, syncInventoryToChatCache],
   );
   const commitInventory = useCallback(
-    async (ops: GameInventoryOp[]): Promise<GameInventoryOpResult[]> =>
-      (
-        await sendInventory((chatId) =>
-          api.post<{ inventory: GameInventoryStack[]; results: GameInventoryOpResult[]; playerStats?: PlayerStats }>(
-            "/game/inventory",
-            { chatId, ops },
-          ),
-        )
-      )?.results ?? [],
+    async (ops: GameInventoryOp[]): Promise<GameInventoryOpResult[]> => {
+      const response = await sendInventory((chatId) =>
+        api.post<{
+          inventory: GameInventoryStack[];
+          results: GameInventoryOpResult[];
+          playerStats?: PlayerStats;
+          foundOut?: string[];
+        }>("/game/inventory", { chatId, ops }),
+      );
+      // A fake the sheet now shows for what it is was found out with this change (1.74).
+      for (const line of response?.foundOut ?? []) toast.info(line);
+      return response?.results ?? [];
+    },
     [sendInventory],
   );
 

@@ -30,6 +30,7 @@ const { createChatsStorage } = await import("../../packages/server/src/services/
 const { createGameRulesetsStorage } =
   await import("../../packages/server/src/services/storage/game-rulesets.storage.js");
 const { gameInventoryRoutes } = await import("../../packages/server/src/routes/game-inventory.routes.js");
+const { withFoundOut } = await import("../../packages/server/src/services/game/game-inventory.service.js");
 
 const db = await getDB();
 const app = Fastify();
@@ -76,6 +77,19 @@ try {
       passesFor: "kit/lantern-coat",
       cost: { amount: 1, unit: "penny" },
       stats: { soak_blunt: 0, soak_tearing: 0 },
+    },
+  });
+  // And a warding coat whose only difference is a fight's (a resistance), which no check reads.
+  kit.entries.push({
+    id: "ward-coat",
+    label: "Ward coat",
+    item: {
+      category: "coat",
+      slots: { body: 1 },
+      passesFor: "kit/lantern-coat",
+      cost: { amount: 1, unit: "penny" },
+      stats: { soak_blunt: 1, soak_tearing: 1 },
+      worn: { resist: ["burning"] },
     },
   });
   doc.sheet.derived.push({
@@ -131,7 +145,7 @@ try {
     const chat = await chats.create({ name: "Fakes worn", mode: "game", characterIds: [] });
     await chats.patchMetadata(chat.id, {
       gameRuleset: { id: "local/gravewatch-fake-worn", version: 1, packageId: null, options: {} },
-      gameCharacterCards: [{ name: "Ada" }],
+      gameCharacterCards: [{ name: "Ada", rulesetSheet: { v: 1, build: defaultRulesetSheetBuild(definition) } }],
       gameInventory: [
         {
           id: "st-chill",
@@ -175,13 +189,67 @@ try {
     // The chilling one, worn: what a ward check adds changes, so it is found out.
     const chill = await ops([{ op: "equip", id: "st-chill" }]);
     assert.equal(chill.statusCode, 200, chill.body);
+    assert.deepEqual(chill.json().foundOut, ["Your Lantern-keeper's coat was really Chill coat."]);
     const found = (chill.json().inventory as Array<{ id: string; item: string; name: string; truly?: string }>).find(
       (stack) => stack.id === "st-chill",
     );
     assert.deepEqual([found?.item, found?.name, found?.truly], ["kit/chill-coat", "Chill coat", undefined]);
     const meta = JSON.parse((await chats.getById(chat.id))!.metadata as string);
     const lines = JSON.stringify(meta.gameJournal);
-    assert.match(lines, /Ada's Lantern-keeper's coat was really Chill coat\./);
+    assert.match(lines, /Your Lantern-keeper's coat was really Chill coat\./);
+    // A card with no sheet of its own is not one a fake is read off.
+    const unsheeted = await chats.create({ name: "No sheet", mode: "game", characterIds: [] });
+    await chats.patchMetadata(unsheeted.id, {
+      gameRuleset: { id: "local/gravewatch-fake-worn", version: 1, packageId: null, options: {} },
+      gameCharacterCards: [{ name: "Ada" }],
+      gameInventory: [
+        {
+          id: "st-chill",
+          name: "Lantern-keeper's coat",
+          item: "kit/lantern-coat",
+          quantity: 1,
+          truly: "kit/chill-coat",
+        },
+      ],
+    });
+    const blind = await app.inject({
+      method: "POST",
+      url: "/game/inventory",
+      payload: { chatId: unsheeted.id, ops: [{ op: "equip", id: "st-chill" }] },
+    });
+    assert.equal(blind.json().inventory[0].truly, "kit/chill-coat");
+    // A difference only a fight reads does not find a fake out.
+    const warded = await chats.create({ name: "Ward", mode: "game", characterIds: [] });
+    await chats.patchMetadata(warded.id, {
+      gameRuleset: { id: "local/gravewatch-fake-worn", version: 1, packageId: null, options: {} },
+      gameCharacterCards: [{ name: "Ada", rulesetSheet: { v: 1, build: defaultRulesetSheetBuild(definition) } }],
+      gameInventory: [
+        { id: "st-ward", name: "Lantern-keeper's coat", item: "kit/lantern-coat", quantity: 1, truly: "kit/ward-coat" },
+      ],
+    });
+    const ward = await app.inject({
+      method: "POST",
+      url: "/game/inventory",
+      payload: { chatId: warded.id, ops: [{ op: "equip", id: "st-ward" }] },
+    });
+    assert.equal(ward.json().inventory[0].truly, "kit/ward-coat", ward.body);
+  }
+
+  // ── A turn's record remembers the revealed stacks, so a swipe still finds its turn ──
+  {
+    const turnStacks = [{ id: "a", name: "Coat", quantity: 1, truly: "kit/chill-coat" }] as never[];
+    const revealed = [{ id: "a", name: "Chill coat", item: "kit/chill-coat", quantity: 1 }] as never[];
+    const changed = withFoundOut(
+      {
+        stacks: turnStacks,
+        journal: [],
+        value: null,
+        metadata: { gameInventoryTurn: { messageId: "m", before: [], swipes: { "0": [], "1": turnStacks } } },
+      },
+      { stacks: revealed, events: [{ title: "t", content: "c" }] },
+    );
+    assert.deepEqual((changed.metadata!.gameInventoryTurn as any).swipes, { "0": [], "1": revealed });
+    assert.equal(changed.stacks, revealed);
   }
 
   console.log("Fakes worn: the sheet reads the truth, and a fake it tells apart is found out.");

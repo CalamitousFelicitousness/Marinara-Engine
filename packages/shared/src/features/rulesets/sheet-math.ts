@@ -262,9 +262,9 @@ function readItemStat(
   const held = (items ?? []).filter(
     (each) =>
       (spec.from === "all" || (spec.from === "worn") === each.worn) &&
-      (spec.slot === undefined || (each.item.slots?.[spec.slot] ?? 0) > 0) &&
-      (spec.category === undefined || each.item.category === spec.category) &&
-      (spec.tag === undefined || (each.item.tags ?? []).includes(spec.tag)),
+      (spec.slot === undefined || (rulesetHeldItemDoes(each).slots?.[spec.slot] ?? 0) > 0) &&
+      (spec.category === undefined || rulesetHeldItemDoes(each).category === spec.category) &&
+      (spec.tag === undefined || (rulesetHeldItemDoes(each).tags ?? []).includes(spec.tag)),
   );
   const given = (each: RulesetSheetItem) =>
     spec.stat === undefined ? undefined : rulesetHeldItemDoes(each).stats?.[spec.stat];
@@ -1088,7 +1088,7 @@ export function rulesetFakesTheSheetShows(
 ): number[] {
   const read = (held: readonly RulesetSheetItem[]) => {
     const sheet = evaluateRulesetSheet(definition, build, { ...live, items: held });
-    return JSON.stringify([
+    return stableJson([
       sheet.abilityScores,
       sheet.abilityMods,
       sheet.skillMods,
@@ -1109,4 +1109,15 @@ export function rulesetFakesTheSheetShows(
     if (read(seeming) !== truth) shown.push(index);
   });
   return shown;
+}
+
+/** A value as JSON with its keys in order, so two equal objects written in another order compare equal. */
+function stableJson(value: unknown): string {
+  return JSON.stringify(value, (_key, each: unknown) =>
+    each && typeof each === "object" && !Array.isArray(each)
+      ? Object.fromEntries(
+          Object.entries(each as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+        )
+      : each,
+  );
 }

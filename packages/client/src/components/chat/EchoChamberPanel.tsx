@@ -18,7 +18,11 @@ import { api } from "../../lib/api-client";
 import { cn } from "../../lib/utils";
 import { FloatingWindow, readFloatingWindowBounds, usePhoneBubbleBounds } from "../ui/FloatingWindow";
 import { WindowBubble } from "../ui/WindowBubble";
-import { PHONE_BUBBLE_Z_INDEX, useFloatingWindowStore } from "../../stores/floating-window.store";
+import {
+  PHONE_BUBBLE_Z_INDEX,
+  TRACKER_PANEL_BUBBLE_ID,
+  useFloatingWindowStore,
+} from "../../stores/floating-window.store";
 import { PHONE_BUBBLE_SIZE_PX, type WindowBounds, type WindowLayout } from "../../lib/floating-window-layout";
 import {
   getEchoChamberMessageInterval,
@@ -202,7 +206,9 @@ export function EchoChamberPanel({ hiddenOnMobile = false }: EchoChamberPanelPro
   const savedPhoneBubble = useFloatingWindowStore((s) => s.phoneBubbles[ECHO_WINDOW_ID]);
   const saveLayout = useFloatingWindowStore((s) => s.saveLayout);
   const trackerPanelEnabled = useUIStore((s) => s.trackerPanelEnabled);
-  const trackerPanelOpen = useUIStore((s) => s.trackerPanelOpen);
+  const trackerPanelSelected = useUIStore((s) => s.trackerPanelOpen);
+  const trackerPanelSurfaceOpen = useFloatingWindowStore((s) => s.open[TRACKER_PANEL_BUBBLE_ID] === true);
+  const trackerPanelOpen = trackerPanelSelected && trackerPanelSurfaceOpen;
   const trackerPanelSide = useUIStore((s) => s.trackerPanelSide);
   const echoMessages = useAgentStore((s) => s.echoMessages);
   const scrollRef = useRef<HTMLDivElement>(null);

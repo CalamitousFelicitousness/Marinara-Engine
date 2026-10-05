@@ -536,7 +536,7 @@ test.describe("phone bubbles", () => {
       await prepare(page, chat.id, {
         trackerPanelEnabled: false,
         trackerPanelOpen: false,
-        trackerPanelHideHudWidgets: true,
+        trackerPanelHideHudWidgets: false,
       });
       await page.goto("/");
       await expect(page.locator('[data-chat-mode="roleplay"]')).toBeVisible({ timeout: 30_000 });
@@ -556,12 +556,14 @@ test.describe("phone bubbles", () => {
       // Switching it on leaves the panel closed: it waits behind its bubble.
       await settings.locator('[data-window-control="close"]').click();
       await expect(trackerBubble).toBeVisible();
-      await expect(trackerBubble).toHaveAccessibleName("Open Tracker Panel");
+      await expect(trackerBubble).toHaveAccessibleName("Open Trackers");
       await expect(panel).toHaveCount(0);
       await expectComposerClearAndNoSideScroll(page);
 
       await trackerBubble.click();
       await expect(panel).toBeVisible();
+      await expect(panel.getByRole("button", { name: "Close Tracker Panel" })).toBeVisible();
+      await expect.poll(async () => Math.abs((await box(panel)).x)).toBeLessThan(1);
       await page.screenshot({ path: testInfo.outputPath("tracker-panel-open.png"), animations: "disabled" });
       // Closing the panel goes back to the bubble; the switch stays on.
       await panel.getByRole("button", { name: "Close Tracker Panel" }).click();

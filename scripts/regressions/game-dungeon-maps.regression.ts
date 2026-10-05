@@ -56,11 +56,28 @@ try {
           DUNGEON_EXIT_PROP,
           "the way in is the way out",
         );
+        // Every cell the party can stand on is reached from the way in (one flood, four ways).
+        const reached = new Set([map.entrance.y * map.width + map.entrance.x]);
+        for (const queue = [...reached]; queue.length; ) {
+          const i = queue.pop()!;
+          const [x, y] = [i % map.width, Math.floor(i / map.width)];
+          for (const [nx, ny] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]] as const) {
+            const n = ny * map.width + nx;
+            if (nx < 0 || ny < 0 || nx >= map.width || ny >= map.height || reached.has(n)) continue;
+            if (!dungeonWalkable(map, nx, ny)) continue;
+            reached.add(n);
+            queue.push(n);
+          }
+        }
         for (let i = 0; i < map.ground.length; i++) {
           const [x, y] = [i % map.width, Math.floor(i / map.width)];
-          if (!dungeonWalkable(map, x, y) || (x === map.entrance.x && y === map.entrance.y)) continue;
-          assert.ok(dungeonPath(map, map.entrance, { x, y }), `${set.id} ${seed} ${size}: (${x}, ${y}) is reachable`);
+          if (dungeonWalkable(map, x, y))
+            assert.ok(reached.has(i), `${set.id} ${seed} ${size}: (${x}, ${y}) is reachable`);
         }
+        // And the pathfinder finds a way to the last of them.
+        const last = [...reached].at(-1)!;
+        if (last !== map.entrance.y * map.width + map.entrance.x)
+          assert.ok(dungeonPath(map, map.entrance, { x: last % map.width, y: Math.floor(last / map.width) }));
         // Walls only where they border an open cell; the edge of the map is never open.
         for (let x = 0; x < map.width; x++) assert.notEqual(map.ground[x], "floor");
       }

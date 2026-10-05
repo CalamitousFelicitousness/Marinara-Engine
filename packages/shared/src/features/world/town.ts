@@ -586,6 +586,7 @@ function layOutByHand(
       issues.push(`a decoration at ${where(each.x, each.y)} is outside the town.`);
     else if (onBuilding) issues.push(`a decoration at ${where(each.x, each.y)} is on a building or before its door.`);
     else if (each.x === middle.x && each.y === middle.y) issues.push(`a decoration is on the middle of the square.`);
+    else if (isStall(each.x, each.y)) issues.push(`a decoration at ${where(each.x, each.y)} is on a market stall.`);
     else if (decoCells.has(cell)) issues.push(`two decorations share ${where(each.x, each.y)}.`);
     else {
       decoCells.add(cell);

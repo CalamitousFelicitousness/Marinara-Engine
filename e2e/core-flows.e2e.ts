@@ -3013,7 +3013,8 @@ test("connection model fetch errors inherit the configured editor accent", async
   let fetchCount = 0;
 
   try {
-    await page.route(`**/api/connections/${connection.id}/models`, async (route) => {
+    // Fetch Models asks for a fresh list (?refresh=true), so match the query string too.
+    await page.route(`**/api/connections/${connection.id}/models*`, async (route) => {
       const message = fetchCount === 0 ? networkError : internalServerError;
       fetchCount += 1;
       await route.fulfill({

@@ -29,6 +29,7 @@ import { WORLD_PEOPLE_DEFAULTS, worldCast, type WorldPerson } from "./people.js"
 import { worldBuildingHasRooms, worldInteriorEditIssues, worldInteriorUse, worldNamedPlaceUse } from "./interior.js";
 import type { WorldInteriorUse } from "./furniture.js";
 import { worldMapEditIssues, worldSiteEditIssues } from "./place-maps.js";
+import { worldIsSite } from "./sites.js";
 
 export const WORLD_TOWN_KINDS = Object.freeze(["landmark", "place", "work", "home"] as const);
 export type WorldTownKind = (typeof WORLD_TOWN_KINDS)[number];
@@ -154,7 +155,8 @@ export function worldTownBase(game: GameWorld, settlementId: string): WorldTown 
 /** Everyone in a settlement's town: its people and those of the places inside it, the people added by
  *  hand after everyone drawn, so nobody already in town moves house. */
 function townPeople(game: GameWorld, settlementId: string): WorldPerson[] {
-  const within = game.world.places.filter((place) => place.parentId === settlementId);
+  // A site's people (out in a cave or a ruin) are not the town's.
+  const within = game.world.places.filter((place) => place.parentId === settlementId && !worldIsSite(game, place.id));
   const cast = [settlementId, ...within.map((place) => place.id)].flatMap((id) => worldCast(game, id));
   return [
     ...cast.filter((person) => !worldPersonByHand(person.id)),
@@ -305,7 +307,8 @@ function layOutTown(
   };
 
   // ── Who is in town ──
-  const within = world.places.filter((place) => place.parentId === settlementId);
+  // A site a few steps out of town (a cave, a ruin) is out on the overworld, never a building here.
+  const within = world.places.filter((place) => place.parentId === settlementId && !worldIsSite(game, place.id));
   const inside = within.filter((place) => !place.byHand);
   // Places added by hand (W9c) go last, so the town never moves; the story's go after them, on top.
   const added = within.filter((place) => place.byHand);

@@ -631,7 +631,8 @@ export function compileWorld({
   );
 
   // Generator 2: sites out of the settlements, after everything else, so the rest is made as before.
-  if (generatorVersion >= 2) places.push(...compileSites(seed, kit, places, kindOf, width, height, settlementsDepth));
+  // Never in a strict world, which holds the brief's places and nothing invented beside them.
+  if (generatorVersion >= 2 && !strict) places.push(...compileSites(seed, kit, places, kindOf, width, height, settlementsDepth));
 
   return {
     generatorVersion,
@@ -725,7 +726,8 @@ function compileSites(
         parentId: settlement.id,
         at: { x: cell % width, y: Math.floor(cell / width) },
         culture: settlement.culture,
-        tags: kind === "ruins" ? ["ruin"] : [],
+        // Named for what it is ("Ruins"), never tagged: a kit's tags are its own words.
+        tags: [],
         named: false,
       });
     }

@@ -24,6 +24,7 @@ import {
   lastGamePlace,
   parseWorldKit,
   worldPresent,
+  worldIsSite,
   worldTown,
   worldTownDoor,
   worldTownMinutes,
@@ -95,7 +96,10 @@ try {
         assert.ok(beside, `${label}: ${building.id}'s door is at the building`);
       }
       // The places in town are buildings; everyone has a home.
-      for (const inside of game.world.places.filter((place) => place.parentId === settlement.id)) {
+      // (A site a few steps out of town, generator 2, is on the overworld instead.)
+      for (const inside of game.world.places.filter(
+        (place) => place.parentId === settlement.id && !worldIsSite(game, place.id),
+      )) {
         assert.ok(
           town.buildings.some((building) => building.placeId === inside.id),
           `${label}: ${inside.name} is in town`,

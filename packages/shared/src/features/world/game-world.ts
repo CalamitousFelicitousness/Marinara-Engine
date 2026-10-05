@@ -90,7 +90,8 @@ const cached = (key: string, make: () => CompiledWorld) => {
 /** Compiles a world from its stored inputs and applies its edit layer, or reuses the same inputs' last
  *  compile. The compile is kept apart from the edits, so editing a world never compiles it again. */
 export function compileGameWorld(input: Omit<GameWorld, "world">): CompiledWorld {
-  const version = input.generatorVersion ?? WORLD_GENERATOR_VERSION;
+  // The recipe's own version, or the snapshot's for a world read from one.
+  const version = input.generatorVersion ?? input.frozen?.generatorVersion ?? WORLD_GENERATOR_VERSION;
   const key = JSON.stringify([input.seed, input.grounding, input.kit, input.brief, version]);
   const compiled = cached(key, () =>
     compileWorld({

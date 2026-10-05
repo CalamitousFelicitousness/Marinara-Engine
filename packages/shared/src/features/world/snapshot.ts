@@ -62,7 +62,7 @@ export function worldSnapshot(game: GameWorld): WorldSnapshot {
   const compiled = worldPreEdit(game);
   return {
     snapshotVersion: WORLD_SNAPSHOT_VERSION,
-    generatorVersion: game.generatorVersion ?? WORLD_GENERATOR_VERSION,
+    generatorVersion: game.generatorVersion ?? game.world.generatorVersion ?? WORLD_GENERATOR_VERSION,
     kit: game.kit,
     seed: game.seed,
     grounding: game.grounding,
@@ -88,7 +88,6 @@ export function gameWorldFromSnapshot(snapshot: WorldSnapshot): GameWorld {
     seed: snapshot.seed,
     grounding: snapshot.grounding,
     brief: snapshot.brief,
-    generatorVersion: snapshot.generatorVersion,
     ...(snapshot.edits ? { edits: snapshot.edits } : {}),
     world: snapshot.world ?? snapshot.compiled,
     compiled: snapshot.compiled,

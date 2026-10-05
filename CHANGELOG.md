@@ -4,14 +4,14 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- NanoGPT connections now show each model's subscription cost in the **Connections** menu by the chat input, not just in the connection editor: `1x` when the model is covered at the normal rate, a higher multiplier such as `2x` when each token sent draws more from your weekly allowance, and **Paid** when the model bills to your balance instead. These pills follow the connection's **Show subscription usage** switch, which is off by default, so they appear only on connections you have set to track usage (#7109).
+
 - Exporting a character or persona with a large gallery no longer crashes the server, and an export that fails now shows an error instead of doing nothing. On iPhone and iPad, exports open the share sheet so you can save the file; if it can't open straight away, tap **Save file** on the message that appears. Character and persona ZIP exports keep every file when two share a name (#7115).
 - On phones, Echo Chamber can be moved and resized, and Chat tools expands into round buttons instead of drawer rows. Dottore and Mari chat widget presets use refreshed palettes inspired by their character references, and cut-corner windows keep their backgrounds inside the frame (#7121).
 
 - Downloaded packages can now start roleplay scenes from their own threads, such as a direct message in a social app, the same way `/scene` starts one from a Conversation. **Back** returns to the thread instead of a Conversation. When the package asks for it, the thread stays locked while the scene runs and the scene's recap goes back to the package when you end it. For package developers: capability API 1.66 adds `api.registerSceneOrigin` and the `scenes` permission (#7118).
 
 - Roleplay chats on wide screens can now sit on the left or right instead of the center: choose **Chat position** in **Settings > Appearance > Roleplay > Roleplay Presentation**. Messages and the input box move together and stay clear of open sidebars and a Tracker Panel on the same side. **Center** remains the default, and phones and Game mode are unchanged (#7106).
-
-- NanoGPT connections now show each model's subscription cost in the **Connections** menu by the chat input, not just in the connection editor: `1x` when the model is covered at the normal rate, a higher multiplier such as `2x` when each token sent draws more from your weekly allowance, and **Paid** when the model bills to your balance instead. These pills follow the connection's **Show subscription usage** switch, so a pay-as-you-go user never sees them.
 
 - You can now change a connection's model straight from the **Connections** menu by the chat input: search or type a model ID, star favourites to pin them on top, and refresh the list when needed. On phones, tap a connection to see its models. Chat Settings → **Connection** has the same **Model** field. The model is saved to the connection, so agents and other chats that use it switch too. Fetched model lists are kept, so the menu doesn't ask the provider every time (#7098).
 

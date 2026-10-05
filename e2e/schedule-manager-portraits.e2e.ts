@@ -48,13 +48,30 @@ async function seed(page: Page, request: APIRequestContext, prefix: string) {
   return ids;
 }
 
-/** Where a portrait sits in its slot, in slot widths. */
+/** Where a portrait sits in its slot, in slot sizes. */
 function placement(portrait: Locator) {
   return portrait.evaluate((img: HTMLImageElement) => {
     const slot = img.parentElement!.getBoundingClientRect();
     const bounds = img.getBoundingClientRect();
-    return { width: bounds.width / slot.width, left: (bounds.left - slot.left) / slot.width };
+    return {
+      width: bounds.width / slot.width,
+      left: (bounds.left - slot.left) / slot.width,
+      top: (bounds.top - slot.top) / slot.height,
+    };
   });
+}
+
+/** The current crop shows the middle half of the portrait's width from 10% down; the legacy one zooms 2.5x and shifts. */
+function expectCroppedPlacement(placed: { width: number; left: number; top: number }) {
+  expect(placed.width).toBeCloseTo(2, 1);
+  expect(placed.left).toBeCloseTo(-0.5, 1);
+  expect(placed.top).toBeCloseTo(-0.3, 1);
+}
+function expectZoomedPlacement(placed: { width: number; left: number; top: number }) {
+  // scale(2.5) about the centre after translate(10%, -5%): 2.5 wide, starting half a slot left and 0.875 up.
+  expect(placed.width).toBeCloseTo(2.5, 1);
+  expect(placed.left).toBeCloseTo(-0.5, 1);
+  expect(placed.top).toBeCloseTo(-0.875, 1);
 }
 
 /** Each control is the topmost element at its centre, so a click reaches it. */
@@ -110,11 +127,9 @@ test("Character Schedule Manager keeps cropped portraits in their slots", async 
 
     // The saved crops are used: the current crop shows the middle half of the portrait, the legacy one zooms in.
     const croppedRow = manager.getByRole("button", { name: `Edit ${cropped} schedule`, exact: true }).locator("..");
-    const croppedPlacement = await placement(croppedRow.locator("img"));
-    expect(croppedPlacement.width).toBeCloseTo(2, 1);
-    expect(croppedPlacement.left).toBeCloseTo(-0.5, 1);
+    expectCroppedPlacement(await placement(croppedRow.locator("img")));
     const zoomedRow = manager.getByRole("button", { name: `Edit ${zoomed} schedule`, exact: true }).locator("..");
-    expect(await zoomedRow.locator("img").evaluate((img) => getComputedStyle(img).transform)).not.toBe("none");
+    expectZoomedPlacement(await placement(zoomedRow.locator("img")));
 
     const list = manager.getByRole("heading", { name: /^Characters with schedules/ }).locator("xpath=../..");
     await expectReachable([
@@ -139,12 +154,16 @@ test("Character Schedule Manager keeps cropped portraits in their slots", async 
     await manager.getByRole("button", { name: `Select ${zoomed}`, exact: true }).click();
     await expect(manager.getByText("2 selected", { exact: true })).toBeVisible();
 
-    // The schedule editor opened from the window shows the same crop.
+    // The schedule editor opened from the window shows the same crop, in both formats.
     await manager.getByRole("button", { name: `Edit ${cropped} schedule`, exact: true }).click();
     const editor = page.getByRole("dialog", { name: `Edit ${cropped} Schedule`, exact: true });
-    const editorPlacement = await placement(editor.locator(`img[src$="${avatarPath}"]`));
-    expect(editorPlacement.width).toBeCloseTo(2, 1);
-    expect(editorPlacement.left).toBeCloseTo(-0.5, 1);
+    expectCroppedPlacement(await placement(editor.locator(`img[src$="${avatarPath}"]`)));
+    await editor.getByRole("button", { name: `Close Edit ${cropped} Schedule`, exact: true }).click();
+    await expect(editor).toBeHidden();
+    await expect(manager).toBeVisible();
+    await manager.getByRole("button", { name: `Edit ${zoomed} schedule`, exact: true }).click();
+    const zoomedEditor = page.getByRole("dialog", { name: `Edit ${zoomed} Schedule`, exact: true });
+    expectZoomedPlacement(await placement(zoomedEditor.locator(`img[src$="${avatarPath}"]`)));
   } finally {
     for (const id of ids) await request.delete(`/api/characters/${id}`);
   }

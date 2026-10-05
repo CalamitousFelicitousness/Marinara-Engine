@@ -5,7 +5,7 @@ import { createLLMProvider } from "./provider-registry.js";
 import { RateLimitAwareProvider, withRateLimitAwareProvider } from "./rate-limit-aware-provider.js";
 import { mergeCustomParameters, parseStoredGenerationParameters } from "../../routes/generate/generate-route-utils.js";
 import { logger } from "../../lib/logger.js";
-import { keepsCodexDefaultEffort } from "../generation/generation-parameters.js";
+import { keepsCodexDefaultEffort, minContextLimit } from "../generation/generation-parameters.js";
 import { notifyGenerationFallback, type GenerationFallbackNotifier } from "../generation/fallback-notification.js";
 import {
   isConnectionAdmissionFailure,
@@ -143,7 +143,13 @@ export class ConnectionFallbackProvider extends BaseLLMProvider {
     private readonly primarySupportsAssistantReasoningPrefill = true,
     private readonly fallbackSupportsAssistantReasoningPrefill = true,
   ) {
-    super("", "", primary.maxContextValue ?? undefined, null, primary.maxTokensOverrideValue);
+    super(
+      "",
+      "",
+      minContextLimit(primary.maxContextValue ?? undefined, fallback.maxContextValue ?? undefined),
+      null,
+      primary.maxTokensOverrideValue,
+    );
   }
 
   private async logFallback(error: unknown): Promise<void> {

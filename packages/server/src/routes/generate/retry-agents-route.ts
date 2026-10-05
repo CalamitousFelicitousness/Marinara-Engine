@@ -1731,7 +1731,8 @@ export async function resolveRetryAgents(args: {
     }
 
     const knownModel = findKnownModel(storedConn.provider as APIProvider, model);
-    // The same resolution first runs use, so a retried agent sends what it sent the first time (#7131).
+    // The connection's saved values and Send switches, resolved like a first run's (#7131). A retry has no chat reply
+    // to resolve, so an agent on the chat's connection does not take the chat's temperature or Send switches here.
     const connectionParameters = resolveAgentConnectionParameters({
       provider: storedConn.provider,
       model,

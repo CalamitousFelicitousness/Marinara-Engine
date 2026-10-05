@@ -9,13 +9,14 @@ import {
   readIllustratorImageAppearanceOverride,
 } from "../image/character-prompts.js";
 import { basename, extname, join, relative, resolve } from "node:path";
-import type {
-  BaseLLMProvider,
-  ChatMessage,
-  ChatOptions,
-  LLMToolDefinition,
-  LLMToolCall,
-  LLMUsage,
+import {
+  measureContextBudget,
+  type BaseLLMProvider,
+  type ChatMessage,
+  type ChatOptions,
+  type LLMToolDefinition,
+  type LLMToolCall,
+  type LLMUsage,
 } from "../llm/base-provider.js";
 import { withThinkingHeadroom, type AgentGenerationParameters } from "../generation/agent-generation-parameters.js";
 import type {
@@ -641,17 +642,30 @@ export function agentRequestOptions(config: AgentExecConfig, jsonResponse: boole
   return jsonResponse ? { ...options, ...jsonResponseReasoningOverride(config.enabledParameters) } : options;
 }
 
-/** The agent's own output budget, plus thinking room when the call thinks, capped by the connection and model. */
+/**
+ * The agent's own output budget, plus thinking room when the call thinks, capped by the connection and model. The
+ * room only takes context the prompt leaves free, so it never pushes history out or overflows a small window.
+ */
 export function resolveAgentCallMaxTokens(
   provider: BaseLLMProvider,
   config: Pick<AgentExecConfig, "generation" | "enabledParameters" | "maxOutputTokens">,
   visibleMaxTokens: number,
+  prompt: { messages: ChatMessage[]; tools?: LLMToolDefinition[]; maxContext?: number | null },
 ): number {
-  return applyAgentMaxTokensCaps(
+  const ownBudget = applyAgentMaxTokensCaps(provider, visibleMaxTokens, config.maxOutputTokens);
+  const withRoom = applyAgentMaxTokensCaps(
     provider,
     withThinkingHeadroom(visibleMaxTokens, config.generation, config.enabledParameters),
     config.maxOutputTokens,
   );
+  const maxContext = prompt.maxContext ?? provider.maxContextValue;
+  if (withRoom <= ownBudget || !maxContext) return withRoom;
+  const { inputBudget, estimatedTokens } = measureContextBudget(prompt.messages, {
+    maxContext,
+    maxTokens: 0,
+    tools: prompt.tools,
+  });
+  return Math.max(ownBudget, Math.min(withRoom, inputBudget - estimatedTokens));
 }
 
 function agentCustomParameters(config: AgentExecConfig): Record<string, unknown> | undefined {
@@ -862,7 +876,10 @@ export async function executeAgent(
     );
 
     const temperature = resolveAgentTemperature(config);
-    const maxTokens = resolveAgentCallMaxTokens(provider, config, normalizeAgentMaxTokens(config.settings.maxTokens));
+    const maxTokens = resolveAgentCallMaxTokens(provider, config, normalizeAgentMaxTokens(config.settings.maxTokens), {
+      messages,
+      tools: toolContext?.tools,
+    });
     const streamResponses = context.streaming !== false;
     const requestOptions = agentRequestOptions(config, agentResponseIsJson(config));
     const responseFormatOverride = jsonAgentResponseFormatOverride(config, model);
@@ -1521,7 +1538,8 @@ export async function executeAgentBatch(
   const cachingAtDepth = configs[0]!.cachingAtDepth;
   const rawBatchMaxTokens = perAgentTokens.reduce((sum, tokens) => sum + tokens, 0);
   const modelMaxOutput = configs[0]!.maxOutputTokens;
-  const batchMaxTokens = resolveAgentCallMaxTokens(provider, configs[0]!, rawBatchMaxTokens);
+  // Sized once the prompt is built, so thinking room only takes context the prompt leaves free.
+  let batchMaxTokens = rawBatchMaxTokens;
 
   try {
     // Build merged system prompt (includes the union of context requested by
@@ -1551,6 +1569,7 @@ export async function executeAgentBatch(
 
     // Each agent reserves its own configured output budget. The context fitter
     // may still reduce this further if the prompt needs more room.
+    batchMaxTokens = resolveAgentCallMaxTokens(provider, configs[0]!, rawBatchMaxTokens, { messages });
     const streamResponses = context.streaming !== false;
     const capDetails = [
       provider.maxTokensOverrideValue !== null ? `connection cap=${provider.maxTokensOverrideValue}` : null,

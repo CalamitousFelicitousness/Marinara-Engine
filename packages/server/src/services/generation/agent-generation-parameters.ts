@@ -1,8 +1,9 @@
-import type {
-  CapabilityLanguageModelCompletionOptions,
-  ChatOptions,
-  GenerationParameterSendMap,
-  ManagedGenerationParameterDefinition,
+import {
+  relevantGenerationParameters,
+  type CapabilityLanguageModelCompletionOptions,
+  type ChatOptions,
+  type GenerationParameterSendMap,
+  type ManagedGenerationParameterDefinition,
 } from "@marinara-engine/shared";
 import { resolveModelAccessPolicy } from "./model-access-policy.js";
 import { clampGenerationMaxOutputTokens, resolveThinkingHeadroom } from "./output-token-limits.js";
@@ -109,20 +110,36 @@ export function resolveConnectionGenerationParameters(source: ConnectionParamete
   });
 }
 
-/** Codex keeps its own level while the saved value is Default (null), so only other saved values are a choice. */
-function connectionChoseReasoning(provider: string, resolved: ResolvedGenerationParameters): boolean {
-  if (resolved.parameterSources.reasoningEffort !== "connection") return false;
-  return !(provider.toLowerCase() === "openai_chatgpt" && resolved.reasoningEffort == null);
+/** The connection's own Send switch for a parameter; on unless it was switched off. */
+function connectionSends(resolved: ResolvedGenerationParameters, key: keyof GenerationParameterSendMap): boolean {
+  return resolved.enabledParameters?.[key] !== false;
+}
+
+/**
+ * A level counts as chosen only when the connection saved one, sends it, and shows Reasoning Effort for this model.
+ * Codex keeps its own level while the saved value is Default (null).
+ */
+function connectionChoseReasoning(source: ConnectionParameterSource, resolved: ResolvedGenerationParameters): boolean {
+  if (resolved.parameterSources.reasoningEffort !== "connection" || !connectionSends(resolved, "reasoningEffort")) {
+    return false;
+  }
+  if (source.provider.toLowerCase() === "openai_chatgpt" && resolved.reasoningEffort == null) return false;
+  return relevantGenerationParameters({ provider: source.provider, model: source.model }).has("reasoningEffort");
 }
 
 function definedOnly<T extends Record<string, unknown>>(value: T): T {
   return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined)) as T;
 }
 
-/** What a connection contributes to the agent calls made through it. */
+/**
+ * What a connection contributes to the agent calls made through it. Values behind a switched-off Send switch are left
+ * out here, so an agent on the chat's connection, which sends with the chat's switches, still never sends them.
+ */
 export function resolveAgentConnectionParameters(source: ConnectionParameterSource): AgentConnectionParameters {
   const resolved = resolveConnectionGenerationParameters(source);
-  const reasoning = connectionChoseReasoning(source.provider, resolved)
+  const sent = <T>(key: keyof GenerationParameterSendMap, value: T) =>
+    connectionSends(resolved, key) ? value : undefined;
+  const reasoning = connectionChoseReasoning(source, resolved)
     ? { reasoningEffort: resolved.providerReasoningEffort, enableThinking: resolved.enableThinking }
     : undefined;
   return {
@@ -130,12 +147,12 @@ export function resolveAgentConnectionParameters(source: ConnectionParameterSour
     temperature: resolved.temperature,
     enabledParameters: resolved.enabledParameters,
     generation: definedOnly<AgentGenerationParameters>({
-      topP: resolved.topP,
-      topK: resolved.providerTopK,
+      topP: sent("topP", resolved.topP),
+      topK: sent("topK", resolved.providerTopK),
       minP: resolved.minP || undefined,
-      frequencyPenalty: resolved.frequencyPenalty || undefined,
-      presencePenalty: resolved.presencePenalty || undefined,
-      verbosity: resolved.verbosity ?? undefined,
+      frequencyPenalty: sent("frequencyPenalty", resolved.frequencyPenalty || undefined),
+      presencePenalty: sent("presencePenalty", resolved.presencePenalty || undefined),
+      verbosity: sent("verbosity", resolved.verbosity ?? undefined),
       serviceTier: resolved.serviceTier ?? undefined,
       omitTemperature: resolved.isClaudeNoSampling ? true : undefined,
       reasoning: reasoning ? definedOnly(reasoning) : undefined,
@@ -170,12 +187,15 @@ type CapabilityChatOptions = Pick<
   | "verbosity"
   | "serviceTier"
   | "customParameters"
+  | "enabledParameters"
 >;
 
 /**
  * Merge a package's language-model request with the connection's saved parameters (#7131). A value the connection
- * saved and sends wins; anything it leaves unset or switched off keeps the package's own request, as before. Max
- * tokens stays the package's, plus thinking room when the connection raised the reasoning level.
+ * saved and sends wins; anything it leaves unset keeps the package's own request, as before. A switched-off Reasoning
+ * Effort or Max Tokens is not sent at all, as on chat and agent calls; Temperature and Verbosity start switched off,
+ * so there the package's own value stays. Max tokens stays the package's, plus thinking room when the connection
+ * raised the reasoning level.
  */
 export function resolveCapabilityChatOptions(
   source: ConnectionParameterSource,
@@ -185,7 +205,7 @@ export function resolveCapabilityChatOptions(
   >,
 ): CapabilityChatOptions {
   const resolved = resolveConnectionGenerationParameters(source);
-  const sends = (key: keyof GenerationParameterSendMap) => resolved.enabledParameters?.[key] !== false;
+  const sends = (key: keyof GenerationParameterSendMap) => connectionSends(resolved, key);
   const saved = (key: string) => resolved.parameterSources[key] === "connection";
   const merged: CapabilityChatOptions = {
     temperature: options.temperature,
@@ -205,9 +225,11 @@ export function resolveCapabilityChatOptions(
   if (saved("verbosity") && sends("verbosity") && resolved.verbosity) merged.verbosity = resolved.verbosity;
   if (saved("serviceTier") && resolved.serviceTier) merged.serviceTier = resolved.serviceTier;
   if (Object.keys(resolved.customParameters).length > 0) merged.customParameters = resolved.customParameters;
+  const switchedOff = (["reasoningEffort", "maxTokens"] as const).filter((key) => !sends(key));
+  if (switchedOff.length > 0) merged.enabledParameters = Object.fromEntries(switchedOff.map((key) => [key, false]));
 
   const effort = resolved.providerReasoningEffort;
-  if (connectionChoseReasoning(source.provider, resolved) && sends("reasoningEffort") && effort) {
+  if (connectionChoseReasoning(source, resolved) && effort) {
     merged.reasoningEffort = effort;
     merged.enableThinking = resolved.enableThinking;
     if (

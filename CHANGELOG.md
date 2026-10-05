@@ -6,6 +6,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 - The **Trackers** button opens Tracker Panel when it is enabled for the chat, and the standard tracker window otherwise. On phones, selecting Tracker Panel also hides the old HUD tracker widgets, regardless of **Dock Tracker Panel to edge**. Detached character trackers use readable character cards that rearrange as their window is resized, with a single heading (#7128).
 
+- Each background in the background library now has a **Download** button that saves the image with its file name, built-in backgrounds included. On iPhone and iPad it opens the share sheet, or offers **Save file** if the sheet can't open straight away (#7129).
 - Exporting a character or persona with a large gallery no longer crashes the server, and an export that fails now shows an error instead of doing nothing. On iPhone and iPad, exports open the share sheet so you can save the file; if it can't open straight away, tap **Save file** on the message that appears. Character and persona ZIP exports keep every file when two share a name (#7115).
 - On phones, Echo Chamber can be moved and resized, and Chat tools expands into round buttons instead of drawer rows. Dottore and Mari chat widget presets use refreshed palettes inspired by their character references, and cut-corner windows keep their backgrounds inside the frame (#7121).
 

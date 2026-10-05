@@ -238,3 +238,17 @@ export async function saveExportFile(
     return "failed";
   }
 }
+
+/** Fetch a same-origin file and save it like an export. Call it straight from the tap; it never rejects. */
+export async function saveExportUrl(url: string, filename: string): Promise<ExportSaveStatus> {
+  let blob: Blob;
+  try {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Download failed (${response.status})`);
+    blob = await response.blob();
+  } catch (error) {
+    await showExportError(error);
+    return "failed";
+  }
+  return saveExportFile(blob, filename);
+}

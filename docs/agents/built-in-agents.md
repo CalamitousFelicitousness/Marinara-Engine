@@ -57,7 +57,7 @@ A life simulation. You live in a small town on a clock, with a job to find and k
 
 - **Integration**: App; it opens in its own **Life Sim** tab in **Home**.
 - **Where it works**: Home.
-- **Availability**: **Staging only**, requiring Engine **2.4.4+**. It is an alpha. If an update changes something an older save depends on, Life Sim tells you when you open that save, and you can start a new life or continue at your own risk.
+- **Availability**: **Staging only**, requiring Engine **2.4.4+** (below 4.0.0). It is an alpha. If an update changes something an older save depends on, Life Sim tells you when you open that save, and you can start a new life or continue at your own risk.
 - **Key settings**: install it from **Agents → Download Agents**, restart Marinara Engine when prompted, then open **Home → Life Sim**. It needs a text connection. An image connection is optional: without one, places show illustrated cards instead of generated backgrounds. Optional extras called modules stay off unless you switch them on for a life; the **Adult** module asks you to confirm that you are an adult.
 - **Full guide**: [Modern Life Sim package guide](https://github.com/Pasta-Devs/Marinara-Agents/blob/staging/packages/modern-life-sim/README.md).
 
@@ -215,7 +215,7 @@ Maintains an editable relationship web for the character cards assigned to a Rol
 
 - **Phase**: Post-Processing, with relationship context supplied to later replies.
 - **Where it works**: Roleplay group chats.
-- **Availability**: **Staging only**, requiring Engine **2.4.4+** with the staging preview catalog. Stable publication is planned with the next Engine main release.
+- **Availability**: **Staging only**, requiring Engine **2.4.4+** (below 4.0.0) with the staging preview catalog. Stable publication is planned with the next Engine main release.
 - **Install and activate**: install **Relationship Tracker** from **Agents → Download Agents** and restart when prompted. In each Roleplay chat, enable agents in **Chat Settings → Agents**, add it under **Tracker Agents**, and choose its model connection. The web appears in the Tracker Panel. Select **All relationships** or **Scene-only relationships** there once to initialize the chat before editing or updating relationships.
 - **Key controls**: **All relationships** or **Scene-only relationships** for prompt context, **Update from History** for a bounded recent-message scan, and manual editing, locking, and **Resume automatic updates**. **Context Size** (default 5 messages), **Presence lookback** (default 15), and the history scan's message count are separate controls. Hover or keyboard-focus a line to read it; on touch or pen, press the line. See the [Relationship Tracker package guide](https://github.com/Pasta-Devs/Marinara-Agents/blob/staging/packages/relationship-tracker/README.md).
 

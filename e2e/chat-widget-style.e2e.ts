@@ -1073,6 +1073,7 @@ for (const [preset, theme] of [
       await setChatStyleApplication(controls, "font", true);
       await setChatStyleApplication(controls, "shape", true);
       await clickTopbarPanel(page, "settings");
+      await expect(page.locator('[data-component="RightPanel"]')).toBeHidden();
       for (const chat of fixture.chats) {
         await showStyleScope(page, chat);
         const path = info.outputPath(`chat-style-${preset}-${chat.view}.png`);

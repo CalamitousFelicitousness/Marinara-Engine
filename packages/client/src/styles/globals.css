@@ -5102,7 +5102,8 @@ strong {
   }
 
   [data-chat-mode="roleplay"] .marinara-chat-input-shell {
-    background: linear-gradient(var(--card), var(--card)), var(--background) !important;
+    --mari-chat-existing-bg: linear-gradient(var(--card), var(--card)), var(--background);
+    background: var(--mari-chat-surface-paint, var(--mari-chat-existing-bg)) !important;
     contain: layout paint;
     isolation: isolate;
   }
@@ -7173,7 +7174,7 @@ strong {
     white-space: nowrap;
   }
 
-  .chat-input-container .marinara-chat-input-shell {
+  :root:not([data-chat-widget-apply-shape="true"]) .chat-input-container .marinara-chat-input-shell {
     border-radius: 1em !important;
   }
 }

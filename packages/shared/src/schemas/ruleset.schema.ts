@@ -2761,6 +2761,10 @@ const catalogGrantsSchema = z
                 /** A score may be chosen more than once, `amount` each time (Capability API 1.88): count 2
                  *  and amount 1 is +2 to one score or +1 to two, as an ability score improvement. */
                 repeat: z.boolean().optional(),
+                /** No score goes past this through the choice (Capability API 1.91): an ability score
+                 *  improvement's "you can't increase an ability score above 20 using this feature".
+                 *  What other grants add counts first. */
+                upTo: z.number().int().min(1).max(99).optional(),
               })
               .strict(),
           )

@@ -968,6 +968,76 @@ try {
     assert.equal(rulesetBuilderRemaining(narrow, n.build, n.state, narrowCatalogs).scores, 4);
   }
 
+  // ── 1.91: a score choice with a cap ──
+  {
+    const capped = (doc: Record<string, any>) => {
+      doc.catalogs
+        .find((c: { id: string }) => c.id === "classes")
+        .entries.find((e: { id: string }) => e.id === "fighter").grants.abilities = {
+        choose: [{ count: 2, amount: 1, repeat: true, upTo: 16 }],
+      };
+    };
+    const cap = parsed(variant(capped));
+    const capCatalogs: RulesetCatalogEntriesById = Object.fromEntries(
+      (cap.catalogs ?? []).map((catalog) => [catalog.id, catalog.entries ?? []]),
+    );
+    const base = { str: 15, dex: 10, con: 15, int: 10, wis: 10, cha: 10 };
+    const pick = (choices: string[], races: string[] = []) => {
+      const first = applyRulesetBuilder(
+        cap,
+        defaultRulesetSheetBuild(cap),
+        { method: "manual", base, picks: { class: ["fighter"], race: races } },
+        capCatalogs,
+      );
+      const [slot] = rulesetBuilderAbilitySlots(cap, first.state, capCatalogs, first.build);
+      assert.equal(slot!.upTo, 16);
+      return applyRulesetBuilder(
+        cap,
+        first.build,
+        { ...first.state, abilityChoices: { [slot!.key]: choices } },
+        capCatalogs,
+      );
+    };
+    assert.equal(pick(["str", "str"]).build.abilities.str, 16, "15 + 2 stops at 16");
+    assert.equal(pick(["dex", "dex"]).build.abilities.dex, 12, "10 + 2 is under the cap");
+    assert.equal(pick(["con", "con"], ["dwarf"]).build.abilities.con, 17, "the dwarf's +2 counts first: 17 is past 16");
+    // Taking it back takes back only what it gave.
+    const given = pick(["str", "str"]);
+    const back = applyRulesetBuilder(cap, given.build, { ...given.state, picks: { class: [] } }, capCatalogs);
+    assert.equal(back.build.abilities.str, 15);
+    // A described character with Strength 16 already: the choice is read as having given all it could
+    // (2, from 14), as an uncapped choice is, so 2 go when it is unpicked.
+    const plain = defaultRulesetSheetBuild(cap);
+    const described = { ...plain, abilities: { ...plain.abilities, str: 16 } };
+    let d = applyRulesetBuilder(cap, described, { describing: true, picks: { class: ["fighter"] } }, capCatalogs);
+    const [dSlot] = rulesetBuilderAbilitySlots(cap, d.state, capCatalogs, d.build);
+    d = applyRulesetBuilder(
+      cap,
+      d.build,
+      { ...d.state, abilityChoices: { [dSlot!.key]: ["str", "str"] } },
+      capCatalogs,
+    );
+    assert.equal(d.build.abilities.str, 16, "describing changes nothing");
+    d = applyRulesetBuilder(cap, d.build, { ...d.state, describing: false }, capCatalogs);
+    d = applyRulesetBuilder(cap, d.build, { ...d.state, picks: { class: [] } }, capCatalogs);
+    assert.equal(d.build.abilities.str, 14);
+    // Described at 17, past the cap of 16: the choice cannot have given anything, so nothing goes.
+    const high = { ...plain, abilities: { ...plain.abilities, str: 17 } };
+    let h = applyRulesetBuilder(cap, high, { describing: true, picks: { class: ["fighter"] } }, capCatalogs);
+    const [hSlot] = rulesetBuilderAbilitySlots(cap, h.state, capCatalogs, h.build);
+    h = applyRulesetBuilder(cap, h.build, { ...h.state, abilityChoices: { [hSlot!.key]: ["str", "str"] } }, capCatalogs);
+    h = applyRulesetBuilder(cap, h.build, { ...h.state, describing: false }, capCatalogs);
+    h = applyRulesetBuilder(cap, h.build, { ...h.state, picks: { class: [] } }, capCatalogs);
+    assert.equal(h.build.abilities.str, 17);
+  }
+  refused((doc) => {
+    doc.catalogs
+      .find((c: { id: string }) => c.id === "classes")
+      .entries.find((e: { id: string }) => e.id === "fighter").grants.abilities = {
+      choose: [{ count: 2, amount: 1, upTo: 0 }],
+    };
+  }, /upTo|greater than or equal to 1/);
+
   // ── 1.89: entries a step keeps one of ──
   const grouped = (doc: Record<string, any>) => {
     Object.assign(doc.sheet.builder.steps[0], { min: 0, max: 3 });
@@ -1148,6 +1218,15 @@ try {
   const exclusiveDoc = variant(grouped);
   assert.match(issue(88, exclusiveDoc) ?? "", /exclusive of each other.*1\.89/);
   assert.equal(issue(89, exclusiveDoc), null);
+  const cappedDoc = variant((doc) => {
+    doc.catalogs
+      .find((c: { id: string }) => c.id === "classes")
+      .entries.find((e: { id: string }) => e.id === "fighter").grants.abilities = {
+      choose: [{ count: 2, amount: 1, repeat: true, upTo: 20 }],
+    };
+  });
+  assert.match(issue(90, cappedDoc) ?? "", /score choice with a cap.*1\.91/);
+  assert.equal(issue(91, cappedDoc), null);
   assert.equal(issue(81, variant()), null, "a 1.81 builder is still 1.81's");
   assert.equal(issue(74, JSON.parse(fiveEText)), null, "an older package still validates");
 

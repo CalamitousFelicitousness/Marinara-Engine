@@ -6,6 +6,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 - A ruleset's weapons (and items that roll to hit) can add a bonus **read off the holder's sheet**, `toHit.sheetBonus`, for what a fighter brings to every weapon of a kind: 5e's Archery fighting style, +2 to attacks with ranged weapons. The weapon's facts name it (Capability API 1.90).
 - A ruleset's coins can have a name for one of them, so a price of one penny reads "1 penny" rather than "1 pennies" in markets, purses and item prices (Capability API 1.84).
+- A builder score choice can stop at a cap, such as an ability score improvement's 20 (Capability API 1.91).
 - A guided builder step can keep one of a group of entries, so a feat can take the place of an ability score improvement (Capability API 1.89).
 - A builder score choice can pick the same score twice, such as an ability score improvement's +2 to one score or +1 to two (Capability API 1.88).
 - A catalog entry can keep several of its rows up to date in one list, such as two uses of one racial trait that each open at a different level (Capability API 1.87).

@@ -18,7 +18,7 @@ function ruleset(id: string): string {
   // A feature whose score choice repeats (1.88): +2 to one score or +1 to two.
   const feats = doc.catalogs.find((catalog: { id: string }) => catalog.id === "feats");
   feats.entries.find((entry: { id: string }) => entry.id === "sly-strike").grants = {
-    abilities: { choose: [{ count: 2, amount: 1, repeat: true }] },
+    abilities: { choose: [{ count: 2, amount: 1, repeat: true, upTo: 9 }] },
   };
   // Two features a step keeps one of (1.89): picking one drops the other.
   const sly = feats.entries.find((entry: { id: string }) => entry.id === "sly-strike");
@@ -260,8 +260,10 @@ test("the guided builder applies picks, rolls and buys scores, and saves the she
     await steps.getByRole("button", { name: /^Ability Scores/ }).click();
     const twice = page.getByRole("group", { name: /Sly Strike: choose 2 scores/ });
     await twice.getByRole("button", { name: "Strength", exact: true }).click();
-    await twice.getByRole("button", { name: "Strength", exact: true }).click();
-    await expect(twice.getByRole("button", { name: "Strength ×2", exact: true })).toBeDisabled();
+    // The choice stops at 9 (1.91): Strength 8 + 1 takes no more, though the choice has one left.
+    await expect(twice.getByRole("button", { name: "Strength", exact: true })).toBeDisabled();
+    await twice.getByRole("button", { name: "Dexterity", exact: true }).click();
+    await expect(twice.getByRole("button", { name: "Constitution", exact: true })).toBeDisabled();
     await expect(steps.getByRole("button", { name: "Ability Scores 1 choice left", exact: true })).toBeVisible();
     await twice.getByRole("button", { name: "Take back one from Strength", exact: true }).click();
     await expect(twice.getByRole("button", { name: "Strength", exact: true })).toBeEnabled();

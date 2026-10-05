@@ -240,6 +240,8 @@ export interface RulesetBuilderChoiceSlot {
 
 export interface RulesetBuilderAbilitySlot extends RulesetBuilderChoiceSlot {
   amount: number;
+  /** No score goes past this through the choice (1.91). */
+  upTo?: number;
   /** One score may be chosen more than once (1.88). */
   repeat?: boolean;
 }
@@ -294,6 +296,7 @@ export function rulesetBuilderAbilitySlots(
         from,
         chosen: chosen.slice(0, choice.count),
         ...(choice.repeat ? { repeat: true } : {}),
+        ...(choice.upTo !== undefined ? { upTo: choice.upTo } : {}),
       };
     }),
   );
@@ -500,14 +503,29 @@ function stepFieldValue(
 }
 
 /** What the builder's choices come to, worked out from scratch. */
+/** An increase a choice with `upTo` gives (1.91), applied after every other so it stops at its cap. */
+interface CappedIncrease {
+  id: string;
+  by: number;
+  upTo: number;
+}
+
 function desired(
   definition: RulesetDefinition,
   state: RulesetBuilderState,
   catalogs: RulesetCatalogEntriesById,
   /** The sheet as it stands, which a step's `upTo` reads; no limit without it. */
   build?: RulesetSheetBuild,
-): RulesetBuilderApplied {
-  const out: RulesetBuilderApplied = { increases: {}, scores: {}, skills: {}, saves: {}, fields: {}, rows: [] };
+): RulesetBuilderApplied & { capped: CappedIncrease[] } {
+  const out: RulesetBuilderApplied & { capped: CappedIncrease[] } = {
+    increases: {},
+    scores: {},
+    skills: {},
+    saves: {},
+    fields: {},
+    rows: [],
+    capped: [],
+  };
   const abilities = new Set(definition.sheet.abilities.map((ability) => ability.id));
   const known = {
     skills: new Set(definition.sheet.skills.map((skill) => skill.id)),
@@ -534,7 +552,11 @@ function desired(
     if (value !== undefined && step.field) out.fields[step.field] = value;
   }
   for (const slot of rulesetBuilderAbilitySlots(definition, state, catalogs, build)) {
-    for (const id of slot.chosen) bump(id, slot.amount);
+    for (const id of slot.chosen) {
+      if (slot.upTo !== undefined) {
+        if (abilities.has(id)) out.capped.push({ id, by: slot.amount, upTo: slot.upTo });
+      } else bump(id, slot.amount);
+    }
   }
   for (const slot of rulesetBuilderTrainedSlots(definition, state, catalogs, build)) {
     for (const id of slot.chosen) train(slot.what, id, slot.tier);
@@ -619,7 +641,17 @@ function applyRulesetBuilderOnce(
     fields: {},
     rows: [],
   };
-  const want = desired(definition, state, catalogs, build);
+  const { capped, ...want } = desired(definition, state, catalogs, build);
+  /** The increase capped choices add to a score that stands at `from` before them, each stopping at
+   *  its own cap and never taking away (1.91). */
+  const cappedOn = (id: string, from: number) => {
+    let score = from;
+    for (const each of capped) {
+      if (each.id !== id) continue;
+      score += Math.max(0, Math.min(each.by, each.upTo - score));
+    }
+    return score - from;
+  };
   if (state.describing) {
     // Describing: every pick's grants are recorded as given (so a later change takes them back, as far
     // as the sheet still shows them), and nothing is written, now or when describing ends.
@@ -628,7 +660,25 @@ function applyRulesetBuilderOnce(
     for (const [id, value] of Object.entries(previous.fields)) {
       if (id in fields && build.fields[id] === value) fields[id] = value;
     }
-    return { build, state: { ...state, applied: { ...want, fields, scores: {} } } };
+    // A capped increase is recorded as what it gave a score that already shows it: the largest amount,
+    // up to all of it, that the cap would have let through from the score without it.
+    const increases = { ...want.increases };
+    for (const ability of definition.sheet.abilities) {
+      const id = ability.id;
+      const full = capped.filter((each) => each.id === id).reduce((sum, each) => sum + each.by, 0);
+      if (full === 0) continue;
+      const current = typeof build.abilities[id] === "number" ? build.abilities[id]! : ability.default;
+      const uncapped = want.increases[id] ?? 0;
+      let gave = 0;
+      for (let x = full; x >= 0; x--) {
+        if (cappedOn(id, current - uncapped - x) === x) {
+          gave = x;
+          break;
+        }
+      }
+      if (uncapped + gave !== 0) increases[id] = uncapped + gave;
+    }
+    return { build, state: { ...state, applied: { ...want, increases, fields, scores: {} } } };
   }
   // What this run actually writes, which is all the next run takes back: a value the sheet already
   // had of the player's own is never recorded, so unpicking never takes it.
@@ -643,8 +693,9 @@ function applyRulesetBuilderOnce(
   for (const ability of definition.sheet.abilities) {
     const id = ability.id;
     const before = previous.increases[id] ?? 0;
-    const after = want.increases[id] ?? 0;
+    const uncapped = want.increases[id] ?? 0;
     if (base[id] !== undefined) {
+      const after = uncapped + cappedOn(id, base[id]! + uncapped);
       const total = clamp(base[id]! + after, ability.min, ability.max);
       next.scores[id] = total;
       next.increases[id] = total - base[id]!;
@@ -653,6 +704,7 @@ function applyRulesetBuilderOnce(
     }
     const current = typeof abilities[id] === "number" ? abilities[id]! : ability.default;
     const without = current - before;
+    const after = uncapped + cappedOn(id, without + uncapped);
     const total = clamp(without + after, ability.min, ability.max);
     if (total - without !== 0) next.increases[id] = total - without;
     if (total !== current) abilities[id] = total;

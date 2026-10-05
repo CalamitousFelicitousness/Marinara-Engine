@@ -677,7 +677,10 @@ const capabilityPackageManifestBaseSchema = z
 //        (`toHit.sheetBonus`, 5e's Archery: +2 to attacks with ranged weapons). Not a soft seam: an
 //        Engine that cannot read it refuses the catalog, so a package that ships it declares 1.90. No
 //        permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 90 } as const);
+// 1.91: a builder grant's score choice may cap the scores it raises (`abilities.choose[].upTo`, an
+//        ability score improvement's "not above 20"). Not a soft seam: an Engine that cannot read it
+//        refuses the catalog, so a package that ships it declares 1.91. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 91 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

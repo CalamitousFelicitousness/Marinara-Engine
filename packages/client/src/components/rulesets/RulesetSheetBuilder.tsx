@@ -64,11 +64,14 @@ function ChoiceSlot({
   slot,
   labelOf,
   onChange,
+  atCap,
 }: {
   title: string;
   slot: RulesetBuilderAbilitySlot | RulesetBuilderTrainedSlot | RulesetBuilderEntrySlot;
   labelOf: (id: string) => string;
   onChange: (chosen: string[]) => void;
+  /** Whether an option already stands at the choice's cap (1.91), so it takes no more. */
+  atCap?: (id: string) => boolean;
 }) {
   const { t } = useUiTranslation();
   const full = slot.chosen.length >= slot.count;
@@ -92,7 +95,7 @@ function ChoiceSlot({
                 <button
                   type="button"
                   aria-pressed={times > 0}
-                  disabled={full}
+                  disabled={full || !!atCap?.(id)}
                   onClick={() => onChange([...slot.chosen, id])}
                   className={`${chipClass} ${times > 0 ? chipOn : chipOff}`}
                 >
@@ -119,7 +122,7 @@ function ChoiceSlot({
               key={id}
               type="button"
               aria-pressed={on}
-              disabled={!on && full}
+              disabled={!on && (full || !!atCap?.(id))}
               onClick={() => onChange(on ? slot.chosen.filter((each) => each !== id) : [...slot.chosen, id])}
               className={`${chipClass} ${on ? chipOn : chipOff}`}
             >
@@ -263,6 +266,16 @@ export function RulesetSheetBuilder({
             })}
             slot={slot}
             labelOf={abilityLabel}
+            atCap={
+              slot.upTo === undefined
+                ? undefined
+                : (id) =>
+                    (build.abilities[id] ??
+                      definition.sheet.abilities.find((ability) => ability.id === id)?.default ??
+                      0) +
+                      slot.amount >
+                    slot.upTo!
+            }
             onChange={(chosen) => update({ ...state, abilityChoices: { ...state.abilityChoices, [slot.key]: chosen } })}
           />
         ))}

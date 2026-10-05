@@ -5,17 +5,17 @@ import { expect, test, type APIRequestContext, type Locator, type Page, type Tes
 import { createServer } from "node:http";
 import { readFileSync } from "node:fs";
 import { seedUIState } from "./ui-state-fixture.js";
-import { openChatSettings } from "./chat-settings-tools.js";
+import { closeChatSettings, openChatSettings } from "./chat-settings-tools.js";
 
 const APP_VERSION = (
   JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string }
 ).version;
 
-type CatalogModel = { id: string; name: string; context_length?: number };
+type CatalogModel = { id: string; name: string; context_length?: number; max_completion_tokens?: number };
 const CATALOG: CatalogModel[] = [
   { id: "vendor/alpha", name: "Alpha", context_length: 64_000 },
   { id: "vendor/beta", name: "Beta", context_length: 96_000 },
-  { id: "vendor/gamma", name: "Gamma", context_length: 200_000 },
+  { id: "vendor/gamma", name: "Gamma", context_length: 200_000, max_completion_tokens: 8_192 },
   { id: "vendor/kappa", name: "Kappa" },
 ];
 
@@ -48,15 +48,18 @@ async function startProvider() {
 async function setup(page: Page, request: APIRequestContext, testInfo: TestInfo, theme: "dark" | "light") {
   const provider = await startProvider();
   const suffix = `${testInfo.project.name} ${theme} ${Date.now()}`;
-  const createConnection = async (name: string, model: string) => {
+  const createConnection = async (name: string, model: string, baseUrl = provider.baseUrl) => {
     const response = await request.post("/api/connections", {
-      data: { name, provider: "custom", baseUrl: provider.baseUrl, model, maxContext: 8_000 },
+      // A separate embedding model shows that a model pick leaves the connection's other models alone.
+      data: { name, provider: "custom", baseUrl, model, maxContext: 8_000, embeddingModel: "fixture-embedding" },
     });
     expect(response.ok()).toBeTruthy();
     return (await response.json()) as { id: string };
   };
   const main = await createConnection(`Router ${suffix}`, "vendor/alpha");
   const other = await createConnection(`Backup ${suffix}`, "vendor/kappa");
+  // A custom endpoint whose model list cannot be read (its /models answers 404).
+  const broken = await createConnection(`Offline ${suffix}`, "", `${provider.baseUrl}/offline`);
   const chatResponse = await request.post("/api/chats", {
     data: { name: `Model switcher ${suffix}`, mode: "roleplay", characterIds: [] },
   });
@@ -84,9 +87,10 @@ async function setup(page: Page, request: APIRequestContext, testInfo: TestInfo,
     await request.delete(`/api/chats/${chat.id}`);
     await request.delete(`/api/connections/${main.id}`);
     await request.delete(`/api/connections/${other.id}`);
+    await request.delete(`/api/connections/${broken.id}`);
     await provider.close();
   };
-  return { provider, main, other, chat, cleanup, suffix };
+  return { provider, main, other, broken, chat, cleanup, suffix };
 }
 
 async function connectionRow(request: APIRequestContext, id: string) {
@@ -136,7 +140,7 @@ test("the Connections menu lists, pins, picks, refreshes and types models withou
   page,
   request,
 }, testInfo) => {
-  const { provider, main, other, cleanup } = await setup(page, request, testInfo, "dark");
+  const { provider, main, other, broken, cleanup } = await setup(page, request, testInfo, "dark");
   try {
     await page.goto("/");
     await expect(page.locator("[data-chat-composer]").first()).toBeVisible();
@@ -201,15 +205,24 @@ test("the Connections menu lists, pins, picks, refreshes and types models withou
     await expect(modelRow(picker, "all", "vendor/gamma")).toBeVisible();
     expect(provider.state.calls).toBe(1);
 
-    // Picking a model saves it (with its context size, as the connection editor does) and closes the menu.
+    // Picking a model saves it with its context size and output limit, as the connection editor does, and
+    // changes nothing else on the connection.
+    const beforePick = (await connectionRow(request, main.id))!;
     await modelRow(picker, "all", "vendor/gamma").locator("[data-model-option]").click();
     await expect(page.locator("[data-connection-model-picker]")).toHaveCount(0);
     await expect
       .poll(async () => {
         const row = await connectionRow(request, main.id);
-        return row && { model: row.model, maxContext: row.maxContext };
+        return row && { model: row.model, maxContext: row.maxContext, maxTokensOverride: row.maxTokensOverride };
       })
-      .toEqual({ model: "vendor/gamma", maxContext: 200_000 });
+      .toEqual({ model: "vendor/gamma", maxContext: 200_000, maxTokensOverride: 8_192 });
+    const afterPick = (await connectionRow(request, main.id))!;
+    const unchanged = (row: Record<string, unknown>) => {
+      const { model: _m, maxContext: _c, maxTokensOverride: _o, updatedAt: _u, ...rest } = row;
+      return rest;
+    };
+    expect(unchanged(afterPick)).toEqual(unchanged(beforePick));
+    expect(afterPick.embeddingModel).toBe("fixture-embedding");
     picker = await openModels(page, testInfo, main.id);
     await expect(modelRow(picker, "all", "vendor/gamma").locator("[data-model-option]")).toHaveAttribute(
       "aria-current",
@@ -223,10 +236,48 @@ test("the Connections menu lists, pins, picks, refreshes and types models withou
     await expect(modelRow(picker, "all", "vendor/delta")).toBeVisible();
     expect(provider.state.calls).toBe(2);
 
-    // A typed ID that is not listed can be used with Enter.
-    const search = picker.locator("[data-model-search]");
+    // Enter with several matches waits for a choice; it never saves the search text as a model.
+    let search = picker.locator("[data-model-search]");
+    await search.fill("vendor/");
+    await expect(picker.locator("[data-model-use-typed]")).toContainText("Uses the text exactly as typed.");
+    await search.press("Enter");
+    await expect(picker).toBeVisible();
+    expect((await connectionRow(request, main.id))?.model).toBe("vendor/gamma");
+
+    if (!isPhone(testInfo)) {
+      // Keys pressed while an input method is composing belong to the composition.
+      for (const key of ["Enter", "Escape"]) {
+        await search.evaluate((input, key) => {
+          input.dispatchEvent(new KeyboardEvent("keydown", { key, isComposing: true, bubbles: true }));
+        }, key);
+      }
+      await expect(picker).toBeVisible();
+      expect((await connectionRow(request, main.id))?.model).toBe("vendor/gamma");
+    }
+
+    // A search with one match picks that model, and focus goes back to the menu button.
+    await search.fill("kapp");
+    await search.press("Enter");
+    await expect(page.locator("[data-connection-model-picker]")).toHaveCount(0);
+    await expect.poll(async () => (await connectionRow(request, main.id))?.model).toBe("vendor/kappa");
+    if (!isPhone(testInfo)) {
+      await expect(page.getByRole("button", { name: "Quick Connection Switcher", exact: true })).toBeFocused();
+    }
+
+    // A model's name, typed in any case, picks that model rather than saving the name as an ID.
+    picker = await openModels(page, testInfo, main.id);
+    search = picker.locator("[data-model-search]");
+    await search.fill("gamma");
+    await search.press("Enter");
+    await expect(page.locator("[data-connection-model-picker]")).toHaveCount(0);
+    await expect.poll(async () => (await connectionRow(request, main.id))?.model).toBe("vendor/gamma");
+
+    // A typed ID that matches nothing can be used with Enter.
+    picker = await openModels(page, testInfo, main.id);
+    search = picker.locator("[data-model-search]");
     await search.fill("my-org/custom-model");
     await expect(picker.locator("[data-model-use-typed]")).toContainText("Use “my-org/custom-model”");
+    await expect(picker.locator("[data-model-use-typed]")).toContainText("Press Enter to use this ID.");
     await search.press("Enter");
     await expect(page.locator("[data-connection-model-picker]")).toHaveCount(0);
     await expect.poll(async () => (await connectionRow(request, main.id))?.model).toBe("my-org/custom-model");
@@ -262,6 +313,13 @@ test("the Connections menu lists, pins, picks, refreshes and types models withou
     await field.locator("button[aria-expanded]").click();
     const settingsPicker = field.locator("[data-connection-model-picker]");
     await expect(settingsPicker).toContainText("Model changes are saved to this connection.");
+    // The opened list is scrolled into view inside Chat Settings (it can start near a phone's bottom edge).
+    await expect
+      .poll(async () => {
+        const [sheet, list] = [await settings.boundingBox(), await settingsPicker.boundingBox()];
+        return !!sheet && !!list && list.y >= sheet.y - 1 && list.y + list.height <= sheet.y + sheet.height + 1;
+      })
+      .toBe(true);
     const chatConnectionId = isPhone(testInfo) ? main.id : other.id;
     await expect(modelRow(settingsPicker, "pinned", "vendor/beta")).toHaveCount(isPhone(testInfo) ? 1 : 0);
     await settingsPicker.locator('[data-model-row][data-model-id="vendor/alpha"] [data-model-option]').click();
@@ -270,6 +328,25 @@ test("the Connections menu lists, pins, picks, refreshes and types models withou
     await expect.poll(async () => (await connectionRow(request, chatConnectionId))?.model).toBe("vendor/alpha");
     expect(provider.state.calls).toBe(callsBeforeSettings);
     await expectNoHorizontalScroll(page);
+    await closeChatSettings(page);
+
+    // A custom endpoint whose list cannot be read says so plainly, shows no built-in catalog, and still
+    // takes a typed model ID.
+    if (isPhone(testInfo)) {
+      picker = await openModels(page, testInfo, broken.id);
+    } else {
+      await page.getByRole("button", { name: "Quick Connection Switcher", exact: true }).click();
+      await page.locator(`[data-quick-connection-menu] [data-connection-option="${broken.id}"]`).click();
+      picker = page.locator("[data-quick-connection-menu] [data-connection-model-picker]");
+    }
+    await expect(picker).toContainText("Couldn't load the model list. You can still type a model ID.");
+    await expect(picker.locator("[data-model-section]")).toHaveCount(0);
+    await expect(picker.locator('[data-model-row][data-model-id^="gpt-"]')).toHaveCount(0);
+    search = picker.locator("[data-model-search]");
+    await search.fill("local/my-model");
+    await expect(picker.locator("[data-model-use-typed]")).toContainText("Press Enter to use this ID.");
+    await search.press("Enter");
+    await expect.poll(async () => (await connectionRow(request, broken.id))?.model).toBe("local/my-model");
   } finally {
     await cleanup();
   }

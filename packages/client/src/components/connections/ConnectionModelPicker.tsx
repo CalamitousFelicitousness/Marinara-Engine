@@ -93,49 +93,58 @@ export function ConnectionModelPicker({
   }, [autoFocusSearch, connection.id]);
 
   // Marinara's built-in models fill in only when the provider lists none or cannot be reached; next to a
-  // provider's own list they are noise (an OpenAI-compatible server would show the whole OpenAI catalog).
+  // provider's own list they are noise. A custom endpoint never gets them: its built-in list is the OpenAI
+  // and Z.AI catalog, which says nothing about what that server runs.
   const remoteModels = modelList.data?.models;
   const options = useMemo(
     () =>
       mergeConnectionModelOptions(
         remoteModels ?? [],
-        remoteModels?.length || modelList.isLoading ? [] : (MODEL_LISTS[provider] ?? []),
+        remoteModels?.length || modelList.isLoading || provider === "custom" ? [] : (MODEL_LISTS[provider] ?? []),
       ),
     [modelList.isLoading, provider, remoteModels],
   );
   const optionsById = useMemo(() => new Map(options.map((option) => [option.id, option])), [options]);
 
-  const { pinnedRows, otherRows, totalOther } = useMemo(() => {
+  const { pinnedAll, othersAll } = useMemo(() => {
     const pinnedSet = new Set(pinnedIds);
-    const pinned = filterConnectionModelOptions(
-      pinnedIds.map((id) => optionsById.get(id) ?? { id, name: id }),
-      deferredSearch,
-    );
     // The current model stays visible even when the provider does not list it (a typed ID).
     const others: PickerRow[] =
       currentModel && !pinnedSet.has(currentModel) && !optionsById.has(currentModel)
         ? [{ id: currentModel, name: currentModel }]
         : [];
     for (const option of options) if (!pinnedSet.has(option.id)) others.push(option);
-    const filteredOthers = filterConnectionModelOptions(others, deferredSearch);
+    return { pinnedAll: pinnedIds.map((id): PickerRow => optionsById.get(id) ?? { id, name: id }), othersAll: others };
+  }, [currentModel, options, optionsById, pinnedIds]);
+
+  const { pinnedRows, otherRows, totalOther } = useMemo(() => {
+    const filteredOthers = filterConnectionModelOptions(othersAll, deferredSearch);
     return {
-      pinnedRows: pinned,
+      pinnedRows: filterConnectionModelOptions(pinnedAll, deferredSearch),
       otherRows: filteredOthers.slice(0, MAX_LISTED_MODELS),
       totalOther: filteredOthers.length,
     };
-  }, [currentModel, deferredSearch, options, optionsById, pinnedIds]);
+  }, [deferredSearch, othersAll, pinnedAll]);
 
-  // The model whose ID was typed exactly (ignoring case), among pins, the current model and the list.
+  // What Enter does with the search text: an exact ID or name picks that model, a search with a single match
+  // picks it, and only text that matches nothing is used as a model ID. Several matches wait for a choice.
   const typedId = search.trim();
-  const exactMatch = useMemo((): PickerRow | null => {
+  const { exactId, enterTarget, enterUsesTyped } = useMemo(() => {
     const typed = typedId.toLowerCase();
-    if (!typed) return null;
-    for (const id of [...pinnedIds, currentModel]) {
-      if (id && id.toLowerCase() === typed) return optionsById.get(id) ?? { id, name: id };
-    }
-    return options.find((option) => option.id.toLowerCase() === typed) ?? null;
-  }, [currentModel, options, optionsById, pinnedIds, typedId]);
-  const showTypedRow = !!typedId && !exactMatch;
+    if (!typed) return { exactId: null, enterTarget: null, enterUsesTyped: false };
+    const rows = [...pinnedAll, ...othersAll];
+    const byId = rows.find((row) => row.id.toLowerCase() === typed) ?? null;
+    const byName = rows.filter((row) => row.name.toLowerCase() === typed);
+    const matches = filterConnectionModelOptions(rows, typedId);
+    const target: PickerRow | null =
+      byId ??
+      (byName.length === 1 ? byName[0]! : null) ??
+      (matches.length === 1 ? matches[0]! : null) ??
+      (matches.length === 0 ? { id: typedId, name: typedId } : null);
+    return { exactId: byId, enterTarget: target, enterUsesTyped: matches.length === 0 };
+  }, [othersAll, pinnedAll, typedId]);
+  // The typed text can always be used as it is from its own row; Enter uses it only when nothing matches.
+  const showTypedRow = !!typedId && !exactId;
 
   const pick = async (row: PickerRow) => {
     if (saving) return;
@@ -178,13 +187,14 @@ export function ConnectionModelPicker({
   };
 
   const onSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    // Keys pressed while an input method is composing belong to the composition.
+    if (event.nativeEvent.isComposing || event.keyCode === 229) return;
     if (event.key === "ArrowDown") {
       event.preventDefault();
       focusOption(null, 1);
     } else if (event.key === "Enter" && typedId) {
       event.preventDefault();
-      // Enter picks the model whose ID was typed exactly, or uses the typed ID as it is.
-      void pick(exactMatch ?? { id: typedId, name: typedId });
+      if (enterTarget) void pick(enterTarget);
     }
   };
 
@@ -337,7 +347,9 @@ export function ConnectionModelPicker({
                     {t("connections.modelPicker.useTyped", { model: typedId })}
                   </span>
                   <span className="text-[0.625rem] text-foreground/50">
-                    {t("connections.modelPicker.useTypedHint")}
+                    {t(
+                      enterUsesTyped ? "connections.modelPicker.useTypedHint" : "connections.modelPicker.useTypedAsIs",
+                    )}
                   </span>
                 </button>
               </div>
@@ -374,9 +386,13 @@ export function ConnectionModelPicker({
               </p>
             )}
 
-            {!modelList.isLoading && !typedId && pinnedRows.length === 0 && otherRows.length === 0 && (
-              <p className="px-3 py-3 text-[0.6875rem] text-foreground/50">{t("connections.modelPicker.empty")}</p>
-            )}
+            {!modelList.isLoading &&
+              !modelList.isError &&
+              !typedId &&
+              pinnedRows.length === 0 &&
+              otherRows.length === 0 && (
+                <p className="px-3 py-3 text-[0.6875rem] text-foreground/50">{t("connections.modelPicker.empty")}</p>
+              )}
           </div>
 
           <p className="border-t border-foreground/10 px-3 py-2 text-[0.625rem] text-foreground/50">

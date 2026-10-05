@@ -60,7 +60,7 @@ The **Quick Connection Switcher** is a faster way to change the connection, and 
 
 - Click a connection to use it for the current chat right away. The menu stays open so you can pick one of its models next.
 - Click a model to use it. The model is saved to that connection, the connection is selected for the chat if it was not already, and the menu closes. A checkmark marks the model the connection uses now. As in the connection editor, picking a listed model also updates the connection's context size, and its output limit, when the provider reports them.
-- Type in the **Search or enter model ID…** box to filter the list. To use a model that is not listed, type its exact ID and press Enter, or click the **Use "…"** row.
+- Type in the **Search or enter model ID…** box to filter the list. Pressing Enter picks the model whose ID or name you typed, or the only model left in the list. To use a model that is not listed, type its exact ID: press Enter when nothing in the list matches it, or click the **Use "…"** row.
 - Click the star next to a model to pin it. Pinned models stay at the top under **Pinned**, even ones you typed by hand. Click the star again to unpin it.
 - The first time you open a connection's models, Marinara loads the list from the provider and saves it with the connection, so later visits show it right away. Click the refresh button next to the search box to load the list again, for example after the provider adds new models. Changing the connection's API key, Base URL or provider also loads a fresh list.
 - If the provider has no model list or cannot be reached, the menu says so, and you can still type a model ID.

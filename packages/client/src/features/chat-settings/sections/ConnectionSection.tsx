@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, ChevronDown, Plug } from "lucide-react";
 import { LOCAL_SIDECAR_CONNECTION_ID } from "@marinara-engine/shared";
 import { ChatSettingsSection } from "../ChatSettingsSection";
@@ -32,14 +32,22 @@ function ConnectionModelField({ connection }: { connection: ChatConnectionOption
   const { t } = useUiTranslation();
   const [open, setOpen] = useState(false);
   const toggleRef = useRef<HTMLButtonElement>(null);
+  const pickerRef = useRef<HTMLDivElement>(null);
+  // On a phone the field can sit near the bottom of the sheet; bring the opened list into view.
+  useEffect(() => {
+    if (open) pickerRef.current?.scrollIntoView({ block: "nearest" });
+  }, [open]);
+  const close = () => {
+    setOpen(false);
+    toggleRef.current?.focus();
+  };
   return (
     <div
       data-chat-settings-model-field
       onKeyDown={(event) => {
-        if (event.key !== "Escape" || !open) return;
+        if (event.key !== "Escape" || !open || event.nativeEvent.isComposing || event.keyCode === 229) return;
         event.stopPropagation();
-        setOpen(false);
-        toggleRef.current?.focus();
+        close();
       }}
     >
       <span className="mb-1 block text-[0.6875rem] font-medium text-foreground/50">
@@ -61,8 +69,11 @@ function ConnectionModelField({ connection }: { connection: ChatConnectionOption
         <ChevronDown size="0.875rem" className={cn("shrink-0 transition-transform", open && "rotate-180")} />
       </button>
       {open && (
-        <div className="mt-2 flex h-[min(24rem,60dvh)] flex-col overflow-hidden rounded-lg ring-1 ring-foreground/10">
-          <ConnectionModelPicker connection={connection} autoFocusSearch onPicked={() => setOpen(false)} />
+        <div
+          ref={pickerRef}
+          className="mt-2 flex h-[min(24rem,60dvh)] flex-col overflow-hidden rounded-lg ring-1 ring-foreground/10"
+        >
+          <ConnectionModelPicker connection={connection} autoFocusSearch onPicked={close} />
         </div>
       )}
     </div>

@@ -109,7 +109,8 @@ export function QuickConnectionSwitcher({
     };
     // Escape closes the menu wherever focus is: Safari does not focus a tapped or clicked button.
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.defaultPrevented) return;
+      // Escape while an input method is composing cancels the composition, not the menu.
+      if (event.key !== "Escape" || event.defaultPrevented || event.isComposing || event.keyCode === 229) return;
       setOpen(false);
       btnRef.current?.focus();
     };
@@ -166,12 +167,13 @@ export function QuickConnectionSwitcher({
       ? createPortal(
           <div
             ref={menuRef}
-            role="menu"
+            // A non-modal dialog: it holds a search box and toggle buttons, not menu items.
+            role="dialog"
             aria-label={localizeUi("navigation.topbar.connections")}
             tabIndex={-1}
             onPointerDown={(event) => event.stopPropagation()}
             onKeyDown={(event) => {
-              if (event.key === "Escape") {
+              if (event.key === "Escape" && !event.nativeEvent.isComposing && event.keyCode !== 229) {
                 event.stopPropagation();
                 setOpen(false);
                 btnRef.current?.focus();
@@ -309,7 +311,10 @@ export function QuickConnectionSwitcher({
                     connection={modelsConnection}
                     chatId={activeChatId}
                     chatConnectionId={activeConnectionId}
-                    onPicked={() => setOpen(false)}
+                    onPicked={() => {
+                      setOpen(false);
+                      btnRef.current?.focus();
+                    }}
                   />
                 ) : (
                   <p className="px-4 py-4 text-[0.6875rem] text-foreground/50">

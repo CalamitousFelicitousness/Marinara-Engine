@@ -260,7 +260,8 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
     };
     // Escape closes the menu wherever focus is: Safari does not focus a tapped or clicked button.
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.defaultPrevented) return;
+      // Escape while an input method is composing cancels the composition, not the menu.
+      if (event.key !== "Escape" || event.defaultPrevented || event.isComposing || event.keyCode === 229) return;
       setOpen(false);
       btnRef.current?.focus();
     };
@@ -468,7 +469,10 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
                 chatId={activeChatId}
                 chatConnectionId={activeConnectionId}
                 showConnectionName
-                onPicked={() => setOpen(false)}
+                onPicked={() => {
+                  setOpen(false);
+                  btnRef.current?.focus();
+                }}
                 leading={
                   <button
                     type="button"

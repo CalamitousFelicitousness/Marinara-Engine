@@ -279,6 +279,14 @@ import {
   worldTownMinutes,
   worldTownSpotFromMetadata,
   worldTownVisitFromMetadata,
+  DUNGEON_EXIT_PROP,
+  dungeonFromGameDungeonMap,
+  dungeonPath,
+  dungeonWalkMinutes,
+  gameDungeonMapFromMetadata,
+  gameDungeonWalkFromMetadata,
+  type GameDungeonMap,
+  type GameDungeonWalk,
   worldInterior,
   worldPlaceByName,
   worldAddedPlace,
@@ -11084,6 +11092,88 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       time: formatGameTime(time),
     });
     return { visit, at: to, minutes, time, formatted: formatGameTime(time) };
+  });
+
+  // ── Dungeon, cave and station maps ──
+  // A map the Game Master opened with `[map:]`, kept on the chat as it was made: where the party stands
+  // on it, a walk across it on the game's clock, kept for the next turn to tell, and the way out.
+
+  // GET /game/:chatId/map: the game's map and the walk not yet told, or null for none.
+  app.get<{ Params: { chatId: string } }>("/:chatId/map", async (req, reply) => {
+    const chat = await createChatsStorage(app.db).getById(req.params.chatId);
+    if (!chat) return reply.status(404).send({ error: "Chat not found" });
+    const meta = parseMeta(chat.metadata);
+    return { map: gameDungeonMapFromMetadata(meta), walk: gameDungeonWalkFromMetadata(meta) };
+  });
+
+  // POST /game/:chatId/map/walk: the party walks to a cell by the shortest way; the minutes go on the
+  // clock and the walk waits for the next turn, joined to any walk not yet told.
+  app.post<{ Params: { chatId: string } }>("/:chatId/map/walk", async (req, reply) => {
+    const { chatId } = req.params;
+    const body = z
+      .object({
+        map: z.string().min(1).max(80),
+        x: z.number().int().min(0).max(63),
+        y: z.number().int().min(0).max(47),
+      })
+      .parse(req.body);
+    const chats = createChatsStorage(app.db);
+    let path: Array<{ x: number; y: number }> | null = null;
+    let minutes = 0;
+    let walk: GameDungeonWalk | undefined;
+    let time: GameTime | undefined;
+    let map: GameDungeonMap | undefined;
+    const updated = await chats.patchMetadata(chatId, (fresh) => {
+      const kept = gameDungeonMapFromMetadata(fresh);
+      if (!kept || kept.id !== body.map) {
+        throw Object.assign(new Error("The party is not on that map."), { statusCode: 409 });
+      }
+      const cells = dungeonFromGameDungeonMap(kept);
+      if (kept.at.x === body.x && kept.at.y === body.y) {
+        throw Object.assign(new Error("The party is already there."), { statusCode: 400 });
+      }
+      path = dungeonPath(cells, kept.at, body);
+      if (!path) throw Object.assign(new Error("There is no way there."), { statusCode: 400 });
+      minutes = dungeonWalkMinutes(path.length);
+      const pending = gameDungeonWalkFromMetadata(fresh);
+      walk = {
+        id: randomUUID(),
+        map: kept.id,
+        from: pending?.map === kept.id ? pending.from : kept.at,
+        to: { x: body.x, y: body.y },
+        minutes: Math.min(600, (pending?.map === kept.id ? pending.minutes : 0) + minutes),
+      };
+      map = { ...kept, at: { x: body.x, y: body.y } };
+      time = addMinutes((fresh.gameTime as GameTime) ?? createInitialTime(), minutes);
+      return { gameDungeonMap: map, gameDungeonWalk: walk, gameTime: time };
+    });
+    if (!updated || !walk || !time || !map) return reply.status(404).send({ error: "Chat not found" });
+    await updateLatestGameStateWithTrackerLocks(createGameStateStorage(app.db), chatId, {
+      time: formatGameTime(time),
+    });
+    return { map, walk, path, minutes, time, formatted: formatGameTime(time) };
+  });
+
+  // POST /game/:chatId/map/leave: the party leaves by the way out it stands on; the next turn says so.
+  app.post<{ Params: { chatId: string } }>("/:chatId/map/leave", async (req, reply) => {
+    const { chatId } = req.params;
+    const body = z.object({ map: z.string().min(1).max(80) }).parse(req.body);
+    const chats = createChatsStorage(app.db);
+    let left: string | undefined;
+    const updated = await chats.patchMetadata(chatId, (fresh) => {
+      const kept = gameDungeonMapFromMetadata(fresh);
+      if (!kept || kept.id !== body.map) {
+        throw Object.assign(new Error("The party is not on that map."), { statusCode: 409 });
+      }
+      const at = kept.at.y * kept.width + kept.at.x;
+      if (kept.props[at] !== String(DUNGEON_EXIT_PROP)) {
+        throw Object.assign(new Error("The way out is elsewhere."), { statusCode: 400 });
+      }
+      left = kept.name;
+      return { gameDungeonMap: null, gameDungeonWalk: null, gameDungeonLeft: kept.name };
+    });
+    if (!updated || !left) return reply.status(404).send({ error: "Chat not found" });
+    return { left };
   });
 
   // ── The world editor (worldgen W9c): a game's world as compiled, its hand edits, a place's people ──

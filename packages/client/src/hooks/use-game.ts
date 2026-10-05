@@ -41,6 +41,8 @@ import type {
 } from "@marinara-engine/shared";
 import type {
   Chat,
+  GameDungeonMap,
+  GameDungeonWalk,
   GameWorld,
   WorldRoute,
   WorldInterior,
@@ -58,6 +60,7 @@ export const gameKeys = {
   overworld: (chatId: string) => [...gameKeys.all, "overworld", chatId] as const,
   world: (chatId: string) => [...gameKeys.all, "world", chatId] as const,
   town: (chatId: string) => [...gameKeys.all, "town", chatId] as const,
+  dungeonMap: (chatId: string) => [...gameKeys.all, "dungeon-map", chatId] as const,
 };
 
 // ── Types ──
@@ -1082,6 +1085,57 @@ export function useTownVisit() {
     },
     onSettled: (_res, _error, variables) => {
       qc.invalidateQueries({ queryKey: gameKeys.town(variables.chatId) });
+      qc.invalidateQueries({ queryKey: chatKeys.detail(variables.chatId) });
+    },
+  });
+}
+
+// ── Dungeon, cave and station maps ──
+
+/** The map the party is on, and the walk on it its next turn tells. */
+export function useDungeonMap(chatId: string, turnKey: string | null, enabled: boolean) {
+  return useQuery({
+    queryKey: [...gameKeys.dungeonMap(chatId), turnKey],
+    queryFn: () => api.get<{ map: GameDungeonMap | null; walk: GameDungeonWalk | null }>(`/game/${chatId}/map`),
+    enabled: enabled && !!chatId,
+    staleTime: 30_000,
+  });
+}
+
+/** A walk on the map to a cell, by the shortest way: its minutes go on the game's clock. */
+export function useDungeonWalk() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { chatId: string; map: string; x: number; y: number }) =>
+      api.post<{
+        map: GameDungeonMap;
+        walk: GameDungeonWalk;
+        path: Array<{ x: number; y: number }>;
+        minutes: number;
+        formatted: string;
+      }>(`/game/${data.chatId}/map/walk`, { map: data.map, x: data.x, y: data.y }),
+    // The party is where it walked at once, so the map never shows it back where it set out.
+    onSuccess: (res, variables) => {
+      qc.setQueriesData<{ map: GameDungeonMap | null; walk: GameDungeonWalk | null }>(
+        { queryKey: gameKeys.dungeonMap(variables.chatId) },
+        (old) => (old ? { map: res.map, walk: res.walk } : old),
+      );
+    },
+    onSettled: (_res, _error, variables) => {
+      qc.invalidateQueries({ queryKey: gameKeys.dungeonMap(variables.chatId) });
+      qc.invalidateQueries({ queryKey: chatKeys.detail(variables.chatId) });
+    },
+  });
+}
+
+/** The party leaves the map by the way out it stands on. */
+export function useDungeonLeave() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { chatId: string; map: string }) =>
+      api.post<{ left: string }>(`/game/${data.chatId}/map/leave`, { map: data.map }),
+    onSettled: (_res, _error, variables) => {
+      qc.invalidateQueries({ queryKey: gameKeys.dungeonMap(variables.chatId) });
       qc.invalidateQueries({ queryKey: chatKeys.detail(variables.chatId) });
     },
   });

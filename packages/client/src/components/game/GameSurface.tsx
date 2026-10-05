@@ -1614,6 +1614,11 @@ const WorldOverworld = lazy(async () => {
   return { default: module.WorldOverworld };
 });
 
+const DungeonMapView = lazy(async () => {
+  const module = await import("./DungeonMapView");
+  return { default: module.DungeonMapView };
+});
+
 const TownView = lazy(async () => {
   const module = await import("./TownView");
   return { default: module.TownView };
@@ -8815,7 +8820,17 @@ function GameSurfaceComponent({
   const combatUiActive = gameState === "combat" && !!combatParty && !!combatEnemies;
   // The overworld (worldgen W8): a game with a world opens on it, and the player can switch to the scene
   // view and back. A fight, a replay and a package that draws the game itself keep their own screens.
+  // A dungeon, cave or station map the Game Master opened with [map:] is shown over everything else,
+  // until the player switches to the scene or the party leaves by the way out.
+  const dungeonMapOpen = chatMeta.gameDungeonMap != null && typeof chatMeta.gameDungeonMap === "object";
+  const dungeonShown =
+    dungeonMapOpen && chatMeta.gameDungeonView !== "scene" && !experienceOwnsGame && !combatUiActive && !replayActive;
+  const handleToggleDungeonView = useCallback(
+    () => updateChatMetadata.mutate({ id: activeChatId, gameDungeonView: dungeonShown ? "scene" : "map" }),
+    [activeChatId, dungeonShown, updateChatMetadata],
+  );
   const overworldShown =
+    !dungeonShown &&
     (gameWorld !== null || gameWorldPending) &&
     chatMeta.gameWorldView !== "scene" &&
     !experienceOwnsGame &&
@@ -13035,7 +13050,17 @@ function GameSurfaceComponent({
                     buttonClassName={GAME_TOP_ICON_BUTTON}
                     onOpen={dismissOtherFloatingWindows}
                   />
-                  {gameWorld && (
+                  {dungeonMapOpen && (
+                    <button
+                      onClick={handleToggleDungeonView}
+                      className={GAME_TOP_ICON_BUTTON}
+                      title={dungeonShown ? t("game.dungeon.showScene") : t("game.dungeon.show")}
+                      aria-label={dungeonShown ? t("game.dungeon.showScene") : t("game.dungeon.show")}
+                    >
+                      {dungeonShown ? <Film size={14} /> : <MapIcon size={14} />}
+                    </button>
+                  )}
+                  {gameWorld && !dungeonShown && (
                     <button
                       onClick={handleToggleWorldView}
                       className={GAME_TOP_ICON_BUTTON}
@@ -13339,7 +13364,20 @@ function GameSurfaceComponent({
                           title={t("chat.toolbar.activeContext")}
                           onOpen={dismissOtherFloatingWindows}
                         />
-                        {gameWorld && (
+                        {dungeonMapOpen && (
+                          <button
+                            onClick={() => {
+                              setMobileActionsOpen(false);
+                              handleToggleDungeonView();
+                            }}
+                            className={GAME_MOBILE_ICON_BUTTON}
+                            title={dungeonShown ? t("game.dungeon.showScene") : t("game.dungeon.show")}
+                            aria-label={dungeonShown ? t("game.dungeon.showScene") : t("game.dungeon.show")}
+                          >
+                            {dungeonShown ? <Film size={14} /> : <MapIcon size={14} />}
+                          </button>
+                        )}
+                        {gameWorld && !dungeonShown && (
                           <button
                             onClick={() => {
                               setMobileActionsOpen(false);
@@ -13418,6 +13456,16 @@ function GameSurfaceComponent({
                 data-chat-resource-drop-surface
                 className={cn("relative flex min-h-0 flex-1 flex-col overflow-hidden", experienceSurfaceClass)}
               >
+                {dungeonShown && (
+                  <Suspense fallback={null}>
+                    <DungeonMapView
+                      chatId={activeChatId}
+                      turnKey={narrationTurnKey(latestAssistantMsg)}
+                      canWalk={!isStreaming && narrationDone && sessionInteractive}
+                      onLeft={() => undefined}
+                    />
+                  </Suspense>
+                )}
                 {overworldShown &&
                   gameWorld &&
                   (() => {

@@ -99,6 +99,7 @@ export * from "./features/world/edits.js";
 export * from "./features/world/battlefield-maps.js";
 export * from "./features/world/share-files.js";
 export * from "./features/world/story.js";
+export * from "./features/world/dungeon-map.js";
 export * from "./features/world/overused-names.js";
 export * from "./schemas/capability-package.schema.js";
 export * from "./schemas/gm-verb-table.schema.js";

@@ -226,6 +226,17 @@ import {
   worldTownVisitSchema,
   worldTownVisitTags,
   worldTownVisitText,
+  dungeonSetFor,
+  gameDungeonMapFromDungeon,
+  gameDungeonMapFromMetadata,
+  gameDungeonMapPromptText,
+  gameDungeonSeed,
+  gameDungeonToldText,
+  gameDungeonWalkFromMetadata,
+  gameDungeonWalkSchema,
+  generateDungeonMap,
+  readGameDungeonTags,
+  type GameDungeonWalk,
   worldInterior,
   worldInteriorWords,
   worldKitArtFamily,
@@ -1945,6 +1956,23 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               return worldTownVisitFromMetadata(chatMeta);
             })()
           : Promise.resolve(null);
+      // A walk on a dungeon map and a leaving this turn tells, as the town visit is told. A regeneration
+      // tells again what the reply it replaces told.
+      const turnDungeonPromise: Promise<{ walk: GameDungeonWalk | null; left: string | null }> =
+        chatMode === "game" && !input.impersonate && !input.continueMessageId
+          ? (async () => {
+              if (input.regenerateMessageId) {
+                const replaced = parseExtra((await chats.getMessage(input.regenerateMessageId))?.extra);
+                const walk = gameDungeonWalkSchema.safeParse(replaced.dungeonWalk);
+                const left = typeof replaced.dungeonLeft === "string" ? replaced.dungeonLeft : null;
+                if (walk.success || left) return { walk: walk.success ? walk.data : null, left };
+              }
+              return {
+                walk: gameDungeonWalkFromMetadata(chatMeta),
+                left: typeof chatMeta.gameDungeonLeft === "string" ? chatMeta.gameDungeonLeft : null,
+              };
+            })()
+          : Promise.resolve({ walk: null, left: null });
       // The story's turn (worldgen W10): what its script trips before this reply, read once (when the
       // prompt is built, the player named by then) for the Game Master's prompt and for the reply, so both
       // tell the same turn. A continuation trips nothing, as it tells no walk.
@@ -4808,6 +4836,13 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           const promptStoryNow = promptTurnStory
             ? storyTurnPromptText(promptTurnStory.story, promptTurnStory.turn)
             : "";
+          // The map the party is on (dungeon maps), and what it did since the last turn.
+          const promptDungeonMap = await (async () => {
+            const map = gameDungeonMapFromMetadata(chatMeta);
+            const told = await turnDungeonPromise;
+            const toldText = gameDungeonToldText(map, told.walk, told.left);
+            return [map ? gameDungeonMapPromptText(map) : "", toldText].filter(Boolean).join("\n") || undefined;
+          })();
           const promptWhereYouAre = promptWorld
             ? await (async () => {
                 // The world as the story has left it (worldgen W4): the ledger in all the replies.
@@ -5023,6 +5058,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 : {}),
               ...(promptStoryNow ? { storyNow: promptStoryNow } : {}),
               ...(promptMarket ? { market: promptMarket } : {}),
+              ...(promptDungeonMap ? { dungeonMap: promptDungeonMap } : {}),
               ...(pinnedGameRuleset?.status === "ok" && pinnedGameRuleset.layers.length > 0
                 ? {
                     rulesetLayerOptions: Object.fromEntries(
@@ -10390,6 +10426,47 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             } catch (err) {
               // The reply is saved either way: a failed write is logged, never the turn's failure.
               logger.error(err, "[generate] Overworld walk and clock update failed for chat %s", input.chatId);
+            }
+          }
+          // ── Dungeon, cave and station maps ──
+          // The walk and the leaving this reply told stay with it and are no longer pending; its `[map:]`
+          // tags open a map (the last one wins) or leave the one the party is on.
+          if (savedMsg?.id && chatMode === "game" && fullResponse.trim()) {
+            try {
+              const told = await turnDungeonPromise;
+              const tags = readGameDungeonTags(fullResponse);
+              const last = tags.at(-1);
+              if (told.walk || told.left || last) {
+                const family = worldKitArtFamily(gameWorldKitFromMetadata(chatMeta) ?? undefined);
+                await chats.patchMetadata(input.chatId, (fresh) => {
+                  const patch: Record<string, unknown> = {};
+                  if (told.walk && gameDungeonWalkFromMetadata(fresh)?.id === told.walk.id)
+                    patch.gameDungeonWalk = null;
+                  if (told.left && fresh.gameDungeonLeft === told.left) patch.gameDungeonLeft = null;
+                  if (last?.leave) {
+                    const kept = gameDungeonMapFromMetadata(fresh);
+                    if (kept) Object.assign(patch, { gameDungeonMap: null, gameDungeonWalk: null });
+                  } else if (last) {
+                    const set = dungeonSetFor(last.kind, family, last.set);
+                    const map = generateDungeonMap(set.id, gameDungeonSeed(input.chatId, last.name), "medium");
+                    Object.assign(patch, {
+                      gameDungeonMap: gameDungeonMapFromDungeon(map, last.name, randomUUID()),
+                      gameDungeonWalk: null,
+                      gameDungeonView: "map",
+                    });
+                  }
+                  return patch;
+                });
+                if (told.walk || told.left) {
+                  await chats.updateMessageExtra(savedMsg.id, {
+                    ...(told.walk ? { dungeonWalk: told.walk } : {}),
+                    ...(told.left ? { dungeonLeft: told.left } : {}),
+                  });
+                }
+              }
+            } catch (err) {
+              // The reply is saved either way.
+              logger.error(err, "[generate] Dungeon map update failed for chat %s", input.chatId);
             }
           }
           // Empty messageId on the paths that save no message; that costs the claim, never the effect.

@@ -642,7 +642,12 @@ const capabilityPackageManifestBaseSchema = z
 //        column of the row, or a value off the sheet); the sheet editor rolls it with the Engine's own
 //        dice. Not a soft seam: an Engine that cannot read it refuses the whole ruleset file, so a
 //        package that ships it declares 1.80. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 80 } as const);
+// 1.81: a sheet may declare a guided `builder` (steps that pick catalog entries, fill fields, set the
+//        ability scores by point buy, an array, rolls or by hand, choose trained skills and saves, and
+//        take starting gear), and a catalog entry may say what a pick through it `grants` (score
+//        increases, training, field values). Not a soft seam: an Engine that cannot read either refuses
+//        the ruleset file or the catalog, so a package that ships them declares 1.81. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 81 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

@@ -104,7 +104,7 @@ try {
   const legacyManifest = capabilityPackageManifestSchema.parse(installedPackage("legacy", ["agent"]).manifest);
   assert.equal(legacyManifest.schemaVersion, 1, "Existing manifest v1 packages must remain readable");
   assert.equal(getCapabilityApiCompatibilityIssue(legacyManifest), null);
-  assert.deepEqual(supportedCapabilityApi, { major: 1, minor: 80 });
+  assert.deepEqual(supportedCapabilityApi, { major: 1, minor: 81 });
 
   const manifestV2 = capabilityPackageManifestSchema.parse({
     ...legacyManifest,

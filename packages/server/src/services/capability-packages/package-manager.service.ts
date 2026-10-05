@@ -1126,6 +1126,14 @@ const MULTIPLY_ISSUE =
 const AMOUNT_ADD_ISSUE =
   "A ruleset whose catalog entries add a sheet value to their amount requires schemaVersion 2 and capabilityApi 1.78 or newer";
 
+const BUILDER_ISSUE =
+  "A ruleset with a guided builder, or catalog entries that grant through one, requires schemaVersion 2 and capabilityApi 1.81 or newer";
+
+/** What a pick through the guided builder grants (1.81): `grants`, a new key on the strict entry. */
+function entriesCarryGrants(entries: unknown): boolean {
+  return Array.isArray(entries) && entries.some((entry) => plainRecord(entry)?.grants !== undefined);
+}
+
 /** A sheet value added to a catalog entry's amount (1.78): `amountAdd`, a new key on strict mechanics. */
 function entriesCarryAmountAdd(entries: unknown): boolean {
   return (
@@ -1339,6 +1347,7 @@ export function getCapabilityPackageInstallIssue(
   let carriesMarketDay = false;
   let carriesHonesty = false;
   let carriesAmountAdd = false;
+  let carriesGrants = false;
   // Every item by "<catalog>/<entry>", inline and in files, and the fakes among them, so a fake whose
   // target is in another catalog file is checked here, where every file can be read.
   const itemsByRef = new Map<string, RulesetCatalogItem>();
@@ -1432,6 +1441,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryMarketDay(header.entries)) carriesMarketDay = true;
       if (entriesCarryHonesty(header.entries)) carriesHonesty = true;
       if (entriesCarryAmountAdd(header.entries)) carriesAmountAdd = true;
+      if (entriesCarryGrants(header.entries)) carriesGrants = true;
       collectItems(header.id, header.entries);
       const asset = header.asset;
       if (typeof asset !== "string") continue;
@@ -1475,6 +1485,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryMarketDay(fileEntries)) carriesMarketDay = true;
       if (entriesCarryHonesty(fileEntries)) carriesHonesty = true;
       if (entriesCarryAmountAdd(fileEntries)) carriesAmountAdd = true;
+      if (entriesCarryGrants(fileEntries)) carriesGrants = true;
       collectItems(header.id, fileEntries);
     }
   }
@@ -1759,6 +1770,17 @@ export function getCapabilityPackageInstallIssue(
     });
   if (!declaresApi(80) && rolled) {
     return "A ruleset with a list column filled by a roll requires schemaVersion 2 and capabilityApi 1.80 or newer";
+  }
+  // The guided builder, 1.81: a new key on the strict sheet, and `grants` on the strict entry.
+  // A catalog of rows that feeds no list is one whose entries only grant, and an older Engine refused it.
+  const unfed =
+    Array.isArray(ruleset?.catalogs) &&
+    ruleset.catalogs.some((catalog) => {
+      const header = plainRecord(catalog);
+      return !!header && (header.holds ?? "rows") === "rows" && header.feeds === undefined;
+    });
+  if (!declaresApi(81) && (plainRecord(ruleset?.sheet)?.builder !== undefined || carriesGrants || unfed)) {
+    return BUILDER_ISSUE;
   }
   return null;
 }

@@ -876,6 +876,124 @@ const sheetMigrationSchema = z
   })
   .strict();
 
+// ── The guided builder (Capability API 1.81) ──
+
+/** How many steps one guided builder may have. */
+export const RULESET_BUILDER_STEPS_MAX = 16;
+
+/** Point buy: every score a player may buy and what it costs, lowest score first. The lowest is
+ *  where every score starts, and the highest the most one score may be bought up to. */
+const builderPointBuySchema = z
+  .object({
+    budget: z.number().int().min(1).max(200),
+    costs: z
+      .array(z.tuple([z.number().int(), z.number().int().min(0).max(100)]))
+      .min(2)
+      .max(40)
+      .superRefine((costs, ctx) => {
+        costs.forEach(([score, cost], index) => {
+          const before = costs[index - 1];
+          if (before && (score !== before[0] + 1 || cost < before[1])) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: [index],
+              message: "Costs go up one score at a time, and never cost less than the score below",
+            });
+          }
+        });
+      }),
+  })
+  .strict();
+
+const builderStepBase = { id: sheetId, label: promptSafeText(40) };
+
+/** One step of the guided builder. The steps are offered in order, each says how many choices it
+ *  still waits on, and none of them blocks the next. */
+const builderStepSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      ...builderStepBase,
+      kind: z.literal("catalog"),
+      /** A catalog of rows whose entries are offered as cards. */
+      catalog: sheetId,
+      /** How many entries the step asks for, and at most takes. */
+      min: z.number().int().min(0).max(20).default(1),
+      max: z.number().int().min(1).max(20).default(1),
+      /** A text or enum field the picked entries' labels are written to (a race, a class). */
+      field: sheetId.optional(),
+      /** Fixed values of the catalog's filters: only entries that match are offered. */
+      filters: z.record(z.union([z.number().finite(), z.string().max(80)])).optional(),
+      /** Only entries whose `filter` names an entry picked at an earlier step (a subrace by its race). */
+      within: z.object({ step: sheetId, filter: sheetId }).strict().optional(),
+    })
+    .strict(),
+  z
+    .object({
+      ...builderStepBase,
+      kind: z.literal("fields"),
+      fields: z.array(sheetId).min(1).max(20),
+    })
+    .strict(),
+  z
+    .object({
+      ...builderStepBase,
+      kind: z.literal("abilities"),
+      /** The scores the step sets. All of them when left out. */
+      abilities: z.array(sheetId).min(1).max(20).optional(),
+      methods: z
+        .object({
+          pointBuy: builderPointBuySchema.optional(),
+          /** Values to hand out, one to each score. */
+          standardArray: z.array(z.number().int()).min(1).max(20).optional(),
+          /** One roll per score: `count` dice of `sides`, keeping the highest `keep`. */
+          roll: z
+            .object({
+              count: z.number().int().min(1).max(10),
+              sides: z.number().int().min(2).max(100),
+              keep: z.number().int().min(1).max(10),
+            })
+            .strict()
+            .refine((roll) => roll.keep <= roll.count, { message: "A roll keeps at most the dice it throws" })
+            .optional(),
+          /** Typed in, within each score's own bounds. */
+          manual: z.literal(true).optional(),
+        })
+        .strict()
+        .refine((methods) => Object.keys(methods).length > 0, { message: "An abilities step offers a method" }),
+    })
+    .strict(),
+  z
+    .object({
+      ...builderStepBase,
+      kind: z.literal("trained"),
+      /** Skills or saves of the player's own choosing, besides the ones picked entries offer. */
+      choose: z
+        .array(
+          z
+            .object({
+              what: z.enum(["skills", "saves"]),
+              count: z.number().int().min(1).max(20),
+              from: z.array(sheetId).min(1).max(120).optional(),
+            })
+            .strict(),
+        )
+        .min(1)
+        .max(4)
+        .optional(),
+    })
+    .strict(),
+  z.object({ ...builderStepBase, kind: z.literal("startingGear") }).strict(),
+]);
+
+const sheetBuilderSchema = z
+  .object({
+    steps: z.array(builderStepSchema).min(1).max(RULESET_BUILDER_STEPS_MAX),
+    /** The tier a skill or save the builder trains is set to, unless a grant names its own. The first
+     *  tier above untrained the sheet offers when left out. */
+    tier: sheetId.optional(),
+  })
+  .strict();
+
 export const rulesetSheetSchema = z
   .object({
     /** Bumped by the author when the sheet's shape changes. Stored sheets record it as `v`. */
@@ -912,6 +1030,8 @@ export const rulesetSheetSchema = z
     derived: z.array(rulesetDerivedSchema).max(RULESET_DERIVED_MAX).default([]),
     lists: z.array(listSchema).max(20).default([]),
     live: liveSchema.default({}),
+    /** A guided character builder beside the full form (Capability API 1.81). */
+    builder: sheetBuilderSchema.optional(),
   })
   .strict();
 
@@ -2535,6 +2655,58 @@ const catalogItemSchema = z
   })
   .strict();
 
+/** What a catalog entry gives a character when it is picked through the guided builder (Capability API
+ *  1.81), and takes back when it is unpicked. The catalog picker ignores it. */
+const catalogGrantsSchema = z
+  .object({
+    abilities: z
+      .object({
+        add: z.record(z.number().int().min(-20).max(20)).optional(),
+        /** Scores of the player's choosing, `amount` each, never one twice and never one in `except`. */
+        choose: z
+          .array(
+            z
+              .object({
+                count: z.number().int().min(1).max(6),
+                amount: z.number().int().min(-20).max(20),
+                except: z.array(sheetId).max(20).optional(),
+              })
+              .strict(),
+          )
+          .min(1)
+          .max(3)
+          .optional(),
+      })
+      .strict()
+      .optional(),
+    trained: z
+      .object({
+        skills: z.array(sheetId).max(40).optional(),
+        saves: z.array(sheetId).max(20).optional(),
+        choose: z
+          .array(
+            z
+              .object({
+                what: z.enum(["skills", "saves"]),
+                count: z.number().int().min(1).max(20),
+                /** Any of them when left out. */
+                from: z.array(sheetId).min(1).max(120).optional(),
+              })
+              .strict(),
+          )
+          .min(1)
+          .max(4)
+          .optional(),
+        /** The tier they are trained to: the first one above untrained when left out. */
+        tier: sheetId.optional(),
+      })
+      .strict()
+      .optional(),
+    /** Field values (a class's hit die, its spellcasting ability). */
+    sets: z.record(z.union([z.number().finite(), z.string().max(200), z.boolean()])).optional(),
+  })
+  .strict();
+
 const catalogEntrySchema = z
   .object({
     id: z.string().max(80).regex(RULESET_ID_PATTERN, "An entry id is lowercase letters, digits and single hyphens"),
@@ -2553,14 +2725,23 @@ const catalogEntrySchema = z
     creature: rulesetCreatureSchema.optional(),
     /** A thing to carry instead: it goes into Game Mode's inventory, not onto a sheet or into a fight. */
     item: catalogItemSchema.optional(),
+    /** What a pick through the guided builder gives (1.81). An entry that grants may write no rows. */
+    grants: catalogGrantsSchema.optional(),
   })
   .strict()
   .superRefine((entry, ctx) => {
     const kinds = [entry.rows, entry.creature, entry.item].filter((kind) => kind !== undefined).length;
-    if (kinds !== 1) {
+    if (kinds > 1 || (kinds === 0 && !entry.grants)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'An entry has exactly one of "rows", "creature" or "item"',
+        message: 'An entry has exactly one of "rows", "creature" or "item", or only "grants"',
+      });
+    }
+    if (entry.grants && (entry.creature || entry.item)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["grants"],
+        message: "Only an entry for a sheet grants anything; a creature or an item is never picked onto one",
       });
     }
     if (entry.creature && entry.mechanics) {
@@ -2625,12 +2806,16 @@ const catalogSchema = z
           message: `A catalog of ${catalog.holds} writes no rows, so it feeds no list`,
         });
       }
-    } else if (catalog.feeds === undefined) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["feeds"],
-        message: 'A catalog of rows names the lists it "feeds"',
-      });
+    } else if (catalog.feeds === undefined && !catalog.entries?.every((entry) => entry.grants && !entry.rows)) {
+      // Only a catalog whose entries all just grant through the guided builder (1.81, a class) writes
+      // no rows; an asset's entries are checked against no feeds when they are read.
+      if (catalog.entries) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["feeds"],
+          message: 'A catalog of rows names the lists it "feeds"',
+        });
+      }
     }
     // The path is derived from the id rather than chosen, so the route can find the file from the
     // catalog alone and two catalogs can never name each other's asset.
@@ -4874,6 +5059,90 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
     }
   });
 
+  // The guided builder (1.81): its steps name this ruleset's own catalogs, fields, scores and skills.
+  if (sheet.builder) {
+    const stepPath = (index: number) => ["sheet", "builder", "steps", index];
+    unique(sheet.builder.steps, ["sheet", "builder", "steps"], "builder step");
+    const catalogSteps = new Map<string, string>();
+    let abilitySteps = 0;
+    sheet.builder.steps.forEach((step, index) => {
+      const path = stepPath(index);
+      if (step.kind === "catalog") {
+        const catalog = catalogs.find((each) => each.id === step.catalog);
+        if (!catalog || (catalog.holds ?? "rows") !== "rows") {
+          issue([...path, "catalog"], `No catalog of rows "${step.catalog}"`);
+        }
+        if (step.min > step.max) issue([...path, "min"], "A step asks for at most its max");
+        if (step.field !== undefined) {
+          const field = fieldById.get(step.field);
+          if (!field || (field.type !== "text" && field.type !== "enum")) {
+            issue([...path, "field"], `No text or enum field "${step.field}"`);
+          }
+        }
+        const filterOf = (id: string) => catalog?.filters?.find((filter) => filter.id === id);
+        for (const [filterId, value] of Object.entries(step.filters ?? {})) {
+          const filter = filterOf(filterId);
+          if (!filter) issue([...path, "filters", filterId], `Unknown filter "${filterId}"`);
+          else if ((filter.type === "number") !== (typeof value === "number")) {
+            issue(
+              [...path, "filters", filterId],
+              `Filter "${filterId}" takes ${filter.type === "number" ? "a number" : "a word"}`,
+            );
+          }
+        }
+        if (step.within) {
+          if (!catalogSteps.has(step.within.step)) {
+            issue([...path, "within", "step"], `No catalog step "${step.within.step}" before this one`);
+          }
+          const filter = filterOf(step.within.filter);
+          if (!filter || filter.type === "number") {
+            issue([...path, "within", "filter"], `No text or tags filter "${step.within.filter}"`);
+          }
+        }
+        catalogSteps.set(step.id, step.catalog);
+      } else if (step.kind === "fields") {
+        step.fields.forEach((id, fieldIndex) => {
+          if (!fields.has(id)) issue([...path, "fields", fieldIndex], `Unknown field "${id}"`);
+        });
+      } else if (step.kind === "abilities") {
+        abilitySteps += 1;
+        if (sheet.abilities.length === 0) issue([...path, "kind"], "This sheet has no ability scores");
+        step.abilities?.forEach((id, abilityIndex) => {
+          if (!abilities.has(id)) issue([...path, "abilities", abilityIndex], `Unknown ability "${id}"`);
+        });
+        const set = step.abilities ?? sheet.abilities.map((ability) => ability.id);
+        const array = step.methods.standardArray;
+        if (array && array.length !== set.length) {
+          issue(
+            [...path, "methods", "standardArray"],
+            `The array hands out one value to each of the ${set.length} scores`,
+          );
+        }
+      } else if (step.kind === "trained") {
+        step.choose?.forEach((choice, choiceIndex) => {
+          const known = choice.what === "skills" ? skills : saves;
+          choice.from?.forEach((id, idIndex) => {
+            if (!known.has(id)) {
+              issue(
+                [...path, "choose", choiceIndex, "from", idIndex],
+                `Unknown ${choice.what === "skills" ? "skill" : "save"} "${id}"`,
+              );
+            }
+          });
+        });
+      } else if (step.kind === "startingGear" && !def.items?.startingGear) {
+        issue([...path, "kind"], "This ruleset has no starting gear");
+      }
+    });
+    if (abilitySteps > 1) issue(["sheet", "builder", "steps"], "A builder sets the scores in one step");
+    if (
+      sheet.builder.tier !== undefined &&
+      resolution.proficiencyTiers.findIndex((tier) => tier.id === sheet.builder!.tier) < 1
+    ) {
+      issue(["sheet", "builder", "tier"], `"${sheet.builder.tier}" is not a tier above untrained`);
+    }
+  }
+
   // A row pool belongs to a list row and is keyed by that row's name, so it can appear and vanish
   // as the player edits the sheet. A health, energy or slot pool is a declared one only.
   const declaredPool = (pool: string, path: (string | number)[]): void => {
@@ -5822,6 +6091,9 @@ export function parseRulesetDefinition(input: unknown): RulesetParseResult {
 
 export type RulesetCatalogHeader = z.infer<typeof catalogSchema>;
 export type RulesetCatalogEntry = z.infer<typeof catalogEntrySchema>;
+export type RulesetCatalogGrants = z.infer<typeof catalogGrantsSchema>;
+export type RulesetSheetBuilder = z.infer<typeof sheetBuilderSchema>;
+export type RulesetBuilderStep = z.infer<typeof builderStepSchema>;
 export type RulesetCatalogItem = z.infer<typeof catalogItemSchema>;
 /** One item as a catalog entry writes it, for reading an invented item back off a game. */
 export const rulesetCatalogItemSchema = catalogItemSchema;
@@ -6702,6 +6974,74 @@ export function rulesetItemIssues(definition: RulesetDefinition, item: RulesetCa
   return found;
 }
 
+/** A builder grant names the sheet's own scores, skills, saves, tiers and fields, and a field's value
+ *  is one it can hold. */
+function grantsIssues(
+  definition: RulesetDefinition,
+  grants: z.infer<typeof catalogGrantsSchema>,
+  path: (string | number)[],
+  add: (path: (string | number)[], message: string) => void,
+): void {
+  const { sheet } = definition;
+  const abilities = new Set(sheet.abilities.map((ability) => ability.id));
+  for (const id of Object.keys(grants.abilities?.add ?? {})) {
+    if (!abilities.has(id)) add([...path, "abilities", "add", id], `Unknown ability "${id}"`);
+  }
+  grants.abilities?.choose?.forEach((choice, index) => {
+    choice.except?.forEach((id, idIndex) => {
+      if (!abilities.has(id))
+        add([...path, "abilities", "choose", index, "except", idIndex], `Unknown ability "${id}"`);
+    });
+    const open = sheet.abilities.filter((ability) => !choice.except?.includes(ability.id)).length;
+    if (choice.count > open)
+      add([...path, "abilities", "choose", index, "count"], `Only ${open} scores are left to choose`);
+  });
+  const known = {
+    skills: new Set(sheet.skills.map((skill) => skill.id)),
+    saves: new Set(sheet.saves.map((save) => save.id)),
+  };
+  for (const what of ["skills", "saves"] as const) {
+    grants.trained?.[what]?.forEach((id, index) => {
+      if (!known[what].has(id))
+        add([...path, "trained", what, index], `Unknown ${what === "skills" ? "skill" : "save"} "${id}"`);
+    });
+  }
+  grants.trained?.choose?.forEach((choice, index) => {
+    choice.from?.forEach((id, idIndex) => {
+      if (!known[choice.what].has(id)) {
+        add(
+          [...path, "trained", "choose", index, "from", idIndex],
+          `Unknown ${choice.what === "skills" ? "skill" : "save"} "${id}"`,
+        );
+      }
+    });
+  });
+  const tiers = definition.resolution.proficiencyTiers;
+  if (grants.trained && tiers.length < 2) add([...path, "trained"], "This ruleset has no tier above untrained");
+  if (grants.trained?.tier !== undefined) {
+    const at = tiers.findIndex((tier) => tier.id === grants.trained!.tier);
+    if (at < 1) add([...path, "trained", "tier"], `"${grants.trained.tier}" is not a tier above untrained`);
+  }
+  for (const [id, value] of Object.entries(grants.sets ?? {})) {
+    const field = sheet.fields.find((each) => each.id === id);
+    if (!field) {
+      add([...path, "sets", id], `Unknown field "${id}"`);
+      continue;
+    }
+    const fits =
+      field.type === "number"
+        ? typeof value === "number" && value >= field.min && value <= field.max
+        : field.type === "boolean"
+          ? typeof value === "boolean"
+          : field.type === "enum"
+            ? typeof value === "string" && field.values.includes(value)
+            : field.type === "text" || field.type === "longtext"
+              ? typeof value === "string" && value.length <= field.maxLength
+              : typeof value === "string";
+    if (!fits) add([...path, "sets", id], `Field "${id}" cannot hold ${JSON.stringify(value)}`);
+  }
+}
+
 export function rulesetCatalogEntryIssues(
   definition: RulesetDefinition,
   catalog: RulesetCatalogHeader,
@@ -6787,6 +7127,8 @@ export function rulesetCatalogEntryIssues(
         add([index, "filters", filterId], `Filter "${filterId}" takes ${wanted}`);
       }
     }
+
+    if (entry.grants) grantsIssues(definition, entry.grants, [index, "grants"], add);
 
     // How many rows this entry writes into each list, because a row the ruleset keeps up to date
     // has to be the entry's only one there: a marked row on a sheet is then matched to its spec

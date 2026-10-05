@@ -3,7 +3,6 @@ import {
   DECISION_SOURCES,
   DECISION_SOURCE_BASE_URLS,
   DECISION_TIMEOUT_MS,
-  decisionSourceTakesUrl,
   defaultDecisionStateTokens,
   defaultDecisionTimeoutMs,
   resolveDecisionConnectionTimeoutMs,
@@ -1961,6 +1960,11 @@ export function ConnectionEditor() {
                       : "connections.decision.privacy",
                 )}
               </p>
+              {localDecisionSource === "typesafe" && (
+                <p className="text-xs text-[var(--muted-foreground)]">
+                  {t("connections.decision.typesafeAddressHelp")}
+                </p>
+              )}
               {localDecisionSource !== "typesafe" && (
                 <>
                   <label className="block text-xs" htmlFor="decision-credentials">
@@ -2173,7 +2177,7 @@ export function ConnectionEditor() {
                 help={localizeUi("ui.connections.connectioneditor.theApiEndpointUrlUsuallyAutoFilledForKnown")}
               >
                 <input
-                  disabled={isDecisionProvider && !decisionSourceTakesUrl(localDecisionSource)}
+                  disabled={isDecisionProvider && localDecisionSource === "openrouter"}
                   value={localBaseUrl}
                   onChange={(e) => {
                     setLocalBaseUrl(e.target.value);

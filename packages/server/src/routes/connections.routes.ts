@@ -1449,7 +1449,13 @@ export async function connectionsRoutes(app: FastifyInstance) {
     if ((discovered as unknown) === reply) return reply;
     const { builtIn, ...result } = discovered as Exclude<typeof discovered, FastifyReply>;
     if (!savesList || builtIn) return result;
-    return (await storage.saveModelListIfUnchanged(conn, result.models)) ?? result;
+    const saved = await storage.saveModelListIfUnchanged(conn, result.models);
+    // The provider, address or key changed while the list loaded, so it may belong to the old settings.
+    // Don't hand it out as current; the client asks again.
+    if (!saved) {
+      return reply.status(409).send({ error: "The connection changed while its models were loading." });
+    }
+    return saved;
   });
 
   app.post<{ Params: { id: string } }>("/:id/pinned-models", async (req, reply) => {

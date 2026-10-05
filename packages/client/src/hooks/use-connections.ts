@@ -7,7 +7,7 @@ import { MAX_PINNED_MODELS, parsePinnedModels, type ModelParameterCapabilities }
 import type { RemoteConnectionModel } from "../lib/connection-model-selection";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
-import { api, isRequestTimeoutError, requestTimeoutSignal } from "../lib/api-client";
+import { ApiError, api, isRequestTimeoutError, requestTimeoutSignal } from "../lib/api-client";
 import { useUIStore } from "../stores/ui.store";
 import { useChatStore } from "../stores/chat.store";
 import { captureChatMetadataVersion, chatKeys, guardServerChatSnapshot } from "./use-chats";
@@ -264,6 +264,9 @@ export type ConnectionModelList = {
 const connectionModelsPath = (id: string, refresh = false) =>
   `/connections/${encodeURIComponent(id)}/models${refresh ? "?refresh=true" : ""}`;
 
+/** 409: the connection's provider, address or key changed while its list loaded, so that list is not kept. */
+const isStaleModelList = (error: unknown) => error instanceof ApiError && error.status === 409;
+
 /**
  * A connection's model list. The server answers from the list saved on the connection and asks the provider
  * only when nothing is saved yet, so opening a picker again costs no provider call. A failed load is not
@@ -276,7 +279,8 @@ export function useConnectionModels(id: string | null | undefined, enabled = tru
     enabled: enabled && !!id && id !== "random",
     staleTime: 6 * 60 * 60_000,
     gcTime: 6 * 60 * 60_000,
-    retry: false,
+    // A list that went stale while loading is asked for again once; other failures wait for Refresh.
+    retry: (failureCount, error) => isStaleModelList(error) && failureCount < 1,
     retryOnMount: false,
   });
 }
@@ -287,6 +291,10 @@ export function useRefreshConnectionModels() {
   return useMutation({
     mutationFn: (id: string) => api.get<ConnectionModelList>(connectionModelsPath(id, true)),
     onSuccess: (data, id) => qc.setQueryData(connectionKeys.models(id), data),
+    // A refresh made with settings that have since changed is not cached; load the list for the new ones.
+    onError: (error, id) => {
+      if (isStaleModelList(error)) void qc.invalidateQueries({ queryKey: connectionKeys.models(id) });
+    },
   });
 }
 

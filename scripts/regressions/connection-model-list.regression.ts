@@ -12,6 +12,8 @@ process.env.FILE_STORAGE_DIR = join(directory, "storage");
 const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
 const { createConnectionsStorage } = await import("../../packages/server/src/services/storage/connections.storage.js");
 const { createConnectionSchema } = await import("../../packages/shared/src/schemas/connection.schema.js");
+const { MAX_MODEL_ID_LENGTH, MAX_PINNED_MODELS, parsePinnedModels } =
+  await import("../../packages/shared/src/types/connection.js");
 const { sanitizeProfileTableRows, quarantineProfileApiConnectionRow } =
   await import("../../packages/server/src/routes/backup.routes.js");
 const { connectionsRoutes } = await import("../../packages/server/src/routes/connections.routes.js");
@@ -23,14 +25,19 @@ const SECRET = "fixture-secret-key-7098";
 const NEW_SECRET = "fixture-rotated-key-7098";
 let modelCalls = 0;
 let failModels = false;
+/** Runs once while the provider is answering /models, before the answer is sent. */
+let duringModels: (() => Promise<void>) | null = null;
 let catalog = [
   { id: "vendor/alpha", name: "Alpha", context_length: 64000, api_key: SECRET },
   { id: "vendor/beta", name: "Beta" },
   { id: "vendor/alpha", name: "Alpha duplicate" },
 ];
-const provider = createServer((req, res) => {
+const provider = createServer(async (req, res) => {
   if (req.url === "/v1/models") {
     modelCalls++;
+    const hook = duringModels;
+    duringModels = null;
+    await hook?.();
     if (failModels) {
       res.writeHead(500, { "content-type": "text/plain" });
       res.end("upstream down");
@@ -186,6 +193,60 @@ try {
   await app.inject({ method: "PATCH", url: `/connections/${legacy.id}`, payload: { baseUrl } });
   await get(`/connections/${legacy.id}/models`);
   assert.equal(modelCalls, 5);
+
+  // A refresh that finishes after the key changed answers 409 instead of handing out the old key's list.
+  duringModels = async () => {
+    const changed = await app!.inject({
+      method: "PATCH",
+      url: `/connections/${legacy.id}`,
+      payload: { apiKey: SECRET },
+    });
+    assert.equal(changed.statusCode, 200, changed.body);
+  };
+  const raced = await get(`/connections/${legacy.id}/models?refresh=true`);
+  assert.equal(raced.statusCode, 409, raced.body);
+  assert.match((raced.json() as { error: string }).error, /changed while its models were loading/u);
+  assert.equal(modelCalls, 6);
+  assert.equal((await storage.getById(legacy.id))!.savedModels, null, "the old key's list is not saved");
+  const reloaded409 = await get(`/connections/${legacy.id}/models`);
+  assert.equal(reloaded409.statusCode, 200);
+  assert.equal(modelCalls, 7, "the next look loads the list for the new key");
+
+  // A different provider drops the saved list too.
+  const providerChange = (await storage.duplicate(legacy.id))!;
+  assert.ok(providerChange.savedModels);
+  await app.inject({ method: "PATCH", url: `/connections/${providerChange.id}`, payload: { provider: "openai" } });
+  assert.equal((await storage.getById(providerChange.id))!.savedModels, null, "a new provider drops the saved list");
+  await storage.remove(providerChange.id);
+
+  // Pins are capped at 100 per connection and model IDs at 512 characters.
+  const limits = (await storage.create(
+    createConnectionSchema.parse({ name: "Pin limits", provider: "custom", baseUrl }),
+  ))!;
+  for (let index = 0; index < MAX_PINNED_MODELS; index++) {
+    assert.notEqual(await storage.setModelPinned(limits.id, `pin/${index}`, true), "limit");
+  }
+  const overLimit = await pin(limits.id, "pin/one-too-many", true);
+  assert.equal(overLimit.statusCode, 400);
+  assert.match((overLimit.json() as { error: string }).error, /up to 100 models/u);
+  assert.equal((await pin(limits.id, "pin/0", true)).statusCode, 200, "re-pinning a pinned model is fine at the cap");
+  assert.equal(parsePinnedModels((await storage.getById(limits.id))!.pinnedModels).length, MAX_PINNED_MODELS);
+  await pin(limits.id, "pin/0", false);
+  assert.equal((await pin(limits.id, "x".repeat(MAX_MODEL_ID_LENGTH + 1), true)).statusCode, 400);
+  assert.equal((await pin(limits.id, "x".repeat(MAX_MODEL_ID_LENGTH), true)).statusCode, 200);
+  const tooMany = await app.inject({
+    method: "PATCH",
+    url: `/connections/${limits.id}`,
+    payload: { pinnedModels: Array.from({ length: MAX_PINNED_MODELS + 1 }, (_, index) => `many/${index}`) },
+  });
+  assert.ok(tooMany.statusCode >= 400, "a PATCH cannot store more than 100 pins");
+  assert.ok(!(await storage.getById(limits.id))!.pinnedModels.includes("many/"));
+  assert.deepEqual(
+    parsePinnedModels(JSON.stringify([...Array.from({ length: 150 }, (_, i) => `m/${i}`), "y".repeat(600)])).length,
+    MAX_PINNED_MODELS,
+    "stored pins read back at most 100, without over-long IDs",
+  );
+  await storage.remove(limits.id);
 
   // A copy keeps the same endpoint, so it keeps the saved list and the pins.
   const copy = (await storage.duplicate(legacy.id))!;

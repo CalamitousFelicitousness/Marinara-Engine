@@ -664,7 +664,10 @@ const capabilityPackageManifestBaseSchema = z
 //        language of your choice), chosen at a builder `choices` step. Not a soft seam: an Engine that
 //        cannot read either refuses the ruleset file or the catalog, so a package that ships them
 //        declares 1.86. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 86 } as const);
+// 1.87: a catalog entry may scale several rows of one list when each carries its own name in the
+//        list's name column (two uses of one racial trait). Not a soft seam: an Engine that cannot read
+//        it refuses the catalog, so a package that ships it declares 1.87. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 87 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

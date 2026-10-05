@@ -938,6 +938,43 @@ try {
       for (const entry of catalog.entries ?? []) if (entry.grants) delete entry.grants.entries;
   });
   assert.match(issue(85, choiceStepOnly) ?? "", /1\.86/, "a choices step alone is 1.86's");
+  const twoUses = variant((doc) => {
+    const raceCatalog = doc.catalogs.find((c: { id: string }) => c.id === "races");
+    raceCatalog.feeds.push("counters");
+    raceCatalog.entries
+      .find((e: { id: string }) => e.id === "dwarf")
+      .rows.push(
+        {
+          list: "counters",
+          values: { name: "Stone Song", max: 0, recharge: "long" },
+          scaled: {
+            max: {
+              from: { field: "level" },
+              table: [
+                [1, 0],
+                [3, 1],
+              ],
+            },
+          },
+        },
+        {
+          list: "counters",
+          values: { name: "Deep Song", max: 0, recharge: "long" },
+          scaled: {
+            max: {
+              from: { field: "level" },
+              table: [
+                [1, 0],
+                [5, 1],
+              ],
+            },
+          },
+        },
+      );
+  });
+  assert.ok(parseRulesetDefinition(twoUses).ok, "two scaled rows under two names parse");
+  assert.match(issue(86, twoUses) ?? "", /scales several rows of one list.*1\.87/);
+  assert.equal(issue(87, twoUses), null);
   assert.equal(issue(81, variant()), null, "a 1.81 builder is still 1.81's");
   assert.equal(issue(74, JSON.parse(fiveEText)), null, "an older package still validates");
 

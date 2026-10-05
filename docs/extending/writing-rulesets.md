@@ -533,7 +533,10 @@ keeps those cells right.
 - `values` must still hold a plain number for the column, and a row that leaves it out is refused.
   That is what the row is before any sheet is known, and what a sheet with no such reference keeps.
 - A row with `scaled` must be the entry's only row for that list, so a marked row on a sheet always
-  matches one spec.
+  matches one spec, or (Capability API 1.87) every row the entry writes to that list must carry its own
+  name in the list's name column (its pools' `nameColumn`, else its first text column). The sheet's
+  row is then matched to its spec by that name, so one trait can give two uses that each grow on
+  their own; a row the player renames is left alone.
 
 The value is worked out when the sheet is edited and never when it is read, so a stored row is always
 the number it says it is. It is fitted to the column it lands in: clamped to the column's `min` and

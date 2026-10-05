@@ -502,6 +502,24 @@ function supportsEngineVersion(entry: CapabilityCatalogPackage, engineVersion: s
 /** Whether any row of these entries names a column the ruleset keeps up to date. Read structurally
  *  rather than parsed: the install gate looks at documents nothing has validated yet, and a shape it
  *  does not recognise is not its problem to report. */
+/** An entry with more than one scaled row for one list, told apart by name (1.87). */
+function entriesCarrySeveralScaledRows(entries: unknown): boolean {
+  return (
+    Array.isArray(entries) &&
+    entries.some((entry) => {
+      const rows = plainRecord(entry)?.rows;
+      if (!Array.isArray(rows)) return false;
+      const scaledPerList = new Map<string, number>();
+      for (const row of rows) {
+        const record = plainRecord(row);
+        if (record?.scaled === undefined || typeof record.list !== "string") continue;
+        scaledPerList.set(record.list, (scaledPerList.get(record.list) ?? 0) + 1);
+      }
+      return [...scaledPerList.values()].some((count) => count > 1);
+    })
+  );
+}
+
 function entriesCarryScaledRows(entries: unknown): boolean {
   if (!Array.isArray(entries)) return false;
   return entries.some((entry) => {
@@ -1357,6 +1375,7 @@ export function getCapabilityPackageInstallIssue(
   let carriesAmountAdd = false;
   let carriesGrants = false;
   let carriesEntryChoices = false;
+  let carriesSeveralScaled = false;
   // Every item by "<catalog>/<entry>", inline and in files, and the fakes among them, so a fake whose
   // target is in another catalog file is checked here, where every file can be read.
   const itemsByRef = new Map<string, RulesetCatalogItem>();
@@ -1452,6 +1471,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryAmountAdd(header.entries)) carriesAmountAdd = true;
       if (entriesCarryGrants(header.entries)) carriesGrants = true;
       if (entriesCarryEntryChoices(header.entries)) carriesEntryChoices = true;
+      if (entriesCarrySeveralScaledRows(header.entries)) carriesSeveralScaled = true;
       collectItems(header.id, header.entries);
       const asset = header.asset;
       if (typeof asset !== "string") continue;
@@ -1497,6 +1517,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryAmountAdd(fileEntries)) carriesAmountAdd = true;
       if (entriesCarryGrants(fileEntries)) carriesGrants = true;
       if (entriesCarryEntryChoices(fileEntries)) carriesEntryChoices = true;
+      if (entriesCarrySeveralScaledRows(fileEntries)) carriesSeveralScaled = true;
       collectItems(header.id, fileEntries);
     }
   }
@@ -1779,6 +1800,10 @@ export function getCapabilityPackageInstallIssue(
       const units = plainRecord(family)?.units;
       return Array.isArray(units) && units.some((unit) => plainRecord(unit)?.one !== undefined);
     });
+  // Several scaled rows for one list in one entry, told apart by name, 1.87: an older Engine refused it.
+  if (!declaresApi(87) && carriesSeveralScaled) {
+    return "A ruleset whose catalog entry scales several rows of one list requires schemaVersion 2 and capabilityApi 1.87 or newer";
+  }
   // Entries of a catalog to choose, 1.86: a new key on the strict grants and a new step kind.
   const countSteps = plainRecord(plainRecord(ruleset?.sheet)?.builder)?.steps;
   const choosing =

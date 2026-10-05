@@ -7204,6 +7204,11 @@ function grantsIssues(
   });
 }
 
+/** The column a list's rows are told apart by: its pools' name column, else its first text column. */
+export function rulesetListNameColumn(list: RulesetList): string | undefined {
+  return list.pools?.nameColumn ?? list.columns.find((column) => column.type === "text")?.id;
+}
+
 export function rulesetCatalogEntryIssues(
   definition: RulesetDefinition,
   catalog: RulesetCatalogHeader,
@@ -7292,11 +7297,20 @@ export function rulesetCatalogEntryIssues(
 
     if (entry.grants) grantsIssues(definition, entry.grants, [index, "grants"], add);
 
-    // How many rows this entry writes into each list, because a row the ruleset keeps up to date
-    // has to be the entry's only one there: a marked row on a sheet is then matched to its spec
-    // without guessing which of two identical marks it came from.
+    // How many rows this entry writes into each list, because a row the ruleset keeps up to date is
+    // matched to its spec from a marked row on a sheet: the entry's only row there, or (1.87) one of
+    // several that each carry their own name in the list's name column.
     const rowsPerList = new Map<string, number>();
     for (const row of entry.rows ?? []) rowsPerList.set(row.list, (rowsPerList.get(row.list) ?? 0) + 1);
+    const namedApart = (listId: string) => {
+      const list = listById.get(listId);
+      const nameColumn = list ? rulesetListNameColumn(list) : undefined;
+      if (!nameColumn) return false;
+      const names = (entry.rows ?? []).filter((row) => row.list === listId).map((row) => row.values[nameColumn]);
+      return (
+        names.every((name) => typeof name === "string" && name.trim() !== "") && new Set(names).size === names.length
+      );
+    };
 
     (entry.rows ?? []).forEach((row, rowIndex) => {
       const path = [index, "rows", rowIndex];
@@ -7305,8 +7319,11 @@ export function rulesetCatalogEntryIssues(
       if (!list) return add([...path, "list"], `Unknown list "${row.list}"`);
       for (const message of rulesetListRowIssues(list, row.values)) add([...path, "values"], message);
       if (!row.scaled) return;
-      if ((rowsPerList.get(row.list) ?? 0) > 1) {
-        add([...path, "scaled"], `A scaled row must be this entry's only row for the list "${row.list}"`);
+      if ((rowsPerList.get(row.list) ?? 0) > 1 && !namedApart(row.list)) {
+        add(
+          [...path, "scaled"],
+          `A scaled row must be this entry's only row for the list "${row.list}", or every row there must have its own name`,
+        );
       }
       for (const [columnId, scaled] of Object.entries(row.scaled)) {
         const column = list.columns.find((candidate) => candidate.id === columnId);

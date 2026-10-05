@@ -12,7 +12,7 @@
 // ──────────────────────────────────────────────
 import { z } from "zod";
 import { WORLD_FURNITURE } from "./furniture.js";
-import { WORLD_EDGE_BLOCK_ROWS, WORLD_EDGE_TERRAINS } from "./edges.js";
+import { WORLD_EDGE_BLOCK_ROWS, WORLD_EDGE_TERRAINS, WORLD_MAP_EDGE_TERRAINS } from "./edges.js";
 import { WORLD_GROUND_LOOKS, WORLD_SEASONS } from "./overworld.js";
 
 /** Pixels across and down a tile. */
@@ -43,7 +43,27 @@ export const TILE_PACK_RECOLOUR_COLOURS = 8;
 
 const NINE = ["nw", "n", "ne", "w", "c", "e", "sw", "s", "se"] as const;
 
-/** Every tile the overworld and the towns draw. */
+/** A dungeon set's props: how many, and which one is the way out. */
+export const WORLD_DUNGEON_PROP_COUNT = 8;
+export const WORLD_DUNGEON_WAY_OUT_PROP = "dn_prop5";
+function dungeonTileIds() {
+  return [
+    "dn_floor",
+    "dn_wall",
+    "dn_liquid",
+    ...WORLD_MAP_EDGE_TERRAINS.map((terrain) => `edge_${terrain}` as const),
+    "dn_prop0",
+    "dn_prop1",
+    "dn_prop2",
+    "dn_prop3",
+    "dn_prop4",
+    "dn_prop5",
+    "dn_prop6",
+    "dn_prop7",
+  ] as const;
+}
+
+/** Every tile the overworld, the towns and the maps of places draw. */
 export const WORLD_TILE_IDS = Object.freeze([
   ...WORLD_GROUND_LOOKS,
   "marker0",
@@ -78,6 +98,10 @@ export const WORLD_TILE_IDS = Object.freeze([
   ...WORLD_EDGE_TERRAINS.map((terrain) => `edge_${terrain}` as const),
   // Fringes (image packs): for a ground look, sixteen masks through which it spills onto its neighbours.
   ...WORLD_GROUND_LOOKS.map((look) => `fringe_${look}` as const),
+  // Maps of places (image packs; map editor Phase 3): a cave, dungeon or station set's floor, wall and liquid,
+  // the liquid's edges, and eight props (WORLD_DUNGEON_PROP_COUNT; the sixth, dn_prop5, is the way out). Generic
+  // ids, so one map plays with any set's pack.
+  ...dungeonTileIds(),
 ] as const);
 export type WorldTileId = (typeof WORLD_TILE_IDS)[number];
 /** Ground an image pack may draw as a pattern (user, 2026-10-05, ground art in many looks): a variant larger
@@ -91,6 +115,9 @@ export const WORLD_PATTERN_TILE_IDS: readonly WorldTileId[] = Object.freeze([
   "square",
   "in_floor",
   "in_wall",
+  "dn_floor",
+  "dn_wall",
+  "dn_liquid",
 ]);
 /** Tiles only an image pack draws (whole buildings as sprites); a drawn pack's roofs and fronts stand in. */
 export const WORLD_IMAGE_ONLY_TILE_IDS: readonly WorldTileId[] = Object.freeze([
@@ -98,6 +125,7 @@ export const WORLD_IMAGE_ONLY_TILE_IDS: readonly WorldTileId[] = Object.freeze([
   "hall",
   ...WORLD_EDGE_TERRAINS.map((terrain) => `edge_${terrain}` as const),
   ...WORLD_GROUND_LOOKS.map((look) => `fringe_${look}` as const),
+  ...dungeonTileIds(),
 ]);
 
 const colour = z.string().regex(/^#[0-9a-f]{6}([0-9a-f]{2})?$/i, "A colour is #rrggbb or #rrggbbaa");

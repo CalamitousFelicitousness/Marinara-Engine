@@ -11,7 +11,11 @@
 /** The blending terrains, in the order they are drawn: water before roads, a town's streets before its
  *  square (the square drawn over the street where they meet). */
 export const WORLD_EDGE_TERRAINS = Object.freeze(["water", "road", "street", "square"] as const);
-export type WorldEdgeTerrain = (typeof WORLD_EDGE_TERRAINS)[number];
+/** Terrains that blend only on a place's own map (map editor Phase 3: caves, dungeons, stations): the
+ *  liquid of a dungeon set (water, lava, acid, coolant ...), drawn from the map's pack. The overworld and the
+ *  towns never draw them. */
+export const WORLD_MAP_EDGE_TERRAINS = Object.freeze(["dn_liquid"] as const);
+export type WorldEdgeTerrain = (typeof WORLD_EDGE_TERRAINS)[number] | (typeof WORLD_MAP_EDGE_TERRAINS)[number];
 
 /** A block's piece for each mask (0-15), counted across then down its four by four cells; -1 for none.
  *  Mask 15 (fully inside) is piece 6, the terrain's own middle. */

@@ -31,6 +31,11 @@ import {
   worldSeason,
   WORLD_GROUND_LOOKS,
   WORLD_TILE_IDS,
+  WORLD_IMAGE_ONLY_TILE_IDS,
+  WORLD_DUNGEON_PROP_COUNT,
+  WORLD_DUNGEON_WAY_OUT_PROP,
+  WORLD_EDGE_TERRAINS,
+  WORLD_MAP_EDGE_TERRAINS,
   worldEdgeSlanted,
   worldEdgePiece,
   WORLD_EDGE_CURVE_OFFSETS,
@@ -295,6 +300,58 @@ try {
     ["grass", "town_ground", "in_floor", "in_wall"].every((id) => WORLD_PATTERN_TILE_IDS.includes(id as never)),
   );
   assert.ok(!WORLD_PATTERN_TILE_IDS.includes("house" as never), "a house is a sprite");
+  // Maps of places (caves, dungeons, stations): one set's floor, wall and liquid as patterns, the liquid's
+  // edges as a whole 4 by 30 block, and eight props, the sixth the way out; all image-only.
+  const dungeonRead = parseTilePack(
+    withEdges({
+      dn_floor: [{ sheet: "edges", x: 0, y: 0, w: 4, h: 4 }],
+      dn_wall: [{ sheet: "edges", x: 0, y: 0, w: 4, h: 4 }],
+      dn_liquid: [{ sheet: "edges", x: 0, y: 0, w: 4, h: 4 }],
+      edge_dn_liquid: [{ sheet: "tall", x: 0, y: 0, w: 4, h: 30 }],
+      ...Object.fromEntries(
+        Array.from({ length: WORLD_DUNGEON_PROP_COUNT }, (_, i) => [
+          `dn_prop${i}`,
+          [{ sheet: "edges", x: i % 4, y: 0 }],
+        ]),
+      ),
+      dn_prop8: [{ sheet: "edges", x: 0, y: 0 }],
+    }),
+  );
+  assert.ok(dungeonRead.ok, JSON.stringify(!dungeonRead.ok && dungeonRead.issues));
+  if (dungeonRead.ok) {
+    for (const id of [
+      "dn_floor",
+      "dn_wall",
+      "dn_liquid",
+      "edge_dn_liquid",
+      "dn_prop0",
+      WORLD_DUNGEON_WAY_OUT_PROP,
+      "dn_prop7",
+    ])
+      assert.ok(dungeonRead.pack.tiles[id]?.length, `${id} kept`);
+    assert.ok(!dungeonRead.pack.tiles.dn_prop8, "only eight props");
+    assert.ok(
+      dungeonRead.notes.some((note) => note.includes("dn_prop8")),
+      "the ninth noted",
+    );
+  }
+  refused(
+    withEdges({ edge_dn_liquid: [{ sheet: "edges", x: 0, y: 0, w: 4, h: 5 }] }),
+    /4 by 6/,
+    "the liquid's edges are a whole block",
+  );
+  assert.equal(WORLD_DUNGEON_WAY_OUT_PROP, `dn_prop${5}`);
+  assert.deepEqual([...WORLD_MAP_EDGE_TERRAINS], ["dn_liquid"]);
+  assert.ok(
+    !WORLD_EDGE_TERRAINS.includes("dn_liquid" as never),
+    "the overworld and towns never draw a dungeon's liquid",
+  );
+  assert.ok(["dn_floor", "dn_wall", "dn_liquid"].every((id) => WORLD_PATTERN_TILE_IDS.includes(id as never)));
+  assert.ok(!WORLD_PATTERN_TILE_IDS.includes("dn_prop0" as never), "a prop is a sprite");
+  assert.ok(
+    WORLD_TILE_IDS.filter((id) => id.includes("dn_")).every((id) => WORLD_IMAGE_ONLY_TILE_IDS.includes(id)),
+    "a drawn pack needs no dungeon tiles",
+  );
   // Seasons, for drawing: the game's day, a season every WORLD_SEASON_DAYS, from spring.
   assert.deepEqual(
     [1, WORLD_SEASON_DAYS, WORLD_SEASON_DAYS + 1, 3 * WORLD_SEASON_DAYS + 1, 4 * WORLD_SEASON_DAYS + 1, 0].map(

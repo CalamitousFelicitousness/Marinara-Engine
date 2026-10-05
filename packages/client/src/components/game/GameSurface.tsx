@@ -27,6 +27,7 @@ import {
   type RulesetLiveStates,
   rulesetCardItems,
   rulesetReadsItems,
+  gameDungeonMapFromMetadata,
 } from "@marinara-engine/shared";
 // ──────────────────────────────────────────────
 // Game: Main Surface (rendered by ChatArea when mode === "game")
@@ -8822,7 +8823,8 @@ function GameSurfaceComponent({
   // view and back. A fight, a replay and a package that draws the game itself keep their own screens.
   // A dungeon, cave or station map the Game Master opened with [map:] is shown over everything else,
   // until the player switches to the scene or the party leaves by the way out.
-  const dungeonMapOpen = chatMeta.gameDungeonMap != null && typeof chatMeta.gameDungeonMap === "object";
+  // Read as the Engine reads it, so a map that does not read is no map and never hides the scene.
+  const dungeonMapOpen = useMemo(() => gameDungeonMapFromMetadata(chatMeta) !== null, [chatMeta]);
   const dungeonShown =
     dungeonMapOpen && chatMeta.gameDungeonView !== "scene" && !experienceOwnsGame && !combatUiActive && !replayActive;
   const handleToggleDungeonView = useCallback(
@@ -12837,8 +12839,8 @@ function GameSurfaceComponent({
           <div
             className="transition-opacity duration-700 ease-in-out"
             style={{
-              opacity: spriteVisible && !overworldShown ? 1 : 0,
-              pointerEvents: spriteVisible && !overworldShown ? "auto" : "none",
+              opacity: spriteVisible && !overworldShown && !dungeonShown ? 1 : 0,
+              pointerEvents: spriteVisible && !overworldShown && !dungeonShown ? "auto" : "none",
             }}
           >
             {displaySpriteIds.length > 0 && (
@@ -13930,7 +13932,7 @@ function GameSurfaceComponent({
                     return (
                       <GameTravelView>
                         <GameNarration
-                          passThrough={overworldShown}
+                          passThrough={overworldShown || dungeonShown}
                           messages={narrationMessages}
                           isStreaming={isStreaming}
                           characterMap={characterMap}
@@ -14029,7 +14031,7 @@ function GameSurfaceComponent({
                   }
                   return (
                     <GameNarration
-                      passThrough={overworldShown}
+                      passThrough={overworldShown || dungeonShown}
                       messages={narrationMessages}
                       isStreaming={isStreaming}
                       characterMap={characterMap}

@@ -1462,7 +1462,7 @@
   "game.dice.turnNotice.poolMismatch": "Dice: the Game Master wrote a number the pool did not hold. The engine's roll is what was saved.",
   "game.dice.turnNotice.poolOverflow": "Dice: this turn asked for more rolls than the pool held. One check was left unrolled.",
   "game.dungeon.area": "area {{area}}",
-  "game.dungeon.canvas": "Map of {{name}}: choose where to walk",
+  "game.dungeon.canvas": "Map of {{name}}: click a place, or use the arrow keys, to walk",
   "game.dungeon.leave": "Leave by {{way}}",
   "game.dungeon.leaveFailed": "The party could not leave from here.",
   "game.dungeon.passage": "in a passage",

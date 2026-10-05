@@ -1963,6 +1963,20 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           ? (async () => {
               if (input.regenerateMessageId) {
                 const replaced = parseExtra((await chats.getMessage(input.regenerateMessageId))?.extra);
+                // The reply being replaced opened or left a map: the map goes back to how it stood before
+                // it, so this telling starts where that one did.
+                const before = replaced.dungeonBefore as { map?: unknown; view?: unknown } | undefined;
+                if (before && typeof before === "object") {
+                  const map = gameDungeonMapFromMetadata({ gameDungeonMap: before.map });
+                  const view = typeof before.view === "string" ? before.view : null;
+                  await chats.patchMetadata(input.chatId, () => ({
+                    gameDungeonMap: map,
+                    gameDungeonView: view,
+                    gameDungeonWalk: null,
+                  }));
+                  chatMeta.gameDungeonMap = map;
+                  chatMeta.gameDungeonView = view;
+                }
                 const walk = gameDungeonWalkSchema.safeParse(replaced.dungeonWalk);
                 const left = typeof replaced.dungeonLeft === "string" ? replaced.dungeonLeft : null;
                 if (walk.success || left) return { walk: walk.success ? walk.data : null, left };
@@ -4838,8 +4852,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             : "";
           // The map the party is on (dungeon maps), and what it did since the last turn.
           const promptDungeonMap = await (async () => {
-            const map = gameDungeonMapFromMetadata(chatMeta);
+            // After the turn's own read, which may have put back the map a replaced reply changed.
             const told = await turnDungeonPromise;
+            const map = gameDungeonMapFromMetadata(chatMeta);
             const toldText = gameDungeonToldText(map, told.walk, told.left);
             return [map ? gameDungeonMapPromptText(map) : "", toldText].filter(Boolean).join("\n") || undefined;
           })();
@@ -10431,22 +10446,28 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           // ── Dungeon, cave and station maps ──
           // The walk and the leaving this reply told stay with it and are no longer pending; its `[map:]`
           // tags open a map (the last one wins) or leave the one the party is on.
-          if (savedMsg?.id && chatMode === "game" && fullResponse.trim()) {
+          if (savedMsg?.id && chatMode === "game" && !input.impersonate && fullResponse.trim()) {
             try {
               const told = await turnDungeonPromise;
               const tags = readGameDungeonTags(fullResponse);
               const last = tags.at(-1);
               if (told.walk || told.left || last) {
                 const family = worldKitArtFamily(gameWorldKitFromMetadata(chatMeta) ?? undefined);
+                let before: { map: unknown; view: unknown } | undefined;
                 await chats.patchMetadata(input.chatId, (fresh) => {
                   const patch: Record<string, unknown> = {};
+                  const current = gameDungeonMapFromMetadata(fresh);
                   if (told.walk && gameDungeonWalkFromMetadata(fresh)?.id === told.walk.id)
                     patch.gameDungeonWalk = null;
                   if (told.left && fresh.gameDungeonLeft === told.left) patch.gameDungeonLeft = null;
                   if (last?.leave) {
-                    const kept = gameDungeonMapFromMetadata(fresh);
-                    if (kept) Object.assign(patch, { gameDungeonMap: null, gameDungeonWalk: null });
-                  } else if (last) {
+                    if (current) {
+                      before = { map: current, view: fresh.gameDungeonView ?? null };
+                      Object.assign(patch, { gameDungeonMap: null, gameDungeonWalk: null });
+                    }
+                  } else if (last && current?.name.toLowerCase() !== last.name.toLowerCase()) {
+                    // A map the party is already on is kept as it stands: the Game Master may name it again.
+                    before = { map: current, view: fresh.gameDungeonView ?? null };
                     const set = dungeonSetFor(last.kind, family, last.set);
                     const map = generateDungeonMap(set.id, gameDungeonSeed(input.chatId, last.name), "medium");
                     Object.assign(patch, {
@@ -10457,10 +10478,11 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   }
                   return patch;
                 });
-                if (told.walk || told.left) {
+                if (told.walk || told.left || before) {
                   await chats.updateMessageExtra(savedMsg.id, {
                     ...(told.walk ? { dungeonWalk: told.walk } : {}),
                     ...(told.left ? { dungeonLeft: told.left } : {}),
+                    ...(before ? { dungeonBefore: before } : {}),
                   });
                 }
               }

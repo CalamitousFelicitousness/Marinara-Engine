@@ -122,6 +122,14 @@ export function formatNarration(content: string, boldDialogue = true): string {
         attrs.table || rawAttrs.trim(),
       );
     })
+    .replace(/\[map:\s*([^\]]*)\]/gi, (_match, rawAttrs: string) => {
+      const attrs = parseCommandAttributes(rawAttrs);
+      return commandBadge(
+        "bg-stone-500/15 text-stone-200 ring-1 ring-stone-400/20",
+        "▦ Map",
+        attrs.name || rawAttrs.trim(),
+      );
+    })
     .replace(/\[map_update:\s*([^\]]+)\]/gi, (_match, rawAttrs: string) => {
       const attrs = parseCommandAttributes(rawAttrs);
       return commandBadge(

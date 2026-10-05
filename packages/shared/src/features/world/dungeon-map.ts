@@ -739,7 +739,7 @@ export function readGameDungeonTags(text: string): GameDungeonTag[] {
   const tags: GameDungeonTag[] = [];
   for (const match of text.matchAll(/\[map:\s*([^\]]*)\]/giu)) {
     const body = match[1] ?? "";
-    if (/^\s*leave\s*$/iu.test(body) || /\baction\s*=\s*"leave"/iu.test(body)) {
+    if (/^\s*leave\b/iu.test(body) || /\baction\s*=\s*"leave"/iu.test(body)) {
       tags.push({ leave: true });
       continue;
     }

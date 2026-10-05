@@ -110,6 +110,7 @@ try {
     [{ name: "Wolf Hollow", kind: "cave", set: undefined }],
   );
   assert.deepEqual(readGameDungeonTags("Daylight. [map: leave]"), [{ leave: true }]);
+  assert.deepEqual(readGameDungeonTags('[map: leave name="The Pit"]'), [{ leave: true }], "a named leave still leaves");
   assert.deepEqual(readGameDungeonTags('[map: kind="cave"]'), [], "a map is named");
   assert.equal(stripGmTags('Down we go. [map: kind="cave" name="Wolf Hollow"]').trim(), "Down we go.");
   assert.equal(
@@ -202,6 +203,10 @@ try {
     assert.match(prompts.join("\n"), /MAP: Wolf Hollow\. /u);
     assert.match(prompts.join("\n"), /The party is in area 1\./u);
 
+    // The Game Master naming the cave again keeps it as it stands.
+    await turn('Deeper still. [map: kind="cave" name="Wolf Hollow"]');
+    assert.equal((await meta()).gameDungeonMap.id, opened.id, "the same map, not a new one");
+
     // A walk: the shortest way, its minutes on the clock, told next turn, kept with the reply.
     const cells = dungeonFromGameDungeonMap(opened);
     const goal = (() => {
@@ -244,6 +249,29 @@ try {
     await turn("Daylight.");
     assert.match(prompts.join("\n"), /The party has left Wolf Hollow by its way out\./u);
     assert.equal((await meta()).gameDungeonLeft, null, "told once");
+
+    // A regenerated reply that opened a map starts from before it: no map, unless the new one opens it.
+    await turn('Into the dark. [map: kind="dungeon" name="The Sump"]');
+    assert.equal((await meta()).gameDungeonMap.name, "The Sump");
+    const opener = (await chats.listMessages(chatId)).filter((m: any) => m.role === "assistant").at(-1)!;
+    replies.push("You stay on the road.");
+    prompts.length = 0;
+    const regenerated = await app.inject({
+      method: "POST",
+      url: "/api/generate/",
+      payload: { chatId, regenerateMessageId: opener.id, streaming: false },
+    });
+    assert.equal(regenerated.statusCode, 200, regenerated.body);
+    assert.doesNotMatch(prompts.join("\n"), /MAP: The Sump/u, "the replaced reply's map is not in the prompt");
+    assert.equal((await meta()).gameDungeonMap, null, "and is gone with it");
+    // A player's own words never open a map.
+    replies.push("You ponder.");
+    const impersonated = await app.inject({
+      method: "POST",
+      url: "/api/generate/",
+      payload: { chatId, impersonate: true, streaming: false },
+    });
+    assert.equal(impersonated.statusCode, 200, impersonated.body);
 
     // The Game Master can lead the party out too; going back in makes the same cave.
     await turn('Back in. [map: kind="cave" name="Wolf Hollow"]');

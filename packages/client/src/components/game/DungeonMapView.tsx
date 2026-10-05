@@ -253,8 +253,9 @@ export function DungeonMapView({
   const onCanvasClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
     if (!cells) return;
     const rect = event.currentTarget.getBoundingClientRect();
-    const x = Math.floor((resting.x + (event.clientX - rect.left) / scale) / T);
-    const y = Math.floor((resting.y + (event.clientY - rect.top) / scale) / T);
+    // The camera is in screen pixels of the scaled map, as the town's is.
+    const x = Math.floor((event.clientX - rect.left + resting.x) / scale / T);
+    const y = Math.floor((event.clientY - rect.top + resting.y) / scale / T);
     void walkTo({ x, y });
   };
 
@@ -272,23 +273,37 @@ export function DungeonMapView({
     }
   };
 
+  const onKeyDown = (event: React.KeyboardEvent<HTMLCanvasElement>) => {
+    const step = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] }[event.key];
+    if (!step) return;
+    event.preventDefault();
+    void walkTo({ x: kept.at.x + step[0]!, y: kept.at.y + step[1]! });
+  };
+
   return (
-    <div
-      ref={containerRef}
-      className="absolute inset-0 z-0 overflow-clip bg-black"
-      role="region"
-      aria-label={t("game.dungeon.region")}
-      data-component="DungeonMapView"
-      data-tiles={drawTile.loading ? "loading" : drawTile.image ? "image" : "plain"}
-    >
-      <canvas
-        ref={canvasRef}
-        onClick={onCanvasClick}
-        className="absolute inset-0 h-full w-full cursor-pointer [image-rendering:pixelated]"
-        aria-label={t("game.dungeon.canvas", { name: kept.name })}
-      />
-      <div className="pointer-events-none absolute bottom-24 left-1/2 flex -translate-x-1/2 flex-col items-center gap-2">
-        <p className="rounded-lg bg-black/60 px-3 py-1 text-xs text-white/85">
+    <>
+      <div
+        ref={containerRef}
+        className="absolute inset-0 z-0 overflow-clip bg-black"
+        role="region"
+        aria-label={t("game.dungeon.region")}
+        data-component="DungeonMapView"
+        data-tiles={drawTile.loading ? "loading" : drawTile.image ? "image" : "plain"}
+        data-scale={scale}
+        data-camera={`${Math.round(resting.x)},${Math.round(resting.y)}`}
+      >
+        <canvas
+          ref={canvasRef}
+          onClick={onCanvasClick}
+          onKeyDown={onKeyDown}
+          tabIndex={0}
+          className="absolute inset-0 h-full w-full cursor-pointer [image-rendering:pixelated] focus-visible:outline focus-visible:outline-2 focus-visible:outline-white/60"
+          aria-label={t("game.dungeon.canvas", { name: kept.name })}
+        />
+      </div>
+      {/* Above the narration, as the town's chrome is, so the way out is never under it. */}
+      <div className="pointer-events-none absolute inset-x-0 top-16 z-[25] flex flex-col items-center gap-2 px-3">
+        <p className="rounded-lg bg-black/60 px-3 py-1 text-xs text-white/85" role="status">
           {kept.name}
           {" · "}
           {area ? t("game.dungeon.area", { area }) : t("game.dungeon.passage")}
@@ -306,6 +321,6 @@ export function DungeonMapView({
           </button>
         )}
       </div>
-    </div>
+    </>
   );
 }

@@ -173,10 +173,32 @@ export function rulesetBuilderPicks(
   // `within` only ever names an earlier step (the ruleset is refused otherwise), so this ends.
   const offered = rulesetBuilderOptions(definition, step, state, catalogs, build);
   const byId = new Map(offered.map((entry) => [entry.id, entry]));
-  return (state.picks?.[stepId] ?? [])
+  // One pick of an `exclusive` group counts (1.89): the latest, since picking replaces; earlier ones
+  // of the same group count for nothing.
+  const picked = (state.picks?.[stepId] ?? [])
     .map((id) => byId.get(id))
-    .filter((entry): entry is RulesetCatalogEntry => !!entry)
+    .filter((entry): entry is RulesetCatalogEntry => !!entry);
+  const lastOfGroup = new Map<string, RulesetCatalogEntry>();
+  for (const entry of picked) if (entry.exclusive) lastOfGroup.set(entry.exclusive, entry);
+  return picked
+    .filter((entry) => !entry.exclusive || lastOfGroup.get(entry.exclusive) === entry)
     .slice(0, rulesetBuilderStepCount(definition, step, build).max);
+}
+
+/** The stored picks of a step with `id` added: one of an `exclusive` group (1.89) replaces the step's
+ *  other picks of that group, and any other is added at the end. */
+export function rulesetBuilderPickAdded(
+  step: StepOf<"catalog">,
+  stored: readonly string[],
+  id: string,
+  catalogs: RulesetCatalogEntriesById,
+): string[] {
+  const entries = catalogs[step.catalog] ?? [];
+  const group = entries.find((entry) => entry.id === id)?.exclusive;
+  const kept = stored.filter(
+    (each) => each !== id && (!group || entries.find((entry) => entry.id === each)?.exclusive !== group),
+  );
+  return step.max === 1 ? [id] : [...kept, id];
 }
 
 /** Every pick that counts, with the step that made it, in step order. */

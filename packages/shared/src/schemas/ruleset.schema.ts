@@ -2832,6 +2832,10 @@ const catalogEntrySchema = z
     item: catalogItemSchema.optional(),
     /** What a pick through the guided builder gives (1.81). An entry that grants may write no rows. */
     grants: catalogGrantsSchema.optional(),
+    /** A group this entry shares with others a builder step offers (Capability API 1.89): a step keeps
+     *  one pick of a group, so picking one drops the other ("a feat in place of an ability score
+     *  improvement"). */
+    exclusive: sheetId.optional(),
   })
   .strict()
   .superRefine((entry, ctx) => {

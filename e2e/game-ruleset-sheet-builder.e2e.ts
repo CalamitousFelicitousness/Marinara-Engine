@@ -20,6 +20,16 @@ function ruleset(id: string): string {
   feats.entries.find((entry: { id: string }) => entry.id === "sly-strike").grants = {
     abilities: { choose: [{ count: 2, amount: 1, repeat: true }] },
   };
+  // Two features a step keeps one of (1.89): picking one drops the other.
+  const sly = feats.entries.find((entry: { id: string }) => entry.id === "sly-strike");
+  sly.exclusive = "knack";
+  feats.entries.push({
+    id: "steady-aim",
+    label: "Steady Aim",
+    filters: { level: 1 },
+    exclusive: "knack",
+    rows: [{ list: sly.rows[0].list, values: { name: "Steady Aim", text: "Take a breath before the shot." } }],
+  });
   doc.catalogs.push(
     {
       id: "races",
@@ -256,7 +266,11 @@ test("the guided builder applies picks, rolls and buys scores, and saves the she
     await twice.getByRole("button", { name: "Take back one from Strength", exact: true }).click();
     await expect(twice.getByRole("button", { name: "Strength", exact: true })).toBeEnabled();
     await steps.getByRole("button", { name: /^Features/ }).click();
-    await page.getByRole("button", { name: "Remove Sly Strike", exact: true }).click();
+    // Steady Aim shares Sly Strike's group: picking it replaces Sly Strike, full step or not.
+    await page.getByRole("button", { name: "Select Steady Aim", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Remove Steady Aim", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Select Sly Strike", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Remove Steady Aim", exact: true }).click();
     await expect(page.getByText("Select one (0 selected)")).toBeVisible();
     await steps.getByRole("button", { name: /^Race/ }).click();
 

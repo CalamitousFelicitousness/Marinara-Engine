@@ -1155,6 +1155,11 @@ function entriesCarryGrants(entries: unknown): boolean {
   return Array.isArray(entries) && entries.some((entry) => plainRecord(entry)?.grants !== undefined);
 }
 
+/** Entries a builder step keeps one of (1.89): `exclusive`, a new key on the strict entry. */
+function entriesCarryExclusive(entries: unknown): boolean {
+  return Array.isArray(entries) && entries.some((entry) => plainRecord(entry)?.exclusive !== undefined);
+}
+
 /** A score choice that may name one score twice (1.88): `repeat`, a new key on the strict choice. */
 function entriesCarryRepeatChoices(entries: unknown): boolean {
   return (
@@ -1390,6 +1395,7 @@ export function getCapabilityPackageInstallIssue(
   let carriesEntryChoices = false;
   let carriesSeveralScaled = false;
   let carriesRepeatChoices = false;
+  let carriesExclusive = false;
   // Every item by "<catalog>/<entry>", inline and in files, and the fakes among them, so a fake whose
   // target is in another catalog file is checked here, where every file can be read.
   const itemsByRef = new Map<string, RulesetCatalogItem>();
@@ -1487,6 +1493,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryEntryChoices(header.entries)) carriesEntryChoices = true;
       if (entriesCarrySeveralScaledRows(header.entries)) carriesSeveralScaled = true;
       if (entriesCarryRepeatChoices(header.entries)) carriesRepeatChoices = true;
+      if (entriesCarryExclusive(header.entries)) carriesExclusive = true;
       collectItems(header.id, header.entries);
       const asset = header.asset;
       if (typeof asset !== "string") continue;
@@ -1534,6 +1541,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryEntryChoices(fileEntries)) carriesEntryChoices = true;
       if (entriesCarrySeveralScaledRows(fileEntries)) carriesSeveralScaled = true;
       if (entriesCarryRepeatChoices(fileEntries)) carriesRepeatChoices = true;
+      if (entriesCarryExclusive(fileEntries)) carriesExclusive = true;
       collectItems(header.id, fileEntries);
     }
   }
@@ -1816,6 +1824,10 @@ export function getCapabilityPackageInstallIssue(
       const units = plainRecord(family)?.units;
       return Array.isArray(units) && units.some((unit) => plainRecord(unit)?.one !== undefined);
     });
+  // Entries a builder step keeps one of, 1.89: a new key on the strict entry.
+  if (!declaresApi(89) && carriesExclusive) {
+    return "A ruleset whose catalog entries are exclusive of each other requires schemaVersion 2 and capabilityApi 1.89 or newer";
+  }
   // A score choice that may name one score twice, 1.88: a new key on the strict choice.
   if (!declaresApi(88) && carriesRepeatChoices) {
     return "A ruleset whose catalog entry offers a score choice that repeats requires schemaVersion 2 and capabilityApi 1.88 or newer";

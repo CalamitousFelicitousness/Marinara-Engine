@@ -670,7 +670,10 @@ const capabilityPackageManifestBaseSchema = z
 // 1.88: a builder grant's score choice may name one score more than once (`abilities.choose[].repeat`,
 //        an ability score improvement's +2 to one or +1 to two). Not a soft seam: an Engine that cannot
 //        read it refuses the catalog, so a package that ships it declares 1.88. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 88 } as const);
+// 1.89: a catalog entry may name an `exclusive` group: a builder step keeps one pick of a group, so a
+//        feat can take an ability score improvement's place. Not a soft seam: an Engine that cannot
+//        read it refuses the catalog, so a package that ships it declares 1.89. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 89 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

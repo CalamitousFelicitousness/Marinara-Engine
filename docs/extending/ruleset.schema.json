@@ -13862,6 +13862,11 @@
                   },
                   "additionalProperties": false
                 },
+                "exclusive": {
+                  "type": "string",
+                  "maxLength": 40,
+                  "pattern": "^[a-z][a-z0-9_]*$"
+                },
                 "$comment": {}
               },
               "required": [

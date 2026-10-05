@@ -30,6 +30,8 @@ import {
   rulesetPointBuySpent,
   rulesetBuilderMethod,
   rulesetBuilderStepCount,
+  rulesetBuilderPickAdded,
+  rulesetBuilderPicks,
   rulesetBuilderEntrySlots,
   rulesetSheetBuildIsBlank,
   type RulesetBuilderState,
@@ -966,6 +968,45 @@ try {
     assert.equal(rulesetBuilderRemaining(narrow, n.build, n.state, narrowCatalogs).scores, 4);
   }
 
+  // ── 1.89: entries a step keeps one of ──
+  const grouped = (doc: Record<string, any>) => {
+    Object.assign(doc.sheet.builder.steps[0], { min: 0, max: 3 });
+    const raceEntries = doc.catalogs.find((c: { id: string }) => c.id === "races").entries;
+    raceEntries.find((e: { id: string }) => e.id === "dwarf").exclusive = "folk";
+    raceEntries.find((e: { id: string }) => e.id === "half-elf").exclusive = "folk";
+  };
+  {
+    const one = parsed(variant(grouped));
+    const oneCatalogs: RulesetCatalogEntriesById = Object.fromEntries(
+      (one.catalogs ?? []).map((catalog) => [catalog.id, catalog.entries ?? []]),
+    );
+    const raceStep = one.sheet.builder!.steps[0]!;
+    assert.ok(raceStep.kind === "catalog");
+    assert.deepEqual(
+      rulesetBuilderPickAdded(raceStep, ["dwarf", "hill-dwarf"], "half-elf", oneCatalogs),
+      ["hill-dwarf", "half-elf"],
+      "a pick of the group replaces the other",
+    );
+    assert.deepEqual(rulesetBuilderPickAdded(raceStep, ["dwarf"], "hill-dwarf", oneCatalogs), ["dwarf", "hill-dwarf"]);
+    // Stored with both, only the latest of the group counts.
+    const both = applyRulesetBuilder(
+      one,
+      defaultRulesetSheetBuild(one),
+      { method: "manual", picks: { race: ["dwarf", "half-elf"] } },
+      oneCatalogs,
+    );
+    assert.deepEqual(
+      rulesetBuilderPicks(one, "race", both.state, oneCatalogs, both.build).map((entry) => entry.id),
+      ["half-elf"],
+    );
+    assert.equal(both.build.abilities.con, 10, "the dwarf's increase is not given");
+    assert.equal(both.build.abilities.cha, 12);
+  }
+  refused((doc) => {
+    grouped(doc);
+    doc.catalogs.find((c: { id: string }) => c.id === "races").entries[0].exclusive = "Bad Group";
+  }, /exclusive/);
+
   // ── The gate ──
   const manifest = (minor: number, paths = ["ruleset.json"]) => ({
     schemaVersion: 2,
@@ -1104,6 +1145,9 @@ try {
   });
   assert.match(issue(87, repeating) ?? "", /score choice that repeats.*1\.88/);
   assert.equal(issue(88, repeating), null);
+  const exclusiveDoc = variant(grouped);
+  assert.match(issue(88, exclusiveDoc) ?? "", /exclusive of each other.*1\.89/);
+  assert.equal(issue(89, exclusiveDoc), null);
   assert.equal(issue(81, variant()), null, "a 1.81 builder is still 1.81's");
   assert.equal(issue(74, JSON.parse(fiveEText)), null, "an older package still validates");
 

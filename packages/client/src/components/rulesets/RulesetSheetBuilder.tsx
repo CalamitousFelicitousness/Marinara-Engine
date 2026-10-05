@@ -14,6 +14,7 @@ import {
   rulesetBuilderBaseScores,
   rulesetBuilderCatalogIds,
   rulesetBuilderOptions,
+  rulesetBuilderPickAdded,
   rulesetBuilderPicks,
   rulesetBuilderStepCount,
   rulesetBuilderRemaining,
@@ -310,11 +311,8 @@ export function RulesetSheetBuilder({
       const on = picked.includes(id);
       // Against every stored pick, so one the sheet has fallen below (`upTo`) is kept, not dropped.
       const stored = state.picks?.[current.id] ?? [];
-      const next = on
-        ? stored.filter((each) => each !== id)
-        : current.max === 1
-          ? [id]
-          : [...stored.filter((each) => each !== id), id];
+      // A pick of an `exclusive` group (1.89) replaces the step's other pick of that group.
+      const next = on ? stored.filter((each) => each !== id) : rulesetBuilderPickAdded(current, stored, id, catalogs);
       update({ ...state, picks: { ...state.picks, [current.id]: next } });
     };
     // A count read off the sheet (1.85) moves with the character; the step's own max otherwise.
@@ -337,7 +335,12 @@ export function RulesetSheetBuilder({
           {options.map((entry) => {
             const on = picked.includes(entry.id);
             const takenAt = on ? undefined : elsewhere.get(entry.id);
-            const full = (!on && (current.max > 1 || most === 0) && picked.length >= most) || takenAt !== undefined;
+            // A pick that only replaces the step's pick of its own group (1.89) never makes it fuller.
+            const replaces =
+              !!entry.exclusive &&
+              options.some((other) => other.exclusive === entry.exclusive && picked.includes(other.id));
+            const full =
+              (!on && !replaces && (current.max > 1 || most === 0) && picked.length >= most) || takenAt !== undefined;
             const infoId = `${current.id}:${entry.id}`;
             const infoDomId = `${infoBaseId}-${current.id}-${entry.id}`;
             return (

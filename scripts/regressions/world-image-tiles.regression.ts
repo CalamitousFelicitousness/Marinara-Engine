@@ -25,6 +25,9 @@ import {
   worldEdgeMask,
   worldRoadCells,
   worldWholeEdgeBlocks,
+  WORLD_FRINGE_ORDER,
+  WORLD_GROUND_LOOKS,
+  WORLD_TILE_IDS,
   worldEdgeSlanted,
   worldEdgePiece,
   WORLD_EDGE_CURVE_OFFSETS,
@@ -262,6 +265,28 @@ try {
   );
   refused(withEdges({ edge_water: [{ sheet: "tall", x: 0, y: 0, w: 4, h: 31 }] }), /h/, "nor 31");
   refused(withEdges({ house: [{ sheet: "tall", x: 0, y: 0, w: 4, h: 9 }] }), /at most 8 each way/, "a sprite 9 tall");
+  // Fringes: a block of sixteen masks for a ground look, four by four only.
+  assert.ok(parseTilePack(withEdges({ fringe_forest: [{ sheet: "edges", x: 0, y: 0, w: 4, h: 4 }] })).ok, "a fringe");
+  refused(
+    withEdges({ fringe_forest: [{ sheet: "edges", x: 0, y: 0, w: 4, h: 6 }] }),
+    /a fringe's block is 4 by 4/,
+    "6 rows",
+  );
+  assert.ok(
+    WORLD_GROUND_LOOKS.every((look) => WORLD_TILE_IDS.includes(`fringe_${look}` as never)),
+    "every ground look may have a fringe",
+  );
+  assert.deepEqual(
+    WORLD_GROUND_LOOKS.filter((look) => !WORLD_FRINGE_ORDER.includes(look)),
+    [],
+    "every ground look has its place in the fringe order",
+  );
+  assert.deepEqual(
+    [...new Set(WORLD_FRINGE_ORDER)].length,
+    WORLD_FRINGE_ORDER.length,
+    "each look once in the fringe order",
+  );
+  assert.ok(WORLD_FRINGE_ORDER.indexOf("forest") > WORLD_FRINGE_ORDER.indexOf("grass"), "a forest overhangs the grass");
   // A drawn pack has no edge tiles (their blocks are image sprites): left out and noted.
   const drawnEdges = parseTilePack({
     tilePackVersion: 1,

@@ -162,6 +162,22 @@ export type OverworldTileDrawer = ((
   ) => boolean;
   /** Whether the pack has edge tiles for a terrain (water, road, street, square). */
   hasEdges: (terrain: WorldEdgeTerrain) => boolean;
+  /** Whether the pack has a fringe for a ground look (or for the look it stands in for). */
+  hasFringe: (look: string) => boolean;
+  /**
+   * Spills a look's own ground past its cells onto its neighbours around the corner at (x, y) (in units): the
+   * look drawn over the four cells meeting there (`pickAt` the variant a cell draws, as the ground does), seen
+   * through the fringe's mask for `piece` (a plain edge piece, by the corner's mask).
+   */
+  fringe: (
+    ctx: CanvasRenderingContext2D,
+    look: string,
+    piece: number,
+    x: number,
+    y: number,
+    pickAt: (cx: number, cy: number) => number,
+    pick?: number,
+  ) => boolean;
   /** How long every one of a terrain's edge blocks is (4, 6 with slants, 30 with curves; 0 for none), for
    *  worldEdgePiece. */
   edgeRows: (terrain: WorldEdgeTerrain) => number;
@@ -340,6 +356,47 @@ export function useOverworldAtlas(family: string | undefined, own?: TilePack | n
         const variants = ready?.edges?.[`edge_${terrain}`];
         return variants?.length ? Math.min(...variants.map((block) => block.length / 4)) : 0;
       };
+      const fringeOf = (look: string) =>
+        ready?.edges?.[`fringe_${look}`] ?? ready?.edges?.[`fringe_${fallbackOf(look) ?? ""}`];
+      draw.hasFringe = (look) => Boolean(fringeOf(look)?.length);
+      let through: HTMLCanvasElement | null = null;
+      draw.fringe = (ctx, look, piece, x, y, pickAt, pick = 0) => {
+        const variants = fringeOf(look);
+        if (!variants?.length || piece < 0 || !ready?.canvas) return false;
+        const at = variants[Math.min(variants.length - 1, Math.floor(pick * variants.length))]?.[piece];
+        if (!at) return false;
+        through ??= document.createElement("canvas");
+        if (through.width !== size) through.width = through.height = size;
+        const tctx = through.getContext("2d");
+        if (!tctx) return false;
+        const half = OVERWORLD_TILE / 2;
+        tctx.setTransform(1, 0, 0, 1, 0, 0);
+        tctx.globalCompositeOperation = "source-over";
+        tctx.clearRect(0, 0, size, size);
+        // The four cells meeting at the corner, in units, so a pattern lines up with the ground around it.
+        tctx.setTransform(
+          size / OVERWORLD_TILE,
+          0,
+          0,
+          size / OVERWORLD_TILE,
+          (half - x) * (size / OVERWORLD_TILE),
+          (half - y) * (size / OVERWORLD_TILE),
+        );
+        const [cx, cy] = [Math.round(x / OVERWORLD_TILE), Math.round(y / OVERWORLD_TILE)];
+        for (const [dx, dy] of [
+          [-1, -1],
+          [0, -1],
+          [-1, 0],
+          [0, 0],
+        ] as const)
+          draw(tctx, look, (cx + dx) * OVERWORLD_TILE, (cy + dy) * OVERWORLD_TILE, pickAt(cx + dx, cy + dy));
+        tctx.setTransform(1, 0, 0, 1, 0, 0);
+        tctx.globalCompositeOperation = "destination-in";
+        tctx.drawImage(ready.canvas, at.sx, at.sy, size, size, 0, 0, size, size);
+        tctx.globalCompositeOperation = "source-over";
+        ctx.drawImage(through, x - half, y - half, OVERWORLD_TILE, OVERWORLD_TILE);
+        return true;
+      };
       draw.edge = (ctx, terrain, piece, x, y, pick = 0) => {
         const variants = ready?.edges?.[`edge_${terrain}`];
         if (!variants?.length || piece < 0 || !ready?.canvas) return false;
@@ -369,6 +426,8 @@ export function useOverworldAtlas(family: string | undefined, own?: TilePack | n
     draw.sprite = () => null;
     draw.character = () => false;
     draw.hasEdges = () => false;
+    draw.hasFringe = () => false;
+    draw.fringe = () => false;
     draw.edgeRows = () => 0;
     draw.edge = () => false;
     return draw;
@@ -446,7 +505,7 @@ async function buildImageAtlas(pack: ImageTilePack): Promise<ImageAtlas> {
   const pieces: Array<{ id: string; index: number; piece: number; tile: ImageTile; sx: number; sy: number }> = [];
   for (const [id, variants] of Object.entries(pack.tiles)) {
     variants.forEach((tile, index) => {
-      if (id.startsWith("edge_")) {
+      if (id.startsWith("edge_") || id.startsWith("fringe_")) {
         for (let piece = 0; piece < 4 * (tile.h ?? 4); piece++) {
           if (x + size + 2 > ROW) [x, y, rowHeight] = [0, y + rowHeight, 0];
           pieces.push({ id, index, piece, tile, sx: x + 1, sy: y + 1 });

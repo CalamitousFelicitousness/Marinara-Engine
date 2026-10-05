@@ -226,3 +226,88 @@ test("an image pack chosen for its setting draws the overworld and the town", as
     if (packId) await request.delete(`/api/game-tile-packs?id=${encodeURIComponent(packId)}`).catch(() => undefined);
   }
 });
+
+test("a fringe spills a ground look past its cells onto the ground beside it", async ({ page, request }) => {
+  test.setTimeout(180_000);
+  const ids: string[] = [];
+  const chats: string[] = [];
+  try {
+    const GRASS = [70, 150, 70];
+    const sheet = pngOf(48, 48, () => [...GRASS, 255]);
+    // A fringe whose every mask is whole: around any corner where grass meets other ground, the grass covers it.
+    const masks = pngOf(192, 192, () => [255, 255, 255, 255]);
+    const packOf = (id: string, fringe: boolean) => ({
+      tilePackVersion: 2,
+      id,
+      name: id,
+      family: "fantasy",
+      version: 1,
+      tileSize: 48,
+      sheets: [
+        { id: "grass", png: `data:image/png;base64,${sheet.toString("base64")}`, width: 48, height: 48 },
+        ...(fringe
+          ? [{ id: "masks", png: `data:image/png;base64,${masks.toString("base64")}`, width: 192, height: 192 }]
+          : []),
+      ],
+      tiles: {
+        grass: [{ sheet: "grass", x: 0, y: 0 }],
+        ...(fringe ? { fringe_grass: [{ sheet: "masks", x: 0, y: 0, w: 4, h: 4 }] } : {}),
+      },
+    });
+    // How much of the overworld is grass, drawn with each pack.
+    const grassShare = async (pack: object) => {
+      const imported = await request.post("/api/game-tile-packs/import", {
+        data: { definition: JSON.stringify(pack) },
+      });
+      expect(imported.ok(), await imported.text()).toBeTruthy();
+      const packId = (await imported.json()).pack.id as string;
+      ids.push(packId);
+      await request.put("/api/game-tile-packs/selection", { data: { family: "fantasy", packId } });
+      const created = await request.post("/api/chats", { data: { name: "Fringe", mode: "game", characterIds: [] } });
+      const chatId = ((await created.json()) as { id: string }).id;
+      chats.push(chatId);
+      await request.patch(`/api/chats/${chatId}/metadata`, {
+        data: {
+          gameId: `fringe-${chatId}`,
+          gameSessionStatus: "active",
+          gameIntroPresented: true,
+          gameImageAutoGenerationEnabled: false,
+          enableAgents: false,
+          enableTools: false,
+          gameWorldKit: kit,
+          gameWorld,
+          gameTime: { day: 1, hour: 12, minute: 0 },
+        },
+      });
+      await openGame(page, chatId);
+      const overworld = page.getByRole("region", { name: "Overworld", exact: true });
+      await expect(overworld).toHaveAttribute("data-tiles", "image", { timeout: 40_000 });
+      await page.waitForTimeout(500);
+      return overworld
+        .locator("canvas")
+        .first()
+        .evaluate((canvas: HTMLCanvasElement, [r, g, b]) => {
+          const { data } = canvas.getContext("2d")!.getImageData(0, 0, canvas.width, canvas.height);
+          let grass = 0;
+          let all = 0;
+          for (let at = 0; at < data.length; at += 4 * 5) {
+            all++;
+            if (Math.abs(data[at]! - r!) < 6 && Math.abs(data[at + 1]! - g!) < 6 && Math.abs(data[at + 2]! - b!) < 6)
+              grass++;
+          }
+          return grass / all;
+        }, GRASS);
+    };
+    const without = await grassShare(packOf("e2e-no-fringe", false));
+    const withFringe = await grassShare(packOf("e2e-fringe", true));
+    expect(without).toBeGreaterThan(0.05);
+    expect(withFringe).toBeGreaterThan(without * 1.1);
+  } finally {
+    for (const chatId of chats) await request.delete(`/api/chats/${chatId}`).catch(() => undefined);
+    await request
+      .put("/api/game-tile-packs/selection", { data: { family: "fantasy", packId: null } })
+      .catch(() => undefined);
+    for (const id of ids)
+      await request.delete(`/api/game-tile-packs?id=${encodeURIComponent(id)}`).catch(() => undefined);
+  }
+});

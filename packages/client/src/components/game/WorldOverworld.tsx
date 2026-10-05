@@ -22,6 +22,8 @@ import {
   worldGroundCells,
   worldRoadCells,
   worldEdgePiece,
+  worldEdgeMask,
+  WORLD_FRINGE_ORDER,
   worldGroundLooks,
   worldRoute,
   type GameWorld,
@@ -185,10 +187,13 @@ export function WorldOverworld({
         }
       return [...count].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0]?.[0];
     };
+    // The look each cell is drawn with (a water cell under its edge pieces: the land under it).
+    const drawnLook: string[] = new Array(width * height);
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
         const own = cells[y * width + x]!;
         const cell = waterEdges && water[own] ? (landUnder(x, y) ?? own) : own;
+        drawnLook[y * width + x] = looks[cell]!;
         const noise = cellNoise(x, y);
         if (!drawTile(ctx, looks[cell]!, x * OVERWORLD_TILE, y * OVERWORLD_TILE, noise(99))) {
           paintGround(ctx, looks[cell]!, x * OVERWORLD_TILE, y * OVERWORLD_TILE, noise);
@@ -202,6 +207,26 @@ export function WorldOverworld({
           });
         }
       }
+    }
+    // Fringes: where the pack has one for a look, the look spills past its cells onto the ground beside it,
+    // taller ground drawn last so it overhangs.
+    for (const look of WORLD_FRINGE_ORDER) {
+      if (!drawTile.hasFringe(look) || !drawnLook.includes(look)) continue;
+      const isLook = (x: number, y: number) => drawnLook[y * width + x] === look;
+      for (let y = 0; y <= height; y++)
+        for (let x = 0; x <= width; x++) {
+          const mask = worldEdgeMask(isLook, x, y, width, height);
+          if (mask === 0 || mask === 15) continue;
+          drawTile.fringe(
+            ctx,
+            look,
+            WORLD_EDGE_PIECE_BY_MASK[mask]!,
+            x * OVERWORLD_TILE,
+            y * OVERWORLD_TILE,
+            (cx, cy) => cellNoise(cx, cy)(99),
+            cellNoise(x, y)(79),
+          );
+        }
     }
     /** A dual-grid pass: every corner of the map whose four cells are partly or wholly the terrain. */
     const edgePass = (terrain: "water" | "road", filled: (x: number, y: number) => boolean) => {

@@ -76,6 +76,8 @@ export const WORLD_TILE_IDS = Object.freeze([
   // Edge tiles (image packs): each variant a block of sixteen pieces, four cells by four, for a terrain
   // that blends into the ground around it.
   ...WORLD_EDGE_TERRAINS.map((terrain) => `edge_${terrain}` as const),
+  // Fringes (image packs): for a ground look, sixteen masks through which it spills onto its neighbours.
+  ...WORLD_GROUND_LOOKS.map((look) => `fringe_${look}` as const),
 ] as const);
 export type WorldTileId = (typeof WORLD_TILE_IDS)[number];
 /** Ground an image pack may draw as a pattern (user, 2026-10-05, ground art in many looks): a variant larger
@@ -94,6 +96,7 @@ export const WORLD_IMAGE_ONLY_TILE_IDS: readonly WorldTileId[] = Object.freeze([
   "house",
   "hall",
   ...WORLD_EDGE_TERRAINS.map((terrain) => `edge_${terrain}` as const),
+  ...WORLD_GROUND_LOOKS.map((look) => `fringe_${look}` as const),
 ]);
 
 const colour = z.string().regex(/^#[0-9a-f]{6}([0-9a-f]{2})?$/i, "A colour is #rrggbb or #rrggbbaa");
@@ -379,7 +382,10 @@ function parseImageTilePack(value: unknown): TilePackRead {
         issues.push(`${id} variant ${index + 1} reaches past the edge of the sheet "${sheet.id}".`);
       // An edge tile is a block of sixteen pieces, four cells by four, or longer with its slanted corners (4 by
       // 6) and its curved runs (4 by 30); a sprite spans at most TILE_PACK_IMAGE_SPAN cells each way.
-      if (id.startsWith("edge_")) {
+      if (id.startsWith("fringe_")) {
+        if (w !== 4 || h !== 4)
+          issues.push(`${id} variant ${index + 1} is ${w} by ${h} cells; a fringe's block is 4 by 4.`);
+      } else if (id.startsWith("edge_")) {
         if (w !== 4 || !(WORLD_EDGE_BLOCK_ROWS as readonly number[]).includes(h))
           issues.push(
             `${id} variant ${index + 1} is ${w} by ${h} cells; an edge tile's block is 4 by 4, 4 by 6, or 4 by 30.`,

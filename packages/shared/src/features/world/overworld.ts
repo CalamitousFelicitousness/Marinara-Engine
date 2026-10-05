@@ -52,6 +52,43 @@ export const WORLD_GROUND_LOOKS = Object.freeze([
 ] as const);
 export type WorldGroundLook = (typeof WORLD_GROUND_LOOKS)[number];
 
+/** Fringes (user, 2026-10-05, the hard cell lines where forests and fields meet the grass): an image pack's
+ *  `fringe_<look>` is a block of sixteen masks, four cells by four in the edge tiles' order, through which the
+ *  look's own ground spills past its cells' edges onto the ground beside it. Drawn in this order, so taller
+ *  ground (forests, mountains) overhangs lower ground (fields, sand). */
+export const WORLD_FRINGE_ORDER: readonly WorldGroundLook[] = Object.freeze([
+  "sea",
+  "lake",
+  "toxic_water",
+  "space",
+  "nebula",
+  "gravity_well",
+  "asteroids",
+  "desert",
+  "snow",
+  "wasteland",
+  "scrub",
+  "plains",
+  "grass",
+  "farmland",
+  "paddies",
+  "marsh",
+  "craters",
+  "ruins",
+  "suburb",
+  "slums",
+  "industry",
+  "city",
+  "hills",
+  "dead_forest",
+  "bamboo",
+  "autumn_forest",
+  "forest",
+  "conifer_forest",
+  "jungle",
+  "mountains",
+]);
+
 /** The look a pack without its own tile for a look draws instead. */
 export const WORLD_GROUND_LOOK_FALLBACK: Readonly<Partial<Record<WorldGroundLook, WorldGroundLook>>> = Object.freeze({
   conifer_forest: "forest",

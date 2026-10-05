@@ -78,6 +78,8 @@ export interface WindowBubbleProps {
   size?: number;
   /** Lets default rows and attached hints follow the size chosen by the theme or display setting. */
   onSizeChange?: (size: number) => void;
+  /** An attached menu follows the temporary on-screen position, including clamping and dragging. */
+  onPositionChange?: (point: WindowPoint) => void;
   icon: ReactNode;
   /** Names the window it opens. */
   label: string;
@@ -106,6 +108,7 @@ export function WindowBubble({
   bounds,
   size = WINDOW_BUBBLE_SIZE_PX,
   onSizeChange,
+  onPositionChange,
   icon,
   label,
   ariaLabel,
@@ -130,6 +133,10 @@ export function WindowBubble({
   const [renderedSize, setRenderedSize] = useState(size);
   const placements = useSyncExternalStore(subscribeBubblePlacements, readBubblePlacements, readBubblePlacements);
   const placed = clampWindowBubble(live?.point ?? placements.get(id) ?? point, bounds, renderedSize);
+
+  useLayoutEffect(() => {
+    onPositionChange?.({ x: placed.x, y: placed.y });
+  }, [onPositionChange, placed.x, placed.y]);
 
   useLayoutEffect(() => {
     mountedBubbles.set(id, {
@@ -281,7 +288,7 @@ export function WindowBubble({
         onKeyDown={handleKeyDown}
       >
         <span className="mari-window-bubble__paint pointer-events-none" aria-hidden="true" />
-        {icon}
+        <span className="mari-window-bubble__icon">{icon}</span>
         {children}
       </button>
       {live?.guides.map((guide) => (

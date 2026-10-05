@@ -2,6 +2,7 @@
 @source "./capability-package-safelist.html";
 @import "./themes/sillytavern.css";
 @import "./themes/chat-widgets.css";
+@import "./themes/chat-widget-surfaces.css";
 
 /* World state & tracker widgets: equal flex sizing on mobile */
 @media (max-width: 767px) {
@@ -903,6 +904,27 @@
   body:has([data-chat-mode] [role="dialog"][aria-modal="true"])
     .mari-window:not(:has([role="dialog"][aria-modal="true"])) {
     visibility: hidden;
+  }
+
+  .mari-window-bubble__icon {
+    display: contents;
+  }
+
+  /* An explicit pixel size also grows SVG icons and character portraits, independent of Display Size. */
+  :root[data-chat-widget-button-size] .mari-window-bubble__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: calc(var(--mari-window-bubble-size) * 0.5);
+    height: calc(var(--mari-window-bubble-size) * 0.5);
+    font-size: calc(var(--mari-window-bubble-size) * 0.3125);
+    line-height: 1;
+  }
+
+  :root[data-chat-widget-button-size] .mari-window-bubble__icon > * {
+    width: 100% !important;
+    height: 100% !important;
+    font-size: inherit !important;
   }
 
   /* Phones draw bubbles like their toolbar buttons, in pixels so their default row lines up. */
@@ -5101,7 +5123,8 @@ strong {
   }
 
   [data-chat-mode="roleplay"] .marinara-chat-input-shell {
-    background: linear-gradient(var(--card), var(--card)), var(--background) !important;
+    --mari-chat-existing-bg: linear-gradient(var(--card), var(--card)), var(--background);
+    background: var(--mari-chat-surface-paint, var(--mari-chat-existing-bg)) !important;
     contain: layout paint;
     isolation: isolate;
   }
@@ -7172,7 +7195,7 @@ strong {
     white-space: nowrap;
   }
 
-  .chat-input-container .marinara-chat-input-shell {
+  :root:not([data-chat-widget-apply-shape="true"]) .chat-input-container .marinara-chat-input-shell {
     border-radius: 1em !important;
   }
 }

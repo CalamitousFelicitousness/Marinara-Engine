@@ -1108,6 +1108,15 @@ const SETTINGS_SEARCHABLE_CONTROLS: readonly SettingsSearchableControlMeta[] = [
     kind: "Picker",
   },
   {
+    id: "chat-widget-button-size",
+    sectionId: "app-style",
+    label: "Button size (px)",
+    description:
+      "Resize movable chat buttons and their icons independently of Display Size. Reset to keep the current default.",
+    aliases: ["widget", "icon", "scale", "pixels", "size", "movable", "tracker", "map"],
+    kind: "Input",
+  },
+  {
     id: "chat-widget-font",
     sectionId: "app-style",
     label: "Chat widget font",
@@ -1130,6 +1139,30 @@ const SETTINGS_SEARCHABLE_CONTROLS: readonly SettingsSearchableControlMeta[] = [
     description: "Choose the font used across the app.",
     aliases: ["typography", "typeface"],
     kind: "Select",
+  },
+  {
+    id: "chat-widget-apply-font",
+    sectionId: "app-style",
+    label: "Apply preset font",
+    description: "Use the selected widget font for chat messages, input boxes and controls.",
+    aliases: ["widget", "message", "composer", "typography", "dottore", "mari"],
+    kind: "Toggle",
+  },
+  {
+    id: "chat-widget-apply-shape",
+    sectionId: "app-style",
+    label: "Apply preset shape",
+    description: "Use widget shapes for chat boxes and controls. Conversation messages keep their own shape.",
+    aliases: ["widget", "message", "composer", "rounded", "cut corner", "arched"],
+    kind: "Toggle",
+  },
+  {
+    id: "chat-widget-apply-colors",
+    sectionId: "app-style",
+    label: "Apply preset colors",
+    description: "Use widget colors and custom gradients for chat messages, input boxes and controls.",
+    aliases: ["widget", "message", "composer", "gradient", "dottore", "mari"],
+    kind: "Toggle",
   },
   {
     id: "display-size",
@@ -4770,7 +4803,9 @@ function ChatWidgetStylePreview({
       <span className="flex justify-center pt-3">
         <span className="mari-window-bubble relative">
           <span className="mari-window-bubble__paint pointer-events-none" aria-hidden="true" />
-          <SlidersHorizontal size="0.875rem" className={presetIconClassName} />
+          <span className="mari-window-bubble__icon">
+            <SlidersHorizontal size="0.875rem" className={presetIconClassName} />
+          </span>
         </span>
       </span>
     </span>
@@ -4810,6 +4845,8 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
   const chatWidgetFont = useUIStore((s) => s.chatWidgetFont);
   const setChatWidgetFont = useUIStore((s) => s.setChatWidgetFont);
   const chatWidgetShape = useUIStore((s) => s.chatWidgetShape);
+  const chatWidgetButtonSize = useUIStore((s) => s.chatWidgetButtonSize);
+  const setChatWidgetButtonSize = useUIStore((s) => s.setChatWidgetButtonSize);
   const setChatWidgetShape = useUIStore((s) => s.setChatWidgetShape);
   const chatWidgetBorderColor = useUIStore((s) => s.chatWidgetBorderColor);
   const setChatWidgetBorderColor = useUIStore((s) => s.setChatWidgetBorderColor);
@@ -4817,6 +4854,12 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
   const setChatWidgetBackgroundColor = useUIStore((s) => s.setChatWidgetBackgroundColor);
   const chatWidgetTextColor = useUIStore((s) => s.chatWidgetTextColor);
   const setChatWidgetTextColor = useUIStore((s) => s.setChatWidgetTextColor);
+  const chatWidgetApplyFont = useUIStore((s) => s.chatWidgetApplyFont);
+  const setChatWidgetApplyFont = useUIStore((s) => s.setChatWidgetApplyFont);
+  const chatWidgetApplyShape = useUIStore((s) => s.chatWidgetApplyShape);
+  const setChatWidgetApplyShape = useUIStore((s) => s.setChatWidgetApplyShape);
+  const chatWidgetApplyColors = useUIStore((s) => s.chatWidgetApplyColors);
+  const setChatWidgetApplyColors = useUIStore((s) => s.setChatWidgetApplyColors);
   const chatBackground = useUIStore((s) => s.chatBackground);
   const setChatBackgroundRaw = useUIStore((s) => s.setChatBackground);
   const defaultRoleplayBackground = useUIStore((s) => s.defaultRoleplayBackground);
@@ -5452,6 +5495,36 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
                     </select>
                   </label>
                 </div>
+                <div id={getSettingsControlAnchorId("chat-widget-button-size")} className="mt-4 scroll-mt-3">
+                  <label
+                    htmlFor="chat-widget-button-size"
+                    className="inline-flex items-center gap-1 text-xs font-medium"
+                  >
+                    {localizeUi("settings.controls.chatWidgetButtonSize.label")}
+                    <HelpTooltip text={localizeUi("settings.controls.chatWidgetButtonSize.help")} />
+                  </label>
+                  <div className="mt-1 flex items-center gap-2">
+                    <DraftNumberInput
+                      id="chat-widget-button-size"
+                      allowEmpty
+                      value={chatWidgetButtonSize}
+                      min={32}
+                      max={96}
+                      onCommit={setChatWidgetButtonSize}
+                      placeholder={localizeUi("settings.controls.chatWidgetButtonSize.default")}
+                      className="min-w-0 flex-1 rounded-lg bg-[var(--secondary)] px-3 py-2 text-xs outline-none ring-1 ring-transparent focus:ring-[var(--primary)]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setChatWidgetButtonSize(null)}
+                      aria-label={localizeUi("settings.controls.chatWidgetButtonSize.reset")}
+                      title={localizeUi("settings.controls.chatWidgetButtonSize.reset")}
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--muted-foreground)] hover:bg-[var(--secondary)] hover:text-[var(--foreground)] focus-visible:ring-2 focus-visible:ring-[var(--primary)]"
+                    >
+                      <RotateCcw size={14} />
+                    </button>
+                  </div>
+                </div>
                 <div className="mt-4 flex flex-col gap-4">
                   <p className="text-[0.6875rem] leading-relaxed text-[var(--muted-foreground)]">
                     {localizeUi("settings.controls.chatWidgetColors.help")}
@@ -5501,6 +5574,27 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
                       />
                     </div>
                   </SearchableSettingTarget>
+                  <ToggleSetting
+                    anchorId={getSettingsControlAnchorId("chat-widget-apply-font")}
+                    label={localizeUi("settings.controls.chatWidgetApplyFont.label")}
+                    checked={chatWidgetApplyFont}
+                    onChange={setChatWidgetApplyFont}
+                    help={localizeUi("settings.controls.chatWidgetApplyFont.help")}
+                  />
+                  <ToggleSetting
+                    anchorId={getSettingsControlAnchorId("chat-widget-apply-shape")}
+                    label={localizeUi("settings.controls.chatWidgetApplyShape.label")}
+                    checked={chatWidgetApplyShape}
+                    onChange={setChatWidgetApplyShape}
+                    help={localizeUi("settings.controls.chatWidgetApplyShape.help")}
+                  />
+                  <ToggleSetting
+                    anchorId={getSettingsControlAnchorId("chat-widget-apply-colors")}
+                    label={localizeUi("settings.controls.chatWidgetApplyColors.label")}
+                    checked={chatWidgetApplyColors}
+                    onChange={setChatWidgetApplyColors}
+                    help={localizeUi("settings.controls.chatWidgetApplyColors.help")}
+                  />
                 </div>
               </fieldset>
             </div>

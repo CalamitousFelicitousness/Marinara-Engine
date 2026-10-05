@@ -8,7 +8,7 @@
 // Saving is explicit. The draft is local until Save, matching the author's-note
 // preset panel, so switching rows never writes a half-typed field name.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Copy, Layers, Loader2, Plus, Sparkles, Trash2, Wand2, X } from "lucide-react";
+import { Copy, Dices, Layers, Loader2, Plus, Sparkles, Trash2, Wand2, X } from "lucide-react";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { toast } from "sonner";
 import type { CharacterTrackerCustomFieldDefault, RPGStatPool, TrackerPreset } from "@marinara-engine/shared";
@@ -32,6 +32,7 @@ import { useChat, useUpdateChatMetadata } from "../../../hooks/use-chats";
 import { useChatStore } from "../../../stores/chat.store";
 import { useGameStateStore } from "../../../stores/game-state.store";
 import { api } from "../../../lib/api-client";
+import { randomStatColor } from "../../../lib/random-stat-color";
 import { cn } from "../../../lib/utils";
 import { ToggleSetting } from "./SettingControls";
 
@@ -156,6 +157,8 @@ function StatRows({
   onChange: (rows: StatRow[]) => void;
   namePlaceholder: string;
 }) {
+  const { t: localizeUi } = useUiTranslation();
+  const randomizeLabel = localizeUi("ui.panels.trackerpresetsettings.randomizeColor");
   const patch = (index: number, next: Partial<StatRow>) =>
     onChange(rows.map((entry, i) => (i === index ? { ...entry, ...next } : entry)));
 
@@ -187,6 +190,15 @@ function StatRows({
             onChange={(event) => patch(index, { color: event.target.value })}
             className="h-7 w-8 shrink-0 cursor-pointer rounded-md border border-[var(--border)] bg-[var(--secondary)]"
           />
+          <button
+            type="button"
+            onClick={() => patch(index, { color: randomStatColor() })}
+            title={randomizeLabel}
+            aria-label={randomizeLabel}
+            className="shrink-0 rounded-sm p-1 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--foreground)]/8 hover:text-[var(--foreground)] active:scale-90"
+          >
+            <Dices size="0.75rem" />
+          </button>
           <button
             type="button"
             onClick={() => onChange(rows.filter((_, i) => i !== index))}
@@ -253,7 +265,7 @@ function RowGroups({ rows, onChange }: { rows: RowLists; onChange: (rows: RowLis
         onAdd={() =>
           onChange({
             ...rows,
-            characterStats: [...rows.characterStats, { name: "", value: 100, max: 100, color: "#a78bfa" }],
+            characterStats: [...rows.characterStats, { name: "", value: 100, max: 100, color: randomStatColor() }],
           })
         }
       >
@@ -281,7 +293,7 @@ function RowGroups({ rows, onChange }: { rows: RowLists; onChange: (rows: RowLis
         onAdd={() =>
           onChange({
             ...rows,
-            personaStats: [...rows.personaStats, { name: "", value: 100, max: 100, color: "#38bdf8" }],
+            personaStats: [...rows.personaStats, { name: "", value: 100, max: 100, color: randomStatColor() }],
           })
         }
       >

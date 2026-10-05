@@ -11002,6 +11002,7 @@
   "ui.panels.trackerpresetsettings.presetSaved": "Preset saved.",
   "ui.panels.trackerpresetsettings.presetSaveFailed": "Could not save the preset.",
   "ui.panels.trackerpresetsettings.presetsDescription": "A preset gives every character and your persona the same tracker rows without editing each card. It is a base layer: card values and values already tracked in a chat always win.",
+  "ui.panels.trackerpresetsettings.randomizeColor": "Random color",
   "ui.panels.trackerpresetsettings.rowSummaryValue1Value2Value3Value4": "{{value1}} character fields, {{value2}} stats, {{value3}} persona fields, {{value4}} persona stats",
   "ui.panels.trackerpresetsettings.save": "Save",
   "ui.panels.trackerpresetsettings.startingValuePlaceholder": "Starting value",

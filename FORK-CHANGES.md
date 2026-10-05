@@ -928,6 +928,15 @@ reset to full, because mid-story play state is not a default for every future ch
 only appends rows the draft does not already name, so pressing it twice is a no-op and it never
 rewrites a hand-tuned value. Pure read; the user still saves explicitly.
 
+**Random stat colors.** A stat bar added in the tracker panel or the preset and learned-row editors
+starts with a random color from `lib/random-stat-color.ts`: any hue, saturation 65-85 and lightness
+55-65, so every roll reads on both themes. Each stat row in those editors has a dice button that
+re-rolls its color. The panel's adds used `var(--primary)`, which fails the `#rrggbb` pattern the
+preset and learned-row schemas require, so a learned stat lost its color; a hex starting color
+survives learning. Patches two upstream files, `features/tracker-panel/hooks/use-tracker-mutations.ts`
+(`addPersonaStat`) and `features/tracker-panel/hooks/use-character-card-mutations.ts`
+(`addCharacterStat`), one line each. Covered by `scripts/regressions/random-stat-color.regression.ts`.
+
 `tracker_presets` is registered in both table lists: `FILE_BACKED_TABLES` in
 `db/file-backed-store.ts` and the hand-maintained `SHARDED_TABLES` copy in
 `scripts/protect-launcher-data.mjs`, which `launcher/format-guard.regression.mjs` pins

@@ -15,6 +15,7 @@ import {
   renameTrackerFieldLockPrefix,
 } from "@marinara-engine/shared";
 import { api } from "../../../lib/api-client";
+import { randomStatColor } from "../../../lib/random-stat-color";
 import { shallowRecordEqual } from "../../../lib/shallow-record-equal";
 import { useGameStateStore } from "../../../stores/game-state.store";
 import type { GameStatePatchField } from "../../../hooks/use-game-state-patcher";
@@ -386,7 +387,7 @@ export function useTrackerMutations({
   const addPersonaStat = useCallback(() => {
     patchField("personaStats", [
       ...readPersonaStats(),
-      { name: "New Stat", value: 0, max: 100, color: "var(--primary)" },
+      { name: "New Stat", value: 0, max: 100, color: randomStatColor() },
     ]);
   }, [patchField, readPersonaStats]);
 

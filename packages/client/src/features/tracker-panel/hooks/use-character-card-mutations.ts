@@ -29,6 +29,7 @@ import {
   resolveCharacterCustomFieldName,
 } from "../lib/character-custom-field-names";
 import { trackerEditableText } from "../lib/tracker-display";
+import { randomStatColor } from "../../../lib/random-stat-color";
 import { useTrackerLockContext } from "../components/TrackerLockContext";
 
 /** Flat character fields the hide control can retire. */
@@ -141,7 +142,7 @@ export function useCharacterCardMutations({
         const stats = Array.isArray(character.stats) ? character.stats : [];
         onUpdate({
           ...character,
-          stats: [...stats, { name: "New Stat", value: 0, max: 100, color: "var(--primary)" }],
+          stats: [...stats, { name: "New Stat", value: 0, max: 100, color: randomStatColor() }],
         });
       },
 

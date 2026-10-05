@@ -273,6 +273,7 @@ import {
   worldOverworldSpot,
   worldTrip,
   worldIsSite,
+  worldSiteLocks,
   worldWalkFromMetadata,
   worldWalkJoined,
   worldTown,
@@ -11008,8 +11009,10 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
   const overworldPlace = async (chatId: string, meta: Record<string, unknown>, world: GameWorld) => {
     const replies = await gameRepliesBefore(app.db, chatId);
     const present = worldPresent(world, replies.ledger);
+    // The sites the story keeps closed until the Game Master opens them (design-game-overworld-sites.md).
+    const locks = worldSiteLocks(world, gameStoryFromMetadata(meta, world), replies.scoped);
     const walk = worldWalkFromMetadata(meta);
-    if (walk) return { here: walk.to, walk, present, placeName: undefined };
+    if (walk) return { here: walk.to, walk, present, placeName: undefined, locks };
     const place = worldPlaceInForce(
       world,
       lastGamePlace(replies.scoped),
@@ -11019,6 +11022,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       here: worldOverworldSpot(world, present, place?.name)?.id ?? null,
       walk: null,
       present,
+      locks,
       placeName: place?.name,
     };
   };
@@ -11207,9 +11211,10 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     let building: { id: string; placeId?: string; name?: string } | undefined;
     let placeKey: string;
     if (body.place) {
-      const { here } = await overworldPlace(chatId, meta, world);
+      const { here, locks } = await overworldPlace(chatId, meta, world);
       if (here !== body.place || !worldIsSite(world, body.place))
         return reply.status(400).send({ error: "The party is not there." });
+      if (locks.has(body.place)) return reply.status(400).send({ error: "That place is closed to the party for now." });
       building = { id: body.place, placeId: body.place };
       placeKey = body.place;
     } else {
@@ -11669,8 +11674,11 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const meta = parseMeta(chat.metadata);
     const world = chat.mode === "game" ? await loadGameWorld(app.db, chat.id, meta) : null;
     if (!world) return { overworld: null };
-    const { here, walk, present } = await overworldPlace(req.params.chatId, meta, world);
-    return { overworld: { here, walk, ruined: present.ruined } };
+    const { here, walk, present, locks } = await overworldPlace(req.params.chatId, meta, world);
+    // A hidden site is never sent: the player does not know it is there.
+    const locked = Object.fromEntries([...locks].filter(([, lock]) => lock === "sealed"));
+    const hidden = new Set([...locks].filter(([, lock]) => lock === "hidden").map(([id]) => id));
+    return { overworld: { here, walk, ruined: present.ruined, locked, hidden: [...hidden] } };
   });
 
   // ── POST /game/:chatId/overworld/walk ──
@@ -11685,7 +11693,8 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const meta = parseMeta(chat.metadata);
     const world = chat.mode === "game" ? await loadGameWorld(app.db, chat.id, meta) : null;
     if (!world) return reply.status(400).send({ error: "This game has no world." });
-    const { here, walk } = await overworldPlace(chatId, meta, world);
+    const { here, walk, locks } = await overworldPlace(chatId, meta, world);
+    if (locks.has(to)) return reply.status(400).send({ error: "That place is closed to the party for now." });
     const route = here ? worldTrip(world, here, to) : null;
     if (!route) return reply.status(400).send({ error: "No way leads there from where the party is." });
     let walked: WorldWalk | undefined;

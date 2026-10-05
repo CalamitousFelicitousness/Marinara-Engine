@@ -1507,6 +1507,7 @@
   "game.overworld.places": "Places",
   "game.overworld.region": "Overworld",
   "game.overworld.ruined": "in ruins",
+  "game.overworld.sealed": "Closed to the party for now.",
   "game.overworld.settlement": "{{name}}, {{size}}",
   "game.overworld.settlementHere": "{{name}}, {{size}}: the party is here",
   "game.overworld.show": "Show the overworld",

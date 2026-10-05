@@ -236,6 +236,9 @@ import {
   gameDungeonWalkSchema,
   generateDungeonMap,
   readGameDungeonTags,
+  type GameDungeonTag,
+  worldSiteLocks,
+  worldSiteLocksText,
   type GameDungeonMap,
   type GameDungeonWalk,
   worldInterior,
@@ -4866,7 +4869,14 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             // The hour, for who stands on a hand-made map's spots now.
             const hour = (chatMeta.gameTime as { hour?: unknown } | undefined)?.hour;
             const text = map ? gameDungeonMapPromptText(map, typeof hour === "number" ? hour : undefined) : "";
-            return [text, toldText].filter(Boolean).join("\n") || undefined;
+            // The sites the story keeps closed, and how to open one.
+            const locksText = promptWorld
+              ? worldSiteLocksText(
+                  promptWorld,
+                  worldSiteLocks(promptWorld, gameStoryFromMetadata(chatMeta, promptWorld), await promptReplies()),
+                )
+              : "";
+            return [text, toldText, locksText].filter(Boolean).join("\n") || undefined;
           })();
           const promptWhereYouAre = promptWorld
             ? await (async () => {
@@ -10459,7 +10469,10 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           if (savedMsg?.id && chatMode === "game" && !input.impersonate && fullResponse.trim()) {
             try {
               const told = await turnDungeonPromise;
-              const tags = readGameDungeonTags(fullResponse);
+              // A reveal opens a closed site to the party and no map: it is read from the replies.
+              const tags = readGameDungeonTags(fullResponse).filter(
+                (tag): tag is Exclude<GameDungeonTag, { reveal: true }> => tag.leave === true || !tag.reveal,
+              );
               const last = tags.at(-1);
               if (told.walk || told.left || last || told.restore) {
                 const family = worldKitArtFamily(gameWorldKitFromMetadata(chatMeta) ?? undefined);

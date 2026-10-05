@@ -6,12 +6,13 @@
 // ──────────────────────────────────────────────
 import { worldKitArtFamily } from "./art-family.js";
 import { WORLD_DAYS_PER_CELL, type WorldLink, type WorldPlace } from "./compile.js";
-import { dungeonSetForPlace } from "./dungeon-map.js";
+import { dungeonSetForPlace, readGameDungeonTags } from "./dungeon-map.js";
 import { worldSettlementOf } from "./engine.js";
 import { worldPlaceByName, type GameWorld } from "./game-world.js";
 import type { WorldPresent } from "./ledger.js";
 import { worldOverworldHere, worldRoute, type WorldRoute } from "./overworld.js";
 import { worldPlaceMap } from "./place-maps.js";
+import type { StoryScript } from "./story.js";
 
 const sitesOfGame = new WeakMap<GameWorld, WorldPlace[]>();
 
@@ -105,4 +106,52 @@ export function worldOverworldSpot(
   const place = name ? worldPlaceByName(game.world, name) : undefined;
   if (place && worldIsSite(game, place.id)) return place;
   return worldOverworldHere(game, present, name);
+}
+
+// ── Story locks (Alyssa, 2026-10-05: sites that matter to the storyline stay closed until the Game
+// Master opens them) ──
+
+/** How a site is closed: shown but sealed (no trip, no going in), or hidden from the overworld. */
+export type WorldSiteLock = "sealed" | "hidden";
+
+/** The sites the story script names (anywhere in it: an arrival, an event's or a flag's place). */
+function storySiteIds(game: GameWorld, story: StoryScript | null | undefined): Set<string> {
+  const sites = new Set(worldSites(game).map((site) => site.id));
+  const named = new Set<string>();
+  if (!story) return named;
+  const walk = (value: unknown) => {
+    if (typeof value === "string") {
+      if (sites.has(value)) named.add(value);
+    } else if (Array.isArray(value)) value.forEach(walk);
+    else if (value && typeof value === "object") Object.values(value).forEach(walk);
+  };
+  walk(story);
+  return named;
+}
+
+/** The sites still closed: those the story names, less those the Game Master has opened in the replies
+ *  so far (`[map: reveal name="..."]`, or a `[map: name="..."]` that opened its map). Read from the replies,
+ *  so a regenerated or deleted reply takes its opening with it. */
+export function worldSiteLocks(
+  game: GameWorld,
+  story: StoryScript | null | undefined,
+  replies: readonly string[],
+): Map<string, WorldSiteLock> {
+  const locks = new Map<string, WorldSiteLock>();
+  for (const id of storySiteIds(game, story)) locks.set(id, "sealed");
+  if (!locks.size) return locks;
+  for (const reply of replies)
+    for (const tag of readGameDungeonTags(reply)) {
+      if (tag.leave) continue;
+      const place = worldPlaceByName(game.world, tag.name);
+      if (place) locks.delete(place.id);
+    }
+  return locks;
+}
+
+/** What the Game Master is told of the closed sites, or nothing. */
+export function worldSiteLocksText(game: GameWorld, locks: ReadonlyMap<string, WorldSiteLock>): string {
+  const names = [...locks.keys()].flatMap((id) => game.world.places.find((place) => place.id === id)?.name ?? []);
+  if (!names.length) return "";
+  return `Closed to the party until you reveal them with [map: reveal name="..."]: ${names.join(", ")}.`;
 }

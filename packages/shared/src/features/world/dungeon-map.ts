@@ -901,7 +901,11 @@ export function gameDungeonWalkText(map: GameDungeonMap, walk: GameDungeonWalk):
 
 /** What a reply's `[map: ...]` tags ask for, in order: a map to go into, or leaving the one the party
  *  is on. `[map_update: ...]` is the node map's own tag and never one of these. */
-export type GameDungeonTag = { leave: true } | { leave?: false; kind?: string; name: string; set?: string };
+export type GameDungeonTag =
+  | { leave: true }
+  | { leave?: false; reveal?: false; kind?: string; name: string; set?: string }
+  /** `[map: reveal name="..."]`: a site the story keeps closed is opened to the party (no map is opened). */
+  | { leave?: false; reveal: true; name: string };
 
 export function readGameDungeonTags(text: string): GameDungeonTag[] {
   const tags: GameDungeonTag[] = [];
@@ -919,6 +923,10 @@ export function readGameDungeonTags(text: string): GameDungeonTag[] {
         .trim();
     const name = value("name");
     if (!name) continue;
+    if (/^\s*reveal\b/iu.test(body) || /\baction\s*=\s*"reveal"/iu.test(body)) {
+      tags.push({ reveal: true, name });
+      continue;
+    }
     tags.push({ name, kind: value("kind")?.toLowerCase(), set: value("set") });
   }
   return tags;

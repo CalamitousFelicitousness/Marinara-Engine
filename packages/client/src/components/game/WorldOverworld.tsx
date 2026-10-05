@@ -131,7 +131,17 @@ export function WorldOverworld({
   const ruined = useMemo(() => new Set(overworld?.ruined ?? []), [overworld?.ruined]);
   const scale = Math.max(2, Math.min(4, Math.floor(Math.min(size.width / 400, size.height / 260))));
   // The world's sites (a cave, a mine, a ruin out in the world), gone to and into as settlements are.
-  const siteIds = useMemo(() => new Set(worldSites(game).map((place) => place.id)), [game]);
+  // A hidden site is not drawn or listed until the Game Master reveals it; a sealed one is, but closed.
+  const hiddenKey = (overworld?.hidden ?? []).join(",");
+  const siteIds = useMemo(() => {
+    const hidden = new Set(hiddenKey ? hiddenKey.split(",") : []);
+    return new Set(
+      worldSites(game)
+        .map((place) => place.id)
+        .filter((id) => !hidden.has(id)),
+    );
+  }, [game, hiddenKey]);
+  const sealed = (id: string) => overworld?.locked?.[id] === "sealed";
   // Settlements and sites nearest the party first, by the days the way takes; those no way reaches last.
   const settlements = useMemo(() => {
     const days = (place: WorldPlace) =>
@@ -297,7 +307,9 @@ export function WorldOverworld({
         ctx.fillRect(x - 6, y - 5, 28, 28);
       }
       if (siteIds.has(place.id)) {
-        paintSite(ctx, place.at.x, place.at.y);
+        // A pack's site marker, one of its variants by the place (one per kind of site), else a cave mouth.
+        const pick = ([...place.id].reduce((h, c) => (Math.imul(h, 31) + c.charCodeAt(0)) >>> 0, 7) % 100) / 100;
+        if (!drawTile(ctx, "site", x, y, pick)) paintSite(ctx, place.at.x, place.at.y);
         continue;
       }
       const tier = settlementTier(place, top);
@@ -705,6 +717,8 @@ export function WorldOverworld({
                   )
                 )}
               </>
+            ) : sealed(chosen.id) ? (
+              <div className="mt-2 text-white/60">{t("game.overworld.sealed")}</div>
             ) : route ? (
               <>
                 <div className="mt-2">{tripText(route.days)}</div>

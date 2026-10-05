@@ -992,6 +992,10 @@ export interface OverworldState {
   here: string | null;
   walk: WorldWalk | null;
   ruined: string[];
+  /** Sites the story keeps closed until the Game Master opens them, shown sealed (older servers: none). */
+  locked?: Record<string, "sealed">;
+  /** Sites the story keeps off the overworld until revealed. */
+  hidden?: string[];
 }
 
 /** The overworld of a game with a world, read again after each turn (`turnKey`). */

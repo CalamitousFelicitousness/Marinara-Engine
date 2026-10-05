@@ -226,10 +226,13 @@ export function parseEditableGenerationParameters(raw: unknown): EditableGenerat
 export function getEditableGenerationParameters(
   defaults: EditableGenerationParameters,
   overrides: unknown,
+  provider?: string | null,
 ): EditableGenerationParameters {
   const parsed = parseEditableGenerationParameters(overrides) ?? {};
   return {
     ...defaults,
+    // Codex keeps its own thinking level until one is picked, so its parameters start at Default.
+    ...(provider === "openai_chatgpt" ? { reasoningEffort: null } : {}),
     ...parsed,
     enabledParameters: mergeEnabledParameters(defaults.enabledParameters, parsed.enabledParameters),
   };

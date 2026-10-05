@@ -19,7 +19,11 @@ import {
   resolveProviderTopK,
 } from "../../routes/generate/generate-route-utils.js";
 import { mergeModelContextLimit, resolveStoredModelContextLimit } from "./model-access-policy.js";
-import { normalizeChatTopP, supportsAssistantReasoningPrefill } from "./generation-parameters.js";
+import {
+  keepsCodexDefaultEffort,
+  normalizeChatTopP,
+  supportsAssistantReasoningPrefill,
+} from "./generation-parameters.js";
 import { clampGenerationMaxOutputTokens } from "./output-token-limits.js";
 import {
   isFallbackConnectionUsable,
@@ -91,17 +95,6 @@ export type GenerationProviderRuntime = GenerationProviderRuntimeArgs["initial"]
   primaryProvider: BaseLLMProvider;
   provider: BaseLLMProvider;
 };
-
-/**
- * Codex (ChatGPT login) follows the reasoning effort only once the connection or the chat picks a level. Until then
- * it sends none, so existing Codex chats keep the model's own level and plan usage instead of the built-in Maximum.
- */
-export function keepsCodexDefaultEffort(
-  provider: string | null | undefined,
-  ...layers: Array<{ reasoningEffort?: unknown } | null | undefined>
-): boolean {
-  return provider?.toLowerCase() === "openai_chatgpt" && layers.every((layer) => layer?.reasoningEffort === undefined);
-}
 
 export function resolveGenerationProviderRuntime(args: GenerationProviderRuntimeArgs): GenerationProviderRuntime {
   const connectionParams = parseStoredGenerationParameters(args.connection.defaultParameters);
@@ -186,7 +179,7 @@ export function resolveGenerationProviderRuntime(args: GenerationProviderRuntime
   const modelLower = (args.connection.model ?? "").toLowerCase();
   const providerLower = (args.connection.provider ?? "").toLowerCase();
   const isCodex = providerLower === "openai_chatgpt";
-  if (keepsCodexDefaultEffort(providerLower, connectionParams, chatParams)) {
+  if (runtime.reasoningEffort !== null && keepsCodexDefaultEffort(providerLower, connectionParams, chatParams)) {
     forceParameters("defaults", { reasoningEffort: null });
   }
   let resolvedEffort = resolveProviderReasoningEffort({

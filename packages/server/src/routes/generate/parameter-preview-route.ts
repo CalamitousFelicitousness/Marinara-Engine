@@ -11,10 +11,8 @@ import { createChatsStorage } from "../../services/storage/chats.storage.js";
 import { createPromptsStorage } from "../../services/storage/prompts.storage.js";
 import { createAppSettingsStorage } from "../../services/storage/app-settings.storage.js";
 import { parsePresetParameters } from "../../services/prompt/assembler.js";
-import {
-  keepsCodexDefaultEffort,
-  resolveGenerationProviderRuntime,
-} from "../../services/generation/provider-generation-runtime.js";
+import { resolveGenerationProviderRuntime } from "../../services/generation/provider-generation-runtime.js";
+import { keepsCodexDefaultEffort } from "../../services/generation/generation-parameters.js";
 import {
   resolveModelAccessPolicy,
   mergeModelContextLimit,

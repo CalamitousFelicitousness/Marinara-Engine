@@ -25,8 +25,12 @@ test("Codex connections set their thinking level in connection settings", async 
     return { inherited: body.inheritedParameters.reasoningEffort, sent: body.parameters.reasoningEffort.value };
   };
   const saved = async () =>
-    JSON.parse((await (await request.get(`/api/connections/${id}`)).json()).defaultParameters ?? "{}")
-      .reasoningEffort;
+    JSON.parse((await (await request.get(`/api/connections/${id}`)).json()).defaultParameters ?? "{}").reasoningEffort;
+  const save = async () => {
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    // Saved shows once the editor has reloaded the saved connection, so later edits are not overwritten by that reload.
+    await expect(page.getByText("Saved", { exact: true })).toBeAttached();
+  };
   const open = async () => {
     await page.evaluate(async (id) => {
       const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
@@ -56,6 +60,11 @@ test("Codex connections set their thinking level in connection settings", async 
       "max",
     ]);
     await expect(reasoning.getByRole("button", { name: "Off", exact: true })).toHaveCount(0);
+    // Turning on custom defaults starts at Default, so it does not pick a level by itself.
+    await expect(reasoning.getByRole("button", { name: "Default", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     await reasoning.getByRole("button", { name: "Show help", exact: true }).click();
     await expect(
       page.getByText("How long Codex thinks before answering; Default keeps Codex's own level for the model.", {
@@ -69,14 +78,14 @@ test("Codex connections set their thinking level in connection settings", async 
     await expect(medium).toHaveAttribute("aria-pressed", "true");
     await reasoning.scrollIntoViewIfNeeded();
     await page.screenshot({ path: info.outputPath("codex-reasoning-effort.png"), animations: "disabled" });
-    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await save();
     await expect.poll(saved).toBe("medium");
     expect(await effective()).toEqual({ inherited: "medium", sent: "medium" });
 
     const providerDefault = reasoning.getByRole("button", { name: "Default", exact: true });
     await providerDefault.click();
     await expect(providerDefault).toHaveAttribute("aria-pressed", "true");
-    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await save();
     await expect.poll(saved).toBeNull();
     expect(await effective()).toEqual({ inherited: null, sent: null });
   } finally {

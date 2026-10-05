@@ -92,7 +92,6 @@ import {
   resolveMemoryRecallEmbeddingSource,
 } from "../../services/memory-recall-embedding.js";
 import { withConnectionAdmissionProvider } from "../../services/generation/connection-admission.js";
-import { keepsCodexDefaultEffort } from "../../services/generation/provider-generation-runtime.js";
 import { getLocalSidecarProvider } from "../../services/llm/local-sidecar.js";
 import {
   assemblePrompt,
@@ -127,6 +126,7 @@ import {
 } from "../../services/generation/model-access-policy.js";
 import {
   collectPastReasoningMetadata,
+  keepsCodexDefaultEffort,
   limitPastReasoningMetadata,
   normalizeChatTopP,
 } from "../../services/generation/generation-parameters.js";
@@ -2199,7 +2199,9 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       enabledParameters?.reasoningEffort === false
         ? undefined
         : reasoningEffort === null
-          ? "none"
+          ? providerLower === "openai_chatgpt"
+            ? undefined
+            : "none"
           : (resolvedEffort ?? undefined);
 
     // ── Claude 4.5+ sampling parameter restrictions ──

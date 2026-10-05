@@ -42,12 +42,16 @@ try {
   const { OpenAIProvider } = await import("../../packages/server/src/services/llm/providers/openai.provider.js");
   const { OpenAIChatGPTProvider } =
     await import("../../packages/server/src/services/llm/providers/openai-chatgpt.provider.js");
+  const { BaseLLMProvider } = await import("../../packages/server/src/services/llm/base-provider.js");
+  const { ConnectionFallbackProvider } =
+    await import("../../packages/server/src/services/llm/connection-fallback-provider.js");
   const { resolveGenerationProviderRuntime } =
     await import("../../packages/server/src/services/generation/provider-generation-runtime.js");
   const { resolveModelAccessPolicy } =
     await import("../../packages/server/src/services/generation/model-access-policy.js");
   const { reasoningEffortChoices, relevantGenerationParameters } =
     await import("../../packages/shared/src/constants/generation-parameter-relevance.js");
+  const { MODEL_LISTS } = await import("../../packages/shared/src/constants/model-lists.js");
 
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
@@ -88,12 +92,68 @@ try {
   for (const [label, options] of [
     ["unset", { model: "gpt-6.1-sol" }],
     ["none", { model: "gpt-6.1-sol", reasoningEffort: "none" }],
-    ["send switch off", { model: "gpt-6.1-sol", reasoningEffort: "high", enabledParameters: { reasoningEffort: false } }],
+    [
+      "send switch off",
+      { model: "gpt-6.1-sol", reasoningEffort: "high", enabledParameters: { reasoningEffort: false } },
+    ],
     ["non-reasoning model", { model: "gpt-4o", reasoningEffort: "high" }],
     ["unknown model", { model: "some-future-model", reasoningEffort: "high" }],
   ] as const) {
     const body = await send(options as Partial<Options> & { model: string });
     assert.equal("reasoning" in body, false, `${label}: no reasoning field`);
+  }
+
+  // A level from a caller that does not convert it first (an agent package, a fallback) becomes one the model takes.
+  for (const [model, effort, expected] of [
+    ["gpt-5.5", "max", "xhigh"],
+    ["gpt-5.6-sol", "max", "max"],
+    ["gpt-6.1-sol", "xhigh", "xhigh"],
+  ] as const) {
+    const body = await send({ model, reasoningEffort: effort });
+    assert.deepEqual(body.reasoning, { effort: expected }, `${model} turns ${effort} into ${expected}`);
+  }
+
+  // A Codex fallback sends its own saved level, converted for its model, and otherwise keeps Codex's default instead
+  // of taking the main connection's level.
+  const failingPrimary = new (class extends BaseLLMProvider {
+    async *chat(): AsyncGenerator<string, void, unknown> {
+      throw new Error("primary unavailable");
+    }
+  })("", "");
+  const viaFallback = async (fallback: Record<string, unknown>, mainEffort?: Options["reasoningEffort"]) => {
+    const provider = new ConnectionFallbackProvider(
+      failingPrimary,
+      codex,
+      { id: "codex-fallback", name: "Codex", provider: "openai_chatgpt", baseUrl: base, apiKey: "", ...fallback },
+      "main",
+      async () => {},
+    );
+    for await (const _chunk of provider.chat([{ role: "user", content: "Hello" }], {
+      model: "main-model",
+      stream: true,
+      reasoningEffort: mainEffort,
+    })) {
+      // drain
+    }
+    return bodies.at(-1)!;
+  };
+  assert.deepEqual(
+    (await viaFallback({ model: "gpt-5.5", defaultParameters: JSON.stringify({ reasoningEffort: "maximum" }) }))
+      .reasoning,
+    { effort: "xhigh" },
+    "a gpt-5.5 fallback turns its saved Maximum into xhigh",
+  );
+  assert.deepEqual(
+    (await viaFallback({ model: "gpt-6.1-sol", defaultParameters: JSON.stringify({ reasoningEffort: "medium" }) }))
+      .reasoning,
+    { effort: "medium" },
+  );
+  for (const model of ["gpt-5.5", "gpt-6.1-sol"]) {
+    assert.equal(
+      "reasoning" in (await viaFallback({ model, defaultParameters: null }, "max")),
+      false,
+      `a ${model} fallback with no saved level keeps Codex's default`,
+    );
   }
 
   // The real wrapper builds the same body through the local login, without calling chatgpt.com.
@@ -160,6 +220,13 @@ try {
   assert.equal(sent({ connection: { reasoningEffort: "maximum" } }), "max");
   assert.equal(sent({ model: "gpt-5.5", connection: { reasoningEffort: "maximum" } }), "xhigh");
   assert.equal(sent({ connection: { reasoningEffort: null } }), undefined, "Default on the connection sends nothing");
+  // Default is not a level: turning on custom parameters (which saves Default for Codex) keeps scenes on Codex's default.
+  assert.equal(
+    sent({ scene: true, connection: { reasoningEffort: null } }),
+    undefined,
+    "Default keeps scenes on default",
+  );
+  assert.equal(runtime({ connection: { reasoningEffort: null } }).parameterSources.reasoningEffort, "connection");
   assert.equal(
     sent({ connection: { reasoningEffort: "high" }, chat: { reasoningEffort: "low" } }),
     "low",
@@ -199,6 +266,9 @@ try {
     reasoningEffortChoices({ provider: "openai_chatgpt", model: "gpt-5.5" }).map((choice) => choice.label),
     [null, "low", "medium", "high", "xhigh"],
   );
+
+  // Adding the GPT-6 and GPT-5.6 models does not change the model a new Codex connection starts with.
+  assert.equal(MODEL_LISTS.openai_chatgpt?.[0]?.id, "gpt-5.5");
 
   console.log("codex-reasoning-effort regression passed");
 } finally {

@@ -44,7 +44,7 @@
 <p align="center">
   <img src="docs/screenshots/Desktop_Roleplay_View.png" width="90%" alt="Roleplay Chat — Desktop" />
   <br/>
-  <em>Roleplay Mode — Character sprites, custom backgrounds, weather effects, and AI agents</em>
+  <em>Roleplay Mode — Full-body character sprites, custom backgrounds, live weather effects, and chat widget styles</em>
 </p>
 
 <p align="center">
@@ -66,6 +66,21 @@
 </p>
 
 <p align="center">
+  <img src="docs/screenshots/Desktop_Model_Picker.png" width="45%" alt="Model picker in the chat input" />
+  &nbsp;&nbsp;
+  <img src="docs/screenshots/Desktop_Chat_Settings_Window.png" width="45%" alt="Chat Settings window" />
+</p>
+<p align="center">
+  <em>Pick and pin models right from the chat input &nbsp;&nbsp;·&nbsp;&nbsp; Chat Settings in a movable window</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/Desktop_Appearance.png" width="90%" alt="Appearance settings with chat widget styles" />
+  <br/>
+  <em>Make it yours — fonts, colors, and chat widget styles</em>
+</p>
+
+<p align="center">
   <img src="docs/screenshots/Browser_Tab.png" width="90%" alt="Card Browser" />
   <br/>
   <em>Card Browser — Search and import character cards from Chub.ai, JannyAI, Pygmalion, Wyvern, and more</em>
@@ -74,7 +89,7 @@
 <p align="center">
   <img src="docs/screenshots/Browser_Game_Screen.png" width="90%" alt="Game Mode — Scene" />
   <br/>
-  <em>Game Mode — AI Game Master, party of characters, generated backgrounds, weather, and time of day</em>
+  <em>Game Mode — AI Game Master, party of characters, maps, HUD widgets, weather, and time of day</em>
 </p>
 
 <p align="center">
@@ -83,7 +98,7 @@
   <img src="docs/screenshots/Browser_Game_Party_Card.png" width="45%" alt="Party Card" />
 </p>
 <p align="center">
-  <em>NPC dialogue tracking &nbsp;&nbsp;·&nbsp;&nbsp; Party member card with stats, levels, and abilities</em>
+  <em>Dialogue history with party banter &nbsp;&nbsp;·&nbsp;&nbsp; Party member card with stats, abilities, strengths, and weaknesses</em>
 </p>
 
 <p align="center">

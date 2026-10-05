@@ -2,6 +2,7 @@
 // from the set's eight (slot 5 is the way out: stairs, a ladder or a hatch), named rooms, and where the
 // party comes in. Pure and seeded: the same seed and set always lay out the same map.
 
+import type { WorldPlaceMap } from "./place-maps.js";
 import { z } from "zod";
 
 export type DungeonKind = "cave" | "dungeon" | "station";
@@ -235,6 +236,8 @@ export interface DungeonMap {
   rooms: DungeonRoom[];
   /** Where the party comes in, on the way-out prop. */
   entrance: { x: number; y: number };
+  /** A map made by hand (map editor Phase 3): its props are drawn only and never block a walk. */
+  drawnProps?: true;
 }
 
 function mulberry32(seed: number): () => number {
@@ -254,6 +257,7 @@ const at = (map: { width: number }, x: number, y: number) => y * map.width + x;
 export function dungeonWalkable(map: DungeonMap, x: number, y: number): boolean {
   if (x < 0 || y < 0 || x >= map.width || y >= map.height) return false;
   const i = at(map, x, y);
+  if (map.drawnProps) return map.ground[i] === "floor";
   return map.ground[i] === "floor" && (map.props[i] === -1 || map.props[i] === DUNGEON_EXIT_PROP);
 }
 
@@ -579,6 +583,14 @@ export function generateDungeonMap(setId: string, seed: number, size: DungeonMap
 /** The map in words for the Game Master: each room's props, and where the way out is. */
 export function dungeonMapWords(map: DungeonMap): string {
   const set = DUNGEON_SETS.find((each) => each.id === map.set) ?? DUNGEON_SETS[0]!;
+  if (!map.rooms.length) {
+    // A map made by hand has no areas: what is on it, all told.
+    const counts = new Map<number, number>();
+    for (const prop of map.props) if (prop >= 0) counts.set(prop, (counts.get(prop) ?? 0) + 1);
+    const things = [...counts].map(([prop, n]) => (n > 1 ? `${set.props[prop]} (${n})` : set.props[prop]!));
+    if (map.ground.includes("liquid")) things.push(set.liquid);
+    return `${set.label} (${set.floor}, ${set.wall})${things.length ? `: ${things.join(", ")}` : ""}. The way out is where the party came in.`;
+  }
   const rooms = map.rooms.map((room, index) => {
     const counts = new Map<number, number>();
     let liquid = false;
@@ -612,9 +624,14 @@ export const gameDungeonMapSchema = z
     /** The world place it is a map of, when it was entered from one (a building in town). */
     place: z.string().min(1).max(160).optional(),
     set: z.string().max(40),
+    /** A hand-made map's own image pack, by its id (else the set's). */
+    pack: z.string().max(120).optional(),
+    /** Made by hand (map editor Phase 3): props drawn only, and the way out is where the party came in. */
+    hand: z.literal(true).optional(),
     seed: z.number().int(),
-    width: z.number().int().min(8).max(64),
-    height: z.number().int().min(8).max(48),
+    // As small as a map made by hand may be (WORLD_MAP_MAX's floor, map editor Phase 3).
+    width: z.number().int().min(4).max(64),
+    height: z.number().int().min(4).max(48),
     ground: z
       .string()
       .regex(/^[r.#~]+$/u)
@@ -698,6 +715,43 @@ export function dungeonFromGameDungeonMap(map: GameDungeonMap): DungeonMap {
     props: [...map.props].map((char) => (char === "-" ? -1 : Number(char))),
     rooms: map.rooms,
     entrance: map.entrance,
+    ...(map.hand ? { drawnProps: true as const } : {}),
+  };
+}
+
+/** Whether the party stands on the way out: the way-out prop, or (a map made by hand has none) where it
+ *  came in. */
+export function gameDungeonOnWayOut(map: GameDungeonMap): boolean {
+  if (map.at.x === map.entrance.x && map.at.y === map.entrance.y) return true;
+  return map.props[map.at.y * map.width + map.at.x] === String(DUNGEON_EXIT_PROP);
+}
+
+/** A place's hand-made map (map editor Phase 3) as the map a game keeps: its cells, its props by slot
+ *  (drawn only), in at its entry. */
+export function gameDungeonMapFromPlaceMap(
+  map: WorldPlaceMap,
+  name: string,
+  set: DungeonSet,
+  id: string,
+  place: string,
+): GameDungeonMap {
+  const props = Array.from({ length: map.width * map.height }, () => "-");
+  for (const prop of map.props ?? []) props[prop.y * map.width + prop.x] = prop.tile.replace(/^dn_prop/u, "");
+  return {
+    id,
+    name: name.trim().slice(0, 80) || set.label,
+    place,
+    set: set.id,
+    ...(map.pack ? { pack: map.pack } : {}),
+    hand: true,
+    seed: 0,
+    width: map.width,
+    height: map.height,
+    ground: map.ground,
+    props: props.join(""),
+    rooms: [],
+    entrance: map.entry,
+    at: map.entry,
   };
 }
 
@@ -776,13 +830,22 @@ export function dungeonWalkMinutes(steps: number): number {
 export function gameDungeonMapPromptText(map: GameDungeonMap): string {
   const cells = dungeonFromGameDungeonMap(map);
   const area = dungeonAreaAt(map, map.at.x, map.at.y);
-  return `MAP: ${map.name}. ${dungeonMapWords(cells)} The party is ${area ? `in area ${area}` : "in a passage between areas"}.`;
+  const where = !map.rooms.length
+    ? gameDungeonOnWayOut(map)
+      ? "by the way out"
+      : "inside"
+    : area
+      ? `in area ${area}`
+      : "in a passage between areas";
+  return `MAP: ${map.name}. ${dungeonMapWords(cells)} The party is ${where}.`;
 }
 
 /** A walk on the map, told to the Game Master on the next turn. */
 export function gameDungeonWalkText(map: GameDungeonMap, walk: GameDungeonWalk): string {
   const from = dungeonAreaAt(map, walk.from.x, walk.from.y);
   const to = dungeonAreaAt(map, walk.to.x, walk.to.y);
+  const minutes = `${walk.minutes} minute${walk.minutes === 1 ? "" : "s"}`;
+  if (!map.rooms.length) return `The party walked across ${map.name} (${minutes}).`;
   const where = (area: number) => (area ? `area ${area}` : "a passage");
   return `The party walked from ${where(from)} to ${where(to)} of ${map.name} (${walk.minutes} minute${walk.minutes === 1 ? "" : "s"}).`;
 }

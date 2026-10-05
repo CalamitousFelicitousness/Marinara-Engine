@@ -21,6 +21,8 @@ import {
   DUNGEON_SETS,
   dungeonSetForPlace,
   dungeonWayOutWords,
+  gameDungeonMapPromptText,
+  gameDungeonWalkText,
   parseWorldKit,
   type GameWorld,
 } from "../../packages/shared/src/index.js";
@@ -197,6 +199,69 @@ try {
     assert.equal((await visit(inn.id)).statusCode, 200);
     assert.equal((await enter(inn.id)).statusCode, 400, "no going down in an inn");
     assert.equal((await meta()).gameDungeonMap, null);
+
+    // A place with a map made for it by hand (map editor Phase 3): that map is gone down into, whatever
+    // its name, its props never in the way, and out where the party came in.
+    const rows = ["########", "#......#", "#..~~..#", "#......#", "#......#", "########"];
+    const handMap = {
+      id: "m1",
+      place: "e1",
+      pack: "local/cave-ice",
+      width: 8,
+      height: 6,
+      ground: rows.join(""),
+      entry: { x: 1, y: 4 },
+      props: [{ tile: "dn_prop1", x: 3, y: 1 }],
+    };
+    const saved = await app.inject({
+      method: "PUT",
+      url: `/api/game/${chatId}/world/edits`,
+      payload: {
+        edits: {
+          editsVersion: 3,
+          // A place added by hand in the city, named like any building: the map makes it one to go down into.
+          added: [{ id: "e1", name: "Old Granary", layer: "quarter", parentId: city.id, at: city.at }],
+          maps: [handMap],
+        },
+      },
+    });
+    assert.equal(saved.statusCode, 200, saved.body);
+    const quarter = ((await read()).buildings as typeof buildings).find((building) => building.placeId === "e1")!;
+    assert.ok(quarter, "the added place is a building in town");
+    assert.equal((await visit(quarter.id)).statusCode, 200);
+    const handEntered = await enter(quarter.id);
+    assert.equal(handEntered.statusCode, 200, handEntered.body);
+    const kept = handEntered.json().map;
+    assert.equal(kept.hand, true);
+    assert.equal(kept.ground, rows.join(""), "the map as made");
+    assert.equal(kept.pack, "local/cave-ice", "drawn from its own pack");
+    assert.deepEqual(kept.at, handMap.entry, "in at its entry");
+    assert.equal(kept.props[1 * 8 + 3], "1", "its prop in its slot");
+    // Told to the Game Master without areas: what is on it, where the way out is, where the party is.
+    const told = gameDungeonMapPromptText(kept);
+    assert.match(told, /^MAP: Old Granary\. /u);
+    assert.match(told, /The way out is where the party came in\. The party is by the way out\.$/u);
+    assert.doesNotMatch(told, /area \d|passage/u, "no areas on a map made by hand");
+    assert.equal(
+      gameDungeonWalkText(kept, { id: "w", map: kept.id, from: kept.at, to: { x: 3, y: 1 }, minutes: 1 }),
+      "The party walked across Old Granary (1 minute).",
+    );
+    const onProp = await app.inject({
+      method: "POST",
+      url: `/api/game/${chatId}/map/walk`,
+      payload: { map: kept.id, x: 3, y: 1 },
+    });
+    assert.equal(onProp.statusCode, 200, onProp.body);
+    const leaveHand = () =>
+      app.inject({ method: "POST", url: `/api/game/${chatId}/map/leave`, payload: { map: kept.id } });
+    assert.equal((await leaveHand()).statusCode, 400, "the way out is where the party came in");
+    await app.inject({
+      method: "POST",
+      url: `/api/game/${chatId}/map/walk`,
+      payload: { map: kept.id, ...handMap.entry },
+    });
+    assert.equal((await leaveHand()).statusCode, 200);
+    assert.equal((await read()).at, quarter.id, "back in town");
   } finally {
     await app.close();
     await closeDB();

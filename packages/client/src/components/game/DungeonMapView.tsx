@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import {
   DUNGEON_EXIT_PROP,
   dungeonWayOutWords,
+  gameDungeonOnWayOut,
   DUNGEON_SETS,
   characterFacing,
   characterFrameAt,
@@ -71,7 +72,7 @@ export function DungeonMapView({
   const kept = data?.map ?? null;
   const cells = useMemo(() => (kept ? dungeonFromGameDungeonMap(kept) : null), [kept]);
   const set = kept ? DUNGEON_SETS.find((each) => each.id === kept.set) : undefined;
-  const pack = useDungeonPack(kept?.set);
+  const pack = useDungeonPack(kept?.pack ?? kept?.set);
   // A pack of the set's own: "dungeon" names no family the library chooses for, so only `own` draws.
   const drawTile = useOverworldAtlas("dungeon", pack === null ? undefined : pack);
   const walkMutation = useDungeonWalk();
@@ -135,6 +136,13 @@ export function DungeonMapView({
           }
         }
       }
+    // A map made by hand has no way-out prop: where the party came in is marked as the way out.
+    if (cells.drawnProps) {
+      const { x, y } = cells.entrance;
+      ctx.strokeStyle = PLAIN.prop;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x * T + 3, y * T + 3, T - 6, T - 6);
+    }
     return canvas;
   }, [cells, drawTile, resolution]);
   const mapSize = cells ? { width: cells.width * T, height: cells.height * T } : { width: 0, height: 0 };
@@ -288,7 +296,7 @@ export function DungeonMapView({
   if (!kept || !cells || !set) {
     return <div className="absolute inset-0 z-0 bg-black" role="region" aria-label={t("game.dungeon.region")} />;
   }
-  const onWayOut = cells.props[kept.at.y * cells.width + kept.at.x] === DUNGEON_EXIT_PROP;
+  const onWayOut = gameDungeonOnWayOut(kept);
   const area = dungeonAreaAt(kept, kept.at.x, kept.at.y);
   const leave = async () => {
     try {
@@ -333,8 +341,8 @@ export function DungeonMapView({
       <div className="pointer-events-none absolute inset-x-0 top-16 z-[25] flex flex-col items-center gap-2 px-3">
         <p className="rounded-lg bg-black/60 px-3 py-1 text-xs text-white/85" role="status">
           {kept.name}
-          {" · "}
-          {area ? t("game.dungeon.area", { area }) : t("game.dungeon.passage")}
+          {/* A map made by hand has no areas: its name alone. */}
+          {kept.rooms.length > 0 && <> · {area ? t("game.dungeon.area", { area }) : t("game.dungeon.passage")}</>}
           {walking && <Footprints size={12} className="ml-2 inline animate-pulse" aria-hidden="true" />}
         </p>
         {onWayOut && (

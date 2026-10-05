@@ -16,6 +16,7 @@ import {
   worldTownMinutes,
   worldTownPath,
   dungeonSetForPlace,
+  worldPlaceMap,
   worldTownPeopleAt,
   type GameWorld,
   characterFacing,
@@ -486,6 +487,8 @@ export function TownView({
     if (!building) return false;
     const place = building.placeId ? game.world.places.find((each) => each.id === building.placeId) : undefined;
     const name = building.name ?? place?.name;
+    // A place with a map made for it by hand (map editor Phase 3), or whose words say so.
+    if (building.placeId && worldPlaceMap(game, building.placeId)) return true;
     return Boolean(name && dungeonSetForPlace({ name, tags: place?.tags }, family));
   };
   const canGoIn = (at: string) => {

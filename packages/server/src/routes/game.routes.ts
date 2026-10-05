@@ -280,8 +280,12 @@ import {
   worldTownPath,
   worldTownSpotFromMetadata,
   worldTownVisitFromMetadata,
-  DUNGEON_EXIT_PROP,
+  dungeonSetFor,
   dungeonSetForPlace,
+  gameDungeonMapFromPlaceMap,
+  gameDungeonMapSchema,
+  gameDungeonOnWayOut,
+  worldPlaceMap,
   generateDungeonMap,
   gameDungeonSeed,
   gameDungeonMapFromDungeon,
@@ -11171,8 +11175,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       if (!kept || kept.id !== body.map) {
         throw Object.assign(new Error("The party is not on that map."), { statusCode: 409 });
       }
-      const at = kept.at.y * kept.width + kept.at.x;
-      if (kept.props[at] !== String(DUNGEON_EXIT_PROP)) {
+      if (!gameDungeonOnWayOut(kept)) {
         throw Object.assign(new Error("The way out is elsewhere."), { statusCode: 400 });
       }
       left = kept.name;
@@ -11200,7 +11203,13 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const place = building?.placeId ? world.world.places.find((each) => each.id === building.placeId) : undefined;
     const name = building?.name ?? place?.name;
     const family = worldKitArtFamily(gameWorldKitFromMetadata(meta) ?? undefined);
-    const set = building && name ? dungeonSetForPlace({ name, tags: place?.tags }, family) : null;
+    // A map made for the place by hand (map editor Phase 3) is the one gone down into; else one laid out
+    // from its name, for a place whose words say it is one to go down into.
+    const hand = building?.placeId ? worldPlaceMap(world, building.placeId) : null;
+    const set =
+      building && name
+        ? (dungeonSetForPlace({ name, tags: place?.tags }, family) ?? (hand ? dungeonSetFor(undefined, family) : null))
+        : null;
     if (!building || !name || !set) return reply.status(400).send({ error: "There is no going down here." });
     const placeKey = building.placeId ?? `${found.town.settlementId}:${building.id}`;
     let map: GameDungeonMap | undefined;
@@ -11212,8 +11221,17 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       }
       // Another map the party is on (one the Game Master opened) is never thrown away for this one.
       if (current) throw Object.assign(new Error("The party is on another map; leave it first."), { statusCode: 409 });
-      const made = generateDungeonMap(set.id, gameDungeonSeed(chatId, name), "medium");
-      map = { ...gameDungeonMapFromDungeon(made, name, randomUUID()), place: placeKey };
+      if (hand) {
+        // A hand-made map the game cannot keep (made for a later Engine) is never half kept.
+        const kept = gameDungeonMapSchema.safeParse(
+          gameDungeonMapFromPlaceMap(hand, name, set, randomUUID(), placeKey),
+        );
+        if (!kept.success) throw Object.assign(new Error("This place's map can't be read."), { statusCode: 400 });
+        map = kept.data;
+      } else {
+        const made = generateDungeonMap(set.id, gameDungeonSeed(chatId, name), "medium");
+        map = { ...gameDungeonMapFromDungeon(made, name, randomUUID()), place: placeKey };
+      }
       return { gameDungeonMap: map, gameDungeonWalk: null, gameDungeonLeft: null, gameDungeonView: "map" };
     });
     if (!updated || !map) return reply.status(404).send({ error: "Chat not found" });

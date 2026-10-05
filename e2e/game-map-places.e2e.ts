@@ -141,3 +141,102 @@ test("the party goes down into a mine in town and comes back up", async ({ page,
     await new Promise<void>((resolve) => model.server.close(() => resolve()));
   }
 });
+
+test("a place with a map made for it by hand is gone down into on that map", async ({ page, request }, testInfo) => {
+  test.setTimeout(120_000);
+  const model = await fakeModel("Dust and lamplight.");
+  let connectionId = "";
+  let chatId = "";
+  try {
+    const connection = await request.post("/api/connections", {
+      data: {
+        name: "Local mine fixture",
+        provider: "custom",
+        baseUrl: model.baseUrl,
+        apiKey: "synthetic-test-key",
+        model: "mine-fixture",
+        maxContext: 32768,
+        treatAsLocalEndpoint: true,
+      },
+    });
+    expect(connection.ok()).toBeTruthy();
+    connectionId = (await connection.json()).id;
+    const created = await request.post("/api/chats", {
+      data: { name: "Mine", mode: "game", characterIds: [], connectionId },
+    });
+    expect(created.ok()).toBeTruthy();
+    chatId = ((await created.json()) as { id: string }).id;
+    const meta = await request.patch(`/api/chats/${chatId}/metadata`, {
+      data: {
+        gameId: `mine-${chatId}`,
+        gameSessionStatus: "active",
+        gameIntroPresented: true,
+        gameImageAutoGenerationEnabled: false,
+        enableAgents: false,
+        enableTools: false,
+        gameWorldKit: kit,
+        gameWorld,
+        gameWorldView: "town",
+        gameTime: { day: 1, hour: 10, minute: 0 },
+      },
+    });
+    expect(meta.ok(), await meta.text()).toBeTruthy();
+    // The party is in Thornmere, where the story put an old mine.
+    const told = await request.post(`/api/chats/${chatId}/messages`, {
+      data: {
+        role: "assistant",
+        content: 'The gates of Thornmere. [place: name="Thornmere" result="ok"]',
+      },
+    });
+    expect(told.ok()).toBeTruthy();
+    // A place added by hand in Thornmere, with a small map made for it.
+    const world = (await (await request.get(`/api/game/${chatId}/world`)).json()) as any;
+    const thornmere = world.world.world.places.find((place: { name: string }) => place.name === "Thornmere");
+    const rows = ["######", "#....#", "#.~~.#", "#....#", "######"];
+    const saved = await request.put(`/api/game/${chatId}/world/edits`, {
+      data: {
+        edits: {
+          editsVersion: 3,
+          added: [{ id: "e1", name: "Old Granary", layer: "quarter", parentId: thornmere.id, at: thornmere.at }],
+          maps: [{ id: "m1", place: "e1", width: 6, height: 5, ground: rows.join(""), entry: { x: 1, y: 3 } }],
+        },
+      },
+    });
+    expect(saved.ok(), await saved.text()).toBeTruthy();
+    const town = (await (await request.get(`/api/game/${chatId}/town`)).json()).town;
+    const mine = town.buildings.find((building: { placeId?: string }) => building.placeId === "e1");
+    expect(mine, "the added place is a building in town").toBeTruthy();
+    expect((await request.post(`/api/game/${chatId}/town/visit`, { data: { to: mine.id } })).ok()).toBeTruthy();
+
+    await openGame(page, chatId);
+    await expect(page.getByRole("region", { name: "Town", exact: true })).toBeVisible({ timeout: 40_000 });
+    await page.getByRole("button", { name: "Places in town", exact: true }).click();
+    await page
+      .getByRole("list", { name: "Places in town" })
+      .getByRole("button", { name: /Old Granary/u })
+      .click();
+    const card = page.locator('[data-component="TownView.Card"]');
+    await expect(card).toContainText("Old Granary");
+    await card.getByRole("button", { name: "Go down", exact: true }).click();
+
+    const view = page.locator('[data-component="DungeonMapView"]');
+    await expect(view).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText(/^Old Granary/u)).toBeVisible();
+    const kept = (await metadataOf(request, chatId)).gameDungeonMap;
+    expect(kept.name).toBe("Old Granary");
+    expect(kept.hand).toBe(true);
+    expect(kept.ground).toBe(rows.join(""));
+    await page.screenshot({ path: testInfo.outputPath("hand-map.png") });
+
+    // In at the way in, so out by it: back in town at the mine.
+    await page.getByRole("button", { name: "Leave by the stairs", exact: true }).click();
+    await expect(view).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "Town", exact: true })).toBeVisible();
+    await expect.poll(async () => (await metadataOf(request, chatId)).gameDungeonMap).toBeNull();
+  } finally {
+    if (chatId) await request.delete(`/api/chats/${chatId}`).catch(() => undefined);
+    if (connectionId) await request.delete(`/api/connections/${connectionId}`).catch(() => undefined);
+    model.server.closeAllConnections();
+    await new Promise<void>((resolve) => model.server.close(() => resolve()));
+  }
+});

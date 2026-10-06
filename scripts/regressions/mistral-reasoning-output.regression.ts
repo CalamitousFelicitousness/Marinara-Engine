@@ -224,7 +224,7 @@ try {
   }
 
   // A final assistant message (Assistant Prefill) is sent as a Mistral prefix, without reasoning fields that another
-  // provider saved.
+  // provider saved; a system message right after an assistant turn goes as a user message.
   const history: ChatMessage[] = [
     { role: "system", content: "You are the narrator." },
     { role: "user", content: "Hello." },
@@ -239,7 +239,7 @@ try {
     { role: "system", content: "You are the narrator." },
     { role: "user", content: "Hello." },
     { role: "assistant", content: "Hi." },
-    { role: "system", content: "[Author's note]" },
+    { role: "user", content: "[Author's note]" },
     { role: "system", content: "[Lore]" },
     {
       role: "user",

@@ -1033,6 +1033,12 @@ export class OpenAIProvider extends BaseLLMProvider {
     // Mistral rejects prompt_mode together with reasoning_effort; a prompt_mode from Custom Parameters wins.
     if (body.prompt_mode !== undefined) delete body.reasoning_effort;
     if (!Array.isArray(body.messages)) return;
+    // Mistral rejects a system message right after an assistant turn, so a mid-chat instruction there goes as user.
+    for (let index = 1; index < body.messages.length; index++) {
+      if (body.messages[index]?.role === "system" && body.messages[index - 1]?.role === "assistant") {
+        body.messages[index].role = "user";
+      }
+    }
     // Mistral continues a final assistant message (Assistant Prefill, depth-0 injections) only when it is a prefix.
     const last = body.messages.at(-1);
     if (last?.role === "assistant" && !last.tool_calls?.length) last.prefix = true;

@@ -18,6 +18,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
   type RefObject,
+  type TouchEvent as ReactTouchEvent,
 } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -131,6 +132,8 @@ export function WindowBubble({
   const dragRef = useRef<BubbleDrag | null>(null);
   const frameRef = useRef(0);
   const suppressClickRef = useRef(false);
+  /** A touch press already settled on release; its click, if one still comes, must not repeat it. */
+  const touchHandledRef = useRef(false);
   const [live, setLive] = useState<{ point: WindowPoint; guides: SnapGuide[] } | null>(null);
   const [renderedSize, setRenderedSize] = useState(size);
   const placements = useSyncExternalStore(subscribeBubblePlacements, readBubblePlacements, readBubblePlacements);
@@ -176,6 +179,7 @@ export function WindowBubble({
   const measuredSize = () => renderedSize;
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    touchHandledRef.current = false;
     if (locked || event.button !== 0 || dragRef.current) return;
     event.currentTarget.setPointerCapture?.(event.pointerId);
     const others = Array.from(document.querySelectorAll<HTMLElement>(".mari-window-bubble"))
@@ -229,17 +233,36 @@ export function WindowBubble({
     dragRef.current = null;
     cancelAnimationFrame(frameRef.current);
     setLive(null);
-    if (locked || !drag.moved || event.type === "pointercancel") return;
-    // The click that ends a drag must not open the window too.
+    if (event.type === "pointercancel") return;
+    if (event.pointerType === "touch") {
+      // Touch is settled here, not by the browser's click: Chromium sends no click for a tap made
+      // just after a flick (it reads it as stopping a fling), and a drag must not click.
+      touchHandledRef.current = true;
+      if (!drag.moved) onOpen(event.currentTarget);
+      else if (!locked) onMove(readDrop(drag, event).point);
+      return;
+    }
+    if (locked || !drag.moved) return;
+    // The click that ends a mouse drag must not open the window too.
     suppressClickRef.current = true;
-    // Touch drags may end without a click; do not swallow the next deliberate tap.
     window.setTimeout(() => {
       suppressClickRef.current = false;
     }, 0);
     onMove(readDrop(drag, event).point);
   };
 
+  // Cancelling touchend stops the browser's own click for a touch press already settled above.
+  const handleTouchEnd = (event: ReactTouchEvent<HTMLButtonElement>) => {
+    if (!touchHandledRef.current || !event.cancelable) return;
+    event.preventDefault();
+    touchHandledRef.current = false;
+  };
+
   const handleClick = (event: ReactMouseEvent<HTMLButtonElement>) => {
+    if (touchHandledRef.current) {
+      touchHandledRef.current = false;
+      return;
+    }
     if (suppressClickRef.current) {
       suppressClickRef.current = false;
       return;
@@ -249,6 +272,8 @@ export function WindowBubble({
 
   // Arrow keys move the bubble (no snapping); Enter and Space open it.
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    // A key press is never the click of an earlier tap.
+    touchHandledRef.current = false;
     const step = event.shiftKey ? WINDOW_KEYBOARD_LARGE_STEP_PX : WINDOW_KEYBOARD_STEP_PX;
     const delta =
       event.key === "ArrowLeft"
@@ -290,6 +315,7 @@ export function WindowBubble({
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
+        onTouchEnd={handleTouchEnd}
         onClick={handleClick}
         onKeyDown={handleKeyDown}
       >

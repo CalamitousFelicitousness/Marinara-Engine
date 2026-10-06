@@ -835,6 +835,18 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     }),
     "Fireball hurts Thorn Lurker, who may answer.",
   );
+  assert.equal(
+    line(fiveE, state, {
+      type: "window",
+      window: "w5",
+      kind: "reaction",
+      waiting: ["lurker"],
+      sourceId: "brenna",
+      moment: "falls",
+      label: "fall",
+    }),
+    "Brenna falls, and Thorn Lurker may answer.",
+  );
   assert.equal(printed.get("pass"), "Thorn Lurker lets the moment go by.");
   assert.equal(
     line(fiveE, state, { type: "window", window: "w2", kind: "signature", waiting: ["lurker"] }),

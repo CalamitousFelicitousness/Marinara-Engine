@@ -69,6 +69,7 @@ const WINDOW_PROMPTS = {
   aimed: "Aimed",
   hit: "Hit",
   harmed: "Harmed",
+  falls: "Falls",
   used: "Used",
   signature: "Between",
   reaction: "Leaving",

@@ -2587,7 +2587,7 @@ Contests are Capability API 1.43 for a packaged ruleset.
 Some moments belong to somebody who is not the one acting. The Engine holds the fight open for them
 rather than deciding for them, and that pause is a window.
 
-Six things open one, and two of them come out of what you already declared:
+Seven things open one, and two of them come out of what you already declared:
 
 - **Somebody breaks away.** A walk that leaves the reach of an enemy who could strike stops on that
   step and asks them. See Strikes at somebody walking away, above.
@@ -2607,8 +2607,10 @@ Six things open one, and two of them come out of what you already declared:
 - **Something has hurt somebody.** After it resolves, everybody it damaged who holds an entry
   waiting for THAT moment is asked, whoever did it. Being hurt is a fact about you; an entry pointed
   back at whoever caused it still cannot be pointed at a friend.
+- **Somebody falls.** Before the damage and prone, for whoever holds a reaction that reaches the
+  faller and permits its side (Capability API 1.119).
 
-The last four are what a catalog entry, or a creature's own action, asks for by naming the moment it
+The last five are what a catalog entry, or a creature's own action, asks for by naming the moment it
 waits for. When one action opens both `used` and `aimed`, the use is asked about first; if nobody
 calls it off, the ones it is aimed at are asked next, and it resolves once both have been answered.
 Being hit is asked about as each of its rolls hits, and being hurt once the whole action is over.
@@ -2616,7 +2618,8 @@ Being hit is asked about as each of its rolls hits, and being hurt once the whol
 What a window does, whichever opened it:
 
 - **Nothing else moves while it is open.** Not the actor whose turn it is, not the end of that turn,
-  not another window. The fight waits.
+  not another window. The fight waits. A fall holds its landing while the action step that caused
+  it finishes; further falls are asked about afterwards.
 - **It asks one at a time**, in turn order, and each is asked once. Passing is always an answer, and
   costs nothing. Somebody who is asked and has nothing they can take is skipped rather than asked.
 - **It picks up exactly where it was held.** A walk finishes on the cells it had left, paying for
@@ -2637,12 +2640,12 @@ The first two you declare nothing for: a ruleset with `opportunity.budget` gets 
 "reaction": { "on": "aimed", "at": "source", "cancels": true }
 ```
 
-- `on` is `used`, `aimed`, `hit` or `harmed`, and it is what puts the entry on that window's menu.
-  Those four are the only moments the Engine watches for. An entry that still says `"reaction": true` says only
+- `on` is `used`, `aimed`, `hit`, `harmed` or `falls`, and it is what puts the entry on that window's menu.
+  Those five are the only moments the Engine watches for. An entry that still says `"reaction": true` says only
   that it is not taken on a turn, which is not enough to offer it anywhere, so it stays on no menu.
 - `at` is `source` (the default) or `chosen`. `source` points what is taken at whoever caused the
   moment and fills the target in, so nobody is asked to pick; `chosen` keeps the entry's own
-  targets and asks.
+  targets and asks. A `falls` answer always lands on the faller.
 - `cancels` stops what the window was holding from happening at all. Only a `used` or `aimed` entry
   may say it: a moment that has already happened cannot be called off, and a hit has been rolled.
 - `against` narrows what the entry answers to things used from certain catalogs:
@@ -2754,8 +2757,8 @@ kept off this way shows in the log as one the target is immune to.
 `"blow": "ranged"`. A blow is melee while its target stands in the weapon's reach, so a dagger thrown
 from afar is ranged and the same dagger used next to its target is melee. A weapon with a reach and no
 range is always melee, and one with a range and no reach is always ranged. In a fight with no board,
-a weapon that has a reach is taken as swung in hand. `"seesSource": true`, on any moment, opens it
-only while its holder sees whoever caused it. That means a line of sight between them on the board
+a weapon that has a reach is taken as swung in hand. `"seesSource": true`, on any moment except
+`falls`, opens it only while its holder sees whoever caused it. That means a line of sight between them on the board
 (everybody sees everybody without one), and never somebody who has taken the Hide standard action
 until it wears off at the start of their next turn. 5e's Parry is both:
 
@@ -2765,6 +2768,31 @@ until it wears off at the start of their next turn. 5e's Parry is both:
 
 Both keys may also be written on a moment in `also`, and `blow` only ever on a `hit` one.
 
+**Catching a fall** (Capability API 1.119). A reaction on `falls`, including in `also`, answers a
+creature falling off a ledge or a flier forced to the ground, before the fall deals damage or leaves
+it prone. Its range and target side are checked against the faller, and its answer lands on that
+creature. For Feather Fall, give the entry these mechanics and declare `feather_falling` in the
+sheet's live conditions:
+
+```json
+{
+  "kind": "buff",
+  "targets": "ally",
+  "range": 60,
+  "budget": "reaction",
+  "cost": [{ "pool": "slots_1", "amount": 1 }],
+  "reaction": { "on": "falls" },
+  "applies": [{ "condition": "feather_falling", "duration": { "rounds": 10 } }]
+}
+```
+
+Its `combat.conditions` entry is `{ "condition": "feather_falling", "fallsSafely": true }`.
+While held, this condition prevents falling damage and the prone condition a fall would apply; it
+does not remove a condition that caused the fall. Use `targets: "self"` for an answer only to the
+caster's own fall. A fall has no source entry, so its reaction cannot carry `cancels`, `blow`,
+`seesSource` or `against`. Each falling creature gets its own moment. This resolves the landing;
+it does not track a slowed descent or choose up to five fallers in one casting.
+
 ### Not yet
 
 Said plainly, because a ruleset should not claim what the Engine does not do:
@@ -2772,17 +2800,17 @@ Said plainly, because a ruleset should not claim what the Engine does not do:
 - **Beyond the modest board**: no flying over
   obstacles, no squeezing, no mounts, no hiding or surprise, and nothing moves anybody but their own
   walk and a contest's push. Nobody drags a creature they hold.
-- **A contest is plain.** It has no size limits and opens no window (nobody may answer one).
-- **An entry may wait for four moments only**, `used`, `aimed`, `hit` and `harmed` (see Windows, above).
+- **A contest is plain.** Its roll opens no window, but a fall it causes may be answered.
+- **An entry may wait for five moments only**, `used`, `aimed`, `hit`, `harmed` and `falls` (see Windows, above).
   Those are the moments the Engine notices on an entry's behalf; the other two windows, somebody
   breaking away and the pause between two turns, are opened by the fight itself and are not moments
-  an entry can ask for. There is no moment for a save being rolled, a death, a turn beginning, or
-  anything falling.
+  an entry can ask for. There is no moment for a save being rolled, a death, or a turn beginning.
 - **A counter stops what it answers outright.** It cannot tell one entry of a catalog from another,
   and there is no check to stop something bigger than itself.
 - **No chain of them.** The fight keeps one window rather than a stack, so nothing opened inside a
   window opens another: a counter cannot itself be countered, what a reaction deals opens no
-  further moment, and an attack made inside a window is not held when it hits.
+  further moment, and an attack made inside a window is not held when it hits. An answerable fall
+  caused during a window is held until it closes and then asked about in turn.
 - **Only an attack roll is a hit.** Something that lands without one (darts that simply hit, an area
   everyone saves against) opens no `hit` moment, and an answer cannot tell a swing from a shot, so a
   Parry the rules keep to swords parries arrows too.

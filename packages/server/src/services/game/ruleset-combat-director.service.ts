@@ -961,6 +961,7 @@ export function rulesetWindowTargetOf(
   const trigger = encounter.window?.trigger;
   if (!trigger || option.targets.count > 0 || option.id === RULESET_PASS_OPTION) return undefined;
   if (trigger.kind === "leaves-reach") return trigger.moverId;
+  if (trigger.kind === "falls") return trigger.sourceId;
   if (trigger.kind !== "aimed" && trigger.kind !== "hit" && trigger.kind !== "harmed" && trigger.kind !== "used") {
     return undefined;
   }

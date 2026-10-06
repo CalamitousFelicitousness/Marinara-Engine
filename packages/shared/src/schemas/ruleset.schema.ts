@@ -1379,7 +1379,7 @@ const blowOnlyOnHit = (moment: { on: string; blow?: string }, ctx: z.RefinementC
 
 const rulesetReactionMomentBase = z
   .object({
-    on: z.enum(["aimed", "hit", "harmed", "used"]),
+    on: z.enum(["aimed", "hit", "harmed", "used", "falls"]),
     at: z.enum(["source", "chosen"]).default("source"),
     ...rulesetMomentNarrowing,
     /** Stops what opened the window from happening at all. Only a moment BEFORE something resolves
@@ -1394,7 +1394,7 @@ const rulesetReactionMomentBase = z
       .array(
         z
           .object({
-            on: z.enum(["aimed", "hit", "harmed", "used"]),
+            on: z.enum(["aimed", "hit", "harmed", "used", "falls"]),
             against: rulesetReactionAgainstSchema.optional(),
             ...rulesetMomentNarrowing,
           })
@@ -1415,7 +1415,7 @@ const rulesetReactionMomentBase = z
   })
   .strict()
   .superRefine((reaction, ctx) => {
-    if (reaction.cancels && (reaction.on === "harmed" || reaction.on === "hit")) {
+    if (reaction.cancels && (reaction.on === "harmed" || reaction.on === "hit" || reaction.on === "falls")) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: 'Only an "aimed" or "used" reaction cancels: what has already happened cannot be called off',
@@ -1428,6 +1428,18 @@ const rulesetReactionMomentBase = z
         message: '"upTo" says how much a "used" reaction that cancels can stop, so it needs both',
       });
     }
+    // A fall has no source entry or blow to narrow (Capability API 1.119).
+    [reaction, ...(reaction.also ?? [])].forEach((moment, index) => {
+      if (moment.on !== "falls") return;
+      for (const key of ["blow", "seesSource", "against"] as const) {
+        if (moment[key] === undefined) continue;
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [...(index === 0 ? [] : ["also", index - 1]), key],
+          message: `A "falls" reaction has no source entry, so it cannot carry "${key}"`,
+        });
+      }
+    });
     blowOnlyOnHit(reaction, ctx, []);
     reaction.also?.forEach((moment, index) => blowOnlyOnHit(moment, ctx, ["also", index]));
     if (reaction.also && reaction.cancels) {
@@ -1713,6 +1725,8 @@ const catalogMechanicsObject = z
      *    defense as it then stands.
      *  - `harmed`: something has just hurt the holder. The window opens AFTER it resolves, because
      *    the amount is what the moment is about, and nothing taken there unmakes it.
+     *  - `falls`: a creature is falling, before its damage and prone (Capability API 1.119).
+     *    The answer lands on the faller, within its range and target side.
      *
      *  `at` says whom what is taken may be aimed at. `source` is whoever caused the moment, which
      *  is the only target most of these have, and is filled in rather than picked.
@@ -3688,6 +3702,9 @@ const combatConditionSchema = z
     /** Its holder takes no damage from these entries while it holds (Capability API 1.112), whatever
      *  kind of harm they deal: 5e's Shield, under which Magic Missile does nothing. */
     noDamageFrom: z.array(catalogEntryRef).min(1).max(12).optional(),
+    /** Its holder takes no falling damage and is not left prone by a fall (Capability API 1.119):
+     *  5e's Feather Fall. */
+    fallsSafely: z.literal(true).optional(),
     /**
      * The action economy while it holds (Capability API 1.71, combat C6d), as Haste and Slow change it:
      * - `budgets`: how many of a turn budget its holder gets, more or fewer, never below none;

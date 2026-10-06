@@ -190,6 +190,16 @@ function begin(
   return {
     ctx,
     finish: () => {
+      let landed = false;
+      while (!next.window && next.pendingFalls?.length) {
+        const held = next.pendingFalls.shift()!;
+        const actor = rulesetCombatant(next, held.actorId);
+        const target = rulesetCombatant(next, held.targetId);
+        if (actor && target) fall(ctx, actor, target, held.levels);
+        landed = true;
+      }
+      if (next.pendingFalls?.length === 0) delete next.pendingFalls;
+      if (landed) noteOutcome(ctx);
       next.cursor = state.cursor + rolls;
       return { state: next, events: ctx.events };
     },
@@ -1570,8 +1580,7 @@ export function applyRulesetCombatChoice(
   }
   // An attack with an off-hand weapon lets another one strike on the off-hand budget this turn.
   if (action.pairs !== undefined) working.flags.offHand = action.pairs;
-  // A contest is settled between the two of them on the spot, and opens no window: nobody else is
-  // asked about it.
+  // A contest is settled between the two of them on the spot. A fall it causes can be held.
   if (action.contest) {
     resolveContest(ctx, working, action, action.contest, workingTargets[0]!);
     noteOutcome(ctx);
@@ -1790,7 +1799,25 @@ function resolveContest(
  * nothing about falling only notes it.
  */
 function fall(ctx: RulesetCombatContext, actor: RulesetCombatant, target: RulesetCombatant, levels: number): void {
+  const resume = { kind: "fall" as const, actorId: actor.id, targetId: target.id, levels };
+  // An area can ground several fliers while its first fall is held. Each gets its own moment.
+  if (ctx.state.window) {
+    const answers = ctx.state.combatants.some(
+      (one) => rulesetReactionsAt(ctx.definition, ctx.combat, ctx.state, one, "falls", target.id).length > 0,
+    );
+    if (answers) (ctx.state.pendingFalls ??= []).push(resume);
+    else landFall(ctx, actor, target, levels);
+    return;
+  }
+  if (openMoment(ctx, { kind: "falls", sourceId: target.id, label: "fall", levels }, ctx.state.combatants, resume)) {
+    return;
+  }
+  landFall(ctx, actor, target, levels);
+}
+
+function landFall(ctx: RulesetCombatContext, actor: RulesetCombatant, target: RulesetCombatant, levels: number): void {
   ctx.events.push({ type: "fell", targetId: target.id, levels });
+  if (rulesetActiveConditions(ctx.definition, ctx.combat, target, ctx.state).some((entry) => entry.fallsSafely)) return;
   const elevation = ctx.combat.elevation;
   const falling = elevation?.falling;
   if (!elevation || !falling) return;
@@ -1952,7 +1979,13 @@ function takeReaction(
   roller: RulesetCombatRoller,
 ): RulesetCombatStep {
   const trigger = window.trigger;
-  if (trigger.kind !== "aimed" && trigger.kind !== "hit" && trigger.kind !== "harmed" && trigger.kind !== "used") {
+  if (
+    trigger.kind !== "aimed" &&
+    trigger.kind !== "hit" &&
+    trigger.kind !== "harmed" &&
+    trigger.kind !== "used" &&
+    trigger.kind !== "falls"
+  ) {
     return refusal(state, choice.actorId, "unknown-option", choice.optionId);
   }
   const declared = actor.actions.find((entry) => entry.id === choice.optionId && entry.reaction);
@@ -1961,17 +1994,18 @@ function takeReaction(
   // Filled in rather than picked, unless the entry says its holder picks: aimed back at whoever
   // caused the moment, or, for something its holder does to THEMSELVES, at its holder. Bracing
   // yourself is not aimed at anybody, and pointing it at whoever hurt you would hand them what it
-  // gives.
+  // gives. A falling moment always points at the faller, even when the entry otherwise asks.
   const source = rulesetCombatant(state, trigger.sourceId);
-  const targets = !rulesetReactionPointsAtSource(declared)
-    ? declared.targets.side === "self"
-      ? [actor]
-      : pickTargets(definition, state, actor, declared, choice.targetIds)
-    : // Still a target, checked the same way the menu checks it: an answer before this one may have
-      // taken the source out, and a blow aimed at somebody the fight is over for lands on nobody.
-      source && rulesetOptionTargets(definition, state, actor.id, declared).includes(source.id)
-      ? [source]
-      : "bad-target";
+  const targets =
+    trigger.kind !== "falls" && !rulesetReactionPointsAtSource(declared)
+      ? declared.targets.side === "self"
+        ? [actor]
+        : pickTargets(definition, state, actor, declared, choice.targetIds)
+      : // Still a target, checked the same way the menu checks it: an answer before this one may have
+        // taken the source out, and a blow aimed at somebody the fight is over for lands on nobody.
+        source && rulesetOptionTargets(definition, state, actor.id, declared).includes(source.id)
+        ? [source]
+        : "bad-target";
   if (!Array.isArray(targets)) return refusal(state, choice.actorId, targets, choice.optionId);
 
   // The menu is the only source of legality here as well: a pool it did not offer is refused as the
@@ -2116,6 +2150,12 @@ function goOn(definition: RulesetDefinition, combat: RulesetCombat, ctx: Ruleset
   if (resume && (resume.kind === "walk" || rulesetLegacyWalk(resume))) {
     const walker = rulesetCombatant(ctx.state, resume.actorId);
     if (walker) walkOn(ctx, walker, { ...resume, kind: "walk" } as RulesetWalkResume);
+    return;
+  }
+  if (resume?.kind === "fall") {
+    const actor = rulesetCombatant(ctx.state, resume.actorId);
+    const target = rulesetCombatant(ctx.state, resume.targetId);
+    if (actor && target) landFall(ctx, actor, target, resume.levels);
     return;
   }
   if (resume?.kind === "action") {
@@ -2375,9 +2415,9 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
  */
 function openMoment(
   ctx: RulesetCombatContext,
-  trigger: Extract<RulesetWindowTrigger, { kind: "aimed" | "harmed" | "used" }>,
+  trigger: Extract<RulesetWindowTrigger, { kind: "aimed" | "harmed" | "used" | "falls" }>,
   candidates: readonly RulesetCombatant[],
-  resume?: RulesetActionResume,
+  resume?: RulesetWindowResume,
 ): boolean {
   if (ctx.state.window) return false;
   const moment = rulesetWindowMoment(trigger);
@@ -2386,16 +2426,17 @@ function openMoment(
   // you something is not a threat to answer: only the other side opens that moment, and the same
   // for somebody using something at all. Being hurt is a fact about you whoever did it, so it opens
   // for anybody, and a reaction pointed back at the source is still kept off a friend by the same
-  // legality every other target goes through.
+  // legality every other target goes through. A fall may be answered by either side or the faller,
+  // with the answer's own target side deciding whom it can catch.
   const source = rulesetCombatant(ctx.state, trigger.sourceId);
   const waiting = candidates
-    .filter((one) => one.id !== trigger.sourceId)
-    .filter((one) => moment === "harmed" || !source || one.side !== source.side)
+    .filter((one) => moment === "falls" || one.id !== trigger.sourceId)
+    .filter((one) => moment === "falls" || moment === "harmed" || !source || one.side !== source.side)
     .filter(
       (one) =>
         rulesetReactionsAt(ctx.definition, ctx.combat, ctx.state, one, moment, trigger.sourceId, {
-          ...(trigger.catalog ? { catalog: trigger.catalog } : {}),
-          ...(trigger.entry ? { entry: trigger.entry } : {}),
+          ...("catalog" in trigger && trigger.catalog ? { catalog: trigger.catalog } : {}),
+          ...("entry" in trigger && trigger.entry ? { entry: trigger.entry } : {}),
         }).length > 0,
     )
     .map((one) => one.id);
@@ -3673,6 +3714,8 @@ function rethrowInitiative(definition: RulesetDefinition, combat: RulesetCombat,
 /** Who won, if anybody has yet. A fight is over for a side when nobody on it is still standing;
  *  victory is read first, so a last blow that takes both sides down is still a win. */
 export function rulesetEncounterOutcome(state: RulesetEncounterState): RulesetEncounterOutcome {
+  // An action may finish the other side while a fall it caused is still waiting for an answer.
+  if (state.window?.resume?.kind === "fall" || state.pendingFalls?.length) return "ongoing";
   const enemies = state.combatants.filter((combatant) => combatant.side === "enemy");
   const party = state.combatants.filter((combatant) => combatant.side === "party");
   if (enemies.length > 0 && enemies.every((combatant) => !rulesetCombatStanding(combatant))) return "victory";

@@ -205,6 +205,16 @@ function cancelOnlyWhenAimed(node) {
   if (!node || typeof node !== "object") return;
   Object.values(node).forEach(cancelOnlyWhenAimed);
   const keys = Object.keys(node.properties ?? {}).filter((key) => key !== "$comment");
+  // Falls have no source entry, including when taken as an additional moment (1.119).
+  if (node.type === "object" && ["on", "against", "blow", "seesSource"].every((key) => keys.includes(key))) {
+    node.allOf = [
+      ...(node.allOf ?? []),
+      {
+        if: { properties: { on: { const: "falls" } }, required: ["on"] },
+        then: { not: { anyOf: ["cancels", "blow", "seesSource", "against"].map((key) => ({ required: [key] })) } },
+      },
+    ];
+  }
   if (node.type === "object" && ["on", "at", "cancels", "against"].every((key) => keys.includes(key))) {
     // Only a moment BEFORE something resolves may call it off.
     node.if = { required: ["cancels"] };

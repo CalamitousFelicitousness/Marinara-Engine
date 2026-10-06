@@ -1325,6 +1325,17 @@ function carriesNamedAnswers(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesNamedAnswers(one, depth + 1));
 }
 
+/** A reaction that catches a fall, at its first moment or one it is also taken at (1.119). */
+function carriesFalls(value: unknown, depth = 0): boolean {
+  if (depth > 40 || value === null || typeof value !== "object") return false;
+  if (Array.isArray(value)) return value.some((one) => carriesFalls(one, depth + 1));
+  const record = value as Record<string, unknown>;
+  const reaction = plainRecord(record.reaction);
+  if (reaction?.on === "falls") return true;
+  if (Array.isArray(reaction?.also) && reaction.also.some((one) => plainRecord(one)?.on === "falls")) return true;
+  return Object.values(record).some((one) => carriesFalls(one, depth + 1));
+}
+
 /** A reaction narrowed to one kind of blow, or to a source its holder sees (1.113): new keys on the
  *  strict moment, at its first moment or one it is `also` taken at. */
 function carriesBlowNarrowing(value: unknown, depth = 0): boolean {
@@ -1644,6 +1655,7 @@ export function getCapabilityPackageInstallIssue(
   let carriesCounterReachKeys = false;
   let carriesNamedAnswerKeys = false;
   let carriesBlowNarrowingKeys = false;
+  let carriesFallMoments = false;
   let carriesSourceClockKeys = false;
   let carriesCreatureHealing = false;
   let carriesSummons = false;
@@ -1768,6 +1780,7 @@ export function getCapabilityPackageInstallIssue(
       if (carriesCounterReach(header.entries)) carriesCounterReachKeys = true;
       if (carriesNamedAnswers(header.entries)) carriesNamedAnswerKeys = true;
       if (carriesBlowNarrowing(header.entries)) carriesBlowNarrowingKeys = true;
+      if (carriesFalls(header.entries)) carriesFallMoments = true;
       if (carriesSourceClock(header.entries)) carriesSourceClockKeys = true;
       if (entriesCarryCreatureHealing(header.entries)) carriesCreatureHealing = true;
       if (entriesCarrySummons(header.entries)) carriesSummons = true;
@@ -1837,6 +1850,7 @@ export function getCapabilityPackageInstallIssue(
       if (carriesCounterReach(fileEntries)) carriesCounterReachKeys = true;
       if (carriesNamedAnswers(fileEntries)) carriesNamedAnswerKeys = true;
       if (carriesBlowNarrowing(fileEntries)) carriesBlowNarrowingKeys = true;
+      if (carriesFalls(fileEntries)) carriesFallMoments = true;
       if (carriesSourceClock(fileEntries)) carriesSourceClockKeys = true;
       if (entriesCarryCreatureHealing(fileEntries)) carriesCreatureHealing = true;
       if (entriesCarrySummons(fileEntries)) carriesSummons = true;
@@ -2218,6 +2232,16 @@ export function getCapabilityPackageInstallIssue(
   // Creatures that cast without slots, 1.118.
   if (!declaresApi(118) && carriesCreatureSpellcasting) {
     return "A ruleset whose creatures cast spells without slots requires schemaVersion 2 and capabilityApi 1.118 or newer";
+  }
+  // Reactions that catch a fall, and conditions that let their holder land safely, 1.119.
+  if (
+    !declaresApi(119) &&
+    (carriesFallMoments ||
+      ((plainRecord(ruleset?.combat)?.conditions as unknown[] | undefined) ?? []).some(
+        (condition) => plainRecord(condition)?.fallsSafely !== undefined,
+      ))
+  ) {
+    return "A ruleset whose reactions catch a fall requires schemaVersion 2 and capabilityApi 1.119 or newer";
   }
   if (carriesCreatureSpellcasting) {
     // The references can only be checked once the catalog files are beside their headers.

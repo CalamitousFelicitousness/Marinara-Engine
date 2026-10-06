@@ -791,7 +791,9 @@ const capabilityPackageManifestBaseSchema = z
 //        or with the concentration that holds it. A package that ships it declares 1.117. No permission.
 // 1.118: a creature's `spellcasting` casts catalog spells without slots, at will or with limited
 //        uses. Coven spells need nearby members and share their uses. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 118 } as const);
+// 1.119: a reaction on `falls` answers a fall before it lands. A condition's `fallsSafely` keeps its
+//        holder from taking falling damage or being left prone. 5e's Feather Fall. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 119 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

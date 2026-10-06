@@ -243,6 +243,7 @@ const WINDOW_LINES = {
   aimed: "windowAimed",
   hit: "windowHit",
   harmed: "windowHarmed",
+  falls: "windowFalls",
   used: "windowUsed",
 } as const;
 

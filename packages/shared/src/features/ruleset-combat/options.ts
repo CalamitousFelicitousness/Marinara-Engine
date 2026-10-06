@@ -1627,7 +1627,9 @@ export function rulesetWindowOptions(
     const option = optionFrom(definition, combat, state, actor, action, true)!;
     // Nobody to pick unless the entry says its holder picks: it is aimed back at whoever caused
     // the moment, or, for something its holder does to themselves, at its holder.
-    return rulesetReactionPointsAtSource(action) ? { ...option, targets: { side: "self", count: 0 } } : option;
+    return moment === "falls" || rulesetReactionPointsAtSource(action)
+      ? { ...option, targets: { side: "self", count: 0 } }
+      : option;
   });
 }
 
@@ -1669,7 +1671,11 @@ export function rulesetAnswerDeflects(
 /** Which moment a window is, for the reactions that wait for one. A walk and the turn between two
  *  actors are windows of their own kind and wait for nothing. */
 export function rulesetWindowMoment(trigger: RulesetWindowTrigger): RulesetReactionMoment | null {
-  return trigger.kind === "aimed" || trigger.kind === "hit" || trigger.kind === "harmed" || trigger.kind === "used"
+  return trigger.kind === "aimed" ||
+    trigger.kind === "hit" ||
+    trigger.kind === "harmed" ||
+    trigger.kind === "used" ||
+    trigger.kind === "falls"
     ? trigger.kind
     : null;
 }
@@ -1735,7 +1741,7 @@ export function rulesetReactionsAt(
     // Somebody using something is answered only from where the answer reaches them, whether or not
     // it is aimed back at them: a counter that simply calls it off still has to reach it.
     if (moment === "used" && rulesetTargetRefusal(state, actor.id, action.id, sourceId) !== null) return false;
-    if (!rulesetReactionPointsAtSource(action)) return true;
+    if (moment !== "falls" && !rulesetReactionPointsAtSource(action)) return true;
     return rulesetOptionTargets(definition, state, actor.id, action).includes(sourceId);
   });
 }

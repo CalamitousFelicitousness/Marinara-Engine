@@ -187,7 +187,8 @@ try {
     } while (state.order[state.turn] !== who);
     return state;
   };
-  assert.deepEqual(supportedCapabilityApi, { major: 1, minor: 118 });
+  assert.equal(supportedCapabilityApi.major, 1);
+  assert.ok(supportedCapabilityApi.minor >= 118);
 
   // At will means each turn, while limited uses survive a save and never refill on a turn.
   {

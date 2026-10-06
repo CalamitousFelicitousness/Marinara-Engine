@@ -687,6 +687,8 @@ export interface RulesetEncounterState {
   /** The fight held open for somebody who is not the current actor. While it is here NOTHING else
    *  moves: the turn cannot go on, and a choice from anybody but the one being asked is refused. */
   window?: RulesetCombatWindow;
+  /** Falls from a step that continued while a window was open, asked one at a time (1.119). */
+  pendingFalls?: RulesetFallResume[];
   /** One up per window ever opened in this fight, so no two windows share an id and an answer
    *  written for a closed one is refused rather than spent on the one that replaced it. */
   windows?: number;
@@ -709,7 +711,7 @@ export interface RulesetCombatWindow {
   /** Who is still to answer, in the fight's own order. The first is the one being asked; a pass or
    *  a taken option removes them, and the window closes when the list empties. */
   waiting: string[];
-  /** The walk this window interrupted, when it interrupted one. */
+  /** What this window interrupted, when something waits for it to close. */
   resume?: RulesetWindowResume;
 }
 
@@ -747,12 +749,15 @@ export type RulesetWindowTrigger =
     }
   /** Something has just hurt the ones being asked. It has already happened: nothing answered here
    *  unmakes it, and `sourceId` is whoever dealt it, for a reaction aimed back at them. */
-  | { kind: "harmed"; sourceId: string; label: string; catalog?: string; entry?: string };
+  | { kind: "harmed"; sourceId: string; label: string; catalog?: string; entry?: string }
+  /** Somebody is falling, before its damage and prone (1.119). The source is the faller. */
+  | { kind: "falls"; sourceId: string; label: "fall"; levels: number };
 
 /** The moments the Engine notices, and opens a window for. `aimed` is before something lands on
  *  the holder, `used` is before somebody on the other side uses something, `hit` is after an attack
- *  roll has hit the holder and before its damage, and `harmed` is after something has hurt them. */
-export type RulesetReactionMoment = "aimed" | "hit" | "harmed" | "used";
+ *  roll has hit the holder and before its damage, `harmed` is after something has hurt them, and
+ *  `falls` is before a falling creature lands. */
+export type RulesetReactionMoment = "aimed" | "hit" | "harmed" | "used" | "falls";
 
 /** A blow struck in reach (`melee`) or from afar (`ranged`), as a reaction that answers only one
  *  of them reads it (1.113). */
@@ -783,7 +788,15 @@ export interface RulesetReactionAgainst {
 
 /** What the fight goes back to once the window closes. A window opened after something has already
  *  happened carries none: there is nothing to pick up. */
-export type RulesetWindowResume = RulesetWalkResume | RulesetActionResume;
+export type RulesetWindowResume = RulesetWalkResume | RulesetActionResume | RulesetFallResume;
+
+/** A fall lands after the answers have put their conditions on its target (1.119). */
+export interface RulesetFallResume {
+  kind: "fall";
+  actorId: string;
+  targetId: string;
+  levels: number;
+}
 
 /** Something paid for and held while everybody it is aimed at is asked. It resolves when the window
  *  closes, from the state as it stands then, unless an answer called it off. */

@@ -9544,8 +9544,12 @@ test("chat Help overlay responds to viewport changes with unchanged target geome
     const { ChatHelpOverlay } = (await import("/src/components/chat/ChatHelpOverlay.tsx" as string)) as {
       ChatHelpOverlay: unknown;
     };
-    const { ChatHelpButton } = (await import("/src/components/chat/ChatHelpButton.tsx" as string)) as {
-      ChatHelpButton: unknown;
+    // The real trigger: Chat Settings' Help button is a help tip that asks the overlay to open.
+    const { HelpTooltip } = (await import("/src/components/ui/HelpTooltip.tsx" as string)) as {
+      HelpTooltip: unknown;
+    };
+    const { requestChatHelp } = (await import("/src/lib/chat-help-events.ts" as string)) as {
+      requestChatHelp: (mode: "conversation") => void;
     };
     const runtime = globalThis as typeof globalThis & {
       React: {
@@ -9578,7 +9582,13 @@ test("chat Help overlay responds to viewport changes with unchanged target geome
           isFirstChat: false,
           autoOpenBlocked: true,
         }),
-        ready ? runtime.React.createElement(ChatHelpButton, { mode: "conversation" }) : null,
+        ready
+          ? runtime.React.createElement(HelpTooltip, {
+              text: "Show what each part of this chat does.",
+              ariaLabel: "Help",
+              onActivate: () => requestChatHelp("conversation"),
+            })
+          : null,
       );
     }
     runtime.ReactDOM.createRoot(mount).render(runtime.React.createElement(HelpFixture, null));

@@ -64,6 +64,8 @@ export function usePanelKeyboardFocus({
   const onKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
     if (event.key !== "Escape" || event.defaultPrevented || event.nativeEvent.isComposing) return;
     if (isModalOverlayOpen() || ownsEscape(event.target)) return;
+    // React portals (pickers rendered on <body>) bubble here too; their Escape is theirs to handle.
+    if (!event.currentTarget.contains(event.target as Node)) return;
     event.preventDefault();
     onClose();
     const opener =

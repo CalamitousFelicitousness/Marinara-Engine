@@ -326,6 +326,8 @@ export interface RulesetBuilderAbilitySlot extends RulesetBuilderChoiceSlot {
 export interface RulesetBuilderTrainedSlot extends RulesetBuilderChoiceSlot {
   what: "skills" | "saves";
   tier: string;
+  /** Only what is already trained to this tier or higher is offered (Capability API 1.100). */
+  held?: string;
 }
 
 export interface RulesetBuilderEntrySlot extends RulesetBuilderChoiceSlot {
@@ -380,7 +382,9 @@ export function rulesetBuilderAbilitySlots(
 }
 
 /** Every skill or save choice: the picks' and the trained steps' own. Shown at the first trained step,
- *  or where the entry was picked when the builder has none. */
+ *  or where the entry was picked when the builder has none. A choice never offers what the picks already
+ *  train to its tier or higher (1.99): not what an entry trains outright, nor what an earlier choice
+ *  holds, so two sources that both teach Insight leave the second free for another skill. */
 export function rulesetBuilderTrainedSlots(
   definition: RulesetDefinition,
   state: RulesetBuilderState,
@@ -394,14 +398,27 @@ export function rulesetBuilderTrainedSlots(
     skills: definition.sheet.skills.map((skill) => skill.id),
     saves: definition.sheet.saves.map((save) => save.id),
   };
+  const rank = (tier: string) => definition.resolution.proficiencyTiers.findIndex((each) => each.id === tier);
+  const granting = rulesetBuilderGranting(definition, state, catalogs, build);
+  // What the picks train outright, at the highest tier any of them gives.
+  const outright = { skills: new Map<string, number>(), saves: new Map<string, number>() };
+  for (const { entry } of granting) {
+    for (const what of ["skills", "saves"] as const) {
+      const tier = rank(grantTier(definition, entry.grants, what));
+      for (const id of entry.grants?.trained?.[what] ?? [])
+        outright[what].set(id, Math.max(tier, outright[what].get(id) ?? -1));
+    }
+  }
   const slot = (
     key: string,
     stepId: string,
     entry: RulesetCatalogEntry | null,
-    choice: { what: "skills" | "saves"; count: number; from?: string[] },
+    choice: { what: "skills" | "saves"; count: number; from?: string[]; held?: string },
     tier: string,
   ): RulesetBuilderTrainedSlot => {
-    const from = choice.from ? known[choice.what].filter((id) => choice.from!.includes(id)) : known[choice.what];
+    const from = (
+      choice.from ? known[choice.what].filter((id) => choice.from!.includes(id)) : known[choice.what]
+    ).filter((id) => (outright[choice.what].get(id) ?? -1) < rank(tier));
     const chosen = [...new Set(state.trainedChoices?.[key] ?? [])].filter((id) => from.includes(id));
     return {
       key,
@@ -410,11 +427,12 @@ export function rulesetBuilderTrainedSlots(
       what: choice.what,
       count: choice.count,
       from,
-      chosen: chosen.slice(0, choice.count),
+      chosen,
       tier,
+      ...(choice.held !== undefined ? { held: choice.held } : {}),
     };
   };
-  const granted = rulesetBuilderGranting(definition, state, catalogs, build).flatMap(({ step, entry }) =>
+  const granted = granting.flatMap(({ step, entry }) =>
     (entry.grants?.trained?.choose ?? []).map((choice, index) =>
       slot(
         rulesetBuilderChoiceKey(step.id, entry.id, index),
@@ -438,7 +456,39 @@ export function rulesetBuilderTrainedSlots(
         )
       : [],
   );
-  return [...granted, ...own];
+  // A choice that builds on training at another's tier (1.100) needs that one's picks, so it never
+  // takes them away from it.
+  const over = (other: RulesetBuilderTrainedSlot, each: RulesetBuilderTrainedSlot) =>
+    other.what === each.what &&
+    rank(other.tier) >= rank(each.tier) &&
+    !(other.held !== undefined && rank(other.held) <= rank(each.tier) && rank(each.tier) < rank(other.tier));
+  // An earlier choice keeps what it holds; a later one at the same tier or lower lets it go.
+  const kept: RulesetBuilderTrainedSlot[] = [];
+  for (const each of [...granted, ...own]) {
+    const held = (id: string) => kept.some((earlier) => over(earlier, each) && earlier.chosen.includes(id));
+    kept.push({ ...each, chosen: each.chosen.filter((id) => !held(id)).slice(0, each.count) });
+  }
+  // ...and what another choice holds at this one's tier or higher is not this one's to offer.
+  return kept.map((each) => {
+    const elsewhere = new Set(
+      kept.filter((other) => other !== each && over(other, each)).flatMap((other) => other.chosen),
+    );
+    let from = each.from.filter((id) => each.chosen.includes(id) || !elsewhere.has(id));
+    // A choice that builds on training (5e's Expertise, 1.100) offers only what the picks train, or a
+    // lower choice holds, to its `held` tier or higher.
+    if (each.held !== undefined) {
+      const floor = rank(each.held);
+      const below = new Set(
+        kept
+          .filter(
+            (other) => other.what === each.what && rank(other.tier) >= floor && rank(other.tier) < rank(each.tier),
+          )
+          .flatMap((other) => other.chosen),
+      );
+      from = from.filter((id) => (outright[each.what].get(id) ?? -1) >= floor || below.has(id));
+    }
+    return { ...each, from, chosen: each.chosen.filter((id) => from.includes(id)) };
+  });
 }
 
 /** Every choice of catalog entries the picks grant (1.86), shown at the first `choices` step for its
@@ -612,8 +662,11 @@ function desired(
   const bump = (id: string, by: number) => {
     if (abilities.has(id)) out.increases[id] = (out.increases[id] ?? 0) + by;
   };
+  const tierRank = (tier: string | undefined) =>
+    definition.resolution.proficiencyTiers.findIndex((each) => each.id === tier);
+  // Trained twice, to two tiers (proficient from a class, expertise built on it), keeps the higher.
   const train = (what: "skills" | "saves", id: string, tier: string) => {
-    if (known[what].has(id)) out[what][id] = tier;
+    if (known[what].has(id) && tierRank(tier) >= tierRank(out[what][id])) out[what][id] = tier;
   };
   for (const { step, entry } of rulesetBuilderGranting(definition, state, catalogs, build)) {
     const grants = entry.grants;

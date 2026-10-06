@@ -715,7 +715,13 @@ const capabilityPackageManifestBaseSchema = z
 //        against in place of the holder's side of the contest. Not a soft seam: an Engine that
 //        cannot read them refuses the ruleset, so a package that ships them declares 1.98. No
 //        permission.
-// 1.99-1.107: claimed by other lanes, which land before 1.108.
+// 1.99: a builder skill or save choice never offers what the picks already train to its tier or higher:
+//        what an entry trains outright, or what an earlier choice holds. A stored choice of one counts for
+//        nothing. Behaviour only, no new key. No permission.
+// 1.100: a skill or save choice a catalog entry grants may build on training already held (`held`, a
+//        tier: 5e's Expertise, two skills you are proficient in), offering only what the picks or a
+//        lower choice train to it. Not a soft seam: a package that ships it declares 1.100. No permission.
+// 1.101-1.107: claimed by the builder lane, which lands before 1.108.
 // 1.108: combatants move other ways than walking. A creature's `speeds` (fly, swim, climb, burrow)
 //        and `hover`, and a sheet's `combat.economy.movementModes`, read as the fight begins. On a
 //        board a flier crosses water and steps of any height, a swimmer crosses water, a climber

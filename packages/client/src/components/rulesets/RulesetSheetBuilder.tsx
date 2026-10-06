@@ -280,7 +280,8 @@ export function RulesetSheetBuilder({
           />
         ))}
       {trainedSlots
-        .filter((slot) => slot.stepId === step.id)
+        // A choice the picks already answer in full (1.99) has nothing left to offer.
+        .filter((slot) => slot.stepId === step.id && slot.from.length > 0)
         .map((slot) => (
           <ChoiceSlot
             key={slot.key}
@@ -689,7 +690,7 @@ export function RulesetSheetBuilder({
           </p>
         )}
         {slotsHere}
-        {trainedSlots.every((slot) => slot.stepId !== step.id) && (
+        {trainedSlots.every((slot) => slot.stepId !== step.id || slot.from.length === 0) && (
           <p className="text-xs text-[var(--muted-foreground)]">{t("ui.rulesets.builder.nothingToChoose")}</p>
         )}
       </div>

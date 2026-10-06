@@ -19,6 +19,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 - A ruleset's coins can have a name for one of them, so a price of one penny reads "1 penny" rather than "1 pennies" in markets, purses and item prices (Capability API 1.84).
 - A guided builder step can offer a catalog entry only while the sheet allows it, such as a second class whose prerequisites are met (Capability API 1.94).
 - A builder entry that takes the place of another, such as a feat in place of an ability score improvement, is judged on the sheet without the choice it replaces, so a feat needing Strength 13 is not offered on the Strength that improvement gave (Capability API 1.95).
+- A skill or saving throw choice in the builder no longer offers one the character already has from another pick, such as Insight from a background offered again by a class, so no choice is spent on nothing (Capability API 1.99).
+- A builder skill choice can offer only skills the character already has, for 5e's Expertise: a rogue doubles two skills it is proficient in, not any skill (Capability API 1.100).
 - A weapon wielded two-handed can reroll its low damage dice once, off its holder's sheet, such as 5e's Great Weapon Fighting (Capability API 1.93).
 - A weapon can add damage off its holder's sheet, only while held in one hand when it says so, and a fighter's off-hand attack can keep its full ability when their sheet says so, such as 5e's Dueling and Two-Weapon Fighting (Capability API 1.92).
 - A builder score choice can stop at a cap, such as an ability score improvement's 20 (Capability API 1.91).

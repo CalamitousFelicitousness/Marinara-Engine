@@ -1337,6 +1337,17 @@ function entriesCarryExclusive(entries: unknown): boolean {
   return Array.isArray(entries) && entries.some((entry) => plainRecord(entry)?.exclusive !== undefined);
 }
 
+/** A skill or save choice that builds on training (1.100): `held`, a new key on the strict choice. */
+function entriesCarryHeldChoices(entries: unknown): boolean {
+  return (
+    Array.isArray(entries) &&
+    entries.some((entry) => {
+      const choose = plainRecord(plainRecord(plainRecord(entry)?.grants)?.trained)?.choose;
+      return Array.isArray(choose) && choose.some((choice) => plainRecord(choice)?.held !== undefined);
+    })
+  );
+}
+
 /** A score choice with a cap (1.91): `upTo`, a new key on the strict choice. */
 function entriesCarryChoiceCaps(entries: unknown): boolean {
   return (
@@ -1591,6 +1602,7 @@ export function getCapabilityPackageInstallIssue(
   let carriesDamageAlternatives = false;
   let carriesSizes = false;
   let carriesMoveModes = false;
+  let carriesHeldChoices = false;
   let carriesExclusive = false;
   let carriesSheetBonus = false;
   let carriesExhaustion = false;
@@ -1722,6 +1734,7 @@ export function getCapabilityPackageInstallIssue(
       if (carriesHealthMax(header.entries) || entriesImmuneToTracks(header.entries, leveledTracks)) {
         carriesExhaustion = true;
       }
+      if (entriesCarryHeldChoices(header.entries)) carriesHeldChoices = true;
       if (entriesCarryExclusive(header.entries)) carriesExclusive = true;
       if (entriesCarryToHitSheetBonus(header.entries)) carriesSheetBonus = true;
       collectItems(header.id, header.entries);
@@ -1784,6 +1797,7 @@ export function getCapabilityPackageInstallIssue(
       if (carriesNamedAnswers(fileEntries)) carriesNamedAnswerKeys = true;
       if (carriesBlowNarrowing(fileEntries)) carriesBlowNarrowingKeys = true;
       if (carriesSourceClock(fileEntries)) carriesSourceClockKeys = true;
+      if (entriesCarryHeldChoices(fileEntries)) carriesHeldChoices = true;
       if (entriesCarryExclusive(fileEntries)) carriesExclusive = true;
       if (entriesCarryToHitSheetBonus(fileEntries)) carriesSheetBonus = true;
       collectItems(header.id, fileEntries);
@@ -2071,6 +2085,10 @@ export function getCapabilityPackageInstallIssue(
   // An item's to-hit read off its holder's sheet, 1.90: a new key on the strict to-hit.
   if (!declaresApi(90) && carriesSheetBonus) {
     return "A ruleset whose items add a bonus to hit read off their holder's sheet requires schemaVersion 2 and capabilityApi 1.90 or newer";
+  }
+  // A skill or save choice among what is already trained, 1.100: a new key on the strict choice.
+  if (!declaresApi(100) && carriesHeldChoices) {
+    return "A ruleset whose skill or save choices build on training already held requires schemaVersion 2 and capabilityApi 1.100 or newer";
   }
   // A catalog entry a builder step offers only while the sheet says so, 1.94: a new key on the strict entry.
   if (!declaresApi(94) && carriesOfferedWhen) {

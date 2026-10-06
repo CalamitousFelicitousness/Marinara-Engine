@@ -1273,6 +1273,10 @@ function mechanicsAction(
             at: moment.at ?? "source",
             ...(moment.cancels ? { cancels: true as const } : {}),
             ...(moment.against ? { against: { catalogs: [...moment.against.catalogs] } } : {}),
+            ...(moment.upTo ? { upTo: moment.upTo } : {}),
+            ...(moment.above
+              ? { above: { modifier: Math.trunc(resolve(moment.above.check)), dc: moment.above.dc } }
+              : {}),
           },
         }
       : {}),
@@ -1591,6 +1595,10 @@ function blockActions(block: RulesetStatBlockLike, perCell: number | undefined):
             at: action.reaction.at ?? "source",
             ...(action.reaction.cancels ? { cancels: true as const } : {}),
             ...(action.reaction.against ? { against: { catalogs: [...action.reaction.against.catalogs] } } : {}),
+            ...(action.reaction.upTo ? { upTo: action.reaction.upTo } : {}),
+            ...(action.reaction.above
+              ? { above: { modifier: action.reaction.above.check.const ?? 0, dc: action.reaction.above.dc } }
+              : {}),
           },
         }
       : {}),

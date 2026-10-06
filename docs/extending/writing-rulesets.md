@@ -2606,6 +2606,32 @@ A counter is written like this, and on a board it answers only somebody within i
 }
 ```
 
+**A counter that reaches only so high** (Capability API 1.111). `"upTo": "paid"` on a `used`
+reaction that cancels stops only what was paid for no higher than the answer itself was, and
+`"above": { "check": <value>, "dc": 10 }` is the check that stops something higher anyway, against
+`dc` plus its level. 5e's Counterspell, which stops a spell of its slot's level or lower and asks a
+spellcasting ability check against 10 + the spell's level above that, upcast like any spell:
+
+```json
+"reaction": {
+  "on": "used",
+  "cancels": true,
+  "against": { "catalogs": ["spells"] },
+  "upTo": "paid",
+  "above": { "check": { "abilityModFromField": "spellcasting_ability" }, "dc": 10 }
+}
+```
+
+The level of anything paid for is the level of the pool it came out of: a pool's own `level`, a
+value read off its holder's sheet, when it says one (5e's pact slots, cast at the warlock's slot
+level), and otherwise its place in its group, the first pool being 1. Something that cost nothing,
+or came out of a pool in no group, is level 0, so every such counter stops it. The check is the
+fight's own dice with the answerer's conditions on checks; a `dice-pool` fight has no DC to meet and
+refuses `above`. A creature without a sheet writes its check as `{ "const": n }`. The log says the
+level and the roll whenever the answer reaches above itself, and the usual line follows when it
+stops it. Without `above`, something higher is simply not stopped, and what the answer cost is
+still spent.
+
 **The moment after a hit.** An entry on `hit` is how Shield, a Parry and Uncanny Dodge are said. The
 attack is held after its roll, and the one it hit is asked before any damage is dealt. What they take
 counts for that attack: its roll is not made again but checked again, against their defense as it now

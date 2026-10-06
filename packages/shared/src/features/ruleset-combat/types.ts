@@ -212,6 +212,10 @@ export interface RulesetStatBlockAction {
     at?: "source" | "chosen";
     cancels?: true;
     against?: { catalogs: string[] };
+    /** It stops only what was paid no higher up its family than itself (1.111). */
+    upTo?: "paid";
+    /** Above that, a check (its own number, `{ "const": n }`) against `dc` plus the level. */
+    above?: { check: { const?: number }; dc: number };
   };
   /** It lands on the creature itself. */
   self?: true;
@@ -368,6 +372,11 @@ export interface RulesetCombatAction {
     cancels?: true;
     /** Only an action from an entry of one of these catalogs opens its moment for this reaction. */
     against?: { catalogs: string[] };
+    /** It stops only what was paid for no higher up its pool family than this was (1.111). */
+    upTo?: "paid";
+    /** Above that, a check, read once as the fight began, against `dc` plus the level of what it
+     *  answers. */
+    above?: { modifier: number; dc: number };
   };
   /** The catalog of the entry this action was built from, when it was built from one. A weapon row,
    *  a stat block's own action, a contest and a standard action have none. */
@@ -1035,6 +1044,24 @@ export type RulesetCombatEvent =
     }
   /** Somebody let their window go by without spending anything. */
   | { type: "pass"; actorId: string; window: string }
+  /** An answer that stops only what was paid no higher than itself (1.111) met something higher:
+   *  its level, and the check above it when the answer has one. A `cancelled` follows on a success. */
+  | {
+      type: "counter";
+      actorId: string;
+      targetId: string;
+      label: string;
+      level: number;
+      reach: number;
+      mode?: RulesetCombatRollMode;
+      rolls?: number[];
+      kept?: number;
+      modifier?: number;
+      bonuses?: RulesetConditionBonus[];
+      total?: number;
+      difficulty?: number;
+      success: boolean;
+    }
   /** Something held open by a window was called off, and never happened. What it cost stays spent:
    *  it was paid for before anybody was asked. */
   | { type: "cancelled"; actorId: string; optionId: string; label: string; byId: string }

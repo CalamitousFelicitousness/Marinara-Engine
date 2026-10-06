@@ -1268,6 +1268,17 @@ function carriesHealthMax(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesHealthMax(one, depth + 1));
 }
 
+/** A reaction that stops only so high, or the check above it (1.111): new keys on the strict moment,
+ *  wherever a reaction sits (a catalog entry's mechanics, a creature's action). */
+function carriesCounterReach(value: unknown, depth = 0): boolean {
+  if (depth > 40 || value === null || typeof value !== "object") return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCounterReach(one, depth + 1));
+  const record = value as Record<string, unknown>;
+  const reaction = plainRecord(record.reaction);
+  if (reaction && (reaction.upTo !== undefined || reaction.above !== undefined)) return true;
+  return Object.values(record).some((one) => carriesCounterReach(one, depth + 1));
+}
+
 /** Creatures immune to a track rather than a condition (1.110): 5e's immunity to exhaustion. */
 function entriesImmuneToTracks(entries: unknown, tracks: ReadonlySet<string>): boolean {
   return (
@@ -1548,6 +1559,7 @@ export function getCapabilityPackageInstallIssue(
   let carriesExclusive = false;
   let carriesSheetBonus = false;
   let carriesExhaustion = false;
+  let carriesCounterReachKeys = false;
   // The tracks a level reads and no condition shares a name with: an immunity naming one is new.
   const conditionIds = new Set(
     (Array.isArray(plainRecord(plainRecord(plainRecord(ruleset?.sheet)?.live))?.conditions)
@@ -1665,6 +1677,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryDamageAlternatives(header.entries)) carriesDamageAlternatives = true;
       if (entriesCarrySizes(header.entries)) carriesSizes = true;
       if (entriesCarryMoveModes(header.entries)) carriesMoveModes = true;
+      if (carriesCounterReach(header.entries)) carriesCounterReachKeys = true;
       if (carriesHealthMax(header.entries) || entriesImmuneToTracks(header.entries, leveledTracks)) {
         carriesExhaustion = true;
       }
@@ -1726,6 +1739,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarrySizes(fileEntries)) carriesSizes = true;
       if (entriesCarryMoveModes(fileEntries)) carriesMoveModes = true;
       if (carriesHealthMax(fileEntries) || entriesImmuneToTracks(fileEntries, leveledTracks)) carriesExhaustion = true;
+      if (carriesCounterReach(fileEntries)) carriesCounterReachKeys = true;
       if (entriesCarryExclusive(fileEntries)) carriesExclusive = true;
       if (entriesCarryToHitSheetBonus(fileEntries)) carriesSheetBonus = true;
       collectItems(header.id, fileEntries);
@@ -2035,6 +2049,16 @@ export function getCapabilityPackageInstallIssue(
         (plainRecord(ruleset?.combat)!.levels as unknown[]).some((level) => plainRecord(level)?.defeats !== undefined)))
   ) {
     return "A ruleset whose levels halve the health maximum or defeat, or whose creatures are immune to a track, requires schemaVersion 2 and capabilityApi 1.110 or newer";
+  }
+  // Answers that stop only so high, and pools that say their level, 1.111.
+  if (
+    !declaresApi(111) &&
+    (carriesCounterReachKeys ||
+      ((plainRecord(plainRecord(ruleset?.sheet)?.live)?.pools as unknown[] | undefined) ?? []).some(
+        (pool) => plainRecord(pool)?.level !== undefined,
+      ))
+  ) {
+    return "A ruleset whose answers stop only what was paid no higher than themselves, or whose pools say their level, requires schemaVersion 2 and capabilityApi 1.111 or newer";
   }
   // Sizes and escape DCs, 1.98: new keys on the strict combat block, contest, creature and applies.
   if (!declaresApi(98)) {

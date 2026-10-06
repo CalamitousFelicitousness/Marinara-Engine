@@ -161,6 +161,7 @@ export {
   rulesetContestHolder,
   rulesetEscapeDc,
   rulesetCostSteps,
+  rulesetPaidLevel,
   rulesetCriticalFromAdjacent,
   rulesetCoverBonus,
   rulesetDefenseAgainst,

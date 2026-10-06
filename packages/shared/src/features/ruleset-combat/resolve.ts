@@ -89,6 +89,7 @@ import {
   rulesetContestCheck,
   rulesetEscapeDc,
   rulesetCostSteps,
+  rulesetPaidLevel,
   rulesetCriticalFromAdjacent,
   rulesetCoverBonus,
   rulesetDefenseAgainst,
@@ -1821,7 +1822,11 @@ function takeReaction(
   spendAvailability(ctx, taking, action);
   // Calling it off happens BEFORE this one's own dice: what was held never lands, so nothing it
   // would have done can change what this reaction is resolved against.
-  if (action.reaction?.cancels && ctx.state.window?.resume?.kind === "action") {
+  if (
+    action.reaction?.cancels &&
+    ctx.state.window?.resume?.kind === "action" &&
+    reachesHeld(ctx, taking, action, choice.payWith, ctx.state.window.resume)
+  ) {
     const stopped = ctx.state.window.resume;
     stopped.cancelled = true;
     // Nobody else is asked: the question was what to do about something that is now not going to
@@ -1841,6 +1846,70 @@ function takeReaction(
   goOn(definition, combat, ctx);
   noteOutcome(ctx);
   return finish();
+}
+
+/**
+ * Whether an answer that cancels reaches what it answers (1.111). One with no `upTo` stops anything.
+ * One that stops only what was paid no higher up its family than itself stops that outright; above
+ * it, its check against `above.dc` plus the level stops it, and without a check nothing does. A
+ * check is the fight's own dice, leaning and added to as its conditions say of checks.
+ */
+function reachesHeld(
+  ctx: RulesetCombatContext,
+  answering: RulesetCombatant,
+  action: RulesetCombatAction,
+  payWith: string | undefined,
+  held: RulesetActionResume,
+): boolean {
+  const reaction = action.reaction!;
+  if (reaction.upTo !== "paid") return true;
+  const caster = rulesetCombatant(ctx.state, held.actorId);
+  const theirs = caster?.actions.find((entry) => entry.id === held.optionId);
+  if (!caster || !theirs) return true;
+  const level = rulesetPaidLevel(ctx.definition, caster, theirs, held.payWith);
+  const reach = rulesetPaidLevel(ctx.definition, answering, action, payWith);
+  if (level <= reach) return true;
+  const said = {
+    type: "counter" as const,
+    actorId: answering.id,
+    targetId: caster.id,
+    label: theirs.label,
+    level,
+    reach,
+  };
+  const above = reaction.above;
+  if (!above || rulesetCombatIsPool(ctx.combat)) {
+    ctx.events.push({ ...said, success: false });
+    return false;
+  }
+  const mode = rulesetCheckMode(ctx.definition, ctx.combat, answering, ctx.state);
+  const dice = ctx.combat.attackRoll!.dice;
+  const first = rollRulesetDice(ctx.roll, dice.count, dice.sides);
+  const second = mode === "normal" ? null : rollRulesetDice(ctx.roll, dice.count, dice.sides);
+  const kept = second
+    ? mode === "advantage"
+      ? Math.max(sumOf(first), sumOf(second))
+      : Math.min(sumOf(first), sumOf(second))
+    : sumOf(first);
+  const bonuses = rollBonuses(
+    ctx,
+    rulesetConditionModifiers(ctx.definition, ctx.combat, answering, "checks", ctx.state),
+  );
+  const total = kept + above.modifier + bonusTotal(bonuses);
+  const difficulty = above.dc + level;
+  const success = total >= difficulty;
+  ctx.events.push({
+    ...said,
+    ...(mode === "normal" ? {} : { mode }),
+    rolls: second ? [...first, ...second] : first,
+    kept,
+    modifier: above.modifier,
+    ...(bonuses.length > 0 ? { bonuses } : {}),
+    total,
+    difficulty,
+    success,
+  });
+  return success;
 }
 
 /**

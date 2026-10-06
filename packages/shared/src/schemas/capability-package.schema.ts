@@ -735,7 +735,14 @@ const capabilityPackageManifestBaseSchema = z
 //        name a track some level reads, whose levels it then never suffers. Not a soft seam: an Engine
 //        that cannot read the target, the key or the immunity refuses the ruleset, so a package that
 //        ships them declares 1.110. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 110 } as const);
+// 1.111: an answer that cancels may stop only what was paid no higher than itself. A reaction's
+//        `upTo: "paid"` compares the level of what it answers with its own, each the level of the
+//        pool paid from (a pool's new `level`, read off its holder's sheet, or its place in its
+//        group, the first being 1; nothing paid is 0), and `above: { check, dc }` is the check that
+//        stops something higher, against `dc` plus its level: 5e's Counterspell. Not a soft seam: an
+//        Engine that cannot read the keys refuses the ruleset, so a package that ships them declares
+//        1.111. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 111 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

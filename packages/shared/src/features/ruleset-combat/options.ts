@@ -16,6 +16,7 @@ import {
   rulesetModedAction,
   rulesetShotsAvailable,
 } from "./ammo.js";
+import { resolveRulesetValueRef } from "../rulesets/sheet-math.js";
 import { parseRulesetCombatDice, rulesetAverageDamage } from "./dice.js";
 import {
   rulesetCombatAdvantage,
@@ -612,6 +613,30 @@ export function countRulesetSpend(
 export function rulesetPoolFamily(definition: RulesetDefinition, group: string | undefined): string[] {
   if (!group) return [];
   return definition.sheet.live.pools.filter((pool) => pool.group === group).map((pool) => pool.id);
+}
+
+/**
+ * The level of what an action was paid with (Capability API 1.111): the pool's own `level` when it
+ * says one, read off its holder's sheet, else its place in its group, the first pool being 1. A
+ * pool in no group, and an action that costs nothing, is level 0: a cantrip.
+ */
+export function rulesetPaidLevel(
+  definition: RulesetDefinition,
+  combatant: RulesetCombatant,
+  action: RulesetCombatAction,
+  payWith?: string,
+): number {
+  const id = payWith ?? action.use?.pool;
+  if (!id) return 0;
+  const pool = definition.sheet.live.pools.find((entry) => entry.id === id);
+  if (pool?.level) {
+    return combatant.sheet
+      ? Math.max(0, Math.trunc(resolveRulesetValueRef(definition, combatant.sheet.build, pool.level)))
+      : 0;
+  }
+  const family = rulesetPoolFamily(definition, pool?.group ?? action.use?.group);
+  const at = family.indexOf(id);
+  return at < 0 ? 0 : at + 1;
 }
 
 /** How many steps up the family a payment is, or 0 when it is not a climb at all. */

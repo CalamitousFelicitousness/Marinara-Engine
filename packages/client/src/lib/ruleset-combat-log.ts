@@ -472,6 +472,35 @@ export function rulesetCombatEventLine(
         roll: rulesetRollText(event, t, bonusNamer(names, t)),
         difficulty: event.difficulty,
       });
+    case "counter":
+      // An answer that reaches only so high (1.111): past it, a check, or nothing at all.
+      if (event.total === undefined || event.rolls === undefined) {
+        return key("counterOutOfReach", {
+          actor: names.combatant(event.actorId),
+          target: names.combatant(event.targetId),
+          label: event.label,
+          level: event.level,
+        });
+      }
+      return key(event.success ? "counterSuccess" : "counterFailure", {
+        actor: names.combatant(event.actorId),
+        target: names.combatant(event.targetId),
+        label: event.label,
+        level: event.level,
+        roll: rulesetRollText(
+          {
+            rolls: event.rolls,
+            kept: event.kept ?? event.total,
+            modifier: event.modifier ?? 0,
+            total: event.total,
+            mode: event.mode,
+            bonuses: event.bonuses,
+          },
+          t,
+          bonusNamer(names, t),
+        ),
+        difficulty: event.difficulty,
+      });
     case "recharge":
       return key(event.back ? "rechargeBack" : "rechargeNot", {
         label: event.label,

@@ -743,6 +743,23 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ],
     ["fell", say({ type: "fell", targetId: "lurker", levels: 2 })],
     ["flew", say({ type: "flew", actorId: "lurker", from: 0, to: 1, cost: 1, left: 5 })],
+    [
+      "counter",
+      say({
+        type: "counter",
+        actorId: "corwin",
+        targetId: "lurker",
+        label: "Fireball",
+        level: 5,
+        reach: 3,
+        rolls: [12],
+        kept: 12,
+        modifier: 4,
+        total: 16,
+        difficulty: 15,
+        success: true,
+      }),
+    ],
     ["shift", say({ type: "shift", actorId: "brenna", amount: 3, total: 9, reason: "gained", sourceId: "lurker" })],
     ["shot", say({ type: "shot", actorId: "brenna", optionId: "item:0", label: "Longbow", left: 11 })],
     [

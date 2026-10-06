@@ -699,6 +699,10 @@ const livePoolSchema = z
     /** Whether the pool carries a separate temporary buffer that damage drains first. */
     allowTemp: z.boolean().default(false),
     group: sheetId.optional(),
+    /** The level of what is paid out of it (Capability API 1.111), when its place in its group is
+     *  not: 5e's pact slots, one pool whose spells are cast at the warlock's slot level. Without it,
+     *  the first pool of a group is level 1, the next 2, and a pool in no group has none. */
+    level: rulesetValueRefSchema.optional(),
     /** `full` starts at the maximum (hit points); `empty` starts at zero (stress, corruption). */
     start: z.enum(["full", "empty"]).default("full"),
     hideWhen: hideWhenSchema.optional(),
@@ -1310,7 +1314,7 @@ const catalogAmountShape = { dice: catalogDice.optional(), flat: z.number().int(
 
 /** The moment a reaction waits for, and what it answers. A catalog entry and a creature's own action
  *  say it the same way. */
-const rulesetReactionMomentSchema = z
+const rulesetReactionMomentBase = z
   .object({
     on: z.enum(["aimed", "hit", "harmed", "used"]),
     at: z.enum(["source", "chosen"]).default("source"),
@@ -1322,6 +1326,15 @@ const rulesetReactionMomentSchema = z
       .object({ catalogs: z.array(sheetId).min(1).max(12) })
       .strict()
       .optional(),
+    /** It stops only what was paid for no higher up its pool family than it was itself (Capability
+     *  API 1.111): 5e's Counterspell, which stops a spell of its own slot's level or lower. */
+    upTo: z.literal("paid").optional(),
+    /** Above that, a check against `dc` plus the level of what it answers stops it all the same:
+     *  5e's spellcasting ability check against 10 + the spell's level. */
+    above: z
+      .object({ check: rulesetValueRefSchema, dc: z.number().int().min(0).max(1000) })
+      .strict()
+      .optional(),
   })
   .strict()
   .superRefine((reaction, ctx) => {
@@ -1331,7 +1344,25 @@ const rulesetReactionMomentSchema = z
         message: 'Only an "aimed" or "used" reaction cancels: what has already happened cannot be called off',
       });
     }
+    if (reaction.upTo && (!reaction.cancels || reaction.on !== "used")) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["upTo"],
+        message: '"upTo" says how much a "used" reaction that cancels can stop, so it needs both',
+      });
+    }
+    if (reaction.above && !reaction.upTo) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["above"],
+        message: '"above" is the check for what is past "upTo", so it needs "upTo"',
+      });
+    }
   });
+/** Named, so the schemas built around it stay short enough for the compiler to write. */
+export type RulesetReactionMomentDeclaration = z.infer<typeof rulesetReactionMomentBase>;
+const rulesetReactionMomentSchema: z.ZodType<RulesetReactionMomentDeclaration, z.ZodTypeDef, unknown> =
+  rulesetReactionMomentBase;
 
 /** How many SECOND amounts one blow may carry beside its first. Three, because a blow written as a
  *  list of four separate things is a blow nobody at a table could read out. */
@@ -5037,6 +5068,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
   sheet.live.pools.forEach((pool, index) => {
     const path = ["sheet", "live", "pools", index];
     checkRef(pool.max, [...path, "max"], derivedIds, false);
+    if (pool.level) checkRef(pool.level, [...path, "level"], derivedIds, false);
     checkHideWhen(pool.hideWhen, path);
   });
 
@@ -6858,6 +6890,18 @@ function creatureIssues(
       if (!catalogIds.has(id))
         add([...path, "reaction", "against", "catalogs", againstIndex], `Unknown catalog "${id}"`);
     });
+    // A creature has no sheet to read a check off, so its own number is written down (1.111).
+    if (action.reaction?.above) {
+      if (combat.kind === "dice-pool") {
+        add(
+          [...path, "reaction", "above"],
+          'A "dice-pool" fight counts successes, so it has no DC for a check to meet',
+        );
+      }
+      if (!creature.sheet && action.reaction.above.check.const === undefined) {
+        add([...path, "reaction", "above", "check"], 'A creature without a sheet writes its check as { "const": n }');
+      }
+    }
     action.sequence?.forEach((step, stepIndex) => {
       const where: (string | number)[] = [...path, "sequence", stepIndex, "action"];
       const named = byId.get(step.action);
@@ -7900,6 +7944,15 @@ export function rulesetCatalogEntryIssues(
           add([...path, "actions", actionIndex], `This ruleset does not have the standard action "${action}"`);
         }
       });
+    }
+    if (mechanics?.reaction && typeof mechanics.reaction === "object" && mechanics.reaction.above) {
+      const where = [index, "mechanics", "reaction", "above"];
+      if (definition.combat?.kind === "dice-pool") {
+        add(where, 'A "dice-pool" fight counts successes, so it has no DC for a check to meet');
+      }
+      for (const refIssue of rulesetValueRefIssues(mechanics.reaction.above.check, names, names.derived, false)) {
+        add([...where, "check", refIssue.key], refIssue.message);
+      }
     }
     if (mechanics?.amountAdd) {
       if (!mechanics.amount) add([index, "mechanics", "amountAdd"], "amountAdd adds to an amount: give the amount too");

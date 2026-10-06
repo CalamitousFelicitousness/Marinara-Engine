@@ -742,7 +742,13 @@ const capabilityPackageManifestBaseSchema = z
 //        stops something higher, against `dc` plus its level: 5e's Counterspell. Not a soft seam: an
 //        Engine that cannot read the keys refuses the ruleset, so a package that ships them declares
 //        1.111. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 111 } as const);
+// 1.112: answers to a named entry. A reaction's `against` may name `entries` (`<catalog>/<entry>`)
+//        beside catalogs, `also` takes it at up to three more moments with their own `against`, and a
+//        condition's `noDamageFrom` keeps those entries' harm off its holder: 5e's Shield, taken when
+//        an attack hits and when Magic Missile is aimed at its caster, under which Magic Missile does
+//        nothing. Not a soft seam: an Engine that cannot read the keys refuses the ruleset, so a
+//        package that ships them declares 1.112. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 112 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

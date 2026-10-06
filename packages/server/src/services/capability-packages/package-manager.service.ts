@@ -1279,6 +1279,17 @@ function carriesCounterReach(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesCounterReach(one, depth + 1));
 }
 
+/** A reaction that answers named entries, or is also taken at more moments (1.112): new keys on the
+ *  strict moment and its `against`. */
+function carriesNamedAnswers(value: unknown, depth = 0): boolean {
+  if (depth > 40 || value === null || typeof value !== "object") return false;
+  if (Array.isArray(value)) return value.some((one) => carriesNamedAnswers(one, depth + 1));
+  const record = value as Record<string, unknown>;
+  const reaction = plainRecord(record.reaction);
+  if (reaction && (reaction.also !== undefined || plainRecord(reaction.against)?.entries !== undefined)) return true;
+  return Object.values(record).some((one) => carriesNamedAnswers(one, depth + 1));
+}
+
 /** Creatures immune to a track rather than a condition (1.110): 5e's immunity to exhaustion. */
 function entriesImmuneToTracks(entries: unknown, tracks: ReadonlySet<string>): boolean {
   return (
@@ -1560,6 +1571,7 @@ export function getCapabilityPackageInstallIssue(
   let carriesSheetBonus = false;
   let carriesExhaustion = false;
   let carriesCounterReachKeys = false;
+  let carriesNamedAnswerKeys = false;
   // The tracks a level reads and no condition shares a name with: an immunity naming one is new.
   const conditionIds = new Set(
     (Array.isArray(plainRecord(plainRecord(plainRecord(ruleset?.sheet)?.live))?.conditions)
@@ -1678,6 +1690,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarrySizes(header.entries)) carriesSizes = true;
       if (entriesCarryMoveModes(header.entries)) carriesMoveModes = true;
       if (carriesCounterReach(header.entries)) carriesCounterReachKeys = true;
+      if (carriesNamedAnswers(header.entries)) carriesNamedAnswerKeys = true;
       if (carriesHealthMax(header.entries) || entriesImmuneToTracks(header.entries, leveledTracks)) {
         carriesExhaustion = true;
       }
@@ -1740,6 +1753,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryMoveModes(fileEntries)) carriesMoveModes = true;
       if (carriesHealthMax(fileEntries) || entriesImmuneToTracks(fileEntries, leveledTracks)) carriesExhaustion = true;
       if (carriesCounterReach(fileEntries)) carriesCounterReachKeys = true;
+      if (carriesNamedAnswers(fileEntries)) carriesNamedAnswerKeys = true;
       if (entriesCarryExclusive(fileEntries)) carriesExclusive = true;
       if (entriesCarryToHitSheetBonus(fileEntries)) carriesSheetBonus = true;
       collectItems(header.id, fileEntries);
@@ -2059,6 +2073,17 @@ export function getCapabilityPackageInstallIssue(
       ))
   ) {
     return "A ruleset whose answers stop only what was paid no higher than themselves, or whose pools say their level, requires schemaVersion 2 and capabilityApi 1.111 or newer";
+  }
+  // Answers to named entries, answers at more than one moment, and conditions that keep an entry's
+  // harm off, 1.112.
+  if (
+    !declaresApi(112) &&
+    (carriesNamedAnswerKeys ||
+      ((plainRecord(ruleset?.combat)?.conditions as unknown[] | undefined) ?? []).some(
+        (condition) => plainRecord(condition)?.noDamageFrom !== undefined,
+      ))
+  ) {
+    return "A ruleset whose answers name the entries they answer or more than one moment, or whose conditions keep an entry's harm off, requires schemaVersion 2 and capabilityApi 1.112 or newer";
   }
   // Sizes and escape DCs, 1.98: new keys on the strict combat block, contest, creature and applies.
   if (!declaresApi(98)) {

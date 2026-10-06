@@ -66,6 +66,7 @@ import type {
   RulesetCombatContest,
   RulesetCombatant,
   RulesetEncounterState,
+  RulesetReactionAgainst,
   RulesetReactionMoment,
   RulesetWindowTrigger,
 } from "./types.js";
@@ -1541,7 +1542,8 @@ export function rulesetWindowOptions(
   if (!moment) return [];
   const source = "sourceId" in window.trigger ? window.trigger.sourceId : "";
   const catalog = "catalog" in window.trigger ? window.trigger.catalog : undefined;
-  return rulesetReactionsAt(definition, combat, state, actor, moment, source, catalog).map((action) => {
+  const entry = "entry" in window.trigger ? window.trigger.entry : undefined;
+  return rulesetReactionsAt(definition, combat, state, actor, moment, source, catalog, entry).map((action) => {
     const option = optionFrom(definition, combat, state, actor, action, true)!;
     // Nobody to pick unless the entry says its holder picks: it is aimed back at whoever caused
     // the moment, or, for something its holder does to themselves, at its holder.
@@ -1599,6 +1601,20 @@ export function rulesetWindowMoment(trigger: RulesetWindowTrigger): RulesetReact
  * is open, to build the menu. One reading either way, so a window is never opened for a menu that
  * turns out to be empty.
  */
+/** Whether what caused a moment is something this `against` answers: from one of its catalogs, or
+ *  one of its entries by name. Nothing narrows a reaction that names neither. */
+function rulesetAgainstMatches(
+  against: RulesetReactionAgainst | undefined,
+  catalog: string | undefined,
+  entry: string | undefined,
+): boolean {
+  if (!against) return true;
+  return (
+    (catalog !== undefined && (against.catalogs ?? []).includes(catalog)) ||
+    (entry !== undefined && (against.entries ?? []).includes(entry))
+  );
+}
+
 export function rulesetReactionsAt(
   definition: RulesetDefinition,
   combat: RulesetCombat,
@@ -1611,14 +1627,17 @@ export function rulesetReactionsAt(
   /** The catalog of the entry behind what caused the moment, when there is one. A reaction that
    *  answers only some catalogs answers nothing without it. */
   catalog?: string,
+  /** And the entry itself (`<catalog>/<entry>`), for one that answers named entries (1.112). */
+  entry?: string,
 ): RulesetCombatAction[] {
   if (!rulesetCombatStanding(actor)) return [];
   const effects = rulesetCombatEffects(definition, combat, actor, state);
   if (effects.has("cannot-act") || effects.has("cannot-react")) return [];
   return actor.actions.filter((action) => {
-    if (action.reaction?.on !== moment) return false;
-    const against = action.reaction.against?.catalogs;
-    if (against && (catalog === undefined || !against.includes(catalog))) return false;
+    if (!action.reaction) return false;
+    // Its own moment, or any it is also taken at, each read with its own `against`.
+    const moments = [action.reaction, ...(action.reaction.also ?? [])];
+    if (!moments.some((one) => one.on === moment && rulesetAgainstMatches(one.against, catalog, entry))) return false;
     if (optionFrom(definition, combat, state, actor, action, true) === null) return false;
     // Somebody using something is answered only from where the answer reaches them, whether or not
     // it is aimed back at them: a counter that simply calls it off still has to reach it.

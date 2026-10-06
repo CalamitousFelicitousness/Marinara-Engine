@@ -1314,6 +1314,27 @@ const catalogAmountShape = { dice: catalogDice.optional(), flat: z.number().int(
 
 /** The moment a reaction waits for, and what it answers. A catalog entry and a creature's own action
  *  say it the same way. */
+/** One catalog entry, named the way a sheet row points at it: `<catalog>/<entry>`. */
+const catalogEntryRef = z
+  .string()
+  .max(121)
+  .regex(
+    /^[a-z][a-z0-9_]*\/[a-z0-9]+(?:-[a-z0-9]+)*$/,
+    "An entry is named <catalog>/<entry>, as `spells/magic-missile`",
+  );
+
+/** What opens a moment for a reaction: an action from an entry of one of these catalogs, or one of
+ *  these entries by name (Capability API 1.112). Either matching is enough. */
+const rulesetReactionAgainstSchema = z
+  .object({
+    catalogs: z.array(sheetId).min(1).max(12).optional(),
+    entries: z.array(catalogEntryRef).min(1).max(12).optional(),
+  })
+  .strict()
+  .refine((against) => against.catalogs !== undefined || against.entries !== undefined, {
+    message: '"against" names catalogs, entries or both',
+  });
+
 const rulesetReactionMomentBase = z
   .object({
     on: z.enum(["aimed", "hit", "harmed", "used"]),
@@ -1322,9 +1343,18 @@ const rulesetReactionMomentBase = z
      *  may be answered that way: what has already happened cannot be called off, and a roll that
      *  has already hit is changed by what the answer does to the numbers, not undone. */
     cancels: z.literal(true).optional(),
-    against: z
-      .object({ catalogs: z.array(sheetId).min(1).max(12) })
-      .strict()
+    against: rulesetReactionAgainstSchema.optional(),
+    /** More moments it may be taken at, each with its own `against` (Capability API 1.112): 5e's
+     *  Shield, taken when an attack hits AND when Magic Missile is aimed at its caster. Only the
+     *  first moment may cancel, so a reaction that cancels has none. */
+    also: z
+      .array(
+        z
+          .object({ on: z.enum(["aimed", "hit", "harmed", "used"]), against: rulesetReactionAgainstSchema.optional() })
+          .strict(),
+      )
+      .min(1)
+      .max(3)
       .optional(),
     /** It stops only what was paid for no higher up its pool family than it was itself (Capability
      *  API 1.111): 5e's Counterspell, which stops a spell of its own slot's level or lower. */
@@ -1349,6 +1379,13 @@ const rulesetReactionMomentBase = z
         code: z.ZodIssueCode.custom,
         path: ["upTo"],
         message: '"upTo" says how much a "used" reaction that cancels can stop, so it needs both',
+      });
+    }
+    if (reaction.also && reaction.cancels) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["also"],
+        message: 'A reaction that cancels answers one moment: "also" is for one that changes the numbers',
       });
     }
     if (reaction.above && !reaction.upTo) {
@@ -1613,7 +1650,7 @@ const catalogMechanicsObject = z
      *  is the only target most of these have, and is filled in rather than picked.
      *
      *  `against` narrows what opens the moment for this reaction: only an action that comes from an
-     *  entry of one of these catalogs. A weapon row, a stat block's own action, a contest and a
+     *  entry of one of these catalogs, or (1.112) one of these entries by name. A weapon row, a stat block's own action, a contest and a
      *  standard action have no entry behind them, so they never do. */
     reaction: z
       .union([
@@ -3471,6 +3508,9 @@ const combatConditionSchema = z
     whileSourceInSight: z.union([z.literal(true), z.array(combatConditionEffectSchema).min(1).max(12)]).optional(),
     /** It comes off the moment whoever applied it goes down. */
     endsWhenSourceDown: z.boolean().optional(),
+    /** Its holder takes no damage from these entries while it holds (Capability API 1.112), whatever
+     *  kind of harm they deal: 5e's Shield, under which Magic Missile does nothing. */
+    noDamageFrom: z.array(catalogEntryRef).min(1).max(12).optional(),
     /**
      * The action economy while it holds (Capability API 1.71, combat C6d), as Haste and Slow change it:
      * - `budgets`: how many of a turn budget its holder gets, more or fewer, never below none;
@@ -6052,6 +6092,12 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
           issue([...path, "onEnd", "applies", appliedIndex, "condition"], `Unknown condition "${applied.condition}"`);
         }
       });
+      entry.noDamageFrom?.forEach((ref, refIndex) => {
+        const catalogId = ref.slice(0, ref.indexOf("/"));
+        if (!def.catalogs?.some((catalog) => catalog.id === catalogId)) {
+          issue([...path, "noDamageFrom", refIndex], `Unknown catalog "${catalogId}"`);
+        }
+      });
       // Gating an effect this condition does not have says nothing, and is nearly always a typo for
       // one it does.
       if (Array.isArray(entry.whileSourceInSight)) {
@@ -6886,10 +6932,7 @@ function creatureIssues(
       }
     });
     // What a reaction answers is named by catalog, so it has to be one this ruleset has.
-    action.reaction?.against?.catalogs.forEach((id, againstIndex) => {
-      if (!catalogIds.has(id))
-        add([...path, "reaction", "against", "catalogs", againstIndex], `Unknown catalog "${id}"`);
-    });
+    if (action.reaction) reactionAgainstIssues(catalogIds, action.reaction, [...path, "reaction"], add);
     // A creature has no sheet to read a check off, so its own number is written down (1.111).
     if (action.reaction?.above) {
       if (combat.kind === "dice-pool") {
@@ -7554,6 +7597,28 @@ export function rulesetListNameColumn(list: RulesetList): string | undefined {
   return list.pools?.nameColumn ?? list.columns.find((column) => column.type === "text")?.id;
 }
 
+/** What a reaction answers, at its first moment and at every one it is `also` taken at: catalogs
+ *  this ruleset has, and entries of them. Whether the entry itself is there is read with the catalog's
+ *  own file, which may be kept apart; one that is not simply never opens the moment. */
+function reactionAgainstIssues(
+  catalogIds: ReadonlySet<string>,
+  reaction: RulesetReactionMomentDeclaration,
+  path: (string | number)[],
+  add: (path: (string | number)[], message: string) => void,
+): void {
+  const one = (against: RulesetReactionMomentDeclaration["against"], at: (string | number)[]) => {
+    against?.catalogs?.forEach((id, index) => {
+      if (!catalogIds.has(id)) add([...at, "catalogs", index], `Unknown catalog "${id}"`);
+    });
+    against?.entries?.forEach((ref, index) => {
+      const id = ref.slice(0, ref.indexOf("/"));
+      if (!catalogIds.has(id)) add([...at, "entries", index], `Unknown catalog "${id}"`);
+    });
+  };
+  one(reaction.against, [...path, "against"]);
+  reaction.also?.forEach((moment, index) => one(moment.against, [...path, "also", index, "against"]));
+}
+
 export function rulesetCatalogEntryIssues(
   definition: RulesetDefinition,
   catalog: RulesetCatalogHeader,
@@ -7731,10 +7796,7 @@ export function rulesetCatalogEntryIssues(
     // What a reaction answers is named by catalog, so it has to be one this ruleset has.
     if (mechanics?.reaction && typeof mechanics.reaction === "object") {
       const known = new Set((definition.catalogs ?? []).map((one) => one.id));
-      mechanics.reaction.against?.catalogs.forEach((id, againstIndex) => {
-        if (!known.has(id))
-          add([index, "mechanics", "reaction", "against", "catalogs", againstIndex], `Unknown catalog "${id}"`);
-      });
+      reactionAgainstIssues(known, mechanics.reaction, [index, "mechanics", "reaction"], add);
     }
     if (mechanics?.save && !saves.has(mechanics.save.save)) {
       add([index, "mechanics", "save", "save"], `Unknown save "${mechanics.save.save}"`);

@@ -45,7 +45,12 @@ import {
   type RulesetCheckTarget,
   type RulesetSheetItem,
 } from "../rulesets/sheet-math.js";
-import { findRulesetCreatureEntry, isRulesetPlainStatBlock, rulesetCreatureBlock } from "./creatures.js";
+import {
+  findRulesetCreatureEntry,
+  isRulesetPlainStatBlock,
+  rulesetCreatureBlock,
+  rulesetReactionAnswers,
+} from "./creatures.js";
 import { parseRulesetCombatDice, rollRulesetDice, rulesetCombatRoller, sumOf } from "./dice.js";
 import { rulesetInCells, rulesetLineOfSight, rulesetPositionOf } from "./grid.js";
 import { rulesetCombatAdvantage, rulesetCombatIsPool, rulesetPoolDie, throwRulesetCombatPool } from "./pool.js";
@@ -1272,7 +1277,7 @@ function mechanicsAction(
             // `undefined` here would not survive the trip through JSON the state has to make.
             at: moment.at ?? "source",
             ...(moment.cancels ? { cancels: true as const } : {}),
-            ...(moment.against ? { against: { catalogs: [...moment.against.catalogs] } } : {}),
+            ...rulesetReactionAnswers(moment),
             ...(moment.upTo ? { upTo: moment.upTo } : {}),
             ...(moment.above
               ? { above: { modifier: Math.trunc(resolve(moment.above.check)), dc: moment.above.dc } }
@@ -1498,8 +1503,10 @@ function abilityActions(
     }
     const action = abilityAction(definition, source, index, rowIndex, name, entry, build, evaluated, perCellOf(ref));
     if (!action) return;
-    // Which catalog it came from, which is what a reaction that answers only some entries reads.
+    // Which catalog it came from, and which entry, which is what a reaction that answers only some
+    // entries reads.
     action.catalog = ref.slice(0, ref.indexOf("/"));
+    action.entry = ref;
     seen.add(ref);
     actions.push(action);
   });
@@ -1594,7 +1601,7 @@ function blockActions(block: RulesetStatBlockLike, perCell: number | undefined):
             on: action.reaction.on,
             at: action.reaction.at ?? "source",
             ...(action.reaction.cancels ? { cancels: true as const } : {}),
-            ...(action.reaction.against ? { against: { catalogs: [...action.reaction.against.catalogs] } } : {}),
+            ...rulesetReactionAnswers(action.reaction),
             ...(action.reaction.upTo ? { upTo: action.reaction.upTo } : {}),
             ...(action.reaction.above
               ? { above: { modifier: action.reaction.above.check.const ?? 0, dc: action.reaction.above.dc } }

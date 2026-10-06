@@ -25,9 +25,37 @@ import type {
   RulesetCombatDamageClause,
   RulesetCombatRider,
   RulesetPlainStatBlock,
+  RulesetReactionAgainst,
+  RulesetReactionMoment,
   RulesetStatBlock,
   RulesetStatBlockAction,
 } from "./types.js";
+
+/** What a reaction answers, copied so whoever holds it owns its own lists: its `against`, and the
+ *  moments it is `also` taken at (1.112). */
+export function rulesetReactionAnswers(reaction: {
+  against?: RulesetReactionAgainst;
+  also?: ReadonlyArray<{ on: RulesetReactionMoment; against?: RulesetReactionAgainst }>;
+}): {
+  against?: RulesetReactionAgainst;
+  also?: Array<{ on: RulesetReactionMoment; against?: RulesetReactionAgainst }>;
+} {
+  const copy = (against: RulesetReactionAgainst): RulesetReactionAgainst => ({
+    ...(against.catalogs ? { catalogs: [...against.catalogs] } : {}),
+    ...(against.entries ? { entries: [...against.entries] } : {}),
+  });
+  return {
+    ...(reaction.against ? { against: copy(reaction.against) } : {}),
+    ...(reaction.also
+      ? {
+          also: reaction.also.map((moment) => ({
+            on: moment.on,
+            ...(moment.against ? { against: copy(moment.against) } : {}),
+          })),
+        }
+      : {}),
+  };
+}
 
 /** How many actions survive a clamp. A proposal with more than this is a creature nobody could read
  *  at the table, whatever the numbers say. */
@@ -155,7 +183,7 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
       ? {
           reaction: {
             ...action.reaction,
-            ...(action.reaction.against ? { against: { catalogs: [...action.reaction.against.catalogs] } } : {}),
+            ...rulesetReactionAnswers(action.reaction),
           },
         }
       : {}),

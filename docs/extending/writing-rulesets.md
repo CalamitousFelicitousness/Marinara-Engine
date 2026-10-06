@@ -2661,6 +2661,32 @@ Opponents the Engine plays take a guard only when it turns the hit into a miss.
 A package that names a moment needs Capability API 1.33, and one that uses `used` or `against`
 needs 1.44. One that waits for `hit` needs 1.46.
 
+**Answering one spell by name** (Capability API 1.112). `against` may name `entries` as
+`<catalog>/<entry>` beside `catalogs`, and either one matching opens the moment. `also` takes the same
+answer at up to three more moments, each with its own `against`. A condition's `noDamageFrom` keeps
+those entries' harm off its holder entirely while it holds, whatever kind of harm it is. 5e's Shield
+is taken when an attack hits and when Magic Missile is aimed at its caster, and under it Magic Missile
+does nothing:
+
+```json
+"reaction": {
+  "on": "hit",
+  "also": [{ "on": "aimed", "against": { "entries": ["spells/magic-missile"] } }]
+}
+```
+
+```json
+{
+  "condition": "shielded",
+  "modifiers": [{ "to": "defense", "flat": 5 }],
+  "noDamageFrom": ["spells/magic-missile"]
+}
+```
+
+Only the first moment may cancel, so a reaction that cancels has no `also`. The catalog an entry
+names has to be one the ruleset has. An entry that is not in it simply never opens the moment. A blow
+kept off this way shows in the log as one the target is immune to.
+
 ### Not yet
 
 Said plainly, because a ruleset should not claim what the Engine does not do:

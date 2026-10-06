@@ -8479,12 +8479,70 @@
                                   "minItems": 1,
                                   "maxItems": 12
                                 },
+                                "entries": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "maxLength": 121,
+                                    "pattern": "^[a-z][a-z0-9_]*\\/[a-z0-9]+(?:-[a-z0-9]+)*$"
+                                  },
+                                  "minItems": 1,
+                                  "maxItems": 12
+                                },
                                 "$comment": {}
                               },
-                              "required": [
-                                "catalogs"
-                              ],
                               "additionalProperties": false
+                            },
+                            "also": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "on": {
+                                    "type": "string",
+                                    "enum": [
+                                      "aimed",
+                                      "hit",
+                                      "harmed",
+                                      "used"
+                                    ]
+                                  },
+                                  "against": {
+                                    "type": "object",
+                                    "properties": {
+                                      "catalogs": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 12
+                                      },
+                                      "entries": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "maxLength": 121,
+                                          "pattern": "^[a-z][a-z0-9_]*\\/[a-z0-9]+(?:-[a-z0-9]+)*$"
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 12
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "additionalProperties": false
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "on"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "minItems": 1,
+                              "maxItems": 3
                             },
                             "upTo": {
                               "type": "string",
@@ -10032,12 +10090,70 @@
                                     "minItems": 1,
                                     "maxItems": 12
                                   },
+                                  "entries": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 121,
+                                      "pattern": "^[a-z][a-z0-9_]*\\/[a-z0-9]+(?:-[a-z0-9]+)*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 12
+                                  },
                                   "$comment": {}
                                 },
-                                "required": [
-                                  "catalogs"
-                                ],
                                 "additionalProperties": false
+                              },
+                              "also": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "on": {
+                                      "type": "string",
+                                      "enum": [
+                                        "aimed",
+                                        "hit",
+                                        "harmed",
+                                        "used"
+                                      ]
+                                    },
+                                    "against": {
+                                      "type": "object",
+                                      "properties": {
+                                        "catalogs": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 12
+                                        },
+                                        "entries": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "maxLength": 121,
+                                            "pattern": "^[a-z][a-z0-9_]*\\/[a-z0-9]+(?:-[a-z0-9]+)*$"
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 12
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "additionalProperties": false
+                                    },
+                                    "$comment": {}
+                                  },
+                                  "required": [
+                                    "on"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                "minItems": 1,
+                                "maxItems": 3
                               },
                               "upTo": {
                                 "type": "string",
@@ -20908,6 +21024,16 @@
               },
               "endsWhenSourceDown": {
                 "type": "boolean"
+              },
+              "noDamageFrom": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 121,
+                  "pattern": "^[a-z][a-z0-9_]*\\/[a-z0-9]+(?:-[a-z0-9]+)*$"
+                },
+                "minItems": 1,
+                "maxItems": 12
               },
               "budgets": {
                 "type": "array",

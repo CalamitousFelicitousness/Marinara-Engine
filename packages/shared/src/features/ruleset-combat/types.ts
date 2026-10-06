@@ -211,7 +211,9 @@ export interface RulesetStatBlockAction {
     on: RulesetReactionMoment;
     at?: "source" | "chosen";
     cancels?: true;
-    against?: { catalogs: string[] };
+    against?: RulesetReactionAgainst;
+    /** More moments it is taken at, each with its own `against` (1.112). */
+    also?: Array<{ on: RulesetReactionMoment; against?: RulesetReactionAgainst }>;
     /** It stops only what was paid no higher up its family than itself (1.111). */
     upTo?: "paid";
     /** Above that, a check (its own number, `{ "const": n }`) against `dc` plus the level. */
@@ -370,8 +372,11 @@ export interface RulesetCombatAction {
     on: RulesetReactionMoment;
     at: "source" | "chosen";
     cancels?: true;
-    /** Only an action from an entry of one of these catalogs opens its moment for this reaction. */
-    against?: { catalogs: string[] };
+    /** Only an action from an entry of one of these catalogs, or one of these entries, opens its
+     *  moment for this reaction. */
+    against?: RulesetReactionAgainst;
+    /** More moments it is taken at, each with its own `against` (1.112). */
+    also?: Array<{ on: RulesetReactionMoment; against?: RulesetReactionAgainst }>;
     /** It stops only what was paid for no higher up its pool family than this was (1.111). */
     upTo?: "paid";
     /** Above that, a check, read once as the fight began, against `dc` plus the level of what it
@@ -381,6 +386,9 @@ export interface RulesetCombatAction {
   /** The catalog of the entry this action was built from, when it was built from one. A weapon row,
    *  a stat block's own action, a contest and a standard action have none. */
   catalog?: string;
+  /** And the entry itself, as `<catalog>/<entry>` (1.112): what a reaction or a condition that names
+   *  one entry reads. */
+  entry?: string;
   /** IN CELLS, resolved once when the fight began, and read only by a positioned fight. An action
    *  with neither reaches one cell, which is the smallest step a board has. */
   reach?: number;
@@ -682,10 +690,10 @@ export type RulesetWindowTrigger =
   /** Something is ABOUT to land on the ones being asked. It is already paid for and is held here
    *  until they have answered, and an answer that cancels stops it from happening at all.
    *  `catalog` is where the entry behind it came from, when there is one. */
-  | { kind: "aimed"; sourceId: string; optionId: string; label: string; catalog?: string }
+  | { kind: "aimed"; sourceId: string; optionId: string; label: string; catalog?: string; entry?: string }
   /** Somebody on the other side is ABOUT to use something, whoever it is aimed at: held the same
    *  way, for everybody holding an answer that reaches them. */
-  | { kind: "used"; sourceId: string; optionId: string; label: string; catalog?: string }
+  | { kind: "used"; sourceId: string; optionId: string; label: string; catalog?: string; entry?: string }
   /** An attack roll has just hit the one being asked, and its damage has not been dealt. What they
    *  take counts for it: the roll (`total`, made against `defense`) is checked again afterwards. */
   | {
@@ -694,17 +702,25 @@ export type RulesetWindowTrigger =
       optionId: string;
       label: string;
       catalog?: string;
+      entry?: string;
       total: number;
       defense: number;
     }
   /** Something has just hurt the ones being asked. It has already happened: nothing answered here
    *  unmakes it, and `sourceId` is whoever dealt it, for a reaction aimed back at them. */
-  | { kind: "harmed"; sourceId: string; label: string; catalog?: string };
+  | { kind: "harmed"; sourceId: string; label: string; catalog?: string; entry?: string };
 
 /** The moments the Engine notices, and opens a window for. `aimed` is before something lands on
  *  the holder, `used` is before somebody on the other side uses something, `hit` is after an attack
  *  roll has hit the holder and before its damage, and `harmed` is after something has hurt them. */
 export type RulesetReactionMoment = "aimed" | "hit" | "harmed" | "used";
+
+/** What opens a moment for one reaction: an action from an entry of one of `catalogs`, or one of
+ *  `entries` (`<catalog>/<entry>`, 1.112). Either is enough. */
+export interface RulesetReactionAgainst {
+  catalogs?: string[];
+  entries?: string[];
+}
 
 /** What the fight goes back to once the window closes. A window opened after something has already
  *  happened carries none: there is nothing to pick up. */

@@ -38,6 +38,7 @@ import {
   rulesetOnOwnTurn,
   refreshRulesetMovement,
   rulesetCombatant,
+  rulesetActiveConditions,
   rulesetCombatConditions,
   rulesetCombatEffects,
   rulesetCombatFailsSave,
@@ -323,6 +324,8 @@ interface RulesetDamageInput {
   damageType?: string;
   /** What the blow carries past a resistance's exception: the tags of the weapon item it came from. */
   qualities?: readonly string[];
+  /** The entry it came from (`<catalog>/<entry>`), which a condition may keep off entirely (1.112). */
+  entry?: string;
   rolls: number[];
   flat: number;
   amount: number;
@@ -354,7 +357,17 @@ function applyDamage(
   let adjust: "none" | "resist" | "vulnerable" | "immune" = "none";
   // A creature's own hide, and what the target's items keep off.
   const hide = type ? rulesetCombatHide(ctx.definition, target) : undefined;
-  if (type && hide) {
+  // A condition that keeps this very entry off (1.112) does, whatever kind of harm it is.
+  const entry = input.entry;
+  if (
+    entry &&
+    rulesetActiveConditions(ctx.definition, ctx.combat, target, ctx.state).some((one) =>
+      one.noDamageFrom?.includes(entry),
+    )
+  ) {
+    dealt = 0;
+    adjust = "immune";
+  } else if (type && hide) {
     if (matches(hide.immune, type, input.qualities)) {
       dealt = 0;
       adjust = "immune";
@@ -1480,10 +1493,11 @@ export function applyRulesetCombatChoice(
         optionId: action.id,
         label: action.label,
         ...(action.catalog ? { catalog: action.catalog } : {}),
+        ...(action.entry ? { entry: action.entry } : {}),
       },
       ctx.state.combatants,
       resume,
-    ) || openAimed(ctx, resume, action.label, action.catalog);
+    ) || openAimed(ctx, resume, action.label, action.catalog, action.entry);
   if (!held) {
     const used = rulesetActionAsUsed(action);
     harmedBy(ctx, working, used, resume, () =>
@@ -1942,7 +1956,12 @@ function goOn(definition: RulesetDefinition, combat: RulesetCombat, ctx: Ruleset
   if (resume?.kind === "action") {
     if (over) return;
     // A use nobody stopped is aimed next: the ones it is aimed at get their own say before it lands.
-    if (trigger.kind === "used" && !resume.cancelled && openAimed(ctx, resume, trigger.label, trigger.catalog)) return;
+    if (
+      trigger.kind === "used" &&
+      !resume.cancelled &&
+      openAimed(ctx, resume, trigger.label, trigger.catalog, trigger.entry)
+    )
+      return;
     resumeAction(ctx, resume);
     return;
   }
@@ -2209,8 +2228,16 @@ function openMoment(
     .filter((one) => moment === "harmed" || !source || one.side !== source.side)
     .filter(
       (one) =>
-        rulesetReactionsAt(ctx.definition, ctx.combat, ctx.state, one, moment, trigger.sourceId, trigger.catalog)
-          .length > 0,
+        rulesetReactionsAt(
+          ctx.definition,
+          ctx.combat,
+          ctx.state,
+          one,
+          moment,
+          trigger.sourceId,
+          trigger.catalog,
+          trigger.entry,
+        ).length > 0,
     )
     .map((one) => one.id);
   if (waiting.length === 0) return false;
@@ -2228,6 +2255,7 @@ function openAimed(
   resume: RulesetActionResume,
   label: string,
   catalog: string | undefined,
+  entry: string | undefined,
 ): boolean {
   const actor = rulesetCombatant(ctx.state, resume.actorId);
   if (!actor || !rulesetCombatStanding(actor)) return false;
@@ -2236,7 +2264,14 @@ function openAimed(
     .filter((target): target is RulesetCombatant => !!target && !target.defeated);
   return openMoment(
     ctx,
-    { kind: "aimed", sourceId: actor.id, optionId: resume.optionId, label, ...(catalog ? { catalog } : {}) },
+    {
+      kind: "aimed",
+      sourceId: actor.id,
+      optionId: resume.optionId,
+      label,
+      ...(catalog ? { catalog } : {}),
+      ...(entry ? { entry } : {}),
+    },
     targets,
     resume,
   );
@@ -2293,7 +2328,7 @@ function harmedBy(
       .map((event) => (event as Extract<RulesetCombatEvent, { type: "damage" }>).targetId),
   ]);
   if (hold) {
-    const { label, optionId, catalog, ...held } = hold;
+    const { label, optionId, catalog, entry, ...held } = hold;
     const { held: _previous, ...base } = resume;
     openWindow(ctx, {
       kind: "reaction",
@@ -2303,6 +2338,7 @@ function harmedBy(
         optionId,
         label,
         ...(catalog ? { catalog } : {}),
+        ...(entry ? { entry } : {}),
         total: held.roll.total,
         defense: held.roll.defense,
       },
@@ -2315,7 +2351,13 @@ function harmedBy(
   if (hurt.size === 0) return;
   openMoment(
     ctx,
-    { kind: "harmed", sourceId: actor.id, label: action.label, ...(action.catalog ? { catalog: action.catalog } : {}) },
+    {
+      kind: "harmed",
+      sourceId: actor.id,
+      label: action.label,
+      ...(action.catalog ? { catalog: action.catalog } : {}),
+      ...(action.entry ? { entry: action.entry } : {}),
+    },
     [...hurt].map((id) => rulesetCombatant(ctx.state, id)).filter((one): one is RulesetCombatant => !!one),
   );
 }
@@ -2719,7 +2761,16 @@ function resolveAction(
           landed &&
           !ctx.state.window &&
           rulesetEncounterOutcome(ctx.state) === "ongoing" &&
-          rulesetReactionsAt(ctx.definition, ctx.combat, ctx.state, target, "hit", actor.id, action.catalog).length > 0
+          rulesetReactionsAt(
+            ctx.definition,
+            ctx.combat,
+            ctx.state,
+            target,
+            "hit",
+            actor.id,
+            action.catalog,
+            action.entry,
+          ).length > 0
         ) {
           return {
             targetId: target.id,
@@ -2730,6 +2781,7 @@ function resolveAction(
             label: action.label,
             optionId: action.id,
             ...(action.catalog ? { catalog: action.catalog } : {}),
+            ...(action.entry ? { entry: action.entry } : {}),
           };
         }
       } else {
@@ -2791,7 +2843,16 @@ function resolveAction(
           landed &&
           !ctx.state.window &&
           rulesetEncounterOutcome(ctx.state) === "ongoing" &&
-          rulesetReactionsAt(ctx.definition, ctx.combat, ctx.state, target, "hit", actor.id, action.catalog).length > 0
+          rulesetReactionsAt(
+            ctx.definition,
+            ctx.combat,
+            ctx.state,
+            target,
+            "hit",
+            actor.id,
+            action.catalog,
+            action.entry,
+          ).length > 0
         ) {
           return {
             targetId: target.id,
@@ -2808,6 +2869,7 @@ function resolveAction(
             label: action.label,
             optionId: action.id,
             ...(action.catalog ? { catalog: action.catalog } : {}),
+            ...(action.entry ? { entry: action.entry } : {}),
           };
         }
       }
@@ -2871,7 +2933,12 @@ function resolveAction(
       before ??= healthOf(ctx, target);
       // Every part of the blow carries what the weapon does past a resistance.
       const qualities = action.damage?.qualities;
-      const partDealt = applyDamage(ctx, target, qualities ? { ...part, qualities } : part, !!woundTrack);
+      const partDealt = applyDamage(
+        ctx,
+        target,
+        { ...part, ...(qualities ? { qualities } : {}), ...(action.entry ? { entry: action.entry } : {}) },
+        !!woundTrack,
+      );
       dealt += partDealt;
       // A compound hit marks once, using the most severe kind that actually landed.
       if (woundTrack && partDealt > 0) {
@@ -3174,7 +3241,7 @@ function stepValue(table: ReadonlyArray<readonly [number, number]> | undefined, 
 }
 
 /** Where an attack stopped: the held attack's own record, and what its window says about it. */
-type RulesetHitHold = RulesetHeldAttack & { label: string; optionId: string; catalog?: string };
+type RulesetHitHold = RulesetHeldAttack & { label: string; optionId: string; catalog?: string; entry?: string };
 
 // ── Between turns ──
 

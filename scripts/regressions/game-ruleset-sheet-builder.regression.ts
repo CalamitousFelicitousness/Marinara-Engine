@@ -1025,7 +1025,12 @@ try {
     const high = { ...plain, abilities: { ...plain.abilities, str: 17 } };
     let h = applyRulesetBuilder(cap, high, { describing: true, picks: { class: ["fighter"] } }, capCatalogs);
     const [hSlot] = rulesetBuilderAbilitySlots(cap, h.state, capCatalogs, h.build);
-    h = applyRulesetBuilder(cap, h.build, { ...h.state, abilityChoices: { [hSlot!.key]: ["str", "str"] } }, capCatalogs);
+    h = applyRulesetBuilder(
+      cap,
+      h.build,
+      { ...h.state, abilityChoices: { [hSlot!.key]: ["str", "str"] } },
+      capCatalogs,
+    );
     h = applyRulesetBuilder(cap, h.build, { ...h.state, describing: false }, capCatalogs);
     h = applyRulesetBuilder(cap, h.build, { ...h.state, picks: { class: [] } }, capCatalogs);
     assert.equal(h.build.abilities.str, 17);
@@ -1037,6 +1042,55 @@ try {
       choose: [{ count: 2, amount: 1, upTo: 0 }],
     };
   }, /upTo|greater than or equal to 1/);
+
+  // ── 1.94: entries a step offers only while the sheet allows ──
+  {
+    const gated = parsed(
+      variant((doc) => {
+        doc.catalogs
+          .find((c: { id: string }) => c.id === "classes")
+          .entries.find((e: { id: string }) => e.id === "wizard").offeredWhen = {
+          abilityMod: "int",
+        };
+      }),
+    );
+    const gatedCatalogs: RulesetCatalogEntriesById = Object.fromEntries(
+      (gated.catalogs ?? []).map((catalog) => [catalog.id, catalog.entries ?? []]),
+    );
+    const classStep = gated.sheet.builder!.steps[2]!;
+    assert.ok(classStep.kind === "catalog");
+    const at = (int: number) => {
+      const plain = defaultRulesetSheetBuild(gated);
+      return { ...plain, abilities: { ...plain.abilities, int } };
+    };
+    const offered = (int: number) =>
+      rulesetBuilderOptions(gated, classStep, {}, gatedCatalogs, at(int)).map((entry) => entry.id);
+    assert.deepEqual(offered(10), ["fighter"], "Int 10: modifier 0, no wizard");
+    assert.deepEqual(offered(12), ["fighter", "wizard"], "Int 12: modifier 1");
+    assert.deepEqual(
+      rulesetBuilderOptions(gated, classStep, {}, gatedCatalogs).map((entry) => entry.id),
+      ["fighter", "wizard"],
+      "no sheet, no gate",
+    );
+    // Picked while allowed, then the sheet falls: it counts for nothing and is kept.
+    let g = applyRulesetBuilder(
+      gated,
+      at(12),
+      {
+        method: "manual",
+        base: { str: 10, dex: 10, con: 10, int: 12, wis: 10, cha: 10 },
+        picks: { class: ["wizard"] },
+      },
+      gatedCatalogs,
+    );
+    assert.equal(g.build.fields.hit_die, "d6");
+    g = applyRulesetBuilder(gated, g.build, { ...g.state, base: { ...g.state.base!, int: 10 } }, gatedCatalogs);
+    assert.notEqual(g.build.fields.hit_die, "d6", "the wizard's grants go");
+    assert.deepEqual(g.state.picks?.class, ["wizard"], "and the pick is kept");
+  }
+  refused((doc) => {
+    doc.catalogs.find((c: { id: string }) => c.id === "classes").entries[0].offeredWhen = { derived: "nope" };
+  }, /nope/);
 
   // ── 1.89: entries a step keeps one of ──
   const grouped = (doc: Record<string, any>) => {
@@ -1227,6 +1281,11 @@ try {
   });
   assert.match(issue(90, cappedDoc) ?? "", /score choice with a cap.*1\.91/);
   assert.equal(issue(91, cappedDoc), null);
+  const offeredDoc = variant((doc) => {
+    doc.catalogs.find((c: { id: string }) => c.id === "classes").entries[0].offeredWhen = { const: 1 };
+  });
+  assert.match(issue(93, offeredDoc) ?? "", /offered only while the sheet allows.*1\.94/);
+  assert.equal(issue(94, offeredDoc), null);
   assert.equal(issue(81, variant()), null, "a 1.81 builder is still 1.81's");
   assert.equal(issue(74, JSON.parse(fiveEText)), null, "an older package still validates");
 

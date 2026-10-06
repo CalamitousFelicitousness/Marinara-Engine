@@ -2876,6 +2876,10 @@ const catalogEntrySchema = z
      *  one pick of a group, so picking one drops the other ("a feat in place of an ability score
      *  improvement"). */
     exclusive: sheetId.optional(),
+    /** Read off the sheet as it stands: a builder step offers this entry only while it reads above 0
+     *  (Capability API 1.94), as 5e offers a second class only when its prerequisites are met. A pick
+     *  that later reads 0 counts for nothing and is kept. */
+    offeredWhen: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
   })
   .strict()
   .superRefine((entry, ctx) => {
@@ -7370,6 +7374,11 @@ export function rulesetCatalogEntryIssues(
     }
 
     if (entry.grants) grantsIssues(definition, entry.grants, [index, "grants"], add);
+    if (entry.offeredWhen) {
+      for (const issue of rulesetValueRefIssues(entry.offeredWhen, names, names.derived, false)) {
+        add([index, "offeredWhen", issue.key], issue.message);
+      }
+    }
 
     // How many rows this entry writes into each list, because a row the ruleset keeps up to date is
     // matched to its spec from a marked row on a sheet: the entry's only row there, or (1.87) one of

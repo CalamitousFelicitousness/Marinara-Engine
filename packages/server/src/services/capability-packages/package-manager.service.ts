@@ -1193,6 +1193,12 @@ function entriesCarryDamageReroll(entries: unknown): boolean {
   );
 }
 
+/** Entries a builder step offers only while the sheet says so (1.94): `offeredWhen`, a new key on the
+ *  strict entry. */
+function entriesCarryOfferedWhen(entries: unknown): boolean {
+  return Array.isArray(entries) && entries.some((entry) => plainRecord(entry)?.offeredWhen !== undefined);
+}
+
 /** Entries a builder step keeps one of (1.89): `exclusive`, a new key on the strict entry. */
 function entriesCarryExclusive(entries: unknown): boolean {
   return Array.isArray(entries) && entries.some((entry) => plainRecord(entry)?.exclusive !== undefined);
@@ -1447,6 +1453,7 @@ export function getCapabilityPackageInstallIssue(
   let carriesChoiceCaps = false;
   let carriesDamageSheetBonus = false;
   let carriesDamageReroll = false;
+  let carriesOfferedWhen = false;
   let carriesExclusive = false;
   let carriesSheetBonus = false;
   // Every item by "<catalog>/<entry>", inline and in files, and the fakes among them, so a fake whose
@@ -1549,6 +1556,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryChoiceCaps(header.entries)) carriesChoiceCaps = true;
       if (entriesCarryDamageSheetBonus(header.entries)) carriesDamageSheetBonus = true;
       if (entriesCarryDamageReroll(header.entries)) carriesDamageReroll = true;
+      if (entriesCarryOfferedWhen(header.entries)) carriesOfferedWhen = true;
       if (entriesCarryExclusive(header.entries)) carriesExclusive = true;
       if (entriesCarryToHitSheetBonus(header.entries)) carriesSheetBonus = true;
       collectItems(header.id, header.entries);
@@ -1601,6 +1609,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryChoiceCaps(fileEntries)) carriesChoiceCaps = true;
       if (entriesCarryDamageSheetBonus(fileEntries)) carriesDamageSheetBonus = true;
       if (entriesCarryDamageReroll(fileEntries)) carriesDamageReroll = true;
+      if (entriesCarryOfferedWhen(fileEntries)) carriesOfferedWhen = true;
       if (entriesCarryExclusive(fileEntries)) carriesExclusive = true;
       if (entriesCarryToHitSheetBonus(fileEntries)) carriesSheetBonus = true;
       collectItems(header.id, fileEntries);
@@ -1888,6 +1897,10 @@ export function getCapabilityPackageInstallIssue(
   // An item's to-hit read off its holder's sheet, 1.90: a new key on the strict to-hit.
   if (!declaresApi(90) && carriesSheetBonus) {
     return "A ruleset whose items add a bonus to hit read off their holder's sheet requires schemaVersion 2 and capabilityApi 1.90 or newer";
+  }
+  // A catalog entry a builder step offers only while the sheet says so, 1.94: a new key on the strict entry.
+  if (!declaresApi(94) && carriesOfferedWhen) {
+    return "A ruleset whose catalog entries are offered only while the sheet allows requires schemaVersion 2 and capabilityApi 1.94 or newer";
   }
   // A weapon's damage dice rerolled off the holder's sheet, 1.93: a new key on the strict damage.
   if (!declaresApi(93) && carriesDamageReroll) {

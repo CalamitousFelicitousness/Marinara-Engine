@@ -134,6 +134,8 @@ export function rulesetBuilderOptions(
       const at = entry.filters?.[step.upTo.filter];
       if (typeof at === "number" && at > limit) return false;
     }
+    // Offered only while the sheet as it stands says so (1.94): a second class's prerequisites.
+    if (entry.offeredWhen && build && !(resolveRulesetValueRef(definition, build, entry.offeredWhen) > 0)) return false;
     if (step.within && parentPicks) {
       if (!parentPicks.some((picked) => filterHas(entry, step.within!.filter, picked.id))) return false;
     }

@@ -6,6 +6,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 - A ruleset's weapons (and items that roll to hit) can add a bonus **read off the holder's sheet**, `toHit.sheetBonus`, for what a fighter brings to every weapon of a kind: 5e's Archery fighting style, +2 to attacks with ranged weapons. The weapon's facts name it (Capability API 1.90).
 - A ruleset's coins can have a name for one of them, so a price of one penny reads "1 penny" rather than "1 pennies" in markets, purses and item prices (Capability API 1.84).
+- A guided builder step can offer a catalog entry only while the sheet allows it, such as a second class whose prerequisites are met (Capability API 1.94).
 - A weapon wielded two-handed can reroll its low damage dice once, off its holder's sheet, such as 5e's Great Weapon Fighting (Capability API 1.93).
 - A weapon can add damage off its holder's sheet, only while held in one hand when it says so, and a fighter's off-hand attack can keep its full ability when their sheet says so, such as 5e's Dueling and Two-Weapon Fighting (Capability API 1.92).
 - A builder score choice can stop at a cap, such as an ability score improvement's 20 (Capability API 1.91).

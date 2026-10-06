@@ -689,7 +689,10 @@ const capabilityPackageManifestBaseSchema = z
 //        two-handed (`attack.damage.rerollUpTo`, 5e's Great Weapon Fighting). Not a soft seam: an Engine
 //        that cannot read it refuses the catalog, so a package that ships it declares 1.93. No
 //        permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 93 } as const);
+// 1.94: a catalog entry may say when a builder step offers it (`offeredWhen`, a value off the sheet
+//        above 0: a second class whose prerequisites are met). Not a soft seam: an Engine that cannot
+//        read it refuses the catalog, so a package that ships it declares 1.94. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 94 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

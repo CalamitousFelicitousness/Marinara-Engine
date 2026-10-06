@@ -249,9 +249,12 @@ export function appendRoundGeminiParts(
   return saved ? [...saved, ...replayable] : replayable;
 }
 
-/** Whether the connection uses the OpenAI-style message shape that can carry a partial reasoning prefill. */
+/**
+ * Whether the connection uses the OpenAI-style message shape that can carry a partial reasoning prefill. Mistral is
+ * left out: its messages have no reasoning_content or partial field.
+ */
 export function supportsAssistantReasoningPrefill(provider: string): boolean {
-  return ["openai", "openrouter", "nanogpt", "xai", "mistral", "cohere", "arli", "zai", "custom"].includes(provider);
+  return ["openai", "openrouter", "nanogpt", "xai", "cohere", "arli", "zai", "custom"].includes(provider);
 }
 
 /**

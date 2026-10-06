@@ -169,6 +169,9 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^0.93.0
         version: 0.93.0(zod@3.25.76)
+      '@emnapi/runtime':
+        specifier: ^1.11.3
+        version: 1.11.3
       '@fastify/cors':
         specifier: ^11.3.0
         version: 11.3.0

@@ -5,6 +5,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 ## [Unreleased]
 
 - **Chat Summary** supports Shift-clicking a visible range on desktop and enabling or disabling only the selected summaries. Selection controls wrap on narrow screens (#7163).
+- On Android/Termux, updating from 2.4.6 no longer leaves image processing broken, and a broken image library can no longer shut down the server when a browser opens Engine (#7173).
 - With **Apply preset colors** on, quoted dialogue in Roleplay and Game uses each character's or persona's own dialogue color again, including italics inside the quote, instead of the chat style's text color. Game Mode speaker names keep their own colors too. Dialogue from characters without their own color still follows the chat style (#7167).
 - Updated the MCP SDK used by Claude agents and the developer MCP tool to 1.32.1, which fixes an advisory where its OAuth client could send credentials to an authorization server chosen by an MCP server.
 - Mistral connections now work with **Mistral Large 4**. Its thinking shows in the chat instead of being lost, **Reasoning Effort** offers Off or high for Mistral's reasoning models (low, high or max for GLM 5.3 on Mistral), and refreshing the model list picks up each model's real context size (1M tokens for Large 4). Requests also stop sending settings Mistral rejects, Assistant Prefill is continued without the reply repeating it, and a tool round no longer fails on tool calls Mistral did not create itself (#7164).

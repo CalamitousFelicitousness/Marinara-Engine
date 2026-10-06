@@ -35,7 +35,16 @@ assert.match(long, new RegExp(`- Change ${kept}: x+\\n  - detail line ${kept}\\n
 // The real changelog's newest release renders within the limit.
 const { readFile } = await import("node:fs/promises");
 const real = await readFile(new URL("../../CHANGELOG.md", import.meta.url), "utf8");
-const version = real.match(/^## \[(\d+\.\d+\.\d+)\]/mu)?.[1];
-if (version) assert.ok(renderReleaseNotes(real, version).length <= RELEASE_BODY_LIMIT);
+// Every heading style the renderer accepts: "## [X.Y.Z]", "## vX.Y.Z" and "## X.Y.Z".
+const heading = real.match(/^## (?:\[(\d+\.\d+\.\d+)\]|v?(\d+\.\d+\.\d+))$/mu);
+assert.ok(heading, "No supported release heading found in CHANGELOG.md");
+assert.ok(renderReleaseNotes(real, heading[1] ?? heading[2]).length <= RELEASE_BODY_LIMIT);
+
+// A single entry too large for GitHub is left out too; the body keeps the notice and links the full list.
+const oversized = renderReleaseNotes(changelog([`- ${"y".repeat(RELEASE_BODY_LIMIT)}`, "- Small."]), "9.9.9");
+assert.ok(oversized.length <= RELEASE_BODY_LIMIT);
+assert.match(oversized, /Android APK notice/u);
+assert.doesNotMatch(oversized, /yyyy/u);
+assert.match(oversized, /_…and 2 more changes\./u);
 
 console.log("release-notes-render regression passed");

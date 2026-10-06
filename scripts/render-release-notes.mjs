@@ -79,7 +79,7 @@ export function renderReleaseNotes(changelog, version, limit = RELEASE_BODY_LIMI
     body = bullets.slice(0, kept).join("\n").trimEnd() + footer(bullets.length - kept);
     if (body.length <= limit) return body;
   }
-  return body;
+  throw new Error(`Release notes for ${version} exceed ${limit} characters even without any entries`);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

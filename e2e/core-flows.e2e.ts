@@ -22507,7 +22507,13 @@ test("mobile chat composer follows the visual viewport above the software keyboa
       store.closeBotBrowser();
       store.setTrackerPanelEnabled(true);
       store.setTrackerPanelOpen(true, chatId);
+      // The chat's Trackers button now shows and hides the selected panel (8d79bd182); open it the way it does.
+      const { TRACKER_PANEL_BUBBLE_ID, useFloatingWindowStore } = await import(
+        "/src/stores/floating-window.store.ts" as string
+      );
+      useFloatingWindowStore.getState().openWindow(TRACKER_PANEL_BUBBLE_ID, null, { focus: false });
     }, chat.id);
+    await expect(page.locator('[data-component="TrackerDataSidebarMobile"]')).toBeVisible();
     await expect(shell).not.toHaveAttribute("data-chat-surface-active");
     await expect.poll(() => shell.evaluate((element) => getComputedStyle(element).transform)).toBe("none");
 

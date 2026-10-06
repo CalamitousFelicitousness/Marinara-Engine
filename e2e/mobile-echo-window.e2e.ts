@@ -40,6 +40,91 @@ async function drag(page: Page, browserName: string, start: { x: number; y: numb
   }
 }
 
+for (const pinned of [true, false]) {
+  test(`desktop Echo reopens after another mobile client closes its ${pinned ? "pinned" : "unpinned"} window`, async ({
+    browser,
+    browserName,
+    request,
+    baseURL,
+    isMobile,
+  }, testInfo) => {
+    test.skip(isMobile, "The desktop project covers both independent browser contexts.");
+    const response = await request.post("/api/chats", {
+      data: { name: "Cross-client Echo restore", mode: "roleplay", characterIds: [] },
+    });
+    expect(response.ok()).toBeTruthy();
+    const chat = (await response.json()) as { id: string };
+    const desktop = await browser.newContext({ baseURL, viewport: { width: 1024, height: 1016 } });
+    const phone = await browser.newContext({
+      baseURL,
+      viewport: { width: 390, height: 844 },
+      hasTouch: true,
+      isMobile: browserName !== "firefox",
+    });
+    try {
+      expect(
+        (
+          await request.patch(`/api/chats/${chat.id}/metadata`, {
+            data: { enableAgents: true, activeAgentIds: ["echo-chamber"] },
+          })
+        ).ok(),
+      ).toBeTruthy();
+      for (const context of [desktop, phone]) {
+        await context.route("**/api/app-settings/ui", (route) => route.fulfill({ json: { value: "" } }));
+        await context.route(`**/api/agents/echo-messages/${chat.id}`, (route) =>
+          route.fulfill({ json: [{ characterName: "Observer", reaction: "The window is back.", timestamp: 0 }] }),
+        );
+        await seedUIState(context, {
+          hasCompletedOnboarding: true,
+          sidebarOpen: context === desktop,
+          rightPanelOpen: false,
+          echoChamberOpen: true,
+          chatHelpSeenModes: ["roleplay"],
+        });
+        await context.addInitScript(
+          ({ id, version }) => {
+            localStorage.setItem("marinara-active-chat-id", id);
+            localStorage.setItem("marinara:whats-new:seen-version", version);
+          },
+          { id: chat.id, version: APP_VERSION },
+        );
+      }
+      const desktopPage = await desktop.newPage();
+      const phonePage = await phone.newPage();
+      const panel = (page: Page) => page.locator('.mari-window[data-window="echo-chamber"]');
+      const readLayout = async () => {
+        const response = await request.get(`/api/chats/${chat.id}`);
+        const saved = (await response.json()) as { metadata: string | Record<string, unknown> };
+        const metadata = typeof saved.metadata === "string" ? JSON.parse(saved.metadata) : saved.metadata;
+        return metadata.windowLayout?.windows?.["echo-chamber"] as Layout | undefined;
+      };
+      await desktopPage.goto("/");
+      await expect(panel(desktopPage)).toBeVisible();
+      await phonePage.goto("/");
+      await expect(panel(phonePage)).toBeVisible();
+      if (!pinned) await panel(phonePage).locator('[data-window-control="pin"]').tap();
+      await panel(phonePage).locator('[data-window-control="close"]').tap();
+      await expect(phonePage.getByRole("button", { name: "Open Echo Chamber", exact: true })).toBeVisible();
+      await expect.poll(readLayout).toMatchObject({ minimized: true, pinned });
+
+      // The clients share only the saved chat layout, not runtime or local browser state.
+      await desktopPage.reload();
+      await desktopPage.getByRole("button", { name: "Open Echo Chamber", exact: true }).click();
+      await expect(panel(desktopPage)).toBeInViewport({ ratio: 1 });
+      await expect(panel(desktopPage).getByText("The window is back.", { exact: true })).toBeVisible();
+      await expect.poll(readLayout).toMatchObject({ minimized: false, pinned });
+      await desktopPage.reload();
+      await expect(panel(desktopPage)).toBeInViewport({ ratio: 1 });
+      await expect(panel(desktopPage)).toHaveAttribute("data-pinned", String(pinned));
+      await desktopPage.screenshot({ path: testInfo.outputPath("echo-desktop-restored-after-mobile-close.png") });
+    } finally {
+      await desktop.close();
+      await phone.close();
+      await request.delete(`/api/chats/${chat.id}?force=true`);
+    }
+  });
+}
+
 test("mobile Echo can move, resize, lock and restore its saved window", async ({ page, browserName }, testInfo) => {
   test.skip(!testInfo.project.name.includes("mobile"), "Mobile Echo window regression.");
   const response = await page.request.post("/api/chats", {

@@ -30,7 +30,7 @@ import {
   resolveNanoGptUsageConnection,
 } from "../../lib/connection-filters";
 import { cn, getAvatarCropStyle } from "../../lib/utils";
-import { parseCharacterDisplayData } from "../../lib/character-display";
+import { getCharacterTitle, parseCharacterDisplayData } from "../../lib/character-display";
 import { buildCharacterIdentityGroups, type CharacterIdentityChoice } from "../../lib/character-identity-groups";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { LOCAL_SIDECAR_CONNECTION_ID, type CharacterGroup, type Persona } from "@marinara-engine/shared";
@@ -767,8 +767,9 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
                                       </div>
                                       <div className="min-w-0 flex-1">
                                         <span className="block truncate text-xs font-semibold">{name}</span>
-                                        <span className="block text-[0.625rem] text-foreground/45">
-                                          {character.comment || localizeUi("ui.chat.personapicker.characterSource")}
+                                        <span className="block truncate text-[0.625rem] text-foreground/45">
+                                          {getCharacterTitle(characterData) ||
+                                            localizeUi("ui.chat.personapicker.characterSource")}
                                         </span>
                                       </div>
                                       {isActive && <span className="text-[0.6875rem]">✓</span>}

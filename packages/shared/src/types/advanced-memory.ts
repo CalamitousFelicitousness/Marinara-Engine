@@ -56,6 +56,8 @@ export type AdvancedMemoryDecisionDiagnostics = z.infer<typeof advancedMemoryDec
 export interface AdvancedMemoryJob {
   id?: string;
   blocking?: boolean;
+  /** Explicit user pause; ordinary interruptions and correction recovery may also be cancelled. */
+  paused?: boolean;
   status: "idle" | "running" | "ready" | "cancelled" | "error" | "needs_confirmation";
   stage: "idle" | "classifying" | "summarizing" | "indexing" | "compacting" | "ready";
   completed: number;

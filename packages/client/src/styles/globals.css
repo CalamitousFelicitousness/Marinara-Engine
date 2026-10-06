@@ -906,6 +906,12 @@
     visibility: hidden;
   }
 
+  /* Narrow or touch layouts lay panels, editors and the Tracker Panel over a chat that stays open
+     (AppShell marks it). The chat's windows sit above those layers, so they wait until it shows again. */
+  [data-chat-covered="true"] :is(.mari-window, .mari-window-bubble, [data-chat-settings-move-tip]) {
+    visibility: hidden;
+  }
+
   .mari-window-bubble__icon {
     display: contents;
   }

@@ -1285,6 +1285,13 @@ try {
       trainedChoices: { [hillSlot.key]: ["perception"] },
     });
     assert.equal(expert.build.skills.perception, "expertise");
+    // An earlier choice at a higher tier keeps a later, lower one from offering the same skill.
+    const both2 = made({
+      picks: { race: ["dwarf"], subrace: ["hill-dwarf"], class: ["fighter"] },
+      trainedChoices: { [hillSlot.key]: ["athletics"] },
+    });
+    assert.ok(!slotOf(both2, "fighter").from.includes("athletics"), "expertise in Athletics already");
+    assert.equal(both2.build.skills.athletics, "expertise");
   }
 
   // ── The gate ──

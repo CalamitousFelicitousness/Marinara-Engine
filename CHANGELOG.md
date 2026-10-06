@@ -6,6 +6,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Changed
 - The Game Master's reply in a Game Mode turn now gets at most four rounds of tool calls (such as dice rolls), then narrates with the results it has, and an agent at most sixteen before it answers. A model that kept asking for a roll, for example through a proxy that loses the results, could otherwise make up to a hundred paid requests in one turn. `MAX_TOOL_ROUNDS` still applies when it is lower. The last request of a tool loop now gives the model the tools' results as text, which native Anthropic and Gemini connections need when no tools are sent.
+- Game Mode no longer pastes each party member's whole ruleset sheet into the end-of-session, recruit and character-sheet prompts. The model never edits a sheet there, so the prompts are smaller and the sheets stay as they were.
 - The Characters sidebar has its full-width **New Folder** button again. Removed **Possible duplicates**.
 - The Chats sidebar status prompt now reads **What's up?** to fit its field, and Advanced Settings labels the multiplayer section **Multiplayer WIP** (#7051).
 - In Roleplay **Advanced Memory**, you can now edit and save a scene summary's **Story timeframe**, or clear it when the story date is unknown (#7047).

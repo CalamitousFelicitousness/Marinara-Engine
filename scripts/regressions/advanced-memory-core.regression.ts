@@ -2285,6 +2285,54 @@ try {
     await queuedReset?.catch(() => undefined);
   }
 
+  const switchChat = await chats.create({
+    name: "Normal recall cancels preparation",
+    mode: "roleplay",
+    characterIds: [],
+    connectionId: connection!.id,
+  });
+  assert(switchChat);
+  await chats.createMessagesBatch(switchChat.id, [
+    { role: "user", content: "Keep the compass promise while switching recall." },
+    { role: "assistant", content: "SCENE_CHANGE The journey resumes." },
+  ]);
+  await memory.updateSettings(switchChat.id, { enabled: true, summaryBudgetTokens: 512 });
+  const switchSource = await chats.listMessages(switchChat.id);
+  let signalSwitchSummary!: () => void;
+  let releaseSwitchSummary!: () => void;
+  const switchSummaryEntered = new Promise<void>((resolve) => (signalSwitchSummary = resolve));
+  const heldSwitchSummary = new Promise<void>((resolve) => (releaseSwitchSummary = resolve));
+  beforeSummary = async () => {
+    signalSwitchSummary();
+    await heldSwitchSummary;
+  };
+  const runningBeforeSwitch = memory.initialize(switchChat.id);
+  const cancelledBySwitch = assert.rejects(runningBeforeSwitch, /cancel|abort/iu);
+  const switchApp = Fastify();
+  switchApp.decorate("db", db);
+  const { chatsRoutes } = await import("../../packages/server/src/routes/chats.routes.js");
+  await switchApp.register(chatsRoutes, { prefix: "/api/chats" });
+  try {
+    await switchSummaryEntered;
+    const switched = await switchApp.inject({
+      method: "PATCH",
+      url: `/api/chats/${switchChat.id}/metadata`,
+      payload: { enableMemoryRecall: true },
+    });
+    assert.equal(switched.statusCode, 200, switched.body);
+    await cancelledBySwitch; // Must finish before the blocked provider is released.
+    const switchedStatus = await memory.status(switchChat.id);
+    assert.equal(switchedStatus.settings.enabled, false);
+    assert.equal(switchedStatus.job.status, "cancelled", "switching modes cancels instead of leaving an error");
+    assert.equal(switchedStatus.job.error, null);
+    assert.equal(JSON.parse((await chats.getById(switchChat.id))!.metadata).enableMemoryRecall, true);
+    assert.deepEqual(await chats.listMessages(switchChat.id), switchSource);
+  } finally {
+    releaseSwitchSummary();
+    await runningBeforeSwitch.catch(() => undefined);
+    await switchApp.close();
+  }
+
   const resetChat = await chats.create({
     name: "Reset during preparation",
     mode: "roleplay",
@@ -2334,6 +2382,11 @@ try {
   const cancelledByReset = assert.rejects(runningBeforeReset, /reset|abort/iu);
   try {
     await resetSummaryEntered;
+    assert.equal(
+      (await memory.updateSettings(resetChat.id, { enabled: true })).job.status,
+      "running",
+      "idempotent Advanced enable must not cancel active preparation when normal recall is already off",
+    );
     const resetting = memory.reset(resetChat.id);
     await assert.rejects(memory.initialize(resetChat.id), /being reset/iu);
     const resetResult = await resetting;

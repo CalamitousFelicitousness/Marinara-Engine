@@ -4,6 +4,10 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- **Play As Character** now shows each character's title/comment in persona pickers and the selected identity in Chat Settings, making cards with the same name easier to tell apart. Cards without a title keep the **Character** label (#7151).
+
+- Enabling **Advanced Memory** turns off basic **Memory Recall**, and enabling basic recall turns off Advanced Memory and stops its running work. Delayed settings saves preserve your choice. Advanced Memory can be switched off during processing or a status error, including when a saved message or narrator is gone, without deleting the chat or its prepared memories (#7150).
+
 - Windows opened from message actions — including **Hide from AI**, **Model Thoughts**, **Peek Prompt**, notes, reactions and confirmations — now follow **Apply preset font**, **Apply preset shape** and **Apply preset colors** on phones and computers (#7144).
 
 - On phones, the **Chat tools** three-dots button, lock and expanded tools now follow your selected chat widget shape, including Dottore's cut corners and custom shapes. Expanded tools stay aligned with the launcher at screen edges and use the same spacing as other snapped buttons. **Echo Chamber** places Dottore's and Mari's ornaments beside its title like other mobile windows, while keeping its movable, resizable window (#7144).

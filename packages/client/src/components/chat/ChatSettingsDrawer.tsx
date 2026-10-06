@@ -107,6 +107,7 @@ import {
   DEFAULT_GAME_DICE_POOL_WINDOW as DEFAULT_DICE_POOL_WINDOW,
   estimateTextTokens,
   isRoleplayCommandEnabled,
+  normalizeAdvancedMemorySettings,
   normalizeGroupChatMode,
   normalizeSemanticSummaryRetrievalSettings,
   resolveScopedRegexMode,
@@ -3662,7 +3663,9 @@ export function ChatSettingsDrawer({
   const [showAgentSuiteModal, setShowAgentSuiteModal] = useState(false);
   const [memoryView, setMemoryView] = useState<"advanced" | "standard" | null>(null);
   const advancedMemoryStatus = useAdvancedMemoryStatus(chat.id, open && isRoleplayMode);
-  const advancedMemoryEnabled = isRoleplayMode && advancedMemoryStatus.data?.settings.enabled === true;
+  const advancedMemoryEnabled =
+    isRoleplayMode &&
+    (advancedMemoryStatus.data?.settings ?? normalizeAdvancedMemorySettings(metadata.advancedMemory)).enabled;
   useEffect(() => setMemoryView(null), [advancedMemoryEnabled, chat.id]);
   const [inlineResourceEditor, setInlineResourceEditor] = useState<{
     kind: "character" | "persona" | "lorebook";
@@ -4514,7 +4517,9 @@ export function ChatSettingsDrawer({
   };
 
   const renderMemoryRecallControls = (defaultOn: boolean) => {
-    const effectiveValue = metadata.enableMemoryRecall !== undefined ? metadata.enableMemoryRecall === true : defaultOn;
+    const effectiveValue =
+      !advancedMemoryEnabled &&
+      (metadata.enableMemoryRecall !== undefined ? metadata.enableMemoryRecall === true : defaultOn);
     return (
       <div className="space-y-2">
         <SettingsSwitch
@@ -5644,8 +5649,8 @@ export function ChatSettingsDrawer({
                             </div>
                             <div className="min-w-0 flex-1">
                               <span className="block truncate text-xs">{charName(character)}</span>
-                              <span className="block text-[0.625rem] text-[var(--muted-foreground)]">
-                                {localizeUi("ui.chat.personapicker.characterSource")}
+                              <span className="block truncate text-[0.625rem] text-[var(--muted-foreground)]">
+                                {charTitle(character) || localizeUi("ui.chat.personapicker.characterSource")}
                               </span>
                             </div>
                           </>
@@ -5872,8 +5877,8 @@ export function ChatSettingsDrawer({
                                 </div>
                                 <div className="min-w-0 flex-1">
                                   <span className="block truncate text-xs">{charName(character)}</span>
-                                  <span className="block text-[0.625rem] text-[var(--muted-foreground)]">
-                                    {localizeUi("ui.chat.personapicker.characterSource")}
+                                  <span className="block truncate text-[0.625rem] text-[var(--muted-foreground)]">
+                                    {charTitle(character) || localizeUi("ui.chat.personapicker.characterSource")}
                                   </span>
                                 </div>
                                 {chat.personaCharacterId === character.id && (

@@ -1437,11 +1437,21 @@ export async function chatsRoutes(app: FastifyInstance) {
     ) {
       return reply.status(400).send({ error: "slurp2ActivityContextEnabled must be a boolean" });
     }
+    const cancelReplacedAdvancedMemory = (freshMeta: Record<string, unknown>) => {
+      if (
+        incoming.enableMemoryRecall === true &&
+        !normalizeAdvancedMemorySettings(incoming.advancedMemory).enabled &&
+        normalizeAdvancedMemorySettings(freshMeta.advancedMemory).enabled
+      ) {
+        createAdvancedMemoryService(app.db).cancelActiveOperation(req.params.id);
+      }
+    };
     if (
       Object.prototype.hasOwnProperty.call(incoming, "hideSummarisedMessages") &&
       typeof incoming.hideSummarisedMessages === "boolean"
     ) {
       const updated = await storage.patchMetadata(req.params.id, async (freshMeta) => {
+        cancelReplacedAdvancedMemory(freshMeta);
         const previousHideEnabled = freshMeta.hideSummarisedMessages === true;
         if (previousHideEnabled === incoming.hideSummarisedMessages) {
           return incoming;
@@ -1504,7 +1514,16 @@ export async function chatsRoutes(app: FastifyInstance) {
     const viewOnly =
       changedKeys.length > 0 &&
       changedKeys.every((key) => key === "windowLayout" || key === "chatSettingsHintDismissed");
-    const updated = await storage.patchMetadata(req.params.id, incoming, { touchUpdatedAt: !viewOnly });
+    const updated = await storage.patchMetadata(
+      req.params.id,
+      incoming.enableMemoryRecall === true
+        ? (freshMeta) => {
+            cancelReplacedAdvancedMemory(freshMeta);
+            return incoming;
+          }
+        : incoming,
+      { touchUpdatedAt: !viewOnly },
+    );
     return updated ? normalizeChatForResponse(updated) : updated;
   });
 

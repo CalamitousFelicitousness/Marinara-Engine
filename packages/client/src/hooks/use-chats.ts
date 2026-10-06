@@ -988,6 +988,9 @@ export function useUpdateChatMetadata(options?: { serialize?: boolean }) {
       qc.invalidateQueries({ queryKey: chatKeys.list() });
       qc.invalidateQueries({ queryKey: [...chatKeys.all, "group"] });
       qc.invalidateQueries({ queryKey: lorebookKeys.active(vars.id) });
+      if (Object.hasOwn(vars, "enableMemoryRecall") || Object.hasOwn(vars, "advancedMemory")) {
+        qc.invalidateQueries({ queryKey: ["advanced-memory", vars.id] });
+      }
     },
   });
 }

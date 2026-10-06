@@ -3027,6 +3027,9 @@ const LocalChatArea = memo(function LocalChatArea({
   // ── /goto command: paginate older pages until target message is loaded, then scroll to it
   useEffect(() => {
     if (!gotoRequest || gotoRequest.chatId !== activeChatId) return;
+    // A run that still sees an already handled (cleared) request must not repeat it. React's development
+    // double-run of a fresh mount does this: the chat area remounts after a chat switch with the request pending.
+    if (useChatStore.getState().gotoRequest?.token !== gotoRequest.token) return;
     // A message jump may switch chats while this surface still has the prior
     // chat detail cached. Wait until the selected chat's own detail is loaded
     // before choosing the game-specific behavior.

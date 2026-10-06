@@ -59,7 +59,7 @@ class TrackerPanelErrorBoundary extends Component<{ children: ReactNode; resetKe
     if (this.state.hasError) {
       return (
         <Translation>
-          {(t) => <EmptySection>{t("ui.tracker.trackerDataSidebar.renderError")}</EmptySection>}
+          {(t) => <EmptySection>{t("ui.trackerPanel.trackerdatasidebar.renderError")}</EmptySection>}
         </Translation>
       );
     }

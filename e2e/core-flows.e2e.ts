@@ -23227,12 +23227,13 @@ for (const theme of ["dark", "light"] as const) {
 
     const panel = page.locator('[data-component="RightPanel"]');
     const newButton = panel.getByTitle("New", { exact: true });
-    for (const surface of [
-      page.locator('[data-component="CharactersTopbarUnderline"]'),
-      panel.locator('[data-component="RightPanelHeaderIcon"]'),
-      newButton,
-    ]) {
-      await expect(surface).toBeVisible();
+    const underline = page.locator('[data-component="CharactersTopbarUnderline"]');
+    // Phones move the panel buttons into the topbar More menu (fdd0df0ce), so the underline stays on its hidden button.
+    const phoneTopbar = testInfo.project.name.startsWith("mobile");
+    if (phoneTopbar) await expect(page.locator('[data-tour="panel-characters"]')).toBeHidden();
+    for (const surface of [underline, panel.locator('[data-component="RightPanelHeaderIcon"]'), newButton]) {
+      if (phoneTopbar && surface === underline) await expect(surface).toHaveCount(1);
+      else await expect(surface).toBeVisible();
       await expect(surface).toHaveCSS(
         "background-image",
         /linear-gradient\(135deg, rgb\(244, 114, 182\), rgb\(244, 63, 94\)\)/,

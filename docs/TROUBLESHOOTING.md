@@ -50,7 +50,7 @@ SHARP_IGNORE_GLOBAL_LIBVIPS=1 pnpm --config.trustPolicy=off --config.confirmModu
 
 This clears pnpm's outdated install record and reinstalls the dependencies. Your chats and settings are not touched.
 
-If Sharp still cannot load, Engine now keeps running with image processing off: images show at full size instead of as thumbnails, and sprite generation and background removal are unavailable. Do not replace Sharp with an unrelated version. Keep the complete error output when you report the problem.
+If Sharp still cannot load, Engine now keeps running with image processing off: thumbnails it has already made still show, new ones show the full-size image instead, and sprite generation and background removal are unavailable. Do not replace Sharp with an unrelated version. Keep the complete error output when you report the problem.
 
 ### Blank page or JavaScript served as HTML after an update
 

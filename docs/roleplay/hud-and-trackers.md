@@ -127,7 +127,7 @@ These settings control it:
 - **Desktop size**: choose the panel width. The options are **Compact**, **Standard**, and **Expanded**.
 - **Thought display mode**: choose how a character's thoughts appear. **Docked** opens them inside the character card. **Floating** opens them as a bubble beside the portrait.
 - **Always show Docked thoughts**: when **Thought display mode** is **Docked**, keeps every featured character's thought visible instead of hiding it behind a button.
-- **Temperature unit**: switch temperature displays between **Celsius** and **Fahrenheit**. The default is Celsius. This changes only the display, not the saved world-state value.
+- **Temperature unit**: choose **°C** (Celsius) or **°F** (Fahrenheit) for temperature displays. The default is °C. This changes only the display, not the saved world-state value.
 
 ## Which agents populate the HUD
 

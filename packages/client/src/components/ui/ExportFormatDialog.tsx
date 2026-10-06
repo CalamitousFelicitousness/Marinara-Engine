@@ -1,6 +1,7 @@
 import { FileJson, ImageDown, Layers, X } from "lucide-react";
 import { Modal } from "./Modal";
 import { cn } from "../../lib/utils";
+import { SETTINGS_BUTTON_CLASS } from "../panels/settings/SettingControls";
 import { useTranslation as useUiTranslation } from "react-i18next";
 
 export type ExportFormatChoice = "native" | "compatible" | "compatible-png";
@@ -90,12 +91,8 @@ export function ExportFormatDialog({
           })}
         </div>
         <div className="flex justify-end">
-          <button
-            type="button"
-            onClick={onClose}
-            className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
-          >
-            <X size="0.875rem" />
+          <button type="button" onClick={onClose} className={SETTINGS_BUTTON_CLASS}>
+            <X size="0.75rem" />
             {localizeUi("chat.delete.dialog.cancel")}
           </button>
         </div>

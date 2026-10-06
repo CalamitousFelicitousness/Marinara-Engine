@@ -1267,6 +1267,37 @@
   font-weight: 400;
 }
 
+/* Inline token chip, such as a prompt variable: tighter sides so several fit on one row.
+   Pair with --small. */
+.mari-chrome-control--chip {
+  gap: 0.25rem;
+  padding-inline: 0.375rem;
+}
+
+/* Square icon-only button; pair with --small so the height matches. */
+.mari-chrome-control--icon {
+  width: 1.75rem;
+  padding: 0;
+}
+
+/* One-of-N choice card: title, description and optional preview stacked on the left.
+   Idle titles keep the body text colour so they stay readable; hover and aria-pressed tint them. */
+.mari-chrome-control--card {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  color: var(--foreground);
+  font-weight: 400;
+  text-align: left;
+}
+
+.mari-chrome-control--card > span {
+  overflow: visible;
+  white-space: normal;
+}
+
 .mari-character-row-action {
   height: 1.75rem;
   min-height: 1.75rem;
@@ -1286,6 +1317,26 @@
   background: var(--marinara-chat-chrome-button-bg-active);
   color: var(--marinara-chat-chrome-button-text-active);
   box-shadow: 0 0 0 1px var(--marinara-chat-chrome-focus-ring);
+}
+
+/* A selected choice card gets a solid 2px accent ring so the pick reads at a glance. It is a
+   box-shadow because the gradient-accent rules below own the selected border colour. */
+.mari-chrome-control--card[aria-pressed="true"] {
+  box-shadow: 0 0 0 2px var(--marinara-chat-chrome-accent);
+}
+
+.mari-chrome-control--card[aria-pressed="true"]:focus-visible {
+  box-shadow:
+    0 0 0 2px var(--marinara-chat-chrome-accent),
+    0 0 0 4px var(--marinara-chat-chrome-focus-ring);
+}
+
+/* Accent Pulse animates --primary, and --destructive defaults to it. Delete buttons hold the
+   steady accent instead, like the editor shells in 4c.
+   ponytail: a theme that sets its own --destructive shows the steady accent while Accent Pulse
+   runs; a dedicated --marinara-danger-* theme hook is the upgrade path. */
+[data-marinara-accent-animation] .mari-chrome-control--danger {
+  --destructive: var(--marinara-app-accent-static);
 }
 
 .mari-chrome-control--danger {
@@ -2222,6 +2273,11 @@
   transition:
     opacity 180ms linear,
     transform 180ms linear;
+}
+
+/* Same specificity as the rule above and later, so delete icons keep their button's steady colour. */
+[data-marinara-accent-animation] .mari-chrome-control--danger svg {
+  color: inherit;
 }
 
 .mari-topbar-active-underline {

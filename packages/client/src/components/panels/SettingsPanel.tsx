@@ -143,6 +143,7 @@ import {
   LifeBuoy,
   SlidersHorizontal,
   ToggleRight,
+  Wrench,
 } from "lucide-react";
 import {
   useChat,
@@ -167,6 +168,12 @@ import { TrackerSizeTierIcon } from "../ui/TrackerSizeTierIcon";
 import {
   ConversationSoundSetting,
   MariPermissionsModeSetting,
+  SETTINGS_BUTTON_CLASS,
+  SETTINGS_CHOICE_CARD_CLASS,
+  SETTINGS_COMPACT_PRIMARY_BUTTON_CLASS,
+  SETTINGS_ICON_BUTTON_CLASS,
+  SETTINGS_PRIMARY_BUTTON_CLASS,
+  SETTINGS_PRIMARY_FULL_BUTTON_CLASS,
   SettingsIntro,
   SettingsSection,
   SettingsSwitch,
@@ -1626,10 +1633,6 @@ const SETTINGS_SEARCHABLE_CONTROLS: readonly SettingsSearchableControlMeta[] = [
   },
 ] as const;
 
-const SETTINGS_BUTTON_CLASS = "mari-chrome-control mari-chrome-control--small text-[0.6875rem]";
-const SETTINGS_PRIMARY_BUTTON_CLASS = "mari-chrome-control mari-chrome-control--primary text-xs";
-const SETTINGS_COMPACT_PRIMARY_BUTTON_CLASS =
-  "mari-chrome-control mari-chrome-control--compact mari-chrome-control--selected text-[0.625rem]";
 type MarinaraAndroidBridge = {
   openLauncher?: (token?: string) => void;
   openConsole?: {
@@ -1729,9 +1732,10 @@ function AndroidStatusBarSetting() {
       {typeof getMarinaraAndroidBridge()?.openLauncher === "function" && (
         <button
           type="button"
-          className={SETTINGS_BUTTON_CLASS}
+          className={SETTINGS_PRIMARY_FULL_BUTTON_CLASS}
           onClick={() => getMarinaraAndroidBridge()?.openLauncher?.(getAndroidBridgeToken() ?? undefined)}
         >
+          <ExternalLink size="0.8125rem" />
           {t("settings.application.androidLauncher")}
         </button>
       )}
@@ -2326,20 +2330,11 @@ function ImageStyleProfilesEditor({
         </div>
 
         <div className="flex flex-wrap gap-1.5">
-          <button
-            type="button"
-            onClick={cloneSelected}
-            className="inline-flex h-8 items-center gap-1 rounded-md bg-[var(--secondary)] px-2.5 text-xs ring-1 ring-[var(--border)] transition-colors hover:bg-[var(--accent)]"
-          >
+          <button type="button" onClick={cloneSelected} className={SETTINGS_BUTTON_CLASS}>
             <Plus size="0.75rem" />
             {localizeUi("ui.panels.imagestyleprofileseditor.clone")}
           </button>
-          <button
-            type="button"
-            onClick={resetSelected}
-            disabled={!selected.builtIn}
-            className="inline-flex h-8 items-center gap-1 rounded-md bg-[var(--secondary)] px-2.5 text-xs ring-1 ring-[var(--border)] transition-colors hover:bg-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-45"
-          >
+          <button type="button" onClick={resetSelected} disabled={!selected.builtIn} className={SETTINGS_BUTTON_CLASS}>
             <RotateCcw size="0.75rem" />
             {localizeUi("ui.panels.imagestyleprofileseditor.reset")}
           </button>
@@ -2347,7 +2342,7 @@ function ImageStyleProfilesEditor({
             type="button"
             onClick={deleteSelected}
             disabled={selected.builtIn || settings.profiles.length <= 1}
-            className="inline-flex h-8 items-center gap-1 rounded-md bg-[var(--secondary)] px-2.5 text-xs text-[var(--muted-foreground)] ring-1 ring-[var(--border)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-45"
+            className={cn(SETTINGS_BUTTON_CLASS, "mari-chrome-control--danger")}
           >
             <Trash2 size="0.75rem" />
             {localizeUi("lorebook.editor.batch.delete")}
@@ -2562,9 +2557,9 @@ function TrackerPanelCardOrderSetting() {
           disabled={isDefaultOrder}
           title={localizeUi("settings.actions.resetTrackerOrder")}
           aria-label={localizeUi("settings.actions.resetTrackerOrder")}
-          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-[var(--muted-foreground)] ring-1 ring-[var(--border)] transition-all hover:bg-[var(--accent)] hover:text-[var(--foreground)] active:scale-95 disabled:cursor-default disabled:opacity-35 disabled:hover:bg-transparent disabled:hover:text-[var(--muted-foreground)]"
+          className={SETTINGS_ICON_BUTTON_CLASS}
         >
-          <RotateCcw size="0.6875rem" />
+          <RotateCcw size="0.75rem" />
         </button>
       </div>
       {orderOpen && (
@@ -2593,9 +2588,9 @@ function TrackerPanelCardOrderSetting() {
                     aria-label={localizeUi("ui.panels.trackerpanelcardordersetting.moveValue1Up", {
                       value1: localizeUi(option.label),
                     })}
-                    className="flex h-5 w-5 items-center justify-center rounded-sm text-[var(--muted-foreground)] ring-1 ring-[var(--border)] transition-all hover:bg-[var(--background)] hover:text-[var(--primary)] active:scale-95 disabled:cursor-default disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-[var(--muted-foreground)]"
+                    className={SETTINGS_ICON_BUTTON_CLASS}
                   >
-                    <ArrowUp size="0.6875rem" />
+                    <ArrowUp size="0.75rem" />
                   </button>
                   <button
                     type="button"
@@ -2610,9 +2605,9 @@ function TrackerPanelCardOrderSetting() {
                     aria-label={localizeUi("ui.panels.trackerpanelcardordersetting.moveValue1Down", {
                       value1: localizeUi(option.label),
                     })}
-                    className="flex h-5 w-5 items-center justify-center rounded-sm text-[var(--muted-foreground)] ring-1 ring-[var(--border)] transition-all hover:bg-[var(--background)] hover:text-[var(--primary)] active:scale-95 disabled:cursor-default disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-[var(--muted-foreground)]"
+                    className={SETTINGS_ICON_BUTTON_CLASS}
                   >
-                    <ArrowDown size="0.6875rem" />
+                    <ArrowDown size="0.75rem" />
                   </button>
                 </div>
               </div>
@@ -2722,7 +2717,7 @@ function TrackerPanelAppearanceDrawer() {
               )}
             />
           </span>
-          <div className="grid grid-cols-3 gap-0.5 rounded-lg border border-[var(--border)] bg-[var(--secondary)]/45 p-0.5">
+          <div className="flex flex-wrap gap-1">
             {TRACKER_PANEL_SIZE_PROFILE_OPTIONS.map((opt) => {
               const selected = trackerPanelSizeProfile === opt.id;
               return (
@@ -2736,15 +2731,10 @@ function TrackerPanelAppearanceDrawer() {
                     value2: getTrackerPanelWidthForProfile(opt.id),
                     value3: opt.desc,
                   })}
-                  className={cn(
-                    "flex min-h-8 min-w-0 items-center justify-center rounded-md px-1.5 text-[0.6875rem] transition-all disabled:cursor-not-allowed",
-                    selected
-                      ? "bg-[var(--primary)]/12 text-[var(--foreground)] ring-1 ring-[var(--primary)]/45"
-                      : "text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]",
-                  )}
+                  className={cn(SETTINGS_BUTTON_CLASS, "flex-auto")}
                 >
-                  <span className="inline-flex items-center gap-1 font-semibold">
-                    <span className={cn("inline-flex", selected && "text-[var(--primary)]")}>
+                  <span className="inline-flex items-center gap-1">
+                    <span className="inline-flex">
                       <TrackerSizeTierIcon sizeProfile={opt.id} />
                     </span>
                     {opt.label}
@@ -2763,7 +2753,7 @@ function TrackerPanelAppearanceDrawer() {
               )}
             />
           </span>
-          <div className="grid grid-cols-2 gap-0.5 rounded-lg border border-[var(--border)] bg-[var(--secondary)]/45 p-0.5">
+          <div className="grid grid-cols-2 gap-1">
             {TRACKER_THOUGHT_BUBBLE_DISPLAY_OPTIONS.map((opt) => {
               const selected = trackerPanelThoughtBubbleDisplay === opt.id;
               const Icon = opt.id === "inline" ? Dock : MessageCircle;
@@ -2774,15 +2764,10 @@ function TrackerPanelAppearanceDrawer() {
                   onClick={() => setTrackerPanelThoughtBubbleDisplay(opt.id)}
                   aria-pressed={selected}
                   title={opt.desc}
-                  className={cn(
-                    "flex min-h-8 min-w-0 items-center justify-center gap-1.5 rounded-md px-2 text-[0.6875rem] transition-all disabled:cursor-not-allowed",
-                    selected
-                      ? "bg-[var(--primary)]/12 text-[var(--foreground)] ring-1 ring-[var(--primary)]/45"
-                      : "text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]",
-                  )}
+                  className={SETTINGS_BUTTON_CLASS}
                 >
-                  <span className="inline-flex items-center gap-1.5 font-semibold">
-                    <Icon size="0.75rem" className={selected ? "text-[var(--primary)]" : ""} />
+                  <span className="inline-flex items-center gap-1.5">
+                    <Icon size="0.75rem" />
                     {opt.label}
                   </span>
                 </button>
@@ -2797,7 +2782,7 @@ function TrackerPanelAppearanceDrawer() {
               text={localizeUi("ui.panels.trackerpanelappearancedrawer.chooseBarsOrGaugesForTrackerStats")}
             />
           </span>
-          <div className="grid grid-cols-2 gap-0.5 rounded-lg border border-[var(--border)] bg-[var(--secondary)]/45 p-0.5">
+          <div className="grid grid-cols-2 gap-1">
             {TRACKER_STAT_DISPLAY_OPTIONS.map((option) => {
               const selected = trackerStatDisplayMode === option;
               const Icon = option === "bars" ? BarChart3 : Gauge;
@@ -2818,15 +2803,10 @@ function TrackerPanelAppearanceDrawer() {
                   onClick={() => setTrackerStatDisplayMode(option)}
                   aria-pressed={selected}
                   title={description}
-                  className={cn(
-                    "flex min-h-8 min-w-0 items-center justify-center gap-1.5 rounded-md px-2 text-[0.6875rem] transition-all",
-                    selected
-                      ? "bg-[var(--primary)]/12 text-[var(--foreground)] ring-1 ring-[var(--primary)]/45"
-                      : "text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]",
-                  )}
+                  className={SETTINGS_BUTTON_CLASS}
                 >
-                  <span className="inline-flex items-center gap-1.5 font-semibold">
-                    <Icon size="0.75rem" className={selected ? "text-[var(--primary)]" : ""} />
+                  <span className="inline-flex items-center gap-1.5">
+                    <Icon size="0.75rem" />
                     {label}
                   </span>
                 </button>
@@ -2853,47 +2833,37 @@ function TrackerPanelAppearanceDrawer() {
               )}
             />
           </span>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={trackerTemperatureUnit === "fahrenheit"}
-            aria-label={localizeUi("ui.panels.trackerpanelappearancedrawer.trackerTemperatureUnitValue1", {
-              value1:
-                trackerTemperatureUnit === "celsius"
-                  ? localizeUi("ui.panels.trackerpanelappearancedrawer.celsius")
-                  : localizeUi("ui.panels.trackerpanelappearancedrawer.fahrenheit"),
-            })}
-            title={
-              trackerTemperatureUnit === "celsius"
-                ? localizeUi("ui.panels.trackerpanelappearancedrawer.showingTrackerTemperaturesAsCClickForF")
-                : localizeUi("ui.panels.trackerpanelappearancedrawer.showingTrackerTemperaturesAsFClickForC")
-            }
-            onClick={() => setTrackerTemperatureUnit(trackerTemperatureUnit === "celsius" ? "fahrenheit" : "celsius")}
-            className="relative grid h-8 w-[4.75rem] shrink-0 grid-cols-2 items-center rounded-lg border border-[var(--border)] bg-[var(--secondary)]/55 p-0.5 text-[0.625rem] font-semibold transition-colors hover:bg-[var(--accent)]/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--primary)]"
+          <div
+            role="group"
+            aria-label={localizeUi("ui.panels.trackerpanelappearancedrawer.temperatureUnit")}
+            className="grid shrink-0 grid-cols-2 gap-1"
           >
-            <span
-              className={cn(
-                "absolute inset-y-0.5 left-0.5 w-[calc(50%-0.125rem)] rounded-md bg-[var(--primary)]/16 ring-1 ring-[var(--primary)]/45 transition-transform",
-                trackerTemperatureUnit === "fahrenheit" && "translate-x-full",
-              )}
-            />
-            <span
-              className={cn(
-                "relative z-10 text-center transition-colors",
-                trackerTemperatureUnit === "celsius" ? "text-[var(--foreground)]" : "text-[var(--muted-foreground)]",
-              )}
-            >
-              {localizeUi("ui.panels.trackerpanelappearancedrawer.c")}
-            </span>
-            <span
-              className={cn(
-                "relative z-10 text-center transition-colors",
-                trackerTemperatureUnit === "fahrenheit" ? "text-[var(--foreground)]" : "text-[var(--muted-foreground)]",
-              )}
-            >
-              {localizeUi("ui.panels.trackerpanelappearancedrawer.f")}
-            </span>
-          </button>
+            {(
+              [
+                {
+                  unit: "celsius",
+                  label: localizeUi("ui.panels.trackerpanelappearancedrawer.c"),
+                  title: localizeUi("ui.panels.trackerpanelappearancedrawer.celsius"),
+                },
+                {
+                  unit: "fahrenheit",
+                  label: localizeUi("ui.panels.trackerpanelappearancedrawer.f"),
+                  title: localizeUi("ui.panels.trackerpanelappearancedrawer.fahrenheit"),
+                },
+              ] as const
+            ).map((option) => (
+              <button
+                key={option.unit}
+                type="button"
+                aria-pressed={trackerTemperatureUnit === option.unit}
+                title={option.title}
+                onClick={() => setTrackerTemperatureUnit(option.unit)}
+                className={SETTINGS_BUTTON_CLASS}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
         </div>
         <TrackerPanelCardOrderSetting />
         <TrackerCardColorSettings />
@@ -3014,7 +2984,7 @@ export function SettingsPanel() {
                 type="button"
                 onClick={() => setSettingsSearch("")}
                 aria-label={localize("Clear settings search")}
-                className="absolute right-2 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-md text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
+                className={cn(SETTINGS_ICON_BUTTON_CLASS, "absolute right-1 top-1/2 -translate-y-1/2")}
               >
                 <X size="0.75rem" />
               </button>
@@ -3117,20 +3087,15 @@ export function SettingsPanel() {
                 type="button"
                 onClick={() => setQuickAccessOpen((open) => !open)}
                 aria-expanded={quickAccessOpen}
-                className={cn(
-                  "flex min-h-6 max-w-full items-center gap-1 rounded-lg border px-1.5 py-0.5 text-[0.625rem] font-semibold transition-colors",
-                  quickAccessOpen
-                    ? "border-[var(--primary)]/30 bg-[var(--primary)]/10 text-[var(--foreground)]"
-                    : "border-transparent text-[var(--muted-foreground)] hover:bg-[var(--accent)]/60 hover:text-[var(--foreground)]",
-                )}
+                className={cn(SETTINGS_BUTTON_CLASS, "max-w-full")}
                 title={localize(quickAccessOpen ? "Collapse Quick Access" : "Expand Quick Access")}
               >
-                <Tag size="0.6875rem" className="shrink-0" />
-                <span className="max-w-full truncate">
+                <Tag size="0.75rem" className="shrink-0" />
+                <span>
                   {localize("Quick Access")} ({activeSections.length})
                 </span>
                 <ChevronDown
-                  size="0.625rem"
+                  size="0.75rem"
                   className={cn("shrink-0 transition-transform", quickAccessOpen ? "rotate-180" : "")}
                 />
               </button>
@@ -3140,13 +3105,13 @@ export function SettingsPanel() {
                     key={section.id}
                     type="button"
                     onClick={() => jumpToSection(section)}
-                    className="flex min-h-6 max-w-full min-w-0 items-center rounded-lg border border-[var(--border)]/65 bg-[var(--secondary)]/38 px-1.5 py-0.5 text-[0.625rem] font-semibold leading-tight text-[var(--muted-foreground)] shadow-[inset_0_1px_0_color-mix(in_srgb,var(--foreground)_7%,transparent)] transition-all hover:border-[var(--primary)]/35 hover:bg-[var(--primary)]/11 hover:text-[var(--foreground)]"
+                    className={cn(SETTINGS_BUTTON_CLASS, "max-w-full")}
                     title={localizeUi("ui.panels.settingspanel.value1Value2", {
                       value1: localize(section.label),
                       value2: localize(section.description),
                     })}
                   >
-                    <span className="block max-w-full break-words">{localize(section.label)}</span>
+                    <span>{localize(section.label)}</span>
                   </button>
                 ))}
             </div>
@@ -3338,40 +3303,28 @@ function QuickRepliesSetting() {
                 key={option.label}
                 aria-pressed={option.checked}
                 onClick={() => option.onChange(!option.checked)}
-                className={cn(
-                  "group flex min-h-10 min-w-0 max-w-full items-center gap-2.5 overflow-hidden rounded-md px-2 py-1.5 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] active:scale-[0.99]",
-                  option.checked
-                    ? "bg-[var(--primary)]/8 text-[var(--foreground)] ring-1 ring-[var(--primary)]/30"
-                    : "text-[var(--muted-foreground)] ring-1 ring-transparent hover:bg-[var(--accent)]/45 hover:text-[var(--foreground)]",
-                )}
+                className={SETTINGS_CHOICE_CARD_CLASS}
               >
-                <span
-                  className={cn(
-                    "flex h-7 w-7 shrink-0 items-center justify-center rounded-md ring-1 transition-colors",
-                    option.checked
-                      ? "bg-[var(--primary)]/12 text-[var(--primary)] ring-[var(--primary)]/30"
-                      : "bg-[var(--secondary)]/35 text-[var(--muted-foreground)] ring-[var(--border)]/60 group-hover:text-[var(--foreground)]",
-                  )}
-                >
-                  <Icon size="0.8125rem" aria-hidden="true" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-xs font-semibold">{localize(option.label)}</span>
-                  <span className="block text-[0.65rem] leading-tight text-[var(--muted-foreground)]">
-                    {localize(option.description)}
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[var(--secondary)]/35 ring-1 ring-[var(--border)]/60">
+                    <Icon size="0.8125rem" aria-hidden="true" />
                   </span>
-                </span>
-                <span
-                  className={cn(
-                    "flex h-4 w-4 shrink-0 items-center justify-center rounded-full ring-1 transition-colors",
-                    option.checked
-                      ? "mari-accent-animated bg-[var(--accent)] text-[var(--primary)] ring-[var(--primary)]/35"
-                      : "bg-[var(--background)]/45 text-transparent ring-[var(--border)]/70 group-hover:text-[var(--muted-foreground)]",
-                  )}
-                  aria-hidden="true"
-                >
-                  <Check size="0.625rem" strokeWidth={3} />
-                </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-xs font-semibold">{localize(option.label)}</span>
+                    <span className="block text-[0.65rem] leading-tight text-[var(--muted-foreground)]">
+                      {localize(option.description)}
+                    </span>
+                  </span>
+                  <span
+                    className={cn(
+                      "flex h-4 w-4 shrink-0 items-center justify-center rounded-full ring-1 ring-[var(--border)]/70",
+                      !option.checked && "text-transparent",
+                    )}
+                    aria-hidden="true"
+                  >
+                    <Check size="0.625rem" strokeWidth={3} />
+                  </span>
+                </div>
               </button>
             );
           })}
@@ -3399,7 +3352,7 @@ function CustomQuickReplyIconButton({
         ref={buttonRef}
         type="button"
         onClick={() => setOpen((current) => !current)}
-        className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-[var(--secondary)]/60 text-sm leading-none outline-none ring-1 ring-transparent transition-colors hover:bg-[var(--accent)] focus-visible:ring-[var(--primary)]/40"
+        className={cn(SETTINGS_ICON_BUTTON_CLASS, "text-xs")}
         title={localize("Choose quick reply icon")}
         aria-label={localize("Choose quick reply icon")}
         aria-expanded={open}
@@ -3435,7 +3388,7 @@ function CustomQuickRepliesManager() {
         <button
           type="button"
           onClick={() => addCustomQuickReply("", "")}
-          className="flex shrink-0 items-center gap-1 rounded-md bg-[var(--secondary)]/50 px-2 py-1 text-[0.65rem] font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)] active:scale-[0.98]"
+          className={SETTINGS_BUTTON_CLASS}
           title={localize("Add a custom quick reply")}
         >
           <Plus size="0.75rem" aria-hidden="true" />
@@ -3469,7 +3422,7 @@ function CustomQuickRepliesManager() {
                 <button
                   type="button"
                   onClick={() => removeCustomQuickReply(entry.id)}
-                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-[var(--primary)] transition-colors hover:bg-[var(--primary)]/10 active:scale-90"
+                  className={cn(SETTINGS_ICON_BUTTON_CLASS, "mari-chrome-control--danger")}
                   title={localize("Remove quick reply")}
                   aria-label={localize("Remove quick reply")}
                 >
@@ -3597,7 +3550,7 @@ function DocsLanguageSetting() {
           type="button"
           onClick={() => void handleSwitch()}
           disabled={setDocsLanguage.isPending}
-          className={SETTINGS_PRIMARY_BUTTON_CLASS}
+          className={SETTINGS_PRIMARY_FULL_BUTTON_CLASS}
         >
           {setDocsLanguage.isPending ? (
             <>
@@ -3633,7 +3586,7 @@ function DocsLanguageSetting() {
             type="button"
             onClick={() => void handleFix()}
             disabled={fixDocsLanguage.isPending}
-            className={SETTINGS_PRIMARY_BUTTON_CLASS}
+            className={SETTINGS_PRIMARY_FULL_BUTTON_CLASS}
           >
             {fixDocsLanguage.isPending ? (
               <>
@@ -3641,7 +3594,10 @@ function DocsLanguageSetting() {
                 {localizeUi("settings.application.docsLanguage.fixing")}
               </>
             ) : (
-              localizeUi("settings.application.docsLanguage.fix")
+              <>
+                <Wrench size="0.8125rem" />
+                {localizeUi("settings.application.docsLanguage.fix")}
+              </>
             )}
           </button>
         </div>
@@ -3914,17 +3870,12 @@ function GeneralSettings() {
               <span className="text-xs">{localizeUi("settings.controls.sendOnEnter.label")}</span>
               <HelpTooltip text={localizeUi("settings.controls.sendOnEnter.help")} />
             </div>
-            <div className="flex flex-wrap items-center gap-1.5">
+            <div className="flex flex-wrap items-center gap-1">
               <button
                 type="button"
                 onClick={() => setEnterToSendRP(!enterToSendRP)}
                 aria-pressed={enterToSendRP}
-                className={cn(
-                  "mari-chrome-tag min-h-9 px-2.5 py-1.5 text-[0.6875rem] font-medium transition-colors",
-                  enterToSendRP
-                    ? "bg-[var(--primary)]/15 text-[var(--primary)] ring-1 ring-[var(--primary)]/30"
-                    : "bg-[var(--secondary)] text-[var(--muted-foreground)] ring-1 ring-[var(--border)] hover:bg-[var(--accent)]",
-                )}
+                className={SETTINGS_BUTTON_CLASS}
               >
                 {localizeUi("settings.modes.roleplay")}
               </button>
@@ -3932,12 +3883,7 @@ function GeneralSettings() {
                 type="button"
                 onClick={() => setEnterToSendConvo(!enterToSendConvo)}
                 aria-pressed={enterToSendConvo}
-                className={cn(
-                  "mari-chrome-tag min-h-9 px-2.5 py-1.5 text-[0.6875rem] font-medium transition-colors",
-                  enterToSendConvo
-                    ? "bg-[var(--primary)]/15 text-[var(--primary)] ring-1 ring-[var(--primary)]/30"
-                    : "bg-[var(--secondary)] text-[var(--muted-foreground)] ring-1 ring-[var(--border)] hover:bg-[var(--accent)]",
-                )}
+                className={SETTINGS_BUTTON_CLASS}
               >
                 {localizeUi("settings.modes.conversations")}
               </button>
@@ -3945,12 +3891,7 @@ function GeneralSettings() {
                 type="button"
                 onClick={() => setEnterToSendGame(!enterToSendGame)}
                 aria-pressed={enterToSendGame}
-                className={cn(
-                  "mari-chrome-tag min-h-9 px-2.5 py-1.5 text-[0.6875rem] font-medium transition-colors",
-                  enterToSendGame
-                    ? "bg-[var(--primary)]/15 text-[var(--primary)] ring-1 ring-[var(--primary)]/30"
-                    : "bg-[var(--secondary)] text-[var(--muted-foreground)] ring-1 ring-[var(--border)] hover:bg-[var(--accent)]",
-                )}
+                className={SETTINGS_BUTTON_CLASS}
               >
                 {localizeUi("settings.modes.game")}
               </button>
@@ -3958,12 +3899,7 @@ function GeneralSettings() {
                 type="button"
                 onClick={() => setEnterToSendProfessorMari(!enterToSendProfessorMari)}
                 aria-pressed={enterToSendProfessorMari}
-                className={cn(
-                  "mari-chrome-tag min-h-9 px-2.5 py-1.5 text-[0.6875rem] font-medium transition-colors",
-                  enterToSendProfessorMari
-                    ? "bg-[var(--primary)]/15 text-[var(--primary)] ring-1 ring-[var(--primary)]/30"
-                    : "bg-[var(--secondary)] text-[var(--muted-foreground)] ring-1 ring-[var(--border)] hover:bg-[var(--accent)]",
-                )}
+                className={SETTINGS_BUTTON_CLASS}
               >
                 {localizeUi("settings.modes.professorMari")}
               </button>
@@ -4077,15 +4013,10 @@ function GeneralSettings() {
                     type="button"
                     aria-pressed={active}
                     onClick={() => setQuoteFormat(option.id)}
-                    className={cn(
-                      "flex min-w-0 flex-col items-start gap-0.5 rounded-lg px-2.5 py-2 text-left text-xs transition-all ring-1",
-                      active
-                        ? "bg-[var(--primary)]/15 text-[var(--primary)] ring-[var(--primary)]/35"
-                        : "bg-[var(--secondary)] text-[var(--muted-foreground)] ring-[var(--border)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]",
-                    )}
+                    className={SETTINGS_CHOICE_CARD_CLASS}
                   >
-                    <span className="font-medium">{localize(option.label)}</span>
-                    <span className="max-w-full truncate text-[0.625rem] opacity-80">{option.sample}</span>
+                    <span className="font-semibold">{localize(option.label)}</span>
+                    <span className="text-[0.625rem] opacity-80">{option.sample}</span>
                   </button>
                 );
               })}
@@ -4652,21 +4583,23 @@ function GameAssetsSettings() {
       <div className="flex flex-col gap-3">
         <div className="flex flex-col gap-2">
           <button
+            type="button"
             onClick={openGameAssetsBrowser}
-            className="mari-chrome-control mari-chrome-control--primary w-full gap-2 text-xs"
+            className={SETTINGS_PRIMARY_FULL_BUTTON_CLASS}
             title={localizeUi("settings.actions.openAssetBrowser")}
           >
-            <Image size="0.75rem" />
+            <Image size="0.8125rem" />
             {localizeUi("ui.panels.gameassetssettings.assetBrowser")}
           </button>
           <button
+            type="button"
             onClick={() => {
               rescanGameAssets
                 .mutateAsync()
                 .then(() => toast.success(localizeUi("ui.panels.gameassetssettings.gameAssetsRescanned")))
                 .catch(() => toast.error(localizeUi("ui.panels.gameassetssettings.failedToRescanGameAssets")));
             }}
-            className={cn(SETTINGS_BUTTON_CLASS, "w-full justify-center")}
+            className={cn(SETTINGS_BUTTON_CLASS, "w-full")}
           >
             <RefreshCw size="0.75rem" />
             {localizeUi("ui.panels.gameassetssettings.rescan")}
@@ -4677,6 +4610,7 @@ function GameAssetsSettings() {
           {GAME_ASSET_CATEGORIES.map((folder) => (
             <button
               key={folder.id}
+              type="button"
               onClick={() => handleOpenGameAssetFolder(folder.id)}
               className={cn(SETTINGS_BUTTON_CLASS, "capitalize")}
             >
@@ -4725,20 +4659,17 @@ function GameAssetsSettings() {
             className="hidden"
             onChange={(e) => setAssetFiles(Array.from(e.target.files ?? []))}
           />
-          <button onClick={() => assetFileRef.current?.click()} className={cn(SETTINGS_BUTTON_CLASS, "justify-center")}>
-            <Upload size="0.875rem" />
+          <button type="button" onClick={() => assetFileRef.current?.click()} className={SETTINGS_BUTTON_CLASS}>
+            <Upload size="0.75rem" />
             {localizeUi("ui.panels.gameassetssettings.chooseFiles")}
           </button>
           <button
+            type="button"
             onClick={handleGameAssetUpload}
             disabled={assetUploading || assetFiles.length === 0}
-            className={cn(
-              SETTINGS_BUTTON_CLASS,
-              "justify-center",
-              assetUploading || assetFiles.length === 0 ? "" : "mari-chrome-control--selected",
-            )}
+            className={SETTINGS_BUTTON_CLASS}
           >
-            {assetUploading ? <Loader2 size="0.875rem" className="animate-spin" /> : <Upload size="0.875rem" />}
+            {assetUploading ? <Loader2 size="0.75rem" className="animate-spin" /> : <Upload size="0.75rem" />}
             {localizeUi("ui.panels.gameassetssettings.uploadToServer")}
           </button>
           {assetFiles.length > 0 && (
@@ -5247,7 +5178,7 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
                   </output>
                   <button
                     type="button"
-                    className="mari-chrome-control mari-chrome-control--compact"
+                    className={SETTINGS_BUTTON_CLASS}
                     onClick={() => {
                       setSidebarWidth(320);
                       setRightPanelWidth(320);
@@ -5282,13 +5213,10 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
                   ).map((opt) => (
                     <button
                       key={opt.id}
+                      type="button"
+                      aria-pressed={visualTheme === opt.id}
                       onClick={() => setVisualTheme(opt.id)}
-                      className={cn(
-                        "flex flex-col items-start gap-1 rounded-lg border p-3 text-left text-xs transition-all",
-                        visualTheme === opt.id
-                          ? "border-[var(--primary)] bg-[var(--primary)]/10 ring-1 ring-[var(--primary)]"
-                          : "border-[var(--border)] hover:border-[var(--primary)]/40",
-                      )}
+                      className={SETTINGS_CHOICE_CARD_CLASS}
                     >
                       <span className="font-semibold">{opt.label}</span>
                       <span className="text-[0.625rem] text-[var(--muted-foreground)] leading-tight">{opt.desc}</span>
@@ -5425,17 +5353,9 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
                         aria-describedby={descriptionId}
                         aria-pressed={selected}
                         onClick={() => setChatWidgetPreset(preset.id)}
-                        className={cn(
-                          "flex min-w-0 flex-col items-stretch gap-2 rounded-lg border p-2.5 text-left text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]",
-                          selected
-                            ? "border-[var(--primary)] bg-[var(--accent)] text-[var(--foreground)]"
-                            : "border-[var(--border)] hover:border-[var(--primary)]/50",
-                        )}
+                        className={SETTINGS_CHOICE_CARD_CLASS}
                       >
-                        <span className="flex items-center justify-between gap-1 font-semibold">
-                          {localizeUi(preset.labelKey)}
-                          {selected && <Check size="0.75rem" aria-hidden="true" className="shrink-0" />}
-                        </span>
+                        <span className="font-semibold">{localizeUi(preset.labelKey)}</span>
                         <ChatWidgetStylePreview
                           preset={preset.id}
                           font={selected ? chatWidgetFont : ""}
@@ -5533,9 +5453,9 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
                       onClick={() => setChatWidgetButtonSize(null)}
                       aria-label={localizeUi("settings.controls.chatWidgetButtonSize.reset")}
                       title={localizeUi("settings.controls.chatWidgetButtonSize.reset")}
-                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--muted-foreground)] hover:bg-[var(--secondary)] hover:text-[var(--foreground)] focus-visible:ring-2 focus-visible:ring-[var(--primary)]"
+                      className={SETTINGS_ICON_BUTTON_CLASS}
                     >
-                      <RotateCcw size={14} />
+                      <RotateCcw size="0.75rem" />
                     </button>
                   </div>
                 </div>
@@ -5647,7 +5567,11 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
                     {localizeUi("ui.panels.appearancesettings.folderToAddCustomFonts")}
                   </p>
                 )}
-                <button onClick={handleOpenFontsFolder} className={cn(SETTINGS_BUTTON_CLASS, "mt-1 self-start")}>
+                <button
+                  type="button"
+                  onClick={handleOpenFontsFolder}
+                  className={cn(SETTINGS_BUTTON_CLASS, "mt-1 self-start")}
+                >
                   <FolderOpen size="0.75rem" />
                   {localizeUi("ui.panels.appearancesettings.openFontsFolder")}
                 </button>
@@ -5674,9 +5598,10 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
                     className="flex-1 rounded-lg bg-[var(--secondary)] px-3 py-1.5 text-xs outline-none ring-1 ring-transparent transition-shadow placeholder:text-[var(--muted-foreground)]/50 focus:ring-[var(--primary)]"
                   />
                   <button
+                    type="button"
                     onClick={() => googleFontMutation.mutate(googleFontName.trim())}
                     disabled={!googleFontName.trim() || googleFontMutation.isPending}
-                    className={cn(SETTINGS_BUTTON_CLASS, "mari-chrome-control--selected")}
+                    className={SETTINGS_BUTTON_CLASS}
                   >
                     {googleFontMutation.isPending ? (
                       <Loader2 size="0.75rem" className="animate-spin" />
@@ -5830,11 +5755,12 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
                   </div>
                 </label>
                 <button
+                  type="button"
                   onClick={() => {
                     setTextStrokeWidth(0.5);
                     setTextStrokeColor("#000000");
                   }}
-                  className="text-[0.625rem] text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors self-start"
+                  className={cn(SETTINGS_BUTTON_CLASS, "self-start")}
                 >
                   {localizeUi("ui.panels.appearancesettings.resetToDefault")}
                 </button>
@@ -6005,12 +5931,7 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
                       key={opt.id}
                       type="button"
                       onClick={() => setConversationMessageStyle(opt.id)}
-                      className={cn(
-                        "flex flex-col items-start gap-1 rounded-lg border p-3 text-left text-xs transition-all",
-                        conversationMessageStyle === opt.id
-                          ? "border-[var(--primary)] bg-[var(--primary)]/10 ring-1 ring-[var(--primary)]"
-                          : "border-[var(--border)] bg-[var(--background)]/35 hover:border-[var(--primary)]/40",
-                      )}
+                      className={SETTINGS_CHOICE_CARD_CLASS}
                       aria-pressed={conversationMessageStyle === opt.id}
                     >
                       <span className="font-semibold">{opt.label}</span>
@@ -6091,16 +6012,11 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
                       key={option.id}
                       type="button"
                       onClick={() => setConversationAvatarShape(option.id)}
-                      className={cn(
-                        "flex min-h-10 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition-all",
-                        conversationAvatarShape === option.id
-                          ? "border-[var(--primary)] bg-[var(--primary)]/10 ring-1 ring-[var(--primary)]"
-                          : "border-[var(--border)] bg-[var(--background)]/35 hover:border-[var(--primary)]/40",
-                      )}
+                      className={SETTINGS_BUTTON_CLASS}
                       aria-pressed={conversationAvatarShape === option.id}
                     >
                       <span
-                        className={cn("h-5 w-5 border border-current bg-[var(--accent)]", option.cornerClass)}
+                        className={cn("h-5 w-5 shrink-0 border border-current bg-[var(--accent)]", option.cornerClass)}
                         data-avatar-shape-preview={option.id}
                       />
                       {option.label}
@@ -6132,28 +6048,20 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
                     />
                   </div>
                   {/* Scheme tabs */}
-                  <div className="flex rounded-lg bg-[var(--secondary)] p-0.5 text-[0.625rem]">
+                  <div className="flex gap-1">
                     <button
                       type="button"
                       onClick={() => setActiveGradientScheme("dark")}
-                      className={cn(
-                        "rounded-md px-2 py-1 transition-colors",
-                        activeGradientScheme === "dark"
-                          ? "mari-accent-animated bg-[var(--accent)] text-[var(--primary)] shadow-sm ring-1 ring-[var(--primary)]/25"
-                          : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]",
-                      )}
+                      aria-pressed={activeGradientScheme === "dark"}
+                      className={SETTINGS_BUTTON_CLASS}
                     >
                       {localizeUi("ui.panels.appearancesettings.dark")}
                     </button>
                     <button
                       type="button"
                       onClick={() => setActiveGradientScheme("light")}
-                      className={cn(
-                        "rounded-md px-2 py-1 transition-colors",
-                        activeGradientScheme === "light"
-                          ? "mari-accent-animated bg-[var(--accent)] text-[var(--primary)] shadow-sm ring-1 ring-[var(--primary)]/25"
-                          : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]",
-                      )}
+                      aria-pressed={activeGradientScheme === "light"}
+                      className={SETTINGS_BUTTON_CLASS}
                     >
                       {localizeUi("ui.panels.appearancesettings.light")}
                     </button>
@@ -6228,7 +6136,7 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
                     setDraftFrom(defaults.from);
                     setDraftTo(defaults.to);
                   }}
-                  className="text-[0.625rem] text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors self-start"
+                  className={cn(SETTINGS_BUTTON_CLASS, "self-start")}
                 >
                   {localizeUi("ui.panels.imagestyleprofileseditor.reset")}{" "}
                   {activeGradientScheme === "dark"
@@ -6266,7 +6174,7 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
                 <div
                   role="group"
                   aria-label={localizeUi("settings.controls.roleplayChatPosition.label")}
-                  className="grid grid-cols-3 gap-0.5 rounded-lg border border-[var(--border)] bg-[var(--secondary)]/45 p-0.5"
+                  className="grid grid-cols-3 gap-1"
                 >
                   {ROLEPLAY_CHAT_POSITIONS.map((position) => {
                     // An unknown synced value shows as Center, which is how the chat treats it.
@@ -6279,12 +6187,7 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
                         type="button"
                         onClick={() => setRoleplayChatPosition(position)}
                         aria-pressed={selected}
-                        className={cn(
-                          "flex min-h-8 min-w-0 items-center justify-center rounded-md px-1.5 text-[0.6875rem] font-semibold transition-all",
-                          selected
-                            ? "bg-[var(--primary)]/12 text-[var(--foreground)] ring-1 ring-[var(--primary)]/45"
-                            : "text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]",
-                        )}
+                        className={SETTINGS_BUTTON_CLASS}
                       >
                         {localizeUi(`settings.controls.roleplayChatPosition.${position}`)}
                       </button>
@@ -6394,7 +6297,7 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
                   type="button"
                   onClick={() => setChatFontOpacity(90)}
                   disabled={chatFontOpacity === 90}
-                  className="self-start text-[0.625rem] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] disabled:pointer-events-none disabled:opacity-45"
+                  className={cn(SETTINGS_BUTTON_CLASS, "self-start")}
                 >
                   {localizeUi("ui.panels.appearancesettings.resetOpacityToDefault")}
                 </button>
@@ -6462,13 +6365,10 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
                   {ROLEPLAY_AVATAR_STYLE_OPTIONS.map((opt) => (
                     <button
                       key={opt.id}
+                      type="button"
+                      aria-pressed={roleplayAvatarStyle === opt.id}
                       onClick={() => setRoleplayAvatarStyle(opt.id)}
-                      className={cn(
-                        "flex flex-col items-start gap-2 rounded-lg border p-3 text-left text-xs transition-all",
-                        roleplayAvatarStyle === opt.id
-                          ? "border-[var(--primary)] bg-[var(--primary)]/10 ring-1 ring-[var(--primary)]"
-                          : "border-[var(--border)] hover:border-[var(--primary)]/40",
-                      )}
+                      className={SETTINGS_CHOICE_CARD_CLASS}
                     >
                       <div className="w-full overflow-hidden rounded-md bg-[var(--secondary)]/80 ring-1 ring-[var(--border)]/70">
                         {opt.id === "none" ? (
@@ -6718,13 +6618,9 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
                     <button
                       key={opt.id}
                       type="button"
+                      aria-pressed={gameDialogueDisplayMode === opt.id}
                       onClick={() => setGameDialogueDisplayMode(opt.id)}
-                      className={cn(
-                        "flex flex-col items-start gap-1 rounded-lg border p-3 text-left text-xs transition-all",
-                        gameDialogueDisplayMode === opt.id
-                          ? "border-[var(--primary)] bg-[var(--primary)]/10 ring-1 ring-[var(--primary)]"
-                          : "border-[var(--border)] hover:border-[var(--primary)]/40",
-                      )}
+                      className={SETTINGS_CHOICE_CARD_CLASS}
                     >
                       <span className="font-semibold">{opt.label}</span>
                       <span className="text-[0.625rem] leading-tight text-[var(--muted-foreground)]">{opt.desc}</span>
@@ -6778,7 +6674,8 @@ function GenerationsSettings() {
           <p className="max-w-md text-xs leading-relaxed text-[var(--marinara-chat-chrome-panel-text)]">
             {localizeUi("ui.panels.generationssettings.downloadIllustratorAgentFirstFromAgentsTabToEnable")}
           </p>
-          <button type="button" onClick={openDownloadAgents} className={SETTINGS_PRIMARY_BUTTON_CLASS}>
+          <button type="button" onClick={openDownloadAgents} className={SETTINGS_PRIMARY_FULL_BUTTON_CLASS}>
+            <Download size="0.8125rem" />
             {localizeUi("ui.panels.generationssettings.downloadIllustratorAgent")}
           </button>
         </div>
@@ -7033,10 +6930,13 @@ function ThemesSettings({ showIntro = true }: { showIntro?: boolean } = {}) {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <button
+              type="button"
               onClick={() => setEditorOpen(false)}
-              className="rounded-md p-1 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
+              aria-label={localizeUi("settings.actions.closeThemeEditor")}
+              title={localizeUi("settings.actions.closeThemeEditor")}
+              className={SETTINGS_ICON_BUTTON_CLASS}
             >
-              <X size="0.875rem" />
+              <X size="0.75rem" />
             </button>
             <span className="text-xs font-semibold">
               {editingId
@@ -7046,24 +6946,26 @@ function ThemesSettings({ showIntro = true }: { showIntro?: boolean } = {}) {
           </div>
           <div className="flex items-center gap-1.5">
             <button
+              type="button"
               onClick={() => setLivePreview(!livePreview)}
-              className={cn(
-                "flex items-center gap-1 rounded-md px-2 py-1 text-[0.625rem] transition-colors",
-                livePreview
-                  ? "bg-emerald-500/15 text-emerald-400"
-                  : "bg-[var(--secondary)] text-[var(--muted-foreground)]",
-              )}
+              aria-pressed={livePreview}
+              className={SETTINGS_BUTTON_CLASS}
               title={
                 livePreview
                   ? localizeUi("ui.panels.themessettings.disableLivePreview")
                   : localizeUi("ui.panels.themessettings.enableLivePreview")
               }
             >
-              {livePreview ? <Eye size="0.6875rem" /> : <EyeOff size="0.6875rem" />}
+              {livePreview ? <Eye size="0.75rem" /> : <EyeOff size="0.75rem" />}
               {localizeUi("settings.notifications.customSound.actions.preview")}
             </button>
-            <button onClick={handleSave} disabled={isSavingTheme} className={SETTINGS_COMPACT_PRIMARY_BUTTON_CLASS}>
-              {isSavingTheme ? <Loader2 size="0.6875rem" className="animate-spin" /> : <Save size="0.6875rem" />}
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={isSavingTheme}
+              className={SETTINGS_COMPACT_PRIMARY_BUTTON_CLASS}
+            >
+              {isSavingTheme ? <Loader2 size="0.75rem" className="animate-spin" /> : <Save size="0.75rem" />}
               {isSavingTheme
                 ? localizeUi("ui.noodle.stageprofileform.saving")
                 : localizeUi("ui.noodle.noodlehome.save")}
@@ -7149,13 +7051,12 @@ function ThemesSettings({ showIntro = true }: { showIntro?: boolean } = {}) {
         <div className="flex flex-col gap-3">
           {/* Action buttons */}
           <div className="flex gap-2">
-            <button
-              onClick={openNewTheme}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-[var(--primary)]/30 bg-[var(--primary)]/5 p-3 text-xs text-[var(--primary)] transition-all hover:border-[var(--primary)]/50 hover:bg-[var(--primary)]/10"
-            >
-              <Plus size="0.875rem" /> {localizeUi("ui.panels.themessettings.createTheme")}
+            <button type="button" onClick={openNewTheme} className={cn(SETTINGS_BUTTON_CLASS, "flex-1")}>
+              <Plus size="0.75rem" />
+              {localizeUi("ui.panels.themessettings.createTheme")}
             </button>
             <button
+              type="button"
               onClick={() => {
                 triggerFilePicker({
                   accept: ".css,.json",
@@ -7165,9 +7066,10 @@ function ThemesSettings({ showIntro = true }: { showIntro?: boolean } = {}) {
                   },
                 });
               }}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-[var(--border)] p-3 text-xs text-[var(--muted-foreground)] transition-all hover:border-[var(--primary)]/40 hover:bg-[var(--accent)]/50"
+              className={cn(SETTINGS_BUTTON_CLASS, "flex-1")}
             >
-              <Download size="0.875rem" /> {localizeUi("ui.panels.themessettings.importFile")}
+              <Download size="0.75rem" />
+              {localizeUi("ui.panels.themessettings.importFile")}
             </button>
           </div>
 
@@ -7224,13 +7126,16 @@ function ThemesSettings({ showIntro = true }: { showIntro?: boolean } = {}) {
                   )}
                 </button>
                 <button
+                  type="button"
                   onClick={() => openEditTheme(t)}
-                  className="rounded p-0.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--primary)]/10 hover:text-[var(--primary)]"
+                  className={SETTINGS_ICON_BUTTON_CLASS}
                   title={localizeUi("settings.actions.editThemeCss")}
+                  aria-label={localizeUi("settings.actions.editThemeCss")}
                 >
-                  <Code size="0.6875rem" />
+                  <Code size="0.75rem" />
                 </button>
                 <button
+                  type="button"
                   onClick={() => {
                     downloadJsonFile(
                       {
@@ -7251,12 +7156,14 @@ function ThemesSettings({ showIntro = true }: { showIntro?: boolean } = {}) {
                       `${sanitizeExportFilenamePart(t.name, "theme")}.json`,
                     );
                   }}
-                  className="rounded p-0.5 text-[var(--muted-foreground)] transition-colors hover:bg-emerald-500/10 hover:text-emerald-400"
+                  className={SETTINGS_ICON_BUTTON_CLASS}
                   title={localizeUi("settings.actions.exportTheme")}
+                  aria-label={localizeUi("settings.actions.exportTheme")}
                 >
-                  <Upload size="0.6875rem" />
+                  <Upload size="0.75rem" />
                 </button>
                 <button
+                  type="button"
                   onClick={() => {
                     void (async () => {
                       const confirmed = await showConfirmDialog({
@@ -7278,10 +7185,11 @@ function ThemesSettings({ showIntro = true }: { showIntro?: boolean } = {}) {
                       }
                     })();
                   }}
-                  className="rounded p-0.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
+                  className={cn(SETTINGS_ICON_BUTTON_CLASS, "mari-chrome-control--danger")}
                   title={localizeUi("settings.actions.removeTheme")}
+                  aria-label={localizeUi("settings.actions.removeTheme")}
                 >
-                  <Trash2 size="0.6875rem" />
+                  <Trash2 size="0.75rem" />
                 </button>
               </div>
             ))}
@@ -7982,9 +7890,9 @@ function ImportSettings() {
             type="button"
             onClick={() => profileImportInputRef.current?.click()}
             disabled={profileImportBusy}
-            className={cn(SETTINGS_PRIMARY_BUTTON_CLASS, "w-full gap-2")}
+            className={SETTINGS_PRIMARY_FULL_BUTTON_CLASS}
           >
-            {profileImportBusy ? <Loader2 size="1rem" className="animate-spin" /> : <Download size="1rem" />}
+            {profileImportBusy ? <Loader2 size="0.8125rem" className="animate-spin" /> : <Download size="0.8125rem" />}
             {profileImportBusy
               ? profileImportProgress?.status === "reading" || profileImportProgress?.status === "preview"
                 ? localizeUi("ui.panels.importsettings.scanningProfile")
@@ -8101,10 +8009,11 @@ function ImportSettings() {
       >
         <div className="flex flex-col gap-2.5">
           <button
+            type="button"
             onClick={() => openModal("st-bulk-import")}
-            className={cn(SETTINGS_PRIMARY_BUTTON_CLASS, "w-full gap-2")}
+            className={SETTINGS_PRIMARY_FULL_BUTTON_CLASS}
           >
-            <Download size="1rem" />
+            <Download size="0.8125rem" />
             {localizeUi("ui.panels.importsettings.importFromSillytavernFolder")}
           </button>
 
@@ -8229,7 +8138,7 @@ function ImportButton({
   };
 
   return (
-    <label className={cn(SETTINGS_BUTTON_CLASS, "cursor-pointer py-2.5")}>
+    <label className={cn(SETTINGS_BUTTON_CLASS, "cursor-pointer")}>
       {label}
       <input type="file" accept={accept} onChange={handleImport} className="hidden" />
     </label>
@@ -8258,10 +8167,10 @@ function ManualUpdateCommand({ command }: { command: string }) {
         <button
           type="button"
           onClick={() => void handleCopy()}
-          className="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 text-[0.625rem] font-medium text-[var(--primary)] transition-colors hover:bg-[var(--primary)]/10"
+          className={SETTINGS_BUTTON_CLASS}
           aria-label={localizeUi("settings.actions.copyUpdateCommand")}
         >
-          {copied ? <Check size="0.6875rem" /> : <Copy size="0.6875rem" />}
+          {copied ? <Check size="0.75rem" /> : <Copy size="0.75rem" />}
           {copied ? localizeUi("ui.panels.manualupdatecommand.copied") : localizeUi("lorebook.editor.batch.copy")}
         </button>
       </div>
@@ -8895,19 +8804,17 @@ function AdvancedSettings() {
           <button
             type="button"
             onClick={saveAdminSecret}
-            className={cn(SETTINGS_PRIMARY_BUTTON_CLASS, "w-full gap-2 whitespace-nowrap")}
+            className={cn(SETTINGS_PRIMARY_FULL_BUTTON_CLASS, "whitespace-nowrap")}
           >
-            <span className="flex min-w-0 items-center justify-center gap-1.5">
-              <Save size="0.75rem" className="shrink-0" />
-              {localizeUi("ui.noodle.noodlehome.save")}
-            </span>
+            <Save size="0.8125rem" />
+            {localizeUi("ui.noodle.noodlehome.save")}
           </button>
           <SearchableSettingTarget controlId="restart-server" className="flex flex-col gap-1.5">
             <button
               type="button"
               onClick={() => void handleRestartServer()}
               disabled={restartServer.isPending}
-              className={cn(SETTINGS_BUTTON_CLASS, "w-full justify-center gap-1.5 px-3 py-2 text-xs")}
+              className={SETTINGS_PRIMARY_FULL_BUTTON_CLASS}
             >
               {restartServer.isPending ? (
                 <Loader2 size="0.8125rem" className="animate-spin" />
@@ -8965,9 +8872,10 @@ function AdvancedSettings() {
               </select>
             </label>
             <button
+              type="button"
               onClick={() => updateCheck.refetch()}
               disabled={updateCheck.isFetching}
-              className={cn(SETTINGS_PRIMARY_BUTTON_CLASS, "w-full gap-2")}
+              className={SETTINGS_PRIMARY_FULL_BUTTON_CLASS}
             >
               {updateCheck.isFetching ? (
                 <>
@@ -9063,9 +8971,10 @@ function AdvancedSettings() {
               )}
               {updateCheck.data.applyAvailable ? (
                 <button
+                  type="button"
                   onClick={() => applyUpdate.mutate()}
                   disabled={applyUpdate.isPending}
-                  className={SETTINGS_PRIMARY_BUTTON_CLASS}
+                  className={SETTINGS_PRIMARY_FULL_BUTTON_CLASS}
                 >
                   {applyUpdate.isPending ? (
                     <>
@@ -9096,7 +9005,7 @@ function AdvancedSettings() {
                       href={updateCheck.data.releaseUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className={SETTINGS_PRIMARY_BUTTON_CLASS}
+                      className={SETTINGS_PRIMARY_FULL_BUTTON_CLASS}
                     >
                       <Download size="0.8125rem" />
                       {localizeUi("ui.panels.advancedsettings.downloadV")}
@@ -9143,9 +9052,10 @@ function AdvancedSettings() {
 
           <div className="flex items-center gap-2">
             <button
+              type="button"
               onClick={() => void handleForceRefreshSpa()}
               disabled={refreshingSpa}
-              className={SETTINGS_PRIMARY_BUTTON_CLASS}
+              className={cn(SETTINGS_PRIMARY_BUTTON_CLASS, "flex-1")}
             >
               {refreshingSpa ? (
                 <>
@@ -9178,7 +9088,7 @@ function AdvancedSettings() {
             type="button"
             onClick={() => void handleCopySupportDiagnostics()}
             disabled={supportDiagnosticsPending}
-            className={cn(SETTINGS_PRIMARY_BUTTON_CLASS, "w-full gap-2")}
+            className={SETTINGS_PRIMARY_FULL_BUTTON_CLASS}
           >
             <Copy size="0.8125rem" />
             {localizeUi("ui.panels.advancedsettings.copySupportDiagnostics")}
@@ -9289,7 +9199,7 @@ function AdvancedSettings() {
                 type="button"
                 onClick={handleOpenNativeConsole}
                 disabled={!canOpenNativeConsole}
-                className={cn(SETTINGS_BUTTON_CLASS, "w-full justify-center gap-1.5 px-3 py-2 text-xs")}
+                className={SETTINGS_PRIMARY_FULL_BUTTON_CLASS}
               >
                 <Terminal size="0.8125rem" className="shrink-0" />
                 <span>{localizeUi("ui.panels.advancedsettings.openConsole")}</span>
@@ -9325,11 +9235,8 @@ function AdvancedSettings() {
                     type="button"
                     onClick={() => updateAutomaticBackup({ frequency })}
                     disabled={automaticBackupMutation.isPending}
-                    className={cn(
-                      SETTINGS_BUTTON_CLASS,
-                      "justify-center px-2",
-                      automaticBackupQuery.data.frequency === frequency && "mari-chrome-control--selected",
-                    )}
+                    aria-pressed={automaticBackupQuery.data.frequency === frequency}
+                    className={SETTINGS_BUTTON_CLASS}
                   >
                     {localizeUi(`ui.panels.advancedsettings.automaticBackupFrequency.${frequency}`)}
                   </button>
@@ -9381,7 +9288,12 @@ function AdvancedSettings() {
               </div>
             </div>
           )}
-          <button onClick={handleCreateBackup} disabled={creatingBackup} className={SETTINGS_PRIMARY_BUTTON_CLASS}>
+          <button
+            type="button"
+            onClick={handleCreateBackup}
+            disabled={creatingBackup}
+            className={SETTINGS_PRIMARY_FULL_BUTTON_CLASS}
+          >
             {creatingBackup ? (
               <>
                 <Loader2 size="0.8125rem" className="animate-spin" />
@@ -9395,9 +9307,10 @@ function AdvancedSettings() {
             )}
           </button>
           <button
+            type="button"
             onClick={() => setExportProfileDialogOpen(true)}
             disabled={exportingProfile}
-            className={SETTINGS_PRIMARY_BUTTON_CLASS}
+            className={SETTINGS_PRIMARY_FULL_BUTTON_CLASS}
           >
             {exportingProfile ? (
               <>
@@ -9428,8 +9341,11 @@ function AdvancedSettings() {
                     </span>
                   </div>
                   <button
+                    type="button"
                     onClick={() => deleteBackupMutation.mutate(b.name)}
-                    className="ml-2 rounded p-1 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
+                    aria-label={localizeUi("settings.actions.deleteBackup")}
+                    title={localizeUi("settings.actions.deleteBackup")}
+                    className={cn(SETTINGS_ICON_BUTTON_CLASS, "mari-chrome-control--danger ml-2")}
                   >
                     <Trash2 size="0.75rem" />
                   </button>
@@ -9454,7 +9370,7 @@ function AdvancedSettings() {
             type="button"
             onClick={() => scanAvatarStorage.mutate()}
             disabled={scanAvatarStorage.isPending || cleanAvatarStorage.isPending}
-            className={cn(SETTINGS_BUTTON_CLASS, "w-full justify-center gap-1.5 px-3 py-2 text-xs")}
+            className={SETTINGS_PRIMARY_FULL_BUTTON_CLASS}
           >
             {scanAvatarStorage.isPending ? (
               <Loader2 size="0.8125rem" className="animate-spin" />
@@ -9481,7 +9397,7 @@ function AdvancedSettings() {
               type="button"
               onClick={() => void handleDeleteAbandonedAvatars()}
               disabled={cleanAvatarStorage.isPending || scanAvatarStorage.isPending}
-              className={cn(SETTINGS_PRIMARY_BUTTON_CLASS, "w-full justify-center gap-1.5")}
+              className={cn(SETTINGS_PRIMARY_FULL_BUTTON_CLASS, "mari-chrome-control--danger")}
             >
               {cleanAvatarStorage.isPending ? (
                 <Loader2 size="0.8125rem" className="animate-spin" />
@@ -9535,30 +9451,33 @@ function AdvancedSettings() {
           </div>
           <div className="flex flex-col gap-2">
             <button
+              type="button"
               onClick={() =>
                 setSelectedScopes(isAllScopesSelected ? [] : EXPUNGE_SCOPE_OPTIONS.map((scope) => scope.id))
               }
               disabled={isClearing}
-              className={cn(SETTINGS_BUTTON_CLASS, "w-full px-3 py-2 text-xs")}
+              className={cn(SETTINGS_BUTTON_CLASS, "w-full")}
             >
               {isAllScopesSelected
                 ? localizeUi("ui.panels.advancedsettings.clearSelection")
                 : localizeUi("ui.panels.advancedsettings.selectAll")}
             </button>
             <button
+              type="button"
               onClick={() => setConfirmAction("selected")}
               disabled={selectedScopes.length === 0 || isClearing}
-              className={cn(SETTINGS_BUTTON_CLASS, "w-full px-3 py-2 text-xs")}
+              className={cn(SETTINGS_BUTTON_CLASS, "mari-chrome-control--danger w-full")}
             >
-              <Trash2 size="0.8125rem" />
+              <Trash2 size="0.75rem" />
               {localizeUi("ui.panels.advancedsettings.clearSelectedData")}
             </button>
             <button
+              type="button"
               onClick={() => setConfirmAction("all")}
               disabled={isClearing}
-              className={cn(SETTINGS_BUTTON_CLASS, "w-full px-3 py-2 text-xs")}
+              className={cn(SETTINGS_BUTTON_CLASS, "mari-chrome-control--danger w-full")}
             >
-              <Trash2 size="0.8125rem" />
+              <Trash2 size="0.75rem" />
               {localizeUi("ui.panels.advancedsettings.clearAllData")}
             </button>
           </div>
@@ -9577,16 +9496,18 @@ function AdvancedSettings() {
               </div>
               <div className="flex flex-col gap-2">
                 <button
+                  type="button"
                   onClick={() => setConfirmAction(null)}
                   disabled={isClearing}
-                  className={cn(SETTINGS_BUTTON_CLASS, "w-full px-3 py-2 text-xs")}
+                  className={cn(SETTINGS_BUTTON_CLASS, "w-full")}
                 >
                   {localizeUi("chat.delete.dialog.cancel")}
                 </button>
                 <button
+                  type="button"
                   onClick={() => runExpunge(confirmAction)}
                   disabled={isClearing}
-                  className={cn(SETTINGS_BUTTON_CLASS, "w-full px-3 py-2 text-xs")}
+                  className={cn(SETTINGS_BUTTON_CLASS, "mari-chrome-control--danger w-full")}
                 >
                   {isClearing ? <Loader2 size="0.75rem" className="animate-spin" /> : <Trash2 size="0.75rem" />}
                   {localizeUi("ui.panels.advancedsettings.confirmDelete")}

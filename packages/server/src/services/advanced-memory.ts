@@ -1182,7 +1182,10 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     return new Map(
       plan.items.map((item) => [
         item.message.id,
-        item.candidates.filter((id) => scores.get(presenceQuestionId(item.message.id, id))! < threshold),
+        item.candidates.filter((id) => {
+          const score = scores.get(presenceQuestionId(item.message.id, id));
+          return score !== undefined && score < threshold;
+        }),
       ]),
     );
   }
@@ -1283,6 +1286,8 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
                 abortIfNeeded(options.signal);
                 logger.warn(error, "[advanced-memory] Message visibility failed for chat %s; hiding nothing", chatId);
               }
+            // A failed decision is still recorded: later turns don't wait on it again, and a reply in
+            // progress never sees its source messages change. The user can still hide it by hand.
             logDebugOverride(
               options.debugMode === true || process.env.DEBUG_AGENTS === "true",
               "[advanced-memory] Message visibility for %s (hidden character IDs by message): %j",

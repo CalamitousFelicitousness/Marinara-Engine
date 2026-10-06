@@ -28,6 +28,7 @@ const calls: Call[] = [];
 const decisionRequests: Array<{ state: Record<string, any>; questions: Record<string, { instructions: string }> }> = [];
 const ids = { maukie: "", pantalone: "", narrator: "" };
 let failVisibility = false;
+let dropPresence = false;
 let mainReplies: string[] = [];
 
 /** The fake helper keeps Maukie (by first name only) and leaves Pantalone out of every scene. */
@@ -50,10 +51,12 @@ const provider = createServer(async (req, res) => {
     res.end(
       JSON.stringify({
         answers: Object.fromEntries(
-          Object.keys(body.questions).map((id) => [
-            id,
-            { type: "noul", noul: id.startsWith("presence:") && !id.endsWith(ids.pantalone) ? 0.99 : 0.01 },
-          ]),
+          Object.keys(body.questions)
+            .filter((id) => !dropPresence || !id.startsWith("presence:"))
+            .map((id) => [
+              id,
+              { type: "noul", noul: id.startsWith("presence:") && !id.endsWith(ids.pantalone) ? 0.99 : 0.01 },
+            ]),
         ),
       }),
     );
@@ -321,6 +324,19 @@ try {
   assert(decisionRequests[0]!.state.transcript && decisionRequests[0]!.state.presence.transcript);
   assert.equal(calls.length, 0, "the Decision model, not the helper, decides presence");
   assert.deepEqual((await extraOf(jevMessage.id)).hiddenFromAICharacterIds, [ids.pantalone]);
+  dropPresence = true;
+  const unanswered = await say(jevChat, "user", "P hums.");
+  decisionRequests.length = 0;
+  await memory.checkScenesAfterGeneration(jevChat);
+  dropPresence = false;
+  assert.equal(decisionRequests.length, 2, "an unusable presence answer retries the scene check alone");
+  assert(Object.keys(decisionRequests[1]!.questions).every((id) => !id.startsWith("presence:")));
+  assert.equal(calls.length, 0, "the scene check does not fall back to the helper");
+  assert.equal(
+    JSON.parse((await chats.getById(jevChat))!.metadata).advancedMemoryState.sceneCheckMessageId,
+    unanswered.id,
+  );
+  assert.equal((await extraOf(unanswered.id)).hiddenFromAICharacterIds, undefined, "no presence answer hides nothing");
   await memory.updateSettings(jevChat, { sceneCheckInterval: 50 });
   const jevAlone = await say(jevChat, "assistant", "Maukie sips.", ids.maukie);
   decisionRequests.length = 0;

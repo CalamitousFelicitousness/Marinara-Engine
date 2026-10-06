@@ -270,6 +270,24 @@ try {
   await assert.rejects(validateNewRoomHumanGameName(db, fresh.id, "Briar"), RoomPersonaConflictError);
   await assert.rejects(validateNewRoomHumanGameName(db, fresh.id, "Former"), RoomPersonaConflictError);
   await validateNewRoomHumanGameName(db, fresh.id, "New traveler");
+
+  // Invisible characters cannot make a second player's name pass for the host's or an AI's.
+  const { assertRoomPersonaName } = await import("../../packages/server/src/services/multiplayer/room-store.js");
+  const named = {
+    participants: [
+      { id: "host_fixture", persona: { name: "Mari", description: "" }, isHost: true },
+      { id: "guest_fixture", persona: { name: "Rowan", description: "" }, isHost: false },
+    ],
+    characters: [{ id: "guide_fixture", name: "Guide", role: "character" }],
+  } as unknown as MultiplayerStoredRoom;
+  for (const lookalike of ["Ma\u200Bri", "Ma\u2060ri", "Ma\u00ADri", "Ma\uFEFFri", "Gu\u200Bide"])
+    assert.throws(
+      () => assertRoomPersonaName(named, lookalike, "guest_fixture"),
+      (error: { code?: string }) => error.code === "identity-conflict",
+      `${JSON.stringify(lookalike)} cannot copy an existing name`,
+    );
+  assertRoomPersonaName(named, "\u0645\u06CC\u200C\u0634\u0648\u062F", "guest_fixture");
+  assertRoomPersonaName(named, "Rowan", "guest_fixture");
 } finally {
   await closeDB();
   rmSync(dir, { recursive: true, force: true });

@@ -232,18 +232,9 @@ resolve_default_node_heap_mb() {
 }
 
 build_termux_client() (
-    # Vite needs more headroom than the running server. Keep this temporary
-    # grant inside the build subprocess; an explicit NODE_OPTIONS still wins.
-    if [ -n "${MARINARA_TERMUX_HEAP_MB:-}" ] && [ "$MARINARA_TERMUX_HEAP_MB" -lt 1536 ]; then
-        local build_heap_mb=1536
-        if [ "${MARINARA_TERMUX_DEVICE_MEMORY_KIB:-0}" -gt 0 ]; then
-            local device_cap_mb=$(( MARINARA_TERMUX_DEVICE_MEMORY_KIB / 1024 / 2 / 128 * 128 ))
-            [ "$device_cap_mb" -lt 1024 ] && device_cap_mb=1024
-            [ "$build_heap_mb" -gt "$device_cap_mb" ] && build_heap_mb="$device_cap_mb"
-        fi
-        export NODE_OPTIONS="${NODE_OPTIONS:+${NODE_OPTIONS} }--max-old-space-size=${build_heap_mb}"
-        echo "  [..] Client build heap limit: ${build_heap_mb} MiB (server limit unchanged)"
-    fi
+    # Vite needs more heap than the running server. The client's build script
+    # sets it for the build only (packages/client/scripts/build-heap.mjs), so the
+    # in-app updater gets it too; an explicit NODE_OPTIONS heap still wins.
     MARINARA_LOW_MEMORY_BUILD=1 run_pnpm --filter @marinara-engine/client build
 )
 
@@ -276,6 +267,9 @@ if ! has_explicit_node_heap_limit; then
     NODE_OPTIONS="${NODE_OPTIONS:+${NODE_OPTIONS} }--max-old-space-size=${MARINARA_TERMUX_HEAP_MB}"
     export NODE_OPTIONS
     echo "  [OK] Node.js heap limit set to ${MARINARA_TERMUX_HEAP_MB} MiB for this profile and device"
+else
+    # Tells the client build (and the in-app updater's) to keep the user's heap.
+    export MARINARA_EXPLICIT_NODE_HEAP=1
 fi
 
 # Resident chat cap (#5592): evict clean LRU chats from memory past this. 0 = off.

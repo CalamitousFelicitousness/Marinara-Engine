@@ -102,7 +102,13 @@ export function Modal({
         setAnimating("enter");
       });
     } else if (mounted) {
-      setAnimating("exit");
+      // Reduced motion has no fade (globals.css), so there is no transitionend to wait for.
+      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        setMounted(false);
+        setAnimating(null);
+      } else {
+        setAnimating("exit");
+      }
     }
 
     return () => {

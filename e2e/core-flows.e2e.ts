@@ -8387,7 +8387,9 @@ test("desktop Tracker scales into either Roleplay gutter without shifting chat",
     await page.reload();
     await expect(reloadedTracker).toBeHidden();
   } finally {
-    await page.request.delete(`/api/chats/${chat.id}`);
+    // Best-effort, so a step that hangs until the test timeout keeps its own error
+    // instead of being replaced by this cleanup timing out after it.
+    await bestEffortDelete(page.request, `/api/chats/${chat.id}`);
   }
 });
 
@@ -9544,8 +9546,12 @@ test("chat Help overlay responds to viewport changes with unchanged target geome
     const { ChatHelpOverlay } = (await import("/src/components/chat/ChatHelpOverlay.tsx" as string)) as {
       ChatHelpOverlay: unknown;
     };
-    const { ChatHelpButton } = (await import("/src/components/chat/ChatHelpButton.tsx" as string)) as {
-      ChatHelpButton: unknown;
+    // The real trigger: Chat Settings' Help button is a help tip that asks the overlay to open.
+    const { HelpTooltip } = (await import("/src/components/ui/HelpTooltip.tsx" as string)) as {
+      HelpTooltip: unknown;
+    };
+    const { requestChatHelp } = (await import("/src/lib/chat-help-events.ts" as string)) as {
+      requestChatHelp: (mode: "conversation") => void;
     };
     const runtime = globalThis as typeof globalThis & {
       React: {
@@ -9578,7 +9584,13 @@ test("chat Help overlay responds to viewport changes with unchanged target geome
           isFirstChat: false,
           autoOpenBlocked: true,
         }),
-        ready ? runtime.React.createElement(ChatHelpButton, { mode: "conversation" }) : null,
+        ready
+          ? runtime.React.createElement(HelpTooltip, {
+              text: "Show what each part of this chat does.",
+              ariaLabel: "Help",
+              onActivate: () => requestChatHelp("conversation"),
+            })
+          : null,
       );
     }
     runtime.ReactDOM.createRoot(mount).render(runtime.React.createElement(HelpFixture, null));
@@ -9772,9 +9784,12 @@ test("chat Help overlay labels visible controls in every mode", async ({ page, r
         await expect(overlay.locator('[data-chat-help-highlight="messages"]')).toBeVisible();
         await expect(overlay.locator('[data-chat-help-highlight="composer"]')).toBeVisible();
       } else {
-        // Retry lives in the Game controls window, pointed at through its button (a bubble on phones too).
-        await expect(overlay.locator('[data-chat-help-highlight="game-controls"]')).toBeVisible();
-        await expect(overlay.locator('[data-chat-help-highlight="session"]')).toBeVisible();
+        // Retry lives in the Game controls window, pointed at through its button. Phones keep that button,
+        // Session and the other game tools in the Chat tools menu, whose button Help points at instead.
+        for (const target of mobile ? ["chat-tools"] : ["game-controls", "session"]) {
+          await expect(overlay.locator(`[data-chat-help-highlight="${target}"]`)).toBeVisible();
+        }
+        if (!mobile) await expect(overlay.locator('[data-chat-help-highlight="chat-tools"]')).toHaveCount(0);
         await expect(overlay.locator('[data-chat-help-highlight="dialogue"]')).toBeVisible();
       }
 
@@ -9809,7 +9824,29 @@ test("chat Help overlay labels visible controls in every mode", async ({ page, r
         await keyboardTarget.focus();
         await page.keyboard.press("Enter");
         await expect(overlay.locator('[data-chat-help-mobile-detail="settings"]')).toBeVisible();
-        await overlay.locator(`[data-chat-help-highlight="${messageTarget}"]`).click();
+        if (chat.mode === "game") {
+          // The Chat tools callout lists what its menu holds, each with its own sentence.
+          await overlay.locator('[data-chat-help-highlight="chat-tools"]').click();
+          const toolsDetail = overlay.locator('[data-chat-help-mobile-detail="chat-tools"]');
+          await expect(toolsDetail).toContainText("Open more tools for this chat. Drag the button to move it.");
+          await expect(toolsDetail.locator("[data-chat-help-tools-legend] [data-chat-help-tool]")).toHaveCount(4);
+          await expect(toolsDetail.locator('[data-chat-help-tool="control:session"]')).toHaveText(
+            "Session: Open session history, journal, and session controls.",
+          );
+          await expect(toolsDetail.locator('[data-chat-help-tool="control:game"]')).toHaveText(
+            "Game controls: Retry a turn and control the storyboard.",
+          );
+        }
+        // On a short phone the open detail covers the lower part of a large callout; tap the part above it.
+        const messageHighlight = overlay.locator(`[data-chat-help-highlight="${messageTarget}"]`);
+        const messageBox = (await messageHighlight.boundingBox())!;
+        const openDetailBox = (await overlay.locator("[data-chat-help-mobile-detail]").boundingBox())!;
+        const visibleBottom = Math.min(messageBox.y + messageBox.height, openDetailBox.y);
+        expect(
+          visibleBottom - messageBox.y,
+          `${messageTarget} callout stays tappable above the detail`,
+        ).toBeGreaterThan(24);
+        await messageHighlight.click({ position: { x: messageBox.width / 2, y: (visibleBottom - messageBox.y) / 2 } });
         const detail = overlay.locator(`[data-chat-help-mobile-detail="${messageTarget}"]`);
         await expect(detail).toBeVisible();
         await expect(detail.locator(`[data-chat-help-action-legend="${chat.mode}"]`)).toBeVisible();
@@ -10139,11 +10176,16 @@ test("preset import and save-export feedback follow the active accent", async ({
     // read BEFORE the save is triggered: a round trip spent here would come
     // straight out of the window the visibility assertion has to catch it in.
     const expectedEditorAccent = await readScopedCssVariableColor(editor, "--marinara-editor-accent");
-    await exportDialog.getByRole("button", { name: "Save and export", exact: true }).click();
-
     const savedFeedback = editor.getByText("Changes saved", { exact: true });
-    await expect(savedFeedback).toBeVisible();
-    await expect(savedFeedback).toHaveCSS("color", expectedEditorAccent);
+    const saveAndExport = async () => {
+      await exportDialog.getByRole("button", { name: "Save and export", exact: true }).click();
+      await expect(savedFeedback).toBeVisible();
+      await expect(savedFeedback).toHaveCSS("color", expectedEditorAccent);
+    };
+    // Without a share sheet, an iPhone export waits behind a "Your file is ready." toast over the editor
+    // header (#7115). Linux WebKit has no share sheet while macOS WebKit does, so pin that path and save.
+    if (testInfo.project.name === "mobile-webkit") await downloadExport(page, saveAndExport);
+    else await saveAndExport();
     await testInfo.attach(`preset-save-export-accent-${testInfo.project.name}.png`, {
       body: await page.screenshot({ fullPage: true }),
       contentType: "image/png",
@@ -12313,12 +12355,14 @@ test(
     }));
     expect(chromeSurfaces.home).toBe(chromeSurfaces.app);
     const surfaceLightness = (value: string) => {
+      // Phones flatten the chrome to an rgb() backing while its color-mix() rows serialize as color(srgb 0–1).
+      const scale = value.startsWith("color(") ? 255 : 1;
       const channels =
         value
           .match(/[\d.]+/g)
           ?.slice(0, 3)
           .map(Number) ?? [];
-      return channels.reduce((total, channel) => total + channel, 0);
+      return channels.reduce((total, channel) => total + channel * scale, 0);
     };
     const darkAddressSurfaces = await page.evaluate(() => ({
       chrome: getComputedStyle(document.querySelector<HTMLElement>(".mari-home-browser-chrome")!).backgroundColor,
@@ -20379,6 +20423,10 @@ test("Professor Mari navigation can be repositioned within Home on desktop", asy
       before: getComputedStyle(element, "::before").display,
     })),
   ).toEqual({ after: "none", before: "none" });
+  // Mari arrives by sliding up past the Home hub's bottom edge. Hovering her mid-arrival lets Playwright
+  // scroll the hub to reveal her, and the hub keeps that offset (her hidden drag frame overflows it), so
+  // every bound measured below shifts. Let the arrival finish first.
+  await sprite.evaluate((element) => Promise.all(element.getAnimations().map((animation) => animation.finished)));
   await sprite.hover();
   await expect(handle).toBeVisible();
   await expect(handle).toHaveCSS("opacity", "1");
@@ -22505,7 +22553,13 @@ test("mobile chat composer follows the visual viewport above the software keyboa
       store.closeBotBrowser();
       store.setTrackerPanelEnabled(true);
       store.setTrackerPanelOpen(true, chatId);
+      // The chat's Trackers button now shows and hides the selected panel (8d79bd182); open it the way it does.
+      const { TRACKER_PANEL_BUBBLE_ID, useFloatingWindowStore } = await import(
+        "/src/stores/floating-window.store.ts" as string
+      );
+      useFloatingWindowStore.getState().openWindow(TRACKER_PANEL_BUBBLE_ID, null, { focus: false });
     }, chat.id);
+    await expect(page.locator('[data-component="TrackerDataSidebarMobile"]')).toBeVisible();
     await expect(shell).not.toHaveAttribute("data-chat-surface-active");
     await expect.poll(() => shell.evaluate((element) => getComputedStyle(element).transform)).toBe("none");
 
@@ -23219,12 +23273,13 @@ for (const theme of ["dark", "light"] as const) {
 
     const panel = page.locator('[data-component="RightPanel"]');
     const newButton = panel.getByTitle("New", { exact: true });
-    for (const surface of [
-      page.locator('[data-component="CharactersTopbarUnderline"]'),
-      panel.locator('[data-component="RightPanelHeaderIcon"]'),
-      newButton,
-    ]) {
-      await expect(surface).toBeVisible();
+    const underline = page.locator('[data-component="CharactersTopbarUnderline"]');
+    // Phones move the panel buttons into the topbar More menu (fdd0df0ce), so the underline stays on its hidden button.
+    const phoneTopbar = testInfo.project.name.startsWith("mobile");
+    if (phoneTopbar) await expect(page.locator('[data-tour="panel-characters"]')).toBeHidden();
+    for (const surface of [underline, panel.locator('[data-component="RightPanelHeaderIcon"]'), newButton]) {
+      if (phoneTopbar && surface === underline) await expect(surface).toHaveCount(1);
+      else await expect(surface).toBeVisible();
       await expect(surface).toHaveCSS(
         "background-image",
         /linear-gradient\(135deg, rgb\(244, 114, 182\), rgb\(244, 63, 94\)\)/,
@@ -23650,11 +23705,16 @@ test("Game HUD compacts on tablet widths when its surface mounts after the widge
     // survive being measured with nothing to measure and still compact once the
     // surface arrives. Holding here pins that ordering rather than leaving it to
     // runner timing.
+    //
+    // Every page request waits on the same hold, not only the first one: the chat
+    // view now mounts only once the chat itself has loaded (#6850), so the dev
+    // build's StrictMode remount cancels the transcript's first fetch and a retry
+    // carries the page that actually renders. Releasing that retry at once let the
+    // messages land before the lazy GameSurface chunk, skipping the branch.
     let sawMessagesLoadingBranch = false;
-    let messagesPageHeld = false;
+    let messagesPageHold: Promise<void> | null = null;
     await page.route("**/api/chats/*/messages**", async (route) => {
-      if (!messagesPageHeld) {
-        messagesPageHeld = true;
+      messagesPageHold ??= (async () => {
         await page
           .waitForFunction(
             () => document.querySelector('[data-component="GameSurface.MessagesLoading"]') !== null,
@@ -23696,7 +23756,8 @@ test("Game HUD compacts on tablet widths when its surface mounts after the widge
               }),
           )
           .catch(() => undefined);
-      }
+      })();
+      await messagesPageHold;
       await route.continue();
     });
 

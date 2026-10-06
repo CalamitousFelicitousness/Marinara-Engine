@@ -221,8 +221,12 @@ export function DecisionDefaultControl() {
       {/* A selected entry that has since become unusable stays selected; gates fail
           open and the reason is shown here rather than silently swapping the choice. */}
       {selected?.unavailable && (
-        <p role="status" className="flex items-start gap-1.5 text-xs text-amber-400">
-          <AlertTriangle size="0.875rem" className="mt-px shrink-0" aria-hidden />
+        <p role="status" className="flex items-start gap-1.5 text-xs text-[var(--foreground)]">
+          <AlertTriangle
+            size="0.875rem"
+            className="mt-px shrink-0 text-[var(--marinara-app-accent-static)]"
+            aria-hidden
+          />
           {reasonFor(selected)}
         </p>
       )}

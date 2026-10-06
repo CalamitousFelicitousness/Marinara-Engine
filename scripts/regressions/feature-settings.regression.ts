@@ -99,6 +99,8 @@ try {
   const fastify = Fastify();
   fastify.decorate("db", db);
   await fastify.register(appSettingsRoutes, { prefix: "/api/app-settings" });
+  const { backupRoutes } = await import("../../packages/server/src/routes/backup.routes.js");
+  await fastify.register(backupRoutes, { prefix: "/api/backup" });
   app = fastify as unknown as TestApp;
   await app.ready();
   assert.equal(isFeatureEnabled("stableLorebookGroupPicks"), true, "startup primes the cache");
@@ -175,6 +177,37 @@ try {
     true,
   );
   assert.equal(isFeatureEnabled("stableLorebookGroupPicks"), true, "Mari-style writes refresh the cache");
+  await storage.remove(FEATURE_SETTINGS_KEY);
+
+  // A profile restore writes the row raw too; the restored switches apply at once, and a later
+  // toggle built from the served settings keeps them.
+  const profile = {
+    type: "marinara_profile",
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    data: {
+      fileStorage: {
+        version: 1,
+        files: [],
+        tables: {
+          app_settings: [
+            { key: FEATURE_SETTINGS_KEY, value: JSON.stringify({ messageTrash: true }), updatedAt: "restored" },
+          ],
+        },
+      },
+    },
+  };
+  const restored = await app.inject({ method: "POST", url: "/api/backup/import-profile", payload: profile });
+  assert.equal(restored.statusCode, 200, restored.body);
+  assert.equal(isFeatureEnabled("messageTrash"), true, "a profile restore refreshes the cache");
+  const servedAfterRestore = (await app.inject({ method: "GET", url: "/api/app-settings/features" })).json().settings;
+  assert.equal(servedAfterRestore.messageTrash, true);
+  await app.inject({
+    method: "PUT",
+    url: "/api/app-settings/features",
+    payload: { ...servedAfterRestore, providerRetry: true },
+  });
+  assert.deepEqual(JSON.parse((await storage.get(FEATURE_SETTINGS_KEY))!), { messageTrash: true, providerRetry: true });
   await storage.remove(FEATURE_SETTINGS_KEY);
 
   // The generic key route does not expose it (the typed route validates).

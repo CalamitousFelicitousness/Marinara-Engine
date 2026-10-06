@@ -126,7 +126,7 @@
 
 ## Latest Release
 
-Current stable release: **[v2.4.6](https://github.com/Pasta-Devs/Marinara-Engine/releases/tag/v2.4.6)**.
+Current stable release: **[v2.5.0](https://github.com/Pasta-Devs/Marinara-Engine/releases/tag/v2.5.0)**.
 
 See [CHANGELOG.md](CHANGELOG.md) for detailed release notes. Tagged releases use the `vX.Y.Z` format and are published on the [Releases](https://github.com/Pasta-Devs/Marinara-Engine/releases) page with a Windows installer, Android bootstrap APK, and named versioned source ZIP. Android APKs are Termux bootstrap + WebView shells: they can download Termux from F-Droid, launch Android's installer, start the Termux setup flow after required permission prompts, then open the local Marinara server on the same device. **[Download the latest Android APK directly](https://github.com/Pasta-Devs/Marinara-Engine/releases/latest/download/marinara-engine-android.apk).**
 
@@ -181,7 +181,7 @@ See [Appearance Settings](docs/appearance/appearance-settings.md) and [Custom CS
 Agents are optional AI helpers that work alongside your chats: they track the world, polish the prose, draw pictures, play music, and more. A fresh install comes with none, so Marinara stays light. Open **Agents → Download Agents** to install only the ones you want from the official [Marinara-Agents](https://github.com/Pasta-Devs/Marinara-Agents) catalog, then turn them on for each chat in **Chat Settings**. Marinara asks before updating an installed agent, and you can uninstall anything you no longer need. Packages marked as previews are offered only on the Engine `staging` update channel.
 
 - **Writer Agents** shape the story and clean up the prose: Prose Guardian, Continuity Checker, Narrative Director, Knowledge Retrieval, Knowledge Router, and Card Evolution Auditor.
-- **Tracker Agents** keep track of the world, the cast, and your persona: World State, Expression Engine, Quest Tracker, Background, Character Tracker, Persona Stats, Custom Tracker, Inventory Tracker, Beholder, Memory Nag, and World Maps. Quartermaster and Relationship Tracker are previews.
+- **Tracker Agents** keep track of the world, the cast, and your persona: World State, Expression Engine, Quest Tracker, Background, Character Tracker, Persona Stats, Custom Tracker, Inventory Tracker, Beholder, Memory Nag, World Maps, Quartermaster, and Relationship Tracker.
 - **Misc Agents** add pictures, music, memory, and extras: Illustrator, Storyboard, Music DJ, Long-Term Memory, Lorebook Keeper, Echo Chamber, Combat, CYOA Choices, Immersive HTML, Haptic Feedback, and Calls (audio and video calls in Conversation mode).
 - **Conversation games** let you play against your characters: UNO, Chess, Poker, 8-Ball Pool, Tic-Tac-Toe, and Rock-Paper-Scissors.
 - **Apps** are whole experiences built on your characters, each with its own Home tab: Noodle (a social feed where your characters post), Slurp (a private creator app for your characters), and Gacha Forge (a gacha game built from a world you describe). Modern Life Sim is a preview.

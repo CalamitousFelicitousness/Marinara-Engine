@@ -11,6 +11,7 @@ import { lorebookKeys } from "../../hooks/use-lorebooks";
 import { api } from "../../lib/api-client";
 import {
   inspectCharacterFilesForEmbeddedLorebooks,
+  isOversizedMarinaraJson,
   type EmbeddedLorebookImportPreview,
 } from "../../lib/character-import";
 import { useTranslation as useUiTranslation } from "react-i18next";
@@ -82,7 +83,8 @@ export function ImportCharacterModal({ open, onClose }: Props) {
 
         // Marinara native packages are .marinara zip files (data.json + avatar
         // binary). Detect via the zip signature so a renamed file still works.
-        if (await isZipFile(file)) {
+        // A native .marinara.json too large for a JSON request is uploaded the same way.
+        if ((await isZipFile(file)) || (await isOversizedMarinaraJson(file))) {
           marinaraPackages.push(file);
           continue;
         }

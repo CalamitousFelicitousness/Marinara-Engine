@@ -185,14 +185,14 @@ const NO_SPAWN_BRIDGE = /(?:(?!spawnWorkspaceSandboxedShell)[^])*?/u.source;
 assert.match(
   flatAgentSource,
   new RegExp(
-    `if \\(directMariArgv\\) return this\\.commandMariDirect\\(command, directMariArgv\\);${NO_SPAWN_BRIDGE}if \\(commandEmbedsMariCliMutation\\(command\\.toLowerCase\\(\\)\\)\\) \\{ throw new Error\\(${NO_SPAWN_BRIDGE}cannot run inside the shell sandbox`,
+    `if \\(directMariArgv && !codeCheck\\) return this\\.commandMariDirect\\(command, directMariArgv\\);${NO_SPAWN_BRIDGE}if \\(commandEmbedsMariCliMutation\\(command\\.toLowerCase\\(\\)\\)\\) \\{ throw new Error\\(${NO_SPAWN_BRIDGE}cannot run inside the shell sandbox`,
     "u",
   ),
 );
 assert.match(
   flatAgentSource,
   new RegExp(
-    `if \\(directMariArgv\\) return this\\.commandMariDirect\\(command, directMariArgv\\);${NO_SPAWN_BRIDGE}if \\(bashCommandTargetsSensitivePath\\(command\\)\\) \\{ throw new Error\\(${NO_SPAWN_BRIDGE}The shell sandbox blocks writes to those silently${NO_SPAWN_BRIDGE}spawnWorkspaceSandboxedShell`,
+    `if \\(directMariArgv && !codeCheck\\) return this\\.commandMariDirect\\(command, directMariArgv\\);${NO_SPAWN_BRIDGE}if \\(bashCommandTargetsSensitivePath\\(command\\)\\) \\{ throw new Error\\(${NO_SPAWN_BRIDGE}The shell sandbox blocks writes to those silently${NO_SPAWN_BRIDGE}spawnWorkspaceSandboxedShell`,
     "u",
   ),
 );

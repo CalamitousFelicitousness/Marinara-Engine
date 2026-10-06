@@ -4,6 +4,31 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- On phones and tablets, Home's browser bar now matches the color of the top bar above it instead of showing as a lighter strip. With reduced motion turned on, theme and accent changes no longer play slow transitions, and dialogs close at once. On phone-width screens in some WebKit browsers, Conversation message buttons such as Regenerate and **Bookmark, pin or note** no longer ignore a press, and Tab reaches them (#7146).
+
+- On phones with Chromium-based browsers, tapping a chat button right after flicking it into place now opens it on the first tap instead of being ignored (#7146).
+
+- Pressing Escape to cancel dragging a chat, character or persona, or to close a picker such as the Text to Speech voice search, no longer closes the whole side panel. Dropping a chat window button onto another one now places it neatly beside it instead of hiding one under the other. On phones, Help explains the **Chat tools** button and lists the tools inside it, labels the map and party buttons again, and keeps its instructions from covering the buttons along the top (#7146).
+
+- Coming back to a chat before its Expression agent finished no longer shows the previous turn's sprites when **Only show active sprites** is on. Switching chats during a Game translation no longer leaves that message marked as translating. On computers, the **Trackers** button starts in the top-right corner when the Tracker Panel is on the left, so it no longer covers the panel's header and settings button (#7146).
+
+- Game Mode combat works on phones and tablets that open Marinara over plain HTTP, such as a LAN address or Tailscale. Every action in a fight used to fail there before reaching the server, so battles in new games could not continue (#7146).
+
+- On Android (Termux), updating to this version no longer runs out of memory while building the app. Every build path, including the first start after an automatic update from v2.4.6, the in-app updater and switching update channels, now gives the build the memory it needs (up to 1.5 GB, at most half the phone's memory) without raising the running server's limit, and a memory limit you set yourself still wins. Two Game Mode labels that showed raw text keys now show real text, and Decision model warnings use your theme's colors instead of a fixed yellow that was hard to read in light mode (#7146).
+
+- The README and the Built-in agents guide now list **Quartermaster** and **Relationship Tracker** as regular Tracker Agents, since both are now in the stable Download Agents catalog, and link to their package guides on `main` (#7146).
+
+- **Multiplayer (work in progress)** is sturdier. When the host stops or turns off a room, guests who are connected at that moment see that it ended instead of reconnecting for hours. A guest who leaves or restarts can rejoin under the same name and, in Game, keeps their character. **Leave** in an old chat no longer ends the session in another room. Adding or removing characters from Chat Settings in a hosted room no longer breaks replies. A stale session or a room port that fails to open no longer blocks hosting or joining again. The Players list says **Offline** instead of "Reconnecting", and turning the in-app switch off points to **Settings → Advanced → Multiplayer**. Room addresses work over IPv6. Someone outside the room can no longer lock guests out with floods of requests or idle connections, names can't hide invisible characters to look like another player, and guests see which player is the host (#7146).
+
+- Professor Mari's `mari code check` now runs inside her shell sandbox, without network access or the server's secrets, because it runs project scripts she can edit. Where no sandbox is available, she asks you to run `pnpm check` yourself. She can no longer read, copy, change or delete the key file that protects your saved API keys, and her shell commands can't write into your saved data folder. `/api/health` still answers uptime checks and launchers without a password, but only shows local model names and GPU details to this machine, a trusted network or a signed-in browser (#7146).
+
+- Exports and backups are more reliable. Exporting many chats at once streams the ZIP one chat at a time instead of building it all in memory. Bulk lorebook and preset exports and the compatible profile ZIP keep every item when two share a name, numbering the copies. A large-gallery character or persona export can be imported again even when it is bigger than the normal upload limit for JSON. Restoring a trashed message brings back the lorebook changes an agent made with it. Feature switches restored from a profile backup take effect right away. The server-folder backup no longer fails on Docker or Termux, and an export over the image budget says so instead of "request body is too large" (#7146).
+
+- Jumping from a search result into a Game chat no longer shows the "not available in Game mode" notice twice in development builds. The full browser regression suite now drives the redesigned Chat Settings window and the plain-language copy, so it passes again on desktop, Android-sized and iPhone-sized browsers (#7146).
+
+- Updated the upload parser, proxy address handling and two logging and styling helpers to their patched releases, clearing four newly published dependency advisories. The dormant Bunny Review workflow no longer lets files in a pull request replace the Python modules it runs with, and only trusts its own review markers (#7146).
+
+- Prepared v2.5.0 across the Engine, Home version, PWA manifest, README, Windows installer, and Android bootstrap metadata. Android uses version code 48 so the APK can update existing installations, and the Credits list is refreshed (#7146).
 - The lorebook sidebar's **All** view now shows one list in your selected sort order, without dividing it into category sections (#7154).
 
 - **Advanced Memory** now offers **Pause processing** and **Resume processing**, including during initial setup. Paused work keeps its progress visible, stays paused when new replies arrive, and resumes from saved checkpoints.

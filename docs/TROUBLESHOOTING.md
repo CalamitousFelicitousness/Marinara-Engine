@@ -27,9 +27,9 @@ When reporting a connection error, include mode, platform, the visible error and
 
 ### Termux: JavaScript heap out of memory while building the client
 
-If Vite stops with `Reached heap limit` or `JavaScript heap out of memory`, the client build ran out of Node.js heap. This is different from a missing native Rollup binary. Update and rerun `start-termux.sh`: client builds now temporarily raise a smaller automatic heap toward 1536 MiB, capped at half of known device RAM with a 1024 MiB floor. The RAM cap is rounded down in 128 MiB steps. If half of device RAM is below 1024 MiB, the 1024 MiB floor takes precedence. The running server keeps its smaller profile-based limit. An explicit heap limit in `NODE_OPTIONS` takes precedence for both processes, so check for a previously configured 1024 MiB override.
+If Vite stops with `Reached heap limit` or `JavaScript heap out of memory`, the client build ran out of Node.js heap. This is different from a missing native Rollup binary. Update and rerun `start-termux.sh`: client builds, including in-app updates, now run with their own 1536 MiB heap, capped at half of known device RAM but never below the 1280 MiB the build needs. The RAM cap is rounded down in 128 MiB steps. The running server keeps its smaller profile-based limit. An explicit heap limit in `NODE_OPTIONS` takes precedence for both processes, so check for a previously configured 1024 MiB override: the client no longer builds in 1024 MiB.
 
-Close other apps before retrying. Low-memory devices can still run out of memory or be stopped by Android; keep the complete launcher output when reporting that case. Do not delete your chats or profile to repair a build failure.
+Close other apps before retrying. Phones with less than about 3 GB of RAM can still run out of memory or be stopped by Android; keep the complete launcher output when reporting that case. Do not delete your chats or profile to repair a build failure.
 
 ### Termux: missing multiplayer guest asset or incompatible Sharp
 

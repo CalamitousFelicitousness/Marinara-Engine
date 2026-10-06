@@ -884,6 +884,26 @@ test("Advanced Memory stays in Chat Settings with confirmed knowledge, resumable
     await expect(wheel).toHaveCSS("background-image", /professor-mari-memory-wheel-v2\.png/);
     await page.emulateMedia({ reducedMotion: "reduce" });
     await expect(wheel).toHaveCSS("animation-name", "none");
+    // Reduced motion runs no transitions. A theme change used to start one for every property of every
+    // element, which made each switch below cost seconds on CI and ran this test out of time.
+    const themeTransitions = await page.evaluate(async () => {
+      let started = 0;
+      const count = () => (started += 1);
+      document.addEventListener("transitionrun", count);
+      try {
+        const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+        const ui = useUIStore.getState();
+        const next = ui.theme === "dark" ? "light" : "dark";
+        ui.setTheme(next);
+        for (let frame = 0; frame < 60 && document.documentElement.dataset.theme !== next; frame++)
+          await new Promise(requestAnimationFrame);
+        await new Promise(requestAnimationFrame);
+        return document.documentElement.dataset.theme === next ? started : -1;
+      } finally {
+        document.removeEventListener("transitionrun", count);
+      }
+    });
+    expect(themeTransitions).toBe(0);
     await progress.scrollIntoViewIfNeeded();
     await captureThemes(page, info, "advanced-memory-progress");
     await progress.getByRole("button", { name: "Pause processing", exact: true }).click();

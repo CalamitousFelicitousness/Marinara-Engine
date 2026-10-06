@@ -20,6 +20,7 @@ import {
   serializeWindowLayoutSnapshot,
   toWindowLayoutSnapshot,
   clampWindowBubble,
+  placeWindowBubbles,
   getBubbleRowSlot,
   getTopRightBubblePoint,
   getPhoneBubbleSlot,
@@ -443,6 +444,73 @@ assert.equal(
 );
 // Bubbles stay on screen; a window opens below its bubble, or above it near the bottom.
 assert.deepEqual(clampWindowBubble({ x: -50, y: 5000 }, bounds), { x: 8, y: 860 });
+
+// Sidebars squeeze a row of saved buttons into distinct visible places without changing the saved row.
+const savedButtons = new Map(
+  [16, 56, 96, 1200, 1240, 1280].map((x, index) => [
+    String(index),
+    { point: { x, y: 80 }, bounds: { left: 8, top: 56, right: 1320, bottom: 700 }, size: 32 },
+  ]),
+);
+const originalButtonPositions = [...savedButtons].map(([id, bubble]) => [id, bubble.point]);
+for (const narrowed of [
+  { left: 8, top: 56, right: 960, bottom: 700 },
+  { left: 368, top: 56, right: 1320, bottom: 700 },
+  { left: 368, top: 56, right: 960, bottom: 700 },
+]) {
+  const visible = [
+    ...placeWindowBubbles(
+      new Map([...savedButtons].map(([id, bubble]) => [id, { ...bubble, bounds: narrowed }])),
+    ).values(),
+  ];
+  for (const [index, point] of visible.entries()) {
+    assert.deepEqual(point, clampWindowBubble(point, narrowed), "each squeezed button remains in the chat");
+    for (const other of visible.slice(index + 1)) {
+      assert.ok(
+        Math.abs(point.x - other.x) >= 32 || Math.abs(point.y - other.y) >= 32,
+        "squeezed buttons remain separately reachable",
+      );
+    }
+  }
+}
+assert.deepEqual(
+  [...placeWindowBubbles(savedButtons)],
+  originalButtonPositions,
+  "closing sidebars restores the saved arrangement",
+);
+assert.deepEqual(
+  [...savedButtons].map(([id, bubble]) => [id, bubble.point]),
+  originalButtonPositions,
+  "temporary placement never rewrites saved points",
+);
+// The remaining space can fit a button even when it cannot also fit the usual snapping gap.
+const tightBounds = { left: 0, top: 0, right: 100, bottom: 32 };
+const tightPositions = placeWindowBubbles(
+  new Map([
+    ["left", { point: { x: 0, y: 0 }, bounds: tightBounds, size: 32 }],
+    ["right", { point: { x: 68, y: 0 }, bounds: tightBounds, size: 32 }],
+    ["overflow", { point: { x: 200, y: 0 }, bounds: tightBounds, size: 32 }],
+  ]),
+);
+assert.equal(tightPositions.get("left")?.x, 0);
+assert.equal(tightPositions.get("right")?.x, 68);
+assert.ok(
+  tightPositions.get("overflow")!.x >= 32 && tightPositions.get("overflow")!.x <= 36,
+  "use the remaining narrow gap before overlapping a button",
+);
+const defaultCollisionBounds = { left: 8, top: 56, right: 960, bottom: 700 };
+const defaultCollision = placeWindowBubbles(
+  new Map([
+    ["saved-drawer", { point: { x: 928, y: 80 }, bounds: defaultCollisionBounds, size: 32 }],
+    ["default-settings", { point: { x: 928, y: 80, automatic: true }, bounds: defaultCollisionBounds, size: 32 }],
+  ]),
+);
+assert.deepEqual(defaultCollision.get("saved-drawer"), { x: 928, y: 80 }, "a valid saved point keeps its place");
+assert.notDeepEqual(
+  defaultCollision.get("default-settings"),
+  defaultCollision.get("saved-drawer"),
+  "a moving default yields even when neither point needs clamping",
+);
 const controlLimits = { minWidth: 200, minHeight: 96 };
 assert.deepEqual(placeWindowBesideBubble({ width: 280, height: 200 }, { x: 1000, y: 64 }, bounds, controlLimits), {
   x: 752,

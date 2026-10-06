@@ -1,10 +1,9 @@
 // ──────────────────────────────────────────────
 // Chat: Roleplay HUD — immersive world-state widgets
-// Each tracker category gets its own mini widget with
-// a compact preview and expandable editable popover.
-// Uses a compact horizontal strip with bottom popovers.
+// Phones keep World and Player trackers in separate movable buttons and themed sheets.
+// Package controls and the manual tracker trigger remain in the compact strip.
 // ──────────────────────────────────────────────
-import { Suspense, lazy, useState, useEffect, useRef, useCallback, useLayoutEffect } from "react";
+import { Suspense, lazy, useState, useEffect, useCallback, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { MapPin, Users, Backpack, Scroll, Swords, RefreshCw, BarChart3, SlidersHorizontal } from "lucide-react";
 import { cn } from "../../lib/utils";
@@ -32,7 +31,11 @@ import {
 import { TrackerLockProvider, useTrackerLockContext } from "../../features/tracker-panel/components/TrackerLockContext";
 import { buildInventoryTrackerEditPatch } from "../../features/tracker-panel/lib/inventory-tracker-edit";
 import { useTrackerFieldLockUpdater } from "../../features/tracker-panel/hooks/use-tracker-field-lock-updater";
-import { NEUTRAL_PANEL_SCROLL_AREA, NEUTRAL_PANEL_SHELL } from "../ui/neutral-surface-styles";
+import { NEUTRAL_PANEL_SCROLL_AREA, NEUTRAL_SURFACE_VARIABLES } from "../ui/neutral-surface-styles";
+import { FloatingWindow, PHONE_SHEET_CLASS } from "../ui/FloatingWindow";
+import { useMatchMedia } from "../../hooks/use-match-media";
+import { useFloatingWindowStore } from "../../stores/floating-window.store";
+import { getChatControlDefaultLayout } from "./ChatControlWindow";
 import {
   CHAT_TOOLBAR_ICON_GAP_CLASS,
   CHAT_TOOLBAR_MOBILE_OVERFLOW_HEIGHT_CLASS,
@@ -60,6 +63,8 @@ import type { TrackerTemperatureUnit } from "../../stores/ui.store";
 import { useTranslation as useUiTranslation } from "react-i18next";
 
 const EMPTY_AGENT_TYPE_SET = new Set<string>();
+const MOBILE_WORLD_WINDOW_ID = "control:tracker-world";
+const MOBILE_PLAYER_WINDOW_ID = "control:tracker-player";
 
 interface RoleplayHUDProps {
   chatId: string;
@@ -174,6 +179,11 @@ export function RoleplayHUD({
   mobileCompact,
   enabledAgentTypes: enabledAgentTypesProp,
 }: RoleplayHUDProps & { mobileCompact?: boolean }) {
+  const [trackerPortalHost, setTrackerPortalHost] = useState<HTMLElement | null>(null);
+  const attachHud = useCallback((node: HTMLDivElement | null) => {
+    // Escape the clipped toolbar while sharing Chat Settings' stacking context.
+    setTrackerPortalHost(node?.closest<HTMLElement>('[data-component="ChatArea.Roleplay"]') ?? null);
+  }, []);
   const gameStateRefreshing = useGameStateStore((s) => s.isRefreshing);
   const setGameState = useGameStateStore((s) => s.setGameState);
 
@@ -206,6 +216,7 @@ export function RoleplayHUD({
   const trackerTemperatureUnit = useUIStore((s) => s.trackerTemperatureUnit);
 
   const isTrackerBusy = isAgentProcessing || isStreaming || gameStateRefreshing;
+  const phoneLayout = useMatchMedia("(max-width: 767px)");
   // Phones only: on a computer, trackers live in the Tracker Panel or the Tracker window.
   const showHudTrackerWidgets = !(trackerPanelEnabled && trackerPanelHideHudWidgets);
 
@@ -238,21 +249,15 @@ export function RoleplayHUD({
   const hasMobilePlayerTrackerSections =
     hasPlayerTrackerSections || hasInventoryTracker || memoryNagTrackerPackages.length > 0;
 
-  // If mobileCompact, widgets are even narrower and action buttons are not cut off
-
   return (
     <TrackerLockProvider {...lockProviderProps}>
-      <div className={cn("rpg-hud", "flex items-center", CHAT_TOOLBAR_ICON_GAP_CLASS, mobileCompact && "min-w-0")}>
-        {/* Chat Settings turns the Tracker Panel on, and Beholder has its own window (a bubble). */}
-        {/* ── Mobile: combined widgets, grouped with tracker and agent controls ── */}
-        {showHudTrackerWidgets && (
-          <div
-            className={cn(
-              "flex items-center md:hidden",
-              CHAT_TOOLBAR_ICON_GAP_CLASS,
-              mobileCompact && "min-w-0 justify-start",
-            )}
-          >
+      {/* Only the compact phone HUD owns these windows; the portal escapes the clipped toolbar. */}
+      {mobileCompact &&
+        phoneLayout &&
+        showHudTrackerWidgets &&
+        trackerPortalHost &&
+        createPortal(
+          <>
             {enabledAgentTypes.has("world-state") && (
               <CombinedWorldWidget
                 location={location ?? ""}
@@ -302,7 +307,23 @@ export function RoleplayHUD({
                 isTrackerRetryBusy={isTrackerBusy}
               />
             )}
-
+          </>,
+          trackerPortalHost,
+        )}
+      <div
+        ref={attachHud}
+        className={cn("rpg-hud", "flex items-center", CHAT_TOOLBAR_ICON_GAP_CLASS, mobileCompact && "min-w-0")}
+      >
+        {/* Chat Settings turns the Tracker Panel on, and Beholder has its own window (a bubble). */}
+        {/* Mobile package and manual tracker controls. */}
+        {showHudTrackerWidgets && (
+          <div
+            className={cn(
+              "flex items-center md:hidden",
+              CHAT_TOOLBAR_ICON_GAP_CLASS,
+              mobileCompact && "min-w-0 justify-start",
+            )}
+          >
             {otherRoleplayTrackerPackages.map((item) => (
               <RoleplayTrackerCapability
                 key={`${item.id}-roleplay-tracker-mobile`}
@@ -443,157 +464,91 @@ function CombinedPlayerWidget({
   isTrackerRetryBusy?: boolean;
 }) {
   const { t: localizeUi } = useUiTranslation();
-  const [open, setOpen] = useState(false);
-  const buttonRef = useRef<HTMLButtonElement>(null);
+  const close = () => useFloatingWindowStore.getState().closeWindow(MOBILE_PLAYER_WINDOW_ID);
 
   return (
-    <div className="relative">
-      <button
-        ref={buttonRef}
-        onClick={() => setOpen(!open)}
-        className={WIDGET}
-        title={localizeUi("ui.chat.combinedplayerwidget.playerTracker")}
+    <MobileTrackerWindow
+      id={MOBILE_PLAYER_WINDOW_ID}
+      title={localizeUi("ui.chat.combinedplayerwidget.playerTracker")}
+      icon={<Swords size="0.875rem" />}
+      width={320}
+      height={512}
+    >
+      <Suspense
+        fallback={<DeferredHUDPanelFallback label={localizeUi("ui.chat.combinedplayerwidget.loadingTrackers")} />}
       >
-        <div className="flex h-4 items-center justify-center shrink-0">
-          <Swords size="0.875rem" className="max-md:h-4 max-md:w-4" />
-        </div>
-        <span className="sr-only">{localizeUi("ui.chat.combinedplayerwidget.tracker")}</span>
-      </button>
-
-      <WidgetPopover
-        open={open}
-        onClose={() => setOpen(false)}
-        anchorRef={buttonRef}
-        className="w-80 max-h-[min(75vh,32rem)]"
-      >
-        <Suspense
-          fallback={<DeferredHUDPanelFallback label={localizeUi("ui.chat.combinedplayerwidget.loadingTrackers")} />}
-        >
-          <CombinedPlayerPanel
-            showPersona={showPersona}
-            showCharacters={showCharacters}
-            showQuests={showQuests}
-            showInventory={showInventory}
-            memoryNagPackageIds={memoryNagPackageIds}
-            chatId={chatId}
-            showCustomTracker={showCustomTracker}
-            personaStats={personaStats}
-            onUpdatePersonaStats={onUpdatePersonaStats}
-            personaStatus={personaStatus}
-            onUpdatePersonaStatus={onUpdatePersonaStatus}
-            characters={characters}
-            onUpdateCharacters={onUpdateCharacters}
-            quests={quests}
-            onUpdateQuests={onUpdateQuests}
-            inventoryCurrencies={inventoryCurrencies}
-            inventoryEquipped={inventoryEquipped}
-            inventory={inventory}
-            onUpdateInventoryCurrencies={onUpdateInventoryCurrencies}
-            onUpdateInventoryEquipped={onUpdateInventoryEquipped}
-            onUpdateInventory={onUpdateInventory}
-            customTrackerFields={customTrackerFields}
-            onUpdateCustomTracker={onUpdateCustomTracker}
-            onClose={() => setOpen(false)}
-            onRerunSingleTracker={onRerunSingleTracker}
-            isTrackerRetryBusy={isTrackerRetryBusy}
-          />
-        </Suspense>
-      </WidgetPopover>
-    </div>
+        <CombinedPlayerPanel
+          showPersona={showPersona}
+          showCharacters={showCharacters}
+          showQuests={showQuests}
+          showInventory={showInventory}
+          memoryNagPackageIds={memoryNagPackageIds}
+          chatId={chatId}
+          showCustomTracker={showCustomTracker}
+          personaStats={personaStats}
+          onUpdatePersonaStats={onUpdatePersonaStats}
+          personaStatus={personaStatus}
+          onUpdatePersonaStatus={onUpdatePersonaStatus}
+          characters={characters}
+          onUpdateCharacters={onUpdateCharacters}
+          quests={quests}
+          onUpdateQuests={onUpdateQuests}
+          inventoryCurrencies={inventoryCurrencies}
+          inventoryEquipped={inventoryEquipped}
+          inventory={inventory}
+          onUpdateInventoryCurrencies={onUpdateInventoryCurrencies}
+          onUpdateInventoryEquipped={onUpdateInventoryEquipped}
+          onUpdateInventory={onUpdateInventory}
+          customTrackerFields={customTrackerFields}
+          onUpdateCustomTracker={onUpdateCustomTracker}
+          onClose={close}
+          onRerunSingleTracker={onRerunSingleTracker}
+          isTrackerRetryBusy={isTrackerRetryBusy}
+        />
+      </Suspense>
+    </MobileTrackerWindow>
   );
 }
 
-/** Shared popover wrapper used by tracker widgets — renders via portal to escape overflow clipping */
-function WidgetPopover({
-  open,
-  onClose,
-  anchorRef,
+/** The phone tracker's movable button and themed sheet share every other chat window's layout storage. */
+function MobileTrackerWindow({
+  id,
+  title,
+  icon,
+  width,
+  height,
   children,
-  className,
 }: {
-  open: boolean;
-  onClose: () => void;
-  anchorRef: React.RefObject<HTMLElement | null>;
-  children: React.ReactNode;
-  className?: string;
+  id: string;
+  title: string;
+  icon: ReactNode;
+  width: number;
+  height: number;
+  children: ReactNode;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
-
-  const computePosition = useCallback(() => {
-    if (!anchorRef.current) return null;
-    const rect = anchorRef.current.getBoundingClientRect();
-    const popoverWidth = ref.current?.offsetWidth ?? 288;
-    const popoverHeight = ref.current?.offsetHeight ?? 200;
-    const top = rect.bottom + 4;
-    let left: number;
-
-    // Bottom placement — center horizontally on screen for mobile
-    const isMobile = window.innerWidth < 768;
-    if (isMobile) {
-      left = Math.round((window.innerWidth - popoverWidth) / 2);
-    } else {
-      left = rect.left;
-      if (left + popoverWidth > window.innerWidth - 8) {
-        left = Math.max(8, window.innerWidth - popoverWidth - 8);
+  const { t } = useUiTranslation();
+  useEffect(() => () => useFloatingWindowStore.getState().closeWindow(id), [id]);
+  return (
+    <FloatingWindow
+      id={id}
+      title={title}
+      titleIcon={icon}
+      closeLabel={t("window.controls.close")}
+      presentation="sheet"
+      sheetClassName={PHONE_SHEET_CLASS}
+      minimizable={{ icon, label: title }}
+      getDefaultLayout={(bounds, bubbleSize) =>
+        getChatControlDefaultLayout(bounds, 0, { width, height }, 0, bubbleSize)
       }
-    }
-    return {
-      top: Math.max(8, Math.min(top, window.innerHeight - popoverHeight - 8)),
-      left: Math.max(8, Math.min(left, window.innerWidth - popoverWidth - 8)),
-    };
-  }, [anchorRef]);
-
-  // Position the popover relative to the anchor element
-  useLayoutEffect(() => {
-    if (!open) return;
-    setPos(computePosition());
-  }, [open, computePosition]);
-
-  // Reposition on scroll/resize
-  useEffect(() => {
-    if (!open) return;
-    const update = () => setPos(computePosition());
-    window.addEventListener("scroll", update, true);
-    window.addEventListener("resize", update);
-    const observer = new ResizeObserver(update);
-    if (ref.current) observer.observe(ref.current);
-    return () => {
-      window.removeEventListener("scroll", update, true);
-      window.removeEventListener("resize", update);
-      observer.disconnect();
-    };
-  }, [open, computePosition]);
-
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (ref.current && !ref.current.contains(target) && !anchorRef.current?.contains(target)) {
-        // Delay close so that the input's blur event fires first, committing any edits
-        requestAnimationFrame(() => onClose());
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [open, onClose, anchorRef]);
-
-  if (!open) return null;
-  return createPortal(
-    <div
-      ref={ref}
-      style={pos ? { position: "fixed", top: pos.top, left: pos.left } : { position: "fixed", top: -9999, left: -9999 }}
-      className={cn(
-        NEUTRAL_PANEL_SHELL,
-        NEUTRAL_PANEL_SCROLL_AREA,
-        "z-[9999] min-h-24 min-w-60 max-w-[calc(100vw-1rem)] resize overflow-auto",
-        className,
-        "!max-h-[calc(100vh-1rem)]",
-      )}
+      autoFocus={false}
+      className={NEUTRAL_SURFACE_VARIABLES}
+      rootAttributes={{ "data-mobile-tracker-window": id }}
+      ignoreOutsidePointer={(target) => !!target.closest("[data-chat-floating-panel], [data-macro-modal]")}
     >
-      {children}
-    </div>,
-    document.body,
+      <div className={cn(NEUTRAL_PANEL_SCROLL_AREA, "@container min-h-0 flex-1 overflow-y-auto overscroll-contain")}>
+        {children}
+      </div>
+    </FloatingWindow>
   );
 }
 
@@ -707,12 +662,6 @@ export function QuestsMiniature({ quests }: { quests: QuestProgress[] }) {
 // Uniform World-State Widgets
 // ═══════════════════════════════════════════════
 
-const WIDGET = cn(
-  HUD_ICON_BUTTON,
-  CHAT_TOOLBAR_MOBILE_OVERFLOW_HEIGHT_CLASS,
-  "group flex-col gap-0 overflow-hidden cursor-pointer select-none",
-);
-
 // ═══════════════════════════════════════════════
 // Combined World-State Widget (icon strip + popover, phones)
 // ═══════════════════════════════════════════════
@@ -793,54 +742,48 @@ function CombinedWorldWidget({
   isTrackerRetryBusy?: boolean;
 }) {
   const { t: localizeUi } = useUiTranslation();
-  const [open, setOpen] = useState(false);
-  const buttonRef = useRef<HTMLButtonElement>(null);
+  const close = () => useFloatingWindowStore.getState().closeWindow(MOBILE_WORLD_WINDOW_ID);
   const display = getWorldTrackerDisplay(
     { location, date, time, weather, temperature, worldCustomFields },
     trackerTemperatureUnit,
   );
 
   return (
-    <div className="relative">
-      <button
-        ref={buttonRef}
-        onClick={() => setOpen(!open)}
-        className={cn(getWorldMiniatureTileClass(display.hasWorldState, open), "cursor-pointer select-none")}
-        title={localizeUi("ui.panels.appearancesettings.worldState")}
+    <MobileTrackerWindow
+      id={MOBILE_WORLD_WINDOW_ID}
+      title={localizeUi("ui.panels.appearancesettings.worldState")}
+      icon={<MapPin size="0.875rem" />}
+      width={288}
+      height={400}
+    >
+      <Suspense
+        fallback={<DeferredHUDPanelFallback label={localizeUi("ui.chat.combinedworldwidget.loadingWorldState")} />}
       >
-        <WorldStateMiniature display={display} />
-      </button>
-
-      <WidgetPopover open={open} onClose={() => setOpen(false)} anchorRef={buttonRef} className="w-64">
-        <Suspense
-          fallback={<DeferredHUDPanelFallback label={localizeUi("ui.chat.combinedworldwidget.loadingWorldState")} />}
-        >
-          <CombinedWorldPanel
-            location={location}
-            date={date}
-            time={time}
-            weather={weather}
-            temperature={temperature}
-            worldCustomFields={worldCustomFields}
-            onSaveLocation={onSaveLocation}
-            onSaveDate={onSaveDate}
-            onSaveTime={onSaveTime}
-            onSaveWeather={onSaveWeather}
-            onSaveTemperature={onSaveTemperature}
-            onUpdateWorldCustomFields={onUpdateWorldCustomFields}
-            weatherEmoji={display.weatherEmoji}
-            pinColor={display.pinColor}
-            dateColor={display.dateDisplay.iconColor}
-            timeColor={display.timeColor}
-            weatherColor={display.weatherColor}
-            tempColor={display.tempColor}
-            onClose={() => setOpen(false)}
-            onRerunSingleTracker={onRerunSingleTracker}
-            isTrackerRetryBusy={isTrackerRetryBusy}
-          />
-        </Suspense>
-      </WidgetPopover>
-    </div>
+        <CombinedWorldPanel
+          location={location}
+          date={date}
+          time={time}
+          weather={weather}
+          temperature={temperature}
+          worldCustomFields={worldCustomFields}
+          onSaveLocation={onSaveLocation}
+          onSaveDate={onSaveDate}
+          onSaveTime={onSaveTime}
+          onSaveWeather={onSaveWeather}
+          onSaveTemperature={onSaveTemperature}
+          onUpdateWorldCustomFields={onUpdateWorldCustomFields}
+          weatherEmoji={display.weatherEmoji}
+          pinColor={display.pinColor}
+          dateColor={display.dateDisplay.iconColor}
+          timeColor={display.timeColor}
+          weatherColor={display.weatherColor}
+          tempColor={display.tempColor}
+          onClose={close}
+          onRerunSingleTracker={onRerunSingleTracker}
+          isTrackerRetryBusy={isTrackerRetryBusy}
+        />
+      </Suspense>
+    </MobileTrackerWindow>
   );
 }
 

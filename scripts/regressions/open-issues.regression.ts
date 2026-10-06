@@ -5871,10 +5871,20 @@ assert.equal(
   3,
   "Roleplay must identify both HUD layouts and package-provided agent surfaces",
 );
-assert.equal(
-  echoChamberPanelSource.match(/data-roleplay-agent-window="echo"/gu)?.length,
-  2,
-  "Collapsed and expanded Echo Chamber windows must share the mobile edit marker",
+assert.match(
+  echoChamberPanelSource,
+  /const rootAttributes = \{ "data-roleplay-agent-window": "echo" \}/u,
+  "Echo Chamber should retain its marker for mobile composer visibility",
+);
+assert.match(
+  echoChamberPanelSource,
+  /<FloatingWindow[\s\S]*?rootAttributes=\{rootAttributes\}/u,
+  "the Echo Chamber window and desktop bubble must share the mobile edit marker",
+);
+assert.match(
+  echoChamberPanelSource,
+  /<WindowBubble[\s\S]*?attributes=\{\{ \.\.\.rootAttributes,/u,
+  "the collapsed phone Echo Chamber button must retain the mobile edit marker",
 );
 assert.match(chatRowPeekSource, /mari-chrome-accent-text-muted mari-accent-animated text-\[0\.6875rem\]/u);
 assert.match(assignedSweepChatAreaSource, /mari-chrome-accent-text-muted mari-accent-animated max-w-sm text-xs/u);

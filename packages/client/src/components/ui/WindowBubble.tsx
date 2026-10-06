@@ -11,6 +11,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  useSyncExternalStore,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
@@ -23,6 +24,7 @@ import {
   WINDOW_KEYBOARD_LARGE_STEP_PX,
   WINDOW_KEYBOARD_STEP_PX,
   clampWindowBubble,
+  placeWindowBubbles,
   type FloatingWindowId,
   type WindowBounds,
   type WindowPoint,
@@ -31,6 +33,30 @@ import { snapBubble, type SnapGuide } from "../../lib/window-bubble-snap";
 
 /** A press that moves less than this (px) opens the bubble instead of dragging it; touch gets more room. */
 const DRAG_START_PX = { mouse: 4, touch: 10 } as const;
+
+// Mounted bubbles share only their temporary screen positions. Saved chat layouts stay untouched.
+const mountedBubbles = new Map<string, { point: WindowPoint; bounds: WindowBounds; size: number }>();
+const placementListeners = new Set<() => void>();
+let bubblePlacements = new Map<string, WindowPoint>();
+const readBubblePlacements = () => bubblePlacements;
+const subscribeBubblePlacements = (listener: () => void) => {
+  placementListeners.add(listener);
+  return () => placementListeners.delete(listener);
+};
+function updateBubblePlacements() {
+  const next = placeWindowBubbles(mountedBubbles);
+  if (
+    next.size === bubblePlacements.size &&
+    [...next].every(([id, point]) => {
+      const current = bubblePlacements.get(id);
+      return current?.x === point.x && current.y === point.y;
+    })
+  ) {
+    return;
+  }
+  bubblePlacements = next;
+  placementListeners.forEach((listener) => listener());
+}
 
 type BubbleDrag = {
   pointerId: number;
@@ -102,7 +128,24 @@ export function WindowBubble({
   const suppressClickRef = useRef(false);
   const [live, setLive] = useState<{ point: WindowPoint; guides: SnapGuide[] } | null>(null);
   const [renderedSize, setRenderedSize] = useState(size);
-  const placed = clampWindowBubble(live?.point ?? point, bounds, renderedSize);
+  const placements = useSyncExternalStore(subscribeBubblePlacements, readBubblePlacements, readBubblePlacements);
+  const placed = clampWindowBubble(live?.point ?? placements.get(id) ?? point, bounds, renderedSize);
+
+  useLayoutEffect(() => {
+    mountedBubbles.set(id, {
+      point: { x: point.x, y: point.y, automatic: point.automatic },
+      bounds: { left: bounds.left, top: bounds.top, right: bounds.right, bottom: bounds.bottom },
+      size: renderedSize,
+    });
+    updateBubblePlacements();
+  }, [id, point.x, point.y, point.automatic, bounds.left, bounds.top, bounds.right, bounds.bottom, renderedSize]);
+  useLayoutEffect(
+    () => () => {
+      mountedBubbles.delete(id);
+      updateBubblePlacements();
+    },
+    [id],
+  );
 
   useLayoutEffect(() => {
     const element = bubbleRef.current;

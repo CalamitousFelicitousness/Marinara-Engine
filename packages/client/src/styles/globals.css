@@ -1110,11 +1110,6 @@
     padding-bottom: var(--mari-drawer-body-padding-bottom, 0.75rem);
   }
 
-  /* A popped-out drawer is the only thing in its window, so it needs no divider. */
-  .mari-drawer[data-detached="true"] {
-    border-bottom: 0;
-  }
-
   .mari-drawer[data-dragging="true"] > .mari-drawer__header {
     opacity: 0.5;
   }

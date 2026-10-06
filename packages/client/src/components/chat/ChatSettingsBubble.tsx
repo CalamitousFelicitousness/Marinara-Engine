@@ -71,7 +71,7 @@ export function ChatSettingsBubble({ chatId, mode }: { chatId: string; mode: Cha
     <>
       <WindowBubble
         id={CHAT_SETTINGS_BUTTON_ID}
-        point={point}
+        point={saved ?? { ...getTopRightBubblePoint(bounds, size), automatic: true }}
         bounds={bounds}
         size={size}
         onSizeChange={setSize}

@@ -7045,7 +7045,7 @@ test("desktop Roleplay composition keeps ambient work off the input path and gro
   }
 });
 
-test("desktop Echo Chamber commits its per-chat size and corner before reload", async ({ page }, testInfo) => {
+test("desktop Echo Chamber shares widget styling, window controls and per-chat layout", async ({ page }, testInfo) => {
   test.skip(!testInfo.project.name.includes("desktop"), "Desktop Echo Chamber resizing is covered on desktop.");
 
   await page.route("**/api/app-settings/ui", async (route) => {
@@ -7072,7 +7072,15 @@ test("desktop Echo Chamber commits its per-chat size and corner before reload", 
     await page.setViewportSize({ width: 1280, height: 900 });
     await seedUIState(
       page,
-      { hasCompletedOnboarding: true, echoChamberOpen: true, echoChamberSide: "bottom-right" },
+      {
+        hasCompletedOnboarding: true,
+        echoChamberOpen: true,
+        echoChamberSide: "bottom-right",
+        echoChamberSizeByChatId: { [chat.id]: { width: 300, height: 180 } },
+        chatWidgetPreset: "dottore",
+        chatWidgetBackgroundColor: "#183844",
+        chatWidgetTextColor: "#d4f7ec",
+      },
       "merge",
     );
     await page.addInitScript((chatId) => {
@@ -7080,44 +7088,77 @@ test("desktop Echo Chamber commits its per-chat size and corner before reload", 
     }, chat.id);
     await page.goto("/");
 
-    const resizeHandle = page.getByRole("button", { name: "Resize Echo Chamber" });
+    const panel = page.locator('.mari-window[data-window="echo-chamber"]');
+    const resizeHandle = panel.getByRole("button", { name: "Resize window with the arrow keys" });
     await expect(resizeHandle).toBeVisible();
-    const panel = resizeHandle.locator("..");
+    await expect(panel).toHaveAttribute("data-pinned", "true");
+    await expect
+      .poll(() =>
+        panel.evaluate((element) => {
+          const frame = getComputedStyle(element, "::after");
+          return frame.content === "none" ? getComputedStyle(element).backgroundColor : frame.backgroundColor;
+        }),
+      )
+      .toBe("rgb(24, 56, 68)");
+    await expect(panel.getByText("Waiting for reactions…", { exact: true })).toHaveCSS("color", "rgb(212, 247, 236)");
     const initialBox = await panel.boundingBox();
     expect(initialBox).not.toBeNull();
+    expect(Math.abs(initialBox!.width - 300)).toBeLessThanOrEqual(2);
+    expect(Math.abs(initialBox!.height - 180)).toBeLessThanOrEqual(2);
 
     await resizeHandle.press("ArrowRight");
     await resizeHandle.press("ArrowDown");
-    await page.getByTitle("top left").click();
+    await panel.getByTitle("top left").click();
+    const header = panel.getByRole("group", { name: "Move window with the arrow keys" });
+    const cornerBox = await panel.boundingBox();
+    await header.press("ArrowRight");
+    const movedBox = await panel.boundingBox();
+    expect(movedBox!.x).toBeGreaterThan(cornerBox!.x);
+    expect(movedBox!.width).toBeGreaterThan(initialBox!.width);
+    expect(movedBox!.height).toBeGreaterThan(initialBox!.height);
 
-    const savedLayout = await page.evaluate((chatId) => {
-      const persisted = JSON.parse(localStorage.getItem("marinara-engine-ui") ?? '{"state":{}}') as {
-        state?: {
-          echoChamberSideByChatId?: Record<string, string>;
-          echoChamberSizeByChatId?: Record<string, { width?: unknown; height?: unknown }>;
-        };
-      };
-      return {
-        side: persisted.state?.echoChamberSideByChatId?.[chatId] ?? null,
-        size: persisted.state?.echoChamberSizeByChatId?.[chatId] ?? null,
-      };
-    }, chat.id);
-    const savedSize = savedLayout.size;
-    expect(savedLayout.side).toBe("top-left");
-    expect(savedSize).not.toBeNull();
-    expect(savedSize?.width).toBeGreaterThan(Math.round(initialBox!.width));
-    expect(savedSize?.height).toBeGreaterThan(Math.round(initialBox!.height));
-
+    const readSavedLayout = async () => {
+      const response = await page.request.get(`/api/chats/${chat.id}`);
+      const saved = (await response.json()) as { metadata: string | Record<string, unknown> };
+      const metadata = typeof saved.metadata === "string" ? JSON.parse(saved.metadata) : saved.metadata;
+      return metadata.windowLayout?.windows?.["echo-chamber"] as
+        | { x: number; y: number; width: number; height: number; pinned: boolean; locked: boolean; minimized: boolean }
+        | undefined;
+    };
+    await expect.poll(async () => (await readSavedLayout())?.x).toBe(movedBox!.x);
+    const savedLayout = (await readSavedLayout())!;
     await page.reload();
-    const restoredHandle = page.getByRole("button", { name: "Resize Echo Chamber" });
-    await expect(restoredHandle).toBeVisible();
-    const restoredBox = await restoredHandle.locator("..").boundingBox();
+    await expect(resizeHandle).toBeVisible();
+    const restoredBox = await panel.boundingBox();
     expect(restoredBox).not.toBeNull();
-    // 2px: the saved size round-trips through CSS pixel rounding on both
-    // edges across a reload, which legitimately reaches ~1.6px (#5633) —
-    // real persistence drift would show up far larger.
-    expect(Math.abs(restoredBox!.width - Number(savedSize?.width))).toBeLessThanOrEqual(2);
-    expect(Math.abs(restoredBox!.height - Number(savedSize?.height))).toBeLessThanOrEqual(2);
+    expect(Math.abs(restoredBox!.width - savedLayout.width)).toBeLessThanOrEqual(2);
+    expect(Math.abs(restoredBox!.height - savedLayout.height)).toBeLessThanOrEqual(2);
+    expect(Math.abs(restoredBox!.x - savedLayout.x)).toBeLessThanOrEqual(2);
+    expect(Math.abs(restoredBox!.y - savedLayout.y)).toBeLessThanOrEqual(2);
+
+    await panel.getByRole("button", { name: "Lock window" }).click();
+    await expect(resizeHandle).toHaveCount(0);
+    await expect(panel.getByTitle("bottom right")).toBeDisabled();
+    await panel.getByRole("button", { name: "Close window", exact: true }).click();
+    const bubble = page.getByRole("button", { name: "Open Echo Chamber", exact: true });
+    await expect(bubble).toBeVisible();
+    await expect(bubble).toHaveAttribute("data-locked", "true");
+    const lockedBubble = await bubble.boundingBox();
+    await bubble.press("ArrowLeft");
+    expect(await bubble.boundingBox()).toEqual(lockedBubble);
+    await bubble.click();
+    await panel.getByRole("button", { name: "Lock window" }).click();
+    await panel.getByRole("button", { name: "Close window", exact: true }).click();
+    const initialBubble = await bubble.boundingBox();
+    await bubble.press("ArrowDown");
+    expect((await bubble.boundingBox())!.y).toBeGreaterThan(initialBubble!.y);
+    await expect.poll(async () => (await readSavedLayout())?.minimized).toBe(true);
+    await page.reload();
+    await expect(bubble).toBeVisible();
+    await expect(panel).toHaveCount(0);
+    await bubble.click();
+    await expect(panel).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("echo-chamber-shared-window-desktop.png") });
   } finally {
     await page.request.delete(`/api/chats/${chat.id}`);
   }
@@ -21248,28 +21289,46 @@ test("mobile reopening Echo Chamber and editing older Roleplay messages restore 
     await prepareFreshClient(page);
     await page.addInitScript((chatId) => {
       const persisted = JSON.parse(localStorage.getItem("marinara-engine-ui")!);
-      Object.assign(persisted.state, { messagesPerPage: 10, echoChamberOpen: true });
+      Object.assign(persisted.state, {
+        messagesPerPage: 10,
+        echoChamberOpen: true,
+        chatWidgetPreset: "mari",
+        chatWidgetBackgroundColor: "#483443",
+        chatWidgetTextColor: "#ffebd1",
+      });
       localStorage.setItem("marinara-engine-ui", JSON.stringify(persisted));
       localStorage.setItem("marinara-active-chat-id", chatId);
     }, chat.id);
     await page.goto("/");
     const echo = page.locator('[data-roleplay-agent-window="echo"]');
+    await expect(echo).toHaveClass(/mari-window/u);
+    await expect(echo).toHaveCSS("background-color", "rgb(72, 52, 67)");
+    await expect(echo.getByText("Echo reaction 40.", { exact: true })).toHaveCSS("color", "rgb(255, 235, 209)");
+    const compactHeight = await page.evaluate(
+      () => Number.parseFloat(getComputedStyle(document.documentElement).fontSize) * 7,
+    );
+    expect((await echo.boundingBox())!.height).toBeLessThanOrEqual(compactHeight + 2);
+    await page.screenshot({ path: testInfo.outputPath("echo-chamber-shared-window-mobile.png") });
     await expect(echo.getByText("Echo reaction 40.", { exact: true })).toBeInViewport();
-    await echo.getByTitle("Collapse Echo Chamber", { exact: true }).tap();
-    await page.getByTitle("Open Echo Chamber", { exact: true }).tap();
+    await echo.getByRole("button", { name: "Close window", exact: true }).tap();
+    const echoBubble = page.getByRole("button", { name: "Open Echo Chamber", exact: true });
+    const originalBubble = await echoBubble.boundingBox();
+    await echoBubble.press("ArrowRight");
+    expect((await echoBubble.boundingBox())!.x).toBeGreaterThan(originalBubble!.x);
+    await page.getByRole("button", { name: "Open Echo Chamber", exact: true }).tap();
     await expect(echo.getByText("Echo reaction 40.", { exact: true })).toBeInViewport();
-    await echo.getByTitle("Collapse Echo Chamber", { exact: true }).tap();
+    await echo.getByRole("button", { name: "Close window", exact: true }).tap();
 
     const mobileViewport = page.viewportSize()!;
     await page.setViewportSize({ width: 900, height: mobileViewport.height });
-    await page.getByTitle("Open Echo Chamber", { exact: true }).tap();
-    await expect(echo.getByRole("button", { name: "Resize Echo Chamber" })).toBeVisible();
+    await page.getByRole("button", { name: "Open Echo Chamber", exact: true }).tap();
+    await expect(echo.getByRole("button", { name: "Resize window with the arrow keys" })).toBeVisible();
     await page.setViewportSize(mobileViewport);
     await expect(echo.getByText("Echo reaction 40.", { exact: true })).toBeInViewport();
-    await echo.getByTitle("Collapse Echo Chamber", { exact: true }).tap();
-    await page.getByTitle("Open Echo Chamber", { exact: true }).tap();
+    await echo.getByRole("button", { name: "Close window", exact: true }).tap();
+    await page.getByRole("button", { name: "Open Echo Chamber", exact: true }).tap();
     await expect(echo.getByText("Echo reaction 40.", { exact: true })).toBeInViewport();
-    await echo.getByTitle("Collapse Echo Chamber", { exact: true }).tap();
+    await echo.getByRole("button", { name: "Close window", exact: true }).tap();
 
     const transcript = page.locator('[data-chat-mode="roleplay"] [data-chat-scroll]');
     await transcript.evaluate((element) => {
@@ -21365,7 +21424,7 @@ test("mobile Echo Chamber shows reactions revealed while the composer hid it", a
   }
 });
 
-test("mobile Load More clears the collapsed Echo Chamber", async ({ page }, testInfo) => {
+test("mobile Load More stays reachable beside the collapsed Echo Chamber", async ({ page }, testInfo) => {
   test.skip(!testInfo.project.name.includes("mobile"), "Echo Chamber touch clearance is mobile-only.");
 
   const response = await page.request.post("/api/chats", {
@@ -21426,9 +21485,16 @@ test("mobile Load More clears the collapsed Echo Chamber", async ({ page }, test
         });
         const [echoBox, loadMoreBox] = await Promise.all([echo.boundingBox(), loadMore.boundingBox()]);
         if (!echoBox || !loadMoreBox) return Number.NEGATIVE_INFINITY;
-        return loadMoreBox.y - (echoBox.y + echoBox.height);
+        // The old collapsed Echo was a bar; the movable button can safely sit beside Load More.
+        return Math.max(
+          loadMoreBox.x - (echoBox.x + echoBox.width),
+          echoBox.x - (loadMoreBox.x + loadMoreBox.width),
+          loadMoreBox.y - (echoBox.y + echoBox.height),
+          echoBox.y - (loadMoreBox.y + loadMoreBox.height),
+        );
       })
       .toBeGreaterThanOrEqual(8);
+    await loadMore.click({ trial: true });
   } finally {
     await page.request.delete(`/api/chats/${chat.id}?force=true`).catch(() => undefined);
   }

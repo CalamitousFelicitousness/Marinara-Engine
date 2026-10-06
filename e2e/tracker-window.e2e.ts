@@ -365,3 +365,45 @@ test.describe("Roleplay trackers on desktop", () => {
     }
   });
 });
+
+test("detached tracker lists retain their final border in every widget preset and custom gradients", async ({
+  page,
+  request,
+}, testInfo) => {
+  test.skip(!testInfo.project.name.includes("desktop"), "Popped-out tracker drawers use desktop windows.");
+  const chat = await createTrackerChat(request);
+  try {
+    await prepare(page, chat.id, { trackerPanelEnabled: false, theme: "dark" });
+    await page.goto("/");
+    await page.locator('.mari-window-bubble[data-window="trackers"]').click();
+    const world = page.locator('.mari-window[data-window="trackers"] [data-drawer="tracker-world"]');
+    await world.locator('[data-drawer-control="pop-out"]').click();
+    const window = page.locator('.mari-window[data-window="drawer:trackers:tracker-world"]');
+    const fields = window.locator('.mari-drawer[data-detached="true"]');
+    await expect(window.getByText("Harbor market", { exact: true })).toBeVisible();
+    for (const preset of ["default", "dottore", "mari"] as const) {
+      await page.evaluate(async (preset) => {
+        const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+        useUIStore.getState().setChatWidgetPreset(preset);
+      }, preset);
+      await expect(fields).toHaveCSS("border-bottom-width", "1px");
+      await expect(fields).toHaveCSS("border-bottom-style", "solid");
+      await expect(fields).not.toHaveCSS("border-bottom-color", "rgba(0, 0, 0, 0)");
+      await window.screenshot({
+        path: testInfo.outputPath(`detached-tracker-border-${preset}.png`),
+        animations: "disabled",
+      });
+      await page.evaluate(async () => {
+        const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+        useUIStore.getState().setChatWidgetBorderColor("linear-gradient(90deg, #ff6b6b, #ffd93d)");
+      });
+      await expect(page.locator("html")).toHaveAttribute("data-chat-widget-colors", /border/);
+      await expect.poll(() => fields.evaluate((node) => getComputedStyle(node, "::before").paddingBottom)).toBe("1px");
+      await expect
+        .poll(() => fields.evaluate((node) => getComputedStyle(node, "::before").backgroundImage))
+        .toContain("linear-gradient");
+    }
+  } finally {
+    await request.delete(`/api/chats/${chat.id}?force=true`);
+  }
+});

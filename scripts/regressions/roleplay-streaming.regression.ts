@@ -680,23 +680,18 @@ assert.match(
 );
 assert.match(
   echoChamberPanelSource,
-  /if \(activeChatId\) setEchoChamberSizeForChat\(activeChatId, nextSize\);/u,
-  "Echo Chamber should persist a completed resize against the active chat",
+  /<FloatingWindow\s+id=\{ECHO_WINDOW_ID\}/u,
+  "Echo Chamber should reuse the shared window's drag and resize behavior",
 );
 assert.match(
   echoChamberPanelSource,
-  /onPointerCancel=\{handleResizeCancel\}/u,
-  "a canceled Echo Chamber resize should use its rollback path",
+  /useFloatingWindowStore\(\(s\) => s\.layouts\[ECHO_WINDOW_ID\]\)/u,
+  "Echo Chamber should read the shared per-chat layout before falling back to legacy dimensions",
 );
 assert.match(
   echoChamberPanelSource,
-  /onLostPointerCapture=\{handleResizeLostCapture\}/u,
-  "Echo Chamber should still commit a finished drag when the browser drops pointer capture",
-);
-assert.doesNotMatch(
-  echoChamberPanelSource,
-  /onPointerCancel=\{handleResizeEnd\}/u,
-  "pointer cancellation must not persist an incomplete Echo Chamber resize",
+  /const minimized = savedLayout\?\.minimized \?\? !echoChamberOpen/u,
+  "a saved Echo Chamber close should take precedence over the old global open preference",
 );
 assert.match(
   uiStoreSource,

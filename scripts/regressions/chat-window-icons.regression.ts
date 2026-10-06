@@ -111,8 +111,8 @@ assert.match(
   "the phone Tracker Panel bubble shows the dice too",
 );
 const floatingWindow = read("packages/client/src/components/ui/FloatingWindow.tsx");
+assert.doesNotMatch(floatingWindow, /data-window-control="minimize"/u, "Close is the only minimize control");
 for (const [control, icon] of [
-  ["minimize", "Minus"],
   ["pin", "Pin"],
   ["lock", "Unlock"],
   ["close", "X"],

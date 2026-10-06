@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Pressing Escape to cancel dragging a chat, character or persona, or to close a picker such as the Text to Speech voice search, no longer closes the whole side panel. Dropping a chat window button onto another one now places it neatly beside it instead of hiding one under the other. On phones, Help explains the **Chat tools** button and lists the tools inside it, labels the map and party buttons again, and keeps its instructions from covering the buttons along the top (#7146).
+
 - Coming back to a chat before its Expression agent finished no longer shows the previous turn's sprites when **Only show active sprites** is on. Switching chats during a Game translation no longer leaves that message marked as translating. On computers, the **Trackers** button starts in the top-right corner when the Tracker Panel is on the left, so it no longer covers the panel's header and settings button (#7146).
 
 - Game Mode combat works on phones and tablets that open Marinara over plain HTTP, such as a LAN address or Tailscale. Every action in a fight used to fail there before reaching the server, so battles in new games could not continue (#7146).

@@ -779,7 +779,8 @@ function PersonaPicker({
                     {expanded &&
                       visibleMembers.map((character) => {
                         const isSelected = selectedCharacterId === character.id;
-                        const name = parseCharacterDisplayData(character).name;
+                        const characterData = parseCharacterDisplayData(character);
+                        const name = characterData.name;
                         return (
                           <button
                             key={`character-${character.id}`}
@@ -796,7 +797,7 @@ function PersonaPicker({
                                 src={character.avatarPath}
                                 alt=""
                                 className="h-7 w-7 rounded-full"
-                                crop={parseCharacterDisplayData(character).avatarCrop ?? null}
+                                crop={characterData.avatarCrop ?? null}
                               />
                             ) : (
                               <PersonaAvatar persona={null} />
@@ -804,7 +805,8 @@ function PersonaPicker({
                             <div className="min-w-0 flex-1">
                               <span className="block truncate text-xs font-medium">{name}</span>
                               <span className="block truncate text-[0.625rem] text-[var(--muted-foreground)]">
-                                {localizeUi("ui.chat.personapicker.characterSource")}
+                                {getCharacterTitle(characterData) ||
+                                  localizeUi("ui.chat.personapicker.characterSource")}
                               </span>
                             </div>
                             {isSelected && <Check size="0.75rem" className="shrink-0 text-[var(--primary)]" />}

@@ -1990,7 +1990,9 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       chatId,
       options,
       async (operationOptions) => {
-        const state = object((await context(chatId)).metadata.advancedMemoryState);
+        const ctx = await context(chatId);
+        const state = object(ctx.metadata.advancedMemoryState);
+        if (state.paused === true) await progress(ctx, { paused: false }, operationOptions);
         if (
           !options.sceneId &&
           state.stage === "compacting" &&
@@ -2017,7 +2019,12 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     options: { force?: boolean; asOfMessageId?: string } = {},
   ): Promise<AdvancedMemorySceneCheck | null> {
     const full = await context(chatId);
-    if (!full.settings.enabled || missingKnowledge(full).length) return null;
+    if (
+      !full.settings.enabled ||
+      missingKnowledge(full).length ||
+      object(full.metadata.advancedMemoryState).paused === true
+    )
+      return null;
     const end = options.asOfMessageId
       ? full.messages.findIndex((message) => message.id === options.asOfMessageId)
       : full.messages.length - 1;
@@ -2188,6 +2195,10 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       chatId,
       options,
       async (operationOptions) => {
+        // Pause survives new replies and queued post-processing. Explicit
+        // initialize/reindex can resume; reading the saved archive stays available.
+        const savedChat = await chats.getById(chatId);
+        if (object(object(savedChat?.metadata).advancedMemoryState).paused === true) return;
         const cutoffContext = options.maxRequestInputTokens != null ? await context(chatId) : null;
         const checkScene = async () => {
           let request = await getSceneCheck(chatId, options);
@@ -3492,29 +3503,61 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
   }
 
   async function updateSettings(chatId: string, patch: unknown): Promise<AdvancedMemoryStatus> {
-    const ctx = await context(chatId);
     const incoming = advancedMemorySettingsSchema.partial().parse(patch);
-    const next = advancedMemorySettingsSchema.parse({ ...ctx.settings, ...incoming });
     if (incoming.decisionConnectionId) {
       const selected = await connections.getById(incoming.decisionConnectionId);
       if (!selected || selected.provider !== "decision")
         throw new Error("Select a saved Decision connection for Advanced Memory");
     }
-    if (next.retrieveMinMessages > next.retrieveMaxMessages)
-      throw new Error("Minimum recalled messages cannot exceed the maximum");
-    if (next.summaryBudgetTokens >= next.maxContextTokens)
-      throw new Error("The continuity summary budget must be smaller than the total context limit");
-    if (next.narratorCharacterId && !ctx.characterIds.includes(next.narratorCharacterId))
-      throw new Error("Select a narrator from this chat's characters");
-    for (const [id, anchor] of Object.entries(next.knowledgeStarts)) {
-      if (!ctx.characterIds.includes(id)) continue; // Retain removed characters' confirmed ranges for a later return.
-      if (anchor && !ctx.messages.some((message) => message.id === anchor))
-        throw new Error("A character knowledge range points to a message that no longer exists");
-    }
-    if (hash(next) === hash(ctx.settings)) return status(chatId);
-    activeOperations.get(chatId)?.controller.abort(new Error("Advanced Memory settings changed"));
-    await chats.patchMetadata(chatId, { advancedMemory: next }, { touchUpdatedAt: false });
+    let settingsChanged = false;
+    await chats.patchMetadata(
+      chatId,
+      async (current) => {
+        // Merge inside the save queue: an earlier mode switch must survive a
+        // delayed numeric/helper settings request that never changed `enabled`.
+        const saved = normalizeAdvancedMemorySettings(current.advancedMemory);
+        const next = advancedMemorySettingsSchema.parse({ ...saved, ...incoming });
+        if (next.retrieveMinMessages > next.retrieveMaxMessages)
+          throw new Error("Minimum recalled messages cannot exceed the maximum");
+        if (next.summaryBudgetTokens >= next.maxContextTokens)
+          throw new Error("The continuity summary budget must be smaller than the total context limit");
+        if (incoming.enabled === false) {
+          // Disabling needs no transcript scan or validation of stale references.
+          if ((await chats.getById(chatId))?.mode !== "roleplay")
+            throw new Error("Advanced Memory is available only for Roleplay chats");
+        } else {
+          const ctx = await context(chatId);
+          if (next.narratorCharacterId && !ctx.characterIds.includes(next.narratorCharacterId))
+            throw new Error("Select a narrator from this chat's characters");
+          for (const [id, anchor] of Object.entries(next.knowledgeStarts)) {
+            if (!ctx.characterIds.includes(id)) continue; // Retain removed characters' confirmed ranges for a later return.
+            if (anchor && !ctx.messages.some((message) => message.id === anchor))
+              throw new Error("A character knowledge range points to a message that no longer exists");
+          }
+        }
+        // Reconcile an explicit enable on a conflicting legacy chat, while a
+        // retry on consistent settings must not cancel active preparation.
+        if (hash(next) === hash(saved) && !(incoming.enabled === true && current.enableMemoryRecall !== false))
+          return {};
+        settingsChanged = true;
+        return { advancedMemory: next };
+      },
+      {
+        touchUpdatedAt: false,
+        afterWrite: () => {
+          if (settingsChanged)
+            activeOperations.get(chatId)?.controller.abort(new Error("Advanced Memory settings changed"));
+        },
+      },
+    );
     return status(chatId);
+  }
+
+  // Synchronous so a metadata mode switch can stop the observed worker inside
+  // its existing save queue, without cancelling a later newly enabled worker.
+  function cancelActiveOperation(chatId: string) {
+    const current = activeOperations.get(chatId);
+    if (!current?.resetting) current?.controller.abort(new Error("Advanced Memory preparation cancelled"));
   }
 
   async function cancel(chatId: string) {
@@ -3523,9 +3566,9 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       await current.promise;
       return status(chatId);
     }
-    activeOperations.get(chatId)?.controller.abort(new Error("Advanced Memory preparation cancelled"));
+    cancelActiveOperation(chatId);
     const ctx = await context(chatId);
-    await progress(ctx, { status: "cancelled", error: null }, {});
+    await progress(ctx, { status: "cancelled", paused: true, error: null }, {});
     return status(chatId);
   }
 
@@ -4109,6 +4152,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
             blocking: options.blocking ?? true,
             status: "running",
             stage: "indexing",
+            paused: false,
             completed: 0,
             total: indexable.length,
             error: null,
@@ -4152,6 +4196,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     checkScenesAfterGeneration,
     prepare,
     updateSettings,
+    cancelActiveOperation,
     cancel,
     reset,
     getSources,

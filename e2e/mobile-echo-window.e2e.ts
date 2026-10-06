@@ -40,6 +40,91 @@ async function drag(page: Page, browserName: string, start: { x: number; y: numb
   }
 }
 
+for (const pinned of [true, false]) {
+  test(`desktop Echo reopens after another mobile client closes its ${pinned ? "pinned" : "unpinned"} window`, async ({
+    browser,
+    browserName,
+    request,
+    baseURL,
+    isMobile,
+  }, testInfo) => {
+    test.skip(isMobile, "The desktop project covers both independent browser contexts.");
+    const response = await request.post("/api/chats", {
+      data: { name: "Cross-client Echo restore", mode: "roleplay", characterIds: [] },
+    });
+    expect(response.ok()).toBeTruthy();
+    const chat = (await response.json()) as { id: string };
+    const desktop = await browser.newContext({ baseURL, viewport: { width: 1024, height: 1016 } });
+    const phone = await browser.newContext({
+      baseURL,
+      viewport: { width: 390, height: 844 },
+      hasTouch: true,
+      isMobile: browserName !== "firefox",
+    });
+    try {
+      expect(
+        (
+          await request.patch(`/api/chats/${chat.id}/metadata`, {
+            data: { enableAgents: true, activeAgentIds: ["echo-chamber"] },
+          })
+        ).ok(),
+      ).toBeTruthy();
+      for (const context of [desktop, phone]) {
+        await context.route("**/api/app-settings/ui", (route) => route.fulfill({ json: { value: "" } }));
+        await context.route(`**/api/agents/echo-messages/${chat.id}`, (route) =>
+          route.fulfill({ json: [{ characterName: "Observer", reaction: "The window is back.", timestamp: 0 }] }),
+        );
+        await seedUIState(context, {
+          hasCompletedOnboarding: true,
+          sidebarOpen: context === desktop,
+          rightPanelOpen: false,
+          echoChamberOpen: true,
+          chatHelpSeenModes: ["roleplay"],
+        });
+        await context.addInitScript(
+          ({ id, version }) => {
+            localStorage.setItem("marinara-active-chat-id", id);
+            localStorage.setItem("marinara:whats-new:seen-version", version);
+          },
+          { id: chat.id, version: APP_VERSION },
+        );
+      }
+      const desktopPage = await desktop.newPage();
+      const phonePage = await phone.newPage();
+      const panel = (page: Page) => page.locator('.mari-window[data-window="echo-chamber"]');
+      const readLayout = async () => {
+        const response = await request.get(`/api/chats/${chat.id}`);
+        const saved = (await response.json()) as { metadata: string | Record<string, unknown> };
+        const metadata = typeof saved.metadata === "string" ? JSON.parse(saved.metadata) : saved.metadata;
+        return metadata.windowLayout?.windows?.["echo-chamber"] as Layout | undefined;
+      };
+      await desktopPage.goto("/");
+      await expect(panel(desktopPage)).toBeVisible();
+      await phonePage.goto("/");
+      await expect(panel(phonePage)).toBeVisible();
+      if (!pinned) await panel(phonePage).locator('[data-window-control="pin"]').tap();
+      await panel(phonePage).locator('[data-window-control="close"]').tap();
+      await expect(phonePage.getByRole("button", { name: "Open Echo Chamber", exact: true })).toBeVisible();
+      await expect.poll(readLayout).toMatchObject({ minimized: true, pinned });
+
+      // The clients share only the saved chat layout, not runtime or local browser state.
+      await desktopPage.reload();
+      await desktopPage.getByRole("button", { name: "Open Echo Chamber", exact: true }).click();
+      await expect(panel(desktopPage)).toBeInViewport({ ratio: 1 });
+      await expect(panel(desktopPage).getByText("The window is back.", { exact: true })).toBeVisible();
+      await expect.poll(readLayout).toMatchObject({ minimized: false, pinned });
+      await desktopPage.reload();
+      await expect(panel(desktopPage)).toBeInViewport({ ratio: 1 });
+      await expect(panel(desktopPage)).toHaveAttribute("data-pinned", String(pinned));
+      await desktopPage.screenshot({ path: testInfo.outputPath("echo-desktop-restored-after-mobile-close.png") });
+    } finally {
+      await desktop.close();
+      await phone.close();
+      await request.delete(`/api/chats/${chat.id}?force=true`);
+    }
+  });
+}
+
 test("mobile Echo can move, resize, lock and restore its saved window", async ({ page, browserName }, testInfo) => {
   test.skip(!testInfo.project.name.includes("mobile"), "Mobile Echo window regression.");
   const response = await page.request.post("/api/chats", {
@@ -172,11 +257,22 @@ test("mobile Echo can move, resize, lock and restore its saved window", async ({
     );
     await expect.poll(async () => (await box(panel)).width).toBe(240);
     await expect.poll(async () => (await box(panel)).height).toBe(112);
-    for (const preset of ["default", "dottore", "mari"]) {
-      await page.evaluate(async (preset) => {
-        const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
-        useUIStore.getState().setChatWidgetPreset(preset);
-      }, preset);
+    const phoneViewport = page.viewportSize()!;
+    for (const [theme, preset] of [
+      ["dark", "default"],
+      ["dark", "dottore"],
+      ["dark", "mari"],
+      ["light", "dottore"],
+      ["light", "mari"],
+    ] as const) {
+      await page.evaluate(
+        async ({ theme, preset }) => {
+          const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+          useUIStore.getState().setChatWidgetPreset(preset);
+          useUIStore.setState({ theme });
+        },
+        { theme, preset },
+      );
       const frame = await box(panel);
       for (const control of await panel.locator(".mari-window__control").all()) {
         const rect = await box(control);
@@ -185,7 +281,40 @@ test("mobile Echo can move, resize, lock and restore its saved window", async ({
       }
       await panel.getByText("Reaction 20.", { exact: true }).scrollIntoViewIfNeeded();
       await expect(panel.getByText("Reaction 20.", { exact: true })).toBeInViewport();
-      await page.screenshot({ path: testInfo.outputPath(`mobile-echo-minimum-${preset}.png`) });
+      await page.screenshot({ path: testInfo.outputPath(`mobile-echo-minimum-${preset}-${theme}.png`) });
+      if (preset === "default") continue;
+      for (const mobile of [true, false]) {
+        await page.setViewportSize(mobile ? phoneViewport : { width: 1024, height: phoneViewport.height });
+        await expect(panel).toHaveAttribute("data-presentation", "window");
+        await page.screenshot({
+          path: testInfo.outputPath(`echo-crest-${preset}-${theme}-${mobile ? "phone" : "desktop"}.png`),
+        });
+        const crest = await header.evaluate((element) => {
+          const style = getComputedStyle(element, "::after");
+          const rect = element.getBoundingClientRect();
+          return {
+            left: parseFloat(style.left),
+            top: parseFloat(style.top),
+            width: parseFloat(style.width),
+            height: parseFloat(style.height),
+            headerWidth: element.clientWidth,
+            headerHeight: element.clientHeight,
+            titleLeft: element.querySelector(".mari-window__title")!.getBoundingClientRect().left - rect.left,
+            image: style.backgroundImage,
+          };
+        });
+        expect(crest.image).not.toBe("none");
+        if (mobile) {
+          expect(crest.top).toBeGreaterThanOrEqual(0);
+          expect(crest.top + crest.height).toBeLessThanOrEqual(crest.headerHeight);
+          expect(crest.left).toBeGreaterThanOrEqual(0);
+          expect(crest.left + crest.width).toBeLessThanOrEqual(crest.titleLeft);
+        } else {
+          expect(crest.top).toBeLessThan(0);
+          expect(crest.left + crest.width / 2).toBeCloseTo(crest.headerWidth / 2, 0);
+        }
+      }
+      await page.setViewportSize(phoneViewport);
     }
   } finally {
     await page.request.delete(`/api/chats/${chat.id}?force=true`);

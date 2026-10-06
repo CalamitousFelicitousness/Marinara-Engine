@@ -6,6 +6,13 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 - **Chat Summary** supports selecting a visible range with Shift on desktop or two endpoints on phones, then enabling or disabling only the selected summaries. Choosing a fully selected range again deselects it, and a desktop hover hint explains the Shift shortcut. Wrapping controls keep these actions readable on narrow screens (#7156).
 
+- Mistral connections now work with **Mistral Large 4**. Its thinking shows in the chat instead of being lost, **Reasoning Effort** offers Off or high for Mistral's reasoning models (low, high or max for GLM 5.3 on Mistral), and refreshing the model list picks up each model's real context size (1M tokens for Large 4). Requests also stop sending settings Mistral rejects, Assistant Prefill is continued without the reply repeating it, and a tool round no longer fails on tool calls Mistral did not create itself (#7164).
+
+## [2.5.0]
+
+- Release notes too long for a GitHub release are trimmed at a whole entry and end with a link to the full changelog, so publishing a large release such as this one no longer fails (#7146).
+
+- Added Professor Mari's v2.5.0 What's New with screenshots and recordings of the customizable chat windows and widget styles, Gacha Forge, Quartermaster, Relationship Tracker, Decision models and Advanced Memory. The **Memory Recall** help now says Advanced Recall progress appears in **Agent activity** (#7146).
 - On phones and tablets, Home's browser bar now matches the color of the top bar above it instead of showing as a lighter strip. With reduced motion turned on, theme and accent changes no longer play slow transitions, and dialogs close at once. On phone-width screens in some WebKit browsers, Conversation message buttons such as Regenerate and **Bookmark, pin or note** no longer ignore a press, and Tab reaches them (#7146).
 
 - On phones with Chromium-based browsers, tapping a chat button right after flicking it into place now opens it on the first tap instead of being ignored (#7146).

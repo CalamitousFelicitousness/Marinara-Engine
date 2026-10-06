@@ -349,19 +349,6 @@ export function LorebooksPanel() {
     [sorted, folderedLorebookIds],
   );
 
-  // Group by category for "all" view
-  const grouped = useMemo(() => {
-    if (activeCategory !== "all") return null;
-    const map = new Map<string, LorebookListItem[]>();
-    for (const lb of rootLorebooks) {
-      const cat = lb.category || "uncategorized";
-      const list = map.get(cat) ?? [];
-      list.push(lb);
-      map.set(cat, list);
-    }
-    return map;
-  }, [rootLorebooks, activeCategory]);
-
   const exitSelectionMode = useCallback(() => {
     setSelectionMode(false);
     setSelectedLorebookIds(new Set());
@@ -1175,22 +1162,7 @@ export function LorebooksPanel() {
           )}
 
           <div className="stagger-children flex min-h-8 flex-col gap-1 rounded-xl transition-colors">
-            {activeCategory === "all" && grouped
-              ? // Grouped view
-                Array.from(grouped.entries()).map(([category, books]) => {
-                  const catMeta = CATEGORIES.find((c) => c.id === category) ?? CATEGORIES[6];
-                  return (
-                    <div key={category} className="mb-2">
-                      <div className="mb-1 flex items-center gap-1.5 px-1 text-[0.6875rem] font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
-                        {catMeta.label}
-                        <span className="ml-auto text-[0.625rem] font-normal">{books.length}</span>
-                      </div>
-                      {books.map((lb) => renderLorebookRow(lb))}
-                    </div>
-                  );
-                })
-              : // Flat view
-                rootLorebooks.map((lb) => renderLorebookRow(lb))}
+            {rootLorebooks.map((lb) => renderLorebookRow(lb))}
           </div>
         </>
       )}

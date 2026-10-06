@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Added Professor Mari's v2.5.0 What's New with screenshots and recordings of the customizable chat windows and widget styles, Gacha Forge, Quartermaster, Relationship Tracker, Decision models and Advanced Memory. The **Memory Recall** help now says Advanced Recall progress appears in **Agent activity** (#7146).
+
 - Prepared v2.5.0 across the Engine, Home version, PWA manifest, README, Windows installer, and Android bootstrap metadata. Android uses version code 48 so the APK can update existing installations, and the Credits list is refreshed (#7146).
 
 - In Game Mode, HUD widgets, the map panel on computers, characters' side remarks and character sheets now follow **Apply preset font**, **Apply preset shape** and **Apply preset colors**, like the dialogue box beside them. Widget numbers keep the game's own accent colors. With the switches off, nothing changes (#7136).

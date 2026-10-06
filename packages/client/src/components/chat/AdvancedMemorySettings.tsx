@@ -20,6 +20,7 @@ const warningKeys: Record<string, string> = {
   "decision-connection-unavailable": "chat.advancedMemory.warning.decisionConnectionUnavailable",
   "unscoped-agent-memory": "chat.advancedMemory.warning.unscopedAgentMemory",
   "unscoped-summaries": "chat.advancedMemory.warning.unscopedSummaries",
+  "scene-audience-unmatched": "chat.advancedMemory.warning.sceneAudienceUnmatched",
 };
 
 export interface MemoryCharacterOption {

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import {
   ADVANCED_MEMORY_SCENE_AUDIENCE as SCENE_AUDIENCE,
+  ADVANCED_MEMORY_SCENE_AUDIENCE_UNMATCHED as SCENE_AUDIENCE_UNMATCHED,
   CHAT_SUMMARY_PROMPT_SETTINGS_KEY,
   DEFAULT_CHAT_SUMMARY_PROMPT,
   DEFAULT_DECISION_CALIBRATION,
@@ -157,8 +158,20 @@ const coordinatorQueues = new Map<string, Promise<unknown>>();
 const IDLE_JOB: AdvancedMemoryJob = { status: "idle", stage: "idle", completed: 0, total: 0, error: null };
 const MEMORY_BUDGET_TOLERANCE = 2000;
 const SCENE_TIMELINE = { id: "scene-timeline", revision: "manual-v1" };
+// ponytail: automatic maintenance checks a few older scenes' participants per run.
+// Prepare existing history checks all of them at once.
+const LEGACY_AUDIENCE_CHECKS_PER_RUN = 3;
 function hasSceneTimelineCorrection(record: StoredRecord): boolean {
   return record.dependencies.some((item) => item.id === SCENE_TIMELINE.id && item.revision === SCENE_TIMELINE.revision);
+}
+function recordRevision(record: StoredRecord): string {
+  return hash([
+    record.content,
+    record.enabled,
+    record.updatedAt,
+    record.dependencies,
+    hasSceneTimelineCorrection(record) ? record.timeline : null,
+  ]);
 }
 function hasSceneAudience(record: StoredRecord): boolean {
   return (
@@ -369,6 +382,29 @@ export function selectAdvancedMemoryMessages(
 // The single scene archive follows the narrator; its character access is a separate list.
 function audienceView(ctx: Context, audience: string[]): string[] {
   return !audience.length && ctx.settings.narratorCharacterId ? [ctx.settings.narratorCharacterId] : audience;
+}
+
+/** A participant the helper named: an ID, the full name, then a unique partial name ("Kaito" for "Kaito Nakamura"). */
+function matchAudienceName(ctx: Context, value: string): string[] {
+  const name = value.trim();
+  if (ctx.characterIds.includes(name)) return [name];
+  const words = (text: string) =>
+    text
+      .toLocaleLowerCase()
+      .split(/[^\p{L}\p{N}'’-]+/u)
+      .filter(Boolean);
+  const wanted = words(name);
+  if (!wanted.length) return [];
+  const cards = ctx.characterIds.map((id) => ({ id, words: words(ctx.names.get(id) ?? "") }));
+  const exact = cards.filter((card) => card.words.join(" ") === wanted.join(" "));
+  // Ambiguous names must use an explicit ID.
+  if (exact.length) return exact.length === 1 ? [exact[0]!.id] : [];
+  const partial = cards.filter(
+    (card) =>
+      card.words.length > 0 &&
+      (wanted.every((word) => card.words.includes(word)) || card.words.every((word) => wanted.includes(word))),
+  );
+  return partial.length === 1 ? [partial[0]!.id] : [];
 }
 
 function sceneSource(ctx: Context, messages = ctx.messages): AdvancedMemoryMessage[] {
@@ -955,7 +991,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     options: AdvancedMemoryOperationOptions,
     cacheOwner: StoredRecord,
     audienceOnly = false,
-  ): Promise<{ summary: string; audienceCharacterIds: string[] }> {
+  ): Promise<{ summary: string; audienceCharacterIds: string[]; audienceIssue?: string }> {
     const cachedRow = (
       await db.select().from(advancedMemoryRecords).where(eq(advancedMemoryRecords.id, cacheOwner.id))
     )[0];
@@ -1112,12 +1148,8 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
             );
           if (audienceOnly && !decision)
             throw new Error("The helper returned no scene access decision; resume to retry this scene.");
-          text = assignAudience
-            ? JSON.stringify({
-                summary,
-                audience: decision?.audience ?? [],
-              })
-            : summary;
+          // A missing audience stays missing; it is not the same answer as [].
+          text = assignAudience ? JSON.stringify({ summary, audience: decision?.audience }) : summary;
           // Save a completed paid response even if cancellation arrived with it. Source/settings
           // validation still applies; only incomplete work is stored and it is never prompt content.
           await put(ctx, { ...cacheOwner, content: "" }, { ...options, signal: undefined });
@@ -1136,17 +1168,31 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       if (outputs.length === 1) {
         if (!assignAudience) return { summary: outputs[0]!, audienceCharacterIds: [] };
         const result = tryParseJsonRecord(outputs[0]!) ?? {};
+        const missing = result.audience === undefined;
+        const names =
+          typeof result.audience === "string" && result.audience !== "all"
+            ? [result.audience]
+            : strings(result.audience);
+        const matches = names.map((value) => matchAudienceName(ctx, value));
+        const unmatched = names.filter((_, index) => !matches[index]!.length);
+        const characters = ctx.characterIds.filter((id) => id !== ctx.settings.narratorCharacterId);
+        // A missing key is a format slip, not "nobody": a one-character chat's character was there.
+        // With several characters it cannot be guessed, so the scene stays narrator-only and is flagged.
         const audience =
-          result.audience === "all"
-            ? ctx.characterIds
-            : strings(result.audience).flatMap((value) => {
-                const nameOrId = value.trim();
-                if (ctx.characterIds.includes(nameOrId)) return [nameOrId];
-                const matches = ctx.characterIds.filter(
-                  (id) => ctx.names.get(id)?.trim().toLocaleLowerCase() === nameOrId.toLocaleLowerCase(),
-                );
-                return matches.length === 1 ? matches : []; // Ambiguous names must use an explicit ID.
-              });
+          result.audience === "all" || (missing && characters.length === 1) ? ctx.characterIds : matches.flat();
+        const audienceIssue = unmatched.length
+          ? unmatched.join(", ").slice(0, 200)
+          : missing && characters.length > 1
+            ? "no audience returned"
+            : undefined;
+        if (missing || unmatched.length)
+          logger.warn(
+            "[advanced-memory] Scene %s participants: %s",
+            cacheOwner.sceneId,
+            unmatched.length
+              ? `no chat character matches ${JSON.stringify(unmatched)}`
+              : "the summary helper returned no audience",
+          );
         const source = cacheOwner.messageIds;
         const audienceCharacterIds = ctx.characterIds
           .filter((id) => {
@@ -1155,7 +1201,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
             return source.some((messageId) => eligible.has(messageId));
           })
           .sort();
-        return { summary: parseChatSummaryResult(outputs[0]!).summary, audienceCharacterIds };
+        return { summary: parseChatSummaryResult(outputs[0]!).summary, audienceCharacterIds, audienceIssue };
       }
       if (pass === maxPasses - 1 || (pass > 0 && tokenSize(outputs.join("\n\n")) >= tokenSize(parts.join("\n\n")))) {
         // Earlier work is reusable; this failed pass must get a fresh attempt on Resume.
@@ -1669,6 +1715,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       signal: options.signal,
     };
     const retained = new Set<string>();
+    let legacyAudienceChecks = 0;
     const visibleIds = new Set(sceneSource(ctx).map((message) => message.id));
     for (let index = 0; index < scenes.length; index++) {
       const scene = scenes[index]!;
@@ -1777,6 +1824,8 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
             }
             candidate.audienceCharacterIds = candidate.manualOverride ? audience : result.audienceCharacterIds;
             candidate.dependencies.push(SCENE_AUDIENCE, sceneVisibility(ctx, candidate.messageIds));
+            if (!candidate.manualOverride && result.audienceIssue)
+              candidate.dependencies.push({ id: SCENE_AUDIENCE_UNMATCHED, revision: result.audienceIssue });
             candidate.sourceFingerprint = fingerprint(ctx, source, candidate.audienceCharacterIds);
             await put(ctx, candidate, options);
             if (work !== candidate) {
@@ -1785,20 +1834,39 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
             }
             record = candidate;
           }
-          if (record.enabled && !hasSceneAudience(record) && !options.closedOnly) {
+          // Older summaries lack a participant check. Automatic maintenance repairs a few per run.
+          if (
+            record.enabled &&
+            !hasSceneAudience(record) &&
+            (!options.closedOnly || legacyAudienceChecks++ < LEGACY_AUDIENCE_CHECKS_PER_RUN)
+          ) {
             const accessWork = buildRecord(ctx, scene, "scene", [], source, "pending");
             accessWork.id = `${record.id}-audience`;
             await progress(ctx, { stage: "summarizing", completed: index, total: scenes.length }, options);
-            const result = await summarize(ctx, [logMessages(ctx, source, true)], null, options, accessWork, true);
-            record = {
-              ...record,
-              audienceCharacterIds: result.audienceCharacterIds,
-              sourceFingerprint: fingerprint(ctx, source, result.audienceCharacterIds),
-              dependencies: [...record.dependencies.filter((item) => item.id !== SCENE_AUDIENCE.id), SCENE_AUDIENCE],
-            };
-            await put(ctx, record, options);
-            await db.delete(advancedMemoryRecords).where(eq(advancedMemoryRecords.id, accessWork.id));
-            ctx.recordCache = ctx.recordCache!.filter((item) => item.id !== accessWork.id);
+            try {
+              const result = await summarize(ctx, [logMessages(ctx, source, true)], null, options, accessWork, true);
+              const checked: StoredRecord = {
+                ...record,
+                audienceCharacterIds: result.audienceCharacterIds,
+                sourceFingerprint: fingerprint(ctx, source, result.audienceCharacterIds),
+                dependencies: [
+                  ...record.dependencies.filter(
+                    (item) => item.id !== SCENE_AUDIENCE.id && item.id !== SCENE_AUDIENCE_UNMATCHED,
+                  ),
+                  SCENE_AUDIENCE,
+                  ...(result.audienceIssue ? [{ id: SCENE_AUDIENCE_UNMATCHED, revision: result.audienceIssue }] : []),
+                ],
+              };
+              await put(ctx, checked, options);
+              record = checked;
+              await db.delete(advancedMemoryRecords).where(eq(advancedMemoryRecords.id, accessWork.id));
+              ctx.recordCache = ctx.recordCache!.filter((item) => item.id !== accessWork.id);
+            } catch (error) {
+              // A failed check of an older scene must not stop archiving the scene that just ended.
+              if (!options.closedOnly) throw error;
+              abortIfNeeded(options.signal);
+              logger.warn(error, "[advanced-memory] Older scene participant check failed; it is retried later");
+            }
           }
           // Persist merged legacy access before retiring generated duplicate copies.
           const original = existing.find((item) => item.id === record.id);
@@ -2799,6 +2867,24 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     return characters.length ? characters.every((id) => record.audienceCharacterIds.includes(id)) : true;
   }
 
+  /** Finished scenes this audience could recall. A swipe recalls again once they change. */
+  function recallArchiveRevision(ctx: Context, validScenes: StoredRecord[], audience: string[]): string {
+    return hash(
+      validScenes
+        .filter(
+          (record) =>
+            record.kind === "scene" &&
+            record.id !== record.sceneId &&
+            record.status === "closed" &&
+            record.content &&
+            record.enabled &&
+            recallAudienceMatches(ctx, record, audience),
+        )
+        .map((record) => `${record.id}:${recordRevision(record)}`)
+        .sort(),
+    );
+  }
+
   function sameIdentity(left: StoredRecord, right: StoredRecord) {
     if (left.kind !== right.kind || left.sceneId !== right.sceneId) return false;
     if (left.kind === "scene") return (left.id === left.sceneId) === (right.id === right.sceneId);
@@ -3406,15 +3492,9 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
           (reason) => reason === "decision-recall-fallback" || reason === "decision-excerpt-fallback",
         ),
       );
-    for (const record of [...constantTimelineRecords.values(), ...recalledRecords]) {
-      receipt.recordRevisions[record.id] = hash([
-        record.content,
-        record.enabled,
-        record.updatedAt,
-        record.dependencies,
-        hasSceneTimelineCorrection(record) ? record.timeline : null,
-      ]);
-    }
+    for (const record of [...constantTimelineRecords.values(), ...recalledRecords])
+      receipt.recordRevisions[record.id] = recordRevision(record);
+    receipt.archiveRevision = recallArchiveRevision(ctx, available, audience);
     if (
       !input.readOnly &&
       !historical &&
@@ -3426,7 +3506,15 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       const contextStart = sources[boundaryIndex + 1]!.id;
       await saveContextStart(ctx, contextStart, input);
     }
-    if (!sceneTexts.length && !excerpts.length) receipt.reasons.push("no-relevant-recall");
+    // Say why nothing was recalled: nothing to recall, no room, or nothing relevant.
+    if (!sceneTexts.length && !excerpts.length)
+      receipt.reasons.push(
+        !candidates.length
+          ? "no-recall-candidates"
+          : !recalling || sceneOrder.length
+            ? "no-recall-budget"
+            : "no-relevant-recall",
+      );
     return {
       messageIds: live.map((message) => message.id),
       chatSummary: chatSummary || null,
@@ -3483,6 +3571,16 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       }).some((entry) => entry.enabled && !entry.messageIds?.length && !entry.rangeStartIndex)
     )
       warnings.push("unscoped-summaries");
+    if (
+      allRecords.some(
+        (record) =>
+          record.kind === "scene" &&
+          record.content &&
+          record.enabled &&
+          record.dependencies.some((item) => item.id === SCENE_AUDIENCE_UNMATCHED),
+      )
+    )
+      warnings.push("scene-audience-unmatched");
     const effectiveKnowledgeStarts: Record<string, string | null> = {};
     for (const id of ctx.characterIds) {
       if (missing.includes(id)) continue;
@@ -3898,10 +3996,12 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     });
   }
 
+  /** With a swipe's audience, also require that no scene it could recall was added or changed since. */
   async function validatePrepared(
     chatId: string,
     sourceMessages: readonly AdvancedMemoryMessage[],
     receipt: PreparedAdvancedMemory["receipt"],
+    swipeAudience?: readonly string[],
   ) {
     const fullContext = await context(chatId);
     if (advancedMemorySourceFingerprint(sourceMessages) !== receipt.sourceFingerprint)
@@ -3929,17 +4029,21 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
         !record ||
         !recordValid(ctx, record) ||
         !dependenciesValid(record, current, ctx) ||
-        hash([
-          record.content,
-          record.enabled,
-          record.updatedAt,
-          record.dependencies,
-          hasSceneTimelineCorrection(record) ? record.timeline : null,
-        ]) !== revision
+        recordRevision(record) !== revision
       ) {
         throw new Error("A memory changed before generation; retry");
       }
     }
+    if (
+      swipeAudience &&
+      receipt.archiveRevision !==
+        recallArchiveRevision(
+          ctx,
+          sceneRecords(current).filter((record) => record.kind === "scene" && recordValid(ctx, record)),
+          [...swipeAudience],
+        )
+    )
+      throw new Error("Memories this reply could recall changed; recall again");
   }
 
   async function exportTransferRecords(chatId: string, sourceMessages?: readonly AdvancedMemoryMessage[]) {

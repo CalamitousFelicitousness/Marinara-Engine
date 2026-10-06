@@ -518,6 +518,7 @@ try {
 
   assert.equal(supportsAssistantReasoningPrefill("custom"), true);
   assert.equal(supportsAssistantReasoningPrefill("grok_subscription"), false);
+  assert.equal(supportsAssistantReasoningPrefill("mistral"), false, "Mistral messages have no reasoning field");
   assert.deepEqual(buildPrefillMessages("", "Unsupported reasoning", { supportsAssistantReasoningPrefill: false }), [
     { role: "user", content: "Continue." },
   ]);
@@ -3006,6 +3007,20 @@ assert.deepEqual(
     ],
   },
   "OpenAI-compatible Anthropic content blocks must preserve tool_use calls",
+);
+assert.deepEqual(
+  extractOpenAICompatibleContentBlocks([
+    {
+      type: "thinking",
+      thinking: [
+        { type: "text", text: "Checking " },
+        { type: "text", text: "the card." },
+      ],
+    },
+    { type: "text", text: "Ready." },
+  ]),
+  { text: "Ready.", thinking: "Checking the card.", anonymousToolCallIds: [], toolCalls: [] },
+  "Mistral ThinkChunks carry their thinking as a list of text chunks",
 );
 
 let anonymousContentBlockToolCallIndex = 0;

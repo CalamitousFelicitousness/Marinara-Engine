@@ -58,6 +58,7 @@ export function PartyOverlayBox({
   line,
   avatar,
   color,
+  colorClassName,
   nameColor,
   voiceControl,
   translation,
@@ -65,6 +66,8 @@ export function PartyOverlayBox({
   line: PartyDialogueLine;
   avatar: SpeakerAvatarInfo | null;
   color?: string;
+  /** Marks a speaker's own dialogue color so Apply preset colors keeps it. */
+  colorClassName?: string;
   nameColor?: string;
   voiceControl?: ReactNode;
   translation?: ReactNode;
@@ -127,6 +130,7 @@ export function PartyOverlayBox({
               "text-xs leading-relaxed text-white/75 whitespace-normal break-words [overflow-wrap:anywhere]",
               line.type === "thought" && "italic opacity-80",
               line.type === "whisper" && "italic",
+              (line.type === "side" || line.type === "extra") && colorClassName,
             )}
             style={(line.type === "side" || line.type === "extra") && color ? { color } : undefined}
             dangerouslySetInnerHTML={{ __html: formatNarration(line.content, false) }}

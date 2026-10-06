@@ -1207,6 +1207,11 @@ export function GameNarration({
   const fallbackDialogueColor = defaultDialogueColor || getDefaultChatTextColor(theme);
   const personaDialogueColor =
     personaInfo?.dialogueColor || fallbackDialogueColor || personaInfo?.nameColor || "#a5b4fc";
+  // Speaker colors are a card's own dialogue color or the fallback. Only an own color outranks
+  // Apply preset colors (chat-widget-surfaces.css); the fallback follows the preset text.
+  // ponytail: an own color identical to the fallback follows the preset too; track own colors per speaker if that matters.
+  const dialogueColorClass = (color?: string) =>
+    color && color !== fallbackDialogueColor ? "mari-dialogue-color" : undefined;
   const useStackedLogDisplay = gameDialogueDisplayMode === "stacked";
   const showLogsButton = !useStackedLogDisplay;
   const [editingContent, setEditingContent] = useState<string | null>(null);
@@ -4830,6 +4835,7 @@ export function GameNarration({
                 className={cn(
                   "mt-0.5 text-xs leading-relaxed text-[var(--foreground)]/80 dark:text-white/80",
                   seg.partyType === "thought" ? "italic opacity-80" : "font-semibold",
+                  dialogueColorClass(seg.color),
                 )}
                 style={seg.color ? { ...narrationFontStyle, color: seg.color } : narrationFontStyle}
                 dangerouslySetInnerHTML={{
@@ -5080,6 +5086,7 @@ export function GameNarration({
                       line={displayedLine}
                       avatar={charAvatar}
                       color={charColor}
+                      colorClassName={dialogueColorClass(charColor)}
                       nameColor={charNameColor}
                       voiceControl={voiceControl}
                       translation={translationPanel}
@@ -5352,6 +5359,7 @@ export function GameNarration({
                                 className={cn(
                                   "text-sm leading-relaxed",
                                   active.partyType === "thought" ? "italic opacity-80" : "font-semibold",
+                                  dialogueColorClass(active.color),
                                   doneTyping
                                     ? ""
                                     : "after:ml-0.5 after:inline-block after:h-4 after:w-[1px] after:animate-pulse after:bg-[var(--foreground)]/60 after:align-middle dark:after:bg-white/60",
@@ -6247,6 +6255,7 @@ export function GameNarration({
                                   className={cn(
                                     "mt-0.5 text-xs leading-relaxed text-[var(--foreground)]/80 dark:text-white/80",
                                     seg.partyType === "thought" ? "italic opacity-80" : "font-semibold",
+                                    dialogueColorClass(seg.color),
                                   )}
                                   style={seg.color ? { ...narrationFontStyle, color: seg.color } : narrationFontStyle}
                                   dangerouslySetInnerHTML={{

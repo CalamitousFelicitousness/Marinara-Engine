@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- With **Apply preset colors** on, quoted dialogue in Roleplay and Game uses each character's or persona's own dialogue color again, including italics inside the quote, instead of the chat style's text color. Dialogue from characters without their own color still follows the chat style (#7167).
+
 ## [2.5.0]
 
 - Release notes too long for a GitHub release are trimmed at a whole entry and end with a link to the full changelog, so publishing a large release such as this one no longer fails (#7146).

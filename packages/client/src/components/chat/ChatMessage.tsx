@@ -135,6 +135,8 @@ const MESSAGE_CHROME_ACTIVE_ICON_CLASS =
 const MESSAGE_CHROME_MARKER_LINE_CLASS = "bg-[var(--marinara-chat-chrome-button-border-active)]";
 const MESSAGE_CHROME_MARKER_TEXT_CLASS = "text-[var(--marinara-chat-chrome-highlight-text)]";
 const MESSAGE_CHROME_RING_CLASS = "ring-[var(--marinara-chat-chrome-focus-ring)]";
+/** Marks a character's or persona's own dialogue color so Apply preset colors keeps it. */
+const DIALOGUE_COLOR_CLASS = "mari-dialogue-color";
 const ROLEPLAY_USER_BUBBLE_PANEL_STRENGTH = 100;
 const ROLEPLAY_ASSISTANT_BUBBLE_PANEL_STRENGTH = 96;
 
@@ -1129,8 +1131,10 @@ function renderWithSpeakerTags(
   defaultDialogueColor: string | undefined,
   speakerColorMap: Map<string, string> | undefined,
   boldDialogue = true,
+  ownDialogueColor = false,
 ): ReactNode[] {
-  const renderLine = (line: string, color = defaultDialogueColor) => highlightDialogue(line, color, boldDialogue);
+  const renderLine = (line: string, color = defaultDialogueColor, own = ownDialogueColor) =>
+    highlightDialogue(line, color, boldDialogue, own);
 
   if (!SPEAKER_TAG_RE.test(text)) {
     return renderLine(text, defaultDialogueColor);
@@ -1149,9 +1153,11 @@ function renderWithSpeakerTags(
     }
     const speakerName = match[1]!;
     const dialogue = match[2]!;
-    const speakerColor = speakerColorMap?.get(speakerName) ?? defaultDialogueColor;
+    const speakerColor = speakerColorMap?.get(speakerName);
     // Render the dialogue content (without the tags) using the speaker's color
-    nodes.push(<span key={`s${key++}`}>{renderLine(dialogue, speakerColor)}</span>);
+    nodes.push(
+      <span key={`s${key++}`}>{speakerColor ? renderLine(dialogue, speakerColor, true) : renderLine(dialogue)}</span>,
+    );
     lastIndex = match.index + match[0].length;
   }
 
@@ -1188,8 +1194,16 @@ function collectInlineMarkdownRanges(text: string): Array<[number, number]> {
  *
  * Code spans (`…`), images (![…](…)), and links ([…](…)) are treated as
  * protected zones — quotes inside them are not matched as dialogue.
+ *
+ * `ownDialogueColor` marks a character's or persona's own color, which keeps
+ * winning over Apply preset colors (see chat-widget-surfaces.css).
  */
-function highlightDialogue(text: string, dialogueColor?: string, boldDialogue = true): ReactNode[] {
+function highlightDialogue(
+  text: string,
+  dialogueColor?: string,
+  boldDialogue = true,
+  ownDialogueColor = false,
+): ReactNode[] {
   // Step 1: Find protected zones where quotes should NOT trigger dialogue detection.
   // Code spans, images, and links may legitimately contain quotation marks.
   const protectedRanges: Array<[number, number]> = [];
@@ -1242,7 +1256,7 @@ function highlightDialogue(text: string, dialogueColor?: string, boldDialogue = 
       <DialogueTag
         key={`d${key++}`}
         style={dialogueColor ? { color: dialogueColor } : undefined}
-        className={!dialogueColor ? "text-black dark:text-white" : undefined}
+        className={!dialogueColor ? "text-black dark:text-white" : ownDialogueColor ? DIALOGUE_COLOR_CLASS : undefined}
       >
         {openQuote}
         {innerNodes}
@@ -1646,6 +1660,7 @@ function renderContent(
   galleryIndex?: ChatGalleryIndex | null,
   nameColorMap?: Map<string, string> | null,
   textShadow?: string,
+  ownDialogueColor = false,
 ): ReactNode {
   // Portable card://self/gallery refs resolve to the speaking character before
   // any rendering, covering both the markdown branch and the embedded-HTML
@@ -1666,7 +1681,7 @@ function renderContent(
   // interfere with paragraph splitting or trigger the HTML path.
   if (!isHtmlPath) {
     const markdownResult = renderMarkdownBlocks(normalized, (seg, _kp) =>
-      renderWithSpeakerTags(seg, dialogueColor, speakerColorMap, boldDialogue),
+      renderWithSpeakerTags(seg, dialogueColor, speakerColorMap, boldDialogue, ownDialogueColor),
     );
     if (nameColorMap && nameColorMap.size > 0) {
       return colorNamesInNodes(markdownResult, nameColorMap, textShadow);
@@ -1722,7 +1737,7 @@ function renderContent(
         const speakerQuoteRe = new RegExp(`(?<![=\\w])(?:${HTML_SAFE_DIALOGUE_QUOTE_PATTERN_SOURCE})`, "g");
         return content.replace(speakerQuoteRe, (match: string, offset: number) => {
           if (insideTag(content, offset)) return match;
-          return `<${dialogueTag} style="color:${validColor}">${match}</${dialogueTag}>`;
+          return `<${dialogueTag} class="${DIALOGUE_COLOR_CLASS}" style="color:${validColor}">${match}</${dialogueTag}>`;
         });
       },
     );
@@ -1739,7 +1754,8 @@ function renderContent(
         if (lastFontClose < lastFontOpen) return match;
       }
       const highlightColor = safeColor(dialogueColor ?? "white");
-      return `<${dialogueTag} style="color:${highlightColor}">${match}</${dialogueTag}>`;
+      const ownClass = ownDialogueColor ? ` class="${DIALOGUE_COLOR_CLASS}"` : "";
+      return `<${dialogueTag}${ownClass} style="color:${highlightColor}">${match}</${dialogueTag}>`;
     });
   })();
 
@@ -1804,10 +1820,12 @@ export function RoleplayMessagePreview({
         htmlScopeClass,
         quoteFormat,
         selfCharacterId,
+        undefined, // galleryIndex
         undefined, // nameColorMap
         undefined, // textShadowStr
+        !!dialogueColor,
       ),
-    [boldDialogue, content, htmlScopeClass, quoteFormat, resolvedDialogueColor, selfCharacterId],
+    [boldDialogue, content, dialogueColor, htmlScopeClass, quoteFormat, resolvedDialogueColor, selfCharacterId],
   );
 
   return (
@@ -2773,6 +2791,8 @@ export const ChatMessage = memo(function ChatMessage({
     : resolvedCharacterInfo;
   const fallbackDialogueColor = defaultDialogueColor || getDefaultChatTextColor(theme);
   const dialogueColor = isMergedGroup ? fallbackDialogueColor : msgColors?.dialogueColor || fallbackDialogueColor;
+  // Only a character's or persona's own color outranks Apply preset colors; the fallback follows the preset.
+  const ownDialogueColor = !isMergedGroup && !!msgColors?.dialogueColor;
   const boxBgColor = msgColors?.boxColor;
   const msgNameColor = msgColors?.nameColor;
   const roleplayBubbleBg = boxBgColor ? boxBgColor : isUser ? userBubbleBg : assistantBubbleBg;
@@ -3037,6 +3057,7 @@ export const ChatMessage = memo(function ChatMessage({
         galleryIndex,
         nameColorMap,
         textShadowStr,
+        ownDialogueColor,
       );
     let markerPrefix = "\uE000";
     while (text.includes(markerPrefix)) markerPrefix = "\uE000" + markerPrefix;
@@ -3072,6 +3093,7 @@ export const ChatMessage = memo(function ChatMessage({
     galleryIndex,
     nameColorMap,
     textShadowStr,
+    ownDialogueColor,
   ]);
   const renderStreamingText = useCallback(
     (streamText: string) =>
@@ -3086,6 +3108,7 @@ export const ChatMessage = memo(function ChatMessage({
         galleryIndex,
         nameColorMap,
         textShadowStr,
+        ownDialogueColor,
       ),
     [
       formatDisplayContent,
@@ -3098,6 +3121,7 @@ export const ChatMessage = memo(function ChatMessage({
       speakerColorMap,
       nameColorMap,
       textShadowStr,
+      ownDialogueColor,
     ],
   );
 
@@ -3130,6 +3154,7 @@ export const ChatMessage = memo(function ChatMessage({
             galleryIndex,
             nameColorMap,
             textShadowStr,
+            ownDialogueColor,
           )
         : null,
     [
@@ -3143,6 +3168,7 @@ export const ChatMessage = memo(function ChatMessage({
       galleryIndex,
       nameColorMap,
       textShadowStr,
+      ownDialogueColor,
     ],
   );
   const translationDisplayOnly = useMemo(

@@ -72,6 +72,12 @@ const RELEASE_ANNOUNCEMENTS: Record<string, ReleaseAnnouncement> = {
       {
         id: "chat-phones",
         copyKey: "ui.modals.whatsnewmodal.release250.paragraphs.chatPhones",
+        media: [
+          {
+            url: "/releases/2.5.0/chat-ui-phone.jpg",
+            altKey: "ui.modals.whatsnewmodal.release250.media.chatPhone",
+          },
+        ],
       },
       {
         id: "widget-styles",

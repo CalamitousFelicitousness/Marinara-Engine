@@ -9106,6 +9106,7 @@
   "ui.modals.whatsnewmodal.release250.headline": "Hello and hi! Welcome to Marinara Engine v2.5.0!",
   "ui.modals.whatsnewmodal.release250.intro": "Professor Mari here, finally let out of the lab! It's been a long while, sorry about that. My devs kept saying \"one more feature\", and I kept believing them. This release lets you move and restyle your chat screen, brings new agents and decision models like Jev, and takes Advanced Memory out of Alpha. Pull up a stool and I'll point at things.",
   "ui.modals.whatsnewmodal.release250.media.advancedMemory": "Scene memories for a Roleplay chat, each with its summary, story timeframe and the characters who can recall it",
+  "ui.modals.whatsnewmodal.release250.media.chatPhone": "A Roleplay chat on a phone in the Mari widget style, with the Chat tools menu open beside the full-width Chat Settings panel",
   "ui.modals.whatsnewmodal.release250.media.chatWindow": "Dragging the Chat Settings window, popping a section out into its own window, shrinking it to a button and switching chat widget styles",
   "ui.modals.whatsnewmodal.release250.media.decisionModels": "A Decision connection in the connection editor and the Decision model picker in Connections defaults with a successful Test result",
   "ui.modals.whatsnewmodal.release250.media.gachaForgeBanner": "The Gacha Forge Summon screen with a standard banner, its featured unit and the pity bar",

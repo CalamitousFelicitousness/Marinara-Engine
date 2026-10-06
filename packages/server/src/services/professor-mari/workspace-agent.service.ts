@@ -221,6 +221,7 @@ const COMMAND_OUTPUT_LIMIT = 32_000;
 const COMMAND_FILE_READ_LIMIT = 256_000;
 const DEFAULT_BASH_TIMEOUT_SECONDS = 120;
 const MAX_BASH_TIMEOUT_SECONDS = 300;
+const CODE_CHECK_TIMEOUT_SECONDS = 15 * 60;
 const MAX_WALK_ENTRIES = 12_000;
 const SKIPPED_DIRS = new Set([
   ".git",
@@ -2374,6 +2375,14 @@ function parseDirectMariArgv(command: string, cwd: string): string[] | null {
 }
 
 /**
+ * `mari code check` runs pnpm check, which executes workspace scripts and configs Mari can edit, so it runs in
+ * the shell sandbox like any other command instead of the direct runtime. Its help text stays direct.
+ */
+function isMariCodeCheckArgv(argv: string[]) {
+  return argv[0] === "code" && argv[1] === "check" && !argv.includes("--help");
+}
+
+/**
  * #5778: resolves a workspace path AND reports where a mutation would really
  * land. `sensitiveTarget` is non-null when either the requested path or the
  * file the OS would actually write (through any symlink, dangling ones
@@ -2449,7 +2458,7 @@ export function workspaceMutationTargetForPath(
   const canonicalPolicy = workspacePathAccessPolicy(canonicalRoot, canonicalTarget);
   const effectivePolicy = workspacePathAccessPolicy(canonicalRoot, effectiveTarget);
   if (requestedPolicy === "forbidden" || canonicalPolicy === "forbidden" || effectivePolicy === "forbidden") {
-    throw new Error("Professor Mari cannot access environment-secret files or Git internals.");
+    throw new Error("Professor Mari cannot access secret files (.env files and the encryption key) or Git internals.");
   }
   // #6984: refused unless the caller only reads, so a new write path cannot forget it. The real paths count:
   // a link elsewhere in the workspace, or node_modules/@marinara-engine/<pkg>, can lead into a dist folder.
@@ -4019,9 +4028,18 @@ ${sections.join("\n\n")}
     if (storageIssue) throw new Error(storageIssue);
     const storageTableJsonIssue = this.storageTableJsonFileIssue(command);
     if (storageTableJsonIssue) throw new Error(storageTableJsonIssue);
-    const timeoutSeconds = numberArg(args, "timeout", DEFAULT_BASH_TIMEOUT_SECONDS, 1, MAX_BASH_TIMEOUT_SECONDS);
     const directMariArgv = parseDirectMariArgv(command, this.workspaceRoot);
-    if (directMariArgv) return this.commandMariDirect(command, directMariArgv);
+    const codeCheck = directMariArgv !== null && isMariCodeCheckArgv(directMariArgv);
+    if (directMariArgv && !codeCheck) return this.commandMariDirect(command, directMariArgv);
+    const sandboxStatus = codeCheck ? getWorkspaceShellSandboxStatus() : null;
+    if (sandboxStatus && !sandboxStatus.available) {
+      throw new Error(
+        `mari code check runs the workspace's own scripts, so it needs the shell sandbox. ${sandboxStatus.reason} Ask the user to run pnpm check themselves.`,
+      );
+    }
+    const timeoutSeconds = codeCheck
+      ? CODE_CHECK_TIMEOUT_SECONDS
+      : numberArg(args, "timeout", DEFAULT_BASH_TIMEOUT_SECONDS, 1, MAX_BASH_TIMEOUT_SECONDS);
     // #5776: past this point the command runs in the sandbox, where the mari
     // CLI can never reach the server (network denied) - a mutation embedded
     // in a compound would fail silently and still count as applied.
@@ -4046,9 +4064,10 @@ ${sections.join("\n\n")}
     // staged for approval - the net under the pre-execution heuristics above.
     const sensitiveSnapshot = await snapshotSensitiveWorkspaceFiles(this.workspaceRoot);
     const sandboxed = await spawnWorkspaceSandboxedShell({
-      command,
+      command: codeCheck ? "pnpm check" : command,
       workspaceRoot: this.workspaceRoot,
       env: process.env,
+      codeCheck,
     });
     type SandboxRun = { stdout: string; stderr: string; exitCode: number | null; timedOut: boolean };
     const ABORT_TEARDOWN_GRACE_MS = 5_000;

@@ -11,7 +11,7 @@ import { getRuntimeStopBudgetMs, runShutdownStepsWithin } from "./lib/shutdown-s
 import { registerRoutes } from "./routes/index.js";
 import { errorHandler } from "./middleware/error-handler.js";
 import { ipAllowlistHook } from "./middleware/ip-allowlist.js";
-import { basicAuthHook } from "./middleware/basic-auth.js";
+import { basicAuthHook, isBasicAuthSatisfied } from "./middleware/basic-auth.js";
 import { csrfProtectionHook } from "./middleware/csrf-protection.js";
 import { rateLimitHook } from "./middleware/rate-limit.js";
 import { securityHeadersHook } from "./middleware/security-headers.js";
@@ -53,7 +53,11 @@ import { capabilityModuleRuntime } from "./services/capability-packages/capabili
 import { migrateLegacyCapabilities } from "./services/capability-packages/legacy-capability-migration.js";
 import { createClientNotFoundHandler, createClientStaticOptions } from "./config/client-static-config.js";
 import { hostValidationHook } from "./middleware/host-validation.js";
-import { androidLocalAuthHook, androidLocalLoginRoute } from "./middleware/android-local-auth.js";
+import {
+  androidLocalAuthHook,
+  androidLocalLoginRoute,
+  isAndroidLocalAuthSatisfied,
+} from "./middleware/android-local-auth.js";
 import { arch, platform, release } from "node:os";
 import { execFileSync } from "node:child_process";
 import { getRuntimeMemorySnapshot } from "./utils/runtime-memory.js";
@@ -369,7 +373,7 @@ export async function buildApp(https?: { cert: Buffer; key: Buffer }) {
   }
 
   // ── Health Check ──
-  app.get("/api/health", async () => {
+  app.get("/api/health", async (request) => {
     const commit = getBuildCommit();
     let capabilityPackages: Awaited<ReturnType<typeof capabilityPackageManager.diagnostics>> | null = null;
     try {
@@ -380,11 +384,15 @@ export async function buildApp(https?: { cert: Buffer; key: Buffer }) {
     }
     // A slot service that throws must not take the health endpoint down with it: this
     // response is also the freeze detector's signal and an uptime check's target.
+    // The probe is exempt from sign-in, so local model file names and GPU details only go to callers who could
+    // open the app itself (this machine, a trusted network, or a signed-in browser).
     let sidecars: ReturnType<typeof buildSidecarHealthSection> | null = null;
-    try {
-      sidecars = buildSidecarHealthSection();
-    } catch (error) {
-      logRateLimited("warn", "health.sidecars", error, "Sidecar health diagnostics are unavailable");
+    if (isBasicAuthSatisfied(request) && isAndroidLocalAuthSatisfied(request)) {
+      try {
+        sidecars = buildSidecarHealthSection();
+      } catch (error) {
+        logRateLimited("warn", "health.sidecars", error, "Sidecar health diagnostics are unavailable");
+      }
     }
     return {
       status: "ok",

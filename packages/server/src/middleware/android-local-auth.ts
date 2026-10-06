@@ -181,6 +181,13 @@ function escapeHtml(value: string): string {
   });
 }
 
+/** Whether the request would pass androidLocalAuthHook without its public-path exemptions. */
+export function isAndroidLocalAuthSatisfied(request: FastifyRequest): boolean {
+  if (!isAndroidAuthConfigured() || !isDeviceLocalIp(request.ip)) return true;
+  const secret = androidSecret();
+  return !!secret && (hasValidSession(request) || hasValidSecretHeader(request, secret));
+}
+
 /**
  * APK-managed Termux installations set a per-install secret. When present,
  * requests originating on the Android device need either an authenticated

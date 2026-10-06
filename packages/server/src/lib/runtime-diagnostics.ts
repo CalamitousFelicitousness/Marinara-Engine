@@ -3,10 +3,10 @@
 // ──────────────────────────────────────────────
 // The privileged companion to the public /api/health reply. /api/health already
 // serves the version and build, the memory snapshot, each package's registry
-// status and the sidecars, so none of that is repeated here. This adds only
-// what health does not carry: process uptime, storage residency detail and
-// whether each capability package runtime is actually live (and its last
-// activation failure in this process).
+// status and, to callers who could open the app, the sidecars, so none of that
+// is repeated here. This adds only what health does not carry: process uptime,
+// storage residency detail and whether each capability package runtime is
+// actually live (and its last activation failure in this process).
 // Counts and states only: no row content, no settings values, no connection
 // details. Every section is collected on its own, so one failing source
 // degrades to { error } instead of failing the whole snapshot.

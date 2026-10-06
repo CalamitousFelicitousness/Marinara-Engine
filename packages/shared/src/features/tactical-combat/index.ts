@@ -57,3 +57,11 @@ export {
   type TacticalPlaceable,
 } from "./grid-gen.js";
 export { deterministicRng } from "./rng.js";
+export {
+  creatureArtBox,
+  creatureArtFrame,
+  creatureArtVariant,
+  creatureFacingToward,
+  findCreatureArt,
+  type CreatureArtFor,
+} from "./creature-art.js";

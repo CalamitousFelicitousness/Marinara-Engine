@@ -1,5 +1,6 @@
 import { CombatWeatherSummary } from "./CombatWeatherSummary";
 import { CombatAiControls } from "./CombatAiControls";
+import { CreatureArtFigure, useCreatureFacings, useCreaturePack } from "./CreatureArt";
 // ──────────────────────────────────────────────
 // Game: Tactical (grid) Combat UI
 //
@@ -74,6 +75,11 @@ import {
   type TacticalCoord,
   type TacticalBattlefieldBrief,
   type TacticalClass,
+  findCreatureArt,
+  creatureArtVariant,
+  type CreatureFacing,
+  type CreaturePack,
+  type CreaturePackCreature,
 } from "@marinara-engine/shared";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import {
@@ -325,6 +331,22 @@ export function TacticalCombatUI({
 
   // Root element — the drag constraints boundary for the draggable inspect card.
   const rootRef = useRef<HTMLDivElement>(null);
+  const chromeRef = useRef<HTMLDivElement>(null);
+  // How tall the bar and the order are, for the game surface's floating controls to clear: one line on
+  // a wide screen, more where the bar wraps and the round is fought by initiative.
+  useEffect(() => {
+    const chrome = chromeRef.current;
+    if (!chrome || typeof ResizeObserver === "undefined") return;
+    const root = document.documentElement;
+    const write = () => root.style.setProperty("--tactical-chrome-height", `${chrome.offsetHeight}px`);
+    write();
+    const observer = new ResizeObserver(write);
+    observer.observe(chrome);
+    return () => {
+      observer.disconnect();
+      root.style.removeProperty("--tactical-chrome-height");
+    };
+  }, []);
 
   // Action-menu drag offset lives at component level so the card keeps its
   // position across unit selections (the card unmounts on deselect).
@@ -1142,6 +1164,12 @@ export function TacticalCombatUI({
         .filter((r) => r.hp > 0)
     );
   }, [liveState, animUnits, stagedMove, selectedUnitId, optimisticMove]);
+  // Creature art (design-game-creature-art.md): the library's creature pack, and which way each fighter faces.
+  const creaturePack = useCreaturePack();
+  const facings = useCreatureFacings(
+    renderUnits.map(({ unit, x, y }) => ({ id: unit.id, x, y, side: unit.side })),
+    String(liveState?.seed ?? ""),
+  );
 
   // ── Loading / error states (translucent so the scene shows through) ──
   if (starting) {
@@ -1222,144 +1250,148 @@ export function TacticalCombatUI({
       {/* Crit flash overlay */}
       {critFlash && <div className="pointer-events-none absolute inset-0 z-30 animate-pulse bg-white/25" />}
 
-      {/* Top bar: round/phase + controls */}
-      <div className="z-20 flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] bg-black/40 px-3 py-2 backdrop-blur">
-        <div className="flex items-center gap-2">
-          <span
-            className={cn(
-              "rounded-md px-2.5 py-1 text-xs font-bold uppercase tracking-wide",
-              liveState.phase === "player"
-                ? "bg-[var(--primary)]/25 text-[var(--primary)]"
-                : "bg-[var(--destructive)]/25 text-[var(--destructive)]",
-            )}
-          >
-            {currentActor
-              ? localizeUi("ui.game.tacticalcombatui.unitsTurn", { name: currentActor.name })
-              : liveState.phase === "player"
-                ? localizeUi("ui.game.tacticalcombatui.playerPhase")
-                : localizeUi("ui.game.tacticalcombatui.enemyPhase")}
-          </span>
-          <span className="text-xs font-semibold text-white/60">
-            {localizeUi("ui.game.gamecombatui.round")} {liveState.round}
-          </span>
-          <span className="hidden text-[0.65rem] font-medium uppercase tracking-wider text-white/40 sm:inline">
-            {liveState.difficulty}
-          </span>
-          <span
-            aria-label={localizeUi("ui.game.tacticalcombatui.battlefieldSummary", {
-              value1: battlefieldSummary,
-            })}
-            className="hidden text-[0.65rem] font-medium text-white/45 md:inline"
-          >
-            {battlefieldSummary}
-          </span>
-          {animating && (
-            <span className="flex items-center gap-1.5 rounded-md bg-white/10 px-2 py-1 text-[0.65rem] font-semibold text-white/70">
-              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-300 shadow-[0_0_6px_1px_rgba(252,211,77,0.7)]" />
-              {localizeUi("ui.game.tacticalcombatui.resolving")}
+      {/* The bar and the turn order, measured so the game's own floating controls (the map, the party,
+          the menu) sit below them rather than over the order. */}
+      <div ref={chromeRef} className="z-20 flex shrink-0 flex-col">
+        {/* Top bar: round/phase + controls */}
+        <div className="z-20 flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] bg-black/40 px-3 py-2 backdrop-blur">
+          <div className="flex items-center gap-2">
+            <span
+              className={cn(
+                "rounded-md px-2.5 py-1 text-xs font-bold uppercase tracking-wide",
+                liveState.phase === "player"
+                  ? "bg-[var(--primary)]/25 text-[var(--primary)]"
+                  : "bg-[var(--destructive)]/25 text-[var(--destructive)]",
+              )}
+            >
+              {currentActor
+                ? localizeUi("ui.game.tacticalcombatui.unitsTurn", { name: currentActor.name })
+                : liveState.phase === "player"
+                  ? localizeUi("ui.game.tacticalcombatui.playerPhase")
+                  : localizeUi("ui.game.tacticalcombatui.enemyPhase")}
             </span>
-          )}
-        </div>
-        <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => setShowThreat((v) => !v)}
-            className={cn(
-              "flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-semibold transition-colors",
-              showThreat
-                ? "border-[var(--destructive)]/40 bg-[var(--destructive)]/20 text-[var(--destructive)]"
-                : "border-white/15 bg-white/5 text-white/70 hover:bg-white/10",
+            <span className="text-xs font-semibold text-white/60">
+              {localizeUi("ui.game.gamecombatui.round")} {liveState.round}
+            </span>
+            <span className="hidden text-[0.65rem] font-medium uppercase tracking-wider text-white/40 sm:inline">
+              {liveState.difficulty}
+            </span>
+            <span
+              aria-label={localizeUi("ui.game.tacticalcombatui.battlefieldSummary", {
+                value1: battlefieldSummary,
+              })}
+              className="hidden text-[0.65rem] font-medium text-white/45 md:inline"
+            >
+              {battlefieldSummary}
+            </span>
+            {animating && (
+              <span className="flex items-center gap-1.5 rounded-md bg-white/10 px-2 py-1 text-[0.65rem] font-semibold text-white/70">
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-300 shadow-[0_0_6px_1px_rgba(252,211,77,0.7)]" />
+                {localizeUi("ui.game.tacticalcombatui.resolving")}
+              </span>
             )}
-            title={localizeUi("ui.game.tacticalcombatui.toggleEnemyThreatRange")}
-          >
-            {showThreat ? <Eye size={13} /> : <EyeOff size={13} />}
-            <span className="hidden sm:inline">{localizeUi("ui.game.tacticalcombatui.threat")}</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setLogOpen((v) => !v)}
-            className="flex items-center gap-1 rounded-lg border border-white/15 bg-white/5 px-2 py-1 text-xs font-semibold text-white/70 transition-colors hover:bg-white/10"
-            title={localizeUi("ui.game.tacticalcombatui.combatLog")}
-          >
-            <ScrollText size={13} />
-            <span className="hidden sm:inline">{localizeUi("ui.game.gamecombatui.log")}</span>
-          </button>
-          {!directed && (
+          </div>
+          <div className="flex items-center gap-1.5">
             <button
               type="button"
-              onClick={() => setRestartConfirm(true)}
-              disabled={animating}
+              onClick={() => setShowThreat((v) => !v)}
               className={cn(
-                "flex items-center gap-1 rounded-lg border border-white/15 bg-white/5 px-2 py-1 text-xs font-semibold text-white/70 transition-colors hover:bg-white/10",
-                animating && "cursor-not-allowed opacity-40 hover:bg-white/5",
+                "flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-semibold transition-colors",
+                showThreat
+                  ? "border-[var(--destructive)]/40 bg-[var(--destructive)]/20 text-[var(--destructive)]"
+                  : "border-white/15 bg-white/5 text-white/70 hover:bg-white/10",
               )}
-              title={localizeUi("ui.game.tacticalcombatui.restartTheBattle")}
+              title={localizeUi("ui.game.tacticalcombatui.toggleEnemyThreatRange")}
             >
-              <RotateCcw size={13} />
-              <span className="hidden sm:inline">{localizeUi("ui.game.tacticalcombatui.restart")}</span>
+              {showThreat ? <Eye size={13} /> : <EyeOff size={13} />}
+              <span className="hidden sm:inline">{localizeUi("ui.game.tacticalcombatui.threat")}</span>
             </button>
-          )}
-          {playerPhase && (
-            <>
+            <button
+              type="button"
+              onClick={() => setLogOpen((v) => !v)}
+              className="flex items-center gap-1 rounded-lg border border-white/15 bg-white/5 px-2 py-1 text-xs font-semibold text-white/70 transition-colors hover:bg-white/10"
+              title={localizeUi("ui.game.tacticalcombatui.combatLog")}
+            >
+              <ScrollText size={13} />
+              <span className="hidden sm:inline">{localizeUi("ui.game.gamecombatui.log")}</span>
+            </button>
+            {!directed && (
               <button
                 type="button"
-                onClick={endTurn}
+                onClick={() => setRestartConfirm(true)}
                 disabled={animating}
                 className={cn(
-                  "rounded-lg border border-[var(--primary)]/40 bg-[var(--primary)]/20 px-2.5 py-1 text-xs font-semibold text-[var(--primary)] transition-colors hover:bg-[var(--primary)]/30",
-                  animating && "cursor-not-allowed opacity-40 hover:bg-[var(--primary)]/20",
-                )}
-              >
-                {localizeUi("ui.game.tacticalcombatui.endTurn")}
-              </button>
-              <button
-                type="button"
-                onClick={() => setFleeConfirm(true)}
-                disabled={animating}
-                className={cn(
-                  "flex items-center gap-1 rounded-lg border border-white/15 bg-white/5 px-2 py-1 text-xs font-semibold text-white/60 transition-colors hover:bg-white/10",
+                  "flex items-center gap-1 rounded-lg border border-white/15 bg-white/5 px-2 py-1 text-xs font-semibold text-white/70 transition-colors hover:bg-white/10",
                   animating && "cursor-not-allowed opacity-40 hover:bg-white/5",
                 )}
-                title={localizeUi("ui.game.tacticalcombatui.fleeTheBattle")}
+                title={localizeUi("ui.game.tacticalcombatui.restartTheBattle")}
               >
-                <Flag size={13} />
-                <span className="hidden sm:inline">{localizeUi("ui.game.tacticalcombatui.flee")}</span>
+                <RotateCcw size={13} />
+                <span className="hidden sm:inline">{localizeUi("ui.game.tacticalcombatui.restart")}</span>
               </button>
-            </>
-          )}
+            )}
+            {playerPhase && (
+              <>
+                <button
+                  type="button"
+                  onClick={endTurn}
+                  disabled={animating}
+                  className={cn(
+                    "rounded-lg border border-[var(--primary)]/40 bg-[var(--primary)]/20 px-2.5 py-1 text-xs font-semibold text-[var(--primary)] transition-colors hover:bg-[var(--primary)]/30",
+                    animating && "cursor-not-allowed opacity-40 hover:bg-[var(--primary)]/20",
+                  )}
+                >
+                  {localizeUi("ui.game.tacticalcombatui.endTurn")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFleeConfirm(true)}
+                  disabled={animating}
+                  className={cn(
+                    "flex items-center gap-1 rounded-lg border border-white/15 bg-white/5 px-2 py-1 text-xs font-semibold text-white/60 transition-colors hover:bg-white/10",
+                    animating && "cursor-not-allowed opacity-40 hover:bg-white/5",
+                  )}
+                  title={localizeUi("ui.game.tacticalcombatui.fleeTheBattle")}
+                >
+                  <Flag size={13} />
+                  <span className="hidden sm:inline">{localizeUi("ui.game.tacticalcombatui.flee")}</span>
+                </button>
+              </>
+            )}
+          </div>
         </div>
-      </div>
 
-      {/* The round's order, by initiative: who has gone, whose turn it is, and who is still to come. */}
-      {liveState.initiative && (
-        <ol
-          aria-label={localizeUi("ui.game.tacticalcombatui.turnOrder")}
-          className="z-20 flex shrink-0 items-center gap-1 overflow-x-auto border-b border-[var(--border)] bg-black/30 px-3 py-1.5"
-        >
-          {liveState.initiative.order.map((id) => {
-            const unit = liveState.units.find((u) => u.id === id);
-            if (!unit) return null;
-            const current = unit.id === currentActor?.id;
-            return (
-              <li
-                key={id}
-                aria-current={current ? "step" : undefined}
-                className={cn(
-                  "shrink-0 rounded-md px-2 py-0.5 text-[0.65rem] font-semibold",
-                  unit.side === "party"
-                    ? "bg-[var(--primary)]/15 text-[var(--primary)]"
-                    : "bg-[var(--destructive)]/15 text-[var(--destructive)]",
-                  current && "ring-1 ring-current",
-                  (unit.hasActed || unit.hp <= 0) && !current && "opacity-45",
-                  unit.hp <= 0 && "line-through",
-                )}
-              >
-                {unit.name}
-              </li>
-            );
-          })}
-        </ol>
-      )}
+        {/* The round's order, by initiative: who has gone, whose turn it is, and who is still to come. */}
+        {liveState.initiative && (
+          <ol
+            aria-label={localizeUi("ui.game.tacticalcombatui.turnOrder")}
+            className="z-20 flex shrink-0 items-center gap-1 overflow-x-auto border-b border-[var(--border)] bg-black/30 px-3 py-1.5"
+          >
+            {liveState.initiative.order.map((id) => {
+              const unit = liveState.units.find((u) => u.id === id);
+              if (!unit) return null;
+              const current = unit.id === currentActor?.id;
+              return (
+                <li
+                  key={id}
+                  aria-current={current ? "step" : undefined}
+                  className={cn(
+                    "shrink-0 rounded-md px-2 py-0.5 text-[0.65rem] font-semibold",
+                    unit.side === "party"
+                      ? "bg-[var(--primary)]/15 text-[var(--primary)]"
+                      : "bg-[var(--destructive)]/15 text-[var(--destructive)]",
+                    current && "ring-1 ring-current",
+                    (unit.hasActed || unit.hp <= 0) && !current && "opacity-45",
+                    unit.hp <= 0 && "line-through",
+                  )}
+                >
+                  {unit.name}
+                </li>
+              );
+            })}
+          </ol>
+        )}
+      </div>
 
       {/* Battlefield */}
       <div className="relative z-10 flex min-h-0 flex-1 items-center justify-center overflow-auto p-2 sm:p-4">
@@ -1478,6 +1510,11 @@ export function TacticalCombatUI({
           {/* Unit tokens (KO'd units exit-fade off the board) */}
           <AnimatePresence>
             {renderUnits.map(({ unit, x, y, hp, staged }) => {
+              // An enemy with no picture of its own is drawn with its creature art when the pack has it.
+              const creature =
+                unit.side === "enemy" && resolveSprite(unit.sprite).kind !== "url"
+                  ? findCreatureArt(creaturePack, { name: unit.name })
+                  : null;
               const isSel = selectedUnitId === unit.id;
               const isTarget = ui.kind === "target" && targetIds.has(unit.id);
               const isForecastTarget = forecastTargetId === unit.id;
@@ -1493,6 +1530,16 @@ export function TacticalCombatUI({
                   key={unit.id}
                   unit={unit}
                   hp={hp}
+                  art={
+                    creature && creaturePack
+                      ? {
+                          pack: creaturePack,
+                          creature,
+                          variant: creatureArtVariant(creature, String(liveState?.seed ?? ""), unit.id),
+                          facing: facings.get(unit.id) ?? "down",
+                        }
+                      : undefined
+                  }
                   gridW={gridW}
                   gridH={gridH}
                   x={x}
@@ -2034,6 +2081,8 @@ interface UnitTokenProps {
   ready: boolean;
   ariaLabel: string;
   onClick: () => void;
+  /** Its creature art, when the creature pack has it (design-game-creature-art.md). */
+  art?: { pack: CreaturePack; creature: CreaturePackCreature; variant: number; facing: CreatureFacing };
 }
 
 function UnitToken({
@@ -2050,6 +2099,7 @@ function UnitToken({
   ready,
   ariaLabel,
   onClick,
+  art,
 }: UnitTokenProps) {
   const left = ((x + 0.5) / gridW) * 100;
   const top = ((y + 0.5) / gridH) * 100;
@@ -2104,7 +2154,10 @@ function UnitToken({
           animation: ready ? "tc-ready-glow 1.8s ease-in-out infinite" : undefined,
         }}
       >
-        {sprite.kind === "url" ? (
+        {art ? (
+          // The token is 0.9 of a cell: its art is drawn at the creature's own size, standing on the cell.
+          <CreatureArtFigure {...art} cellFraction={1 / 0.9} label={unit.name} />
+        ) : sprite.kind === "url" ? (
           <img src={sprite.value} alt={unit.name} className="h-full w-full rounded-full object-cover" />
         ) : sprite.kind === "emoji" ? (
           <span className="text-[min(4vw,1.5rem)] leading-none">{sprite.value}</span>

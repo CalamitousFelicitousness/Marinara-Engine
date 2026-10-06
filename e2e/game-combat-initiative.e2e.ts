@@ -149,6 +149,20 @@ for (const turnOrder of ["initiative", "side"] as const) {
       await expect(order.getByRole("listitem")).toHaveText(["Turn Guard", "Turn Scout", "Turn Raider"]);
       await expect(order.locator('[aria-current="step"]')).toHaveText("Turn Guard");
       await expect(battle.getByText("Turn Guard's turn")).toBeVisible();
+      // Nothing of the game's own floats over the order: the map, the party and the menu sit below it.
+      const strip = (await order.boundingBox())!;
+      for (const float of await page.locator("[data-game-float]").all()) {
+        for (const child of await float.locator(":scope > *").all()) {
+          const box = await child.boundingBox();
+          if (!box || box.width === 0 || box.height === 0) continue;
+          const overlaps =
+            box.x < strip.x + strip.width &&
+            strip.x < box.x + box.width &&
+            box.y < strip.y + strip.height &&
+            strip.y < box.y + box.height;
+          expect(overlaps, `${await float.getAttribute("data-game-float")} covers the turn order`).toBe(false);
+        }
+      }
       // The scout's turn has not come: choosing it opens nothing; choosing the guard opens its menu.
       await battle
         .getByRole("button", { name: /^Turn Scout/ })

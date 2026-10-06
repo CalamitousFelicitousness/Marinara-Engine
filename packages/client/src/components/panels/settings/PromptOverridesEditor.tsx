@@ -367,9 +367,13 @@ function PromptOverridesEditorBody({ keys, preferredKey }: { keys?: readonly str
                     ? localizeUi("settings.promptOverrides.roleplayGalleryVideoDirector.durationSeconds")
                     : variable.description
                 }
-                className={cn(SETTINGS_BUTTON_CLASS, "font-mono")}
+                // Compact regular-weight chips keep two per row in the default panel width, as before #7174.
+                className={cn(
+                  SETTINGS_BUTTON_CLASS,
+                  "mari-chrome-control--chip mari-chrome-control--regular-label font-mono text-[0.6rem]",
+                )}
               >
-                <Code2 size="0.75rem" />
+                <Code2 size="0.625rem" />
                 {"${" + variable.name + "}"}
               </button>
             ))}

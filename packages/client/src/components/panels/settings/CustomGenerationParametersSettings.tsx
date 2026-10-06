@@ -174,6 +174,7 @@ export function CustomGenerationParametersSettings() {
                   </p>
                 )}
               </div>
+              {/* 16px (1rem) icons here are a maintainer choice from #4125; core-flows pins them. */}
               <div className="flex shrink-0 gap-1">
                 <button
                   type="button"
@@ -182,7 +183,7 @@ export function CustomGenerationParametersSettings() {
                   aria-label={t("settings.customGenerationParameters.editAction", { name: definition.name })}
                   title={t("settings.customGenerationParameters.editAction", { name: definition.name })}
                 >
-                  <Pencil size="0.75rem" className="shrink-0" />
+                  <Pencil size="1rem" className="shrink-0" />
                 </button>
                 <button
                   type="button"
@@ -192,7 +193,7 @@ export function CustomGenerationParametersSettings() {
                   aria-label={t("settings.customGenerationParameters.deleteActionNamed", { name: definition.name })}
                   title={t("settings.customGenerationParameters.deleteActionNamed", { name: definition.name })}
                 >
-                  <Trash2 size="0.75rem" className="shrink-0" />
+                  <Trash2 size="1rem" className="shrink-0" />
                 </button>
               </div>
             </div>

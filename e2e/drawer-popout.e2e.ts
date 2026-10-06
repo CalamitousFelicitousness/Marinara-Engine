@@ -613,6 +613,8 @@ test.describe("Pop-out drawers on desktop", () => {
       const placed = await box(settings);
 
       await page.reload();
+      // A "Loading settings" copy of the window shows first and is replaced once Chat Settings loads.
+      await expect(settings.locator("[data-chat-settings-section]").first()).toBeVisible({ timeout: 30_000 });
       await settle(settings);
       await expect(settings).toHaveAttribute("data-pinned", "true");
       expectSameBox(await box(settings), placed, "pinned window after refresh");

@@ -1472,7 +1472,15 @@ export const RULESET_COMBAT_STANDARD_ACTIONS = combatStandardActionSchema.option
 const catalogDurationSchema = z.union([
   z.literal("instant"),
   z.literal("until-save"),
-  z.object({ rounds: z.number().int().min(1).max(1000), at: z.literal("turn-start").optional() }).strict(),
+  z
+    .object({
+      rounds: z.number().int().min(1).max(1000),
+      at: z.literal("turn-start").optional(),
+      /** Counted on the turns of whoever put it on, from their next one (Capability API 1.114):
+       *  "until the end of your next turn", as Guiding Bolt's advantage lasts. */
+      of: z.literal("source").optional(),
+    })
+    .strict(),
 ]);
 
 const catalogAppliesSchema = z

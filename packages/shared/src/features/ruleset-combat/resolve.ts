@@ -1008,11 +1008,17 @@ function applyConditionId(
   if (target.sheet) writeRulesetSheet(ctx.definition, target, { op: "condition", condition, active: true });
   const rounds = typeof applies.duration === "object" ? applies.duration.rounds : null;
   const clock = typeof applies.duration === "object" ? applies.duration.at : undefined;
+  // On its source's clock (1.114), counted from their NEXT turn: put on in the middle of their own
+  // turn, the end of this one is not "the end of your next turn".
+  const sourced = typeof applies.duration === "object" && applies.duration.of === "source" && !!extra.sourceId;
+  const source = sourced ? rulesetCombatant(ctx.state, extra.sourceId!) : undefined;
+  const startsNext = !!source && !clock && rulesetOnOwnTurn(ctx.state, source) && ctx.ticking !== source.id;
   target.tracked = target.tracked.filter((entry) => entry.condition !== condition);
   target.tracked.push({
     condition,
-    rounds,
+    rounds: rounds !== null && startsNext ? rounds + 1 : rounds,
     ...(clock ? { clock } : {}),
+    ...(sourced ? { clockOf: "source" as const } : {}),
     ...(applies.endsAfter ? { endsAfter: applies.endsAfter } : {}),
     ...(applies.saveEnds ? { saveEnds: applies.saveEnds } : {}),
     ...(extra.difficulty !== undefined ? { difficulty: extra.difficulty } : {}),
@@ -1102,7 +1108,25 @@ function tickConditions(ctx: RulesetCombatContext, actor: RulesetCombatant, at: 
   }
 }
 
+/** Whether a condition's rounds are counted on somebody else's turns (1.114): its source's, while they
+ *  are still in the fight. One whose source has gone counts on its holder's turns again. */
+function ticksOnSource(ctx: RulesetCombatContext, holder: RulesetCombatant, entry: RulesetTrackedCondition): boolean {
+  if (entry.clockOf !== "source" || entry.source === undefined || entry.source === holder.id) return false;
+  const source = rulesetCombatant(ctx.state, entry.source);
+  return !!source && !source.defeated;
+}
+
 function tickConditionsNow(ctx: RulesetCombatContext, actor: RulesetCombatant, at: "turn-start" | "turn-end"): void {
+  // What this one put on others that runs on their turns.
+  for (const holder of ctx.state.combatants) {
+    if (holder.id === actor.id) continue;
+    for (const entry of [...holder.tracked]) {
+      if (entry.source !== actor.id || !ticksOnSource(ctx, holder, entry)) continue;
+      if (entry.rounds === null || at !== (entry.clock ?? "turn-end")) continue;
+      entry.rounds -= 1;
+      if (entry.rounds <= 0) removeCondition(ctx, holder, entry.condition, "expired");
+    }
+  }
   for (const entry of [...actor.tracked]) {
     // A save with nothing to be rolled against is not rolled: the condition runs on its clock.
     if (entry.saveEnds?.at === at && entry.difficulty !== undefined) {
@@ -1113,7 +1137,7 @@ function tickConditionsNow(ctx: RulesetCombatContext, actor: RulesetCombatant, a
       }
     }
     // A clock counts the holder's turns down as each one ends, or, where it says so, as each begins.
-    if (entry.rounds === null || at !== (entry.clock ?? "turn-end")) continue;
+    if (entry.rounds === null || at !== (entry.clock ?? "turn-end") || ticksOnSource(ctx, actor, entry)) continue;
     entry.rounds -= 1;
     if (entry.rounds <= 0) removeCondition(ctx, actor, entry.condition, "expired");
   }

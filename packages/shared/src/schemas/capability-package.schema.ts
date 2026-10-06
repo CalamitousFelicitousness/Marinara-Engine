@@ -754,7 +754,11 @@ const capabilityPackageManifestBaseSchema = z
 //        board, never somebody who has hidden). 5e's Parry is both. Not a soft seam: an Engine that
 //        cannot read the keys refuses the ruleset, so a package that ships them declares 1.113. No
 //        permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 113 } as const);
+// 1.114: a condition's duration may say `of: "source"`: its rounds count the turns of whoever put
+//        it on, from their next one, and its holder's again once they have left the fight. 5e's
+//        Guiding Bolt ("before the end of your next turn"). Not a soft seam: an Engine that cannot
+//        read the key refuses the ruleset, so a package that ships it declares 1.114. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 114 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

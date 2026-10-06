@@ -8799,6 +8799,10 @@
                                     "type": "string",
                                     "const": "turn-start"
                                   },
+                                  "of": {
+                                    "type": "string",
+                                    "const": "source"
+                                  },
                                   "$comment": {}
                                 },
                                 "required": [
@@ -9836,6 +9840,10 @@
                                         "at": {
                                           "type": "string",
                                           "const": "turn-start"
+                                        },
+                                        "of": {
+                                          "type": "string",
+                                          "const": "source"
                                         },
                                         "$comment": {}
                                       },
@@ -13961,6 +13969,10 @@
                                       "at": {
                                         "type": "string",
                                         "const": "turn-start"
+                                      },
+                                      "of": {
+                                        "type": "string",
+                                        "const": "source"
                                       },
                                       "$comment": {}
                                     },
@@ -21224,6 +21236,10 @@
                                 "at": {
                                   "type": "string",
                                   "const": "turn-start"
+                                },
+                                "of": {
+                                  "type": "string",
+                                  "const": "source"
                                 },
                                 "$comment": {}
                               },

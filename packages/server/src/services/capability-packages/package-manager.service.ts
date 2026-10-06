@@ -1304,6 +1304,16 @@ function carriesBlowNarrowing(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesBlowNarrowing(one, depth + 1));
 }
 
+/** A condition's duration counted on its source's turns (1.114): `of`, a new key on the strict
+ *  duration, wherever an `applies` is written. */
+function carriesSourceClock(value: unknown, depth = 0): boolean {
+  if (depth > 40 || value === null || typeof value !== "object") return false;
+  if (Array.isArray(value)) return value.some((one) => carriesSourceClock(one, depth + 1));
+  const record = value as Record<string, unknown>;
+  if (plainRecord(record.duration)?.of !== undefined) return true;
+  return Object.values(record).some((one) => carriesSourceClock(one, depth + 1));
+}
+
 /** Creatures immune to a track rather than a condition (1.110): 5e's immunity to exhaustion. */
 function entriesImmuneToTracks(entries: unknown, tracks: ReadonlySet<string>): boolean {
   return (
@@ -1587,6 +1597,7 @@ export function getCapabilityPackageInstallIssue(
   let carriesCounterReachKeys = false;
   let carriesNamedAnswerKeys = false;
   let carriesBlowNarrowingKeys = false;
+  let carriesSourceClockKeys = false;
   // The tracks a level reads and no condition shares a name with: an immunity naming one is new.
   const conditionIds = new Set(
     (Array.isArray(plainRecord(plainRecord(plainRecord(ruleset?.sheet)?.live))?.conditions)
@@ -1707,6 +1718,7 @@ export function getCapabilityPackageInstallIssue(
       if (carriesCounterReach(header.entries)) carriesCounterReachKeys = true;
       if (carriesNamedAnswers(header.entries)) carriesNamedAnswerKeys = true;
       if (carriesBlowNarrowing(header.entries)) carriesBlowNarrowingKeys = true;
+      if (carriesSourceClock(header.entries)) carriesSourceClockKeys = true;
       if (carriesHealthMax(header.entries) || entriesImmuneToTracks(header.entries, leveledTracks)) {
         carriesExhaustion = true;
       }
@@ -1771,6 +1783,7 @@ export function getCapabilityPackageInstallIssue(
       if (carriesCounterReach(fileEntries)) carriesCounterReachKeys = true;
       if (carriesNamedAnswers(fileEntries)) carriesNamedAnswerKeys = true;
       if (carriesBlowNarrowing(fileEntries)) carriesBlowNarrowingKeys = true;
+      if (carriesSourceClock(fileEntries)) carriesSourceClockKeys = true;
       if (entriesCarryExclusive(fileEntries)) carriesExclusive = true;
       if (entriesCarryToHitSheetBonus(fileEntries)) carriesSheetBonus = true;
       collectItems(header.id, fileEntries);
@@ -2105,6 +2118,11 @@ export function getCapabilityPackageInstallIssue(
   // Answers to one kind of blow, or only to a source their holder sees, 1.113.
   if (!declaresApi(113) && carriesBlowNarrowingKeys) {
     return "A ruleset whose answers wait for one kind of blow, or for a source their holder sees, requires schemaVersion 2 and capabilityApi 1.113 or newer";
+  }
+  // Conditions that run on their source's clock, 1.114: in a catalog entry, a creature's action, a
+  // contest or what a condition leaves behind.
+  if (!declaresApi(114) && (carriesSourceClockKeys || carriesSourceClock(ruleset?.combat))) {
+    return "A ruleset whose conditions count their rounds on the turns of whoever put them on requires schemaVersion 2 and capabilityApi 1.114 or newer";
   }
   // Sizes and escape DCs, 1.98: new keys on the strict combat block, contest, creature and applies.
   if (!declaresApi(98)) {

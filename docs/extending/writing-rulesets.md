@@ -1827,7 +1827,12 @@ affects, each with a `duration` of `instant` (no clock of its own: it stays unti
 off), `until-save` (which needs `saveEnds` beside it) or `{ "rounds": n }`, and an optional
 `saveEnds` naming the save and whether it is repeated at `turn-end` or `turn-start`. Rounds count the
 holder's own turns down as each one ends; `{ "rounds": 1, "at": "turn-start" }` counts them as each
-begins, which is how "until the start of your next turn" is said. `endsAfter` takes the condition off
+begins, which is how "until the start of your next turn" is said. `"of": "source"` (Capability API
+1.114) counts the turns of whoever put it on instead, starting with their next one, which is how
+"until the end of your next turn" is said of somebody else. Guiding Bolt's
+`{ "duration": { "rounds": 1, "of": "source" }, "endsAfter": "attacked" }` gives advantage to the
+next attack roll against its target before the end of the caster's next turn. If the source leaves
+the fight, the rounds count on the holder's own turns. `endsAfter` takes the condition off
 after the first `own-attack` (the holder's next attack roll), `attacked` (the next attack roll made
 against the holder) or `own-save` (the holder's next save), whatever its clock says, so
 `{ "duration": { "rounds": 1 }, "endsAfter": "own-attack" }` is "on its next attack before the end of

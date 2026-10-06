@@ -72,7 +72,7 @@ export interface RulesetCombatDamageAlternative extends RulesetCombatAmount {
 /** A condition a hit or a failed save puts on its target. */
 export interface RulesetCombatApplies {
   condition: string;
-  duration: "instant" | "until-save" | { rounds: number; at?: "turn-start" };
+  duration: "instant" | "until-save" | { rounds: number; at?: "turn-start"; of?: "source" };
   saveEnds?: { save: string; at: "turn-end" | "turn-start" };
   endsAfter?: RulesetConditionEnding;
   /** What breaking free of it is rolled against, in place of the holder's own side of the contest
@@ -504,6 +504,8 @@ export interface RulesetTrackedCondition {
   saveEnds?: { save: string; at: "turn-end" | "turn-start" };
   /** When its rounds count down: as each of the holder's turns begins, rather than as each ends. */
   clock?: "turn-start";
+  /** Whose turns its rounds count (1.114): whoever put it on, while they are in the fight. */
+  clockOf?: "source";
   /** What takes it off after one use, whatever its clock says. */
   endsAfter?: RulesetConditionEnding;
   /** The difficulty the repeated save is rolled against: the one that applied it. */

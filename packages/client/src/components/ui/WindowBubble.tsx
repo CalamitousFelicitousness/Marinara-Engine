@@ -3,8 +3,9 @@
 //
 // A minimized window shows as one on a computer; on a phone every control window,
 // popped-out drawer and the Tracker Panel do. It drags with the pointer (a short
-// press opens it instead), snaps into line with the other bubbles, moves with the
-// arrow keys and stays inside its bounds. Themes style `.mari-window-bubble`.
+// press opens it instead), snaps into line with the other bubbles but never onto
+// one, moves with the arrow keys and stays inside its bounds. Themes style
+// `.mari-window-bubble`.
 // ──────────────────────────────────────────────
 import {
   useEffect,
@@ -24,12 +25,13 @@ import {
   WINDOW_KEYBOARD_LARGE_STEP_PX,
   WINDOW_KEYBOARD_STEP_PX,
   clampWindowBubble,
+  dropWindowBubble,
   placeWindowBubbles,
   type FloatingWindowId,
   type WindowBounds,
   type WindowPoint,
 } from "../../lib/floating-window-layout";
-import { snapBubble, type SnapGuide } from "../../lib/window-bubble-snap";
+import type { SnapGuide } from "../../lib/window-bubble-snap";
 
 /** A press that moves less than this (px) opens the bubble instead of dragging it; touch gets more room. */
 const DRAG_START_PX = { mouse: 4, touch: 10 } as const;
@@ -207,8 +209,7 @@ export function WindowBubble({
       current,
     );
     if (event.altKey) return { point: raw, guides: [] };
-    const snapped = snapBubble({ ...raw, width: current, height: current }, drag.others);
-    return { point: clampWindowBubble(snapped, bounds, current), guides: snapped.guides };
+    return dropWindowBubble(raw, drag.others, bounds, current);
   };
 
   const handlePointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {

@@ -913,6 +913,10 @@ test.describe("phone bubbles", () => {
       const launcher = bubble(page, TOOLS_MENU);
       const menu = page.locator("[data-chat-tools-menu]");
       const viewport = page.viewportSize()!;
+      // Chat Settings and the map hold the top corners. A drop never stacks bubbles, so move them inward to
+      // let the launcher dock high on either edge, with the menu's room below it, at the large size too.
+      await dragBubble(page, bubble(page, "chat-settings-button"), { x: viewport.width / 2 - 48, y: 200 });
+      await dragBubble(page, bubble(page, "control:map"), { x: viewport.width / 2 - 48, y: 320 });
       for (const [preset, size] of [
         ["dottore", null],
         ["mari", 96],

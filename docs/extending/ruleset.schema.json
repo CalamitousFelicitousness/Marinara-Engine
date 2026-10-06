@@ -10867,6 +10867,138 @@
                       "maxItems": 12,
                       "default": []
                     },
+                    "spellcasting": {
+                      "type": "object",
+                      "properties": {
+                        "saveDifficulty": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 60
+                        },
+                        "toHit": {
+                          "type": "integer",
+                          "minimum": -50,
+                          "maximum": 100
+                        },
+                        "spells": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "entry": {
+                                "type": "string",
+                                "maxLength": 121,
+                                "pattern": "^[a-z][a-z0-9_]*\\/[a-z0-9]+(?:-[a-z0-9]+)*$"
+                              },
+                              "uses": {
+                                "type": "object",
+                                "properties": {
+                                  "per": {
+                                    "type": "string",
+                                    "enum": [
+                                      "encounter",
+                                      "day"
+                                    ]
+                                  },
+                                  "count": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 20
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "per",
+                                  "count"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "level": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 20
+                              },
+                              "coven": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "$comment": {}
+                            },
+                            "required": [
+                              "entry"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "minItems": 1,
+                          "maxItems": 60,
+                          "uniqueItems": true
+                        },
+                        "coven": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "size": {
+                              "type": "integer",
+                              "minimum": 2,
+                              "maximum": 6
+                            },
+                            "within": {
+                              "type": "number",
+                              "exclusiveMinimum": 0
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "id",
+                            "size",
+                            "within"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "$comment": {}
+                      },
+                      "required": [
+                        "spells"
+                      ],
+                      "additionalProperties": false,
+                      "allOf": [
+                        {
+                          "if": {
+                            "required": [
+                              "coven"
+                            ]
+                          },
+                          "then": {
+                            "properties": {
+                              "spells": {
+                                "contains": {
+                                  "required": [
+                                    "coven"
+                                  ]
+                                }
+                              }
+                            }
+                          },
+                          "else": {
+                            "properties": {
+                              "spells": {
+                                "items": {
+                                  "not": {
+                                    "required": [
+                                      "coven"
+                                    ]
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    },
                     "riders": {
                       "type": "array",
                       "items": {
@@ -11140,14 +11272,25 @@
                         "required": [
                           "health",
                           "defense",
-                          "initiativeModifier",
-                          "actions"
+                          "initiativeModifier"
                         ],
-                        "properties": {
-                          "actions": {
-                            "minItems": 1
+                        "anyOf": [
+                          {
+                            "required": [
+                              "actions"
+                            ],
+                            "properties": {
+                              "actions": {
+                                "minItems": 1
+                              }
+                            }
+                          },
+                          {
+                            "required": [
+                              "spellcasting"
+                            ]
                           }
-                        }
+                        ]
                       }
                     }
                   ]

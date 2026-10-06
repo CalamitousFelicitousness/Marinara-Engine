@@ -92,6 +92,7 @@ import {
   rulesetContestCheck,
   rulesetEscapeDc,
   rulesetCostSteps,
+  rulesetActionUses,
   rulesetPaidLevel,
   rulesetCriticalFromAdjacent,
   rulesetCoverBonus,
@@ -1295,8 +1296,9 @@ function spendAvailability(ctx: RulesetCombatContext, actor: RulesetCombatant, a
   const broke = shot?.type === "uses" ? breakRulesetItem(actor, action, ctx.roll) : null;
   if (broke) ctx.events.push(broke);
   if (action.uses) {
-    const left = Math.max(0, (actor.uses[action.id] ?? 0) - 1);
-    actor.uses[action.id] = left;
+    const left = Math.max(0, rulesetActionUses(actor, action, ctx.state) - 1);
+    if (action.innate?.coven) (ctx.state.covenUses ??= {})[`${action.innate.coven.id}/${action.id}`] = left;
+    else actor.uses[action.id] = left;
     ctx.events.push({
       type: "uses",
       actorId: actor.id,
@@ -1465,7 +1467,7 @@ export function applyRulesetCombatChoice(
   if (option.kind === "standard") {
     // A standard action an ability allowed is paid for as that ability is: the budget it named,
     // just spent, and whatever the ability itself costs off the sheet.
-    const granted = rulesetGrantedStandard(definition, working, option.id);
+    const granted = rulesetGrantedStandard(definition, working, option.id, ctx.state);
     if (granted) {
       const price = planRulesetCombatCost(definition, working, granted.action);
       if (!price) return refusal(state, choice.actorId, "insufficient", option.id);
@@ -2801,7 +2803,11 @@ function resolveAction(
     if (action.gives) grantBudgets(ctx, actor, action);
     if (action.concentration) startConcentration(ctx, actor, action);
   }
-  const steps = payWith ? rulesetCostSteps(ctx.definition, action, payWith) : 0;
+  const steps = action.innate
+    ? Math.max(0, action.innate.level - action.innate.baseLevel)
+    : payWith
+      ? rulesetCostSteps(ctx.definition, action, payWith)
+      : 0;
   const extra = action.use?.perCostStep && steps > 0 ? { amount: action.use.perCostStep, times: steps } : undefined;
   // Where the action's own saves take cover from: a burst from where it landed, anything else (a cone,
   // a line, a spell aimed at somebody) from its maker.

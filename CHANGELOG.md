@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: creatures can cast catalog spells at will or a limited number of times without slots, and coven members share uses while enough of them stand nearby (Capability API 1.118).
 - Rulesets: a spell can leave a summoned weapon that strikes on later turns for its own budget, keeps its upcast damage, and ends with its duration or caster (Capability API 1.117).
 - Rulesets: a creature can heal another on its own side, such as a deva's Healing Touch, with dice or a flat amount and limited uses (Capability API 1.116).
 - Rulesets: creatures and characters can fly, swim, climb or burrow (Capability API 1.108). On the battle board fliers cross water and cliffs, swimmers cross water, and climbers scale any height. Switching from walking to flying counts what was already walked.

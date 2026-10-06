@@ -364,12 +364,19 @@ function oneSourceForCreature(node) {
   Object.values(node).forEach(oneSourceForCreature);
   const properties = node.properties;
   if (node.type !== "object" || !properties?.sheet || !properties.actions || !properties.tier) return;
+  const casting = properties.spellcasting;
+  casting.properties.spells.uniqueItems = true;
+  casting.allOf = [{
+    if: { required: ["coven"] },
+    then: { properties: { spells: { contains: { required: ["coven"] } } } },
+    else: { properties: { spells: { items: { not: { required: ["coven"] } } } } },
+  }];
   node.allOf = [
     ...(node.allOf ?? []),
     {
       if: { required: ["sheet"] },
       then: { not: { anyOf: CREATURE_SHEET_REPLACES.map((key) => ({ required: [key] })) } },
-      else: { required: [...CREATURE_PLAIN_NEEDS, "actions"], properties: { actions: { minItems: 1 } } },
+      else: { required: CREATURE_PLAIN_NEEDS, anyOf: [{ required: ["actions"], properties: { actions: { minItems: 1 } } }, { required: ["spellcasting"] }] },
     },
   ];
 }

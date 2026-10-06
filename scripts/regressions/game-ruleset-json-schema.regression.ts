@@ -239,8 +239,8 @@ console.info("game ruleset JSON Schema regression passed.");
     not: { anyOf: RULESET_CREATURE_SHEET_REPLACES.map((key) => ({ required: [key] })) },
   });
   assert.deepEqual(rule.else, {
-    required: [...RULESET_CREATURE_PLAIN_NEEDS, "actions"],
-    properties: { actions: { minItems: 1 } },
+    required: [...RULESET_CREATURE_PLAIN_NEEDS],
+    anyOf: [{ required: ["actions"], properties: { actions: { minItems: 1 } } }, { required: ["spellcasting"] }],
   });
   // And the three numbers are not required outright, or a creature with a sheet could never be valid.
   assert.deepEqual(node.required, ["tier"]);

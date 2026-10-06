@@ -143,7 +143,7 @@ function grantedStandardOptions(
   for (const action of actor.actions) {
     const granted = action.standard;
     if (!granted || (actor.budgets[granted.budget] ?? 0) < 1) continue;
-    if (!rulesetActionAvailable(actor, action)) continue;
+    if (!rulesetActionAvailable(actor, action, state)) continue;
     const paid = planRulesetCombatCost(definition, actor, action);
     if (!paid) continue;
     for (const name of granted.actions) {
@@ -170,6 +170,7 @@ export function rulesetGrantedStandard(
   definition: RulesetDefinition,
   actor: RulesetCombatant,
   optionId: string,
+  state?: RulesetEncounterState,
 ): { action: RulesetCombatAction; name: string; budget: string } | null {
   if (!optionId.startsWith("standard:")) return null;
   const at = optionId.indexOf("@");
@@ -183,7 +184,7 @@ export function rulesetGrantedStandard(
     (entry) =>
       entry.standard?.budget === budget &&
       entry.standard.actions.includes(name) &&
-      rulesetActionAvailable(actor, entry) &&
+      rulesetActionAvailable(actor, entry, state) &&
       !!planRulesetCombatCost(definition, actor, entry),
   );
   return action ? { action, name, budget } : null;
@@ -570,7 +571,7 @@ export function planRulesetCombatCost(
 ): RulesetCombatCost | null {
   const free: RulesetCombatCost = { steps: [], live: null, cost: [] };
   // An opponent's actions cost nothing off a sheet: their block is the only bookkeeping there is.
-  if (!combatant.sheet) return payWith ? null : free;
+  if (action.innate || !combatant.sheet) return payWith ? null : free;
   const { build, catalogs } = combatant.sheet;
   if (!action.use) return payWith ? null : free;
   const plan = planRulesetUse(definition, build, combatant.sheet.live, catalogs, {
@@ -634,10 +635,11 @@ export function rulesetPoolFamily(definition: RulesetDefinition, group: string |
  */
 export function rulesetPaidLevel(
   definition: RulesetDefinition,
-  combatant: RulesetCombatant,
+  combatant: Pick<RulesetCombatant, "sheet">,
   action: RulesetCombatAction,
   payWith?: string,
 ): number {
+  if (action.innate) return action.innate.level;
   const id = payWith ?? action.use?.pool;
   if (!id) return 0;
   const pool = definition.sheet.live.pools.find((entry) => entry.id === id);
@@ -955,11 +957,42 @@ function firstAreaTarget(state: RulesetEncounterState, actor: RulesetCombatant, 
   return id === undefined ? undefined : rulesetCombatant(state, id);
 }
 
-/** Whether the actor's own bookkeeping still allows this action: a use it has not run out of, and
- *  a recharge that has come back. Both belong to a stat block; a sheet-backed ability is priced by
- *  the sheet instead. */
-export function rulesetActionAvailable(actor: RulesetCombatant, action: RulesetCombatAction): boolean {
-  if (action.uses && (actor.uses[action.id] ?? 0) < 1) return false;
+/** Uses left on this holder, or shared by its coven for this spell (1.118). */
+export function rulesetActionUses(
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  state?: RulesetEncounterState,
+): number {
+  const coven = action.innate?.coven;
+  return coven
+    ? (state?.covenUses?.[`${coven.id}/${action.id}`] ?? action.uses?.count ?? 0)
+    : (actor.uses[action.id] ?? 0);
+}
+
+/** Whether the action has uses left, has recharged, and has the coven members it needs nearby. */
+export function rulesetActionAvailable(
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  state?: RulesetEncounterState,
+): boolean {
+  if (action.innate?.coven) {
+    const coven = action.innate.coven;
+    if (!state || !coven) return false;
+    const from = rulesetPositionOf(actor);
+    const members = state.combatants.filter((member) => {
+      if (
+        member.side !== actor.side ||
+        !rulesetCombatStanding(member) ||
+        member.block?.spellcasting?.coven?.id !== coven.id
+      )
+        return false;
+      if (!state.board) return true;
+      const to = rulesetPositionOf(member);
+      return !!from && !!to && rulesetCellDistance(from, to) <= coven.within;
+    });
+    if (members.length < coven.size) return false;
+  }
+  if (action.uses && rulesetActionUses(actor, action, state) < 1) return false;
   // A weapon with nothing loaded or nothing to shoot, and a clip that is full or has nothing to load.
   if (!rulesetShotsAvailable(actor, action)) return false;
   // A weapon in the off hand follows an attack made this turn with another off-hand weapon.
@@ -1059,6 +1092,18 @@ function forecastFor(
     const average = averageHarm(definition, combat, damage, target ?? undefined);
     forecast.averageDamage = Math.round(average * 100) / 100;
   } else if (action.heal) forecast.averageDamage = Math.round(rulesetAverageDamage(action.heal) * 100) / 100;
+  if (action.innate && action.use?.perCostStep && forecast.averageDamage !== undefined) {
+    const steps = Math.max(0, action.innate.level - action.innate.baseLevel);
+    if (action.damage && rulesetCombatIsPool(combat)) {
+      const damage = rulesetDamageInEffect(definition, combat, actor, action.damage);
+      const scaled = {
+        ...damage,
+        count: damage.count + action.use.perCostStep.count * steps,
+        flat: damage.flat + action.use.perCostStep.flat * steps,
+      };
+      forecast.averageDamage = Math.round(averageHarm(definition, combat, scaled, target ?? undefined) * 100) / 100;
+    } else forecast.averageDamage += rulesetAverageDamage(action.use.perCostStep) * steps;
+  }
   return forecast.hitChance !== undefined || forecast.averageDamage !== undefined ? forecast : undefined;
 }
 
@@ -1150,7 +1195,7 @@ function optionFrom(
     budget = grant.budget;
     oneStrike = grant.attacks === true && weapon;
   }
-  if (!rulesetActionAvailable(actor, action)) return null;
+  if (!rulesetActionAvailable(actor, action, state)) return null;
   const paid = planRulesetCombatCost(definition, actor, action);
   if (!paid) return null;
   const option: RulesetCombatOption = {
@@ -1165,7 +1210,7 @@ function optionFrom(
     ...(action.restore ? { restores: action.restore.pool } : {}),
   };
   if (paid.cost.length > 0) option.cost = paid.cost;
-  if (action.uses) option.left = actor.uses[action.id] ?? 0;
+  if (action.uses) option.left = rulesetActionUses(actor, action, state);
   if (action.ammo) option.ammo = rulesetAmmoLeft(actor, action.ammo.tag);
   if (action.clip) option.loaded = { now: rulesetLoaded(actor, action.clip), max: action.clip.max };
   // What an item has left to use: its stack, or its charges.
@@ -1500,7 +1545,7 @@ export function rulesetSignatureOptions(
   const options: RulesetCombatOption[] = [];
   for (const action of actor.actions) {
     if (!action.signature || action.signature.cost > points) continue;
-    if (!rulesetActionAvailable(actor, action) || !rulesetSequenceCanHappen(actor, action)) continue;
+    if (!rulesetActionAvailable(actor, action, state) || !rulesetSequenceCanHappen(actor, action)) continue;
     const option: RulesetCombatOption = {
       id: action.id,
       kind: action.kind,
@@ -1509,7 +1554,7 @@ export function rulesetSignatureOptions(
       ...(action.heal ? { heals: true } : {}),
       signature: { cost: action.signature.cost, points },
     };
-    if (action.uses) option.left = actor.uses[action.id] ?? 0;
+    if (action.uses) option.left = rulesetActionUses(actor, action, state);
     const forecast = forecastFor(definition, combat, state, actor, action);
     if (forecast) option.forecast = forecast;
     options.push(option);

@@ -1970,6 +1970,58 @@ const creatureRangeSchema = z
   ])
   .describe("A distance, or an ordinary distance with a longer one beyond it");
 
+const creatureUsesSchema = z
+  .object({ per: z.enum(["encounter", "day"]), count: z.number().int().min(1).max(20) })
+  .strict();
+
+const creatureSpellcastingSchema = z
+  .object({
+    saveDifficulty: z.number().int().min(1).max(60).optional(),
+    toHit: z.number().int().min(-50).max(100).optional(),
+    spells: z
+      .array(
+        z
+          .object({
+            entry: catalogEntryRef,
+            uses: creatureUsesSchema.optional(),
+            level: z.number().int().min(0).max(20).optional(),
+            coven: z.literal(true).optional(),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(60),
+    coven: z
+      .object({ id: sheetId, size: z.number().int().min(2).max(6), within: z.number().finite().positive() })
+      .strict()
+      .optional(),
+  })
+  .strict()
+  .superRefine((casting, ctx) => {
+    const seen = new Set<string>();
+    casting.spells.forEach((spell, index) => {
+      if (seen.has(spell.entry))
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["spells", index, "entry"],
+          message: `Duplicate spell entry "${spell.entry}"`,
+        });
+      seen.add(spell.entry);
+      if (spell.coven && !casting.coven)
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["spells", index, "coven"],
+          message: "A coven spell needs a spellcasting.coven block",
+        });
+    });
+    if (casting.coven && !casting.spells.some((spell) => spell.coven))
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["coven"],
+        message: "A spellcasting.coven block needs at least one coven spell",
+      });
+  });
+
 const creatureActionSchema = z
   .object({
     id: sheetId,
@@ -2008,10 +2060,7 @@ const creatureActionSchema = z
       .strict()
       .optional(),
     /** How many times it can be done at all, and over what stretch. */
-    uses: z
-      .object({ per: z.enum(["encounter", "day"]), count: z.number().int().min(1).max(20) })
-      .strict()
-      .optional(),
+    uses: creatureUsesSchema.optional(),
     /** Spent when it is used, and rolled for at the start of the creature's own turn: `from` or
      *  higher on these dice brings it back. It starts the fight available. */
     recharge: z
@@ -2257,6 +2306,9 @@ const creatureFields = {
   /** Points given back at the start of its own turn, spent on `signature` actions. */
   signaturePoints: z.number().int().min(1).max(20).optional(),
   actions: z.array(creatureActionSchema).min(1).max(RULESET_CREATURE_MAX_ACTIONS),
+  /** Catalog spells cast without spending anything off a sheet (Capability API 1.118). Omitted
+   *  uses means at will; a coven spell shares its uses while enough members stand nearby. */
+  spellcasting: creatureSpellcastingSchema.optional(),
   /** What this creature adds to the first qualifying hit of a period, all by itself. */
   riders: z.array(creatureRiderSchema).min(1).max(RULESET_CREATURE_MAX_RIDERS).optional(),
 };
@@ -2332,7 +2384,7 @@ const rulesetProposedCreatureBaseSchema = z.preprocess(
           message: `A creature without a sheet needs its ${key}`,
         });
       }
-      if (creature.actions.length === 0) {
+      if (creature.actions.length === 0 && !creature.spellcasting) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["actions"],
@@ -2385,7 +2437,7 @@ const rulesetCreatureBaseSchema = z
         message: `A creature without a sheet needs its ${key}`,
       });
     }
-    if (creature.actions.length === 0) {
+    if (creature.actions.length === 0 && !creature.spellcasting) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["actions"],
@@ -7846,6 +7898,41 @@ export function rulesetCatalogEntryIssues(
         [index, kind === "creatures" ? "creature" : "item"],
         `Catalog "${catalog.id}" holds ${holds}, so an entry cannot carry ${kind === "creatures" ? "a creature" : "an item"}`,
       );
+    }
+    if (entry.creature?.spellcasting) {
+      const creature = entry.creature;
+      const casting = creature.spellcasting!;
+      casting.spells.forEach((spell, spellIndex) => {
+        const path = [index, "creature", "spellcasting", "spells", spellIndex, "entry"];
+        const [catalogId, entryId] = spell.entry.split("/");
+        const header = definition.catalogs?.find((other) => other.id === catalogId);
+        if (!header) {
+          add(path, `Unknown spell catalog "${catalogId}"`);
+          return;
+        }
+        const available = catalogId === catalog.id ? entries : header.entries;
+        // Another catalog file is checked once the import has read all its entries.
+        if (!available) return;
+        const target = available.find((other) => other.id === entryId);
+        if (!target) {
+          add(path, `Unknown spell entry "${spell.entry}"`);
+          return;
+        }
+        const mechanics = target.mechanics;
+        if (!mechanics) {
+          add(path, `Spell entry "${spell.entry}" needs mechanics`);
+          return;
+        }
+        if (creature.sheet) return;
+        if (mechanics.attackRoll && casting.toHit === undefined)
+          add(path, `Spell "${spell.entry}" needs spellcasting.toHit`);
+        const needsSave =
+          mechanics.save ||
+          mechanics.plus?.some((part) => part.save && part.save.difficulty === undefined) ||
+          mechanics.applies?.some((applies) => applies.saveEnds);
+        if (needsSave && casting.saveDifficulty === undefined)
+          add(path, `Spell "${spell.entry}" needs spellcasting.saveDifficulty`);
+      });
     }
     if (entry.creature) creatureIssues(definition, entry.creature, [index, "creature"], add, narrowedByLayers);
     if (entry.item) itemIssues(definition, entry.item, [index, "item"], add);

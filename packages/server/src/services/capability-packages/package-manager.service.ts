@@ -32,6 +32,7 @@ import {
   type CapabilityReleaseNotes,
   type InstalledCapabilityPackage,
   rulesetFakeIssue,
+  parseRulesetDefinition,
   RULESET_DERIVED_MAX_BEFORE_179,
   RULESET_DERIVED_MAX_BEFORE_183,
   RULESET_DERIVED_MAX_BEFORE_1106,
@@ -1267,6 +1268,14 @@ function entriesCarrySummons(entries: unknown): boolean {
   );
 }
 
+/** A creature that casts catalog spells without slots (1.118). */
+function entriesCarryCreatureSpellcasting(entries: unknown): boolean {
+  return (
+    Array.isArray(entries) &&
+    entries.some((entry) => plainRecord(plainRecord(entry)?.creature)?.spellcasting !== undefined)
+  );
+}
+
 /** A creature action that heals or reaches its own side (1.116): new keys on the strict action. */
 function entriesCarryCreatureHealing(entries: unknown): boolean {
   return (
@@ -1638,6 +1647,7 @@ export function getCapabilityPackageInstallIssue(
   let carriesSourceClockKeys = false;
   let carriesCreatureHealing = false;
   let carriesSummons = false;
+  let carriesCreatureSpellcasting = false;
   // The tracks a level reads and no condition shares a name with: an immunity naming one is new.
   const conditionIds = new Set(
     (Array.isArray(plainRecord(plainRecord(plainRecord(ruleset?.sheet)?.live))?.conditions)
@@ -1761,6 +1771,7 @@ export function getCapabilityPackageInstallIssue(
       if (carriesSourceClock(header.entries)) carriesSourceClockKeys = true;
       if (entriesCarryCreatureHealing(header.entries)) carriesCreatureHealing = true;
       if (entriesCarrySummons(header.entries)) carriesSummons = true;
+      if (entriesCarryCreatureSpellcasting(header.entries)) carriesCreatureSpellcasting = true;
       if (carriesHealthMax(header.entries) || entriesImmuneToTracks(header.entries, leveledTracks)) {
         carriesExhaustion = true;
       }
@@ -1829,6 +1840,7 @@ export function getCapabilityPackageInstallIssue(
       if (carriesSourceClock(fileEntries)) carriesSourceClockKeys = true;
       if (entriesCarryCreatureHealing(fileEntries)) carriesCreatureHealing = true;
       if (entriesCarrySummons(fileEntries)) carriesSummons = true;
+      if (entriesCarryCreatureSpellcasting(fileEntries)) carriesCreatureSpellcasting = true;
       if (entriesCarryHeldChoices(fileEntries)) carriesHeldChoices = true;
       if (entriesCarryExclusive(fileEntries)) carriesExclusive = true;
       if (entriesCarryToHitSheetBonus(fileEntries)) carriesSheetBonus = true;
@@ -2202,6 +2214,24 @@ export function getCapabilityPackageInstallIssue(
   // Spells that leave something to strike on later turns, 1.117.
   if (!declaresApi(117) && carriesSummons) {
     return "A ruleset whose spells leave something behind that strikes on later turns requires schemaVersion 2 and capabilityApi 1.117 or newer";
+  }
+  // Creatures that cast without slots, 1.118.
+  if (!declaresApi(118) && carriesCreatureSpellcasting) {
+    return "A ruleset whose creatures cast spells without slots requires schemaVersion 2 and capabilityApi 1.118 or newer";
+  }
+  if (carriesCreatureSpellcasting) {
+    // The references can only be checked once the catalog files are beside their headers.
+    const complete = {
+      ...ruleset,
+      catalogs: (Array.isArray(catalogs) ? catalogs : []).map((raw) => {
+        const header = plainRecord(raw);
+        if (!header || typeof header.asset !== "string") return raw;
+        const { asset, ...inline } = header;
+        return { ...inline, entries: plainRecord(catalogDocuments?.get(asset))?.entries ?? [] };
+      }),
+    };
+    const parsed = parseRulesetDefinition(complete);
+    if (!parsed.ok) return parsed.issues.slice(0, 5).join("; ");
   }
   // Sizes and escape DCs, 1.98: new keys on the strict combat block, contest, creature and applies.
   if (!declaresApi(98)) {

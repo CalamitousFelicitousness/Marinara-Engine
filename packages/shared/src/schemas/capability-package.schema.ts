@@ -789,7 +789,9 @@ const capabilityPackageManifestBaseSchema = z
 // 1.117: an attack entry's `summons` leaves a weapon that strikes on its holder's later turns for
 //        its own budget, keeping the cast's payment level. It ends after its rounds, on defeat,
 //        or with the concentration that holds it. A package that ships it declares 1.117. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 117 } as const);
+// 1.118: a creature's `spellcasting` casts catalog spells without slots, at will or with limited
+//        uses. Coven spells need nearby members and share their uses. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 118 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

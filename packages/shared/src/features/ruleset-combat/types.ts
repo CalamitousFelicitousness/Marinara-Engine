@@ -7,6 +7,7 @@
 import type {
   RulesetCatalogEntriesById,
   RulesetCreatureHideEntry,
+  RulesetCreature,
   RulesetSheetBuild,
 } from "../../schemas/ruleset.schema.js";
 import type { RulesetLiveState } from "../rulesets/live-state.js";
@@ -239,6 +240,8 @@ export interface RulesetStatBlock {
   defense?: number;
   initiativeModifier?: number;
   actions: RulesetStatBlockAction[];
+  /** Spells cast without slots, kept beside the block's own actions (1.118). */
+  spellcasting?: RulesetCreature["spellcasting"];
   /** The creature described in the ruleset's OWN terms: a character sheet, as partial as it likes,
    *  keyed by the ids the ruleset declares. An opponent built from one is built the way a party
    *  member is, so its health, defense, saves, speed, initiative and the abilities on its lists all
@@ -403,6 +406,8 @@ export interface RulesetCombatAction {
    *  with neither reaches one cell, which is the smallest step a board has. */
   reach?: number;
   range?: RulesetCombatRange;
+  /** The level of a spell cast without slots, and the base it scales from (1.118). */
+  innate?: { level: number; baseLevel: number; coven?: { id: string; size: number; within: number } };
   /** What this leaves to strike on later turns (1.117), with distances already in cells. */
   summons?: { budget: string; rounds: number; move?: number; reach?: number };
   /** The shape this one covers, in cells, aimed at a cell rather than at anybody. */
@@ -685,6 +690,8 @@ export interface RulesetEncounterState {
   /** One up per window ever opened in this fight, so no two windows share an id and an answer
    *  written for a closed one is refused rather than spent on the one that replaced it. */
   windows?: number;
+  /** Remaining uses shared by a coven, keyed by coven id and spell entry (1.118). */
+  covenUses?: Record<string, number>;
 }
 
 /** A fight held open between one step and the next, so somebody who is not the current actor may

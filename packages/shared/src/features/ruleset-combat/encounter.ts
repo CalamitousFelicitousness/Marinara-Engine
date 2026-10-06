@@ -10,6 +10,7 @@
 import {
   RULESET_CATALOG_ROW_KEY,
   RULESET_ITEM_CHARGES_MAX,
+  rulesetSheetBuildSchema,
   type RulesetCatalogEntriesById,
   type RulesetCatalogEntry,
   type RulesetCatalogItem,
@@ -54,6 +55,7 @@ import {
 import { parseRulesetCombatDice, rollRulesetDice, rulesetCombatRoller, sumOf } from "./dice.js";
 import { rulesetInCells, rulesetLineOfSight, rulesetPositionOf } from "./grid.js";
 import { rulesetCombatAdvantage, rulesetCombatIsPool, rulesetPoolDie, throwRulesetCombatPool } from "./pool.js";
+import { rulesetPaidLevel } from "./options.js";
 import { RULESET_MOVE_MODES } from "./types.js";
 import type {
   RulesetMoveMode,
@@ -72,6 +74,7 @@ import type {
   RulesetCombatSoak,
   RulesetEncounterState,
   RulesetStatBlockAction,
+  RulesetStatBlock,
 } from "./types.js";
 
 /** The dice of a catalog entry's `amount`, which the schema already holds to `<count>d<sides>`. */
@@ -1521,6 +1524,58 @@ function abilityActions(
   return { actions, riders };
 }
 
+/** Spells a creature casts without paying off a sheet (1.118). The entry still supplies everything
+ *  it does; only its numbers, level and remaining uses belong to the creature. */
+function innateActions(
+  definition: RulesetDefinition,
+  block: RulesetStatBlock,
+  catalogs: RulesetCatalogEntriesById,
+  perCell: number | undefined,
+): RulesetCombatAction[] {
+  const casting = block.spellcasting;
+  if (!casting) return [];
+  const build = block.sheet ?? rulesetSheetBuildSchema.parse({});
+  const evaluated = evaluateRulesetSheetLive(definition, build, {});
+  const byRef = rulesetCatalogEntriesByRef(catalogs);
+  return casting.spells.flatMap((spell) => {
+    const entry = byRef.get(spell.entry);
+    if (!entry?.mechanics) return [];
+    const catalogId = spell.entry.split("/")[0]!;
+    const header = definition.catalogs?.find((catalog) => catalog.id === catalogId);
+    const source = definition.combat?.abilities?.find((ability) =>
+      entry.rows?.some((row) => row.list === ability.list),
+    );
+    const resolve = (ref: RulesetValueRef) => resolveRulesetValueRef(definition, build, ref, evaluated);
+    const difficulty = casting.saveDifficulty ?? (source?.saveDifficulty ? resolve(source.saveDifficulty) : undefined);
+    const action = mechanicsAction(definition, entry.mechanics, {
+      id: spell.entry,
+      kind: "ability",
+      label: entry.label,
+      budget: entry.mechanics.budget ?? source?.budget ?? definition.combat!.economy.budgets[0]!.id,
+      toHit:
+        casting.toHit ??
+        (source?.toHit ? resolve(source.toHit) : 0) + fightAdjust(definition, build, evaluated, source?.toHit),
+      ...(difficulty !== undefined ? { saveDifficulty: difficulty } : {}),
+      build,
+      evaluated,
+      perCell: perCell === undefined ? undefined : (header?.units?.distance?.perCell ?? perCell),
+    });
+    if (!action) return [];
+    action.catalog = catalogId;
+    action.entry = spell.entry;
+    const baseLevel = rulesetPaidLevel(definition, { sheet: { build, live: {}, catalogs: {} } }, action);
+    action.innate = {
+      level: spell.level ?? baseLevel,
+      baseLevel,
+      ...(spell.coven && casting.coven
+        ? { coven: { ...casting.coven, within: casting.coven.within / (perCell ?? 1) } }
+        : {}),
+    };
+    if (spell.uses) action.uses = { ...spell.uses };
+    return [action];
+  });
+}
+
 /** Only the entries this member's own rows point at, so the state stays small enough to persist
  *  while `use` still knows what every ability costs. */
 function narrowCatalogs(build: RulesetSheetBuild, catalogs: RulesetCatalogEntriesById): RulesetCatalogEntriesById {
@@ -1832,7 +1887,7 @@ function contestActions(
 /** What an action still has left of itself, before anything is spent on it. */
 function startingUses(actions: readonly RulesetCombatAction[]): Record<string, number> {
   const uses: Record<string, number> = {};
-  for (const action of actions) if (action.uses) uses[action.id] = action.uses.count;
+  for (const action of actions) if (action.uses && !action.innate?.coven) uses[action.id] = action.uses.count;
   return uses;
 }
 
@@ -2069,7 +2124,11 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
           catalogs: input.bestiary ?? {},
           perCell,
         });
-        combatant.actions = [...combatant.actions, ...blockActions(block, perCell)];
+        combatant.actions = [
+          ...combatant.actions,
+          ...blockActions(block, perCell),
+          ...innateActions(definition, block, input.bestiary ?? {}, perCell),
+        ];
         combatant.uses = startingUses(combatant.actions);
         if (block.signaturePoints !== undefined) {
           combatant.signature = { points: block.signaturePoints, max: block.signaturePoints };
@@ -2113,7 +2172,10 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
         ? sumOf(rollRulesetDice(roll, block.healthDice.count, block.healthDice.sides)) + block.healthDice.flat
         : block.health;
       const max = Math.max(1, health);
-      const actions = blockActions(block, perCell);
+      const actions = [
+        ...blockActions(block, perCell),
+        ...innateActions(definition, block, input.bestiary ?? {}, perCell),
+      ];
       state.combatants.push({
         id: entry.id,
         name: entry.name,

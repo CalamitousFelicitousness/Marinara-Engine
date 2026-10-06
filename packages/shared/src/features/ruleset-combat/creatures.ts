@@ -216,7 +216,7 @@ export function rulesetCreatureBlock(
  * The catalogs the creatures of a bestiary read their sheets' lists out of. A creature described by
  * a sheet takes the abilities on its lists from the ruleset's other catalogs, exactly as a
  * character's sheet does, so a fight needs those to hand as well as the bestiary itself. Bounded by
- * catalogs rather than creatures: a bestiary with no sheets in it needs nothing more.
+ * catalogs rather than creatures. Spells cast without slots also need their entry catalogs (1.118).
  */
 export function rulesetBestiarySheetCatalogIds(
   definition: RulesetDefinition,
@@ -226,6 +226,10 @@ export function rulesetBestiarySheetCatalogIds(
   for (const entries of Object.values(bestiary)) {
     for (const entry of entries) {
       const sheet = entry.creature?.sheet;
+      for (const spell of entry.creature?.spellcasting?.spells ?? []) {
+        const id = spell.entry.split("/")[0]!;
+        if (!(id in bestiary)) ids.add(id);
+      }
       if (!sheet) continue;
       for (const id of rulesetCatalogIdsForBuild(definition, sheet)) {
         if (!(id in bestiary)) ids.add(id);
@@ -328,6 +332,7 @@ function blockFromCreature(creature: RulesetCreature, budgets: ReadonlySet<strin
     ...(creature.defense !== undefined ? { defense: creature.defense } : {}),
     ...(creature.initiativeModifier !== undefined ? { initiativeModifier: creature.initiativeModifier } : {}),
     ...(creature.sheet ? { sheet: structuredClone(creature.sheet) } : {}),
+    ...(creature.spellcasting ? { spellcasting: structuredClone(creature.spellcasting) } : {}),
     actions: actions.filter((action): action is RulesetStatBlockAction => action !== null),
     ...(creature.speed !== undefined ? { speed: creature.speed } : {}),
     ...(creature.speeds ? { speeds: { ...creature.speeds } } : {}),
@@ -512,6 +517,10 @@ export function clampRulesetStatBlock(
   const tiers = combat?.threat?.tiers ?? [];
   const block = structuredClone(proposed);
   const adjusted: string[] = [];
+  if (block.spellcasting) {
+    delete block.spellcasting;
+    adjusted.push("Spellcasting carried a spell list the threat scale cannot bound, so it was dropped.");
+  }
   // A threat tier bounds harm, not healing or what an action does to its own side.
   for (const action of block.actions) {
     if (action.heal !== undefined || action.targets !== undefined) {

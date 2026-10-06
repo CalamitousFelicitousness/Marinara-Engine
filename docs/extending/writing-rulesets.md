@@ -2088,6 +2088,38 @@ Capability API 1.116. A heal carries no `damage`, `toHit`, `save` or `area`; `ta
 }
 ```
 
+A creature's `spellcasting` (Capability API 1.118) casts catalog spells without spending slots or
+points. Its `saveDifficulty` and `toHit` supply the spell's numbers; a creature with a `sheet` may
+omit them to use its sheet's spellcasting numbers. A plain creature must supply any number its
+spells need. Each `entry` names an existing catalog entry with `mechanics`. Omitted `uses` means at
+will; `level` is the casting level for `perCostStep` scaling, or the entry's base when omitted. The
+entry still supplies its budget, targets, concentration, reactions, areas and summons. A dryad's
+list could be written as follows; these spell ids are illustrative and must be supplied in a
+`spells` catalog:
+
+```json
+"spellcasting": {
+  "saveDifficulty": 14,
+  "spells": [
+    { "entry": "spells/druidcraft" },
+    { "entry": "spells/entangle", "uses": { "per": "day", "count": 3 } },
+    { "entry": "spells/goodberry", "uses": { "per": "day", "count": 3 } },
+    { "entry": "spells/barkskin", "uses": { "per": "day", "count": 1 } },
+    { "entry": "spells/pass-without-trace", "uses": { "per": "day", "count": 1 } },
+    { "entry": "spells/shillelagh", "uses": { "per": "day", "count": 1 } }
+  ]
+}
+```
+
+For a hag coven, add `"coven": { "id": "marsh_hags", "size": 3, "within": 30 }` beside `spells`
+and `"coven": true` on each shared spell. Those spells are offered only while at least three
+standing combatants on the caster's side carry that coven id, each within 30 ruleset distance
+units of the caster by plain cell distance. Without a board, all standing members count. Each
+spell's uses are one pool shared across that coven, keyed by coven id and entry. A coven block
+needs a coven spell and a coven spell needs the block; duplicate entries are refused. A Game
+Master's proposed creature loses `spellcasting` when clamped, because a threat scale cannot bound
+a spell list.
+
 The 5e draft's own bestiary is five hand-written creatures in
 `docs/development/ruleset-5e-2014.example.json`, covering a sequence, a recharge, a save with a
 condition, resistances and immunities, limited uses, signature points, and one written as a sheet.

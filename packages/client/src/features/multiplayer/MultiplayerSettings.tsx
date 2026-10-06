@@ -2,7 +2,7 @@ import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Users } from "lucide-react";
 import type { MultiplayerGuestSession, MultiplayerPersona, MultiplayerPreview } from "@marinara-engine/shared";
-import { useMultiplayerMutation, useMultiplayerStatus } from "../../hooks/use-multiplayer";
+import { multiplayerActionError, useMultiplayerMutation, useMultiplayerStatus } from "../../hooks/use-multiplayer";
 import { useChatStore } from "../../stores/chat.store";
 import { useUIStore } from "../../stores/ui.store";
 import { SettingsSection } from "../../components/panels/settings/SettingControls";
@@ -131,6 +131,7 @@ export function MultiplayerSettings() {
 
 function MultiplayerJoin() {
   const { t } = useTranslation();
+  const status = useMultiplayerStatus();
   const id = useId();
   const [inviteCode, setInviteCode] = useState("");
   const [reviewedCode, setReviewedCode] = useState("");
@@ -236,7 +237,11 @@ function MultiplayerJoin() {
           </button>
           {join.isError && (
             <p role="alert" className="text-xs text-[var(--destructive)]">
-              {t("multiplayer.joinFailed")}
+              {t(
+                multiplayerActionError(join.error) === "busy" && (status.data?.joined || status.data?.hosting)
+                  ? "multiplayer.leaveCurrentFirst"
+                  : "multiplayer.joinFailed",
+              )}
             </p>
           )}
         </>

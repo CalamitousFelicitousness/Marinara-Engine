@@ -144,12 +144,13 @@ function normalizeRelativePath(path: string) {
   return path.split(sep).join("/").replace(/^\.\//, "");
 }
 
-function isEnvironmentSecretName(name: string) {
-  const normalized = name.toLowerCase();
+// Takes a name already folded by fileSystemName. The auto-generated encryption key (utils/crypto.ts) sits in
+// DATA_DIR, inside the workspace by default, and unlocks every saved API key, so it is a secret like .env.
+function isServerSecretName(normalized: string) {
   if (normalized === ".env.example" || normalized === ".env.sample" || normalized === ".env.template") {
     return false;
   }
-  return normalized === ".env" || normalized.startsWith(".env.");
+  return normalized === ".env" || normalized.startsWith(".env.") || normalized === ".encryption-key";
 }
 
 export function workspacePathAccessPolicy(
@@ -163,8 +164,10 @@ export function workspacePathAccessPolicy(
   const normalized = normalizeRelativePath(rel).toLowerCase();
   const parts = normalized.split("/").filter(Boolean);
   const name = parts.at(-1) ?? "";
+  // Folded the way the file system reads names, so ".ENV", ".git." or ".encryption-key::$DATA" still match.
+  const fileSystemParts = parts.map(fileSystemName);
 
-  if (parts.includes(".git") || isEnvironmentSecretName(name)) return "forbidden";
+  if (fileSystemParts.includes(".git") || isServerSecretName(fileSystemParts.at(-1) ?? "")) return "forbidden";
   if (PACKAGE_CONTROL_FILES.has(name)) return "sensitive";
   if (parts.length === 1 && ROOT_LAUNCHER_FILES.has(name)) return "sensitive";
   if (normalized === ".github/workflows" || normalized.startsWith(".github/workflows/")) return "sensitive";

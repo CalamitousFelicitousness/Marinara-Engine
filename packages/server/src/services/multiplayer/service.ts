@@ -8,6 +8,7 @@ import {
   parseMultiplayerJson,
   MULTIPLAYER_LIMITS,
   type MultiplayerAction,
+  type MultiplayerErrorCode,
   type MultiplayerGuestSession,
   type MultiplayerGuestState,
   type MultiplayerHostAction,
@@ -32,6 +33,7 @@ import {
   createRoomParticipant,
   MultiplayerError,
   assertRoomPersonaName,
+  roomNameKey,
   type RoomClaim,
 } from "./room-store.js";
 import { record, projectRoomSnapshot, MultiplayerSnapshotTooLargeError } from "./room-projection.js";
@@ -42,6 +44,8 @@ import { projectMultiplayerGame } from "./game-projection.js";
 import { filterRoomGamePartyCharacterIds } from "./generation-policy.js";
 
 const deriveKey = promisify(scrypt);
+/** A host's "disabled" means its room stopped serving, never that this Engine's own multiplayer is off. */
+const peerError = (code: MultiplayerErrorCode): MultiplayerErrorCode => (code === "disabled" ? "room-ended" : code);
 const secret = () => randomBytes(32).toString("base64url");
 const hash = (value: string) => createHash("sha256").update(value).digest();
 const matches = (value: string, expected: Buffer) => timingSafeEqual(hash(value), expected);
@@ -308,6 +312,7 @@ export class MultiplayerService {
   }) {
     return this.controls(async () => {
       this.gate();
+      await this.clearFinishedGuest();
       if (this.host || this.guest) throw new MultiplayerError("busy");
       const tls = this.options.tls();
       if (!tls) throw new MultiplayerError("unavailable");
@@ -409,12 +414,29 @@ export class MultiplayerService {
         });
         this.replaceInvite(host, roomId);
       } catch (error) {
-        await this.stopHost();
+        try {
+          await this.stopHost();
+        } finally {
+          // The room never opened. Remove it so the prepared setup can be hosted again on another port.
+          await chats.patchMetadata(chat.id, (metadata) => {
+            const saved = record(metadata.multiplayer);
+            return saved.roomId === roomId && saved.epoch === epoch ? { multiplayer: null } : {};
+          });
+        }
         throw error;
       }
       logger.info("[multiplayer] Started room-only listener");
       return this.hostState();
     });
+  }
+  /** A joined session that has ended, or whose chat was deleted, must not block hosting or joining another room. */
+  private async clearFinishedGuest() {
+    const guest = this.guest;
+    if (
+      guest &&
+      (guest.state.phase === "ended" || !(await createChatsStorage(this.options.db).getById(guest.localChatId)))
+    )
+      await this.leaveGuest();
   }
   private replaceInvite(host: Host, roomId: string) {
     const invitation: MultiplayerInvite = {
@@ -701,7 +723,13 @@ export class MultiplayerService {
         if (!session || session.status !== "pending" || session.expiresAt <= Date.now())
           throw new MultiplayerError("stale-action");
         if (action.type === "approve") {
-          await host.store.admit(session.participant);
+          const returning = await this.returningParticipant(host, session);
+          if (returning) {
+            // The same player came back after Leave or a restart: keep their seat, Game slot and sheet.
+            for (const other of host.sessions.values())
+              if (other.participant.id === returning.id) other.status = "revoked";
+            session.participant = returning;
+          } else await host.store.admit(session.participant);
           session.status = "approved";
         } else session.status = "declined";
       } else if (action.type === "kick") {
@@ -767,6 +795,25 @@ export class MultiplayerService {
       this.wake(host);
       return this.hostState();
     });
+  }
+  /** A seated guest with this persona name whose own session is gone (left, restarted or silent for 45 s). */
+  private async returningParticipant(host: Host, request: Session) {
+    const { room } = await host.store.read();
+    const key = roomNameKey(request.participant.persona.name);
+    const seated = room.participants.find(
+      (p) => !p.isHost && [p.persona.name, p.pendingPersona?.name].some((name) => name && roomNameKey(name) === key),
+    );
+    if (!seated) return null;
+    const live = [...host.sessions.values()].some(
+      (s) =>
+        s !== request &&
+        s.participant.id === seated.id &&
+        s.status === "approved" &&
+        s.expiresAt > Date.now() &&
+        s.lastSeen > Date.now() - 45_000,
+    );
+    // A connected player keeps their name; approving a second request for it still fails.
+    return live ? null : seated;
   }
   private async startGame(host: Host, action: GameStartAction) {
     if (!this.game || !this.runner) throw new MultiplayerError("unavailable");
@@ -911,13 +958,14 @@ export class MultiplayerService {
       invite: invitation.invite,
     });
     this.gate();
-    if (reply.type === "error") throw new MultiplayerError(reply.code);
+    if (reply.type === "error") throw new MultiplayerError(peerError(reply.code));
     if (reply.type !== "preview") throw new MultiplayerError("invalid-message");
     return { name: reply.name, mode: reply.mode, expiresAt: reply.expiresAt, fingerprint: invitation.fingerprint };
   }
   async join(input: { inviteCode: string; password: string; displayName: string; persona: MultiplayerPersona }) {
     return this.controls(async () => {
       this.gate();
+      await this.clearFinishedGuest();
       if (this.host || this.guest) throw new MultiplayerError("busy");
       const invitation = decodeMultiplayerInvite(input.inviteCode);
       const preview = await this.preview(input.inviteCode);
@@ -931,7 +979,7 @@ export class MultiplayerService {
         persona: input.persona,
       });
       this.gate();
-      if (response.type === "error") throw new MultiplayerError(response.code);
+      if (response.type === "error") throw new MultiplayerError(peerError(response.code));
       if (response.type !== "admission") throw new MultiplayerError("invalid-message");
       const chats = createChatsStorage(this.options.db);
       const chat = await chats.create(createChatSchema.parse({ name: preview.name, mode: preview.mode }));
@@ -1041,11 +1089,13 @@ export class MultiplayerService {
             this.applyGuestState(guest, response.state);
           } else if (response.type === "error") {
             retryLater();
-            const ended = ["revoked", "declined", "room-ended", "disabled"].includes(response.code);
+            // A closed host listener, or another room now on its address, means this room is over.
+            const code = response.code === "invalid-invite" ? "room-ended" : peerError(response.code);
+            const ended = ["revoked", "declined", "room-ended"].includes(code);
             this.applyGuestState(guest, {
               phase: ended ? "ended" : "reconnecting",
               snapshot: ended ? null : guest.state.snapshot,
-              error: response.code,
+              error: code,
             });
           }
         } catch (error) {
@@ -1081,8 +1131,9 @@ export class MultiplayerService {
     this.gate();
     if (this.guest !== guest) throw new MultiplayerError("disconnected");
     if (response.type === "error") {
-      if (response.state) this.applyGuestState(guest, { ...response.state, error: response.code });
-      throw new MultiplayerError(response.code);
+      const code = peerError(response.code);
+      if (response.state) this.applyGuestState(guest, { ...response.state, error: code });
+      throw new MultiplayerError(code);
     }
     if (response.type !== "accepted") throw new MultiplayerError("invalid-message");
     guest.pollFailures = 0;
@@ -1090,9 +1141,10 @@ export class MultiplayerService {
     this.applyGuestState(guest, response.state);
     return { localChatId: guest.localChatId, state: guest.state };
   }
-  async leaveGuest() {
+  /** With a chat id, leaves only when that chat owns the live session; an old joined chat cannot end a newer one. */
+  async leaveGuest(localChatId?: string) {
     const guest = this.guest;
-    if (!guest) return;
+    if (!guest || (localChatId !== undefined && guest.localChatId !== localChatId)) return;
     // Best effort revoke, then always discard local authority; closing remains available offline.
     this.guest = null;
     guest.abort.abort();

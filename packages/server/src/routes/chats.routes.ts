@@ -1133,6 +1133,20 @@ export async function chatsRoutes(app: FastifyInstance) {
     if (data.characterIds?.includes(PROFESSOR_MARI_ID) && !hasProfessorMariCharacter(existing)) {
       return reply.status(400).send({ error: "Professor Mari is only available from the Home screen." });
     }
+    if (data.characterIds !== undefined) {
+      // A hosted room's AI roster lives in the room. Changing it here would leave the room's
+      // own list behind and every later room reply would be refused.
+      const room = parseChatMetadata(existing.metadata).multiplayer as { role?: unknown; status?: unknown } | null;
+      const before = new Set(resolveChatCharacterIds(existing.characterIds));
+      const after = new Set(data.characterIds);
+      if (
+        room?.role === "host" &&
+        room.status !== "ended" &&
+        (before.size !== after.size || [...after].some((id) => !before.has(id)))
+      ) {
+        return reply.status(409).send({ error: "Add or remove room characters from Players." });
+      }
+    }
     const nextPersonaCharacterId =
       data.personaCharacterId === undefined ? existing.personaCharacterId : data.personaCharacterId;
     if ((data.mode ?? existing.mode) === "game" && nextPersonaCharacterId) {

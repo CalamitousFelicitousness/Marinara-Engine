@@ -2799,11 +2799,35 @@ export function ChatSettingsDrawer({
     });
   };
 
+  // A removed character also leaves the chat's sprite and inactive-character lists.
+  const clearRemovedCharacterMetadata = (charId: string) => {
+    if (spriteCharacterIds.includes(charId)) {
+      const nextSpritePlacements = { ...normalizeSpritePlacements(metadata.spritePlacements) };
+      delete nextSpritePlacements[charId];
+      delete nextSpritePlacements[`${charId}:expressions`];
+      delete nextSpritePlacements[`${charId}:full-body`];
+      updateMeta.mutate({
+        id: chat.id,
+        spriteCharacterIds: spriteCharacterIds.filter((id) => id !== charId),
+        spritePlacements: nextSpritePlacements,
+      });
+    }
+    if (inactiveCharacterIds.includes(charId)) {
+      updateMeta.mutate({
+        id: chat.id,
+        inactiveCharacterIds: inactiveCharacterIds.filter((id) => id !== charId),
+      });
+    }
+  };
+
   // A hosted room keeps its AI roster in the room, so roster changes go through the room and replies keep working.
   const hostedRoom = metadata.multiplayer?.role === "host";
   const changeRoomCharacters = async (add: string[], remove: string[]) => {
     try {
-      for (const characterId of remove) await roomRoster.mutateAsync({ type: "remove-character", characterId });
+      for (const characterId of remove) {
+        await roomRoster.mutateAsync({ type: "remove-character", characterId });
+        clearRemovedCharacterMetadata(characterId);
+      }
       for (const characterId of add)
         await roomRoster.mutateAsync({ type: "add-character", characterId, role: "character" });
     } catch (error) {
@@ -2828,23 +2852,7 @@ export function ChatSettingsDrawer({
           onSuccess: () => syncGamePartyMetadata(current),
         },
       );
-      if (spriteCharacterIds.includes(charId)) {
-        const nextSpritePlacements = { ...normalizeSpritePlacements(metadata.spritePlacements) };
-        delete nextSpritePlacements[charId];
-        delete nextSpritePlacements[`${charId}:expressions`];
-        delete nextSpritePlacements[`${charId}:full-body`];
-        updateMeta.mutate({
-          id: chat.id,
-          spriteCharacterIds: spriteCharacterIds.filter((id) => id !== charId),
-          spritePlacements: nextSpritePlacements,
-        });
-      }
-      if (inactiveCharacterIds.includes(charId)) {
-        updateMeta.mutate({
-          id: chat.id,
-          inactiveCharacterIds: inactiveCharacterIds.filter((id) => id !== charId),
-        });
-      }
+      clearRemovedCharacterMetadata(charId);
     } else {
       current.push(charId);
       updateChat.mutate(

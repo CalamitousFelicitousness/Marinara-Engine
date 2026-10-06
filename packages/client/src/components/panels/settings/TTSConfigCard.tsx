@@ -654,6 +654,7 @@ function TtsSearchableSelect({
                     role="combobox"
                     aria-expanded
                     aria-controls={listboxId}
+                    aria-autocomplete="list"
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
                     placeholder={searchPlaceholder}

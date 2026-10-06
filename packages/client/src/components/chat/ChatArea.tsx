@@ -1345,7 +1345,8 @@ const LocalChatArea = memo(function LocalChatArea({
       : completedExpressionTurn;
   useEffect(() => {
     if (!activeChatId || !messages) return;
-    retainedExpressionTurns.set(activeChatId, visibleExpressionTurn);
+    // An empty refetch must not erase the retained scene; a chat with no turns has nothing to keep anyway.
+    if (visibleExpressionTurn) retainedExpressionTurns.set(activeChatId, visibleExpressionTurn);
   }, [activeChatId, messages, visibleExpressionTurn]);
   const groupChatMode: string | undefined =
     chatCharIds.length > 1 ? normalizeGroupChatMode(chatMeta.groupChatMode) : undefined;

@@ -38,6 +38,7 @@ import {
   worldSnapshot,
   worldTown,
   worldTownDoorCell,
+  worldTownReach,
   worldTownEditIssues,
   type GameWorld,
   type WorldEdits,
@@ -306,6 +307,33 @@ has(
 assert.ok(
   !worldEditsSchema.safeParse({ editsVersion: 3, sites: [{ place: cave.id, lock: "closed" }] }).success,
   "no such lock",
+);
+
+// ── The story's places on a town laid out by hand ──
+// A place the story adds goes on the first free lot whose door a walk from the square reaches, and only if
+// it cuts no door off: a lot walled round with hedges is passed over.
+const storyPlace = (on: GameWorld) =>
+  worldTown(on, city.id, {
+    places: [{ id: "x1", name: "The Lantern House", parentId: city.id }],
+  } as never)!.buildings.find((building) => building.id === "x1")!;
+const usual = storyPlace(game);
+const taken = town.lots.find((lot) => lot.x === usual.x && lot.y === usual.y)!;
+assert.ok(taken, "the story's place stands on a free lot");
+const hedged: Record<number, string> = {};
+for (let y = taken.y - 1; y <= taken.door.y + 1; y++)
+  for (let x = taken.x - 1; x <= taken.x + taken.w; x++) {
+    const inside = x >= taken.x && x < taken.x + taken.w && y >= taken.y && y <= taken.door.y;
+    if (inside || x < 0 || y < 0 || x >= width || y >= town.height) continue;
+    if (".s".includes(town.ground[y * width + x]!)) hedged[y * width + x] = "h";
+  }
+const walled = layer([{ settlement: city.id, ground: groundOf(hedged) }]);
+assert.deepEqual(worldTownEditIssues(game, walled), [], "hedges round a free lot cut no door off");
+const elsewhere = storyPlace(withEdits(game, walled));
+assert.ok(elsewhere, "the story's place still stands somewhere");
+assert.notDeepEqual([elsewhere.x, elsewhere.y], [taken.x, taken.y], "never on the walled-off lot");
+assert.ok(
+  worldTownReach(worldTown(withEdits(game, walled), city.id)!).has(elsewhere.door.y * width + elsewhere.door.x),
+  "its door is reached from the square",
 );
 
 console.log(

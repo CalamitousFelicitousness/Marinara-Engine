@@ -176,8 +176,19 @@ function addStoryPlaces(town: WorldTown, places: ReadonlyArray<{ id: string; nam
     if (!/[sq]/.test(town.ground[lot.door.y * town.width + lot.door.x] ?? "")) return false;
     return !town.buildings.some((building) => overlaps(building, lot));
   };
+  // A walk from the square must still reach its door, and every door it reached before (a town laid out by
+  // hand can wall a lot off with water or hedges, or route a path over a free lot's open ground).
+  const doorsReached = (reach: Set<number>) =>
+    town.buildings.filter((building) => reach.has(building.door.y * town.width + building.door.x)).length;
+  const reachable = (lot: WorldTownLot, before: Set<number>, doorsBefore: number) => {
+    if (!before.has(lot.door.y * town.width + lot.door.x)) return false;
+    const after = worldTownReach({ ...town, buildings: [...town.buildings, { ...lot } as WorldTownBuilding] });
+    return after.has(lot.door.y * town.width + lot.door.x) && doorsReached(after) >= doorsBefore;
+  };
   for (const place of places) {
-    const lot = town.lots.find(free);
+    const before = worldTownReach(town);
+    const doorsBefore = doorsReached(before);
+    const lot = town.lots.find((each) => free(each) && reachable(each, before, doorsBefore));
     let building: WorldTownBuilding | undefined;
     if (lot) {
       building = {

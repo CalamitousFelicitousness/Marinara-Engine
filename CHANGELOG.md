@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- On phones and tablets, Home's browser bar now matches the color of the top bar above it instead of showing as a lighter strip. With reduced motion turned on, theme and accent changes no longer play slow transitions, and dialogs close at once. On phone-width screens in some WebKit browsers, Conversation message buttons such as Regenerate and **Bookmark, pin or note** no longer ignore a press, and Tab reaches them (#7146).
+
 - On phones with Chromium-based browsers, tapping a chat button right after flicking it into place now opens it on the first tap instead of being ignored (#7146).
 
 - Pressing Escape to cancel dragging a chat, character or persona, or to close a picker such as the Text to Speech voice search, no longer closes the whole side panel. Dropping a chat window button onto another one now places it neatly beside it instead of hiding one under the other. On phones, Help explains the **Chat tools** button and lists the tools inside it, labels the map and party buttons again, and keeps its instructions from covering the buttons along the top (#7146).

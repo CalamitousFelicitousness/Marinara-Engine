@@ -4,6 +4,7 @@ import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
 import { execFileSync } from "node:child_process";
 import path from "path";
+import { delegateDirectAndroidBuild } from "./scripts/build-heap.mjs";
 
 const ENABLE_SOURCE_MAPS = process.env.VITE_ENABLE_SOURCEMAP === "true";
 const PWA_DISABLED = Boolean(process.env.SKIP_PWA);
@@ -114,6 +115,11 @@ function bundleBudget(): Plugin {
   };
 }
 
+/** Hands a direct Android `vite build` that lacks heap to scripts/build.mjs (see build-heap.mjs). */
+function androidBuildHeap(): Plugin {
+  return { name: "android-build-heap", apply: "build", config: () => delegateDirectAndroidBuild() };
+}
+
 /** Stub for virtual:pwa-register when the real PWA plugin is skipped (e.g. Termux). */
 function pwaStub(): Plugin {
   const id = "virtual:pwa-register";
@@ -134,6 +140,7 @@ export default defineConfig({
     __MARINARA_BUILD_COMMIT__: JSON.stringify(BUILD_COMMIT),
   },
   plugins: [
+    androidBuildHeap(),
     react({
       babel: {
         // Keep Babel from auto-compacting large components and printing a noisy

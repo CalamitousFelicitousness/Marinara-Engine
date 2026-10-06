@@ -6324,7 +6324,7 @@ strong {
 }
 
 [data-chat-mode="roleplay"] {
-  /* 100cqw is the chat pane (CenterContent is a size container). A docked Tracker Panel needs room on each
+  /* 100cqw is the chat pane (CenterContent is a container). A docked Tracker Panel needs room on each
      side of the column (AppShell sets it), so a pane too narrow for both narrows the column instead of
      squeezing the panel to a sliver. */
   --mari-roleplay-message-column-width: min(58rem, 100cqw - 2 * var(--tracker-panel-column-room, 0px));

@@ -155,6 +155,26 @@ test("a Chat Settings button the user placed stays there beside the docked Track
   }
 });
 
+test("narrowing the window to a phone puts Chat Settings back in its corner", async ({ page, request }, info) => {
+  test.skip(!info.project.name.includes("desktop"), "Starts from the docked computer layout.");
+  const chat = await createChat(request);
+  try {
+    await openChat(page, chat.id, { width: 1440, height: 800 });
+    await expectUsableDockedPanel(page);
+    await page.setViewportSize({ width: 390, height: 800 });
+    await expect(page.locator('[data-component^="TrackerDataSidebarDesktop."]')).toHaveCount(0);
+    await expect(async () => {
+      const [main, settings] = await Promise.all([
+        rect(page.locator('[data-component="CenterContent"]')),
+        rect(settingsButton(page)),
+      ]);
+      expect(Math.abs(settings.x + settings.width - (main.x + main.width - 8))).toBeLessThanOrEqual(1);
+    }).toPass({ timeout: 10_000 });
+  } finally {
+    await request.delete(`/api/chats/${chat.id}`);
+  }
+});
+
 test("between phone and computer widths the Tracker Panel still opens over the chat", async ({
   page,
   request,

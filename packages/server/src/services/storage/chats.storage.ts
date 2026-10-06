@@ -759,6 +759,36 @@ async function countSwipesByMessageId(db: DB, ids: string[]): Promise<Map<string
 }
 
 /** Create the chat storage facade used by routes and importers. */
+type AgentLoreProvenance = Pick<
+  typeof lorebookEntries.$inferSelect,
+  "sourceMessageRefs" | "previousContent" | "previousSourceMessageRefs" | "previousSourceAgentId"
+>;
+
+/**
+ * What deleting `deletedIds` does to one agent-authored lorebook entry (the rules are on
+ * cascadeAgentLorebookEntriesForMessages): null when it is untouched, "delete", or the columns
+ * written. Message-trash restore runs the same rule to tell whether an entry is still as the
+ * delete left it.
+ */
+export function agentLoreCascadeChange(entry: AgentLoreProvenance, deletedIds: ReadonlySet<string>) {
+  const currentHit = parseSourceMessageRefs(entry.sourceMessageRefs).some((ref) => deletedIds.has(ref.id));
+  const snapshotPoisoned = parseSourceMessageRefs(entry.previousSourceMessageRefs).some((ref) =>
+    deletedIds.has(ref.id),
+  );
+  if (!currentHit && !snapshotPoisoned) return null;
+  const clearedSnapshot = { previousContent: null, previousSourceMessageRefs: null, previousSourceAgentId: null };
+  if (!currentHit) return clearedSnapshot;
+  if (snapshotPoisoned || typeof entry.previousContent !== "string") return "delete" as const;
+  return {
+    content: entry.previousContent,
+    embedding: null,
+    embeddingSpaceId: null,
+    sourceMessageRefs: entry.previousSourceAgentId ? (entry.previousSourceMessageRefs ?? "[]") : "[]",
+    sourceAgentId: entry.previousSourceAgentId ?? null,
+    ...clearedSnapshot,
+  };
+}
+
 export function createChatsStorage(db: DB) {
   let chatLastMessageAtBackfilled = false;
   let chatLastMessageAtBackfillPromise: Promise<void> | null = null;
@@ -1222,40 +1252,16 @@ export function createChatsStorage(db: DB) {
 
     const removed: string[] = [];
     for (const entry of candidates) {
-      const currentRefs = parseSourceMessageRefs(entry.sourceMessageRefs);
-      const previousRefs = parseSourceMessageRefs(entry.previousSourceMessageRefs);
-      const currentHit = currentRefs.some((ref) => deletedIds.has(ref.id));
-      const snapshotPoisoned = previousRefs.some((ref) => deletedIds.has(ref.id));
-      if (!currentHit && !snapshotPoisoned) continue;
-
-      if (snapshotPoisoned) {
+      const change = agentLoreCascadeChange(entry, deletedIds);
+      if (!change) continue;
+      if (change === "delete") {
+        await db.delete(lorebookEntries).where(eq(lorebookEntries.id, entry.id));
+        removed.push(entry.id);
+      } else {
         await db
           .update(lorebookEntries)
-          .set({ previousContent: null, previousSourceMessageRefs: null, previousSourceAgentId: null })
+          .set("content" in change ? { ...change, updatedAt: now() } : change)
           .where(eq(lorebookEntries.id, entry.id));
-      }
-
-      if (currentHit) {
-        const canRevert = !snapshotPoisoned && typeof entry.previousContent === "string";
-        if (canRevert) {
-          await db
-            .update(lorebookEntries)
-            .set({
-              content: entry.previousContent as string,
-              embedding: null,
-              embeddingSpaceId: null,
-              sourceMessageRefs: entry.previousSourceAgentId ? (entry.previousSourceMessageRefs ?? "[]") : "[]",
-              sourceAgentId: entry.previousSourceAgentId ?? null,
-              previousSourceAgentId: null,
-              previousContent: null,
-              previousSourceMessageRefs: null,
-              updatedAt: now(),
-            })
-            .where(eq(lorebookEntries.id, entry.id));
-        } else {
-          await db.delete(lorebookEntries).where(eq(lorebookEntries.id, entry.id));
-          removed.push(entry.id);
-        }
       }
     }
     return removed;

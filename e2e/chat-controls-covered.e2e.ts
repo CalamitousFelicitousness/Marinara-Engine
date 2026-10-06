@@ -111,12 +111,13 @@ async function checkCoveredChat(page: Page, info: TestInfo) {
     await expect.poll(() => pressReaches(page, point, '[data-component="MobileDetailSheet"]')).toBe(true);
   }
 
-  // Back at the chat, its buttons return where they were.
+  // Back returns to the Agents list, still over the chat; closing it brings the buttons back where they were.
   await back.click();
   await expect(editor).toHaveCount(0);
-  if (await page.locator('[data-component="RightPanelMobile"]').isVisible()) {
-    await page.locator('[data-tour="panel-agents"]').click();
-  }
+  await expect(newAgent).toBeVisible();
+  await expect(chatButtons).toHaveCount(0);
+  await page.locator('[data-tour="panel-agents"]').click();
+  await expect(page.locator('[data-component="RightPanelMobile"]')).toHaveCount(0);
   await expect(settingsButton).toBeVisible();
   expect(await center(settingsButton)).toEqual(settingsPoint);
 }

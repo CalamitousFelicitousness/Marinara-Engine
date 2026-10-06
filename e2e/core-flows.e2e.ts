@@ -12313,12 +12313,14 @@ test(
     }));
     expect(chromeSurfaces.home).toBe(chromeSurfaces.app);
     const surfaceLightness = (value: string) => {
+      // Phones flatten the chrome to an rgb() backing while its color-mix() rows serialize as color(srgb 0–1).
+      const scale = value.startsWith("color(") ? 255 : 1;
       const channels =
         value
           .match(/[\d.]+/g)
           ?.slice(0, 3)
           .map(Number) ?? [];
-      return channels.reduce((total, channel) => total + channel, 0);
+      return channels.reduce((total, channel) => total + channel * scale, 0);
     };
     const darkAddressSurfaces = await page.evaluate(() => ({
       chrome: getComputedStyle(document.querySelector<HTMLElement>(".mari-home-browser-chrome")!).backgroundColor,

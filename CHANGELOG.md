@@ -5,6 +5,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 ## [Unreleased]
 
 - Updated the MCP SDK used by Claude agents and the developer MCP tool to 1.32.1, which fixes an advisory where its OAuth client could send credentials to an authorization server chosen by an MCP server.
+- Mistral connections now work with **Mistral Large 4**. Its thinking shows in the chat instead of being lost, **Reasoning Effort** offers Off or high for Mistral's reasoning models (low, high or max for GLM 5.3 on Mistral), and refreshing the model list picks up each model's real context size (1M tokens for Large 4). Requests also stop sending settings Mistral rejects, Assistant Prefill is continued without the reply repeating it, and a tool round no longer fails on tool calls Mistral did not create itself (#7164).
 
 ## [2.5.0]
 

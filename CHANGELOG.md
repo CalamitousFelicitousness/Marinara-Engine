@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Game Mode combat works on phones and tablets that open Marinara over plain HTTP, such as a LAN address or Tailscale. Every action in a fight used to fail there before reaching the server, so battles in new games could not continue (#7146).
+
 - On Android (Termux), updating to this version no longer runs out of memory while building the app. Every build path, including the first start after an automatic update from v2.4.6, the in-app updater and switching update channels, now gives the build the memory it needs (up to 1.5 GB, at most half the phone's memory) without raising the running server's limit, and a memory limit you set yourself still wins. Two Game Mode labels that showed raw text keys now show real text, and Decision model warnings use your theme's colors instead of a fixed yellow that was hard to read in light mode (#7146).
 
 - The README and the Built-in agents guide now list **Quartermaster** and **Relationship Tracker** as regular Tracker Agents, since both are now in the stable Download Agents catalog, and link to their package guides on `main` (#7146).

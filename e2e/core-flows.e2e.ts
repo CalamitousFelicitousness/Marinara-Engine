@@ -8387,7 +8387,9 @@ test("desktop Tracker scales into either Roleplay gutter without shifting chat",
     await page.reload();
     await expect(reloadedTracker).toBeHidden();
   } finally {
-    await page.request.delete(`/api/chats/${chat.id}`);
+    // Best-effort, so a step that hangs until the test timeout keeps its own error
+    // instead of being replaced by this cleanup timing out after it.
+    await bestEffortDelete(page.request, `/api/chats/${chat.id}`);
   }
 });
 
@@ -23685,11 +23687,16 @@ test("Game HUD compacts on tablet widths when its surface mounts after the widge
     // survive being measured with nothing to measure and still compact once the
     // surface arrives. Holding here pins that ordering rather than leaving it to
     // runner timing.
+    //
+    // Every page request waits on the same hold, not only the first one: the chat
+    // view now mounts only once the chat itself has loaded (#6850), so the dev
+    // build's StrictMode remount cancels the transcript's first fetch and a retry
+    // carries the page that actually renders. Releasing that retry at once let the
+    // messages land before the lazy GameSurface chunk, skipping the branch.
     let sawMessagesLoadingBranch = false;
-    let messagesPageHeld = false;
+    let messagesPageHold: Promise<void> | null = null;
     await page.route("**/api/chats/*/messages**", async (route) => {
-      if (!messagesPageHeld) {
-        messagesPageHeld = true;
+      messagesPageHold ??= (async () => {
         await page
           .waitForFunction(
             () => document.querySelector('[data-component="GameSurface.MessagesLoading"]') !== null,
@@ -23731,7 +23738,8 @@ test("Game HUD compacts on tablet widths when its surface mounts after the widge
               }),
           )
           .catch(() => undefined);
-      }
+      })();
+      await messagesPageHold;
       await route.continue();
     });
 

@@ -30,6 +30,7 @@ import {
   inferVideoSource,
   isLocalAuthProvider,
   isMistralAdjustableReasoningModel,
+  isMistralGlm53Model,
   isOpenAIGpt6Model,
   localAuthProviderBaseUrl,
   normalizeVideoGenerationProfile,
@@ -1816,7 +1817,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
       // success with nothing to show, so give them room for a one-line answer.
       const reasoningTest =
         isGlm53MandatoryReasoningModel(model) ||
-        (conn.provider === "mistral" && isMistralAdjustableReasoningModel(model));
+        (conn.provider === "mistral" && (isMistralAdjustableReasoningModel(model) || isMistralGlm53Model(model)));
       const maxTokens = resolveStoredMaxTokens(conn.defaultParameters, reasoningTest ? 1024 : 200);
       let fullResponse = "";
       const generation = provider.chat([{ role: "user", content: "hi" }], {

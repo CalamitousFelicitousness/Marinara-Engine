@@ -20,6 +20,7 @@ import {
   isClaudeAdaptiveOnlyNoSamplingModel,
   isClaudeStrictRequestModel,
   isMistralAdjustableReasoningModel,
+  isMistralGlm53Model,
   isOpenAIGpt56Model,
   isOpenAIGpt56SolProAlias,
   isOpenAIGpt6AlwaysReasoningModel,
@@ -36,6 +37,7 @@ import { isLocalInferenceBaseUrl } from "../../../middleware/ip-allowlist.js";
 import {
   applyGlmThinkingParameters,
   glm53CustomGatewayReasoningEffort,
+  glm53ReasoningEffort,
   isGlm53MandatoryReasoningModel,
 } from "./glm-request-compat.js";
 
@@ -100,6 +102,31 @@ export function extractOpenAICompatibleContentBlocks(
     }
   }
   return { text, thinking, toolCalls, anonymousToolCallIds };
+}
+
+/**
+ * Mistral starts its reply with the text of a final `prefix: true` assistant message
+ * (https://docs.mistral.ai/guides/prefix). This drops that repeat so callers get only the continuation, as they do from
+ * other providers. Streamed text is held back only until it can be told apart from the prefix; with no prefix every
+ * call passes text through unchanged.
+ */
+function createPrefixEchoFilter(prefix: string | undefined): { push(text: string): string; flush(): string } {
+  let held: string | null = prefix ? "" : null;
+  return {
+    push(text) {
+      if (held === null || !prefix) return text;
+      held += text;
+      if (held.length < prefix.length && prefix.startsWith(held)) return "";
+      const released = held.startsWith(prefix) ? held.slice(prefix.length) : held;
+      held = null;
+      return released;
+    },
+    flush() {
+      const released = held ?? "";
+      held = null;
+      return released;
+    },
+  };
 }
 
 type ResponsesUsagePayload = {
@@ -887,8 +914,14 @@ export class OpenAIProvider extends BaseLLMProvider {
 
   private applyChatCompletionsReasoning(body: Record<string, unknown>, options: ChatOptions): void {
     if (this.providerKind === "mistral") {
-      // Mistral reasoning models take only "high" or "none"; other Mistral models are not listed as taking
-      // reasoning_effort. prompt_mode is never sent because Mistral rejects it alongside reasoning_effort.
+      // Mistral reasoning models take only "high" or "none", and GLM 5.3 only "low", "high" or "max"; other Mistral
+      // models are not listed as taking reasoning_effort. prompt_mode is never sent because Mistral rejects it alongside
+      // reasoning_effort.
+      if (isMistralGlm53Model(options.model)) {
+        const effort = glm53ReasoningEffort(options.reasoningEffort);
+        if (effort) body.reasoning_effort = effort;
+        return;
+      }
       if (!isMistralAdjustableReasoningModel(options.model)) return;
       if (this.hasExplicitReasoningDisable(options.reasoningEffort)) body.reasoning_effort = "none";
       else if (this.hasActiveReasoningEffort(options.reasoningEffort)) body.reasoning_effort = "high";
@@ -1027,12 +1060,15 @@ export class OpenAIProvider extends BaseLLMProvider {
     }
   }
 
-  /** Mistral request rules, applied after Custom Parameters. */
-  private normalizeMistralRequest(body: Record<string, unknown>): void {
-    if (this.providerKind !== "mistral") return;
+  /**
+   * Mistral request rules, applied after Custom Parameters. Returns the text of a final assistant message sent as a
+   * prefix, which Mistral repeats at the start of its reply.
+   */
+  private normalizeMistralRequest(body: Record<string, unknown>): string | undefined {
+    if (this.providerKind !== "mistral") return undefined;
     // Mistral rejects prompt_mode together with reasoning_effort; a prompt_mode from Custom Parameters wins.
     if (body.prompt_mode !== undefined) delete body.reasoning_effort;
-    if (!Array.isArray(body.messages)) return;
+    if (!Array.isArray(body.messages)) return undefined;
     // Mistral rejects a system message right after an assistant turn, so a mid-chat instruction there goes as user.
     for (let index = 1; index < body.messages.length; index++) {
       if (body.messages[index]?.role === "system" && body.messages[index - 1]?.role === "assistant") {
@@ -1041,7 +1077,10 @@ export class OpenAIProvider extends BaseLLMProvider {
     }
     // Mistral continues a final assistant message (Assistant Prefill, depth-0 injections) only when it is a prefix.
     const last = body.messages.at(-1);
-    if (last?.role === "assistant" && !last.tool_calls?.length) last.prefix = true;
+    if (last?.role !== "assistant" || last.tool_calls?.length) return undefined;
+    last.prefix = true;
+    // ponytail: a prefix with image parts keeps any repeat in the reply; read its text parts if Mistral repeats those.
+    return typeof last.content === "string" ? last.content : undefined;
   }
 
   private applyResponsesReasoning(body: Record<string, unknown>, options: ChatOptions): void {
@@ -1220,6 +1259,15 @@ export class OpenAIProvider extends BaseLLMProvider {
     );
   }
 
+  /**
+   * Mistral accepts only 9-character alphanumeric tool-call ids. Ids it did not issue (tool calls read from reply text,
+   * a fallback connection's calls) are hashed to that form, the same way on the call and on its result.
+   */
+  private formatToolCallId(id: string): string {
+    if (this.providerKind !== "mistral" || /^[a-zA-Z0-9]{9}$/u.test(id)) return id;
+    return createHash("sha256").update(id).digest("hex").slice(0, 9);
+  }
+
   private formatMessages(messages: ChatMessage[], model?: string) {
     const devRole = model && this.usesDeveloperRole(model);
     return messages
@@ -1237,13 +1285,20 @@ export class OpenAIProvider extends BaseLLMProvider {
         const reasoningPayload =
           m.role === "assistant" ? this.assistantReasoningPayload(m.providerMetadata, model) : {};
         if (m.role === "tool") {
-          return { role: "tool" as const, content: m.content, tool_call_id: m.tool_call_id };
+          return {
+            role: "tool" as const,
+            content: m.content,
+            tool_call_id: m.tool_call_id && this.formatToolCallId(m.tool_call_id),
+          };
         }
         if (m.role === "assistant" && m.tool_calls?.length) {
           return {
             role: "assistant" as const,
             content: m.content || null,
-            tool_calls: m.tool_calls,
+            tool_calls:
+              this.providerKind === "mistral"
+                ? m.tool_calls.map((toolCall) => ({ ...toolCall, id: this.formatToolCallId(toolCall.id) }))
+                : m.tool_calls,
             ...reasoningPayload,
           };
         }
@@ -1393,7 +1448,7 @@ export class OpenAIProvider extends BaseLLMProvider {
     this.enforceLocalInferenceThinkingDisable(body, options, suppressModelParameters);
     this.stripUnsupportedSamplerParameters(body, options);
     this.normalizeStrictClaudeRequest(body, options);
-    this.normalizeMistralRequest(body);
+    const prefixEcho = createPrefixEchoFilter(this.normalizeMistralRequest(body));
 
     logger.debug(
       "[OpenAI chat()] stream=%s model=%s reasoning=%s enableThinking=%s verbosity=%s max_completion_tokens=%s max_tokens=%s temperature=%s top_p=%s tools=%s",
@@ -1444,12 +1499,9 @@ export class OpenAIProvider extends BaseLLMProvider {
       }
       // Handle OpenRouter content block arrays (Anthropic-style)
       const blocks = OpenAIProvider.extractContentBlocks(msg?.content);
-      if (blocks) {
-        if (!reasoning && blocks.thinking && options.onThinking) options.onThinking(blocks.thinking);
-        yield blocks.text || refusal;
-      } else {
-        yield (typeof msg?.content === "string" ? msg.content : "") || refusal;
-      }
+      if (blocks && !reasoning && blocks.thinking && options.onThinking) options.onThinking(blocks.thinking);
+      const text = blocks ? blocks.text : typeof msg?.content === "string" ? msg.content : "";
+      yield prefixEcho.push(text) + prefixEcho.flush() || refusal;
       const usage = OpenAIProvider.extractChatCompletionsUsage(json.usage as ChatCompletionsUsagePayload | undefined);
       const finishReason = choices[0]?.finish_reason;
       return usage && finishReason ? { ...usage, finishReason } : usage;
@@ -1489,6 +1541,8 @@ export class OpenAIProvider extends BaseLLMProvider {
           const data = OpenAIProvider.extractSseData(trimmed);
           if (data == null) continue;
           if (data === "[DONE]") {
+            const heldText = prefixEcho.flush();
+            if (heldText) yield heldText;
             this.emitChatCompletionsReasoning(options, reasoningMetadata);
             if (streamUsage) return finishReason ? { ...streamUsage, finishReason } : streamUsage;
             return;
@@ -1536,9 +1590,11 @@ export class OpenAIProvider extends BaseLLMProvider {
           const blocks = OpenAIProvider.extractContentBlocks(content);
           if (blocks) {
             if (!reasoning && blocks.thinking && options.onThinking) options.onThinking(blocks.thinking);
-            if (blocks.text) yield blocks.text;
+            const text = blocks.text && prefixEcho.push(blocks.text);
+            if (text) yield text;
           } else if (typeof content === "string" && content) {
-            yield content;
+            const text = prefixEcho.push(content);
+            if (text) yield text;
           } else if (refusal) {
             yield refusal;
           }
@@ -1550,6 +1606,8 @@ export class OpenAIProvider extends BaseLLMProvider {
       await reader.cancel().catch(() => {});
       reader.releaseLock();
     }
+    const heldText = prefixEcho.flush();
+    if (heldText) yield heldText;
     this.emitChatCompletionsReasoning(options, reasoningMetadata);
     if (streamUsage) return finishReason ? { ...streamUsage, finishReason } : streamUsage;
   }
@@ -1682,7 +1740,7 @@ export class OpenAIProvider extends BaseLLMProvider {
     this.enforceLocalInferenceThinkingDisable(body, options, suppressModelParameters);
     this.stripUnsupportedSamplerParameters(body, options);
     this.normalizeStrictClaudeRequest(body, options);
-    this.normalizeMistralRequest(body);
+    const prefixEcho = createPrefixEchoFilter(this.normalizeMistralRequest(body));
 
     logger.debug(
       "[OpenAI chatComplete()] stream=%s model=%s reasoning=%s enableThinking=%s verbosity=%s onToken=%s",
@@ -1741,6 +1799,7 @@ export class OpenAIProvider extends BaseLLMProvider {
       } else {
         resolvedContent = typeof choice?.message?.content === "string" ? choice.message.content : null;
       }
+      if (resolvedContent) resolvedContent = prefixEcho.push(resolvedContent) + prefixEcho.flush() || null;
       // Fall back to refusal text so the user sees why the model declined
       if (!resolvedContent && typeof choice?.message?.refusal === "string" && choice.message.refusal) {
         resolvedContent = choice.message.refusal;
@@ -1868,9 +1927,10 @@ export class OpenAIProvider extends BaseLLMProvider {
           );
           if (blocks) {
             if (!reasoning && blocks.thinking && options.onThinking) options.onThinking(blocks.thinking);
-            if (blocks.text) {
-              content += blocks.text;
-              await options.onToken?.(blocks.text);
+            const text = blocks.text && prefixEcho.push(blocks.text);
+            if (text) {
+              content += text;
+              await options.onToken?.(text);
             }
             for (const toolCall of blocks.toolCalls) {
               const isAnonymous = blocks.anonymousToolCallIds.includes(toolCall.id);
@@ -1881,8 +1941,11 @@ export class OpenAIProvider extends BaseLLMProvider {
               if (!isAnonymous) providerContentBlockToolCallIndexes.set(toolCall.id, index);
             }
           } else if (typeof textContent === "string" && textContent) {
-            content += textContent;
-            await options.onToken?.(textContent);
+            const text = prefixEcho.push(textContent);
+            if (text) {
+              content += text;
+              await options.onToken?.(text);
+            }
           } else if (refusal) {
             content += refusal;
             await options.onToken?.(refusal);
@@ -1939,6 +2002,11 @@ export class OpenAIProvider extends BaseLLMProvider {
       options.signal?.removeEventListener("abort", onAbort);
       await reader.cancel().catch(() => {});
       reader.releaseLock();
+    }
+    const heldText = prefixEcho.flush();
+    if (heldText) {
+      content += heldText;
+      await options.onToken?.(heldText);
     }
 
     // Collect tool calls in order

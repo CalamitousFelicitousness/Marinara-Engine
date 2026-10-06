@@ -1,6 +1,7 @@
 import {
   isClaudeAdaptiveOnlyNoSamplingModel,
   isMistralAdjustableReasoningModel,
+  isMistralGlm53Model,
   isOpenAIGpt56Model,
   isOpenAIGpt6AlwaysReasoningModel,
   isOpenAIGpt6Model,
@@ -287,7 +288,8 @@ export function relevantGenerationParameters(context: GenerationParameterContext
         if (!isXaiConfigurableReasoningModel(model) && model !== XAI_MULTI_AGENT_MODEL) hide("reasoningEffort");
       } else {
         const glm = model.includes("glm") && (provider === "nanogpt" || isNativeGlmHost(context.baseUrl));
-        const mistralReasoning = provider === "mistral" && isMistralAdjustableReasoningModel(model);
+        const mistralReasoning =
+          provider === "mistral" && (isMistralAdjustableReasoningModel(model) || isMistralGlm53Model(model));
         if (provider !== "nanogpt" && !isOpenAIReasoningModel(model) && !glm && !mistralReasoning) {
           hide("reasoningEffort");
         }

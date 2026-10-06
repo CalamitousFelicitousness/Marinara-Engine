@@ -81,6 +81,11 @@ export function isMistralAdjustableReasoningModel(model: string): boolean {
   );
 }
 
+/** GLM 5.3 on Mistral (`zai-glm-5-3`) always reasons and takes only "low", "high" or "max", never "none". */
+export function isMistralGlm53Model(model: string): boolean {
+  return /^zai-glm-5-3(?:$|-)/u.test(model.trim().toLowerCase());
+}
+
 export function isOpenAIGpt56Model(model: string): boolean {
   return model.toLowerCase().startsWith("gpt-5.6");
 }
@@ -127,6 +132,10 @@ export function resolveProviderReasoningEffort(args: {
   if (xaiUsesAutoReasoning) return null;
   // Mistral reasoning models have a single level besides "none".
   if (providerLower === "mistral" && isMistralAdjustableReasoningModel(modelLower)) return "high";
+  if (providerLower === "mistral" && isMistralGlm53Model(modelLower)) {
+    if (args.reasoningEffort === "low") return "low";
+    return args.reasoningEffort === "medium" || args.reasoningEffort === "high" ? "high" : "max";
+  }
 
   const isNativeAnthropicAdaptiveOnly =
     (providerLower === "anthropic" || providerLower === "claude_subscription") &&

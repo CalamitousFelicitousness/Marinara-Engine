@@ -265,6 +265,7 @@ try {
         "mistral-large-4-0",
         "mistral-medium-3-5",
         "mistral-small-latest",
+        "zai-glm-5-3",
       ],
       make: registry("mistral", `${base}/v1`),
     },
@@ -476,6 +477,11 @@ try {
       ["xhigh", "high"],
     ],
     "Mistral reasoning models offer Off and high only",
+  );
+  assert.deepEqual(
+    reasoningEffortChoices({ provider: "mistral", model: "zai-glm-5-3" }).map((choice) => choice.label),
+    [null, "low", "high", "max"],
+    "GLM 5.3 on Mistral offers its low, high and max levels",
   );
   assert.ok(
     !relevantGenerationParameters({ provider: "mistral", model: "mistral-large-4-0", reasoningEffort: "high" }).has(

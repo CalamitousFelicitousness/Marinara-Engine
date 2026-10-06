@@ -21,6 +21,7 @@
     "ruleset-combat-screen-client.regression.ts",
     "ruleset-dice-pool-client.regression.ts",
     "ruleset-layers-client.regression.ts",
-    "nanogpt-usage-meter-gate.regression.ts"
+    "nanogpt-usage-meter-gate.regression.ts",
+    "game-inventory-refusal-client.regression.ts"
   ]
 }

@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Updated the upload parser, proxy address handling and two logging and styling helpers to their patched releases, clearing four newly published dependency advisories. The dormant Bunny Review workflow no longer lets files in a pull request replace the Python modules it runs with, and only trusts its own review markers (#7146).
+
 - Prepared v2.5.0 across the Engine, Home version, PWA manifest, README, Windows installer, and Android bootstrap metadata. Android uses version code 48 so the APK can update existing installations, and the Credits list is refreshed (#7146).
 - Saving a connection change that affects **Long-Term Memory** now waits for the package's index refresh when supported, and reports refresh completion, failure or unavailability separately from the successful save. Unrelated connection and agent edits do not trigger LTM refreshes; older or inactive packages still allow configuration saves (#7042).
 

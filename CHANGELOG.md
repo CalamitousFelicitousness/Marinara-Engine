@@ -4,7 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
-- **Chat Summary** supports selecting a visible range with Shift on desktop or two endpoints on phones, then enabling or disabling only the selected summaries. Choosing a fully selected range again deselects it, and a desktop hover hint explains the Shift shortcut. Wrapping controls keep these actions readable on narrow screens (#7156).
+- **Chat Summary** supports Shift-clicking a visible range on desktop and enabling or disabling only the selected summaries. Selection controls wrap on narrow screens (#7163).
 
 - Mistral connections now work with **Mistral Large 4**. Its thinking shows in the chat instead of being lost, **Reasoning Effort** offers Off or high for Mistral's reasoning models (low, high or max for GLM 5.3 on Mistral), and refreshing the model list picks up each model's real context size (1M tokens for Large 4). Requests also stop sending settings Mistral rejects, Assistant Prefill is continued without the reply repeating it, and a tool round no longer fails on tool calls Mistral did not create itself (#7164).
 

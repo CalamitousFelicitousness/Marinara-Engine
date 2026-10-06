@@ -4,7 +4,6 @@
 // ──────────────────────────────────────────────
 import {
   useState,
-  useId,
   useEffect,
   useRef,
   useCallback,
@@ -92,9 +91,6 @@ import {
   type ChatSummaryBatchRangeError,
   type ChatSummaryBatchEntryRange,
 } from "../../lib/chat-summary-batch";
-
-const SUMMARY_SELECTION_BUTTON_CLASS =
-  "inline-flex min-h-11 max-w-full items-center justify-center gap-1 rounded-md px-2 py-1 text-xs font-semibold text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-50";
 
 interface ChatSummaryPanelProps {
   chatId: string;
@@ -364,16 +360,14 @@ export function ChatSummaryPanel({
   const [expandedEntryIds, setExpandedEntryIds] = useState<Set<string>>(() => new Set());
   const [selectedEntryIds, setSelectedEntryIds] = useState<Set<string>>(() => new Set());
   const [selectionAnchorId, setSelectionAnchorId] = useState<string | null>(null);
-  const [rangeSelection, setRangeSelection] = useState<{ anchorId: string | null } | null>(null);
-  const rangeSelectionButtonRef = useRef<HTMLButtonElement>(null);
-  const summaryPanelRef = useRef<HTMLDivElement>(null);
-  const rangeSelectionStatusId = useId();
-  const rangeSelectionHintId = useId();
-  const [rangeSelectionHintVisible, setRangeSelectionHintVisible] = useState(false);
+  const [selectionChatId, setSelectionChatId] = useState(chatId);
+  if (selectionChatId !== chatId) {
+    setSelectionChatId(chatId);
+    setSelectedEntryIds(new Set());
+    setSelectionAnchorId(null);
+  }
   const [combiningEntries, setCombiningEntries] = useState(false);
   const [pendingToggleIds, setPendingToggleIds] = useState<Set<string>>(() => new Set());
-  const [bulkTogglePending, setBulkTogglePending] = useState(false);
-  const bulkToggleLockedRef = useRef(false);
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
   const [draftEntry, setDraftEntry] = useState<ChatSummaryEntry | null>(null);
   const [templateEditorOpen, setTemplateEditorOpen] = useState(false);
@@ -632,16 +626,6 @@ export function ChatSummaryPanel({
     () => (showInactiveSummaries ? displayEntries : displayEntries.filter((entry) => entry.enabled)),
     [displayEntries, showInactiveSummaries],
   );
-  const visibleEntryOrder = JSON.stringify(visiblePersistedEntries.map((entry) => entry.id));
-  const [selectionContext, setSelectionContext] = useState({ chatId, visibleEntryOrder });
-  // Reset before rendering another chat, including chats that reuse the same entry IDs.
-  // Content-only updates keep the context; ranges follow the visible persisted order.
-  if (selectionContext.chatId !== chatId || selectionContext.visibleEntryOrder !== visibleEntryOrder) {
-    setSelectionContext({ chatId, visibleEntryOrder });
-    setSelectionAnchorId(null);
-    setRangeSelection(null);
-    if (selectionContext.chatId !== chatId) setSelectedEntryIds(new Set());
-  }
   const selectedEntries = useMemo(
     () => visiblePersistedEntries.filter((entry) => selectedEntryIds.has(entry.id)),
     [selectedEntryIds, visiblePersistedEntries],
@@ -669,26 +653,18 @@ export function ChatSummaryPanel({
   const allEntriesDisabled = hasPersistedEntries && enabledEntryCount === 0;
   const showSummaryInjectionHint = enabledEntryCount > 0 && !!summaryInjectionHint;
   const tokenWarning = enabledTokenEstimate > SUMMARY_TOKEN_WARNING_THRESHOLD;
+  const bulkTogglePending =
+    toggleSummaryEntry.isPending &&
+    toggleSummaryEntry.variables?.operation === "toggle" &&
+    Array.isArray(toggleSummaryEntry.variables.entryIds);
   const entryMutationPending =
+    bulkTogglePending ||
     updateSummaryEntry.isPending ||
     deleteSummaryEntry.isPending ||
     reorderSummaryEntries.isPending ||
-    bulkTogglePending ||
-    combiningEntries ||
-    generateSummary.isPending ||
     isBatchGenerating;
-  const selectionInteractionBlocked =
-    entryMutationPending ||
-    toggleSummaryEntry.isPending ||
-    editingEntryId !== null ||
-    draggingEntryIndex !== null ||
-    dragReadyEntryIndex !== null ||
-    (backfillState.status === "running" && backfillState.chatId === chatId);
-  const selectedEnabledEntries = selectedEntries.filter((entry) => entry.enabled);
-  const selectedDisabledEntries = selectedEntries.filter((entry) => !entry.enabled);
-  useEffect(() => {
-    if (selectionInteractionBlocked) setRangeSelection(null);
-  }, [selectionInteractionBlocked]);
+  const selectedActionPending =
+    entryMutationPending || toggleSummaryEntry.isPending || combiningEntries || generateSummary.isPending;
   const automaticSummariesOn = automaticSummaryEnabled;
   const summaryConnections = useMemo(
     () => (connectionsData ?? []).filter(isSummaryConnectionOption),
@@ -1107,12 +1083,9 @@ export function ChatSummaryPanel({
 
   const handleToggleSelected = useCallback(
     (entryId: string, shiftKey: boolean) => {
-      if (selectionInteractionBlocked) return;
       const targetIndex = visiblePersistedEntries.findIndex((entry) => entry.id === entryId);
       if (targetIndex < 0) return;
-      const anchorIndex = selectionAnchorId
-        ? visiblePersistedEntries.findIndex((entry) => entry.id === selectionAnchorId)
-        : -1;
+      const anchorIndex = visiblePersistedEntries.findIndex((entry) => entry.id === selectionAnchorId);
       setSelectedEntryIds((current) => {
         const next = new Set(current);
         const select = !current.has(entryId);
@@ -1127,76 +1100,11 @@ export function ChatSummaryPanel({
       });
       if (!shiftKey || anchorIndex < 0) setSelectionAnchorId(entryId);
     },
-    [selectionAnchorId, selectionInteractionBlocked, visiblePersistedEntries],
+    [selectionAnchorId, visiblePersistedEntries],
   );
-
-  const handleRangeEndpoint = useCallback(
-    (entryId: string) => {
-      if (!rangeSelection || selectionInteractionBlocked) return;
-      const targetIndex = visiblePersistedEntries.findIndex((entry) => entry.id === entryId);
-      if (targetIndex < 0) return;
-      if (!rangeSelection.anchorId) {
-        setRangeSelection({ anchorId: entryId });
-        return;
-      }
-      const anchorIndex = visiblePersistedEntries.findIndex((entry) => entry.id === rangeSelection.anchorId);
-      if (anchorIndex < 0) return;
-      setSelectedEntryIds((current) => {
-        const next = new Set(current);
-        const rangeEntries = visiblePersistedEntries.slice(
-          Math.min(anchorIndex, targetIndex),
-          Math.max(anchorIndex, targetIndex) + 1,
-        );
-        const deselect = rangeEntries.every((entry) => current.has(entry.id));
-        for (const entry of rangeEntries) {
-          if (deselect) next.delete(entry.id);
-          else next.add(entry.id);
-        }
-        return next;
-      });
-      setRangeSelection(null);
-      // The endpoint button becomes a checkbox; retain keyboard focus at the chosen row.
-      requestAnimationFrame(() =>
-        summaryEntryListRef.current
-          ?.querySelector<HTMLInputElement>(`[data-summary-entry-id="${CSS.escape(entryId)}"] input[type="checkbox"]`)
-          ?.focus({ preventScroll: true }),
-      );
-    },
-    [rangeSelection, selectionInteractionBlocked, visiblePersistedEntries],
-  );
-
-  const handleCancelRangeSelection = useCallback(() => {
-    setRangeSelection(null);
-    rangeSelectionButtonRef.current?.focus({ preventScroll: true });
-    setRangeSelectionHintVisible(false);
-  }, []);
-
-  useEffect(() => {
-    if (!rangeSelection && !rangeSelectionHintVisible) return;
-    const handleEscape = (event: KeyboardEvent) => {
-      const root = summaryPanelRef.current;
-      const windowRoot = root?.closest("[data-window]") ?? root;
-      // Portalled dialogs keep their own Escape behavior; this window cancels the range or hint first.
-      if (
-        event.key !== "Escape" ||
-        event.isComposing ||
-        !(event.target instanceof Node) ||
-        !windowRoot?.contains(event.target)
-      ) {
-        return;
-      }
-      event.preventDefault();
-      event.stopPropagation();
-      if (rangeSelection) handleCancelRangeSelection();
-      else setRangeSelectionHintVisible(false);
-    };
-    document.addEventListener("keydown", handleEscape, true);
-    return () => document.removeEventListener("keydown", handleEscape, true);
-  }, [handleCancelRangeSelection, rangeSelection, rangeSelectionHintVisible]);
 
   const handleToggleSelectAllEntries = useCallback(() => {
     setSelectionAnchorId(null);
-    setRangeSelection(null);
     setSelectedEntryIds((current) =>
       visiblePersistedEntries.every((entry) => current.has(entry.id))
         ? new Set()
@@ -1303,14 +1211,13 @@ export function ChatSummaryPanel({
   });
 
   const handleCombineSelected = useCallback(async () => {
-    if (selectedEntries.length < 2 || selectionInteractionBlocked) return;
-    setCombiningEntries(true);
+    if (selectedEntries.length < 2 || generateSummary.isPending || isBatchGenerating || bulkTogglePending) return;
     try {
       await persistSummaryMaxTokens(summaryMaxTokensDraft);
     } catch {
-      setCombiningEntries(false);
       return;
     }
+    setCombiningEntries(true);
     generateSummary.mutate(
       {
         chatId,
@@ -1336,7 +1243,8 @@ export function ChatSummaryPanel({
     persistSummaryMaxTokens,
     selectedEntries,
     summaryMaxTokensDraft,
-    selectionInteractionBlocked,
+    isBatchGenerating,
+    bulkTogglePending,
   ]);
 
   const handleStartEditEntry = useCallback((entry: ChatSummaryEntry) => {
@@ -1395,7 +1303,7 @@ export function ChatSummaryPanel({
 
   const handleToggleEntry = useCallback(
     async (entry: ChatSummaryEntry, enabled: boolean) => {
-      if (bulkToggleLockedRef.current || entryMutationPending || pendingToggleIds.has(entry.id)) return;
+      if (bulkTogglePending) return;
       setPendingToggleIds((current) => new Set(current).add(entry.id));
       try {
         await toggleSummaryEntry.mutateAsync({ chatId, entryId: entry.id, enabled });
@@ -1409,36 +1317,42 @@ export function ChatSummaryPanel({
         });
       }
     },
-    [chatId, entryMutationPending, pendingToggleIds, toggleSummaryEntry, localizeUi],
+    [chatId, bulkTogglePending, toggleSummaryEntry, localizeUi],
   );
 
-  const handleToggleEntries = useCallback(
-    async (entries: ChatSummaryEntry[], enabled: boolean): Promise<boolean> => {
-      if (bulkToggleLockedRef.current || selectionInteractionBlocked) return false;
-      const entryIds = entries.filter((entry) => entry.enabled !== enabled).map((entry) => entry.id);
-      if (entryIds.length === 0) return false;
-      bulkToggleLockedRef.current = true;
-      setBulkTogglePending(true);
+  const handleToggleSelectedEntries = useCallback(
+    async (enabled: boolean) => {
+      if (selectedActionPending) return;
+      const entryIds = selectedEntries.filter((entry) => entry.enabled !== enabled).map((entry) => entry.id);
+      if (entryIds.length === 0) return;
       setPendingToggleIds(new Set(entryIds));
       try {
         await toggleSummaryEntry.mutateAsync({ chatId, entryIds, enabled });
-        return true;
       } catch {
         toast.error(localizeUi("ui.chat.summarypopover.couldNotUpdateSummaryEntries"));
-        return false;
       } finally {
-        bulkToggleLockedRef.current = false;
-        setBulkTogglePending(false);
         setPendingToggleIds(new Set());
       }
     },
-    [chatId, selectionInteractionBlocked, toggleSummaryEntry, localizeUi],
+    [chatId, selectedEntries, selectedActionPending, toggleSummaryEntry, localizeUi],
   );
 
   const handleToggleAllEntries = useCallback(async () => {
     const nextEnabled = enabledEntryCount === 0;
-    if ((await handleToggleEntries(displayEntries, nextEnabled)) && nextEnabled) setShowInactiveSummaries(false);
-  }, [displayEntries, enabledEntryCount, handleToggleEntries]);
+    const entriesToUpdate = displayEntries.filter((entry) => entry.enabled !== nextEnabled);
+    if (entriesToUpdate.length === 0) return;
+
+    try {
+      await toggleSummaryEntry.mutateAsync({
+        chatId,
+        entryIds: entriesToUpdate.map((entry) => entry.id),
+        enabled: nextEnabled,
+      });
+      if (nextEnabled) setShowInactiveSummaries(false);
+    } catch {
+      toast.error(localizeUi("ui.chat.summarypopover.couldNotUpdateSummaryEntries"));
+    }
+  }, [chatId, displayEntries, enabledEntryCount, toggleSummaryEntry, localizeUi]);
 
   const handleDeleteEntry = useCallback(
     async (entry: ChatSummaryEntry) => {
@@ -1734,7 +1648,7 @@ export function ChatSummaryPanel({
   const isGenerating = generateSummary.isPending || isBatchGenerating;
 
   return (
-    <div ref={summaryPanelRef} data-chat-summary>
+    <div data-chat-summary>
       <p className={cn(NEUTRAL_PANEL_SUBTITLE, "mb-2 truncate")}>
         {hasEntries
           ? localizeUi("chat.summary.headerActive", {
@@ -2302,189 +2216,101 @@ export function ChatSummaryPanel({
         <div>
           <div className="space-y-2">
             {hasPersistedEntries && (
-              <div className="space-y-1.5 px-0.5" data-summary-selection-toolbar>
+              <div
+                className="flex flex-wrap items-center justify-between gap-1.5 px-0.5"
+                data-summary-selection-toolbar
+              >
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <span
-                    className="relative inline-flex max-w-full"
-                    onPointerLeave={() => setRangeSelectionHintVisible(false)}
-                  >
+                  {selectedEntries.some((entry) => !entry.enabled) && (
                     <button
-                      ref={rangeSelectionButtonRef}
                       type="button"
-                      aria-pressed={rangeSelection !== null}
-                      aria-describedby={
-                        rangeSelectionHintVisible
-                          ? `${rangeSelectionStatusId} ${rangeSelectionHintId}`
-                          : rangeSelectionStatusId
-                      }
-                      onPointerEnter={(event) => {
-                        if (
-                          event.pointerType === "mouse" &&
-                          window.matchMedia("(hover: hover) and (pointer: fine)").matches
-                        ) {
-                          setRangeSelectionHintVisible(true);
-                        }
-                      }}
-                      onFocus={() => {
-                        if (window.matchMedia("(hover: hover) and (pointer: fine)").matches) {
-                          setRangeSelectionHintVisible(true);
-                        }
-                      }}
-                      onBlur={() => setRangeSelectionHintVisible(false)}
-                      onClick={() => {
-                        if (rangeSelection) handleCancelRangeSelection();
-                        else if (!selectionInteractionBlocked) setRangeSelection({ anchorId: null });
-                      }}
-                      disabled={selectionInteractionBlocked || visiblePersistedEntries.length === 0}
-                      className={cn(
-                        SUMMARY_SELECTION_BUTTON_CLASS,
-                        rangeSelection &&
-                          "bg-[var(--primary)]/15 text-[var(--primary)] ring-1 ring-[var(--primary)]/30",
-                      )}
+                      onClick={() => void handleToggleSelectedEntries(true)}
+                      disabled={selectedActionPending}
+                      className="min-h-11 rounded-md px-2 py-1 text-xs font-semibold text-[var(--muted-foreground)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-0"
                     >
-                      {localizeUi("chat.summary.selection.selectRange")}
+                      {localizeUi("chat.summary.selection.enableSelected")}
                     </button>
-                    {rangeSelectionHintVisible && (
-                      <span
-                        id={rangeSelectionHintId}
-                        role="tooltip"
-                        className="absolute bottom-full left-0 z-20 w-64 max-w-[calc(100vw-2rem)] rounded-lg bg-[var(--popover)] px-3 py-2 text-left text-xs leading-relaxed text-[var(--popover-foreground)] shadow-xl ring-1 ring-[var(--border)]"
-                      >
-                        {localizeUi("chat.summary.selection.shiftClickHint")}
-                      </span>
-                    )}
-                  </span>
-                  {selectedEntries.length < visiblePersistedEntries.length && (
+                  )}
+                  {selectedEntries.some((entry) => entry.enabled) && (
                     <button
                       type="button"
-                      onClick={handleToggleSelectAllEntries}
-                      disabled={selectionInteractionBlocked || visiblePersistedEntries.length === 0}
-                      className={SUMMARY_SELECTION_BUTTON_CLASS}
+                      onClick={() => void handleToggleSelectedEntries(false)}
+                      disabled={selectedActionPending}
+                      className="min-h-11 rounded-md px-2 py-1 text-xs font-semibold text-[var(--muted-foreground)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-0"
                     >
-                      {localizeUi("ui.chat.summarypopover.selectAll")}
+                      {localizeUi("chat.summary.selection.disableSelected")}
+                    </button>
+                  )}
+                  {selectedEntries.length >= 2 && (
+                    <button
+                      type="button"
+                      onClick={() => void handleCombineSelected()}
+                      disabled={combiningEntries || generateSummary.isPending || isBatchGenerating || bulkTogglePending}
+                      className="inline-flex items-center gap-1 rounded-md bg-[var(--primary)]/12 px-2 py-1 text-[0.625rem] font-semibold text-[var(--primary)] transition-colors hover:bg-[var(--primary)]/20 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {combiningEntries ? (
+                        <Loader2 size="0.6875rem" className="animate-spin" />
+                      ) : (
+                        <Sparkles size="0.6875rem" />
+                      )}
+                      {combiningEntries
+                        ? localizeUi("ui.chat.summarypopover.combiningSummaries")
+                        : localizeUi("ui.chat.summarypopover.combineSelectedSummaries", {
+                            count: selectedEntries.length,
+                          })}
                     </button>
                   )}
                   {selectedEntries.length > 0 && (
                     <button
                       type="button"
-                      onClick={() => {
-                        setSelectedEntryIds(new Set());
-                        setSelectionAnchorId(null);
-                        setRangeSelection(null);
-                      }}
-                      disabled={selectionInteractionBlocked}
-                      className={SUMMARY_SELECTION_BUTTON_CLASS}
+                      onClick={() => void handleDeleteSelectedEntries()}
+                      disabled={entryMutationPending}
+                      className="inline-flex items-center gap-1 rounded-md bg-[var(--destructive)]/10 px-2 py-1 text-[0.625rem] font-semibold text-[var(--destructive)] transition-colors hover:bg-[var(--destructive)]/15 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      {localizeUi("ui.chat.summarypopover.clearSelection")}
+                      <Trash2 size="0.6875rem" />
+                      {localizeUi("ui.chat.summarypopover.deleteSelectedSummaries", {
+                        count: selectedEntries.length,
+                      })}
                     </button>
                   )}
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={handleToggleSelectAllEntries}
+                    disabled={entryMutationPending || visiblePersistedEntries.length === 0}
+                    className="rounded-md px-1 py-0.5 text-[0.625rem] font-semibold text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {visiblePersistedEntries.length > 0 && selectedEntries.length === visiblePersistedEntries.length
+                      ? localizeUi("ui.chat.summarypopover.clearSelection")
+                      : localizeUi("ui.chat.summarypopover.selectAll")}
+                  </button>
                   {inactiveEntryCount > 0 && (
                     <button
                       type="button"
-                      aria-pressed={showInactiveSummaries}
                       onClick={() => setShowInactiveSummaries((show) => !show)}
-                      className={SUMMARY_SELECTION_BUTTON_CLASS}
+                      className={cn(
+                        "rounded-md px-1 py-0.5 text-[0.625rem] font-semibold transition-colors hover:text-[var(--foreground)]",
+                        showInactiveSummaries ? "text-[var(--foreground)]" : "text-[var(--muted-foreground)]",
+                      )}
                     >
                       {showInactiveSummaries
                         ? localizeUi("ui.chat.summarypopover.hideInactive")
                         : localizeUi("ui.chat.summarypopover.showInactive")}
                     </button>
                   )}
+                  {inactiveEntryCount === 0 && <span aria-hidden="true" />}
                   <button
                     type="button"
                     onClick={() => void handleToggleAllEntries()}
-                    disabled={selectionInteractionBlocked || rangeSelection !== null}
-                    className={SUMMARY_SELECTION_BUTTON_CLASS}
+                    disabled={entryMutationPending || toggleSummaryEntry.isPending}
+                    className="rounded-md px-1 py-0.5 text-[0.625rem] font-semibold text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {enabledEntryCount === 0
                       ? localizeUi("ui.chat.summarypopover.activateAll")
                       : localizeUi("ui.chat.summarypopover.deactivateAll")}
                   </button>
                 </div>
-                <div className={cn("flex flex-wrap items-center gap-2", !rangeSelection && "sr-only")}>
-                  <p
-                    id={rangeSelectionStatusId}
-                    role="status"
-                    aria-live="polite"
-                    aria-atomic="true"
-                    className="text-xs"
-                  >
-                    {rangeSelection
-                      ? localizeUi(
-                          rangeSelection.anchorId
-                            ? "chat.summary.selection.chooseLast"
-                            : "chat.summary.selection.chooseFirst",
-                        )
-                      : ""}
-                  </p>
-                  {rangeSelection && (
-                    <button
-                      type="button"
-                      onClick={handleCancelRangeSelection}
-                      className={SUMMARY_SELECTION_BUTTON_CLASS}
-                    >
-                      {localizeUi("chat.summary.selection.cancelRange")}
-                    </button>
-                  )}
-                </div>
-                {selectedEntries.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="text-xs text-[var(--muted-foreground)]">
-                      {localizeUi("chat.summary.selection.selectedCount", { count: selectedEntries.length })}
-                    </span>
-                    {selectedDisabledEntries.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => void handleToggleEntries(selectedEntries, true)}
-                        disabled={selectionInteractionBlocked || rangeSelection !== null}
-                        className={SUMMARY_SELECTION_BUTTON_CLASS}
-                      >
-                        {localizeUi("chat.summary.selection.enableSelected")}
-                      </button>
-                    )}
-                    {selectedEnabledEntries.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => void handleToggleEntries(selectedEntries, false)}
-                        disabled={selectionInteractionBlocked || rangeSelection !== null}
-                        className={SUMMARY_SELECTION_BUTTON_CLASS}
-                      >
-                        {localizeUi("chat.summary.selection.disableSelected")}
-                      </button>
-                    )}
-                    {selectedEntries.length >= 2 && (
-                      <button
-                        type="button"
-                        onClick={() => void handleCombineSelected()}
-                        disabled={combiningEntries || selectionInteractionBlocked || rangeSelection !== null}
-                        className={cn(SUMMARY_SELECTION_BUTTON_CLASS, "bg-[var(--primary)]/12 text-[var(--primary)]")}
-                      >
-                        {combiningEntries ? (
-                          <Loader2 size="0.75rem" className="shrink-0 animate-spin" />
-                        ) : (
-                          <Sparkles size="0.75rem" className="shrink-0" />
-                        )}
-                        {combiningEntries
-                          ? localizeUi("ui.chat.summarypopover.combiningSummaries")
-                          : localizeUi("ui.chat.summarypopover.combineSelectedSummaries", {
-                              count: selectedEntries.length,
-                            })}
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => void handleDeleteSelectedEntries()}
-                      disabled={selectionInteractionBlocked || rangeSelection !== null}
-                      className={cn(
-                        SUMMARY_SELECTION_BUTTON_CLASS,
-                        "bg-[var(--destructive)]/10 text-[var(--destructive)]",
-                      )}
-                    >
-                      <Trash2 size="0.75rem" className="shrink-0" />
-                      {localizeUi("ui.chat.summarypopover.deleteSelectedSummaries", { count: selectedEntries.length })}
-                    </button>
-                  </div>
-                )}
               </div>
             )}
 
@@ -2550,11 +2376,7 @@ export function ChatSummaryPanel({
                         textareaRef={entryTextareaRef}
                         mutationPending={entryMutationPending || pendingToggleIds.has(entry.id)}
                         selected={selectedEntryIds.has(entry.id)}
-                        selectionDisabled={selectionInteractionBlocked || !reorderable}
-                        rangeSelection={rangeSelection}
-                        rangeSelectionStatusId={rangeSelectionStatusId}
                         togglePending={pendingToggleIds.has(entry.id)}
-                        onRangeEndpoint={() => handleRangeEndpoint(entry.id)}
                         onDragReadyChange={(ready) => setDragReadyEntryIndex(ready ? entryIndex : null)}
                         onDragStart={(event) => handleSummaryDragStart(entryIndex, event)}
                         onDragOver={(event) => handleSummaryDragOver(entryIndex, event)}
@@ -3022,11 +2844,7 @@ interface SummaryEntryRowProps {
   onTouchStartDrag: (event: ReactTouchEvent<HTMLButtonElement>) => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
-  selectionDisabled: boolean;
-  rangeSelection: { anchorId: string | null } | null;
-  rangeSelectionStatusId: string;
   togglePending: boolean;
-  onRangeEndpoint: () => void;
   onToggleSelected: (shiftKey: boolean) => void;
   onToggleExpanded: () => void;
   onToggleEnabled: (enabled: boolean) => void;
@@ -3050,11 +2868,7 @@ function SummaryEntryRow({
   textareaRef,
   mutationPending,
   selected,
-  selectionDisabled,
-  rangeSelection,
-  rangeSelectionStatusId,
   togglePending,
-  onRangeEndpoint,
   onDragReadyChange,
   onDragStart,
   onDragOver,
@@ -3108,7 +2922,7 @@ function SummaryEntryRow({
             )}
             title={localizeUi("ui.chat.summaryentryrow.dragToReorder")}
             aria-label={localizeUi("ui.chat.summaryentryrow.dragToReorder")}
-            disabled={!reorderable || mutationPending}
+            disabled={mutationPending}
             tabIndex={reorderable ? undefined : -1}
             onMouseDown={() => onDragReadyChange(true)}
             onMouseUp={() => onDragReadyChange(false)}
@@ -3139,35 +2953,16 @@ function SummaryEntryRow({
             </button>
           </div>
         </div>
-        {rangeSelection && reorderable ? (
-          <button
-            type="button"
-            onClick={onRangeEndpoint}
-            disabled={selectionDisabled}
-            aria-describedby={rangeSelectionStatusId}
-            aria-label={localizeUi(
-              rangeSelection.anchorId ? "chat.summary.selection.lastEndpoint" : "chat.summary.selection.firstEndpoint",
-              { title: entry.title },
-            )}
-            className="flex min-h-11 min-w-11 shrink-0 flex-col items-center justify-center rounded-md px-1 text-xs font-semibold text-[var(--primary)] ring-1 ring-[var(--border)] hover:bg-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {localizeUi(rangeSelection.anchorId ? "chat.summary.selection.end" : "chat.summary.selection.start")}
-            {rangeSelection.anchorId === entry.id && (
-              <span className="text-[0.625rem]">{localizeUi("chat.summary.selection.startHere")}</span>
-            )}
-          </button>
-        ) : (
-          <label className="flex min-h-11 min-w-11 shrink-0 cursor-pointer items-center justify-center rounded-md focus-within:ring-2 focus-within:ring-[var(--ring)]">
-            <input
-              type="checkbox"
-              checked={selected}
-              onChange={(event) => onToggleSelected((event.nativeEvent as MouseEvent).shiftKey === true)}
-              disabled={selectionDisabled}
-              className="h-3.5 w-3.5 accent-[var(--primary)]"
-              aria-label={localizeUi("ui.chat.summaryentryrow.selectSummaryEntry", { title: entry.title })}
-            />
-          </label>
-        )}
+        <label className="flex min-h-11 min-w-11 shrink-0 cursor-pointer items-center justify-center rounded-md focus-within:ring-2 focus-within:ring-[var(--ring)]">
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={(event) => onToggleSelected((event.nativeEvent as MouseEvent).shiftKey === true)}
+            disabled={editing || mutationPending || !reorderable}
+            className="h-3.5 w-3.5 accent-[var(--primary)]"
+            aria-label={localizeUi("ui.chat.summaryentryrow.selectSummaryEntry", { title: entry.title })}
+          />
+        </label>
         <button
           type="button"
           onClick={() => onToggleEnabled(!entry.enabled)}

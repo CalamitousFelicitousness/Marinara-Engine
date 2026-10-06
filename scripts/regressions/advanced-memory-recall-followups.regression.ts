@@ -48,14 +48,16 @@ const provider = createServer(async (request, response) => {
   } else {
     const checkOnly = system.content.startsWith("Identify the participants");
     if (checkOnly) participantChecks.push(text);
-    // The helper answers with a first name, no audience, a stranger, or "all".
+    // The helper answers with a first name, no audience, null, a stranger, or "all".
     const audience = text.includes("AUD_FIRSTNAME")
       ? { audience: ["Kaito"] }
       : text.includes("AUD_MISSING")
         ? {}
-        : text.includes("AUD_STRANGER")
-          ? { audience: ["A stranger"] }
-          : { audience: "all" };
+        : text.includes("AUD_NULL")
+          ? { audience: null }
+          : text.includes("AUD_STRANGER")
+            ? { audience: ["A stranger"] }
+            : { audience: "all" };
     const summary = text.includes("AUD_FIRSTNAME")
       ? "HARBOR: Mari and Kaito talked about the lighthouse key at the harbor."
       : text.includes("AUD_MISSING")
@@ -88,14 +90,12 @@ const db = await createFileNativeDB();
 const chats = createChatsStorage(db);
 const memory = createAdvancedMemoryService(db);
 try {
-  await db
-    .insert(characters)
-    .values({
-      id: "kaito",
-      data: JSON.stringify({ name: "Kaito Nakamura" }),
-      createdAt: "2026-01-01",
-      updatedAt: "2026-01-01",
-    });
+  await db.insert(characters).values({
+    id: "kaito",
+    data: JSON.stringify({ name: "Kaito Nakamura" }),
+    createdAt: "2026-01-01",
+    updatedAt: "2026-01-01",
+  });
   await new Promise<void>((resolve) => provider.listen(0, "127.0.0.1", resolve));
   const address = provider.address();
   assert(address && typeof address === "object");
@@ -139,6 +139,24 @@ try {
   });
   assert(empty.receipt.reasons.includes("no-recall-candidates"), JSON.stringify(empty.receipt.reasons));
   assert(!empty.receipt.reasons.includes("no-relevant-recall"), "no candidates is not a relevance judgement");
+
+  // (2) A null audience is a format slip too, not "nobody".
+  const nulled = await chats.create({
+    name: "Null",
+    mode: "roleplay",
+    characterIds: ["kaito"],
+    connectionId: connection.id,
+  });
+  assert(nulled);
+  await memory.updateSettings(nulled.id, settings);
+  await chats.createMessagesBatch(nulled.id, [
+    { role: "user", content: "SCENE_CHANGE AUD_NULL Mari and Kaito fix the roof." },
+    { role: "assistant", characterId: "kaito", content: "Kaito hammers the last nail." },
+    { role: "user", content: "SCENE_CHANGE Later that week.", extra: { isConversationStart: true } },
+  ]);
+  await memory.initialize(nulled.id);
+  const roof = (await memory.status(nulled.id)).records.find((record) => record.kind === "scene" && record.content)!;
+  assert.deepEqual(roof.audienceCharacterIds, ["kaito"], "a null audience keeps the only character");
 
   const chat = await chats.create({
     name: "Harbor",
@@ -263,13 +281,16 @@ try {
     (await scenes()).some((record) => record.content.startsWith("EVENING")),
     "the scene that just ended is saved",
   );
-  assert.deepEqual((await scene("HARBOR")).audienceCharacterIds, [], "the failed check is left for a later run");
+  assert.deepEqual((await scene("HARBOR")).audienceCharacterIds, [], "the failed check grants nothing");
   assert.deepEqual((await scene("CURRY")).audienceCharacterIds, ["kaito"]);
   assert.deepEqual((await scene("FESTIVAL")).audienceCharacterIds, [], "the fourth older scene waits its turn");
   await endScene("SCENE_END Kaito turns off the light.");
-  assert.equal(participantChecks.length, 5, "the next run checks the remaining older scenes");
-  assert.deepEqual((await scene("HARBOR")).audienceCharacterIds, ["kaito"]);
+  assert.equal(participantChecks.length, 4, "the next run moves on instead of retrying the failed scene");
   assert.deepEqual((await scene("FESTIVAL")).audienceCharacterIds, ["kaito"]);
+  assert.deepEqual((await scene("HARBOR")).audienceCharacterIds, []);
+  await memory.initialize(chat.id, { detectScenes: false });
+  assert.equal(participantChecks.length, 5, "Prepare existing history retries the failed scene");
+  assert.deepEqual((await scene("HARBOR")).audienceCharacterIds, ["kaito"]);
   await endScene("SCENE_END Morning comes.");
   assert.equal(participantChecks.length, 5, "checked scenes are not checked again");
 

@@ -158,9 +158,10 @@ const coordinatorQueues = new Map<string, Promise<unknown>>();
 const IDLE_JOB: AdvancedMemoryJob = { status: "idle", stage: "idle", completed: 0, total: 0, error: null };
 const MEMORY_BUDGET_TOLERANCE = 2000;
 const SCENE_TIMELINE = { id: "scene-timeline", revision: "manual-v1" };
-// ponytail: automatic maintenance checks a few older scenes' participants per run.
-// Prepare existing history checks all of them at once.
+// ponytail: automatic maintenance checks a few older scenes' participants per run and
+// tries each scene once. Prepare existing history checks all of them, including failed ones.
 const LEGACY_AUDIENCE_CHECKS_PER_RUN = 3;
+const LEGACY_AUDIENCE_CHECK_FAILED = { id: "scene-audience-check", revision: "failed" };
 function hasSceneTimelineCorrection(record: StoredRecord): boolean {
   return record.dependencies.some((item) => item.id === SCENE_TIMELINE.id && item.revision === SCENE_TIMELINE.revision);
 }
@@ -1168,18 +1169,23 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       if (outputs.length === 1) {
         if (!assignAudience) return { summary: outputs[0]!, audienceCharacterIds: [] };
         const result = tryParseJsonRecord(outputs[0]!) ?? {};
-        const missing = result.audience === undefined;
+        const raw = result.audience;
+        // Anything but a name list or a string (including null) is a format slip, like a missing key.
+        const missing = typeof raw !== "string" && !Array.isArray(raw);
         const names =
-          typeof result.audience === "string" && result.audience !== "all"
-            ? [result.audience]
-            : strings(result.audience);
+          typeof raw === "string"
+            ? raw === "all"
+              ? []
+              : [raw]
+            : Array.isArray(raw)
+              ? raw.map((value) => (typeof value === "string" ? value : JSON.stringify(value)))
+              : [];
         const matches = names.map((value) => matchAudienceName(ctx, value));
         const unmatched = names.filter((_, index) => !matches[index]!.length);
         const characters = ctx.characterIds.filter((id) => id !== ctx.settings.narratorCharacterId);
         // A missing key is a format slip, not "nobody": a one-character chat's character was there.
         // With several characters it cannot be guessed, so the scene stays narrator-only and is flagged.
-        const audience =
-          result.audience === "all" || (missing && characters.length === 1) ? ctx.characterIds : matches.flat();
+        const audience = raw === "all" || (missing && characters.length === 1) ? ctx.characterIds : matches.flat();
         const audienceIssue = unmatched.length
           ? unmatched.join(", ").slice(0, 200)
           : missing && characters.length > 1
@@ -1838,7 +1844,9 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
           if (
             record.enabled &&
             !hasSceneAudience(record) &&
-            (!options.closedOnly || legacyAudienceChecks++ < LEGACY_AUDIENCE_CHECKS_PER_RUN)
+            (!options.closedOnly ||
+              (!record.dependencies.some((item) => item.id === LEGACY_AUDIENCE_CHECK_FAILED.id) &&
+                legacyAudienceChecks++ < LEGACY_AUDIENCE_CHECKS_PER_RUN))
           ) {
             const accessWork = buildRecord(ctx, scene, "scene", [], source, "pending");
             accessWork.id = `${record.id}-audience`;
@@ -1851,7 +1859,10 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
                 sourceFingerprint: fingerprint(ctx, source, result.audienceCharacterIds),
                 dependencies: [
                   ...record.dependencies.filter(
-                    (item) => item.id !== SCENE_AUDIENCE.id && item.id !== SCENE_AUDIENCE_UNMATCHED,
+                    (item) =>
+                      item.id !== SCENE_AUDIENCE.id &&
+                      item.id !== SCENE_AUDIENCE_UNMATCHED &&
+                      item.id !== LEGACY_AUDIENCE_CHECK_FAILED.id,
                   ),
                   SCENE_AUDIENCE,
                   ...(result.audienceIssue ? [{ id: SCENE_AUDIENCE_UNMATCHED, revision: result.audienceIssue }] : []),
@@ -1865,7 +1876,14 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
               // A failed check of an older scene must not stop archiving the scene that just ended.
               if (!options.closedOnly) throw error;
               abortIfNeeded(options.signal);
-              logger.warn(error, "[advanced-memory] Older scene participant check failed; it is retried later");
+              logger.warn(
+                error,
+                "[advanced-memory] Older scene participant check failed; Prepare existing history retries it",
+              );
+              // Later automatic runs move on to other scenes instead of retrying this one.
+              const failed = { ...record, dependencies: [...record.dependencies, LEGACY_AUDIENCE_CHECK_FAILED] };
+              await put(ctx, failed, options);
+              record = failed;
             }
           }
           // Persist merged legacy access before retiring generated duplicate copies.

@@ -581,7 +581,12 @@ test.describe("phone bubbles", () => {
       expect(moved.y).toBeGreaterThan(start.y + 150);
       await expectComposerClearAndNoSideScroll(page);
       await expect(target).not.toHaveAttribute("data-test-release-click-blocker", "true");
-      // The first deliberate tap after the drag must open, without a second tap.
+      // The first deliberate tap after the drag must open, without a second tap. Chromium on Linux
+      // sends no click for a tap made just after a flick (it treats the tap as stopping a fling),
+      // so withhold any click here too and every platform covers that path.
+      await target.evaluate((element) =>
+        element.addEventListener("click", (event) => event.stopImmediatePropagation(), { capture: true, once: true }),
+      );
       const nextX = moved.x + moved.width / 2;
       const nextY = moved.y + moved.height / 2;
       await touch("touchStart", nextX, nextY);
@@ -913,6 +918,10 @@ test.describe("phone bubbles", () => {
       const launcher = bubble(page, TOOLS_MENU);
       const menu = page.locator("[data-chat-tools-menu]");
       const viewport = page.viewportSize()!;
+      // Chat Settings and the map hold the top corners. A drop never stacks bubbles, so move them inward to
+      // let the launcher dock high on either edge, with the menu's room below it, at the large size too.
+      await dragBubble(page, bubble(page, "chat-settings-button"), { x: viewport.width / 2 - 48, y: 200 });
+      await dragBubble(page, bubble(page, "control:map"), { x: viewport.width / 2 - 48, y: 320 });
       for (const [preset, size] of [
         ["dottore", null],
         ["mari", 96],

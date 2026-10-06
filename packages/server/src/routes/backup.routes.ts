@@ -44,6 +44,7 @@ import { createPromptsStorage } from "../services/storage/prompts.storage.js";
 import { createAgentsStorage } from "../services/storage/agents.storage.js";
 import { createThemesStorage } from "../services/storage/themes.storage.js";
 import { createAppSettingsStorage } from "../services/storage/app-settings.storage.js";
+import { loadFeatureSettings } from "../services/features/feature-settings.js";
 import {
   canReparentFolder,
   isStockMarinaraUniversalPreset,
@@ -53,6 +54,7 @@ import {
   parseLorebookDecisionActivation,
 } from "@marinara-engine/shared";
 import { getDataDir } from "../utils/data-dir.js";
+import { uniqueExportName } from "../utils/export-stream.js";
 import { getFileStorageDir } from "../config/runtime-config.js";
 import { normalizeTimestampOverrides } from "../services/import/import-timestamps.js";
 import { flushDB, type DB } from "../db/connection.js";
@@ -530,6 +532,8 @@ async function buildCompatibleProfileZip(app: FastifyInstance) {
   });
   const data = envelope.data as Record<string, any>;
   const zip = new AdmZip();
+  // Folder prefixes differ, so one set keeps every name in the archive unique.
+  const usedNames = new Set<string>();
   const exportBudget = { remainingBytes: LOREBOOK_EXPORT_IMAGE_MAX_BYTES };
 
   for (const [index, character] of (Array.isArray(data.characters) ? data.characters : []).entries()) {
@@ -538,7 +542,11 @@ async function buildCompatibleProfileZip(app: FastifyInstance) {
       exportBudget,
     );
     zip.addFile(
-      `characters/${toSafeExportName(String(charData?.name ?? "character"), `character-${index + 1}`)}.json`,
+      uniqueExportName(
+        usedNames,
+        `characters/${toSafeExportName(String(charData?.name ?? "character"), `character-${index + 1}`)}`,
+        "json",
+      ),
       Buffer.from(JSON.stringify({ spec: "chara_card_v2", spec_version: "2.0", data: charData }, null, 2), "utf8"),
     );
   }
@@ -554,14 +562,22 @@ async function buildCompatibleProfileZip(app: FastifyInstance) {
       ...personaData
     } = persona as Record<string, unknown>;
     zip.addFile(
-      `personas/${toSafeExportName(String(personaData.name ?? "persona"), `persona-${index + 1}`)}.json`,
+      uniqueExportName(
+        usedNames,
+        `personas/${toSafeExportName(String(personaData.name ?? "persona"), `persona-${index + 1}`)}`,
+        "json",
+      ),
       Buffer.from(JSON.stringify(personaData, null, 2), "utf8"),
     );
   }
 
   for (const [index, lorebook] of (Array.isArray(data.lorebooks) ? data.lorebooks : []).entries()) {
     zip.addFile(
-      `lorebooks/${toSafeExportName(String(lorebook.name ?? "lorebook"), `lorebook-${index + 1}`)}.json`,
+      uniqueExportName(
+        usedNames,
+        `lorebooks/${toSafeExportName(String(lorebook.name ?? "lorebook"), `lorebook-${index + 1}`)}`,
+        "json",
+      ),
       Buffer.from(
         JSON.stringify(
           buildCompatibleLorebookExport({
@@ -1391,6 +1407,12 @@ async function importProfileStorageSnapshot(
       committed = true;
       if ((tableCounts.installed_extensions ?? 0) > 0) {
         await personalServerExtensionRuntime.reloadAll();
+      }
+      if ((tableCounts.app_settings ?? 0) > 0) {
+        // Rows were written raw, so the cached feature switches still hold the pre-import values.
+        await loadFeatureSettings(createAppSettingsStorage(app.db)).catch((error: unknown) =>
+          logger.warn(error, "[backup] Could not reload feature switches after profile import"),
+        );
       }
       return buildProfileImportStats(tableCounts, files);
     } catch (error) {
@@ -3549,7 +3571,10 @@ export async function backupRoutes(app: FastifyInstance) {
       for (const dirName of BACKUP_DIRS) {
         const src = resolveBackupDir(dataDir, dirName);
         if (existsSync(src)) {
-          await cp(src, join(backupDir, dirName), { recursive: true });
+          // The writer lease is per-process runtime state (owner.json, plus a live socket on Docker and
+          // Termux that cp cannot copy); a restored copy blocks startup on another host (#6083).
+          const leasePath = dirName === "storage" ? join(src, STORAGE_WRITER_LEASE_FILENAME) : null;
+          await cp(src, join(backupDir, dirName), { recursive: true, filter: (source) => source !== leasePath });
         }
       }
 

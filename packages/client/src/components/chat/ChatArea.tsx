@@ -600,6 +600,10 @@ export const ChatArea = memo(function ChatArea({
   );
 });
 
+// Kept outside LocalChatArea, which unmounts while ChatArea opens a chat it has not loaded yet.
+// ponytail: one small entry per chat opened this session; drop entries on chat delete if that ever matters.
+const retainedExpressionTurns = new Map<string, ReturnType<typeof resolveLatestSpriteExpressionTurn>>();
+
 function readChatMode(chat: { mode?: unknown }): ChatMode {
   return chat.mode === "conversation" || chat.mode === "game" ? chat.mode : "roleplay";
 }
@@ -1331,10 +1335,7 @@ const LocalChatArea = memo(function LocalChatArea({
   );
   // Keep each scene across chat switches and temporary Roleplay surface unmounts while a chat loads.
   const completedExpressionTurn = useMemo(() => resolveLatestSpriteExpressionTurn(messages), [messages]);
-  const [retainedExpressionSprites, setRetainedExpressionSprites] = useState<
-    Map<string, ReturnType<typeof resolveLatestSpriteExpressionTurn>>
-  >(() => new Map());
-  const retainedExpressionTurn = activeChatId ? retainedExpressionSprites.get(activeChatId) : undefined;
+  const retainedExpressionTurn = activeChatId ? retainedExpressionTurns.get(activeChatId) : undefined;
   const retainedExpressionIndex =
     messages?.findIndex((message) => message.id === retainedExpressionTurn?.messageId) ?? -1;
   // Regeneration can replace the current swipe before its expressions finish. Don't rewind to an older scene.
@@ -1344,12 +1345,8 @@ const LocalChatArea = memo(function LocalChatArea({
       : completedExpressionTurn;
   useEffect(() => {
     if (!activeChatId || !messages) return;
-    setRetainedExpressionSprites((previous) => {
-      if (previous.get(activeChatId) === visibleExpressionTurn) return previous;
-      const next = new Map(previous);
-      next.set(activeChatId, visibleExpressionTurn);
-      return next;
-    });
+    // An empty refetch must not erase the retained scene; a chat with no turns has nothing to keep anyway.
+    if (visibleExpressionTurn) retainedExpressionTurns.set(activeChatId, visibleExpressionTurn);
   }, [activeChatId, messages, visibleExpressionTurn]);
   const groupChatMode: string | undefined =
     chatCharIds.length > 1 ? normalizeGroupChatMode(chatMeta.groupChatMode) : undefined;
@@ -1658,7 +1655,8 @@ const LocalChatArea = memo(function LocalChatArea({
 
   // On chat switch, clear in-memory translations and seed from persisted extras.
   // Also re-seed when message extras arrive after a chat switch or pagination.
-  const prevChatIdRef = useRef(chat?.id);
+  // This view remounts while an uncached chat loads, so start from the chat the store last held.
+  const prevChatIdRef = useRef(useTranslationStore.getState().config.chatId);
   useEffect(() => {
     if (!messages) return;
     // Clear on actual chat switch
@@ -3027,6 +3025,9 @@ const LocalChatArea = memo(function LocalChatArea({
   // ── /goto command: paginate older pages until target message is loaded, then scroll to it
   useEffect(() => {
     if (!gotoRequest || gotoRequest.chatId !== activeChatId) return;
+    // A run that still sees an already handled (cleared) request must not repeat it. React's development
+    // double-run of a fresh mount does this: the chat area remounts after a chat switch with the request pending.
+    if (useChatStore.getState().gotoRequest?.token !== gotoRequest.token) return;
     // A message jump may switch chats while this surface still has the prior
     // chat detail cached. Wait until the selected chat's own detail is loaded
     // before choosing the game-specific behavior.

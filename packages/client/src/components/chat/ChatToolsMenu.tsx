@@ -11,7 +11,12 @@ import {
   type WindowPoint,
 } from "../../lib/floating-window-layout";
 import { PHONE_BUBBLE_Z_INDEX, useFloatingWindowStore } from "../../stores/floating-window.store";
-import { CHAT_TOOLS_MENU_ID, useChatToolsMenuStore, type ChatToolsMenuEntry } from "../../stores/chat-tools-menu.store";
+import {
+  CHAT_TOOLS_MENU_ID,
+  orderChatTools,
+  useChatToolsMenuStore,
+  type ChatToolsMenuEntry,
+} from "../../stores/chat-tools-menu.store";
 
 function ToolButton({
   entry,
@@ -104,18 +109,7 @@ export function ChatToolsMenu() {
   const bubbleRef = useRef<HTMLButtonElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const locked = menu?.locked === true;
-  const savedOrder = menu?.order ?? [];
-  // Existing saved phone rows provide a familiar initial order; new tools follow by stable id.
-  const ids = Object.keys(entries).sort((left, right) => {
-    const leftIndex = savedOrder.indexOf(left);
-    const rightIndex = savedOrder.indexOf(right);
-    if (leftIndex >= 0 || rightIndex >= 0)
-      return (leftIndex < 0 ? Infinity : leftIndex) - (rightIndex < 0 ? Infinity : rightIndex);
-    const a = points[left];
-    const b = points[right];
-    if (a && b) return a.y - b.y || a.x - b.x || left.localeCompare(right);
-    return Number(!a) - Number(!b) || left.localeCompare(right);
-  });
+  const ids = orderChatTools(Object.keys(entries), menu?.order ?? [], points);
   const hasEntries = ids.length > 0;
   const updatePosition = useCallback((point: WindowPoint) => {
     setPlaced((current) => (current.x === point.x && current.y === point.y ? current : point));
@@ -179,7 +173,11 @@ export function ChatToolsMenu() {
         expanded={open}
         locked={locked}
         zIndex={PHONE_BUBBLE_Z_INDEX}
-        attributes={{ "data-presentation": "sheet", "data-chat-tools-menu-button": true }}
+        attributes={{
+          "data-presentation": "sheet",
+          "data-chat-tools-menu-button": true,
+          "data-chat-help": "chat-tools",
+        }}
         onMove={(point) => useFloatingWindowStore.getState().savePhoneBubble(CHAT_TOOLS_MENU_ID, point)}
         onOpen={() => setOpen((current) => !current)}
       />

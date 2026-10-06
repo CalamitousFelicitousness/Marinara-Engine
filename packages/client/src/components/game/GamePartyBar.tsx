@@ -160,7 +160,7 @@ export function GamePartyBar({
       minHeight={120}
       autoFocus={false}
       className={cn("marinara-chat-popover", NEUTRAL_SURFACE_VARIABLES)}
-      rootAttributes={{ "data-tour": "game-party", "data-chat-help": "game-party", "data-game-skip-bg-nav": true }}
+      rootAttributes={{ "data-tour": "game-party", "data-chat-help": "party", "data-game-skip-bg-nav": true }}
     >
       <div className="flex min-h-0 flex-1 flex-wrap content-start items-start gap-3 overflow-y-auto overscroll-contain p-3">
         {memberVisuals.map((visual) => {

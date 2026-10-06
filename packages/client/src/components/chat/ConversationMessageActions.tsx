@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { ReplyToMessageButton } from "./MessageReplyPreview";
 import type { Message, MessageExtra } from "@marinara-engine/shared";
-import type { RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { useTranslation, useTranslation as useUiTranslation } from "react-i18next";
 import { cn } from "../../lib/utils";
 import { MsgAction } from "./ConversationMessageShared";
@@ -92,9 +92,41 @@ export function ConversationMessageActions({
 }: ConversationMessageActionsProps) {
   const { t: localizeUi } = useUiTranslation();
   const { t } = useTranslation();
-  const visible = showActions || forceShowActions;
+  const barRef = useRef<HTMLDivElement>(null);
+  // Keep the bar shown while focus moves from its message into it. WebKit blurs the message first and
+  // then rechecks the target, which :focus-within alone has already hidden, so the click or Tab is lost.
+  const [messageFocused, setMessageFocused] = useState(false);
+  useEffect(() => {
+    const row = barRef.current?.closest<HTMLElement>(".group");
+    if (!row) return;
+    const sync = (event: FocusEvent) =>
+      setMessageFocused(
+        event.type === "focusin" || (event.relatedTarget instanceof Node && row.contains(event.relatedTarget)),
+      );
+    // WebKit and Firefox send no focusout when the focused element is removed (closing an edit), so focus
+    // arriving anywhere outside the message also clears it.
+    const leave = (event: FocusEvent) => {
+      if (!(event.target instanceof Node) || !row.contains(event.target)) setMessageFocused(false);
+    };
+    row.addEventListener("focusin", sync);
+    row.addEventListener("focusout", sync);
+    document.addEventListener("focusin", leave);
+    return () => {
+      row.removeEventListener("focusin", sync);
+      row.removeEventListener("focusout", sync);
+      document.removeEventListener("focusin", leave);
+    };
+  }, []);
+  // Re-check after each render, which follows an edit closing, in case focus vanished without an event.
+  // It runs every render on purpose and can only turn the state off, so it cannot loop.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (messageFocused && !barRef.current?.closest(".group")?.matches(":focus-within")) setMessageFocused(false);
+  });
+  const visible = showActions || forceShowActions || messageFocused;
   return (
     <div
+      ref={barRef}
       className={cn(
         "mari-message-actions flex w-full min-w-0 flex-wrap items-center justify-between gap-1 px-1 transition-all md:justify-start md:gap-x-2",
         visible

@@ -450,10 +450,15 @@ export function FloatingWindow({
   const menuIcon = minimizable?.icon;
   const menuLabel = minimizable?.label;
   const menuBadge = minimizable?.bubbleBadge;
+  // The Help target the window stands for travels with its menu entry, since a phone shows no bubble for it.
+  const helpTarget = rootAttributes?.["data-chat-help"];
+  const menuHelpTarget = typeof helpTarget === "string" ? helpTarget : undefined;
   useLayoutEffect(() => {
     if (!phoneMenu || hidden || !menuLabel) return;
-    return useChatToolsMenuStore.getState().register({ id, label: menuLabel, icon: menuIcon, badge: menuBadge });
-  }, [hidden, id, menuBadge, menuIcon, menuLabel, phoneMenu]);
+    return useChatToolsMenuStore
+      .getState()
+      .register({ id, label: menuLabel, icon: menuIcon, badge: menuBadge, helpTarget: menuHelpTarget });
+  }, [hidden, id, menuBadge, menuHelpTarget, menuIcon, menuLabel, phoneMenu]);
 
   const limits = useMemo(() => ({ minWidth, minHeight }), [minHeight, minWidth]);
   // On a phone a popped-out drawer becomes a bubble, so sheets host drawers too.

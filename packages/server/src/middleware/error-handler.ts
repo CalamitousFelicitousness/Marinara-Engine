@@ -18,9 +18,10 @@ export function errorHandler(error: FastifyError, _request: FastifyRequest, repl
   }
 
   // Known HTTP errors
-  if (error.statusCode === 413) {
+  if (error.statusCode === 413 && error.code?.startsWith("FST_")) {
     // Routes carry their own bodyLimit (64 KB on experience-generation, 256 MB
     // app-wide for profile imports), so the message must not name one number.
+    // A 413 the app raises itself (an export's image budget) keeps its own advice.
     return reply.status(413).send({
       error: "The request body is larger than this endpoint accepts.",
     });

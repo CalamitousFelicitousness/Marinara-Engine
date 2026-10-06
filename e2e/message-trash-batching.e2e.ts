@@ -71,6 +71,9 @@ for (const conflictsOnly of [false, true]) {
           hasCompletedOnboarding: true,
           sidebarOpen: false,
           rightPanelOpen: false,
+          // The accent pulse restyles the whole page twice a second, which takes seconds per tick with
+          // 5,001 rows and starves this test. accent-pulse.e2e.ts covers the pulse itself.
+          appAccentPulseMode: false,
           chatHelpSeenModes: ["conversation", "roleplay", "game"],
         });
         await page.addInitScript(
@@ -89,6 +92,10 @@ for (const conflictsOnly of [false, true]) {
         await panel.getByRole("tab", { name: "Trash", exact: true }).click();
         // Avoid computing accessible names for every button in the 5,001-row mock.
         const restoreAll = panel.locator("button").filter({ hasText: /^Restore all$/ });
+        // While the big list is on the page, wait for an element before asserting on it: every failed
+        // expect retry snapshots the whole page's accessibility tree for its message, which blocks the
+        // page for about 12 s in Chromium and longer in WebKit (the toast below then never arrives).
+        await restoreAll.waitFor({ timeout: 10_000 });
         await expect(restoreAll).toBeEnabled();
         if (conflictsOnly) {
           // Observe the real hook's result without exposing application internals in production.
@@ -129,7 +136,8 @@ for (const conflictsOnly of [false, true]) {
         releaseSecondBatch();
         // Replacing 5,001 mocked rows takes longer under development rendering and browser tracing.
         const failureToast = page.locator("[data-sonner-toast]").filter({ hasText: "Synthetic later-batch failure" });
-        await expect(failureToast).toHaveAttribute("data-type", "warning", { timeout: 30_000 });
+        await failureToast.waitFor({ timeout: 30_000 });
+        await expect(failureToast).toHaveAttribute("data-type", "warning");
         if (conflictsOnly) {
           expect(await restoreObserver!.evaluate((observer) => observer.result)).toEqual({
             restoredMessageIds: [],

@@ -5,7 +5,9 @@
 // visible right now, so one list covers desktop, phones, and the Chat Settings
 // window being open or closed. Session, Volume, Assets, Game controls, the
 // connected chat, package toolbars and Beholder point at their windows' buttons
-// (bubbles), on phones too, where the Tracker Panel has a bubble as well.
+// (bubbles) on a computer. Phones keep them in the Chat tools menu, whose button
+// Help points at instead and whose detail lists them; the Tracker Panel has its
+// own bubble there.
 // Add new chat controls here.
 // ──────────────────────────────────────────────
 import type { ChatMode } from "@marinara-engine/shared";
@@ -17,6 +19,7 @@ export type ChatHelpTargetId =
   | "call"
   | "agent-controls"
   | "connected-chat"
+  | "chat-tools"
   | "settings"
   | "help"
   | "window-title"
@@ -68,6 +71,8 @@ const TARGETS = {
   call: chatHelpTarget("call", "call"),
   "agent-controls": chatHelpTarget("agent-controls", "agentControls"),
   "connected-chat": chatHelpTarget("connected-chat", "connectedChat"),
+  // On a phone, the button whose menu holds the controls above.
+  "chat-tools": chatHelpTarget("chat-tools", "chatTools"),
   // The Chat Settings button in the chat (at the top right unless moved).
   settings: chatHelpTarget("settings", "settings"),
   // The ? beside the Chat Settings title (a phone closes Chat Settings to show the guide).
@@ -150,6 +155,7 @@ const TARGETS_BY_MODE: Record<ChatMode, ChatHelpTargetDefinition[]> = {
     TARGETS.identity,
     TARGETS["agent-controls"],
     TARGETS["connected-chat"],
+    TARGETS["chat-tools"],
     TARGETS.call,
     ...CHAT_SETTINGS_TARGETS,
     {
@@ -165,6 +171,7 @@ const TARGETS_BY_MODE: Record<ChatMode, ChatHelpTargetDefinition[]> = {
     TARGETS["tracker-panel-bubble"],
     TARGETS["agent-controls"],
     TARGETS["connected-chat"],
+    TARGETS["chat-tools"],
     ...CHAT_SETTINGS_TARGETS,
     TARGETS["agent-activity"],
     {
@@ -185,6 +192,7 @@ const TARGETS_BY_MODE: Record<ChatMode, ChatHelpTargetDefinition[]> = {
     TARGETS.volume,
     TARGETS.assets,
     TARGETS["connected-chat"],
+    TARGETS["chat-tools"],
     ...CHAT_SETTINGS_TARGETS,
     TARGETS.widgets,
     TARGETS.dialogue,

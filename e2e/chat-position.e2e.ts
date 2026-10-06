@@ -180,7 +180,7 @@ async function setPosition(page: Page, position: Position) {
 async function expectConnectionsMenuOnScreen(page: Page) {
   const switcher = page.getByRole("button", { name: "Quick Connection Switcher", exact: true });
   await switcher.click();
-  const menu = page.getByRole("menu", { name: "Connections", exact: true });
+  const menu = page.getByRole("dialog", { name: "Connections", exact: true });
   await expect(menu).toBeVisible();
   await expect(async () => {
     const box = (await menu.boundingBox())!;

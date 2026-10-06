@@ -30,7 +30,7 @@ Use **Font**, **Shape** and the three color pickers below the presets to mix thi
 
 **Button size (px)** changes movable chat buttons and their icons without changing Display Size. Enter a size from 32 to 96 pixels. Leave the field empty, or use its reset button, to keep the current default. The size is saved with your appearance preferences and stays the same when you choose another preset.
 
-To make the rest of the chat match, turn on **Apply preset font**, **Apply preset shape** or **Apply preset colors**. Each switch works on its own and includes your custom choices above it. They apply to messages, input boxes and chat controls; Conversation messages use the optional font and colors but keep their own shape. All three start off. Turn one off to return that part of the chat to its usual styling. See [Custom CSS Themes](../appearance/custom-css-themes.md#ready-made-chat-window-styles) for more detail.
+To make the rest of the chat match, turn on **Apply preset font**, **Apply preset shape** or **Apply preset colors**. Each switch works on its own and includes your custom choices above it. They apply to messages, input boxes and chat controls; Conversation messages use the optional font and colors but keep their own shape. With **Apply preset colors** on, quoted dialogue keeps each Character's or Persona's own Dialogue Highlight Color. All three start off. Turn one off to return that part of the chat to its usual styling. See [Custom CSS Themes](../appearance/custom-css-themes.md#ready-made-chat-window-styles) for more detail.
 
 ## Moving, pinning and locking the window
 

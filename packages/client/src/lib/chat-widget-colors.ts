@@ -21,6 +21,10 @@ export const CHAT_WIDGET_COLOR_PROPERTIES = [
   "--mari-widget-custom-isolation",
 ] as const;
 
+/** Marks a character's or persona's own name or dialogue color so Apply preset colors keeps it
+ *  (chat-widget-surfaces.css). Fallback colors leave it off and follow the preset text. */
+export const CHARACTER_COLOR_CLASS = "mari-character-color";
+
 type WidgetColorStyle = CSSProperties & Partial<Record<(typeof CHAT_WIDGET_COLOR_PROPERTIES)[number], string>>;
 
 /** Picker values may paint colors or gradients, never fetch images or inject declarations. */

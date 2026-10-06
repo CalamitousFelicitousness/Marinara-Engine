@@ -16,7 +16,7 @@ import {
   createChatSummaryEntry,
 } from "@marinara-engine/shared";
 import { seedUIState } from "./ui-state-fixture.js";
-import { openChatSettingsTool } from "./chat-settings-tools.js";
+import { closeChatSettings, drawerToggle, openChatSettingsTool } from "./chat-settings-tools.js";
 
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version as string;
 test.use({ actionTimeout: 10_000 });
@@ -647,7 +647,7 @@ test("Advanced Memory stays in Chat Settings with confirmed knowledge, resumable
     const drawer = page.locator(".mari-chat-settings-drawer");
     const settings = drawer.locator('[data-component="AdvancedMemorySettings"]');
     const memorySection = drawer.locator('[data-chat-settings-section="roleplay-memory-recall"]');
-    const memoryHeader = memorySection.locator(':scope > [role="button"]');
+    const memoryHeader = drawerToggle(memorySection);
     await expect(memoryHeader).toHaveAttribute("aria-expanded", "false");
     await page.evaluate((chatId) => {
       window.dispatchEvent(new CustomEvent("marinara:advanced-memory-settings", { detail: { chatId } }));
@@ -1225,6 +1225,8 @@ for (const work of ["scene-check", "summary"] as const)
         const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
         useUIStore.setState({ enableStreaming: true, streamingSpeed: 100 });
       });
+      // On phones the Chat Settings sheet covers the send button, so close it like a user would.
+      await closeChatSettings(page);
       await page.locator("textarea[data-chat-composer]").fill("Open the notebook.");
       await page.locator("button.mari-chat-send-btn").click();
       await expect(page.getByText(firstChunk, { exact: true })).toBeVisible();
@@ -1241,7 +1243,7 @@ for (const work of ["scene-check", "summary"] as const)
       await expect(page.getByText(firstChunk + lastChunk, { exact: true })).toBeVisible();
       await expect(page.locator("button.mari-chat-send-btn .lucide-send")).toBeVisible();
       await expect.poll(() => !!pendingMemory).toBe(true);
-      // Typing in the composer closed the unpinned Chat Settings window.
+      // Reopen Chat Settings to follow the memory work after the reply.
       await openChatSettingsTool(page, "agent-activity");
       await expect(activity).toContainText(work === "scene-check" ? "Finding scene boundaries" : "Updating continuity");
       const sceneCheckRun = page.locator('[data-agent-activity="advanced-recall"]');
@@ -1424,7 +1426,7 @@ test("Advanced Memory keeps routine normal and guided replies quiet while preser
         // Quiet progress remains available through the normal settings action.
         await page.getByRole("button", { name: "Chat Settings", exact: true }).filter({ visible: true }).click();
         const section = drawer.locator('[data-chat-settings-section="roleplay-memory-recall"]');
-        const header = section.locator(':scope > [role="button"]');
+        const header = drawerToggle(section);
         if ((await header.getAttribute("aria-expanded")) !== "true") await header.click();
         const progress = section.locator('[data-component="AdvancedMemoryProgress"]');
         await expect(progress).toContainText("Updating continuity");
@@ -1519,7 +1521,7 @@ for (const deleted of [false, true])
     try {
       await openChat(page, fixture.chat.id);
       const drawer = page.locator(".mari-chat-settings-drawer");
-      await drawer.locator('[data-chat-settings-section="roleplay-memory-recall"] > [role="button"]').click();
+      await drawerToggle(drawer.locator('[data-chat-settings-section="roleplay-memory-recall"]')).click();
       await drawer.getByRole("button", { name: "Access memories for this chat", exact: true }).click();
       const inspector = drawer.locator('[data-component="AdvancedMemoryInspector"]');
       await expect(inspector).toBeVisible();
@@ -1574,7 +1576,7 @@ test("Advanced Memory Decision connection is optional and persists for its chat"
     const section = page.locator('[data-chat-settings-section="roleplay-memory-recall"]');
     await expect(section).toBeVisible();
     if (!(await section.locator('[data-component="AdvancedMemorySettings"]').isVisible()))
-      await section.locator(':scope > [role="button"]').click();
+      await drawerToggle(section).click();
     return section.locator('[data-component="AdvancedMemorySettings"]');
   };
   try {

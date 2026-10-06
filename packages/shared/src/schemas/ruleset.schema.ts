@@ -4145,6 +4145,48 @@ function refReadsListSum(
   return (!!trained.cap && next(trained.cap)) || (!!bonus && next(bonus));
 }
 
+/** What a value reads off the sheet, directly or through derived values: its abilities, fields, skills,
+ *  saves and the lists it adds up. Conservative: a skill or save modifier reads every ability, and a
+ *  modifier off a field's ability reads that field and every ability. */
+function refReadsSheet(
+  def: Pick<RulesetDefinitionBase, "sheet" | "resolution">,
+  ref: RulesetValueRef,
+  into = {
+    abilities: new Set<string>(),
+    fields: new Set<string>(),
+    skills: new Set<string>(),
+    saves: new Set<string>(),
+    lists: new Set<string>(),
+  },
+  depth = 0,
+): typeof into {
+  if (depth > 64) return into;
+  const all = () => def.sheet.abilities.forEach((ability) => into.abilities.add(ability.id));
+  if (ref.field !== undefined) into.fields.add(ref.field);
+  if (ref.abilityScore !== undefined) into.abilities.add(ref.abilityScore);
+  if (ref.abilityMod !== undefined) into.abilities.add(ref.abilityMod);
+  if (ref.abilityModFromField !== undefined) {
+    into.fields.add(ref.abilityModFromField);
+    all();
+  }
+  if (ref.skillMod !== undefined) {
+    into.skills.add(ref.skillMod);
+    all();
+  }
+  if (ref.saveMod !== undefined) {
+    into.saves.add(ref.saveMod);
+    all();
+  }
+  if (ref.listSum) into.lists.add(ref.listSum.list);
+  if (ref.derived !== undefined) {
+    const derived = def.sheet.derived.find((entry) => entry.id === ref.derived);
+    // An enum table reads its enum field, which derivedRefs leaves out as no number.
+    if (derived?.op === "enumTable" && derived.from.field !== undefined) into.fields.add(derived.from.field);
+    if (derived) for (const inner of derivedRefs(derived)) refReadsSheet(def, inner, into, depth + 1);
+  }
+  return into;
+}
+
 function rulesetSheetNames(
   sheet: RulesetSheetSchema,
   items?: {
@@ -7377,6 +7419,30 @@ export function rulesetCatalogEntryIssues(
     if (entry.offeredWhen) {
       for (const issue of rulesetValueRefIssues(entry.offeredWhen, names, names.derived, false)) {
         add([index, "offeredWhen", issue.key], issue.message);
+      }
+      // The entry's own pick may not change what decides whether it is offered: that would offer it,
+      // take it back, and offer it again, and no number of passes settles that.
+      const reads = refReadsSheet(definition, entry.offeredWhen);
+      const grants = entry.grants;
+      const changed = [
+        ...Object.keys(grants?.abilities?.add ?? {}).filter((id) => reads.abilities.has(id)),
+        ...(grants?.abilities?.choose ?? []).flatMap((choice) =>
+          definition.sheet.abilities
+            .map((ability) => ability.id)
+            .filter((id) => !choice.except?.includes(id) && reads.abilities.has(id)),
+        ),
+        ...Object.keys(grants?.sets ?? {}).filter((id) => reads.fields.has(id)),
+        ...(grants?.trained?.skills ?? []).filter((id) => reads.skills.has(id)),
+        ...(grants?.trained?.saves ?? []).filter((id) => reads.saves.has(id)),
+        ...(grants?.trained?.choose ?? []).flatMap((choice) =>
+          [...(choice.what === "skills" ? reads.skills : reads.saves)].filter(
+            (id) => !choice.from || choice.from.includes(id),
+          ),
+        ),
+        ...(entry.rows ?? []).map((row) => row.list).filter((list) => reads.lists.has(list)),
+      ];
+      if (changed.length) {
+        add([index, "offeredWhen"], `offeredWhen reads "${changed[0]}", which picking this entry changes`);
       }
     }
 

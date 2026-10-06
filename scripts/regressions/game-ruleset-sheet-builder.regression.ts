@@ -1091,6 +1091,27 @@ try {
   refused((doc) => {
     doc.catalogs.find((c: { id: string }) => c.id === "classes").entries[0].offeredWhen = { derived: "nope" };
   }, /nope/);
+  // An entry whose own pick changes what decides it would offer itself, take itself back and offer
+  // itself again: refused, whether directly or through a derived value or a field its pick sets.
+  refused((doc) => {
+    const wizard = doc.catalogs
+      .find((c: { id: string }) => c.id === "classes")
+      .entries.find((e: { id: string }) => e.id === "wizard");
+    wizard.offeredWhen = { abilityMod: "int" };
+    wizard.grants.abilities = { add: { int: -2 } };
+  }, /offeredWhen reads "int", which picking this entry changes/);
+  refused((doc) => {
+    const wizard = doc.catalogs
+      .find((c: { id: string }) => c.id === "classes")
+      .entries.find((e: { id: string }) => e.id === "wizard");
+    wizard.offeredWhen = { field: "level" };
+  }, /offeredWhen reads "level", which picking this entry changes/);
+  refused((doc) => {
+    const wizard = doc.catalogs
+      .find((c: { id: string }) => c.id === "classes")
+      .entries.find((e: { id: string }) => e.id === "wizard");
+    wizard.offeredWhen = { derived: "proficiency_bonus" };
+  }, /offeredWhen reads "level", which picking this entry changes/);
 
   // ── 1.89: entries a step keeps one of ──
   const grouped = (doc: Record<string, any>) => {

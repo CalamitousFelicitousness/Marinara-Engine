@@ -11,6 +11,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 - A skill or saving throw choice in the builder no longer offers one the character already has from another pick, such as Insight from a background offered again by a class, so no choice is spent on nothing (Capability API 1.99).
 - A builder skill choice can offer only skills the character already has, for 5e's Expertise: a rogue doubles two skills it is proficient in, not any skill (Capability API 1.100).
 - An entry a builder choice offers, such as a language or a fighting style to pick, is offered only while the sheet allows it, as a step's entries are (Capability API 1.101).
+- A guided builder can show only the fields the character needs and keep number fields within a combined limit, such as class levels adding up to no more than 20 (Capability API 1.102).
 - A weapon wielded two-handed can reroll its low damage dice once, off its holder's sheet, such as 5e's Great Weapon Fighting (Capability API 1.93).
 - A weapon can add damage off its holder's sheet, only while held in one hand when it says so, and a fighter's off-hand attack can keep its full ability when their sheet says so, such as 5e's Dueling and Two-Weapon Fighting (Capability API 1.92).
 - A builder score choice can stop at a cap, such as an ability score improvement's 20 (Capability API 1.91).

@@ -18,6 +18,7 @@ import {
   rulesetBuilderPicks,
   rulesetBuilderStepCount,
   rulesetBuilderRemaining,
+  rulesetBuilderShownFields,
   rulesetBuilderTrainedSlots,
   rulesetBuilderMethod,
   rulesetSheetBuildIsBlank,
@@ -412,14 +413,22 @@ export function RulesetSheetBuilder({
 
   const fieldsStep = (current: StepOf<"fields">) => (
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-      {current.fields.map((id) => {
+      {rulesetBuilderShownFields(definition, current, build).map((id) => {
         const field = definition.sheet.fields.find((each) => each.id === id);
         if (!field) return null;
+        let spec = field;
+        if (field.type === "number" && current.total?.fields.includes(id)) {
+          const others = current.total.fields.reduce((sum, otherId) => {
+            const value = build.fields[otherId];
+            return sum + (otherId !== id && typeof value === "number" ? value : 0);
+          }, 0);
+          spec = { ...field, max: Math.max(field.min, Math.min(field.max, current.total.max - others)) };
+        }
         return (
           <label key={id} className={`flex min-w-0 flex-col gap-1 ${field.type === "longtext" ? "col-span-full" : ""}`}>
             <span className={labelClass}>{field.label}</span>
             <TypedInput
-              spec={field}
+              spec={spec}
               value={build.fields[id]}
               onChange={(value) =>
                 // A value the builder answers for, changed here, is still the builder's: a later pick

@@ -25,6 +25,7 @@ import {
   rulesetBuilderChoiceKey,
   rulesetBuilderOptions,
   rulesetBuilderRemaining,
+  rulesetBuilderShownFields,
   rulesetBuilderTrainedSlots,
   rulesetCatalogEntryIssues,
   rulesetPointBuySpent,
@@ -1414,6 +1415,66 @@ try {
     );
   }
 
+  // ── 1.102: fields shown by the sheet, and number fields held to a total ──
+  const shownFieldsDoc = variant((doc) => {
+    doc.sheet.builder.steps[3].shownWhen = { background: { field: "xp" } };
+  });
+  const totalFieldsDoc = variant((doc) => {
+    Object.assign(doc.sheet.builder.steps[3], {
+      fields: ["level", "xp", "background"],
+      optional: ["background"],
+      total: { fields: ["level", "xp"], max: 20 },
+    });
+  });
+  {
+    const shown = parsed(shownFieldsDoc);
+    const step = shown.sheet.builder!.steps[3]!;
+    assert.ok(step.kind === "fields");
+    const start = defaultRulesetSheetBuild(shown);
+    const hidden = { ...start, fields: { ...start.fields, background: "", xp: 0 } };
+    assert.deepEqual(rulesetBuilderShownFields(shown, step, hidden), ["level"]);
+    assert.equal(rulesetBuilderRemaining(shown, hidden, {}, {}).level, 0, "hidden fields are not waited on");
+    const visible = { ...hidden, fields: { ...hidden.fields, xp: 1 } };
+    assert.deepEqual(rulesetBuilderShownFields(shown, step, visible), ["level", "background"]);
+    assert.equal(rulesetBuilderRemaining(shown, visible, {}, {}).level, 1, "shown again when the ref reads above 0");
+    const filled = { ...hidden, fields: { ...hidden.fields, background: "Sage" } };
+    assert.deepEqual(rulesetBuilderShownFields(shown, step, filled), ["level"]);
+    assert.equal(filled.fields.background, "Sage", "hiding keeps the value");
+    assert.deepEqual(
+      rulesetBuilderShownFields(definition, definition.sheet.builder!.steps[3] as typeof step, start),
+      ["level", "background"],
+      "without shownWhen the existing fields stay shown",
+    );
+
+    const totaled = parsed(totalFieldsDoc);
+    const blank = defaultRulesetSheetBuild(totaled);
+    const at = (xp: number) => ({ ...blank, fields: { ...blank.fields, level: 10, xp } });
+    assert.equal(rulesetBuilderRemaining(totaled, at(11), {}, {}).level, 1, "an over-limit total waits on one fix");
+    assert.equal(rulesetBuilderRemaining(totaled, at(10), {}, {}).level, 0, "at the maximum is done");
+    const hiddenTotalDoc = structuredClone(totalFieldsDoc);
+    hiddenTotalDoc.sheet.builder.steps[3].shownWhen = { xp: { const: 0 } };
+    const hiddenTotal = parsed(hiddenTotalDoc);
+    assert.equal(rulesetBuilderRemaining(hiddenTotal, at(11), {}, {}).level, 1, "hidden values still count in totals");
+    refused(
+      (doc) => (doc.sheet.builder.steps[3].shownWhen = { xp: { field: "level" } }),
+      /"xp" is not one of this step's fields/,
+    );
+    refused((doc) => (doc.sheet.builder.steps[3].shownWhen = { background: { field: "nope" } }), /nope/);
+    refused((doc) => (doc.sheet.builder.steps[3].total = { fields: ["level"], max: 20 }), /at least 2/);
+    refused(
+      (doc) => (doc.sheet.builder.steps[3].total = { fields: ["level", "background"], max: 20 }),
+      /No number field "background"/,
+    );
+    refused(
+      (doc) => (doc.sheet.builder.steps[3].total = { fields: ["level", "xp"], max: 20 }),
+      /"xp" is not one of this step's fields/,
+    );
+    refused(
+      (doc) => (doc.sheet.builder.steps[3].total = { fields: ["level", "level"], max: 20 }),
+      /"level" is named twice/,
+    );
+  }
+
   // ── The gate ──
   const manifest = (minor: number, paths = ["ruleset.json"]) => ({
     schemaVersion: 2,
@@ -1433,6 +1494,10 @@ try {
   });
   const issue = (minor: number, doc: Record<string, any>, files?: Map<string, unknown>, paths?: string[]) =>
     getCapabilityPackageInstallIssue(manifest(minor, paths) as any, doc, files as any);
+  for (const doc of [shownFieldsDoc, totalFieldsDoc]) {
+    assert.match(issue(101, doc) ?? "", /1\.102/);
+    assert.equal(issue(102, doc), null);
+  }
   const withBuilder = variant((doc) => {
     // Builder alone: classes with plain rows, races without grants.
     doc.catalogs = doc.catalogs.filter((c: { id: string }) => c.id !== "races" && c.id !== "classes");

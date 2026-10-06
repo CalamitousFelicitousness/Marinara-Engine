@@ -1912,6 +1912,18 @@ export function getCapabilityPackageInstallIssue(
   if (!declaresApi(90) && carriesSheetBonus) {
     return "A ruleset whose items add a bonus to hit read off their holder's sheet requires schemaVersion 2 and capabilityApi 1.90 or newer";
   }
+  // Fields shown by the sheet or held to a combined maximum, 1.102: new keys on the strict step.
+  const fieldsSteps = plainRecord(plainRecord(ruleset?.sheet)?.builder)?.steps;
+  if (
+    !declaresApi(102) &&
+    Array.isArray(fieldsSteps) &&
+    fieldsSteps.some((step) => {
+      const fieldsStep = plainRecord(step);
+      return fieldsStep?.kind === "fields" && (fieldsStep.shownWhen !== undefined || fieldsStep.total !== undefined);
+    })
+  ) {
+    return "A ruleset whose builder steps show fields only while the sheet allows, or hold fields to a total, requires schemaVersion 2 and capabilityApi 1.102 or newer";
+  }
   // A skill or save choice among what is already trained, 1.100: a new key on the strict choice.
   if (!declaresApi(100) && carriesHeldChoices) {
     return "A ruleset whose skill or save choices build on training already held requires schemaVersion 2 and capabilityApi 1.100 or newer";

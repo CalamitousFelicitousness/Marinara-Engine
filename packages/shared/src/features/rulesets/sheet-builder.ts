@@ -948,6 +948,18 @@ function applyRulesetBuilderOnce(
   };
 }
 
+/** Fields shown at a step on the sheet as it stands (1.102). Hiding keeps their stored values. */
+export function rulesetBuilderShownFields(
+  definition: RulesetDefinition,
+  step: StepOf<"fields">,
+  build: RulesetSheetBuild,
+): string[] {
+  return step.fields.filter((id) => {
+    const ref = step.shownWhen?.[id];
+    return !ref || resolveRulesetValueRef(definition, build, ref) > 0;
+  });
+}
+
 /** How many choices each step still waits on, by step id. A step never blocks the next: this is
  *  what its badge shows. */
 export function rulesetBuilderRemaining(
@@ -971,12 +983,19 @@ export function rulesetBuilderRemaining(
     } else if (step.kind === "fields") {
       add(
         step.id,
-        step.fields.filter((id) => {
+        rulesetBuilderShownFields(definition, step, build).filter((id) => {
           if (step.optional?.includes(id)) return false;
           const value = build.fields[id];
           return value === undefined || value === "";
         }).length,
       );
+      if (step.total) {
+        const total = step.total.fields.reduce((sum, id) => {
+          const value = build.fields[id];
+          return sum + (typeof value === "number" ? value : 0);
+        }, 0);
+        if (total > step.total.max) add(step.id, 1);
+      }
     } else if (step.kind === "abilities") {
       const method = rulesetBuilderMethod(definition, state);
       const ids = rulesetBuilderAbilityIds(definition, step);

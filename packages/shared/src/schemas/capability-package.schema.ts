@@ -706,7 +706,10 @@ const capabilityPackageManifestBaseSchema = z
 // 1.101: an entry a builder choice offers (`grants.entries.choose`) is held to its `offeredWhen` on the
 //        sheet, as a step's options are. Behaviour only, no new key: a package that relies on it
 //        declares 1.101. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 101 } as const);
+// 1.102: a builder fields step may show fields only while the sheet allows (`shownWhen`), and hold
+//        number fields to a combined maximum (`total`). Not a soft seam: an Engine that cannot read
+//        it refuses the file, so a package that ships it declares 1.102. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 102 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

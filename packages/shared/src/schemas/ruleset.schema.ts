@@ -953,6 +953,15 @@ const builderStepSchema = z.discriminatedUnion("kind", [
       fields: z.array(sheetId).min(1).max(20),
       /** Fields of the step its badge does not wait on, such as a subclass chosen at a later level. */
       optional: z.array(sheetId).min(1).max(20).optional(),
+      /** Fields shown only while their value reference reads above 0 on the sheet (1.102). */
+      shownWhen: z
+        .record(sheetId, rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>)
+        .optional(),
+      /** Number fields held to a combined maximum (1.102). */
+      total: z
+        .object({ fields: z.array(sheetId).min(2).max(20), max: z.number().int().min(1).max(1000) })
+        .strict()
+        .optional(),
     })
     .strict(),
   z
@@ -1029,7 +1038,13 @@ export type RulesetBuilderStep =
       upTo?: RulesetBuilderUpTo;
       countFrom?: RulesetValueRef;
     })
-  | (BuilderStepBase & { kind: "fields"; fields: string[]; optional?: string[] })
+  | (BuilderStepBase & {
+      kind: "fields";
+      fields: string[];
+      optional?: string[];
+      shownWhen?: Record<string, RulesetValueRef>;
+      total?: { fields: string[]; max: number };
+    })
   | (BuilderStepBase & { kind: "choices"; catalog: string })
   | (BuilderStepBase & {
       kind: "abilities";
@@ -5323,6 +5338,17 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         step.optional?.forEach((id, optionalIndex) => {
           if (!step.fields.includes(id))
             issue([...path, "optional", optionalIndex], `"${id}" is not one of this step's fields`);
+        });
+        for (const [id, ref] of Object.entries(step.shownWhen ?? {})) {
+          const at = [...path, "shownWhen", id];
+          if (!step.fields.includes(id)) issue(at, `"${id}" is not one of this step's fields`);
+          checkRef(ref, at, derivedIds, false);
+        }
+        step.total?.fields.forEach((id, fieldIndex) => {
+          const at = [...path, "total", "fields", fieldIndex];
+          if (!step.fields.includes(id)) issue(at, `"${id}" is not one of this step's fields`);
+          if (fieldById.get(id)?.type !== "number") issue(at, `No number field "${id}"`);
+          if (step.total!.fields.indexOf(id) !== fieldIndex) issue(at, `"${id}" is named twice`);
         });
       } else if (step.kind === "abilities") {
         abilitySteps += 1;

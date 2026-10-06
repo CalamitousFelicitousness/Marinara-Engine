@@ -13,7 +13,7 @@ import { errorHandler } from "./middleware/error-handler.js";
 import { ipAllowlistHook } from "./middleware/ip-allowlist.js";
 import { basicAuthHook, isBasicAuthSatisfied } from "./middleware/basic-auth.js";
 import { csrfProtectionHook } from "./middleware/csrf-protection.js";
-import { rateLimitHook } from "./middleware/rate-limit.js";
+import { HEALTH_RATE_LIMIT, rateLimitHook } from "./middleware/rate-limit.js";
 import { securityHeadersHook } from "./middleware/security-headers.js";
 import { seedDefaultPreset } from "./db/seed.js";
 import { seedProfessorMari } from "./db/seed-mari.js";
@@ -373,7 +373,7 @@ export async function buildApp(https?: { cert: Buffer; key: Buffer }) {
   }
 
   // ── Health Check ──
-  app.get("/api/health", async (request) => {
+  app.get("/api/health", { config: { rateLimit: HEALTH_RATE_LIMIT } }, async (request) => {
     const commit = getBuildCommit();
     let capabilityPackages: Awaited<ReturnType<typeof capabilityPackageManager.diagnostics>> | null = null;
     try {

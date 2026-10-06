@@ -100,7 +100,20 @@ export const DECISION_SIDECAR_RATE_LIMIT = {
   timeWindow: 60_000,
 } as const satisfies MarinaraRouteRateLimit;
 
+/**
+ * The health probe. Launchers, Docker, the Android bootstrap and the open app poll it, so it keeps the
+ * default allowance in a bucket of its own; it now also decides whether to include local model details.
+ */
+export const HEALTH_RATE_LIMIT = {
+  max: 600,
+  timeWindow: 60_000,
+} as const satisfies MarinaraRouteRateLimit;
+
 const ROUTE_RULES: Array<{ pattern: RegExp; rule: RateLimitRule }> = [
+  {
+    pattern: /^\/api\/health(?:\?|$)/,
+    rule: { key: "health", limit: HEALTH_RATE_LIMIT.max, windowMs: HEALTH_RATE_LIMIT.timeWindow },
+  },
   {
     pattern: /^\/api\/multiplayer\/guest-view(?:\?|$)/,
     rule: {

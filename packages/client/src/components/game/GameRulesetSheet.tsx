@@ -34,6 +34,7 @@ import {
 } from "@marinara-engine/shared";
 import { RulesetSheetEditor } from "../rulesets/RulesetSheetEditor";
 import { rulesetCheckValueText } from "../../lib/ruleset-resolution";
+import { rulesetPoolGroupLabel, rulesetSheetSummaryShown } from "../../lib/ruleset-sheet-view";
 import { DraftNumberInput } from "../ui/DraftNumberInput";
 import { DraftTextarea } from "../ui/DraftTextarea";
 
@@ -360,9 +361,7 @@ export function GameRulesetSheet({
     return groups;
   }, [resolved.pools]);
 
-  const summary = definition.gm.sheetSummary;
-  const summaryFields = definition.sheet.fields.filter((field) => summary.fields.includes(field.id));
-  const summaryDerived = definition.sheet.derived.filter((entry) => summary.derived.includes(entry.id));
+  const { fields: summaryFields, derived: summaryDerived } = rulesetSheetSummaryShown(definition, build);
   const untrainedTier = definition.resolution.proficiencyTiers[0]?.id;
   const trained = [
     ...definition.sheet.skills.map((skill) => ({
@@ -461,7 +460,7 @@ export function GameRulesetSheet({
         <>
           {poolGroups.map((group) => (
             <div key={group.id || "ungrouped"} className="space-y-1.5">
-              {group.id && <p className={labelClass}>{group.id}</p>}
+              {group.id && <p className={labelClass}>{rulesetPoolGroupLabel(group.id)}</p>}
               {group.pools.map((pool) => (
                 <div key={pool.key} className={`flex flex-wrap items-center gap-x-2 gap-y-1 ${cardClass}`}>
                   <span

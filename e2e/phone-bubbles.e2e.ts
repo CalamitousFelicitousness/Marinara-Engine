@@ -753,7 +753,7 @@ test.describe("phone bubbles", () => {
       // Switching it on leaves the panel closed: it waits behind its bubble.
       await settings.locator('[data-window-control="close"]').click();
       await expect(trackerBubble).toBeVisible();
-      await expect(trackerBubble).toHaveAccessibleName("Open Trackers");
+      await expect(trackerBubble).toHaveAccessibleName("Trackers");
       await expect(panel).toHaveCount(0);
       await expectComposerClearAndNoSideScroll(page);
 

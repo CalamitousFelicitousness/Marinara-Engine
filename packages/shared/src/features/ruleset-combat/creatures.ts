@@ -131,6 +131,7 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
             ...damage,
             ...(action.damage?.type ? { type: action.damage.type } : {}),
             ...(plus ? { plus } : {}),
+            ...(action.damage?.qualities?.length ? { qualities: [...action.damage.qualities] } : {}),
           } as RulesetCombatDamage,
         }
       : {}),

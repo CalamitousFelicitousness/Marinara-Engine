@@ -692,7 +692,13 @@ const capabilityPackageManifestBaseSchema = z
 // 1.94: a catalog entry may say when a builder step offers it (`offeredWhen`, a value off the sheet
 //        above 0: a second class whose prerequisites are met). Not a soft seam: an Engine that cannot
 //        read it refuses the catalog, so a package that ships it declares 1.94. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 94 } as const);
+// 1.96: harm may name what it carries past a resistance's or an immunity's `except`, as a weapon
+//        item's tags do: `qualities` on a catalog entry's mechanics (a spell) and on a creature
+//        action's damage (a deva's mace), so "resistance to slashing from nonmagical attacks" is
+//        `{ type, except: ["magical"] }` and a magical blow goes through it. Not a soft seam: an Engine
+//        that cannot read it refuses the catalog, so a package that ships it declares 1.96. No
+//        permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 96 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

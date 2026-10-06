@@ -1209,6 +1209,7 @@ function mechanicsAction(
       ...scaled,
       ...(mechanics.damageType ? { type: mechanics.damageType } : {}),
       ...(plus ? { plus } : {}),
+      ...(mechanics.qualities?.length ? { qualities: [...mechanics.qualities] } : {}),
     };
   }
   const temporary = amountOf(mechanics.temporary);

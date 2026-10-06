@@ -1193,6 +1193,23 @@ function entriesCarryDamageReroll(entries: unknown): boolean {
   );
 }
 
+/** Harm that names what it carries past a resistance's `except` (1.96): `qualities` on an entry's
+ *  mechanics or on a creature action's damage, a new key on each strict object. */
+function entriesCarryBlowQualities(entries: unknown): boolean {
+  return (
+    Array.isArray(entries) &&
+    entries.some((entry) => {
+      const record = plainRecord(entry);
+      if (plainRecord(record?.mechanics)?.qualities !== undefined) return true;
+      const actions = plainRecord(record?.creature)?.actions;
+      return (
+        Array.isArray(actions) &&
+        actions.some((action) => plainRecord(plainRecord(action)?.damage)?.qualities !== undefined)
+      );
+    })
+  );
+}
+
 /** Entries a builder step offers only while the sheet says so (1.94): `offeredWhen`, a new key on the
  *  strict entry. */
 function entriesCarryOfferedWhen(entries: unknown): boolean {
@@ -1454,6 +1471,7 @@ export function getCapabilityPackageInstallIssue(
   let carriesDamageSheetBonus = false;
   let carriesDamageReroll = false;
   let carriesOfferedWhen = false;
+  let carriesBlowQualities = false;
   let carriesExclusive = false;
   let carriesSheetBonus = false;
   // Every item by "<catalog>/<entry>", inline and in files, and the fakes among them, so a fake whose
@@ -1557,6 +1575,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryDamageSheetBonus(header.entries)) carriesDamageSheetBonus = true;
       if (entriesCarryDamageReroll(header.entries)) carriesDamageReroll = true;
       if (entriesCarryOfferedWhen(header.entries)) carriesOfferedWhen = true;
+      if (entriesCarryBlowQualities(header.entries)) carriesBlowQualities = true;
       if (entriesCarryExclusive(header.entries)) carriesExclusive = true;
       if (entriesCarryToHitSheetBonus(header.entries)) carriesSheetBonus = true;
       collectItems(header.id, header.entries);
@@ -1610,6 +1629,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryDamageSheetBonus(fileEntries)) carriesDamageSheetBonus = true;
       if (entriesCarryDamageReroll(fileEntries)) carriesDamageReroll = true;
       if (entriesCarryOfferedWhen(fileEntries)) carriesOfferedWhen = true;
+      if (entriesCarryBlowQualities(fileEntries)) carriesBlowQualities = true;
       if (entriesCarryExclusive(fileEntries)) carriesExclusive = true;
       if (entriesCarryToHitSheetBonus(fileEntries)) carriesSheetBonus = true;
       collectItems(header.id, fileEntries);
@@ -1901,6 +1921,11 @@ export function getCapabilityPackageInstallIssue(
   // A catalog entry a builder step offers only while the sheet says so, 1.94: a new key on the strict entry.
   if (!declaresApi(94) && carriesOfferedWhen) {
     return "A ruleset whose catalog entries are offered only while the sheet allows requires schemaVersion 2 and capabilityApi 1.94 or newer";
+  }
+  // Harm that carries qualities past a resistance's exception, 1.96: a new key on the strict mechanics
+  // and the strict creature damage.
+  if (!declaresApi(96) && carriesBlowQualities) {
+    return "A ruleset whose spells or creature attacks carry qualities past a resistance (magical) requires schemaVersion 2 and capabilityApi 1.96 or newer";
   }
   // A weapon's damage dice rerolled off the holder's sheet, 1.93: a new key on the strict damage.
   if (!declaresApi(93) && carriesDamageReroll) {

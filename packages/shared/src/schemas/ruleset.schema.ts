@@ -1504,6 +1504,10 @@ const catalogMechanicsObject = z
     damageType: promptSafeText(40).optional(),
     /** More amounts on the same blow, beside `amount`, each rolled and typed on its own. */
     plus: z.array(catalogPlusClauseSchema).max(RULESET_DAMAGE_MAX_PLUS).optional(),
+    /** What the entry's harm carries past a resistance's or an immunity's `except`, as a weapon
+     *  item's tags do (Capability API 1.96): a spell is `["magical"]`, so a resistance to its type
+     *  "from nonmagical attacks" does not halve it. */
+    qualities: z.array(sheetId).min(1).max(8).optional(),
     attackRoll: z.boolean().optional(),
     /** `ignoresCover` (Capability API 1.69): the target gains nothing from cover on this save, as a
      *  spell whose text says so (5e's Sacred Flame). */
@@ -1753,6 +1757,10 @@ const creatureDamageSchema = z
     type: promptSafeText(40).optional(),
     /** More amounts on the same blow, each rolled and typed on its own. */
     plus: z.array(catalogPlusClauseSchema).max(RULESET_DAMAGE_MAX_PLUS).optional(),
+    /** What the blow carries past a resistance's or an immunity's `except`, as a weapon item's tags
+     *  do (Capability API 1.96): a deva's mace is `["magical"]`, so a resistance to slashing "from
+     *  nonmagical attacks" does not halve it. */
+    qualities: z.array(sheetId).min(1).max(8).optional(),
   })
   .strict()
   .superRefine((damage, ctx) => {
@@ -6649,6 +6657,14 @@ function creatureIssues(
     if (action.damage?.type && damageTypes && !damageTypes.has(action.damage.type.trim().toLowerCase())) {
       add([...path, "damage", "type"], `Unknown damage type "${action.damage.type}"`);
     }
+    action.damage?.qualities?.forEach((tag, tagIndex) => {
+      if (!itemTags.has(tag)) {
+        add(
+          [...path, "damage", "qualities", tagIndex],
+          itemTags.size ? `Unknown item tag "${tag}"` : "This ruleset declares no item tags for a blow to carry",
+        );
+      }
+    });
     wrongDie(action.damage?.dice, [...path, "damage", "dice"]);
     action.damage?.plus?.forEach((clause, clauseIndex) =>
       wrongDie(clause.dice, [...path, "damage", "plus", clauseIndex, "dice"]),
@@ -7523,6 +7539,19 @@ export function rulesetCatalogEntryIssues(
     // as the first amount being freer than the second one on the very same blow.
     if (mechanics?.damageType && declaredTypes && !declaredTypes.has(mechanics.damageType.trim().toLowerCase())) {
       add([index, "mechanics", "damageType"], `Unknown damage type "${mechanics.damageType}"`);
+    }
+    // What the harm carries past an exception is what a weapon's tags carry, so it is the ruleset's
+    // own item tags, exactly as an exception's names are.
+    if (mechanics?.qualities) {
+      const itemTags = new Set((definition.items?.tags ?? []).map((tag) => tag.id));
+      mechanics.qualities.forEach((tag, tagIndex) => {
+        if (!itemTags.has(tag)) {
+          add(
+            [index, "mechanics", "qualities", tagIndex],
+            itemTags.size ? `Unknown item tag "${tag}"` : "This ruleset declares no item tags for a blow to carry",
+          );
+        }
+      });
     }
     mechanics?.plus?.forEach((clause, clauseIndex) => {
       const path = [index, "mechanics", "plus", clauseIndex];

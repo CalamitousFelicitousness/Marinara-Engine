@@ -2,12 +2,14 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { request } from "node:https";
-import { tmpdir } from "node:os";
+import { networkInterfaces, tmpdir } from "node:os";
 import { join } from "node:path";
 import { connect } from "node:net";
+import { connect as tlsConnect } from "node:tls";
 import type { MultiplayerPeerResponse } from "../../packages/shared/src/schemas/multiplayer.schema.js";
 import {
   startMultiplayerPeerServer,
+  multiplayerPeerSocketKey,
   MULTIPLAYER_PEER_SERVER_LIMITS,
 } from "../../packages/server/src/services/multiplayer/peer-server.js";
 
@@ -28,7 +30,7 @@ try {
       "-subj",
       "/CN=localhost",
       "-addext",
-      "subjectAltName=IP:127.0.0.1",
+      "subjectAltName=IP:127.0.0.1,IP:::1",
       "-keyout",
       "host.key",
       "-out",
@@ -50,20 +52,29 @@ try {
   async function post(
     port: number,
     input: unknown = message,
-    extra: { path?: string; headers?: Record<string, string>; raw?: string; method?: string } = {},
+    extra: {
+      path?: string;
+      headers?: Record<string, string>;
+      raw?: string;
+      method?: string;
+      hostname?: string;
+      localAddress?: string;
+      timeout?: number;
+    } = {},
   ) {
     const data = extra.raw ?? JSON.stringify(input);
     return new Promise<{ status: number; data: any; raw: string }>((resolve, reject) => {
       const req = request(
         {
-          hostname: "127.0.0.1",
+          hostname: extra.hostname ?? "127.0.0.1",
+          localAddress: extra.localAddress,
           port,
           path: extra.path ?? "/room",
           method: extra.method ?? "POST",
           ca: tls.cert,
           agent: false,
           headers: { "content-type": "application/json", "content-length": Buffer.byteLength(data), ...extra.headers },
-          signal: AbortSignal.timeout(5_000),
+          signal: AbortSignal.timeout(extra.timeout ?? 5_000),
         },
         (res) => {
           const chunks: Buffer[] = [];
@@ -85,6 +96,13 @@ try {
       req.end(data);
     });
   }
+  // Sockets are shared out per IPv4 address or IPv6 /64; a mapped IPv4 counts as that IPv4 address.
+  assert.equal(multiplayerPeerSocketKey("::ffff:203.0.113.7"), "203.0.113.7");
+  assert.equal(multiplayerPeerSocketKey("203.0.113.7"), "203.0.113.7");
+  assert.equal(multiplayerPeerSocketKey("2001:db8::1"), "2001:db8:0:0::/64");
+  assert.equal(multiplayerPeerSocketKey("2001:db8:1:2:a::1"), multiplayerPeerSocketKey("2001:DB8:1:2:ffff:0:0:9"));
+  assert.notEqual(multiplayerPeerSocketKey("2001:db8:1:2::1"), multiplayerPeerSocketKey("2001:db8:1:3::1"));
+  assert.equal(multiplayerPeerSocketKey("1::2:3:4:5:1.2.3.4"), "1:0:2:3::/64");
   await assert.rejects(
     startMultiplayerPeerServer({ tls, port: 0, host: "127.0.0.1", enabled: () => false, handle: async () => valid }),
     /disabled/u,
@@ -190,6 +208,83 @@ try {
   for (let count = 0; count < MULTIPLAYER_PEER_SERVER_LIMITS.requestsPerAddress; count++) await post(listener.port);
   assert.equal((await post(listener.port)).data.code, "rate-limited");
 
+  // With no bind host the room listener accepts IPv4 and IPv6 guests. A second client address
+  // (IPv6 loopback, or 127.0.0.2 where only IPv4 exists) proves one flooding address cannot
+  // spend the shared budget that every other guest needs.
+  const dualStack = await startMultiplayerPeerServer({ tls, port: 0, enabled: () => true, handle: async () => valid });
+  listeners.push(dualStack);
+  assert.deepEqual((await post(dualStack.port)).data, valid, "the default bind still accepts IPv4 guests");
+  const ipv6 = Object.values(networkInterfaces()).some((entries) =>
+    entries?.some((entry) => entry.internal && entry.family === "IPv6" && entry.address === "::1"),
+  );
+  const secondAddress = ipv6 ? { hostname: "::1" } : { localAddress: "127.0.0.2" };
+  const reachable = await post(dualStack.port, message, secondAddress).then(
+    (response) => response,
+    (error: NodeJS.ErrnoException) => {
+      if (!ipv6 && error.code === "EADDRNOTAVAIL") return null;
+      throw error;
+    },
+  );
+  if (!reachable) {
+    process.stdout.write("multiplayer peer listener: no second loopback address here; two-address legs skipped\n");
+  } else {
+    assert.deepEqual(reachable.data, valid, ipv6 ? "an IPv6 room address is reachable" : "a second guest is served");
+    for (let count = 0; count < MULTIPLAYER_PEER_SERVER_LIMITS.requestsGlobal; count++) await post(dualStack.port);
+    assert.equal((await post(dualStack.port)).data.code, "rate-limited", "the flooding address is limited");
+    assert.deepEqual(
+      (await post(dualStack.port, message, secondAddress)).data,
+      valid,
+      "requests refused by one address's limit do not lock out other guests",
+    );
+
+    // One address holding idle TLS sockets gets only its share of the room, other guests still
+    // connect, and sockets that never send a request are closed within seconds. A guest's long
+    // poll outlives those header and request deadlines.
+    const crowded = await startMultiplayerPeerServer({
+      tls,
+      port: 0,
+      enabled: () => true,
+      handle: async (_input, context) => {
+        if (context.session) await new Promise((resolve) => setTimeout(resolve, 12_000));
+        return valid;
+      },
+    });
+    listeners.push(crowded);
+    let held = 0;
+    let reaped = 0;
+    for (let count = 0; count < MULTIPLAYER_PEER_SERVER_LIMITS.sockets; count++) {
+      const idle = tlsConnect({ host: "127.0.0.1", port: crowded.port, ca: tls.cert });
+      idle.on("error", () => undefined);
+      // Keep reading so the server's close reaches this side.
+      idle.on("data", () => undefined);
+      const open = await new Promise<boolean>((resolve) => {
+        idle.once("secureConnect", () => resolve(true));
+        idle.once("close", () => resolve(false));
+      });
+      if (open) {
+        held++;
+        idle.once("close", () => reaped++);
+      }
+    }
+    assert.equal(held, MULTIPLAYER_PEER_SERVER_LIMITS.socketsPerAddress, "one address keeps only its share of sockets");
+    const longPoll = post(crowded.port, message, {
+      ...secondAddress,
+      headers: { authorization: `Bearer ${session}` },
+      timeout: 15_000,
+    });
+    assert.deepEqual(
+      (await post(crowded.port, message, secondAddress)).data,
+      valid,
+      "another guest connects while one address holds idle sockets",
+    );
+    const reapStarted = Date.now();
+    while (reaped < held && Date.now() - reapStarted < 8_000) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    assert.equal(reaped, held, "sockets that never send a request are closed within seconds");
+    assert.deepEqual((await longPoll).data, valid, "a long poll outlives the idle-socket deadlines");
+  }
+
   let signal: AbortSignal | null = null;
   let started!: () => void;
   let filled!: () => void;
@@ -200,33 +295,34 @@ try {
   const atCapacity = new Promise<void>((resolve) => {
     filled = resolve;
   });
+  // One address may hold only its share of sockets, so the in-flight limit is filled from two.
+  const callers = reachable ? [{}, secondAddress] : [{}];
+  const inFlight = reachable
+    ? MULTIPLAYER_PEER_SERVER_LIMITS.inFlight
+    : MULTIPLAYER_PEER_SERVER_LIMITS.socketsPerAddress - 2;
   const hanging = await startMultiplayerPeerServer({
     tls,
     port: 0,
-    host: "127.0.0.1",
     enabled: () => true,
     handle: async (_input, context) => {
       signal = context.signal;
       started();
-      if (++activeCalls === MULTIPLAYER_PEER_SERVER_LIMITS.inFlight) filled();
+      if (++activeCalls === inFlight) filled();
       await new Promise<void>((resolve) => context.signal.addEventListener("abort", () => resolve(), { once: true }));
       return valid;
     },
   });
   listeners.push(hanging);
-  const pending = post(hanging.port).then(
-    () => false,
-    () => true,
-  );
+  const finalAnswer = (index: number) =>
+    post(hanging.port, message, callers[index % callers.length]).then(
+      (response) => response.data?.code,
+      () => "transport error",
+    );
+  const pending = finalAnswer(0);
   await entered;
-  const pendingMore = Array.from({ length: MULTIPLAYER_PEER_SERVER_LIMITS.inFlight - 1 }, () =>
-    post(hanging.port).then(
-      () => false,
-      () => true,
-    ),
-  );
+  const pendingMore = Array.from({ length: inFlight - 1 }, (_, index) => finalAnswer(index + 1));
   await atCapacity;
-  assert.equal((await post(hanging.port)).data.code, "busy");
+  if (reachable) assert.equal((await post(hanging.port)).data.code, "busy");
   // Also hold a connection before TLS headers: Stop must not wait for a slow handshake.
   const slow = connect(hanging.port, "127.0.0.1");
   slow.on("error", () => undefined);
@@ -235,12 +331,13 @@ try {
   await hanging.close();
   assert.ok(Date.now() - stopStarted < 1_000, "Stop must close immediately, including incomplete handshakes");
   assert.equal((signal as AbortSignal | null)?.aborted, true);
-  assert.equal(await pending, true);
-  assert.ok((await Promise.all(pendingMore)).every(Boolean));
+  // Waiting polls and actions get a final answer, so a guest sees the room close instead of a dead socket.
+  assert.equal(await pending, "disabled");
+  assert.deepEqual(new Set(await Promise.all(pendingMore)), new Set(["disabled"]));
   slow.destroy();
   await hanging.close();
   process.stdout.write(
-    "multiplayer peer listener: gates, route isolation, bounded data/rates and immediate shutdown passed\n",
+    "multiplayer peer listener: gates, route isolation, dual-stack bind, per-address rates and sockets, idle-socket reaping and answered shutdown passed\n",
   );
 } finally {
   for (const listener of listeners) await listener.close();

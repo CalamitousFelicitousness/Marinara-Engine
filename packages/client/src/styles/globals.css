@@ -1261,6 +1261,30 @@
   font-weight: 400;
 }
 
+/* Square icon-only button; pair with --small so the height matches. */
+.mari-chrome-control--icon {
+  width: 1.75rem;
+  padding: 0;
+}
+
+/* One-of-N choice card: title, description and optional preview stacked on the left.
+   Idle titles keep the body text colour so they stay readable; hover and aria-pressed tint them. */
+.mari-chrome-control--card {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  color: var(--foreground);
+  font-weight: 400;
+  text-align: left;
+}
+
+.mari-chrome-control--card > span {
+  overflow: visible;
+  white-space: normal;
+}
+
 .mari-character-row-action {
   height: 1.75rem;
   min-height: 1.75rem;

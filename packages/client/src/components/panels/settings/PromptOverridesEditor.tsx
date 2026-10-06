@@ -18,7 +18,7 @@ import { ApiError } from "../../../lib/api-client";
 import { showConfirmDialog } from "../../../lib/app-dialogs";
 import { cn } from "../../../lib/utils";
 import { HelpTooltip } from "../../ui/HelpTooltip";
-import { SettingsSwitch } from "./SettingControls";
+import { SETTINGS_BUTTON_CLASS, SETTINGS_COMPACT_PRIMARY_BUTTON_CLASS, SettingsSwitch } from "./SettingControls";
 import { useTranslation as useUiTranslation } from "react-i18next";
 
 const PREFERRED_PROMPT_KEY = "conversation.selfie";
@@ -367,9 +367,9 @@ function PromptOverridesEditorBody({ keys, preferredKey }: { keys?: readonly str
                     ? localizeUi("settings.promptOverrides.roleplayGalleryVideoDirector.durationSeconds")
                     : variable.description
                 }
-                className="inline-flex items-center gap-1 rounded-md bg-[var(--background)] px-2 py-1 font-mono text-[0.6rem] text-[var(--primary)] ring-1 ring-[var(--border)] transition-colors hover:bg-[var(--accent)]"
+                className={cn(SETTINGS_BUTTON_CLASS, "font-mono")}
               >
-                <Code2 size="0.625rem" />
+                <Code2 size="0.75rem" />
                 {"${" + variable.name + "}"}
               </button>
             ))}
@@ -448,26 +448,23 @@ function PromptOverridesEditorBody({ keys, preferredKey }: { keys?: readonly str
           type="button"
           onClick={() => void handleSave()}
           disabled={!canSave}
-          className={cn(
-            "mari-chrome-control flex-1 text-xs disabled:cursor-not-allowed",
-            canSave && "mari-chrome-control--selected",
-          )}
+          className={cn(SETTINGS_COMPACT_PRIMARY_BUTTON_CLASS, "flex-auto")}
         >
-          {saveOverride.isPending ? <Loader2 size="0.8125rem" className="animate-spin" /> : <Save size="0.8125rem" />}
+          {saveOverride.isPending ? <Loader2 size="0.75rem" className="animate-spin" /> : <Save size="0.75rem" />}
           {localizeUi("ui.noodle.noodlehome.save")}
         </button>
         <button
           type="button"
           onClick={() => void handleReset()}
           disabled={!canReset}
-          className="mari-chrome-control flex-1 text-xs disabled:cursor-not-allowed"
+          className={cn(SETTINGS_BUTTON_CLASS, "flex-auto")}
         >
           {resetOverride.isPending ? (
-            <Loader2 size="0.8125rem" className="animate-spin" />
+            <Loader2 size="0.75rem" className="animate-spin" />
           ) : detail?.override ? (
-            <RotateCcw size="0.8125rem" />
+            <RotateCcw size="0.75rem" />
           ) : (
-            <Sparkles size="0.8125rem" />
+            <Sparkles size="0.75rem" />
           )}
           {localizeUi("ui.panels.promptoverrideseditorbody.resetToDefault")}
         </button>

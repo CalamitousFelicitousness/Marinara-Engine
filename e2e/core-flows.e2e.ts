@@ -13601,16 +13601,15 @@ test("custom generation parameters become reusable chat controls", async ({ page
     await expect(parameterSettings.getByText("min_p", { exact: true })).toBeVisible();
     const editParameterButton = parameterSettings.getByRole("button", { name: "Edit Min P" });
     const deleteParameterButton = parameterSettings.getByRole("button", { name: "Delete Min P" });
-    const [editParameterIconBox, deleteParameterIconBox] = await Promise.all([
-      editParameterButton.locator("svg").boundingBox(),
-      deleteParameterButton.locator("svg").boundingBox(),
-    ]);
-    expect(editParameterIconBox).not.toBeNull();
-    expect(deleteParameterIconBox).not.toBeNull();
-    expect(editParameterIconBox!.width).toBeGreaterThanOrEqual(16);
-    expect(editParameterIconBox!.height).toBeGreaterThanOrEqual(16);
-    expect(deleteParameterIconBox!.width).toBeGreaterThanOrEqual(16);
-    expect(deleteParameterIconBox!.height).toBeGreaterThanOrEqual(16);
+    // Settings icon buttons share one square size with a 0.75rem icon (#7174).
+    for (const button of [editParameterButton, deleteParameterButton]) {
+      const [buttonBox, iconBox] = await Promise.all([button.boundingBox(), button.locator("svg").boundingBox()]);
+      expect(buttonBox).not.toBeNull();
+      expect(iconBox).not.toBeNull();
+      expect(Math.abs(buttonBox!.width - buttonBox!.height)).toBeLessThan(1);
+      expect(iconBox!.width).toBeGreaterThanOrEqual(12);
+      expect(iconBox!.height).toBeGreaterThanOrEqual(12);
+    }
 
     const savedDefinitions = JSON.parse(storedDefinitions) as Array<{
       name: string;

@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { REQUEST_TIMEOUTS, type RequestTimeoutSettings as Values } from "@marinara-engine/shared";
 import { api, getPrivilegedActionErrorMessage } from "../../../lib/api-client";
 import { DraftNumberInput } from "../../ui/DraftNumberInput";
+import { SETTINGS_PRIMARY_FULL_BUTTON_CLASS } from "./SettingControls";
 
 const queryKey = ["request-timeouts"];
 export function RequestTimeoutSettings() {
@@ -54,7 +55,7 @@ export function RequestTimeoutSettings() {
         type="button"
         disabled={!draft || save.isPending}
         onClick={() => save.mutate(values)}
-        className="mari-chrome-control mari-chrome-control--primary w-full gap-2 text-xs"
+        className={SETTINGS_PRIMARY_FULL_BUTTON_CLASS}
       >
         <Save size="0.8125rem" />
         {t("settings.timeouts.save")}

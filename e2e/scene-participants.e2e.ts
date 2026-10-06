@@ -148,15 +148,11 @@ test("Saved nameless custom tracker rows do not crash Roleplay on open or reload
       },
       { chatId: chat.id, version },
     );
-    // Phones open the tracker strip's popover; computers show the tracker in the Tracker window.
+    // Phones open the custom tracker from the Player & Tracker button; computers from the Trackers window's button.
     const openTracker = async () => {
-      if (!isMobile) {
-        await expect(page.locator('[data-window="trackers"] [data-drawer="tracker-custom"]')).toBeVisible();
-        return;
-      }
-      const tracker = page.getByRole("button", { name: "Tracker", exact: true });
-      await expect(tracker).toBeVisible();
-      await tracker.click();
+      const id = isMobile ? "control:tracker-player" : "trackers";
+      await page.locator(`.mari-window-bubble[data-window="${id}"]`).click();
+      await expect(page.locator(`.mari-window[data-window="${id}"]`)).toBeVisible();
     };
     await page.goto("/");
     await openTracker();

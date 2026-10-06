@@ -116,6 +116,16 @@ function filterHas(entry: RulesetCatalogEntry, filterId: string, value: string |
  *  judged inside it are read off that sheet as it stands and the rule never nests. */
 let judgingWithoutGroups = false;
 
+/** Sheets already worked out without a group, per sheet and state (both are never changed in place), so
+ *  the many reads of one builder pass rebuild each only once. */
+const withoutGroupCache = new WeakMap<
+  RulesetSheetBuild,
+  WeakMap<
+    RulesetBuilderState,
+    Map<string, { definition: RulesetDefinition; catalogs: RulesetCatalogEntriesById; without: RulesetSheetBuild }>
+  >
+>();
+
 /** The entries a catalog step offers: its fixed filters, and under `within` only those that name an
  *  entry still picked at the earlier step. */
 export function rulesetBuilderOptions(
@@ -182,6 +192,13 @@ function rulesetBuilderBuildWithoutGroup(
     (catalogs[step.catalog] ?? []).filter((each) => each.exclusive === group).map((each) => each.id),
   );
   if (!picks.some((id) => inGroup.has(id))) return build;
+  let byState = withoutGroupCache.get(build);
+  if (!byState) withoutGroupCache.set(build, (byState = new WeakMap()));
+  let byGroup = byState.get(state);
+  if (!byGroup) byState.set(state, (byGroup = new Map()));
+  const key = `${step.id}\u0000${group}`;
+  const cached = byGroup.get(key);
+  if (cached && cached.definition === definition && cached.catalogs === catalogs) return cached.without;
   const without: RulesetBuilderState = {
     ...state,
     picks: { ...state.picks, [step.id]: picks.filter((id) => !inGroup.has(id)) },
@@ -194,6 +211,7 @@ function rulesetBuilderBuildWithoutGroup(
       if (JSON.stringify(again) === JSON.stringify(result)) break;
       result = again;
     }
+    byGroup.set(key, { definition, catalogs, without: result.build });
     return result.build;
   } finally {
     judgingWithoutGroups = false;

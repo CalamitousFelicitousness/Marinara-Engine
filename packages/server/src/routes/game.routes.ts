@@ -70,7 +70,6 @@ import { isDiceNotation, rollDice } from "../services/game/dice.service.js";
 import { jsonishLooksTruncated, parseGameJsonish } from "../services/game/jsonish.js";
 import {
   formatInitialGameGmConnectionError,
-  GAME_SETUP_GENERATION_TIMEOUT_MS,
   resolveInitialGameGmConnectionId,
 } from "../services/game/initial-game-setup.js";
 import { validateTransition } from "../services/game/state-machine.service.js";
@@ -3293,7 +3292,6 @@ const GAME_SETUP_DEFAULT_OUTPUT_TOKENS = 16_384;
 const EXPERIENCE_GENERATION_MIN_OUTPUT_TOKENS = 1_024;
 const SESSION_CONCLUSION_DEFAULT_OUTPUT_TOKENS = 8192;
 const CAMPAIGN_PROGRESSION_DEFAULT_OUTPUT_TOKENS = SESSION_CONCLUSION_DEFAULT_OUTPUT_TOKENS;
-const GAME_GENERATION_TIMEOUT_MS = 5 * 60 * 1000;
 const GAME_ASSET_GENERATION_TIMEOUT_MS = 45 * 60 * 1000;
 const GAME_SCENE_VIDEO_GENERATION_TIMEOUT_MS = 31 * 60 * 1000;
 const GAME_ILLUSTRATION_SUMMARY_TIMEOUT_MS = 60 * 1000;
@@ -3338,12 +3336,15 @@ function createGameGenerationWatchdog(controller: AbortController, label: string
   return { promise, reset, clear };
 }
 
-async function runGameChatComplete(
+// Game calls wait for the Text generation timeout (CHAT_GENERATION_TIMEOUT_MS) between outputs, like
+// chats. Thinking is output too: a reasoning model can think for minutes before its first token (#7177).
+// Calls without onToken keep a total cap, even on providers that always stream their thinking.
+export async function runGameChatComplete(
   provider: { chatComplete(messages: ChatMessage[], options: ChatOptions): Promise<ChatCompletionResult> },
   messages: ChatMessage[],
   options: ChatOptions,
   label: string,
-  timeoutMs = GAME_GENERATION_TIMEOUT_MS,
+  timeoutMs = getChatGenerationTimeoutMs(),
 ): Promise<ChatCompletionResult> {
   const controller = new AbortController();
   const parentSignal = options.signal;
@@ -3355,7 +3356,7 @@ async function runGameChatComplete(
   }
 
   const watchdog = createGameGenerationWatchdog(controller, label, timeoutMs);
-  const onToken = options.onToken;
+  const { onToken, onThinking } = options;
   const watchedOptions: ChatOptions = {
     ...options,
     signal: controller.signal,
@@ -3364,6 +3365,10 @@ async function runGameChatComplete(
           onToken: async (chunk: string) => {
             watchdog.reset();
             await onToken(chunk);
+          },
+          onThinking: (chunk: string) => {
+            watchdog.reset();
+            onThinking?.(chunk);
           },
         }
       : {}),
@@ -3377,12 +3382,12 @@ async function runGameChatComplete(
   }
 }
 
-async function runGameChatStream(
+export async function runGameChatStream(
   provider: { chat(messages: ChatMessage[], options: ChatOptions): AsyncIterable<string> },
   messages: ChatMessage[],
   options: ChatOptions,
   label: string,
-  timeoutMs = GAME_GENERATION_TIMEOUT_MS,
+  timeoutMs = getChatGenerationTimeoutMs(),
 ): Promise<string> {
   const controller = new AbortController();
   const parentSignal = options.signal;
@@ -3394,9 +3399,19 @@ async function runGameChatStream(
   }
 
   const watchdog = createGameGenerationWatchdog(controller, label, timeoutMs);
+  const onThinking = options.onThinking;
+  const streamOptions: ChatOptions = {
+    ...options,
+    signal: controller.signal,
+    stream: true,
+    onThinking: (chunk: string) => {
+      watchdog.reset();
+      onThinking?.(chunk);
+    },
+  };
   const streamPromise = (async () => {
     let streamed = "";
-    for await (const chunk of provider.chat(messages, { ...options, signal: controller.signal, stream: true })) {
+    for await (const chunk of provider.chat(messages, streamOptions)) {
       watchdog.reset();
       streamed += chunk;
     }
@@ -4170,7 +4185,7 @@ async function runGameLorebookKeeperAfterConclusion(args: {
         temperature: 0.35,
         stream: streaming,
         signal: args.signal,
-        ...(streaming ? { onToken: args.onToken ?? (() => {}) } : {}),
+        ...(streaming ? { onToken: args.onToken ?? (() => {}), onThinking: args.onToken } : {}),
       },
       generationParameters,
       conn.provider,
@@ -6969,14 +6984,14 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     });
     const setupAbort = createResponseAbortTracker(
       "kind" in reply ? null : reply,
-      GAME_SETUP_GENERATION_TIMEOUT_MS,
+      getChatGenerationTimeoutMs(),
       "Game setup",
     );
     const setupOverrides: Partial<ChatOptions> = {
       maxTokens: setupMaxTokens,
       stream: streaming,
       signal: signal ? AbortSignal.any([signal, setupAbort.signal]) : setupAbort.signal,
-      ...(streaming ? { onToken: () => setupAbort.touch() } : {}),
+      ...(streaming ? { onToken: () => setupAbort.touch(), onThinking: () => setupAbort.touch() } : {}),
     };
     if (!setupGenerationParameters?.reasoningEffort) {
       setupOverrides.reasoningEffort = undefined;
@@ -7003,6 +7018,8 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
 
     try {
       for (let attempt = 1; attempt <= 2; attempt++) {
+        // A retry gets the full wait too, even when nothing streams to touch the timer.
+        setupAbort.touch();
         let result: ChatCompletionResult;
         try {
           result = await runGameChatComplete(
@@ -7541,7 +7558,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
               conn.model,
               {
                 temperature: 0.7,
-                signal: createResponseAbortSignal(reply, GAME_GENERATION_TIMEOUT_MS, "Game session recap"),
+                signal: createResponseAbortSignal(reply, getChatGenerationTimeoutMs(), "Game session recap"),
               },
               resolveStoredGameGenerationParameters(updatedNewMeta, defaultGenerationParameters),
               conn.provider,
@@ -7736,7 +7753,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
           temperature: 0.45,
           stream: streaming,
           signal: conclusionAbort.signal,
-          ...(streaming ? { onToken: () => conclusionAbort.touch() } : {}),
+          ...(streaming ? { onToken: () => conclusionAbort.touch(), onThinking: () => conclusionAbort.touch() } : {}),
         },
         conclusionGenerationParameters,
         conn.provider,
@@ -8124,7 +8141,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
 
     const lorebookKeeperAbort = createResponseAbortTracker(
       reply,
-      GAME_GENERATION_TIMEOUT_MS,
+      getChatGenerationTimeoutMs(),
       "Game lorebook keeper regeneration",
     );
     const result = await runGameLorebookKeeperAfterConclusion({
@@ -8300,7 +8317,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         temperature: 0.45,
         stream: streaming,
         signal: conclusionAbort.signal,
-        ...(streaming ? { onToken: () => conclusionAbort.touch() } : {}),
+        ...(streaming ? { onToken: () => conclusionAbort.touch(), onThinking: () => conclusionAbort.touch() } : {}),
       },
       conclusionGenerationParameters,
       conn.provider,
@@ -8558,7 +8575,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const provider = await createGameMainProvider(connections, conn, baseUrl);
     const progressionAbort = createResponseAbortTracker(
       reply,
-      GAME_GENERATION_TIMEOUT_MS,
+      getChatGenerationTimeoutMs(),
       "Game campaign progression update",
     );
     const progressionOptions = gameGenOptions(
@@ -8568,7 +8585,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         temperature: 0.35,
         stream: streaming,
         signal: progressionAbort.signal,
-        ...(streaming ? { onToken: () => progressionAbort.touch() } : {}),
+        ...(streaming ? { onToken: () => progressionAbort.touch(), onThinking: () => progressionAbort.touch() } : {}),
       },
       progressionGenerationParameters,
       conn.provider,
@@ -8958,7 +8975,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       {
         temperature: 0.45,
         maxTokens: 1200,
-        signal: createResponseAbortSignal(reply, GAME_GENERATION_TIMEOUT_MS, "Game character sheet regeneration"),
+        signal: createResponseAbortSignal(reply, getChatGenerationTimeoutMs(), "Game character sheet regeneration"),
         debugMode: input.debugMode || isDebugAgentsEnabled(),
       },
       generationParameters,
@@ -9226,7 +9243,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
 
         const recruitAbortSignal = createResponseAbortSignal(
           reply,
-          GAME_GENERATION_TIMEOUT_MS,
+          getChatGenerationTimeoutMs(),
           "Game party recruit card",
         );
         const result = await runGameChatComplete(
@@ -9608,7 +9625,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       { role: "user", content: "Generate the map." },
     ];
 
-    const mapAbortSignal = createResponseAbortSignal(reply, GAME_GENERATION_TIMEOUT_MS, "Game map generation");
+    const mapAbortSignal = createResponseAbortSignal(reply, getChatGenerationTimeoutMs(), "Game map generation");
     const result = await runGameChatComplete(
       provider,
       messages,
@@ -11354,7 +11371,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
           code: "chat_busy",
         });
       }
-      const signal = createResponseAbortSignal(reply, GAME_GENERATION_TIMEOUT_MS, "Experience generation");
+      const signal = createResponseAbortSignal(reply, getChatGenerationTimeoutMs(), "Experience generation");
       const release = await acquireGameAssetGenerationLock(req.params.chatId, signal);
       try {
         const options = gameGenOptions(
@@ -11814,7 +11831,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     ];
 
     const provider = await createGameMainProvider(connections, conn, baseUrl);
-    const partyTurnAbortSignal = createResponseAbortSignal(reply, GAME_GENERATION_TIMEOUT_MS, "Game party turn");
+    const partyTurnAbortSignal = createResponseAbortSignal(reply, getChatGenerationTimeoutMs(), "Game party turn");
     const result = await runGameChatComplete(
       provider,
       messages,
@@ -12103,7 +12120,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     // request should stay on the buffered completion path regardless of the
     // UI's live-streaming toggle. Some GPT-5.5/OpenAI-compatible stacks return
     // empty content when `chatComplete()` is asked to stream this JSON route.
-    const sceneWrapAbortSignal = createResponseAbortSignal(reply, GAME_GENERATION_TIMEOUT_MS, "Game scene wrap");
+    const sceneWrapAbortSignal = createResponseAbortSignal(reply, getChatGenerationTimeoutMs(), "Game scene wrap");
     const sceneWrapOptions = gameGenOptions(
       conn.model ?? "",
       {

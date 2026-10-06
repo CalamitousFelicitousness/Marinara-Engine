@@ -1748,6 +1748,20 @@ const creatureHealthSchema = z.union([
   z.object({ dice: catalogDice, flat: z.number().int().min(-1000).max(100000).optional() }).strict(),
 ]);
 
+/** One amount an action deals instead of its first, and when (Capability API 1.97). */
+const creatureDamageAlternativeSchema = z
+  .object({
+    when: z.union([z.literal("twoHanded"), z.object({ selfHealthAtMost: z.number().finite().gt(0).lt(1) }).strict()]),
+    dice: catalogDice.optional(),
+    flat: z.number().int().min(-1000).max(10000).optional(),
+  })
+  .strict()
+  .superRefine((alternative, ctx) => {
+    if (alternative.dice === undefined && alternative.flat === undefined) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "An alternative names dice, a flat amount, or both" });
+    }
+  });
+
 /** What one action does to what it reaches: the same amount shape a catalog entry uses, plus the
  *  type the target's own hide is checked against. */
 const creatureDamageSchema = z
@@ -1761,6 +1775,12 @@ const creatureDamageSchema = z
      *  do (Capability API 1.96): a deva's mace is `["magical"]`, so a resistance to slashing "from
      *  nonmagical attacks" does not halve it. */
     qualities: z.array(sheetId).min(1).max(8).optional(),
+    /** What the first amount is instead, while something the fight reads holds (Capability API
+     *  1.97). The first that holds wins; the type, the clauses and the rest stay the action's own.
+     *  `twoHanded` holds unless the creature carries a `shield` (5e's "or 8 (1d10 + 3) if used with
+     *  two hands"); `selfHealthAtMost` holds while the creature's health is at most that share of
+     *  its most (5e's swarm, "or 5 (2d4) if the swarm has half of its hit points or fewer"). */
+    alternatives: z.array(creatureDamageAlternativeSchema).min(1).max(4).optional(),
   })
   .strict()
   .superRefine((damage, ctx) => {
@@ -2023,6 +2043,9 @@ const creatureFields = {
   /** In a pool fight where a style spends initiative: a spending blow whose dice are below this lands
    *  and does nothing. */
   hardness: z.number().int().min(0).max(100).optional(),
+  /** Its hands are not free: an action's `twoHanded` alternative does not hold (Capability API 1.97),
+   *  as a 5e hobgoblin with a shield swings its longsword one-handed. */
+  shield: z.literal(true).optional(),
   /** Damage types, matched without case: half, double, none at all. A resistance or an immunity may
    *  say what gets through it (`{ "type": "cut", "except": ["silver"] }`): a blow from a weapon item
    *  with any of those tags is taken as it comes. */
@@ -6667,6 +6690,9 @@ function creatureIssues(
       }
     });
     wrongDie(action.damage?.dice, [...path, "damage", "dice"]);
+    action.damage?.alternatives?.forEach((alternative, alternativeIndex) =>
+      wrongDie(alternative.dice, [...path, "damage", "alternatives", alternativeIndex, "dice"]),
+    );
     action.damage?.plus?.forEach((clause, clauseIndex) =>
       wrongDie(clause.dice, [...path, "damage", "plus", clauseIndex, "dice"]),
     );

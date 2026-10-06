@@ -8988,6 +8988,10 @@
                       "minimum": 0,
                       "maximum": 100
                     },
+                    "shield": {
+                      "type": "boolean",
+                      "const": true
+                    },
                     "resist": {
                       "type": "array",
                       "items": {
@@ -9244,6 +9248,70 @@
                                 },
                                 "minItems": 1,
                                 "maxItems": 8
+                              },
+                              "alternatives": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "when": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string",
+                                          "const": "twoHanded"
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "selfHealthAtMost": {
+                                              "type": "number",
+                                              "exclusiveMinimum": 0,
+                                              "exclusiveMaximum": 1
+                                            },
+                                            "$comment": {}
+                                          },
+                                          "required": [
+                                            "selfHealthAtMost"
+                                          ],
+                                          "additionalProperties": false
+                                        }
+                                      ]
+                                    },
+                                    "dice": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                    },
+                                    "flat": {
+                                      "type": "integer",
+                                      "minimum": -1000,
+                                      "maximum": 10000
+                                    },
+                                    "$comment": {}
+                                  },
+                                  "required": [
+                                    "when"
+                                  ],
+                                  "additionalProperties": false,
+                                  "allOf": [
+                                    {
+                                      "anyOf": [
+                                        {
+                                          "required": [
+                                            "dice"
+                                          ]
+                                        },
+                                        {
+                                          "required": [
+                                            "flat"
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                },
+                                "minItems": 1,
+                                "maxItems": 4
                               },
                               "$comment": {}
                             },

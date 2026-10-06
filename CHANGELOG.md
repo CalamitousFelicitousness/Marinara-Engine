@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: a creature's attack can deal another amount with both hands or once the creature is badly hurt (Capability API 1.97). In 5e that is a longsword's "or 1d10 + 3 if used with two hands", unless the creature carries a shield, and a swarm's weaker bite at half its hit points or fewer. The attack menu's average damage follows the same rule.
 - Rulesets: a spell or a creature's attack can carry what gets it past a resistance, as a magic weapon's tags do (Capability API 1.96). In 5e that is "resistance to slashing from nonmagical attacks": spells and magical creature attacks now hit such creatures for full damage, and ordinary blows are still halved.
 - A ruleset's weapons (and items that roll to hit) can add a bonus **read off the holder's sheet**, `toHit.sheetBonus`, for what a fighter brings to every weapon of a kind: 5e's Archery fighting style, +2 to attacks with ranged weapons. The weapon's facts name it (Capability API 1.90).
 - A ruleset's coins can have a name for one of them, so a price of one penny reads "1 penny" rather than "1 pennies" in markets, purses and item prices (Capability API 1.84).

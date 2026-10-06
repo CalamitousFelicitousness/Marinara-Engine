@@ -59,6 +59,14 @@ export interface RulesetCombatDamage extends RulesetCombatAmount {
   /** The first amount's own dice at or below this are thrown again once, the new face standing: a
    *  weapon wielded two-handed by a fighter whose sheet gives it (1.93, 5e's Great Weapon Fighting). */
   reroll?: number;
+  /** What the first amount is instead while something the fight reads holds, the first that holds
+   *  winning (1.97): a creature's longsword with both hands, a swarm at half its health. */
+  alternatives?: RulesetCombatDamageAlternative[];
+}
+
+/** One amount a creature's action deals in place of its first, and when. */
+export interface RulesetCombatDamageAlternative extends RulesetCombatAmount {
+  when: "twoHanded" | { selfHealthAtMost: number };
 }
 
 /** A condition a hit or a failed save puts on its target. */
@@ -225,6 +233,8 @@ export interface RulesetStatBlock {
   /** Thrown once when the encounter is created, in place of the flat number. */
   healthDice?: RulesetCombatAmount;
   speed?: number;
+  /** Its hands are full, so a `twoHanded` alternative never holds (1.97). */
+  shield?: true;
   /** Ability scores by the ruleset's own ability ids. Carried for the Game Master, not resolved. */
   abilities?: Record<string, number>;
   /** Save modifiers by the ruleset's own save ids. A save it does not name reads as zero. */

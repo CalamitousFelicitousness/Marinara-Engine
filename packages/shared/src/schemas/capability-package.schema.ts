@@ -702,7 +702,13 @@ const capabilityPackageManifestBaseSchema = z
 //        `{ type, except: ["magical"] }` and a magical blow goes through it. Not a soft seam: an Engine
 //        that cannot read it refuses the catalog, so a package that ships it declares 1.96. No
 //        permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 96 } as const);
+// 1.97: a creature action's damage may name `alternatives`, amounts it deals instead while something
+//        holds (`twoHanded` unless the creature carries a `shield`, a new key on the creature too, or
+//        `selfHealthAtMost` a share of its health), the first that holds winning: 5e's versatile
+//        longsword on a stat block and a swarm at half its hit points. Not a soft seam: an Engine
+//        that cannot read them refuses the catalog, so a package that ships them declares 1.97. No
+//        permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 97 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

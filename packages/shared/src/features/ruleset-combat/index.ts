@@ -113,6 +113,7 @@ export {
   rulesetCombatHide,
   rulesetCombatStanding,
   rulesetConditionModifiers,
+  rulesetDamageInEffect,
   rulesetInitiativeModifierNow,
   rulesetImmuneToCondition,
   rulesetInitiativeOrder,

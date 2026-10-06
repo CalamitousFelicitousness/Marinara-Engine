@@ -369,7 +369,7 @@ function oneSourceForCreature(node) {
 // A creature action's damage, and every clause beside it, names dice, a flat amount, or both: an
 // empty one is refused by the Engine, and that too is a refinement. The node is found by its shape:
 // `dice`, `flat` and `type`, and nothing but the keys a blow or a clause carries.
-const DAMAGE_KEYS = ["dice", "flat", "type", "plus", "save", "qualities"];
+const DAMAGE_KEYS = ["dice", "flat", "type", "plus", "save", "qualities", "alternatives"];
 function requireDamageAmount(node) {
   if (Array.isArray(node)) return node.forEach(requireDamageAmount);
   if (!node || typeof node !== "object") return;
@@ -380,7 +380,11 @@ function requireDamageAmount(node) {
   // A rider's amount carries no type of its own, so its keys alone look like every other pair of
   // dice and flat in the file, a creature's health included. The schema marks it by name instead.
   const riderAmountShaped = node.description === "rider-amount";
-  if (node.type === "object" && (damageShaped || riderAmountShaped)) {
+  // An amount a blow deals instead (1.97) is `when` beside dice and flat, and nothing else.
+  const alternativeShaped =
+    ["when", "dice", "flat"].every((key) => keys.includes(key)) &&
+    keys.every((key) => ["when", "dice", "flat"].includes(key));
+  if (node.type === "object" && (damageShaped || riderAmountShaped || alternativeShaped)) {
     requireAnyOf(node, ["dice", "flat"]);
   }
 }

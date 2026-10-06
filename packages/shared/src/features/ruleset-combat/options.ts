@@ -36,6 +36,7 @@ import {
   rulesetCombatStanding,
   rulesetCheckMode,
   rulesetConditionModifiers,
+  rulesetDamageInEffect,
   type RulesetConditionModifier,
   rulesetConditionEconomy,
   rulesetIsAttack,
@@ -944,7 +945,12 @@ function forecastFor(
         strikes = 1;
         spent.add(part.id);
       }
-      return sum + (part.damage ? strikes * averageHarm(definition, combat, part.damage) : 0);
+      return (
+        sum +
+        (part.damage
+          ? strikes * averageHarm(definition, combat, rulesetDamageInEffect(definition, combat, actor, part.damage))
+          : 0)
+      );
     }, 0);
     if (total > 0) forecast.averageDamage = Math.round(total * 100) / 100;
     return forecast.averageDamage === undefined ? undefined : forecast;
@@ -976,7 +982,8 @@ function forecastFor(
   // says what a blow would do, not what a die nobody has thrown might take off it. A pool fight's
   // harm is what its dice are worth after what the first target soaks; healing is an amount.
   if (action.damage) {
-    const average = averageHarm(definition, combat, action.damage, target ?? undefined);
+    const damage = rulesetDamageInEffect(definition, combat, actor, action.damage);
+    const average = averageHarm(definition, combat, damage, target ?? undefined);
     forecast.averageDamage = Math.round(average * 100) / 100;
   } else if (action.heal) forecast.averageDamage = Math.round(rulesetAverageDamage(action.heal) * 100) / 100;
   return forecast.hitChance !== undefined || forecast.averageDamage !== undefined ? forecast : undefined;

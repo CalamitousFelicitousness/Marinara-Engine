@@ -55,6 +55,8 @@ import type {
   RulesetCombatant,
   RulesetCombatantInput,
   RulesetCombatBoard,
+  RulesetCombatDamage,
+  RulesetCombatDamageAlternative,
   RulesetCombatDamageClause,
   RulesetCombatEvent,
   RulesetCombatRider,
@@ -133,6 +135,34 @@ export function rulesetCombatHealth(
   }
   const pool = live.pools.find((entry) => !entry.listId && entry.key === health.pool);
   return pool ? { value: pool.value, max: pool.max, temp: pool.temp } : { value: 0, max: 0, temp: 0 };
+}
+
+/**
+ * The damage an action deals as it stands now (Capability API 1.97). A creature's action may name
+ * amounts it deals instead of its first while something holds, the first that holds winning: a
+ * `twoHanded` one unless the creature carries a shield, a `selfHealthAtMost` one while its health is
+ * at most that share of its most (a wound track counts the levels it has left). Only the dice and
+ * the flat part change; the type, the clauses, the qualities and the rest stay the action's own.
+ * Damage with no alternative that holds comes back as it was given.
+ */
+export function rulesetDamageInEffect(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  actor: RulesetCombatant,
+  damage: RulesetCombatDamage,
+): RulesetCombatDamage {
+  if (!damage.alternatives?.length) return damage;
+  let share: number | undefined;
+  const holds = (when: RulesetCombatDamageAlternative["when"]) => {
+    if (when === "twoHanded") return !actor.block?.shield;
+    if (share === undefined) {
+      const health = rulesetCombatHealth(definition, combat, actor);
+      share = health.max > 0 ? health.value / health.max : 1;
+    }
+    return share <= when.selfHealthAtMost;
+  };
+  const chosen = damage.alternatives.find((alternative) => holds(alternative.when));
+  return chosen ? { ...damage, count: chosen.count, sides: chosen.sides, flat: chosen.flat } : damage;
 }
 
 /**

@@ -1968,6 +1968,8 @@ as a `sheet`, takes `health`, `defense`, `initiativeModifier`, `speed`, `abiliti
   health track. Capability API 1.47.
 - `hardness`: where initiative is a number attacks move, a spending blow whose dice are below it does
   nothing. Capability API 1.56.
+- `shield: true`: its hands are full, so an action's `twoHanded` alternative does not hold.
+  Capability API 1.97.
 - `resist`, `vulnerable`, `immune`: damage types, matched without case, and checked against
   `combat.damageTypes` when you declare any. A `resist` or `immune` entry may also say what gets
   through it, `{ "type": "tearing", "except": ["silver"] }`: a blow from a weapon item carrying one
@@ -1997,6 +1999,13 @@ as a `sheet`, takes `health`, `defense`, `initiativeModifier`, `speed`, `abiliti
   - `recharge`: `{ "dice": { "count": 1, "sides": 6 }, "from": 5 }`. It starts the fight available,
     is spent when used, and at the start of the creature's own turn it rolls: `from` or higher
     brings it back. The log carries the dice either way.
+  - `damage.alternatives` (Capability API 1.97): up to four amounts it deals in place of its first,
+    each `{ "when": ..., "dice": "1d10", "flat": 3 }`, the first that holds winning. The type, the
+    clauses and the qualities stay the action's own. `"when": "twoHanded"` holds unless the creature
+    has `"shield": true`, which is 5e's "or 8 (1d10 + 3) slashing damage if used with two hands";
+    `"when": { "selfHealthAtMost": 0.5 }` holds while its health is at most that share of its most,
+    which is a swarm's "or 5 (2d4) piercing damage if the swarm has half of its hit points or
+    fewer". The menu's forecast and the blow both read it as it stands.
   - `sequence`: other actions of the same block, in order, each with its own target. **This is how
     a creature that strikes twice in one action is written.** One budget pays for the whole
     sequence. A sequence carries nothing of its own and may never name another sequence.

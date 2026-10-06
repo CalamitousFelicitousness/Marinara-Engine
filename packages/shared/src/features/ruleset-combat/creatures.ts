@@ -119,6 +119,10 @@ function clausesOf(action: RulesetCreatureAction): RulesetCombatDamageClause[] |
 function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
   const damage = amountOf(action.damage);
   const plus = clausesOf(action);
+  const alternatives = (action.damage?.alternatives ?? []).flatMap((alternative) => {
+    const amount = amountOf(alternative);
+    return amount ? [{ ...amount, when: structuredClone(alternative.when) }] : [];
+  });
   return {
     id: action.id,
     name: action.name,
@@ -132,6 +136,7 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
             ...(action.damage?.type ? { type: action.damage.type } : {}),
             ...(plus ? { plus } : {}),
             ...(action.damage?.qualities?.length ? { qualities: [...action.damage.qualities] } : {}),
+            ...(alternatives.length ? { alternatives } : {}),
           } as RulesetCombatDamage,
         }
       : {}),
@@ -301,6 +306,7 @@ function blockFromCreature(creature: RulesetCreature, budgets: ReadonlySet<strin
     ...(creature.immune ? { immune: [...creature.immune] } : {}),
     ...(creature.conditionImmunities ? { conditionImmunities: [...creature.conditionImmunities] } : {}),
     ...(creature.hardness !== undefined ? { hardness: creature.hardness } : {}),
+    ...(creature.shield ? { shield: true as const } : {}),
     ...(creature.soak
       ? {
           soak: {

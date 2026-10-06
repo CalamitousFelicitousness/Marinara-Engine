@@ -44,6 +44,7 @@ import {
   rulesetCombatDamageKind,
   rulesetCombatHealth,
   rulesetCombatStanding,
+  rulesetDamageInEffect,
   rulesetCheckMode,
   rulesetInitiativeModifierNow,
   rulesetInitiativeOrder,
@@ -2435,6 +2436,10 @@ function resolveAction(
       held,
       styleId ?? rulesetAttackStyles(ctx.combat, actor, action)[0]?.id,
     );
+  }
+  // What a creature deals with both hands, or bloodied, is read as the blow is made (1.97).
+  if (action.damage?.alternatives) {
+    action = { ...action, damage: rulesetDamageInEffect(ctx.definition, ctx.combat, actor, action.damage) };
   }
   const style = attackStyle(ctx, actor, action, styleId);
   if (held) {

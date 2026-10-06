@@ -701,6 +701,7 @@
   "chat.summary.selection.selectedCount_one": "{{count}} selected",
   "chat.summary.selection.selectedCount_other": "{{count}} selected",
   "chat.summary.selection.selectRange": "Select range",
+  "chat.summary.selection.shiftClickHint": "Shift-click summary checkboxes to select or deselect a range.",
   "chat.summary.selection.start": "Start",
   "chat.summary.selection.startHere": "Start here",
   "chat.summary.source.agent": "Agent",

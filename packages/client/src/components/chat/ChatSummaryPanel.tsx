@@ -368,6 +368,8 @@ export function ChatSummaryPanel({
   const rangeSelectionButtonRef = useRef<HTMLButtonElement>(null);
   const summaryPanelRef = useRef<HTMLDivElement>(null);
   const rangeSelectionStatusId = useId();
+  const rangeSelectionHintId = useId();
+  const [rangeSelectionHintVisible, setRangeSelectionHintVisible] = useState(false);
   const [combiningEntries, setCombiningEntries] = useState(false);
   const [pendingToggleIds, setPendingToggleIds] = useState<Set<string>>(() => new Set());
   const [bulkTogglePending, setBulkTogglePending] = useState(false);
@@ -1141,8 +1143,14 @@ export function ChatSummaryPanel({
       if (anchorIndex < 0) return;
       setSelectedEntryIds((current) => {
         const next = new Set(current);
-        for (let index = Math.min(anchorIndex, targetIndex); index <= Math.max(anchorIndex, targetIndex); index++) {
-          next.add(visiblePersistedEntries[index]!.id);
+        const rangeEntries = visiblePersistedEntries.slice(
+          Math.min(anchorIndex, targetIndex),
+          Math.max(anchorIndex, targetIndex) + 1,
+        );
+        const deselect = rangeEntries.every((entry) => current.has(entry.id));
+        for (const entry of rangeEntries) {
+          if (deselect) next.delete(entry.id);
+          else next.add(entry.id);
         }
         return next;
       });
@@ -1160,14 +1168,15 @@ export function ChatSummaryPanel({
   const handleCancelRangeSelection = useCallback(() => {
     setRangeSelection(null);
     rangeSelectionButtonRef.current?.focus({ preventScroll: true });
+    setRangeSelectionHintVisible(false);
   }, []);
 
   useEffect(() => {
-    if (!rangeSelection) return;
+    if (!rangeSelection && !rangeSelectionHintVisible) return;
     const handleEscape = (event: KeyboardEvent) => {
       const root = summaryPanelRef.current;
       const windowRoot = root?.closest("[data-window]") ?? root;
-      // Portalled dialogs keep their own Escape behavior; the window header cancels the range too.
+      // Portalled dialogs keep their own Escape behavior; this window cancels the range or hint first.
       if (
         event.key !== "Escape" ||
         event.isComposing ||
@@ -1178,11 +1187,12 @@ export function ChatSummaryPanel({
       }
       event.preventDefault();
       event.stopPropagation();
-      handleCancelRangeSelection();
+      if (rangeSelection) handleCancelRangeSelection();
+      else setRangeSelectionHintVisible(false);
     };
     document.addEventListener("keydown", handleEscape, true);
     return () => document.removeEventListener("keydown", handleEscape, true);
-  }, [handleCancelRangeSelection, rangeSelection]);
+  }, [handleCancelRangeSelection, rangeSelection, rangeSelectionHintVisible]);
 
   const handleToggleSelectAllEntries = useCallback(() => {
     setSelectionAnchorId(null);
@@ -2294,23 +2304,56 @@ export function ChatSummaryPanel({
             {hasPersistedEntries && (
               <div className="space-y-1.5 px-0.5" data-summary-selection-toolbar>
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <button
-                    ref={rangeSelectionButtonRef}
-                    type="button"
-                    aria-pressed={rangeSelection !== null}
-                    aria-describedby={rangeSelectionStatusId}
-                    onClick={() => {
-                      if (rangeSelection) handleCancelRangeSelection();
-                      else if (!selectionInteractionBlocked) setRangeSelection({ anchorId: null });
-                    }}
-                    disabled={selectionInteractionBlocked || visiblePersistedEntries.length === 0}
-                    className={cn(
-                      SUMMARY_SELECTION_BUTTON_CLASS,
-                      rangeSelection && "bg-[var(--primary)]/15 text-[var(--primary)] ring-1 ring-[var(--primary)]/30",
-                    )}
+                  <span
+                    className="relative inline-flex max-w-full"
+                    onPointerLeave={() => setRangeSelectionHintVisible(false)}
                   >
-                    {localizeUi("chat.summary.selection.selectRange")}
-                  </button>
+                    <button
+                      ref={rangeSelectionButtonRef}
+                      type="button"
+                      aria-pressed={rangeSelection !== null}
+                      aria-describedby={
+                        rangeSelectionHintVisible
+                          ? `${rangeSelectionStatusId} ${rangeSelectionHintId}`
+                          : rangeSelectionStatusId
+                      }
+                      onPointerEnter={(event) => {
+                        if (
+                          event.pointerType === "mouse" &&
+                          window.matchMedia("(hover: hover) and (pointer: fine)").matches
+                        ) {
+                          setRangeSelectionHintVisible(true);
+                        }
+                      }}
+                      onFocus={() => {
+                        if (window.matchMedia("(hover: hover) and (pointer: fine)").matches) {
+                          setRangeSelectionHintVisible(true);
+                        }
+                      }}
+                      onBlur={() => setRangeSelectionHintVisible(false)}
+                      onClick={() => {
+                        if (rangeSelection) handleCancelRangeSelection();
+                        else if (!selectionInteractionBlocked) setRangeSelection({ anchorId: null });
+                      }}
+                      disabled={selectionInteractionBlocked || visiblePersistedEntries.length === 0}
+                      className={cn(
+                        SUMMARY_SELECTION_BUTTON_CLASS,
+                        rangeSelection &&
+                          "bg-[var(--primary)]/15 text-[var(--primary)] ring-1 ring-[var(--primary)]/30",
+                      )}
+                    >
+                      {localizeUi("chat.summary.selection.selectRange")}
+                    </button>
+                    {rangeSelectionHintVisible && (
+                      <span
+                        id={rangeSelectionHintId}
+                        role="tooltip"
+                        className="absolute bottom-full left-0 z-20 w-64 max-w-[calc(100vw-2rem)] rounded-lg bg-[var(--popover)] px-3 py-2 text-left text-xs leading-relaxed text-[var(--popover-foreground)] shadow-xl ring-1 ring-[var(--border)]"
+                      >
+                        {localizeUi("chat.summary.selection.shiftClickHint")}
+                      </span>
+                    )}
+                  </span>
                   {selectedEntries.length < visiblePersistedEntries.length && (
                     <button
                       type="button"

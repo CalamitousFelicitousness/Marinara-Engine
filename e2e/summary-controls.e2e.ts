@@ -133,7 +133,7 @@ test("summary Shift selection follows visible IDs and keeps the ordinary anchor"
   }
 });
 
-test("summary endpoint selection is additive, cancellable and invalidated by list changes", async ({
+test("summary endpoint selection toggles complete ranges, stays additive otherwise and handles list changes", async ({
   page,
   request,
 }, info) => {
@@ -155,6 +155,33 @@ test("summary endpoint selection is additive, cancellable and invalidated by lis
   };
   let expected = [ids[0]!];
   try {
+    const hint = panel.getByRole("tooltip", {
+      name: "Shift-click summary checkboxes to select or deselect a range.",
+    });
+    await range.hover();
+    if (info.project.name === "desktop-chromium") {
+      // Immediate hover guidance is also available to desktop keyboard users.
+      await expect(hint).toBeVisible({ timeout: 250 });
+      await expect(range).toHaveAttribute("aria-describedby", new RegExp((await hint.getAttribute("id"))!));
+      await hint.hover();
+      await expect(hint).toBeVisible();
+      await page.screenshot({ path: info.outputPath("summary-range-shift-hint.png") });
+      await panel.getByRole("button", { name: "Show Inactive", exact: true }).hover();
+      await expect(hint).toHaveCount(0);
+      await range.focus();
+      await expect(hint).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(hint).toHaveCount(0);
+      await expect(chatSettingsWindow(page)).toBeVisible();
+      await expect(range).toHaveAttribute("aria-pressed", "false");
+    } else {
+      await expect(hint).toHaveCount(0);
+      await range.tap();
+      await expect(range).toHaveAttribute("aria-pressed", "true");
+      await expect(hint).toHaveCount(0);
+      await panel.getByRole("button", { name: "Cancel range", exact: true }).tap();
+      await expectSummarySelection(panel, []);
+    }
     await expect(summaryRow(panel, ids[1]!)).toHaveCount(0);
     await panel.getByRole("button", { name: "Show Inactive", exact: true }).click();
     await summaryRow(panel, ids[0]!).getByRole("checkbox").click();
@@ -165,6 +192,27 @@ test("summary endpoint selection is additive, cancellable and invalidated by lis
     await chooseSummaryEndpoint(summaryRow(panel, ids[2]!), info);
     expected = [ids[0]!, ...ids.slice(2, 6)];
     await expect(range).toHaveAttribute("aria-pressed", "false");
+    await expectSummarySelection(panel, expected);
+
+    // Fully selected intervals are removed, including backwards ranges; outside selections survive.
+    await begin(5);
+    await expect(panel.getByRole("button", { name: "Delete selected (5)", exact: true })).toBeVisible();
+    await chooseSummaryEndpoint(summaryRow(panel, ids[2]!), info);
+    await expectSummarySelection(panel, [ids[0]!]);
+    await page.screenshot({ path: info.outputPath("summary-range-deselected.png") });
+    await begin(2);
+    await chooseSummaryEndpoint(summaryRow(panel, ids[5]!), info);
+    await expectSummarySelection(panel, expected);
+    await begin(2);
+    await chooseSummaryEndpoint(summaryRow(panel, ids[5]!), info);
+    await expectSummarySelection(panel, [ids[0]!]);
+    await begin(5);
+    await chooseSummaryEndpoint(summaryRow(panel, ids[2]!), info);
+    await expectSummarySelection(panel, expected);
+    // Selected endpoints with an unchecked row between them still add the entire interval.
+    await summaryRow(panel, ids[3]!).getByRole("checkbox").click();
+    await begin(5);
+    await chooseSummaryEndpoint(summaryRow(panel, ids[2]!), info);
     await expectSummarySelection(panel, expected);
 
     await begin(6);
@@ -191,6 +239,15 @@ test("summary endpoint selection is additive, cancellable and invalidated by lis
     await begin(7);
     await chooseSummaryEndpoint(summaryRow(panel, ids[7]!), info);
     expected.push(ids[7]!);
+    await expectSummarySelection(panel, expected);
+    await begin(7);
+    await chooseSummaryEndpoint(summaryRow(panel, ids[7]!), info);
+    await expectSummarySelection(
+      panel,
+      expected.filter((entryId) => entryId !== ids[7]),
+    );
+    await begin(7);
+    await chooseSummaryEndpoint(summaryRow(panel, ids[7]!), info);
     await expectSummarySelection(panel, expected);
     // Native buttons support keyboard endpoints and remain in the Tab sequence.
     await range.click();
@@ -223,6 +280,11 @@ test("summary endpoint selection is additive, cancellable and invalidated by lis
     await page.keyboard.press("Space");
     expected = [...ids];
     await expectSummarySelection(panel, expected);
+    await begin(0);
+    await chooseSummaryEndpoint(summaryRow(panel, ids[7]!), info);
+    await expectSummarySelection(panel, []);
+    await expect(panel.getByRole("button", { name: /^Delete selected/ })).toHaveCount(0);
+    await panel.getByRole("button", { name: "Select all", exact: true }).click();
     await summaryRow(panel, ids[3]!).getByRole("checkbox").click();
     expected = expected.filter((entryId) => entryId !== ids[3]);
     await expectSummarySelection(panel, expected);

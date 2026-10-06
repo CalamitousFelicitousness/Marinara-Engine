@@ -180,6 +180,11 @@ test("summary selected actions save only changed IDs and preserve Combine, Selec
     await panel.getByRole("button", { name: "Combine 2 selected summaries", exact: true }).click();
     await expect(summaryRow(panel, combined.id)).toBeVisible();
     await expectSummarySelection(panel, []);
+    // Combine clears the anchor too, so Shift-click starts a fresh selection.
+    const retainedSource = summaryRow(panel, selectedIds[0]!).getByRole("checkbox");
+    if (info.project.name.startsWith("mobile")) await retainedSource.tap();
+    else await retainedSource.click({ modifiers: ["Shift"] });
+    await expectSummarySelection(panel, [selectedIds[0]!]);
     await panel.getByRole("button", { name: "Select all", exact: true }).click();
     const allIds = combinedEntries.map((entry: ChatSummaryEntry) => entry.id);
     await expectSummarySelection(panel, allIds);

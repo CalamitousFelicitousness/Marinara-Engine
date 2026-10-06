@@ -161,6 +161,8 @@ To open it, open **Chat Settings** and expand the **Chat Summary** section, unde
 
 Each entry in the list shows a title, a source range or message count, and an estimated token size. You can enable or disable an entry, expand it, click **Edit** to change it, or **Delete** it. Bulk buttons let you **Show Inactive** or **Hide Inactive** entries and **Activate All** or **Deactivate All** at once.
 
+Tick entries to select them; on a computer, Shift-click another entry to select the visible range between them, then use **Enable selected** or **Disable selected** to change only the selected entries.
+
 ### Automatic Summaries
 
 The **Automatic Summaries** panel keeps summaries updated as you keep chatting. It appears in Roleplay chats only.

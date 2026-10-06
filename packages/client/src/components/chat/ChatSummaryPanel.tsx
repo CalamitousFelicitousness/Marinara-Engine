@@ -1228,6 +1228,7 @@ export function ChatSummaryPanel({
         onSuccess: (data) => {
           setSelectedEntryIds(new Set());
           setShowInactiveSummaries(true);
+          setSelectionAnchorId(null);
           const entryId = data.entry?.id;
           if (entryId) setExpandedEntryIds((current) => new Set(current).add(entryId));
         },
@@ -2894,7 +2895,7 @@ function SummaryEntryRow({
       aria-busy={togglePending}
       data-touch-reorder-item={reorderable ? "summary-entry" : undefined}
       data-touch-reorder-index={reorderable ? entryIndex : undefined}
-      draggable={reorderable && dragReady && !mutationPending}
+      draggable={reorderable && dragReady}
       onDragStart={onDragStart}
       onDragOver={onDragOver}
       onDrop={onDrop}
@@ -2953,7 +2954,7 @@ function SummaryEntryRow({
             </button>
           </div>
         </div>
-        <label className="flex min-h-11 min-w-11 shrink-0 cursor-pointer items-center justify-center rounded-md focus-within:ring-2 focus-within:ring-[var(--ring)]">
+        <label className="flex min-h-11 min-w-11 shrink-0 cursor-pointer items-center justify-center rounded-md focus-within:ring-2 focus-within:ring-[var(--ring)] sm:min-h-0 sm:min-w-0">
           <input
             type="checkbox"
             checked={selected}

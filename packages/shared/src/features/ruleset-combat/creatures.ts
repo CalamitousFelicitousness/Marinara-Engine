@@ -298,6 +298,8 @@ function blockFromCreature(creature: RulesetCreature, budgets: ReadonlySet<strin
     ...(creature.sheet ? { sheet: structuredClone(creature.sheet) } : {}),
     actions: actions.filter((action): action is RulesetStatBlockAction => action !== null),
     ...(creature.speed !== undefined ? { speed: creature.speed } : {}),
+    ...(creature.speeds ? { speeds: { ...creature.speeds } } : {}),
+    ...(creature.hover ? { hover: true as const } : {}),
     ...(creature.abilities ? { abilities: { ...creature.abilities } } : {}),
     ...(creature.saves ? { saves: { ...creature.saves } } : {}),
     ...(creature.checks ? { checks: { ...creature.checks } } : {}),

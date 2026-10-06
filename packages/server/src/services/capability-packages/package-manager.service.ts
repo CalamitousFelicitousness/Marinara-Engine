@@ -1247,6 +1247,17 @@ function entriesCarrySizes(entries: unknown): boolean {
   );
 }
 
+/** A creature that moves other ways than walking (1.108): `speeds` and `hover` on the strict creature. */
+function entriesCarryMoveModes(entries: unknown): boolean {
+  return (
+    Array.isArray(entries) &&
+    entries.some((entry) => {
+      const creature = plainRecord(plainRecord(entry)?.creature);
+      return creature?.speeds !== undefined || creature?.hover !== undefined;
+    })
+  );
+}
+
 /** Entries a builder step offers only while the sheet says so (1.94): `offeredWhen`, a new key on the
  *  strict entry. */
 function entriesCarryOfferedWhen(entries: unknown): boolean {
@@ -1511,6 +1522,7 @@ export function getCapabilityPackageInstallIssue(
   let carriesBlowQualities = false;
   let carriesDamageAlternatives = false;
   let carriesSizes = false;
+  let carriesMoveModes = false;
   let carriesExclusive = false;
   let carriesSheetBonus = false;
   // Every item by "<catalog>/<entry>", inline and in files, and the fakes among them, so a fake whose
@@ -1617,6 +1629,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryBlowQualities(header.entries)) carriesBlowQualities = true;
       if (entriesCarryDamageAlternatives(header.entries)) carriesDamageAlternatives = true;
       if (entriesCarrySizes(header.entries)) carriesSizes = true;
+      if (entriesCarryMoveModes(header.entries)) carriesMoveModes = true;
       if (entriesCarryExclusive(header.entries)) carriesExclusive = true;
       if (entriesCarryToHitSheetBonus(header.entries)) carriesSheetBonus = true;
       collectItems(header.id, header.entries);
@@ -1673,6 +1686,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryBlowQualities(fileEntries)) carriesBlowQualities = true;
       if (entriesCarryDamageAlternatives(fileEntries)) carriesDamageAlternatives = true;
       if (entriesCarrySizes(fileEntries)) carriesSizes = true;
+      if (entriesCarryMoveModes(fileEntries)) carriesMoveModes = true;
       if (entriesCarryExclusive(fileEntries)) carriesExclusive = true;
       if (entriesCarryToHitSheetBonus(fileEntries)) carriesSheetBonus = true;
       collectItems(header.id, fileEntries);
@@ -1964,6 +1978,13 @@ export function getCapabilityPackageInstallIssue(
   // A catalog entry a builder step offers only while the sheet says so, 1.94: a new key on the strict entry.
   if (!declaresApi(94) && carriesOfferedWhen) {
     return "A ruleset whose catalog entries are offered only while the sheet allows requires schemaVersion 2 and capabilityApi 1.94 or newer";
+  }
+  // Ways of moving besides walking, 1.108: new keys on the strict creature and the strict economy.
+  if (
+    !declaresApi(108) &&
+    (carriesMoveModes || plainRecord(plainRecord(ruleset?.combat)?.economy)?.movementModes !== undefined)
+  ) {
+    return "A ruleset whose combatants fly, swim, climb or burrow requires schemaVersion 2 and capabilityApi 1.108 or newer";
   }
   // Sizes and escape DCs, 1.98: new keys on the strict combat block, contest, creature and applies.
   if (!declaresApi(98)) {

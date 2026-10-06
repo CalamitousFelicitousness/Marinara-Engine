@@ -49,7 +49,10 @@ import { findRulesetCreatureEntry, isRulesetPlainStatBlock, rulesetCreatureBlock
 import { parseRulesetCombatDice, rollRulesetDice, rulesetCombatRoller, sumOf } from "./dice.js";
 import { rulesetInCells, rulesetLineOfSight, rulesetPositionOf } from "./grid.js";
 import { rulesetCombatAdvantage, rulesetCombatIsPool, rulesetPoolDie, throwRulesetCombatPool } from "./pool.js";
+import { RULESET_MOVE_MODES } from "./types.js";
 import type {
+  RulesetMoveMode,
+  RulesetMoveSpeeds,
   RulesetCombatAction,
   RulesetCombatAmount,
   RulesetCombatant,
@@ -1708,6 +1711,16 @@ function sheetCombatant(
     ...(hardness > 0 ? { hardness } : {}),
     ...(limits ? { limits } : {}),
     speed: combat.economy.movement ? resolveRulesetValueRef(definition, build, combat.economy.movement, evaluated) : 0,
+    // Ways of moving besides walking, off the same sheet (1.108). Nought is not moving that way.
+    ...(() => {
+      const speeds: RulesetMoveSpeeds = {};
+      for (const mode of RULESET_MOVE_MODES) {
+        const ref = combat.economy.movementModes?.[mode];
+        const speed = ref ? resolveRulesetValueRef(definition, build, ref, evaluated) : 0;
+        if (Number.isFinite(speed) && speed > 0) speeds[mode] = speed;
+      }
+      return Object.keys(speeds).length > 0 ? { speeds } : {};
+    })(),
     sheet: { build, live: input.live, catalogs, ...(input.items ? { items: input.items } : {}) },
   };
 }
@@ -1829,6 +1842,8 @@ export function rulesetMovementAllowance(
   combat: RulesetCombat,
   combatant: RulesetCombatant,
   state?: RulesetEncounterState,
+  /** One way of moving's own speed (1.108). Their fastest when left out. */
+  base: number = rulesetFastestSpeed(combatant),
 ): number {
   const perCell = combat.distance?.perCell;
   if (perCell === undefined || !(perCell > 0)) return 0;
@@ -1836,11 +1851,62 @@ export function rulesetMovementAllowance(
   // What a condition does to speed: every flat change first, then halving or doubling, so "10 feet
   // slower, and half speed" is half of what is left.
   const changes = rulesetConditionModifiers(definition, combat, combatant, "speed", state);
-  let speed = combatant.speed;
+  let speed = base;
   for (const { modifier } of changes) speed += modifier.flat ?? 0;
   for (const { modifier } of changes) speed *= modifier.times ?? 1;
   if (!Number.isFinite(speed) || speed <= 0) return 0;
   return Math.max(1, Math.floor(speed / perCell));
+}
+
+/** The fastest way this combatant moves, walking included (1.108). */
+export function rulesetFastestSpeed(combatant: RulesetCombatant): number {
+  return Math.max(combatant.speed, ...Object.values(combatant.speeds ?? {}).map((speed) => speed ?? 0));
+}
+
+/** Each way somebody moves besides walking, and walking, as an allowance in cells (1.108). Undefined
+ *  for somebody who only walks. */
+export function rulesetModeAllowances(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  combatant: RulesetCombatant,
+  state?: RulesetEncounterState,
+): Partial<Record<RulesetMoveMode, number>> | undefined {
+  if (!combatant.speeds) return undefined;
+  const allowances: Partial<Record<RulesetMoveMode, number>> = {
+    walk: combatant.speed > 0 ? rulesetMovementAllowance(definition, combat, combatant, state, combatant.speed) : 0,
+  };
+  for (const mode of RULESET_MOVE_MODES) {
+    const speed = combatant.speeds[mode];
+    if (speed) allowances[mode] = rulesetMovementAllowance(definition, combat, combatant, state, speed);
+  }
+  return allowances;
+}
+
+/** A turn's allowance on top of what is left: a dash, or a fresh turn from nothing (1.108 adds each
+ *  way of moving's own). */
+export function grantRulesetMovement(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  combatant: RulesetCombatant,
+  state?: RulesetEncounterState,
+): void {
+  combatant.movementLeft =
+    (combatant.movementLeft ?? 0) + rulesetMovementAllowance(definition, combat, combatant, state);
+  const modes = rulesetModeAllowances(definition, combat, combatant, state);
+  if (!modes) return;
+  const left = (combatant.modeLeft ??= {});
+  for (const [mode, cells] of Object.entries(modes) as Array<[RulesetMoveMode, number]>) {
+    left[mode] = (left[mode] ?? 0) + cells;
+  }
+}
+
+/** Cells moved, or spent standing up: off the allowance, and off every way of moving alike (1.108). */
+export function spendRulesetMovement(combatant: RulesetCombatant, cells: number): void {
+  combatant.movementLeft = Math.max(0, (combatant.movementLeft ?? 0) - cells);
+  if (!combatant.modeLeft) return;
+  for (const mode of Object.keys(combatant.modeLeft) as RulesetMoveMode[]) {
+    combatant.modeLeft[mode] = Math.max(0, (combatant.modeLeft[mode] ?? 0) - cells);
+  }
 }
 
 /** The allowance back to full at the start of the holder's own turn. */
@@ -1853,7 +1919,9 @@ export function refreshRulesetMovement(
   if (combatant.movement === undefined) return;
   const allowance = rulesetMovementAllowance(definition, combat, combatant, state);
   combatant.movement = allowance;
-  combatant.movementLeft = allowance;
+  combatant.movementLeft = 0;
+  if (combatant.modeLeft) combatant.modeLeft = {};
+  grantRulesetMovement(definition, combat, combatant, state);
 }
 
 // ── Starting the fight ──
@@ -1955,6 +2023,9 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
         combatant.block = block;
         // A creature that names its size is that size, whatever its sheet reads.
         if (block.size !== undefined && combat.sizes) combatant.size = block.size;
+        // And one that names how it moves moves that way, whatever its sheet reads.
+        if (block.speeds) combatant.speeds = { ...block.speeds };
+        if (block.hover) combatant.hover = true;
         if ("creature" in entry) combatant.creature = { ...entry.creature };
         // A sheet that gives it no health at all is a creature that could never be hurt or ever
         // stand: left out, and the opening says why, rather than walked in as something unkillable.
@@ -2028,6 +2099,8 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
           return size !== undefined ? { size } : {};
         })(),
         speed: block.speed ?? 0,
+        ...(block.speeds ? { speeds: { ...block.speeds } } : {}),
+        ...(block.hover ? { hover: true as const } : {}),
         block,
         health: { value: max, max, temp: 0 },
       });
@@ -2233,9 +2306,9 @@ function placeRulesetCombatants(
   for (const { combatant, at } of placed) {
     combatant.x = at.x;
     combatant.y = at.y;
-    const allowance = rulesetMovementAllowance(definition, combat, combatant);
-    combatant.movement = allowance;
-    combatant.movementLeft = allowance;
+    combatant.movement = rulesetMovementAllowance(definition, combat, combatant);
+    combatant.movementLeft = 0;
+    grantRulesetMovement(definition, combat, combatant);
   }
   state.board = {
     grid,

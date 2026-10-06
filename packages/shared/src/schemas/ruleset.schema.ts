@@ -2026,6 +2026,23 @@ const creatureFields = {
   defense: z.number().int().min(0).max(1000),
   /** In the ruleset's own distance unit, read by the slice that gives a fight positions. */
   speed: z.number().finite().min(0).max(10000).optional(),
+  /** How fast it moves other than walking, in the ruleset's own distance (Capability API 1.108): on a
+   *  board a flier crosses water and steps of any height, a swimmer crosses water, and a climber
+   *  takes steps of any height. A burrower's speed is carried for the Game Master and moves as a
+   *  walk. `speed` stays its walk. */
+  speeds: z
+    .object({
+      fly: z.number().finite().gt(0).max(10000).optional(),
+      swim: z.number().finite().gt(0).max(10000).optional(),
+      climb: z.number().finite().gt(0).max(10000).optional(),
+      burrow: z.number().finite().gt(0).max(10000).optional(),
+    })
+    .strict()
+    .refine((speeds) => Object.keys(speeds).length > 0, { message: "speeds names at least one way of moving" })
+    .optional(),
+  /** It flies without needing to keep moving (Capability API 1.108): what knocks a flier out of the
+   *  air does not knock it out. Needs a `fly` speed. */
+  hover: z.literal(true).optional(),
   initiativeModifier: z.number().int().min(-50).max(100),
   /** Scores, keyed by the sheet's own ability ids. Shown to the Game Master; a later slice asks a
    *  creature for a check with them. */
@@ -2156,7 +2173,7 @@ export const rulesetProposedCreatureSchema = z.preprocess(
 /** A creature a bestiary ships: the plain block, or a `sheet` in the ruleset's own terms. With a
  *  sheet it is built the way a party member is, so the numbers the sheet gives are not also given
  *  here, and there is one place each of them comes from. */
-export const rulesetCreatureSchema = z
+const rulesetCreatureBaseSchema = z
   .object({
     ...creatureFields,
     health: creatureFields.health.optional(),
@@ -2198,6 +2215,11 @@ export const rulesetCreatureSchema = z
       });
     }
   });
+
+/** Named, so the whole definition's inferred type stays short enough for the compiler to write. */
+export type RulesetCreatureDeclaration = z.infer<typeof rulesetCreatureBaseSchema>;
+export const rulesetCreatureSchema: z.ZodType<RulesetCreatureDeclaration, z.ZodTypeDef, unknown> =
+  rulesetCreatureBaseSchema;
 
 // ── Items: the vocabulary every item of the ruleset is written in ──
 
@@ -3812,6 +3834,17 @@ const combatSchema = z
         budgets: z.array(combatBudgetSchema).min(1).max(8),
         /** How far a turn may move, in the ruleset's own distance unit. */
         movement: rulesetValueRefSchema.optional(),
+        /** How far a turn may move other than walking, off the sheet (Capability API 1.108): a race's
+         *  swim speed, a fly speed a spell or a feature grants. Nought is not moving that way. */
+        movementModes: z
+          .object({
+            fly: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
+            swim: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
+            climb: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
+            burrow: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
+          })
+          .strict()
+          .optional(),
       })
       .strict(),
     /** What one cell of a board is worth in this system's own distance, and what that distance is
@@ -5714,6 +5747,9 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
     }
     const budgets = unique(combat.economy.budgets, at("economy", "budgets"), "budget");
     if (combat.economy.movement) checkRef(combat.economy.movement, at("economy", "movement"), derivedIds);
+    for (const [mode, ref] of Object.entries(combat.economy.movementModes ?? {})) {
+      if (ref) checkRef(ref, at("economy", "movementModes", mode), derivedIds);
+    }
     const checkBudget = (budget: string, path: (string | number)[]) => {
       if (!budgets.has(budget)) issue(path, `Unknown budget "${budget}"`);
     };
@@ -6677,6 +6713,7 @@ function creatureIssues(
   for (const check of Object.keys(creature.checks ?? {})) {
     if (!checks.has(check)) add([...at, "checks", check], `Unknown contest check "${check}"`);
   }
+  if (creature.hover && !creature.speeds?.fly) add([...at, "hover"], "A creature that hovers has a fly speed");
   if (creature.size !== undefined) {
     if (!combat.sizes) add([...at, "size"], "This ruleset declares no sizes for a creature to be");
     else if (!combat.sizes.order.some((size) => size.id === creature.size)) {

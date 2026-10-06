@@ -1968,6 +1968,8 @@ as a `sheet`, takes `health`, `defense`, `initiativeModifier`, `speed`, `abiliti
   health track. Capability API 1.47.
 - `hardness`: where initiative is a number attacks move, a spending blow whose dice are below it does
   nothing. Capability API 1.56.
+- `speeds` and `hover`: how it moves besides walking (see Other ways of moving, under Positions).
+  Capability API 1.108.
 - `shield: true`: its hands are full, so an action's `twoHanded` alternative does not hold.
   Capability API 1.97.
 - `size`: one of `combat.sizes`, by id, which a contest's `maxSizeAbove` reads (see Sizes and
@@ -2217,6 +2219,24 @@ actions: walk, strike, walk again. A cell costs one to step onto, or more for ro
 directions, all at the same cost, because that is how the tabletop grids this is for are played. A
 friend may be walked past and nobody may be stopped on; an opponent is a wall; nothing solid may be
 entered and no corner may be cut between two solid cells.
+
+**Other ways of moving** (Capability API 1.108). A creature's `speeds` gives what it moves besides
+walking, `{ "fly": 60, "swim": 30, "climb": 30, "burrow": 20 }` in your unit, and `"hover": true`
+says a flier needs no motion to stay up (it needs a `fly` speed). A party member's come off the
+sheet through `economy.movementModes`, value references keyed the same way, as a race's swim speed
+or a spell's fly speed would be; a nought is not moving that way. `speed` and `economy.movement`
+stay the walk. On a board:
+
+- the allowance is the fastest way they move, and every cell moved comes off every way at once, so
+  a creature that walks 30 and flies 60 can walk 10 and then fly 40, and never walk past 30;
+- a flier steps anywhere not solid for one cell, water and a step of any height included;
+- a swimmer crosses water for one cell, and walks on land;
+- a climber takes a step of any height for what the ground it steps onto costs;
+- a burrower's speed is carried for the Game Master and moves as a walk, since a board has no
+  ground to tunnel through.
+
+Each step is taken the cheapest way that has enough left. A fight without a board reads nothing of
+it, and somebody who only walks moves exactly as before.
 
 **Reach and range.** A weapon row gets them from `combat.attacks[].reach` and `.range`, each a
 column of that same list or the same number on every row:

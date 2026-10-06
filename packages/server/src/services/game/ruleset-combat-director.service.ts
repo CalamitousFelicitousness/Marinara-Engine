@@ -1263,7 +1263,7 @@ function rulesetClosingMove(
     .map((combatant) => rulesetPositionOf(combatant))
     .filter((cell): cell is { x: number; y: number } => !!cell);
   if (foes.length === 0) return null;
-  const walking = rulesetWalkingDistances(encounter.board.grid, foes);
+  const walking = rulesetWalkingDistances(encounter.board.grid, foes, actor);
   const nearest = (cell: { x: number; y: number }) => walking.get(`${cell.x},${cell.y}`) ?? Infinity;
   const already = nearest(from);
   let best: { cell: { x: number; y: number; cost: number; provokes: string[] }; away: number } | null = null;

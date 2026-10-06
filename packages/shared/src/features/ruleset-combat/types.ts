@@ -236,6 +236,10 @@ export interface RulesetStatBlock {
   /** Thrown once when the encounter is created, in place of the flat number. */
   healthDice?: RulesetCombatAmount;
   speed?: number;
+  /** How fast it moves other than on foot, in the ruleset's own distance (1.108). `speed` is its walk. */
+  speeds?: RulesetMoveSpeeds;
+  /** It flies without needing to keep moving, so nothing knocks it out of the air (1.108). */
+  hover?: true;
   /** Its hands are full, so a `twoHanded` alternative never holds (1.97). */
   shield?: true;
   /** One of `combat.sizes`, by id (1.98). */
@@ -574,10 +578,25 @@ export interface RulesetCombatant {
   /** Where they stand. Present only in a positioned fight, and then on everybody at once. */
   x?: number;
   y?: number;
-  /** The whole allowance this turn and what is left of it, both in CELLS. */
+  /** The whole allowance this turn and what is left of it, both in CELLS. With other ways of moving
+   *  than walking (1.108) these are the fastest one's. */
   movement?: number;
   movementLeft?: number;
+  /** How fast they move other than on foot, in the ruleset's own distance, read once as the fight
+   *  began (1.108). `speed` is their walk. Absent for somebody who only walks. */
+  speeds?: RulesetMoveSpeeds;
+  /** A flier that hovers (1.108). */
+  hover?: true;
+  /** What is left this turn of each way they move, in CELLS (1.108): every cell moved comes off all
+   *  of them, as switching from walking to flying takes what was already walked off the flight.
+   *  Absent for somebody who only walks, whose walk is `movementLeft`. */
+  modeLeft?: Partial<Record<RulesetMoveMode, number>>;
 }
+
+/** The ways of moving besides walking (1.108). */
+export const RULESET_MOVE_MODES = ["fly", "swim", "climb", "burrow"] as const;
+export type RulesetMoveMode = "walk" | (typeof RULESET_MOVE_MODES)[number];
+export type RulesetMoveSpeeds = Partial<Record<(typeof RULESET_MOVE_MODES)[number], number>>;
 
 export interface RulesetEncounterState {
   /** Bumped when the shape changes, so a persisted fight says what wrote it. */

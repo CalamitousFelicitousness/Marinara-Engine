@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: creatures and characters can fly, swim, climb or burrow (Capability API 1.108). On the battle board fliers cross water and cliffs, swimmers cross water, and climbers scale any height. Switching from walking to flying counts what was already walked.
 - Rulesets: fighters and creatures can have a size, and a grab or shove can't target anyone too much bigger (Capability API 1.98). A creature's grab can also set the DC to escape it, and escaping rolls against that DC instead of the holder's check. In 5e that means no grappling a giant, and 5e's "escape DC 13" grabs.
 - Rulesets: a creature's attack can deal another amount with both hands or once the creature is badly hurt (Capability API 1.97). In 5e that is a longsword's "or 1d10 + 3 if used with two hands", unless the creature carries a shield, and a swarm's weaker bite at half its hit points or fewer. The attack menu's average damage follows the same rule.
 - Rulesets: a spell or a creature's attack can carry what gets it past a resistance, as a magic weapon's tags do (Capability API 1.96). In 5e that is "resistance to slashing from nonmagical attacks": spells and magical creature attacks now hit such creatures for full damage, and ordinary blows are still halved.

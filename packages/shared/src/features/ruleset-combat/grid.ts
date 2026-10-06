@@ -14,6 +14,7 @@ import type { RulesetCombat, RulesetDefinition } from "../../schemas/ruleset.sch
 import { rulesetShotsAvailable } from "./ammo.js";
 import { rulesetActiveConditions, rulesetCombatant, rulesetCombatEffects, rulesetCombatStanding } from "./encounter.js";
 import type {
+  RulesetMoveMode,
   RulesetCombatAction,
   RulesetCombatant,
   RulesetCombatArea,
@@ -93,6 +94,59 @@ export function rulesetCellCover(grid: TacticalGrid, cell: RulesetCombatCell): n
 export function rulesetStepCost(grid: TacticalGrid, from: RulesetCombatCell, to: RulesetCombatCell): number | null {
   const climb = climbCost(grid, from, to);
   return climb === null ? null : rulesetCellEnterCost(grid, to.x, to.y) + climb;
+}
+
+/** Whether a cell is water, which nobody walks into and a swimmer or a flier crosses (1.108). */
+function isWater(grid: TacticalGrid, x: number, y: number): boolean {
+  return inBounds(grid, x, y) && grid.tiles[y]?.[x] === "water";
+}
+
+/** What is left this turn of one way of moving, in cells (1.108). Somebody who only walks walks on
+ *  what is left of their allowance. */
+function modeLeftOf(mover: RulesetCombatant, mode: RulesetMoveMode): number {
+  if (!mover.modeLeft) return mode === "walk" ? (mover.movementLeft ?? 0) : 0;
+  return mover.modeLeft[mode] ?? 0;
+}
+
+/** Whether a cell is solid to this mover, for stepping into it and for squeezing past its corner: water
+ *  is not, to a swimmer or a flier (1.108). */
+export function rulesetCellSolidFor(grid: TacticalGrid, x: number, y: number, mover?: RulesetCombatant): boolean {
+  if (!rulesetCellBlocked(grid, x, y)) return false;
+  return !(isWater(grid, x, y) && (!!mover?.speeds?.fly || !!mover?.speeds?.swim));
+}
+
+/**
+ * The cheapest way this mover takes one step, and what it costs (1.108), with `spent` already moved
+ * this turn: a way of moving whose own allowance the step would pass is not one it may use. On foot
+ * (and burrowing, which a board moves as a walk) a step costs what `rulesetStepCost` says; a climber
+ * takes a step of any height for the ground it steps onto; a flier steps anywhere not solid for one
+ * cell, water and heights included; a swimmer crosses water for one cell, and walks on land. Null
+ * when no way it moves takes the step. Somebody who only walks gets exactly `rulesetStepCost`.
+ */
+export function rulesetMoveStep(
+  grid: TacticalGrid,
+  from: RulesetCombatCell,
+  to: RulesetCombatCell,
+  mover: RulesetCombatant,
+  spent = 0,
+): { mode: RulesetMoveMode; cost: number } | null {
+  const speeds = mover.speeds ?? {};
+  const options: Array<{ mode: RulesetMoveMode; cost: number | null }> = [];
+  if (isWater(grid, to.x, to.y)) {
+    if (speeds.swim) options.push({ mode: "swim", cost: 1 });
+    if (speeds.fly) options.push({ mode: "fly", cost: 1 });
+  } else if (!rulesetCellBlocked(grid, to.x, to.y)) {
+    options.push({ mode: "walk", cost: rulesetStepCost(grid, from, to) });
+    if (speeds.climb) options.push({ mode: "climb", cost: rulesetCellEnterCost(grid, to.x, to.y) });
+    if (speeds.fly) options.push({ mode: "fly", cost: 1 });
+    if (speeds.burrow) options.push({ mode: "burrow", cost: rulesetStepCost(grid, from, to) });
+  }
+  let best: { mode: RulesetMoveMode; cost: number } | null = null;
+  for (const option of options) {
+    if (option.cost === null || spent + option.cost > modeLeftOf(mover, option.mode)) continue;
+    if (!best || option.cost < best.cost) best = { mode: option.mode, cost: option.cost };
+  }
+  return best;
 }
 
 /** Whether one cell can see another: the Engine's one sight test (combat C6), which a wall or a mountain
@@ -335,7 +389,7 @@ export function rulesetReachableCells(
       const x = at.x + dx;
       const y = at.y + dy;
       const next = `${x},${y}`;
-      if (rulesetCellBlocked(grid, x, y) || blockers.has(next)) continue;
+      if (rulesetCellSolidFor(grid, x, y, actor) || blockers.has(next)) continue;
       // Somebody this combatant may not approach is not walked PAST either. A route that dips
       // inside the ring and comes out the far side is still getting nearer, which is the thing the
       // condition forbids, and the board DRAWS that route. So the step is refused rather than only
@@ -346,12 +400,13 @@ export function rulesetReachableCells(
       if (
         dx !== 0 &&
         dy !== 0 &&
-        rulesetCellBlocked(grid, at.x + dx, at.y) &&
-        rulesetCellBlocked(grid, at.x, at.y + dy)
+        rulesetCellSolidFor(grid, at.x + dx, at.y, actor) &&
+        rulesetCellSolidFor(grid, at.x, at.y + dy, actor)
       )
         continue;
-      const step = rulesetStepCost(grid, at, { x, y });
-      if (step === null) continue;
+      // The cheapest way they move that takes this step on what that way has left (1.108).
+      const step = rulesetMoveStep(grid, at, { x, y }, actor, cheapest)?.cost;
+      if (step === undefined) continue;
       const cost = cheapest + step;
       if (cost > budget || cost >= (best.get(next) ?? Infinity)) continue;
       best.set(next, cost);
@@ -427,7 +482,21 @@ export function rulesetPushPath(
 export function rulesetWalkingDistances(
   grid: TacticalGrid,
   goals: ReadonlyArray<RulesetCombatCell>,
+  /** Who is moving, when they move some way besides walking (1.108): their ways count, with no
+   *  turn's allowance to run out of. */
+  mover?: RulesetCombatant,
 ): Map<string, number> {
+  const unbounded = mover?.speeds
+    ? {
+        ...mover,
+        modeLeft: Object.fromEntries(
+          (["walk", ...Object.keys(mover.speeds)] as RulesetMoveMode[]).map((mode) => [mode, Infinity]),
+        ),
+      }
+    : undefined;
+  const solid = (x: number, y: number) => rulesetCellSolidFor(grid, x, y, unbounded);
+  const into = (from: RulesetCombatCell, to: RulesetCombatCell) =>
+    unbounded ? (rulesetMoveStep(grid, from, to, unbounded)?.cost ?? null) : rulesetStepCost(grid, from, to);
   const best = new Map<string, number>();
   // Terrain costs are small whole numbers, so the cheapest open cell is kept in buckets by cost
   // rather than found by a scan over a board that may be 64 by 64.
@@ -440,7 +509,7 @@ export function rulesetWalkingDistances(
   // Standing next to a goal is where a walk towards it ends, so those cells cost nothing more.
   for (const goal of goals) {
     for (const [dx, dy] of STEPS) {
-      if (!rulesetCellBlocked(grid, goal.x + dx, goal.y + dy)) reach(goal.x + dx, goal.y + dy, 0);
+      if (!solid(goal.x + dx, goal.y + dy)) reach(goal.x + dx, goal.y + dy, 0);
     }
   }
   for (let cost = 0; cost < buckets.length; cost++) {
@@ -451,17 +520,12 @@ export function rulesetWalkingDistances(
       for (const [dx, dy] of STEPS) {
         const x = at.x + dx;
         const y = at.y + dy;
-        if (rulesetCellBlocked(grid, x, y)) continue;
-        if (
-          dx !== 0 &&
-          dy !== 0 &&
-          rulesetCellBlocked(grid, at.x + dx, at.y) &&
-          rulesetCellBlocked(grid, at.x, at.y + dy)
-        ) {
+        if (solid(x, y)) continue;
+        if (dx !== 0 && dy !== 0 && solid(at.x + dx, at.y) && solid(at.x, at.y + dy)) {
           continue;
         }
-        const into = rulesetStepCost(grid, { x, y }, at);
-        if (into !== null) reach(x, y, cost + into);
+        const step = into({ x, y }, at);
+        if (step !== null) reach(x, y, cost + step);
       }
     }
   }

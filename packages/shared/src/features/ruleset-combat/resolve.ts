@@ -51,7 +51,8 @@ import {
   rulesetPoolInitiative,
   throwInitiativeDice,
   rulesetConditionModifiers,
-  rulesetMovementAllowance,
+  grantRulesetMovement,
+  spendRulesetMovement,
   rulesetSaveMode,
   rulesetCombatHide,
   rulesetActionAsUsed,
@@ -63,7 +64,7 @@ import {
   rulesetAreaCells,
   rulesetCellDistance,
   rulesetCellEnterCost,
-  rulesetStepCost,
+  rulesetMoveStep,
   rulesetOpportunityAttack,
   rulesetPositionOf,
   rulesetPushPath,
@@ -1939,7 +1940,7 @@ function destinationOf(option: RulesetCombatOption, to: RulesetCombatCell | unde
  */
 function resolveStand(ctx: RulesetCombatContext, actor: RulesetCombatant, option: RulesetCombatOption): void {
   const cost = option.movementCost ?? rulesetStandCost(actor);
-  actor.movementLeft = Math.max(0, (actor.movementLeft ?? 0) - cost);
+  spendRulesetMovement(actor, cost);
   const condition = rulesetProneCondition(ctx.definition, ctx.combat, actor);
   if (condition) removeCondition(ctx, actor, condition, "expired");
   // Movement spent and nowhere gone: the condition lifting is its own event, and this is the price
@@ -1952,7 +1953,7 @@ function resolveStand(ctx: RulesetCombatContext, actor: RulesetCombatant, option
     to: { ...at },
     path: [],
     cost,
-    left: actor.movementLeft,
+    left: actor.movementLeft ?? 0,
   });
 }
 
@@ -2031,14 +2032,17 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
     rest.shift();
     // What the menu showed for the same step: entering the cell, and climbing up to it (combat C6b). The
     // path came from that menu, so a cliff is never on it; a saved one that has one costs a plain step.
-    spent += grid ? (rulesetStepCost(grid, at, cell) ?? rulesetCellEnterCost(grid, cell.x, cell.y)) : 1;
+    // With other ways of moving (1.108) the same choice the menu made, on what this walk has spent.
+    spent += grid
+      ? (rulesetMoveStep(grid, at, cell, actor, spent)?.cost ?? rulesetCellEnterCost(grid, cell.x, cell.y))
+      : 1;
     walked.push(cell);
     at = cell;
     actor.x = cell.x;
     actor.y = cell.y;
   }
   if (!stopped && !rulesetCombatStanding(actor)) stopped = true;
-  actor.movementLeft = Math.max(0, (actor.movementLeft ?? 0) - spent);
+  spendRulesetMovement(actor, spent);
   ctx.events.push({
     type: "move",
     actorId: actor.id,
@@ -2046,7 +2050,7 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
     to: { ...at },
     path: walked,
     cost: spent,
-    left: actor.movementLeft,
+    left: actor.movementLeft ?? 0,
     ...(stopped ? { stopped: true } : {}),
   });
 }
@@ -2275,10 +2279,7 @@ function resolveStandard(
   else if (action === "dash") {
     actor.flags.dashed = true;
     // The same allowance again, in a fight that has cells to spend it on.
-    if (actor.movement !== undefined) {
-      actor.movementLeft =
-        (actor.movementLeft ?? 0) + rulesetMovementAllowance(ctx.definition, ctx.combat, actor, ctx.state);
-    }
+    if (actor.movement !== undefined) grantRulesetMovement(ctx.definition, ctx.combat, actor, ctx.state);
   } else if (action === "disengage") actor.flags.disengaged = true;
   else if (action === "hide") actor.flags.hidden = true;
   else if (action === "ready") actor.flags.ready = true;

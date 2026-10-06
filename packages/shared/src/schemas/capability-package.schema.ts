@@ -715,7 +715,14 @@ const capabilityPackageManifestBaseSchema = z
 //        against in place of the holder's side of the contest. Not a soft seam: an Engine that
 //        cannot read them refuses the ruleset, so a package that ships them declares 1.98. No
 //        permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 98 } as const);
+// 1.99-1.107: claimed by other lanes, which land before 1.108.
+// 1.108: combatants move other ways than walking. A creature's `speeds` (fly, swim, climb, burrow)
+//        and `hover`, and a sheet's `combat.economy.movementModes`, read as the fight begins. On a
+//        board a flier crosses water and steps of any height, a swimmer crosses water, a climber
+//        takes steps of any height, and a burrower moves as a walk; every cell moved comes off every
+//        way at once. Not a soft seam: an Engine that cannot read the keys refuses the ruleset, so a
+//        package that ships them declares 1.108. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 108 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

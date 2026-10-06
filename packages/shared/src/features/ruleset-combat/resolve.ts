@@ -58,6 +58,7 @@ import {
   rulesetActionAsUsed,
   rulesetImmuneToCondition,
   writeRulesetSheet,
+  type RulesetCombatHealth,
   type RulesetConditionModifier,
 } from "./encounter.js";
 import {
@@ -491,10 +492,19 @@ function markWound(ctx: RulesetCombatContext, target: RulesetCombatant, op: Rule
 /** And the other way: a pool gets the points back, a wound track has ONE mark cleared, lightest
  *  first, by the same rule the player's own sheet clears one. It names no kind, because a heal that
  *  named one would clear only that kind. */
-function writeHealthGain(ctx: RulesetCombatContext, target: RulesetCombatant, amount: number): void {
+function writeHealthGain(
+  ctx: RulesetCombatContext,
+  target: RulesetCombatant,
+  amount: number,
+  /** Health as the fight reads it, whose maximum a level may have halved (1.110). */
+  before?: RulesetCombatHealth,
+): void {
   const health = ctx.combat.health;
   if (!("track" in health)) {
-    writeRulesetSheet(ctx.definition, target, { op: "restore", pool: health.pool, amount });
+    const room = before ? Math.max(0, before.max - before.value) : amount;
+    if (Math.min(amount, room) > 0) {
+      writeRulesetSheet(ctx.definition, target, { op: "restore", pool: health.pool, amount: Math.min(amount, room) });
+    }
     return;
   }
   writeRulesetSheet(ctx.definition, target, {
@@ -513,8 +523,9 @@ function dealHeal(
   const before = healthOf(ctx, target);
   const amount = Math.max(0, Math.floor(input.amount));
   if (amount > 0) {
-    if (target.sheet) writeHealthGain(ctx, target, amount);
-    else if (target.health) target.health.value = Math.min(target.health.max, before.value + amount);
+    // Never past the maximum as it stands, which a level may have halved (1.110).
+    if (target.sheet) writeHealthGain(ctx, target, amount, before);
+    else if (target.health) target.health.value = Math.min(before.max, before.value + amount);
   }
   const after = healthOf(ctx, target);
   ctx.events.push({

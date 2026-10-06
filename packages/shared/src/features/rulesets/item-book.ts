@@ -66,7 +66,8 @@ export interface RulesetItemEffectFact {
   /** Checks, saves, or one ability (its label in `names`); in a fight, attacks, defense (the
    *  ruleset's own word for it in `names`), speed, one of the fight's effects, kinds of harm kept off
    *  (in `names`), or conditions kept off (their labels in `names`). */
-  to: "checks" | "saves" | "ability" | "attacks" | "defense" | "speed" | "effect" | "harm" | "conditions";
+  to:
+    "checks" | "saves" | "ability" | "attacks" | "defense" | "speed" | "health-max" | "effect" | "harm" | "conditions";
   names: string[];
   change:
     | { mode: "advantage" | "disadvantage" }
@@ -576,7 +577,13 @@ export function rulesetItemEffectFacts(
     const dice = modifier.dice ? `${modifier.minus ? "-" : "+"}${modifier.dice}` : "";
     const flat = modifier.flat ? `${modifier.flat > 0 ? "+" : ""}${modifier.flat}` : "";
     if (dice || flat) facts.push({ to, names: narrowed, change: { value: `${dice}${flat}` } });
-    if (modifier.times) facts.push({ to: "speed", names: [], change: { times: modifier.times } });
+    if (modifier.times) {
+      facts.push({
+        to: modifier.to === "health-max" ? "health-max" : "speed",
+        names: [],
+        change: { times: modifier.times },
+      });
+    }
     if (modifier.mode) facts.push({ to, names: narrowed, change: { mode: modifier.mode } });
   }
   if (effect.failsSaves?.length) {

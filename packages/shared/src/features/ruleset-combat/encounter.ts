@@ -128,7 +128,8 @@ export function rulesetCombatHealth(
   // blow has to still be holding what it was before. An opponent without a sheet is written in
   // plain numbers whichever shape the party's health takes; one with a sheet is read below, exactly
   // as a party member is.
-  if (!combatant.sheet) return { ...(combatant.health ?? { value: 0, max: 0, temp: 0 }) };
+  if (!combatant.sheet)
+    return halvedHealth(definition, combat, combatant, { ...(combatant.health ?? { value: 0, max: 0, temp: 0 }) });
   const live = readRulesetLive(definition, combatant.sheet.build, combatant.sheet.live);
   const health = combat.health;
   if ("track" in health) {
@@ -137,7 +138,24 @@ export function rulesetCombatHealth(
     return { value: track.wound.levels.length - track.wound.filled, max: track.wound.levels.length, temp: 0 };
   }
   const pool = live.pools.find((entry) => !entry.listId && entry.key === health.pool);
-  return pool ? { value: pool.value, max: pool.max, temp: pool.temp } : { value: 0, max: 0, temp: 0 };
+  return pool
+    ? halvedHealth(definition, combat, combatant, { value: pool.value, max: pool.max, temp: pool.temp })
+    : { value: 0, max: 0, temp: 0 };
+}
+
+/** Health in points as what the holder suffers halves its maximum (1.110), 5e's fourth level of
+ *  exhaustion: the maximum rounded down, never below 1, and what they have held to it. A wound track
+ *  has boxes rather than a maximum, so nothing halves it. */
+function halvedHealth(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  combatant: RulesetCombatant,
+  health: RulesetCombatHealth,
+): RulesetCombatHealth {
+  const halves = rulesetConditionModifiers(definition, combat, combatant, "health-max").length;
+  if (halves === 0 || health.max <= 0) return health;
+  const max = Math.max(1, Math.floor(health.max / 2 ** halves));
+  return { ...health, max, value: Math.min(health.value, max) };
 }
 
 /**
@@ -332,25 +350,39 @@ export function rulesetCombatHide(
  *  is set only on a level, whose `condition` is then the track's id, or the derived value's where
  *  `derived` is set (the two may share an id). `item` is set on an item's, whose `condition` is then
  *  the stack's name. */
-export type RulesetActiveCondition = RulesetCombatCondition & { level?: number; derived?: true; item?: true };
+export type RulesetActiveCondition = RulesetCombatCondition & {
+  level?: number;
+  derived?: true;
+  item?: true;
+  /** A level that takes its holder out of the fight (1.110). */
+  defeats?: true;
+};
 
-/** The levels of the holder's own tracks, and of their derived values, that are reached. Only a sheet
- *  has either, so a combatant written in plain numbers has none. A derived value is worked out with
- *  the live state as it stands and what they held as the fight began. */
+/** The levels of the holder's own tracks, and of their derived values, that are reached. A sheet has
+ *  both; a combatant written in plain numbers has only the tracks it was given (1.110). A derived
+ *  value is worked out with the live state as it stands and what they held as the fight began. A
+ *  track the holder is immune to has no levels on them at all. */
 function activeLevels(
   definition: RulesetDefinition,
   combat: RulesetCombat,
   combatant: RulesetCombatant,
 ): RulesetActiveCondition[] {
-  if (!combatant.sheet) return [];
-  const { build, live: stored, items } = combatant.sheet;
-  const live = readRulesetLive(definition, build, stored);
+  if (!combat.levels?.length) return [];
+  const sheet = combatant.sheet;
+  if (!sheet && !combatant.tracks) return [];
+  const live = sheet ? readRulesetLive(definition, sheet.build, sheet.live) : undefined;
   let derived: Record<string, number> | undefined;
-  return (combat.levels ?? []).flatMap((level) => {
+  return combat.levels.flatMap((level) => {
+    if (level.derived !== undefined && !sheet) return [];
+    if (level.track !== undefined && rulesetImmuneToCondition(combatant, level.track, definition)) return [];
     const value =
       level.derived !== undefined
-        ? ((derived ??= evaluateRulesetSheetLive(definition, build, stored, items).derived)[level.derived] ?? 0)
-        : (live.tracks.find((track) => track.id === level.track)?.value ?? 0);
+        ? ((derived ??= evaluateRulesetSheetLive(definition, sheet!.build, sheet!.live, sheet!.items).derived)[
+            level.derived
+          ] ?? 0)
+        : live
+          ? (live.tracks.find((track) => track.id === level.track)?.value ?? 0)
+          : (combatant.tracks?.[level.track!] ?? 0);
     if (value < level.at) return [];
     return [
       {
@@ -362,6 +394,7 @@ function activeLevels(
         ...(level.failsSaves ? { failsSaves: level.failsSaves } : {}),
         ...(level.saves ? { saves: level.saves } : {}),
         ...(level.skills ? { skills: level.skills } : {}),
+        ...(level.defeats ? { defeats: true as const } : {}),
       },
     ];
   });
@@ -2101,6 +2134,10 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
         speed: block.speed ?? 0,
         ...(block.speeds ? { speeds: { ...block.speeds } } : {}),
         ...(block.hover ? { hover: true as const } : {}),
+        ...(() => {
+          const tracks = { ...(block.tracks ?? {}), ...("tracks" in entry ? (entry.tracks ?? {}) : {}) };
+          return Object.keys(tracks).length ? { tracks } : {};
+        })(),
         block,
         health: { value: max, max, temp: 0 },
       });
@@ -2147,8 +2184,14 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
     if (economy.budgets.size) refreshRulesetBudgets(combat, combatant.budgets, "turn", economy.budgets);
   }
 
+  const leveled = openLevels(definition, combat, state);
   state.order = rulesetInitiativeOrder(state.combatants);
   state.cursor = rolls;
+  // Whoever a level took out never takes the first turn.
+  state.turn = Math.max(
+    0,
+    state.order.findIndex((id) => !rulesetCombatant(state, id)?.defeated),
+  );
   const crashed = openCrashes(definition, combat, state);
   state.opening = [
     ...refused,
@@ -2168,9 +2211,12 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
           : [];
       }),
     },
+    ...leveled,
     ...crashed,
     { type: "round", round: 1 },
-    ...(state.order[0] ? ([{ type: "turn", actorId: state.order[0], round: 1 }] as RulesetCombatEvent[]) : []),
+    ...(state.order[state.turn]
+      ? ([{ type: "turn", actorId: state.order[state.turn], round: 1 }] as RulesetCombatEvent[])
+      : []),
   ];
   return state;
 }
@@ -2188,6 +2234,41 @@ export function rulesetImmuneToCondition(
     ...(definition ? heldSources(definition, combatant).flatMap((source) => source.conditionImmunities ?? []) : []),
   ];
   return immunities.some((entry) => entry.trim().toLowerCase() === wanted);
+}
+
+/**
+ * What the levels each combatant has reached do as the fight begins (1.110): a halved maximum holds
+ * the health they bring to it, so a blow is taken off what they really have, and a level that
+ * defeats takes them out before anybody moves.
+ */
+function openLevels(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  state: RulesetEncounterState,
+): RulesetCombatEvent[] {
+  if (!combat.levels?.some((level) => level.defeats || level.modifiers?.some((one) => one.to === "health-max"))) {
+    return [];
+  }
+  const events: RulesetCombatEvent[] = [];
+  for (const combatant of state.combatants) {
+    const health = rulesetCombatHealth(definition, combat, combatant);
+    // Only the points they bring are held: the stored maximum stays whole, and is halved as it is read.
+    if (combatant.health) combatant.health.value = Math.min(combatant.health.value, health.max);
+    else if (combatant.sheet && !("track" in combat.health)) {
+      const live = readRulesetLive(definition, combatant.sheet.build, combatant.sheet.live);
+      const pool = live.pools.find((entry) => !entry.listId && entry.key === (combat.health as { pool: string }).pool);
+      if (pool && pool.value > health.max) {
+        writeRulesetSheet(definition, combatant, { op: "spend", pool: pool.key, amount: pool.value - health.max });
+      }
+    }
+    if (rulesetActiveConditions(definition, combat, combatant, state).some((entry) => entry.defeats)) {
+      combatant.down = true;
+      combatant.dying = false;
+      combatant.defeated = true;
+      events.push({ type: "defeated", actorId: combatant.id });
+    }
+  }
+  return events;
 }
 
 /** Where initiative is a number attacks move, whoever opens at the crash line or below starts the

@@ -225,6 +225,7 @@ export function rulesetItemEffectLines(facts: RulesetItemFacts, t: TFunction): s
             : "ui.game.gameinventory.effectImmune";
       return t(key, { names });
     }
+    if (fact.to === "health-max") return t("ui.game.gameinventory.effectHealthMaxHalf");
     if ("times" in fact.change) {
       return t(
         fact.change.times === 0.5 ? "ui.game.gameinventory.effectSpeedHalf" : "ui.game.gameinventory.effectSpeedDouble",

@@ -1580,6 +1580,9 @@ same keys for a d20 system:
     away instead of adding them.
   - `speed`: how far the holder walks, in your own distance unit (`flat`), or `times` 0.5 or 2 for
     half or double, applied after every flat change. Read only on a board, as `speed-zero` is.
+  - `health-max`: `times` 0.5 and nothing else halves the holder's health maximum, rounded down and
+    never below 1 (Capability API 1.110). A health track of boxes has no maximum to halve. Health
+    above the halved maximum is lost as the fight begins, and healing never goes past it.
 
   A modifier to `checks` may name its own `skills`, and one to `saves` its own `saves`, which narrow
   it in place of the condition's. Either may roll twice with `mode: "advantage"` or
@@ -1629,9 +1632,22 @@ same keys for a d20 system:
   "levels": [
     { "track": "exhaustion", "at": 1, "effects": ["own-checks-disadvantage"] },
     { "track": "exhaustion", "at": 2, "modifiers": [{ "to": "speed", "times": 0.5 }] },
-    { "track": "exhaustion", "at": 3, "effects": ["own-attacks-disadvantage", "own-saves-disadvantage"] }
+    { "track": "exhaustion", "at": 3, "effects": ["own-attacks-disadvantage", "own-saves-disadvantage"] },
+    { "track": "exhaustion", "at": 4, "modifiers": [{ "to": "health-max", "times": 0.5 }] },
+    { "track": "exhaustion", "at": 5, "effects": ["speed-zero"] },
+    { "track": "exhaustion", "at": 6, "defeats": true }
   ]
   ```
+
+  `"defeats": true` takes the holder out of the fight for good as it begins, before anybody moves
+  (Capability API 1.110). It and a halved maximum's lost health are settled once, as the fight
+  begins; every other level is read whenever the number it changes is.
+
+  Opponents carry tracks too (Capability API 1.110). One without a sheet starts at the `tracks` it is
+  given, by your track ids: a creature the Game Master proposes may name them
+  (`"tracks": { "exhaustion": 2 }`), and so may a bestiary opponent put into a fight. A creature's
+  `conditionImmunities` may name a track a level reads, and then none of that track's levels touch
+  it, on a sheet or not: 5e's undead and constructs, immune to exhaustion.
 
   Modifiers, levels and the check effects need Capability API 1.45.
 
@@ -1980,7 +1996,7 @@ as a `sheet`, takes `health`, `defense`, `initiativeModifier`, `speed`, `abiliti
   of those item tags is taken as it comes (Capability API 1.55, see
   [Weapons in a fight](#weapons-in-a-fight)), and so is an action whose `damage.qualities` or a catalog
   entry whose `mechanics.qualities` names one (Capability API 1.96). `conditionImmunities` names your
-  own conditions.
+  own conditions, or a track your `combat.levels` read (Capability API 1.110).
 - `tier`: which rung of `combat.threat` it belongs to.
 - `loot` (Capability API 1.63): the id of the loot table a won fight rolls for it (see Loot, above).
 - `traits`: short name and text pairs the Game Master is shown. They are never resolved, so

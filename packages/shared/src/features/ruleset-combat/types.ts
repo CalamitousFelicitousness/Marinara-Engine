@@ -255,7 +255,10 @@ export interface RulesetStatBlock {
   resist?: RulesetCreatureHideEntry[];
   vulnerable?: string[];
   immune?: RulesetCreatureHideEntry[];
+  /** Conditions it shrugs off, and tracks whose levels it never suffers (1.110). */
   conditionImmunities?: string[];
+  /** Where its live tracks stand as the fight begins (1.110). */
+  tracks?: Record<string, number>;
   /** What it soaks in a `dice-pool` fight, for any harm and by kind of the health track. */
   soak?: RulesetCombatSoak;
   /** A spending blow whose dice are below this lands and does nothing. */
@@ -302,7 +305,14 @@ export type RulesetCombatantInput =
     }
   | { id: string; name: string; side: "enemy"; block: RulesetStatBlock }
   /** An opponent out of a bestiary, looked up in the catalogs the encounter was handed. */
-  | { id: string; name: string; side: "enemy"; creature: { catalogId: string; entryId: string } };
+  | {
+      id: string;
+      name: string;
+      side: "enemy";
+      creature: { catalogId: string; entryId: string };
+      /** Where its live tracks stand as the fight begins (1.110), as a bestiary creature has none. */
+      tracks?: Record<string, number>;
+    };
 
 /** One thing a combatant may do, with every number already read off the sheet or the stat block.
  *  Resolved once, when the fight begins: armour and bonuses do not change mid-fight in this kind. */
@@ -594,6 +604,9 @@ export interface RulesetCombatant {
   /** The level a flier is at, by the board's own levels, while it is up above the ground beneath it
    *  (1.109). Absent on the ground. */
   altitude?: number;
+  /** Where a combatant without a sheet stands on the sheet's live tracks, by track id (1.110): the
+   *  levels of `combat.levels` read these as a sheet's are read off its live state. */
+  tracks?: Record<string, number>;
 }
 
 /** The ways of moving besides walking (1.108). */

@@ -7626,6 +7626,7 @@
   "ui.game.gameinventory.effectDisadvantage": "disadvantage",
   "ui.game.gameinventory.effectFailsSaves": "fails saves ({{names}})",
   "ui.game.gameinventory.effectFight": "{{effect}}",
+  "ui.game.gameinventory.effectHealthMaxHalf": "half health maximum",
   "ui.game.gameinventory.effectImmune": "immune to {{names}}",
   "ui.game.gameinventory.effectOnAttacks": "{{change}} on attacks",
   "ui.game.gameinventory.effectOnChecks": "{{change}} on checks",

@@ -728,7 +728,14 @@ const capabilityPackageManifestBaseSchema = z
 //        two combatants, and a flier knocked down, prone or out of speed falls unless it hovers. No
 //        new key, so a soft seam: an Engine before it keeps fliers on the ground. A package that
 //        relies on it declares 1.109. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 109 } as const);
+// 1.110: a level says what 5e's exhaustion does at its worst. A modifier may halve the health
+//        maximum (`{ "to": "health-max", "times": 0.5 }`), and a level that `defeats` takes its holder
+//        out of the fight as it begins. A combatant without a sheet carries live tracks too (`tracks`
+//        on a proposed creature or a bestiary combatant), and a creature's `conditionImmunities` may
+//        name a track some level reads, whose levels it then never suffers. Not a soft seam: an Engine
+//        that cannot read the target, the key or the immunity refuses the ruleset, so a package that
+//        ships them declares 1.110. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 110 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

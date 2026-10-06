@@ -211,6 +211,7 @@ export function rulesetProposedStatBlock(
   creature: RulesetProposedCreature,
 ): RulesetPlainStatBlock | null {
   const block = rulesetStatBlockFromCreature(definition, creature);
+  if (block && creature.tracks && Object.keys(creature.tracks).length) block.tracks = { ...creature.tracks };
   return block && isRulesetPlainStatBlock(block) ? block : null;
 }
 
@@ -513,13 +514,32 @@ export function clampRulesetStatBlock(
   keepKnown("resist");
   keepKnown("vulnerable");
   keepKnown("immune");
+  // A track some level reads may be shrugged off as a condition is (1.110).
+  const leveled = new Set((combat.levels ?? []).flatMap((level) => (level.track ? [level.track] : [])));
   if (block.conditionImmunities) {
-    const kept = block.conditionImmunities.filter((condition) => conditions.has(condition));
+    const kept = block.conditionImmunities.filter((condition) => conditions.has(condition) || leveled.has(condition));
     if (kept.length < block.conditionImmunities.length) {
       adjusted.push("A condition this ruleset does not have was dropped from the immunities.");
     }
     if (kept.length > 0) block.conditionImmunities = kept;
     else delete block.conditionImmunities;
+  }
+  if (block.tracks) {
+    const tracks = new Map(definition.sheet.live.tracks.map((track) => [track.id, track]));
+    const kept = Object.fromEntries(
+      Object.entries(block.tracks).flatMap(([id, value]) => {
+        const track = tracks.get(id);
+        if (!track) return [];
+        // A maximum the sheet works out has no number without a sheet, so only a plain one holds it.
+        const top = typeof track.max === "number" ? track.max : value;
+        return [[id, Math.min(top, Math.max(typeof track.min === "number" ? track.min : 0, value))]];
+      }),
+    );
+    if (Object.keys(kept).length < Object.keys(block.tracks).length) {
+      adjusted.push("A track this ruleset does not have was dropped.");
+    }
+    if (Object.keys(kept).length > 0) block.tracks = kept;
+    else delete block.tracks;
   }
   if (block.saves) {
     const kept = Object.fromEntries(Object.entries(block.saves).filter(([id]) => saves.has(id)));

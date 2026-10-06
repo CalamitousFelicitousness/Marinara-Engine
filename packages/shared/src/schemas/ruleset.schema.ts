@@ -2145,6 +2145,9 @@ const rulesetProposedCreatureBaseSchema = z.preprocess(
       defense: creatureFields.defense.optional(),
       initiativeModifier: creatureFields.initiativeModifier.optional(),
       actions: z.array(creatureActionSchema).max(RULESET_CREATURE_MAX_ACTIONS).default([]),
+      /** Where its live tracks stand as the fight begins, by the sheet's track ids (1.110): a bandit
+       *  two levels into exhaustion. */
+      tracks: z.record(sheetId, z.number().int().min(0).max(1000)).optional(),
       // Declared further down this file, so read lazily.
       sheet: z.lazy(() => rulesetSheetBuildSchema).optional(),
     })
@@ -3255,7 +3258,15 @@ export const RULESET_SAVE_SCOPED_EFFECTS = ["own-saves-advantage", "own-saves-di
 /** The numbers a condition may change, from a closed list. `defense` is what an attack against the
  *  holder has to reach; `attacks`, `saves` and `checks` are the holder's own rolls; `speed` is how far
  *  the holder walks, in the ruleset's own distance unit. */
-export const RULESET_COMBAT_MODIFIER_TARGETS = ["defense", "attacks", "saves", "checks", "speed"] as const;
+/** `health-max` (Capability API 1.110) halves the health maximum, as 5e's fourth level of exhaustion does. */
+export const RULESET_COMBAT_MODIFIER_TARGETS = [
+  "defense",
+  "attacks",
+  "saves",
+  "checks",
+  "speed",
+  "health-max",
+] as const;
 /** The ones that are ROLLED, so dice may be added to them and are rolled every time. */
 export const RULESET_ROLLED_MODIFIER_TARGETS: readonly string[] = ["attacks", "saves", "checks"];
 
@@ -3301,7 +3312,12 @@ const combatModifierSchema = z
       add("dice", `Dice are rolled, so they change ${RULESET_ROLLED_MODIFIER_TARGETS.join(", ")} and nothing else`);
     }
     if (modifier.minus && modifier.dice === undefined) add("minus", '"minus" takes dice away, so it needs "dice"');
-    if (modifier.times !== undefined && modifier.to !== "speed") add("times", '"times" changes speed only');
+    if (modifier.times !== undefined && modifier.to !== "speed" && modifier.to !== "health-max") {
+      add("times", '"times" changes speed and the health maximum only');
+    }
+    if (modifier.to === "health-max" && (modifier.times !== 0.5 || modifier.flat !== undefined)) {
+      add("times", 'The health maximum is only halved: "times": 0.5 and nothing else');
+    }
   });
 
 /** What a condition does to saves has to be about saves: `saves` narrows the save effects and the
@@ -3369,6 +3385,9 @@ const combatLevelSchema = z
     failsSaves: z.array(sheetId).min(1).max(12).optional(),
     saves: z.array(sheetId).min(1).max(12).optional(),
     skills: z.array(sheetId).min(1).max(24).optional(),
+    /** Reaching it takes the holder out of the fight for good (Capability API 1.110): 5e's sixth
+     *  level of exhaustion. */
+    defeats: z.literal(true).optional(),
   })
   .strict()
   .superRefine((entry, ctx) => {
@@ -3388,11 +3407,11 @@ const combatLevelSchema = z
         });
       }
     });
-    if (entry.effects.length === 0 && !entry.modifiers && !entry.failsSaves) {
+    if (entry.effects.length === 0 && !entry.modifiers && !entry.failsSaves && !entry.defeats) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["effects"],
-        message: "A level does something: effects, modifiers or saves it fails",
+        message: "A level does something: effects, modifiers, saves it fails or defeating its holder",
       });
     }
     savesNeedSomethingToNarrow(entry, ctx);
@@ -6742,8 +6761,12 @@ function creatureIssues(
       });
     });
   }
+  // A track some level reads is shrugged off the same way (1.110): 5e's immunity to exhaustion.
+  const leveled = new Set((combat.levels ?? []).flatMap((level) => (level.track ? [level.track] : [])));
   creature.conditionImmunities?.forEach((condition, index) => {
-    if (!conditions.has(condition)) add([...at, "conditionImmunities", index], `Unknown condition "${condition}"`);
+    if (!conditions.has(condition) && !leveled.has(condition)) {
+      add([...at, "conditionImmunities", index], `Unknown condition "${condition}"`);
+    }
   });
   if (creature.hardness !== undefined && !rulesetSpendsInitiative(combat)) {
     add([...at, "hardness"], HARDNESS_NEEDS_SPENDING);
@@ -7066,8 +7089,11 @@ function itemHideIssues(
     });
   }
   const conditions = new Set(definition.sheet.live.conditions.map((condition) => condition.id));
+  const leveled = new Set((definition.combat?.levels ?? []).flatMap((level) => (level.track ? [level.track] : [])));
   effect.conditionImmunities?.forEach((condition, index) => {
-    if (!conditions.has(condition)) add([...at, "conditionImmunities", index], `Unknown condition "${condition}"`);
+    if (!conditions.has(condition) && !leveled.has(condition)) {
+      add([...at, "conditionImmunities", index], `Unknown condition "${condition}"`);
+    }
   });
 }
 

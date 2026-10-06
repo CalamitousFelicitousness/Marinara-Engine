@@ -1258,6 +1258,28 @@ function entriesCarryMoveModes(entries: unknown): boolean {
   );
 }
 
+/** Anything that halves the health maximum (1.110): a new target of the strict modifier, wherever a
+ *  modifier sits (a level, a condition, an item's effect). */
+function carriesHealthMax(value: unknown, depth = 0): boolean {
+  if (depth > 40 || value === null || typeof value !== "object") return false;
+  if (Array.isArray(value)) return value.some((one) => carriesHealthMax(one, depth + 1));
+  const record = value as Record<string, unknown>;
+  if (record.to === "health-max") return true;
+  return Object.values(record).some((one) => carriesHealthMax(one, depth + 1));
+}
+
+/** Creatures immune to a track rather than a condition (1.110): 5e's immunity to exhaustion. */
+function entriesImmuneToTracks(entries: unknown, tracks: ReadonlySet<string>): boolean {
+  return (
+    tracks.size > 0 &&
+    Array.isArray(entries) &&
+    entries.some((entry) => {
+      const immunities = plainRecord(plainRecord(entry)?.creature)?.conditionImmunities;
+      return Array.isArray(immunities) && immunities.some((one) => typeof one === "string" && tracks.has(one));
+    })
+  );
+}
+
 /** Entries a builder step offers only while the sheet says so (1.94): `offeredWhen`, a new key on the
  *  strict entry. */
 function entriesCarryOfferedWhen(entries: unknown): boolean {
@@ -1525,6 +1547,19 @@ export function getCapabilityPackageInstallIssue(
   let carriesMoveModes = false;
   let carriesExclusive = false;
   let carriesSheetBonus = false;
+  let carriesExhaustion = false;
+  // The tracks a level reads and no condition shares a name with: an immunity naming one is new.
+  const conditionIds = new Set(
+    (Array.isArray(plainRecord(plainRecord(plainRecord(ruleset?.sheet)?.live))?.conditions)
+      ? (plainRecord(plainRecord(ruleset?.sheet)?.live)!.conditions as unknown[])
+      : []
+    ).map((condition) => plainRecord(condition)?.id),
+  );
+  const leveledTracks = new Set(
+    (Array.isArray(plainRecord(ruleset?.combat)?.levels) ? (plainRecord(ruleset?.combat)!.levels as unknown[]) : [])
+      .map((level) => plainRecord(level)?.track)
+      .filter((track): track is string => typeof track === "string" && !conditionIds.has(track)),
+  );
   // Every item by "<catalog>/<entry>", inline and in files, and the fakes among them, so a fake whose
   // target is in another catalog file is checked here, where every file can be read.
   const itemsByRef = new Map<string, RulesetCatalogItem>();
@@ -1630,6 +1665,9 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryDamageAlternatives(header.entries)) carriesDamageAlternatives = true;
       if (entriesCarrySizes(header.entries)) carriesSizes = true;
       if (entriesCarryMoveModes(header.entries)) carriesMoveModes = true;
+      if (carriesHealthMax(header.entries) || entriesImmuneToTracks(header.entries, leveledTracks)) {
+        carriesExhaustion = true;
+      }
       if (entriesCarryExclusive(header.entries)) carriesExclusive = true;
       if (entriesCarryToHitSheetBonus(header.entries)) carriesSheetBonus = true;
       collectItems(header.id, header.entries);
@@ -1687,6 +1725,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryDamageAlternatives(fileEntries)) carriesDamageAlternatives = true;
       if (entriesCarrySizes(fileEntries)) carriesSizes = true;
       if (entriesCarryMoveModes(fileEntries)) carriesMoveModes = true;
+      if (carriesHealthMax(fileEntries) || entriesImmuneToTracks(fileEntries, leveledTracks)) carriesExhaustion = true;
       if (entriesCarryExclusive(fileEntries)) carriesExclusive = true;
       if (entriesCarryToHitSheetBonus(fileEntries)) carriesSheetBonus = true;
       collectItems(header.id, fileEntries);
@@ -1985,6 +2024,17 @@ export function getCapabilityPackageInstallIssue(
     (carriesMoveModes || plainRecord(plainRecord(ruleset?.combat)?.economy)?.movementModes !== undefined)
   ) {
     return "A ruleset whose combatants fly, swim, climb or burrow requires schemaVersion 2 and capabilityApi 1.108 or newer";
+  }
+  // Levels that halve the health maximum or defeat, and immunity to a track, 1.110: a new modifier
+  // target and level key, and a track where a condition was the only word an immunity knew.
+  if (
+    !declaresApi(110) &&
+    (carriesExhaustion ||
+      carriesHealthMax(ruleset?.combat) ||
+      (Array.isArray(plainRecord(ruleset?.combat)?.levels) &&
+        (plainRecord(ruleset?.combat)!.levels as unknown[]).some((level) => plainRecord(level)?.defeats !== undefined)))
+  ) {
+    return "A ruleset whose levels halve the health maximum or defeat, or whose creatures are immune to a track, requires schemaVersion 2 and capabilityApi 1.110 or newer";
   }
   // Sizes and escape DCs, 1.98: new keys on the strict combat block, contest, creature and applies.
   if (!declaresApi(98)) {

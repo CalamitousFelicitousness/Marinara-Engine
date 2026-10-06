@@ -279,7 +279,12 @@ try {
     refuses(fiveEText, modifier({ to: "defense", dice: "1d4" }), /Dice are rolled/, "dice on defense");
     refuses(fiveEText, modifier({ to: "speed", dice: "1d4" }), /Dice are rolled/, "dice on speed");
     refuses(fiveEText, modifier({ to: "attacks", flat: 1, minus: true }), /"minus" takes dice away/, "minus, no dice");
-    refuses(fiveEText, modifier({ to: "attacks", times: 2 }), /"times" changes speed only/, "times on attacks");
+    refuses(
+      fiveEText,
+      modifier({ to: "attacks", times: 2 }),
+      /"times" changes speed and the health maximum only/,
+      "times on attacks",
+    );
     refuses(
       fiveEText,
       modifier({ to: "damage", flat: 2 }),

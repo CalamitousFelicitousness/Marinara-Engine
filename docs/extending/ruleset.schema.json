@@ -10329,7 +10329,8 @@
                                   "attacks",
                                   "saves",
                                   "checks",
-                                  "speed"
+                                  "speed",
+                                  "health-max"
                                 ]
                               },
                               "flat": {
@@ -10794,7 +10795,8 @@
                                   "attacks",
                                   "saves",
                                   "checks",
-                                  "speed"
+                                  "speed",
+                                  "health-max"
                                 ]
                               },
                               "flat": {
@@ -11413,7 +11415,8 @@
                                         "attacks",
                                         "saves",
                                         "checks",
-                                        "speed"
+                                        "speed",
+                                        "health-max"
                                       ]
                                     },
                                     "flat": {
@@ -20178,7 +20181,8 @@
                         "attacks",
                         "saves",
                         "checks",
-                        "speed"
+                        "speed",
+                        "health-max"
                       ]
                     },
                     "flat": {
@@ -20803,7 +20807,8 @@
                         "attacks",
                         "saves",
                         "checks",
-                        "speed"
+                        "speed",
+                        "health-max"
                       ]
                     },
                     "flat": {
@@ -21011,6 +21016,10 @@
                 },
                 "minItems": 1,
                 "maxItems": 24
+              },
+              "defeats": {
+                "type": "boolean",
+                "const": true
               },
               "$comment": {}
             },

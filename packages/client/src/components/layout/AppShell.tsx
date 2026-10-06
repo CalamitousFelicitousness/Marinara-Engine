@@ -532,6 +532,7 @@ export function AppShell({
   // width even when the viewport itself is desktop-sized. Switch that pane to the
   // compact chat layout before toolbar controls begin colliding.
   const mainRef = useRef<HTMLElement>(null);
+  const overlayTrackerPanelRef = useRef<HTMLElement>(null);
   const compactWidthRef = useRef(0); // width when we last switched to compact
   const centerCompact = useUIStore((s) => s.centerCompact);
   const setCenterCompact = useUIStore((s) => s.setCenterCompact);
@@ -938,6 +939,13 @@ export function AppShell({
       gameAssetsBrowserOpen ||
       (shellOverlayMode && Boolean(mobileNavigationPanel)));
 
+  // The overlay Tracker Panel hides the chat control that opened it (globals.css), so keyboard focus moves into the panel.
+  useEffect(() => {
+    if (!shellOverlayMode || !trackerPanelVisible) return;
+    if (document.activeElement?.closest('[data-chat-covered="true"]')) {
+      overlayTrackerPanelRef.current?.focus({ preventScroll: true });
+    }
+  }, [shellOverlayMode, trackerPanelVisible]);
   useEffect(() => {
     restoreTrackerPanelOpenForChat(activeChatId);
   }, [activeChatId, restoreTrackerPanelOpenForChat, trackerPanelEnabled]);
@@ -1489,6 +1497,8 @@ export function AppShell({
         <AnimatePresence mode="wait">
           {trackerPanelVisible && (
             <motion.aside
+              ref={overlayTrackerPanelRef}
+              tabIndex={-1}
               key="mobile-tracker"
               initial={{ x: trackerPanelSide === "left" ? "-100%" : "100%" }}
               animate={{ x: 0 }}
@@ -1497,7 +1507,7 @@ export function AppShell({
               data-component="TrackerDataSidebarMobile"
               aria-label={localizeUi("ui.layout.appshell.trackerDataPanel")}
               className={cn(
-                "mari-tracker-panel !fixed bottom-0 z-50 w-screen max-w-none overflow-hidden bg-zinc-950/95 shadow-2xl ring-1 ring-[var(--marinara-app-accent-solid)] backdrop-blur-xl",
+                "mari-tracker-panel !fixed bottom-0 z-50 w-screen max-w-none overflow-hidden bg-zinc-950/95 shadow-2xl outline-none ring-1 ring-[var(--marinara-app-accent-solid)] backdrop-blur-xl",
                 MOBILE_SHELL_PANEL_TOP_CLASS,
                 MOBILE_SHELL_PANEL_BOTTOM_PADDING_CLASS,
                 trackerPanelSide === "left" ? "left-0" : "right-0",

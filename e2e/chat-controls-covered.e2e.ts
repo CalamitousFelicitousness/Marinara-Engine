@@ -83,13 +83,17 @@ async function checkCoveredChat(page: Page, info: TestInfo) {
   const settingsPoint = await center(settingsButton);
   const trackersPoint = await center(trackersButton);
 
-  await trackersButton.click();
+  // From the keyboard: the panel hides its button, so focus moves into the panel and back again on close.
+  await trackersButton.focus();
+  await page.keyboard.press("Enter");
   await expect(panel).toBeVisible();
+  await expect(page.locator('[data-component="TrackerDataSidebarMobile"]')).toBeFocused();
   await expect(chatButtons).toHaveCount(0);
   await expect.poll(() => pressReaches(page, trackersPoint, ".mari-tracker-panel")).toBe(true);
   await expect.poll(() => pressReaches(page, settingsPoint, ".mari-tracker-panel")).toBe(true);
   await panel.getByRole("button", { name: "Close tracker panel", exact: true }).click();
   await expect(trackersButton).toBeVisible();
+  await expect(trackersButton).toBeFocused();
 
   // A pinned window stays open behind other screens, out of sight.
   await settingsButton.click();

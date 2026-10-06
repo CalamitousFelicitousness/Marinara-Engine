@@ -6,6 +6,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [2.5.0]
 
+- Release notes too long for a GitHub release are trimmed at a whole entry and end with a link to the full changelog, so publishing a large release such as this one no longer fails (#7146).
+
 - Added Professor Mari's v2.5.0 What's New with screenshots and recordings of the customizable chat windows and widget styles, Gacha Forge, Quartermaster, Relationship Tracker, Decision models and Advanced Memory. The **Memory Recall** help now says Advanced Recall progress appears in **Agent activity** (#7146).
 - On phones and tablets, Home's browser bar now matches the color of the top bar above it instead of showing as a lighter strip. With reduced motion turned on, theme and accent changes no longer play slow transitions, and dialogs close at once. On phone-width screens in some WebKit browsers, Conversation message buttons such as Regenerate and **Bookmark, pin or note** no longer ignore a press, and Tab reaches them (#7146).
 

@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Game Mode now follows **Settings → Advanced → Request timeouts → Text generation** (`CHAT_GENERATION_TIMEOUT_MS`) when starting a new game and for its other Game Master requests, instead of a fixed 5 minutes. As in chats, it is the longest wait for the model's first output and between outputs, and a reasoning model's thinking counts, so slow models no longer fail at exactly 300 seconds (#7177).
 - On Android/Termux, updating from 2.4.6 no longer leaves image processing broken, and a broken image library can no longer shut down the server when a browser opens Engine (#7173).
 - With **Apply preset colors** on, quoted dialogue in Roleplay and Game uses each character's or persona's own dialogue color again, including italics inside the quote, instead of the chat style's text color. Game Mode speaker names keep their own colors too. Dialogue from characters without their own color still follows the chat style (#7167).
 - Updated the MCP SDK used by Claude agents and the developer MCP tool to 1.32.1, which fixes an advisory where its OAuth client could send credentials to an authorization server chosen by an MCP server.

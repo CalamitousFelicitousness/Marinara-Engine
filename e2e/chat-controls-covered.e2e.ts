@@ -64,7 +64,7 @@ async function snap(page: Page, info: TestInfo, name: string) {
   await page.screenshot({ path: info.outputPath(`${name}.png`), animations: "disabled" });
 }
 
-/** The 856px flow: the Tracker Panel, then the Agents list and an agent's editor, all over the chat. */
+/** The 856px flow: the Tracker Panel, then the Agents list and an agent's editor, all over the chat and a pinned window. */
 async function checkCoveredChat(page: Page, info: TestInfo) {
   const settingsButton = page.locator(".mari-window-bubble[data-chat-settings-button]");
   const trackersButton = page.locator('.mari-window-bubble[data-tracker-panel-toggle="bubble"]');
@@ -91,12 +91,20 @@ async function checkCoveredChat(page: Page, info: TestInfo) {
   await panel.getByRole("button", { name: "Close tracker panel", exact: true }).click();
   await expect(trackersButton).toBeVisible();
 
+  // A pinned window stays open behind other screens, out of sight.
+  await settingsButton.click();
+  const settingsWindow = page.locator('.mari-window[data-window="chat-settings"]');
+  await expect(settingsWindow).toBeVisible();
+  await settingsWindow.locator('[data-window-control="pin"]').click();
+  await expect(settingsWindow).toHaveAttribute("data-pinned", "true");
+
   // Another screen from the top bar, without going Home first.
   await page.locator('[data-tour="panel-agents"]').click();
   const newAgent = page.locator(AGENTS_PANEL).getByRole("button", { name: "New", exact: true });
   await expect(newAgent).toBeVisible();
   await snap(page, info, "agents-list");
   await expect(chatButtons).toHaveCount(0);
+  await expect(settingsWindow).toBeHidden();
   await expect.poll(() => pressReaches(page, trackersPoint, AGENTS_PANEL)).toBe(true);
   await expect.poll(() => pressReaches(page, settingsPoint, AGENTS_PANEL)).toBe(true);
 
@@ -107,6 +115,7 @@ async function checkCoveredChat(page: Page, info: TestInfo) {
   await expect(save).toBeVisible();
   await snap(page, info, "agent-editor");
   await expect(chatButtons).toHaveCount(0);
+  await expect(settingsWindow).toBeHidden();
   for (const point of [settingsPoint, trackersPoint, await center(save), await center(back)]) {
     await expect.poll(() => pressReaches(page, point, '[data-component="MobileDetailSheet"]')).toBe(true);
   }
@@ -120,6 +129,8 @@ async function checkCoveredChat(page: Page, info: TestInfo) {
   await expect(page.locator('[data-component="RightPanelMobile"]')).toHaveCount(0);
   await expect(settingsButton).toBeVisible();
   expect(await center(settingsButton)).toEqual(settingsPoint);
+  await expect(settingsWindow).toBeVisible();
+  await expect(settingsWindow).toHaveAttribute("data-pinned", "true");
 }
 
 test.describe("between phone and desktop widths", () => {

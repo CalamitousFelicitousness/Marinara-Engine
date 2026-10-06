@@ -317,6 +317,19 @@ test.describe("chat control windows on desktop", () => {
       expect(free.x).toBeCloseTo(moved.x + moved.width + 3, 0);
       expect(free.y).toBeCloseTo(moved.y - 4, 0);
 
+      // Dropped onto another bubble it never stacks on it: it lands beside it, the 8px gap away and in line.
+      await dragBubble(page, bubble(page, ASSETS), { x: session.x + 5, y: session.y - 4 }, { hold: true });
+      await expect(page.locator(".mari-window-snap-guide").first()).toBeVisible();
+      await page.mouse.up();
+      const beside = await box(bubble(page, ASSETS));
+      expect(beside.x).toBeCloseTo(session.x + session.width + 8, 0);
+      expect(beside.y).toBeCloseTo(session.y, 0);
+      // The other one stays reachable: a click still opens its window.
+      await bubble(page, SESSION).click();
+      await expect(controlWindow(page, SESSION)).toBeVisible();
+      await controlWindow(page, SESSION).locator('[data-window-control="close"]').click();
+      await expect(controlWindow(page, SESSION)).toHaveCount(0);
+
       // Arrow keys move a focused bubble too (no snapping).
       await bubble(page, VOLUME).focus();
       await page.keyboard.press("ArrowLeft");

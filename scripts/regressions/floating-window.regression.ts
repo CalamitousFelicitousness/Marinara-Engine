@@ -20,6 +20,7 @@ import {
   serializeWindowLayoutSnapshot,
   toWindowLayoutSnapshot,
   clampWindowBubble,
+  dropWindowBubble,
   placeWindowBubbles,
   getBubbleRowSlot,
   getTopRightBubblePoint,
@@ -442,6 +443,68 @@ assert.equal(
   snapBubble({ ...bubbleSize, x: 205, y: 400 }, [anchorBubble, { x: 203, y: 100, width: 32, height: 32 }]).x,
   203,
 );
+// Dropping a bubble (what a drag does) snaps it as above...
+for (const [raw, expected] of [
+  [
+    { x: 134, y: 104 },
+    { x: 140, y: 100 },
+  ],
+  [
+    { x: 103, y: 135 },
+    { x: 100, y: 140 },
+  ],
+] as const) {
+  const dropped = dropWindowBubble(raw, [anchorBubble], bounds, 32);
+  assert.deepEqual(dropped.point, expected);
+  assert.ok(dropped.guides.length > 0, "a snapped drop shows its guides");
+}
+assert.deepEqual(dropWindowBubble({ x: 300, y: 300 }, [anchorBubble], bounds, 32), {
+  point: { x: 300, y: 300 },
+  guides: [],
+});
+// ...but never onto another bubble, which would hide one under the other. Dropped over one, it lands
+// beside it, a gap away and lined up, on the side nearest the drop.
+const sessionBubble = { x: 900, y: 64, width: 32, height: 32 };
+for (const [raw, expected] of [
+  [
+    { x: 905, y: 60 },
+    { x: 940, y: 64 },
+  ],
+  [
+    { x: 892, y: 70 },
+    { x: 860, y: 64 },
+  ],
+  [
+    { x: 903, y: 85 },
+    { x: 900, y: 104 },
+  ],
+] as const) {
+  const dropped = dropWindowBubble(raw, [sessionBubble], bounds, 32);
+  assert.deepEqual(dropped.point, expected, `a bubble dropped at ${raw.x},${raw.y} lands beside the other`);
+  assert.ok(dropped.guides.length > 0, "the guides show the line it keeps there");
+}
+// It also stays off a third bubble and inside the chat: with the right-hand spot taken and no room above
+// the top row, it goes below instead.
+assert.deepEqual(
+  dropWindowBubble({ x: 905, y: 60 }, [sessionBubble, { x: 940, y: 64, width: 32, height: 32 }], bounds, 32).point,
+  { x: 900, y: 104 },
+);
+// No drop near a row of bubbles ever leaves two stacked or overlapping.
+const row = [sessionBubble, { x: 940, y: 64, width: 32, height: 32 }, { x: 900, y: 104, width: 32, height: 32 }];
+for (let x = 850; x <= 1000; x += 3) {
+  for (let y = 56; y <= 160; y += 3) {
+    const { point } = dropWindowBubble({ x, y }, row, bounds, 32);
+    for (const other of row) {
+      assert.ok(
+        point.x + 32 <= other.x ||
+          point.x >= other.x + other.width ||
+          point.y + 32 <= other.y ||
+          point.y >= other.y + other.height,
+        `a bubble dropped at ${x},${y} does not overlap the one at ${other.x},${other.y}`,
+      );
+    }
+  }
+}
 // Bubbles stay on screen; a window opens below its bubble, or above it near the bottom.
 assert.deepEqual(clampWindowBubble({ x: -50, y: 5000 }, bounds), { x: 8, y: 860 });
 

@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Saving a connection change that affects **Long-Term Memory** now waits for the package's index refresh when supported, and reports refresh completion, failure or unavailability separately from the successful save. Unrelated connection and agent edits do not trigger LTM refreshes; older or inactive packages still allow configuration saves (#7042).
+
 - Windows opened from message actions — including **Hide from AI**, **Model Thoughts**, **Peek Prompt**, notes, reactions and confirmations — now follow **Apply preset font**, **Apply preset shape** and **Apply preset colors** on phones and computers (#7144).
 
 - On phones, the **Chat tools** three-dots button, lock and expanded tools now follow your selected chat widget shape, including Dottore's cut corners and custom shapes. Expanded tools stay aligned with the launcher at screen edges and use the same spacing as other snapped buttons. **Echo Chamber** places Dottore's and Mari's ornaments beside its title like other mobile windows, while keeping its movable, resizable window (#7144).

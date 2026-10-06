@@ -2285,6 +2285,93 @@ try {
     await queuedReset?.catch(() => undefined);
   }
 
+  const pauseChat = await chats.create({
+    name: "Initial preparation stays paused",
+    mode: "roleplay",
+    characterIds: [],
+    connectionId: connection!.id,
+  });
+  assert(pauseChat);
+  await chats.createMessagesBatch(pauseChat.id, [
+    { role: "user", content: "An earlier compass promise." },
+    { role: "assistant", content: "The first promise is kept." },
+    { role: "user", content: "SCENE_CHANGE A second compass journey." },
+    { role: "assistant", content: "The second journey continues." },
+    { role: "user", content: "SCENE_CHANGE The present scene." },
+  ]);
+  await memory.updateSettings(pauseChat.id, { enabled: true, summaryBudgetTokens: 512 });
+  let signalPausedSummary!: () => void;
+  let releasePausedSummary!: () => void;
+  const pausedSummaryEntered = new Promise<void>((resolve) => (signalPausedSummary = resolve));
+  const heldPausedSummary = new Promise<void>((resolve) => (releasePausedSummary = resolve));
+  beforeSummary = async () => {
+    beforeSummary = async () => {
+      signalPausedSummary();
+      await heldPausedSummary;
+    };
+  };
+  const initialPreparation = memory.initialize(pauseChat.id);
+  const pausedPreparation = assert.rejects(initialPreparation, /cancel|abort/iu);
+  try {
+    await pausedSummaryEntered;
+    await memory.cancel(pauseChat.id);
+    await pausedPreparation;
+    const keptSummary = (await memory.status(pauseChat.id)).records.find(
+      (record) => record.kind === "scene" && record.content,
+    );
+    assert(keptSummary, "pausing initial setup retains already completed summaries");
+    await chats.createMessage({
+      chatId: pauseChat.id,
+      role: "assistant",
+      content: "A new reply while memory is paused.",
+    });
+    const pausedService = createAdvancedMemoryService(db); // A fresh service reads the persisted pause state.
+    const callsWhilePaused = requests.length;
+    assert.equal(
+      await pausedService.getSceneCheck(pauseChat.id, { force: true }),
+      null,
+      "paused scene checks cannot enter a tracker batch",
+    );
+    await pausedService.checkScenesAfterGeneration(pauseChat.id, { maxRequestInputTokens: 1000 });
+    assert.equal(requests.length, callsWhilePaused, "a new reply cannot restart paid background work while paused");
+    assert.equal((await pausedService.status(pauseChat.id)).job.status, "cancelled");
+    assert.equal((await pausedService.status(pauseChat.id)).job.paused, true);
+    const pausedSource = await chats.listMessages(pauseChat.id);
+    const pausedPrompt = await pausedService.prepare({
+      chatId: pauseChat.id,
+      messages: pausedSource,
+      audienceCharacterIds: [],
+      budgetTokens: 4000,
+      readOnly: true,
+    });
+    assert.equal(
+      pausedPrompt.messageIds.at(-1),
+      pausedSource.at(-1)!.id,
+      "saved-memory reads still support a new reply",
+    );
+    assert.equal(
+      (await pausedService.status(pauseChat.id)).records.find((record) => record.id === keptSummary.id)?.content,
+      keptSummary.content,
+    );
+  } finally {
+    releasePausedSummary();
+    await initialPreparation.catch(() => undefined);
+  }
+  const beforeExplicitResume = requests.length;
+  await memory.initialize(pauseChat.id);
+  assert(
+    requests.slice(beforeExplicitResume).some((request) => request.kind === "summary"),
+    "explicit Resume finishes unfinished summaries",
+  );
+  assert.equal((await memory.status(pauseChat.id)).job.status, "ready");
+  assert.equal((await memory.status(pauseChat.id)).job.paused, false);
+  await memory.cancel(pauseChat.id);
+  await memory.reindex(pauseChat.id);
+  assert.equal((await memory.status(pauseChat.id)).job.paused, false, "explicit reindex resumes processing");
+  await memory.cancel(pauseChat.id);
+  await memory.reset(pauseChat.id);
+  assert.notEqual((await memory.status(pauseChat.id)).job.paused, true, "reset clears the user pause");
+
   const switchChat = await chats.create({
     name: "Normal recall cancels preparation",
     mode: "roleplay",
@@ -2314,6 +2401,40 @@ try {
   await switchApp.register(chatsRoutes, { prefix: "/api/chats" });
   try {
     await switchSummaryEntered;
+    const realUpdate = db.update.bind(db);
+    db.update = ((...args: Parameters<typeof db.update>) => {
+      const builder = realUpdate(...args);
+      const set = builder.set.bind(builder);
+      builder.set = ((values: Record<string, unknown>) => {
+        if (typeof values.metadata === "string" && JSON.parse(values.metadata).advancedMemory?.enabled === false) {
+          throw new Error("Synthetic mode-write failure");
+        }
+        return set(values);
+      }) as typeof builder.set;
+      return builder;
+    }) as typeof db.update;
+    try {
+      const failedSwitch = await switchApp.inject({
+        method: "PATCH",
+        url: `/api/chats/${switchChat.id}/metadata`,
+        payload: { enableMemoryRecall: true },
+      });
+      assert.equal(failedSwitch.statusCode, 500, failedSwitch.body);
+      assert.equal((await memory.status(switchChat.id)).settings.enabled, true);
+      assert.equal(
+        (await memory.status(switchChat.id)).job.status,
+        "running",
+        "a failed normal-mode write must not cancel the still-enabled worker",
+      );
+      await assert.rejects(memory.updateSettings(switchChat.id, { enabled: false }), /Synthetic mode-write failure/u);
+      assert.equal(
+        (await memory.status(switchChat.id)).job.status,
+        "running",
+        "a failed Advanced settings write must also preserve the worker",
+      );
+    } finally {
+      db.update = realUpdate;
+    }
     const switched = await switchApp.inject({
       method: "PATCH",
       url: `/api/chats/${switchChat.id}/metadata`,

@@ -1890,7 +1890,13 @@ export function createChatsStorage(db: DB) {
     async patchMetadata(
       id: string,
       patchOrUpdater: MetadataPatch | MetadataUpdater,
-      opts: { touchUpdatedAt?: boolean; metadataQueueHeld?: boolean; allowRoomKeys?: readonly RoomMetadataKey[] } = {},
+      opts: {
+        touchUpdatedAt?: boolean;
+        metadataQueueHeld?: boolean;
+        allowRoomKeys?: readonly RoomMetadataKey[];
+        /** Synchronous side effects after a successful row write, while the metadata queue is still held. */
+        afterWrite?: (previous: MetadataPatch, saved: MetadataPatch) => void;
+      } = {},
     ) {
       const applyPatch = async () => {
         const existing = await this.getById(id);
@@ -1943,6 +1949,7 @@ export function createChatsStorage(db: DB) {
             ...(opts.touchUpdatedAt !== false && { updatedAt: now() }),
           })
           .where(eq(chats.id, id));
+        opts.afterWrite?.(current, merged);
         return this.getById(id);
       };
       return opts.metadataQueueHeld ? applyPatch() : withChatMetadataPatchQueue(id, applyPatch);

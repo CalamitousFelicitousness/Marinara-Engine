@@ -1437,11 +1437,11 @@ export async function chatsRoutes(app: FastifyInstance) {
     ) {
       return reply.status(400).send({ error: "slurp2ActivityContextEnabled must be a boolean" });
     }
-    const cancelReplacedAdvancedMemory = (freshMeta: Record<string, unknown>) => {
+    const cancelReplacedAdvancedMemory = (previous: Record<string, unknown>, saved: Record<string, unknown>) => {
       if (
         incoming.enableMemoryRecall === true &&
-        !normalizeAdvancedMemorySettings(incoming.advancedMemory).enabled &&
-        normalizeAdvancedMemorySettings(freshMeta.advancedMemory).enabled
+        !normalizeAdvancedMemorySettings(saved.advancedMemory).enabled &&
+        normalizeAdvancedMemorySettings(previous.advancedMemory).enabled
       ) {
         createAdvancedMemoryService(app.db).cancelActiveOperation(req.params.id);
       }
@@ -1450,63 +1450,68 @@ export async function chatsRoutes(app: FastifyInstance) {
       Object.prototype.hasOwnProperty.call(incoming, "hideSummarisedMessages") &&
       typeof incoming.hideSummarisedMessages === "boolean"
     ) {
-      const updated = await storage.patchMetadata(req.params.id, async (freshMeta) => {
-        cancelReplacedAdvancedMemory(freshMeta);
-        const previousHideEnabled = freshMeta.hideSummarisedMessages === true;
-        if (previousHideEnabled === incoming.hideSummarisedMessages) {
-          return incoming;
-        }
-
-        const allMessages = await storage.listMessages(req.params.id);
-        const currentEntries = normalizeChatSummaryEntries(freshMeta.summaryEntries, {
-          legacySummary: typeof freshMeta.summary === "string" ? freshMeta.summary : null,
-        });
-        const now = new Date().toISOString();
-        let nextEntries: ChatSummaryEntry[];
-
-        if (incoming.hideSummarisedMessages) {
-          const tail = resolveRoleplaySummaryTail(freshMeta.summaryTailMessages);
-          nextEntries = [];
-          for (const entry of currentEntries) {
-            if (!entry.enabled || !entry.messageIds?.length) {
-              nextEntries.push(entry);
-              continue;
-            }
-
-            const eligibleToHide = computeSummaryHideIds({
-              messages: allMessages,
-              entryMessageIds: entry.messageIds,
-              tail,
-            });
-            const hiddenMessageIds =
-              eligibleToHide.length > 0 ? await storage.bulkSetHiddenFromAI(req.params.id, eligibleToHide, true) : [];
-            const ownedHiddenMessageIds = Array.from(new Set([...(entry.hiddenMessageIds ?? []), ...hiddenMessageIds]));
-            nextEntries.push(
-              ownedHiddenMessageIds.length > 0
-                ? { ...entry, hiddenMessageIds: ownedHiddenMessageIds, updatedAt: now }
-                : entry,
-            );
+      const updated = await storage.patchMetadata(
+        req.params.id,
+        async (freshMeta) => {
+          const previousHideEnabled = freshMeta.hideSummarisedMessages === true;
+          if (previousHideEnabled === incoming.hideSummarisedMessages) {
+            return incoming;
           }
-        } else {
-          const summaryOwnedHiddenIds = Array.from(
-            new Set(currentEntries.flatMap((entry) => entry.hiddenMessageIds ?? [])),
-          );
-          if (summaryOwnedHiddenIds.length > 0) {
-            await storage.bulkSetHiddenFromAI(req.params.id, summaryOwnedHiddenIds, false);
-          }
-          nextEntries = currentEntries.map((entry) => {
-            if (!entry.hiddenMessageIds?.length) return entry;
-            const { hiddenMessageIds: _hiddenMessageIds, ...rest } = entry;
-            return { ...rest, updatedAt: now };
+
+          const allMessages = await storage.listMessages(req.params.id);
+          const currentEntries = normalizeChatSummaryEntries(freshMeta.summaryEntries, {
+            legacySummary: typeof freshMeta.summary === "string" ? freshMeta.summary : null,
           });
-        }
+          const now = new Date().toISOString();
+          let nextEntries: ChatSummaryEntry[];
 
-        return {
-          ...incoming,
-          summaryEntries: nextEntries,
-          summary: compileChatSummaryEntries(nextEntries),
-        };
-      });
+          if (incoming.hideSummarisedMessages) {
+            const tail = resolveRoleplaySummaryTail(freshMeta.summaryTailMessages);
+            nextEntries = [];
+            for (const entry of currentEntries) {
+              if (!entry.enabled || !entry.messageIds?.length) {
+                nextEntries.push(entry);
+                continue;
+              }
+
+              const eligibleToHide = computeSummaryHideIds({
+                messages: allMessages,
+                entryMessageIds: entry.messageIds,
+                tail,
+              });
+              const hiddenMessageIds =
+                eligibleToHide.length > 0 ? await storage.bulkSetHiddenFromAI(req.params.id, eligibleToHide, true) : [];
+              const ownedHiddenMessageIds = Array.from(
+                new Set([...(entry.hiddenMessageIds ?? []), ...hiddenMessageIds]),
+              );
+              nextEntries.push(
+                ownedHiddenMessageIds.length > 0
+                  ? { ...entry, hiddenMessageIds: ownedHiddenMessageIds, updatedAt: now }
+                  : entry,
+              );
+            }
+          } else {
+            const summaryOwnedHiddenIds = Array.from(
+              new Set(currentEntries.flatMap((entry) => entry.hiddenMessageIds ?? [])),
+            );
+            if (summaryOwnedHiddenIds.length > 0) {
+              await storage.bulkSetHiddenFromAI(req.params.id, summaryOwnedHiddenIds, false);
+            }
+            nextEntries = currentEntries.map((entry) => {
+              if (!entry.hiddenMessageIds?.length) return entry;
+              const { hiddenMessageIds: _hiddenMessageIds, ...rest } = entry;
+              return { ...rest, updatedAt: now };
+            });
+          }
+
+          return {
+            ...incoming,
+            summaryEntries: nextEntries,
+            summary: compileChatSummaryEntries(nextEntries),
+          };
+        },
+        { afterWrite: cancelReplacedAdvancedMemory },
+      );
       return updated ? normalizeChatForResponse(updated) : updated;
     }
     // Rearranging windows or dismissing their hint is a view preference, not new chat activity.
@@ -1514,16 +1519,10 @@ export async function chatsRoutes(app: FastifyInstance) {
     const viewOnly =
       changedKeys.length > 0 &&
       changedKeys.every((key) => key === "windowLayout" || key === "chatSettingsHintDismissed");
-    const updated = await storage.patchMetadata(
-      req.params.id,
-      incoming.enableMemoryRecall === true
-        ? (freshMeta) => {
-            cancelReplacedAdvancedMemory(freshMeta);
-            return incoming;
-          }
-        : incoming,
-      { touchUpdatedAt: !viewOnly },
-    );
+    const updated = await storage.patchMetadata(req.params.id, incoming, {
+      touchUpdatedAt: !viewOnly,
+      afterWrite: cancelReplacedAdvancedMemory,
+    });
     return updated ? normalizeChatForResponse(updated) : updated;
   });
 

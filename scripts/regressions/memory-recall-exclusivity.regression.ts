@@ -178,6 +178,38 @@ try {
   assert.equal(invalidNarrator.statusCode, 400, "re-enabling still validates the narrator");
   assert.deepEqual(await chats.listMessages(chat.id), source, "mode switches preserve the transcript");
   assert.deepEqual(await db.select().from(advancedMemoryRecords), archive, "mode switches preserve prepared memory");
+
+  const anchorChat = await chats.create({
+    name: "Queued anchor validation",
+    mode: "roleplay",
+    characterIds: ["alice"],
+  });
+  assert(anchorChat);
+  await chats.createMessagesBatch(anchorChat.id, [{ role: "user", content: "This anchor will be removed." }]);
+  const [anchor] = await chats.listMessages(anchorChat.id);
+  assert(anchor);
+  let releaseAnchorQueue!: () => void;
+  let signalAnchorQueue!: () => void;
+  const anchorQueueEntered = new Promise<void>((resolve) => (signalAnchorQueue = resolve));
+  const heldAnchorQueue = withChatMetadataPatchQueue(anchorChat.id, async () => {
+    signalAnchorQueue();
+    await new Promise<void>((resolve) => (releaseAnchorQueue = resolve));
+  });
+  await anchorQueueEntered;
+  const queuedEnable = createAdvancedMemoryService(db).updateSettings(anchorChat.id, {
+    enabled: true,
+    knowledgeStarts: { alice: anchor.id },
+  });
+  const rejectedDeletedAnchor = assert.rejects(queuedEnable, /message that no longer exists/u);
+  try {
+    // Let the old pre-queue context read finish, while the metadata writer stays blocked.
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    await chats.removeMessages([anchor.id], anchorChat.id);
+  } finally {
+    releaseAnchorQueue();
+  }
+  await Promise.all([heldAnchorQueue, rejectedDeletedAnchor]);
+  assert.equal((await createAdvancedMemoryService(db).status(anchorChat.id)).settings.enabled, false);
   console.info("Memory Recall mode exclusivity and disable recovery passed.");
 } finally {
   await app.close();

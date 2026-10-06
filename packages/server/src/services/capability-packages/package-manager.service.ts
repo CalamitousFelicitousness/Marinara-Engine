@@ -34,6 +34,8 @@ import {
   rulesetFakeIssue,
   RULESET_DERIVED_MAX_BEFORE_179,
   RULESET_DERIVED_MAX_BEFORE_183,
+  RULESET_DERIVED_MAX_BEFORE_1106,
+  RULESET_BUILDER_STEPS_MAX_BEFORE_1107,
   type RulesetCatalogItem,
 } from "@marinara-engine/shared";
 import { WORLD_SHARE_FILE_MAX_BYTES } from "@marinara-engine/shared";
@@ -1958,8 +1960,30 @@ export function getCapabilityPackageInstallIssue(
   if (!declaresApi(87) && carriesSeveralScaled) {
     return "A ruleset whose catalog entry scales a row beside others of its list requires schemaVersion 2 and capabilityApi 1.87 or newer";
   }
-  // Entries of a catalog to choose, 1.86: a new key on the strict grants and a new step kind.
   const countSteps = plainRecord(plainRecord(ruleset?.sheet)?.builder)?.steps;
+  // Bigger catalog steps and bounded manual base scores, 1.105: an older Engine refused either.
+  const biggerOrBounded =
+    Array.isArray(countSteps) &&
+    countSteps.some((value) => {
+      const step = plainRecord(value);
+      return (
+        (step?.kind === "catalog" &&
+          ((typeof step.min === "number" && step.min > 20) || (typeof step.max === "number" && step.max > 20))) ||
+        (step?.kind === "abilities" && plainRecord(plainRecord(step.methods)?.manual) !== undefined)
+      );
+    });
+  if (!declaresApi(105) && biggerOrBounded) {
+    return "A ruleset whose builder catalog step asks for or takes more than 20 entries, or bounds manual scores, requires schemaVersion 2 and capabilityApi 1.105 or newer";
+  }
+  // More derived values again, 1.106: an older Engine refused a sheet with more than 240.
+  if (!declaresApi(106) && Array.isArray(derivedValues) && derivedValues.length > RULESET_DERIVED_MAX_BEFORE_1106) {
+    return `A ruleset with more than ${RULESET_DERIVED_MAX_BEFORE_1106} derived values requires schemaVersion 2 and capabilityApi 1.106 or newer`;
+  }
+  // More builder steps, 1.107: an older Engine refused a builder with more than 16.
+  if (!declaresApi(107) && Array.isArray(countSteps) && countSteps.length > RULESET_BUILDER_STEPS_MAX_BEFORE_1107) {
+    return `A ruleset with more than ${RULESET_BUILDER_STEPS_MAX_BEFORE_1107} builder steps requires schemaVersion 2 and capabilityApi 1.107 or newer`;
+  }
+  // Entries of a catalog to choose, 1.86: a new key on the strict grants and a new step kind.
   const choosing =
     carriesEntryChoices ||
     (Array.isArray(countSteps) && countSteps.some((step) => plainRecord(step)?.kind === "choices"));

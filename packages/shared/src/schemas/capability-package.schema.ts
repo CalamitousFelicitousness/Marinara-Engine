@@ -709,7 +709,14 @@ const capabilityPackageManifestBaseSchema = z
 // 1.102: a builder fields step may show fields only while the sheet allows (`shownWhen`), and hold
 //        number fields to a combined maximum (`total`). Not a soft seam: an Engine that cannot read
 //        it refuses the file, so a package that ships it declares 1.102. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 102 } as const);
+// 1.105: a builder catalog step may ask for or take up to 40 entries, and `methods.manual` may bound
+//        typed base scores with `{ min, max }`. Not a soft seam: an older Engine refuses the ruleset,
+//        so a package with more than 20 picks or bounded manual scores declares 1.105. No permission.
+// 1.106: a sheet may have up to 400 derived values. Not a soft seam: an older Engine refuses more
+//        than 240, so a package that ships more declares 1.106. No permission.
+// 1.107: a guided builder may have up to 24 steps. Not a soft seam: an older Engine refuses more
+//        than 16, so a package that ships more declares 1.107. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 107 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

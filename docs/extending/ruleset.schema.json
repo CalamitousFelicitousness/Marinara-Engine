@@ -4842,7 +4842,7 @@
               }
             ]
           },
-          "maxItems": 240,
+          "maxItems": 400,
           "default": []
         },
         "lists": {
@@ -6419,13 +6419,13 @@
                       "min": {
                         "type": "integer",
                         "minimum": 0,
-                        "maximum": 20,
+                        "maximum": 40,
                         "default": 1
                       },
                       "max": {
                         "type": "integer",
                         "minimum": 1,
-                        "maximum": 20,
+                        "maximum": 40,
                         "default": 1
                       },
                       "field": {
@@ -7120,8 +7120,31 @@
                             "additionalProperties": false
                           },
                           "manual": {
-                            "type": "boolean",
-                            "const": true
+                            "anyOf": [
+                              {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "min": {
+                                    "type": "integer",
+                                    "minimum": -100
+                                  },
+                                  "max": {
+                                    "type": "integer",
+                                    "maximum": 1000
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "min",
+                                  "max"
+                                ],
+                                "additionalProperties": false
+                              }
+                            ]
                           },
                           "$comment": {}
                         },
@@ -7271,7 +7294,7 @@
                 ]
               },
               "minItems": 1,
-              "maxItems": 16
+              "maxItems": 24
             },
             "tier": {
               "type": "string",

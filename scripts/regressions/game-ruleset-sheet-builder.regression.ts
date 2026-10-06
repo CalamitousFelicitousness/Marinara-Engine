@@ -21,6 +21,7 @@ import {
   parseRulesetDefinition,
   readRulesetBuilderState,
   rulesetBuilderAbilitySlots,
+  rulesetBuilderBaseScores,
   rulesetBuilderCatalogIds,
   rulesetBuilderChoiceKey,
   rulesetBuilderOptions,
@@ -163,6 +164,79 @@ try {
     (definition.catalogs ?? []).map((catalog) => [catalog.id, catalog.entries ?? []]),
   );
   assert.deepEqual(rulesetBuilderCatalogIds(definition), ["races", "classes"]);
+
+  // ── Bigger catalogs and bounded manual scores (1.105) ──
+  const biggerCatalogDoc = variant((doc) => Object.assign(doc.sheet.builder.steps[0], { min: 40, max: 40 }));
+  const biggerCatalog = parsed(biggerCatalogDoc);
+  const biggerStep = biggerCatalog.sheet.builder!.steps[0]!;
+  assert.ok(biggerStep.kind === "catalog");
+  assert.deepEqual(rulesetBuilderStepCount(biggerCatalog, biggerStep), { min: 40, max: 40 });
+  refused((doc) => Object.assign(doc.sheet.builder.steps[0], { min: 41, max: 40 }), /less than or equal to 40/);
+  refused((doc) => (doc.sheet.builder.steps[0].max = 41), /less than or equal to 40/);
+  const manualDoc = variant((doc) => (doc.sheet.builder.steps[4].methods.manual = { min: 8, max: 15 }));
+  const boundedManual = parsed(manualDoc);
+  const typed: RulesetBuilderState = { method: "manual", base: { str: 100, dex: -100, con: 12 } };
+  assert.deepEqual(rulesetBuilderBaseScores(boundedManual, typed), { str: 15, dex: 8, con: 12 });
+  const boundedBuild = applyRulesetBuilder(
+    boundedManual,
+    defaultRulesetSheetBuild(boundedManual),
+    {
+      ...typed,
+      picks: { race: ["dwarf"] },
+    },
+    catalogs,
+  );
+  assert.deepEqual(
+    [boundedBuild.build.abilities.str, boundedBuild.build.abilities.dex, boundedBuild.build.abilities.con],
+    [15, 8, 14],
+    "manual bounds hold the base before grants",
+  );
+  assert.deepEqual(rulesetBuilderBaseScores(definition, typed), typed.base, "manual true keeps its existing behavior");
+  assert.deepEqual(
+    rulesetBuilderBaseScores(boundedManual, { ...typed, method: "pointBuy" }),
+    rulesetBuilderBaseScores(definition, { ...typed, method: "pointBuy" }),
+    "manual bounds do not change point buy",
+  );
+  parsed(variant((doc) => (doc.sheet.builder.steps[4].methods.manual = { min: -100, max: 1000 })));
+  for (const bounds of [
+    { min: -101, max: 15 },
+    { min: 8, max: 1001 },
+    { min: 8.5, max: 15 },
+    { min: 8, max: 15.5 },
+  ]) {
+    refused((doc) => (doc.sheet.builder.steps[4].methods.manual = bounds), /manual/);
+  }
+  refused((doc) => (doc.sheet.builder.steps[4].methods.manual = { min: 16, max: 15 }), /min at most max/);
+
+  // ── More derived values (1.106) and builder steps (1.107) ──
+  const derivedDoc = variant((doc) => {
+    while (doc.sheet.derived.length < 400) {
+      doc.sheet.derived.push({
+        id: `extra_${doc.sheet.derived.length}`,
+        label: "Extra",
+        op: "sum",
+        of: [{ const: 1 }],
+      });
+    }
+  });
+  assert.equal(parsed(derivedDoc).sheet.derived.length, 400);
+  const tooManyDerived = structuredClone(derivedDoc);
+  tooManyDerived.sheet.derived.push({ id: "one_too_many", label: "Extra", op: "sum", of: [{ const: 1 }] });
+  assert.equal(parseRulesetDefinition(tooManyDerived).ok, false, "401 derived values are refused");
+  const moreStepsDoc = variant((doc) => {
+    while (doc.sheet.builder.steps.length < 24) {
+      doc.sheet.builder.steps.push({
+        id: `extra_${doc.sheet.builder.steps.length}`,
+        label: "Extra",
+        kind: "fields",
+        fields: ["level"],
+      });
+    }
+  });
+  assert.equal(parsed(moreStepsDoc).sheet.builder!.steps.length, 24);
+  const tooManySteps = structuredClone(moreStepsDoc);
+  tooManySteps.sheet.builder.steps.push({ id: "one_too_many", label: "Extra", kind: "fields", fields: ["level"] });
+  assert.equal(parseRulesetDefinition(tooManySteps).ok, false, "25 builder steps are refused");
 
   // ── What is refused ──
   refused((doc) => (doc.sheet.builder.steps[0].catalog = "nope"), /No catalog of rows "nope"/);
@@ -1498,6 +1572,35 @@ try {
     assert.match(issue(101, doc) ?? "", /1\.102/);
     assert.equal(issue(102, doc), null);
   }
+  assert.match(issue(104, biggerCatalogDoc) ?? "", /more than 20 entries.*1\.105/);
+  assert.equal(issue(105, biggerCatalogDoc), null);
+  const maxOnly = variant((doc) => (doc.sheet.builder.steps[0].max = 21));
+  assert.match(issue(104, maxOnly) ?? "", /more than 20 entries.*1\.105/);
+  assert.equal(issue(105, maxOnly), null);
+  // Read the raw min independently too, even when import would refuse min above max.
+  const minOnly = variant((doc) => (doc.sheet.builder.steps[0].min = 21));
+  assert.match(issue(104, minOnly) ?? "", /more than 20 entries.*1\.105/);
+  assert.equal(issue(105, minOnly), null);
+  assert.match(issue(104, manualDoc) ?? "", /bounds manual scores.*1\.105/);
+  assert.equal(issue(105, manualDoc), null);
+  assert.match(issue(105, derivedDoc) ?? "", /more than 240 derived values.*1\.106/);
+  assert.equal(issue(106, derivedDoc), null);
+  const oldDerivedLimit = structuredClone(derivedDoc);
+  oldDerivedLimit.sheet.derived.length = 240;
+  assert.equal(issue(105, oldDerivedLimit), null, "240 derived values need no new minor");
+  assert.match(issue(106, moreStepsDoc) ?? "", /more than 16 builder steps.*1\.107/);
+  assert.equal(issue(107, moreStepsDoc), null);
+  const oldStepsLimit = structuredClone(moreStepsDoc);
+  oldStepsLimit.sheet.builder.steps.length = 16;
+  assert.equal(issue(106, oldStepsLimit), null, "16 steps need no new minor");
+  assert.equal(
+    issue(
+      104,
+      variant((doc) => Object.assign(doc.sheet.builder.steps[0], { min: 20, max: 20 })),
+    ),
+    null,
+    "20 picks and manual true need no new minor",
+  );
   const withBuilder = variant((doc) => {
     // Builder alone: classes with plain rows, races without grants.
     doc.catalogs = doc.catalogs.filter((c: { id: string }) => c.id !== "races" && c.id !== "classes");

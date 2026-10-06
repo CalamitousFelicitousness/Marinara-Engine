@@ -610,14 +610,15 @@ export function RulesetSheetBuilder({
                   </div>
                 );
               } else if (method === "manual") {
+                const manual = current.methods.manual;
+                const min = typeof manual === "object" ? manual.min : ability.min;
+                const max = typeof manual === "object" ? manual.max : ability.max;
                 control = (
                   <DraftNumberInput
                     value={base[id] ?? (build.abilities[id] ?? ability.default) - increase}
-                    onCommit={(next) =>
-                      update({ ...state, base: { ...base, [id]: clamp(next, ability.min, ability.max) } })
-                    }
-                    min={ability.min}
-                    max={ability.max}
+                    onCommit={(next) => update({ ...state, base: { ...base, [id]: clamp(next, min, max) } })}
+                    min={min}
+                    max={max}
                     integer
                     ariaLabel={t("ui.rulesets.builder.baseFor", { name: ability.label })}
                     className={`${inputClass} text-center`}

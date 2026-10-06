@@ -8,7 +8,12 @@ for (const theme of ["light", "dark"] as const) {
     request,
   }, testInfo) => {
     let syncedUi = JSON.stringify({ theme, chibiProfessorMariEnabled: false });
-    await seedUIState(page, { theme, hasCompletedOnboarding: true }, "if-missing");
+    // This test is about the background, so keep the first-visit Help overlay (600 ms after opening) from racing its clicks.
+    await seedUIState(
+      page,
+      { theme, hasCompletedOnboarding: true, chatHelpSeenModes: ["conversation", "roleplay", "game"] },
+      "if-missing",
+    );
     await page.route("**/api/app-settings/ui", async (route) => {
       if (route.request().method() === "PUT") syncedUi = route.request().postDataJSON().value;
       await route.fulfill({ json: { value: syncedUi } });

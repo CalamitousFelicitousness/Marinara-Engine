@@ -159,7 +159,7 @@ test("Trackers reopens the selected panel and respects each chat's choice", asyn
     await panel.getByRole("button", { name: "Close tracker panel", exact: true }).click();
     await expect(panel).toHaveCount(0);
     await expect(panelLauncher).toBeVisible();
-    await expect(panelLauncher).toHaveAccessibleName("Open Trackers");
+    await expect(panelLauncher).toHaveAccessibleName("Trackers");
     await expect(classicLauncher).toHaveCount(0);
     await panelLauncher.click();
     await expect(panel).toBeVisible();

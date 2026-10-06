@@ -105,7 +105,7 @@ The **Tracker Panel** is a larger side panel that shows the same tracker data as
 
 To turn it on in a Roleplay chat, open **Chat Settings** and click the **Tracker Panel** button (the die) in its title bar, next to pin and lock. It stays highlighted while the panel is on, and the panel shows beside the chat. Click it again to turn the panel off and hide it. On a computer, the trackers then show in the Trackers window.
 
-On a phone, turning it on puts a Tracker Panel button on the chat that you can drag anywhere. Tap it to open the panel; closing the panel goes back to the button. With the panel off, use the separate **World State** and **Player & Tracker** buttons.
+On a phone or tablet, turning it on puts a Tracker Panel button on the chat that you can drag anywhere. Tap it to open the panel, and tap it again to close it. While the panel or another screen covers the chat, the chat's movable buttons are hidden, and they come back in the same places when you return to the chat. With the panel off, use the separate **World State** and **Player & Tracker** buttons.
 
 The controls in the panel header also let you customize tracker structure:
 

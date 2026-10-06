@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { ReplyToMessageButton } from "./MessageReplyPreview";
 import type { Message, MessageExtra } from "@marinara-engine/shared";
-import type { RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { useTranslation, useTranslation as useUiTranslation } from "react-i18next";
 import { cn } from "../../lib/utils";
 import { MsgAction } from "./ConversationMessageShared";
@@ -92,9 +92,28 @@ export function ConversationMessageActions({
 }: ConversationMessageActionsProps) {
   const { t: localizeUi } = useUiTranslation();
   const { t } = useTranslation();
-  const visible = showActions || forceShowActions;
+  const barRef = useRef<HTMLDivElement>(null);
+  // Keep the bar shown while focus moves from its message into it. WebKit blurs the message first and
+  // then rechecks the target, which :focus-within alone has already hidden, so the click or Tab is lost.
+  const [messageFocused, setMessageFocused] = useState(false);
+  useEffect(() => {
+    const row = barRef.current?.closest<HTMLElement>(".group");
+    if (!row) return;
+    const sync = (event: FocusEvent) =>
+      setMessageFocused(
+        event.type === "focusin" || (event.relatedTarget instanceof Node && row.contains(event.relatedTarget)),
+      );
+    row.addEventListener("focusin", sync);
+    row.addEventListener("focusout", sync);
+    return () => {
+      row.removeEventListener("focusin", sync);
+      row.removeEventListener("focusout", sync);
+    };
+  }, []);
+  const visible = showActions || forceShowActions || messageFocused;
   return (
     <div
+      ref={barRef}
       className={cn(
         "mari-message-actions flex w-full min-w-0 flex-wrap items-center justify-between gap-1 px-1 transition-all md:justify-start md:gap-x-2",
         visible

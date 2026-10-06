@@ -4,6 +4,9 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- A guided builder can ask for up to 40 catalog picks in one step and set bounds for manually typed ability scores (Capability API 1.105).
+- A ruleset sheet can work out up to 400 derived values, for larger character sheets (Capability API 1.106).
+- A guided character builder can have up to 24 steps, for rulesets with more choices to walk through (Capability API 1.107).
 - A ruleset's weapons (and items that roll to hit) can add a bonus **read off the holder's sheet**, `toHit.sheetBonus`, for what a fighter brings to every weapon of a kind: 5e's Archery fighting style, +2 to attacks with ranged weapons. The weapon's facts name it (Capability API 1.90).
 - A ruleset's coins can have a name for one of them, so a price of one penny reads "1 penny" rather than "1 pennies" in markets, purses and item prices (Capability API 1.84).
 - A guided builder step can offer a catalog entry only while the sheet allows it, such as a second class whose prerequisites are met (Capability API 1.94).

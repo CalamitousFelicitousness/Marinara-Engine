@@ -706,7 +706,14 @@ const capabilityPackageManifestBaseSchema = z
 // 1.101: an entry a builder choice offers (`grants.entries.choose`) is held to its `offeredWhen` on the
 //        sheet, as a step's options are. Behaviour only, no new key: a package that relies on it
 //        declares 1.101. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 101 } as const);
+// 1.105: a builder catalog step may ask for or take up to 40 entries, and `methods.manual` may bound
+//        typed base scores with `{ min, max }`. Not a soft seam: an older Engine refuses the ruleset,
+//        so a package with more than 20 picks or bounded manual scores declares 1.105. No permission.
+// 1.106: a sheet may have up to 400 derived values. Not a soft seam: an older Engine refuses more
+//        than 240, so a package that ships more declares 1.106. No permission.
+// 1.107: a guided builder may have up to 24 steps. Not a soft seam: an older Engine refuses more
+//        than 16, so a package that ships more declares 1.107. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 107 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

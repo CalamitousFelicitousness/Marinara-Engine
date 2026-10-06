@@ -580,6 +580,7 @@ export function rulesetBuilderBaseScores(
   const base: Record<string, number> = {};
   if (method === "pointBuy" || method === "manual") {
     const costs = step.methods.pointBuy?.costs;
+    const manual = step.methods.manual;
     const lowest = costs?.[0]?.[0];
     const highest = costs?.[costs.length - 1]?.[0];
     for (const id of ids) {
@@ -587,7 +588,9 @@ export function rulesetBuilderBaseScores(
       if (method === "pointBuy" && lowest !== undefined && highest !== undefined) {
         // A score typed by hand and then bought starts from the nearest score on the table.
         base[id] = typeof value === "number" ? clamp(value, lowest, highest) : lowest;
-      } else if (typeof value === "number") base[id] = value;
+      } else if (typeof value === "number") {
+        base[id] = method === "manual" && typeof manual === "object" ? clamp(value, manual.min, manual.max) : value;
+      }
     }
     return base;
   }

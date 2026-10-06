@@ -3695,6 +3695,23 @@ const combatConditionSchema = z
     whileSourceInSight: z.union([z.literal(true), z.array(combatConditionEffectSchema).min(1).max(12)]).optional(),
     /** It comes off the moment whoever applied it goes down. */
     endsWhenSourceDown: z.boolean().optional(),
+    /** What ends this condition (Capability API 1.120): any damage, or harm from whoever applied
+     *  it or their side. Source-side harm finishes resolving before the condition ends. */
+    endsWhen: z
+      .array(z.enum(["damaged", "harmed-by-source-side"]))
+      .min(1)
+      .max(2)
+      .refine((entries) => new Set(entries).size === entries.length, { message: "Condition endings must be unique" })
+      .optional(),
+    /** Damage above zero repeats the applies' saveEnds with its stored DC (Capability API 1.120).
+     *  A holder with no saveEnds or DC has nothing to roll. */
+    saveWhenDamaged: z.literal(true).optional(),
+    /** Another combatant on the holder's side can spend this budget on their turn to end it
+     *  (Capability API 1.120). Reach is in the ruleset's unit; omitted, it is one cell. */
+    shakeOff: z
+      .object({ budget: sheetId, reach: z.number().finite().gt(0).max(10000).optional() })
+      .strict()
+      .optional(),
     /** What its holder uses out of these catalogs, paid with this budget, may be held over to their
      *  next turn (Capability API 1.115): a die of `sides`, and at `atLeast` or more it waits, to be
      *  completed with the same budget then or lost. 5e's Slow, against a spell cast as an action. */
@@ -6297,6 +6314,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
           issue([...path, "onEnd", "applies", appliedIndex, "condition"], `Unknown condition "${applied.condition}"`);
         }
       });
+      if (entry.shakeOff) checkBudget(entry.shakeOff.budget, [...path, "shakeOff", "budget"]);
       if (entry.delays) {
         checkBudget(entry.delays.budget, [...path, "delays", "budget"]);
         entry.delays.catalogs.forEach((catalogId, catalogIndex) => {

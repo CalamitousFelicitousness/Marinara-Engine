@@ -160,6 +160,8 @@ interface RulesetCombatContext {
    *  systems that keep such a track that is what being taken out IS, so the blow puts them down;
    *  without it a fight on one could never end. Read, and cleared, when the blow is finished. */
   overwhelmed: Set<string>;
+  /** Source-side harm ends conditions only once the harmful step has finished (1.120). */
+  harmEndings: Array<() => void>;
   /** The cell an area was aimed at in this step, which a save against it takes cover from. */
   aimedAt?: RulesetCombatCell;
   /** Whose turn's own start or end is being counted down right now, so a condition left behind in
@@ -186,16 +188,19 @@ function begin(
     },
     events: [],
     overwhelmed: new Set(),
+    harmEndings: [],
   };
   return {
     ctx,
     finish: () => {
+      for (const end of ctx.harmEndings.splice(0)) end();
       let landed = false;
       while (!next.window && next.pendingFalls?.length) {
         const held = next.pendingFalls.shift()!;
         const actor = rulesetCombatant(next, held.actorId);
         const target = rulesetCombatant(next, held.targetId);
         if (actor && target) fall(ctx, actor, target, held.levels);
+        for (const end of ctx.harmEndings.splice(0)) end();
         landed = true;
       }
       if (next.pendingFalls?.length === 0) delete next.pendingFalls;
@@ -435,6 +440,7 @@ function applyDamage(
     ...(input.pool ? { pool: input.pool } : {}),
     ...(input.floor !== undefined ? { floor: input.floor } : {}),
   });
+  ctx.harmEndings.push(endConditionsOnHarm(ctx, target, input.sourceId, dealt));
   return dealt;
 }
 
@@ -1079,7 +1085,17 @@ function removeCondition(
   ctx: RulesetCombatContext,
   target: RulesetCombatant,
   condition: string,
-  reason: "save" | "expired" | "damage" | "concentration" | "revived" | "contest" | "spent" | "recovered",
+  reason:
+    | "save"
+    | "expired"
+    | "damage"
+    | "concentration"
+    | "revived"
+    | "contest"
+    | "spent"
+    | "recovered"
+    | "harmed"
+    | "shaken",
 ): void {
   target.tracked = target.tracked.filter((entry) => entry.condition !== condition);
   if (target.sheet) writeRulesetSheet(ctx.definition, target, { op: "condition", condition, active: false });
@@ -1098,6 +1114,42 @@ function removeCondition(
       if (midTurn && left && left.rounds !== null && !left.clock) left.rounds += 1;
     }
   }
+}
+
+/** Damage ends or tests a condition now; source-side harm waits until the whole step lands (1.120).
+ *  Keep the tracked instance, so a condition applied by this very action is not ended in its place. */
+function endConditionsOnHarm(
+  ctx: RulesetCombatContext,
+  target: RulesetCombatant,
+  sourceId: string | undefined,
+  dealt = 0,
+  harmful = false,
+): () => void {
+  const endings: RulesetTrackedCondition[] = [];
+  const actor = rulesetCombatant(ctx.state, sourceId ?? "");
+  for (const condition of rulesetCombatConditions(ctx.definition, target)) {
+    const rule = ctx.combat.conditions?.find((entry) => entry.condition === condition);
+    if (!rule) continue;
+    const tracked = target.tracked.find((entry) => entry.condition === condition);
+    if (dealt > 0 && rule.endsWhen?.includes("damaged")) {
+      removeCondition(ctx, target, condition, "damage");
+      continue;
+    }
+    if (dealt > 0 && rule.saveWhenDamaged && tracked?.saveEnds && tracked.difficulty !== undefined) {
+      if (rollSave(ctx, target, tracked.saveEnds.save, tracked.difficulty, tracked.source)) {
+        removeCondition(ctx, target, condition, "save");
+        continue;
+      }
+    }
+    if (!(dealt > 0 || harmful) || !rule.endsWhen?.includes("harmed-by-source-side") || !tracked || !actor) continue;
+    const source = rulesetCombatant(ctx.state, tracked.source ?? "");
+    if (source && source.side === actor.side) endings.push(tracked);
+  }
+  return () => {
+    for (const entry of endings) {
+      if (target.tracked.includes(entry)) removeCondition(ctx, target, entry.condition, "harmed");
+    }
+  };
 }
 
 /** Conditions the ruleset says any damage ends. */
@@ -1456,6 +1508,13 @@ export function applyRulesetCombatChoice(
   // The budget goes first: what a turn may hold is not a matter of how the dice fall.
   const budget = option.budget;
   if (budget) spendBudget(ctx, working, budget);
+
+  if (option.shakeOff) {
+    const holder = rulesetCombatant(ctx.state, option.shakeOff.holderId)!;
+    removeCondition(ctx, holder, option.shakeOff.condition, "shaken");
+    noteOutcome(ctx);
+    return finish();
+  }
 
   if (option.id.startsWith("summon:")) {
     const summon = working.summons!.find((entry) => `summon:${entry.actionId}` === option.id)!;
@@ -2880,6 +2939,17 @@ function resolveAction(
   // decides, once every target has been tried, whether the number resets or a miss costs some of it.
   const spends = style?.spends ? { number: spend ?? actor.initiative, landed: false } : null;
   for (const target of targets) {
+    const endHarm = endConditionsOnHarm(
+      ctx,
+      target,
+      actor.id,
+      0,
+      !!(
+        action.harmful ||
+        action.kind === "attack" ||
+        (action.kind === "block" && (action.damage || action.save || action.applies?.length))
+      ),
+    );
     let landed = true;
     let critical = false;
     // Under `dice-pool`, the successes a hit had past the ones it needed: each is one more damage die.
@@ -2888,6 +2958,8 @@ function resolveAction(
     // blow is over, landed or not, so it counts for the blow's damage as well as its roll.
     let used: { mine: RulesetTrackedCondition[]; theirs: RulesetTrackedCondition[] } | null = null;
     const spendUsed = () => {
+      endHarm();
+      for (const end of ctx.harmEndings.splice(0)) end();
       if (!used) return;
       spendOneUse(ctx, actor, used.mine);
       spendOneUse(ctx, target, used.theirs);

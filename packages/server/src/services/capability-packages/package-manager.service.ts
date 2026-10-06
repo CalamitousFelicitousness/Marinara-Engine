@@ -2243,6 +2243,15 @@ export function getCapabilityPackageInstallIssue(
   ) {
     return "A ruleset whose reactions catch a fall requires schemaVersion 2 and capabilityApi 1.119 or newer";
   }
+  // Conditions that end on harm, a new save or an ally's action, 1.120.
+  if (
+    !declaresApi(120) &&
+    ((plainRecord(ruleset?.combat)?.conditions as unknown[] | undefined) ?? []).some((condition) =>
+      ["endsWhen", "saveWhenDamaged", "shakeOff"].some((key) => plainRecord(condition)?.[key] !== undefined),
+    )
+  ) {
+    return "A ruleset whose conditions end on harm, a new save or being shaken out requires schemaVersion 2 and capabilityApi 1.120 or newer";
+  }
   if (carriesCreatureSpellcasting) {
     // The references can only be checked once the catalog files are beside their headers.
     const complete = {

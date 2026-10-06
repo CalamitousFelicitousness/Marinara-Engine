@@ -39,7 +39,7 @@ const { rulesetWindowTargetOf } =
   await import("../../packages/server/src/services/game/ruleset-combat-director.service.js");
 
 try {
-  assert.deepEqual(supportedCapabilityApi, { major: 1, minor: 119 });
+  assert.ok(supportedCapabilityApi.minor >= 120);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",

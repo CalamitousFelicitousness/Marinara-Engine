@@ -1269,6 +1269,7 @@ function mechanicsAction(
   const action: RulesetCombatAction = {
     id: from.id,
     kind: from.kind,
+    ...(mechanics.kind === "attack" || mechanics.kind === "debuff" ? { harmful: true as const } : {}),
     label: from.label,
     budget: from.budget,
     targets: targetsOf(mechanics as RulesetCatalogMechanics),

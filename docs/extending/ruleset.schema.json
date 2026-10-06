@@ -21744,6 +21744,43 @@
               "endsWhenSourceDown": {
                 "type": "boolean"
               },
+              "endsWhen": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "damaged",
+                    "harmed-by-source-side"
+                  ]
+                },
+                "minItems": 1,
+                "maxItems": 2,
+                "uniqueItems": true
+              },
+              "saveWhenDamaged": {
+                "type": "boolean",
+                "const": true
+              },
+              "shakeOff": {
+                "type": "object",
+                "properties": {
+                  "budget": {
+                    "type": "string",
+                    "maxLength": 40,
+                    "pattern": "^[a-z][a-z0-9_]*$"
+                  },
+                  "reach": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 10000
+                  },
+                  "$comment": {}
+                },
+                "required": [
+                  "budget"
+                ],
+                "additionalProperties": false
+              },
               "delays": {
                 "type": "object",
                 "properties": {

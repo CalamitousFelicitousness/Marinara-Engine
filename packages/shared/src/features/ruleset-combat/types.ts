@@ -332,6 +332,8 @@ export type RulesetCombatantInput =
 /** One thing a combatant may do, with every number already read off the sheet or the stat block.
  *  Resolved once, when the fight begins: armour and bonuses do not change mid-fight in this kind. */
 export interface RulesetCombatAction {
+  /** A catalog attack or debuff targets harmfully even if it deals no damage (1.120). */
+  harmful?: true;
   id: string;
   /** `reload` fills a weapon's clip: it has no target and does nothing else. `item` is using an
    *  item the fighter holds. */
@@ -1031,7 +1033,9 @@ export type RulesetCombatEvent =
         | "down"
         | "contest"
         | "spent"
-        | "recovered";
+        | "recovered"
+        | "harmed"
+        | "shaken";
     }
   /** A number that attacks move: what came off it or went on it, why, and what it is now. A style
    *  that takes carries the damage dice that decided it, as a damage event does. */
@@ -1253,6 +1257,8 @@ export type RulesetEncounterOutcome = "ongoing" | "victory" | "defeat";
 /** One legal thing the actor whose turn it is may do right now. Everything a player, an opponent's
  *  own choices and a forecast go through is on this menu: nothing else computes legality. */
 export interface RulesetCombatOption {
+  /** The holder and condition named by an ally's shake-off option (1.120). */
+  shakeOff?: { holderId: string; condition: string; name: string; label: string };
   id: string;
   /** `move` is the one a positioned fight adds: walking, and getting back up. `reload` fills a
    *  weapon's clip. */

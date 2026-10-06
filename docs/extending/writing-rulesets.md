@@ -1531,6 +1531,18 @@ same keys for a d20 system:
     can see it needs. Naming an effect the condition does not have is refused. Without a board there
     is no line to break, so everything counts either way.
   - `endsWhenSourceDown`: it comes off the moment whoever applied it goes down.
+  - Condition endings (Capability API 1.120): Charm Person uses
+    `"endsWhen": ["harmed-by-source-side"]`. Damage above zero from whoever applied it or anyone on
+    their side, or their targeting its holder with an attack, save or harmful condition, ends it
+    after the harmful action resolves in full, even if the attack misses or the save succeeds.
+    Dominate Person uses `"saveWhenDamaged": true`: each amount of damage above zero repeats the
+    applying action's `saveEnds` at its stored DC; success ends it. Without a stored save or DC,
+    nothing is rolled. Hypnotic Pattern uses `"endsWhen": ["damaged"]` and
+    `"shakeOff": { "budget": "action" }`: any damage above zero ends it immediately, or another
+    combatant on the holder's side can spend that budget on their own turn to end it. `shakeOff.reach`
+    is in the ruleset's distance unit and defaults to one cell; without a board no distance is
+    measured. The economy must declare its budget. `endsWhen` has one or two unique entries.
+    These keys leave source-down and concentration endings unchanged.
   - The action economy (Capability API 1.71), as Haste and Slow change it:
     - `budgets`: `[{ "budget": "haste", "flat": 1 }]` gives its holder that many more (or fewer) of a
       turn budget each turn, never below none. Only a budget that refills `per` turn can be changed

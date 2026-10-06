@@ -793,7 +793,9 @@ const capabilityPackageManifestBaseSchema = z
 //        uses. Coven spells need nearby members and share their uses. No permission.
 // 1.119: a reaction on `falls` answers a fall before it lands. A condition's `fallsSafely` keeps its
 //        holder from taking falling damage or being left prone. 5e's Feather Fall. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 119 } as const);
+// 1.120: a condition can end on damage or harm from its source's side, repeat its ending save when
+//        damaged, or let a nearby ally spend a budget to shake its holder out. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 120 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

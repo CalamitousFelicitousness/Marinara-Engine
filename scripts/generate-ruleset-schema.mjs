@@ -185,6 +185,16 @@ function restStepTo(node) {
   ];
 }
 
+// A condition cannot name the same ending twice (1.120).
+function uniqueConditionEndings(node) {
+  if (Array.isArray(node)) return node.forEach(uniqueConditionEndings);
+  if (!node || typeof node !== "object") return;
+  Object.values(node).forEach(uniqueConditionEndings);
+  if (node.type === "object" && node.properties?.condition && node.properties.endsWhen) {
+    node.properties.endsWhen.uniqueItems = true;
+  }
+}
+
 // A condition that lasts until a save needs the save that ends it, or nothing would ever take it
 // off. That is a refinement too, so the editor is told here. The node is found by its shape.
 function requireSaveEndsUntilSave(node) {
@@ -638,6 +648,7 @@ requireOneCatalogSource(schema);
 requireOneEntryContent(schema);
 requireCatalogFeeds(schema);
 requireSaveEndsUntilSave(schema);
+uniqueConditionEndings(schema);
 cancelOnlyWhenAimed(schema);
 modifierSaysSomething(schema);
 creatureActionShape(schema);

@@ -1506,6 +1506,24 @@ export function rulesetCombatOptions(
     };
     if (rulesetOptionTargets(definition, state, actor.id, option).length > 0) options.push(option);
   }
+  for (const holder of state.combatants) {
+    if (holder.id === actor.id || holder.side !== actor.side || holder.defeated) continue;
+    for (const condition of rulesetCombatConditions(definition, holder)) {
+      const shake = combat.conditions?.find((entry) => entry.condition === condition)?.shakeOff;
+      if (!shake || (actor.budgets[shake.budget] ?? 0) < 1) continue;
+      const reach = shake.reach === undefined ? 1 : shake.reach / (combat.distance?.perCell ?? 1);
+      if (positioned(state) && rulesetCombatantDistance(state, actor, holder) > reach) continue;
+      const label = definition.sheet.live.conditions.find((entry) => entry.id === condition)?.label ?? condition;
+      options.push({
+        id: `shake:${condition}@${holder.id}`,
+        kind: "standard",
+        label: `Shake ${holder.name} out of ${label}`,
+        budget: shake.budget,
+        targets: { side: "self", count: 0 },
+        shakeOff: { holderId: holder.id, condition, name: holder.name, label },
+      });
+    }
+  }
   const budget = rulesetStandardBudget(combat);
   for (const action of combat.standard ?? []) {
     if ((actor.budgets[budget] ?? 0) < 1) break;

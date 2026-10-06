@@ -85,6 +85,11 @@ export function rulesetMenuGroups(options: DirectedRulesetOption[] | undefined):
  * implements are the Engine's own closed vocabulary and are named here, as is ending a turn.
  */
 export function rulesetOptionLabel(option: DirectedRulesetOption, t: TFunction): string {
+  if (option.shakeOff)
+    return t("game.combat.ruleset.menu.shakeOff", {
+      name: option.shakeOff.name,
+      condition: option.shakeOff.label,
+    });
   if (option.kind === "end-turn") return t("game.combat.ruleset.menu.endTurn", { defaultValue: option.label });
   // Walking and getting back up are the board's own two moves, named by this Engine for the same
   // reason the standard actions are: the closed list is the Engine's vocabulary, not the file's.

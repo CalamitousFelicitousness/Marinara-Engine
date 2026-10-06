@@ -3549,7 +3549,10 @@ export async function backupRoutes(app: FastifyInstance) {
       for (const dirName of BACKUP_DIRS) {
         const src = resolveBackupDir(dataDir, dirName);
         if (existsSync(src)) {
-          await cp(src, join(backupDir, dirName), { recursive: true });
+          // The writer lease is per-process runtime state (owner.json, plus a live socket on Docker and
+          // Termux that cp cannot copy); a restored copy blocks startup on another host (#6083).
+          const leasePath = dirName === "storage" ? join(src, STORAGE_WRITER_LEASE_FILENAME) : null;
+          await cp(src, join(backupDir, dirName), { recursive: true, filter: (source) => source !== leasePath });
         }
       }
 

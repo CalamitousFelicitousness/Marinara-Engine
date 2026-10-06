@@ -692,6 +692,10 @@ const capabilityPackageManifestBaseSchema = z
 // 1.94: a catalog entry may say when a builder step offers it (`offeredWhen`, a value off the sheet
 //        above 0: a second class whose prerequisites are met). Not a soft seam: an Engine that cannot
 //        read it refuses the catalog, so a package that ships it declares 1.94. No permission.
+// 1.95: a catalog entry of an `exclusive` group is judged by its `offeredWhen` on the sheet without the
+//        step's picks of that group, which picking it drops (a feat in place of an ability score
+//        improvement is not offered on the score that improvement gave). Behaviour only, no new key: a
+//        package that relies on it declares 1.95. No permission.
 // 1.96: harm may name what it carries past a resistance's or an immunity's `except`, as a weapon
 //        item's tags do: `qualities` on a catalog entry's mechanics (a spell) and on a creature
 //        action's damage (a deva's mace), so "resistance to slashing from nonmagical attacks" is

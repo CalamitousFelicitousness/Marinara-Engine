@@ -112,6 +112,10 @@ function filterHas(entry: RulesetCatalogEntry, filterId: string, value: string |
   return Array.isArray(have) ? typeof value === "string" && have.includes(value) : have === value;
 }
 
+/** Set while the builder works out a sheet without one exclusive group's picks (1.95), so the entries
+ *  judged inside it are read off that sheet as it stands and the rule never nests. */
+let judgingWithoutGroups = false;
+
 /** The entries a catalog step offers: its fixed filters, and under `within` only those that name an
  *  entry still picked at the earlier step. */
 export function rulesetBuilderOptions(
@@ -126,6 +130,21 @@ export function rulesetBuilderOptions(
   // Read off the sheet as it stands; an entry without the filter is never held back by it.
   const limit = step.upTo && build ? resolveRulesetValueRef(definition, build, step.upTo.value) : null;
   const parentPicks = step.within ? rulesetBuilderPicks(definition, step.within.step, state, catalogs, build) : null;
+  // An entry of an `exclusive` group is judged on the sheet without the step's picks of that group
+  // (1.95): picking it drops them, so what they gave cannot be what lets it be picked (a feat in place of
+  // an ability score improvement, judged on the scores without that improvement). Worked out once per
+  // group, and without this rule inside, so it never nests.
+  const withoutGroups = new Map<string, RulesetSheetBuild>();
+  const judgedOn = (entry: RulesetCatalogEntry, sheet: RulesetSheetBuild): RulesetSheetBuild => {
+    if (!entry.exclusive || judgingWithoutGroups) return sheet;
+    const group = entry.exclusive;
+    let without = withoutGroups.get(group);
+    if (!without) {
+      without = rulesetBuilderBuildWithoutGroup(definition, step, state, catalogs, sheet, group);
+      withoutGroups.set(group, without);
+    }
+    return without;
+  };
   return entries.filter((entry) => {
     for (const [filterId, value] of Object.entries(step.filters ?? {})) {
       if (!filterHas(entry, filterId, value)) return false;
@@ -135,12 +154,50 @@ export function rulesetBuilderOptions(
       if (typeof at === "number" && at > limit) return false;
     }
     // Offered only while the sheet as it stands says so (1.94): a second class's prerequisites.
-    if (entry.offeredWhen && build && !(resolveRulesetValueRef(definition, build, entry.offeredWhen) > 0)) return false;
+    if (
+      entry.offeredWhen &&
+      build &&
+      !(resolveRulesetValueRef(definition, judgedOn(entry, build), entry.offeredWhen) > 0)
+    )
+      return false;
     if (step.within && parentPicks) {
       if (!parentPicks.some((picked) => filterHas(entry, step.within!.filter, picked.id))) return false;
     }
     return true;
   });
+}
+
+/** The sheet as the builder would leave it without the step's picks of one `exclusive` group (1.95):
+ *  what they wrote taken back, everything else as it was. The sheet itself when none are picked. */
+function rulesetBuilderBuildWithoutGroup(
+  definition: RulesetDefinition,
+  step: StepOf<"catalog">,
+  state: RulesetBuilderState,
+  catalogs: RulesetCatalogEntriesById,
+  build: RulesetSheetBuild,
+  group: string,
+): RulesetSheetBuild {
+  const picks = state.picks?.[step.id] ?? [];
+  const inGroup = new Set(
+    (catalogs[step.catalog] ?? []).filter((each) => each.exclusive === group).map((each) => each.id),
+  );
+  if (!picks.some((id) => inGroup.has(id))) return build;
+  const without: RulesetBuilderState = {
+    ...state,
+    picks: { ...state.picks, [step.id]: picks.filter((id) => !inGroup.has(id)) },
+  };
+  judgingWithoutGroups = true;
+  try {
+    let result = applyRulesetBuilderOnce(definition, build, without, catalogs);
+    for (let pass = 0; pass < 3; pass++) {
+      const again = applyRulesetBuilderOnce(definition, result.build, result.state, catalogs);
+      if (JSON.stringify(again) === JSON.stringify(result)) break;
+      result = again;
+    }
+    return result.build;
+  } finally {
+    judgingWithoutGroups = false;
+  }
 }
 
 /** How many entries a catalog step asks for and at most takes: its `countFrom` read off the sheet as it

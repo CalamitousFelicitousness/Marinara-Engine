@@ -2886,7 +2886,8 @@ const catalogEntrySchema = z
     exclusive: sheetId.optional(),
     /** Read off the sheet as it stands: a builder step offers this entry only while it reads above 0
      *  (Capability API 1.94), as 5e offers a second class only when its prerequisites are met. A pick
-     *  that later reads 0 counts for nothing and is kept. */
+     *  that later reads 0 counts for nothing and is kept. An entry of an `exclusive` group is read on
+     *  the sheet without the step's picks of that group (1.95). */
     offeredWhen: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
   })
   .strict()

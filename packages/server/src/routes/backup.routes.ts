@@ -44,6 +44,7 @@ import { createPromptsStorage } from "../services/storage/prompts.storage.js";
 import { createAgentsStorage } from "../services/storage/agents.storage.js";
 import { createThemesStorage } from "../services/storage/themes.storage.js";
 import { createAppSettingsStorage } from "../services/storage/app-settings.storage.js";
+import { loadFeatureSettings } from "../services/features/feature-settings.js";
 import {
   canReparentFolder,
   isStockMarinaraUniversalPreset,
@@ -1391,6 +1392,12 @@ async function importProfileStorageSnapshot(
       committed = true;
       if ((tableCounts.installed_extensions ?? 0) > 0) {
         await personalServerExtensionRuntime.reloadAll();
+      }
+      if ((tableCounts.app_settings ?? 0) > 0) {
+        // Rows were written raw, so the cached feature switches still hold the pre-import values.
+        await loadFeatureSettings(createAppSettingsStorage(app.db)).catch((error: unknown) =>
+          logger.warn(error, "[backup] Could not reload feature switches after profile import"),
+        );
       }
       return buildProfileImportStats(tableCounts, files);
     } catch (error) {

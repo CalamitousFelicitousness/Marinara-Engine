@@ -657,10 +657,10 @@ function pnpmReadRoots(env: NodeJS.ProcessEnv) {
   for (const dir of (env.PATH ?? "").split(delimiter).filter(Boolean)) {
     const candidate = join(dir, "pnpm");
     if (!existsSync(candidate)) continue;
-    const pkg = dirname(dirname(realpathSync(candidate)));
     try {
+      const pkg = dirname(dirname(realpathSync(candidate)));
       const { name } = JSON.parse(readFileSync(join(pkg, "package.json"), "utf8")) as { name?: unknown };
-      if (name === "pnpm" || name === "@pnpm/exe") roots.push(pkg);
+      if ((name === "pnpm" || name === "@pnpm/exe") && pkg !== "/" && pkg !== homedir()) roots.push(pkg);
     } catch {
       /* not an npm-installed pnpm */
     }

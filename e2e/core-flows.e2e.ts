@@ -10139,11 +10139,16 @@ test("preset import and save-export feedback follow the active accent", async ({
     // read BEFORE the save is triggered: a round trip spent here would come
     // straight out of the window the visibility assertion has to catch it in.
     const expectedEditorAccent = await readScopedCssVariableColor(editor, "--marinara-editor-accent");
-    await exportDialog.getByRole("button", { name: "Save and export", exact: true }).click();
-
     const savedFeedback = editor.getByText("Changes saved", { exact: true });
-    await expect(savedFeedback).toBeVisible();
-    await expect(savedFeedback).toHaveCSS("color", expectedEditorAccent);
+    const saveAndExport = async () => {
+      await exportDialog.getByRole("button", { name: "Save and export", exact: true }).click();
+      await expect(savedFeedback).toBeVisible();
+      await expect(savedFeedback).toHaveCSS("color", expectedEditorAccent);
+    };
+    // Without a share sheet, an iPhone export waits behind a "Your file is ready." toast over the editor
+    // header (#7115). Linux WebKit has no share sheet while macOS WebKit does, so pin that path and save.
+    if (testInfo.project.name === "mobile-webkit") await downloadExport(page, saveAndExport);
+    else await saveAndExport();
     await testInfo.attach(`preset-save-export-accent-${testInfo.project.name}.png`, {
       body: await page.screenshot({ fullPage: true }),
       contentType: "image/png",

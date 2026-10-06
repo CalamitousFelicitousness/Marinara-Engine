@@ -1970,6 +1970,8 @@ as a `sheet`, takes `health`, `defense`, `initiativeModifier`, `speed`, `abiliti
   nothing. Capability API 1.56.
 - `shield: true`: its hands are full, so an action's `twoHanded` alternative does not hold.
   Capability API 1.97.
+- `size`: one of `combat.sizes`, by id, which a contest's `maxSizeAbove` reads (see Sizes and
+  escape DCs). Capability API 1.98.
 - `resist`, `vulnerable`, `immune`: damage types, matched without case, and checked against
   `combat.damageTypes` when you declare any. A `resist` or `immune` entry may also say what gets
   through it, `{ "type": "tearing", "except": ["silver"] }`: a blow from a weapon item carrying one

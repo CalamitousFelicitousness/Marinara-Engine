@@ -1227,6 +1227,26 @@ function entriesCarryDamageAlternatives(entries: unknown): boolean {
   );
 }
 
+/** A creature's size, or a condition that names what escaping it is rolled against (1.98): `size` on
+ *  the strict creature, `escapeDc` on the strict applies of a creature action, an entry's mechanics
+ *  or an item's use. */
+function entriesCarrySizes(entries: unknown): boolean {
+  const escapes = (applies: unknown) =>
+    Array.isArray(applies) && applies.some((entry) => plainRecord(entry)?.escapeDc !== undefined);
+  return (
+    Array.isArray(entries) &&
+    entries.some((entry) => {
+      const record = plainRecord(entry);
+      const creature = plainRecord(record?.creature);
+      if (creature?.size !== undefined) return true;
+      if (escapes(plainRecord(record?.mechanics)?.applies)) return true;
+      if (escapes(plainRecord(plainRecord(record?.item)?.use)?.applies)) return true;
+      const actions = creature?.actions;
+      return Array.isArray(actions) && actions.some((action) => escapes(plainRecord(action)?.applies));
+    })
+  );
+}
+
 /** Entries a builder step offers only while the sheet says so (1.94): `offeredWhen`, a new key on the
  *  strict entry. */
 function entriesCarryOfferedWhen(entries: unknown): boolean {
@@ -1490,6 +1510,7 @@ export function getCapabilityPackageInstallIssue(
   let carriesOfferedWhen = false;
   let carriesBlowQualities = false;
   let carriesDamageAlternatives = false;
+  let carriesSizes = false;
   let carriesExclusive = false;
   let carriesSheetBonus = false;
   // Every item by "<catalog>/<entry>", inline and in files, and the fakes among them, so a fake whose
@@ -1595,6 +1616,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryOfferedWhen(header.entries)) carriesOfferedWhen = true;
       if (entriesCarryBlowQualities(header.entries)) carriesBlowQualities = true;
       if (entriesCarryDamageAlternatives(header.entries)) carriesDamageAlternatives = true;
+      if (entriesCarrySizes(header.entries)) carriesSizes = true;
       if (entriesCarryExclusive(header.entries)) carriesExclusive = true;
       if (entriesCarryToHitSheetBonus(header.entries)) carriesSheetBonus = true;
       collectItems(header.id, header.entries);
@@ -1650,6 +1672,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryOfferedWhen(fileEntries)) carriesOfferedWhen = true;
       if (entriesCarryBlowQualities(fileEntries)) carriesBlowQualities = true;
       if (entriesCarryDamageAlternatives(fileEntries)) carriesDamageAlternatives = true;
+      if (entriesCarrySizes(fileEntries)) carriesSizes = true;
       if (entriesCarryExclusive(fileEntries)) carriesExclusive = true;
       if (entriesCarryToHitSheetBonus(fileEntries)) carriesSheetBonus = true;
       collectItems(header.id, fileEntries);
@@ -1941,6 +1964,18 @@ export function getCapabilityPackageInstallIssue(
   // A catalog entry a builder step offers only while the sheet says so, 1.94: a new key on the strict entry.
   if (!declaresApi(94) && carriesOfferedWhen) {
     return "A ruleset whose catalog entries are offered only while the sheet allows requires schemaVersion 2 and capabilityApi 1.94 or newer";
+  }
+  // Sizes and escape DCs, 1.98: new keys on the strict combat block, contest, creature and applies.
+  if (!declaresApi(98)) {
+    const combat = plainRecord(ruleset?.combat);
+    const contests = combat?.contests;
+    if (
+      carriesSizes ||
+      combat?.sizes !== undefined ||
+      (Array.isArray(contests) && contests.some((contest) => plainRecord(contest)?.maxSizeAbove !== undefined))
+    ) {
+      return "A ruleset whose combatants have sizes or whose holds name an escape DC requires schemaVersion 2 and capabilityApi 1.98 or newer";
+    }
   }
   // A creature attack that deals another amount with both hands or when bloodied, 1.97: new keys on the
   // strict creature damage and the strict creature.

@@ -75,6 +75,9 @@ export interface RulesetCombatApplies {
   duration: "instant" | "until-save" | { rounds: number; at?: "turn-start" };
   saveEnds?: { save: string; at: "turn-end" | "turn-start" };
   endsAfter?: RulesetConditionEnding;
+  /** What breaking free of it is rolled against, in place of the holder's own side of the contest
+   *  (1.98): 5e's "grappled (escape DC 13)". */
+  escapeDc?: number;
 }
 
 /** What takes a condition off after it has been used once: the holder's own next attack roll, the
@@ -235,6 +238,8 @@ export interface RulesetStatBlock {
   speed?: number;
   /** Its hands are full, so a `twoHanded` alternative never holds (1.97). */
   shield?: true;
+  /** One of `combat.sizes`, by id (1.98). */
+  size?: string;
   /** Ability scores by the ruleset's own ability ids. Carried for the Game Master, not resolved. */
   abilities?: Record<string, number>;
   /** Save modifiers by the ruleset's own save ids. A save it does not name reads as zero. */
@@ -420,6 +425,8 @@ export interface RulesetCombatContest {
   ties: "defender" | "attacker";
   /** Aimed only at whoever put this condition on the actor, and offered only while it holds. */
   from?: string;
+  /** Not taken against a target more than this many of `combat.sizes` larger than the actor (1.98). */
+  maxSizeAbove?: number;
   applies?: Array<{ condition: string; rounds?: number }>;
   ends?: Array<{ condition: string; on: "actor" | "target" }>;
   /** How far the loser is pushed straight away, IN CELLS. Read only by a positioned fight. */
@@ -465,6 +472,8 @@ export interface RulesetTrackedCondition {
   /** Who applied it, and whether their concentration is what holds it. */
   source?: string;
   concentration?: boolean;
+  /** What breaking free of it is rolled against, from what applied it (1.98). */
+  escapeDc?: number;
 }
 
 export interface RulesetCombatant {
@@ -525,6 +534,9 @@ export interface RulesetCombatant {
   saves: Record<string, number>;
   /** What this combatant adds in a contest, by check id. Present only when the ruleset has checks. */
   checks?: Record<string, number>;
+  /** Its size, by the id of one of `combat.sizes`, read once as the fight began (1.98). Absent when
+   *  the ruleset has no sizes or nothing says this one's. */
+  size?: string;
   /** What they soak in a `dice-pool` fight, read once as the fight began. Absent when nothing. */
   soak?: RulesetCombatSoak;
   /** Their hardness, read once as the fight began: a spending blow whose dice are below it lands and
@@ -995,7 +1007,11 @@ export type RulesetCombatEvent =
       optionId: string;
       label: string;
       attacker: RulesetContestSide;
+      /** With `escapeDc`, nobody threw for the holder: this side is that number and nothing else. */
       defender: RulesetContestSide;
+      /** Breaking free of a hold that names what escaping it is rolled against (1.98): the actor wins
+       *  on meeting it. */
+      escapeDc?: number;
       winner: "actor" | "target";
     }
   /** Somebody pushed across the board by somebody else. Forced, so it spends nothing of their own

@@ -37,6 +37,7 @@ import {
   rulesetCheckMode,
   rulesetConditionModifiers,
   rulesetDamageInEffect,
+  rulesetSizeRank,
   type RulesetConditionModifier,
   rulesetConditionEconomy,
   rulesetIsAttack,
@@ -668,6 +669,12 @@ export function rulesetContestChance(
   state?: RulesetEncounterState,
 ): number | null {
   const mine = contestTotals(definition, combat, actor, rulesetContestCheck(actor, contest, "attacker"), state);
+  // Breaking free of a hold that names its escape DC is a roll against that number, which the
+  // actor meets to win (1.98).
+  const escapeDc = rulesetEscapeDc(actor, contest);
+  if (mine && escapeDc !== undefined) {
+    return mine.reduce((win, [total, chance]) => (total >= escapeDc ? win + chance : win), 0);
+  }
   const theirs = contestTotals(definition, combat, target, rulesetContestCheck(target, contest, "defender"), state);
   if (!mine || !theirs) return null;
   let win = 0;
@@ -726,6 +733,13 @@ function keptDistribution(count: number, sides: number, mode: RulesetCombatRollM
     below = atMost;
   }
   return kept;
+}
+
+/** What breaking free is rolled against, when what holds the actor names it (1.98). Only a summed
+ *  fight has one: the schema refuses it in a pool fight. */
+export function rulesetEscapeDc(actor: RulesetCombatant, contest: RulesetCombatContest): number | undefined {
+  if (!contest.from) return undefined;
+  return actor.tracked.find((entry) => entry.condition === contest.from)?.escapeDc;
 }
 
 /** Whoever holds this actor by the condition a breaking-free contest names, when they are still in
@@ -842,11 +856,21 @@ export function rulesetOptionTargets(
   // Breaking free is aimed at whoever is holding on, and at nobody else.
   const contest = actionOf(actor, option.id)?.contest;
   const holder = contest?.from ? rulesetContestHolder(state, actor, contest)?.id : undefined;
+  // A grab or a shove is not taken against somebody too much bigger (1.98). Whoever's size nothing
+  // says is never too big.
+  const combat = definition.combat;
+  const actorSize = contest?.maxSizeAbove !== undefined && combat ? rulesetSizeRank(combat, actor) : undefined;
+  const tooBig = (combatant: RulesetCombatant) => {
+    if (actorSize === undefined || !combat) return false;
+    const size = rulesetSizeRank(combat, combatant);
+    return size !== undefined && size - actorSize > contest!.maxSizeAbove!;
+  };
   return (
     state.combatants
       .filter((combatant) => {
         if (combatant.defeated) return false;
         if (contest?.from && combatant.id !== holder) return false;
+        if (tooBig(combatant)) return false;
         // Whoever put a condition on this actor that says they may not be pointed at.
         if (forbidden.has(combatant.id)) return false;
         // Helping yourself is not help.

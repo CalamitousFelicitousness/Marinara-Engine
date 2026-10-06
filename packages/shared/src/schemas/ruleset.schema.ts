@@ -1395,6 +1395,9 @@ const catalogAppliesSchema = z
      *  the next attack roll made against them, or their own next save. Whatever clock it has still
      *  runs beside it, so "on its next attack before the end of its next turn" is both. */
     endsAfter: z.enum(["own-attack", "attacked", "own-save"]).optional(),
+    /** What breaking free of it is rolled against, in place of the holder's own side of the contest
+     *  that breaks free of it (Capability API 1.98): 5e's "the target is grappled (escape DC 13)". */
+    escapeDc: z.number().int().min(1).max(1000).optional(),
   })
   .strict()
   .superRefine((applies, ctx) => {
@@ -2046,6 +2049,9 @@ const creatureFields = {
   /** Its hands are not free: an action's `twoHanded` alternative does not hold (Capability API 1.97),
    *  as a 5e hobgoblin with a shield swings its longsword one-handed. */
   shield: z.literal(true).optional(),
+  /** One of `combat.sizes`, by id (Capability API 1.98). A creature written as a sheet that names one
+   *  is that size whatever its sheet reads. */
+  size: sheetId.optional(),
   /** Damage types, matched without case: half, double, none at all. A resistance or an immunity may
    *  say what gets through it (`{ "type": "cut", "except": ["silver"] }`): a blow from a weapon item
    *  with any of those tags is taken as it comes. */
@@ -3547,7 +3553,7 @@ const combatCheckSchema = z.object({ id: sheetId, label, value: rulesetValueRefS
 /** A CONTEST: both sides throw the fight's own attack dice and add a check, the higher total wins,
  *  and the winner changes what holds the loser or where the loser stands. How grabbing somebody,
  *  shoving them over or away, and breaking free are said, in the ruleset's own words. */
-const combatContestSchema = z
+const combatContestBaseSchema = z
   .object({
     id: sheetId,
     label,
@@ -3564,6 +3570,10 @@ const combatContestSchema = z
     /** Aimed only at whoever put this condition on the actor, and offered only while it holds: how
      *  breaking free is said. */
     from: z.object({ holding: sheetId }).strict().optional(),
+    /** Not taken against a target more than this many of `combat.sizes` larger than the one taking it
+     *  (Capability API 1.98): 5e's grapple and shove are `1`. A combatant whose size nothing says is
+     *  never refused. */
+    maxSizeAbove: z.number().int().min(0).max(9).optional(),
     onWin: z
       .object({
         /** On the loser, with the winner as its source, so a condition that ends when its source goes
@@ -3588,6 +3598,29 @@ const combatContestSchema = z
       .refine((onWin) => !!(onWin.applies || onWin.ends || onWin.push), {
         message: "A contest's onWin applies, ends or pushes something",
       }),
+  })
+  .strict();
+
+/** Named, so the whole definition's inferred type stays short enough for the compiler to write. */
+export type RulesetCombatContestDeclaration = z.infer<typeof combatContestBaseSchema>;
+const combatContestSchema: z.ZodType<RulesetCombatContestDeclaration, z.ZodTypeDef, unknown> = combatContestBaseSchema;
+
+/** How big a combatant is, smallest first (Capability API 1.98). A creature names one by id; a sheet
+ *  reads a number off itself, 1 for the first, which is rounded and held to the list; whoever nothing
+ *  says is `default`, or no size at all. */
+export interface RulesetCombatSizes {
+  order: Array<{ id: string; label: string }>;
+  sheet?: RulesetValueRef;
+  default?: string;
+}
+const combatSizesSchema: z.ZodType<RulesetCombatSizes, z.ZodTypeDef, unknown> = z
+  .object({
+    order: z
+      .array(z.object({ id: sheetId, label }).strict())
+      .min(2)
+      .max(10),
+    sheet: rulesetValueRefSchema.optional(),
+    default: sheetId.optional(),
   })
   .strict();
 
@@ -3884,6 +3917,8 @@ const combatSchema = z
     /** The numbers a contest reads, and the contests a combatant may take. */
     checks: z.array(combatCheckSchema).max(12).optional(),
     contests: z.array(combatContestSchema).max(12).optional(),
+    /** How big a combatant is, smallest first: what a contest's `maxSizeAbove` reads (1.98). */
+    sizes: combatSizesSchema.optional(),
     concentration: combatConcentrationSchema.optional(),
     dying: combatDyingSchema.optional(),
     /** The damage types this system has. Matched without case, so "Fire" and "fire" are one type. */
@@ -5727,6 +5762,9 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         });
       }
       if (contest.from) conditionId(contest.from.holding, [...path, "from", "holding"]);
+      if (contest.maxSizeAbove !== undefined && !combat.sizes) {
+        issue([...path, "maxSizeAbove"], '"maxSizeAbove" reads sizes, so the block declares "sizes" too');
+      }
       contest.onWin.applies?.forEach((entry, entryIndex) => {
         conditionId(entry.condition, [...path, "onWin", "applies", entryIndex, "condition"]);
         // Breaking free of something and putting it on in the same breath says nothing a fight can do.
@@ -5749,6 +5787,14 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         }
       }
     });
+
+    if (combat.sizes) {
+      const sizeIds = unique(combat.sizes.order, at("sizes", "order"), "size");
+      if (combat.sizes.default !== undefined && !sizeIds.has(combat.sizes.default)) {
+        issue(at("sizes", "default"), `Unknown size "${combat.sizes.default}"`);
+      }
+      if (combat.sizes.sheet) checkRef(combat.sizes.sheet, at("sizes", "sheet"), derivedIds);
+    }
 
     combat.attacks?.forEach((source, index) => {
       const path = at("attacks", index);
@@ -6576,6 +6622,23 @@ function poolDieSides(definition: RulesetDefinition): number | undefined {
 /** Everything a creature must satisfy against the ruleset that declares it: every name it carries
  *  is one the `combat` block or the sheet already has. Shared by the inline catalogs in
  *  `ruleset.json` and by a `catalogs/<id>.json` asset, so both are held to one rule. */
+/** An escape DC is what breaking free of a condition is rolled against, so the fight has a contest
+ *  that breaks free of it, and it is a number a summed roll can meet: a pool fight counts successes. */
+function escapeDcIssues(
+  definition: RulesetDefinition,
+  applies: { condition: string; escapeDc?: number },
+  at: (string | number)[],
+  add: (path: (string | number)[], message: string) => void,
+): void {
+  if (applies.escapeDc === undefined) return;
+  const combat = definition.combat;
+  if (!combat?.contests?.some((contest) => contest.from?.holding === applies.condition)) {
+    add([...at, "escapeDc"], `No contest breaks free of "${applies.condition}" for an escape DC to be rolled against`);
+  } else if (combat.kind === "dice-pool") {
+    add([...at, "escapeDc"], 'A "dice-pool" fight counts successes, so it has no escape DC to meet');
+  }
+}
+
 function creatureIssues(
   definition: RulesetDefinition,
   creature: RulesetCreature,
@@ -6613,6 +6676,12 @@ function creatureIssues(
   const checks = new Set((combat.checks ?? []).map((check) => check.id));
   for (const check of Object.keys(creature.checks ?? {})) {
     if (!checks.has(check)) add([...at, "checks", check], `Unknown contest check "${check}"`);
+  }
+  if (creature.size !== undefined) {
+    if (!combat.sizes) add([...at, "size"], "This ruleset declares no sizes for a creature to be");
+    else if (!combat.sizes.order.some((size) => size.id === creature.size)) {
+      add([...at, "size"], `Unknown size "${creature.size}"`);
+    }
   }
   const itemTags = new Set((definition.items?.tags ?? []).map((tag) => tag.id));
   for (const key of ["resist", "vulnerable", "immune"] as const) {
@@ -6715,6 +6784,7 @@ function creatureIssues(
     action.applies?.forEach((applies, appliesIndex) => {
       const where = [...path, "applies", appliesIndex];
       if (!conditions.has(applies.condition)) add([...where, "condition"], `Unknown condition "${applies.condition}"`);
+      escapeDcIssues(definition, applies, where, add);
       if (applies.saveEnds && !saves.has(applies.saveEnds.save)) {
         add([...where, "saveEnds", "save"], `Unknown save "${applies.saveEnds.save}"`);
       }
@@ -7023,6 +7093,7 @@ function useIssues(
     if (!conditions.has(applies.condition)) {
       add([...at, "applies", index, "condition"], `Unknown condition "${applies.condition}"`);
     }
+    escapeDcIssues(definition, applies, [...at, "applies", index], add);
     if (applies.saveEnds && !saves.has(applies.saveEnds.save)) {
       add([...at, "applies", index, "saveEnds", "save"], `Unknown save "${applies.saveEnds.save}"`);
     }
@@ -7616,6 +7687,7 @@ export function rulesetCatalogEntryIssues(
       if (!liveConditions.has(applies.condition)) {
         add([...path, "condition"], `Unknown condition "${applies.condition}"`);
       }
+      escapeDcIssues(definition, applies, path, add);
       if (applies.saveEnds && !saves.has(applies.saveEnds.save)) {
         add([...path, "saveEnds", "save"], `Unknown save "${applies.saveEnds.save}"`);
       }

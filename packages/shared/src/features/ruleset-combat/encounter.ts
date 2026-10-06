@@ -138,6 +138,31 @@ export function rulesetCombatHealth(
 }
 
 /**
+ * Where a combatant's size sits among `combat.sizes`, 0 for the smallest (Capability API 1.98), or
+ * undefined when the ruleset has no sizes or nothing says this one's.
+ */
+export function rulesetSizeRank(combat: RulesetCombat, combatant: RulesetCombatant): number | undefined {
+  if (!combat.sizes || combatant.size === undefined) return undefined;
+  const rank = combat.sizes.order.findIndex((size) => size.id === combatant.size);
+  return rank < 0 ? undefined : rank;
+}
+
+/** A size read off a sheet: 1 is the first of `combat.sizes`, rounded and held to the list. */
+function sheetSize(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  build: RulesetSheetBuild,
+  evaluated: Parameters<typeof resolveRulesetValueRef>[3],
+): string | undefined {
+  const sizes = combat.sizes;
+  if (!sizes) return undefined;
+  if (!sizes.sheet) return sizes.default;
+  const read = Math.round(resolveRulesetValueRef(definition, build, sizes.sheet, evaluated));
+  if (!Number.isFinite(read) || read < 1) return sizes.default;
+  return sizes.order[Math.min(read, sizes.order.length) - 1]!.id;
+}
+
+/**
  * The damage an action deals as it stands now (Capability API 1.97). A creature's action may name
  * amounts it deals instead of its first while something holds, the first that holds winning: a
  * `twoHanded` one unless the creature carries a shield, a `selfHealthAtMost` one while its health is
@@ -1675,6 +1700,10 @@ function sheetCombatant(
     })(),
     saves,
     ...(checks ? { checks } : {}),
+    ...(() => {
+      const size = sheetSize(definition, combat, build, evaluated);
+      return size !== undefined ? { size } : {};
+    })(),
     ...(soak ? { soak } : {}),
     ...(hardness > 0 ? { hardness } : {}),
     ...(limits ? { limits } : {}),
@@ -1719,6 +1748,7 @@ function contestActions(
         defender: [...contest.defender.checks],
         ties: contest.ties,
         ...(contest.from ? { from: contest.from.holding } : {}),
+        ...(contest.maxSizeAbove !== undefined ? { maxSizeAbove: contest.maxSizeAbove } : {}),
         ...(contest.onWin.applies ? { applies: contest.onWin.applies.map((entry) => ({ ...entry })) } : {}),
         ...(contest.onWin.ends ? { ends: contest.onWin.ends.map((entry) => ({ ...entry })) } : {}),
         ...(contest.onWin.push !== undefined && perCell !== undefined
@@ -1923,6 +1953,8 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
           combatant.riders = [...(combatant.riders ?? []), ...block.riders.map((rider) => ({ ...rider }))];
         }
         combatant.block = block;
+        // A creature that names its size is that size, whatever its sheet reads.
+        if (block.size !== undefined && combat.sizes) combatant.size = block.size;
         if ("creature" in entry) combatant.creature = { ...entry.creature };
         // A sheet that gives it no health at all is a creature that could never be hurt or ever
         // stand: left out, and the opening says why, rather than walked in as something unkillable.
@@ -1991,6 +2023,10 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
             }
           : {}),
         ...(block.hardness && rulesetCombatIsPool(combat) ? { hardness: block.hardness } : {}),
+        ...(() => {
+          const size = combat.sizes ? (block.size ?? combat.sizes.default) : undefined;
+          return size !== undefined ? { size } : {};
+        })(),
         speed: block.speed ?? 0,
         block,
         health: { value: max, max, temp: 0 },

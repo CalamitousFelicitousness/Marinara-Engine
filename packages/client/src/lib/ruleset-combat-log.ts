@@ -409,6 +409,17 @@ export function rulesetCombatEventLine(
             ),
       });
       const attacker = side(event.attacker);
+      // Breaking free of a hold that names its escape DC: a roll against that number, nobody else's.
+      if (event.escapeDc !== undefined) {
+        return key(event.winner === "actor" ? "contestEscapeWon" : "contestEscapeLost", {
+          actor: names.combatant(event.actorId),
+          target: names.combatant(event.targetId),
+          label: event.label,
+          roll: attacker.roll,
+          check: attacker.check,
+          dc: event.escapeDc,
+        });
+      }
       const defender = side(event.defender);
       return key(event.winner === "actor" ? "contestWon" : "contestLost", {
         actor: names.combatant(event.actorId),

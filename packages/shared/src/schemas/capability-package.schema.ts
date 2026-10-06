@@ -708,7 +708,14 @@ const capabilityPackageManifestBaseSchema = z
 //        longsword on a stat block and a swarm at half its hit points. Not a soft seam: an Engine
 //        that cannot read them refuses the catalog, so a package that ships them declares 1.97. No
 //        permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 97 } as const);
+// 1.98: combatants have a size. `combat.sizes` lists them smallest first (with a value off the sheet
+//        and a default), a creature names its own `size`, and a contest's `maxSizeAbove` is not
+//        taken against a target that many sizes larger or more (5e's grapple and shove, `1`). A
+//        condition an action applies may name its `escapeDc`, which breaking free of it is rolled
+//        against in place of the holder's side of the contest. Not a soft seam: an Engine that
+//        cannot read them refuses the ruleset, so a package that ships them declares 1.98. No
+//        permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 98 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

@@ -81,6 +81,7 @@ import {
   rulesetAttackMode,
   rulesetCombatOptions,
   rulesetContestCheck,
+  rulesetEscapeDc,
   rulesetCostSteps,
   rulesetCriticalFromAdjacent,
   rulesetCoverBonus,
@@ -984,6 +985,7 @@ function applyConditionId(
     ...(extra.difficulty !== undefined ? { difficulty: extra.difficulty } : {}),
     ...(extra.sourceId ? { source: extra.sourceId } : {}),
     ...(extra.concentration ? { concentration: true } : {}),
+    ...(applies.escapeDc !== undefined ? { escapeDc: applies.escapeDc } : {}),
   });
   ctx.events.push({ type: "condition", targetId: target.id, condition, active: true, reason: "applied" });
 }
@@ -1527,11 +1529,17 @@ function resolveContest(
     };
   };
   const mine = rulesetContestCheck(actor, contest, "attacker");
-  const theirs = rulesetContestCheck(target, contest, "defender");
   const attacker = thrown(actor, mine.check, mine.modifier);
-  const defender = thrown(target, theirs.check, theirs.modifier);
+  // Breaking free of a hold that names its escape DC (1.98): nobody throws for the holder, and the
+  // actor wins on meeting the number.
+  const escapeDc = rulesetEscapeDc(actor, contest);
+  const theirs = escapeDc === undefined ? rulesetContestCheck(target, contest, "defender") : null;
+  const defender = theirs
+    ? thrown(target, theirs.check, theirs.modifier)
+    : { check: "", rolls: [], modifier: escapeDc!, total: escapeDc! };
   const margin = attacker.total - defender.total;
-  const winner = margin > 0 || (margin === 0 && contest.ties === "attacker") ? "actor" : "target";
+  const winner =
+    margin > 0 || (margin === 0 && (escapeDc !== undefined || contest.ties === "attacker")) ? "actor" : "target";
   ctx.events.push({
     type: "contest",
     actorId: actor.id,
@@ -1540,6 +1548,7 @@ function resolveContest(
     label: action.label,
     attacker,
     defender,
+    ...(escapeDc !== undefined ? { escapeDc } : {}),
     winner,
   });
   if (winner !== "actor") return;

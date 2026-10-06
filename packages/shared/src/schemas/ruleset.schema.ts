@@ -2129,7 +2129,7 @@ export const RULESET_PROPOSED_SHEET_REPLACES: readonly string[] = CREATURE_SHEET
  *  has slots and spells. The sheet is read leniently, the way a character's is, because it is a
  *  model's writing rather than an author's: what the ruleset does not have is dropped by name later,
  *  against the definition this file cannot see. */
-export const rulesetProposedCreatureSchema = z.preprocess(
+const rulesetProposedCreatureBaseSchema = z.preprocess(
   (value) => {
     if (!value || typeof value !== "object" || Array.isArray(value)) return value;
     const creature = value as Record<string, unknown>;
@@ -2169,6 +2169,12 @@ export const rulesetProposedCreatureSchema = z.preprocess(
       }
     }),
 );
+
+/** A creature the Game Master invents for one fight: the plain block, or a sheet in the ruleset's terms.
+ *  Named, so a schema built around it stays short enough for the compiler to write. */
+export type RulesetProposedCreature = z.infer<typeof rulesetProposedCreatureBaseSchema>;
+export const rulesetProposedCreatureSchema: z.ZodType<RulesetProposedCreature, z.ZodTypeDef, unknown> =
+  rulesetProposedCreatureBaseSchema;
 
 /** A creature a bestiary ships: the plain block, or a `sheet` in the ruleset's own terms. With a
  *  sheet it is built the way a party member is, so the numbers the sheet gives are not also given
@@ -6471,8 +6477,6 @@ export type RulesetCatalogMechanics = z.infer<typeof catalogMechanicsSchema>;
 export type RulesetCatalogHolds = RulesetCatalogHeader["holds"];
 /** One opponent, exactly as a bestiary entry writes it. */
 export type RulesetCreature = z.infer<typeof rulesetCreatureSchema>;
-/** A creature the Game Master invents for one fight: the plain block, or a sheet in the ruleset's terms. */
-export type RulesetProposedCreature = z.infer<typeof rulesetProposedCreatureSchema>;
 export type RulesetCreatureAction = RulesetCreature["actions"][number];
 export type RulesetCreatureDamage = NonNullable<RulesetCreatureAction["damage"]>;
 export type RulesetCreatureTrait = NonNullable<RulesetCreature["traits"]>[number];

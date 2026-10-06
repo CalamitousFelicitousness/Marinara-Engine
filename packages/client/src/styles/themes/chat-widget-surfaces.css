@@ -226,10 +226,24 @@
    would also make editable fields, icons and embedded content transparent. */
 :root[data-chat-widget-apply-colors="true"][data-chat-widget-colors~="text"]
   :is(.mari-chat-style-surface, .mari-chat-style-conversation, .mari-chat-style-text)
-  :is(div, p, span, label, small, strong, em, h1, h2, h3, h4):not(:has(*), [class*="bg-"], pre *, code *) {
+  :is(div, p, span, label, small, strong, em, h1, h2, h3, h4):not(
+    :has(*),
+    [class*="bg-"],
+    pre *,
+    code *,
+    .mari-character-color,
+    .mari-character-color *
+  ) {
   background-image: var(--mari-widget-custom-text-image);
   background-clip: text;
   -webkit-text-fill-color: var(--mari-chat-text, var(--mari-window-text, var(--mari-widget-custom-text-fill)));
+}
+
+/* A character's or persona's own name or dialogue color outranks the preset text.
+   currentColor resolves per element, so italics inside the quote keep it too.
+   Inline gradient name colors still win with their own transparent fill. */
+:root[data-chat-widget-apply-colors="true"] .mari-character-color {
+  -webkit-text-fill-color: currentColor;
 }
 
 /* Conversation message corners and grouping always keep their own shape. */

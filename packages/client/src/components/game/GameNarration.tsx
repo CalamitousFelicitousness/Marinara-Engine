@@ -65,6 +65,7 @@ import { useGameModeStore } from "../../stores/game-mode.store";
 import { getDefaultChatTextColor, useUIStore } from "../../stores/ui.store";
 import { useChatStore } from "../../stores/chat.store";
 import { parseChatMetadata } from "../../lib/chat-display";
+import { CHARACTER_COLOR_CLASS } from "../../lib/chat-widget-colors";
 import { parseMessageExtraRecord } from "../../lib/chat-message-extra";
 import { isVisibleGameMessage } from "../../lib/chat-message-visibility";
 import { readDiceRollResults } from "../../lib/dice-roll-result";
@@ -1207,6 +1208,11 @@ export function GameNarration({
   const fallbackDialogueColor = defaultDialogueColor || getDefaultChatTextColor(theme);
   const personaDialogueColor =
     personaInfo?.dialogueColor || fallbackDialogueColor || personaInfo?.nameColor || "#a5b4fc";
+  // Speaker colors are a card's own dialogue color or the fallback. Only an own color outranks
+  // Apply preset colors (chat-widget-surfaces.css); the fallback follows the preset text.
+  // ponytail: an own color identical to the fallback follows the preset too; track own colors per speaker if that matters.
+  const dialogueColorClass = (color?: string) =>
+    color && color !== fallbackDialogueColor ? CHARACTER_COLOR_CLASS : undefined;
   const useStackedLogDisplay = gameDialogueDisplayMode === "stacked";
   const showLogsButton = !useStackedLogDisplay;
   const [editingContent, setEditingContent] = useState<string | null>(null);
@@ -1358,6 +1364,9 @@ export function GameNarration({
     }
     return byName;
   }, [activeCharacterEntries, personaInfo, speakerAvatarMap]);
+  // Name colors fall back to the line's dialogue color; only a speaker's own color outranks Apply preset colors.
+  const nameColorClass = (speaker?: string | null) =>
+    speaker && findNamedMapValue(speakerNameColors, speaker) ? CHARACTER_COLOR_CLASS : undefined;
 
   const gameNpcs = useGameModeStore((s) => s.npcs);
   const sourceMessagesById = useMemo(() => new Map(messages.map((message) => [message.id, message])), [messages]);
@@ -4808,7 +4817,7 @@ export function GameNarration({
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 flex-wrap items-center">
               <span
-                className="min-w-0 truncate text-[0.6875rem] font-bold"
+                className={cn("min-w-0 truncate text-[0.6875rem] font-bold", nameColorClass(seg.speaker))}
                 style={
                   nameColorStyle(findNamedMapValue(speakerNameColors, seg.speaker ?? "") ?? seg.color) ?? {
                     color: "rgb(186 230 253)",
@@ -4830,6 +4839,7 @@ export function GameNarration({
                 className={cn(
                   "mt-0.5 text-xs leading-relaxed text-[var(--foreground)]/80 dark:text-white/80",
                   seg.partyType === "thought" ? "italic opacity-80" : "font-semibold",
+                  dialogueColorClass(seg.color),
                 )}
                 style={seg.color ? { ...narrationFontStyle, color: seg.color } : narrationFontStyle}
                 dangerouslySetInnerHTML={{
@@ -5080,6 +5090,7 @@ export function GameNarration({
                       line={displayedLine}
                       avatar={charAvatar}
                       color={charColor}
+                      colorClassName={dialogueColorClass(charColor)}
                       nameColor={charNameColor}
                       voiceControl={voiceControl}
                       translation={translationPanel}
@@ -5290,7 +5301,10 @@ export function GameNarration({
                             {/* Inert theming hook. The inner span lets a skewed name plate counter-skew its
                               text; unstyled it collapses to plain inline text. */}
                             <span
-                              className="experience-dialogue-speaker text-sm font-bold"
+                              className={cn(
+                                "experience-dialogue-speaker text-sm font-bold",
+                                nameColorClass(active.speaker),
+                              )}
                               style={
                                 nameColorStyle(
                                   findNamedMapValue(speakerNameColors, active.speaker ?? "") ?? active.color,
@@ -5352,6 +5366,7 @@ export function GameNarration({
                                 className={cn(
                                   "text-sm leading-relaxed",
                                   active.partyType === "thought" ? "italic opacity-80" : "font-semibold",
+                                  dialogueColorClass(active.color),
                                   doneTyping
                                     ? ""
                                     : "after:ml-0.5 after:inline-block after:h-4 after:w-[1px] after:animate-pulse after:bg-[var(--foreground)]/60 after:align-middle dark:after:bg-white/60",
@@ -6225,7 +6240,7 @@ export function GameNarration({
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center">
                                 <span
-                                  className="text-[0.6875rem] font-bold"
+                                  className={cn("text-[0.6875rem] font-bold", nameColorClass(seg.speaker))}
                                   style={
                                     nameColorStyle(
                                       findNamedMapValue(speakerNameColors, seg.speaker ?? "") ?? seg.color,
@@ -6247,6 +6262,7 @@ export function GameNarration({
                                   className={cn(
                                     "mt-0.5 text-xs leading-relaxed text-[var(--foreground)]/80 dark:text-white/80",
                                     seg.partyType === "thought" ? "italic opacity-80" : "font-semibold",
+                                    dialogueColorClass(seg.color),
                                   )}
                                   style={seg.color ? { ...narrationFontStyle, color: seg.color } : narrationFontStyle}
                                   dangerouslySetInnerHTML={{

@@ -22,7 +22,7 @@ To carry the look into the rest of the chat, use the three switches below the co
 
 - **Apply preset font** uses the selected widget font for messages, input boxes and chat controls, including Game Mode's HUD widgets, map panel, side remarks and character sheets.
 - **Apply preset shape** uses the selected frame shape for Roleplay messages in classic and visual-novel layouts, the Game dialogue box, side remarks, HUD widgets, map panel and character sheets, input boxes and controls. Conversation messages keep their own shape.
-- **Apply preset colors** uses the widget's border, background and text colors for those areas, including Conversation messages. Your custom colors and gradients apply too.
+- **Apply preset colors** uses the widget's border, background and text colors for those areas, including Conversation messages. Your custom colors and gradients apply too. Quoted dialogue keeps each Character's or Persona's own Dialogue Highlight Color.
 
 Each switch starts off and works independently. For example, you can use Mari's lettering while keeping the chat's usual colors. Turning a switch off restores that part of the usual chat styling. Choosing another preset keeps your switch choices. Professor Mari can create custom themes for these areas too.
 

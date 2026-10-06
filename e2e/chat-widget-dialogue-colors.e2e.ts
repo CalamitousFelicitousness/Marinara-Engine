@@ -9,14 +9,17 @@ const APP_VERSION = (
 const ADA = { name: "Ada Quill", color: "#ff5500", rgb: "rgb(255, 85, 0)" };
 const BRAM = { name: "Bram Holt", color: "#22c55e", rgb: "rgb(34, 197, 94)" };
 const CORA = { name: "Cora Lin" };
+const DAX = { name: "Dax Vale", color: "#8b5cf6", rgb: "rgb(139, 92, 246)" };
 const GRADIENT_TEXT = "linear-gradient(90deg, #6c5ce7, #00cec9)";
 type Theme = "dark" | "light";
+const PRESETS = ["default", "mari", "dottore"] as const;
 
 async function createFixture(request: APIRequestContext, mode: "roleplay" | "game") {
-  const ids: { characters: string[]; chat?: string } = { characters: [] };
+  const ids: { characters: string[]; chat?: string; persona?: string } = { characters: [] };
   const remove = async () => {
     if (ids.chat) await request.delete(`/api/chats/${ids.chat}?force=true`).catch(() => undefined);
     await Promise.all(ids.characters.map((id) => request.delete(`/api/characters/${id}`).catch(() => undefined)));
+    if (ids.persona) await request.delete(`/api/characters/personas/${ids.persona}`).catch(() => undefined);
   };
   try {
     const character = async (name: string, dialogueColor?: string) => {
@@ -31,8 +34,13 @@ async function createFixture(request: APIRequestContext, mode: "roleplay" | "gam
     const ada = await character(ADA.name, ADA.color);
     const bram = await character(BRAM.name, BRAM.color);
     const cora = await character(CORA.name);
+    const persona = await request.post("/api/characters/personas", {
+      data: { name: DAX.name, dialogueColor: DAX.color },
+    });
+    expect(persona.ok()).toBeTruthy();
+    ids.persona = ((await persona.json()) as { id: string }).id;
     const response = await request.post("/api/chats", {
-      data: { name: `Dialogue colors ${mode}`, mode, characterIds: [ada, bram, cora] },
+      data: { name: `Dialogue colors ${mode}`, mode, characterIds: [ada, bram, cora], personaId: ids.persona },
     });
     expect(response.ok()).toBeTruthy();
     ids.chat = ((await response.json()) as { id: string }).id;
@@ -55,9 +63,9 @@ async function createFixture(request: APIRequestContext, mode: "roleplay" | "gam
         })
       ).ok(),
     ).toBeTruthy();
-    const post = async (characterId: string | null, content: string) => {
+    const post = async (characterId: string | null, content: string, role = "assistant") => {
       const posted = await request.post(`/api/chats/${ids.chat}/messages`, {
-        data: { role: "assistant", characterId, content },
+        data: { role, characterId, content },
       });
       expect(posted.ok()).toBeTruthy();
       return ((await posted.json()) as { id: string }).id;
@@ -68,6 +76,11 @@ async function createFixture(request: APIRequestContext, mode: "roleplay" | "gam
             uncolored: await post(cora, `${CORA.name} shrugs. "No color here."`),
             html: await post(ada, `<div class="note">${ADA.name} lifts the lamp. "Follow *me* now."</div>`),
             speaker: await post(ada, `<speaker="${BRAM.name}">"Bram keeps his own color."</speaker>`),
+            htmlSpeaker: await post(
+              ada,
+              `<div class="note"><speaker="${BRAM.name}">"Bram *rides* the HTML path."</speaker></div>`,
+            ),
+            persona: await post(null, `${DAX.name} nods. "Lead *on*, then."`, "user"),
             plain: await post(ada, `${ADA.name} leans in. "Keep *this* close," she whispers.`),
           }
         : {
@@ -162,6 +175,8 @@ for (const theme of ["dark", "light"] as const) {
       const plain = content(fixture.messages.plain!).locator("strong").filter({ hasText: "Keep" });
       const html = content(fixture.messages.html!).locator("strong").filter({ hasText: "Follow" });
       const speaker = content(fixture.messages.speaker!).locator("strong").filter({ hasText: "Bram keeps" });
+      const htmlSpeaker = content(fixture.messages.htmlSpeaker!).locator("strong").filter({ hasText: "Bram rides" });
+      const persona = content(fixture.messages.persona!).locator("strong").filter({ hasText: "Lead on" });
       const uncolored = content(fixture.messages.uncolored!).locator("strong").filter({ hasText: "No color" });
       const bubble = page.locator(`[data-message-id="${fixture.messages.uncolored}"] .mari-rp-bubble`).first();
       await expect(plain).toBeVisible({ timeout: 30_000 });
@@ -172,6 +187,10 @@ for (const theme of ["dark", "light"] as const) {
         await expectOwnColor(html, ADA.rgb, `${label}: HTML dialogue`);
         await expectOwnColor(html.locator("em"), ADA.rgb, `${label}: italics inside HTML dialogue`);
         await expectOwnColor(speaker, BRAM.rgb, `${label}: group speaker dialogue`);
+        await expectOwnColor(htmlSpeaker, BRAM.rgb, `${label}: group speaker in an HTML message`);
+        await expectOwnColor(htmlSpeaker.locator("em"), BRAM.rgb, `${label}: italics inside HTML speaker dialogue`);
+        await expectOwnColor(persona, DAX.rgb, `${label}: persona dialogue`);
+        await expectOwnColor(persona.locator("em"), DAX.rgb, `${label}: italics inside persona dialogue`);
       };
 
       // Apply preset colors off: the existing look.
@@ -179,7 +198,7 @@ for (const theme of ["dark", "light"] as const) {
       const baseline = await paint(uncolored);
       expect(baseline.fill).toBe(baseline.color);
 
-      for (const preset of ["mari", "dottore"] as const) {
+      for (const preset of PRESETS) {
         await setPreset(page, preset, true);
         await expectCharacterColors(preset);
         // Dialogue without a character color keeps following the preset text.
@@ -240,43 +259,75 @@ for (const theme of ["dark", "light"] as const) {
       await expect(panel).toContainText("A lamp burns.", { timeout: 30_000 });
       const next = panel.getByRole("button", { name: "Next", exact: true });
       const box = panel.locator(".game-narration-prose > div");
-      const side = page.locator(".experience-side-line").filter({ hasText: "Watch the ridge." }).locator("p");
+      const name = panel.locator(".experience-dialogue-speaker");
+      const sideLine = page.locator(".experience-side-line").filter({ hasText: "Watch the ridge." });
+      const side = sideLine.locator("p");
+      const sideName = sideLine.getByText(ADA.name, { exact: true });
+      const withGradientText = async (check: () => Promise<void>) => {
+        await setStore(page, { setChatWidgetTextColor: GRADIENT_TEXT });
+        await expect(page.locator("html")).toHaveAttribute("data-chat-widget-colors", /\btext\b/);
+        await check();
+        await setStore(page, { setChatWidgetTextColor: "" });
+      };
 
-      // Ada's line and its italics paint exactly as they do without the preset colors.
+      // Ada's line, its italics and her name paint exactly as they do without the preset colors.
       await next.click();
       await expect(box).toContainText("Keep this close.");
       const ada = { line: await paint(box), em: await paint(box.locator("em")) };
       expect(ada.line).toEqual({ color: ADA.rgb, fill: ADA.rgb, image: "none" });
-      for (const preset of ["mari", "dottore"] as const) {
+      expect(ada.em).toEqual(ada.line);
+      const expectAda = async (label: string) => {
+        expect(await paint(box), `${label}: Game dialogue`).toEqual(ada.line);
+        expect(await paint(box.locator("em")), `${label}: italics inside Game dialogue`).toEqual(ada.em);
+        await expectOwnColor(name, ADA.rgb, `${label}: Game speaker name`);
+        await expectOwnColor(name.locator("span"), ADA.rgb, `${label}: Game speaker name text`);
+      };
+      await expectAda("switch off");
+      for (const preset of PRESETS) {
         await setPreset(page, preset, true);
-        expect(await paint(box), `${preset}: Game dialogue`).toEqual(ada.line);
-        expect(await paint(box.locator("em")), `${preset}: italics inside Game dialogue`).toEqual(ada.em);
+        await expectAda(preset);
         await page.screenshot({ path: info.outputPath(`game-${preset}-${theme}.png`), animations: "disabled" });
+        await withGradientText(() => expectAda(`${preset} with gradient text`));
       }
       await setPreset(page, "default", false);
 
-      // Cora has no dialogue color, so her line follows the preset text.
+      // Cora has no dialogue color, so her line and name follow the preset text.
       await next.click();
       await expect(box).toContainText("No color here.");
-      const cora = await paint(box);
+      const cora = { line: await paint(box), name: await paint(name) };
       await expect(side).toBeVisible();
-      await expectOwnColor(side, ADA.rgb, "switch off: side remark");
+      const expectSide = async (label: string) => {
+        await expectOwnColor(side, ADA.rgb, `${label}: side remark`);
+        await expectOwnColor(sideName, ADA.rgb, `${label}: side remark name`);
+      };
+      await expectSide("switch off");
       const stacked = page.locator(".mari-game-stacked-log").getByText("Keep this close.");
-      for (const preset of ["mari", "dottore"] as const) {
+      const stackedNames = page.locator(".mari-game-stacked-log").getByText(ADA.name, { exact: true });
+      for (const preset of PRESETS) {
         await setPreset(page, preset, true);
-        expect((await paint(box)).fill, `${preset}: uncolored Game dialogue follows the preset`).toBe(
-          (await paint(panel)).fill,
-        );
-        await expectOwnColor(side, ADA.rgb, `${preset}: side remark`);
+        const surface = await paint(panel);
+        expect((await paint(box)).fill, `${preset}: uncolored Game dialogue follows the preset`).toBe(surface.fill);
+        expect((await paint(name)).fill, `${preset}: uncolored Game name follows the preset`).toBe(surface.fill);
+        await expectSide(preset);
+        await withGradientText(async () => {
+          await expectSide(`${preset} with gradient text`);
+          expect((await paint(box)).image, `${preset}: uncolored Game dialogue keeps the gradient`).toContain(
+            "linear-gradient",
+          );
+        });
         // The stacked display keeps earlier lines in its own log surface.
         await setStore(page, { setGameDialogueDisplayMode: "stacked" });
         await expect(stacked).toBeVisible();
         await expectOwnColor(stacked, ADA.rgb, `${preset}: stacked Game dialogue`);
+        await expect(stackedNames.first()).toBeVisible();
+        for (const stackedName of await stackedNames.all()) {
+          await expectOwnColor(stackedName, ADA.rgb, `${preset}: stacked Game speaker name`);
+        }
         await setStore(page, { setGameDialogueDisplayMode: "classic" });
       }
 
       await setPreset(page, "default", false);
-      expect(await paint(box)).toEqual(cora);
+      expect({ line: await paint(box), name: await paint(name) }).toEqual(cora);
     } finally {
       try {
         await page.close();

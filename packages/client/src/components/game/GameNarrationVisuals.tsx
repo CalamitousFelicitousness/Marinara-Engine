@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import type { AvatarCrop, PartyDialogueLine } from "@marinara-engine/shared";
+import { CHARACTER_COLOR_CLASS } from "../../lib/chat-widget-colors";
 import { cn, getAvatarCropStyle } from "../../lib/utils";
 import { formatNarration } from "./game-narration-format";
 
@@ -68,6 +69,7 @@ export function PartyOverlayBox({
   color?: string;
   /** Marks a speaker's own dialogue color so Apply preset colors keeps it. */
   colorClassName?: string;
+  /** The speaker's own name color. Without it the label uses `color`, which follows Apply preset colors. */
   nameColor?: string;
   voiceControl?: ReactNode;
   translation?: ReactNode;
@@ -114,7 +116,11 @@ export function PartyOverlayBox({
         <div className="flex min-w-0 items-center gap-1.5">
           <span className="text-[0.5625rem]">{style.icon}</span>
           <span
-            className={cn("min-w-0 truncate text-[0.6875rem] font-semibold", style.labelColor)}
+            className={cn(
+              "min-w-0 truncate text-[0.6875rem] font-semibold",
+              style.labelColor,
+              nameColor && CHARACTER_COLOR_CLASS,
+            )}
             style={nameColorStyle(nameColor ?? color)}
           >
             {line.character}

@@ -112,6 +112,7 @@ import {
   sanitizeChatHtml,
 } from "../../lib/chat-html";
 import { resolveMessageReasoningDisplay } from "../../lib/message-reasoning";
+import { CHARACTER_COLOR_CLASS } from "../../lib/chat-widget-colors";
 import type { CharacterMap, ExpressionAvatarResolver, MessageSelectionToggle, PersonaInfo } from "./chat-area.types";
 import {
   MESSAGE_SELECTION_CHECKBOX_CLASS,
@@ -135,8 +136,6 @@ const MESSAGE_CHROME_ACTIVE_ICON_CLASS =
 const MESSAGE_CHROME_MARKER_LINE_CLASS = "bg-[var(--marinara-chat-chrome-button-border-active)]";
 const MESSAGE_CHROME_MARKER_TEXT_CLASS = "text-[var(--marinara-chat-chrome-highlight-text)]";
 const MESSAGE_CHROME_RING_CLASS = "ring-[var(--marinara-chat-chrome-focus-ring)]";
-/** Marks a character's or persona's own dialogue color so Apply preset colors keeps it. */
-const DIALOGUE_COLOR_CLASS = "mari-dialogue-color";
 const ROLEPLAY_USER_BUBBLE_PANEL_STRENGTH = 100;
 const ROLEPLAY_ASSISTANT_BUBBLE_PANEL_STRENGTH = 96;
 
@@ -1256,7 +1255,7 @@ function highlightDialogue(
       <DialogueTag
         key={`d${key++}`}
         style={dialogueColor ? { color: dialogueColor } : undefined}
-        className={!dialogueColor ? "text-black dark:text-white" : ownDialogueColor ? DIALOGUE_COLOR_CLASS : undefined}
+        className={!dialogueColor ? "text-black dark:text-white" : ownDialogueColor ? CHARACTER_COLOR_CLASS : undefined}
       >
         {openQuote}
         {innerNodes}
@@ -1737,7 +1736,7 @@ function renderContent(
         const speakerQuoteRe = new RegExp(`(?<![=\\w])(?:${HTML_SAFE_DIALOGUE_QUOTE_PATTERN_SOURCE})`, "g");
         return content.replace(speakerQuoteRe, (match: string, offset: number) => {
           if (insideTag(content, offset)) return match;
-          return `<${dialogueTag} class="${DIALOGUE_COLOR_CLASS}" style="color:${validColor}">${match}</${dialogueTag}>`;
+          return `<${dialogueTag} class="${CHARACTER_COLOR_CLASS}" style="color:${validColor}">${match}</${dialogueTag}>`;
         });
       },
     );
@@ -1754,7 +1753,7 @@ function renderContent(
         if (lastFontClose < lastFontOpen) return match;
       }
       const highlightColor = safeColor(dialogueColor ?? "white");
-      const ownClass = ownDialogueColor ? ` class="${DIALOGUE_COLOR_CLASS}"` : "";
+      const ownClass = ownDialogueColor ? ` class="${CHARACTER_COLOR_CLASS}"` : "";
       return `<${dialogueTag}${ownClass} style="color:${highlightColor}">${match}</${dialogueTag}>`;
     });
   })();

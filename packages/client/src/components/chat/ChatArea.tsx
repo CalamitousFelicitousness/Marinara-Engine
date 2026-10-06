@@ -1658,7 +1658,8 @@ const LocalChatArea = memo(function LocalChatArea({
 
   // On chat switch, clear in-memory translations and seed from persisted extras.
   // Also re-seed when message extras arrive after a chat switch or pagination.
-  const prevChatIdRef = useRef(chat?.id);
+  // This view remounts while an uncached chat loads, so start from the chat the store last held.
+  const prevChatIdRef = useRef(useTranslationStore.getState().config.chatId);
   useEffect(() => {
     if (!messages) return;
     // Clear on actual chat switch

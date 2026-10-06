@@ -172,8 +172,9 @@ export interface RulesetCombatRider {
   label: string;
   on: "hit";
   actions?: string[];
-  /** Any-of: one of them being true is enough. */
-  when?: Array<"advantage" | "ally-adjacent">;
+  /** Any-of: one of them being true is enough. "ally-adjacent-no-disadvantage" (Capability API
+   *  1.121) also needs the roll's final mode not to be disadvantage. */
+  when?: Array<"advantage" | "ally-adjacent" | "ally-adjacent-no-disadvantage">;
   oncePer: "turn" | "round";
   amount: RulesetCombatAmount;
   type?: string;

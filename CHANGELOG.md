@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: a rider can require an adjacent ally and no disadvantage on the final attack roll, as Sneak Attack does without advantage (Capability API 1.121).
 - Rulesets: conditions can end on damage or harm from their source's side, repeat their ending save when damaged, or let a nearby ally shake their holder out, as Charm Person, Dominate Person and Hypnotic Pattern do (Capability API 1.120).
 - Rulesets: a reaction can catch a falling creature before it lands, and a condition can prevent falling damage and the fall leaving it prone, as Feather Fall does (Capability API 1.119).
 - Rulesets: creatures can cast catalog spells at will or a limited number of times without slots, and coven members share uses while enough of them stand nearby (Capability API 1.118).

@@ -1276,6 +1276,21 @@ function entriesCarryCreatureSpellcasting(entries: unknown): boolean {
   );
 }
 
+/** A rider that needs an adjacent ally without disadvantage (1.121), on an entry or a creature. */
+function entriesCarryRiderNoDisadvantage(entries: unknown): boolean {
+  return (
+    Array.isArray(entries) &&
+    entries.some((entry) => {
+      const record = plainRecord(entry);
+      const riders = plainRecord(record?.creature)?.riders;
+      return [
+        plainRecord(plainRecord(record?.mechanics)?.rider),
+        ...(Array.isArray(riders) ? riders.map(plainRecord) : []),
+      ].some((rider) => Array.isArray(rider?.when) && rider.when.includes("ally-adjacent-no-disadvantage"));
+    })
+  );
+}
+
 /** A creature action that heals or reaches its own side (1.116): new keys on the strict action. */
 function entriesCarryCreatureHealing(entries: unknown): boolean {
   return (
@@ -1660,6 +1675,7 @@ export function getCapabilityPackageInstallIssue(
   let carriesCreatureHealing = false;
   let carriesSummons = false;
   let carriesCreatureSpellcasting = false;
+  let carriesRiderNoDisadvantage = false;
   // The tracks a level reads and no condition shares a name with: an immunity naming one is new.
   const conditionIds = new Set(
     (Array.isArray(plainRecord(plainRecord(plainRecord(ruleset?.sheet)?.live))?.conditions)
@@ -1785,6 +1801,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryCreatureHealing(header.entries)) carriesCreatureHealing = true;
       if (entriesCarrySummons(header.entries)) carriesSummons = true;
       if (entriesCarryCreatureSpellcasting(header.entries)) carriesCreatureSpellcasting = true;
+      if (entriesCarryRiderNoDisadvantage(header.entries)) carriesRiderNoDisadvantage = true;
       if (carriesHealthMax(header.entries) || entriesImmuneToTracks(header.entries, leveledTracks)) {
         carriesExhaustion = true;
       }
@@ -1855,6 +1872,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryCreatureHealing(fileEntries)) carriesCreatureHealing = true;
       if (entriesCarrySummons(fileEntries)) carriesSummons = true;
       if (entriesCarryCreatureSpellcasting(fileEntries)) carriesCreatureSpellcasting = true;
+      if (entriesCarryRiderNoDisadvantage(fileEntries)) carriesRiderNoDisadvantage = true;
       if (entriesCarryHeldChoices(fileEntries)) carriesHeldChoices = true;
       if (entriesCarryExclusive(fileEntries)) carriesExclusive = true;
       if (entriesCarryToHitSheetBonus(fileEntries)) carriesSheetBonus = true;
@@ -2251,6 +2269,10 @@ export function getCapabilityPackageInstallIssue(
     )
   ) {
     return "A ruleset whose conditions end on harm, a new save or being shaken out requires schemaVersion 2 and capabilityApi 1.120 or newer";
+  }
+  // Riders that need an adjacent ally without disadvantage, 1.121.
+  if (!declaresApi(121) && carriesRiderNoDisadvantage) {
+    return "A ruleset whose riders need an adjacent ally without disadvantage requires schemaVersion 2 and capabilityApi 1.121 or newer";
   }
   if (carriesCreatureSpellcasting) {
     // The references can only be checked once the catalog files are beside their headers.

@@ -1552,14 +1552,15 @@ const catalogAppliesSchema = z
  *
  *  `when` is any-of: one of the listed things being true is enough. "advantage" is how the attack
  *  roll finally leaned, and "ally-adjacent" is a standing ally of the attacker who can act, within
- *  one cell of the target on a board and anywhere at all without one. */
+ *  one cell of the target on a board and anywhere at all without one. "ally-adjacent-no-disadvantage"
+ *  (Capability API 1.121) also needs the roll's final mode not to be disadvantage. */
 const riderCoreShape = {
   /** The one moment a rider fires. More of them arrive with the slice that builds windows. */
   on: z.literal("hit"),
   when: z
-    .array(z.enum(["advantage", "ally-adjacent"]))
+    .array(z.enum(["advantage", "ally-adjacent", "ally-adjacent-no-disadvantage"]))
     .min(1)
-    .max(2)
+    .max(3)
     .optional(),
   oncePer: z.enum(["turn", "round"]),
   // Marked so the published JSON Schema can find it by name rather than by guessing from its keys,

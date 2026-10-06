@@ -2847,7 +2847,11 @@ function firingRider(
     // Any-of: one of the things it asked for being true is enough.
     if (
       rider.when?.length &&
-      !rider.when.some((when) => (when === "advantage" ? mode === "advantage" : allyAdjacent(ctx, actor, target)))
+      !rider.when.some((when) =>
+        when === "advantage"
+          ? mode === "advantage"
+          : allyAdjacent(ctx, actor, target) && (when !== "ally-adjacent-no-disadvantage" || mode !== "disadvantage"),
+      )
     ) {
       continue;
     }

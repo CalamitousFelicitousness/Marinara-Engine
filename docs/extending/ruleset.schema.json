@@ -9459,11 +9459,12 @@
                             "type": "string",
                             "enum": [
                               "advantage",
-                              "ally-adjacent"
+                              "ally-adjacent",
+                              "ally-adjacent-no-disadvantage"
                             ]
                           },
                           "minItems": 1,
-                          "maxItems": 2
+                          "maxItems": 3
                         },
                         "oncePer": {
                           "type": "string",
@@ -11188,11 +11189,12 @@
                               "type": "string",
                               "enum": [
                                 "advantage",
-                                "ally-adjacent"
+                                "ally-adjacent",
+                                "ally-adjacent-no-disadvantage"
                               ]
                             },
                             "minItems": 1,
-                            "maxItems": 2
+                            "maxItems": 3
                           },
                           "oncePer": {
                             "type": "string",

@@ -1908,7 +1908,7 @@ adds one more damage clause to the first qualifying hit of a period, automatical
     "on": "hit",
     "sources": ["attacks"],
     "requires": { "column": "finesse" },
-    "when": ["advantage", "ally-adjacent"],
+    "when": ["advantage", "ally-adjacent-no-disadvantage"],
     "oncePer": "turn",
     "amount": { "dice": "1d6" }
   },
@@ -1929,8 +1929,10 @@ naming neither means any hit its holder lands. A weapon held from the bag is no 
 "ranged"] }` fires on a hit with a held weapon carrying either tag, its off-hand strike included.
 Naming only `weapons` fires on no row, and naming only rows fires on no held weapon. `when` is ANY-of: `advantage` is how the attack roll
 finally leaned, and `ally-adjacent` is a standing ally of the attacker who can act, within one cell
-of the target on a board and anywhere at all without one. `oncePer` is `turn` (fresh at the start of
-every turn there is, so a strike made while somebody else acts can still carry one) or `round`.
+of the target on a board and anywhere at all without one. `ally-adjacent-no-disadvantage` (Capability
+API 1.121) also requires the final roll not to be at disadvantage after advantage and disadvantage
+cancel; the example above uses it for Sneak Attack. `oncePer` is `turn` (fresh at the start of every
+turn there is, so a strike made while somebody else acts can still carry one) or `round`.
 `amount` grows with the entry's own `scales`, and `type` is the kind of harm, defaulting to the
 blow's own.
 

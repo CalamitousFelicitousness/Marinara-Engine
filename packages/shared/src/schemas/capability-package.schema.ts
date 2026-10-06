@@ -795,7 +795,9 @@ const capabilityPackageManifestBaseSchema = z
 //        holder from taking falling damage or being left prone. 5e's Feather Fall. No permission.
 // 1.120: a condition can end on damage or harm from its source's side, repeat its ending save when
 //        damaged, or let a nearby ally spend a budget to shake its holder out. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 120 } as const);
+// 1.121: a rider can need an adjacent ally without disadvantage on the final attack roll, as 5e's
+//        Sneak Attack does when the roll has no advantage. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 121 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

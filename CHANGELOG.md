@@ -7,6 +7,14 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 - Updated the upload parser, proxy address handling and two logging and styling helpers to their patched releases, clearing four newly published dependency advisories. The dormant Bunny Review workflow no longer lets files in a pull request replace the Python modules it runs with, and only trusts its own review markers (#7146).
 
 - Prepared v2.5.0 across the Engine, Home version, PWA manifest, README, Windows installer, and Android bootstrap metadata. Android uses version code 48 so the APK can update existing installations, and the Credits list is refreshed (#7146).
+- The lorebook sidebar's **All** view now shows one list in your selected sort order, without dividing it into category sections (#7154).
+
+- **Advanced Memory** now offers **Pause processing** and **Resume processing**, including during initial setup. Paused work keeps its progress visible, stays paused when new replies arrive, and resumes from saved checkpoints.
+
+- **Play As Character** now shows each character's title/comment in persona pickers and the selected identity in Chat Settings, making cards with the same name easier to tell apart. Cards without a title keep the **Character** label (#7151).
+
+- Enabling **Advanced Memory** turns off basic **Memory Recall**, and enabling basic recall turns off Advanced Memory and stops its running work. Delayed settings saves preserve your choice. Advanced Memory can be switched off during processing or a status error, including when a saved message or narrator is gone, without deleting the chat or its prepared memories (#7150).
+
 - Saving a connection change that affects **Long-Term Memory** now waits for the package's index refresh when supported, and reports refresh completion, failure or unavailability separately from the successful save. Unrelated connection and agent edits do not trigger LTM refreshes; older or inactive packages still allow configuration saves (#7042).
 
 - Windows opened from message actions — including **Hide from AI**, **Model Thoughts**, **Peek Prompt**, notes, reactions and confirmations — now follow **Apply preset font**, **Apply preset shape** and **Apply preset colors** on phones and computers (#7144).

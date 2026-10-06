@@ -261,6 +261,23 @@ function mergeConversationStatusOverrides(current: unknown, incoming: unknown): 
   return incoming;
 }
 
+function exclusiveMemoryRecallPatch(current: MetadataPatch, patch: MetadataPatch): MetadataPatch {
+  // Explicit enables switch modes in the same queued write. Unrelated saves and
+  // disables preserve the other mode, and switching never discards prepared memory.
+  // A bulk patch enabling both retains generation's existing Advanced precedence.
+  if (patch.advancedMemory === current.advancedMemory && patch.enableMemoryRecall === current.enableMemoryRecall) {
+    return patch; // An updater spreading unchanged settings is not an explicit mode choice.
+  }
+  if (isPlainRecord(patch.advancedMemory) && patch.advancedMemory.enabled === true) {
+    return { ...patch, enableMemoryRecall: false };
+  }
+  const advancedMemory = Object.hasOwn(patch, "advancedMemory") ? patch.advancedMemory : current.advancedMemory;
+  if (patch.enableMemoryRecall === true && isPlainRecord(advancedMemory) && advancedMemory.enabled === true) {
+    return { ...patch, advancedMemory: { ...advancedMemory, enabled: false } };
+  }
+  return patch;
+}
+
 function mergeMetadataPatch(current: MetadataPatch, patch: MetadataPatch): MetadataPatch {
   const merged = { ...current, ...patch };
   if (Object.prototype.hasOwnProperty.call(patch, "conversationStatusOverrides")) {
@@ -1873,7 +1890,13 @@ export function createChatsStorage(db: DB) {
     async patchMetadata(
       id: string,
       patchOrUpdater: MetadataPatch | MetadataUpdater,
-      opts: { touchUpdatedAt?: boolean; metadataQueueHeld?: boolean; allowRoomKeys?: readonly RoomMetadataKey[] } = {},
+      opts: {
+        touchUpdatedAt?: boolean;
+        metadataQueueHeld?: boolean;
+        allowRoomKeys?: readonly RoomMetadataKey[];
+        /** Synchronous side effects after a successful row write, while the metadata queue is still held. */
+        afterWrite?: (previous: MetadataPatch, saved: MetadataPatch) => void;
+      } = {},
     ) {
       const applyPatch = async () => {
         const existing = await this.getById(id);
@@ -1890,7 +1913,7 @@ export function createChatsStorage(db: DB) {
         // post-hoc comparison would see two identical objects and skip the stamp.
         const before = typeof patchOrUpdater === "function" ? fingerprintMetadata(current) : null;
         const raw = typeof patchOrUpdater === "function" ? await patchOrUpdater({ ...current }) : patchOrUpdater;
-        const patch = stripOrdinalMirrorKey(room ? { ...raw } : raw);
+        const patch = exclusiveMemoryRecallPatch(current, stripOrdinalMirrorKey(room ? { ...raw } : raw));
         if (room) {
           room.signal?.throwIfAborted();
           protectRoomMetadata(patch, opts.allowRoomKeys);
@@ -1926,6 +1949,7 @@ export function createChatsStorage(db: DB) {
             ...(opts.touchUpdatedAt !== false && { updatedAt: now() }),
           })
           .where(eq(chats.id, id));
+        opts.afterWrite?.(current, merged);
         return this.getById(id);
       };
       return opts.metadataQueueHeld ? applyPatch() : withChatMetadataPatchQueue(id, applyPatch);
@@ -1960,7 +1984,7 @@ export function createChatsStorage(db: DB) {
         }
         const before = fingerprintMetadata(current);
         const { metadata: raw, characterIds } = await updater({ ...current });
-        const patch = stripOrdinalMirrorKey(room ? { ...raw } : raw);
+        const patch = exclusiveMemoryRecallPatch(current, stripOrdinalMirrorKey(room ? { ...raw } : raw));
         if (room) {
           if (characterIds.some((characterId) => !room.characterIds.includes(characterId)))
             throw new Error("The character is not approved for this room.");

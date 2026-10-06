@@ -126,7 +126,7 @@ export function AdvancedMemorySettings({
           variant === "wizard" ? "chat.advancedMemory.wizardDescription" : "chat.advancedMemory.description",
         )}
         checked={settings.enabled}
-        disabled={disabled}
+        disabled={action.isPending || (!settings.enabled && numberInputsDisabled)}
         onChange={(enabled) => save({ enabled })}
         labelPosition="start"
         className="justify-between rounded-md bg-[var(--secondary)] px-3 py-2.5 text-left"

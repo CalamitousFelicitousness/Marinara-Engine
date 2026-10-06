@@ -16,7 +16,7 @@ import {
   createChatSummaryEntry,
 } from "@marinara-engine/shared";
 import { seedUIState } from "./ui-state-fixture.js";
-import { openChatSettingsTool } from "./chat-settings-tools.js";
+import { openChatSettings, openChatSettingsTool } from "./chat-settings-tools.js";
 
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version as string;
 test.use({ actionTimeout: 10_000 });
@@ -107,11 +107,147 @@ async function openChat(page: Page, chatId: string, openSettings = true) {
   );
   await page.goto("/");
   await expect(page.locator("textarea[data-chat-composer]")).toBeVisible();
-  if (openSettings)
-    await page.evaluate(async () => {
-      const module = await import("/src/stores/chat.store.ts" as string);
-      module.useChatStore.getState().setShouldOpenSettings(true);
+  if (openSettings) await openChatSettings(page);
+}
+
+test("Memory Recall switches modes in both directions and preserves the choice after reload", async ({
+  page,
+  request,
+}) => {
+  const fixture = await createFixture(request);
+  const section = page.locator('[data-chat-settings-section="roleplay-memory-recall"]');
+  const normal = section.getByRole("checkbox", { name: /^Enable Memory Recall/ });
+  const advanced = section.getByRole("checkbox", { name: /^Advanced Memory Recall/ });
+  const readMetadata = async () => {
+    const response = await request.get(`/api/chats/${fixture.chat.id}`);
+    expect(response.ok()).toBeTruthy();
+    const chat = await response.json();
+    return typeof chat.metadata === "string" ? JSON.parse(chat.metadata) : chat.metadata;
+  };
+  let releaseBasicSave: (() => void) | undefined;
+  let failBasicSave = true;
+  let failStatus = false;
+  let failedStatusRequests = 0;
+  try {
+    expect(
+      (await request.patch(`/api/chats/${fixture.chat.id}/metadata`, { data: { enableMemoryRecall: true } })).ok(),
+    ).toBeTruthy();
+    await openChat(page, fixture.chat.id);
+    await section.getByRole("button", { name: "Memory Recall", exact: true }).click();
+    await expect(normal).toBeChecked();
+    await expect(advanced).not.toBeChecked();
+    await section.getByText("Advanced Memory Recall", { exact: true }).click();
+    await expect(advanced).toBeChecked();
+    await expect(normal).not.toBeChecked();
+    await expect.poll(async () => (await readMetadata()).enableMemoryRecall).toBe(false);
+
+    await page.route(`**/api/chats/${fixture.chat.id}/advanced-memory`, (route) => {
+      if (!failStatus) return route.continue();
+      failedStatusRequests += 1;
+      return route.fulfill({ status: 503, json: { error: "Synthetic status failure" } });
     });
+    await page.route(`**/api/chats/${fixture.chat.id}/metadata`, async (route) => {
+      if (route.request().method() !== "PATCH" || route.request().postDataJSON().enableMemoryRecall !== true)
+        return route.continue();
+      await new Promise<void>((resolve) => {
+        releaseBasicSave = resolve;
+      });
+      releaseBasicSave = undefined;
+      if (failBasicSave) return route.fulfill({ status: 500, json: { error: "Synthetic metadata save failure" } });
+      return route.continue();
+    });
+    await section.getByText("Enable Memory Recall", { exact: true }).click();
+    await expect(normal).toBeChecked();
+    await expect(advanced).not.toBeChecked();
+    await expect.poll(() => releaseBasicSave !== undefined).toBe(true);
+    expect((await readMetadata()).advancedMemory.enabled).toBe(true);
+    failStatus = true;
+    releaseBasicSave?.();
+    await expect.poll(() => failedStatusRequests).toBeGreaterThan(0);
+    await expect(advanced).toBeChecked();
+    await expect(normal).not.toBeChecked();
+
+    failBasicSave = false;
+    failStatus = false;
+    await section.getByText("Enable Memory Recall", { exact: true }).click();
+    await expect(normal).toBeChecked();
+    await expect(advanced).not.toBeChecked();
+    await expect.poll(() => releaseBasicSave !== undefined).toBe(true);
+    releaseBasicSave?.();
+    await expect.poll(async () => (await readMetadata()).advancedMemory.enabled).toBe(false);
+    await page.reload();
+    await expect(page.locator("textarea[data-chat-composer]")).toBeVisible();
+    await openChatSettings(page);
+    if (!(await normal.isVisible())) await section.getByRole("button", { name: "Memory Recall", exact: true }).click();
+    await expect(normal).toBeChecked();
+    await expect(advanced).not.toBeChecked();
+
+    await section.getByText("Advanced Memory Recall", { exact: true }).click();
+    await expect(advanced).toBeChecked();
+    await expect(normal).not.toBeChecked();
+    await section.getByText("Advanced Memory Recall", { exact: true }).click();
+    await expect(advanced).not.toBeChecked();
+    await expect(normal).not.toBeChecked();
+    const transcript = await request.get(`/api/chats/${fixture.chat.id}/messages`);
+    expect(transcript.ok()).toBeTruthy();
+    expect((await transcript.json()).map((message: Message) => message.id)).toEqual(
+      fixture.messages.map((message) => message.id),
+    );
+  } finally {
+    releaseBasicSave?.();
+    await fixture.cleanup();
+  }
+});
+
+for (const state of ["running", "status unavailable"] as const) {
+  test(`Advanced Memory can be disabled while ${state}`, async ({ page, request }, info) => {
+    const fixture = await createFixture(request);
+    const endpoint = `/api/chats/${fixture.chat.id}/advanced-memory`;
+    try {
+      expect((await request.patch(`${endpoint}/settings`, { data: { enabled: true } })).ok()).toBeTruthy();
+      if (state === "status unavailable") {
+        await page.route(`**/api/chats/${fixture.chat.id}`, async (route) => {
+          const response = await route.fetch();
+          const chat = await response.json();
+          const metadata = typeof chat.metadata === "string" ? JSON.parse(chat.metadata) : chat.metadata;
+          if (metadata.advancedMemory?.enabled) metadata.enableMemoryRecall = true; // Legacy conflicting flags.
+          return route.fulfill({ json: { ...chat, metadata } });
+        });
+      }
+      await page.route(`**${endpoint}`, async (route) => {
+        if (state === "status unavailable") {
+          return route.fulfill({ status: 503, json: { error: "Synthetic status failure" } });
+        }
+        const response = await route.fetch();
+        const status = (await response.json()) as AdvancedMemoryStatus;
+        if (status.settings.enabled) {
+          status.job = { status: "running", stage: "summarizing", completed: 1, total: 10, error: null };
+        }
+        return route.fulfill({ json: status });
+      });
+      await openChat(page, fixture.chat.id);
+      const section = page.locator('[data-chat-settings-section="roleplay-memory-recall"]');
+      await section.getByRole("button", { name: "Memory Recall", exact: true }).click();
+      const settings = section.locator('[data-component="AdvancedMemorySettings"]');
+      const toggle = settings.getByRole("checkbox", { name: /^Advanced Memory Recall/ });
+      if (state === "running")
+        await expect(settings.getByRole("button", { name: "Pause processing", exact: true })).toBeEnabled();
+      else await expect(settings.getByRole("alert")).toContainText("Synthetic status failure");
+      await expect(toggle).toBeChecked();
+      await settings.getByText("Advanced Memory Recall", { exact: true }).scrollIntoViewIfNeeded();
+      await page.screenshot({ path: info.outputPath(`memory-recovery-${state}-enabled.png`), animations: "disabled" });
+      await expect(toggle).toBeEnabled();
+      await expect(section.getByRole("checkbox", { name: /^Enable Memory Recall/ })).not.toBeChecked();
+      await settings.getByText("Advanced Memory Recall", { exact: true }).click();
+      await expect(toggle).not.toBeChecked();
+      await expect
+        .poll(async () => ((await (await request.get(endpoint)).json()) as AdvancedMemoryStatus).settings.enabled)
+        .toBe(false);
+      await page.screenshot({ path: info.outputPath(`memory-recovery-${state}-disabled.png`), animations: "disabled" });
+    } finally {
+      await fixture.cleanup();
+    }
+  });
 }
 
 for (const mode of ["roleplay", "conversation"] as const) {
@@ -647,7 +783,7 @@ test("Advanced Memory stays in Chat Settings with confirmed knowledge, resumable
     const drawer = page.locator(".mari-chat-settings-drawer");
     const settings = drawer.locator('[data-component="AdvancedMemorySettings"]');
     const memorySection = drawer.locator('[data-chat-settings-section="roleplay-memory-recall"]');
-    const memoryHeader = memorySection.locator(':scope > [role="button"]');
+    const memoryHeader = memorySection.getByRole("button", { name: "Memory Recall", exact: true });
     await expect(memoryHeader).toHaveAttribute("aria-expanded", "false");
     await page.evaluate((chatId) => {
       window.dispatchEvent(new CustomEvent("marinara:advanced-memory-settings", { detail: { chatId } }));
@@ -750,15 +886,16 @@ test("Advanced Memory stays in Chat Settings with confirmed knowledge, resumable
     await expect(wheel).toHaveCSS("animation-name", "none");
     await progress.scrollIntoViewIfNeeded();
     await captureThemes(page, info, "advanced-memory-progress");
-    await progress.getByRole("button", { name: "Cancel processing", exact: true }).click();
+    await progress.getByRole("button", { name: "Pause processing", exact: true }).click();
     await expect(progress).toContainText("Memory processing paused");
+    await expect(progress.getByRole("progressbar")).toHaveAttribute("value", "1");
+    await expect(progress).toContainText("1 of 4 work units completed");
+    await captureThemes(page, info, "advanced-memory-paused");
     await drawer.getByRole("button", { name: "Close chat settings", exact: true }).click();
     await expect(drawer).toBeHidden();
-    await page.evaluate(async () => {
-      const module = await import("/src/stores/chat.store.ts" as string);
-      module.useChatStore.getState().setShouldOpenSettings(true);
-    });
+    await openChatSettings(page);
     await expect(progress).toContainText("Memory processing paused");
+    await expect(progress).toContainText("1 of 4 work units completed");
     await progress.getByRole("button", { name: "Resume processing", exact: true }).click();
     await expect.poll(() => initializeBodies.length).toBe(2);
     await expect(progress).toContainText("Starting memory processing…");

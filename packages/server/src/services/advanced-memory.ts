@@ -1114,7 +1114,10 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       const message = ctx.messages[index]!;
       const extra = object(message.extra);
       if (visibilitySettled(extra)) return [];
-      // A whisper's recipient keeps the message that carries it; the author always sees their own.
+      // The author always sees their own message.
+      // ponytail: a whisper's recipient is never hidden from the message carrying it, because a hidden
+      // message drops its whispers today. Once #7191's fix delivers whispers to hidden recipients, drop
+      // this so an absent recipient gets only the whisper.
       const whispered = getRoleplayWhispers(extra).map(({ recipient }) => recipient.id);
       const candidates = ctx.characterIds.filter(
         (id) => !narrators.has(id) && id !== message.characterId && !whispered.includes(id),

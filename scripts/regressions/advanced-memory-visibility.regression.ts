@@ -266,6 +266,18 @@ try {
   assert.equal((await extraOf(failed.id)).hiddenFromAICharacterIds, undefined);
   assert.deepEqual((await extraOf(failed.id)).autoVisibility.hiddenCharacterIds, []);
 
+  // A whisper's recipient keeps the message that carries the whisper.
+  const whisper = { type: "whisper", character: "Pantalone", text: "Meet me at dawn." };
+  const whispered = await say(helperChat, "user", "P glances at the window.", null, {
+    roleplayCommandActivity: [
+      { raw: JSON.stringify(whisper), command: whisper, whisperRecipient: { id: ids.pantalone, kind: "character" } },
+    ],
+  });
+  calls.length = 0;
+  await memory.settleMessageVisibility(helperChat);
+  assert.deepEqual(JSON.parse(JSON.parse(calls[0]!.prompt)[1].content).decide[0].candidates, ["Maukie Whiskers"]);
+  assert.equal((await extraOf(whispered.id)).hiddenFromAICharacterIds, undefined);
+
   // Off, merged mode and one-character chats make no extra call.
   const offChat = await createChat({ autoMessageVisibility: false });
   const mergedChat = await createChat({}, { groupChatMode: "merged" });

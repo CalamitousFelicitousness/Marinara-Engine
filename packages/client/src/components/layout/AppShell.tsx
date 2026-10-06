@@ -1398,7 +1398,9 @@ export function AppShell({
           <MountOnceWhenOpened open={gameAssetsBrowserOpen} overlay>
             <GameAssetsBrowserView />
           </MountOnceWhenOpened>
+          {/* Overlay mode keeps the chat mounted under panels and editors; globals.css hides its windows then. */}
           <div
+            data-chat-covered={chatSurfaceActive ? undefined : "true"}
             className={cn(
               "mari-app-background-paint flex flex-1 flex-col overflow-hidden",
               (botBrowserOpen || gameAssetsBrowserOpen || (!shellOverlayMode && hasDetailView)) && "hidden",

@@ -9,11 +9,11 @@ const read = (path) => readFileSync(join(repositoryRoot, path), "utf8");
 // #7178: pnpm 10 reads supportedArchitectures only from pnpm-workspace.yaml, package.json or the
 // --os/--cpu/--libc flags. The .npmrc lines start-termux.sh used to append never applied, and
 // Termux installs with pnpm's default target (android/<arch>), which is the one it needs.
-for (const path of ["start-termux.sh", ".npmrc"]) {
+for (const path of ["start-termux.sh", ".npmrc", "pnpm-workspace.yaml", "package.json"]) {
   assert.doesNotMatch(
     read(path),
     /supportedArchitectures|TERMUX_FORCE_INSTALL/u,
-    `${path} must not carry pnpm architecture settings that pnpm ignores in .npmrc`,
+    `${path} must leave Termux installs on pnpm's default android/<arch> target`,
   );
 }
 

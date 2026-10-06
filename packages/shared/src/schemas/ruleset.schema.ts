@@ -3518,6 +3518,22 @@ const combatLevelSchema = z
     skillsNeedSomethingToNarrow(entry, ctx);
   });
 
+const combatConditionDelaysBase = z
+  .object({
+    catalogs: z.array(sheetId).min(1).max(12),
+    budget: sheetId,
+    chance: z
+      .object({ sides: z.number().int().min(2).max(100), atLeast: z.number().int().min(1).max(100) })
+      .strict()
+      .refine((chance) => chance.atLeast <= chance.sides, {
+        message: "A delay that needs more than its die can show never happens",
+      }),
+  })
+  .strict();
+/** Named, so the condition schema stays short enough for the compiler to write. */
+export type RulesetConditionDelays = z.infer<typeof combatConditionDelaysBase>;
+const combatConditionDelaysSchema: z.ZodType<RulesetConditionDelays, z.ZodTypeDef, unknown> = combatConditionDelaysBase;
+
 const combatConditionSchema = z
   .object({
     condition: sheetId,
@@ -3540,6 +3556,10 @@ const combatConditionSchema = z
     whileSourceInSight: z.union([z.literal(true), z.array(combatConditionEffectSchema).min(1).max(12)]).optional(),
     /** It comes off the moment whoever applied it goes down. */
     endsWhenSourceDown: z.boolean().optional(),
+    /** What its holder uses out of these catalogs, paid with this budget, may be held over to their
+     *  next turn (Capability API 1.115): a die of `sides`, and at `atLeast` or more it waits, to be
+     *  completed with the same budget then or lost. 5e's Slow, against a spell cast as an action. */
+    delays: combatConditionDelaysSchema.optional(),
     /** Its holder takes no damage from these entries while it holds (Capability API 1.112), whatever
      *  kind of harm they deal: 5e's Shield, under which Magic Missile does nothing. */
     noDamageFrom: z.array(catalogEntryRef).min(1).max(12).optional(),
@@ -6124,6 +6144,14 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
           issue([...path, "onEnd", "applies", appliedIndex, "condition"], `Unknown condition "${applied.condition}"`);
         }
       });
+      if (entry.delays) {
+        checkBudget(entry.delays.budget, [...path, "delays", "budget"]);
+        entry.delays.catalogs.forEach((catalogId, catalogIndex) => {
+          if (!def.catalogs?.some((catalog) => catalog.id === catalogId)) {
+            issue([...path, "delays", "catalogs", catalogIndex], `Unknown catalog "${catalogId}"`);
+          }
+        });
+      }
       entry.noDamageFrom?.forEach((ref, refIndex) => {
         const catalogId = ref.slice(0, ref.indexOf("/"));
         if (!def.catalogs?.some((catalog) => catalog.id === catalogId)) {

@@ -1508,6 +1508,12 @@ export function applyRulesetCombatChoice(
     ...(mode ? { mode: mode.id } : {}),
     ...(spend !== undefined ? { spend } : {}),
   };
+  // A condition that slows what its holder uses (1.115) may hold it over to their next turn.
+  if (budget && delayRoll(ctx, working, action, budget)) {
+    working.delayed = { ...resume, label: action.label, budget };
+    noteOutcome(ctx);
+    return finish();
+  }
   // Somebody on the other side may answer the USE first, wherever it is aimed; then the ones it is
   // aimed at get their own say. Whatever is held resolves once the last window has closed.
   const held =
@@ -1532,6 +1538,66 @@ export function applyRulesetCombatChoice(
   }
   noteOutcome(ctx);
   return finish();
+}
+
+/** Whether a condition on this actor holds what they just used over to their next turn (1.115): an
+ *  action out of one of its catalogs, paid with its budget, and a die at or above its number. Said
+ *  either way, so the log shows the roll. */
+function delayRoll(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  budget: string,
+): boolean {
+  const catalog = action.catalog;
+  if (!catalog) return false;
+  const delays = rulesetActiveConditions(ctx.definition, ctx.combat, actor, ctx.state)
+    .map((entry) => entry.delays)
+    .find((one) => one?.budget === budget && one.catalogs.includes(catalog));
+  if (!delays) return false;
+  const roll = ctx.roll(delays.chance.sides);
+  const held = roll >= delays.chance.atLeast;
+  ctx.events.push({
+    type: "delay",
+    actorId: actor.id,
+    label: action.label,
+    outcome: held ? "held" : "now",
+    roll,
+    needed: delays.chance.atLeast,
+  });
+  return held;
+}
+
+/** What a delay held over, as its maker's turn begins (1.115): completed with the budget it waits
+ *  for, which goes on as it would have when made, or lost when they cannot act or have none. */
+function completeDelayed(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
+  const delayed = actor.delayed;
+  if (!delayed) return;
+  delete actor.delayed;
+  const { label, budget, ...resume } = delayed;
+  const action = actor.actions.find((entry) => entry.id === resume.optionId);
+  const effects = rulesetCombatEffects(ctx.definition, ctx.combat, actor, ctx.state);
+  if (!action || !rulesetCombatStanding(actor) || effects.has("cannot-act") || (actor.budgets[budget] ?? 0) < 1) {
+    ctx.events.push({ type: "delay", actorId: actor.id, label, outcome: "lost" });
+    return;
+  }
+  spendBudget(ctx, actor, budget);
+  ctx.events.push({ type: "delay", actorId: actor.id, label, outcome: "completed" });
+  const held =
+    openMoment(
+      ctx,
+      {
+        kind: "used",
+        sourceId: actor.id,
+        optionId: action.id,
+        label: action.label,
+        ...(action.catalog ? { catalog: action.catalog } : {}),
+        ...(action.entry ? { entry: action.entry } : {}),
+      },
+      ctx.state.combatants,
+      resume,
+    ) || openAimed(ctx, resume, action.label, action.catalog, action.entry);
+  if (!held) resumeAction(ctx, resume);
 }
 
 /**
@@ -3443,6 +3509,8 @@ function beginNextTurn(definition: RulesetDefinition, combat: RulesetCombat, ctx
       rulesetConditionEconomy(definition, combat, actor, ctx.state).budgets,
     );
     if (actor.dying && !actor.stable && !actor.defeated) deathSave(ctx, actor);
+    // What a delay held over is completed before anything else is done this turn.
+    completeDelayed(ctx, actor);
   }
   const after = rulesetEncounterOutcome(ctx.state);
   if (after !== "ongoing") pushOutcome(ctx, after);

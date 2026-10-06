@@ -758,7 +758,12 @@ const capabilityPackageManifestBaseSchema = z
 //        it on, from their next one, and its holder's again once they have left the fight. 5e's
 //        Guiding Bolt ("before the end of your next turn"). Not a soft seam: an Engine that cannot
 //        read the key refuses the ruleset, so a package that ships it declares 1.114. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 114 } as const);
+// 1.115: a combat condition's `delays: { catalogs, budget, chance: { sides, atLeast } }` holds what
+//        its holder uses out of those catalogs with that budget over to their next turn when the die
+//        shows `atLeast` or more; it is completed there with the same budget, or lost. 5e's Slow.
+//        Not a soft seam: an Engine that cannot read the key refuses the ruleset, so a package that
+//        ships it declares 1.115. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 115 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

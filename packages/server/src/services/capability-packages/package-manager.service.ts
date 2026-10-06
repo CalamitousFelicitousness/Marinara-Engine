@@ -2124,6 +2124,15 @@ export function getCapabilityPackageInstallIssue(
   if (!declaresApi(114) && (carriesSourceClockKeys || carriesSourceClock(ruleset?.combat))) {
     return "A ruleset whose conditions count their rounds on the turns of whoever put them on requires schemaVersion 2 and capabilityApi 1.114 or newer";
   }
+  // Conditions that hold what their holder uses over to the next turn, 1.115.
+  if (
+    !declaresApi(115) &&
+    ((plainRecord(ruleset?.combat)?.conditions as unknown[] | undefined) ?? []).some(
+      (condition) => plainRecord(condition)?.delays !== undefined,
+    )
+  ) {
+    return "A ruleset whose conditions hold what their holder uses over to the next turn requires schemaVersion 2 and capabilityApi 1.115 or newer";
+  }
   // Sizes and escape DCs, 1.98: new keys on the strict combat block, contest, creature and applies.
   if (!declaresApi(98)) {
     const combat = plainRecord(ruleset?.combat);

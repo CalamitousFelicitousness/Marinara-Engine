@@ -472,6 +472,17 @@ export function rulesetCombatEventLine(
         roll: rulesetRollText(event, t, bonusNamer(names, t)),
         difficulty: event.difficulty,
       });
+    case "delay": {
+      // What a slowing condition holds over to its maker's next turn (1.115).
+      const said = { actor: names.combatant(event.actorId), label: event.label };
+      if (event.outcome === "completed") return key("delayCompleted", said);
+      if (event.outcome === "lost") return key("delayLost", said);
+      return key(event.outcome === "held" ? "delayHeld" : "delayNow", {
+        ...said,
+        roll: event.roll,
+        needed: event.needed,
+      });
+    }
     case "counter":
       // An answer that reaches only so high (1.111): past it, a check, or nothing at all.
       if (event.total === undefined || event.rolls === undefined) {

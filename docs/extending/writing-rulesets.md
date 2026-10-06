@@ -1832,7 +1832,14 @@ begins, which is how "until the start of your next turn" is said. `"of": "source
 "until the end of your next turn" is said of somebody else. Guiding Bolt's
 `{ "duration": { "rounds": 1, "of": "source" }, "endsAfter": "attacked" }` gives advantage to the
 next attack roll against its target before the end of the caster's next turn. If the source leaves
-the fight, the rounds count on the holder's own turns. `endsAfter` takes the condition off
+the fight, the rounds count on the holder's own turns. A combat condition's `delays` (Capability API
+1.115) holds over what its holder uses: an action out of one of its `catalogs`, paid with its
+`budget`, rolls a die of `chance.sides`, and at `chance.atLeast` or more it does not happen yet. As
+the holder's next turn begins it is completed with that same budget and goes on as it would have,
+answers and all, and if they cannot act or have none of that budget it is lost. What it cost stays
+spent either way. 5e's Slow is
+`"delays": { "catalogs": ["spells"], "budget": "action", "chance": { "sides": 20, "atLeast": 11 } }`.
+`endsAfter` takes the condition off
 after the first `own-attack` (the holder's next attack roll), `attacked` (the next attack roll made
 against the holder) or `own-save` (the holder's next save), whatever its clock says, so
 `{ "duration": { "rounds": 1 }, "endsAfter": "own-attack" }` is "on its next attack before the end of

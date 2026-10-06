@@ -586,6 +586,9 @@ export interface RulesetCombatant {
   /** How many of their own turns they have begun crashed, where initiative is a number attacks move
    *  and the ruleset lets a crash recover. Absent while they are not crashed. */
   crashedTurns?: number;
+  /** What a delay held over to their next turn (1.115): the action as it was made, and the budget
+   *  completing it takes. Absent while nothing waits. */
+  delayed?: RulesetActionResume & { label: string; budget: string };
   /** How much of each limited live pool they may still spend this turn or round, read once as the
    *  fight began and counted down as they pay. Absent for anybody nothing limits. */
   limits?: Record<string, { max: number; per: "turn" | "round"; spent: number }>;
@@ -1109,6 +1112,16 @@ export type RulesetCombatEvent =
       total?: number;
       difficulty?: number;
       success: boolean;
+    }
+  /** A delay rolled for (1.115): `now` it goes off as made, `held` it waits for its maker's next
+   *  turn; then `completed` with that turn's budget, or `lost` when they cannot. */
+  | {
+      type: "delay";
+      actorId: string;
+      label: string;
+      outcome: "now" | "held" | "completed" | "lost";
+      roll?: number;
+      needed?: number;
     }
   /** Something held open by a window was called off, and never happened. What it cost stays spent:
    *  it was paid for before anybody was asked. */

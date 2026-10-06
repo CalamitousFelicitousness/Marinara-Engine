@@ -473,7 +473,9 @@ test.describe("Chat Settings window on desktop", () => {
       const lockedBox = await box(settings);
       await resetIcon.click();
       const confirm = page.getByRole("dialog", { name: "Are you sure you want to reset the view?" });
-      await expect(confirm).toContainText("Every window and section goes back to its default place for this chat.");
+      await expect(confirm).toContainText(
+        "Every window, button, and section goes back to its default place for this chat.",
+      );
       await confirm.getByRole("button", { name: "Cancel", exact: true }).click();
       await expect(confirm).toHaveCount(0);
       await expect(resetIcon).toBeFocused();

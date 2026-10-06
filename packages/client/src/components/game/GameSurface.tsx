@@ -14335,6 +14335,7 @@ function GameSurfaceComponent({
             handlePartyPortraitUpload(characterSheetCharId, partyCards[characterSheetCharId].title, file)
           }
           ruleset={characterSheetRuleset}
+          rulesetPinned={gameRuleset.status !== "none"}
         />
       )}
 

@@ -24,6 +24,7 @@ import {
   sheetFieldMatchTexts,
 } from "@marinara-engine/shared";
 import type { TFunction } from "i18next";
+import { rulesetPoolGroupLabel } from "./ruleset-sheet-view";
 
 /** Moved to shared so a fight holds an invented creature to the same match the picker opens on. */
 export { sheetFieldMatchTexts } from "@marinara-engine/shared";
@@ -484,7 +485,7 @@ export type CatalogMechanicsLabels = {
 };
 
 /** The ruleset's own names for everything a mechanics block can point at. A pool group has no label
- *  of its own, so it reads as its id, exactly as the in-game sheet heads its group with. */
+ *  of its own, so its id is read as words, exactly as the in-game sheet heads its group with. */
 export function catalogMechanicsLabels(
   definition: RulesetDefinition,
   catalog: Pick<RulesetCatalogHeader, "units">,
@@ -494,7 +495,7 @@ export function catalogMechanicsLabels(
   const pools: Record<string, string> = {};
   for (const pool of definition.sheet.live.pools) {
     pools[pool.id] = pool.label;
-    if (pool.group && !(pool.group in pools)) pools[pool.group] = pool.group;
+    if (pool.group && !(pool.group in pools)) pools[pool.group] = rulesetPoolGroupLabel(pool.group);
   }
   const budgets: Record<string, string> = {};
   for (const budget of definition.combat?.economy.budgets ?? []) budgets[budget.id] = budget.label;

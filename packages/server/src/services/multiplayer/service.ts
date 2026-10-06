@@ -796,14 +796,18 @@ export class MultiplayerService {
       return this.hostState();
     });
   }
-  /** A seated guest with this persona name whose own session is gone (left, restarted or silent for 45 s). */
+  /**
+   * A seated guest with this display name and persona name whose own session is gone (left, restarted or
+   * silent for 45 s). A different person asking for that persona still gets identity-conflict, so Approve
+   * never hands one player's seat and name to someone else.
+   */
   private async returningParticipant(host: Host, request: Session) {
     const { room } = await host.store.read();
     const key = roomNameKey(request.participant.persona.name);
     const seated = room.participants.find(
       (p) => !p.isHost && [p.persona.name, p.pendingPersona?.name].some((name) => name && roomNameKey(name) === key),
     );
-    if (!seated) return null;
+    if (!seated || roomNameKey(seated.displayName) !== roomNameKey(request.participant.displayName)) return null;
     const live = [...host.sessions.values()].some(
       (s) =>
         s !== request &&

@@ -102,7 +102,9 @@ try {
   const hostSessions = () =>
     (
       host as unknown as {
-        host: { sessions: Map<string, { participant: { id: string }; status: string; lastSeen: number }> };
+        host: {
+          sessions: Map<string, { participant: { id: string }; status: string; lastSeen: number; polling: boolean }>;
+        };
       }
     ).host.sessions;
   const approve = async (displayName: string) => {
@@ -110,6 +112,16 @@ try {
     assert.ok(request, `${displayName} is waiting for approval`);
     return host.hostAction({ type: "approve", requestId: request.id });
   };
+  // Stop and disable answer the guest's long poll; wait until the host holds one instead of guessing a delay.
+  const pollWaiting = () =>
+    until(
+      async () => {
+        await guest.guestState();
+        return [...hostSessions().values()].some((session) => session.status === "approved" && session.polling);
+      },
+      Boolean,
+      "the guest's poll is waiting on the host",
+    );
   const connected = (label: string) =>
     until(
       () => guest.guestState(),
@@ -180,8 +192,7 @@ try {
   assert.notEqual((await metadataOf(guestDb, joinedA.localChatId)).multiplayer.status, "ended");
 
   // Stop answers the guest's waiting poll, so the guest sees the room end instead of "Reconnecting".
-  await guest.guestState();
-  await delay(200);
+  await pollWaiting();
   await host.hostAction({ type: "stop" });
   const stopped = await until(
     () => guest.guestState(),
@@ -228,6 +239,29 @@ try {
     (sessions) => sessions.every((session) => session.status === "revoked"),
     "Leave revokes the old session",
   );
+  // Someone else asking for that persona does not get Alex's seat or name.
+  const impostor = await requestMultiplayerPeer(lobbyInvite, {
+    version: 1,
+    type: "join",
+    roomId: lobbyInvite.roomId,
+    invite: lobbyInvite.invite,
+    password,
+    displayName: "Rose",
+    persona: { name: "Lyra", description: "Rose's description" },
+  });
+  assert.equal(impostor.type, "admission");
+  await assert.rejects(
+    approve("Rose"),
+    expectCode("identity-conflict"),
+    "a departed seat goes back only to its player",
+  );
+  const impostorRequest = (await host.hostState())!.pendingRequests.find((item) => item.displayName === "Rose");
+  assert.ok(impostorRequest, "the refused request stays for the host to decline");
+  await host.hostAction({ type: "decline", requestId: impostorRequest.id });
+  assert.deepEqual((await host.hostState())!.snapshot.players.map((player) => player.displayName).sort(), [
+    "Alex",
+    "Mari",
+  ]);
   await joinLyra();
   await approve("Alex");
   assert.equal((await connected("returning player admitted"))!.state.snapshot!.selfId, lyra);
@@ -280,8 +314,7 @@ try {
   assert.equal((await connected("rejoined after deleting the joined chat"))!.state.snapshot!.selfId, lyra);
 
   // Turning multiplayer off on the host also reaches the guest.
-  await guest.guestState();
-  await delay(200);
+  await pollWaiting();
   await host.settings(false);
   const disabled = await until(
     () => guest.guestState(),

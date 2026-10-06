@@ -3,7 +3,6 @@
 // ──────────────────────────────────────────────
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { z } from "zod";
-import AdmZip from "adm-zip";
 import { logger } from "../lib/logger.js";
 import { getMariDbService } from "../services/mari-db/mari-db.service.js";
 import { cardPromptText } from "../services/prompt/card-text.js";
@@ -158,6 +157,7 @@ import { and, desc, eq, inArray } from "../db/file-query.js";
 import { existsSync } from "fs";
 import { join } from "path";
 import { DATA_DIR } from "../utils/data-dir.js";
+import { singleChunk, streamExportZip } from "../utils/export-stream.js";
 import { normalizeTimestampOverrides } from "../services/import/import-timestamps.js";
 import {
   appendNonLeadingSystemMessagesToLastUser,
@@ -4640,59 +4640,63 @@ export async function chatsRoutes(app: FastifyInstance) {
 
     if (chatsToExport.length === 0) return reply.status(404).send({ error: "No chats found to export" });
 
-    const zip = new AdmZip();
-    const manifest: Array<Record<string, unknown>> = [];
-
-    for (let index = 0; index < chatsToExport.length; index++) {
-      const chat = chatsToExport[index]!;
-      const serialized = await serializeChatTranscript(chat, format, { includeReasoning, includePrivateNotes });
-      const file = buildBulkExportFilename(
-        chat,
-        index,
-        chatsToExport.length,
-        serialized.branchName,
-        serialized.extension,
-      );
-      zip.addFile(file, Buffer.from(serialized.content, "utf8"));
-      manifest.push({
-        file,
-        id: chat.id,
-        name: chat.name,
-        mode: chat.mode,
-        groupId: chat.groupId,
-        folderId: chat.folderId,
-        branchName: serialized.branchName || null,
-        createdAt: chat.createdAt,
-        updatedAt: chat.updatedAt,
-        messageCount: serialized.messageCount,
-      });
-    }
-
-    zip.addFile(
-      "manifest.json",
-      Buffer.from(
-        JSON.stringify(
-          {
-            exportedAt: new Date().toISOString(),
-            format,
-            includeReasoning,
-            includePrivateNotes,
-            scope,
-            count: chatsToExport.length,
-            chats: manifest,
-          },
-          null,
-          2,
+    // One transcript is read and compressed at a time while the ZIP is sent (#7115); the manifest goes last.
+    const files = (async function* () {
+      const manifest: Array<Record<string, unknown>> = [];
+      for (let index = 0; index < chatsToExport.length; index++) {
+        const chat = chatsToExport[index]!;
+        const serialized = await serializeChatTranscript(chat, format, { includeReasoning, includePrivateNotes });
+        const file = buildBulkExportFilename(
+          chat,
+          index,
+          chatsToExport.length,
+          serialized.branchName,
+          serialized.extension,
+        );
+        manifest.push({
+          file,
+          id: chat.id,
+          name: chat.name,
+          mode: chat.mode,
+          groupId: chat.groupId,
+          folderId: chat.folderId,
+          branchName: serialized.branchName || null,
+          createdAt: chat.createdAt,
+          updatedAt: chat.updatedAt,
+          messageCount: serialized.messageCount,
+        });
+        yield {
+          stem: file.slice(0, -(serialized.extension.length + 1)),
+          extension: serialized.extension,
+          content: singleChunk(serialized.content),
+        };
+      }
+      yield {
+        stem: "manifest",
+        extension: "json",
+        content: singleChunk(
+          JSON.stringify(
+            {
+              exportedAt: new Date().toISOString(),
+              format,
+              includeReasoning,
+              includePrivateNotes,
+              scope,
+              count: chatsToExport.length,
+              chats: manifest,
+            },
+            null,
+            2,
+          ),
         ),
-        "utf8",
-      ),
-    );
+      };
+    })();
 
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
     return reply
       .header("Content-Type", "application/zip")
       .header("Content-Disposition", `attachment; filename="chat-transcripts-${format}-${stamp}.zip"`)
-      .send(zip.toBuffer());
+      .send(streamExportZip(files));
   });
 
   // Export chat — supports JSONL (default, SillyTavern-compatible), plain text, Markdown and a standalone HTML story

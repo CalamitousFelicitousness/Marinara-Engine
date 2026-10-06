@@ -4,7 +4,8 @@
 // User deletes snapshot the exact message + swipe rows before the normal delete path runs,
 // so every delete side effect (interruption undo, game state, lore cascade, memory chunk
 // invalidation) stays in one place. Restore reinserts the rows under their original ids and
-// createdAt, which puts them back at their original position in the timeline.
+// createdAt, which puts them back at their original position in the timeline. Agent lore the
+// delete removed or reverted is kept in the snapshot too and comes back with its messages.
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -15,10 +16,13 @@ import {
 } from "@marinara-engine/shared";
 import type { DB } from "../../db/connection.js";
 import { encodeShardKey, isLazyUnitTable } from "../../db/file-backed-store.js";
-import { and, desc, eq, gt, inArray, isNull, lte } from "../../db/file-query.js";
+import { and, desc, eq, gt, inArray, isNotNull, isNull, lte } from "../../db/file-query.js";
 import {
   chats,
   gameStateSnapshots,
+  lorebookEntries,
+  lorebookFolders,
+  lorebooks,
   memoryChunks,
   messages,
   messageSwipes,
@@ -26,12 +30,30 @@ import {
 } from "../../db/schema/index.js";
 import { logger } from "../../lib/logger.js";
 import { newId, now } from "../../utils/id-generator.js";
-import { createChatsStorage } from "./chats.storage.js";
+import { agentLoreCascadeChange, createChatsStorage } from "./chats.storage.js";
+import { parseSourceMessageRefs } from "./lorebook-provenance.js";
 
 type MessageRow = typeof messages.$inferSelect;
 type SwipeRow = typeof messageSwipes.$inferSelect;
 type TrashRow = typeof messageTrash.$inferSelect;
-type TrashSnapshot = { message: MessageRow; swipes: SwipeRow[] };
+type LoreRow = typeof lorebookEntries.$inferSelect;
+/** An agent-written entry as it was before the delete, and which of its source messages that delete removed. */
+type TrashedLore = { entry: LoreRow; deletedIds: string[] };
+type TrashSnapshot = { message: MessageRow; swipes: SwipeRow[]; lore?: TrashedLore[] };
+
+const loreRefIds = (entry: LoreRow) =>
+  [...parseSourceMessageRefs(entry.sourceMessageRefs), ...parseSourceMessageRefs(entry.previousSourceMessageRefs)].map(
+    (ref) => ref.id,
+  );
+
+const PROVENANCE_COLUMNS = [
+  "content",
+  "sourceAgentId",
+  "sourceMessageRefs",
+  "previousContent",
+  "previousSourceMessageRefs",
+  "previousSourceAgentId",
+] as const;
 
 const RETENTION_MS = MESSAGE_TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000;
 const MESSAGE_TRASH_SWEEP_INTERVAL_MS = 60 * 60 * 1000;
@@ -40,7 +62,14 @@ function parseSnapshot(row: TrashRow): TrashSnapshot | null {
   try {
     const parsed = JSON.parse(row.snapshot) as Partial<TrashSnapshot> | null;
     if (!parsed?.message || typeof parsed.message.id !== "string") return null;
-    return { message: parsed.message, swipes: Array.isArray(parsed.swipes) ? parsed.swipes : [] };
+    const lore = Array.isArray(parsed.lore)
+      ? parsed.lore.filter((item) => typeof item?.entry?.id === "string" && Array.isArray(item.deletedIds))
+      : [];
+    return {
+      message: parsed.message,
+      swipes: Array.isArray(parsed.swipes) ? parsed.swipes : [],
+      ...(lore.length > 0 ? { lore } : {}),
+    };
   } catch {
     return null;
   }
@@ -86,6 +115,83 @@ export function createMessageTrashStorage(db: DB) {
           .from(messageTrash)
           .where(and(eq(messageTrash.chatId, chatId), inArray(messageTrash.id, entryIds)))
       : db.select().from(messageTrash).where(eq(messageTrash.chatId, chatId));
+
+  /**
+   * Put back agent lore the trash delete removed or reverted. An entry returns once every message it
+   * was written from exists again; while one of them is still in the trash, its snapshot moves there.
+   * An entry someone changed since the delete is left as it is. Later deletes are undone first, so an
+   * entry two deletes changed is rolled back one step at a time.
+   */
+  const restoreTrashedLore = async (
+    chatId: string,
+    restored: Array<{ snapshot: TrashSnapshot; deletedAt: string }>,
+  ) => {
+    const pending = restored
+      .sort((a, b) => b.deletedAt.localeCompare(a.deletedAt))
+      .flatMap(({ snapshot }) => snapshot.lore ?? []);
+    if (pending.length === 0) return;
+    const refIds = [...new Set(pending.flatMap(({ entry }) => loreRefIds(entry)))];
+    const present = new Set(
+      (await db.select({ id: messages.id }).from(messages).where(inArray(messages.id, refIds))).map((row) => row.id),
+    );
+    const retained = await db.select().from(messageTrash).where(eq(messageTrash.chatId, chatId));
+    const handedOn = new Map<string, TrashSnapshot>();
+    for (const { entry, deletedIds } of pending) {
+      const change = agentLoreCascadeChange(entry, new Set(deletedIds));
+      const [current] = await db.select().from(lorebookEntries).where(eq(lorebookEntries.id, entry.id));
+      const expected: Record<string, unknown> | null = change === "delete" ? null : { ...entry, ...change };
+      const untouched =
+        change &&
+        (expected && current
+          ? PROVENANCE_COLUMNS.every((column) => (current[column] ?? null) === (expected[column] ?? null))
+          : !expected && !current);
+      if (!untouched) continue;
+      const waitingOn = parseSourceMessageRefs(entry.sourceMessageRefs).find((ref) => !present.has(ref.id));
+      if (waitingOn) {
+        const holder = retained.find((row) => row.messageId === waitingOn.id);
+        const held = holder ? (handedOn.get(holder.id) ?? parseSnapshot(holder)) : null;
+        if (holder && held && !held.lore?.some((item) => item.entry.id === entry.id)) {
+          held.lore = [...(held.lore ?? []), { entry, deletedIds }];
+          handedOn.set(holder.id, held);
+        }
+        continue;
+      }
+      const keepUndo = parseSourceMessageRefs(entry.previousSourceMessageRefs).every((ref) => present.has(ref.id));
+      const provenance = {
+        content: entry.content,
+        sourceAgentId: entry.sourceAgentId,
+        sourceMessageRefs: entry.sourceMessageRefs,
+        previousContent: keepUndo ? entry.previousContent : null,
+        previousSourceMessageRefs: keepUndo ? entry.previousSourceMessageRefs : null,
+        previousSourceAgentId: keepUndo ? entry.previousSourceAgentId : null,
+        embedding: null,
+        embeddingSpaceId: null,
+        updatedAt: now(),
+      };
+      if (current) {
+        await db.update(lorebookEntries).set(provenance).where(eq(lorebookEntries.id, entry.id));
+        continue;
+      }
+      // A lorebook deleted since takes its lore with it; a deleted folder leaves the entry at the top level.
+      const [book] = await db.select({ id: lorebooks.id }).from(lorebooks).where(eq(lorebooks.id, entry.lorebookId));
+      if (!book) continue;
+      const folder = entry.folderId
+        ? (
+            await db
+              .select({ id: lorebookFolders.id })
+              .from(lorebookFolders)
+              .where(eq(lorebookFolders.id, entry.folderId))
+          )[0]
+        : undefined;
+      await db.insert(lorebookEntries).values({ ...entry, ...provenance, folderId: folder ? entry.folderId : null });
+    }
+    for (const [id, snapshot] of handedOn) {
+      await db
+        .update(messageTrash)
+        .set({ snapshot: JSON.stringify(snapshot) })
+        .where(eq(messageTrash.id, id));
+    }
+  };
 
   return {
     /** Drop entries older than the retention window. Returns how many were purged. */
@@ -147,6 +253,22 @@ export function createMessageTrashStorage(db: DB) {
         const permanentIds = new Set(gameSnapshots.map((snapshot) => snapshot.messageId));
         const recoverableRows = rows.filter((row) => !permanentIds.has(row.id));
         if (recoverableRows.length === 0) return;
+        // The delete below removes or reverts agent lore written from these turns (the whole batch
+        // decides, so the ids go with each entry); keep it so restore can put it back.
+        const batchIds = new Set(rows.map((row) => row.id));
+        const touchedLore = (await db.select().from(lorebookEntries).where(isNotNull(lorebookEntries.sourceAgentId)))
+          .filter((entry) => agentLoreCascadeChange(entry, batchIds))
+          .map((entry) => ({
+            // Embeddings are rebuilt after a restore; they would only bloat the snapshot.
+            entry: { ...entry, embedding: null, embeddingSpaceId: null },
+            refIds: loreRefIds(entry),
+          }));
+        const loreFor = (messageId: string) => {
+          const lore = touchedLore
+            .filter(({ refIds }) => refIds.includes(messageId))
+            .map(({ entry, refIds }) => ({ entry, deletedIds: refIds.filter((id) => batchIds.has(id)) }));
+          return lore.length > 0 ? lore : undefined;
+        };
         const swipesByMessage = new Map<string, SwipeRow[]>();
         for (const swipe of await chatsStorage.listSwipesByMessageIds(recoverableRows.map((row) => row.id))) {
           const list = swipesByMessage.get(swipe.messageId) ?? [];
@@ -164,6 +286,7 @@ export function createMessageTrashStorage(db: DB) {
           snapshot: JSON.stringify({
             message: row,
             swipes: (swipesByMessage.get(row.id) ?? []).sort((a, b) => a.index - b.index),
+            lore: loreFor(row.id),
           } satisfies TrashSnapshot),
           messageCreatedAt: row.createdAt,
           deletedAt,
@@ -197,6 +320,7 @@ export function createMessageTrashStorage(db: DB) {
       }
       let earliest: string | null = null;
       let latest: string | null = null;
+      const restoredSnapshots: Array<{ snapshot: TrashSnapshot; deletedAt: string }> = [];
       let restoreFailed = false;
       let firstRestoreError: unknown;
       for (const row of rows) {
@@ -257,6 +381,7 @@ export function createMessageTrashStorage(db: DB) {
           continue;
         }
         result.restoredMessageIds.push(message.id);
+        restoredSnapshots.push({ snapshot, deletedAt: row.deletedAt });
         if (!earliest || message.createdAt < earliest) earliest = message.createdAt;
         if (!latest || message.createdAt > latest) latest = message.createdAt;
       }
@@ -308,6 +433,7 @@ export function createMessageTrashStorage(db: DB) {
         }
         // The restore route holds this chat's metadata queue for the whole restore.
         await chatsStorage.replayVariableChanges(chatId, [], variableChanges, { metadataQueueHeld: true });
+        await restoreTrashedLore(chatId, restoredSnapshots);
       }
       if (result.restoredMessageIds.length === 0 && restoreFailed) throw firstRestoreError;
       return result;

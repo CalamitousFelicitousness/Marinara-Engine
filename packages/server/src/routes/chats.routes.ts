@@ -2559,6 +2559,8 @@ export async function chatsRoutes(app: FastifyInstance) {
         }
         if (Object.prototype.hasOwnProperty.call(partial, "hiddenFromAICharacterIds")) {
           syncAllSwipeExtra.hiddenFromAICharacterIds = partial.hiddenFromAICharacterIds;
+          // A user's visibility choice always wins over Advanced Memory's automatic one (#7192).
+          partial.visibilityManual = syncAllSwipeExtra.visibilityManual = true;
         }
         if (Object.prototype.hasOwnProperty.call(partial, "isConversationStart")) {
           syncAllSwipeExtra.isConversationStart = partial.isConversationStart;

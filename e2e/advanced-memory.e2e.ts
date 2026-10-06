@@ -687,6 +687,7 @@ test("Advanced Memory stays in Chat Settings with confirmed knowledge, resumable
       retrieveMinMessages: 3,
       retrieveMaxMessages: 10,
       narratorCharacterId: null,
+      autoMessageVisibility: false,
       knowledgeStarts: { [narrator.id]: "historical-0" },
       knowledgeConfirmed: false,
     },
@@ -1773,6 +1774,66 @@ test("Advanced Memory Decision connection is optional and persists for its chat"
     await expect(settings.getByRole("combobox", { name: "Memory Decision connection", exact: true })).toHaveCount(0);
   } finally {
     await request.delete(`/api/connections/${connection.id}`);
+    await fixture.cleanup();
+  }
+});
+
+test("Advanced Memory offers automatic message visibility only in individual group chats", async ({
+  page,
+  request,
+}) => {
+  const fixture = await createFixture(request);
+  const soloResponse = await request.post("/api/chats", {
+    data: { name: "Solo visibility proof", mode: "roleplay", characterIds: [fixture.character.id] },
+  });
+  expect(soloResponse.ok()).toBeTruthy();
+  const solo = (await soloResponse.json()) as { id: string };
+  const status = async () =>
+    (await (await request.get(`/api/chats/${fixture.chat.id}/advanced-memory`)).json()) as AdvancedMemoryStatus;
+  const openMemory = async () => {
+    await page.evaluate(async () => {
+      const { useChatStore } = await import("/src/stores/chat.store.ts" as string);
+      useChatStore.getState().setShouldOpenSettings(true);
+    });
+    const section = page.locator('[data-chat-settings-section="roleplay-memory-recall"]');
+    await expect(section).toBeVisible();
+    if (!(await section.locator('[data-component="AdvancedMemorySettings"]').isVisible()))
+      await drawerToggle(section).click();
+    return section.locator('[data-component="AdvancedMemorySettings"]');
+  };
+  const toggleName = /^Decide who sees new messages/;
+  try {
+    for (const chatId of [fixture.chat.id, solo.id]) {
+      expect(
+        (await request.patch(`/api/chats/${chatId}/metadata`, { data: { groupChatMode: "individual" } })).ok(),
+      ).toBeTruthy();
+      expect(
+        (await request.patch(`/api/chats/${chatId}/advanced-memory/settings`, { data: { enabled: true } })).ok(),
+      ).toBeTruthy();
+    }
+    await openChat(page, fixture.chat.id);
+    let settings = await openMemory();
+    const toggle = settings.getByRole("checkbox", { name: toggleName });
+    await expect(toggle).not.toBeChecked();
+    await settings.getByText("Decide who sees new messages", { exact: true }).click();
+    await expect.poll(async () => (await status()).settings.autoMessageVisibility).toBe(true);
+    await expect(toggle).toBeChecked();
+
+    expect(
+      (await request.patch(`/api/chats/${fixture.chat.id}/metadata`, { data: { groupChatMode: "merged" } })).ok(),
+    ).toBeTruthy();
+    await page.reload();
+    await expect(page.locator("textarea[data-chat-composer]")).toBeVisible();
+    settings = await openMemory();
+    await expect(settings.getByText("Advanced Memory Recall", { exact: true })).toBeVisible();
+    await expect(settings.getByRole("checkbox", { name: toggleName })).toHaveCount(0);
+
+    await openChat(page, solo.id, false);
+    settings = await openMemory();
+    await expect(settings.getByText("Advanced Memory Recall", { exact: true })).toBeVisible();
+    await expect(settings.getByRole("checkbox", { name: toggleName })).toHaveCount(0);
+  } finally {
+    await request.delete(`/api/chats/${solo.id}?force=true`);
     await fixture.cleanup();
   }
 });

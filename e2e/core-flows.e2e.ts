@@ -10176,11 +10176,16 @@ test("preset import and save-export feedback follow the active accent", async ({
     // read BEFORE the save is triggered: a round trip spent here would come
     // straight out of the window the visibility assertion has to catch it in.
     const expectedEditorAccent = await readScopedCssVariableColor(editor, "--marinara-editor-accent");
-    await exportDialog.getByRole("button", { name: "Save and export", exact: true }).click();
-
     const savedFeedback = editor.getByText("Changes saved", { exact: true });
-    await expect(savedFeedback).toBeVisible();
-    await expect(savedFeedback).toHaveCSS("color", expectedEditorAccent);
+    const saveAndExport = async () => {
+      await exportDialog.getByRole("button", { name: "Save and export", exact: true }).click();
+      await expect(savedFeedback).toBeVisible();
+      await expect(savedFeedback).toHaveCSS("color", expectedEditorAccent);
+    };
+    // Without a share sheet, an iPhone export waits behind a "Your file is ready." toast over the editor
+    // header (#7115). Linux WebKit has no share sheet while macOS WebKit does, so pin that path and save.
+    if (testInfo.project.name === "mobile-webkit") await downloadExport(page, saveAndExport);
+    else await saveAndExport();
     await testInfo.attach(`preset-save-export-accent-${testInfo.project.name}.png`, {
       body: await page.screenshot({ fullPage: true }),
       contentType: "image/png",
@@ -12350,12 +12355,14 @@ test(
     }));
     expect(chromeSurfaces.home).toBe(chromeSurfaces.app);
     const surfaceLightness = (value: string) => {
+      // Phones flatten the chrome to an rgb() backing while its color-mix() rows serialize as color(srgb 0–1).
+      const scale = value.startsWith("color(") ? 255 : 1;
       const channels =
         value
           .match(/[\d.]+/g)
           ?.slice(0, 3)
           .map(Number) ?? [];
-      return channels.reduce((total, channel) => total + channel, 0);
+      return channels.reduce((total, channel) => total + channel * scale, 0);
     };
     const darkAddressSurfaces = await page.evaluate(() => ({
       chrome: getComputedStyle(document.querySelector<HTMLElement>(".mari-home-browser-chrome")!).backgroundColor,
@@ -22546,7 +22553,13 @@ test("mobile chat composer follows the visual viewport above the software keyboa
       store.closeBotBrowser();
       store.setTrackerPanelEnabled(true);
       store.setTrackerPanelOpen(true, chatId);
+      // The chat's Trackers button now shows and hides the selected panel (8d79bd182); open it the way it does.
+      const { TRACKER_PANEL_BUBBLE_ID, useFloatingWindowStore } = await import(
+        "/src/stores/floating-window.store.ts" as string
+      );
+      useFloatingWindowStore.getState().openWindow(TRACKER_PANEL_BUBBLE_ID, null, { focus: false });
     }, chat.id);
+    await expect(page.locator('[data-component="TrackerDataSidebarMobile"]')).toBeVisible();
     await expect(shell).not.toHaveAttribute("data-chat-surface-active");
     await expect.poll(() => shell.evaluate((element) => getComputedStyle(element).transform)).toBe("none");
 
@@ -23260,12 +23273,13 @@ for (const theme of ["dark", "light"] as const) {
 
     const panel = page.locator('[data-component="RightPanel"]');
     const newButton = panel.getByTitle("New", { exact: true });
-    for (const surface of [
-      page.locator('[data-component="CharactersTopbarUnderline"]'),
-      panel.locator('[data-component="RightPanelHeaderIcon"]'),
-      newButton,
-    ]) {
-      await expect(surface).toBeVisible();
+    const underline = page.locator('[data-component="CharactersTopbarUnderline"]');
+    // Phones move the panel buttons into the topbar More menu (fdd0df0ce), so the underline stays on its hidden button.
+    const phoneTopbar = testInfo.project.name.startsWith("mobile");
+    if (phoneTopbar) await expect(page.locator('[data-tour="panel-characters"]')).toBeHidden();
+    for (const surface of [underline, panel.locator('[data-component="RightPanelHeaderIcon"]'), newButton]) {
+      if (phoneTopbar && surface === underline) await expect(surface).toHaveCount(1);
+      else await expect(surface).toBeVisible();
       await expect(surface).toHaveCSS(
         "background-image",
         /linear-gradient\(135deg, rgb\(244, 114, 182\), rgb\(244, 63, 94\)\)/,

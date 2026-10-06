@@ -64,13 +64,15 @@ const provider = createServer(async (request, response) => {
   }
   calls.push("summary");
   const scene = /\[scene (\d+)\]/u.exec(body.messages[1].content)?.[1];
+  const dojoScene = /\[dojo (\d+)\]/u.exec(body.messages[1].content)?.[1];
+  const summary = dojoScene === undefined ? summaries[Number(scene)] : dojoSummaries[Number(dojoScene)];
   response.end(
     JSON.stringify({
       choices: [
         {
           message: {
             role: "assistant",
-            content: JSON.stringify({ audience: "all", summary: summaries[Number(scene)] ?? "Kaito and Mari rested." }),
+            content: JSON.stringify({ audience: "all", summary: summary ?? "Kaito and Mari rested." }),
           },
           finish_reason: "stop",
         },
@@ -81,6 +83,15 @@ const provider = createServer(async (request, response) => {
 
 const SHIRO_SCENES = [7, 29, 51];
 const CAT_INN_SCENE = 40;
+const LIGHTHOUSE_SCENE = 7;
+// Kaito is named in four of ten scenes, under the half that would mute a name by frequency alone.
+const dojoSummaries = Array.from({ length: 10 }, (_, index) =>
+  index < 4
+    ? "Mari and Kaito trained in the dojo until dusk."
+    : index === LIGHTHOUSE_SCENE
+      ? "Mari found the old lighthouse key under the floorboards."
+      : "Mari walked alone through the market and bought bread.",
+);
 const chores = [
   "repainted the hallway",
   "argued about the rent",
@@ -233,14 +244,23 @@ try {
   assert(!failed.receipt.recalledSceneIds.includes(catInnScene!), "the name Shiro outranks the word cat");
   assert.deepEqual([...failed.receipt.recalledMessageIds].sort(), [...shiroMessages].sort());
 
-  // When the model accepts a scene but none of its messages, text matching still centres the excerpt.
+  // When the model accepts a scene but none of its messages, text matching still centres the excerpt,
+  // and the receipt says so because those messages show as selected below the threshold.
   rejectMessages = true;
   const textCentred = await memory.prepare(input);
   rejectMessages = false;
   assert.equal(recallRequests.splice(0).length, 2);
-  assert.deepEqual(textCentred.receipt.reasons, ["decision-recall"], "a complete answer is not a fallback");
+  assert.deepEqual(textCentred.receipt.reasons, ["decision-recall", "decision-excerpt-fallback"]);
+  assert.equal(textCentred.receipt.decisionRecall?.fallback, true);
   assert.deepEqual([...textCentred.receipt.recalledSceneIds].sort(), [...shiroScenes].sort());
   assert.deepEqual([...textCentred.receipt.recalledMessageIds].sort(), [...shiroMessages].sort());
+
+  // A higher Maximum recalled scenes widens the shortlist instead of being capped at one batch.
+  await memory.updateSettings(chat.id, { retrieveMaxScenes: 30 });
+  await memory.prepare(input);
+  await memory.updateSettings(chat.id, { retrieveMaxScenes: 3 });
+  const widened = recallRequests.splice(0).flatMap((request) => request.filter(({ id }) => summaryIds.has(id)));
+  assert.equal(widened.length, 30, "the scene pass judges as many scenes as may be recalled");
 
   // Each pass has its own time limit: two slow passes still finish together.
   slowRecall = true;
@@ -260,6 +280,52 @@ try {
   assert.deepEqual([...plain.receipt.recalledSceneIds].sort(), [...shiroScenes].sort());
   assert.deepEqual([...plain.receipt.recalledMessageIds].sort(), [...shiroMessages].sort());
   assert.equal(plain.receipt.decisionRecall, undefined);
+
+  // Addressing the responder by name is no topic, even where that name is in under half of the memories.
+  const dojo = await chats.create({ name: "Dojo", mode: "roleplay", characterIds: ["kaito"], connectionId: helper.id });
+  assert(dojo);
+  await memory.updateSettings(dojo.id, {
+    enabled: true,
+    decisionEnabled: true,
+    decisionConnectionId: decision.id,
+    knowledgeStarts: { kaito: null },
+    knowledgeConfirmed: true,
+    retrieveMaxScenes: 3,
+    retrieveMinMessages: 1,
+    retrieveMaxMessages: 1,
+  });
+  await chats.createMessagesBatch(dojo.id, [
+    ...dojoSummaries.flatMap((_, index) => [
+      { role: "user" as const, content: `SCENE_CHANGE [dojo ${index}] Mari starts her day.` },
+      {
+        role: "assistant" as const,
+        characterId: "kaito",
+        content:
+          index < 4
+            ? "Mari, Kaito and the class bow before practice."
+            : index === LIGHTHOUSE_SCENE
+              ? "The rusty lighthouse key glints in the dust."
+              : "The wind rattles the shutters.",
+      },
+      { role: "user" as const, content: "Mari nods." },
+    ]),
+    { role: "user", content: "SCENE_CHANGE Mari comes home.", extra: { isConversationStart: true } },
+    { role: "assistant", characterId: "kaito", content: "The house is quiet." },
+    { role: "user", content: "Kaito, do you still have the lighthouse key?" },
+  ]);
+  await memory.initialize(dojo.id);
+  await memory.updateSettings(dojo.id, { decisionEnabled: false });
+  recallRequests.splice(0);
+  const lighthouseScene = (await memory.status(dojo.id)).records.find(
+    (record) => record.kind === "scene" && /lighthouse/u.test(record.content),
+  )!.sceneId;
+  const addressed = await memory.prepare({
+    chatId: dojo.id,
+    messages: await chats.listMessages(dojo.id),
+    audienceCharacterIds: ["kaito"],
+    budgetTokens: 50000,
+  });
+  assert(addressed.receipt.recalledSceneIds.includes(lighthouseScene), "the lighthouse key outranks the name Kaito");
 
   console.log("Advanced Memory recall shortlist, two Decision passes and the ordinary fallback passed.");
 } finally {

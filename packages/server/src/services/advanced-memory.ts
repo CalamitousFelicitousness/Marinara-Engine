@@ -3161,8 +3161,17 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       .find(Boolean);
     const rankingTerms = recallTerms(trackerRankingHint(ctx, currentTracker, audience));
     const candidateWords = candidateTexts.map(recallTerms);
-    // Names the latest user message mentions, like a pet's, weigh most. Its lowercase words are no names.
-    const cueNames = recallNames(cueWords, [...candidateTexts, lastUser?.content.slice(-6000) ?? query]);
+    const responders = audience.map((id) => ctx.names.get(id) ?? id);
+    // Names the latest user message mentions, like a pet's, weigh most. Its lowercase words are no names,
+    // and the responders' and persona's names say who is talking, not about what.
+    const speakerWords = recallTerms(
+      [...responders, String(object(object(lastUser?.extra).personaSnapshot).name ?? "")].join(" "),
+    );
+    const cueNames = new Set(
+      [...recallNames(cueWords, [...candidateTexts, lastUser?.content.slice(-6000) ?? query])].filter(
+        (word) => !speakerWords.has(word),
+      ),
+    );
     const cueScores = scoreRecallTerms(cueWords, candidateWords, cueNames);
     const relevance = candidates
       .map((record, index) => {
@@ -3194,7 +3203,6 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
         AbortSignal.timeout(MEMORY_DECISION_RECALL_TIMEOUT_MS),
       ]);
     const conversation = logMessages(ctx, visible.slice(-4));
-    const responders = audience.map((id) => ctx.names.get(id) ?? id);
     // Set only when the scene pass answered; the message pass runs only after it.
     let decisionThreshold: number | null = null;
     if (ctx.settings.decisionEnabled && recalling) {
@@ -3202,7 +3210,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       else {
         // Pass 1: the model picks scenes, judging only the shortlisted summaries.
         const shortlist = [...sceneRelevance.keys()]
-          .slice(0, MEMORY_DECISION_BATCH_SIZE)
+          .slice(0, Math.max(MEMORY_DECISION_BATCH_SIZE, ctx.settings.retrieveMaxScenes))
           .map((sceneId) => recalledSceneRecords.get(sceneId)!);
         let sceneScores: Map<string, number> | null = null;
         try {
@@ -3329,11 +3337,11 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       // The model's best message centres the excerpt. Text matching does when it judged none suitable.
       const scores = messageScores;
       const threshold = decisionThreshold;
-      const matched =
-        sceneSource
-          .map((message, index) => ({ index, score: scores?.get(message.id) ?? -1 }))
-          .filter((item) => threshold !== null && item.score >= threshold)
-          .sort((left, right) => right.score - left.score)[0] ?? textMatches[0];
+      const chosen = sceneSource
+        .map((message, index) => ({ index, score: scores?.get(message.id) ?? -1 }))
+        .filter((item) => threshold !== null && item.score >= threshold)
+        .sort((left, right) => right.score - left.score)[0];
+      const matched = chosen ?? textMatches[0];
       let excerpt: AdvancedMemoryMessage[] = [];
       // ponytail: raw excerpts have scene-level access, not per-fact knowledge.
       // Withhold conditional-scene excerpts from non-narrators until they have that finer access mapping.
@@ -3366,6 +3374,9 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
         if (excerpt.length < Math.min(ctx.settings.retrieveMinMessages, sceneSource.length)) excerpt = [];
         if (excerpt.length) text += excerptText(excerpt);
       }
+      // Its messages show as selected below the threshold, so say text matching chose them.
+      if (excerpt.length && scores && !chosen && !receipt.reasons.includes("decision-excerpt-fallback"))
+        receipt.reasons.push("decision-excerpt-fallback");
       for (const message of excerpt) excerptIds.add(message.id);
       sceneTexts.push({ index: start, text });
       recalledTokens += tokenSize(text) - summaryTokens;

@@ -39,7 +39,7 @@ export async function startMultiplayerPeerServer(options: PeerServerOptions) {
   if (!options.enabled()) throw new Error("Multiplayer is disabled");
   if (!options.tls.cert.length || !options.tls.key.length) throw new Error("Multiplayer requires TLS");
   const sockets = new Set<Duplex>();
-  const active = new Set<AbortController>();
+  const active = new Map<AbortController, ServerResponse>();
   const addressBuckets = new Map<string, Bucket>();
   let globalBucket: Bucket = { count: 0, until: 0 };
   let closed = false;
@@ -53,8 +53,6 @@ export async function startMultiplayerPeerServer(options: PeerServerOptions) {
   }
   function allowedRate(address: string) {
     const now = Date.now();
-    if (globalBucket.until <= now) globalBucket = { count: 0, until: now + MULTIPLAYER_PEER_SERVER_LIMITS.windowMs };
-    if (++globalBucket.count > MULTIPLAYER_PEER_SERVER_LIMITS.requestsGlobal) return false;
     let bucket = addressBuckets.get(address);
     if (!bucket || bucket.until <= now) {
       if (!bucket && addressBuckets.size >= MULTIPLAYER_PEER_SERVER_LIMITS.addressBuckets) {
@@ -63,7 +61,11 @@ export async function startMultiplayerPeerServer(options: PeerServerOptions) {
       bucket = { count: 0, until: now + MULTIPLAYER_PEER_SERVER_LIMITS.windowMs };
       addressBuckets.set(address, bucket);
     }
-    return ++bucket.count <= MULTIPLAYER_PEER_SERVER_LIMITS.requestsPerAddress;
+    // Check the caller's own budget first: requests it already refuses must not spend
+    // the shared budget, or one flooding address could lock out every admitted guest.
+    if (++bucket.count > MULTIPLAYER_PEER_SERVER_LIMITS.requestsPerAddress) return false;
+    if (globalBucket.until <= now) globalBucket = { count: 0, until: now + MULTIPLAYER_PEER_SERVER_LIMITS.windowMs };
+    return ++globalBucket.count <= MULTIPLAYER_PEER_SERVER_LIMITS.requestsGlobal;
   }
   function error(reply: ServerResponse, code: MultiplayerErrorCode, status = 200) {
     if (reply.destroyed || reply.writableEnded) return;
@@ -123,7 +125,7 @@ export async function startMultiplayerPeerServer(options: PeerServerOptions) {
       }
       if (active.size >= MULTIPLAYER_PEER_SERVER_LIMITS.inFlight) return error(reply, "busy");
       const abort = new AbortController();
-      active.add(abort);
+      active.set(abort, reply);
       const cancel = () => abort.abort();
       const onClose = () => {
         if (!reply.writableFinished) cancel();
@@ -161,7 +163,8 @@ export async function startMultiplayerPeerServer(options: PeerServerOptions) {
           error(reply, available() ? "invalid-message" : "disabled");
         } finally {
           clearTimeout(timer);
-          if (abort.signal.aborted) request.destroy();
+          // While closing, close() lets the final answer flush before it ends the socket.
+          if (abort.signal.aborted && !closed) request.destroy();
           active.delete(abort);
           request.off("aborted", cancel);
           reply.off("close", onClose);
@@ -177,7 +180,9 @@ export async function startMultiplayerPeerServer(options: PeerServerOptions) {
   });
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
-    server.listen(options.port, options.host ?? "0.0.0.0", () => {
+    // No host binds "::" (IPv4 and IPv6) where IPv6 exists and falls back to "0.0.0.0", so
+    // an IPv6 room address is reachable as well as an IPv4 one.
+    server.listen({ port: options.port, host: options.host }, () => {
       server.off("error", reject);
       resolve();
     });
@@ -194,10 +199,32 @@ export async function startMultiplayerPeerServer(options: PeerServerOptions) {
     async close() {
       if (closed) return;
       closed = true;
-      for (const controller of active) controller.abort();
+      const stopped = new Promise<void>((resolve, reject) =>
+        server.close((cause) => (cause ? reject(cause) : resolve())),
+      );
+      // Answer every waiting poll or action before the sockets go, so admitted guests
+      // learn the room closed instead of retrying a dead address as a network blip.
+      const answered = [...active].map(([controller, reply]) => {
+        error(reply, "disabled");
+        controller.abort();
+        return reply.writableFinished || reply.destroyed
+          ? undefined
+          : new Promise<void>((resolve) => {
+              reply.once("finish", resolve);
+              reply.once("close", resolve);
+            });
+      });
+      let flushTimer: NodeJS.Timeout | undefined;
+      await Promise.race([
+        Promise.all(answered),
+        new Promise<void>((resolve) => {
+          flushTimer = setTimeout(resolve, 500);
+        }),
+      ]);
+      clearTimeout(flushTimer);
       for (const socket of sockets) socket.destroy();
       addressBuckets.clear();
-      await new Promise<void>((resolve, reject) => server.close((cause) => (cause ? reject(cause) : resolve())));
+      await stopped;
     },
   };
 }

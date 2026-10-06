@@ -513,7 +513,9 @@ export function rulesetBuilderEntrySlots(
           (option) =>
             (option.rows?.length ?? 0) > 0 &&
             Object.entries(choice.filters ?? {}).every(([filterId, value]) => filterHas(option, filterId, value)) &&
-            (!choice.ids || choice.ids.includes(option.id)),
+            (!choice.ids || choice.ids.includes(option.id)) &&
+            // Offered only while the sheet allows (1.101), as a step offers it (1.94).
+            (!option.offeredWhen || !build || resolveRulesetValueRef(definition, build, option.offeredWhen) > 0),
         )
         .map((option) => option.id);
       const chosen = [...new Set(state.entryChoices?.[key] ?? [])]

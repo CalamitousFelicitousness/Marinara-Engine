@@ -1376,6 +1376,44 @@ try {
     }
   }
 
+  // ── 1.101: a choice an entry grants holds its options to their offeredWhen ──
+  {
+    const gated = parsed(
+      variant((doc) => {
+        tongues(doc);
+        const languages = doc.catalogs.find((c: { id: string }) => c.id === "tongues");
+        languages.entries.find((e: { id: string }) => e.id === "elvish").offeredWhen = { field: "level" };
+      }),
+    );
+    const gatedCatalogs: RulesetCatalogEntriesById = Object.fromEntries(
+      (gated.catalogs ?? []).map((catalog) => [catalog.id, catalog.entries ?? []]),
+    );
+    const gatedId = "elvish";
+    const base = { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 };
+    const at = (level: number) => {
+      const start = defaultRulesetSheetBuild(gated);
+      const sheet = { ...start, fields: { ...start.fields, level } };
+      const made = applyRulesetBuilder(
+        gated,
+        sheet,
+        { method: "manual", base, picks: { race: ["dwarf"] } },
+        gatedCatalogs,
+      );
+      return rulesetBuilderEntrySlots(gated, made.state, gatedCatalogs, {
+        ...made.build,
+        fields: { ...made.build.fields, level },
+      });
+    };
+    assert.ok(
+      at(1).some((slot) => slot.from.includes(gatedId)),
+      "offered while the sheet allows",
+    );
+    assert.ok(
+      at(0).every((slot) => !slot.from.includes(gatedId)),
+      "not while it reads 0",
+    );
+  }
+
   // ── The gate ──
   const manifest = (minor: number, paths = ["ruleset.json"]) => ({
     schemaVersion: 2,

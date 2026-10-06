@@ -67,6 +67,20 @@ export function isZaiMaxReasoningEffortModel(model: string): boolean {
   return /(?:^|\/)glm-5\.[23](?:$|[-:])/u.test(model.toLowerCase());
 }
 
+/**
+ * Native Mistral models whose `reasoning_effort` can be set. They accept only "high" and "none". Other Mistral models
+ * (Magistral, older releases) are not listed as taking it, so they get no effort and keep their own behaviour.
+ * https://docs.mistral.ai/capabilities/reasoning
+ */
+export function isMistralAdjustableReasoningModel(model: string): boolean {
+  const normalized = model.trim().toLowerCase();
+  return (
+    normalized === "mistral-small-latest" ||
+    /^mistral-large-4(?:$|[-.])/u.test(normalized) ||
+    /^mistral-medium-3[-.]5(?:$|[-.])/u.test(normalized)
+  );
+}
+
 export function isOpenAIGpt56Model(model: string): boolean {
   return model.toLowerCase().startsWith("gpt-5.6");
 }
@@ -111,6 +125,8 @@ export function resolveProviderReasoningEffort(args: {
     (providerLower === "xai" && isXaiAutoReasoningModel(modelLower)) ||
     (providerLower === "openrouter" && modelLower.startsWith("x-ai/grok-"));
   if (xaiUsesAutoReasoning) return null;
+  // Mistral reasoning models have a single level besides "none".
+  if (providerLower === "mistral" && isMistralAdjustableReasoningModel(modelLower)) return "high";
 
   const isNativeAnthropicAdaptiveOnly =
     (providerLower === "anthropic" || providerLower === "claude_subscription") &&

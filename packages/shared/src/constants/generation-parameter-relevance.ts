@@ -1,5 +1,6 @@
 import {
   isClaudeAdaptiveOnlyNoSamplingModel,
+  isMistralAdjustableReasoningModel,
   isOpenAIGpt56Model,
   isOpenAIGpt6AlwaysReasoningModel,
   isOpenAIGpt6Model,
@@ -168,7 +169,8 @@ const NEVER_SENT: Record<string, GenerationParameterKey[]> = {
   openai: ["topK", "serviceTier"],
   openrouter: ["topK"],
   nanogpt: ["topK"],
-  mistral: ["topK", "serviceTier"],
+  // Mistral has no field for prefilled reasoning.
+  mistral: ["topK", "serviceTier", "assistantReasoningPrefill"],
   cohere: ["topK", "serviceTier"],
   arli: ["topK", "serviceTier"],
   custom: ["serviceTier"],
@@ -285,7 +287,10 @@ export function relevantGenerationParameters(context: GenerationParameterContext
         if (!isXaiConfigurableReasoningModel(model) && model !== XAI_MULTI_AGENT_MODEL) hide("reasoningEffort");
       } else {
         const glm = model.includes("glm") && (provider === "nanogpt" || isNativeGlmHost(context.baseUrl));
-        if (provider !== "nanogpt" && !isOpenAIReasoningModel(model) && !glm) hide("reasoningEffort");
+        const mistralReasoning = provider === "mistral" && isMistralAdjustableReasoningModel(model);
+        if (provider !== "nanogpt" && !isOpenAIReasoningModel(model) && !glm && !mistralReasoning) {
+          hide("reasoningEffort");
+        }
       }
     }
   }

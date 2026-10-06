@@ -19,6 +19,7 @@ import { parseTextualToolCalls } from "../textual-tool-call-parser.js";
 import {
   isClaudeAdaptiveOnlyNoSamplingModel,
   isClaudeStrictRequestModel,
+  isMistralAdjustableReasoningModel,
   isOpenAIGpt56Model,
   isOpenAIGpt56SolProAlias,
   isOpenAIGpt6AlwaysReasoningModel,
@@ -77,6 +78,9 @@ export function extractOpenAICompatibleContentBlocks(
     const value = block as Record<string, unknown>;
     if (value.type === "thinking" && typeof value.thinking === "string") {
       thinking += value.thinking;
+    } else if (value.type === "thinking" && Array.isArray(value.thinking)) {
+      // Mistral ThinkChunk: { type: "thinking", thinking: [{ type: "text", text }] }
+      thinking += extractOpenAICompatibleContentBlocks(value.thinking)?.text ?? "";
     } else if (value.type === "text" && typeof value.text === "string") {
       text += value.text;
     } else if (value.type === "tool_use" && typeof value.name === "string") {
@@ -544,7 +548,8 @@ export class OpenAIProvider extends BaseLLMProvider {
     providerMetadata: Record<string, unknown> | undefined,
     model?: string,
   ): Record<string, unknown> {
-    if (!providerMetadata) return {};
+    // Mistral messages have no reasoning_content or partial field, so reasoning saved from another provider stays out.
+    if (!providerMetadata || this.providerKind === "mistral") return {};
     if (model && !this.shouldReplayChatCompletionsReasoning(model)) return {};
     const metadata = OpenAIProvider.extractReasoningMetadata(providerMetadata);
     if (providerMetadata.partial === true) metadata.partial = true;
@@ -881,6 +886,14 @@ export class OpenAIProvider extends BaseLLMProvider {
   }
 
   private applyChatCompletionsReasoning(body: Record<string, unknown>, options: ChatOptions): void {
+    if (this.providerKind === "mistral") {
+      // Mistral reasoning models take only "high" or "none"; other Mistral models are not listed as taking
+      // reasoning_effort. prompt_mode is never sent because Mistral rejects it alongside reasoning_effort.
+      if (!isMistralAdjustableReasoningModel(options.model)) return;
+      if (this.hasExplicitReasoningDisable(options.reasoningEffort)) body.reasoning_effort = "none";
+      else if (this.hasActiveReasoningEffort(options.reasoningEffort)) body.reasoning_effort = "high";
+      return;
+    }
     if (isClaudeStrictRequestModel(options.model)) {
       const effort = options.reasoningEffort === "none" ? "low" : options.reasoningEffort;
       if (effort) {
@@ -1012,6 +1025,17 @@ export class OpenAIProvider extends BaseLLMProvider {
         });
       }
     }
+  }
+
+  /** Mistral request rules, applied after Custom Parameters. */
+  private normalizeMistralRequest(body: Record<string, unknown>): void {
+    if (this.providerKind !== "mistral") return;
+    // Mistral rejects prompt_mode together with reasoning_effort; a prompt_mode from Custom Parameters wins.
+    if (body.prompt_mode !== undefined) delete body.reasoning_effort;
+    if (!Array.isArray(body.messages)) return;
+    // Mistral continues a final assistant message (Assistant Prefill, depth-0 injections) only when it is a prefix.
+    const last = body.messages.at(-1);
+    if (last?.role === "assistant" && !last.tool_calls?.length) last.prefix = true;
   }
 
   private applyResponsesReasoning(body: Record<string, unknown>, options: ChatOptions): void {
@@ -1289,7 +1313,8 @@ export class OpenAIProvider extends BaseLLMProvider {
         body.tools = options.tools;
         body.tool_choice = options.toolChoice ?? "auto";
       }
-      if (effectiveStream) body.stream_options = { include_usage: true };
+      // Mistral rejects stream_options and reports usage on its last chunk anyway.
+      if (effectiveStream && this.providerKind !== "mistral") body.stream_options = { include_usage: true };
 
       // o-series models never support temperature/topP; GPT-5.x only with effort=none
       if (!this.isNoTemperatureModel(options.model, options.reasoningEffort)) {
@@ -1362,6 +1387,7 @@ export class OpenAIProvider extends BaseLLMProvider {
     this.enforceLocalInferenceThinkingDisable(body, options, suppressModelParameters);
     this.stripUnsupportedSamplerParameters(body, options);
     this.normalizeStrictClaudeRequest(body, options);
+    this.normalizeMistralRequest(body);
 
     logger.debug(
       "[OpenAI chat()] stream=%s model=%s reasoning=%s enableThinking=%s verbosity=%s max_completion_tokens=%s max_tokens=%s temperature=%s top_p=%s tools=%s",
@@ -1579,7 +1605,7 @@ export class OpenAIProvider extends BaseLLMProvider {
 
     if (!suppressModelParameters) {
       if (this.shouldSendStopSequences(options.model) && options.stop?.length) body.stop = options.stop;
-      if (useStream) body.stream_options = { include_usage: true };
+      if (useStream && this.providerKind !== "mistral") body.stream_options = { include_usage: true };
 
       // o-series models never support temperature/topP; GPT-5.x only with effort=none
       if (!this.isNoTemperatureModel(options.model, options.reasoningEffort)) {
@@ -1650,6 +1676,7 @@ export class OpenAIProvider extends BaseLLMProvider {
     this.enforceLocalInferenceThinkingDisable(body, options, suppressModelParameters);
     this.stripUnsupportedSamplerParameters(body, options);
     this.normalizeStrictClaudeRequest(body, options);
+    this.normalizeMistralRequest(body);
 
     logger.debug(
       "[OpenAI chatComplete()] stream=%s model=%s reasoning=%s enableThinking=%s verbosity=%s onToken=%s",
@@ -1706,7 +1733,7 @@ export class OpenAIProvider extends BaseLLMProvider {
         if (!reasoning && blocks.thinking && options.onThinking) options.onThinking(blocks.thinking);
         resolvedContent = blocks.text || null;
       } else {
-        resolvedContent = (choice?.message?.content as string) ?? null;
+        resolvedContent = typeof choice?.message?.content === "string" ? choice.message.content : null;
       }
       // Fall back to refusal text so the user sees why the model declined
       if (!resolvedContent && typeof choice?.message?.refusal === "string" && choice.message.refusal) {

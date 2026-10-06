@@ -161,6 +161,11 @@ try {
       "the whisper keeps the hidden message's place in the story",
     );
   }
+  // Previews without a preset, or built from extension prompt parts, keep the stand-in's whisper too.
+  for (const options of [{ skipPreset: true }, { promptParts: { presetText: "Parts preview." } }]) {
+    const content = await preview(maukie.id, options);
+    assert(content.includes("MAUKIE_SECRET") && !content.includes("NARRATION_"), JSON.stringify(options));
+  }
 
   // The narrator and the persona keep today's views.
   const narratorLive = await generate("The narrator continues.", narrator.id);

@@ -207,6 +207,7 @@ type DryRunPromptMessage = {
   personaSnapshotName?: string | null;
   hiddenFromAICharacterIds?: string[];
   conversationStartForCharacterIds?: string[];
+  whisperSourceId?: string;
   providerMetadata?: Record<string, unknown>;
 };
 
@@ -1540,6 +1541,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
             content: m.content,
             contextKind: "history" as const,
             characterId: m.characterId ?? null,
+            ...(m.whisperSourceId ? { whisperSourceId: m.whisperSourceId } : {}),
             ...(m.images ? { images: m.images } : {}),
             ...(m.files ? { files: m.files } : {}),
             ...(m.providerMetadata ? { providerMetadata: m.providerMetadata } : {}),
@@ -1840,6 +1842,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
         content: m.content,
         characterId: m.characterId,
         ...(m.contextKind ? { contextKind: m.contextKind } : {}),
+        ...(m.whisperSourceId ? { whisperSourceId: m.whisperSourceId } : {}),
         ...(m.providerMetadata ? { providerMetadata: m.providerMetadata } : {}),
         ...(m.images ? { images: m.images } : {}),
         ...(m.files ? { files: m.files } : {}),

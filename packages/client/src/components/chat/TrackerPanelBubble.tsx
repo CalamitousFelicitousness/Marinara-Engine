@@ -9,8 +9,15 @@ import { useTranslation } from "react-i18next";
 import { TrackerPanelIcon } from "../ui/TrackerPanelIcon";
 import { WindowBubble } from "../ui/WindowBubble";
 import { usePhoneBubbleBounds, useWindowBubbleBounds } from "../ui/FloatingWindow";
-import { PHONE_BUBBLE_SIZE_PX, WINDOW_BUBBLE_SIZE_PX, getPhoneBubbleSlot } from "../../lib/floating-window-layout";
+import {
+  PHONE_BUBBLE_SIZE_PX,
+  WINDOW_BUBBLE_SIZE_PX,
+  getBubbleRowSlot,
+  getPhoneBubbleSlot,
+} from "../../lib/floating-window-layout";
+import { BUBBLE_SNAP_GAP_PX } from "../../lib/window-bubble-snap";
 import { useMatchMedia } from "../../hooks/use-match-media";
+import { useUIStore } from "../../stores/ui.store";
 import {
   FLOATING_WINDOW_Z_BASE,
   PHONE_BUBBLE_Z_INDEX,
@@ -28,6 +35,7 @@ export function TrackerPanelBubble({ chatId, phoneSlot = 0 }: { chatId: string; 
     (state) => (phoneLayout ? state.phoneBubbles : state.bubbles)[TRACKER_PANEL_BUBBLE_ID],
   );
   const open = useFloatingWindowStore((state) => state.open[TRACKER_PANEL_BUBBLE_ID] === true);
+  const panelOnLeft = useUIStore((state) => state.trackerPanelSide === "left");
   const bubbleRef = useRef<HTMLButtonElement | null>(null);
   const [size, setSize] = useState(PHONE_BUBBLE_SIZE_PX);
   const wasOpenRef = useRef(open);
@@ -48,13 +56,18 @@ export function TrackerPanelBubble({ chatId, phoneSlot = 0 }: { chatId: string; 
     return () => windows.closeWindow(TRACKER_PANEL_BUBBLE_ID);
   }, [chatId, phoneLayout]);
 
+  // On a computer it starts in the top corner away from the panel, so it never covers the panel's header.
+  const desktopPoint = panelOnLeft
+    ? getBubbleRowSlot(bounds, 0, { size: WINDOW_BUBBLE_SIZE_PX, gap: BUBBLE_SNAP_GAP_PX })
+    : { x: bounds.left, y: bounds.top };
+
   return (
     <WindowBubble
       buttonRef={bubbleRef}
       id={TRACKER_PANEL_BUBBLE_ID}
       point={
         saved ?? {
-          ...(phoneLayout ? getPhoneBubbleSlot(bounds, phoneSlot, size) : { x: bounds.left, y: bounds.top }),
+          ...(phoneLayout ? getPhoneBubbleSlot(bounds, phoneSlot, size) : desktopPoint),
           automatic: true,
         }
       }

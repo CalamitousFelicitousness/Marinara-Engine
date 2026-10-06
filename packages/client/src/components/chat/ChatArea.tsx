@@ -600,6 +600,10 @@ export const ChatArea = memo(function ChatArea({
   );
 });
 
+// Kept outside LocalChatArea, which unmounts while ChatArea opens a chat it has not loaded yet.
+// ponytail: one small entry per chat opened this session; drop entries on chat delete if that ever matters.
+const retainedExpressionTurns = new Map<string, ReturnType<typeof resolveLatestSpriteExpressionTurn>>();
+
 function readChatMode(chat: { mode?: unknown }): ChatMode {
   return chat.mode === "conversation" || chat.mode === "game" ? chat.mode : "roleplay";
 }
@@ -1331,10 +1335,7 @@ const LocalChatArea = memo(function LocalChatArea({
   );
   // Keep each scene across chat switches and temporary Roleplay surface unmounts while a chat loads.
   const completedExpressionTurn = useMemo(() => resolveLatestSpriteExpressionTurn(messages), [messages]);
-  const [retainedExpressionSprites, setRetainedExpressionSprites] = useState<
-    Map<string, ReturnType<typeof resolveLatestSpriteExpressionTurn>>
-  >(() => new Map());
-  const retainedExpressionTurn = activeChatId ? retainedExpressionSprites.get(activeChatId) : undefined;
+  const retainedExpressionTurn = activeChatId ? retainedExpressionTurns.get(activeChatId) : undefined;
   const retainedExpressionIndex =
     messages?.findIndex((message) => message.id === retainedExpressionTurn?.messageId) ?? -1;
   // Regeneration can replace the current swipe before its expressions finish. Don't rewind to an older scene.
@@ -1344,12 +1345,7 @@ const LocalChatArea = memo(function LocalChatArea({
       : completedExpressionTurn;
   useEffect(() => {
     if (!activeChatId || !messages) return;
-    setRetainedExpressionSprites((previous) => {
-      if (previous.get(activeChatId) === visibleExpressionTurn) return previous;
-      const next = new Map(previous);
-      next.set(activeChatId, visibleExpressionTurn);
-      return next;
-    });
+    retainedExpressionTurns.set(activeChatId, visibleExpressionTurn);
   }, [activeChatId, messages, visibleExpressionTurn]);
   const groupChatMode: string | undefined =
     chatCharIds.length > 1 ? normalizeGroupChatMode(chatMeta.groupChatMode) : undefined;

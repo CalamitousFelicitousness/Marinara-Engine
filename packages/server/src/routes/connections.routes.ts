@@ -29,6 +29,7 @@ import {
   inferImageSource,
   inferVideoSource,
   isLocalAuthProvider,
+  isMistralAdjustableReasoningModel,
   isOpenAIGpt6Model,
   localAuthProviderBaseUrl,
   normalizeVideoGenerationProfile,
@@ -1810,13 +1811,13 @@ export async function connectionsRoutes(app: FastifyInstance) {
       );
 
       const storedOptions = resolveStoredChatOptions(conn.defaultParameters, conn.provider, model);
-      // Always-reasoning models (GLM 5.3) spend one output budget on thinking and
-      // on text. At 200 tokens the whole budget is thinking and the test reports
+      // Reasoning models (GLM 5.3, Mistral reasoning models) spend one output budget on
+      // thinking and on text. At 200 tokens the whole budget is thinking and the test reports
       // success with nothing to show, so give them room for a one-line answer.
-      const maxTokens = resolveStoredMaxTokens(
-        conn.defaultParameters,
-        isGlm53MandatoryReasoningModel(model) ? 1024 : 200,
-      );
+      const reasoningTest =
+        isGlm53MandatoryReasoningModel(model) ||
+        (conn.provider === "mistral" && isMistralAdjustableReasoningModel(model));
+      const maxTokens = resolveStoredMaxTokens(conn.defaultParameters, reasoningTest ? 1024 : 200);
       let fullResponse = "";
       const generation = provider.chat([{ role: "user", content: "hi" }], {
         model,
@@ -1937,7 +1938,9 @@ function readOpenAICompatibleModelLimits(model: Record<string, unknown>): Pick<R
     readPositiveInteger(model.max_input_tokens) ??
     readPositiveInteger(model.input_token_limit) ??
     readPositiveInteger(model.inputTokenLimit) ??
-    readPositiveInteger(topProvider?.context_length);
+    readPositiveInteger(topProvider?.context_length) ??
+    // Mistral's /models
+    readPositiveInteger(model.max_context_length);
   const maxOutput =
     readPositiveInteger(topProvider?.max_completion_tokens) ??
     readPositiveInteger(model.max_completion_tokens) ??

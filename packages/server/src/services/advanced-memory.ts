@@ -3298,7 +3298,8 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       try {
         const signal = decisionSignal();
         const backend = await memoryDecisionBackend(ctx, { ...input, signal });
-        if (backend)
+        // The scene pass may have taught the backend that this model reasons, which defers it now.
+        if (backend && !backend.deferPreGeneration)
           messageScores = await rankDecisionMemories(
             backend,
             conversation,

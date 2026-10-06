@@ -20416,6 +20416,10 @@ test("Professor Mari navigation can be repositioned within Home on desktop", asy
       before: getComputedStyle(element, "::before").display,
     })),
   ).toEqual({ after: "none", before: "none" });
+  // Mari arrives by sliding up past the Home hub's bottom edge. Hovering her mid-arrival lets Playwright
+  // scroll the hub to reveal her, and the hub keeps that offset (her hidden drag frame overflows it), so
+  // every bound measured below shifts. Let the arrival finish first.
+  await sprite.evaluate((element) => Promise.all(element.getAnimations().map((animation) => animation.finished)));
   await sprite.hover();
   await expect(handle).toBeVisible();
   await expect(handle).toHaveCSS("opacity", "1");

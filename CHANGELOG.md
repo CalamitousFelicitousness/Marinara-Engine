@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- On Android/Termux, the launcher no longer writes pnpm architecture settings into `.npmrc`. pnpm ignored them there, so installs already used the Android builds Termux needs. New installs now leave `.npmrc` unchanged, and existing installs need no action (#7178).
 - Game Mode now follows **Settings → Advanced → Request timeouts → Text generation** (`CHAT_GENERATION_TIMEOUT_MS`) when starting a new game and for its other Game Master requests, instead of a fixed 5 minutes. As in chats, it is the longest wait for the model's first output and between outputs, and a reasoning model's thinking counts, so slow models no longer fail at exactly 300 seconds (#7177).
 - On Android/Termux, updating from 2.4.6 no longer leaves image processing broken, and a broken image library can no longer shut down the server when a browser opens Engine (#7173).
 - With **Apply preset colors** on, quoted dialogue in Roleplay and Game uses each character's or persona's own dialogue color again, including italics inside the quote, instead of the chat style's text color. Game Mode speaker names keep their own colors too. Dialogue from characters without their own color still follows the chat style (#7167).

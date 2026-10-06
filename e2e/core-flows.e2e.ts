@@ -9782,9 +9782,12 @@ test("chat Help overlay labels visible controls in every mode", async ({ page, r
         await expect(overlay.locator('[data-chat-help-highlight="messages"]')).toBeVisible();
         await expect(overlay.locator('[data-chat-help-highlight="composer"]')).toBeVisible();
       } else {
-        // Retry lives in the Game controls window, pointed at through its button (a bubble on phones too).
-        await expect(overlay.locator('[data-chat-help-highlight="game-controls"]')).toBeVisible();
-        await expect(overlay.locator('[data-chat-help-highlight="session"]')).toBeVisible();
+        // Retry lives in the Game controls window, pointed at through its button. Phones keep that button,
+        // Session and the other game tools in the Chat tools menu, whose button Help points at instead.
+        for (const target of mobile ? ["chat-tools"] : ["game-controls", "session"]) {
+          await expect(overlay.locator(`[data-chat-help-highlight="${target}"]`)).toBeVisible();
+        }
+        if (!mobile) await expect(overlay.locator('[data-chat-help-highlight="chat-tools"]')).toHaveCount(0);
         await expect(overlay.locator('[data-chat-help-highlight="dialogue"]')).toBeVisible();
       }
 
@@ -9819,7 +9822,29 @@ test("chat Help overlay labels visible controls in every mode", async ({ page, r
         await keyboardTarget.focus();
         await page.keyboard.press("Enter");
         await expect(overlay.locator('[data-chat-help-mobile-detail="settings"]')).toBeVisible();
-        await overlay.locator(`[data-chat-help-highlight="${messageTarget}"]`).click();
+        if (chat.mode === "game") {
+          // The Chat tools callout lists what its menu holds, each with its own sentence.
+          await overlay.locator('[data-chat-help-highlight="chat-tools"]').click();
+          const toolsDetail = overlay.locator('[data-chat-help-mobile-detail="chat-tools"]');
+          await expect(toolsDetail).toContainText("Open more tools for this chat. Drag the button to move it.");
+          await expect(toolsDetail.locator("[data-chat-help-tools-legend] [data-chat-help-tool]")).toHaveCount(4);
+          await expect(toolsDetail.locator('[data-chat-help-tool="control:session"]')).toHaveText(
+            "Session: Open session history, journal, and session controls.",
+          );
+          await expect(toolsDetail.locator('[data-chat-help-tool="control:game"]')).toHaveText(
+            "Game controls: Retry a turn and control the storyboard.",
+          );
+        }
+        // On a short phone the open detail covers the lower part of a large callout; tap the part above it.
+        const messageHighlight = overlay.locator(`[data-chat-help-highlight="${messageTarget}"]`);
+        const messageBox = (await messageHighlight.boundingBox())!;
+        const openDetailBox = (await overlay.locator("[data-chat-help-mobile-detail]").boundingBox())!;
+        const visibleBottom = Math.min(messageBox.y + messageBox.height, openDetailBox.y);
+        expect(
+          visibleBottom - messageBox.y,
+          `${messageTarget} callout stays tappable above the detail`,
+        ).toBeGreaterThan(24);
+        await messageHighlight.click({ position: { x: messageBox.width / 2, y: (visibleBottom - messageBox.y) / 2 } });
         const detail = overlay.locator(`[data-chat-help-mobile-detail="${messageTarget}"]`);
         await expect(detail).toBeVisible();
         await expect(detail.locator(`[data-chat-help-action-legend="${chat.mode}"]`)).toBeVisible();

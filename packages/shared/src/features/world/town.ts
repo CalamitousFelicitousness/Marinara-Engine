@@ -699,6 +699,9 @@ export function worldTownWhere(town: WorldTown, personId: string, hour: number):
 /** Town cells walked in a game minute. */
 export const WORLD_TOWN_CELLS_PER_MINUTE = 4;
 
+/** The most walked cells a walk keeps for the story's step events: the latest, when a turn walks more. */
+export const WORLD_WALK_STEPS_MAX = 2000;
+
 export const worldTownVisitSchema = z
   .object({
     id: z.string().min(1).max(64),
@@ -710,6 +713,11 @@ export const worldTownVisitSchema = z
       .int()
       .min(0)
       .max(24 * 60),
+    /** Every cell the walks walked, the last included, for the story's step events (map events). */
+    steps: z
+      .array(z.object({ x: z.number().int().min(0).max(255), y: z.number().int().min(0).max(255) }).strict())
+      .max(WORLD_WALK_STEPS_MAX)
+      .optional(),
   })
   .strict();
 export type WorldTownVisit = z.infer<typeof worldTownVisitSchema>;

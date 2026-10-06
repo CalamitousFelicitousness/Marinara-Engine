@@ -15,8 +15,12 @@ import {
   DUNGEON_EXIT_PROP,
   WORLD_GENERATOR_VERSION,
   WORLD_STARTER_KITS,
+  checkStoryScript,
   checkWorldBrief,
   compileGameWorld,
+  dungeonFromGameDungeonMap,
+  dungeonPath,
+  worldTownPath,
   createConnectionSchema,
   DUNGEON_SETS,
   dungeonSetForPlace,
@@ -97,8 +101,11 @@ try {
   const game = gameOf("high_fantasy", 21);
   const settlements = game.world.places.filter((place) => place.rank !== undefined);
   const city = settlements.reduce((best, place) => (place.rank! > best.rank! ? place : best));
+  const prompts: string[] = [];
   const standIn = createServer(async (req, res) => {
-    for await (const _chunk of req);
+    let body = "";
+    for await (const chunk of req) body += chunk;
+    prompts.push(body);
     res.writeHead(200, { "content-type": "application/json" });
     res.end(
       JSON.stringify({
@@ -280,6 +287,73 @@ try {
     });
     assert.equal((await leaveHand()).statusCode, 200);
     assert.equal((await read()).at, quarter.id, "back in town");
+
+    // ── Story events on the cells a walk walks (map events, Pixelforge's step trigger) ──
+    // A cell in the middle of a walk to the square trips its event, one off the walk does not; on the map
+    // made by hand the same; each told once, by the next turn.
+    const town = await read();
+    const toSquare = worldTownPath(town, town.at, "square")!;
+    const walked = toSquare[Math.floor(toSquare.length / 2)]!;
+    const onWay = new Set(toSquare.map((cell) => `${cell.x},${cell.y}`));
+    let away: { x: number; y: number } | undefined;
+    for (let y = 0; y < town.height && !away; y++)
+      for (let x = 0; x < town.width && !away; x++)
+        if (town.ground[y * town.width + x] === "s" && !onWay.has(`${x},${y}`)) away = { x, y };
+    const mapCells = dungeonFromGameDungeonMap(kept);
+    const across = dungeonPath(mapCells, handMap.entry, { x: 6, y: 1 })!;
+    const mapWalked = across[Math.floor(across.length / 2)]!;
+    // A floor cell the walk does not cross.
+    const crossed = new Set([`${handMap.entry.x},${handMap.entry.y}`, ...across.map((cell) => `${cell.x},${cell.y}`)]);
+    let unwalked: { x: number; y: number } | undefined;
+    for (let y = 1; y < 5 && !unwalked; y++)
+      for (let x = 1; x < 7 && !unwalked; x++)
+        if (rows[y]![x] === "." && !crossed.has(`${x},${y}`)) unwalked = { x, y };
+    const story = {
+      storyVersion: 1,
+      events: [
+        { id: "bell", when: { on: "step", place: city.id, ...walked }, do: [{ tell: "A bell rings in the street." }] },
+        { id: "quiet", when: { on: "step", place: city.id, ...away! }, do: [{ tell: "Nobody passes here." }] },
+        { id: "dust", when: { on: "step", place: "e1", ...mapWalked }, do: [{ tell: "Dust falls from the rafters." }] },
+        { id: "rat", when: { on: "step", place: "e1", ...unwalked! }, do: [{ tell: "A rat watches." }] },
+      ],
+    };
+    const world = (await app.inject({ method: "GET", url: `/api/game/${chatId}/world` })).json().world;
+    const fits = checkStoryScript(world, story);
+    assert.ok(fits.ok, JSON.stringify(!fits.ok && fits.issues));
+    await chats.patchMetadata(chatId, { gameStory: story });
+    const storyTurn = async () => {
+      prompts.length = 0;
+      const answered = await app.inject({
+        method: "POST",
+        url: "/api/generate/",
+        payload: { chatId, userMessage: "We go on.", streaming: false },
+      });
+      assert.equal(answered.statusCode, 200, answered.body);
+      return prompts.join("\n");
+    };
+    assert.equal((await visit("square")).statusCode, 200);
+    assert.ok(
+      (await meta()).gameTownVisit.steps.some(
+        (cell: { x: number; y: number }) => cell.x === walked.x && cell.y === walked.y,
+      ),
+    );
+    const afterTown = await storyTurn();
+    assert.match(afterTown, /A bell rings in the street\./u, "a walked cell's event");
+    assert.doesNotMatch(afterTown, /Nobody passes here/u, "never a cell off the walk");
+    assert.doesNotMatch(await storyTurn(), /A bell rings/u, "told once, by the turn that told the walk");
+    // On the map made by hand.
+    assert.equal((await visit(quarter.id)).statusCode, 200);
+    const back = (await enter(quarter.id)).json().map;
+    const mapWalk = await app.inject({
+      method: "POST",
+      url: `/api/game/${chatId}/map/walk`,
+      payload: { map: back.id, x: 6, y: 1 },
+    });
+    assert.equal(mapWalk.statusCode, 200, mapWalk.body);
+    assert.equal((await meta()).gameDungeonWalk.place, "e1", "a hand-made map's walk names its place");
+    const afterMap = await storyTurn();
+    assert.match(afterMap, /Dust falls from the rafters\./u);
+    assert.doesNotMatch(afterMap, /A rat watches/u);
   } finally {
     await app.close();
     await closeDB();

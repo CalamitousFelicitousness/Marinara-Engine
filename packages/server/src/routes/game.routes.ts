@@ -281,6 +281,7 @@ import {
   worldTownDoor,
   worldTownMinutes,
   worldTownPath,
+  WORLD_WALK_STEPS_MAX,
   worldTownSpotFromMetadata,
   worldTownVisitFromMetadata,
   dungeonSetFor,
@@ -11113,6 +11114,8 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         settlementId: found.town.settlementId,
         to,
         minutes: (found.visit?.minutes ?? 0) + minutes,
+        // Every cell walked since the last turn told, for the story's step events (map events).
+        steps: [...(found.visit?.steps ?? []), ...path].slice(-WORLD_WALK_STEPS_MAX),
       };
       time = addMinutes((fresh.gameTime as GameTime) ?? createInitialTime(), minutes);
       return { gameTownVisit: visit, gameTownSpot: { settlementId: found.town.settlementId, at: to }, gameTime: time };
@@ -11172,6 +11175,13 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         from: pending?.map === kept.id ? pending.from : kept.at,
         to: { x: body.x, y: body.y },
         minutes: Math.min(600, (pending?.map === kept.id ? pending.minutes : 0) + minutes),
+        // On a map made by hand: its place and every cell walked, for the story's step events.
+        ...(kept.hand && kept.place
+          ? {
+              place: kept.place,
+              steps: [...(pending?.map === kept.id ? (pending.steps ?? []) : []), ...path!].slice(-2000),
+            }
+          : {}),
       };
       map = { ...kept, at: { x: body.x, y: body.y } };
       time = addMinutes((fresh.gameTime as GameTime) ?? createInitialTime(), minutes);

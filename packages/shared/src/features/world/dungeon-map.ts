@@ -685,6 +685,13 @@ export const gameDungeonWalkSchema = z
     from: z.object({ x: z.number().int(), y: z.number().int() }).strict(),
     to: z.object({ x: z.number().int(), y: z.number().int() }).strict(),
     minutes: z.number().int().min(0).max(600),
+    /** On a map made by hand: the place it is the map of, and every cell walked, the last included, for
+     *  the story's step events (map events). A generated map's cells are never a story's. */
+    place: z.string().min(1).max(160).optional(),
+    steps: z
+      .array(z.object({ x: z.number().int().min(0).max(63), y: z.number().int().min(0).max(47) }).strict())
+      .max(2000)
+      .optional(),
   })
   .strict();
 export type GameDungeonWalk = z.infer<typeof gameDungeonWalkSchema>;

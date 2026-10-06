@@ -2011,6 +2011,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 const replies = await gameRepliesBefore(app.db, input.chatId, input.regenerateMessageId ?? null);
                 const walk = await turnWalkPromise;
                 const visit = await turnVisitPromise;
+                const dungeonWalk = (await turnDungeonPromise).walk;
                 const before = replies.ledger;
                 const town = visit ? worldTown(game, visit.settlementId, worldPresent(game, before)) : null;
                 // The walk and the visit this turn tells, as their tags will stand before the reply.
@@ -2034,6 +2035,13 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                     day: present.day,
                     fight: storyFightOutcome(replies.player),
                     playerName: personaName,
+                    // The cells this turn's walks walked (map events): in town, and on a map made by hand.
+                    steps: [
+                      ...(visit?.steps ?? []).map((step) => ({ place: visit!.settlementId, ...step })),
+                      ...(dungeonWalk?.place
+                        ? (dungeonWalk.steps ?? []).map((step) => ({ place: dungeonWalk.place!, ...step }))
+                        : []),
+                    ],
                   }),
                 };
               })()

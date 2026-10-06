@@ -103,13 +103,26 @@ export function ConversationMessageActions({
       setMessageFocused(
         event.type === "focusin" || (event.relatedTarget instanceof Node && row.contains(event.relatedTarget)),
       );
+    // WebKit and Firefox send no focusout when the focused element is removed (closing an edit), so focus
+    // arriving anywhere outside the message also clears it.
+    const leave = (event: FocusEvent) => {
+      if (!(event.target instanceof Node) || !row.contains(event.target)) setMessageFocused(false);
+    };
     row.addEventListener("focusin", sync);
     row.addEventListener("focusout", sync);
+    document.addEventListener("focusin", leave);
     return () => {
       row.removeEventListener("focusin", sync);
       row.removeEventListener("focusout", sync);
+      document.removeEventListener("focusin", leave);
     };
   }, []);
+  // Re-check after each render, which follows an edit closing, in case focus vanished without an event.
+  // It runs every render on purpose and can only turn the state off, so it cannot loop.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (messageFocused && !barRef.current?.closest(".group")?.matches(":focus-within")) setMessageFocused(false);
+  });
   const visible = showActions || forceShowActions || messageFocused;
   return (
     <div

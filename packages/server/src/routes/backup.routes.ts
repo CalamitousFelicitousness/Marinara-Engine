@@ -54,6 +54,7 @@ import {
   parseLorebookDecisionActivation,
 } from "@marinara-engine/shared";
 import { getDataDir } from "../utils/data-dir.js";
+import { uniqueExportName } from "../utils/export-stream.js";
 import { getFileStorageDir } from "../config/runtime-config.js";
 import { normalizeTimestampOverrides } from "../services/import/import-timestamps.js";
 import { flushDB, type DB } from "../db/connection.js";
@@ -531,6 +532,8 @@ async function buildCompatibleProfileZip(app: FastifyInstance) {
   });
   const data = envelope.data as Record<string, any>;
   const zip = new AdmZip();
+  // Folder prefixes differ, so one set keeps every name in the archive unique.
+  const usedNames = new Set<string>();
   const exportBudget = { remainingBytes: LOREBOOK_EXPORT_IMAGE_MAX_BYTES };
 
   for (const [index, character] of (Array.isArray(data.characters) ? data.characters : []).entries()) {
@@ -539,7 +542,11 @@ async function buildCompatibleProfileZip(app: FastifyInstance) {
       exportBudget,
     );
     zip.addFile(
-      `characters/${toSafeExportName(String(charData?.name ?? "character"), `character-${index + 1}`)}.json`,
+      uniqueExportName(
+        usedNames,
+        `characters/${toSafeExportName(String(charData?.name ?? "character"), `character-${index + 1}`)}`,
+        "json",
+      ),
       Buffer.from(JSON.stringify({ spec: "chara_card_v2", spec_version: "2.0", data: charData }, null, 2), "utf8"),
     );
   }
@@ -555,14 +562,22 @@ async function buildCompatibleProfileZip(app: FastifyInstance) {
       ...personaData
     } = persona as Record<string, unknown>;
     zip.addFile(
-      `personas/${toSafeExportName(String(personaData.name ?? "persona"), `persona-${index + 1}`)}.json`,
+      uniqueExportName(
+        usedNames,
+        `personas/${toSafeExportName(String(personaData.name ?? "persona"), `persona-${index + 1}`)}`,
+        "json",
+      ),
       Buffer.from(JSON.stringify(personaData, null, 2), "utf8"),
     );
   }
 
   for (const [index, lorebook] of (Array.isArray(data.lorebooks) ? data.lorebooks : []).entries()) {
     zip.addFile(
-      `lorebooks/${toSafeExportName(String(lorebook.name ?? "lorebook"), `lorebook-${index + 1}`)}.json`,
+      uniqueExportName(
+        usedNames,
+        `lorebooks/${toSafeExportName(String(lorebook.name ?? "lorebook"), `lorebook-${index + 1}`)}`,
+        "json",
+      ),
       Buffer.from(
         JSON.stringify(
           buildCompatibleLorebookExport({

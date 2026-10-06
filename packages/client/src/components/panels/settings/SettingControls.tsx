@@ -31,6 +31,20 @@ import {
 import { localizeStringNode, useLocalizedUiText } from "../../../localization/use-localized-ui-text";
 import { HelpTooltip } from "../../ui/HelpTooltip";
 
+/** Secondary: buttons in a row, a header, next to a field or on a list item; also toggle and segmented items (aria-pressed). */
+export const SETTINGS_BUTTON_CLASS = "mari-chrome-control mari-chrome-control--small text-[0.6875rem]";
+/** Primary: a section's or sub-form's one main action; prefer SETTINGS_PRIMARY_FULL_BUTTON_CLASS. */
+export const SETTINGS_PRIMARY_BUTTON_CLASS = "mari-chrome-control mari-chrome-control--primary text-xs";
+/** Primary on its own full-width line, with a leading 0.8125rem icon. */
+export const SETTINGS_PRIMARY_FULL_BUTTON_CLASS = `${SETTINGS_PRIMARY_BUTTON_CLASS} w-full`;
+/** Primary emphasis at secondary size, for the main action inside a dense row of secondary buttons. */
+export const SETTINGS_COMPACT_PRIMARY_BUTTON_CLASS =
+  "mari-chrome-control mari-chrome-control--primary mari-chrome-control--small text-[0.6875rem]";
+/** Square icon-only button with an aria-label and a 0.75rem icon; add mari-chrome-control--danger to delete. */
+export const SETTINGS_ICON_BUTTON_CLASS = "mari-chrome-control mari-chrome-control--small mari-chrome-control--icon";
+/** One-of-N choice card (title, description, optional preview); selected look comes from aria-pressed. */
+export const SETTINGS_CHOICE_CARD_CLASS = "mari-chrome-control mari-chrome-control--card text-xs";
+
 export function SettingsIntro({ children }: { children: ReactNode }) {
   const localize = useLocalizedUiText();
   return (
@@ -528,22 +542,18 @@ function CustomNotificationSoundSetting() {
             type="button"
             onClick={() => playNotificationPing()}
             disabled={isLoading}
-            className="mari-chrome-control inline-flex min-h-9 items-center gap-1.5 px-2.5 text-[0.625rem] disabled:opacity-50"
+            className={SETTINGS_BUTTON_CLASS}
           >
-            <Play size="0.6875rem" />
+            <Play size="0.75rem" />
             {t("settings.notifications.customSound.actions.preview")}
           </button>
           <button
             type="button"
             onClick={() => inputRef.current?.click()}
             disabled={isBusy}
-            className="mari-chrome-control inline-flex min-h-9 items-center gap-1.5 px-2.5 text-[0.625rem] disabled:opacity-50"
+            className={SETTINGS_BUTTON_CLASS}
           >
-            {uploadSound.isPending ? (
-              <Loader2 size="0.6875rem" className="animate-spin" />
-            ) : (
-              <Upload size="0.6875rem" />
-            )}
+            {uploadSound.isPending ? <Loader2 size="0.75rem" className="animate-spin" /> : <Upload size="0.75rem" />}
             {status?.configured
               ? t("settings.notifications.customSound.actions.replace")
               : t("settings.notifications.customSound.actions.choose")}
@@ -553,13 +563,9 @@ function CustomNotificationSoundSetting() {
               type="button"
               onClick={() => void handleRemove()}
               disabled={isBusy}
-              className="mari-chrome-control inline-flex min-h-9 items-center gap-1.5 px-2.5 text-[0.625rem] text-[var(--destructive)] disabled:opacity-50"
+              className={cn(SETTINGS_BUTTON_CLASS, "mari-chrome-control--danger")}
             >
-              {removeSound.isPending ? (
-                <Loader2 size="0.6875rem" className="animate-spin" />
-              ) : (
-                <Trash2 size="0.6875rem" />
-              )}
+              {removeSound.isPending ? <Loader2 size="0.75rem" className="animate-spin" /> : <Trash2 size="0.75rem" />}
               {t("settings.notifications.customSound.actions.remove")}
             </button>
           )}

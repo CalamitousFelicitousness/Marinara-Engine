@@ -5,16 +5,12 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 ## [Unreleased]
 
 ### Changed
-
 - The Game Master's reply in a Game Mode turn now gets at most four rounds of tool calls (such as dice rolls), then narrates with the results it has, and an agent at most sixteen before it answers. A model that kept asking for a roll, for example through a proxy that loses the results, could otherwise make up to a hundred paid requests in one turn. `MAX_TOOL_ROUNDS` still applies when it is lower. The last request of a tool loop now gives the model the tools' results as text, which native Anthropic and Gemini connections need when no tools are sent.
-
 - The Characters sidebar has its full-width **New Folder** button again. Removed **Possible duplicates**.
-
 - The Chats sidebar status prompt now reads **What's up?** to fit its field, and Advanced Settings labels the multiplayer section **Multiplayer WIP** (#7051).
-
 - In Roleplay **Advanced Memory**, you can now edit and save a scene summary's **Story timeframe**, or clear it when the story date is unknown (#7047).
-
 - In Roleplay groups using **Merged (Narrator)**, characters referenced by ID macros, including through lorebooks, now join the reply's cycling avatars without being added to the group. Each swipe keeps the references used for that reply (#7045).
+- In a Game Mode game with money, the Game Master is now told when a purse is empty, and sees the player's bag even when it holds nothing. Before, an empty purse was left out of its prompt, so it could narrate a purchase or payment as made and the Engine then refused it.
 
 - Home widgets: the **Daily Encounter** message for an empty library and its **Open character library** link now fit inside the widget on desktop and phones (only the very largest text sizes can still cut off the link), Professor Mari's head is no longer cut off in **Your guide** (she can now reach over the widget's top edge instead), and hovering a widget no longer makes its glow and edges pop in after the card lifts (#7032).
 

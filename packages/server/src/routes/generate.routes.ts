@@ -204,6 +204,7 @@ import {
   normalizeGameInventoryStacks,
   rulesetItemPromptFacts,
   rulesetLayerOptionKey,
+  rulesetLayeredCurrencies,
   rulesetPurseText,
   type RoleplayCommandActivity,
   type RulesetDefinition,
@@ -4630,9 +4631,14 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   },
                 ).start
               : normalizeGameInventoryStacks(chatMeta.gameInventory);
-          // What each ruleset item the party holds is, for the Game Master: only read when one is held.
+          // What each ruleset item the party holds is, for the Game Master: read when one is held, or
+          // when the game has coins in use (its layers may hide them all), so an empty purse is said
+          // too (never told one is empty, the Game Master narrates a buy the Engine then refuses).
           const promptItemBook =
-            pinnedGameRuleset?.status === "ok" && promptInventoryStacks.some((stack) => stack.item)
+            pinnedGameRuleset?.status === "ok" &&
+            (promptInventoryStacks.some((stack) => stack.item) ||
+              rulesetLayeredCurrencies(pinnedGameRuleset.definition, gameRulesetLayerOptions(pinnedGameRuleset))
+                .length > 0)
               ? await loadGameInventoryItemBook(
                   app.db,
                   { metadata: chatMeta, resolved: pinnedGameRuleset, playerName: personaName || null },

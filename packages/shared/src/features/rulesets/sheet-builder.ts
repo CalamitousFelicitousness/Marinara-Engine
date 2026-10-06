@@ -380,7 +380,9 @@ export function rulesetBuilderAbilitySlots(
 }
 
 /** Every skill or save choice: the picks' and the trained steps' own. Shown at the first trained step,
- *  or where the entry was picked when the builder has none. */
+ *  or where the entry was picked when the builder has none. A choice never offers what the picks already
+ *  train to its tier or higher (1.99): not what an entry trains outright, nor what an earlier choice
+ *  holds, so two sources that both teach Insight leave the second free for another skill. */
 export function rulesetBuilderTrainedSlots(
   definition: RulesetDefinition,
   state: RulesetBuilderState,
@@ -394,6 +396,17 @@ export function rulesetBuilderTrainedSlots(
     skills: definition.sheet.skills.map((skill) => skill.id),
     saves: definition.sheet.saves.map((save) => save.id),
   };
+  const rank = (tier: string) => definition.resolution.proficiencyTiers.findIndex((each) => each.id === tier);
+  const granting = rulesetBuilderGranting(definition, state, catalogs, build);
+  // What the picks train outright, at the highest tier any of them gives.
+  const outright = { skills: new Map<string, number>(), saves: new Map<string, number>() };
+  for (const { entry } of granting) {
+    for (const what of ["skills", "saves"] as const) {
+      const tier = rank(grantTier(definition, entry.grants, what));
+      for (const id of entry.grants?.trained?.[what] ?? [])
+        outright[what].set(id, Math.max(tier, outright[what].get(id) ?? -1));
+    }
+  }
   const slot = (
     key: string,
     stepId: string,
@@ -401,7 +414,9 @@ export function rulesetBuilderTrainedSlots(
     choice: { what: "skills" | "saves"; count: number; from?: string[] },
     tier: string,
   ): RulesetBuilderTrainedSlot => {
-    const from = choice.from ? known[choice.what].filter((id) => choice.from!.includes(id)) : known[choice.what];
+    const from = (
+      choice.from ? known[choice.what].filter((id) => choice.from!.includes(id)) : known[choice.what]
+    ).filter((id) => (outright[choice.what].get(id) ?? -1) < rank(tier));
     const chosen = [...new Set(state.trainedChoices?.[key] ?? [])].filter((id) => from.includes(id));
     return {
       key,
@@ -410,11 +425,11 @@ export function rulesetBuilderTrainedSlots(
       what: choice.what,
       count: choice.count,
       from,
-      chosen: chosen.slice(0, choice.count),
+      chosen,
       tier,
     };
   };
-  const granted = rulesetBuilderGranting(definition, state, catalogs, build).flatMap(({ step, entry }) =>
+  const granted = granting.flatMap(({ step, entry }) =>
     (entry.grants?.trained?.choose ?? []).map((choice, index) =>
       slot(
         rulesetBuilderChoiceKey(step.id, entry.id, index),
@@ -438,7 +453,24 @@ export function rulesetBuilderTrainedSlots(
         )
       : [],
   );
-  return [...granted, ...own];
+  // An earlier choice keeps what it holds; a later one at the same tier or lower lets it go.
+  const kept: RulesetBuilderTrainedSlot[] = [];
+  for (const each of [...granted, ...own]) {
+    const held = (id: string) =>
+      kept.some(
+        (earlier) => earlier.what === each.what && rank(earlier.tier) >= rank(each.tier) && earlier.chosen.includes(id),
+      );
+    kept.push({ ...each, chosen: each.chosen.filter((id) => !held(id)).slice(0, each.count) });
+  }
+  // ...and what another choice holds at this one's tier or higher is not this one's to offer.
+  return kept.map((each) => {
+    const elsewhere = new Set(
+      kept
+        .filter((other) => other !== each && other.what === each.what && rank(other.tier) >= rank(each.tier))
+        .flatMap((other) => other.chosen),
+    );
+    return { ...each, from: each.from.filter((id) => each.chosen.includes(id) || !elsewhere.has(id)) };
+  });
 }
 
 /** Every choice of catalog entries the picks grant (1.86), shown at the first `choices` step for its

@@ -696,7 +696,11 @@ const capabilityPackageManifestBaseSchema = z
 //        step's picks of that group, which picking it drops (a feat in place of an ability score
 //        improvement is not offered on the score that improvement gave). Behaviour only, no new key: a
 //        package that relies on it declares 1.95. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 95 } as const);
+// 1.96-1.98: Tactical Combat's 5e combat rules (`feat/combat-5e-rules`), landed before 1.99.
+// 1.99: a builder skill or save choice never offers what the picks already train to its tier or higher:
+//        what an entry trains outright, or what an earlier choice holds. A stored choice of one counts for
+//        nothing and is kept. Behaviour only, no new key. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 99 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

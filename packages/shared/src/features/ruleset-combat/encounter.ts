@@ -1328,6 +1328,14 @@ function mechanicsAction(
   if (from.saveDifficulty !== undefined) action.saveDifficulty = sourceDifficulty;
   if (mechanics.applies?.length) action.applies = mechanics.applies.map((entry2) => ({ ...entry2 }));
   if (mechanics.concentration) action.concentration = true;
+  if (mechanics.summons) {
+    const { move, reach, ...summons } = mechanics.summons;
+    action.summons = {
+      ...summons,
+      ...(move !== undefined ? { move: rulesetInCells(move, perCell ?? 1) } : {}),
+      ...(reach !== undefined ? { reach: rulesetInCells(reach, perCell ?? 1) } : {}),
+    };
+  }
   // What the turn's own economy makes of it: free of a budget, handing budgets back, or letting
   // its holder buy a standard action with a budget other than the main one.
   if (mechanics.free) action.free = true;

@@ -281,6 +281,14 @@ export function rulesetTargetRefusal(
   optionId: string,
   targetId: string,
 ): "out-of-reach" | "no-line-of-sight" | null {
+  const summon = optionId.startsWith("summon:")
+    ? rulesetCombatant(state, actorId)?.summons?.find((entry) => `summon:${entry.actionId}` === optionId)
+    : undefined;
+  if (summon) {
+    const to = rulesetPositionOf(rulesetCombatant(state, targetId));
+    if (!positioned(state) || !summon.at || !to) return null;
+    return rulesetCellDistance(summon.at, to) > (summon.move ?? 0) + (summon.reach ?? 1) ? "out-of-reach" : null;
+  }
   const reach = rulesetOptionReach(state, actorId, optionId);
   if (!reach) return null;
   const from = rulesetPositionOf(rulesetCombatant(state, actorId));
@@ -909,6 +917,7 @@ export function rulesetOptionTargets(
     state.combatants
       .filter((combatant) => {
         if (combatant.defeated) return false;
+        if (option.id.startsWith("summon:") && !rulesetCombatStanding(combatant)) return false;
         if (contest?.from && combatant.id !== holder) return false;
         if (tooBig(combatant)) return false;
         // Whoever put a condition on this actor that says they may not be pointed at.
@@ -1432,6 +1441,25 @@ export function rulesetCombatOptions(
   for (const action of actor.actions) {
     const option = optionFrom(definition, combat, state, actor, action, false, economy);
     if (option) options.push(option);
+  }
+  for (const summon of actor.summons ?? []) {
+    if (summon.rounds <= 0 || (actor.budgets[summon.budget] ?? 0) < 1) continue;
+    const action = actor.actions.find((entry) => entry.id === summon.actionId);
+    if (!action) continue;
+    if (
+      rulesetIsAttack(action) &&
+      economy.attacksPerTurn !== undefined &&
+      (actor.flags.attacks ?? 0) >= economy.attacksPerTurn
+    )
+      continue;
+    const option: RulesetCombatOption = {
+      id: `summon:${summon.actionId}`,
+      kind: "attack",
+      label: summon.label,
+      budget: summon.budget,
+      targets: { side: "enemy", count: 1 },
+    };
+    if (rulesetOptionTargets(definition, state, actor.id, option).length > 0) options.push(option);
   }
   const budget = rulesetStandardBudget(combat);
   for (const action of combat.standard ?? []) {

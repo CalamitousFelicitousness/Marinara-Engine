@@ -773,7 +773,10 @@ const capabilityPackageManifestBaseSchema = z
 //        their maximum; `targets: "ally" | "any"` says whose side it may reach. 5e's Healing Touch.
 //        Not a soft seam: an Engine that cannot read the keys refuses the ruleset, so a package that
 //        ships them declares 1.116. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 116 } as const);
+// 1.117: an attack entry's `summons` leaves a weapon that strikes on its holder's later turns for
+//        its own budget, keeping the cast's payment level. It ends after its rounds, on defeat,
+//        or with the concentration that holds it. A package that ships it declares 1.117. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 117 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

@@ -403,6 +403,8 @@ export interface RulesetCombatAction {
    *  with neither reaches one cell, which is the smallest step a board has. */
   reach?: number;
   range?: RulesetCombatRange;
+  /** What this leaves to strike on later turns (1.117), with distances already in cells. */
+  summons?: { budget: string; rounds: number; move?: number; reach?: number };
   /** The shape this one covers, in cells, aimed at a cell rather than at anybody. */
   area?: RulesetCombatArea;
   /** What a contest rolls and what winning it does, on an action of kind `contest`. */
@@ -562,6 +564,8 @@ export interface RulesetCombatant {
     offHand?: number;
     /** Attacks made this turn, which a condition's cap on attacks a turn counts (combat C6d). */
     attacks?: number;
+    /** Summons made this turn do not spend a round at its end. */
+    freshSummons?: string[];
   };
   /** At zero and out of the fight. `dying` is a party member a ruleset with a dying rule still
    *  rolls for; `stable` is one that has stopped rolling; `defeated` is one the fight is over for. */
@@ -591,6 +595,17 @@ export interface RulesetCombatant {
   /** What a delay held over to their next turn (1.115): the action as it was made, and the budget
    *  completing it takes. Absent while nothing waits. */
   delayed?: RulesetActionResume & { label: string; budget: string };
+  /** What the holder's spells left behind (1.117). Distances are in cells. */
+  summons?: Array<{
+    actionId: string;
+    label: string;
+    budget: string;
+    rounds: number;
+    move?: number;
+    reach?: number;
+    at?: RulesetCombatCell;
+    payWith?: string;
+  }>;
   /** How much of each limited live pool they may still spend this turn or round, read once as the
    *  fight began and counted down as they pay. Absent for anybody nothing limits. */
   limits?: Record<string, { max: number; per: "turn" | "round"; spent: number }>;
@@ -781,6 +796,10 @@ export interface RulesetActionResume {
   spend?: number;
   /** An answer stopped it. What it cost is still spent: it was paid for before the asking. */
   cancelled?: true;
+  /** A later strike spends only the summon's budget and never summons again. */
+  summon?: true;
+  /** The action landed; only its summon awaits the last reaction window. */
+  resolved?: true;
   /** Held after one of its attack rolls hit, rather than before anything happened. */
   held?: RulesetHeldAttack;
 }
@@ -1073,6 +1092,8 @@ export type RulesetCombatEvent =
       /** How far the move got, when a strike on the way stopped it short. */
       stopped?: boolean;
     }
+  /** What a summoned weapon did, from its appearance to its ending (1.117). */
+  | { type: "summon"; actorId: string; label: string; outcome: "appeared" | "struck" | "ended" }
   /** A flier going up or down a level where it stands (1.109), for cells of its allowance. */
   | { type: "flew"; actorId: string; from: number; to: number; cost: number; left: number }
   /** A strike at somebody leaving this combatant's reach. The attack and the damage that follow are

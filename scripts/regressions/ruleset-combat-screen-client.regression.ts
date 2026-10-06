@@ -742,6 +742,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
       }),
     ],
     ["fell", say({ type: "fell", targetId: "lurker", levels: 2 })],
+    ["summon", say({ type: "summon", actorId: "corwin", label: "Spiritual Weapon", outcome: "appeared" })],
     ["flew", say({ type: "flew", actorId: "lurker", from: 0, to: 1, cost: 1, left: 5 })],
     ["delay", say({ type: "delay", actorId: "corwin", label: "Fireball", outcome: "held", roll: 14, needed: 11 })],
     [

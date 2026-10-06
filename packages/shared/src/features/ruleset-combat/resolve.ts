@@ -74,6 +74,7 @@ import {
   rulesetStepLeavesReach,
   rulesetThreateningEnemies,
   rulesetAirborne,
+  rulesetCellBlocked,
   rulesetLevelOf,
 } from "./grid.js";
 import {
@@ -634,7 +635,10 @@ function dropToZero(ctx: RulesetCombatContext, target: RulesetCombatant): void {
   target.down = true;
   // Defeated before its concentration ends, so what a spell it held leaves behind as it ends (Haste's
   // lethargy) is not put on somebody already out of the fight.
-  if (target.side === "enemy") target.defeated = true;
+  if (target.side === "enemy") {
+    target.defeated = true;
+    endSummons(ctx, target);
+  }
   endConcentration(ctx, target, "down");
   endConditionsFromSource(ctx, target);
   if (target.side === "enemy") {
@@ -696,6 +700,7 @@ function addDeathFailures(ctx: RulesetCombatContext, target: RulesetCombatant, a
   const successes = trackValue(ctx, target, dying.successes);
   if (failures < trackMax(ctx, target, dying.failures)) return;
   target.defeated = true;
+  endSummons(ctx, target);
   target.dying = false;
   ctx.events.push({
     type: "dying",
@@ -1143,6 +1148,64 @@ function tickConditionsNow(ctx: RulesetCombatContext, actor: RulesetCombatant, a
   }
 }
 
+/** A free cell beside the target, preferring the one nearest the weapon's previous cell. */
+function summonCell(
+  state: RulesetEncounterState,
+  target: RulesetCombatant | undefined,
+  from?: RulesetCombatCell,
+): RulesetCombatCell | undefined {
+  const at = rulesetPositionOf(target);
+  const grid = state.board?.grid;
+  if (!at || !grid) return at ?? undefined;
+  const cells: RulesetCombatCell[] = [];
+  for (let y = at.y - 1; y <= at.y + 1; y++) {
+    for (let x = at.x - 1; x <= at.x + 1; x++) {
+      if ((x === at.x && y === at.y) || rulesetCellBlocked(grid, x, y)) continue;
+      if (state.combatants.some((one) => !one.defeated && one.x === x && one.y === y)) continue;
+      cells.push({ x, y });
+    }
+  }
+  if (from) cells.sort((a, b) => rulesetCellDistance(from, a) - rulesetCellDistance(from, b));
+  return cells[0] ?? at;
+}
+
+/** Each ending is said once, including replacement and losing the concentration that holds it. */
+function endSummons(ctx: RulesetCombatContext, actor: RulesetCombatant, actionId?: string): void {
+  if (!actor.summons) return;
+  actor.summons = actor.summons.filter((summon) => {
+    if (actionId !== undefined && summon.actionId !== actionId) return true;
+    ctx.events.push({ type: "summon", actorId: actor.id, label: summon.label, outcome: "ended" });
+    return false;
+  });
+  if (actor.summons.length === 0) delete actor.summons;
+}
+
+/** A cast leaves its weapon only after the last reaction has been answered. */
+function finishSummon(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  resume: RulesetActionResume,
+): void {
+  if (!action.summons || resume.cancelled || actor.defeated) return;
+  if (resume.summon) {
+    ctx.events.push({ type: "summon", actorId: actor.id, label: action.label, outcome: "struck" });
+    return;
+  }
+  if (action.concentration && actor.concentrating?.actionId !== action.id) return;
+  endSummons(ctx, actor, action.id);
+  const at = summonCell(ctx.state, rulesetCombatant(ctx.state, resume.targetIds[0] ?? ""));
+  (actor.summons ??= []).push({
+    actionId: action.id,
+    label: action.label,
+    ...action.summons,
+    ...(at ? { at } : {}),
+    ...(resume.payWith !== undefined ? { payWith: resume.payWith } : {}),
+  });
+  (actor.flags.freshSummons ??= []).push(action.id);
+  ctx.events.push({ type: "summon", actorId: actor.id, label: action.label, outcome: "appeared" });
+}
+
 // ── Concentration ──
 
 function endConcentration(
@@ -1153,6 +1216,7 @@ function endConcentration(
   const held = actor.concentrating;
   if (!held) return;
   actor.concentrating = null;
+  endSummons(ctx, actor, held.actionId);
   const concentration = ctx.combat.concentration;
   if (concentration) writeRulesetSheet(ctx.definition, actor, { op: "note", field: concentration.text, value: "" });
   // Whatever the concentration was holding up goes with it, wherever it landed.
@@ -1381,6 +1445,23 @@ export function applyRulesetCombatChoice(
   const budget = option.budget;
   if (budget) spendBudget(ctx, working, budget);
 
+  if (option.id.startsWith("summon:")) {
+    const summon = working.summons!.find((entry) => `summon:${entry.actionId}` === option.id)!;
+    const action = working.actions.find((entry) => entry.id === summon.actionId)!;
+    summon.at = summonCell(ctx.state, workingTargets[0], summon.at);
+    if (rulesetIsAttack(action)) countAttack(ctx, working);
+    reopenAction(ctx, working, action, {
+      kind: "action",
+      actorId: working.id,
+      optionId: action.id,
+      targetIds: workingTargets.map((target) => target.id),
+      ...(summon.payWith !== undefined ? { payWith: summon.payWith } : {}),
+      summon: true,
+    });
+    noteOutcome(ctx);
+    return finish();
+  }
+
   if (option.kind === "standard") {
     // A standard action an ability allowed is paid for as that ability is: the budget it named,
     // just spent, and whatever the ability itself costs off the sheet.
@@ -1514,28 +1595,8 @@ export function applyRulesetCombatChoice(
     noteOutcome(ctx);
     return finish();
   }
-  // Somebody on the other side may answer the USE first, wherever it is aimed; then the ones it is
-  // aimed at get their own say. Whatever is held resolves once the last window has closed.
-  const held =
-    openMoment(
-      ctx,
-      {
-        kind: "used",
-        sourceId: working.id,
-        optionId: action.id,
-        label: action.label,
-        ...(action.catalog ? { catalog: action.catalog } : {}),
-        ...(action.entry ? { entry: action.entry } : {}),
-      },
-      ctx.state.combatants,
-      resume,
-    ) || openAimed(ctx, resume, action.label, action.catalog, action.entry);
-  if (!held) {
-    const used = rulesetActionAsUsed(action);
-    harmedBy(ctx, working, used, resume, () =>
-      resolveAction(ctx, working, used, workingTargets, choice.payWith, undefined, styleId, spend),
-    );
-  }
+  // A paid use opens its moments before anything lands.
+  reopenAction(ctx, working, action, resume);
   noteOutcome(ctx);
   return finish();
 }
@@ -1583,6 +1644,16 @@ function completeDelayed(ctx: RulesetCombatContext, actor: RulesetCombatant): vo
   }
   spendBudget(ctx, actor, budget);
   ctx.events.push({ type: "delay", actorId: actor.id, label, outcome: "completed" });
+  reopenAction(ctx, actor, action, resume);
+}
+
+/** A fresh use opens the same moments whether it was held over or a summon strikes again. */
+function reopenAction(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  resume: RulesetActionResume,
+): void {
   const held =
     openMoment(
       ctx,
@@ -2046,7 +2117,7 @@ function goOn(definition: RulesetDefinition, combat: RulesetCombat, ctx: Ruleset
     return;
   }
   if (resume?.kind === "action") {
-    if (over) return;
+    if (over && !resume.resolved) return;
     // A use nobody stopped is aimed next: the ones it is aimed at get their own say before it lands.
     if (
       trigger.kind === "used" &&
@@ -2369,10 +2440,16 @@ function resumeAction(ctx: RulesetCombatContext, resume: RulesetActionResume): v
   // A fake does what it truly does (1.74).
   const own = found && rulesetActionAsUsed(found);
   // Picked up in the mode it was made in.
-  const action = own && resume.mode ? (rulesetModedAction(ctx.definition, own, resume.mode) ?? own) : own;
+  let action = own && resume.mode ? (rulesetModedAction(ctx.definition, own, resume.mode) ?? own) : own;
   if (!actor || !action) return;
   if (resume.cancelled) return;
   if (!rulesetCombatStanding(actor)) return;
+  if (resume.resolved) {
+    finishSummon(ctx, actor, action, resume);
+    return;
+  }
+  // A later strike keeps the cast's amount and payment level, but does not start concentration again.
+  if (resume.summon) action = { ...action, concentration: false };
   // A saved fight can come back through an import, so only a real cell of this board is taken.
   const grid = ctx.state.board?.grid;
   const at = resume.at;
@@ -2434,19 +2511,22 @@ function harmedBy(
     });
     return;
   }
-  if (rulesetEncounterOutcome(ctx.state) !== "ongoing") return;
-  if (hurt.size === 0) return;
-  openMoment(
-    ctx,
-    {
-      kind: "harmed",
-      sourceId: actor.id,
-      label: action.label,
-      ...(action.catalog ? { catalog: action.catalog } : {}),
-      ...(action.entry ? { entry: action.entry } : {}),
-    },
-    [...hurt].map((id) => rulesetCombatant(ctx.state, id)).filter((one): one is RulesetCombatant => !!one),
-  );
+  const waiting =
+    rulesetEncounterOutcome(ctx.state) === "ongoing" &&
+    hurt.size > 0 &&
+    openMoment(
+      ctx,
+      {
+        kind: "harmed",
+        sourceId: actor.id,
+        label: action.label,
+        ...(action.catalog ? { catalog: action.catalog } : {}),
+        ...(action.entry ? { entry: action.entry } : {}),
+      },
+      [...hurt].map((id) => rulesetCombatant(ctx.state, id)).filter((one): one is RulesetCombatant => !!one),
+      action.summons ? { ...resume, resolved: true } : undefined,
+    );
+  if (!waiting) finishSummon(ctx, actor, action, resume);
 }
 
 /** A walk held open by an Engine from before a resume said what kind it was. The walk was the only
@@ -3401,6 +3481,11 @@ export function advanceRulesetTurn(
   const leaving = currentRulesetActor(ctx.state);
   if (leaving) {
     tickConditions(ctx, leaving, "turn-end");
+    for (const summon of [...(leaving.summons ?? [])]) {
+      if (leaving.flags.freshSummons?.includes(summon.actionId)) continue;
+      summon.rounds -= 1;
+      if (summon.rounds <= 0) endSummons(ctx, leaving, summon.actionId);
+    }
     // Strikes a spend bought are for the turn it was spent on. Nothing is carried over.
     delete leaving.strikesLeft;
   }

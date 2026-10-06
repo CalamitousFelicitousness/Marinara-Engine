@@ -1662,6 +1662,17 @@ const catalogMechanicsObject = z
         }
       })
       .optional(),
+    /** What an attack leaves behind to strike on later turns (Capability API 1.117). Distances
+     *  are in the catalog's unit; without a reach it touches the next cell. */
+    summons: z
+      .object({
+        budget: sheetId,
+        rounds: z.number().int().min(1).max(100),
+        move: z.number().finite().gt(0).optional(),
+        reach: z.number().finite().gt(0).optional(),
+      })
+      .strict()
+      .optional(),
     concentration: z.boolean().optional(),
     /** Something taken at a MOMENT rather than on a turn. `true` says only that much, and an entry
      *  that says only that much is on no menu: nothing knows which moment it waits for. An object
@@ -1727,6 +1738,13 @@ const catalogMechanicsObject = z
   .strict();
 
 const catalogMechanicsSchema = catalogMechanicsObject.superRefine((mechanics, ctx) => {
+  if (mechanics.summons && (mechanics.kind !== "attack" || (mechanics.targets ?? "enemy") !== "enemy")) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["summons"],
+      message: "Only an attack that targets enemies can leave a summon",
+    });
+  }
   // A rider and the kind that says it is one always come together: one without the other is an
   // entry that either does nothing or says it is passive and then asks to be taken.
   if (mechanics.rider && mechanics.kind !== "rider") {
@@ -2836,6 +2854,7 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     perCostStep: true,
     check: true,
     concentration: true,
+    summons: true,
     reaction: true,
     scales: true,
     gives: true,
@@ -8056,6 +8075,9 @@ export function rulesetCatalogEntryIssues(
     }
     if (mechanics?.budget !== undefined && budgets && !budgets.has(mechanics.budget)) {
       add([index, "mechanics", "budget"], `Unknown budget "${mechanics.budget}"`);
+    }
+    if (mechanics?.summons && !budgets?.has(mechanics.summons.budget)) {
+      add([index, "mechanics", "summons", "budget"], `Unknown budget "${mechanics.summons.budget}"`);
     }
     // What a use hands back, and what it lets its holder buy with another budget. Both name the
     // combat block's own words, so both are checked against the block that declares them.

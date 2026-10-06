@@ -472,6 +472,11 @@ export function rulesetCombatEventLine(
         roll: rulesetRollText(event, t, bonusNamer(names, t)),
         difficulty: event.difficulty,
       });
+    case "summon":
+      return key(
+        event.outcome === "appeared" ? "summonAppeared" : event.outcome === "struck" ? "summonStruck" : "summonEnded",
+        { actor: names.combatant(event.actorId), label: event.label },
+      );
     case "delay": {
       // What a slowing condition holds over to its maker's next turn (1.115).
       const said = { actor: names.combatant(event.actorId), label: event.label };

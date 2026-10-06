@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: a spell can leave a summoned weapon that strikes on later turns for its own budget, keeps its upcast damage, and ends with its duration or caster (Capability API 1.117).
 - Rulesets: a creature can heal another on its own side, such as a deva's Healing Touch, with dice or a flat amount and limited uses (Capability API 1.116).
 - Rulesets: creatures and characters can fly, swim, climb or burrow (Capability API 1.108). On the battle board fliers cross water and cliffs, swimmers cross water, and climbers scale any height. Switching from walking to flying counts what was already walked.
 - Rulesets: fliers fly up and down on the battle board (Capability API 1.109). Reach, high ground and opportunity strikes count the height between combatants, and a flier knocked down, prone or out of speed falls unless it hovers.

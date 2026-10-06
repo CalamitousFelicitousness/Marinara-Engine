@@ -84,7 +84,8 @@ try {
       `${what}: expected ${pattern}, got ${parsed.issues.join("; ")}`,
     );
   };
-  assert.deepEqual(supportedCapabilityApi, { major: 1, minor: 116 });
+  assert.equal(supportedCapabilityApi.major, 1);
+  assert.ok(supportedCapabilityApi.minor >= 116);
   const definition = parsedOrThrow(fiveE(withTouch), "the 5e example with Healing Touch");
   const dice = (...faces: number[]): RulesetCombatRoller => {
     let index = 0;

@@ -494,9 +494,9 @@ function soakSaysSomething(node) {
 }
 
 /**
- * Two rules a catalog entry's mechanics keep that the shape alone does not say: an entry of the
- * kind `rider` has to carry the `rider` that describes it, and something `free` spends no budget so
- * it names none. Zod refuses both at import; an author's editor should refuse them while typing.
+ * Rules a catalog entry's mechanics keep that the shape alone does not say: riders carry their
+ * rider, free actions name no budget, and summons belong to attacks against enemies. Zod refuses
+ * anything else at import; an author's editor should refuse it while typing.
  */
 function requireMechanicsPairs(node) {
   if (Array.isArray(node)) return node.forEach(requireMechanicsPairs);
@@ -508,6 +508,10 @@ function requireMechanicsPairs(node) {
     ...(node.allOf ?? []),
     { if: { properties: { kind: { const: "rider" } }, required: ["kind"] }, then: { required: ["rider"] } },
     { not: { required: ["free", "budget"] } },
+    {
+      if: { required: ["summons"] },
+      then: { properties: { kind: { const: "attack" }, targets: { const: "enemy" } } },
+    },
   ];
 }
 

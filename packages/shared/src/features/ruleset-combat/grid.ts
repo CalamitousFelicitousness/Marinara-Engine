@@ -14,6 +14,7 @@ import type { RulesetCombat, RulesetDefinition } from "../../schemas/ruleset.sch
 import { rulesetShotsAvailable } from "./ammo.js";
 import { rulesetActiveConditions, rulesetCombatant, rulesetCombatEffects, rulesetCombatStanding } from "./encounter.js";
 import type {
+  RulesetBlowKind,
   RulesetMoveMode,
   RulesetCombatAction,
   RulesetCombatant,
@@ -127,6 +128,38 @@ export function rulesetCombatantDistance(
   const levelCells = state.board?.levelCells;
   if (!grid || !levelCells || !(rulesetAirborne(grid, a) || rulesetAirborne(grid, b))) return flat;
   return Math.max(flat, Math.abs(rulesetLevelOf(grid, a) - rulesetLevelOf(grid, b)) * levelCells);
+}
+
+/** Whether one combatant sees another (1.113). Nobody sees somebody who has hidden (the Hide
+ *  standard action, until it wears off); otherwise it is a line of sight between them on the board,
+ *  and a fight with no board, or anybody without a place on it, sees everybody, as a condition gated
+ *  on sight reads it. */
+export function rulesetSees(
+  state: RulesetEncounterState,
+  holder: RulesetCombatant,
+  other: RulesetCombatant | undefined,
+): boolean {
+  if (other?.flags.hidden) return false;
+  const grid = state.board?.grid;
+  const from = rulesetPositionOf(holder);
+  const to = rulesetPositionOf(other);
+  if (!grid || !from || !to) return true;
+  return rulesetLineOfSight(grid, from, to);
+}
+
+/** Whether a blow is struck in reach or from afar (1.113). Something with a reach and no range is
+ *  melee and something with a range and no reach is ranged; something with both (a thrown dagger) is
+ *  melee while its target stands in its reach, and with no board it is taken as swung in hand. */
+export function rulesetBlowKind(
+  state: RulesetEncounterState,
+  actor: RulesetCombatant,
+  target: RulesetCombatant,
+  action: { reach?: number; range?: unknown },
+): RulesetBlowKind {
+  if (!action.range) return "melee";
+  if (action.reach === undefined) return "ranged";
+  if (!state.board || !rulesetPositionOf(actor) || !rulesetPositionOf(target)) return "melee";
+  return rulesetCombatantDistance(state, actor, target) <= Math.max(1, action.reach) ? "melee" : "ranged";
 }
 
 /** Whether a cell is water, which nobody walks into and a swimmer or a flier crosses (1.108). */

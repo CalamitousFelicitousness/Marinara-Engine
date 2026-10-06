@@ -192,12 +192,16 @@ try {
       atHit.map((action) => action.label),
       ["Shield"],
     );
-    const aimed = (catalog?: string, entry?: string) =>
-      rulesetReactionsAt(definition, definition.combat!, state, corwin, "aimed", "mage", catalog, entry).map(
+    const aimed = (cause: { catalog?: string; entry?: string } = {}) =>
+      rulesetReactionsAt(definition, definition.combat!, state, corwin, "aimed", "mage", cause).map(
         (action) => action.label,
       );
-    assert.deepEqual(aimed("spells", "spells/magic-missile"), ["Shield"]);
-    assert.deepEqual(aimed("spells", "spells/bolt"), [], "another entry of the same catalog opens nothing");
+    assert.deepEqual(aimed({ catalog: "spells", entry: "spells/magic-missile" }), ["Shield"]);
+    assert.deepEqual(
+      aimed({ catalog: "spells", entry: "spells/bolt" }),
+      [],
+      "another entry of the same catalog opens nothing",
+    );
     assert.deepEqual(aimed(), [], "nor does an action from no entry at all");
   }
 

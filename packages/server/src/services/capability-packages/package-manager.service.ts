@@ -1290,6 +1290,20 @@ function carriesNamedAnswers(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesNamedAnswers(one, depth + 1));
 }
 
+/** A reaction narrowed to one kind of blow, or to a source its holder sees (1.113): new keys on the
+ *  strict moment, at its first moment or one it is `also` taken at. */
+function carriesBlowNarrowing(value: unknown, depth = 0): boolean {
+  if (depth > 40 || value === null || typeof value !== "object") return false;
+  if (Array.isArray(value)) return value.some((one) => carriesBlowNarrowing(one, depth + 1));
+  const record = value as Record<string, unknown>;
+  const reaction = plainRecord(record.reaction);
+  const narrowed = (moment: Record<string, unknown> | undefined) =>
+    !!moment && (moment.blow !== undefined || moment.seesSource !== undefined);
+  if (narrowed(reaction)) return true;
+  if (Array.isArray(reaction?.also) && reaction.also.some((one) => narrowed(plainRecord(one)))) return true;
+  return Object.values(record).some((one) => carriesBlowNarrowing(one, depth + 1));
+}
+
 /** Creatures immune to a track rather than a condition (1.110): 5e's immunity to exhaustion. */
 function entriesImmuneToTracks(entries: unknown, tracks: ReadonlySet<string>): boolean {
   return (
@@ -1572,6 +1586,7 @@ export function getCapabilityPackageInstallIssue(
   let carriesExhaustion = false;
   let carriesCounterReachKeys = false;
   let carriesNamedAnswerKeys = false;
+  let carriesBlowNarrowingKeys = false;
   // The tracks a level reads and no condition shares a name with: an immunity naming one is new.
   const conditionIds = new Set(
     (Array.isArray(plainRecord(plainRecord(plainRecord(ruleset?.sheet)?.live))?.conditions)
@@ -1691,6 +1706,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryMoveModes(header.entries)) carriesMoveModes = true;
       if (carriesCounterReach(header.entries)) carriesCounterReachKeys = true;
       if (carriesNamedAnswers(header.entries)) carriesNamedAnswerKeys = true;
+      if (carriesBlowNarrowing(header.entries)) carriesBlowNarrowingKeys = true;
       if (carriesHealthMax(header.entries) || entriesImmuneToTracks(header.entries, leveledTracks)) {
         carriesExhaustion = true;
       }
@@ -1754,6 +1770,7 @@ export function getCapabilityPackageInstallIssue(
       if (carriesHealthMax(fileEntries) || entriesImmuneToTracks(fileEntries, leveledTracks)) carriesExhaustion = true;
       if (carriesCounterReach(fileEntries)) carriesCounterReachKeys = true;
       if (carriesNamedAnswers(fileEntries)) carriesNamedAnswerKeys = true;
+      if (carriesBlowNarrowing(fileEntries)) carriesBlowNarrowingKeys = true;
       if (entriesCarryExclusive(fileEntries)) carriesExclusive = true;
       if (entriesCarryToHitSheetBonus(fileEntries)) carriesSheetBonus = true;
       collectItems(header.id, fileEntries);
@@ -2084,6 +2101,10 @@ export function getCapabilityPackageInstallIssue(
       ))
   ) {
     return "A ruleset whose answers name the entries they answer or more than one moment, or whose conditions keep an entry's harm off, requires schemaVersion 2 and capabilityApi 1.112 or newer";
+  }
+  // Answers to one kind of blow, or only to a source their holder sees, 1.113.
+  if (!declaresApi(113) && carriesBlowNarrowingKeys) {
+    return "A ruleset whose answers wait for one kind of blow, or for a source their holder sees, requires schemaVersion 2 and capabilityApi 1.113 or newer";
   }
   // Sizes and escape DCs, 1.98: new keys on the strict combat block, contest, creature and applies.
   if (!declaresApi(98)) {

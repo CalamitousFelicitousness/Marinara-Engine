@@ -25,35 +25,35 @@ import type {
   RulesetCombatDamageClause,
   RulesetCombatRider,
   RulesetPlainStatBlock,
-  RulesetReactionAgainst,
-  RulesetReactionMoment,
+  RulesetReactionAlso,
   RulesetStatBlock,
   RulesetStatBlockAction,
 } from "./types.js";
 
-/** What a reaction answers, copied so whoever holds it owns its own lists: its `against`, and the
- *  moments it is `also` taken at (1.112). */
-export function rulesetReactionAnswers(reaction: {
-  against?: RulesetReactionAgainst;
-  also?: ReadonlyArray<{ on: RulesetReactionMoment; against?: RulesetReactionAgainst }>;
-}): {
-  against?: RulesetReactionAgainst;
-  also?: Array<{ on: RulesetReactionMoment; against?: RulesetReactionAgainst }>;
-} {
-  const copy = (against: RulesetReactionAgainst): RulesetReactionAgainst => ({
-    ...(against.catalogs ? { catalogs: [...against.catalogs] } : {}),
-    ...(against.entries ? { entries: [...against.entries] } : {}),
-  });
-  return {
-    ...(reaction.against ? { against: copy(reaction.against) } : {}),
-    ...(reaction.also
+/** What narrows one moment of a reaction: what it answers, the kind of blow (1.113), and whether its
+ *  holder must see the source (1.113). */
+type RulesetMomentNarrowing = Omit<RulesetReactionAlso, "on">;
+
+/** What a reaction answers, copied so whoever holds it owns its own lists: what narrows its first
+ *  moment, and the moments it is `also` taken at (1.112), each with what narrows it. */
+export function rulesetReactionAnswers(
+  reaction: RulesetMomentNarrowing & { also?: ReadonlyArray<RulesetReactionAlso> },
+): RulesetMomentNarrowing & { also?: RulesetReactionAlso[] } {
+  const narrowing = (moment: RulesetMomentNarrowing): RulesetMomentNarrowing => ({
+    ...(moment.against
       ? {
-          also: reaction.also.map((moment) => ({
-            on: moment.on,
-            ...(moment.against ? { against: copy(moment.against) } : {}),
-          })),
+          against: {
+            ...(moment.against.catalogs ? { catalogs: [...moment.against.catalogs] } : {}),
+            ...(moment.against.entries ? { entries: [...moment.against.entries] } : {}),
+          },
         }
       : {}),
+    ...(moment.blow ? { blow: moment.blow } : {}),
+    ...(moment.seesSource ? { seesSource: true as const } : {}),
+  });
+  return {
+    ...narrowing(reaction),
+    ...(reaction.also ? { also: reaction.also.map((moment) => ({ on: moment.on, ...narrowing(moment) })) } : {}),
   };
 }
 

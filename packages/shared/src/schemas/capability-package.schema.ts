@@ -748,7 +748,13 @@ const capabilityPackageManifestBaseSchema = z
 //        an attack hits and when Magic Missile is aimed at its caster, under which Magic Missile does
 //        nothing. Not a soft seam: an Engine that cannot read the keys refuses the ruleset, so a
 //        package that ships them declares 1.112. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 112 } as const);
+// 1.113: a reaction's moment may say `blow: "melee" | "ranged"` (only on "hit": a blow is melee
+//        while its target stands in its reach, and a weapon with no range always is) and
+//        `seesSource: true` (only while its holder sees whoever caused it: a line of sight on the
+//        board, never somebody who has hidden). 5e's Parry is both. Not a soft seam: an Engine that
+//        cannot read the keys refuses the ruleset, so a package that ships them declares 1.113. No
+//        permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 113 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

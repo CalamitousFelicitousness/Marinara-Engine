@@ -213,7 +213,11 @@ export interface RulesetStatBlockAction {
     cancels?: true;
     against?: RulesetReactionAgainst;
     /** More moments it is taken at, each with its own `against` (1.112). */
-    also?: Array<{ on: RulesetReactionMoment; against?: RulesetReactionAgainst }>;
+    also?: RulesetReactionAlso[];
+    /** Only a blow of this kind opens its `hit` moment (1.113). */
+    blow?: RulesetBlowKind;
+    /** Only while its holder sees whoever caused the moment (1.113). */
+    seesSource?: true;
     /** It stops only what was paid no higher up its family than itself (1.111). */
     upTo?: "paid";
     /** Above that, a check (its own number, `{ "const": n }`) against `dc` plus the level. */
@@ -376,7 +380,11 @@ export interface RulesetCombatAction {
      *  moment for this reaction. */
     against?: RulesetReactionAgainst;
     /** More moments it is taken at, each with its own `against` (1.112). */
-    also?: Array<{ on: RulesetReactionMoment; against?: RulesetReactionAgainst }>;
+    also?: RulesetReactionAlso[];
+    /** Only a blow of this kind opens its `hit` moment (1.113). */
+    blow?: RulesetBlowKind;
+    /** Only while its holder sees whoever caused the moment (1.113). */
+    seesSource?: true;
     /** It stops only what was paid for no higher up its pool family than this was (1.111). */
     upTo?: "paid";
     /** Above that, a check, read once as the fight began, against `dc` plus the level of what it
@@ -703,6 +711,8 @@ export type RulesetWindowTrigger =
       label: string;
       catalog?: string;
       entry?: string;
+      /** Whether the blow was struck in reach or from afar (1.113). */
+      blow?: RulesetBlowKind;
       total: number;
       defense: number;
     }
@@ -714,6 +724,26 @@ export type RulesetWindowTrigger =
  *  the holder, `used` is before somebody on the other side uses something, `hit` is after an attack
  *  roll has hit the holder and before its damage, and `harmed` is after something has hurt them. */
 export type RulesetReactionMoment = "aimed" | "hit" | "harmed" | "used";
+
+/** A blow struck in reach (`melee`) or from afar (`ranged`), as a reaction that answers only one
+ *  of them reads it (1.113). */
+export type RulesetBlowKind = "melee" | "ranged";
+
+/** One more moment a reaction is taken at, narrowed on its own (1.112, 1.113). */
+export interface RulesetReactionAlso {
+  on: RulesetReactionMoment;
+  against?: RulesetReactionAgainst;
+  blow?: RulesetBlowKind;
+  seesSource?: true;
+}
+
+/** What caused a moment, as far as a reaction narrows what it answers: the catalog and entry behind
+ *  it, and for a hit, the kind of blow. */
+export interface RulesetMomentCause {
+  catalog?: string;
+  entry?: string;
+  blow?: RulesetBlowKind;
+}
 
 /** What opens a moment for one reaction: an action from an entry of one of `catalogs`, or one of
  *  `entries` (`<catalog>/<entry>`, 1.112). Either is enough. */

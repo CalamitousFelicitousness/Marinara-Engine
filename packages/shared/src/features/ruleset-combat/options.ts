@@ -52,6 +52,7 @@ import {
   rulesetCombatantDistance,
   rulesetLevelOf,
   rulesetLineOfSight,
+  rulesetSees,
   rulesetOpportunityAttack,
   rulesetPositionOf,
   rulesetReachableCells,
@@ -66,6 +67,8 @@ import type {
   RulesetCombatContest,
   RulesetCombatant,
   RulesetEncounterState,
+  RulesetBlowKind,
+  RulesetMomentCause,
   RulesetReactionAgainst,
   RulesetReactionMoment,
   RulesetWindowTrigger,
@@ -1541,9 +1544,13 @@ export function rulesetWindowOptions(
   const moment = rulesetWindowMoment(window.trigger);
   if (!moment) return [];
   const source = "sourceId" in window.trigger ? window.trigger.sourceId : "";
-  const catalog = "catalog" in window.trigger ? window.trigger.catalog : undefined;
-  const entry = "entry" in window.trigger ? window.trigger.entry : undefined;
-  return rulesetReactionsAt(definition, combat, state, actor, moment, source, catalog, entry).map((action) => {
+  const trigger = window.trigger;
+  const cause: RulesetMomentCause = {
+    ...("catalog" in trigger && trigger.catalog ? { catalog: trigger.catalog } : {}),
+    ...("entry" in trigger && trigger.entry ? { entry: trigger.entry } : {}),
+    ...(trigger.kind === "hit" && trigger.blow ? { blow: trigger.blow } : {}),
+  };
+  return rulesetReactionsAt(definition, combat, state, actor, moment, source, cause).map((action) => {
     const option = optionFrom(definition, combat, state, actor, action, true)!;
     // Nobody to pick unless the entry says its holder picks: it is aimed back at whoever caused
     // the moment, or, for something its holder does to themselves, at its holder.
@@ -1601,6 +1608,21 @@ export function rulesetWindowMoment(trigger: RulesetWindowTrigger): RulesetReact
  * is open, to build the menu. One reading either way, so a window is never opened for a menu that
  * turns out to be empty.
  */
+/** Whether one of a reaction's moments answers what caused it: its `against`, the kind of blow it
+ *  names (1.113), and whether its holder has to see whoever caused it (1.113). */
+function momentAnswers(
+  state: RulesetEncounterState,
+  holder: RulesetCombatant,
+  sourceId: string,
+  moment: { against?: RulesetReactionAgainst; blow?: RulesetBlowKind; seesSource?: true },
+  cause: RulesetMomentCause,
+): boolean {
+  if (!rulesetAgainstMatches(moment.against, cause.catalog, cause.entry)) return false;
+  if (moment.blow && cause.blow !== moment.blow) return false;
+  if (moment.seesSource && !rulesetSees(state, holder, rulesetCombatant(state, sourceId))) return false;
+  return true;
+}
+
 /** Whether what caused a moment is something this `against` answers: from one of its catalogs, or
  *  one of its entries by name. Nothing narrows a reaction that names neither. */
 function rulesetAgainstMatches(
@@ -1624,11 +1646,9 @@ export function rulesetReactionsAt(
   /** Whoever caused the moment. One aimed back at them needs them still to BE a target: an answer
    *  before this one may have taken them out, and nothing is offered that the rules would refuse. */
   sourceId: string,
-  /** The catalog of the entry behind what caused the moment, when there is one. A reaction that
-   *  answers only some catalogs answers nothing without it. */
-  catalog?: string,
-  /** And the entry itself (`<catalog>/<entry>`), for one that answers named entries (1.112). */
-  entry?: string,
+  /** The catalog and entry behind what caused the moment, when there is one (a reaction that answers
+   *  only some answers nothing without them), and for a hit, the kind of blow (1.113). */
+  cause: RulesetMomentCause = {},
 ): RulesetCombatAction[] {
   if (!rulesetCombatStanding(actor)) return [];
   const effects = rulesetCombatEffects(definition, combat, actor, state);
@@ -1637,7 +1657,7 @@ export function rulesetReactionsAt(
     if (!action.reaction) return false;
     // Its own moment, or any it is also taken at, each read with its own `against`.
     const moments = [action.reaction, ...(action.reaction.also ?? [])];
-    if (!moments.some((one) => one.on === moment && rulesetAgainstMatches(one.against, catalog, entry))) return false;
+    if (!moments.some((one) => one.on === moment && momentAnswers(state, actor, sourceId, one, cause))) return false;
     if (optionFrom(definition, combat, state, actor, action, true) === null) return false;
     // Somebody using something is answered only from where the answer reaches them, whether or not
     // it is aimed back at them: a counter that simply calls it off still has to reach it.

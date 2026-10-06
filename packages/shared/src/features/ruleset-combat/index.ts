@@ -130,6 +130,7 @@ export {
 } from "./encounter.js";
 export {
   rulesetAreaCells,
+  rulesetBlowKind,
   rulesetCellBlocked,
   rulesetCellSolidFor,
   rulesetAirborne,
@@ -144,6 +145,7 @@ export {
   rulesetPositionOf,
   rulesetReachableCells,
   rulesetPushPath,
+  rulesetSees,
   rulesetWalkingDistances,
 } from "./grid.js";
 export {

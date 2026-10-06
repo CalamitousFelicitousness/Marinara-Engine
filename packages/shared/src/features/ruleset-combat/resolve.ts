@@ -64,6 +64,7 @@ import {
 } from "./encounter.js";
 import {
   rulesetAreaCells,
+  rulesetBlowKind,
   rulesetCellDistance,
   rulesetCellEnterCost,
   rulesetMoveStep,
@@ -116,6 +117,7 @@ import {
 } from "./options.js";
 import type {
   RulesetActionResume,
+  RulesetBlowKind,
   RulesetCombatAction,
   RulesetCombatAmount,
   RulesetCombatApplies,
@@ -2228,16 +2230,10 @@ function openMoment(
     .filter((one) => moment === "harmed" || !source || one.side !== source.side)
     .filter(
       (one) =>
-        rulesetReactionsAt(
-          ctx.definition,
-          ctx.combat,
-          ctx.state,
-          one,
-          moment,
-          trigger.sourceId,
-          trigger.catalog,
-          trigger.entry,
-        ).length > 0,
+        rulesetReactionsAt(ctx.definition, ctx.combat, ctx.state, one, moment, trigger.sourceId, {
+          ...(trigger.catalog ? { catalog: trigger.catalog } : {}),
+          ...(trigger.entry ? { entry: trigger.entry } : {}),
+        }).length > 0,
     )
     .map((one) => one.id);
   if (waiting.length === 0) return false;
@@ -2328,7 +2324,7 @@ function harmedBy(
       .map((event) => (event as Extract<RulesetCombatEvent, { type: "damage" }>).targetId),
   ]);
   if (hold) {
-    const { label, optionId, catalog, entry, ...held } = hold;
+    const { label, optionId, catalog, entry, blow, ...held } = hold;
     const { held: _previous, ...base } = resume;
     openWindow(ctx, {
       kind: "reaction",
@@ -2339,6 +2335,7 @@ function harmedBy(
         label,
         ...(catalog ? { catalog } : {}),
         ...(entry ? { entry } : {}),
+        ...(blow ? { blow } : {}),
         total: held.roll.total,
         defense: held.roll.defense,
       },
@@ -2761,16 +2758,11 @@ function resolveAction(
           landed &&
           !ctx.state.window &&
           rulesetEncounterOutcome(ctx.state) === "ongoing" &&
-          rulesetReactionsAt(
-            ctx.definition,
-            ctx.combat,
-            ctx.state,
-            target,
-            "hit",
-            actor.id,
-            action.catalog,
-            action.entry,
-          ).length > 0
+          rulesetReactionsAt(ctx.definition, ctx.combat, ctx.state, target, "hit", actor.id, {
+            ...(action.catalog ? { catalog: action.catalog } : {}),
+            ...(action.entry ? { entry: action.entry } : {}),
+            blow: rulesetBlowKind(ctx.state, actor, target, action),
+          }).length > 0
         ) {
           return {
             targetId: target.id,
@@ -2782,6 +2774,7 @@ function resolveAction(
             optionId: action.id,
             ...(action.catalog ? { catalog: action.catalog } : {}),
             ...(action.entry ? { entry: action.entry } : {}),
+            blow: rulesetBlowKind(ctx.state, actor, target, action),
           };
         }
       } else {
@@ -2843,16 +2836,11 @@ function resolveAction(
           landed &&
           !ctx.state.window &&
           rulesetEncounterOutcome(ctx.state) === "ongoing" &&
-          rulesetReactionsAt(
-            ctx.definition,
-            ctx.combat,
-            ctx.state,
-            target,
-            "hit",
-            actor.id,
-            action.catalog,
-            action.entry,
-          ).length > 0
+          rulesetReactionsAt(ctx.definition, ctx.combat, ctx.state, target, "hit", actor.id, {
+            ...(action.catalog ? { catalog: action.catalog } : {}),
+            ...(action.entry ? { entry: action.entry } : {}),
+            blow: rulesetBlowKind(ctx.state, actor, target, action),
+          }).length > 0
         ) {
           return {
             targetId: target.id,
@@ -2870,6 +2858,7 @@ function resolveAction(
             optionId: action.id,
             ...(action.catalog ? { catalog: action.catalog } : {}),
             ...(action.entry ? { entry: action.entry } : {}),
+            blow: rulesetBlowKind(ctx.state, actor, target, action),
           };
         }
       }
@@ -3241,7 +3230,13 @@ function stepValue(table: ReadonlyArray<readonly [number, number]> | undefined, 
 }
 
 /** Where an attack stopped: the held attack's own record, and what its window says about it. */
-type RulesetHitHold = RulesetHeldAttack & { label: string; optionId: string; catalog?: string; entry?: string };
+type RulesetHitHold = RulesetHeldAttack & {
+  label: string;
+  optionId: string;
+  catalog?: string;
+  entry?: string;
+  blow?: RulesetBlowKind;
+};
 
 // ── Between turns ──
 

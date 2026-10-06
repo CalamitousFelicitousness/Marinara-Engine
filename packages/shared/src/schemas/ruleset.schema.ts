@@ -1335,10 +1335,28 @@ const rulesetReactionAgainstSchema = z
     message: '"against" names catalogs, entries or both',
   });
 
+/** What else narrows a moment (Capability API 1.113): `blow` answers only a hit struck in reach
+ *  (`melee`) or from afar (`ranged`), and `seesSource` only while its holder sees whoever caused it.
+ *  5e's Parry is both. */
+const rulesetMomentNarrowing = {
+  blow: z.enum(["melee", "ranged"]).optional(),
+  seesSource: z.literal(true).optional(),
+};
+const blowOnlyOnHit = (moment: { on: string; blow?: string }, ctx: z.RefinementCtx, path: (string | number)[]) => {
+  if (moment.blow && moment.on !== "hit") {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: [...path, "blow"],
+      message: '"blow" says what kind of hit opens the moment, so it is on a "hit" moment',
+    });
+  }
+};
+
 const rulesetReactionMomentBase = z
   .object({
     on: z.enum(["aimed", "hit", "harmed", "used"]),
     at: z.enum(["source", "chosen"]).default("source"),
+    ...rulesetMomentNarrowing,
     /** Stops what opened the window from happening at all. Only a moment BEFORE something resolves
      *  may be answered that way: what has already happened cannot be called off, and a roll that
      *  has already hit is changed by what the answer does to the numbers, not undone. */
@@ -1350,7 +1368,11 @@ const rulesetReactionMomentBase = z
     also: z
       .array(
         z
-          .object({ on: z.enum(["aimed", "hit", "harmed", "used"]), against: rulesetReactionAgainstSchema.optional() })
+          .object({
+            on: z.enum(["aimed", "hit", "harmed", "used"]),
+            against: rulesetReactionAgainstSchema.optional(),
+            ...rulesetMomentNarrowing,
+          })
           .strict(),
       )
       .min(1)
@@ -1381,6 +1403,8 @@ const rulesetReactionMomentBase = z
         message: '"upTo" says how much a "used" reaction that cancels can stop, so it needs both',
       });
     }
+    blowOnlyOnHit(reaction, ctx, []);
+    reaction.also?.forEach((moment, index) => blowOnlyOnHit(moment, ctx, ["also", index]));
     if (reaction.also && reaction.cancels) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

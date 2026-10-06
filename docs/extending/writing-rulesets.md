@@ -2687,6 +2687,21 @@ Only the first moment may cancel, so a reaction that cancels has no `also`. The 
 names has to be one the ruleset has. An entry that is not in it simply never opens the moment. A blow
 kept off this way shows in the log as one the target is immune to.
 
+**Answering only some blows** (Capability API 1.113). A `hit` moment may say `"blow": "melee"` or
+`"blow": "ranged"`. A blow is melee while its target stands in the weapon's reach, so a dagger thrown
+from afar is ranged and the same dagger used next to its target is melee. A weapon with a reach and no
+range is always melee, and one with a range and no reach is always ranged. In a fight with no board,
+a weapon that has a reach is taken as swung in hand. `"seesSource": true`, on any moment, opens it
+only while its holder sees whoever caused it. That means a line of sight between them on the board
+(everybody sees everybody without one), and never somebody who has taken the Hide standard action
+until it wears off at the start of their next turn. 5e's Parry is both:
+
+```json
+"reaction": { "on": "hit", "blow": "melee", "seesSource": true }
+```
+
+Both keys may also be written on a moment in `also`, and `blow` only ever on a `hit` one.
+
 ### Not yet
 
 Said plainly, because a ruleset should not claim what the Engine does not do:

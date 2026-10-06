@@ -8462,6 +8462,17 @@
                               ],
                               "default": "source"
                             },
+                            "blow": {
+                              "type": "string",
+                              "enum": [
+                                "melee",
+                                "ranged"
+                              ]
+                            },
+                            "seesSource": {
+                              "type": "boolean",
+                              "const": true
+                            },
                             "cancels": {
                               "type": "boolean",
                               "const": true
@@ -8533,6 +8544,17 @@
                                       "$comment": {}
                                     },
                                     "additionalProperties": false
+                                  },
+                                  "blow": {
+                                    "type": "string",
+                                    "enum": [
+                                      "melee",
+                                      "ranged"
+                                    ]
+                                  },
+                                  "seesSource": {
+                                    "type": "boolean",
+                                    "const": true
                                   },
                                   "$comment": {}
                                 },
@@ -10073,6 +10095,17 @@
                                 ],
                                 "default": "source"
                               },
+                              "blow": {
+                                "type": "string",
+                                "enum": [
+                                  "melee",
+                                  "ranged"
+                                ]
+                              },
+                              "seesSource": {
+                                "type": "boolean",
+                                "const": true
+                              },
                               "cancels": {
                                 "type": "boolean",
                                 "const": true
@@ -10144,6 +10177,17 @@
                                         "$comment": {}
                                       },
                                       "additionalProperties": false
+                                    },
+                                    "blow": {
+                                      "type": "string",
+                                      "enum": [
+                                        "melee",
+                                        "ranged"
+                                      ]
+                                    },
+                                    "seesSource": {
+                                      "type": "boolean",
+                                      "const": true
                                     },
                                     "$comment": {}
                                   },

@@ -692,7 +692,11 @@ const capabilityPackageManifestBaseSchema = z
 // 1.94: a catalog entry may say when a builder step offers it (`offeredWhen`, a value off the sheet
 //        above 0: a second class whose prerequisites are met). Not a soft seam: an Engine that cannot
 //        read it refuses the catalog, so a package that ships it declares 1.94. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 94 } as const);
+// 1.95: a catalog entry of an `exclusive` group is judged by its `offeredWhen` on the sheet without the
+//        step's picks of that group, which picking it drops (a feat in place of an ability score
+//        improvement is not offered on the score that improvement gave). Behaviour only, no new key: a
+//        package that relies on it declares 1.95. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 95 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

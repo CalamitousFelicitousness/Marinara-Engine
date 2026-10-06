@@ -1152,6 +1152,80 @@ try {
     doc.catalogs.find((c: { id: string }) => c.id === "races").entries[0].exclusive = "Bad Group";
   }, /exclusive/);
 
+  // ── 1.95: an exclusive entry is judged without its group's picks ──
+  {
+    // The dwarf is offered only with Charisma 12 or more; the half-elf, in the same group, gives Charisma
+    // +2. Picking the dwarf drops the half-elf, so the half-elf's +2 must not be what offers it.
+    const judged = parsed(
+      variant((doc) => {
+        grouped(doc);
+        doc.catalogs
+          .find((c: { id: string }) => c.id === "races")
+          .entries.find((e: { id: string }) => e.id === "dwarf").offeredWhen = { abilityMod: "cha" };
+      }),
+    );
+    const judgedCatalogs: RulesetCatalogEntriesById = Object.fromEntries(
+      (judged.catalogs ?? []).map((catalog) => [catalog.id, catalog.entries ?? []]),
+    );
+    const raceStep = judged.sheet.builder!.steps[0]!;
+    assert.ok(raceStep.kind === "catalog");
+    const made = (cha: number, race: string[]) =>
+      applyRulesetBuilder(
+        judged,
+        defaultRulesetSheetBuild(judged),
+        { method: "manual", base: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha }, picks: { race } },
+        judgedCatalogs,
+      );
+    const offered = (m: ReturnType<typeof made>) =>
+      rulesetBuilderOptions(judged, raceStep, m.state, judgedCatalogs, m.build).map((entry) => entry.id);
+    const halfElf = made(10, ["half-elf"]);
+    assert.equal(halfElf.build.abilities.cha, 12, "the half-elf's +2");
+    assert.ok(!offered(halfElf).includes("dwarf"), "Charisma 12 only from the half-elf it would drop: no dwarf");
+    const fromHalfElf = made(10, ["half-elf", "dwarf"]);
+    assert.deepEqual(
+      rulesetBuilderPicks(judged, "race", fromHalfElf.state, judgedCatalogs, fromHalfElf.build).map((e) => e.id),
+      ["half-elf"],
+      "stored after the half-elf, the dwarf counts for nothing and the half-elf keeps its place",
+    );
+    const born = made(12, ["half-elf"]);
+    assert.ok(offered(born).includes("dwarf"), "Charisma 12 of its own: the dwarf is offered");
+    const swapped = made(12, ["half-elf", "dwarf"]);
+    assert.deepEqual(
+      rulesetBuilderPicks(judged, "race", swapped.state, judgedCatalogs, swapped.build).map((e) => e.id),
+      ["dwarf"],
+    );
+    assert.equal(swapped.build.abilities.con, 12, "and the dwarf's +2 Constitution is given");
+    assert.equal(swapped.build.abilities.cha, 12, "the half-elf's +2 taken back");
+    // An entry outside the group still reads the sheet as it stands.
+    const hill = parsed(
+      variant((doc) => {
+        grouped(doc);
+        doc.catalogs
+          .find((c: { id: string }) => c.id === "races")
+          .entries.find((e: { id: string }) => e.id === "hill-dwarf").offeredWhen = { abilityMod: "cha" };
+      }),
+    );
+    const hillCatalogs: RulesetCatalogEntriesById = Object.fromEntries(
+      (hill.catalogs ?? []).map((catalog) => [catalog.id, catalog.entries ?? []]),
+    );
+    const hillMade = applyRulesetBuilder(
+      hill,
+      defaultRulesetSheetBuild(hill),
+      {
+        method: "manual",
+        base: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 },
+        picks: { race: ["half-elf"] },
+      },
+      hillCatalogs,
+    );
+    assert.ok(
+      rulesetBuilderOptions(hill, hill.sheet.builder!.steps[0] as never, hillMade.state, hillCatalogs, hillMade.build)
+        .map((entry) => entry.id)
+        .includes("hill-dwarf"),
+      "an entry of no group reads the half-elf's Charisma 12",
+    );
+  }
+
   // ── The gate ──
   const manifest = (minor: number, paths = ["ruleset.json"]) => ({
     schemaVersion: 2,

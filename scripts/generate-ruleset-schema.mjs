@@ -312,6 +312,8 @@ const SEQUENCE_CARRIES_NOTHING = [
   "toHit",
   "autoHit",
   "damage",
+  "heal",
+  "targets",
   "save",
   "saveDifficulty",
   "applies",
@@ -333,6 +335,7 @@ function creatureActionShape(node) {
     !properties.self
   )
     return;
+  properties.heal.anyOf = [{ required: ["dice"] }, { required: ["flat"] }];
   node.allOf = [
     ...(node.allOf ?? []),
     {
@@ -341,6 +344,11 @@ function creatureActionShape(node) {
     },
     { if: { required: ["self"] }, then: { not: { anyOf: [{ required: ["targetCount"] }, { required: ["area"] }] } } },
     { if: { required: ["reaction"] }, then: { not: { required: ["signature"] } } },
+    {
+      if: { required: ["heal"] },
+      then: { not: { anyOf: ["damage", "toHit", "save", "area"].map((key) => ({ required: [key] })) } },
+    },
+    { if: { required: ["targets"] }, then: { not: { anyOf: ["self", "sequence"].map((key) => ({ required: [key] })) } } },
   ];
 }
 

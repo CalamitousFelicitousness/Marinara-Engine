@@ -769,7 +769,11 @@ const capabilityPackageManifestBaseSchema = z
 //        shows `atLeast` or more; it is completed there with the same budget, or lost. 5e's Slow.
 //        Not a soft seam: an Engine that cannot read the key refuses the ruleset, so a package that
 //        ships it declares 1.115. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 115 } as const);
+// 1.116: a creature action's `heal: { dice, flat }` gives hit points back to its targets, capped at
+//        their maximum; `targets: "ally" | "any"` says whose side it may reach. 5e's Healing Touch.
+//        Not a soft seam: an Engine that cannot read the keys refuses the ruleset, so a package that
+//        ships them declares 1.116. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 116 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

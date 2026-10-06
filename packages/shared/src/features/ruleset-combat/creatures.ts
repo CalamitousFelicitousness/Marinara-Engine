@@ -146,6 +146,7 @@ function clausesOf(action: RulesetCreatureAction): RulesetCombatDamageClause[] |
 
 function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
   const damage = amountOf(action.damage);
+  const heal = amountOf(action.heal);
   const plus = clausesOf(action);
   const alternatives = (action.damage?.alternatives ?? []).flatMap((alternative) => {
     const amount = amountOf(alternative);
@@ -168,6 +169,8 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
           } as RulesetCombatDamage,
         }
       : {}),
+    ...(heal ? { heal } : {}),
+    ...(action.targets ? { targets: action.targets } : {}),
     ...(action.save ? { save: { ...action.save } } : {}),
     ...(action.saveDifficulty !== undefined ? { saveDifficulty: action.saveDifficulty } : {}),
     ...(action.applies?.length ? { applies: action.applies.map((entry) => ({ ...entry })) } : {}),
@@ -509,6 +512,14 @@ export function clampRulesetStatBlock(
   const tiers = combat?.threat?.tiers ?? [];
   const block = structuredClone(proposed);
   const adjusted: string[] = [];
+  // A threat tier bounds harm, not healing or what an action does to its own side.
+  for (const action of block.actions) {
+    if (action.heal !== undefined || action.targets !== undefined) {
+      delete action.heal;
+      delete action.targets;
+      adjusted.push(`"${action.name}" carried healing or targets the threat scale cannot bound, so they were dropped.`);
+    }
+  }
   if (!combat || tiers.length === 0) {
     adjusted.push("This ruleset declares no threat scale, so the opponent was used as it was proposed.");
     return { block, adjusted };

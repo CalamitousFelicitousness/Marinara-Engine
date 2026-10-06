@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: a creature can heal another on its own side, such as a deva's Healing Touch, with dice or a flat amount and limited uses (Capability API 1.116).
 - Rulesets: creatures and characters can fly, swim, climb or burrow (Capability API 1.108). On the battle board fliers cross water and cliffs, swimmers cross water, and climbers scale any height. Switching from walking to flying counts what was already walked.
 - Rulesets: fliers fly up and down on the battle board (Capability API 1.109). Reach, high ground and opportunity strikes count the height between combatants, and a flier knocked down, prone or out of speed falls unless it hovers.
 - Rulesets: exhaustion can halve the health maximum and kill at its worst level, opponents can carry exhaustion too, and undead or constructs can be immune to it (Capability API 1.110).

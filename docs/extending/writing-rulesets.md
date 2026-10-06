@@ -2069,6 +2069,23 @@ as a `sheet`, takes `health`, `defense`, `initiativeModifier`, `speed`, `abiliti
   way: `"damage": { "dice": "1d6", "flat": 2, "type": "piercing", "plus": [{ "dice": "1d4", "type": "fire" }] }`
   is a bite that carries the heat as its own amount, resisted on its own and doubled on its own.
 
+A creature action can give hit points back with `heal` (dice, a flat amount, or both), capped at
+its target's maximum. `targets: "ally"` reaches its own side, including itself; `targets: "any"`
+reaches either side. Without `targets`, it reaches the other side as before. These keys need
+Capability API 1.116. A heal carries no `damage`, `toHit`, `save` or `area`; `targets` takes no
+`self` or `sequence`, and a sequence carries neither key. A deva's Healing Touch is:
+
+```json
+{
+  "id": "healing_touch",
+  "name": "Healing Touch",
+  "budget": "action",
+  "heal": { "dice": "4d8", "flat": 2 },
+  "targets": "ally",
+  "uses": { "per": "day", "count": 3 }
+}
+```
+
 The 5e draft's own bestiary is five hand-written creatures in
 `docs/development/ruleset-5e-2014.example.json`, covering a sequence, a recharge, a save with a
 condition, resistances and immunities, limited uses, signature points, and one written as a sheet.

@@ -189,6 +189,8 @@ export interface RulesetStatBlockAction {
   toHit?: number;
   autoHit?: boolean;
   damage?: RulesetCombatDamage;
+  heal?: RulesetCombatAmount;
+  targets?: "ally" | "any";
   save?: RulesetCombatSaveRider;
   /** What a save that ENDS one of `applies` is rolled against, when the action has no save of its
    *  own to borrow the number from. */

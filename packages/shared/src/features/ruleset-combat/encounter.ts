@@ -1561,7 +1561,7 @@ function blockActions(block: RulesetStatBlockLike, perCell: number | undefined):
     targets: action.self
       ? { side: "self" as const, count: 0 }
       : {
-          side: "enemy" as const,
+          side: action.targets ?? ("enemy" as const),
           count: action.sequence
             ? Math.max(
                 1,
@@ -1582,6 +1582,7 @@ function blockActions(block: RulesetStatBlockLike, perCell: number | undefined):
           },
         }
       : {}),
+    ...(action.heal ? { heal: { ...action.heal } } : {}),
     ...(action.save ? { save: { ...action.save } } : {}),
     ...(action.saveDifficulty !== undefined ? { saveDifficulty: action.saveDifficulty } : {}),
     ...(action.applies?.length ? { applies: action.applies.map((entry) => ({ ...entry })) } : {}),

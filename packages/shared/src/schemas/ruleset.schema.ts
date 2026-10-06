@@ -1936,6 +1936,11 @@ const creatureActionSchema = z
     /** The amount simply lands: no roll to make. */
     autoHit: z.boolean().optional(),
     damage: creatureDamageSchema.optional(),
+    /** Hit points given back to each target, capped at its maximum (Capability API 1.116). */
+    heal: z.object(catalogAmountShape).strict().optional(),
+    /** Who it may be pointed at, relative to the creature (Capability API 1.116). Without it, the
+     *  other side, as before. */
+    targets: z.enum(["ally", "any"]).optional(),
     save: creatureSaveSchema.optional(),
     /** What a save that ENDS one of `applies` is rolled against, when the action has no save of its
      *  own to borrow the number from. */
@@ -1990,6 +1995,25 @@ const creatureActionSchema = z
   })
   .strict()
   .superRefine((action, ctx) => {
+    if (action.heal) {
+      if (action.heal.dice === undefined && action.heal.flat === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["heal"],
+          message: "A heal needs dice, a flat amount, or both",
+        });
+      }
+      // Healing gives points back without a blow or a save, to the targets somebody picked.
+      for (const key of ["damage", "toHit", "save", "area"] as const) {
+        if (action[key] !== undefined) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [key],
+            message: "A healing action carries no damage, attack roll, save or area",
+          });
+        }
+      }
+    }
     if (action.sequence) {
       // A sequence is a container. Anything else on it would be a second thing the one budget also
       // did, with nothing to say when it happened.
@@ -1997,6 +2021,8 @@ const creatureActionSchema = z
         "toHit",
         "autoHit",
         "damage",
+        "heal",
+        "targets",
         "save",
         "saveDifficulty",
         "applies",
@@ -2016,7 +2042,7 @@ const creatureActionSchema = z
     }
     // Landing on itself leaves no one else to pick or catch.
     if (action.self) {
-      for (const key of ["targetCount", "area"] as const) {
+      for (const key of ["targetCount", "area", "targets"] as const) {
         if (action[key] !== undefined) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
@@ -6427,7 +6453,8 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
 
 /** The whole `ruleset.json` document. Strict on purpose: a ruleset this Engine only partly
  *  understands would silently change a game's arithmetic, so an unknown key refuses the file. */
-export const rulesetDefinitionSchema = rulesetDefinitionBaseSchema.superRefine(refineRulesetDefinition);
+export const rulesetDefinitionSchema: z.ZodEffects<typeof rulesetDefinitionBaseSchema> =
+  rulesetDefinitionBaseSchema.superRefine(refineRulesetDefinition);
 
 /** How long guidance may be once the layers a game turned on have been appended to it. A layer
  *  ADDS to the ruleset's own text, so the merged string routinely passes the 1500 characters one
@@ -6441,15 +6468,16 @@ export const RULESET_EFFECTIVE_GUIDANCE_MAX = 1500 + RULESET_LAYERS_MAX * (RULES
  *  id. Two relaxations, both because this document is never written back to a file. Everything
  *  else is the file's own rule, which is what makes it safe to hand a layered definition to the
  *  prompt, the resolver, the sheet editor and the battle bridge unchanged. */
-export const rulesetEffectiveDefinitionSchema = rulesetDefinitionBaseSchema
-  .extend({
-    id: z.string().max(140).regex(RULESET_REF_ID_PATTERN),
-    gm: gmSchema.extend({
-      checkGuidance: promptSafeText(RULESET_EFFECTIVE_GUIDANCE_MAX),
-      worldGuidance: promptSafeText(RULESET_EFFECTIVE_GUIDANCE_MAX).optional(),
-    }),
-  })
-  .superRefine((def, ctx) => refineRulesetDefinition(def, ctx, true));
+export const rulesetEffectiveDefinitionSchema: z.ZodEffects<typeof rulesetDefinitionBaseSchema> =
+  rulesetDefinitionBaseSchema
+    .extend({
+      id: z.string().max(140).regex(RULESET_REF_ID_PATTERN),
+      gm: gmSchema.extend({
+        checkGuidance: promptSafeText(RULESET_EFFECTIVE_GUIDANCE_MAX),
+        worldGuidance: promptSafeText(RULESET_EFFECTIVE_GUIDANCE_MAX).optional(),
+      }),
+    })
+    .superRefine((def, ctx) => refineRulesetDefinition(def, ctx, true));
 
 export type RulesetDefinition = z.infer<typeof rulesetDefinitionSchema>;
 /** One declared layer. Absent on every ruleset written before layers existed. */

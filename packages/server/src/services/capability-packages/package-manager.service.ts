@@ -1258,6 +1258,23 @@ function entriesCarryMoveModes(entries: unknown): boolean {
   );
 }
 
+/** A creature action that heals or reaches its own side (1.116): new keys on the strict action. */
+function entriesCarryCreatureHealing(entries: unknown): boolean {
+  return (
+    Array.isArray(entries) &&
+    entries.some((entry) => {
+      const actions = plainRecord(plainRecord(entry)?.creature)?.actions;
+      return (
+        Array.isArray(actions) &&
+        actions.some((action) => {
+          const record = plainRecord(action);
+          return record?.heal !== undefined || record?.targets !== undefined;
+        })
+      );
+    })
+  );
+}
+
 /** Anything that halves the health maximum (1.110): a new target of the strict modifier, wherever a
  *  modifier sits (a level, a condition, an item's effect). */
 function carriesHealthMax(value: unknown, depth = 0): boolean {
@@ -1610,6 +1627,7 @@ export function getCapabilityPackageInstallIssue(
   let carriesNamedAnswerKeys = false;
   let carriesBlowNarrowingKeys = false;
   let carriesSourceClockKeys = false;
+  let carriesCreatureHealing = false;
   // The tracks a level reads and no condition shares a name with: an immunity naming one is new.
   const conditionIds = new Set(
     (Array.isArray(plainRecord(plainRecord(plainRecord(ruleset?.sheet)?.live))?.conditions)
@@ -1731,6 +1749,7 @@ export function getCapabilityPackageInstallIssue(
       if (carriesNamedAnswers(header.entries)) carriesNamedAnswerKeys = true;
       if (carriesBlowNarrowing(header.entries)) carriesBlowNarrowingKeys = true;
       if (carriesSourceClock(header.entries)) carriesSourceClockKeys = true;
+      if (entriesCarryCreatureHealing(header.entries)) carriesCreatureHealing = true;
       if (carriesHealthMax(header.entries) || entriesImmuneToTracks(header.entries, leveledTracks)) {
         carriesExhaustion = true;
       }
@@ -1797,6 +1816,7 @@ export function getCapabilityPackageInstallIssue(
       if (carriesNamedAnswers(fileEntries)) carriesNamedAnswerKeys = true;
       if (carriesBlowNarrowing(fileEntries)) carriesBlowNarrowingKeys = true;
       if (carriesSourceClock(fileEntries)) carriesSourceClockKeys = true;
+      if (entriesCarryCreatureHealing(fileEntries)) carriesCreatureHealing = true;
       if (entriesCarryHeldChoices(fileEntries)) carriesHeldChoices = true;
       if (entriesCarryExclusive(fileEntries)) carriesExclusive = true;
       if (entriesCarryToHitSheetBonus(fileEntries)) carriesSheetBonus = true;
@@ -2150,6 +2170,10 @@ export function getCapabilityPackageInstallIssue(
     )
   ) {
     return "A ruleset whose conditions hold what their holder uses over to the next turn requires schemaVersion 2 and capabilityApi 1.115 or newer";
+  }
+  // Creatures that heal or point an action at their own side, 1.116.
+  if (!declaresApi(116) && carriesCreatureHealing) {
+    return "A ruleset whose creatures heal, or point an action at their own side, requires schemaVersion 2 and capabilityApi 1.116 or newer";
   }
   // Sizes and escape DCs, 1.98: new keys on the strict combat block, contest, creature and applies.
   if (!declaresApi(98)) {

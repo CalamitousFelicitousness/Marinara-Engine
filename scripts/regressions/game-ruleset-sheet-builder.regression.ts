@@ -21,10 +21,12 @@ import {
   parseRulesetDefinition,
   readRulesetBuilderState,
   rulesetBuilderAbilitySlots,
+  rulesetBuilderBaseScores,
   rulesetBuilderCatalogIds,
   rulesetBuilderChoiceKey,
   rulesetBuilderOptions,
   rulesetBuilderRemaining,
+  rulesetBuilderShownFields,
   rulesetBuilderTrainedSlots,
   rulesetCatalogEntryIssues,
   rulesetPointBuySpent,
@@ -162,6 +164,79 @@ try {
     (definition.catalogs ?? []).map((catalog) => [catalog.id, catalog.entries ?? []]),
   );
   assert.deepEqual(rulesetBuilderCatalogIds(definition), ["races", "classes"]);
+
+  // ── Bigger catalogs and bounded manual scores (1.105) ──
+  const biggerCatalogDoc = variant((doc) => Object.assign(doc.sheet.builder.steps[0], { min: 40, max: 40 }));
+  const biggerCatalog = parsed(biggerCatalogDoc);
+  const biggerStep = biggerCatalog.sheet.builder!.steps[0]!;
+  assert.ok(biggerStep.kind === "catalog");
+  assert.deepEqual(rulesetBuilderStepCount(biggerCatalog, biggerStep), { min: 40, max: 40 });
+  refused((doc) => Object.assign(doc.sheet.builder.steps[0], { min: 41, max: 40 }), /less than or equal to 40/);
+  refused((doc) => (doc.sheet.builder.steps[0].max = 41), /less than or equal to 40/);
+  const manualDoc = variant((doc) => (doc.sheet.builder.steps[4].methods.manual = { min: 8, max: 15 }));
+  const boundedManual = parsed(manualDoc);
+  const typed: RulesetBuilderState = { method: "manual", base: { str: 100, dex: -100, con: 12 } };
+  assert.deepEqual(rulesetBuilderBaseScores(boundedManual, typed), { str: 15, dex: 8, con: 12 });
+  const boundedBuild = applyRulesetBuilder(
+    boundedManual,
+    defaultRulesetSheetBuild(boundedManual),
+    {
+      ...typed,
+      picks: { race: ["dwarf"] },
+    },
+    catalogs,
+  );
+  assert.deepEqual(
+    [boundedBuild.build.abilities.str, boundedBuild.build.abilities.dex, boundedBuild.build.abilities.con],
+    [15, 8, 14],
+    "manual bounds hold the base before grants",
+  );
+  assert.deepEqual(rulesetBuilderBaseScores(definition, typed), typed.base, "manual true keeps its existing behavior");
+  assert.deepEqual(
+    rulesetBuilderBaseScores(boundedManual, { ...typed, method: "pointBuy" }),
+    rulesetBuilderBaseScores(definition, { ...typed, method: "pointBuy" }),
+    "manual bounds do not change point buy",
+  );
+  parsed(variant((doc) => (doc.sheet.builder.steps[4].methods.manual = { min: -100, max: 1000 })));
+  for (const bounds of [
+    { min: -101, max: 15 },
+    { min: 8, max: 1001 },
+    { min: 8.5, max: 15 },
+    { min: 8, max: 15.5 },
+  ]) {
+    refused((doc) => (doc.sheet.builder.steps[4].methods.manual = bounds), /manual/);
+  }
+  refused((doc) => (doc.sheet.builder.steps[4].methods.manual = { min: 16, max: 15 }), /min at most max/);
+
+  // ── More derived values (1.106) and builder steps (1.107) ──
+  const derivedDoc = variant((doc) => {
+    while (doc.sheet.derived.length < 400) {
+      doc.sheet.derived.push({
+        id: `extra_${doc.sheet.derived.length}`,
+        label: "Extra",
+        op: "sum",
+        of: [{ const: 1 }],
+      });
+    }
+  });
+  assert.equal(parsed(derivedDoc).sheet.derived.length, 400);
+  const tooManyDerived = structuredClone(derivedDoc);
+  tooManyDerived.sheet.derived.push({ id: "one_too_many", label: "Extra", op: "sum", of: [{ const: 1 }] });
+  assert.equal(parseRulesetDefinition(tooManyDerived).ok, false, "401 derived values are refused");
+  const moreStepsDoc = variant((doc) => {
+    while (doc.sheet.builder.steps.length < 24) {
+      doc.sheet.builder.steps.push({
+        id: `extra_${doc.sheet.builder.steps.length}`,
+        label: "Extra",
+        kind: "fields",
+        fields: ["level"],
+      });
+    }
+  });
+  assert.equal(parsed(moreStepsDoc).sheet.builder!.steps.length, 24);
+  const tooManySteps = structuredClone(moreStepsDoc);
+  tooManySteps.sheet.builder.steps.push({ id: "one_too_many", label: "Extra", kind: "fields", fields: ["level"] });
+  assert.equal(parseRulesetDefinition(tooManySteps).ok, false, "25 builder steps are refused");
 
   // ── What is refused ──
   refused((doc) => (doc.sheet.builder.steps[0].catalog = "nope"), /No catalog of rows "nope"/);
@@ -1376,6 +1451,104 @@ try {
     }
   }
 
+  // ── 1.101: a choice an entry grants holds its options to their offeredWhen ──
+  {
+    const gated = parsed(
+      variant((doc) => {
+        tongues(doc);
+        const languages = doc.catalogs.find((c: { id: string }) => c.id === "tongues");
+        languages.entries.find((e: { id: string }) => e.id === "elvish").offeredWhen = { field: "level" };
+      }),
+    );
+    const gatedCatalogs: RulesetCatalogEntriesById = Object.fromEntries(
+      (gated.catalogs ?? []).map((catalog) => [catalog.id, catalog.entries ?? []]),
+    );
+    const gatedId = "elvish";
+    const base = { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 };
+    const at = (level: number) => {
+      const start = defaultRulesetSheetBuild(gated);
+      const sheet = { ...start, fields: { ...start.fields, level } };
+      const made = applyRulesetBuilder(
+        gated,
+        sheet,
+        { method: "manual", base, picks: { race: ["dwarf"] } },
+        gatedCatalogs,
+      );
+      return rulesetBuilderEntrySlots(gated, made.state, gatedCatalogs, {
+        ...made.build,
+        fields: { ...made.build.fields, level },
+      });
+    };
+    assert.ok(
+      at(1).some((slot) => slot.from.includes(gatedId)),
+      "offered while the sheet allows",
+    );
+    assert.ok(
+      at(0).every((slot) => !slot.from.includes(gatedId)),
+      "not while it reads 0",
+    );
+  }
+
+  // ── 1.102: fields shown by the sheet, and number fields held to a total ──
+  const shownFieldsDoc = variant((doc) => {
+    doc.sheet.builder.steps[3].shownWhen = { background: { field: "xp" } };
+  });
+  const totalFieldsDoc = variant((doc) => {
+    Object.assign(doc.sheet.builder.steps[3], {
+      fields: ["level", "xp", "background"],
+      optional: ["background"],
+      total: { fields: ["level", "xp"], max: 20 },
+    });
+  });
+  {
+    const shown = parsed(shownFieldsDoc);
+    const step = shown.sheet.builder!.steps[3]!;
+    assert.ok(step.kind === "fields");
+    const start = defaultRulesetSheetBuild(shown);
+    const hidden = { ...start, fields: { ...start.fields, background: "", xp: 0 } };
+    assert.deepEqual(rulesetBuilderShownFields(shown, step, hidden), ["level"]);
+    assert.equal(rulesetBuilderRemaining(shown, hidden, {}, {}).level, 0, "hidden fields are not waited on");
+    const visible = { ...hidden, fields: { ...hidden.fields, xp: 1 } };
+    assert.deepEqual(rulesetBuilderShownFields(shown, step, visible), ["level", "background"]);
+    assert.equal(rulesetBuilderRemaining(shown, visible, {}, {}).level, 1, "shown again when the ref reads above 0");
+    const filled = { ...hidden, fields: { ...hidden.fields, background: "Sage" } };
+    assert.deepEqual(rulesetBuilderShownFields(shown, step, filled), ["level"]);
+    assert.equal(filled.fields.background, "Sage", "hiding keeps the value");
+    assert.deepEqual(
+      rulesetBuilderShownFields(definition, definition.sheet.builder!.steps[3] as typeof step, start),
+      ["level", "background"],
+      "without shownWhen the existing fields stay shown",
+    );
+
+    const totaled = parsed(totalFieldsDoc);
+    const blank = defaultRulesetSheetBuild(totaled);
+    const at = (xp: number) => ({ ...blank, fields: { ...blank.fields, level: 10, xp } });
+    assert.equal(rulesetBuilderRemaining(totaled, at(11), {}, {}).level, 1, "an over-limit total waits on one fix");
+    assert.equal(rulesetBuilderRemaining(totaled, at(10), {}, {}).level, 0, "at the maximum is done");
+    const hiddenTotalDoc = structuredClone(totalFieldsDoc);
+    hiddenTotalDoc.sheet.builder.steps[3].shownWhen = { xp: { const: 0 } };
+    const hiddenTotal = parsed(hiddenTotalDoc);
+    assert.equal(rulesetBuilderRemaining(hiddenTotal, at(11), {}, {}).level, 1, "hidden values still count in totals");
+    refused(
+      (doc) => (doc.sheet.builder.steps[3].shownWhen = { xp: { field: "level" } }),
+      /"xp" is not one of this step's fields/,
+    );
+    refused((doc) => (doc.sheet.builder.steps[3].shownWhen = { background: { field: "nope" } }), /nope/);
+    refused((doc) => (doc.sheet.builder.steps[3].total = { fields: ["level"], max: 20 }), /at least 2/);
+    refused(
+      (doc) => (doc.sheet.builder.steps[3].total = { fields: ["level", "background"], max: 20 }),
+      /No number field "background"/,
+    );
+    refused(
+      (doc) => (doc.sheet.builder.steps[3].total = { fields: ["level", "xp"], max: 20 }),
+      /"xp" is not one of this step's fields/,
+    );
+    refused(
+      (doc) => (doc.sheet.builder.steps[3].total = { fields: ["level", "level"], max: 20 }),
+      /"level" is named twice/,
+    );
+  }
+
   // ── The gate ──
   const manifest = (minor: number, paths = ["ruleset.json"]) => ({
     schemaVersion: 2,
@@ -1395,6 +1568,39 @@ try {
   });
   const issue = (minor: number, doc: Record<string, any>, files?: Map<string, unknown>, paths?: string[]) =>
     getCapabilityPackageInstallIssue(manifest(minor, paths) as any, doc, files as any);
+  for (const doc of [shownFieldsDoc, totalFieldsDoc]) {
+    assert.match(issue(101, doc) ?? "", /1\.102/);
+    assert.equal(issue(102, doc), null);
+  }
+  assert.match(issue(104, biggerCatalogDoc) ?? "", /more than 20 entries.*1\.105/);
+  assert.equal(issue(105, biggerCatalogDoc), null);
+  const maxOnly = variant((doc) => (doc.sheet.builder.steps[0].max = 21));
+  assert.match(issue(104, maxOnly) ?? "", /more than 20 entries.*1\.105/);
+  assert.equal(issue(105, maxOnly), null);
+  // Read the raw min independently too, even when import would refuse min above max.
+  const minOnly = variant((doc) => (doc.sheet.builder.steps[0].min = 21));
+  assert.match(issue(104, minOnly) ?? "", /more than 20 entries.*1\.105/);
+  assert.equal(issue(105, minOnly), null);
+  assert.match(issue(104, manualDoc) ?? "", /bounds manual scores.*1\.105/);
+  assert.equal(issue(105, manualDoc), null);
+  assert.match(issue(105, derivedDoc) ?? "", /more than 240 derived values.*1\.106/);
+  assert.equal(issue(106, derivedDoc), null);
+  const oldDerivedLimit = structuredClone(derivedDoc);
+  oldDerivedLimit.sheet.derived.length = 240;
+  assert.equal(issue(105, oldDerivedLimit), null, "240 derived values need no new minor");
+  assert.match(issue(106, moreStepsDoc) ?? "", /more than 16 builder steps.*1\.107/);
+  assert.equal(issue(107, moreStepsDoc), null);
+  const oldStepsLimit = structuredClone(moreStepsDoc);
+  oldStepsLimit.sheet.builder.steps.length = 16;
+  assert.equal(issue(106, oldStepsLimit), null, "16 steps need no new minor");
+  assert.equal(
+    issue(
+      104,
+      variant((doc) => Object.assign(doc.sheet.builder.steps[0], { min: 20, max: 20 })),
+    ),
+    null,
+    "20 picks and manual true need no new minor",
+  );
   const withBuilder = variant((doc) => {
     // Builder alone: classes with plain rows, races without grants.
     doc.catalogs = doc.catalogs.filter((c: { id: string }) => c.id !== "races" && c.id !== "classes");

@@ -513,7 +513,9 @@ export function rulesetBuilderEntrySlots(
           (option) =>
             (option.rows?.length ?? 0) > 0 &&
             Object.entries(choice.filters ?? {}).every(([filterId, value]) => filterHas(option, filterId, value)) &&
-            (!choice.ids || choice.ids.includes(option.id)),
+            (!choice.ids || choice.ids.includes(option.id)) &&
+            // Offered only while the sheet allows (1.101), as a step offers it (1.94).
+            (!option.offeredWhen || !build || resolveRulesetValueRef(definition, build, option.offeredWhen) > 0),
         )
         .map((option) => option.id);
       const chosen = [...new Set(state.entryChoices?.[key] ?? [])]
@@ -578,6 +580,7 @@ export function rulesetBuilderBaseScores(
   const base: Record<string, number> = {};
   if (method === "pointBuy" || method === "manual") {
     const costs = step.methods.pointBuy?.costs;
+    const manual = step.methods.manual;
     const lowest = costs?.[0]?.[0];
     const highest = costs?.[costs.length - 1]?.[0];
     for (const id of ids) {
@@ -585,7 +588,9 @@ export function rulesetBuilderBaseScores(
       if (method === "pointBuy" && lowest !== undefined && highest !== undefined) {
         // A score typed by hand and then bought starts from the nearest score on the table.
         base[id] = typeof value === "number" ? clamp(value, lowest, highest) : lowest;
-      } else if (typeof value === "number") base[id] = value;
+      } else if (typeof value === "number") {
+        base[id] = method === "manual" && typeof manual === "object" ? clamp(value, manual.min, manual.max) : value;
+      }
     }
     return base;
   }
@@ -946,6 +951,18 @@ function applyRulesetBuilderOnce(
   };
 }
 
+/** Fields shown at a step on the sheet as it stands (1.102). Hiding keeps their stored values. */
+export function rulesetBuilderShownFields(
+  definition: RulesetDefinition,
+  step: StepOf<"fields">,
+  build: RulesetSheetBuild,
+): string[] {
+  return step.fields.filter((id) => {
+    const ref = step.shownWhen?.[id];
+    return !ref || resolveRulesetValueRef(definition, build, ref) > 0;
+  });
+}
+
 /** How many choices each step still waits on, by step id. A step never blocks the next: this is
  *  what its badge shows. */
 export function rulesetBuilderRemaining(
@@ -969,12 +986,19 @@ export function rulesetBuilderRemaining(
     } else if (step.kind === "fields") {
       add(
         step.id,
-        step.fields.filter((id) => {
+        rulesetBuilderShownFields(definition, step, build).filter((id) => {
           if (step.optional?.includes(id)) return false;
           const value = build.fields[id];
           return value === undefined || value === "";
         }).length,
       );
+      if (step.total) {
+        const total = step.total.fields.reduce((sum, id) => {
+          const value = build.fields[id];
+          return sum + (typeof value === "number" ? value : 0);
+        }, 0);
+        if (total > step.total.max) add(step.id, 1);
+      }
     } else if (step.kind === "abilities") {
       const method = rulesetBuilderMethod(definition, state);
       const ids = rulesetBuilderAbilityIds(definition, step);

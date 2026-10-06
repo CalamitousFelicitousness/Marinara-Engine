@@ -721,7 +721,20 @@ const capabilityPackageManifestBaseSchema = z
 // 1.100: a skill or save choice a catalog entry grants may build on training already held (`held`, a
 //        tier: 5e's Expertise, two skills you are proficient in), offering only what the picks or a
 //        lower choice train to it. Not a soft seam: a package that ships it declares 1.100. No permission.
-// 1.101-1.107: claimed by the builder lane, which lands before 1.108.
+// 1.101: an entry a builder choice offers (`grants.entries.choose`) is held to its `offeredWhen` on the
+//        sheet, as a step's options are. Behaviour only, no new key: a package that relies on it
+//        declares 1.101. No permission.
+// 1.102: a builder fields step may show fields only while the sheet allows (`shownWhen`), and hold
+//        number fields to a combined maximum (`total`). Not a soft seam: an Engine that cannot read
+//        it refuses the file, so a package that ships it declares 1.102. No permission.
+// 1.103-1.104: claimed by the builder lane.
+// 1.105: a builder catalog step may ask for or take up to 40 entries, and `methods.manual` may bound
+//        typed base scores with `{ min, max }`. Not a soft seam: an older Engine refuses the ruleset,
+//        so a package with more than 20 picks or bounded manual scores declares 1.105. No permission.
+// 1.106: a sheet may have up to 400 derived values. Not a soft seam: an older Engine refuses more
+//        than 240, so a package that ships more declares 1.106. No permission.
+// 1.107: a guided builder may have up to 24 steps. Not a soft seam: an older Engine refuses more
+//        than 16, so a package that ships more declares 1.107. No permission.
 // 1.108: combatants move other ways than walking. A creature's `speeds` (fly, swim, climb, burrow)
 //        and `hover`, and a sheet's `combat.economy.movementModes`, read as the fight begins. On a
 //        board a flier crosses water and steps of any height, a swimmer crosses water, a climber

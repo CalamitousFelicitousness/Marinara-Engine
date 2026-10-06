@@ -617,9 +617,10 @@ const skillSchema = z
 const saveSchema = skillSchema;
 
 const derivedBase = { id: sheetId, label, section: sheetId.optional(), hideWhen: hideWhenSchema.optional() };
-/** The most derived values a sheet may have: 240 since Capability API 1.83 (120 since 1.79), which a
- *  package with more than `RULESET_DERIVED_MAX_BEFORE_183` (or `_179`) declares. */
-export const RULESET_DERIVED_MAX = 240;
+/** The most derived values a sheet may have: 400 since Capability API 1.106 (240 since 1.83,
+ *  120 since 1.79), which a package exceeding the corresponding older limit declares. */
+export const RULESET_DERIVED_MAX = 400;
+export const RULESET_DERIVED_MAX_BEFORE_1106 = 240;
 export const RULESET_DERIVED_MAX_BEFORE_183 = 120;
 export const RULESET_DERIVED_MAX_BEFORE_179 = 60;
 export const rulesetDerivedSchema = z.discriminatedUnion("op", [
@@ -884,7 +885,8 @@ const sheetMigrationSchema = z
 // ── The guided builder (Capability API 1.81) ──
 
 /** How many steps one guided builder may have. */
-export const RULESET_BUILDER_STEPS_MAX = 16;
+export const RULESET_BUILDER_STEPS_MAX = 24;
+export const RULESET_BUILDER_STEPS_MAX_BEFORE_1107 = 16;
 
 /** Point buy: every score a player may buy and what it costs, lowest score first. The lowest is
  *  where every score starts, and the highest the most one score may be bought up to. */
@@ -933,8 +935,8 @@ const builderStepSchema = z.discriminatedUnion("kind", [
       /** A catalog of rows whose entries are offered as cards. */
       catalog: sheetId,
       /** How many entries the step asks for, and at most takes. */
-      min: z.number().int().min(0).max(20).default(1),
-      max: z.number().int().min(1).max(20).default(1),
+      min: z.number().int().min(0).max(40).default(1),
+      max: z.number().int().min(1).max(40).default(1),
       /** A text or enum field the picked entries' labels are written to (a race, a class). */
       field: sheetId.optional(),
       /** Fixed values of the catalog's filters: only entries that match are offered. */
@@ -957,6 +959,15 @@ const builderStepSchema = z.discriminatedUnion("kind", [
       fields: z.array(sheetId).min(1).max(20),
       /** Fields of the step its badge does not wait on, such as a subclass chosen at a later level. */
       optional: z.array(sheetId).min(1).max(20).optional(),
+      /** Fields shown only while their value reference reads above 0 on the sheet (1.102). */
+      shownWhen: z
+        .record(sheetId, rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>)
+        .optional(),
+      /** Number fields held to a combined maximum (1.102). */
+      total: z
+        .object({ fields: z.array(sheetId).min(2).max(20), max: z.number().int().min(1).max(1000) })
+        .strict()
+        .optional(),
     })
     .strict(),
   z
@@ -980,8 +991,16 @@ const builderStepSchema = z.discriminatedUnion("kind", [
             .strict()
             .refine((roll) => roll.keep <= roll.count, { message: "A roll keeps at most the dice it throws" })
             .optional(),
-          /** Typed in, within each score's own bounds. */
-          manual: z.literal(true).optional(),
+          /** Typed in: `true` keeps each score's own bounds; an object bounds the base (1.105). */
+          manual: z
+            .union([
+              z.literal(true),
+              z
+                .object({ min: z.number().int().min(-100), max: z.number().int().max(1000) })
+                .strict()
+                .refine((bounds) => bounds.min <= bounds.max, { message: "Manual bounds have min at most max" }),
+            ])
+            .optional(),
         })
         .strict()
         .refine((methods) => Object.keys(methods).length > 0, { message: "An abilities step offers a method" }),
@@ -1033,7 +1052,13 @@ export type RulesetBuilderStep =
       upTo?: RulesetBuilderUpTo;
       countFrom?: RulesetValueRef;
     })
-  | (BuilderStepBase & { kind: "fields"; fields: string[]; optional?: string[] })
+  | (BuilderStepBase & {
+      kind: "fields";
+      fields: string[];
+      optional?: string[];
+      shownWhen?: Record<string, RulesetValueRef>;
+      total?: { fields: string[]; max: number };
+    })
   | (BuilderStepBase & { kind: "choices"; catalog: string })
   | (BuilderStepBase & {
       kind: "abilities";
@@ -1042,7 +1067,7 @@ export type RulesetBuilderStep =
         pointBuy?: { budget: number; costs: [number, number][] };
         standardArray?: number[];
         roll?: { count: number; sides: number; keep: number };
-        manual?: true;
+        manual?: true | { min: number; max: number };
       };
       default?: BuilderMethodName;
     })
@@ -5616,6 +5641,17 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         step.optional?.forEach((id, optionalIndex) => {
           if (!step.fields.includes(id))
             issue([...path, "optional", optionalIndex], `"${id}" is not one of this step's fields`);
+        });
+        for (const [id, ref] of Object.entries(step.shownWhen ?? {})) {
+          const at = [...path, "shownWhen", id];
+          if (!step.fields.includes(id)) issue(at, `"${id}" is not one of this step's fields`);
+          checkRef(ref, at, derivedIds, false);
+        }
+        step.total?.fields.forEach((id, fieldIndex) => {
+          const at = [...path, "total", "fields", fieldIndex];
+          if (!step.fields.includes(id)) issue(at, `"${id}" is not one of this step's fields`);
+          if (fieldById.get(id)?.type !== "number") issue(at, `No number field "${id}"`);
+          if (step.total!.fields.indexOf(id) !== fieldIndex) issue(at, `"${id}" is named twice`);
         });
       } else if (step.kind === "abilities") {
         abilitySteps += 1;

@@ -489,13 +489,15 @@ export function FloatingWindow({
       titleClassName,
     ],
   );
-  // Bumped after a defaultLayoutKey change has rendered, so the default reads the updated page.
+  // Bumped a frame after a defaultLayoutKey change has rendered, so the default reads the updated page,
+  // including bubbles that move with the same change (they settle in a follow-up render, #7188).
   const [defaultRevision, setDefaultRevision] = useState(0);
   const defaultLayoutKeyRef = useRef(defaultLayoutKey);
   useEffect(() => {
     if (defaultLayoutKeyRef.current === defaultLayoutKey) return;
     defaultLayoutKeyRef.current = defaultLayoutKey;
-    setDefaultRevision((revision) => revision + 1);
+    const frame = window.requestAnimationFrame(() => setDefaultRevision((revision) => revision + 1));
+    return () => window.cancelAnimationFrame(frame);
   }, [defaultLayoutKey]);
   // The default follows the viewport and Reset View until the user changes the window.
   const defaultLayout = useMemo(

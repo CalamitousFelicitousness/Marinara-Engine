@@ -159,9 +159,12 @@ export function placeWindowBubbles(
   return placed;
 }
 
-/** The Chat Settings button's default place: the top-right slot of the chat area. */
-export function getTopRightBubblePoint(bounds: WindowBounds, size: number): WindowPoint {
-  return { x: bounds.right - size, y: bounds.top };
+/**
+ * The Chat Settings button's default place: the top-right slot of the chat area, or left of `right` when a
+ * docked Tracker Panel covers that corner.
+ */
+export function getTopRightBubblePoint(bounds: WindowBounds, size: number, right = bounds.right): WindowPoint {
+  return { x: right - size, y: bounds.top };
 }
 
 /**

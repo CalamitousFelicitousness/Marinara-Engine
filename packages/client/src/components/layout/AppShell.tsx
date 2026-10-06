@@ -122,6 +122,8 @@ const SHARED_SIDEBAR_WIDTH_MAX = Math.min(SIDEBAR_WIDTH_MAX, RIGHT_PANEL_WIDTH_M
 const TRACKER_PANEL_EDGE_OFFSET = 8;
 const TRACKER_PANEL_HUD_GAP = 6;
 const TRACKER_PANEL_CHAT_GAP = 8;
+// The narrowest docked Tracker Panel: its close, settings and help buttons still fit side by side (#7188).
+const TRACKER_PANEL_MIN_DOCKED_WIDTH = 96;
 const TRACKER_PANEL_DESKTOP_MOTION_MS = 260;
 const TRACKER_PANEL_DESKTOP_EXIT_MS = 240;
 const TRACKER_PANEL_DESKTOP_EASE = [0.16, 1, 0.3, 1] as const;
@@ -1151,6 +1153,7 @@ export function AppShell({
         chatColumnRight: chatColumnRect.right,
         side: trackerPanelSide,
         gap: TRACKER_PANEL_CHAT_GAP,
+        minWidth: TRACKER_PANEL_MIN_DOCKED_WIDTH,
       });
       setTrackerPanelResolvedWidth((current) => (current === nextWidth ? current : nextWidth));
       setTrackerPanelWidthMeasured(true);
@@ -1203,6 +1206,10 @@ export function AppShell({
   // Room a Roleplay column placed on the panel's side (Chat position) leaves for it. It uses the chosen
   // width, not the width measured beside that column, so the two never resize each other.
   const trackerPanelChatClearance = trackerPanelOverlayClearance > 0 ? trackerPanelWidth + TRACKER_PANEL_CHAT_GAP : 0;
+  // Room every Roleplay column leaves on each side for the docked panel's minimum width. A fixed amount,
+  // so a column only narrows when the window is too small for both, and the two never resize each other.
+  const trackerPanelColumnRoom =
+    trackerPanelOverlayClearance > 0 ? TRACKER_PANEL_MIN_DOCKED_WIDTH + TRACKER_PANEL_CHAT_GAP : 0;
   const trackerPanelContentScale = resolveTrackerPanelContentScale(trackerPanelWidth, trackerPanelResolvedWidth);
   const trackerPanelPortal =
     trackerPanelActive &&
@@ -1409,6 +1416,7 @@ export function AppShell({
                 "--tracker-panel-hud-clear-right": `${trackerPanelSide === "right" ? trackerPanelHudClearance : 0}px`,
                 "--tracker-panel-overlay-clearance": `${trackerPanelOverlayClearance}px`,
                 "--tracker-panel-chat-clearance": `${trackerPanelChatClearance}px`,
+                "--tracker-panel-column-room": `${trackerPanelColumnRoom}px`,
               } as CSSProperties
             }
           >

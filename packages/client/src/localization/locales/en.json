@@ -2573,6 +2573,7 @@
   "roleplay.commands.whisper.audience": "Who can whisper",
   "roleplay.commands.whisper.description": "Hide part of a message from everyone but one character (and the narrator). Good for secrets, visions, and asides. Type it yourself as [whisper: character=\"name\" text=\"...\"]. The text can span several lines and keep its quotes, like text=\"\"I love you.\"\". Your persona can receive whispers too.",
   "roleplay.commands.whisper.edit": "Edit whisper",
+  "roleplay.commands.whisper.emptyRemoves": "Leave this empty and save to remove the whisper.",
   "roleplay.commands.whisper.hide": "Hide the secret",
   "roleplay.commands.whisper.label": "Whisper",
   "roleplay.commands.whisper.reveal": "Reveal a secret",

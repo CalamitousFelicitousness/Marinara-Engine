@@ -34,6 +34,7 @@ import {
   buildRoleplayPersonalContext,
   parseRoleplayUserCommands,
   prepareUserRoleplayCommands,
+  roleplayHiddenWhisperMessageIds,
 } from "../../services/generation/roleplay-commands.js";
 import { randomUUID } from "crypto";
 import { createChatsStorage } from "../../services/storage/chats.storage.js";
@@ -894,6 +895,19 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       (promptGroupResponseOrder !== "manual" || chatMode === "conversation") &&
       !impersonate;
     const audienceCharacterIds = impersonate ? [] : promptTargetCharacterId ? [promptTargetCharacterId] : characterIds;
+    // The character who receives whispers in this preview, matching the live route.
+    const whisperTargetId = promptTargetCharacterId ?? (allCharacterIds.length === 1 ? allCharacterIds[0]! : null);
+    const whisperViewerId =
+      chatMode === "roleplay" &&
+      !impersonate &&
+      whisperTargetId &&
+      (allCharacterIds.length === 1 || dryRunGroupChatMode === "individual")
+        ? whisperTargetId
+        : null;
+    const hiddenWhisperIds =
+      whisperViewerId && audienceCharacterIds.length === 1 && audienceCharacterIds[0] === whisperViewerId
+        ? roleplayHiddenWhisperMessageIds(chatMessages, whisperViewerId)
+        : new Set<string>();
     if (advancedMemoryEnabled) {
       const allowedIds = new Set(
         selectAdvancedMemoryMessages(
@@ -903,12 +917,18 @@ export async function registerDryRunRoute(app: FastifyInstance) {
           dryRunGroupChatMode === "individual",
         ).map((message) => message.id),
       );
+      // A hidden message keeps its whisper for the recipient once that character's history has begun.
+      const firstAllowed = mappedMessages.findIndex((message) => message.id && allowedIds.has(message.id));
       mappedMessages = mappedMessages.filter(
-        (message) => message.id === "__dryrun_user__" || (message.id && allowedIds.has(message.id)),
+        (message, index) =>
+          message.id === "__dryrun_user__" ||
+          (message.id &&
+            (allowedIds.has(message.id) ||
+              (hiddenWhisperIds.has(message.id) && firstAllowed >= 0 && index > firstAllowed))),
       );
     }
     if (audienceCharacterIds.length > 0) {
-      mappedMessages = filterPromptMessagesForCharacterAudience(mappedMessages, audienceCharacterIds);
+      mappedMessages = filterPromptMessagesForCharacterAudience(mappedMessages, audienceCharacterIds, hiddenWhisperIds);
     }
 
     let summaryEmbeddingSource: Awaited<ReturnType<typeof resolveMemoryRecallEmbeddingSource>> | null = null;
@@ -2111,14 +2131,13 @@ export async function registerDryRunRoute(app: FastifyInstance) {
     }
 
     if (chatMode === "roleplay") {
-      const target = promptTargetCharacterId ?? (allCharacterIds.length === 1 ? allCharacterIds[0]! : null);
       appendRoleplayWhispers(
         finalMessages,
         chatMessages,
         impersonate
           ? { id: persona?.id ?? "user", kind: "persona" }
-          : target && (allCharacterIds.length === 1 || dryRunGroupChatMode === "individual")
-            ? { id: target, kind: "character" }
+          : whisperViewerId
+            ? { id: whisperViewerId, kind: "character" }
             : null,
         characterIds.includes(chatMeta.roleplayCommandNarratorId as string)
           ? (chatMeta.roleplayCommandNarratorId as string)
@@ -2128,9 +2147,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
         appendRoleplayMessageNotes(
           finalMessages,
           chatMessages,
-          target && (allCharacterIds.length === 1 || dryRunGroupChatMode === "individual")
-            ? { id: target, kind: "character" }
-            : null,
+          whisperViewerId ? { id: whisperViewerId, kind: "character" } : null,
         );
       }
     }

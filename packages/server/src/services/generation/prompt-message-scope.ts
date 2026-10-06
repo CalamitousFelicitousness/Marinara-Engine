@@ -10,6 +10,8 @@ export type GenerationPromptMessage = {
   personaSnapshotName?: string | null;
   hiddenFromAICharacterIds?: string[];
   conversationStartForCharacterIds?: string[];
+  /** Set on the whisper-only stand-in for a message hidden from the viewer (#7191). */
+  whisperSourceId?: string;
   images?: string[];
   files?: Array<{ type: string; data: string; filename?: string }>;
   providerMetadata?: Record<string, unknown>;
@@ -29,6 +31,8 @@ type CharacterPromptScopeInfo = {
 };
 
 const PROFILE_SNIPPET_MIN_LENGTH = 20;
+/** Body of the stand-in left for a whisper's recipient when its message is hidden from them. */
+export const WHISPER_ONLY_PLACEHOLDER = "[Private whisper]";
 
 export function isStandaloneCharacterProfileBlock(content: string, characterName: string): boolean {
   const trimmed = content.trim();
@@ -276,9 +280,14 @@ export function filterPromptHistoryByMessageIds(
   allowedIds: ReadonlySet<string>,
   sourceIds: ReadonlySet<string>,
 ): GenerationPromptMessage[] {
-  const filtered = messages.filter(
-    (message) =>
-      message.contextKind !== "history" || !message.id || !sourceIds.has(message.id) || allowedIds.has(message.id),
+  // A whisper-only entry stays only inside the kept window, after the first retained history message.
+  const firstKept = messages.findIndex(
+    (message) => message.contextKind === "history" && !!message.id && allowedIds.has(message.id),
+  );
+  const filtered = messages.filter((message, index) =>
+    message.whisperSourceId
+      ? firstKept >= 0 && index > firstKept
+      : message.contextKind !== "history" || !message.id || !sourceIds.has(message.id) || allowedIds.has(message.id),
   );
   if (filtered.length !== messages.length) {
     reassignHistoryLastMessageWrapper(filtered, messages);
@@ -303,6 +312,8 @@ export function selectHistoryMessagesForRecall(
 export function filterPromptMessagesForCharacterAudience(
   messages: GenerationPromptMessage[],
   audienceCharacterIds: string[],
+  /** Hidden messages that carry a whisper to the viewer (see roleplayHiddenWhisperMessageIds). */
+  whisperMessageIds: ReadonlySet<string> = new Set(),
 ): GenerationPromptMessage[] {
   if (audienceCharacterIds.length === 0) return messages;
   const audience = new Set(audienceCharacterIds);
@@ -319,11 +330,25 @@ export function filterPromptMessagesForCharacterAudience(
       }
     }
   }
-  const filtered = messages.filter((message, index) => {
-    if (characterStartIndex > 0 && index < characterStartIndex && message.contextKind === "history") return false;
-    return !message.hiddenFromAICharacterIds?.some((characterId) => audience.has(characterId));
+  const filtered = messages.flatMap((message, index): GenerationPromptMessage[] => {
+    if (characterStartIndex > 0 && index < characterStartIndex && message.contextKind === "history") return [];
+    if (!message.hiddenFromAICharacterIds?.some((characterId) => audience.has(characterId))) return [message];
+    // Hiding a message from its whisper's recipient hides the narration, not the whisper (#7191).
+    // The stand-in has no id, so only appendRoleplayWhispers can attach anything to it.
+    if (message.contextKind !== "history" || !message.id || !whisperMessageIds.has(message.id)) return [];
+    return [
+      {
+        role: message.role,
+        content: WHISPER_ONLY_PLACEHOLDER,
+        contextKind: "history",
+        characterId: message.characterId ?? null,
+        ...(message.personaSnapshotName ? { personaSnapshotName: message.personaSnapshotName } : {}),
+        whisperSourceId: message.id,
+      },
+    ];
   });
-  if (filtered.length === messages.length) return messages;
+  if (filtered.length === messages.length && filtered.every((message, index) => message === messages[index]))
+    return messages;
   reassignHistoryLastMessageWrapper(filtered);
   pruneEmptyPromptWrappers(filtered);
   return filtered;

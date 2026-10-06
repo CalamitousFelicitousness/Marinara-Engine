@@ -133,6 +133,7 @@ import {
 } from "../../services/generation/generation-parameters.js";
 import {
   filterPromptMessagesForCharacterAudience,
+  keptWindowStart,
   scopeIndividualGroupMessagesForTarget,
 } from "../../services/generation/prompt-message-scope.js";
 import { applyAllSegmentEdits } from "../../services/game/segment-edits.js";
@@ -905,9 +906,13 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       (allCharacterIds.length === 1 || dryRunGroupChatMode === "individual")
         ? whisperTargetId
         : null;
+    // Like the live route, only messages from the latest conversation start on can keep a whisper.
+    const conversationStart = chatMessages
+      .map((message) => parseExtra(message.extra).isConversationStart === true)
+      .lastIndexOf(true);
     const hiddenWhisperIds =
       whisperViewerId && audienceCharacterIds.length === 1 && audienceCharacterIds[0] === whisperViewerId
-        ? roleplayHiddenWhisperMessageIds(chatMessages, whisperViewerId)
+        ? roleplayHiddenWhisperMessageIds(chatMessages.slice(Math.max(0, conversationStart)), whisperViewerId)
         : new Set<string>();
     if (advancedMemoryEnabled) {
       const allowedIds = new Set(
@@ -918,14 +923,25 @@ export async function registerDryRunRoute(app: FastifyInstance) {
           dryRunGroupChatMode === "individual",
         ).map((message) => message.id),
       );
-      // A hidden message keeps its whisper for the recipient once that character's history has begun.
-      const firstAllowed = mappedMessages.findIndex((message) => message.id && allowedIds.has(message.id));
+      // A hidden message keeps its whisper inside the same window as in the live prompt,
+      // where only messages shown before memory selection can end it.
+      const globallyHidden = new Set(chatMessages.filter(isMessageHiddenFromAI).map((message) => message.id));
+      const windowStart = keptWindowStart(
+        mappedMessages,
+        (message) => !!message.id && allowedIds.has(message.id),
+        (message) =>
+          !!message.id &&
+          message.id !== "__dryrun_user__" &&
+          !allowedIds.has(message.id) &&
+          !globallyHidden.has(message.id) &&
+          !message.hiddenFromAICharacterIds?.some((id) => audienceCharacterIds.includes(id)),
+      );
       mappedMessages = mappedMessages.filter(
         (message, index) =>
           message.id === "__dryrun_user__" ||
           (message.id &&
             (allowedIds.has(message.id) ||
-              (hiddenWhisperIds.has(message.id) && firstAllowed >= 0 && index > firstAllowed))),
+              (hiddenWhisperIds.has(message.id) && windowStart >= 0 && index >= windowStart))),
       );
     }
     if (audienceCharacterIds.length > 0) {

@@ -274,20 +274,39 @@ function reassignHistoryLastMessageWrapper(
   };
 }
 
+/**
+ * Where a kept history window starts. It also takes in the hidden messages right before its first kept
+ * message, so a window that opens with a message hidden from the viewer keeps that message's whisper (#7191).
+ * ponytail: the window cannot see the memory boundary itself, so a hidden message that ends the previous
+ * scene, or comes just before a character's knowledge start, keeps its whisper too. Pass the boundary in
+ * if that ever needs to be exact.
+ */
+export function keptWindowStart<T>(
+  messages: readonly T[],
+  isKept: (message: T) => boolean,
+  isDropped: (message: T) => boolean,
+): number {
+  let start = messages.findIndex(isKept);
+  while (start > 0 && !isDropped(messages[start - 1]!)) start--;
+  return start;
+}
+
 /** Select durable history without dropping synthetic current input or rerunning prompt assembly. */
 export function filterPromptHistoryByMessageIds(
   messages: readonly GenerationPromptMessage[],
   allowedIds: ReadonlySet<string>,
   sourceIds: ReadonlySet<string>,
 ): GenerationPromptMessage[] {
-  // A whisper-only entry stays only inside the kept window, after the first retained history message.
-  const firstKept = messages.findIndex(
+  const isDropped = (message: GenerationPromptMessage) =>
+    message.contextKind === "history" && !!message.id && sourceIds.has(message.id) && !allowedIds.has(message.id);
+  // A whisper-only entry stays only inside the kept window.
+  const windowStart = keptWindowStart(
+    messages,
     (message) => message.contextKind === "history" && !!message.id && allowedIds.has(message.id),
+    isDropped,
   );
   const filtered = messages.filter((message, index) =>
-    message.whisperSourceId
-      ? firstKept >= 0 && index > firstKept
-      : message.contextKind !== "history" || !message.id || !sourceIds.has(message.id) || allowedIds.has(message.id),
+    message.whisperSourceId ? windowStart >= 0 && index >= windowStart : !isDropped(message),
   );
   if (filtered.length !== messages.length) {
     reassignHistoryLastMessageWrapper(filtered, messages);

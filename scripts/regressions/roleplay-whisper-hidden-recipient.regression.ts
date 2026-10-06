@@ -23,7 +23,7 @@ const { createCharactersStorage } = await import("../../packages/server/src/serv
 const { createPromptsStorage } = await import("../../packages/server/src/services/storage/prompts.storage.js");
 const { filterPromptHistoryByMessageIds } =
   await import("../../packages/server/src/services/generation/prompt-message-scope.js");
-const { characterDataSchema, getRoleplayCommandActivity, getRoleplayWhispers } =
+const { characterDataSchema, getRoleplayCommandActivity, getRoleplayWhispers, DEFAULT_ADVANCED_MEMORY_SETTINGS } =
   await import("../../packages/shared/dist/index.js");
 
 const prompts: string[] = [];
@@ -32,9 +32,22 @@ const provider = createServer(async (request, response) => {
   const chunks: Buffer[] = [];
   for await (const chunk of request) chunks.push(Buffer.from(chunk));
   const body = JSON.parse(Buffer.concat(chunks).toString());
-  prompts.push(JSON.stringify(body.messages));
-  const content = outputs.shift();
+  // Advanced Memory checks for scene changes after a reply; this story has none.
+  const sceneCheck = JSON.stringify(body.messages).includes("Identify scene transitions");
+  if (!sceneCheck) prompts.push(JSON.stringify(body.messages));
+  const content = sceneCheck
+    ? body.messages[0].content.includes('"ends"')
+      ? '{"ends":[]}'
+      : '{"starts":[]}'
+    : outputs.shift();
   assert.notEqual(content, undefined, "unexpected provider request");
+  if (sceneCheck && !body.stream) {
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(
+      JSON.stringify({ choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: "stop" }] }),
+    );
+    return;
+  }
   response.writeHead(200, { "content-type": "text/event-stream" });
   response.write(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content }, finish_reason: null }] })}\n\n`);
   response.end(
@@ -104,12 +117,12 @@ try {
     groupResponseOrder: "manual",
   });
   await chats.createMessage({ chatId: chat.id, role: "user", content: "OPENING_LINE Mari walks the empty pier." });
-  const generate = async (output: string, forCharacterId: string) => {
+  const generate = async (output: string, forCharacterId: string, options: Record<string, unknown> = {}) => {
     outputs = [output];
     const response = await app.inject({
       method: "POST",
       url: "/api/generate/",
-      payload: { chatId: chat.id, forCharacterId },
+      payload: { chatId: chat.id, forCharacterId, ...options },
     });
     assert.equal(response.statusCode, 200, response.body);
     assert(!response.body.includes('"type":"error"'), response.body);
@@ -220,7 +233,52 @@ try {
   assert(!emptied.includes("MAUKIE_SECRET") && !emptied.includes("[Private whisper"), "no blank whisper remains");
   assert((await preview(maukie.id, { impersonate: true })).includes("PERSONA_SECRET"));
 
-  // Advanced Memory keeps a stand-in only inside the retained window.
+  // With Advanced Memory on, a hidden message that opens Maukie's history keeps his whisper too.
+  const memoryChat = await chats.create({
+    name: "Hidden whisper memory",
+    mode: "roleplay",
+    characterIds: [maukie.id, narrator.id],
+    personaId: persona.id,
+    connectionId: connection.id,
+    promptPresetId: preset.id,
+  });
+  assert(memoryChat);
+  await chats.patchMetadata(memoryChat.id, {
+    enableAgents: false,
+    enableTools: false,
+    enableMemoryRecall: false,
+    roleplayCommandsEnabled: true,
+    roleplayCommandToggles: { whisper: true },
+    roleplayCommandNarratorId: narrator.id,
+    groupChatMode: "individual",
+    groupResponseOrder: "manual",
+    advancedMemory: {
+      ...DEFAULT_ADVANCED_MEMORY_SETTINGS,
+      enabled: true,
+      narratorCharacterId: narrator.id,
+      knowledgeStarts: { [maukie.id]: null, [narrator.id]: null },
+      knowledgeConfirmed: true,
+    },
+  });
+  await chats.createMessage({
+    chatId: memoryChat.id,
+    role: "assistant",
+    characterId: narrator.id,
+    content: "MEMORY_OPENER_NARRATION on the pier.",
+    extra: { hiddenFromAICharacterIds: [maukie.id], roleplayCommandActivity: before },
+  });
+  await chats.createMessage({ chatId: memoryChat.id, role: "user", content: "MEMORY_VISIBLE_LINE Mari calls out." });
+  for (const content of [
+    await generate("Maukie answers.", maukie.id, { chatId: memoryChat.id }),
+    await preview(maukie.id, { chatId: memoryChat.id }),
+  ]) {
+    assert(content.includes("MAUKIE_SECRET"), "Advanced Memory keeps the whisper of the message that opens the window");
+    assert(!content.includes("MEMORY_OPENER_NARRATION") && !content.includes("PERSONA_SECRET"));
+    assert(content.includes("MEMORY_VISIBLE_LINE"));
+  }
+
+  // Advanced Memory keeps a stand-in only inside the retained window, which opens with the hidden
+  // messages right before its first kept message.
   const history = (content: string, id?: string, whisperSourceId?: string) => ({
     role: "user" as const,
     content,
@@ -228,17 +286,20 @@ try {
     ...(id ? { id } : {}),
     ...(whisperSourceId ? { whisperSourceId } : {}),
   });
-  const windowed = filterPromptHistoryByMessageIds(
-    [
-      history("OLD", "old"),
-      history("EARLY_STAND_IN", undefined, "early"),
-      history("KEPT", "kept"),
-      history("LATE_STAND_IN", undefined, "late"),
-    ],
-    new Set(["kept"]),
-    new Set(["old", "kept", "early", "late"]),
-  ).map((message) => message.content);
-  assert.deepEqual(windowed, ["KEPT", "LATE_STAND_IN"]);
+  const windowMessages = [
+    history("EARLY_STAND_IN", undefined, "early"),
+    history("OLD", "old"),
+    history("OPENING_STAND_IN", undefined, "opening"),
+    history("KEPT", "kept"),
+    history("LATE_STAND_IN", undefined, "late"),
+  ];
+  const windowSources = new Set(["early", "old", "opening", "kept", "late"]);
+  const windowed = filterPromptHistoryByMessageIds(windowMessages, new Set(["kept"]), windowSources);
+  assert.deepEqual(
+    windowed.map((message) => message.content),
+    ["OPENING_STAND_IN", "KEPT", "LATE_STAND_IN"],
+  );
+  assert.deepEqual(filterPromptHistoryByMessageIds(windowMessages, new Set(), windowSources), []);
   console.log(
     "Hidden whisper recipient passed: recipient-only stand-in, position, other characters, narrator, persona, trimming, global hide, emptied whispers and memory window.",
   );

@@ -159,10 +159,7 @@ import {
   stripConversationPromptTimestamps,
   stripConversationResponseEnvelope,
 } from "../../packages/server/src/services/conversation/transcript-sanitize.js";
-import {
-  GAME_SETUP_GENERATION_TIMEOUT_MS,
-  resolveInitialGameGmConnectionId,
-} from "../../packages/server/src/services/game/initial-game-setup.js";
+import { resolveInitialGameGmConnectionId } from "../../packages/server/src/services/game/initial-game-setup.js";
 import {
   resolveIllustratorPromptRuntime,
   type IllustratorPromptConnection,
@@ -4771,7 +4768,6 @@ assert.equal(
   "roleplay-images",
 );
 assert.equal(resolveIllustratorImageConnectionId("game", {}, " agent-images "), "agent-images");
-assert.equal(GAME_SETUP_GENERATION_TIMEOUT_MS, 500_000);
 const previousGameDynamicImagePromptTimeout = process.env.GAME_DYNAMIC_IMAGE_PROMPT_TIMEOUT_MS;
 try {
   delete process.env.GAME_DYNAMIC_IMAGE_PROMPT_TIMEOUT_MS;

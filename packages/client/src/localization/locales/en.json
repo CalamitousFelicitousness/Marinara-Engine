@@ -254,7 +254,7 @@
   "chat.advancedMemory.progress": "Memory processing",
   "chat.advancedMemory.range": "Messages {{start}}–{{end}}",
   "chat.advancedMemory.reason.decisionExcerptFallback": "Some original excerpts were selected by text matching because their Decision check did not complete.",
-  "chat.advancedMemory.reason.decisionRecall": "The Decision model selected relevant past memories.",
+  "chat.advancedMemory.reason.decisionRecall": "The Decision model judged which past memories were relevant.",
   "chat.advancedMemory.reason.decisionRecallFallback": "The Decision model was unavailable, too slow, or could not evaluate every candidate. Ordinary recall was used.",
   "chat.advancedMemory.reason.decisionRecallPreview": "This preview uses ordinary recall without calling the Decision model. A new reply may select different memories.",
   "chat.advancedMemory.reason.noRelevantRecall": "No relevant earlier scenes or messages were recalled.",

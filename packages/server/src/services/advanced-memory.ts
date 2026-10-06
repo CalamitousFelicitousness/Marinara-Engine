@@ -54,8 +54,8 @@ import {
 } from "./generation/roleplay-summary-runtime.js";
 import { embedMemoryRecallTexts, type MemoryRecallEmbeddingOptions } from "./memory-recall.js";
 import { resolveMemoryRecallEmbeddingSource } from "./memory-recall-embedding.js";
-import { recallTerms, scoreRecallTerms } from "./advanced-memory-ranking.js";
-import { resolveDecisionBackend, type DecisionBackend } from "./decision/decision-default.js";
+import { recallNames, recallTerms, scoreRecallTerms } from "./advanced-memory-ranking.js";
+import { resolveDecisionBackend } from "./decision/decision-default.js";
 import { resolveDecisionConnection } from "./decision/decision-connection.js";
 import {
   detectDecisionSceneBoundaries,
@@ -63,6 +63,8 @@ import {
   finishMemoryDecisionDiagnostics,
   MEMORY_DECISION_SCENE_THRESHOLD,
   MEMORY_DECISION_RECALL_TIMEOUT_MS,
+  MEMORY_DECISION_BATCH_SIZE,
+  MEMORY_DECISION_MESSAGES_PER_SCENE,
 } from "./advanced-memory-decisions.js";
 import { cosineSimilarity } from "./lorebook/embeddings.js";
 import { contextWindowForInputBudget, measureContextBudget, withLlmRequestTimeout } from "./llm/base-provider.js";
@@ -3094,13 +3096,12 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       .slice(-6000);
     const queryWords = recallTerms(query);
     const lastUser = [...visible].reverse().find((message) => message.role === "user");
+    const cueWords = recallTerms(lastUser?.content.slice(-6000) ?? query);
     const canRecallExcerpt = (scene: StoredRecord) =>
       !/\{\{#?if\s+(?:char|charname|character|speaker)\b/iu.test(scene.content) ||
       (ctx.settings.narratorCharacterId != null &&
         audience.length === 1 &&
         audience[0] === ctx.settings.narratorCharacterId);
-    let recallBackend: DecisionBackend | null = null;
-    let decisionScores: Map<string, number> | null = null;
     const recallDiagnostics: AdvancedMemoryDecisionDiagnostics | undefined =
       ctx.settings.decisionEnabled && !input.readOnly
         ? {
@@ -3113,48 +3114,12 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
             results: [],
           }
         : undefined;
-    const recallSignal = ctx.settings.decisionEnabled
-      ? AbortSignal.any([
-          ...(input.signal ? [input.signal] : []),
-          AbortSignal.timeout(MEMORY_DECISION_RECALL_TIMEOUT_MS),
-        ])
-      : input.signal;
-    if (ctx.settings.decisionEnabled && candidates.length && optionalMemoryBudget > 64) {
-      if (input.readOnly) receipt.reasons.push("decision-recall-preview");
-      else {
-        try {
-          recallBackend = await memoryDecisionBackend(ctx, { ...input, signal: recallSignal });
-          if (recallBackend && !recallBackend.deferPreGeneration) {
-            decisionScores = await rankDecisionMemories(
-              recallBackend,
-              logMessages(ctx, visible.slice(-4)),
-              audience.map((id) => ctx.names.get(id) ?? id),
-              candidates.flatMap((record, index) =>
-                record.kind === "scene" || canRecallExcerpt(recalledSceneRecords.get(record.sceneId)!)
-                  ? [
-                      {
-                        id: record.id,
-                        text: candidateTexts[index]!,
-                        kind: record.kind === "scene" ? ("scene" as const) : ("excerpt" as const),
-                      },
-                    ]
-                  : [],
-              ),
-              recallSignal,
-              recallDiagnostics,
-            );
-          }
-        } catch (error) {
-          abortIfNeeded(input.signal);
-          logger.warn(error, "[advanced-memory] Decision recall failed; using ordinary recall");
-        }
-        receipt.reasons.push(decisionScores ? "decision-recall" : "decision-recall-fallback");
-        if (!decisionScores) recallBackend = null;
-      }
-    }
+    const recalling = candidates.length > 0 && optionalMemoryBudget > 64;
+    // Ordinary relevance always ranks every candidate. It shortlists the scenes the
+    // Decision model judges, and it decides alone when that model is off or fails.
     let queryVector: number[] | undefined;
     let vectorSpace: string | null = null;
-    if (!decisionScores && !input.readOnly && candidates.length && optionalMemoryBudget > 64) {
+    if (!input.readOnly && recalling) {
       try {
         const embeddingSource = await resolveMemoryRecallEmbeddingSource(db, {
           chatMetadata: ctx.metadata,
@@ -3196,10 +3161,11 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       .find(Boolean);
     const rankingTerms = recallTerms(trackerRankingHint(ctx, currentTracker, audience));
     const candidateWords = candidateTexts.map(recallTerms);
-    const cueScores = scoreRecallTerms(recallTerms(lastUser?.content.slice(-6000) ?? query), candidateWords);
-    const ranked = candidates
+    // Names the latest user message mentions, like a pet's, weigh most. Its lowercase words are no names.
+    const cueNames = recallNames(cueWords, [...candidateTexts, lastUser?.content.slice(-6000) ?? query]);
+    const cueScores = scoreRecallTerms(cueWords, candidateWords, cueNames);
+    const relevance = candidates
       .map((record, index) => {
-        if (decisionScores) return { record, score: decisionScores.get(record.id) ?? 0 };
         const words = candidateWords[index]!;
         const overlap = [...queryWords].filter((word) => words.has(word)).length;
         const lexical = Math.max(cueScores[index]!, overlap / Math.max(4, Math.sqrt(queryWords.size * words.size)));
@@ -3215,8 +3181,62 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
         const hint = relevance >= 0.12 && [...rankingTerms].some((word) => words.has(word)) ? 0.03 : 0;
         return { record, score: relevance + hint };
       })
-      .filter((item) => item.score >= (decisionScores ? recallBackend!.calibration.defaultThreshold : 0.12))
       .sort((a, b) => b.score - a.score);
+    // A scene is as relevant as its summary or its best excerpt chunk; best scene first.
+    const sceneRelevance = new Map<string, number>();
+    for (const { record, score } of relevance)
+      if (!sceneRelevance.has(record.sceneId)) sceneRelevance.set(record.sceneId, score);
+    let sceneOrder = [...sceneRelevance].filter(([, score]) => score >= 0.12).map(([sceneId]) => sceneId);
+    // Each Decision pass has its own time limit, so a slow scene pass cannot starve the message pass.
+    const decisionSignal = () =>
+      AbortSignal.any([
+        ...(input.signal ? [input.signal] : []),
+        AbortSignal.timeout(MEMORY_DECISION_RECALL_TIMEOUT_MS),
+      ]);
+    const conversation = logMessages(ctx, visible.slice(-4));
+    const responders = audience.map((id) => ctx.names.get(id) ?? id);
+    // Set only when the scene pass answered; the message pass runs only after it.
+    let decisionThreshold: number | null = null;
+    if (ctx.settings.decisionEnabled && recalling) {
+      if (input.readOnly) receipt.reasons.push("decision-recall-preview");
+      else {
+        // Pass 1: the model picks scenes, judging only the shortlisted summaries.
+        const shortlist = [...sceneRelevance.keys()]
+          .slice(0, MEMORY_DECISION_BATCH_SIZE)
+          .map((sceneId) => recalledSceneRecords.get(sceneId)!);
+        let sceneScores: Map<string, number> | null = null;
+        try {
+          const signal = decisionSignal();
+          const backend = await memoryDecisionBackend(ctx, { ...input, signal });
+          if (backend && !backend.deferPreGeneration) {
+            sceneScores = await rankDecisionMemories(
+              backend,
+              conversation,
+              responders,
+              shortlist.map((scene) => ({
+                id: scene.id,
+                text: renderedRecaps.get(scene.sceneId)!,
+                kind: "scene" as const,
+              })),
+              signal,
+              recallDiagnostics,
+            );
+            if (sceneScores) decisionThreshold = backend.calibration.defaultThreshold;
+          }
+        } catch (error) {
+          abortIfNeeded(input.signal);
+          logger.warn(error, "[advanced-memory] Decision recall failed; using ordinary recall");
+        }
+        receipt.reasons.push(sceneScores ? "decision-recall" : "decision-recall-fallback");
+        const scores = sceneScores;
+        const threshold = decisionThreshold;
+        if (scores && threshold !== null)
+          sceneOrder = shortlist
+            .filter((scene) => scores.get(scene.id)! >= threshold)
+            .sort((a, b) => scores.get(b.id)! - scores.get(a.id)!)
+            .map((scene) => scene.sceneId);
+      }
+    }
     const sceneTexts: Array<{ index: number; text: string }> = [];
     const excerptIds = new Set<string>();
     const selectedScenes = new Set<string>();
@@ -3228,78 +3248,95 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     const recallBudget = optionalMemoryBudget - tokenSize(recallIntroduction);
     let recalledTokens = 0;
     // Reserve all selected scene summaries before spending any room on excerpts.
-    const consideredScenes = new Set<string>();
-    for (const { record } of ranked) {
+    for (const sceneId of sceneOrder) {
       if (selectedScenes.size >= ctx.settings.retrieveMaxScenes) break;
-      if (consideredScenes.has(record.sceneId)) continue;
-      consideredScenes.add(record.sceneId);
-      const scene = recalledSceneRecords.get(record.sceneId)!;
+      const scene = recalledSceneRecords.get(sceneId)!;
       const text = `Scene summary:\n${renderMemoryRecord(scene, indexes, renderedRecaps.get(scene.sceneId))}`;
       if (recalledTokens + tokenSize(text) > recallBudget) continue;
       recalledTokens += tokenSize(text);
       selectedScenes.add(scene.sceneId);
     }
-    for (const sceneId of selectedScenes) {
+    const sceneSources = [...selectedScenes].map((sceneId) => {
       const scene = recalledSceneRecords.get(sceneId)!;
-      const start = indexes.get(scene.startMessageId)!;
-      const recap = renderedRecaps.get(scene.sceneId)!;
-      let text = `Scene summary:\n${renderMemoryRecord(scene, indexes, recap)}`;
-      const summaryTokens = tokenSize(text);
-      const excerptRecords = candidates.filter((item) => item.kind === "excerpt" && item.sceneId === scene.sceneId);
+      const excerptRecords = candidates.filter((item) => item.kind === "excerpt" && item.sceneId === sceneId);
       const indexedIds = new Set(excerptRecords.flatMap((item) => item.messageIds));
-      const bestChunkIds = new Set(
-        ranked.find((item) => item.record.kind === "excerpt" && item.record.sceneId === scene.sceneId)?.record
-          .messageIds,
-      );
       const sceneSource = scene.messageIds
         .map((id) => fullById.get(id)!)
         .filter(
           (message) => eligibleIds.has(message.id) && indexedIds.has(message.id) && !disabledSourceIds.has(message.id),
         );
-      let matched = sceneSource
-        .map((message, index) => {
-          const words = recallTerms(message.content);
-          return {
-            index,
-            score: [...queryWords].filter((word) => words.has(word)).length,
-            inBestChunk: bestChunkIds.has(message.id),
-          };
-        })
-        .sort((a, b) => b.score - a.score || Number(b.inBestChunk) - Number(a.inBestChunk))[0];
+      return { scene, excerptRecords, sceneSource, words: sceneSource.map((message) => recallTerms(message.content)) };
+    });
+    // Text matching orders each scene's messages: distinctive words from the latest
+    // user message first, then shared words, then the scene's best-matching excerpt chunk.
+    const messageCues = scoreRecallTerms(
+      cueWords,
+      sceneSources.flatMap(({ words }) => words),
+      cueNames,
+    );
+    let cueOffset = 0;
+    const excerptPlans = sceneSources.map(({ words, ...plan }) => {
+      const cues = messageCues.slice(cueOffset, (cueOffset += words.length));
+      const bestChunkIds = new Set(
+        relevance.find((item) => item.record.kind === "excerpt" && item.record.sceneId === plan.scene.sceneId)?.record
+          .messageIds,
+      );
+      const textMatches = plan.sceneSource
+        .map((message, index) => ({
+          index,
+          cue: cues[index]!,
+          score: [...queryWords].filter((word) => words[index]!.has(word)).length,
+          inBestChunk: bestChunkIds.has(message.id),
+        }))
+        .sort((a, b) => b.cue - a.cue || b.score - a.score || Number(b.inBestChunk) - Number(a.inBestChunk));
+      return { ...plan, textMatches };
+    });
+    // Pass 2: the model picks which original messages of the chosen scenes to recall.
+    let messageScores: Map<string, number> | null = null;
+    const judgedPlans = excerptPlans.filter((plan) => canRecallExcerpt(plan.scene) && plan.sceneSource.length);
+    if (decisionThreshold !== null && ctx.settings.retrieveMaxMessages > 0 && judgedPlans.length) {
+      try {
+        const signal = decisionSignal();
+        const backend = await memoryDecisionBackend(ctx, { ...input, signal });
+        if (backend)
+          messageScores = await rankDecisionMemories(
+            backend,
+            conversation,
+            responders,
+            judgedPlans.flatMap(({ sceneSource, textMatches }) => {
+              const shortlisted = new Set(
+                textMatches.slice(0, MEMORY_DECISION_MESSAGES_PER_SCENE).map(({ index }) => index),
+              );
+              return sceneSource
+                .filter((_, index) => shortlisted.has(index))
+                .map((message) => ({ id: message.id, text: messageText(ctx, message, indexes.get(message.id)!) }));
+            }),
+            signal,
+            recallDiagnostics,
+          );
+      } catch (error) {
+        abortIfNeeded(input.signal);
+        logger.warn(error, "[advanced-memory] Decision excerpt selection failed; using text matching");
+      }
+      if (!messageScores) receipt.reasons.push("decision-excerpt-fallback");
+    }
+    for (const { scene, excerptRecords, sceneSource, textMatches } of excerptPlans) {
+      const start = indexes.get(scene.startMessageId)!;
+      const recap = renderedRecaps.get(scene.sceneId)!;
+      let text = `Scene summary:\n${renderMemoryRecord(scene, indexes, recap)}`;
+      const summaryTokens = tokenSize(text);
+      // The model's best message centres the excerpt. Text matching does when it judged none suitable.
+      const scores = messageScores;
+      const threshold = decisionThreshold;
+      const matched =
+        sceneSource
+          .map((message, index) => ({ index, score: scores?.get(message.id) ?? -1 }))
+          .filter((item) => threshold !== null && item.score >= threshold)
+          .sort((left, right) => right.score - left.score)[0] ?? textMatches[0];
       let excerpt: AdvancedMemoryMessage[] = [];
       // ponytail: raw excerpts have scene-level access, not per-fact knowledge.
       // Withhold conditional-scene excerpts from non-narrators until they have that finer access mapping.
       const canIncludeExcerpt = canRecallExcerpt(scene);
-      if (recallBackend && ctx.settings.retrieveMaxMessages > 0 && canIncludeExcerpt && sceneSource.length) {
-        try {
-          const scores = await rankDecisionMemories(
-            recallBackend,
-            logMessages(ctx, visible.slice(-4)),
-            audience.map((id) => ctx.names.get(id) ?? id),
-            sceneSource.map((message) => ({
-              id: message.id,
-              text: messageText(ctx, message, indexes.get(message.id)!),
-            })),
-            recallSignal,
-            recallDiagnostics,
-          );
-          if (scores) {
-            matched = sceneSource
-              .map((message, index) => ({
-                index,
-                score: scores.get(message.id) ?? 0,
-                inBestChunk: bestChunkIds.has(message.id),
-              }))
-              .filter((item) => item.score >= recallBackend!.calibration.defaultThreshold)
-              .sort((left, right) => right.score - left.score)[0];
-          } else if (!receipt.reasons.includes("decision-excerpt-fallback"))
-            receipt.reasons.push("decision-excerpt-fallback");
-        } catch (error) {
-          abortIfNeeded(input.signal);
-          if (!receipt.reasons.includes("decision-excerpt-fallback")) receipt.reasons.push("decision-excerpt-fallback");
-          logger.warn(error, "[advanced-memory] Decision excerpt selection failed; using text matching");
-        }
-      }
       if (matched && ctx.settings.retrieveMaxMessages > 0 && canIncludeExcerpt) {
         const count = Math.min(
           sceneSource.length,

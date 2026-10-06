@@ -722,7 +722,13 @@ const capabilityPackageManifestBaseSchema = z
 //        takes steps of any height, and a burrower moves as a walk; every cell moved comes off every
 //        way at once. Not a soft seam: an Engine that cannot read the keys refuses the ruleset, so a
 //        package that ships them declares 1.108. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 108 } as const);
+// 1.109: a flier goes up and down. On a board whose ruleset gives `combat.elevation.levelHeight`,
+//        a combatant with a fly speed may fly up or down a level where it stands for a level's
+//        worth of its flight; reach, high ground and opportunity strikes count the height between
+//        two combatants, and a flier knocked down, prone or out of speed falls unless it hovers. No
+//        new key, so a soft seam: an Engine before it keeps fliers on the ground. A package that
+//        relies on it declares 1.109. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 109 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

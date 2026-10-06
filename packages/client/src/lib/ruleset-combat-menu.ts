@@ -5,7 +5,12 @@
 // arithmetic; it groups what arrived, spells what an option spends out of the words the option
 // carries, and keeps a player's picking inside the option's own list and count.
 import type { DirectedRulesetOption } from "@marinara-engine/shared";
-import { RULESET_MOVE_OPTION, RULESET_STAND_OPTION } from "@marinara-engine/shared";
+import {
+  RULESET_FLY_DOWN_OPTION,
+  RULESET_FLY_UP_OPTION,
+  RULESET_MOVE_OPTION,
+  RULESET_STAND_OPTION,
+} from "@marinara-engine/shared";
 import type { TFunction } from "i18next";
 import { rulesetDistanceText, type RulesetBoardDistance } from "./ruleset-combat-board";
 
@@ -33,9 +38,11 @@ export type RulesetMenuKind = (typeof RULESET_MENU_KINDS)[number];
 /** The Engine's own word for each of the two moves a board adds, keyed by the resolver's own id.
  *  A key segment is built from the WORD and never from the id, which may carry punctuation a
  *  localization key may not. */
-const MOVE_OPTION_WORDS: Record<string, "walk" | "stand"> = {
+const MOVE_OPTION_WORDS: Record<string, "walk" | "stand" | "flyUp" | "flyDown"> = {
   [RULESET_MOVE_OPTION]: "walk",
   [RULESET_STAND_OPTION]: "stand",
+  [RULESET_FLY_UP_OPTION]: "flyUp",
+  [RULESET_FLY_DOWN_OPTION]: "flyDown",
 };
 
 export interface RulesetMenuStep {

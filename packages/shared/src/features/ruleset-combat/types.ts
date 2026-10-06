@@ -591,6 +591,9 @@ export interface RulesetCombatant {
    *  of them, as switching from walking to flying takes what was already walked off the flight.
    *  Absent for somebody who only walks, whose walk is `movementLeft`. */
   modeLeft?: Partial<Record<RulesetMoveMode, number>>;
+  /** The level a flier is at, by the board's own levels, while it is up above the ground beneath it
+   *  (1.109). Absent on the ground. */
+  altitude?: number;
 }
 
 /** The ways of moving besides walking (1.108). */
@@ -754,6 +757,9 @@ export interface RulesetCombatBoard {
   /** Cells a shot carries further down from higher ground (combat C6b), as the ruleset said when the
    *  fight began. */
   rangeBonus?: number;
+  /** Cells one level of height is worth (1.109), as the ruleset's `elevation.levelHeight` and cell
+   *  said when the fight began. Present only where there are levels, which is where a flier rises. */
+  levelCells?: number;
 }
 
 /** Why a choice changed nothing. */
@@ -992,6 +998,8 @@ export type RulesetCombatEvent =
       /** How far the move got, when a strike on the way stopped it short. */
       stopped?: boolean;
     }
+  /** A flier going up or down a level where it stands (1.109), for cells of its allowance. */
+  | { type: "flew"; actorId: string; from: number; to: number; cost: number; left: number }
   /** A strike at somebody leaving this combatant's reach. The attack and the damage that follow are
    *  their own events, exactly as they are on a turn. */
   | { type: "opportunity"; actorId: string; targetId: string; label: string; budget: string }

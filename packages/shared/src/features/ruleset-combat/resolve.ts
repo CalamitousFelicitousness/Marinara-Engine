@@ -70,11 +70,15 @@ import {
   rulesetPushPath,
   rulesetStepLeavesReach,
   rulesetThreateningEnemies,
+  rulesetAirborne,
+  rulesetLevelOf,
 } from "./grid.js";
 import {
   RULESET_MOVE_OPTION,
   RULESET_PASS_OPTION,
   RULESET_STAND_OPTION,
+  RULESET_FLY_DOWN_OPTION,
+  RULESET_FLY_UP_OPTION,
   planRulesetCombatCost,
   rulesetActionAvailable,
   rulesetAimLegal,
@@ -435,6 +439,7 @@ function afterBlow(ctx: RulesetCombatContext, target: RulesetCombatant, dealt: n
       else if (rule === "two-failures") addDeathFailures(ctx, target, 2);
     }
   }
+  groundFlier(ctx, target);
 }
 
 /**
@@ -989,6 +994,7 @@ function applyConditionId(
     ...(applies.escapeDc !== undefined ? { escapeDc: applies.escapeDc } : {}),
   });
   ctx.events.push({ type: "condition", targetId: target.id, condition, active: true, reason: "applied" });
+  groundFlier(ctx, target);
 }
 
 /**
@@ -1283,7 +1289,9 @@ export function applyRulesetCombatChoice(
     const { ctx, finish } = begin(definition, combat, state, roller);
     const walking = rulesetCombatant(ctx.state, actor.id)!;
     if (cell) resolveMove(ctx, walking, cell);
-    else resolveStand(ctx, walking, option);
+    else if (option.id === RULESET_FLY_UP_OPTION || option.id === RULESET_FLY_DOWN_OPTION) {
+      resolveFly(ctx, walking, option);
+    } else resolveStand(ctx, walking, option);
     const ended = rulesetEncounterOutcome(ctx.state);
     if (ended !== "ongoing") pushOutcome(ctx, ended);
     return finish();
@@ -1932,6 +1940,38 @@ function destinationOf(option: RulesetCombatOption, to: RulesetCombatCell | unde
   return option.cells?.find((cell) => cell.x === to.x && cell.y === to.y) ?? null;
 }
 
+/** A flier going up or down a level where it stands (1.109), for what a level is worth in cells. Down
+ *  to the ground under it, it is on the ground. */
+function resolveFly(ctx: RulesetCombatContext, actor: RulesetCombatant, option: RulesetCombatOption): void {
+  const grid = ctx.state.board!.grid;
+  const cost = option.movementCost ?? ctx.state.board?.levelCells ?? 1;
+  const from = rulesetLevelOf(grid, actor);
+  const to = from + (option.id === RULESET_FLY_UP_OPTION ? 1 : -1);
+  spendRulesetMovement(actor, cost);
+  if (to > elevationAt(grid, actor.x!, actor.y!)) actor.altitude = to;
+  else delete actor.altitude;
+  ctx.events.push({ type: "flew", actorId: actor.id, from, to, cost, left: actor.movementLeft ?? 0 });
+}
+
+/**
+ * A flier that cannot stay up comes down (1.109): one up in the air that is knocked prone, held still
+ * or taken down falls the levels to the ground under it, unless it hovers. What the fall does is the
+ * ruleset's `elevation.falling`, as a fall off a ledge is.
+ */
+function groundFlier(ctx: RulesetCombatContext, flier: RulesetCombatant): void {
+  const grid = ctx.state.board?.grid;
+  if (!grid || flier.hover || !rulesetAirborne(grid, flier)) return;
+  const grounded =
+    !rulesetCombatStanding(flier) ||
+    !!rulesetProneCondition(ctx.definition, ctx.combat, flier) ||
+    rulesetCombatEffects(ctx.definition, ctx.combat, flier, ctx.state).has("speed-zero");
+  if (!grounded) return;
+  const levels = rulesetLevelOf(grid, flier) - elevationAt(grid, flier.x!, flier.y!);
+  // Down first, so whatever the fall itself does finds it on the ground.
+  delete flier.altitude;
+  fall(ctx, flier, flier, levels);
+}
+
 /**
  * Getting back up: half the allowance, and the condition that held them down is gone.
  *
@@ -2040,6 +2080,9 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
     at = cell;
     actor.x = cell.x;
     actor.y = cell.y;
+    // A flier that came onto ground as high as it flew, or higher, is standing on it (1.109), and
+    // goes on from there as anybody on the ground does.
+    if (actor.altitude !== undefined && !rulesetAirborne(grid, actor)) delete actor.altitude;
   }
   if (!stopped && !rulesetCombatStanding(actor)) stopped = true;
   spendRulesetMovement(actor, spent);

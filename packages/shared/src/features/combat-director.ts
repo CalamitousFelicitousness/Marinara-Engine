@@ -131,6 +131,8 @@ export interface DirectedRulesetCombatant {
   y?: number;
   movement?: number;
   movementLeft?: number;
+  /** The level a flier is up at (1.109), present only while it is off the ground. */
+  altitude?: number;
 }
 /**
  * What a ruleset fight's log holds: everything the resolver did, plus the few things the DIRECTOR

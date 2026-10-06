@@ -538,6 +538,13 @@ export function rulesetCombatEventLine(
         cost: names.distance(event.cost),
         left: names.distance(event.left),
       });
+    case "flew":
+      return key(event.to > event.from ? "flewUp" : "flewDown", {
+        actor: names.combatant(event.actorId),
+        distance: names.height(Math.abs(event.to - event.from)),
+        cost: names.distance(event.cost),
+        left: names.distance(event.left),
+      });
     case "window":
       // Who the fight stopped for. The window between two turns is nobody's interruption, so it is
       // said as a pause rather than as somebody being caught out.

@@ -2315,6 +2315,10 @@ function placeRulesetCombatants(
     ...(board.battlefield ? { battlefield: board.battlefield as RulesetCombatBoard["battlefield"] } : {}),
     // What a shot gains from higher ground, as the ruleset said at the start (combat C6b).
     ...(combat.elevation?.rangeBonus ? { rangeBonus: combat.elevation.rangeBonus } : {}),
+    // What one level is worth in cells, which is what a flier pays to rise one (1.109).
+    ...(combat.elevation && combat.distance
+      ? { levelCells: rulesetInCells(combat.elevation.levelHeight, combat.distance.perCell) }
+      : {}),
   };
 }
 

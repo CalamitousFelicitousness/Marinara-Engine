@@ -2238,6 +2238,24 @@ stay the walk. On a board:
 Each step is taken the cheapest way that has enough left. A fight without a board reads nothing of
 it, and somebody who only walks moves exactly as before.
 
+**Flying height** (Capability API 1.109). On a board whose ruleset gives `combat.elevation.levelHeight`
+and `combat.distance.perCell`, a flier is offered Fly up and Fly down where it stands, each costing a
+level's worth of its flight (a 5 foot level on 5 foot cells is one cell). Up to 20 levels above the
+ground it is over. While it is up:
+
+- it only flies, a cell a step over anything not solid;
+- the distance between it and anybody else is the larger of the flat distance and the height
+  between them, so a sword with 5 feet of reach cannot touch a dragon 30 feet up, and its own bite
+  cannot touch the knight either;
+- it has the high ground over anybody lower, as a hill would give it;
+- leaving the reach of somebody it is too high for draws no strike;
+- knocked down, knocked prone or held to a speed of nought, it falls to the ground below as
+  `falling` says, unless it has `hover`.
+
+Flying onto ground as high as it is, or higher, lands it, as a flier on the ground flies onto a
+cliff. No new key: an Engine before 1.109 keeps
+fliers on the ground, so a package that relies on height declares 1.109.
+
 **Reach and range.** A weapon row gets them from `combat.attacks[].reach` and `.range`, each a
 column of that same list or the same number on every row:
 

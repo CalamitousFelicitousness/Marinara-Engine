@@ -566,6 +566,7 @@ function projectCombatant(definition: RulesetDefinition, combatant: RulesetComba
     ...(combatant.movement !== undefined
       ? { movement: combatant.movement, movementLeft: combatant.movementLeft ?? 0 }
       : {}),
+    ...(combatant.altitude !== undefined ? { altitude: combatant.altitude } : {}),
   };
 }
 

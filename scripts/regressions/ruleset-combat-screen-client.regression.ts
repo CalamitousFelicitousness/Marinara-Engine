@@ -742,6 +742,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
       }),
     ],
     ["fell", say({ type: "fell", targetId: "lurker", levels: 2 })],
+    ["flew", say({ type: "flew", actorId: "lurker", from: 0, to: 1, cost: 1, left: 5 })],
     ["shift", say({ type: "shift", actorId: "brenna", amount: 3, total: 9, reason: "gained", sourceId: "lurker" })],
     ["shot", say({ type: "shot", actorId: "brenna", optionId: "item:0", label: "Longbow", left: 11 })],
     [
@@ -906,6 +907,15 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   const highGround = { ...fiveE, combat: { ...fiveE.combat!, elevation: { levelHeight: 5 } } };
   assert.equal(line(highGround, state, { type: "fell", targetId: "lurker", levels: 2 }), "Thorn Lurker falls 10 ft.");
   assert.equal(line(fiveE, state, { type: "fell", targetId: "lurker", levels: 2 }), "Thorn Lurker falls 2 levels.");
+  // A flier going up or down a level where it stands (1.109), in the same distance.
+  assert.equal(
+    line(highGround, state, { type: "flew", actorId: "lurker", from: 0, to: 1, cost: 1, left: 5 }),
+    "Thorn Lurker flies up 5 ft for 1 and has 5 left.",
+  );
+  assert.equal(
+    line(highGround, state, { type: "flew", actorId: "lurker", from: 2, to: 1, cost: 1, left: 0 }),
+    "Thorn Lurker flies down 5 ft for 1 and has 0 left.",
+  );
 
   // A fight that is still going says nothing, so nobody prints "ongoing" at a player.
   assert.equal(line(fiveE, state, { type: "outcome", outcome: "ongoing" }), null);

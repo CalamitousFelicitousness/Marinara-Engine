@@ -96,6 +96,39 @@ export function rulesetStepCost(grid: TacticalGrid, from: RulesetCombatCell, to:
   return climb === null ? null : rulesetCellEnterCost(grid, to.x, to.y) + climb;
 }
 
+/** How high somebody is, in the board's levels: a flier's altitude while it is up, or the ground under
+ *  them (1.109). */
+export function rulesetLevelOf(grid: TacticalGrid, combatant: RulesetCombatant): number {
+  const ground = typeof combatant.x === "number" ? elevationAt(grid, combatant.x, combatant.y!) : 0;
+  return combatant.altitude !== undefined && combatant.altitude > ground ? combatant.altitude : ground;
+}
+
+/** Whether a flier is up in the air above the ground under it (1.109). */
+export function rulesetAirborne(grid: TacticalGrid | undefined, combatant: RulesetCombatant): boolean {
+  if (!grid || combatant.altitude === undefined || typeof combatant.x !== "number") return false;
+  return combatant.altitude > elevationAt(grid, combatant.x, combatant.y!);
+}
+
+/**
+ * How far apart two combatants are, in cells (1.109): the board's own distance, or the height
+ * between them when one is up in the air and that is further. Two on the ground are as far apart
+ * as their cells, whatever the ground under them, exactly as before anybody flew.
+ */
+export function rulesetCombatantDistance(
+  state: RulesetEncounterState,
+  a: RulesetCombatant,
+  b: RulesetCombatant,
+): number {
+  const from = rulesetPositionOf(a);
+  const to = rulesetPositionOf(b);
+  if (!from || !to) return 0;
+  const flat = rulesetCellDistance(from, to);
+  const grid = state.board?.grid;
+  const levelCells = state.board?.levelCells;
+  if (!grid || !levelCells || !(rulesetAirborne(grid, a) || rulesetAirborne(grid, b))) return flat;
+  return Math.max(flat, Math.abs(rulesetLevelOf(grid, a) - rulesetLevelOf(grid, b)) * levelCells);
+}
+
 /** Whether a cell is water, which nobody walks into and a swimmer or a flier crosses (1.108). */
 function isWater(grid: TacticalGrid, x: number, y: number): boolean {
   return inBounds(grid, x, y) && grid.tiles[y]?.[x] === "water";
@@ -132,7 +165,14 @@ export function rulesetMoveStep(
 ): { mode: RulesetMoveMode; cost: number } | null {
   const speeds = mover.speeds ?? {};
   const options: Array<{ mode: RulesetMoveMode; cost: number | null }> = [];
-  if (isWater(grid, to.x, to.y)) {
+  // Up in the air (1.109) it only flies, a cell a step over anything not solid. Ground as high as
+  // it is, or higher, it lands on, exactly as a flier on the ground flies onto a cliff.
+  const altitude = mover.altitude;
+  if (altitude !== undefined && altitude > elevationAt(grid, from.x, from.y)) {
+    if (speeds.fly && !rulesetCellSolidFor(grid, to.x, to.y, mover)) {
+      options.push({ mode: "fly", cost: 1 });
+    }
+  } else if (isWater(grid, to.x, to.y)) {
     if (speeds.swim) options.push({ mode: "swim", cost: 1 });
     if (speeds.fly) options.push({ mode: "fly", cost: 1 });
   } else if (!rulesetCellBlocked(grid, to.x, to.y)) {
@@ -318,7 +358,14 @@ export function rulesetThreateningEnemies(
     const at = rulesetPositionOf(combatant);
     const strike = rulesetOpportunityAttack(combatant);
     if (!at || !strike) continue;
-    threats.push({ combatant, at, reach: Math.max(1, strike.reach ?? 1) });
+    const reach = Math.max(1, strike.reach ?? 1);
+    // Somebody up in the air too high above (or below) to be reached is no threat to them (1.109).
+    const grid = state.board?.grid;
+    const levelCells = state.board?.levelCells;
+    if (grid && levelCells && (rulesetAirborne(grid, mover) || rulesetAirborne(grid, combatant))) {
+      if (Math.abs(rulesetLevelOf(grid, mover) - rulesetLevelOf(grid, combatant)) * levelCells > reach) continue;
+    }
+    threats.push({ combatant, at, reach });
   }
   return threats;
 }

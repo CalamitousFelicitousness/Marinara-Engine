@@ -44,9 +44,12 @@ import {
   rulesetOnOwnTurn,
 } from "./encounter.js";
 import {
+  rulesetAirborne,
   rulesetAreaCells,
   rulesetCellCover,
   rulesetCellDistance,
+  rulesetCombatantDistance,
+  rulesetLevelOf,
   rulesetLineOfSight,
   rulesetOpportunityAttack,
   rulesetPositionOf,
@@ -195,6 +198,12 @@ const RULESET_AIM_SCAN_CEILING = 64 * 64;
  *  actions use (`standard:dodge`). */
 export const RULESET_MOVE_OPTION = "move:walk";
 export const RULESET_STAND_OPTION = "move:stand";
+/** A flier going up a level, or down one, where it stands (1.109). */
+export const RULESET_FLY_UP_OPTION = "move:fly-up";
+export const RULESET_FLY_DOWN_OPTION = "move:fly-down";
+/** How high above the ground under it a flier may go, in levels. A board's own heights are a handful
+ *  of levels, so this is well above anything worth being out of reach over. */
+export const RULESET_FLY_CEILING = 20;
 
 /** What one option may be pointed at, in cells. `sight` is whether something solid between the two
  *  of them stops it. Null when this fight measures nothing. */
@@ -274,15 +283,16 @@ export function rulesetTargetRefusal(
   const grid = state.board?.grid;
   if (!from || !to || !grid) return null;
   if (actorId === targetId) return null;
-  const away = rulesetCellDistance(from, to);
-  // A shot carries further down from higher ground when the ruleset says so (combat C6b).
   const target = rulesetCombatant(state, targetId);
+  // Height counts where somebody is up in the air (1.109).
+  const away = target ? rulesetCombatantDistance(state, rulesetCombatant(state, actorId)!, target) : 0;
+  // A shot carries further down from higher ground when the ruleset says so (combat C6b).
   const further =
     reach.shot && target && rulesetAbove(state, rulesetCombatant(state, actorId), target)
       ? (state.board?.rangeBonus ?? 0)
       : 0;
   if (away > reach.max + further) return "out-of-reach";
-  if (away > 1 && !rulesetLineOfSight(grid, from, to)) return "no-line-of-sight";
+  if (rulesetCellDistance(from, to) > 1 && !rulesetLineOfSight(grid, from, to)) return "no-line-of-sight";
   return null;
 }
 
@@ -448,7 +458,8 @@ export function rulesetAbove(
   const grid = state.board?.grid;
   const from = rulesetPositionOf(actor);
   const at = rulesetPositionOf(target);
-  return !!grid && !!from && !!at && elevationAt(grid, from.x, from.y) > elevationAt(grid, at.x, at.y);
+  // A flier is as high as it flies (1.109).
+  return !!grid && !!actor && !!from && !!at && rulesetLevelOf(grid, actor) > rulesetLevelOf(grid, target);
 }
 
 /**
@@ -1240,7 +1251,9 @@ function foeAdjacent(state: RulesetEncounterState, actor: RulesetCombatant, at: 
   return state.combatants.some((combatant) => {
     if (combatant.side === actor.side || !rulesetCombatStanding(combatant)) return false;
     const cell = rulesetPositionOf(combatant);
-    return !!cell && rulesetCellDistance(at, cell) <= 1;
+    if (!cell || rulesetCellDistance(at, cell) > 1) return false;
+    // A foe beside the cell and far below (or above) is not beside them (1.109).
+    return rulesetCombatantDistance(state, actor, combatant) <= 1;
   });
 }
 
@@ -1257,7 +1270,7 @@ function distanceModes(
   const from = rulesetPositionOf(actor);
   const to = rulesetPositionOf(target);
   if (!positioned(state) || !from || !to) return null;
-  const away = rulesetCellDistance(from, to);
+  const away = rulesetCombatantDistance(state, actor, target);
   const adjacent = away <= 1;
   const reach = rulesetOptionReach(state, actor.id, optionId);
   const ranged = combat.ranged;
@@ -1282,7 +1295,7 @@ export function rulesetCriticalFromAdjacent(
 ): boolean {
   const from = rulesetPositionOf(actor);
   const to = rulesetPositionOf(target);
-  if (!positioned(state) || !from || !to || rulesetCellDistance(from, to) > 1) return false;
+  if (!positioned(state) || !from || !to || rulesetCombatantDistance(state, actor, target) > 1) return false;
   return rulesetCombatEffects(definition, combat, target, state).has("attacks-from-adjacent-critical");
 }
 
@@ -1337,9 +1350,30 @@ function movementOptions(
     ];
   }
   if (left < 1) return [];
+  const options: RulesetCombatOption[] = [];
   const cells = rulesetReachableCells(definition, state, actor.id);
-  if (cells.length === 0) return [];
-  return [{ id: RULESET_MOVE_OPTION, kind: "move", label: "Move", targets: { side: "self", count: 0 }, cells }];
+  if (cells.length > 0) {
+    options.push({ id: RULESET_MOVE_OPTION, kind: "move", label: "Move", targets: { side: "self", count: 0 }, cells });
+  }
+  // Up or down a level where it stands (1.109): a flier, on a board with levels, paying what a level
+  // is worth out of what is left of its flight.
+  const grid = state.board?.grid;
+  const levelCells = state.board?.levelCells;
+  const flight = actor.modeLeft?.fly ?? 0;
+  if (grid && levelCells && actor.speeds?.fly && flight >= levelCells && left >= levelCells) {
+    const ground = elevationAt(grid, actor.x!, actor.y!);
+    const level = rulesetLevelOf(grid, actor);
+    const fly = (id: string, label: string): RulesetCombatOption => ({
+      id,
+      kind: "move",
+      label,
+      targets: { side: "self", count: 0 },
+      movementCost: levelCells,
+    });
+    if (level < ground + RULESET_FLY_CEILING) options.push(fly(RULESET_FLY_UP_OPTION, "Fly up"));
+    if (rulesetAirborne(grid, actor)) options.push(fly(RULESET_FLY_DOWN_OPTION, "Fly down"));
+  }
+  return options;
 }
 
 /**

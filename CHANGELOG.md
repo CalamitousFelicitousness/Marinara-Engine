@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Updated the MCP SDK used by Claude agents and the developer MCP tool to 1.32.1, which fixes an advisory where its OAuth client could send credentials to an authorization server chosen by an MCP server.
+
 ## [2.5.0]
 
 - Release notes too long for a GitHub release are trimmed at a whole entry and end with a link to the full changelog, so publishing a large release such as this one no longer fails (#7146).

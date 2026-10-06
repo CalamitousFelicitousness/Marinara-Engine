@@ -1781,7 +1781,7 @@ test("Advanced Memory Decision connection is optional and persists for its chat"
 test("Advanced Memory offers automatic message visibility only in individual group chats", async ({
   page,
   request,
-}) => {
+}, info) => {
   const fixture = await createFixture(request);
   const soloResponse = await request.post("/api/chats", {
     data: { name: "Solo visibility proof", mode: "roleplay", characterIds: [fixture.character.id] },
@@ -1818,6 +1818,7 @@ test("Advanced Memory offers automatic message visibility only in individual gro
     await settings.getByText("Decide who sees new messages", { exact: true }).click();
     await expect.poll(async () => (await status()).settings.autoMessageVisibility).toBe(true);
     await expect(toggle).toBeChecked();
+    await captureThemes(page, info, "memory-message-visibility-on");
 
     expect(
       (await request.patch(`/api/chats/${fixture.chat.id}/metadata`, { data: { groupChatMode: "merged" } })).ok(),

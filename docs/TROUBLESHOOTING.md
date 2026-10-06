@@ -31,11 +31,26 @@ If Vite stops with `Reached heap limit` or `JavaScript heap out of memory`, the 
 
 Close other apps before retrying. Phones with less than about 3 GB of RAM can still run out of memory or be stopped by Android; keep the complete launcher output when reporting that case. Do not delete your chats or profile to repair a build failure.
 
-### Termux: missing multiplayer guest asset or incompatible Sharp
+### Termux: missing multiplayer guest asset
 
 If startup still reports a missing `packages/client/dist/multiplayer/guest.js` after rebuilding, update Engine and rerun `./start-termux.sh`. The launcher now runs the complete low-memory client build, including the guest assets checked at startup. You do not need to enable multiplayer to repair this build error.
 
-If image processing reports that Sharp cannot load on Android, update Engine and let the launcher reinstall dependencies. The matching `@img/sharp-wasm32` fallback is included as a regular dependency so frozen installs and updates retain it. Avoid replacing it with an unrelated Sharp version. Keep the complete error output if the problem persists.
+### Termux: server stops when you open Engine, or Sharp cannot load
+
+Sharp is the image library Engine uses for thumbnails and sprites. On Android it runs through a WebAssembly fallback. Updating in place from 2.4.6 could leave part of that fallback uninstalled, and the server then stopped the first time a browser opened Engine.
+
+Update Engine and let the launcher reinstall dependencies. The update installs the missing part, and Engine keeps it through later updates. If the server keeps stopping when you open Engine before you can update, repair the install by hand in Termux:
+
+```bash
+cd ~/Marinara-Engine
+rm -f node_modules/.modules.yaml
+SHARP_IGNORE_GLOBAL_LIBVIPS=1 pnpm --config.trustPolicy=off --config.confirmModulesPurge=false install --frozen-lockfile --prefer-offline
+./start-termux.sh
+```
+
+This clears pnpm's outdated install record and reinstalls the dependencies. Your chats and settings are not touched.
+
+If Sharp still cannot load, Engine now keeps running with image processing off: images show at full size instead of as thumbnails, and sprite generation and background removal are unavailable. Do not replace Sharp with an unrelated version. Keep the complete error output when you report the problem.
 
 ### Blank page or JavaScript served as HTML after an update
 

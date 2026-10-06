@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Coming back to a chat before its Expression agent finished no longer shows the previous turn's sprites when **Only show active sprites** is on. Switching chats during a Game translation no longer leaves that message marked as translating. On computers, the **Trackers** button starts in the top-right corner when the Tracker Panel is on the left, so it no longer covers the panel's header and settings button (#7146).
+
 - Game Mode combat works on phones and tablets that open Marinara over plain HTTP, such as a LAN address or Tailscale. Every action in a fight used to fail there before reaching the server, so battles in new games could not continue (#7146).
 
 - On Android (Termux), updating to this version no longer runs out of memory while building the app. Every build path, including the first start after an automatic update from v2.4.6, the in-app updater and switching update channels, now gives the build the memory it needs (up to 1.5 GB, at most half the phone's memory) without raising the running server's limit, and a memory limit you set yourself still wins. Two Game Mode labels that showed raw text keys now show real text, and Decision model warnings use your theme's colors instead of a fixed yellow that was hard to read in light mode (#7146).

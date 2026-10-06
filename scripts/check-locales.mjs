@@ -1,5 +1,5 @@
-import { readFile } from "node:fs/promises";
-import { basename, extname, join } from "node:path";
+import { readdir, readFile } from "node:fs/promises";
+import { basename, extname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -92,6 +92,23 @@ async function readLocale(filename) {
   return { code, filename, messages };
 }
 
+// A literal key the client renders but English lacks shows up as the raw key text.
+async function findMissingUsedKeys(keys) {
+  const known = new Set(keys.map((key) => key.replace(/_(?:zero|one|two|few|many|other)$/u, "")));
+  const clientSource = join(ROOT, "packages", "client", "src");
+  const missing = [];
+  for (const entry of await readdir(clientSource, { recursive: true, withFileTypes: true })) {
+    if (!entry.isFile() || !/\.tsx?$/u.test(entry.name)) continue;
+    const file = join(entry.parentPath, entry.name);
+    // Skip comment lines, which show example keys.
+    const source = (await readFile(file, "utf8")).replace(/^\s*(?:\*|\/\/).*$/gmu, "");
+    for (const [, key] of source.matchAll(/(?<![\w.$])(?:t|localizeUi)\(\s*["'`]([a-z]\w*(?:\.\w+)+)["'`]/gu)) {
+      if (!known.has(key)) missing.push(`${relative(ROOT, file)}: ${key}`);
+    }
+  }
+  return missing;
+}
+
 async function main() {
   // Community packs and their coverage/token validator live on docs-i18n/ui.
   const canonical = await readLocale(`${DEFAULT_LOCALE}.json`);
@@ -101,6 +118,10 @@ async function main() {
   }
 
   for (const key of canonicalKeys) extractTokens(canonical.messages[key], `${canonical.filename}: ${key}`);
+  const missing = await findMissingUsedKeys(canonicalKeys);
+  if (missing.length > 0) {
+    throw new Error(`keys used in the client are missing from ${canonical.filename}:\n${missing.join("\n")}`);
+  }
   console.info(`[localization] en: ${canonicalKeys.length} canonical keys`);
 }
 

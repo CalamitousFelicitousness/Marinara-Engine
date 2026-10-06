@@ -25,8 +25,13 @@ export async function openChatSettings(page: Page): Promise<Locator> {
   return settings;
 }
 
+/** The open/close toggle in a drawer's own header (not one of a nested drawer). */
+export function drawerToggle(drawer: Locator) {
+  return drawer.locator(":scope > .mari-drawer__header [data-drawer-toggle]");
+}
+
 async function expand(drawer: Locator) {
-  const header = drawer.locator(":scope > .mari-drawer__header [data-drawer-toggle]");
+  const header = drawerToggle(drawer);
   await expect(header).toBeVisible();
   if ((await header.getAttribute("aria-expanded")) !== "true") await header.click();
   await expect(header).toHaveAttribute("aria-expanded", "true");

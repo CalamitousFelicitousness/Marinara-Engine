@@ -159,7 +159,8 @@ for (const kind of ["chat", "character", "persona"] as const) {
         await expect.poll(scrollTop).toBe(0);
         await touch(panel, "touchend", [primary], [secondary]);
       } else {
-        // Escape removes the preview and cancels without moving the row or opening its editor.
+        // Escape removes the preview and cancels without moving the row or opening its editor,
+        // and without also closing the list's panel.
         const originalDraggable = await source.getAttribute("draggable");
         await page.mouse.move(primary.clientX, primary.clientY);
         await page.mouse.down();
@@ -167,6 +168,8 @@ for (const kind of ["chat", "character", "persona"] as const) {
         await expect(preview).toBeVisible();
         await page.keyboard.press("Escape");
         await expect(preview).toHaveCount(0);
+        // A closed panel stays mounted but hidden (aria-hidden and inert), so check that nothing hid it.
+        await expect(panel.locator("xpath=ancestor-or-self::*[@aria-hidden='true']")).toHaveCount(0);
         await page.mouse.up();
         await expect(source).toHaveAttribute("draggable", originalDraggable!);
         // Wait for the row to settle after removing the root drop zone before sampling coordinates.

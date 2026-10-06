@@ -45,7 +45,7 @@ for (const provider of ["anthropic", "claude_subscription"] as const) {
       await reasoning.scrollIntoViewIfNeeded();
       await page.screenshot({ path: info.outputPath("opus55-reasoning-options.png"), animations: "disabled" });
       await expect(page.getByRole("button", { name: "Off", exact: true })).toHaveCount(0);
-      const medium = reasoning.getByRole("button", { name: "Medium", exact: true });
+      const medium = reasoning.getByRole("button", { name: "medium", exact: true });
       await medium.click();
       await expect(medium).toHaveAttribute("aria-pressed", "true");
       await page.getByRole("button", { name: "Save", exact: true }).click();

@@ -101,7 +101,7 @@ import { PromptPresetSection } from "../../features/chat-settings/sections/Promp
 import { SceneInstructionsSection } from "../../features/chat-settings/sections/SceneInstructionsSection";
 import { TranslationSection } from "../../features/chat-settings/sections/TranslationSection";
 import { CapabilityElement } from "../capabilities/CapabilityElement";
-import type { AvatarCrop } from "@marinara-engine/shared";
+import type { AvatarCrop, MultiplayerHostAction } from "@marinara-engine/shared";
 import {
   DEFAULT_GAME_DICE_POOL_AGE_TURNS as DEFAULT_DICE_POOL_AGE_TURNS,
   DEFAULT_GAME_DICE_POOL_WINDOW as DEFAULT_DICE_POOL_WINDOW,
@@ -357,6 +357,8 @@ import {
   MultiplayerPlayersSection,
   type MultiplayerGameStart,
 } from "../../features/multiplayer/MultiplayerHostControls";
+import { multiplayerGuestErrorLabelKey } from "../../features/multiplayer/multiplayer-guest-labels";
+import { multiplayerActionError, useMultiplayerMutation } from "../../hooks/use-multiplayer";
 
 const QuickPresetSectionsEditor = lazy(() =>
   import("../presets/PresetEditor").then((module) => ({ default: module.QuickPresetSectionsEditor })),
@@ -930,6 +932,7 @@ export function ChatSettingsDrawer({
   const agentSuiteCloseGuardRef = useRef<(() => Promise<boolean>) | null>(null);
   const drawerClosingRef = useRef(false);
   const updateChat = useUpdateChat();
+  const roomRoster = useMultiplayerMutation<unknown, MultiplayerHostAction>("/multiplayer/host/actions");
   const updateMeta = useUpdateChatMetadata();
   const updateTranslationMeta = useUpdateChatMetadata({ serialize: true });
   // Generation waits for queued saves, so the next reply uses the narration mode shown here (#6959).
@@ -2796,7 +2799,49 @@ export function ChatSettingsDrawer({
     });
   };
 
+  // A removed character also leaves the chat's sprite and inactive-character lists.
+  const clearRemovedCharacterMetadata = (charId: string) => {
+    if (spriteCharacterIds.includes(charId)) {
+      const nextSpritePlacements = { ...normalizeSpritePlacements(metadata.spritePlacements) };
+      delete nextSpritePlacements[charId];
+      delete nextSpritePlacements[`${charId}:expressions`];
+      delete nextSpritePlacements[`${charId}:full-body`];
+      updateMeta.mutate({
+        id: chat.id,
+        spriteCharacterIds: spriteCharacterIds.filter((id) => id !== charId),
+        spritePlacements: nextSpritePlacements,
+      });
+    }
+    if (inactiveCharacterIds.includes(charId)) {
+      updateMeta.mutate({
+        id: chat.id,
+        inactiveCharacterIds: inactiveCharacterIds.filter((id) => id !== charId),
+      });
+    }
+  };
+
+  // A hosted room keeps its AI roster in the room, so roster changes go through the room and replies keep working.
+  const hostedRoom = metadata.multiplayer?.role === "host";
+  const changeRoomCharacters = async (add: string[], remove: string[]) => {
+    try {
+      for (const characterId of remove) {
+        await roomRoster.mutateAsync({ type: "remove-character", characterId });
+        clearRemovedCharacterMetadata(characterId);
+      }
+      for (const characterId of add)
+        await roomRoster.mutateAsync({ type: "add-character", characterId, role: "character" });
+    } catch (error) {
+      const code = multiplayerActionError(error);
+      toast.error(t(code === "identity-conflict" ? multiplayerGuestErrorLabelKey(code) : "multiplayer.actionFailed"));
+    }
+  };
+
   const toggleCharacter = (charId: string) => {
+    if (hostedRoom) {
+      const removing = chatCharIds.includes(charId);
+      void changeRoomCharacters(removing ? [] : [charId], removing ? [charId] : []);
+      return;
+    }
     const current = [...chatCharIds];
     const idx = current.indexOf(charId);
     if (idx >= 0) {
@@ -2807,23 +2852,7 @@ export function ChatSettingsDrawer({
           onSuccess: () => syncGamePartyMetadata(current),
         },
       );
-      if (spriteCharacterIds.includes(charId)) {
-        const nextSpritePlacements = { ...normalizeSpritePlacements(metadata.spritePlacements) };
-        delete nextSpritePlacements[charId];
-        delete nextSpritePlacements[`${charId}:expressions`];
-        delete nextSpritePlacements[`${charId}:full-body`];
-        updateMeta.mutate({
-          id: chat.id,
-          spriteCharacterIds: spriteCharacterIds.filter((id) => id !== charId),
-          spritePlacements: nextSpritePlacements,
-        });
-      }
-      if (inactiveCharacterIds.includes(charId)) {
-        updateMeta.mutate({
-          id: chat.id,
-          inactiveCharacterIds: inactiveCharacterIds.filter((id) => id !== charId),
-        });
-      }
+      clearRemovedCharacterMetadata(charId);
     } else {
       current.push(charId);
       updateChat.mutate(
@@ -6172,7 +6201,8 @@ export function ChatSettingsDrawer({
                         <button
                           key={group.id}
                           onClick={() => {
-                            if (newIds.length > 0) {
+                            if (newIds.length > 0 && hostedRoom) void changeRoomCharacters(newIds, []);
+                            else if (newIds.length > 0) {
                               updateChat.mutate({ id: chat.id, characterIds: [...chatCharIds, ...newIds] });
                             }
                             setShowGroupPicker(false);

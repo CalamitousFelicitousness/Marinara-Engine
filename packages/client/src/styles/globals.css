@@ -6910,6 +6910,11 @@ strong {
     background-color: var(--marinara-page-backing, var(--marinara-topbar-surface)) !important;
   }
 
+  /* Home's browser chrome continues the TopBar, so it and its address row shade the same backing. */
+  .mari-home-browser-chrome {
+    --marinara-topbar-surface: var(--marinara-page-backing, var(--card));
+  }
+
   /*
    * WKWebView native backing color is set by the literal background-color in
    * index.html <style> (inline critical CSS — not cached by SW, always fresh).
@@ -7343,7 +7348,9 @@ strong {
   *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+    /* 0s, not a tiny duration: every element's initial transition-property is `all`, so any
+       nonzero duration here made a theme or accent change transition every property of every element. */
+    transition-duration: 0s !important;
   }
 }
 

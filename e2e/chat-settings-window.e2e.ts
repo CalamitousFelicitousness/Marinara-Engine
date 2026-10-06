@@ -102,6 +102,16 @@ async function openSettingsWindow(page: Page) {
   return settings;
 }
 
+/**
+ * After a chat switch. The window stays open while the next chat loads, but is not drawn until it has
+ * loaded, so its visibility then says nothing and clicking the button would close it. The button's
+ * expanded state is the open state; the button only appears once the chat has loaded.
+ */
+async function keepSettingsWindowOpen(page: Page) {
+  if ((await chatSettingsButton(page).getAttribute("aria-expanded")) !== "true") await openSettingsWindow(page);
+  await expect(settingsWindow(page)).toBeVisible();
+}
+
 async function box(locator: Locator): Promise<Box> {
   const value = await locator.boundingBox();
   expect(value).not.toBeNull();
@@ -226,11 +236,16 @@ test.describe("Chat Settings window on desktop", () => {
       await expect(hints).toHaveCount(0);
 
       second = await createChat(request, "conversation");
+      // A slow load holds the switch in the gap CI hit, where the open window is not drawn yet.
+      await page.route(`**/api/chats/${second.id}`, async (route) => {
+        await new Promise((resolve) => setTimeout(resolve, 1_000));
+        await route.continue();
+      });
       await setActiveChat(page, second.id);
-      if (!(await settings.isVisible())) await openSettingsWindow(page);
+      await keepSettingsWindowOpen(page);
       await expect(hints).toBeVisible();
       await setActiveChat(page, first.id);
-      if (!(await settings.isVisible())) await openSettingsWindow(page);
+      await keepSettingsWindowOpen(page);
       await expect(hints).toHaveCount(0);
     } finally {
       await request.delete(`/api/chats/${first.id}?force=true`);
@@ -473,7 +488,9 @@ test.describe("Chat Settings window on desktop", () => {
       const lockedBox = await box(settings);
       await resetIcon.click();
       const confirm = page.getByRole("dialog", { name: "Are you sure you want to reset the view?" });
-      await expect(confirm).toContainText("Every window and section goes back to its default place for this chat.");
+      await expect(confirm).toContainText(
+        "Every window, button, and section goes back to its default place for this chat.",
+      );
       await confirm.getByRole("button", { name: "Cancel", exact: true }).click();
       await expect(confirm).toHaveCount(0);
       await expect(resetIcon).toBeFocused();

@@ -184,7 +184,9 @@ test("Game finishes a rolled turn in one request, and leaves the shipped two-req
     const oneRequest = () => section.getByLabel("Finish rolled turns in one request", { exact: true });
     const narrateOutcomes = () => section.getByLabel("Narrate dice outcomes immediately", { exact: true });
     await expect(oneRequest()).not.toBeChecked();
-    await expect(section).toContainText("The Game Master never sees a number before it decides what happens");
+    await expect(section).toContainText(
+      "the Game Master can't steer the result because it never sees the number first",
+    );
     await expect(narrateOutcomes()).toBeEnabled();
     await expect(narrateOutcomes()).toBeChecked();
     await expect(section).not.toContainText("Not used while one-request dice is on");
@@ -477,7 +479,7 @@ test("Game spends the sighted pool in order and leaves an overflowed check for t
     let section = await openTools();
     const dicePool = () => section.getByLabel("Let the Game Master see one die of each size", { exact: true });
     await expect(dicePool()).not.toBeChecked();
-    await expect(section).toContainText("it can steer outcomes in a way the blind forms do not allow");
+    await expect(section).toContainText("it can steer the outcome more than the other options allow");
     await section
       .locator("label")
       .filter({ has: page.getByLabel("Let the Game Master see one die of each size", { exact: true }) })

@@ -7,7 +7,7 @@
 // viewport grows again.
 // ──────────────────────────────────────────────
 import { DRAWER_WINDOW_PREFIX } from "@marinara-engine/shared";
-import { BUBBLE_SNAP_GAP_PX, type BubbleRect } from "./window-bubble-snap";
+import { BUBBLE_SNAP_GAP_PX, snapBubble, type BubbleRect, type SnapGuide } from "./window-bubble-snap";
 export { getDrawerWindowId } from "@marinara-engine/shared";
 
 export const FLOATING_WINDOW_LAYOUT_VERSION = 1 as const;
@@ -68,6 +68,72 @@ export function clampWindowBubble(
   };
 }
 
+/**
+ * Where a `size` bubble at `point` can sit inside `bounds` without covering any of `occupied`: `point` itself
+ * when free, else the free spot nearest `near` that lines up with `point` or sits a snapping gap from a
+ * neighbour. Returns `point` when nothing is free.
+ */
+function findFreeBubblePoint(
+  point: WindowPoint,
+  occupied: readonly BubbleRect[],
+  bounds: WindowBounds,
+  size: number,
+  near: WindowPoint = point,
+): WindowPoint {
+  const free = (candidate: WindowPoint) =>
+    occupied.every(
+      (other) =>
+        candidate.x + size <= other.x ||
+        candidate.x >= other.x + other.width ||
+        candidate.y + size <= other.y ||
+        candidate.y >= other.y + other.height,
+    );
+  if (free(point)) return point;
+  // Keep the snapping gap when possible; a tight space should not hide a button just to keep the gap.
+  for (const gap of [BUBBLE_SNAP_GAP_PX, 0]) {
+    const xs = new Set([point.x, bounds.left, bounds.right - size]);
+    const ys = new Set([point.y, bounds.top, bounds.bottom - size]);
+    for (const other of occupied) {
+      xs.add(other.x - size - gap);
+      xs.add(other.x + other.width + gap);
+      ys.add(other.y - size - gap);
+      ys.add(other.y + other.height + gap);
+    }
+    const candidates = [...xs].flatMap((x) => [...ys].map((y) => ({ x, y })));
+    const distance = (candidate: WindowPoint) => (candidate.x - near.x) ** 2 + (candidate.y - near.y) ** 2;
+    candidates.sort((a, b) => distance(a) - distance(b));
+    const available = candidates.find(
+      (candidate) =>
+        candidate.x >= bounds.left &&
+        candidate.x + size <= bounds.right &&
+        candidate.y >= bounds.top &&
+        candidate.y + size <= bounds.bottom &&
+        free(candidate),
+    );
+    if (available) return available;
+  }
+  return point;
+}
+
+/**
+ * Where a dragged bubble lands: snapped into line with the `others`, but never on top of one, which would
+ * hide it. A drop over another bubble lands beside it instead, on the side nearest the drop.
+ */
+export function dropWindowBubble(
+  raw: WindowPoint,
+  others: readonly BubbleRect[],
+  bounds: WindowBounds,
+  size: number,
+): { point: WindowPoint; guides: SnapGuide[] } {
+  const snapped = snapBubble({ ...raw, width: size, height: size }, others);
+  const point = clampWindowBubble(snapped, bounds, size);
+  const free = findFreeBubblePoint(point, others, bounds, size, raw);
+  if (free === point) return { point, guides: snapped.guides };
+  // Moved aside: show the lines it keeps with its neighbours there.
+  const aside = snapBubble({ ...free, width: size, height: size }, others);
+  return { point: free, guides: aside.x === free.x && aside.y === free.y ? aside.guides : [] };
+}
+
 /** Temporary visible positions: a closing sidebar restores the saved points, even for locked buttons. */
 export function placeWindowBubbles(
   bubbles: ReadonlyMap<string, { point: WindowPoint; bounds: WindowBounds; size: number }>,
@@ -86,43 +152,7 @@ export function placeWindowBubbles(
   // Keep buttons that still fit exactly where they were. Squeezed buttons find nearby free space.
   entries.sort((a, b) => Number(a.movable) - Number(b.movable) || a.id.localeCompare(b.id));
   for (const { id, clamped, bounds, size, movable } of entries) {
-    let next = clamped;
-    const free = (candidate: WindowPoint) =>
-      occupied.every(
-        (other) =>
-          candidate.x + size <= other.x ||
-          candidate.x >= other.x + other.width ||
-          candidate.y + size <= other.y ||
-          candidate.y >= other.y + other.height,
-      );
-    if (movable && !free(next)) {
-      // Keep the snapping gap when possible; a tight space should not hide a button just to keep the gap.
-      for (const gap of [BUBBLE_SNAP_GAP_PX, 0]) {
-        const xs = new Set([clamped.x, bounds.left, bounds.right - size]);
-        const ys = new Set([clamped.y, bounds.top, bounds.bottom - size]);
-        for (const other of occupied) {
-          xs.add(other.x - size - gap);
-          xs.add(other.x + other.width + gap);
-          ys.add(other.y - size - gap);
-          ys.add(other.y + other.height + gap);
-        }
-        const candidates = [...xs].flatMap((x) => [...ys].map((y) => ({ x, y })));
-        const distance = (candidate: WindowPoint) => (candidate.x - clamped.x) ** 2 + (candidate.y - clamped.y) ** 2;
-        candidates.sort((a, b) => distance(a) - distance(b));
-        const available = candidates.find(
-          (candidate) =>
-            candidate.x >= bounds.left &&
-            candidate.x + size <= bounds.right &&
-            candidate.y >= bounds.top &&
-            candidate.y + size <= bounds.bottom &&
-            free(candidate),
-        );
-        if (available) {
-          next = available;
-          break;
-        }
-      }
-    }
+    const next = movable ? findFreeBubblePoint(clamped, occupied, bounds, size) : clamped;
     placed.set(id, next);
     occupied.push({ ...next, width: size, height: size });
   }

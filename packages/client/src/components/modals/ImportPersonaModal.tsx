@@ -8,6 +8,7 @@ import { Download, FileJson, CheckCircle, XCircle, Loader2 } from "lucide-react"
 import { useQueryClient } from "@tanstack/react-query";
 import { characterKeys } from "../../hooks/use-characters";
 import { api, formatFirstApiValidationIssue } from "../../lib/api-client";
+import { isOversizedMarinaraJson } from "../../lib/character-import";
 import { useTranslation as useUiTranslation } from "react-i18next";
 
 interface Props {
@@ -41,8 +42,9 @@ export function ImportPersonaModal({ open, onClose }: Props) {
       try {
         // Marinara native packages are .marinara files (zip with data.json +
         // avatar binary). Detect via the zip signature so a renamed file
-        // still works.
-        if (await isZipFile(file)) {
+        // still works. A native .marinara.json too large for a JSON request
+        // is uploaded the same way.
+        if ((await isZipFile(file)) || (await isOversizedMarinaraJson(file))) {
           const form = new FormData();
           form.append("file", file, file.name);
           form.append(

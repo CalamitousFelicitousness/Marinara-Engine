@@ -150,3 +150,31 @@ export async function* streamZip(
   end.writeUInt32LE(directoryOffset, 16);
   yield end;
 }
+
+/** Reserve a file name in one archive: a repeated name gets " (2)", " (3)" … instead of replacing an earlier file. */
+export function uniqueExportName(used: Set<string>, stem: string, extension: string): string {
+  let name = `${stem}.${extension}`;
+  for (let copy = 2; used.has(name.toLowerCase()); copy++) name = `${stem} (${copy}).${extension}`;
+  used.add(name.toLowerCase());
+  return name;
+}
+
+/** Stream one bulk export ZIP, reading each file only as it is written; repeated names get a number. */
+export function streamExportZip(
+  files: AsyncIterable<{ stem: string; extension: string; content: AsyncIterable<string> }>,
+): Readable {
+  return toByteStream(
+    streamZip(
+      (async function* () {
+        const used = new Set<string>();
+        for await (const file of files) {
+          yield { name: uniqueExportName(used, file.stem, file.extension), content: file.content };
+        }
+      })(),
+    ),
+  );
+}
+
+export async function* singleChunk(text: string) {
+  yield text;
+}

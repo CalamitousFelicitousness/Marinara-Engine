@@ -128,20 +128,22 @@ for (const mode of ["conversation", "roleplay"] as const) {
         });
 
       if (!mobile) {
+        // Roleplay also shows the one-time Chat Settings move tip as a note (118b7d3fc); check the note viewer itself.
+        const noteViewer = page.locator('[role="note"][data-chat-floating-panel]');
         // Keyboard activation does not send an outside pointerdown to dismiss the note viewer.
         const noteIndicator = messageRow.getByRole("button", { name: "Show private note", exact: true });
         const marksAction = messageRow.getByRole("button", { name: "Bookmark, pin or note" });
         await noteIndicator.press("Enter");
-        await expect(page.getByRole("note")).toContainText("Synthetic private note.");
+        await expect(noteViewer).toContainText("Synthetic private note.");
         await marksAction.press("Enter");
         await marksMenu.getByRole("textbox", { name: "Private note" }).fill("");
         await marksMenu.getByRole("button", { name: "Save note" }).press("Enter");
         await expect(noteIndicator).toHaveCount(0);
-        await expect(page.getByRole("note")).toHaveCount(0);
+        await expect(noteViewer).toHaveCount(0);
         await marksMenu.getByRole("textbox", { name: "Private note" }).fill("Synthetic private note.");
         await marksMenu.getByRole("button", { name: "Save note" }).press("Enter");
         await expect(noteIndicator).toHaveAttribute("aria-expanded", "false");
-        await expect(page.getByRole("note")).toHaveCount(0);
+        await expect(noteViewer).toHaveCount(0);
         await page.keyboard.press("Escape");
       }
 

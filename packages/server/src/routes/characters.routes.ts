@@ -69,8 +69,9 @@ import { join } from "path";
 import { DATA_DIR } from "../utils/data-dir.js";
 import {
   createJsonSlot,
+  singleChunk,
+  streamExportZip,
   streamJsonWithSlot,
-  streamZip,
   toByteStream,
   type JsonSlotPart,
 } from "../utils/export-stream.js";
@@ -722,27 +723,6 @@ function nativeExportImageParts(
 /** Stream a native export as JSON text: compact for single downloads, indented inside bulk ZIPs as before. */
 function streamNativeExport({ envelope, slot, parts }: NativeExport, space = 0) {
   return streamJsonWithSlot(envelope, slot, parts, space);
-}
-
-/** Stream one bulk export ZIP; repeated names get a number instead of replacing an earlier file. */
-function streamExportZip(files: AsyncIterable<{ stem: string; extension: string; content: AsyncIterable<string> }>) {
-  return toByteStream(
-    streamZip(
-      (async function* () {
-        const used = new Set<string>();
-        for await (const file of files) {
-          let name = `${file.stem}.${file.extension}`;
-          for (let copy = 2; used.has(name.toLowerCase()); copy++) name = `${file.stem} (${copy}).${file.extension}`;
-          used.add(name.toLowerCase());
-          yield { name, content: file.content };
-        }
-      })(),
-    ),
-  );
-}
-
-async function* singleChunk(text: string) {
-  yield text;
 }
 
 async function buildNativeCharacterExport(

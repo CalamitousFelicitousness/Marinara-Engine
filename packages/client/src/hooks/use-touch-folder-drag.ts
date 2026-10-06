@@ -471,7 +471,10 @@ export function useTouchFolderDrag({
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
-      if (event.key === "Escape") cancelTouchDrag(false);
+      if (event.key !== "Escape" || !dragRef.current) return;
+      // Heard in the capture phase and marked handled, so a side panel's Escape-to-close leaves it alone.
+      event.preventDefault();
+      cancelTouchDrag(false);
     },
     [cancelTouchDrag],
   );
@@ -487,7 +490,7 @@ export function useTouchFolderDrag({
     window.addEventListener("pagehide", handleInterruptedTouchDrag);
     window.addEventListener("mousemove", handleMouseMove);
     window.addEventListener("mouseup", handleMouseUp);
-    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown, { capture: true });
     removeListenersRef.current = () => {
       window.removeEventListener("touchstart", handleTouchStart, { capture: true });
       window.removeEventListener("touchmove", handleTouchMove);
@@ -498,7 +501,7 @@ export function useTouchFolderDrag({
       window.removeEventListener("pagehide", handleInterruptedTouchDrag);
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
-      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keydown", handleKeyDown, { capture: true });
     };
   }, [
     handleContextMenu,

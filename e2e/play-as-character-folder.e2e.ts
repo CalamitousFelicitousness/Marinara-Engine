@@ -1,6 +1,7 @@
 // #7093: with "Show characters in Persona pickers" on, opening a folder under "Play as a character" let a
 // cropped portrait escape its avatar slot and cover the whole picker. Both persona pickers are covered: the
 // new-chat setup and Chat Settings.
+// #7151: titles distinguish duplicate character names; blank titles retain the localized source fallback.
 import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { openChatSettings } from "./chat-settings-tools.js";
@@ -11,9 +12,14 @@ const avatarPath = "/api/avatars/file/play-as-character-7093.png";
 const longName = "Wandering cartographer of the very long and winding northern coastline";
 // A large portrait with saved crops in the current and legacy formats, plus a character with no portrait.
 const seededCharacters = [
-  { name: "Cropped portrait", avatarPath, crop: { srcX: 0.25, srcY: 0.1, srcWidth: 0.5, srcHeight: 1 / 3 } },
-  { name: "Zoomed portrait", avatarPath, crop: { zoom: 2.5, offsetX: 10, offsetY: -5 } },
-  { name: longName, avatarPath: null, crop: null },
+  {
+    name: "Portrait guide",
+    comment: "Coast version",
+    avatarPath,
+    crop: { srcX: 0.25, srcY: 0.1, srcWidth: 0.5, srcHeight: 1 / 3 },
+  },
+  { name: "Portrait guide", comment: "Mountain version", avatarPath, crop: { zoom: 2.5, offsetX: 10, offsetY: -5 } },
+  { name: longName, comment: "   ", avatarPath: null, crop: null },
 ];
 
 type Seeded = { chatId: string; groupId: string; characterIds: string[]; folderName: string };
@@ -34,6 +40,7 @@ async function seed(page: Page, request: APIRequestContext): Promise<Seeded> {
     const response = await request.post("/api/characters", {
       data: {
         ...(character.avatarPath ? { avatarPath: character.avatarPath } : {}),
+        comment: character.comment,
         data: { name: character.name, ...(character.crop ? { extensions: { avatarCrop: character.crop } } : {}) },
       },
     });
@@ -87,7 +94,11 @@ async function openFolder(scope: Locator, folderName: string) {
   await folder.scrollIntoViewIfNeeded();
   await folder.click();
   await expect(folder).toHaveAttribute("aria-expanded", "true");
-  const rows = seededCharacters.map((character) => picker.getByRole("button", { name: character.name }));
+  const rows = seededCharacters.map((character, index) =>
+    picker
+      .getByRole("button", { name: character.name })
+      .nth(seededCharacters.slice(0, index).filter((other) => other.name === character.name).length),
+  );
   for (const row of rows) await expect(row).toBeVisible();
   return { picker, list, playAs, folder, rows };
 }
@@ -170,6 +181,9 @@ test("new chat setup keeps Play as a character folders usable", async ({ page, r
     await expectReachable([picker.getByPlaceholder("Search personas", { exact: true }), playAs, folder, ...rows, next]);
     await expectNoSidewaysScroll(page, list);
     await page.screenshot({ path: info.outputPath("setup-folder-open.png"), animations: "disabled" });
+    for (const [index, row] of rows.entries()) {
+      await expect(row).toContainText(seededCharacters[index]!.comment.trim() || "Character");
+    }
 
     await rows[0]!.click();
     await expect(rows[0]!).toHaveAttribute("aria-pressed", "true");
@@ -205,12 +219,16 @@ test("Chat Settings keeps Play as a character folders usable", async ({ page, re
     ]);
     await expectNoSidewaysScroll(page, list);
     await page.screenshot({ path: info.outputPath("settings-folder-open.png"), animations: "disabled" });
+    for (const [index, row] of rows.entries()) {
+      await expect(row).toContainText(seededCharacters[index]!.comment.trim() || "Character");
+    }
 
     // The chosen character then shows above the picker in the same small round slot.
     await rows[0]!.click();
     await expect(picker).toHaveCount(0);
     const change = section.getByRole("button", { name: /Change\s+Persona/ });
     await expect(change).toBeVisible();
+    await expect(section.getByText("Coast version", { exact: true })).toBeVisible();
     await expectAvatarsInSlots(section, 1);
     await expectReachable([change]);
     expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);

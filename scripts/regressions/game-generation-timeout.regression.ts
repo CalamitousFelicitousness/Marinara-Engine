@@ -44,15 +44,17 @@ const server = createServer((request, response) => {
 await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
 const { port } = server.address() as AddressInfo;
 
-const generate = (route: string) => {
+// By default like Game setup with streaming on: content tokens arrive through onToken. `totalCapMs` is
+// like the image-prompt calls: no onToken and a fixed cap, on a provider that streams anyway.
+const generate = (route: string, totalCapMs?: number) => {
   const provider = createLLMProvider("custom", `http://127.0.0.1:${port}/${route}`, "", null, null, null, false, true);
   const started = Date.now();
-  // Like Game setup with streaming on: content tokens arrive through onToken.
   return runGameChatComplete(
     provider,
     [{ role: "user", content: "Set up the game." }],
-    { model: "qwen-reasoner", stream: true, onToken: () => undefined },
+    { model: "qwen-reasoner", stream: true, ...(totalCapMs ? {} : { onToken: () => undefined }) },
     "Game setup",
+    totalCapMs,
   ).then(
     (result) => ({ content: result.content, error: null, seconds: (Date.now() - started) / 1000 }),
     (error: Error) => ({ content: null, error, seconds: (Date.now() - started) / 1000 }),
@@ -65,7 +67,13 @@ try {
   const thinkingAtTen = generate("thinking");
   process.env.CHAT_GENERATION_TIMEOUT_MS = "20000";
   const stalledAtTwenty = generate("stalled");
-  const [shorter, thinking, longer] = await Promise.all([stalledAtTen, thinkingAtTen, stalledAtTwenty]);
+  const thinkingUnderTotalCap = generate("thinking", 10_000);
+  const [shorter, thinking, longer, capped] = await Promise.all([
+    stalledAtTen,
+    thinkingAtTen,
+    stalledAtTwenty,
+    thinkingUnderTotalCap,
+  ]);
 
   assert.equal(shorter.error?.name, "GameGenerationTimeoutError", "a 10 s setting ends a 12 s silence");
   assert.match(shorter.error.message, /^Game setup timed out after 10 seconds$/);
@@ -76,6 +84,9 @@ try {
 
   assert.equal(thinking.error, null, "12 s of thinking under a 10 s setting is progress, not silence");
   assert.equal(thinking.content, "done");
+
+  assert.equal(capped.error?.name, "GameGenerationTimeoutError", "thinking does not stretch a fixed total cap");
+  assert.ok(capped.seconds < QUIET_MS / 1000, `the total cap ends it on time (${capped.seconds}s)`);
   console.log("Game generations follow the Text generation timeout, and thinking counts as progress.");
 } finally {
   server.closeAllConnections();

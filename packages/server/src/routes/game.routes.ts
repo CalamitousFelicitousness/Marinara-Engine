@@ -3338,6 +3338,7 @@ function createGameGenerationWatchdog(controller: AbortController, label: string
 
 // Game calls wait for the Text generation timeout (CHAT_GENERATION_TIMEOUT_MS) between outputs, like
 // chats. Thinking is output too: a reasoning model can think for minutes before its first token (#7177).
+// Calls without onToken keep a total cap, even on providers that always stream their thinking.
 export async function runGameChatComplete(
   provider: { chatComplete(messages: ChatMessage[], options: ChatOptions): Promise<ChatCompletionResult> },
   messages: ChatMessage[],
@@ -3359,15 +3360,15 @@ export async function runGameChatComplete(
   const watchedOptions: ChatOptions = {
     ...options,
     signal: controller.signal,
-    onThinking: (chunk: string) => {
-      watchdog.reset();
-      onThinking?.(chunk);
-    },
     ...(onToken
       ? {
           onToken: async (chunk: string) => {
             watchdog.reset();
             await onToken(chunk);
+          },
+          onThinking: (chunk: string) => {
+            watchdog.reset();
+            onThinking?.(chunk);
           },
         }
       : {}),
@@ -7017,6 +7018,8 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
 
     try {
       for (let attempt = 1; attempt <= 2; attempt++) {
+        // A retry gets the full wait too, even when nothing streams to touch the timer.
+        setupAbort.touch();
         let result: ChatCompletionResult;
         try {
           result = await runGameChatComplete(

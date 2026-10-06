@@ -1204,6 +1204,17 @@ function entriesCarryExclusive(entries: unknown): boolean {
   return Array.isArray(entries) && entries.some((entry) => plainRecord(entry)?.exclusive !== undefined);
 }
 
+/** A skill or save choice that builds on training (1.100): `held`, a new key on the strict choice. */
+function entriesCarryHeldChoices(entries: unknown): boolean {
+  return (
+    Array.isArray(entries) &&
+    entries.some((entry) => {
+      const choose = plainRecord(plainRecord(plainRecord(entry)?.grants)?.trained)?.choose;
+      return Array.isArray(choose) && choose.some((choice) => plainRecord(choice)?.held !== undefined);
+    })
+  );
+}
+
 /** A score choice with a cap (1.91): `upTo`, a new key on the strict choice. */
 function entriesCarryChoiceCaps(entries: unknown): boolean {
   return (
@@ -1454,6 +1465,7 @@ export function getCapabilityPackageInstallIssue(
   let carriesDamageSheetBonus = false;
   let carriesDamageReroll = false;
   let carriesOfferedWhen = false;
+  let carriesHeldChoices = false;
   let carriesExclusive = false;
   let carriesSheetBonus = false;
   // Every item by "<catalog>/<entry>", inline and in files, and the fakes among them, so a fake whose
@@ -1557,6 +1569,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryDamageSheetBonus(header.entries)) carriesDamageSheetBonus = true;
       if (entriesCarryDamageReroll(header.entries)) carriesDamageReroll = true;
       if (entriesCarryOfferedWhen(header.entries)) carriesOfferedWhen = true;
+      if (entriesCarryHeldChoices(header.entries)) carriesHeldChoices = true;
       if (entriesCarryExclusive(header.entries)) carriesExclusive = true;
       if (entriesCarryToHitSheetBonus(header.entries)) carriesSheetBonus = true;
       collectItems(header.id, header.entries);
@@ -1610,6 +1623,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryDamageSheetBonus(fileEntries)) carriesDamageSheetBonus = true;
       if (entriesCarryDamageReroll(fileEntries)) carriesDamageReroll = true;
       if (entriesCarryOfferedWhen(fileEntries)) carriesOfferedWhen = true;
+      if (entriesCarryHeldChoices(fileEntries)) carriesHeldChoices = true;
       if (entriesCarryExclusive(fileEntries)) carriesExclusive = true;
       if (entriesCarryToHitSheetBonus(fileEntries)) carriesSheetBonus = true;
       collectItems(header.id, fileEntries);
@@ -1897,6 +1911,10 @@ export function getCapabilityPackageInstallIssue(
   // An item's to-hit read off its holder's sheet, 1.90: a new key on the strict to-hit.
   if (!declaresApi(90) && carriesSheetBonus) {
     return "A ruleset whose items add a bonus to hit read off their holder's sheet requires schemaVersion 2 and capabilityApi 1.90 or newer";
+  }
+  // A skill or save choice among what is already trained, 1.100: a new key on the strict choice.
+  if (!declaresApi(100) && carriesHeldChoices) {
+    return "A ruleset whose skill or save choices build on training already held requires schemaVersion 2 and capabilityApi 1.100 or newer";
   }
   // A catalog entry a builder step offers only while the sheet says so, 1.94: a new key on the strict entry.
   if (!declaresApi(94) && carriesOfferedWhen) {

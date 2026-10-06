@@ -326,6 +326,8 @@ export interface RulesetBuilderAbilitySlot extends RulesetBuilderChoiceSlot {
 export interface RulesetBuilderTrainedSlot extends RulesetBuilderChoiceSlot {
   what: "skills" | "saves";
   tier: string;
+  /** Only what is already trained to this tier or higher is offered (Capability API 1.100). */
+  held?: string;
 }
 
 export interface RulesetBuilderEntrySlot extends RulesetBuilderChoiceSlot {
@@ -411,7 +413,7 @@ export function rulesetBuilderTrainedSlots(
     key: string,
     stepId: string,
     entry: RulesetCatalogEntry | null,
-    choice: { what: "skills" | "saves"; count: number; from?: string[] },
+    choice: { what: "skills" | "saves"; count: number; from?: string[]; held?: string },
     tier: string,
   ): RulesetBuilderTrainedSlot => {
     const from = (
@@ -427,6 +429,7 @@ export function rulesetBuilderTrainedSlots(
       from,
       chosen,
       tier,
+      ...(choice.held !== undefined ? { held: choice.held } : {}),
     };
   };
   const granted = granting.flatMap(({ step, entry }) =>
@@ -453,23 +456,38 @@ export function rulesetBuilderTrainedSlots(
         )
       : [],
   );
+  // A choice that builds on training at another's tier (1.100) needs that one's picks, so it never
+  // takes them away from it.
+  const over = (other: RulesetBuilderTrainedSlot, each: RulesetBuilderTrainedSlot) =>
+    other.what === each.what &&
+    rank(other.tier) >= rank(each.tier) &&
+    !(other.held !== undefined && rank(other.held) <= rank(each.tier) && rank(each.tier) < rank(other.tier));
   // An earlier choice keeps what it holds; a later one at the same tier or lower lets it go.
   const kept: RulesetBuilderTrainedSlot[] = [];
   for (const each of [...granted, ...own]) {
-    const held = (id: string) =>
-      kept.some(
-        (earlier) => earlier.what === each.what && rank(earlier.tier) >= rank(each.tier) && earlier.chosen.includes(id),
-      );
+    const held = (id: string) => kept.some((earlier) => over(earlier, each) && earlier.chosen.includes(id));
     kept.push({ ...each, chosen: each.chosen.filter((id) => !held(id)).slice(0, each.count) });
   }
   // ...and what another choice holds at this one's tier or higher is not this one's to offer.
   return kept.map((each) => {
     const elsewhere = new Set(
-      kept
-        .filter((other) => other !== each && other.what === each.what && rank(other.tier) >= rank(each.tier))
-        .flatMap((other) => other.chosen),
+      kept.filter((other) => other !== each && over(other, each)).flatMap((other) => other.chosen),
     );
-    return { ...each, from: each.from.filter((id) => each.chosen.includes(id) || !elsewhere.has(id)) };
+    let from = each.from.filter((id) => each.chosen.includes(id) || !elsewhere.has(id));
+    // A choice that builds on training (5e's Expertise, 1.100) offers only what the picks train, or a
+    // lower choice holds, to its `held` tier or higher.
+    if (each.held !== undefined) {
+      const floor = rank(each.held);
+      const below = new Set(
+        kept
+          .filter(
+            (other) => other.what === each.what && rank(other.tier) >= floor && rank(other.tier) < rank(each.tier),
+          )
+          .flatMap((other) => other.chosen),
+      );
+      from = from.filter((id) => (outright[each.what].get(id) ?? -1) >= floor || below.has(id));
+    }
+    return { ...each, from, chosen: each.chosen.filter((id) => from.includes(id)) };
   });
 }
 
@@ -644,8 +662,11 @@ function desired(
   const bump = (id: string, by: number) => {
     if (abilities.has(id)) out.increases[id] = (out.increases[id] ?? 0) + by;
   };
+  const tierRank = (tier: string | undefined) =>
+    definition.resolution.proficiencyTiers.findIndex((each) => each.id === tier);
+  // Trained twice, to two tiers (proficient from a class, expertise built on it), keeps the higher.
   const train = (what: "skills" | "saves", id: string, tier: string) => {
-    if (known[what].has(id)) out[what][id] = tier;
+    if (known[what].has(id) && tierRank(tier) >= tierRank(out[what][id])) out[what][id] = tier;
   };
   for (const { step, entry } of rulesetBuilderGranting(definition, state, catalogs, build)) {
     const grants = entry.grants;

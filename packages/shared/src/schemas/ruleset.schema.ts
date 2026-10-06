@@ -2814,6 +2814,9 @@ const catalogGrantsSchema = z
                 count: z.number().int().min(1).max(20),
                 /** Any of them when left out. */
                 from: z.array(sheetId).min(1).max(120).optional(),
+                /** Only what the sheet already has at this tier or higher, from the picks or a lower
+                 *  choice (Capability API 1.100): 5e's Expertise, in two skills you are proficient in. */
+                held: sheetId.optional(),
               })
               .strict(),
           )
@@ -7288,6 +7291,23 @@ function grantsIssues(
     const at = tiers.findIndex((tier) => tier.id === grants.trained!.tier);
     if (at < 1) add([...path, "trained", "tier"], `"${grants.trained.tier}" is not a tier above untrained`);
   }
+  grants.trained?.choose?.forEach((choice, index) => {
+    if (choice.held === undefined) return;
+    const held = tiers.findIndex((tier) => tier.id === choice.held);
+    // The tier the choice trains to, as the builder reads it: its own, the builder's, else the first.
+    const named = tiers.findIndex((tier) => tier.id === (grants.trained?.tier ?? definition.sheet.builder?.tier));
+    const offered = choice.what === "skills" ? sheet.skillTiers : sheet.saveTiers;
+    const first = tiers.findIndex((tier, at) => at >= 1 && (!offered || offered.includes(tier.id)));
+    const own = named >= 1 ? named : first >= 1 ? first : 1;
+    if (held < 1) {
+      add([...path, "trained", "choose", index, "held"], `"${choice.held}" is not a tier above untrained`);
+    } else if (held >= own) {
+      add(
+        [...path, "trained", "choose", index, "held"],
+        `"${choice.held}" is not below the tier this choice trains to, so nothing it builds on could be raised`,
+      );
+    }
+  });
   for (const [id, value] of Object.entries(grants.sets ?? {})) {
     const field = sheet.fields.find((each) => each.id === id);
     if (!field) {

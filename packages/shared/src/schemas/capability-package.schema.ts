@@ -700,7 +700,10 @@ const capabilityPackageManifestBaseSchema = z
 // 1.99: a builder skill or save choice never offers what the picks already train to its tier or higher:
 //        what an entry trains outright, or what an earlier choice holds. A stored choice of one counts for
 //        nothing. Behaviour only, no new key. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 99 } as const);
+// 1.100: a skill or save choice a catalog entry grants may build on training already held (`held`, a
+//        tier: 5e's Expertise, two skills you are proficient in), offering only what the picks or a
+//        lower choice train to it. Not a soft seam: a package that ships it declares 1.100. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 100 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

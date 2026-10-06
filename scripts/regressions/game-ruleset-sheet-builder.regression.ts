@@ -1294,6 +1294,88 @@ try {
     assert.equal(both2.build.skills.athletics, "expertise");
   }
 
+  // ── 1.100: a choice that builds on training offers only what is already trained ──
+  {
+    // The hill dwarf's expertise choice is held to skills already proficient.
+    const expertDoc = (held: string | null = "proficient") =>
+      variant((doc) => {
+        const raceEntries = doc.catalogs.find((c: { id: string }) => c.id === "races").entries;
+        raceEntries.find((e: { id: string }) => e.id === "dwarf").grants.trained = { skills: ["perception"] };
+        raceEntries.find((e: { id: string }) => e.id === "hill-dwarf").grants.trained = {
+          tier: "expertise",
+          choose: [{ what: "skills", count: 2, ...(held ? { held } : {}) }],
+        };
+      });
+    const expertise = parsed(expertDoc());
+    const expertiseCatalogs: RulesetCatalogEntriesById = Object.fromEntries(
+      (expertise.catalogs ?? []).map((catalog) => [catalog.id, catalog.entries ?? []]),
+    );
+    const base = { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 };
+    const made = (st: RulesetBuilderState) =>
+      applyRulesetBuilder(
+        expertise,
+        defaultRulesetSheetBuild(expertise),
+        { method: "manual", base, ...st },
+        expertiseCatalogs,
+      );
+    const slotOf = (m: ReturnType<typeof made>, entry: string) =>
+      rulesetBuilderTrainedSlots(expertise, m.state, expertiseCatalogs, m.build).find(
+        (slot) => slot.entry?.id === entry,
+      )!;
+    const alone = made({ picks: { race: ["dwarf"], subrace: ["hill-dwarf"] } });
+    assert.deepEqual(slotOf(alone, "hill-dwarf").from, ["perception"], "only the dwarf's own Perception");
+    assert.equal(slotOf(alone, "hill-dwarf").held, "proficient");
+    const picks = { race: ["dwarf"], subrace: ["hill-dwarf"], class: ["fighter"] };
+    const fighter = made({ picks });
+    const fighterKey = slotOf(fighter, "fighter").key;
+    const hillKey = slotOf(fighter, "hill-dwarf").key;
+    const trained = made({ picks, trainedChoices: { [fighterKey]: ["athletics", "survival"] } });
+    assert.deepEqual(
+      slotOf(trained, "hill-dwarf").from,
+      ["athletics", "perception", "survival"],
+      "and what the fighter's choice trains",
+    );
+    const doubled = made({
+      picks,
+      trainedChoices: { [fighterKey]: ["athletics", "survival"], [hillKey]: ["athletics", "stealth"] },
+    });
+    assert.deepEqual(slotOf(doubled, "hill-dwarf").chosen, ["athletics"], "a stored Stealth counts for nothing");
+    assert.equal(doubled.build.skills.athletics, "expertise");
+    assert.notEqual(doubled.build.skills.stealth, "expertise");
+    assert.deepEqual(slotOf(doubled, "fighter").chosen, ["athletics", "survival"], "the expertise leaves them be");
+    assert.ok(slotOf(doubled, "fighter").from.includes("athletics"));
+    // Without `held`, any skill, as before.
+    const open = parsed(expertDoc(null));
+    const openCatalogs: RulesetCatalogEntriesById = Object.fromEntries(
+      (open.catalogs ?? []).map((catalog) => [catalog.id, catalog.entries ?? []]),
+    );
+    const anyState = applyRulesetBuilder(
+      open,
+      defaultRulesetSheetBuild(open),
+      { method: "manual", base, picks: { race: ["dwarf"], subrace: ["hill-dwarf"] } },
+      openCatalogs,
+    );
+    assert.ok(
+      rulesetBuilderTrainedSlots(open, anyState.state, openCatalogs, anyState.build).find(
+        (slot) => slot.entry?.id === "hill-dwarf",
+      )!.from.length > 1,
+    );
+    // Import: `held` is a tier below the choice's own.
+    for (const [held, pattern] of [
+      ["expertise", /is not below the tier this choice trains to/],
+      ["none", /is not a tier above untrained/],
+      ["mastery", /is not a tier above untrained/],
+    ] as const) {
+      const result = parseRulesetDefinition(expertDoc(held));
+      assert.equal(result.ok, false, held);
+      if (!result.ok)
+        assert.ok(
+          result.issues.some((issue) => pattern.test(issue)),
+          result.issues.join("; "),
+        );
+    }
+  }
+
   // ── The gate ──
   const manifest = (minor: number, paths = ["ruleset.json"]) => ({
     schemaVersion: 2,
@@ -1356,6 +1438,16 @@ try {
   const choosingDoc = variant(tongues);
   assert.match(issue(85, choosingDoc) ?? "", /catalog entries to choose.*1\.86/);
   assert.equal(issue(86, choosingDoc), null);
+  const heldDoc = variant((doc) => {
+    doc.catalogs
+      .find((c: { id: string }) => c.id === "races")
+      .entries.find((e: { id: string }) => e.id === "hill-dwarf").grants.trained = {
+      tier: "expertise",
+      choose: [{ what: "skills", count: 2, held: "proficient" }],
+    };
+  });
+  assert.match(issue(99, heldDoc) ?? "", /build on training already held.*1\.100/);
+  assert.equal(issue(100, heldDoc), null);
   const choiceStepOnly = variant((doc) => {
     tongues(doc);
     for (const catalog of doc.catalogs)

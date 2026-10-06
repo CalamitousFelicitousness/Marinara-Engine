@@ -8387,7 +8387,9 @@ test("desktop Tracker scales into either Roleplay gutter without shifting chat",
     await page.reload();
     await expect(reloadedTracker).toBeHidden();
   } finally {
-    await page.request.delete(`/api/chats/${chat.id}`);
+    // Best-effort, so a step that hangs until the test timeout keeps its own error
+    // instead of being replaced by this cleanup timing out after it.
+    await bestEffortDelete(page.request, `/api/chats/${chat.id}`);
   }
 });
 

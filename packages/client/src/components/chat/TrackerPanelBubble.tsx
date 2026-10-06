@@ -2,7 +2,7 @@
 // Trackers button for chats using the Tracker Panel
 //
 // This replaces the standard tracker window's button while the panel is selected.
-// Its place saves with the chat like every other bubble.
+// It opens the panel or closes it, and its place saves with the chat like every other bubble.
 // ──────────────────────────────────────────────
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -17,6 +17,7 @@ import {
 } from "../../lib/floating-window-layout";
 import { BUBBLE_SNAP_GAP_PX } from "../../lib/window-bubble-snap";
 import { useMatchMedia } from "../../hooks/use-match-media";
+import { closeTrackerPanel } from "../../lib/tracker-panel-surface";
 import { useUIStore } from "../../stores/ui.store";
 import {
   FLOATING_WINDOW_Z_BASE,
@@ -76,6 +77,8 @@ export function TrackerPanelBubble({ chatId, phoneSlot = 0 }: { chatId: string; 
       onSizeChange={setSize}
       icon={<TrackerPanelIcon size="1.05rem" className="shrink-0" />}
       label={t("chat.trackerWindow.title")}
+      ariaLabel={t("chat.trackerWindow.title")}
+      tooltip={t("chat.trackerWindow.title")}
       expanded={open}
       zIndex={phoneLayout ? PHONE_BUBBLE_Z_INDEX : FLOATING_WINDOW_Z_BASE}
       attributes={{
@@ -87,9 +90,11 @@ export function TrackerPanelBubble({ chatId, phoneSlot = 0 }: { chatId: string; 
         if (phoneLayout) state.savePhoneBubble(TRACKER_PANEL_BUBBLE_ID, point);
         else state.saveBubble(TRACKER_PANEL_BUBBLE_ID, point);
       }}
-      onOpen={(bubble) =>
-        useFloatingWindowStore.getState().openWindow(TRACKER_PANEL_BUBBLE_ID, bubble, { focus: false })
-      }
+      onOpen={(bubble) => {
+        // Like the Chat Settings button: a second press closes what the first one opened.
+        if (open) closeTrackerPanel();
+        else useFloatingWindowStore.getState().openWindow(TRACKER_PANEL_BUBBLE_ID, bubble, { focus: false });
+      }}
     />
   );
 }

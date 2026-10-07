@@ -9305,6 +9305,20 @@ assert.equal(
   128,
   "The Tracker should use the matching right chat gutter",
 );
+assert.equal(
+  resolveTrackerPanelDesktopWidth({
+    preferredWidth: 340,
+    mainLeft: 0,
+    mainRight: 1024,
+    chatColumnLeft: 19,
+    chatColumnRight: 1005,
+    side: "right",
+    gap: 8,
+    minWidth: 96,
+  }),
+  96,
+  "A docked Tracker in a gutter too narrow for it keeps its minimum width instead of a sliver (#7188)",
+);
 assert.equal(resolveTrackerPanelContentScale(340, 340), 1);
 assert.equal(resolveTrackerPanelContentScale(340, 255), 0.75);
 assert.equal(

@@ -525,6 +525,9 @@ try {
     assert.match(prepared.chatSummary!, /brass compass promise/u);
     assert.equal(prepared.chatSummary!.includes("PRIVATE_LEDGER"), id !== borrower.id);
     assert.match(prepared.chatSummary!, /June 12/u);
+    // An entry with nothing for this reader keeps its range header only for a shared story date: the
+    // borrower still gets June 12, while the others get no bare "#1–#1" header from the borrower's entry (#7250).
+    assert.equal(prepared.chatSummary!.includes("Messages #1–#1;"), id === borrower.id);
     if (id === borrower.id) assert(!prepared.receipt.recalledMessageIds.includes(partialSource[1]!.id));
   }
   assert.equal(requests.length, beforePartialToggle, "recalling partial scenes adds no helper calls");

@@ -1429,6 +1429,16 @@ function carriesBlowNarrowing(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesBlowNarrowing(one, depth + 1));
 }
 
+/** A condition an entry applies only while its applier's sheet allows, in catalog files too (1.162). */
+function carriesAppliesWhen(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesAppliesWhen(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (Array.isArray(record.applies) && record.applies.some((one) => plainRecord(one)?.when !== undefined)) return true;
+  return Object.values(record).some((one) => carriesAppliesWhen(one, depth + 1));
+}
+
 /** Save modifiers narrowed by what is saved against, including item effects in catalog files (1.129). */
 function carriesSaveAgainst(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -2495,6 +2505,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesSaveAgainst(document)))
   ) {
     return "A ruleset whose save modifiers count against conditions, damage or magic requires schemaVersion 2 and capabilityApi 1.129 or newer";
+  }
+  // Conditions applied only while the applier's sheet allows, 1.162.
+  if (
+    !declaresApi(162) &&
+    (carriesAppliesWhen(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesAppliesWhen(document)))
+  ) {
+    return "A ruleset whose conditions are applied only while the applier's sheet allows requires schemaVersion 2 and capabilityApi 1.162 or newer";
   }
   if (carriesCreatureSpellcasting) {
     // The references can only be checked once the catalog files are beside their headers.

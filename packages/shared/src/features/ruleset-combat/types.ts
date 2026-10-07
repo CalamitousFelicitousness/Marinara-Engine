@@ -80,6 +80,15 @@ export interface RulesetCombatApplies {
   /** What breaking free of it is rolled against, in place of the holder's own side of the contest
    *  (1.98): 5e's "grappled (escape DC 13)". */
   escapeDc?: number;
+  /** It goes on only while this value off its applier's sheet stands within the bounds (1.162). */
+  when?: RulesetSheetBounds;
+}
+
+/** A value read off a sheet and the bounds it must stand within: one bound or both. */
+export interface RulesetSheetBounds {
+  value: RulesetValueRef;
+  atLeast?: number;
+  atMost?: number;
 }
 
 /** What takes a condition off after it has been used once: the holder's own next attack roll, the
@@ -362,7 +371,7 @@ export interface RulesetCombatAction {
   /** Senses a target must have for this to affect it (Capability API 1.122). */
   needs?: string[];
   /** Offered only while this reads within its bounds off the holder's sheet (Capability API 1.161). */
-  usableWhen?: { value: RulesetValueRef; atLeast?: number; atMost?: number };
+  usableWhen?: RulesetSheetBounds;
   damage?: RulesetCombatDamage;
   heal?: RulesetCombatAmount;
   temporary?: RulesetCombatAmount;

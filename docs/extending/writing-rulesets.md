@@ -1605,6 +1605,16 @@ same keys for a d20 system:
     `"usableWhen": { "value": { "itemStat": { "from": "worn", "pick": "count", "category": "shield" } }, "atLeast": 1 }`.
     Rage's "no heavy armor" is the same with `"atMost": 0` on the heavy armor count. A creature written as a stat block has no sheet,
     so nothing holds it back.
+  - Conditions applied only while the applier's sheet allows (Capability API 1.162): an `applies`
+    entry on a catalog entry's mechanics or an item's use may carry `"when"`, the same shape as
+    `usableWhen`. It is read off the sheet, live state and items of whoever applies it, at the
+    moment it would go on, and an entry outside its bounds is skipped; the others still apply. 5e's
+    Rage applies `raging` and one of three damage conditions within the four-entry limit:
+    `{ "condition": "raging_damage_2", "duration": { "rounds": 10 }, "when": { "value": { "derived": "barbarian_level" }, "atMost": 8 } }`,
+    then `raging_damage_3` with `"atLeast": 9, "atMost": 15` and `raging_damage_4` with
+    `"atLeast": 16`. An applier without a sheet applies every entry. A creature's stat block and a
+    condition's `onEnd` have no applier's sheet to read, so `when` is refused there. Requires
+    schemaVersion 2 and capabilityApi 1.162 or newer.
   - Condition endings (Capability API 1.120): Charm Person uses
     `"endsWhen": ["harmed-by-source-side"]`. Damage above zero from whoever applied it or anyone on
     their side, or their targeting its holder with an attack, save or harmful condition, ends it

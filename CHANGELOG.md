@@ -5,6 +5,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 ## [Unreleased]
 
 - Rulesets: save modifiers can count only against conditions, damage types or magic, so Dwarven Resilience, Fey Ancestry, Brave and Gnome Cunning grant advantage only on the saves they protect (Capability API 1.129).
+- Rulesets: a condition an ability applies can depend on its user's sheet, so Rage's damage bonus grows with barbarian level (Capability API 1.162).
 - Rulesets: an ability can be usable in a fight only while the character's sheet allows it, so Protection needs a shield in hand (Capability API 1.161).
 - Development: give the exhaustive ruleset combat-director regression 90 seconds to finish its simulated fights, without extending other regression timeouts.
 - Rulesets: sheet lists can have up to 24 columns, so a features list can carry every field a class needs (Capability API 1.160).

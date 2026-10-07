@@ -825,7 +825,10 @@ const capabilityPackageManifestBaseSchema = z
 // 1.161: a catalog entry's mechanics may be usable in a fight only while a value off its holder's
 //        sheet, live state and items stands within bounds (`usableWhen`): 5e's Protection needs a
 //        shield. Not a soft seam: an older Engine refuses the key. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 161 } as const);
+// 1.162: a condition a catalog entry or item use applies may go on only while a value off its
+//        applier's sheet stands within bounds (`applies[].when`), read as it applies: 5e's Rage
+//        damage by barbarian level. Not a soft seam: an older Engine refuses the key. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 162 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

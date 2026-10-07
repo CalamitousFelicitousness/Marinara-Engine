@@ -88,6 +88,7 @@ import {
   RULESET_FLY_UP_OPTION,
   planRulesetCombatCost,
   rulesetActionAvailable,
+  rulesetSheetWithin,
   rulesetAimLegal,
   rulesetAreaTargets,
   rulesetAttackMode,
@@ -3700,6 +3701,8 @@ function resolveActionBody(
     }
     if (!saved) {
       for (const applies of action.applies ?? []) {
+        // Read off whoever applies it, as it applies (1.162): Rage's bonus by barbarian level.
+        if (!rulesetSheetWithin(ctx.definition, actor, applies.when)) continue;
         applyConditionId(ctx, target, applies.condition, applies, {
           sourceId: actor.id,
           // The action's own save when it has one, otherwise what its source says saves are rolled

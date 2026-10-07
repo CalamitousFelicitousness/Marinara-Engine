@@ -74,6 +74,7 @@ import type {
   RulesetReactionAgainst,
   RulesetReactionAlso,
   RulesetReactionMoment,
+  RulesetSheetBounds,
   RulesetWindowTrigger,
 } from "./types.js";
 
@@ -984,16 +985,28 @@ export function rulesetActionUsable(
   actor: RulesetCombatant,
   action: RulesetCombatAction,
 ): boolean {
-  const when = action.usableWhen;
-  if (!when || !definition || !actor.sheet) return true;
-  const { build, live, items } = actor.sheet;
+  return rulesetSheetWithin(definition, actor, action.usableWhen);
+}
+
+/** Whether a value off the combatant's sheet, live state and items stands within the bounds: an
+ *  action's `usableWhen` (1.161), one of its conditions' `when` (1.162). No bounds, no sheet or no
+ *  ruleset to read it with holds nothing back. */
+export function rulesetSheetWithin(
+  definition: RulesetDefinition | undefined,
+  combatant: RulesetCombatant,
+  bounds: RulesetSheetBounds | undefined,
+): boolean {
+  if (!bounds || !definition || !combatant.sheet) return true;
+  const { build, live, items } = combatant.sheet;
   const value = resolveRulesetValueRef(
     definition,
     build,
-    when.value,
+    bounds.value,
     evaluateRulesetSheetLive(definition, build, live, items),
   );
-  return (when.atLeast === undefined || value >= when.atLeast) && (when.atMost === undefined || value <= when.atMost);
+  return (
+    (bounds.atLeast === undefined || value >= bounds.atLeast) && (bounds.atMost === undefined || value <= bounds.atMost)
+  );
 }
 
 /** Whether the action has uses left, has recharged, and has the coven members it needs nearby, and

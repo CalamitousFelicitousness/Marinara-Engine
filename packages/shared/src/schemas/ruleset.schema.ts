@@ -1552,22 +1552,27 @@ const catalogPlusClauseSchema = z
     }
   });
 
-/** When a catalog entry's mechanics may be used in a fight (Capability API 1.161): a value read off
- *  its holder as the menu is drawn, at least `atLeast` and at most `atMost`. One bound or both. */
-const catalogUsableWhenSchema = z
-  .object({
-    value: rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>,
-    atLeast: z.number().finite().optional(),
-    atMost: z.number().finite().optional(),
-  })
-  .strict()
-  .refine((when) => when.atLeast !== undefined || when.atMost !== undefined, {
-    message: '"usableWhen" says at least one of "atLeast" and "atMost"',
-  })
-  .refine((when) => when.atLeast === undefined || when.atMost === undefined || when.atLeast <= when.atMost, {
-    message: '"atLeast" is above "atMost", so it is never usable',
-    path: ["atMost"],
-  });
+/** A value read off a sheet, at least `atLeast` and at most `atMost`, one bound or both: when a
+ *  catalog entry's mechanics may be used in a fight (`usableWhen`, Capability API 1.161), and when
+ *  one condition it applies goes on (`when`, Capability API 1.162). `key` names it in the errors. */
+function sheetBoundsSchema(key: string, never: string) {
+  return z
+    .object({
+      value: rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>,
+      atLeast: z.number().finite().optional(),
+      atMost: z.number().finite().optional(),
+    })
+    .strict()
+    .refine((when) => when.atLeast !== undefined || when.atMost !== undefined, {
+      message: `"${key}" says at least one of "atLeast" and "atMost"`,
+    })
+    .refine((when) => when.atLeast === undefined || when.atMost === undefined || when.atLeast <= when.atMost, {
+      message: `"atLeast" is above "atMost", so it is never ${never}`,
+      path: ["atMost"],
+    });
+}
+
+const catalogUsableWhenSchema = sheetBoundsSchema("usableWhen", "usable");
 
 /** The generic actions the kind implements, named once so a ruleset opts into the ones it has. Up
  *  here rather than beside the combat block because a catalog entry names them too: an ability that
@@ -1611,6 +1616,10 @@ const catalogAppliesSchema = z
     /** What breaking free of it is rolled against, in place of the holder's own side of the contest
      *  that breaks free of it (Capability API 1.98): 5e's "the target is grappled (escape DC 13)". */
     escapeDc: z.number().int().min(1).max(1000).optional(),
+    /** It goes on only while a value off the sheet of whoever applies it stands within these bounds,
+     *  read as it applies (Capability API 1.162); one that does not is skipped. 5e's Rage puts on a
+     *  damage bonus by barbarian level: +2 `when` the level is at most 8, +3 from 9, +4 from 16. */
+    when: sheetBoundsSchema("when", "applied").optional(),
   })
   .strict()
   .superRefine((applies, ctx) => {
@@ -6583,6 +6592,13 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         if (!conditions.has(applied.condition)) {
           issue([...path, "onEnd", "applies", appliedIndex, "condition"], `Unknown condition "${applied.condition}"`);
         }
+        // What a condition leaves behind is nobody's doing: there is no applier's sheet to read.
+        if (applied.when) {
+          issue(
+            [...path, "onEnd", "applies", appliedIndex, "when"],
+            'What a condition leaves behind has no sheet to read "when" off',
+          );
+        }
       });
       if (entry.shakeOff) checkBudget(entry.shakeOff.budget, [...path, "shakeOff", "budget"]);
       if (entry.delays) {
@@ -7431,6 +7447,8 @@ function creatureIssues(
       const where = [...path, "applies", appliesIndex];
       if (!conditions.has(applies.condition)) add([...where, "condition"], `Unknown condition "${applies.condition}"`);
       escapeDcIssues(definition, applies, where, add);
+      // A stat block has no sheet: what it applies is written down, never read off one.
+      if (applies.when) add([...where, "when"], 'A creature has no sheet to read "when" off');
       if (applies.saveEnds && !saves.has(applies.saveEnds.save)) {
         add([...where, "saveEnds", "save"], `Unknown save "${applies.saveEnds.save}"`);
       }
@@ -7803,6 +7821,12 @@ function useIssues(
       add([...at, "applies", index, "condition"], `Unknown condition "${applies.condition}"`);
     }
     escapeDcIssues(definition, applies, [...at, "applies", index], add);
+    if (applies.when) {
+      const names = rulesetSheetNames(definition.sheet, definition.items);
+      for (const issue of rulesetValueRefIssues(applies.when.value, names, names.derived)) {
+        add([...at, "applies", index, "when", "value", issue.key], issue.message);
+      }
+    }
     if (applies.saveEnds && !saves.has(applies.saveEnds.save)) {
       add([...at, "applies", index, "saveEnds", "save"], `Unknown save "${applies.saveEnds.save}"`);
     }
@@ -8480,6 +8504,11 @@ export function rulesetCatalogEntryIssues(
       escapeDcIssues(definition, applies, path, add);
       if (applies.saveEnds && !saves.has(applies.saveEnds.save)) {
         add([...path, "saveEnds", "save"], `Unknown save "${applies.saveEnds.save}"`);
+      }
+      if (applies.when) {
+        for (const issue of rulesetValueRefIssues(applies.when.value, names, names.derived)) {
+          add([...path, "when", "value", issue.key], issue.message);
+        }
       }
     });
     // A save needs something to be rolled against. In a fight that number comes from the abilities

@@ -111,8 +111,11 @@ export function ChatBookmarksList({
   );
 }
 
-/** A large trash renders this many rows at a time, so the page stays responsive while it fills in (#7210). */
-const TRASH_ROW_BATCH = 100;
+/**
+ * A large trash renders this many rows at a time, so the page stays responsive while it fills in (#7210).
+ * Batches of 100 took about 1.5x as long to fill 5,001 entries on a 3-4x slower CPU, for little responsiveness gain.
+ */
+const TRASH_ROW_BATCH = 200;
 /** Restore failures outlast the 6 s default: a large restore can keep a slow phone busy for a few seconds. */
 const RESTORE_FAILURE_TOAST_MS = 15_000;
 

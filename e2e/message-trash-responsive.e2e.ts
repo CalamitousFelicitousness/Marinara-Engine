@@ -127,8 +127,8 @@ test("a large message trash fills in batches and a restore leaves its rows alone
     await expect(rowRestore).toHaveCount(ENTRY_COUNT);
     const added = await growth.evaluate((rows) => rows);
     expect(added.reduce((sum, rows) => sum + rows, 0)).toBe(ENTRY_COUNT);
-    // One batch of 100 rows per update, never the whole list at once.
-    expect(Math.max(...added)).toBeLessThanOrEqual(100);
+    // One batch of 200 rows per update, never the whole list at once.
+    expect(Math.max(...added)).toBeLessThanOrEqual(200);
 
     const list = panel.locator("[aria-busy]");
     await expect(list).toHaveAttribute("aria-busy", "false");

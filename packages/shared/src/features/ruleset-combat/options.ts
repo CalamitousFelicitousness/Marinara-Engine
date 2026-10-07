@@ -1227,12 +1227,14 @@ function averageHarm(
   target?: RulesetCombatant,
 ): number {
   // A clause dealt only to some targets counts against one it would reach, and never unaimed (1.163).
-  const reaches = (clause: { targetIs?: RulesetTargetIs }) =>
-    !clause.targetIs || (!!target && rulesetTargetIs(definition, target, clause.targetIs));
+  const reaches = (clause: { targetIs?: RulesetTargetIs; onCritical?: true }) =>
+    !clause.onCritical && (!clause.targetIs || (!!target && rulesetTargetIs(definition, target, clause.targetIs)));
   if (!rulesetCombatIsPool(combat)) {
     return rulesetAverageDamage({
       ...damage,
-      ...(damage.plus ? { plus: damage.plus.filter(reaches).map(({ targetIs: _, ...clause }) => clause) } : {}),
+      ...(damage.plus
+        ? { plus: damage.plus.filter(reaches).map(({ targetIs: _, onCritical: __, ...clause }) => clause) }
+        : {}),
     });
   }
   const one = (amount: { count: number; flat: number }, type: string | undefined) => {

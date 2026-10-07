@@ -5,6 +5,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 ## [Unreleased]
 
 - Rulesets: save modifiers can count only against conditions, damage types or magic, so Dwarven Resilience, Fey Ancestry, Brave and Gnome Cunning grant advantage only on the saves they protect (Capability API 1.129).
+- Rulesets: weapons can deal extra damage, against certain creatures or on a critical hit, and their hits can put on conditions a save resists or ends, so dragon slayers, javelins of lightning and swords of wounding work (Capability API 1.164).
 - Rulesets: creatures and characters have types, and damage, conditions and targeting can depend on them, so slayer weapons, holy water and Animal Friendship work against the right creatures (Capability API 1.163).
 - Rulesets: a condition an ability applies can depend on its user's sheet, so Rage's damage bonus grows with barbarian level (Capability API 1.162).
 - Rulesets: an ability can be usable in a fight only while the character's sheet allows it, so Protection needs a shield in hand (Capability API 1.161).

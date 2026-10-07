@@ -832,7 +832,11 @@ const capabilityPackageManifestBaseSchema = z
 //        character's type off a field or a default), and target tests that read them: a damage
 //        clause's or an applied condition's `targetIs`, and `mechanics.targetTypes` (is/not) for who
 //        may be picked or caught. 5e's slayer weapons, holy water, Animal Friendship. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 163 } as const);
+// 1.164: a weapon item's attack deals extra damage clauses (`attack.plus`: typed, with their own
+//        save, a target test, or only on a critical hit), and what its hit puts on may be resisted
+//        by a save (`onHit[].save`) or last until one (`onHit[].saveEnds`): 5e's dragon slayer,
+//        javelin of lightning, sword of sharpness and sword of wounding. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 164 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

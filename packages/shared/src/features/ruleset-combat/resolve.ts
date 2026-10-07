@@ -3525,8 +3525,9 @@ function resolveActionBody(
         pool: first.pool,
       });
       (action.damage.plus ?? []).forEach((clause) => {
-        // Dealt only to a target that is what it names (1.163).
-        if (!rulesetTargetIs(ctx.definition, target, clause.targetIs)) return;
+        // Dealt only to a target that is what it names (1.163), and a save-for-half blow is never a
+        // critical one (1.164).
+        if (!rulesetTargetIs(ctx.definition, target, clause.targetIs) || clause.onCritical) return;
         const own = clause.save
           ? rollSave(ctx, target, clause.save.save, clause.save.difficulty, actor.id, saveFrom, against)
           : false;
@@ -3564,6 +3565,8 @@ function resolveActionBody(
       });
       (action.damage.plus ?? []).forEach((clause, index) => {
         if (!rulesetTargetIs(ctx.definition, target, clause.targetIs)) return;
+        // Only a critical hit carries a clause that says so (1.164).
+        if (clause.onCritical && !critical) return;
         // A clause with a save of its own asks the TARGET for it, whatever the action already asked.
         const own = clause.save
           ? rollSave(ctx, target, clause.save.save, clause.save.difficulty, actor.id, saveFrom, against)
@@ -3666,12 +3669,25 @@ function resolveActionBody(
     // blow itself ended, as an action's own conditions are, so one that ends on damage stays on.
     for (const entry of action.onHit ?? []) {
       if (dealt < entry.atLeast) continue;
+      // A save against it keeps it off (1.164), and it is a save against that condition.
+      if (
+        entry.save &&
+        rollSave(ctx, target, entry.save.save, entry.save.difficulty, actor.id, undefined, {
+          ...against,
+          conditions: [...(against.conditions ?? []), entry.condition],
+        })
+      )
+        continue;
       applyConditionId(
         ctx,
         target,
         entry.condition,
-        { condition: entry.condition, duration: entry.rounds ? { rounds: entry.rounds } : "instant" },
-        { sourceId: actor.id },
+        {
+          condition: entry.condition,
+          duration: entry.saveEnds ? "until-save" : entry.rounds ? { rounds: entry.rounds } : "instant",
+          ...(entry.saveEnds ? { saveEnds: { save: entry.saveEnds.save, at: entry.saveEnds.at } } : {}),
+        },
+        { sourceId: actor.id, ...(entry.saveEnds ? { difficulty: entry.saveEnds.difficulty } : {}) },
       );
     }
     // What a taking blow took goes to its maker, with what landing one is worth on top; and taking

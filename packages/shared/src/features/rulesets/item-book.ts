@@ -210,8 +210,24 @@ export interface RulesetItemAttackFact {
   offHand?: { budget: string };
   /** The least a hit with it deals. */
   floor?: number;
-  /** The conditions it puts on a target, by their labels, when a hit deals enough. */
-  onHit?: Array<{ condition: string; atLeast: number; rounds?: number }>;
+  /** The conditions it puts on a target, by their labels, when a hit deals enough: with the save
+   *  that keeps one off and the save that ends one, by the save's label (1.164). */
+  onHit?: Array<{
+    condition: string;
+    atLeast: number;
+    rounds?: number;
+    save?: { save: string; difficulty: number };
+    saveEnds?: { save: string; difficulty: number; at: "turn-start" | "turn-end" | "damaged" };
+  }>;
+  /** More damage on each hit (1.164): its amount, type, whom it reaches by the labels of the types
+   *  and tags it names, whether only a critical hit carries it, and its own save. */
+  plus?: Array<{
+    amount: string;
+    type?: string;
+    against?: string[];
+    critical?: true;
+    save?: { save: string; difficulty: number; onSuccess: "none" | "half" };
+  }>;
 }
 
 /** The item stats a weapon's attack reads (`{ "stat": id }` anywhere in it). */
@@ -461,7 +477,42 @@ function rulesetItemAttackFacts(
             condition: labelOf(definition.sheet.live.conditions, entry.condition),
             atLeast: entry.atLeast,
             ...(entry.rounds !== undefined ? { rounds: entry.rounds } : {}),
+            ...(entry.save
+              ? { save: { save: labelOf(definition.sheet.saves, entry.save.save), difficulty: entry.save.difficulty } }
+              : {}),
+            ...(entry.saveEnds
+              ? {
+                  saveEnds: {
+                    save: labelOf(definition.sheet.saves, entry.saveEnds.save),
+                    difficulty: entry.saveEnds.difficulty,
+                    at: entry.saveEnds.at,
+                  },
+                }
+              : {}),
           })),
+        }
+      : {}),
+    ...(attack.plus?.length
+      ? {
+          plus: attack.plus.map((clause) => {
+            const kinds = definition.combat?.creatureTypes;
+            const against = [
+              ...(clause.targetIs?.types ?? []).map((id) => labelOf(kinds?.types ?? [], id)),
+              ...(clause.targetIs?.tags ?? []).map((id) => labelOf(kinds?.tags ?? [], id)),
+            ];
+            const flat = clause.flat ?? 0;
+            return {
+              amount: clause.dice
+                ? `${clause.dice}${flat > 0 ? `+${flat}` : flat < 0 ? String(flat) : ""}`
+                : String(flat),
+              ...(clause.type ? { type: clause.type } : {}),
+              ...(against.length ? { against } : {}),
+              ...(clause.when === "critical" ? { critical: true as const } : {}),
+              ...(clause.save
+                ? { save: { ...clause.save, save: labelOf(definition.sheet.saves, clause.save.save) } }
+                : {}),
+            };
+          }),
         }
       : {}),
   };
@@ -1277,9 +1328,29 @@ export function rulesetItemAttackText(attack: RulesetItemAttackFact): string {
     attack.modes?.length ? `modes ${attack.modes.map(rulesetItemModeText).join(", ")}` : "",
     attack.offHand ? `off hand (${attack.offHand.budget})` : "",
     attack.floor !== undefined ? `at least ${attack.floor} on a hit before resistance` : "",
+    ...(attack.plus ?? []).map(
+      (clause) =>
+        `+${clause.amount}${clause.type ? ` ${clause.type}` : ""}${
+          clause.against ? ` against ${clause.against.join(" or ")}` : ""
+        }${clause.critical ? " on a critical hit" : ""}${
+          clause.save
+            ? ` (${clause.save.save} ${clause.save.difficulty} ${clause.save.onSuccess === "half" ? "for half" : "negates"})`
+            : ""
+        }`,
+    ),
     ...(attack.onHit ?? []).map(
       (entry) =>
-        `${entry.condition}${entry.rounds !== undefined ? ` for ${entry.rounds} rounds` : ""} when a hit deals ${entry.atLeast} or more`,
+        `${entry.condition}${entry.rounds !== undefined ? ` for ${entry.rounds} rounds` : ""} when a hit deals ${entry.atLeast} or more${
+          entry.save ? `, ${entry.save.save} ${entry.save.difficulty} resists` : ""
+        }${
+          entry.saveEnds
+            ? `, until a ${entry.saveEnds.save} ${entry.saveEnds.difficulty} save${
+                entry.saveEnds.at === "damaged"
+                  ? " each time it takes damage"
+                  : ` at the ${entry.saveEnds.at === "turn-start" ? "start" : "end"} of each turn`
+              }`
+            : ""
+        }`,
     ),
   ]
     .filter(Boolean)

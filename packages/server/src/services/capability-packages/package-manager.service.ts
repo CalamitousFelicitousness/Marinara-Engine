@@ -1429,6 +1429,22 @@ function carriesBlowNarrowing(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesBlowNarrowing(one, depth + 1));
 }
 
+/** A weapon item's extra damage, or a save on what its hit puts on, in catalog files too (1.164). */
+function carriesItemAttackExtras(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesItemAttackExtras(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const attack = plainRecord(record.attack);
+  if (attack?.plus !== undefined) return true;
+  if (
+    Array.isArray(attack?.onHit) &&
+    attack.onHit.some((one) => plainRecord(one)?.save !== undefined || plainRecord(one)?.saveEnds !== undefined)
+  )
+    return true;
+  return Object.values(record).some((one) => carriesItemAttackExtras(one, depth + 1));
+}
+
 /** Creature types, a creature's type or tags, or a target test, in catalog files too (1.163). */
 function carriesCreatureTypes(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -2534,6 +2550,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesCreatureTypes(document)))
   ) {
     return "A ruleset with creature types or target tests requires schemaVersion 2 and capabilityApi 1.163 or newer";
+  }
+  // A weapon's extra damage and saves on what its hit puts on, 1.164.
+  if (
+    !declaresApi(164) &&
+    (carriesItemAttackExtras(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesItemAttackExtras(document)))
+  ) {
+    return "A ruleset whose weapons deal extra damage or put on conditions a save resists requires schemaVersion 2 and capabilityApi 1.164 or newer";
   }
   if (carriesCreatureSpellcasting) {
     // The references can only be checked once the catalog files are beside their headers.

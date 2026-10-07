@@ -75,10 +75,11 @@ export function rulesetAverageDamage(damage: {
   count: number;
   sides: number;
   flat: number;
-  plus?: ReadonlyArray<{ count: number; sides: number; flat: number; targetIs?: unknown }>;
+  plus?: ReadonlyArray<{ count: number; sides: number; flat: number; targetIs?: unknown; onCritical?: true }>;
 }): number {
-  // A clause dealt only to some targets (1.163) is not part of what the blow does to anyone.
+  // A clause dealt only to some targets (1.163) or only on a critical hit (1.164) is not part of what
+  // the blow does to anyone.
   return (damage.plus ?? [])
-    .filter((clause) => !clause.targetIs)
+    .filter((clause) => !clause.targetIs && !clause.onCritical)
     .reduce((total, clause) => total + rulesetAverageAmount(clause), rulesetAverageAmount(damage));
 }

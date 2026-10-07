@@ -1224,6 +1224,31 @@ function itemAttackActions(
       ...(item.tags?.length ? { qualities: [...item.tags] } : {}),
       ...(floor ? { floor: Math.trunc(floor) } : {}),
       ...(rerollUpTo > 0 ? { reroll: rerollUpTo } : {}),
+      ...(plus.length ? { plus: plus.map((clause) => ({ ...clause })) } : {}),
+    });
+    // More damage on the same blow (1.164), each clause its own dice, type, save and target test. A
+    // pool fight throws a clause's count of its own dice, as it throws the weapon's.
+    const plus = (attack.plus ?? []).flatMap((clause): RulesetCombatDamageClause[] => {
+      const parsedClause = clause.dice ? parseRulesetCombatDice(clause.dice) : null;
+      if (clause.dice && !parsedClause) return [];
+      const amount = parsedClause
+        ? pooled
+          ? {
+              count: parsedClause.count,
+              sides: rulesetPoolDie(definition),
+              flat: parsedClause.flat + (clause.flat ?? 0),
+            }
+          : { ...parsedClause, flat: parsedClause.flat + (clause.flat ?? 0) }
+        : { count: 0, sides: pooled ? rulesetPoolDie(definition) : 0, flat: clause.flat ?? 0 };
+      return [
+        {
+          ...amount,
+          ...(clause.type ? { type: clause.type } : {}),
+          ...(clause.save ? { save: { ...clause.save } } : {}),
+          ...(clause.targetIs ? { targetIs: clause.targetIs } : {}),
+          ...(clause.when === "critical" ? { onCritical: true as const } : {}),
+        },
+      ];
     });
     const offHand = attack.offHand && combat.offHand ? combat.offHand : undefined;
     const weapon: RulesetCombatAction = {
@@ -1242,7 +1267,15 @@ function itemAttackActions(
       ...(ammo ? { ammo } : {}),
       ...(clip ? { clip } : {}),
       ...(attack.modes?.length ? { modes: attack.modes.map((mode) => ({ ...mode })) } : {}),
-      ...(attack.onHit?.length ? { onHit: attack.onHit.map((entry) => ({ ...entry })) } : {}),
+      ...(attack.onHit?.length
+        ? {
+            onHit: attack.onHit.map((entry) => ({
+              ...entry,
+              ...(entry.save ? { save: { ...entry.save } } : {}),
+              ...(entry.saveEnds ? { saveEnds: { ...entry.saveEnds } } : {}),
+            })),
+          }
+        : {}),
     };
     actions.push(offHand ? { ...weapon, pairs: index } : weapon);
     if (offHand) {

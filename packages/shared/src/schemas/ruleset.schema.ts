@@ -3073,11 +3073,59 @@ export const rulesetItemAttackSchema = z
             condition: sheetId,
             atLeast: z.number().int().min(1).max(100),
             rounds: z.number().int().min(1).max(100).optional(),
+            /** The target saves against it, and a success keeps it off (Capability API 1.164). */
+            save: z
+              .object({ save: sheetId, difficulty: z.number().int().min(0).max(1000) })
+              .strict()
+              .optional(),
+            /** It lasts until its holder makes this save, rolled at the start or end of each of their
+             *  turns or on damage above zero (Capability API 1.164): a sword of wounding's wound, Con 15
+             *  at the turn's start. */
+            saveEnds: z
+              .object({
+                save: sheetId,
+                difficulty: z.number().int().min(0).max(1000),
+                at: z.enum(["turn-end", "turn-start", "damaged"]),
+              })
+              .strict()
+              .optional(),
           })
           .strict(),
       )
       .min(1)
       .max(4)
+      .optional(),
+    /** More damage on the same blow, each rolled and typed on its own (Capability API 1.164): a
+     *  javelin of lightning's lightning, a dragon slayer's dice against dragons (`targetIs`), a
+     *  sword of sharpness's extra on a critical hit only (`when: "critical"`). A clause's save names
+     *  its own difficulty: an item's blow has no save of its own to borrow one from. */
+    plus: z
+      .array(
+        z
+          .object({
+            dice: catalogDice.optional(),
+            flat: z.number().int().min(-1000).max(10000).optional(),
+            type: promptSafeText(40).optional(),
+            save: z
+              .object({
+                save: sheetId,
+                difficulty: z.number().int().min(0).max(1000),
+                onSuccess: z.enum(["none", "half"]),
+              })
+              .strict()
+              .optional(),
+            targetIs: targetIsSchema.optional(),
+            when: z.enum(["always", "critical"]).optional(),
+          })
+          .strict()
+          .superRefine((clause, ctx) => {
+            if (clause.dice === undefined && clause.flat === undefined) {
+              ctx.addIssue({ code: z.ZodIssueCode.custom, message: "A clause names dice, a flat amount, or both" });
+            }
+          }),
+      )
+      .min(1)
+      .max(RULESET_DAMAGE_MAX_PLUS)
       .optional(),
   })
   .strict();
@@ -8203,9 +8251,28 @@ function attackIssues(
   }
   value(attack.floor, "number", [...at, "floor"]);
   const conditions = new Set(definition.sheet.live.conditions.map((condition) => condition.id));
+  const saves = new Set(definition.sheet.saves.map((save) => save.id));
   attack.onHit?.forEach((entry, index) => {
     if (!conditions.has(entry.condition))
       add([...at, "onHit", index, "condition"], `Unknown condition "${entry.condition}"`);
+    for (const key of ["save", "saveEnds"] as const) {
+      const save = entry[key]?.save;
+      if (save !== undefined && !saves.has(save)) add([...at, "onHit", index, key, "save"], `Unknown save "${save}"`);
+    }
+    // One that ends on a save has no clock of its own to run beside it.
+    if (entry.saveEnds && entry.rounds !== undefined) {
+      add([...at, "onHit", index, "rounds"], "A condition that ends on a save lasts until it is made, not some rounds");
+    }
+  });
+  const damageTypes = definition.combat?.damageTypes?.map((type) => type.trim().toLowerCase());
+  attack.plus?.forEach((clause, index) => {
+    const where = [...at, "plus", index];
+    if (clause.type && damageTypes && !damageTypes.includes(clause.type.trim().toLowerCase())) {
+      add([...where, "type"], `Unknown damage type "${clause.type}"`);
+    }
+    if (clause.save && !saves.has(clause.save.save))
+      add([...where, "save", "save"], `Unknown save "${clause.save.save}"`);
+    targetIsIssues(definition, clause.targetIs, [...where, "targetIs"], add);
   });
 }
 

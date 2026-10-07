@@ -45,6 +45,8 @@ export interface RulesetCombatDamageClause extends RulesetCombatAmount {
   save?: RulesetCombatClauseSave;
   /** Dealt only to a target that is this (1.163). */
   targetIs?: RulesetTargetIs;
+  /** Dealt only on a critical hit (1.164): a sword of sharpness's extra. */
+  onCritical?: true;
 }
 
 /** An amount of damage, and what kind it is. The type is matched without case against a stat
@@ -471,7 +473,15 @@ export interface RulesetCombatAction {
    *  after its holder attacked with another off-hand weapon this turn. */
   offHandOf?: number;
   /** Conditions the target takes when the harm this blow dealt reached a number. */
-  onHit?: Array<{ condition: string; atLeast: number; rounds?: number }>;
+  onHit?: Array<{
+    condition: string;
+    atLeast: number;
+    rounds?: number;
+    /** The target saves against it, and a success keeps it off (1.164). */
+    save?: { save: string; difficulty: number };
+    /** It lasts until its holder makes this save at a turn's start or end (1.164). */
+    saveEnds?: { save: string; difficulty: number; at: "turn-start" | "turn-end" | "damaged" };
+  }>;
   /** Using an item: which of the holder's items it is (its place in `sheet.items`), and what using
    *  it spends of it: one off the stack, or some of its charges. */
   itemUse?: {

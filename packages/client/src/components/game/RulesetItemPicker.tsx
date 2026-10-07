@@ -104,14 +104,49 @@ function rulesetItemAttackLines(facts: RulesetItemFacts, t: TFunction): string[]
   const fourth = [
     attack.offHand ? t("ui.game.gameinventory.attackOffHand", { budget: attack.offHand.budget }) : "",
     attack.floor !== undefined ? t("ui.game.gameinventory.attackFloor", { floor: attack.floor }) : "",
+    ...(attack.plus ?? []).map((clause) =>
+      [
+        t("ui.game.gameinventory.attackPlus", { amount: clause.amount }),
+        clause.type ?? "",
+        clause.against ? t("ui.game.gameinventory.attackPlusAgainst", { what: clause.against.join(", ") }) : "",
+        clause.critical ? t("ui.game.gameinventory.attackPlusCritical") : "",
+        clause.save
+          ? t(
+              clause.save.onSuccess === "half"
+                ? "ui.game.gameinventory.attackPlusSaveHalf"
+                : "ui.game.gameinventory.attackPlusSaveNone",
+              { save: clause.save.save, difficulty: clause.save.difficulty },
+            )
+          : "",
+      ]
+        .filter(Boolean)
+        .join(" "),
+    ),
     ...(attack.onHit ?? []).map((entry) =>
-      entry.rounds !== undefined
-        ? t("ui.game.gameinventory.attackOnHitRounds", {
-            condition: entry.condition,
-            atLeast: entry.atLeast,
-            rounds: entry.rounds,
-          })
-        : t("ui.game.gameinventory.attackOnHit", { condition: entry.condition, atLeast: entry.atLeast }),
+      [
+        entry.rounds !== undefined
+          ? t("ui.game.gameinventory.attackOnHitRounds", {
+              condition: entry.condition,
+              atLeast: entry.atLeast,
+              rounds: entry.rounds,
+            })
+          : t("ui.game.gameinventory.attackOnHit", { condition: entry.condition, atLeast: entry.atLeast }),
+        entry.save
+          ? t("ui.game.gameinventory.attackOnHitSave", { save: entry.save.save, difficulty: entry.save.difficulty })
+          : "",
+        entry.saveEnds
+          ? t(
+              entry.saveEnds.at === "turn-start"
+                ? "ui.game.gameinventory.attackOnHitSaveEndsStart"
+                : entry.saveEnds.at === "damaged"
+                  ? "ui.game.gameinventory.attackOnHitSaveEndsDamaged"
+                  : "ui.game.gameinventory.attackOnHitSaveEndsEnd",
+              { save: entry.saveEnds.save, difficulty: entry.saveEnds.difficulty },
+            )
+          : "",
+      ]
+        .filter(Boolean)
+        .join(", "),
     ),
   ].filter(Boolean);
   return [

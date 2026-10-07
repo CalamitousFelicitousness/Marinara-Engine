@@ -89,7 +89,7 @@ assert.equal(
     // a clause may carry and nothing else.
     const damageShaped =
       ["dice", "flat", "type"].every((key) => keys.includes(key)) &&
-      keys.every((key) => ["dice", "flat", "type", "plus", "save", "targetIs"].includes(key));
+      keys.every((key) => ["dice", "flat", "type", "plus", "save", "targetIs", "when"].includes(key));
     if (damageShaped) damageNodes.push(object);
     if (checkKeys.every((key) => keys.includes(key))) checkNodes.push(object);
     if (keys.length === 2 && keys.includes("from") && keys.includes("min")) faceNodes.push(object);

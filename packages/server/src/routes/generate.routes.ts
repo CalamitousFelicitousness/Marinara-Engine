@@ -12204,7 +12204,12 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   !isTrackerRowsUpdate(ctData.presentCharacters) &&
                   (!Array.isArray(ctData.presentCharacters) || ctData.presentCharacters.length === 0)
                 ) {
-                  logger.debug("[generate] character-tracker emitted no presentCharacters; keeping existing snapshot");
+                  const resultKeys = Object.keys(ctData);
+                  // `{}` and an empty list are the prompt's no-change replies; any other shape is lost output (#7208).
+                  logger[resultKeys.length === 0 || Array.isArray(ctData.presentCharacters) ? "debug" : "warn"](
+                    "[generate] character-tracker emitted no presentCharacters (result keys: %s); keeping existing snapshot",
+                    resultKeys.join(", ") || "none",
+                  );
                   continue;
                 }
                 const snapBeforeUpdate = await gameStateStore.getByChatAndMessage(

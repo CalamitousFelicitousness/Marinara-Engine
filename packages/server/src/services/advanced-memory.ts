@@ -3297,16 +3297,32 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       return;
     }
     const names = ctx.characterIds.map((id) => ctx.names.get(id) ?? "Character");
-    // Who can read each non-empty section of these texts; "{{" stands for any other macro.
+    // The text of each group of readers in these texts, lowercased; "{{" stands for any other macro.
     const sections = (texts: string[]) => {
-      const found = new Set<string>();
+      const found = new Map<string, string>();
       for (const text of texts)
         scopeCharacterSummary(text, names, 0, (part, readers) => {
-          if (part.trim()) found.add(part.includes("{{") ? "{{" : JSON.stringify([...readers].sort()));
+          const key = part.includes("{{") ? "{{" : JSON.stringify([...readers].sort());
+          if (part.trim()) found.set(key, `${found.get(key) ?? ""} ${part.toLowerCase().replace(/\s+/gu, " ")}`);
           return part;
         });
       return found;
     };
+    // A private sentence of four or more words found in a section someone else can also read.
+    const leaks = (before: Map<string, string>, after: Map<string, string>) =>
+      [...before].some(
+        ([key, text]) =>
+          key !== "{{" &&
+          [...after].some(
+            ([wider, output]) =>
+              wider !== "{{" &&
+              (JSON.parse(wider) as string[]).some((name) => !(JSON.parse(key) as string[]).includes(name)) &&
+              text
+                .split(/[.!?]/u)
+                .map((sentence) => sentence.trim())
+                .some((sentence) => sentence.split(" ").length >= 4 && output.includes(sentence)),
+          ),
+      );
     // Combine the summaries the same characters read. One whose text differs by character joins
     // with its conditions kept, if Advanced Memory wrote it and nobody changed it since (#7270).
     const conditional = new Set<string>();
@@ -3376,11 +3392,12 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       // stays cached so unchanged inputs do not repeat the same paid attempt.
       if (tokenSize(content) >= groupTokens) continue;
       const scoped = scopeConstantSummary(ctx, content, readers);
-      const before = combine ? sections(inputs) : new Set<string>();
+      const before = combine ? sections(inputs) : new Map<string, string>();
       const after = combine ? sections([scoped]) : before;
-      // ponytail: this compares who reads each section, not the facts inside it, so a fact moved
-      // into a wider section that is still there passes. Upgrade: match facts per section.
-      if (after.size !== before.size || [...after].some((key) => !before.has(key))) {
+      // Every group of readers must keep its section, none may be added, and no private sentence
+      // may reach more readers. ponytail: a reworded private fact in a wider section still passes;
+      // upgrade by asking a second model to compare the facts in each section.
+      if (after.size !== before.size || [...after.keys()].some((key) => !before.has(key)) || leaks(before, after)) {
         logger.warn(
           "[advanced-memory] Combined summaries for %s would change who can read a private section; keeping them",
           chatId,

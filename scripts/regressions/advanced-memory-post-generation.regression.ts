@@ -1694,8 +1694,11 @@ try {
   assert.deepEqual(calls, [], "combined summaries within the share need no further calls");
 
   // A result that would show Maukie's secret to Pantalone is not saved; the plain summary is still shortened.
+  // This one keeps a Maukie section but copies the secret into the text both characters read.
   summaryReply = (prompt) =>
-    prompt.includes("MAUKIE_SECRET") ? "COMBINED_WALK. MAUKIE_SECRET hid the key." : "PLAIN_COMPACTED";
+    prompt.includes("MAUKIE_SECRET")
+      ? `COMBINED_WALK. MAUKIE_SECRET hid the key. {{#if char == "Maukie"}}Maukie kept quiet.{{/if}}`
+      : "PLAIN_COMPACTED";
   await chats.patchMetadata(combineChat.id, { summaryEntries: [privateRecap, sharedRecap] });
   calls.length = 0;
   await memory.checkScenesAfterGeneration(combineChat.id, { blocking: false });
@@ -1707,12 +1710,18 @@ try {
     "the plain summary is shortened on its own, as before",
   );
   const leakEntries = await combineEntries();
-  assert.deepEqual(leakEntries[0], privateRecap, "a result that drops a private section is not saved");
+  assert.deepEqual(
+    leakEntries[0],
+    privateRecap,
+    "a result that copies a private sentence into shared text is not saved",
+  );
   assert.equal(leakEntries.find((entry) => entry.id === sharedRecap.id)!.enabled, false);
   assert(leakEntries.some((entry) => entry.enabled && entry.content.includes("PLAIN_COMPACTED")));
   assert.doesNotMatch(await recallFor(privateB.id), /MAUKIE_SECRET/u);
 
-  // The rejected attempt is kept, so unchanged summaries do not pay for it again.
+  // A result that drops the private section is rejected too, and the rejected attempt is kept,
+  // so unchanged summaries do not pay for it again.
+  summaryReply = () => "COMBINED_WALK. MAUKIE_SECRET hid the key.";
   await chats.patchMetadata(combineChat.id, { summaryEntries: [privateRecap] });
   calls.length = 0;
   await memory.checkScenesAfterGeneration(combineChat.id, { blocking: false });
@@ -1721,6 +1730,7 @@ try {
   assert.deepEqual(await combineEntries(), [privateRecap]);
 
   // A summary edited by hand keeps its text; only the plain summary is shortened.
+  summaryReply = undefined;
   const editedRecap = {
     ...privateRecap,
     content: privateRecap.content.replace("hid", "buried"),
@@ -1734,7 +1744,6 @@ try {
   assert.deepEqual((await combineEntries())[0], editedRecap, "an edited summary is never rewritten");
 
   // Merged group chats combine them too, instead of skipping every summary with a character condition.
-  summaryReply = undefined;
   summaryResponse = `COMBINED_WALK. ${maukieSecret}`;
   await chats.patchMetadata(combineChat.id, { groupChatMode: "shared", summaryEntries: [privateRecap, sharedRecap] });
   calls.length = 0;

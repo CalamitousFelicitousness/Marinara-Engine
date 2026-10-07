@@ -21,18 +21,33 @@ for (const path of ["start-termux.sh", ".npmrc", "pnpm-workspace.yaml", "package
 // default target must keep an android/arm64 build of each one. Linux builds are never loaded.
 const lock = read("pnpm-lock.yaml");
 const [packagesSection, snapshotsSection] = lock.split("\npackages:\n")[1].split("\nsnapshots:\n");
-const blocks = (section) =>
-  new Map(
-    section.split("\n\n").map((block) => {
-      const [header, ...body] = block.trim().split("\n");
-      return [header.replace(/:( \{\})?$/u, "").replace(/^'|'$/gu, ""), body.join("\n")];
-    }),
-  );
+// Each entry starts at a two-space-indented key; blank lines between entries are optional in YAML.
+const blocks = (section) => {
+  const entries = new Map();
+  let key = null;
+  for (const line of section.split("\n")) {
+    if (/^ {2}\S/u.test(line)) {
+      key = line
+        .trim()
+        .replace(/:( \{\})?$/u, "")
+        .replace(/^'|'$/gu, "");
+      entries.set(key, "");
+    } else if (key && line.trim()) entries.set(key, `${entries.get(key)}${line}\n`);
+  }
+  return entries;
+};
 const packages = blocks(packagesSection);
 const snapshots = blocks(snapshotsSection);
+// Compare whole array values: "!android" or "!arm64" excludes the target instead of naming it.
+const listField = (metadata, field) =>
+  (new RegExp(`^ {4}${field}: \\[([^\\]]*)\\]`, "mu").exec(metadata)?.[1] ?? "")
+    .split(",")
+    .map((value) => value.trim().replace(/^'|'$/gu, ""))
+    .filter(Boolean);
+const allows = (values, target) => values.includes(target) && !values.includes(`!${target}`);
 const runsOnAndroidArm64 = (key) => {
   const metadata = packages.get(key) ?? "";
-  return /^ {4}os: \[[^\]]*\bandroid\b/mu.test(metadata) && /^ {4}cpu: \[[^\]]*\barm64\b/mu.test(metadata);
+  return allows(listField(metadata, "os"), "android") && allows(listField(metadata, "cpu"), "arm64");
 };
 
 for (const loader of ["esbuild", "rollup", "lightningcss", "@tailwindcss/oxide", "@napi-rs/canvas"]) {

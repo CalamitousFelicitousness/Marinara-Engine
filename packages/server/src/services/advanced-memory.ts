@@ -2554,7 +2554,14 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
           !options.sceneId &&
           state.stage === "compacting" &&
           (state.status === "error" || state.status === "cancelled");
-        if (resumeCompaction) await updateConstantSummariesAfterGeneration(chatId, {}, operationOptions);
+        if (resumeCompaction)
+          try {
+            await updateConstantSummariesAfterGeneration(chatId, {}, operationOptions);
+          } catch (error) {
+            // Fix still repairs the scenes; the next reply retries the continuity update.
+            if (!options.fixAll || operationOptions.signal?.aborted) throw error;
+            logger.warn(error, "[advanced-memory] Continuity update failed before Fix; repairing scenes anyway");
+          }
         // Fix finishes a stopped continuity update first, then repairs every scene.
         if (!resumeCompaction || options.fixAll)
           await initializeImpl(chatId, {

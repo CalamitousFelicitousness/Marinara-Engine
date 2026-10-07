@@ -140,6 +140,8 @@ export function AdvancedMemorySettings({
     // Read the store, not this render's value: the request is taken once.
     const request = useUIStore.getState().advancedMemoryRequest;
     if (variant !== "drawer" || !request?.fix || request.chatId !== chatId || !status.data) return;
+    // Wait for running work or another save to finish rather than dropping the request.
+    if (!canFix && (action.isPending || running)) return;
     useUIStore.getState().setAdvancedMemoryRequest(null);
     if (canFix) fix();
   });

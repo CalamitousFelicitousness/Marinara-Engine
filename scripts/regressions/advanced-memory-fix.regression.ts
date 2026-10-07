@@ -26,6 +26,7 @@ const MARKERS = [
 ] as const;
 type Marker = (typeof MARKERS)[number];
 let phase: "initial" | "fix" = "initial";
+let compactionCalls = 0;
 const calls: string[] = [];
 const visibilityInputs: string[] = [];
 const initialAudience: Record<Marker, unknown> = {
@@ -58,6 +59,17 @@ const provider = createServer(async (request, response) => {
         .filter((message: { content: string }) => message.content.startsWith("SCENE_CHANGE"))
         .map((message: { messageId: string }) => ({ messageId: message.messageId })),
     });
+  } else if (system.content.includes("Aim for approximately")) {
+    // Combining constant Chat Summaries always runs out of room here.
+    compactionCalls++;
+    response.end(
+      JSON.stringify({
+        choices: [{ message: { role: "assistant", content: '{"summary":"Cut off' }, finish_reason: "length" }],
+      }),
+    );
+    return;
+  } else if (transcript.content.includes("COMPACT")) {
+    content = JSON.stringify({ summary: "Recap of the COMPACT chapter.", audience: ["maukie"] });
   } else {
     const audienceOnly = system.content.startsWith("Identify the participants");
     const marker = MARKERS.find((item) => transcript.content.includes(item)) ?? "OTHER";
@@ -90,7 +102,7 @@ const { createConnectionsStorage } = await import("../../packages/server/src/ser
 const { createAdvancedMemoryService } = await import("../../packages/server/src/services/advanced-memory.js");
 const { advancedMemoryRecords } = await import("../../packages/server/src/db/schema/advanced-memory.js");
 const { eq } = await import("../../packages/server/src/db/file-query.js");
-const { advancedMemoryProblems } = await import("../../packages/shared/src/index.js");
+const { advancedMemoryProblems, createChatSummaryEntry } = await import("../../packages/shared/src/index.js");
 const db = await createFileNativeDB();
 const chats = createChatsStorage(db);
 const memory = createAdvancedMemoryService(db);
@@ -276,6 +288,38 @@ try {
   // Saving access by hand settles the scene.
   await memory.updateRecord(chat.id, unclear.id, { audienceCharacterIds: ["maukie"] });
   assert(!advancedMemoryProblems(await status()).reviewSceneIds.includes(sceneId("STILL_UNCLEAR")));
+
+  // A stopped continuity update that fails again doesn't keep Fix from repairing scenes.
+  const compact = await chats.create({
+    name: "Stopped continuity",
+    mode: "roleplay",
+    characterIds: ["maukie"],
+    connectionId: connection.id,
+  });
+  assert(compact);
+  await chats.patchMetadata(compact.id, {
+    advancedMemory: { enabled: true, summaryBudgetTokens: 64 },
+    summaryEntries: [createChatSummaryEntry({ content: "A long remembered journey. ".repeat(60), enabled: true })],
+  });
+  await chats.createMessagesBatch(compact.id, [
+    { role: "user", content: "Mari begins the COMPACT chapter." },
+    { role: "assistant", characterId: "maukie", content: "Maukie listens to the COMPACT chapter." },
+    { role: "user", content: "SCENE_CHANGE The story goes on." },
+  ]);
+  const stopped = { status: "error", stage: "compacting", completed: 0, total: 1, error: "Earlier failure" };
+  await chats.patchMetadata(compact.id, { advancedMemoryState: stopped });
+  await assert.rejects(memory.initialize(compact.id), /output limit/, "Resume still reports the failed update");
+  await chats.patchMetadata(compact.id, { advancedMemoryState: stopped });
+  const compactionsBefore = compactionCalls;
+  await memory.initialize(compact.id, { fixAll: true });
+  const compacted = await memory.status(compact.id);
+  assert(compactionCalls > compactionsBefore, "Fix retries the stopped continuity update first");
+  assert.equal(compacted.job.status, "ready");
+  assert.equal(compacted.job.fixResult?.jobId, compacted.job.id);
+  assert(
+    compacted.records.some((record) => record.kind === "scene" && record.content === "Recap of the COMPACT chapter."),
+    "scenes are repaired even though the continuity update failed again",
+  );
   console.log("Advanced Memory Fix repairs flagged scenes, keeps hand edits and reports what changed.");
 } finally {
   provider.closeAllConnections();

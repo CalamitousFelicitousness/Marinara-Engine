@@ -2404,6 +2404,33 @@ export function getCapabilityPackageInstallIssue(
   if (!declaresApi(126) && (carriesReactionMomentKeys || carriesReactionMoments(ruleset?.combat))) {
     return "A ruleset whose reactions answer for others, at a turn's start, on a save or for several fallers requires schemaVersion 2 and capabilityApi 1.126 or newer";
   }
+  // Conditions, levels, sheet rows and item exceptions keep harm off, 1.127.
+  const hideCombat = plainRecord(ruleset?.combat);
+  const carriesTypedHides = ["conditions", "levels"].some((key) => {
+    const entries = hideCombat?.[key];
+    return (
+      Array.isArray(entries) &&
+      entries.some((entry) =>
+        ["resist", "vulnerable", "immune", "conditionImmunities"].some(
+          (kind) => plainRecord(entry)?.[kind] !== undefined,
+        ),
+      )
+    );
+  });
+  const carriesItemExceptions = [...itemsByRef.values()].some((item) =>
+    [
+      item.worn,
+      item.carried,
+      ...(Array.isArray(item.requires) ? item.requires.map((need) => plainRecord(need)?.otherwise) : []),
+    ].some((effect) =>
+      [plainRecord(effect)?.resist, plainRecord(effect)?.immune].some(
+        (entries) => Array.isArray(entries) && entries.some((entry) => plainRecord(entry) !== undefined),
+      ),
+    ),
+  );
+  if (!declaresApi(127) && (carriesTypedHides || hideCombat?.sheetHides !== undefined || carriesItemExceptions)) {
+    return "A ruleset whose conditions, levels, sheet or items with exceptions keep harm off requires schemaVersion 2 and capabilityApi 1.127 or newer";
+  }
   if (carriesCreatureSpellcasting) {
     // The references can only be checked once the catalog files are beside their headers.
     const complete = {

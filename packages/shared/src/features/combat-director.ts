@@ -1,3 +1,4 @@
+import type { RulesetCheckSource } from "./rulesets/check-effects.js";
 import type { CombatWeather } from "./combat-conditions.js";
 import { z } from "zod";
 import type { Combatant, CombatPlayerAction, CombatSummary } from "../types/game.js";
@@ -112,6 +113,8 @@ export interface DirectedRulesetCombatant {
    *  the chance it would land against this combatant, so the number is not a secret to keep. */
   defense: number;
   conditions: Array<{ id: string; label: string; rounds?: number }>;
+  /** All active typed defenses, including exceptions (Capability API 1.127). */
+  hides?: Pick<RulesetCheckSource, "resist" | "vulnerable" | "immune" | "conditionImmunities">;
   /** What is left of each budget this turn, keyed by budget id. */
   budgets: Record<string, number>;
   down: boolean;

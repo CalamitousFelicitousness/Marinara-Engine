@@ -34,7 +34,12 @@ import {
   type RulesetLiveState,
   type RulesetSheetOp,
 } from "../rulesets/live-state.js";
-import { rulesetItemGateCheck, rulesetItemSources, type RulesetCheckSource } from "../rulesets/check-effects.js";
+import {
+  rulesetItemGateCheck,
+  rulesetItemSources,
+  rulesetSheetHideSources,
+  type RulesetCheckSource,
+} from "../rulesets/check-effects.js";
 import { rulesetItemGateDifficulty, rulesetItemGateLabel } from "../rulesets/item-book.js";
 import { rulesetCatalogEntriesByRef } from "../rulesets/scaled-rows.js";
 import {
@@ -298,6 +303,7 @@ export function rulesetActiveConditions(
   combat: RulesetCombat,
   combatant: RulesetCombatant,
   state?: RulesetEncounterState,
+  rawLevels = false,
 ): RulesetActiveCondition[] {
   const active = new Set(rulesetCombatConditions(definition, combatant));
   const conditions = (combat.conditions ?? []).flatMap((entry): RulesetActiveCondition[] => {
@@ -312,7 +318,7 @@ export function rulesetActiveConditions(
     // fright you fail a save against whether or not you can see it is exactly what the list is for.
     return [{ ...entry, effects: entry.effects.filter((effect) => !gate.includes(effect)) }];
   });
-  const levels = combat.levels?.length ? activeLevels(definition, combat, combatant) : [];
+  const levels = combat.levels?.length ? activeLevels(definition, combat, combatant, rawLevels) : [];
   // And what the fighter's items do, each named for the stack, as a level is named for its track.
   const items = heldSources(definition, combatant).map((source): RulesetActiveCondition => ({
     condition: source.name,
@@ -322,6 +328,10 @@ export function rulesetActiveConditions(
     ...(source.failsSaves ? { failsSaves: [...source.failsSaves] } : {}),
     ...(source.saves ? { saves: [...source.saves] } : {}),
     ...(source.skills ? { skills: [...source.skills] } : {}),
+    ...(source.resist ? { resist: [...source.resist] } : {}),
+    ...(source.vulnerable ? { vulnerable: [...source.vulnerable] } : {}),
+    ...(source.immune ? { immune: [...source.immune] } : {}),
+    ...(source.conditionImmunities ? { conditionImmunities: [...source.conditionImmunities] } : {}),
   }));
   return [...conditions, ...levels, ...items];
 }
@@ -354,17 +364,30 @@ function heldSources(definition: RulesetDefinition, combatant: RulesetCombatant)
   );
 }
 
-/** What a fighter's hide is made of: a creature's own resistances, vulnerabilities and immunities, and
- *  the kinds of harm their items keep off. */
+/** What a fighter's hide is made of, including conditions, levels and sheet rows (Capability API 1.127). */
 export function rulesetCombatHide(
   definition: RulesetDefinition,
   combatant: RulesetCombatant,
-): { resist: RulesetCreatureHideEntry[]; vulnerable: string[]; immune: RulesetCreatureHideEntry[] } {
-  const held = heldSources(definition, combatant);
+  state?: RulesetEncounterState,
+  rawLevels = false,
+): {
+  resist: RulesetCreatureHideEntry[];
+  vulnerable: string[];
+  immune: RulesetCreatureHideEntry[];
+  conditionImmunities: string[];
+} {
+  const sources = definition.combat
+    ? rulesetActiveConditions(definition, definition.combat, combatant, state, rawLevels)
+    : heldSources(definition, combatant);
+  const all = [...sources, ...(combatant.sheet ? rulesetSheetHideSources(definition, combatant.sheet.build) : [])];
   return {
-    resist: [...(combatant.block?.resist ?? []), ...held.flatMap((source) => source.resist ?? [])],
-    vulnerable: [...(combatant.block?.vulnerable ?? []), ...held.flatMap((source) => source.vulnerable ?? [])],
-    immune: [...(combatant.block?.immune ?? []), ...held.flatMap((source) => source.immune ?? [])],
+    resist: [...(combatant.block?.resist ?? []), ...all.flatMap((source) => source.resist ?? [])],
+    vulnerable: [...(combatant.block?.vulnerable ?? []), ...all.flatMap((source) => source.vulnerable ?? [])],
+    immune: [...(combatant.block?.immune ?? []), ...all.flatMap((source) => source.immune ?? [])],
+    conditionImmunities: [
+      ...(combatant.block?.conditionImmunities ?? []),
+      ...all.flatMap((source) => source.conditionImmunities ?? []),
+    ],
   };
 }
 
@@ -389,15 +412,29 @@ function activeLevels(
   definition: RulesetDefinition,
   combat: RulesetCombat,
   combatant: RulesetCombatant,
+  rawLevels = false,
 ): RulesetActiveCondition[] {
   if (!combat.levels?.length) return [];
   const sheet = combatant.sheet;
   if (!sheet && !combatant.tracks) return [];
   const live = sheet ? readRulesetLive(definition, sheet.build, sheet.live) : undefined;
   let derived: Record<string, number> | undefined;
+  // Even the non-recursive read must honor the creature's and items' existing track immunities.
+  const baseImmunities = rawLevels
+    ? [
+        ...(combatant.block?.conditionImmunities ?? []),
+        ...heldSources(definition, combatant).flatMap((source) => source.conditionImmunities ?? []),
+      ].map((id) => id.trim().toLowerCase())
+    : [];
   return combat.levels.flatMap((level) => {
     if (level.derived !== undefined && !sheet) return [];
-    if (level.track !== undefined && rulesetImmuneToCondition(combatant, level.track, definition)) return [];
+    if (
+      level.track !== undefined &&
+      (rawLevels
+        ? baseImmunities.includes(level.track.trim().toLowerCase())
+        : rulesetImmuneToCondition(combatant, level.track, definition))
+    )
+      return [];
     const value =
       level.derived !== undefined
         ? ((derived ??= evaluateRulesetSheetLive(definition, sheet!.build, sheet!.live, sheet!.items).derived)[
@@ -409,6 +446,10 @@ function activeLevels(
     if (value < level.at) return [];
     return [
       {
+        ...(level.resist ? { resist: level.resist } : {}),
+        ...(level.vulnerable ? { vulnerable: level.vulnerable } : {}),
+        ...(level.immune ? { immune: level.immune } : {}),
+        ...(level.conditionImmunities ? { conditionImmunities: level.conditionImmunities } : {}),
         condition: level.track ?? level.derived!,
         level: level.at,
         ...(level.derived !== undefined ? { derived: true as const } : {}),
@@ -2372,12 +2413,13 @@ export function rulesetImmuneToCondition(
   condition: string,
   /** Given, what the fighter's items keep off counts too. */
   definition?: RulesetDefinition,
+  state?: RulesetEncounterState,
 ): boolean {
   const wanted = condition.trim().toLowerCase();
-  const immunities = [
-    ...(combatant.block?.conditionImmunities ?? []),
-    ...(definition ? heldSources(definition, combatant).flatMap((source) => source.conditionImmunities ?? []) : []),
-  ];
+  // Read reached levels without asking immunity again: a track's own immunity must not recurse.
+  const immunities = definition
+    ? rulesetCombatHide(definition, combatant, state, true).conditionImmunities
+    : (combatant.block?.conditionImmunities ?? []);
   return immunities.some((entry) => entry.trim().toLowerCase() === wanted);
 }
 

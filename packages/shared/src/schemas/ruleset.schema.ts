@@ -3741,6 +3741,11 @@ export const RULESET_LEVEL_REFUSED_EFFECTS = [
  */
 const combatLevelSchema = z
   .object({
+    /** Harm and conditions kept off while this applies (Capability API 1.127), as on a creature. */
+    resist: z.array(creatureHideEntrySchema).min(1).max(30).optional(),
+    vulnerable: z.array(promptSafeText(40)).min(1).max(30).optional(),
+    immune: z.array(creatureHideEntrySchema).min(1).max(30).optional(),
+    conditionImmunities: z.array(sheetId).min(1).max(40).optional(),
     /** A plain live track, read by where it stands... */
     track: sheetId.optional(),
     /** ...or a derived value, worked out with the holder's live state and items. One of the two. */
@@ -3773,11 +3778,21 @@ const combatLevelSchema = z
         });
       }
     });
-    if (entry.effects.length === 0 && !entry.modifiers && !entry.failsSaves && !entry.defeats) {
+    if (
+      entry.effects.length === 0 &&
+      !entry.modifiers &&
+      !entry.failsSaves &&
+      !entry.defeats &&
+      !entry.resist &&
+      !entry.vulnerable &&
+      !entry.immune &&
+      !entry.conditionImmunities
+    ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["effects"],
-        message: "A level does something: effects, modifiers, saves it fails or defeating its holder",
+        message:
+          "A level does something: effects, modifiers, saves it fails, defeating its holder, or harm or conditions it keeps off",
       });
     }
     savesNeedSomethingToNarrow(entry, ctx);
@@ -3802,6 +3817,11 @@ const combatConditionDelaysSchema: z.ZodType<RulesetConditionDelays, z.ZodTypeDe
 
 const combatConditionSchema = z
   .object({
+    /** Harm and conditions kept off while this applies (Capability API 1.127), as on a creature. */
+    resist: z.array(creatureHideEntrySchema).min(1).max(30).optional(),
+    vulnerable: z.array(promptSafeText(40)).min(1).max(30).optional(),
+    immune: z.array(creatureHideEntrySchema).min(1).max(30).optional(),
+    conditionImmunities: z.array(sheetId).min(1).max(40).optional(),
     condition: sheetId,
     /** Senses its holder does not have while it lasts (Capability API 1.122). */
     lacks: combatSensesSchema.optional(),
@@ -3944,10 +3964,11 @@ export const rulesetItemEffectSchema = z
     skills: z.array(sheetId).min(1).max(24).optional(),
     /** Abilities it sets or raises, by ability id, applied before the sheet is worked out. */
     abilities: z.record(sheetId, itemAbilityChangeSchema).optional(),
-    /** Kinds of harm its holder takes half of, double, or none of in a fight, as a creature's are. */
-    resist: z.array(promptSafeText(40)).min(1).max(30).optional(),
+    /** Kinds of harm its holder takes half of, double, or none of in a fight. Exceptions name
+     *  what gets through, as on a creature (Capability API 1.127). */
+    resist: z.array(creatureHideEntrySchema).min(1).max(30).optional(),
     vulnerable: z.array(promptSafeText(40)).min(1).max(30).optional(),
-    immune: z.array(promptSafeText(40)).min(1).max(30).optional(),
+    immune: z.array(creatureHideEntrySchema).min(1).max(30).optional(),
     /** The sheet's own conditions a fight never puts on its holder. */
     conditionImmunities: z.array(sheetId).min(1).max(40).optional(),
   })
@@ -4383,6 +4404,20 @@ const combatSchema = z
     conditions: z.array(combatConditionSchema).max(80).optional(),
     /** Levels of live tracks that count as conditions while the track is high enough. */
     levels: z.array(combatLevelSchema).max(20).optional(),
+    /** Every row adds comma-separated harm or condition words from this column (Capability API
+     *  1.127). A damage word may say `except` and the tags that get through it. */
+    sheetHides: z
+      .array(
+        z
+          .object({
+            list: sheetId,
+            column: sheetId,
+            kind: z.enum(["resist", "vulnerable", "immune", "conditionImmunities"]),
+          })
+          .strict(),
+      )
+      .max(8)
+      .optional(),
     /** The numbers a contest reads, and the contests a combatant may take. */
     checks: z.array(combatCheckSchema).max(12).optional(),
     contests: z.array(combatContestSchema).max(12).optional(),
@@ -6429,6 +6464,20 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       );
     }
 
+    combat.sheetHides?.forEach((source, index) => {
+      const path = at("sheetHides", index);
+      const list = sheet.lists.find((entry) => entry.id === source.list);
+      if (!list) issue([...path, "list"], `Unknown list "${source.list}"`);
+      const column = list?.columns.find((entry) => entry.id === source.column);
+      if (!column || (column.type !== "text" && column.type !== "enum")) {
+        issue([...path, "column"], "A sheet hide reads a text or enum column of its list");
+      } else if (source.kind === "conditionImmunities" && column.type === "enum") {
+        column.values.forEach((value) => {
+          if (!conditions.has(value.trim().toLowerCase())) issue([...path, "column"], `Unknown condition "${value}"`);
+        });
+      }
+    });
+
     const mapped = new Set<string>();
     combat.conditions?.forEach((entry, index) => {
       const path = at("conditions", index);
@@ -6436,6 +6485,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       if (mapped.has(entry.condition)) issue([...path, "condition"], `Duplicate condition "${entry.condition}"`);
       mapped.add(entry.condition);
       effectNameIssues(entry, skills, saves, path, issue);
+      hideIssues(def, entry, path, issue);
       // The action economy it changes (1.71) is the ruleset's own: budgets it declares, conditions it has.
       entry.budgets?.forEach((change, changeIndex) => {
         const where = [...path, "budgets", changeIndex, "budget"];
@@ -6529,6 +6579,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       if (levelled.has(key)) issue([...path, "at"], `Level ${entry.at} of "${read}" is given twice`);
       levelled.add(key);
       effectNameIssues(entry, skills, saves, path, issue);
+      hideIssues(def, entry, path, issue);
     });
 
     if (combat.concentration) {
@@ -7566,10 +7617,26 @@ function itemHideIssues(
       }
     });
   }
+  hideIssues(definition, effect, at, add);
+}
+
+/** Typed hides share a creature's damage words and exception tags (Capability API 1.127). */
+function hideIssues(
+  definition: RulesetDefinition,
+  effect: Pick<RulesetItemEffect, "resist" | "vulnerable" | "immune" | "conditionImmunities">,
+  at: (string | number)[],
+  add: (path: (string | number)[], message: string) => void,
+): void {
   const declared = definition.combat?.damageTypes;
   const types = declared ? new Set(declared.map((type) => type.trim().toLowerCase())) : null;
   for (const key of ["resist", "vulnerable", "immune"] as const) {
-    effect[key]?.forEach((type, index) => {
+    effect[key]?.forEach((entry, index) => {
+      const type = typeof entry === "string" ? entry : entry.type;
+      if (typeof entry !== "string")
+        entry.except.forEach((tag, tagIndex) => {
+          if (!definition.items?.tags?.some((one) => one.id === tag))
+            add([...at, key, index, "except", tagIndex], `Unknown item tag "${tag}"`);
+        });
       if (types && !types.has(type.trim().toLowerCase())) add([...at, key, index], `Unknown damage type "${type}"`);
     });
   }

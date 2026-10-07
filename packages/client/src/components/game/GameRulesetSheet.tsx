@@ -20,6 +20,8 @@ import {
   defaultRulesetSheetBuild,
   evaluateRulesetSheet,
   readRulesetLive,
+  rulesetCheckSources,
+  rulesetHideLines,
   rulesetSectionGroups,
   type EvaluatedRulesetSheet,
   type ResolvedRulesetLive,
@@ -332,6 +334,11 @@ export function GameRulesetSheet({
     [definition, build, items, resolved],
   );
 
+  const hideLines = useMemo(
+    () => rulesetHideLines(definition, rulesetCheckSources(definition, build, live, items), localizeUi),
+    [definition, build, live, items, localizeUi],
+  );
+
   /** Every change a player makes takes the same route a Game Master command does. */
   const apply = (op: RulesetSheetOp) => {
     if (readOnly) return;
@@ -625,6 +632,11 @@ export function GameRulesetSheet({
             </div>
           )}
 
+          {hideLines.map((line) => (
+            <p key={line} className="break-words text-xs text-[var(--muted-foreground)]">
+              {line}
+            </p>
+          ))}
           {resolved.conditions.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
               {resolved.conditions.map((condition) => (

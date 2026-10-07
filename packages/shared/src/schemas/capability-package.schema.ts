@@ -811,9 +811,11 @@ const capabilityPackageManifestBaseSchema = z
 // 1.125: a builder step's stamp can read the first offering parent pick's id, label or filter through
 //        `fromWithin`, so a spell names the class that offered it. Later edits remain the player's. No permission.
 // 1.126: reactions answer for nearby allies, at a turn's start, on a successful holder save, or for
-// several fallers of one event. An answer may land on the target, last this action, and name a
-// stat-block action in against.actions.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 126 } as const);
+//        several fallers of one event. An answer may land on the target, last this action, and name a
+//        stat-block action in against.actions. No permission.
+// 1.127: conditions, levels and sheet lists keep typed harm and conditions off; item hides name
+//        exception tags, as creatures do. A package that ships these declares 1.127. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 127 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

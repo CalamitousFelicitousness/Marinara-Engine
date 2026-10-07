@@ -40,6 +40,7 @@ import {
   rulesetCombatant,
   rulesetCombatConditions,
   rulesetCombatHealth,
+  rulesetCombatHide,
   rulesetCombatOptions,
   rulesetCostSteps,
   rulesetAverageAmount,
@@ -542,7 +543,11 @@ function deathTrackOf(definition: RulesetDefinition, combatant: RulesetCombatant
   };
 }
 
-function projectCombatant(definition: RulesetDefinition, combatant: RulesetCombatant): DirectedRulesetCombatant {
+function projectCombatant(
+  definition: RulesetDefinition,
+  combatant: RulesetCombatant,
+  state: RulesetEncounterState,
+): DirectedRulesetCombatant {
   const combat = definition.combat!;
   const health = rulesetCombatHealth(definition, combat, combatant);
   const deathTrack = deathTrackOf(definition, combatant);
@@ -555,6 +560,7 @@ function projectCombatant(definition: RulesetDefinition, combatant: RulesetComba
     health,
     defense: combatant.defense,
     conditions: conditionsOf(definition, combatant),
+    hides: rulesetCombatHide(definition, combatant, state),
     budgets: { ...combatant.budgets },
     down: combatant.down,
     dying: combatant.dying,
@@ -648,7 +654,7 @@ export function directedRulesetView(
       : {}),
     ...(actor && !over ? { actorId: actor.id } : {}),
     controller,
-    combatants: encounter.combatants.map((combatant) => projectCombatant(definition, combatant)),
+    combatants: encounter.combatants.map((combatant) => projectCombatant(definition, combatant, encounter)),
     // A window is answered by the one it asks, so while it is open the menu on screen is THEIRS.
     // The actor's own turn is standing still behind it and has nothing to offer until it closes.
     ...(held && !over

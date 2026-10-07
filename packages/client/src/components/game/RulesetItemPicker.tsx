@@ -211,7 +211,13 @@ function rulesetSheetValueWords(value: { what: string; of?: "modifier" | "items"
  *  checks". Empty when it does nothing either way. */
 export function rulesetItemEffectLines(facts: RulesetItemFacts, t: TFunction): string[] {
   const phrase = (fact: RulesetItemEffectFact) => {
-    const names = fact.names.join(", ");
+    const names = fact.names
+      .map((name, index) =>
+        fact.except?.[index]?.length
+          ? t("game.ruleset.hides.except", { type: name, tags: fact.except[index]!.join(" ") })
+          : name,
+      )
+      .join(", ");
     if ("effect" in fact.change)
       return t(FIGHT_EFFECT_KEYS[fact.change.effect] ?? "ui.game.gameinventory.effectFight", {
         effect: fact.change.effect,

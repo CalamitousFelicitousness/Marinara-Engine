@@ -12435,9 +12435,39 @@
                         "resist": {
                           "type": "array",
                           "items": {
-                            "type": "string",
-                            "minLength": 1,
-                            "maxLength": 40
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 40
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 40
+                                  },
+                                  "except": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 8
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "type",
+                                  "except"
+                                ],
+                                "additionalProperties": false
+                              }
+                            ]
                           },
                           "minItems": 1,
                           "maxItems": 30
@@ -12455,9 +12485,39 @@
                         "immune": {
                           "type": "array",
                           "items": {
-                            "type": "string",
-                            "minLength": 1,
-                            "maxLength": 40
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 40
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 40
+                                  },
+                                  "except": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 8
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "type",
+                                  "except"
+                                ],
+                                "additionalProperties": false
+                              }
+                            ]
                           },
                           "minItems": 1,
                           "maxItems": 30
@@ -12901,9 +12961,39 @@
                         "resist": {
                           "type": "array",
                           "items": {
-                            "type": "string",
-                            "minLength": 1,
-                            "maxLength": 40
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 40
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 40
+                                  },
+                                  "except": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 8
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "type",
+                                  "except"
+                                ],
+                                "additionalProperties": false
+                              }
+                            ]
                           },
                           "minItems": 1,
                           "maxItems": 30
@@ -12921,9 +13011,39 @@
                         "immune": {
                           "type": "array",
                           "items": {
-                            "type": "string",
-                            "minLength": 1,
-                            "maxLength": 40
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 40
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 40
+                                  },
+                                  "except": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 8
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "type",
+                                  "except"
+                                ],
+                                "additionalProperties": false
+                              }
+                            ]
                           },
                           "minItems": 1,
                           "maxItems": 30
@@ -13521,9 +13641,39 @@
                               "resist": {
                                 "type": "array",
                                 "items": {
-                                  "type": "string",
-                                  "minLength": 1,
-                                  "maxLength": 40
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 40
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "type": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 40
+                                        },
+                                        "except": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 8
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "required": [
+                                        "type",
+                                        "except"
+                                      ],
+                                      "additionalProperties": false
+                                    }
+                                  ]
                                 },
                                 "minItems": 1,
                                 "maxItems": 30
@@ -13541,9 +13691,39 @@
                               "immune": {
                                 "type": "array",
                                 "items": {
-                                  "type": "string",
-                                  "minLength": 1,
-                                  "maxLength": 40
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 40
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "type": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 40
+                                        },
+                                        "except": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 8
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "required": [
+                                        "type",
+                                        "except"
+                                      ],
+                                      "additionalProperties": false
+                                    }
+                                  ]
                                 },
                                 "minItems": 1,
                                 "maxItems": 30
@@ -22323,6 +22503,106 @@
           "items": {
             "type": "object",
             "properties": {
+              "resist": {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 40
+                        },
+                        "except": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 8
+                        },
+                        "$comment": {}
+                      },
+                      "required": [
+                        "type",
+                        "except"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "minItems": 1,
+                "maxItems": 30
+              },
+              "vulnerable": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 40
+                },
+                "minItems": 1,
+                "maxItems": 30
+              },
+              "immune": {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 40
+                        },
+                        "except": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 8
+                        },
+                        "$comment": {}
+                      },
+                      "required": [
+                        "type",
+                        "except"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "minItems": 1,
+                "maxItems": 30
+              },
+              "conditionImmunities": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 40,
+                  "pattern": "^[a-z][a-z0-9_]*$"
+                },
+                "minItems": 1,
+                "maxItems": 40
+              },
               "condition": {
                 "type": "string",
                 "maxLength": 40,
@@ -23062,6 +23342,106 @@
           "items": {
             "type": "object",
             "properties": {
+              "resist": {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 40
+                        },
+                        "except": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 8
+                        },
+                        "$comment": {}
+                      },
+                      "required": [
+                        "type",
+                        "except"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "minItems": 1,
+                "maxItems": 30
+              },
+              "vulnerable": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 40
+                },
+                "minItems": 1,
+                "maxItems": 30
+              },
+              "immune": {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 40
+                        },
+                        "except": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 8
+                        },
+                        "$comment": {}
+                      },
+                      "required": [
+                        "type",
+                        "except"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "minItems": 1,
+                "maxItems": 30
+              },
+              "conditionImmunities": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 40,
+                  "pattern": "^[a-z][a-z0-9_]*$"
+                },
+                "minItems": 1,
+                "maxItems": 40
+              },
               "track": {
                 "type": "string",
                 "maxLength": 40,
@@ -23460,6 +23840,41 @@
             ]
           },
           "maxItems": 20
+        },
+        "sheetHides": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "list": {
+                "type": "string",
+                "maxLength": 40,
+                "pattern": "^[a-z][a-z0-9_]*$"
+              },
+              "column": {
+                "type": "string",
+                "maxLength": 40,
+                "pattern": "^[a-z][a-z0-9_]*$"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "resist",
+                  "vulnerable",
+                  "immune",
+                  "conditionImmunities"
+                ]
+              },
+              "$comment": {}
+            },
+            "required": [
+              "list",
+              "column",
+              "kind"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 8
         },
         "checks": {
           "type": "array",

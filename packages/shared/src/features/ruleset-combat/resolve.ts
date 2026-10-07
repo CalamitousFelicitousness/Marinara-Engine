@@ -195,9 +195,11 @@ function begin(
     overwhelmed: new Set(),
     harmEndings: [],
   };
+  for (const target of next.combatants) endImmuneConditions(ctx, target);
   return {
     ctx,
     finish: () => {
+      for (const target of next.combatants) endImmuneConditions(ctx, target);
       for (const end of ctx.harmEndings.splice(0)) end();
       let landed = false;
       while (!next.window && next.pendingFalls?.length) {
@@ -383,7 +385,7 @@ function applyDamage(
   let dealt = Math.max(0, Math.floor(input.amount));
   let adjust: "none" | "resist" | "vulnerable" | "immune" = "none";
   // A creature's own hide, and what the target's items keep off.
-  const hide = type ? rulesetCombatHide(ctx.definition, target) : undefined;
+  const hide = type ? rulesetCombatHide(ctx.definition, target, ctx.state) : undefined;
   // A condition that keeps this very entry off (1.112) does, whatever kind of harm it is.
   const entry = input.entry;
   if (
@@ -394,29 +396,20 @@ function applyDamage(
   ) {
     dealt = 0;
     adjust = "immune";
-  } else if (type && hide) {
-    if (matches(hide.immune, type, input.qualities)) {
+  } else {
+    const resistant =
+      !!(type && hide && matches(hide.resist, type, input.qualities)) ||
+      rulesetCombatEffects(ctx.definition, ctx.combat, target, ctx.state).has("resist-all");
+    const vulnerable = !!(type && hide && matches(hide.vulnerable, type));
+    if (type && hide && matches(hide.immune, type, input.qualities)) {
       dealt = 0;
       adjust = "immune";
-    } else if (matches(hide.resist, type, input.qualities)) {
+    } else if (resistant && !vulnerable) {
       dealt = Math.floor(dealt / 2);
       adjust = "resist";
-    } else if (matches(hide.vulnerable, type)) {
+    } else if (vulnerable && !resistant) {
       dealt *= 2;
       adjust = "vulnerable";
-    }
-  }
-  // And then what a condition says about every kind of harm at once. Read after the hide underneath
-  // and cancelling against it the way advantage and disadvantage cancel: resistant stays resistant,
-  // immune stays immune, and something both resistant to everything and open to this one kind takes
-  // it as it comes.
-  if (rulesetCombatEffects(ctx.definition, ctx.combat, target, ctx.state).has("resist-all")) {
-    if (adjust === "none") {
-      dealt = Math.floor(dealt / 2);
-      adjust = "resist";
-    } else if (adjust === "vulnerable") {
-      dealt = Math.floor(dealt / 2);
-      adjust = "none";
     }
   }
   const toTemp = Math.min(before.temp, dealt);
@@ -1031,7 +1024,7 @@ function applyConditionId(
   applies: RulesetCombatApplies,
   extra: { sourceId?: string; difficulty?: number; concentration?: boolean } = {},
 ): void {
-  if (rulesetImmuneToCondition(target, condition, ctx.definition)) {
+  if (rulesetImmuneToCondition(target, condition, ctx.definition, ctx.state)) {
     ctx.events.push({ type: "condition", targetId: target.id, condition, active: false, reason: "immune" });
     return;
   }
@@ -1058,7 +1051,19 @@ function applyConditionId(
     ...(applies.escapeDc !== undefined ? { escapeDc: applies.escapeDc } : {}),
   });
   ctx.events.push({ type: "condition", targetId: target.id, condition, active: true, reason: "applied" });
+  endImmuneConditions(ctx, target);
   groundFlier(ctx, target);
+}
+
+/** A newly gained immunity ends a condition already on its holder (Capability API 1.127). */
+function endImmuneConditions(ctx: RulesetCombatContext, target: RulesetCombatant): void {
+  const ended = rulesetCombatConditions(ctx.definition, target).filter((condition) =>
+    rulesetImmuneToCondition(target, condition, ctx.definition, ctx.state),
+  );
+  for (const condition of ended) {
+    if (rulesetCombatConditions(ctx.definition, target).includes(condition))
+      removeCondition(ctx, target, condition, "immune");
+  }
 }
 
 /**
@@ -1104,7 +1109,8 @@ function removeCondition(
     | "spent"
     | "recovered"
     | "harmed"
-    | "shaken",
+    | "shaken"
+    | "immune",
 ): void {
   target.tracked = target.tracked.filter((entry) => entry.condition !== condition);
   if (target.sheet) writeRulesetSheet(ctx.definition, target, { op: "condition", condition, active: false });

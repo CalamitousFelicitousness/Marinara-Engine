@@ -69,6 +69,8 @@ export interface RulesetItemEffectFact {
   to:
     "checks" | "saves" | "ability" | "attacks" | "defense" | "speed" | "health-max" | "effect" | "harm" | "conditions";
   names: string[];
+  /** Exception tags beside each damage name, kept structured for translation (Capability API 1.127). */
+  except?: string[][];
   change:
     | { mode: "advantage" | "disadvantage" }
     | { value: string }
@@ -598,7 +600,15 @@ export function rulesetItemEffectFacts(
     });
   }
   for (const hide of ["resist", "vulnerable", "immune"] as const) {
-    if (effect[hide]?.length) facts.push({ to: "harm", names: [...effect[hide]!], change: { hide } });
+    if (effect[hide]?.length)
+      facts.push({
+        to: "harm",
+        names: effect[hide]!.map((entry) => (typeof entry === "string" ? entry : entry.type)),
+        ...(effect[hide]!.some((entry) => typeof entry !== "string")
+          ? { except: effect[hide]!.map((entry) => (typeof entry === "string" ? [] : [...entry.except])) }
+          : {}),
+        change: { hide },
+      });
   }
   if (effect.conditionImmunities?.length) {
     const label = (id: string) => definition.sheet.live.conditions.find((entry) => entry.id === id)?.label ?? id;
@@ -610,7 +620,9 @@ export function rulesetItemEffectFacts(
 /** One effect fact in plain words, as the Game Master reads it: "-1 on checks (Sneak)", "+1 Brawn". */
 export function rulesetItemEffectText(fact: RulesetItemEffectFact): string {
   const change = fact.change;
-  const list = fact.names.join(", ");
+  const list = fact.names
+    .map((name, index) => (fact.except?.[index]?.length ? `${name} except ${fact.except[index]!.join(" ")}` : name))
+    .join(", ");
   if ("effect" in change) return FIGHT_EFFECT_TEXT[change.effect] ?? change.effect;
   if ("hide" in change) {
     return change.hide === "resist"

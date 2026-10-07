@@ -934,6 +934,50 @@ On a check:
 
 Gravewatch shows the same on a pool: the bound Dawn bell adds a die to Ward, and Rattled takes one off Soothe and Barter.
 
+### Typed defenses from conditions, levels, items and sheet rows (Capability API 1.127)
+
+`combat.conditions[]` and `combat.levels[]` can grant `resist`, `vulnerable`, `immune`
+(1–30 entries each) and `conditionImmunities` (1–40 condition ids). They apply while the
+condition holds or the level's threshold is reached. A newly gained condition immunity ends
+that condition if already active and prevents applying it again. Immunity wins over resistance;
+resistance and vulnerability cancel. Multiple resistances never halve damage twice.
+
+`resist` and `immune` use the creature form: a damage word or `{ "type": "bludgeoning",
+"except": ["magical"] }`. Any named tag on the blow bypasses that entry. `vulnerable` stays
+plain damage words. The same exception form works on items' `worn` and `carried` effects.
+Declare the exception tags in `items.tags` and put them on the weapon or spell's qualities.
+For example, Stoneskin is a condition mapping:
+
+```json
+{ "condition": "stoneskin", "resist": [
+  { "type": "bludgeoning", "except": ["magical"] },
+  { "type": "piercing", "except": ["magical"] },
+  { "type": "slashing", "except": ["magical"] }
+] }
+```
+
+Armor of invulnerability uses that same `resist` array inside its `worn` effect. Protection
+from Energy can grant `resist: ["fire"]`; a Brave-like trait can grant
+`conditionImmunities: ["frightened"]`. A level can grant `resist: ["poison"]` at its threshold.
+Unknown static damage words are reported when `combat.damageTypes` declares the vocabulary,
+as for creatures; without that declaration damage words are free text.
+
+For ancestry or catalog traits, `combat.sheetHides` holds up to eight sources (an empty array
+is allowed). Each names a sheet list, one text or enum column of that list, and one of the four
+kinds. For a dwarf whose traits row contains `"poison"` in a `resistance` column:
+
+```json
+"sheetHides": [{ "list": "traits", "column": "resistance", "kind": "resist" }]
+```
+
+Every row contributes comma-separated words, trimmed and matched without case; empty words
+are skipped. Adding a row with `"fire"` adds fire resistance; deleting it removes that source.
+Resistance and immunity words may include `except`, as in `"bludgeoning except magical silvered"`.
+Vulnerabilities and condition immunities are plain words. Unknown declared damage words in
+sheet text are ignored, as are unknown condition ids; an enum column for condition immunities
+must declare only condition ids at import. Sheet, battle and Game Master summaries include
+these defenses and their exceptions.
+
 ### Weapons in a fight
 
 An item may be a weapon (Capability API 1.55). Its `attack` is the shape a combat block's [attack rows](#combat-a-fight-your-own-rules-resolve) have, with values in place of columns, and a [ruleset fight](#combat-a-fight-your-own-rules-resolve) offers it as an attack while the item is worn: held in the hands it takes, and bound where it binds. One put away or only carried offers nothing, and the attack rows and a creature's own actions work exactly as before. Ember Roads' hand axe:

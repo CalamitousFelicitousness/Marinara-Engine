@@ -16,6 +16,7 @@ import {
   type RulesetListColumn,
   type RulesetSheetBuild,
 } from "../../schemas/ruleset.schema.js";
+import { rulesetCheckSources, rulesetHideLines } from "./check-effects.js";
 import { readRulesetLive } from "./live-state.js";
 import { rulesetCatalogEntriesByRef } from "./scaled-rows.js";
 import {
@@ -35,7 +36,7 @@ const MAX_LIST_NAMES = 40;
 /** Sheet values are written by players and, through the note command, by the model itself, and
  *  the block they land in is wrapped in a tag in the prompt. Brackets and braces could forge a
  *  command or a macro; angle brackets could close that tag and speak as the Engine. */
-function safeValue(value: string): string {
+function safeValue(value: string, maxLength = MAX_VALUE_LENGTH): string {
   return (
     value
       // Control characters AND the Unicode line and paragraph separators: either kind would start a
@@ -44,7 +45,7 @@ function safeValue(value: string): string {
       .replace(/[{}[\]<>]/g, "")
       .replace(/\s{2,}/g, " ")
       .trim()
-      .slice(0, MAX_VALUE_LENGTH)
+      .slice(0, maxLength)
   );
 }
 
@@ -259,5 +260,7 @@ export function renderRulesetSheetBlock(
     );
   }
 
+  for (const line of rulesetHideLines(definition, rulesetCheckSources(definition, build, stored, items)))
+    push(safeValue(line, 4000));
   return lines.join("\n");
 }

@@ -3,7 +3,7 @@
 // Turn order, the round, every combatant's conditions in the ruleset's own words, what is left of
 // each budget for the actor on turn, and the log with the real arithmetic in it. Every number here
 // was sent by the server; this file reads the view and prints it.
-import type { DirectedRulesetView, RulesetDefinition } from "@marinara-engine/shared";
+import { rulesetHideLines, type DirectedRulesetView, type RulesetDefinition } from "@marinara-engine/shared";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { rulesetCombatLogLines, rulesetCombatNames } from "../../lib/ruleset-combat-log";
@@ -173,6 +173,15 @@ export function RulesetCombatStatus({
                         .join(" · ")}
                     </span>
                   )}
+                  {combatant.hides &&
+                    rulesetHideLines(definition, [combatant.hides], t).map((line) => (
+                      <span
+                        key={line}
+                        className="mt-0.5 block break-words text-[0.65rem] text-[var(--muted-foreground)]"
+                      >
+                        {line}
+                      </span>
+                    ))}
                   {deathTrack && (
                     <span className="mt-0.5 block text-[0.65rem] tabular-nums text-[var(--muted-foreground)]">
                       {t("game.combat.ruleset.status.deathTrack", {

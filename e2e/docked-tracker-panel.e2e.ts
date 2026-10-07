@@ -41,7 +41,12 @@ async function createChat(request: APIRequestContext, metadata: Record<string, u
   return chat;
 }
 
-async function openChat(page: Page, chatId: string, size: { width: number; height: number }) {
+async function openChat(
+  page: Page,
+  chatId: string,
+  size: { width: number; height: number },
+  ui: Record<string, unknown> = {},
+) {
   await page.setViewportSize(size);
   await page.route("**/api/app-settings/ui", (route) => route.fulfill({ json: { value: "" } }));
   await seedUIState(page, {
@@ -56,6 +61,7 @@ async function openChat(page: Page, chatId: string, size: { width: number; heigh
     trackerPanelOpenByChatId: { [chatId]: true },
     trackerPanelSide: "right",
     trackerPanelSizeProfile: "standard",
+    ...ui,
   });
   await page.addInitScript(
     ({ chatId, version }) => {
@@ -152,6 +158,33 @@ test("a Chat Settings button the user placed stays there beside the docked Track
     }).toPass({ timeout: 10_000 });
   } finally {
     await request.delete(`/api/chats/${chat.id}`);
+  }
+});
+
+test("the docked Tracker Panel stays beside the chat while switching chats", async ({ page, request }, info) => {
+  test.skip(!info.project.name.includes("desktop"), "The docked Tracker Panel is a computer layout.");
+  const first = await createChat(request);
+  const second = await createChat(request);
+  try {
+    await openChat(
+      page,
+      first.id,
+      { width: 1280, height: 800 },
+      { trackerPanelOpenByChatId: { [first.id]: true, [second.id]: true } },
+    );
+    const panel = page.locator('[data-component="TrackerDataSidebarDesktop.right"]');
+    await expect(panel).toBeVisible();
+    // Each switch replaces the chat column the panel measures its width against.
+    for (const chat of [second, first, second, first, second, first]) {
+      await page.evaluate(async (chatId) => {
+        const module = (await import("/src/stores/chat.store.ts" as string)) as PageChatStoreModule;
+        module.useChatStore.getState().setActiveChatId(chatId);
+      }, chat.id);
+      await expect(page.locator('[data-roleplay-chat-column="true"]')).toBeVisible();
+      await expect(panel).toBeVisible();
+    }
+  } finally {
+    await Promise.all([first, second].map((chat) => request.delete(`/api/chats/${chat.id}`)));
   }
 });
 

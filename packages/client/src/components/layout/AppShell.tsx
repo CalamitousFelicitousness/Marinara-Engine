@@ -1173,6 +1173,13 @@ export function AppShell({
       }
       return true;
     };
+    // Watches for a chat column while there is none. A chat switch unmounts the column after the first
+    // measure, so a miss re-arms it; otherwise the panel would stay unmeasured and hidden (#7188).
+    const discoverChatColumn = () => {
+      if (discoveryObserver || !mainRef.current) return;
+      discoveryObserver = new MutationObserver(() => scheduleUpdate());
+      discoveryObserver.observe(mainRef.current, { childList: true, subtree: true });
+    };
     function scheduleUpdate() {
       if (frame) window.cancelAnimationFrame(frame);
       frame = window.requestAnimationFrame(() => {
@@ -1181,16 +1188,15 @@ export function AppShell({
         if (foundChatColumn) {
           discoveryObserver?.disconnect();
           discoveryObserver = null;
+        } else {
+          discoverChatColumn();
         }
       });
     }
 
     if (mainRef.current) observer.observe(mainRef.current);
     scheduleUpdate();
-    if (mainRef.current) {
-      discoveryObserver = new MutationObserver(() => scheduleUpdate());
-      discoveryObserver.observe(mainRef.current, { childList: true, subtree: true });
-    }
+    discoverChatColumn();
     window.addEventListener("resize", scheduleUpdate);
     return () => {
       if (frame) window.cancelAnimationFrame(frame);

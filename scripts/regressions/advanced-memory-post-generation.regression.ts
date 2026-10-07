@@ -16,6 +16,7 @@ const requireServer = createRequire(new URL("../../packages/server/package.json"
 const Fastify = requireServer("fastify") as typeof import("fastify").default;
 const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
 const { generateRoutes } = await import("../../packages/server/src/routes/generate.routes.js");
+const { chatsRoutes } = await import("../../packages/server/src/routes/chats.routes.js");
 const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
 const { createAgentsStorage } = await import("../../packages/server/src/services/storage/agents.storage.js");
 const { createConnectionsStorage } = await import("../../packages/server/src/services/storage/connections.storage.js");
@@ -212,6 +213,7 @@ const memory = createAdvancedMemoryService(db);
 const app = Fastify();
 app.decorate("db", db);
 await app.register(generateRoutes, { prefix: "/api/generate" });
+await app.register(chatsRoutes, { prefix: "/api/chats" });
 const chatIds: string[] = [];
 try {
   await new Promise<void>((done) => provider.listen(0, "127.0.0.1", done));
@@ -817,6 +819,23 @@ try {
   };
   assert.equal(await inspectRecall(newcomer.id), undefined, "Cyno is not shown Dottore's recalled scenes");
   assert.deepEqual(await inspectRecall(character.id), ownRecall, "Dottore still sees his own recall");
+  // {{prompt}} opens Peek Prompt with no reply selected: the latest reply's saved prompt names its character.
+  const turns = await chats.listMessages(turnsChat.id);
+  const cynoPrepared = await memory.prepare({
+    chatId: turnsChat.id,
+    messages: turns.slice(0, -1),
+    audienceCharacterIds: [newcomer.id],
+    budgetTokens: 8000,
+    readOnly: true,
+  });
+  await chats.updateMessageExtra(turns.at(-1)!.id, {
+    advancedMemoryReceipt: cynoPrepared.receipt,
+    cachedPrompt: [{ role: "user", content: "Cyno's saved request" }],
+  });
+  const latestPeek = await app.inject({ method: "POST", url: `/api/chats/${turnsChat.id}/peek-prompt`, payload: {} });
+  assert.equal(latestPeek.statusCode, 200, latestPeek.body);
+  assert.equal(latestPeek.json().source, "cached", latestPeek.body);
+  assert.equal(latestPeek.json().characterId, newcomer.id, "Peek Prompt names whose saved prompt it shows");
   assert.equal(calls.length, callsBeforeInspection, "inspecting either character calls no provider");
   // An inactive character's preview falls back to an active one, but recall stays the inspected character's own.
   await chats.patchMetadata(turnsChat.id, { inactiveCharacterIds: [newcomer.id] });

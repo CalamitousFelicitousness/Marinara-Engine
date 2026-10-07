@@ -4043,59 +4043,99 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       }
       if (!messageScores) receipt.reasons.push("decision-excerpt-fallback");
     }
-    for (const { scene, excerptRecords, sceneSource, textMatches } of excerptPlans) {
-      const start = indexes.get(scene.startMessageId)!;
-      const recap = renderedRecaps.get(scene.sceneId)!;
-      let text = `${sceneHeading(scene)}\n${renderMemoryRecord(scene, indexes, recap)}`;
-      const summaryTokens = tokenSize(text);
-      // The model's best message centres the excerpt. Text matching does when it judged none suitable.
-      const scores = messageScores;
-      const threshold = decisionThreshold;
-      const chosen = sceneSource
+    const scores = messageScores;
+    const threshold = decisionThreshold;
+    const { retrieveMinMessages: minMessages, retrieveMaxMessages: maxMessages } = ctx.settings;
+    const excerptText = (scene: StoredRecord, messages: AdvancedMemoryMessage[]) =>
+      `\n\nExcerpt:\n${renderMemoryText(
+        indexes,
+        messages.map((message) => message.id),
+        messages.map((message) => messageText(ctx, message, indexes.get(message.id)!)).join("\n"),
+        hasSceneTimelineCorrection(scene) ? scene.timeline : (sourceTimeline(messages) ?? scene.timeline),
+        false,
+        hasSceneTimelineCorrection(scene),
+      )}`;
+    const excerptFits = excerptPlans.map((plan) => {
+      const { scene, sceneSource, textMatches } = plan;
+      const text = `${sceneHeading(scene)}\n${renderMemoryRecord(scene, indexes, renderedRecaps.get(scene.sceneId))}`;
+      // The model's best message centres the excerpt and its other picks widen it up to Maximum.
+      // Text matching centres it when the model judged none suitable.
+      const picks = sceneSource
         .map((message, index) => ({ index, score: scores?.get(message.id) ?? -1 }))
         .filter((item) => threshold !== null && item.score >= threshold)
-        .sort((left, right) => right.score - left.score)[0];
-      const matched = chosen ?? textMatches[0];
-      let excerpt: AdvancedMemoryMessage[] = [];
+        .sort((left, right) => right.score - left.score);
+      const matched = picks[0] ?? textMatches[0];
+      let [first, last] = [matched?.index ?? 0, matched?.index ?? 0];
+      for (const { index } of picks)
+        if (Math.max(last, index) - Math.min(first, index) < maxMessages)
+          [first, last] = [Math.min(first, index), Math.max(last, index)];
       // ponytail: raw excerpts have scene-level access, not per-fact knowledge.
       // Withhold conditional-scene excerpts from non-narrators until they have that finer access mapping.
-      const canIncludeExcerpt = canRecallExcerpt(scene);
-      if (matched && ctx.settings.retrieveMaxMessages > 0 && canIncludeExcerpt) {
-        const count = Math.min(
-          sceneSource.length,
-          ctx.settings.retrieveMaxMessages,
-          Math.max(ctx.settings.retrieveMinMessages, Math.ceil(matched.score)),
-        );
-        const from = Math.max(0, Math.min(matched.index - Math.floor(count / 2), sceneSource.length - count));
-        excerpt = sceneSource.slice(from, from + count);
-        const excerptText = (messages: AdvancedMemoryMessage[]) =>
-          `\n\nExcerpt:\n${renderMemoryText(
-            indexes,
-            messages.map((message) => message.id),
-            messages.map((message) => messageText(ctx, message, indexes.get(message.id)!)).join("\n"),
-            hasSceneTimelineCorrection(scene) ? scene.timeline : (sourceTimeline(messages) ?? scene.timeline),
-            false,
-            hasSceneTimelineCorrection(scene),
-          )}`;
-        while (
-          excerpt.length &&
-          recalledTokens + tokenSize(text + excerptText(excerpt)) - summaryTokens > recallBudget
-        ) {
-          const center = indexes.get(sceneSource[matched.index]!.id)!;
-          if (center - indexes.get(excerpt[0]!.id)! > indexes.get(excerpt.at(-1)!.id)! - center) excerpt.shift();
-          else excerpt.pop();
-        }
-        if (excerpt.length < Math.min(ctx.settings.retrieveMinMessages, sceneSource.length)) excerpt = [];
-        if (excerpt.length) text += excerptText(excerpt);
+      const count =
+        matched && canRecallExcerpt(scene)
+          ? Math.min(
+              sceneSource.length,
+              maxMessages,
+              Math.max(minMessages, picks.length ? last - first + 1 : Math.ceil(matched.score)),
+            )
+          : 0;
+      const from = Math.max(0, Math.min(first - Math.floor((count - (last - first)) / 2), sceneSource.length - count));
+      return {
+        ...plan,
+        text,
+        summaryTokens: tokenSize(text),
+        chosen: picks[0],
+        center: matched ? indexes.get(sceneSource[matched.index]!.id)! : 0,
+        wanted: sceneSource.slice(from, from + count),
+        excerpt: [] as AdvancedMemoryMessage[],
+        cost: 0,
+      };
+    });
+    // Shrink an excerpt from the side farther from its centre until it has at most `size` messages and fits.
+    const fitExcerpt = (fit: (typeof excerptFits)[number], size: number) => {
+      const excerpt = [...fit.wanted];
+      const cost = () => tokenSize(fit.text + excerptText(fit.scene, excerpt)) - fit.summaryTokens;
+      while (excerpt.length && (excerpt.length > size || recalledTokens + cost() > recallBudget)) {
+        if (fit.center - indexes.get(excerpt[0]!.id)! > indexes.get(excerpt.at(-1)!.id)! - fit.center) excerpt.shift();
+        else excerpt.pop();
       }
+      fit.excerpt = excerpt.length < Math.min(minMessages, fit.sceneSource.length) ? [] : excerpt;
+      fit.cost = fit.excerpt.length ? cost() : 0;
+      recalledTokens += fit.cost;
+    };
+    // Every recalled scene gets its shortest excerpt before any excerpt grows, best scene first.
+    for (const fit of excerptFits) fitExcerpt(fit, Math.max(minMessages, 1));
+    for (const fit of excerptFits) {
+      recalledTokens -= fit.cost;
+      fitExcerpt(fit, Infinity);
+    }
+    for (const { scene, excerptRecords, sceneSource, text, chosen, wanted, excerpt } of excerptFits) {
       // Its messages show as selected below the threshold, so say text matching chose them.
       if (excerpt.length && scores && !chosen && !receipt.reasons.includes("decision-excerpt-fallback"))
         receipt.reasons.push("decision-excerpt-fallback");
+      // Say why a recalled scene has no excerpt. Without a wanted window, Minimum 0 made it optional.
+      const missing =
+        excerpt.length || !maxMessages
+          ? null
+          : !canRecallExcerpt(scene)
+            ? "excerpt-private-scene"
+            : !sceneSource.length
+              ? "excerpt-no-source"
+              : wanted.length
+                ? "excerpt-no-room"
+                : null;
+      if (missing && !receipt.reasons.includes(missing)) receipt.reasons.push(missing);
       for (const message of excerpt) excerptIds.add(message.id);
-      sceneTexts.push({ index: start, text });
-      recalledTokens += tokenSize(text) - summaryTokens;
+      sceneTexts.push({
+        index: indexes.get(scene.startMessageId)!,
+        text: excerpt.length ? text + excerptText(scene, excerpt) : text,
+      });
       recalledRecords.push(scene, ...excerptRecords.filter((item) => item.messageIds.some((id) => excerptIds.has(id))));
     }
+    const notes = receipt.reasons.filter(
+      (reason) => reason.startsWith("excerpt-") || reason === "decision-excerpt-fallback",
+    );
+    if (recallDiagnostics && notes.length) recallDiagnostics.notes = notes;
     const sceneText = sceneTexts
       .sort((a, b) => a.index - b.index)
       .map((item) => item.text)

@@ -281,7 +281,7 @@
   "chat.advancedMemory.reason.decisionRecall": "The Decision model judged which past memories were relevant.",
   "chat.advancedMemory.reason.decisionRecallFallback": "The Decision model was unavailable, too slow, or could not evaluate every candidate. Ordinary recall was used.",
   "chat.advancedMemory.reason.decisionRecallPreview": "This preview uses ordinary recall without calling the Decision model. A new reply may select different memories.",
-  "chat.advancedMemory.reason.excerptNoRoom": "Some recalled scenes have no message excerpt because the summaries used all the memory space. Raise Summary and recall budget to make room.",
+  "chat.advancedMemory.reason.excerptNoRoom": "Some recalled scenes have no message excerpt because not enough memory space was left. A higher Summary and recall budget can make room.",
   "chat.advancedMemory.reason.excerptNoSource": "Some recalled scenes have no message excerpt because none of their messages can be quoted.",
   "chat.advancedMemory.reason.excerptPrivateScene": "Some recalled scenes have no message excerpt because their summaries have private parts. Characters still get their own parts, but only the narrator gets the messages.",
   "chat.advancedMemory.reason.noRecallBudget": "Nothing was recalled because this request had no room left for memories.",

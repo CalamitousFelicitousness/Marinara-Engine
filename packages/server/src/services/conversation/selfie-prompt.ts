@@ -6,6 +6,8 @@ export async function resolveConversationSelfieSystemPrompt(input: {
   promptOverridesStorage: PromptOverridesStorage;
   chatPromptTemplate?: string | null;
   appearance: string;
+  /** Enabled image-prompt appearance override, empty when the card has none (#7243). */
+  imageAppearance?: string;
   charName: string;
   characterImageInstructions?: string;
   personality?: string;
@@ -13,6 +15,7 @@ export async function resolveConversationSelfieSystemPrompt(input: {
 }): Promise<string> {
   const promptContext: ConversationSelfieCtx = {
     appearance: input.appearance,
+    imageAppearance: input.imageAppearance?.trim() ?? "",
     charName: input.charName,
     characterImageInstructions: input.characterImageInstructions?.trim() ?? "",
     personality: input.personality?.trim() ?? "",

@@ -11,7 +11,8 @@ for (const conflictsOnly of [false, true]) {
       ? "restore all keeps conflicts-only batches after a later failure"
       : "restore all batches large selections and keeps partial failures retryable",
     async ({ page, request }, testInfo) => {
-      test.setTimeout(90_000);
+      // Each 5,001-row render below can block slow CI WebKit for 5–17 s.
+      test.setTimeout(120_000);
       const created = await request.post("/api/chats", {
         data: { name: "Large recovery fixture", mode: "conversation" },
       });
@@ -92,10 +93,11 @@ for (const conflictsOnly of [false, true]) {
         await panel.getByRole("tab", { name: "Trash", exact: true }).click();
         // Avoid computing accessible names for every button in the 5,001-row mock.
         const restoreAll = panel.locator("button").filter({ hasText: /^Restore all$/ });
-        // While the big list is on the page, wait for an element before asserting on it: every failed
-        // expect retry snapshots the whole page's accessibility tree for its message, which blocks the
-        // page for about 12 s in Chromium and longer in WebKit (the toast below then never arrives).
-        await restoreAll.waitFor({ timeout: 10_000 });
+        // While the big list is on the page, wait for an element before asserting on it: every expect
+        // retry that finds no element snapshots the whole page's accessibility tree for its message,
+        // which blocks the page for about 12 s in Chromium and longer in WebKit. The first render of
+        // the 5,001 rows alone takes about 16 s on CI WebKit.
+        await restoreAll.waitFor({ timeout: 30_000 });
         await expect(restoreAll).toBeEnabled();
         if (conflictsOnly) {
           // Observe the real hook's result without exposing application internals in production.
@@ -130,26 +132,49 @@ for (const conflictsOnly of [false, true]) {
         const initialMessageReads = messageReads;
         await restoreAll.click();
         await expect.poll(() => batches.map((batch) => batch.length)).toEqual([5000, 1]);
-        await expect(restoreAll).toBeDisabled();
+        // Disabling every row's buttons re-renders all 5,001 rows (about 8 s on CI WebKit).
+        await expect(restoreAll).toBeDisabled({ timeout: 30_000 });
         await expect(panel.locator("button").filter({ hasText: /^Empty trash$/ })).toBeDisabled();
         expect(trashReads).toBe(initialTrashReads);
+        // The toast's 6 s timer starts when it mounts, and re-rendering the 5,001 rows can then block
+        // slow WebKit for about as long, so the toast may be gone before a locator can see it.
+        // Record each toast as it mounts instead.
+        const toasts = await page.evaluateHandle(() => {
+          const mounted: { type?: string; title?: string | null; description?: string | null }[] = [];
+          const seen = new WeakSet<Element>();
+          new MutationObserver(() => {
+            for (const toast of document.querySelectorAll<HTMLElement>("[data-sonner-toast]")) {
+              if (seen.has(toast)) continue;
+              seen.add(toast);
+              mounted.push({
+                type: toast.dataset.type,
+                title: toast.querySelector("[data-title]")?.textContent ?? null,
+                description: toast.querySelector("[data-description]")?.textContent ?? null,
+              });
+            }
+          }).observe(document.body, { childList: true, subtree: true });
+          return mounted;
+        });
         releaseSecondBatch();
         // Replacing 5,001 mocked rows takes longer under development rendering and browser tracing.
-        const failureToast = page.locator("[data-sonner-toast]").filter({ hasText: "Synthetic later-batch failure" });
-        await failureToast.waitFor({ timeout: 30_000 });
-        await expect(failureToast).toHaveAttribute("data-type", "warning");
+        await expect
+          .poll(() => toasts.evaluate((mounted) => mounted), { timeout: 30_000 })
+          .toContainEqual({
+            type: "warning",
+            title: "Synthetic later-batch failure",
+            description: conflictsOnly ? null : "4999 messages restored",
+          });
         if (conflictsOnly) {
           expect(await restoreObserver!.evaluate((observer) => observer.result)).toEqual({
             restoredMessageIds: [],
             conflictEntryIds: batches[0],
             error: "Synthetic later-batch failure",
           });
-          await expect(failureToast.locator("[data-description]")).toHaveCount(0);
           await expect(panel.locator("button").filter({ hasText: /^Restore$/ })).toHaveCount(5001);
-          await expect(restoreAll).toBeEnabled();
+          // Re-enabling every row's buttons re-renders all 5,001 rows again.
+          await expect(restoreAll).toBeEnabled({ timeout: 30_000 });
           expect(remaining.map((entry) => entry.id)).toEqual(batches.flat());
         } else {
-          await expect(page.getByText("4999 messages restored", { exact: true })).toBeVisible();
           await expect(panel.getByRole("button", { name: "Restore", exact: true })).toHaveCount(2);
           await expect.poll(() => messageReads).toBeGreaterThan(initialMessageReads);
           await expect(restoreAll).toBeEnabled();

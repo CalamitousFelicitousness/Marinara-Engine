@@ -2006,6 +2006,31 @@ test("Advanced Memory problems show a dot and one notice, Fix repairs them and l
     await expect(inspector.getByRole("heading", { name: "Scene #2", exact: true })).toBeFocused();
     await expect(inspector).toContainText("Check the source messages, the summary, and which characters know it");
     expect(fixRequests).toHaveLength(1);
+
+    // A paused Fix resumes as Fix, so a hand-edited scene can't stop it.
+    status.job = {
+      id: "fix-job-2",
+      blocking: true,
+      status: "cancelled",
+      stage: "summarizing",
+      completed: 1,
+      total: 3,
+      error: null,
+      fixResult: null,
+    };
+    status.unpreparedScenes = [{ sceneId: "scene-four", startIndex: 31, endIndex: 40 }];
+    await closeChatSettings(page);
+    await page.reload();
+    await expect(page.locator("textarea[data-chat-composer]")).toBeVisible();
+    await openChatSettings(page);
+    const resume = drawer
+      .locator('[data-component="AdvancedMemoryProgress"]')
+      .getByRole("button", { name: "Resume processing", exact: true });
+    if (!(await resume.isVisible()))
+      await drawerToggle(drawer.locator('[data-chat-settings-section="roleplay-memory-recall"]')).click();
+    await resume.click();
+    await expect.poll(() => fixRequests).toHaveLength(2);
+    expect(fixRequests[1]).toEqual(expect.objectContaining({ fixAll: true }));
   } finally {
     await fixture.cleanup();
   }

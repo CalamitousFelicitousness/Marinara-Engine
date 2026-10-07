@@ -9,7 +9,7 @@ The first time you enter a chat after this update, a short video shows how to ar
 ## Opening Chat Settings
 
 1. Open a chat.
-2. Click or tap the **Chat Settings** button (the sliders icon). It starts at the top right of the chat, below the app's top bar.
+2. Click or tap the **Chat Settings** button (the sliders icon). It starts at the top right of the chat, below the app's top bar. On a computer with the Tracker Panel shown on the right, it starts just left of the panel instead.
 3. Click a section's title to open it. These sections are also called **drawers**: click the title again to fold one away.
 
 Chat Settings opens automatically when you create a new chat. To close it, click its **X** or click the sliders button again.

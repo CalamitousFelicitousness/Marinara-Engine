@@ -750,6 +750,8 @@ assert.deepEqual(getPhoneBubbleSlot(phoneBounds, 2), { x: 382 - PHONE_BUBBLE_SIZ
 // Settings owns the first top-right slot; other controls wrap without overlapping it or the map.
 assert.deepEqual(getTopRightBubblePoint(phoneBounds, PHONE_BUBBLE_SIZE_PX), { x: 346, y: 64 });
 assert.deepEqual(getTopRightBubblePoint(bounds, 32), { x: 1400, y: 56 });
+// #7188: a Tracker Panel docked on the right moves the default left of it, never under its buttons.
+assert.deepEqual(getTopRightBubblePoint(bounds, 32, 1432 - 345), { x: 1432 - 345 - 32, y: 56 });
 assert.deepEqual(getPhoneBubbleSlot(phoneBounds, 3), { x: 382 - PHONE_BUBBLE_SIZE_PX - 44, y: 64 + 44 });
 assert.deepEqual(getBubbleRowSlot(bounds, 4, { size: 32, gap: 4 }), { x: 1432 - 32 - 5 * 36, y: 56 });
 // A phone bubble is larger, so it clamps further from the far edges.

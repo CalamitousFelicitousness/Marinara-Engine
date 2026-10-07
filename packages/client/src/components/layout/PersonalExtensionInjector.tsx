@@ -646,6 +646,8 @@ export function PersonalExtensionInjector() {
     () => () => {
       const ids = new Set([...activeExtensions.keys(), ...activeFullPageExtensions.keys()]);
       for (const id of ids) void cleanupExtension(id);
+      // A remount starts every extension fresh, including stopped ones.
+      stoppedExtensions.clear();
     },
     [],
   );

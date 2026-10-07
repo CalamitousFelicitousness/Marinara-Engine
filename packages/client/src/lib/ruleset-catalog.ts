@@ -663,15 +663,35 @@ export function formatCatalogMechanics(
   if (mechanics.zone) {
     parts.push(
       t(
-        mechanics.zone.anchor === "caster"
-          ? "game.ruleset.catalog.mechanics.zoneCaster"
-          : "game.ruleset.catalog.mechanics.zone",
+        // A zone that is only ground (1.168) does nothing "again".
+        mechanics.zone.triggers.length === 0
+          ? "game.ruleset.catalog.mechanics.zoneStays"
+          : mechanics.zone.anchor === "caster"
+            ? "game.ruleset.catalog.mechanics.zoneCaster"
+            : "game.ruleset.catalog.mechanics.zone",
         {
           count: mechanics.zone.rounds,
           when: mechanics.zone.triggers.map((trigger) => t(ZONE_WHEN_KEYS[trigger])).join(", "),
         },
       ),
     );
+    // Moved by its caster, drifting, and what its ground does (1.168).
+    if (mechanics.zone.move) {
+      parts.push(t("game.ruleset.catalog.mechanics.zoneMove", { distance: distance(mechanics.zone.move.distance) }));
+    }
+    if (mechanics.zone.drift) {
+      parts.push(t("game.ruleset.catalog.mechanics.zoneDrift", { distance: distance(mechanics.zone.drift.distance) }));
+    }
+    if (mechanics.zone.terrain?.difficult) parts.push(t("game.ruleset.catalog.mechanics.zoneDifficult"));
+    const ground = mechanics.zone.terrain?.perDistance;
+    if (ground) {
+      parts.push(
+        t("game.ruleset.catalog.mechanics.zoneGround", {
+          amount: [ground.amount.dice, ground.amount.flat].filter((part) => part !== undefined).join("+"),
+          distance: distance(ground.every),
+        }),
+      );
+    }
   }
   if (mechanics.reaction) parts.push(t("game.ruleset.catalog.mechanics.reaction"));
   return parts.join(" · ");

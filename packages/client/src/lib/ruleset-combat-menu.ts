@@ -9,6 +9,7 @@ import {
   RULESET_FLY_DOWN_OPTION,
   RULESET_FLY_UP_OPTION,
   RULESET_MOVE_OPTION,
+  RULESET_ZONE_OPTION_PREFIX,
   RULESET_STAND_OPTION,
 } from "@marinara-engine/shared";
 import type { TFunction } from "i18next";
@@ -97,6 +98,9 @@ export function rulesetOptionLabel(option: DirectedRulesetOption, t: TFunction):
   // Which is which comes off the two exported ids, never off the spelling of one: the ids belong to
   // the resolver and have already changed once.
   if (option.kind === "move") {
+    // Moving a lasting area (1.168) is named by the area the ruleset named.
+    if (option.id.startsWith(RULESET_ZONE_OPTION_PREFIX))
+      return t("game.combat.ruleset.menu.moveZone", { zone: option.label });
     const word = MOVE_OPTION_WORDS[option.id];
     return word ? t(`game.combat.ruleset.board.${word}`, { defaultValue: option.label }) : option.label;
   }

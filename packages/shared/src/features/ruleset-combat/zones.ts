@@ -6,47 +6,18 @@
  * the resolver decides when a zone catches somebody and does it.
  */
 import { rulesetCombatant } from "./encounter.js";
-import { rulesetAreaCells, rulesetPositionOf } from "./grid.js";
+import { rulesetCellDistance, rulesetPositionOf, rulesetZoneCatches, rulesetZoneCells } from "./grid.js";
 import type {
   RulesetCombatAction,
   RulesetCombatant,
   RulesetCombatCell,
   RulesetCombatZone,
   RulesetEncounterState,
+  RulesetReachableCell,
 } from "./types.js";
 
-/** The cells a zone covers as the fight stands. None off a board, or for a caster with no cell. */
-export function rulesetZoneCells(
-  state: RulesetEncounterState,
-  caster: RulesetCombatant,
-  zone: RulesetCombatZone,
-): RulesetCombatCell[] {
-  const grid = state.board?.grid;
-  if (!grid) return [];
-  if (zone.anchor === "point") return zone.cells ?? [];
-  const action = caster.actions.find((entry) => entry.id === zone.actionId);
-  const at = rulesetPositionOf(caster);
-  if (!action?.area || !at) return [];
-  return rulesetAreaCells("burst", action.area.size, at, at, grid);
-}
-
-/** Whether a zone's area may catch this combatant at all, as the cast's own area would have: its
- *  own side left out where the entry said so, a mend only for whom it was pointed at, and the caster
- *  never caught by a zone they carry. */
-export function rulesetZoneCatches(
-  caster: RulesetCombatant,
-  zone: RulesetCombatZone,
-  action: RulesetCombatAction,
-  combatant: RulesetCombatant,
-): boolean {
-  if (combatant.defeated) return false;
-  if (zone.anchor === "caster" && combatant.id === caster.id) return false;
-  const sameSide = combatant.side === caster.side;
-  if (action.area?.friendlyFire === false && sameSide) return false;
-  // A mend, or a blessing pointed at allies, stays on the caster's own side.
-  if ((action.heal || action.targets.side === "ally") && !sameSide) return false;
-  return true;
-}
+// Worked out beside the walking they slow (1.168), and said here too, where a zone is read.
+export { rulesetZoneCatches, rulesetZoneCells } from "./grid.js";
 
 /** Every zone standing, with whose it is. */
 export function rulesetStandingZones(
@@ -88,4 +59,42 @@ export function rulesetZonesShown(
     rounds: zone.rounds,
     cells: rulesetZoneCells(state, rulesetCombatant(state, caster.id) ?? caster, zone).map((cell) => ({ ...cell })),
   }));
+}
+
+/** Where a zone may be moved to (1.168): any cell of the board within its `move` distance of where
+ *  it is centred, its own cell aside. Priced as the distance, so a board draws it as a walk. */
+export function rulesetZoneMoveCells(
+  state: RulesetEncounterState,
+  zone: RulesetCombatZone,
+  distance: number,
+): RulesetReachableCell[] {
+  const grid = state.board?.grid;
+  if (!grid || !zone.at) return [];
+  const cells: RulesetReachableCell[] = [];
+  for (let y = Math.max(0, zone.at.y - distance); y <= Math.min(grid.height - 1, zone.at.y + distance); y++) {
+    for (let x = Math.max(0, zone.at.x - distance); x <= Math.min(grid.width - 1, zone.at.x + distance); x++) {
+      const away = rulesetCellDistance(zone.at, { x, y });
+      if (away > 0) cells.push({ x, y, cost: away, path: [], provokes: [] });
+    }
+  }
+  return cells;
+}
+
+/** Where a drifting zone goes next (1.168): `distance` cells straight away from its caster, stopping
+ *  at the board's edge. A zone centred on its caster's own cell has no "away" and stays. */
+export function rulesetZoneDriftCell(
+  state: RulesetEncounterState,
+  caster: RulesetCombatant,
+  zone: RulesetCombatZone,
+  distance: number,
+): RulesetCombatCell | null {
+  const grid = state.board?.grid;
+  const from = rulesetPositionOf(caster);
+  if (!grid || !zone.at || !from) return null;
+  const dx = Math.sign(zone.at.x - from.x);
+  const dy = Math.sign(zone.at.y - from.y);
+  if (dx === 0 && dy === 0) return null;
+  const x = Math.min(grid.width - 1, Math.max(0, zone.at.x + dx * distance));
+  const y = Math.min(grid.height - 1, Math.max(0, zone.at.y + dy * distance));
+  return x === zone.at.x && y === zone.at.y ? null : { x, y };
 }

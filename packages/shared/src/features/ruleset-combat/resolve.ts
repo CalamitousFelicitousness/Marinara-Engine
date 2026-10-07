@@ -81,10 +81,13 @@ import {
   rulesetAirborne,
   rulesetCellBlocked,
   rulesetLevelOf,
+  rulesetSlowedCells,
+  rulesetSlowedStep,
 } from "./grid.js";
 import {
   rulesetDamageModifiers,
   RULESET_MOVE_OPTION,
+  RULESET_ZONE_OPTION_PREFIX,
   RULESET_PASS_OPTION,
   RULESET_STAND_OPTION,
   RULESET_FLY_DOWN_OPTION,
@@ -164,6 +167,7 @@ import {
   rulesetZoneCatches,
   rulesetZoneCells,
   rulesetZoneHolds,
+  rulesetZoneDriftCell,
   rulesetZoneOccupants,
 } from "./zones.js";
 
@@ -1391,6 +1395,83 @@ function zonesAtTurn(ctx: RulesetCombatContext, actor: RulesetCombatant, trigger
   }
 }
 
+/**
+ * A zone held at a point moving (1.168), moved on its caster's turn or drifting as it starts: the
+ * same burst centred on the new cell. Whoever it now covers and did not before is caught as
+ * `enter` says, as if they had walked in.
+ */
+function moveZone(
+  ctx: RulesetCombatContext,
+  caster: RulesetCombatant,
+  zone: RulesetCombatZone,
+  to: RulesetCombatCell,
+  outcome: "moved" | "drifted",
+): void {
+  const action = caster.actions.find((entry) => entry.id === zone.actionId);
+  const grid = ctx.state.board?.grid;
+  if (!action?.area || !grid) return;
+  const before = new Set(rulesetZoneOccupants(ctx.state, caster, zone, action));
+  zone.at = { x: to.x, y: to.y };
+  zone.cells = rulesetAreaCells("burst", action.area.size, zone.at, zone.at, grid);
+  ctx.events.push({ type: "zone", actorId: caster.id, label: zone.label, outcome, to: { ...zone.at } });
+  for (const id of rulesetZoneOccupants(ctx.state, caster, zone, action)) {
+    if (before.has(id)) continue;
+    const target = rulesetCombatant(ctx.state, id);
+    if (target) zoneStrike(ctx, caster, zone, target, "enter");
+  }
+}
+
+/** Every zone of this caster's that drifts, moving as their turn starts (1.168). */
+function driftZones(ctx: RulesetCombatContext, caster: RulesetCombatant): void {
+  for (const zone of [...(caster.zones ?? [])]) {
+    const drift = caster.actions.find((entry) => entry.id === zone.actionId)?.zone?.drift;
+    if (!drift || !caster.zones?.includes(zone)) continue;
+    const to = rulesetZoneDriftCell(ctx.state, caster, zone, drift);
+    if (to) moveZone(ctx, caster, zone, to, "drifted");
+  }
+}
+
+/**
+ * Ground that hurts to cross (1.168): every `every` cells a mover walks inside a zone that catches
+ * them, its amount, with no save and no roll to hit. Counted per zone and per mover, so a walk that
+ * leaves and comes back goes on counting where it left off.
+ */
+function zoneGround(ctx: RulesetCombatContext, mover: RulesetCombatant, cell: RulesetCombatCell): void {
+  for (const { caster, zone, action } of rulesetStandingZones(ctx.state)) {
+    const ground = action.zone?.perDistance;
+    if (!ground || !rulesetCombatStanding(mover) || !rulesetZoneCatches(caster, zone, action, mover)) continue;
+    if (!rulesetZoneHolds(rulesetZoneCells(ctx.state, caster, zone), cell)) continue;
+    const walked = (zone.walked?.[mover.id] ?? 0) + 1;
+    const times = Math.floor(walked / ground.every);
+    zone.walked = { ...zone.walked, [mover.id]: walked - times * ground.every };
+    for (let time = 0; time < times && rulesetCombatStanding(mover); time++) {
+      ctx.events.push({
+        type: "zone",
+        actorId: caster.id,
+        label: zone.label,
+        outcome: "struck",
+        targetId: mover.id,
+        trigger: "moving",
+      });
+      const harm = rulesetCombatIsPool(ctx.combat)
+        ? (({ rolls, flat, total, pool }) => ({ rolls, flat, amount: total, pool }))(
+            throwHarm(ctx, mover, ground.amount, ground.damageType, 0),
+          )
+        : (() => {
+            const rolls = rollRulesetDice(ctx.roll, ground.amount.count, ground.amount.sides);
+            return { rolls, flat: ground.amount.flat, amount: sumOf(rolls) + ground.amount.flat };
+          })();
+      const dealt = applyDamage(ctx, mover, {
+        sourceId: caster.id,
+        label: zone.label,
+        ...(ground.damageType ? { damageType: ground.damageType } : {}),
+        ...harm,
+      });
+      afterBlow(ctx, mover, dealt, false);
+    }
+  }
+}
+
 /** A cast leaves its weapon only after the last reaction has been answered. */
 function finishSummon(
   ctx: RulesetCombatContext,
@@ -1536,6 +1617,15 @@ function whyNotOffered(
 ): RulesetCombatRefusal {
   // The two a positioned fight adds. Off the menu, they are movement that cannot be paid for.
   if (optionId === RULESET_MOVE_OPTION || optionId === RULESET_STAND_OPTION) return "unreachable";
+  // Moving a zone (1.168): none to move, or nothing left to move it with.
+  if (optionId.startsWith(RULESET_ZONE_OPTION_PREFIX)) {
+    const actionId = optionId.slice(RULESET_ZONE_OPTION_PREFIX.length);
+    const move = actor.actions.find((entry) => entry.id === actionId)?.zone?.move;
+    if (move && actor.zones?.some((zone) => zone.actionId === actionId) && (actor.budgets[move.budget] ?? 0) < 1) {
+      return "no-budget";
+    }
+    return "unreachable";
+  }
   const action = actor.actions.find((entry) => entry.id === optionId);
   if (action) {
     // Something free, or a strike out of what a spend already bought, never fell short of a budget.
@@ -1613,6 +1703,20 @@ export function applyRulesetCombatChoice(
       return refusal(state, choice.actorId, "cannot-act", choice.optionId);
     }
     return refusal(state, choice.actorId, whyNotOffered(definition, combat, actor, choice.optionId), choice.optionId);
+  }
+
+  // Moving a zone its caster holds (1.168): to a cell the menu offered, for the budget it named.
+  if (option.id.startsWith(RULESET_ZONE_OPTION_PREFIX)) {
+    const cell = destinationOf(option, choice.to);
+    if (!cell) return refusal(state, choice.actorId, "unreachable", option.id);
+    const { ctx, finish } = begin(definition, combat, state, roller);
+    const working = rulesetCombatant(ctx.state, actor.id)!;
+    spendBudget(ctx, working, option.budget!);
+    const actionId = option.id.slice(RULESET_ZONE_OPTION_PREFIX.length);
+    const zone = working.zones!.find((entry) => entry.actionId === actionId)!;
+    moveZone(ctx, working, zone, cell, "moved");
+    noteOutcome(ctx);
+    return finish();
   }
 
   // Walking, and getting back up: a positioned fight's own two options. Neither spends a budget.
@@ -2725,8 +2829,14 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
     // What the menu showed for the same step: entering the cell, and climbing up to it (combat C6b). The
     // path came from that menu, so a cliff is never on it; a saved one that has one costs a plain step.
     // With other ways of moving (1.108) the same choice the menu made, on what this walk has spent.
+    // Ground a lasting area makes hard going costs what the menu priced it at (1.168).
     spent += grid
-      ? (rulesetMoveStep(grid, at, cell, actor, spent)?.cost ?? rulesetCellEnterCost(grid, cell.x, cell.y))
+      ? rulesetSlowedStep(
+          grid,
+          cell,
+          rulesetMoveStep(grid, at, cell, actor, spent)?.cost ?? rulesetCellEnterCost(grid, cell.x, cell.y),
+          rulesetSlowedCells(ctx.state, actor),
+        )
       : 1;
     walked.push(cell);
     at = cell;
@@ -2735,8 +2845,9 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
     // A flier that came onto ground as high as it flew, or higher, is standing on it (1.109), and
     // goes on from there as anybody on the ground does.
     if (actor.altitude !== undefined && !rulesetAirborne(grid, actor)) delete actor.altitude;
-    // Into a zone, or a zone carried onto somebody (1.167).
+    // Into a zone, or a zone carried onto somebody (1.167), and ground that hurts to cross (1.168).
     zonesEntered(ctx, actor, before);
+    zoneGround(ctx, actor, cell);
   }
   if (!stopped && !rulesetCombatStanding(actor)) stopped = true;
   spendRulesetMovement(actor, spent);
@@ -4187,7 +4298,9 @@ function beginNextTurn(definition: RulesetDefinition, combat: RulesetCombat, ctx
     refreshRulesetSignature(actor);
     rollRulesetRecharges(ctx, actor);
     recoverFromCrash(ctx, actor);
-    // Starting a turn in a zone (1.167), before the turn's own conditions tick.
+    // Its own drifting zones move first (1.168), then starting a turn in a zone (1.167), before
+    // the turn's own conditions tick.
+    driftZones(ctx, actor);
     zonesAtTurn(ctx, actor, "turn-start");
     tickConditions(ctx, actor, "turn-start");
     // A condition that ended as the turn began no longer holds this turn's walk: nothing has been

@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: a lasting area can be moved by its caster or drift away from them, catching whoever it reaches, and its ground can be hard going or hurt for every step taken inside, so Moonbeam moves, Cloudkill rolls away and Spike Growth slows and cuts (Capability API 1.168).
 - Rulesets: a spell's area can stay on the board for rounds or while concentrated on, held where it was cast or moving with its caster, and does its effect again to whoever walks in or starts or ends a turn there, so Cloudkill, Spirit Guardians and Moonbeam work (Capability API 1.167).
 - Rulesets: a pool can pay for another group's costs at its own level, so a warlock's pact slots cast spells costed from spell slots; a spell whose own slots are gone is still offered from a higher slot; and spells such as Hold Person take more targets when cast with a higher slot (Capability API 1.166).
 - Rulesets: items can carry a switch the player turns on or off in a fight or from the inventory, kept between fights, and a weapon's extra damage can be dealt only while it is on, so a flame tongue works (Capability API 1.165).

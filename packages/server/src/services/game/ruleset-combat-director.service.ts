@@ -70,7 +70,10 @@ import {
   rulesetWindowMoment,
   rulesetZonesShown,
   rulesetWindowOptions,
+  rulesetAreaCells,
+  rulesetZoneCatches,
   RULESET_MOVE_OPTION,
+  RULESET_ZONE_OPTION_PREFIX,
   RULESET_PASS_OPTION,
   RULESET_STAND_OPTION,
   type CombatAiCandidate,
@@ -1070,6 +1073,12 @@ function rulesetCandidatesFrom(
   }
   for (const way of priced(definition, encounter, actor, menu)) {
     const { option, price } = way;
+    // Moving a lasting area (1.168) is weighed from where the actor stands, by whom it would catch.
+    if (option.id.startsWith(RULESET_ZONE_OPTION_PREFIX)) {
+      const moved = standing ? null : zoneMoveCandidate(encounter, actor, option, price);
+      if (moved) candidates.push(moved);
+      continue;
+    }
     // Walking is not a candidate of its own: it is what a candidate does before it acts, and a turn
     // with nothing to act on closes the distance instead (see `rulesetClosingMove`).
     if (option.kind === "move") continue;
@@ -1325,6 +1334,49 @@ function areaCandidates(
     candidates.push(candidate);
   }
   return candidates;
+}
+
+/**
+ * Where to move a lasting area its actor holds (1.168): the cell that would catch the most standing
+ * opponents less friends, and only when that beats where it stands now. Ties keep the menu's own
+ * order, so the picker stays deterministic.
+ */
+function zoneMoveCandidate(
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+  option: RulesetCombatOption,
+  price: number,
+): CombatAiCandidate<RulesetCandidate> | null {
+  const actionId = option.id.slice(RULESET_ZONE_OPTION_PREFIX.length);
+  const zone = actor.zones?.find((entry) => entry.actionId === actionId);
+  const action = actor.actions.find((entry) => entry.id === actionId);
+  const grid = encounter.board?.grid;
+  if (!zone?.at || !action?.area || !grid) return null;
+  const worth = (at: { x: number; y: number }) => {
+    const cells = new Set(rulesetAreaCells("burst", action.area!.size, at, at, grid).map((c) => `${c.x},${c.y}`));
+    let total = 0;
+    for (const one of encounter.combatants) {
+      if (typeof one.x !== "number" || typeof one.y !== "number" || one.down) continue;
+      if (!cells.has(`${one.x},${one.y}`) || !rulesetZoneCatches(actor, zone, action, one)) continue;
+      total += one.side === actor.side ? -1 : 1;
+    }
+    return total;
+  };
+  const now = worth(zone.at);
+  let best: { cell: { x: number; y: number }; gain: number } | null = null;
+  for (const cell of option.cells ?? []) {
+    const gain = worth(cell) - now;
+    if (gain > 0 && (!best || gain > best.gain)) best = { cell, gain };
+  }
+  if (!best) return null;
+  return {
+    action: {
+      choice: { actorId: actor.id, optionId: option.id, targetIds: [], to: { x: best.cell.x, y: best.cell.y } },
+      option,
+    },
+    setup: Math.min(1, 0.4 * best.gain),
+    cost: price,
+  };
 }
 
 /**

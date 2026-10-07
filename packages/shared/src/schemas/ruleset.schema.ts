@@ -1859,17 +1859,49 @@ const catalogMechanicsObject = z
      *  the concentration that holds it ends, and does the entry's own effect again to a creature at
      *  each of its `triggers`, once a turn whatever it was: moving into it (`enter`), or starting or
      *  ending a turn in it. `anchor: "caster"` keeps a burst centred on its caster as they move (5e's
-     *  Spirit Guardians); `atCast: false` does nothing as it appears. */
+     *  Spirit Guardians); `atCast: false` does nothing as it appears. A zone whose `terrain` is all
+     *  it does names no triggers (1.168). */
     zone: z
       .object({
         rounds: z.number().int().min(1).max(1000),
         anchor: z.enum(["point", "caster"]).optional(),
         triggers: z
           .array(z.enum(["enter", "turn-start", "turn-end"]))
-          .min(1)
           .max(3)
           .refine((triggers) => new Set(triggers).size === triggers.length, { message: "A trigger is named once" }),
         atCast: z.boolean().optional(),
+        /** Its caster may move it on their turn (Capability API 1.168), spending `budget`, up to
+         *  `distance` in the catalog's unit: 5e's Moonbeam and Flaming Sphere. */
+        move: z
+          .object({ budget: sheetId, distance: z.number().finite().gt(0) })
+          .strict()
+          .optional(),
+        /** It moves `distance` straight away from its caster as each of their turns starts (1.168):
+         *  5e's Cloudkill. */
+        drift: z
+          .object({ distance: z.number().finite().gt(0) })
+          .strict()
+          .optional(),
+        /** What its ground does to whoever moves through it (1.168): `difficult` costs double to move
+         *  into, and `perDistance` deals `amount` for every `every` moved inside, with no save
+         *  (5e's Spike Growth). */
+        terrain: z
+          .object({
+            difficult: z.literal(true).optional(),
+            perDistance: z
+              .object({
+                every: z.number().finite().gt(0),
+                amount: z.object(catalogAmountShape).strict(),
+                damageType: promptSafeText(40).optional(),
+              })
+              .strict()
+              .optional(),
+          })
+          .strict()
+          .refine((terrain) => terrain.difficult || terrain.perDistance, {
+            message: '"terrain" says "difficult", "perDistance" or both',
+          })
+          .optional(),
       })
       .strict()
       .optional(),
@@ -1955,7 +1987,12 @@ const catalogMechanicsSchema = catalogMechanicsObject.superRefine((mechanics, ct
         ? "A zone that moves with its caster is a burst around them"
         : mechanics.summons || mechanics.reaction
           ? "A zone is cast on a turn and leaves no summon"
-          : undefined;
+          : mechanics.zone.triggers.length === 0 && !mechanics.zone.terrain
+            ? "A zone names at least one trigger, unless its ground is all it does"
+            : (mechanics.zone.move || mechanics.zone.drift) &&
+                (mechanics.zone.anchor === "caster" || mechanics.area.shape !== "burst")
+              ? "Only a burst held at a point is moved or drifts"
+              : undefined;
     if (why) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["zone"], message: why });
   }
   if (mechanics.summons && (mechanics.kind !== "attack" || (mechanics.targets ?? "enemy") !== "enemy")) {
@@ -8854,6 +8891,9 @@ export function rulesetCatalogEntryIssues(
     }
     if (mechanics?.budget !== undefined && budgets && !budgets.has(mechanics.budget)) {
       add([index, "mechanics", "budget"], `Unknown budget "${mechanics.budget}"`);
+    }
+    if (mechanics?.zone?.move && !budgets?.has(mechanics.zone.move.budget)) {
+      add([index, "mechanics", "zone", "move", "budget"], `Unknown budget "${mechanics.zone.move.budget}"`);
     }
     if (mechanics?.summons && !budgets?.has(mechanics.summons.budget)) {
       add([index, "mechanics", "summons", "budget"], `Unknown budget "${mechanics.summons.budget}"`);

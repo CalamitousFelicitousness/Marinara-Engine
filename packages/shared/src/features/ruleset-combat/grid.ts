@@ -20,6 +20,7 @@ import type {
   RulesetCombatant,
   RulesetCombatArea,
   RulesetCombatCell,
+  RulesetCombatZone,
   RulesetEncounterState,
   RulesetReachableCell,
 } from "./types.js";
@@ -472,6 +473,7 @@ export function rulesetReachableCells(
   }
 
   const threats = rulesetThreateningEnemies(definition, combat, state, actor);
+  const slowed = rulesetSlowedCells(state, actor);
   const best = new Map<string, number>([[`${from.x},${from.y}`, 0]]);
   const cameFrom = new Map<string, string>();
   const cells = new Map<string, RulesetReachableCell>();
@@ -512,8 +514,10 @@ export function rulesetReachableCells(
       )
         continue;
       // The cheapest way they move that takes this step on what that way has left (1.108).
-      const step = rulesetMoveStep(grid, at, { x, y }, actor, cheapest)?.cost;
-      if (step === undefined) continue;
+      const plain = rulesetMoveStep(grid, at, { x, y }, actor, cheapest)?.cost;
+      if (plain === undefined) continue;
+      // Ground a lasting area makes hard going (1.168).
+      const step = rulesetSlowedStep(grid, { x, y }, plain, slowed);
       const cost = cheapest + step;
       if (cost > budget || cost >= (best.get(next) ?? Infinity)) continue;
       best.set(next, cost);
@@ -683,4 +687,62 @@ function provokedBy(
     previous = cell;
   }
   return provoked;
+}
+
+/** The cells a zone covers as the fight stands. None off a board, or for a caster with no cell. */
+export function rulesetZoneCells(
+  state: RulesetEncounterState,
+  caster: RulesetCombatant,
+  zone: RulesetCombatZone,
+): RulesetCombatCell[] {
+  const grid = state.board?.grid;
+  if (!grid) return [];
+  if (zone.anchor === "point") return zone.cells ?? [];
+  const action = caster.actions.find((entry) => entry.id === zone.actionId);
+  const at = rulesetPositionOf(caster);
+  if (!action?.area || !at) return [];
+  return rulesetAreaCells("burst", action.area.size, at, at, grid);
+}
+
+/** Whether a zone's area may catch this combatant at all, as the cast's own area would have: its
+ *  own side left out where the entry said so, a mend only for whom it was pointed at, and the caster
+ *  never caught by a zone they carry. */
+export function rulesetZoneCatches(
+  caster: RulesetCombatant,
+  zone: RulesetCombatZone,
+  action: RulesetCombatAction,
+  combatant: RulesetCombatant,
+): boolean {
+  if (combatant.defeated) return false;
+  if (zone.anchor === "caster" && combatant.id === caster.id) return false;
+  const sameSide = combatant.side === caster.side;
+  if (action.area?.friendlyFire === false && sameSide) return false;
+  // A mend, or a blessing pointed at allies, stays on the caster's own side.
+  if ((action.heal || action.targets.side === "ally") && !sameSide) return false;
+  return true;
+}
+
+/** The cells a mover finds hard going because a zone that catches them covers them (1.168). */
+export function rulesetSlowedCells(state: RulesetEncounterState, mover: RulesetCombatant): Set<string> {
+  const slowed = new Set<string>();
+  for (const caster of state.combatants) {
+    for (const zone of caster.zones ?? []) {
+      const action = caster.actions.find((entry) => entry.id === zone.actionId);
+      if (!action?.zone?.difficult || !rulesetZoneCatches(caster, zone, action, mover)) continue;
+      for (const cell of rulesetZoneCells(state, caster, zone)) slowed.add(`${cell.x},${cell.y}`);
+    }
+  }
+  return slowed;
+}
+
+/** A step into a cell a zone slows costs double the ground's own price, without doubling ground
+ *  that was already hard going: difficult terrain does not stack (1.168). */
+export function rulesetSlowedStep(
+  grid: TacticalGrid,
+  cell: RulesetCombatCell,
+  step: number,
+  slowed: ReadonlySet<string>,
+): number {
+  if (!slowed.has(`${cell.x},${cell.y}`)) return step;
+  return step + Math.max(0, 2 - rulesetCellEnterCost(grid, cell.x, cell.y));
 }

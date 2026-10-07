@@ -1439,6 +1439,17 @@ function carriesZones(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesZones(one, depth + 1));
 }
 
+/** A lasting area that moves, drifts, or makes its ground hard going, in catalog files too (1.168). */
+function carriesMovingZones(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesMovingZones(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const zone = plainRecord(plainRecord(record.mechanics)?.zone);
+  if (zone && (zone.move !== undefined || zone.drift !== undefined || zone.terrain !== undefined)) return true;
+  return Object.values(record).some((one) => carriesMovingZones(one, depth + 1));
+}
+
 /** A live pool that pays for another group, or a catalog entry whose targets grow with its cost,
  *  in catalog files too (1.166). */
 function carriesCostLadder(value: unknown, depth = 0): boolean {
@@ -2615,6 +2626,14 @@ export function getCapabilityPackageInstallIssue(
     (carriesZones(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesZones(document)))
   ) {
     return "A ruleset with lasting zones requires schemaVersion 2 and capabilityApi 1.167 or newer";
+  }
+  // Areas that move, drift or make their ground hard going, 1.168.
+  if (
+    !declaresApi(168) &&
+    (carriesMovingZones(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesMovingZones(document)))
+  ) {
+    return "A ruleset with zones that move or change the ground requires schemaVersion 2 and capabilityApi 1.168 or newer";
   }
   if (carriesCreatureSpellcasting) {
     // The references can only be checked once the catalog files are beside their headers.

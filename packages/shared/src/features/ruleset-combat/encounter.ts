@@ -1534,6 +1534,18 @@ function mechanicsAction(
       triggers: [...mechanics.zone.triggers],
       atCast: mechanics.zone.atCast !== false,
     };
+    const { move, drift, terrain } = mechanics.zone;
+    if (move) action.zone.move = { budget: move.budget, distance: rulesetInCells(move.distance, perCell ?? 1) };
+    if (drift) action.zone.drift = rulesetInCells(drift.distance, perCell ?? 1);
+    if (terrain?.difficult) action.zone.difficult = true;
+    const harm = terrain?.perDistance && amountOf(terrain.perDistance.amount);
+    if (terrain?.perDistance && harm) {
+      action.zone.perDistance = {
+        every: rulesetInCells(terrain.perDistance.every, perCell ?? 1),
+        amount: harm,
+        ...(terrain.perDistance.damageType ? { damageType: terrain.perDistance.damageType } : {}),
+      };
+    }
   }
   // What the turn's own economy makes of it: free of a budget, handing budgets back, or letting
   // its holder buy a standard action with a budget other than the main one.

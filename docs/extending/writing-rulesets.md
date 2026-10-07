@@ -583,6 +583,18 @@ An entry with an `area` can stay with `zone` (Capability API 1.167): `{ "rounds"
 
 That is Cloudkill. Spirit Guardians is `"area": { "shape": "burst", "size": 15 }, "range": 0, "friendlyFire": false` with `"zone": { "rounds": 100, "anchor": "caster", "triggers": ["enter", "turn-start"], "atCast": false }`; Moonbeam is a 5-foot burst with `"triggers": ["enter", "turn-start"]`.
 
+A zone held at a point can move and change its ground (Capability API 1.168). `move: { "budget", "distance" }` lets its caster move it on their turn: the fight offers "Move <zone>" for that budget, picked on the board like a walk, to any cell within `distance` of its centre. `drift: { "distance" }` moves it that far straight away from its caster as each of their turns starts, stopping at the board's edge. Either way, whoever it now covers and did not before is caught as `enter` says. Only a burst held at a point moves or drifts. `terrain: { "difficult": true }` makes every cell of it cost double to move into for whoever it catches (ground that is already hard going is not doubled again), and `terrain: { "perDistance": { "every", "amount", "damageType" } }` deals `amount` (dice and flat, as an entry's own) to whoever it catches for every `every` they move inside it, with no save, counted across walks. The log says each move, drift and hurt.
+
+```json
+{ "id": "moonbeam", "name": "Moonbeam",
+  "mechanics": { "kind": "attack", "range": 120, "area": { "shape": "burst", "size": 5 },
+    "amount": { "dice": "2d10" }, "damageType": "radiant", "save": { "ability": "con", "half": true },
+    "concentration": true,
+    "zone": { "rounds": 10, "triggers": ["enter", "turn-start"], "move": { "budget": "action", "distance": 60 } } } }
+```
+
+Cloudkill adds `"drift": { "distance": 10 }`. Spike Growth is a 20-foot burst with no amount of its own, `"triggers": ["enter"]`, `"atCast": false` and `"terrain": { "difficult": true, "perDistance": { "every": 5, "amount": { "dice": "2d4" }, "damageType": "piercing" } }`.
+
 The picker shows this block as one line. Who reads the rest depends on which block your ruleset opted in with:
 
 - With a [`combat` block](#combat-a-fight-your-own-rules-resolve), the fight reads its combat effects. `range`, `area` and `friendlyFire` apply on a battlefield with positions; `reaction` marks an entry as one that answers something rather than one taken on a turn, and names the moment it waits for (see [Windows](#windows-holding-the-fight-open)); one marked plain `true` names none and is on no menu. `check` applies to skill checks, as described above.

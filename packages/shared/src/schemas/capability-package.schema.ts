@@ -847,7 +847,11 @@ const capabilityPackageManifestBaseSchema = z
 //        concentration, held where it was aimed or around its caster, doing the entry's effect
 //        again to whoever moves into it or starts or ends a turn in it, once a turn. Drawn on the
 //        board and listed beside it. 5e's Cloudkill, Spirit Guardians and Moonbeam. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 167 } as const);
+// 1.168: a zone held at a point may be moved by its caster for a budget (`zone.move`) or drift away
+//        from them as their turns start (`zone.drift`), catching whoever it reaches; and its ground
+//        may be hard going (`zone.terrain.difficult`) or hurt for every distance moved inside
+//        (`zone.terrain.perDistance`). 5e's Moonbeam, Cloudkill and Spike Growth. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 168 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

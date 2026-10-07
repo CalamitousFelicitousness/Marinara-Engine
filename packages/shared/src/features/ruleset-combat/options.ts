@@ -64,6 +64,7 @@ import {
   rulesetReachableCells,
 } from "./grid.js";
 import { coverTier, elevationAt } from "../tactical-combat/math.js";
+import { rulesetZoneMoveCells } from "./zones.js";
 import type {
   RulesetConditionBonus,
   RulesetCombatAction,
@@ -210,6 +211,8 @@ const RULESET_AIM_SCAN_CEILING = 64 * 64;
  *  action called "move" or "stand" can never be mistaken for walking. The same trick the standard
  *  actions use (`standard:dodge`). */
 export const RULESET_MOVE_OPTION = "move:walk";
+/** Moving a lasting area (1.168): this, then the id of the action that left it. */
+export const RULESET_ZONE_OPTION_PREFIX = "zone:";
 export const RULESET_STAND_OPTION = "move:stand";
 /** A flier going up a level, or down one, where it stands (1.109). */
 export const RULESET_FLY_UP_OPTION = "move:fly-up";
@@ -1721,6 +1724,21 @@ export function rulesetCombatOptions(
       targets: { side: "enemy", count: 1 },
     };
     if (rulesetOptionTargets(definition, state, actor.id, option).length > 0) options.push(option);
+  }
+  // Moving a lasting area its caster holds at a point (1.168): picked on the board as a walk is.
+  for (const zone of actor.zones ?? []) {
+    const move = actor.actions.find((entry) => entry.id === zone.actionId)?.zone?.move;
+    if (!move || (actor.budgets[move.budget] ?? 0) < 1) continue;
+    const cells = rulesetZoneMoveCells(state, zone, move.distance);
+    if (cells.length === 0) continue;
+    options.push({
+      id: `${RULESET_ZONE_OPTION_PREFIX}${zone.actionId}`,
+      kind: "move",
+      label: zone.label,
+      budget: move.budget,
+      targets: { side: "self", count: 0 },
+      cells,
+    });
   }
   for (const holder of state.combatants) {
     if (holder.id === actor.id || holder.side !== actor.side || holder.defeated) continue;

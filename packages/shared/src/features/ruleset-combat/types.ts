@@ -1211,9 +1211,12 @@ export type RulesetCombatEvent =
       type: "zone";
       actorId: string;
       label: string;
-      outcome: "appeared" | "struck" | "ended";
+      outcome: "appeared" | "struck" | "ended" | "moved" | "drifted";
       targetId?: string;
-      trigger?: RulesetCombatZoneRule["triggers"][number];
+      /** What caught them: one of the zone's triggers, or walking on its ground (1.168). */
+      trigger?: RulesetCombatZoneRule["triggers"][number] | "moving";
+      /** Where it was centred after moving or drifting (1.168). */
+      to?: RulesetCombatCell;
     }
   /** A flier going up or down a level where it stands (1.109), for cells of its allowance. */
   | { type: "flew"; actorId: string; from: number; to: number; cost: number; left: number }
@@ -1485,6 +1488,14 @@ export interface RulesetCombatZoneRule {
   anchor: "point" | "caster";
   triggers: Array<"enter" | "turn-start" | "turn-end">;
   atCast: boolean;
+  /** Its caster may move it on their turn, spending `budget`, up to `distance` cells (1.168). */
+  move?: { budget: string; distance: number };
+  /** Cells it moves straight away from its caster as each of their turns starts (1.168). */
+  drift?: number;
+  /** Moving into one of its cells costs double (1.168). */
+  difficult?: boolean;
+  /** What moving inside it deals: `amount` for every `every` cells, no save (1.168). */
+  perDistance?: { every: number; amount: RulesetCombatAmount; damageType?: string };
 }
 
 /** One lasting area standing on the board (1.167). A zone held at a point keeps the cells it was
@@ -1503,4 +1514,6 @@ export interface RulesetCombatZone {
   held?: string[];
   /** Who it has already caught, by the turn it caught them on ("round:turn"). */
   struck?: Record<string, string>;
+  /** Cells each mover has walked inside it, toward its next `perDistance` harm (1.168). */
+  walked?: Record<string, number>;
 }

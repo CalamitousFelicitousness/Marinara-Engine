@@ -1003,11 +1003,17 @@ export function sandboxDocument(extension: PersonalExtension, nonce: string) {
   let stopped = false;
   let messageWindowStartedAt = Date.now();
   let messageCount = 0;
+  const workerStartedAt = Date.now();
+  let heartbeatCount = 0;
   worker.addEventListener("message", (event) => {
     const message = event.data;
     if (message?.type === "heartbeat") {
       lastHeartbeat = Date.now();
-      return;
+      // The worker sends one heartbeat a second. A backlog that arrives at
+      // once after a pause stays within that rate; any heartbeat beyond it
+      // counts toward the message limit, so a flood cannot freeze the page.
+      heartbeatCount += 1;
+      if (heartbeatCount <= (Date.now() - workerStartedAt) / 1_000 + 10) return;
     }
     if (Date.now() - messageWindowStartedAt > 10_000) {
       messageWindowStartedAt = Date.now();

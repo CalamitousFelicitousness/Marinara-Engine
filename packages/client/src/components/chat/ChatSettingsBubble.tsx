@@ -2,11 +2,11 @@
 // Chat Settings button: the way into Chat Settings, placed in the chat
 //
 // A bubble like the chat's other window buttons, shown while a chat is open. It
-// starts at the top right of the chat and can be dragged anywhere; its place
-// saves with the chat (a phone keeps its own). A click opens Chat Settings, or
-// closes it, and focus comes back here when the window closes. It never hides
-// while the chat is open, and shows a dot while the chat's agents run. A
-// Roleplay chat shows a one-time tip beside it until dismissed.
+// starts at the top right of the chat (left of a Tracker Panel docked there) and
+// can be dragged anywhere; its place saves with the chat (a phone keeps its own).
+// A click opens Chat Settings, or closes it, and focus comes back here when the
+// window closes. It never hides while the chat is open, and shows a dot while the
+// chat's agents run. A Roleplay chat shows a one-time tip beside it until dismissed.
 // ──────────────────────────────────────────────
 import { useId, useState } from "react";
 import { Settings2, X } from "lucide-react";
@@ -17,6 +17,7 @@ import { usePhoneBubbleBounds, useWindowBubbleBounds } from "../ui/FloatingWindo
 import { AgentsRunningDot } from "../agents/AgentsRunningDot";
 import { announceChatToolbarAction } from "./ChatToolbarControls";
 import { preloadChatSettingsDrawer } from "./ChatCommonOverlays";
+import { useTrackerPanelClearance } from "./chat-settings-window";
 import { useMatchMedia } from "../../hooks/use-match-media";
 import {
   PHONE_BUBBLE_SIZE_PX,
@@ -55,8 +56,17 @@ export function ChatSettingsBubble({ chatId, mode }: { chatId: string; mode: Cha
   const dismissTip = useUIStore((state) => state.dismissChatSettingsMoveTip);
   const agentsRunningId = useId();
   const label = t("chat.toolbar.settings");
-  // Saved places take precedence over the top-right default.
-  const point = clampWindowBubble(saved ?? getTopRightBubblePoint(bounds, size), bounds, size);
+  // A Tracker Panel docked on the right covers the top-right corner and its own buttons there, so the
+  // default place moves left of it: the slot the control bubbles already leave for Chat Settings.
+  const trackerClearance = Number.parseFloat(useTrackerPanelClearance(!phone)) || 0;
+  const trackerPanelOnRight = useUIStore((state) => state.trackerPanelSide === "right");
+  const defaultPoint = getTopRightBubblePoint(
+    bounds,
+    size,
+    trackerPanelOnRight ? bounds.right - trackerClearance : bounds.right,
+  );
+  // Saved places take precedence over the default.
+  const point = clampWindowBubble(saved ?? defaultPoint, bounds, size);
   const showTip = !phone && mode === "roleplay" && !tipDismissed;
   const tipLeft = Math.max(8, Math.min(point.x + size / 2 - 24, window.innerWidth - TIP_WIDTH_PX - 8));
 
@@ -73,7 +83,7 @@ export function ChatSettingsBubble({ chatId, mode }: { chatId: string; mode: Cha
       {phone && <ChatToolsMenu key={chatId} />}
       <WindowBubble
         id={CHAT_SETTINGS_BUTTON_ID}
-        point={saved ?? { ...getTopRightBubblePoint(bounds, size), automatic: true }}
+        point={saved ?? { ...defaultPoint, automatic: true }}
         bounds={bounds}
         size={size}
         onSizeChange={setSize}

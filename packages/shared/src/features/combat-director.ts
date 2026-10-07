@@ -181,6 +181,9 @@ export interface DirectedRulesetView {
   /** Who plays the actor whose turn it is. */
   controller: "manual" | "ai" | "gm";
   combatants: DirectedRulesetCombatant[];
+  /** The areas spells left standing (1.167): whose, what, how many of its caster's turns are left,
+   *  and the cells it covers now (none off a board). */
+  zones?: Array<{ casterId: string; label: string; rounds: number; cells: Array<{ x: number; y: number }> }>;
   /** The legal menu, present only while a human controls the one being asked: the actor whose turn
    *  it is, or, while a window holds the fight open, whoever that window is asking. */
   options?: DirectedRulesetOption[];

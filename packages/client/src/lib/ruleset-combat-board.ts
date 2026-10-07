@@ -42,6 +42,8 @@ export interface RulesetBoardCell {
   targetable?: boolean;
   /** Set while a shape is being aimed: the ids this aim would catch, which may be nobody. */
   aim?: { targetIds: string[] };
+  /** The labels of the lasting areas covering it (1.167), first cast first. */
+  zones?: string[];
 }
 
 export const rulesetCellKey = (cell: { x: number; y: number }): string => `${cell.x},${cell.y}`;
@@ -90,6 +92,13 @@ export function rulesetBoardCells(view: DirectedRulesetView, step: RulesetMenuSt
     for (const entry of step.option.aim ?? []) aims.set(rulesetCellKey(entry), { targetIds: [...entry.targetIds] });
   }
   const targets = new Set(step?.stage === "target" ? step.option.targetIds : []);
+  const zoned = new Map<string, string[]>();
+  for (const zone of view.zones ?? []) {
+    for (const cell of zone.cells) {
+      const key = rulesetCellKey(cell);
+      zoned.set(key, [...(zoned.get(key) ?? []), zone.label]);
+    }
+  }
   const cells: RulesetBoardCell[] = [];
   for (let y = 0; y < grid.height; y++) {
     for (let x = 0; x < grid.width; x++) {
@@ -109,6 +118,7 @@ export function rulesetBoardCells(view: DirectedRulesetView, step: RulesetMenuSt
         ...(reach.has(key) ? { reach: reach.get(key)! } : {}),
         ...(occupant && targets.has(occupant.id) ? { targetable: true } : {}),
         ...(aim ? { aim } : {}),
+        ...(zoned.has(key) ? { zones: zoned.get(key)! } : {}),
       });
     }
   }

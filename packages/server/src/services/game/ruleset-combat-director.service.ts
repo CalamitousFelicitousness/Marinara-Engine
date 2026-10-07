@@ -68,6 +68,7 @@ import {
   rulesetProposedStatBlock,
   rulesetTierStatBlock,
   rulesetWindowMoment,
+  rulesetZonesShown,
   rulesetWindowOptions,
   RULESET_MOVE_OPTION,
   RULESET_PASS_OPTION,
@@ -682,6 +683,8 @@ export function directedRulesetView(
     ...(actor && !over ? { actorId: actor.id } : {}),
     controller,
     combatants: encounter.combatants.map((combatant) => projectCombatant(definition, combatant, encounter)),
+    // The areas spells left standing (1.167), drawn on the board and listed beside it.
+    ...(rulesetZonesShown(encounter).length > 0 ? { zones: rulesetZonesShown(encounter) } : {}),
     // A window is answered by the one it asks, so while it is open the menu on screen is THEIRS.
     // The actor's own turn is standing still behind it and has nothing to offer until it closes.
     ...(held && !over

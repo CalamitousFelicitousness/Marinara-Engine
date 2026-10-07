@@ -843,7 +843,11 @@ const capabilityPackageManifestBaseSchema = z
 //        catalog entry may take more targets for each step of a higher cost (`targetsPerCostStep`):
 //        5e's pact slots paying for spell-slot spells, and Hold Person. A use whose own pool is empty
 //        is offered paid from a higher one. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 166 } as const);
+// 1.167: an area may stay (`mechanics.zone`): for rounds of its caster's turns or its
+//        concentration, held where it was aimed or around its caster, doing the entry's effect
+//        again to whoever moves into it or starts or ends a turn in it, once a turn. Drawn on the
+//        board and listed beside it. 5e's Cloudkill, Spirit Guardians and Moonbeam. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 167 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

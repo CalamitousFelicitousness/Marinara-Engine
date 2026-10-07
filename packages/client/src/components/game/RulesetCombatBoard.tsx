@@ -302,6 +302,7 @@ export function RulesetCombatBoard({
                   aria-label={[
                     t("game.combat.ruleset.board.cell", { x: cell.x, y: cell.y }),
                     sentences.get(key) ?? "",
+                    cell.zones ? t("game.combat.ruleset.board.zones", { zones: cell.zones.join(", ") }) : "",
                   ].join(" ")}
                   onClick={() => takeCell(cell)}
                   onKeyDown={(event) => onKeyDown(event, cell)}
@@ -391,6 +392,13 @@ export function RulesetCombatBoard({
                     <span className="pointer-events-none absolute bottom-0 right-0 bg-black/60 px-[2px] text-[0.5rem] font-bold leading-tight tabular-nums text-white/90">
                       {rulesetDistanceText(cell.reach.cost, grid.distance, t)}
                     </span>
+                  )}
+                  {/* A lasting area (1.167): tinted, with its name in the tooltip of the square. */}
+                  {cell.zones && (
+                    <span
+                      className="pointer-events-none absolute inset-0 bg-fuchsia-500/20 ring-1 ring-inset ring-fuchsia-300/40"
+                      title={cell.zones.join(", ")}
+                    />
                   )}
                   {cell.aim && (
                     <span

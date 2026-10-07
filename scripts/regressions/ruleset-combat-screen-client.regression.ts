@@ -770,6 +770,17 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ],
     ["recovered", say({ type: "recovered", actorId: "brenna", label: "Arrows", count: 3 })],
     [
+      "zone",
+      say({
+        type: "zone",
+        actorId: "brenna",
+        label: "Cloudkill",
+        outcome: "struck",
+        targetId: "lurker",
+        trigger: "enter",
+      }),
+    ],
+    [
       "switch",
       say({ type: "switch", actorId: "brenna", optionId: "switch:0", label: "Flame Tongue: Flames", on: true }),
     ],

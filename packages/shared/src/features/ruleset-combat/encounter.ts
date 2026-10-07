@@ -1527,6 +1527,14 @@ function mechanicsAction(
       ...(reach !== undefined ? { reach: rulesetInCells(reach, perCell ?? 1) } : {}),
     };
   }
+  if (mechanics.zone) {
+    action.zone = {
+      rounds: mechanics.zone.rounds,
+      anchor: mechanics.zone.anchor ?? "point",
+      triggers: [...mechanics.zone.triggers],
+      atCast: mechanics.zone.atCast !== false,
+    };
+  }
   // What the turn's own economy makes of it: free of a budget, handing budgets back, or letting
   // its holder buy a standard action with a budget other than the main one.
   if (mechanics.free) action.free = true;

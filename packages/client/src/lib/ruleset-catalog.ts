@@ -659,6 +659,27 @@ export function formatCatalogMechanics(
     );
   }
   if (mechanics.concentration) parts.push(t("game.ruleset.catalog.mechanics.concentration"));
+  // An area that stays (1.167): how long, and when it does its effect again.
+  if (mechanics.zone) {
+    parts.push(
+      t(
+        mechanics.zone.anchor === "caster"
+          ? "game.ruleset.catalog.mechanics.zoneCaster"
+          : "game.ruleset.catalog.mechanics.zone",
+        {
+          count: mechanics.zone.rounds,
+          when: mechanics.zone.triggers.map((trigger) => t(ZONE_WHEN_KEYS[trigger])).join(", "),
+        },
+      ),
+    );
+  }
   if (mechanics.reaction) parts.push(t("game.ruleset.catalog.mechanics.reaction"));
   return parts.join(" · ");
 }
+
+/** What each of a zone's triggers is called (1.167). */
+const ZONE_WHEN_KEYS = {
+  enter: "game.ruleset.catalog.mechanics.zoneWhenEnter",
+  "turn-start": "game.ruleset.catalog.mechanics.zoneWhenTurnStart",
+  "turn-end": "game.ruleset.catalog.mechanics.zoneWhenTurnEnd",
+} as const;

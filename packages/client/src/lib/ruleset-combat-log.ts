@@ -479,6 +479,25 @@ export function rulesetCombatEventLine(
         event.outcome === "appeared" ? "summonAppeared" : event.outcome === "struck" ? "summonStruck" : "summonEnded",
         { actor: names.combatant(event.actorId), label: event.label },
       );
+    case "zone":
+      // A lasting area (1.167): where it stands, what ends it, and whom it catches and how.
+      return event.outcome === "struck"
+        ? key(
+            event.trigger === "enter"
+              ? "zoneStruckEnter"
+              : event.trigger === "turn-end"
+                ? "zoneStruckEnd"
+                : "zoneStruckStart",
+            {
+              actor: names.combatant(event.actorId),
+              label: event.label,
+              target: names.combatant(event.targetId ?? ""),
+            },
+          )
+        : key(event.outcome === "appeared" ? "zoneAppeared" : "zoneEnded", {
+            actor: names.combatant(event.actorId),
+            label: event.label,
+          });
     case "delay": {
       // What a slowing condition holds over to its maker's next turn (1.115).
       const said = { actor: names.combatant(event.actorId), label: event.label };

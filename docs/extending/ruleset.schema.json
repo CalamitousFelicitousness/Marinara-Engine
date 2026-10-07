@@ -9008,6 +9008,45 @@
                       ],
                       "additionalProperties": false
                     },
+                    "zone": {
+                      "type": "object",
+                      "properties": {
+                        "rounds": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 1000
+                        },
+                        "anchor": {
+                          "type": "string",
+                          "enum": [
+                            "point",
+                            "caster"
+                          ]
+                        },
+                        "triggers": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": [
+                              "enter",
+                              "turn-start",
+                              "turn-end"
+                            ]
+                          },
+                          "minItems": 1,
+                          "maxItems": 3
+                        },
+                        "atCast": {
+                          "type": "boolean"
+                        },
+                        "$comment": {}
+                      },
+                      "required": [
+                        "rounds",
+                        "triggers"
+                      ],
+                      "additionalProperties": false
+                    },
                     "concentration": {
                       "type": "boolean"
                     },

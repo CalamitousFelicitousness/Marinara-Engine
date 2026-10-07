@@ -6,6 +6,7 @@
 import { rulesetHideLines, type DirectedRulesetView, type RulesetDefinition } from "@marinara-engine/shared";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { rulesetCombatLogLines, rulesetCombatNames } from "../../lib/ruleset-combat-log";
 import { rulesetDistanceText } from "../../lib/ruleset-combat-board";
 import { rulesetEffectPhrase } from "./RulesetItemPicker";
@@ -243,6 +244,17 @@ export function RulesetCombatStatus({
           </ol>
         </details>
 
+        {/* The areas spells left standing (1.167), each with whose it is and how long it has. */}
+        {view.zones && view.zones.length > 0 && (
+          <ul aria-label={t("game.combat.ruleset.status.zones")} className="space-y-0.5 text-xs">
+            {view.zones.map((zone) => (
+              <li key={`${zone.casterId}:${zone.label}`} className="text-fuchsia-200/90">
+                {zoneLine(zone, view, t)}
+              </li>
+            ))}
+          </ul>
+        )}
+
         {view.adjustments.length > 0 && (
           <details>
             <summary className="cursor-pointer py-1 text-xs">{t("game.combat.ruleset.status.adjustments")}</summary>
@@ -275,4 +287,14 @@ export function RulesetCombatStatus({
       </section>
     </div>
   );
+}
+
+/** One standing zone, in words: whose it is and how many of its caster's turns are left. */
+function zoneLine(
+  zone: NonNullable<DirectedRulesetView["zones"]>[number],
+  view: DirectedRulesetView,
+  t: TFunction,
+): string {
+  const caster = view.combatants.find((one) => one.id === zone.casterId)?.name ?? zone.casterId;
+  return t("game.combat.ruleset.status.zone", { caster, label: zone.label, count: zone.rounds });
 }

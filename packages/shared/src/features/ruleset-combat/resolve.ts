@@ -144,6 +144,8 @@ import type {
   RulesetCombatRoller,
   RulesetCombatStep,
   RulesetCombatWindow,
+  RulesetCombatZone,
+  RulesetCombatZoneRule,
   RulesetCombatant,
   RulesetConditionBonus,
   RulesetConditionEnding,
@@ -157,6 +159,13 @@ import type {
   RulesetWindowResume,
   RulesetWindowTrigger,
 } from "./types.js";
+import {
+  rulesetStandingZones,
+  rulesetZoneCatches,
+  rulesetZoneCells,
+  rulesetZoneHolds,
+  rulesetZoneOccupants,
+} from "./zones.js";
 
 /** Everything one step of the fight needs: the rules, the state it is changing, its dice and the
  *  events it has produced so far. */
@@ -662,6 +671,7 @@ function dropToZero(ctx: RulesetCombatContext, target: RulesetCombatant): void {
   if (target.side === "enemy") {
     target.defeated = true;
     endSummons(ctx, target);
+    endZones(ctx, target);
   }
   endConcentration(ctx, target, "down");
   endConditionsFromSource(ctx, target);
@@ -725,6 +735,7 @@ function addDeathFailures(ctx: RulesetCombatContext, target: RulesetCombatant, a
   if (failures < trackMax(ctx, target, dying.failures)) return;
   target.defeated = true;
   endSummons(ctx, target);
+  endZones(ctx, target);
   target.dying = false;
   ctx.events.push({
     type: "dying",
@@ -1279,6 +1290,107 @@ function endSummons(ctx: RulesetCombatContext, actor: RulesetCombatant, actionId
   if (actor.summons.length === 0) delete actor.summons;
 }
 
+/** Each ending of a zone is said once, as a summon's is (1.167). */
+function endZones(ctx: RulesetCombatContext, actor: RulesetCombatant, actionId?: string): void {
+  if (!actor.zones) return;
+  actor.zones = actor.zones.filter((zone) => {
+    if (actionId !== undefined && zone.actionId !== actionId) return true;
+    ctx.events.push({ type: "zone", actorId: actor.id, label: zone.label, outcome: "ended" });
+    return false;
+  });
+  if (actor.zones.length === 0) delete actor.zones;
+}
+
+/** A cast that stays leaves its area once the last reaction has been answered (1.167): the cells it
+ *  covered where it was aimed, or a burst around its caster that goes where they go. Off a board it
+ *  holds whom it was cast on. Whoever the cast itself caught counts as caught this turn. */
+function placeZone(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  resume: RulesetActionResume,
+): void {
+  const rule = action.zone!;
+  if (action.concentration && actor.concentrating?.actionId !== action.id) return;
+  endZones(ctx, actor, action.id);
+  const grid = ctx.state.board?.grid;
+  const at = resume.at;
+  const cells = grid && at && rule.anchor === "point" ? areaCellsFor(ctx.state, actor, action.id, at) : undefined;
+  const stamp = turnStamp(ctx);
+  const caught = rule.atCast ? resume.targetIds : [];
+  (actor.zones ??= []).push({
+    actionId: action.id,
+    label: action.label,
+    rounds: rule.rounds,
+    anchor: rule.anchor,
+    triggers: [...rule.triggers],
+    ...(at && rule.anchor === "point" ? { at: { x: at.x, y: at.y } } : {}),
+    ...(cells ? { cells } : {}),
+    ...(!grid ? { held: [...resume.targetIds] } : {}),
+    ...(resume.payWith !== undefined ? { payWith: resume.payWith } : {}),
+    ...(caught.length ? { struck: Object.fromEntries(caught.map((id) => [id, stamp])) } : {}),
+  });
+  (actor.flags.freshZones ??= []).push(action.id);
+  ctx.events.push({ type: "zone", actorId: actor.id, label: action.label, outcome: "appeared" });
+}
+
+/** The turn a zone counts its catches by: once a turn, whoever's turn it is. */
+function turnStamp(ctx: RulesetCombatContext): string {
+  return `${ctx.state.round}:${ctx.state.turn}`;
+}
+
+/**
+ * A zone catching somebody at one of its triggers (1.167): the entry's own effect again, against
+ * them alone, at the level it was cast with, as if from the zone's centre. Once a turn whatever the
+ * trigger, so walking in and then ending the turn there is caught once. It starts no concentration,
+ * hands out no budgets and leaves no new zone: it is the same spell going on.
+ */
+function zoneStrike(
+  ctx: RulesetCombatContext,
+  caster: RulesetCombatant,
+  zone: RulesetCombatZone,
+  target: RulesetCombatant,
+  trigger: RulesetCombatZoneRule["triggers"][number],
+): void {
+  if (!zone.triggers.includes(trigger) || !rulesetCombatStanding(target)) return;
+  const action = caster.actions.find((entry) => entry.id === zone.actionId);
+  if (!action || !rulesetZoneCatches(caster, zone, action, target)) return;
+  const stamp = turnStamp(ctx);
+  if (zone.struck?.[target.id] === stamp) return;
+  // Only this turn's catches are kept: an older one can never match again.
+  zone.struck = {
+    ...Object.fromEntries(Object.entries(zone.struck ?? {}).filter(([, when]) => when === stamp)),
+    [target.id]: stamp,
+  };
+  ctx.events.push({
+    type: "zone",
+    actorId: caster.id,
+    label: zone.label,
+    outcome: "struck",
+    targetId: target.id,
+    trigger,
+  });
+  const aimed = ctx.aimedAt;
+  const centre = zone.at ?? rulesetPositionOf(caster);
+  if (centre) ctx.aimedAt = { x: centre.x, y: centre.y };
+  else delete ctx.aimedAt;
+  const { concentration: _held, zone: _zone, summons: _summons, gives: _gives, ...again } = action;
+  resolveAction(ctx, caster, again, [target], zone.payWith);
+  if (aimed) ctx.aimedAt = aimed;
+  else delete ctx.aimedAt;
+}
+
+/** Everybody a zone catches at the start or end of their turn: those standing in it on a board, or
+ *  those it holds off one. */
+function zonesAtTurn(ctx: RulesetCombatContext, actor: RulesetCombatant, trigger: "turn-start" | "turn-end"): void {
+  for (const { caster, zone } of rulesetStandingZones(ctx.state)) {
+    const inside = ctx.state.board?.grid
+      ? rulesetZoneHolds(rulesetZoneCells(ctx.state, caster, zone), rulesetPositionOf(actor))
+      : (zone.held ?? []).includes(actor.id);
+    if (inside) zoneStrike(ctx, caster, zone, actor, trigger);
+  }
+}
+
 /** A cast leaves its weapon only after the last reaction has been answered. */
 function finishSummon(
   ctx: RulesetCombatContext,
@@ -1286,7 +1398,12 @@ function finishSummon(
   action: RulesetCombatAction,
   resume: RulesetActionResume,
 ): void {
-  if (!action.summons || resume.cancelled || actor.defeated) return;
+  if ((!action.summons && !action.zone) || resume.cancelled || actor.defeated) return;
+  if (action.zone && !resume.summon) {
+    placeZone(ctx, actor, action, resume);
+    return;
+  }
+  if (!action.summons) return;
   if (resume.summon) {
     ctx.events.push({ type: "summon", actorId: actor.id, label: action.label, outcome: "struck" });
     return;
@@ -1316,6 +1433,7 @@ function endConcentration(
   if (!held) return;
   actor.concentrating = null;
   endSummons(ctx, actor, held.actionId);
+  endZones(ctx, actor, held.actionId);
   const concentration = ctx.combat.concentration;
   if (concentration) writeRulesetSheet(ctx.definition, actor, { op: "note", field: concentration.text, value: "" });
   // Whatever the concentration was holding up goes with it, wherever it landed.
@@ -2510,6 +2628,36 @@ function resolveStand(ctx: RulesetCombatContext, actor: RulesetCombatant, option
  * The strikes are their own events and the walk's own event comes last, carrying the cells that
  * were really crossed rather than the ones that were meant to be.
  */
+/** Who stands in which zone, before a step. Nothing is worked out in a fight with no zones. */
+function zonesAround(ctx: RulesetCombatContext): Map<RulesetCombatZone, Set<string>> {
+  const inside = new Map<RulesetCombatZone, Set<string>>();
+  if (!ctx.state.combatants.some((one) => one.zones?.length)) return inside;
+  for (const { caster, zone, action } of rulesetStandingZones(ctx.state)) {
+    inside.set(zone, new Set(rulesetZoneOccupants(ctx.state, caster, zone, action)));
+  }
+  return inside;
+}
+
+/** After a step, everybody now inside a zone who was not before it: the mover walking in, or those a
+ *  zone its caster carries has just reached. Each is caught as `enter` says. */
+function zonesEntered(
+  ctx: RulesetCombatContext,
+  mover: RulesetCombatant,
+  before: Map<RulesetCombatZone, Set<string>>,
+): void {
+  for (const { caster, zone, action } of rulesetStandingZones(ctx.state)) {
+    const was = before.get(zone);
+    if (!was) continue;
+    for (const id of rulesetZoneOccupants(ctx.state, caster, zone, action)) {
+      if (was.has(id)) continue;
+      // Only the mover walks in, and only the mover's own zone moves onto anybody.
+      if (id !== mover.id && caster.id !== mover.id) continue;
+      const target = rulesetCombatant(ctx.state, id);
+      if (target) zoneStrike(ctx, caster, zone, target, "enter");
+    }
+  }
+}
+
 function resolveMove(ctx: RulesetCombatContext, actor: RulesetCombatant, destination: { path: RulesetCombatCell[] }) {
   walkOn(ctx, actor, {
     kind: "walk",
@@ -2573,6 +2721,7 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
       }
     }
     rest.shift();
+    const before = zonesAround(ctx);
     // What the menu showed for the same step: entering the cell, and climbing up to it (combat C6b). The
     // path came from that menu, so a cliff is never on it; a saved one that has one costs a plain step.
     // With other ways of moving (1.108) the same choice the menu made, on what this walk has spent.
@@ -2586,6 +2735,8 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
     // A flier that came onto ground as high as it flew, or higher, is standing on it (1.109), and
     // goes on from there as anybody on the ground does.
     if (actor.altitude !== undefined && !rulesetAirborne(grid, actor)) delete actor.altitude;
+    // Into a zone, or a zone carried onto somebody (1.167).
+    zonesEntered(ctx, actor, before);
   }
   if (!stopped && !rulesetCombatStanding(actor)) stopped = true;
   spendRulesetMovement(actor, spent);
@@ -2712,9 +2863,13 @@ function resumeAction(ctx: RulesetCombatContext, resume: RulesetActionResume): v
   // anybody the fight is already over for is left out, the same way a sequence leaves them out. A
   // ruleset with a dying rule keeps a character on the board at zero, so this is about an opponent
   // taken out by an answer: a creature's own reaction can do that now.
-  const targets = resume.targetIds
-    .map((id) => rulesetCombatant(ctx.state, id))
-    .filter((target): target is RulesetCombatant => !!target && !target.defeated);
+  // A zone that does nothing as it appears (1.167) catches nobody now: only its triggers do.
+  const targets =
+    action.zone && !action.zone.atCast
+      ? []
+      : resume.targetIds
+          .map((id) => rulesetCombatant(ctx.state, id))
+          .filter((target): target is RulesetCombatant => !!target && !target.defeated);
   harmedBy(ctx, actor, action, resume, () =>
     resolveAction(ctx, actor, action, targets, resume.payWith, resume.held, resume.style, resume.spend),
   );
@@ -2812,7 +2967,7 @@ function harmedBy(
         ...(action.entry ? { entry: action.entry } : {}),
       },
       [...hurt].map((id) => rulesetCombatant(ctx.state, id)).filter((one): one is RulesetCombatant => !!one),
-      action.summons ? { ...resume, resolved: true } : undefined,
+      action.summons || action.zone ? { ...resume, resolved: true } : undefined,
     );
   if (!waiting) finishSummon(ctx, actor, action, resume);
 }
@@ -3923,11 +4078,18 @@ export function advanceRulesetTurn(
   const { ctx, finish } = begin(definition, combat, state, roller);
   const leaving = currentRulesetActor(ctx.state);
   if (leaving) {
+    // Ending a turn in a zone comes before the turn's own conditions run out (1.167).
+    zonesAtTurn(ctx, leaving, "turn-end");
     tickConditions(ctx, leaving, "turn-end");
     for (const summon of [...(leaving.summons ?? [])]) {
       if (leaving.flags.freshSummons?.includes(summon.actionId)) continue;
       summon.rounds -= 1;
       if (summon.rounds <= 0) endSummons(ctx, leaving, summon.actionId);
+    }
+    for (const zone of [...(leaving.zones ?? [])]) {
+      if (leaving.flags.freshZones?.includes(zone.actionId)) continue;
+      zone.rounds -= 1;
+      if (zone.rounds <= 0) endZones(ctx, leaving, zone.actionId);
     }
     // Strikes a spend bought are for the turn it was spent on. Nothing is carried over.
     delete leaving.strikesLeft;
@@ -4025,6 +4187,8 @@ function beginNextTurn(definition: RulesetDefinition, combat: RulesetCombat, ctx
     refreshRulesetSignature(actor);
     rollRulesetRecharges(ctx, actor);
     recoverFromCrash(ctx, actor);
+    // Starting a turn in a zone (1.167), before the turn's own conditions tick.
+    zonesAtTurn(ctx, actor, "turn-start");
     tickConditions(ctx, actor, "turn-start");
     // A condition that ended as the turn began no longer holds this turn's walk: nothing has been
     // spent yet, so the allowance is simply read again.

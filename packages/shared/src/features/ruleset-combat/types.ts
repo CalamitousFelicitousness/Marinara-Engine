@@ -461,6 +461,9 @@ export interface RulesetCombatAction {
   innate?: { level: number; baseLevel: number; coven?: { id: string; size: number; within: number } };
   /** What this leaves to strike on later turns (1.117), with distances already in cells. */
   summons?: { budget: string; rounds: number; move?: number; reach?: number };
+  /** The area stays (1.167): for how many of its caster's turns, where it is held, and when it does
+   *  its effect again. */
+  zone?: RulesetCombatZoneRule;
   /** The shape this one covers, in cells, aimed at a cell rather than at anybody. */
   area?: RulesetCombatArea;
   /** What a contest rolls and what winning it does, on an action of kind `contest`. */
@@ -636,6 +639,8 @@ export interface RulesetCombatant {
     attacks?: number;
     /** Summons made this turn do not spend a round at its end. */
     freshSummons?: string[];
+    /** Zones placed this turn do not spend a round at its end (1.167). */
+    freshZones?: string[];
   };
   /** At zero and out of the fight. `dying` is a party member a ruleset with a dying rule still
    *  rolls for; `stable` is one that has stopped rolling; `defeated` is one the fight is over for. */
@@ -676,6 +681,8 @@ export interface RulesetCombatant {
     at?: RulesetCombatCell;
     payWith?: string;
   }>;
+  /** The areas the holder's spells left standing (1.167). */
+  zones?: RulesetCombatZone[];
   /** How much of each limited live pool they may still spend this turn or round, read once as the
    *  fight began and counted down as they pay. Absent for anybody nothing limits. */
   limits?: Record<string, { max: number; per: "turn" | "round"; spent: number }>;
@@ -1199,6 +1206,15 @@ export type RulesetCombatEvent =
     }
   /** What a summoned weapon did, from its appearance to its ending (1.117). */
   | { type: "summon"; actorId: string; label: string; outcome: "appeared" | "struck" | "ended" }
+  /** A lasting area appearing, ending, or catching somebody at one of its triggers (1.167). */
+  | {
+      type: "zone";
+      actorId: string;
+      label: string;
+      outcome: "appeared" | "struck" | "ended";
+      targetId?: string;
+      trigger?: RulesetCombatZoneRule["triggers"][number];
+    }
   /** A flier going up or down a level where it stands (1.109), for cells of its allowance. */
   | { type: "flew"; actorId: string; from: number; to: number; cost: number; left: number }
   /** A strike at somebody leaving this combatant's reach. The attack and the damage that follow are
@@ -1461,4 +1477,30 @@ export interface RulesetEncounterSummary {
     conditions: string[];
   }>;
   enemies: Array<{ id: string; name: string; health: number; maxHealth: number; defeated: boolean }>;
+}
+
+/** How a lasting area behaves (1.167), as the catalog entry said it. */
+export interface RulesetCombatZoneRule {
+  rounds: number;
+  anchor: "point" | "caster";
+  triggers: Array<"enter" | "turn-start" | "turn-end">;
+  atCast: boolean;
+}
+
+/** One lasting area standing on the board (1.167). A zone held at a point keeps the cells it was
+ *  cast on; one held by its caster is worked out around them wherever they stand. */
+export interface RulesetCombatZone {
+  actionId: string;
+  label: string;
+  rounds: number;
+  anchor: "point" | "caster";
+  triggers: RulesetCombatZoneRule["triggers"];
+  /** Where it was centred, for a zone held at a point. */
+  at?: RulesetCombatCell;
+  cells?: RulesetCombatCell[];
+  payWith?: string;
+  /** Who it holds off a board: those it was cast on (1.167). */
+  held?: string[];
+  /** Who it has already caught, by the turn it caught them on ("round:turn"). */
+  struck?: Record<string, string>;
 }

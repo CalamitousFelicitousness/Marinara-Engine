@@ -1855,6 +1855,24 @@ const catalogMechanicsObject = z
       })
       .strict()
       .optional(),
+    /** An area that stays (Capability API 1.167): it lasts `rounds` of its caster's turns, or until
+     *  the concentration that holds it ends, and does the entry's own effect again to a creature at
+     *  each of its `triggers`, once a turn whatever it was: moving into it (`enter`), or starting or
+     *  ending a turn in it. `anchor: "caster"` keeps a burst centred on its caster as they move (5e's
+     *  Spirit Guardians); `atCast: false` does nothing as it appears. */
+    zone: z
+      .object({
+        rounds: z.number().int().min(1).max(1000),
+        anchor: z.enum(["point", "caster"]).optional(),
+        triggers: z
+          .array(z.enum(["enter", "turn-start", "turn-end"]))
+          .min(1)
+          .max(3)
+          .refine((triggers) => new Set(triggers).size === triggers.length, { message: "A trigger is named once" }),
+        atCast: z.boolean().optional(),
+      })
+      .strict()
+      .optional(),
     concentration: z.boolean().optional(),
     /** Something taken at a MOMENT rather than on a turn. `true` says only that much, and an entry
      *  that says only that much is on no menu: nothing knows which moment it waits for. An object
@@ -1930,6 +1948,16 @@ const catalogMechanicsObject = z
   .strict();
 
 const catalogMechanicsSchema = catalogMechanicsObject.superRefine((mechanics, ctx) => {
+  if (mechanics.zone) {
+    const why = !mechanics.area
+      ? "A zone is an area that stays, so it needs an area"
+      : mechanics.zone.anchor === "caster" && mechanics.area.shape !== "burst"
+        ? "A zone that moves with its caster is a burst around them"
+        : mechanics.summons || mechanics.reaction
+          ? "A zone is cast on a turn and leaves no summon"
+          : undefined;
+    if (why) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["zone"], message: why });
+  }
   if (mechanics.summons && (mechanics.kind !== "attack" || (mechanics.targets ?? "enemy") !== "enemy")) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -3162,6 +3190,7 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     check: true,
     concentration: true,
     summons: true,
+    zone: true,
     reaction: true,
     scales: true,
     gives: true,

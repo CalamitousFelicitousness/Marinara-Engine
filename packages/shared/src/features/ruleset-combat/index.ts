@@ -48,6 +48,7 @@
 //     picks from, which is what the enemy's own turn will read.
 
 export * from "./types.js";
+export * from "./zones.js";
 export {
   applyRulesetFightItemChanges,
   rulesetAmmoLeft,

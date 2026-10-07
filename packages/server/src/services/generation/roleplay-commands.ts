@@ -19,6 +19,8 @@ import {
 import { parseQuotedParam } from "../conversation/character-commands.js";
 import { wrapContent } from "../prompt/format-engine.js";
 import { normalizeCharacterLookupName } from "../game/name-normalization.js";
+import { parseExtra } from "./prompt-attachments.js";
+import { WHISPER_ONLY_PLACEHOLDER } from "./prompt-message-scope.js";
 
 export type { RoleplayCommand } from "@marinara-engine/shared";
 
@@ -331,9 +333,34 @@ export function resolveRoleplayWhisperRecipient(
   return match ? { id: match.id, kind: match.kind } : null;
 }
 
+/**
+ * Messages hidden from this character through its own hide list that still carry a whisper to it.
+ * A whisper always reaches its recipient; hiding from everyone still removes it (#7191).
+ */
+export function roleplayHiddenWhisperMessageIds(
+  history: readonly HistoryMessage[],
+  characterId: string | null,
+): Set<string> {
+  const ids = new Set<string>();
+  if (!characterId) return ids;
+  for (const message of history) {
+    const extra = parseExtra(message.extra);
+    if (
+      typeof message.id === "string" &&
+      (message.role === "assistant" || message.role === "user") &&
+      extra.hiddenFromAI !== true &&
+      Array.isArray(extra.hiddenFromAICharacterIds) &&
+      extra.hiddenFromAICharacterIds.includes(characterId) &&
+      getRoleplayWhispers(extra).some(({ recipient }) => recipient.kind === "character" && recipient.id === characterId)
+    )
+      ids.add(message.id);
+  }
+  return ids;
+}
+
 /** Insert secrets at their saved positions in the final viewer's retained history, after copying shared prompts. */
 export function appendRoleplayWhispers(
-  prompt: Array<{ id?: string | null; contextKind?: string; content: string }>,
+  prompt: Array<{ id?: string | null; whisperSourceId?: string; contextKind?: string; content: string }>,
   history: readonly HistoryMessage[],
   viewer: RoleplayWhisperRecipient | null,
   narratorId: string | null,
@@ -342,8 +369,9 @@ export function appendRoleplayWhispers(
   const sources = new Map(history.map((message) => [message.id, message]));
   let added = false;
   for (const message of prompt) {
-    if (!message.id || message.contextKind !== "history") continue;
-    const source = sources.get(message.id);
+    const sourceId = message.whisperSourceId ?? message.id;
+    if (!sourceId || message.contextKind !== "history") continue;
+    const source = sources.get(sourceId);
     if (source?.role !== "assistant" && source?.role !== "user") continue;
     let extra = source.extra;
     if (typeof extra === "string") {
@@ -354,14 +382,20 @@ export function appendRoleplayWhispers(
       }
     }
     if (!extra || typeof extra !== "object") continue;
+    // A whisper-only stand-in delivers only the viewer's own whispers, never the narrator's view.
     const whispers = getRoleplayWhispers(extra as Record<string, unknown>).filter(
       ({ recipient }) =>
-        (viewer.kind === "character" && viewer.id === narratorId) ||
+        (!message.whisperSourceId && viewer.kind === "character" && viewer.id === narratorId) ||
         (viewer.kind === recipient.kind && viewer.id === recipient.id),
     );
     if (!whispers.length) continue;
     // History wrappers shift saved offsets. Prefer the unchanged source body, then fall back to edit anchors.
-    const sourceText = typeof source.content === "string" ? source.content : "";
+    // A stand-in's body is its placeholder, so its whispers follow it.
+    const sourceText = message.whisperSourceId
+      ? WHISPER_ONLY_PLACEHOLDER
+      : typeof source.content === "string"
+        ? source.content
+        : "";
     const sourceStart = sourceText ? message.content.indexOf(sourceText) : -1;
     const hasSource = sourceStart >= 0 && sourceStart === message.content.lastIndexOf(sourceText);
     const positioned = whispers

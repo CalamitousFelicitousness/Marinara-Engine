@@ -2553,6 +2553,18 @@ export async function chatsRoutes(app: FastifyInstance) {
             partial[key] = normalizeMessageCharacterIds(partial[key]);
           }
         }
+        // A whisper edited to nothing is removed from the message rather than kept as a blank secret.
+        if (Array.isArray(partial.roleplayCommandActivity)) {
+          partial.roleplayCommandActivity = partial.roleplayCommandActivity.filter(
+            (item: { command?: { type?: unknown; text?: unknown }; error?: unknown } | null) =>
+              !(
+                item?.command?.type === "whisper" &&
+                !item.error &&
+                typeof item.command.text === "string" &&
+                !item.command.text.trim()
+              ),
+          );
+        }
         const syncAllSwipeExtra: Record<string, unknown> = {};
         if (Object.prototype.hasOwnProperty.call(partial, "hiddenFromAI")) {
           syncAllSwipeExtra.hiddenFromAI = partial.hiddenFromAI;

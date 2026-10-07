@@ -220,6 +220,7 @@ import {
   parseRoleplayCommands,
   parseRoleplayUserCommands,
   roleplayCommandKey,
+  roleplayHiddenWhisperMessageIds,
   resolveRoleplayWhisperRecipient,
   RoleplayCommandStreamFilter,
   type RoleplayCommand,
@@ -7580,9 +7581,15 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 ? [targetCharId]
                 : []
               : characterIds;
+          const roleplayPrivateAvailable =
+            Boolean(targetCharId) && (allCharacterIds.length === 1 || usesIndividualGroupGeneration);
+          const roleplayCallerId = roleplayPrivateAvailable && speaksOnlyTargetCharacter ? targetCharId : null;
           gameAwareMessagesForGen = filterPromptMessagesForCharacterAudience(
             gameAwareMessagesForGen,
             audienceCharacterIds,
+            chatMode === "roleplay" && !input.impersonate
+              ? roleplayHiddenWhisperMessageIds(roleplayTimeline, roleplayCallerId)
+              : undefined,
           );
           if (
             usesIndividualGroupGeneration &&
@@ -7770,9 +7777,6 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           // Private state enters only the final responder request, after shared agent context.
           const publicRoleplayPrompt =
             chatMode === "roleplay" ? toProviderMessages(sharedPromptForAgents(preparedMessagesForGen)) : null;
-          const roleplayPrivateAvailable =
-            Boolean(targetCharId) && (allCharacterIds.length === 1 || usesIndividualGroupGeneration);
-          const roleplayCallerId = roleplayPrivateAvailable && speaksOnlyTargetCharacter ? targetCharId : null;
           const roleplayWhisperContext =
             chatMode === "roleplay" &&
             appendRoleplayWhispers(

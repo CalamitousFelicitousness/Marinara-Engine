@@ -100,7 +100,8 @@ export function useTrackerPanelClearance(enabled: boolean) {
     observer.observe(host, { attributes: true, attributeFilter: ["style"] });
     return () => observer.disconnect();
   }, [enabled]);
-  return clearance;
+  // Disabled (a phone), it stops watching, so its last value would be stale.
+  return enabled ? clearance : "";
 }
 
 /** Presses that do not count as "outside" Chat Settings. */

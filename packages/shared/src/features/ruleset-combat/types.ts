@@ -190,6 +190,8 @@ export interface RulesetStatBlockAction {
   budget: string;
   toHit?: number;
   autoHit?: boolean;
+  /** Senses a target must have for this to affect it (Capability API 1.122). */
+  needs?: string[];
   damage?: RulesetCombatDamage;
   heal?: RulesetCombatAmount;
   targets?: "ally" | "any";
@@ -348,6 +350,8 @@ export interface RulesetCombatAction {
    *  weapon's own. Without one the attack is thrown against the pool's usual target. */
   target?: number;
   autoHit?: boolean;
+  /** Senses a target must have for this to affect it (Capability API 1.122). */
+  needs?: string[];
   damage?: RulesetCombatDamage;
   heal?: RulesetCombatAmount;
   temporary?: RulesetCombatAmount;

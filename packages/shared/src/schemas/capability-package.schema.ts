@@ -797,7 +797,9 @@ const capabilityPackageManifestBaseSchema = z
 //        damaged, or let a nearby ally spend a budget to shake its holder out. No permission.
 // 1.121: a rider can need an adjacent ally without disadvantage on the final attack roll, as 5e's
 //        Sneak Attack does when the roll has no advantage. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 121 } as const);
+// 1.122: conditions can take away senses an effect needs, as Deafened keeps Command from affecting
+//        its holder. The ruleset names the senses; targets without them are skipped. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 122 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

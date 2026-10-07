@@ -185,6 +185,16 @@ function restStepTo(node) {
   ];
 }
 
+// Senses an effect needs or a condition takes away cannot be named twice (1.122).
+function uniqueCombatSenses(node) {
+  if (Array.isArray(node)) return node.forEach(uniqueCombatSenses);
+  if (!node || typeof node !== "object") return;
+  Object.values(node).forEach(uniqueCombatSenses);
+  for (const key of ["needs", "lacks"]) {
+    if (node.properties?.[key]?.type === "array") node.properties[key].uniqueItems = true;
+  }
+}
+
 // A condition cannot name the same ending twice (1.120).
 function uniqueConditionEndings(node) {
   if (Array.isArray(node)) return node.forEach(uniqueConditionEndings);
@@ -649,6 +659,7 @@ requireOneEntryContent(schema);
 requireCatalogFeeds(schema);
 requireSaveEndsUntilSave(schema);
 uniqueConditionEndings(schema);
+uniqueCombatSenses(schema);
 cancelOnlyWhenAimed(schema);
 modifierSaysSomething(schema);
 creatureActionShape(schema);

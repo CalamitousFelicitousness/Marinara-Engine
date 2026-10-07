@@ -1531,6 +1531,13 @@ same keys for a d20 system:
     can see it needs. Naming an effect the condition does not have is refused. Without a board there
     is no line to break, so everything counts either way.
   - `endsWhenSourceDown`: it comes off the moment whoever applied it goes down.
+  - Senses (Capability API 1.122): a condition's `lacks` names senses its holder does not have,
+    and a catalog entry's `mechanics.needs` or a creature action's `needs` names senses a target
+    must have for it to work on them. For 5e Deafened, write `"lacks": ["hearing"]`; for Command,
+    write `"needs": ["hearing"]` in its mechanics. A deafened target is left off Command's target
+    menu. An area or multi-target effect needing hearing skips that target entirely: no save,
+    damage or conditions. Once Deafened ends, the target is legal again. Each list has one to four
+    unique sense ids, in the ruleset's own words; the Engine knows no sense names.
   - Condition endings (Capability API 1.120): Charm Person uses
     `"endsWhen": ["harmed-by-source-side"]`. Damage above zero from whoever applied it or anyone on
     their side, or their targeting its holder with an attack, save or harmful condition, ends it

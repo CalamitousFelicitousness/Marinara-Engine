@@ -1624,12 +1624,21 @@ const RIDER_ENTRY_FORBIDS = [
   "standard",
 ] as const;
 
+/** Senses named by the ruleset, never by the Engine (Capability API 1.122). */
+const combatSensesSchema = z
+  .array(sheetId)
+  .min(1)
+  .max(4)
+  .refine((entries) => new Set(entries).size === entries.length, { message: "Senses must be unique" });
+
 /** What an entry DOES. The Engine does not act on it in this slice: it validates it and the client
  *  shows one compact line. A later combat bridge turns it into the Engine's own `CombatSkill`, so
  *  the vocabulary is closed and strict, and a typo is refused now rather than ignored then. */
 const catalogMechanicsObject = z
   .object({
     kind: z.enum(["attack", "heal", "buff", "debuff", "utility", "rider"]),
+    /** Senses a target must have for this to affect it (Capability API 1.122). */
+    needs: combatSensesSchema.optional(),
     /** In the catalog's own distance unit. 0 is self or touch. */
     range: z.number().finite().min(0).optional(),
     area: z
@@ -2041,6 +2050,8 @@ const creatureActionSchema = z
   .object({
     id: sheetId,
     name: promptSafeText(80),
+    /** Senses a target must have for this to affect it (Capability API 1.122). */
+    needs: combatSensesSchema.optional(),
     budget: sheetId,
     toHit: z.number().int().min(-50).max(100).optional(),
     /** The amount simply lands: no roll to make. */
@@ -2940,6 +2951,8 @@ export const RULESET_ITEM_CHARGES_MAX = 100;
 export const rulesetItemUseSchema = catalogMechanicsObject
   .omit({
     kind: true,
+    // Sense needs belong to catalog entries and creature actions (1.122).
+    needs: true,
     // A sheet value added to an amount is a catalog entry's (1.78): an item's use reads its own stats.
     amountAdd: true,
     cost: true,
@@ -3677,6 +3690,8 @@ const combatConditionDelaysSchema: z.ZodType<RulesetConditionDelays, z.ZodTypeDe
 const combatConditionSchema = z
   .object({
     condition: sheetId,
+    /** Senses its holder does not have while it lasts (Capability API 1.122). */
+    lacks: combatSensesSchema.optional(),
     effects: z.array(combatConditionEffectSchema).max(12).default([]),
     /** The numbers it changes while it holds. */
     modifiers: z.array(combatModifierSchema).min(1).max(6).optional(),

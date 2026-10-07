@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: conditions can take away senses an effect needs, so Deafened keeps spells such as Command and creature actions such as a harpy's Luring Song from affecting their holder (Capability API 1.122).
 - Rulesets: a rider can require an adjacent ally and no disadvantage on the final attack roll, as Sneak Attack does without advantage (Capability API 1.121).
 - Rulesets: conditions can end on damage or harm from their source's side, repeat their ending save when damaged, or let a nearby ally shake their holder out, as Charm Person, Dominate Person and Hypnotic Pattern do (Capability API 1.120).
 - Rulesets: a reaction can catch a falling creature before it lands, and a condition can prevent falling damage and the fall leaving it prone, as Feather Fall does (Capability API 1.119).

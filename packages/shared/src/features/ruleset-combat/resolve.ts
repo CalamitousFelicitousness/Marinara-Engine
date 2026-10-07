@@ -39,6 +39,7 @@ import {
   refreshRulesetMovement,
   rulesetCombatant,
   rulesetActiveConditions,
+  rulesetTargetHasSenses,
   rulesetCombatConditions,
   rulesetCombatEffects,
   rulesetCombatFailsSave,
@@ -2943,6 +2944,7 @@ function resolveAction(
   // decides, once every target has been tried, whether the number resets or a miss costs some of it.
   const spends = style?.spends ? { number: spend ?? actor.initiative, landed: false } : null;
   for (const target of targets) {
+    if (!rulesetTargetHasSenses(ctx.definition, ctx.state, target, action.needs)) continue;
     const endHarm = endConditionsOnHarm(
       ctx,
       target,

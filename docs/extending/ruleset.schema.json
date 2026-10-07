@@ -8188,6 +8188,17 @@
                         "rider"
                       ]
                     },
+                    "needs": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "minItems": 1,
+                      "maxItems": 4,
+                      "uniqueItems": true
+                    },
                     "range": {
                       "type": "number",
                       "minimum": 0
@@ -9908,6 +9919,17 @@
                             "type": "string",
                             "minLength": 1,
                             "maxLength": 80
+                          },
+                          "needs": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "minItems": 1,
+                            "maxItems": 4,
+                            "uniqueItems": true
                           },
                           "budget": {
                             "type": "string",
@@ -21454,6 +21476,17 @@
                 "type": "string",
                 "maxLength": 40,
                 "pattern": "^[a-z][a-z0-9_]*$"
+              },
+              "lacks": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 40,
+                  "pattern": "^[a-z][a-z0-9_]*$"
+                },
+                "minItems": 1,
+                "maxItems": 4,
+                "uniqueItems": true
               },
               "effects": {
                 "type": "array",

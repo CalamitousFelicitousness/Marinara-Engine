@@ -325,6 +325,20 @@ export function rulesetActiveConditions(
   return [...conditions, ...levels, ...items];
 }
 
+/** A condition can take away a sense an effect needs (1.122), so its holder is left out entirely. */
+export function rulesetTargetHasSenses(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  target: RulesetCombatant,
+  needs: readonly string[] | undefined,
+): boolean {
+  const combat = definition.combat;
+  if (!combat || !needs?.length) return true;
+  return !rulesetActiveConditions(definition, combat, target, state).some((entry) =>
+    entry.lacks?.some((sense) => needs.includes(sense)),
+  );
+}
+
 /** What a fighter's items do, as they hold them in this fight: see `rulesetItemSources`. A requirement
  *  reads the sheet with the live state as it stands. Nothing for a fighter with no sheet or no items. */
 function heldSources(definition: RulesetDefinition, combatant: RulesetCombatant): RulesetCheckSource[] {
@@ -1321,6 +1335,7 @@ function mechanicsAction(
   // Leaving `toHit` unset here would send it down the no-roll path and land it automatically.
   if (mechanics.attackRoll) action.toHit = from.toHit;
   if (mechanics.autoHit) action.autoHit = true;
+  if (mechanics.needs) action.needs = [...mechanics.needs];
   if (mechanics.save) {
     action.save = {
       save: mechanics.save.save,
@@ -1638,6 +1653,7 @@ function blockActions(block: RulesetStatBlockLike, perCell: number | undefined):
         },
     ...(action.toHit !== undefined ? { toHit: action.toHit } : {}),
     ...(action.autoHit ? { autoHit: true } : {}),
+    ...(action.needs ? { needs: [...action.needs] } : {}),
     ...(action.damage
       ? {
           damage: {

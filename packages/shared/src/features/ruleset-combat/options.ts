@@ -30,6 +30,7 @@ import {
 import {
   currentRulesetActor,
   rulesetActiveConditions,
+  rulesetTargetHasSenses,
   rulesetCombatant,
   rulesetCombatConditions,
   rulesetCombatDamageKind,
@@ -903,6 +904,7 @@ export function rulesetOptionTargets(
   // it lands, and `rulesetAreaTargets` is the one place that answers it.
   if (positioned(state) && actionOf(actor, option.id)?.area) return [];
   const forbidden = rulesetForbiddenTargets(definition, state, actor);
+  const needs = actionOf(actor, option.id)?.needs;
   // Breaking free is aimed at whoever is holding on, and at nobody else.
   const contest = actionOf(actor, option.id)?.contest;
   const holder = contest?.from ? rulesetContestHolder(state, actor, contest)?.id : undefined;
@@ -919,6 +921,7 @@ export function rulesetOptionTargets(
     state.combatants
       .filter((combatant) => {
         if (combatant.defeated) return false;
+        if (!rulesetTargetHasSenses(definition, state, combatant, needs)) return false;
         if (option.id.startsWith("summon:") && !rulesetCombatStanding(combatant)) return false;
         if (contest?.from && combatant.id !== holder) return false;
         if (tooBig(combatant)) return false;

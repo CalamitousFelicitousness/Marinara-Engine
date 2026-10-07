@@ -158,6 +158,7 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
     budget: action.budget,
     ...(action.toHit !== undefined ? { toHit: action.toHit } : {}),
     ...(action.autoHit ? { autoHit: true } : {}),
+    ...(action.needs ? { needs: [...action.needs] } : {}),
     ...(damage
       ? {
           damage: {

@@ -224,6 +224,12 @@ const activeFullPageExtensions = new Map<string, ActiveFullPageExtension>();
 // stopped until the user restarts them, their code changes, or they leave the
 // runtime list.
 const stoppedExtensions = new Map<string, string>();
+const stoppedNoticeId = (id: string) => `personal-extension-stopped-${id}`;
+
+function forgetStoppedExtension(id: string) {
+  stoppedExtensions.delete(id);
+  toast.dismiss(stoppedNoticeId(id));
+}
 
 function extensionFetch(id: string, path: string, init: RequestInit = {}) {
   const method = (init.method ?? "GET").toUpperCase();
@@ -528,13 +534,13 @@ export function PersonalExtensionInjector() {
           stoppedExtensions.set(id, active.contentHash);
           void cleanupExtension(id);
           toast.error(translate("extensions.runtime.stopped", { name: active.extension.name }), {
-            id: `personal-extension-stopped-${id}`,
+            id: stoppedNoticeId(id),
             description: translate("extensions.runtime.stoppedDescription"),
             duration: Infinity,
             action: {
               label: translate("extensions.runtime.restart"),
               onClick: () => {
-                stoppedExtensions.delete(id);
+                forgetStoppedExtension(id);
                 setRestartRequest((count) => count + 1);
               },
             },
@@ -559,8 +565,8 @@ export function PersonalExtensionInjector() {
 
   useEffect(() => {
     const expected = new Map(extensions.map((extension) => [extension.id, extension]));
-    for (const id of stoppedExtensions.keys()) {
-      if (!expected.has(id)) stoppedExtensions.delete(id);
+    for (const [id, contentHash] of stoppedExtensions) {
+      if (expected.get(id)?.contentHash !== contentHash) forgetStoppedExtension(id);
     }
     for (const [id, active] of activeExtensions) {
       const next = expected.get(id);
@@ -619,7 +625,7 @@ export function PersonalExtensionInjector() {
       }
       const active = activeExtensions.get(extension.id);
       if (active?.contentHash === extension.contentHash) continue;
-      if (stoppedExtensions.get(extension.id) === extension.contentHash) continue;
+      if (stoppedExtensions.has(extension.id)) continue;
       const iframe = document.createElement("iframe");
       iframe.setAttribute("sandbox", "allow-scripts");
       iframe.setAttribute("aria-hidden", "true");
@@ -647,7 +653,7 @@ export function PersonalExtensionInjector() {
       const ids = new Set([...activeExtensions.keys(), ...activeFullPageExtensions.keys()]);
       for (const id of ids) void cleanupExtension(id);
       // A remount starts every extension fresh, including stopped ones.
-      stoppedExtensions.clear();
+      for (const id of [...stoppedExtensions.keys()]) forgetStoppedExtension(id);
     },
     [],
   );

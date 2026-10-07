@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- A chat's message trash with thousands of entries no longer freezes the page. The list now fills in 200 entries at a time, restoring or deleting no longer redraws every entry, and the entries dim while it runs. A failed or partial restore warning now stays up for 15 seconds, so a slow device can't hide it before you read it (#7210).
 - On Android/Termux, updating from **Settings → Advanced → Updates** no longer downloads builds for every other platform, about 1.7 GB the phone cannot use. It now installs only what Android needs, the same way `start-termux.sh` does, and the manual update command shown when an update fails does the same (#7214).
 - Advanced Memory no longer loses scene participants when the Helper model shortens a name (such as "Kaito" for **Kaito Nakamura**) or forgets to list them, never gives a scene to the wrong character, and warns about names it can't match. Older scene summaries get the same check, swipes can recall scenes saved after the first reply, and the memory receipt says why nothing was recalled (#7184).
 - On Android/Termux, the launcher no longer writes pnpm architecture settings into `.npmrc`. pnpm ignored them there, so installs already used the Android builds Termux needs. New installs now leave `.npmrc` unchanged, and existing installs need no action. Starting Engine from the Android app also no longer reruns the dependency install and cache cleanup every time (#7178).

@@ -20,6 +20,7 @@ import { readRulesetLive } from "./live-state.js";
 import { rulesetCatalogEntriesByRef } from "./scaled-rows.js";
 import {
   evaluateRulesetSheet,
+  resolveRulesetAbilityValues,
   formatRulesetCheckValue,
   isRulesetItemHidden,
   rulesetSectionGroups,
@@ -233,7 +234,17 @@ export function renderRulesetSheetBlock(
       const check = mechanics?.check
         ? ` (check: ${JSON.stringify(mechanics.check)}${cost ? `; pool cost: ${cost}` : ""}${scale})`
         : "";
-      const describedName = (beside ? `${name} ${beside}` : name) + check;
+      const spellcasting = (definition.combat?.abilities ?? [])
+        .filter((source) => source.list === list.id && source.byColumn)
+        .flatMap((source) => {
+          const values = resolveRulesetAbilityValues(definition, build, source, row, evaluated);
+          return [
+            ...(values.toHitRef ? [`attack ${values.toHit >= 0 ? "+" : ""}${values.toHit}`] : []),
+            ...(values.saveDifficulty !== undefined ? [`save DC ${values.saveDifficulty}`] : []),
+          ];
+        })
+        .join(", ");
+      const describedName = (beside ? `${name} ${beside}` : name) + check + (spellcasting ? ` (${spellcasting})` : "");
       const group = entry.groupBy === undefined ? "" : cellText(own(row as Record<string, unknown>, entry.groupBy));
       const bucket = groups.get(group);
       if (bucket) bucket.push(describedName);

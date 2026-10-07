@@ -40,6 +40,7 @@ import { rulesetCatalogEntriesByRef } from "../rulesets/scaled-rows.js";
 import {
   lookupStepTable,
   resolveRulesetValueRef,
+  resolveRulesetAbilityValues,
   rulesetCheckAdjust,
   rulesetCheckModifier,
   type EvaluatedRulesetSheet,
@@ -1207,6 +1208,7 @@ function targetsOf(mechanics: RulesetCatalogMechanics): RulesetCombatAction["tar
 function abilityAction(
   definition: RulesetDefinition,
   source: RulesetCombatAbilitySource,
+  row: Record<string, unknown>,
   sourceIndex: number,
   rowIndex: number,
   name: string,
@@ -1217,15 +1219,15 @@ function abilityAction(
 ): RulesetCombatAction | null {
   const mechanics = entry.mechanics;
   if (!mechanics) return null;
-  const resolve = (ref: RulesetValueRef) => resolveRulesetValueRef(definition, build, ref, evaluated);
+  const values = resolveRulesetAbilityValues(definition, build, source, row, evaluated);
   return mechanicsAction(definition, mechanics, {
     id: `ability:${sourceIndex}:${rowIndex}`,
     kind: "ability",
     label: name,
     budget: mechanics.budget ?? source.budget,
     // An entry that rolls to hit always rolls: a source that names no bonus adds nothing to the dice.
-    toHit: (source.toHit ? resolve(source.toHit) : 0) + fightAdjust(definition, build, evaluated, source.toHit),
-    ...(source.saveDifficulty ? { saveDifficulty: resolve(source.saveDifficulty) } : {}),
+    toHit: values.toHit + fightAdjust(definition, build, evaluated, values.toHitRef),
+    ...(values.saveDifficulty !== undefined ? { saveDifficulty: values.saveDifficulty } : {}),
     build,
     evaluated,
     perCell,
@@ -1529,7 +1531,18 @@ function abilityActions(
       riders.push(rider);
       return;
     }
-    const action = abilityAction(definition, source, index, rowIndex, name, entry, build, evaluated, perCellOf(ref));
+    const action = abilityAction(
+      definition,
+      source,
+      row,
+      index,
+      rowIndex,
+      name,
+      entry,
+      build,
+      evaluated,
+      perCellOf(ref),
+    );
     if (!action) return;
     // Which catalog it came from, and which entry, which is what a reaction that answers only some
     // entries reads.

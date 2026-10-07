@@ -14,6 +14,7 @@ import {
   rulesetBuilderBaseScores,
   rulesetBuilderCatalogIds,
   rulesetBuilderOptions,
+  rulesetBuilderStartingGearOptions,
   rulesetBuilderPickAdded,
   rulesetBuilderPicks,
   rulesetBuilderStepCount,
@@ -155,6 +156,7 @@ export function RulesetSheetBuilder({
   const { t } = useUiTranslation();
   const builder = definition.sheet.builder!;
   const [stepIndex, setStepIndex] = useState(0);
+  const [freeEdit, setFreeEdit] = useState(false);
   const [openInfo, setOpenInfo] = useState<string | null>(null);
   const [rolling, setRolling] = useState(false);
   const [rollFailed, setRollFailed] = useState(false);
@@ -716,19 +718,31 @@ export function RulesetSheetBuilder({
     </div>
   );
 
-  const gearStep = () => (
-    <div className="space-y-1.5">
-      <p className="text-xs text-[var(--muted-foreground)]">{t("ui.rulesets.builder.gearHint")}</p>
-      <ul className="space-y-1">
-        {(definition.items?.startingGear ?? []).map((gear) => (
-          <li key={gear.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] px-2 py-1 text-xs">
-            <span className="font-semibold text-[var(--foreground)]">{gear.label}</span>
-            {gear.summary && <span className="ml-1 text-[var(--muted-foreground)]">{gear.summary}</span>}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
+  const gearStep = (current: StepOf<"startingGear">) => {
+    const gear = rulesetBuilderStartingGearOptions(definition, current, build, freeEdit);
+    return (
+      <div className="space-y-1.5">
+        <p className="text-xs text-[var(--muted-foreground)]">{t("ui.rulesets.builder.gearHint")}</p>
+        {current.strict && (
+          <label className="flex items-center gap-2 text-xs text-[var(--foreground)]">
+            <input type="checkbox" checked={freeEdit} onChange={(event) => setFreeEdit(event.target.checked)} />
+            {t("ui.rulesets.builder.freeEditGear")}
+          </label>
+        )}
+        {current.strict && !freeEdit && gear.length === 0 && (
+          <p className="text-xs text-[var(--muted-foreground)]">{t("ui.rulesets.builder.noOptions")}</p>
+        )}
+        <ul className="space-y-1">
+          {gear.map((gear) => (
+            <li key={gear.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] px-2 py-1 text-xs">
+              <span className="font-semibold text-[var(--foreground)]">{gear.label}</span>
+              {gear.summary && <span className="ml-1 text-[var(--muted-foreground)]">{gear.summary}</span>}
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  };
 
   const trainedNames = (what: "skills" | "saves") => {
     const tiers = evaluated[what === "skills" ? "skillTiers" : "saveTiers"];
@@ -839,7 +853,7 @@ export function RulesetSheetBuilder({
           ) : step.kind === "choices" ? (
             choicesStep()
           ) : (
-            gearStep()
+            gearStep(step)
           )}
           <div className="flex justify-between gap-2 pt-1">
             <button

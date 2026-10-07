@@ -2223,6 +2223,26 @@ export function getCapabilityPackageInstallIssue(
   ) {
     return "A ruleset whose builder steps show fields only while the sheet allows, or hold fields to a total, requires schemaVersion 2 and capabilityApi 1.102 or newer";
   }
+  // Each class's spellcasting references and the builder rows that name it, 1.103.
+  const abilitySources = plainRecord(combatBlock)?.abilities;
+  if (
+    !declaresApi(103) &&
+    ((Array.isArray(fieldsSteps) && fieldsSteps.some((step) => plainRecord(step)?.stamp !== undefined)) ||
+      (Array.isArray(abilitySources) && abilitySources.some((source) => plainRecord(source)?.byColumn !== undefined)))
+  ) {
+    return "A ruleset whose classes cast with their own spellcasting ability requires schemaVersion 2 and capabilityApi 1.103 or newer";
+  }
+  // Starting gear held to the sheet, 1.104: a new key on the strict step.
+  if (
+    !declaresApi(104) &&
+    Array.isArray(fieldsSteps) &&
+    fieldsSteps.some((step) => {
+      const gearStep = plainRecord(step);
+      return gearStep?.kind === "startingGear" && gearStep.strict !== undefined;
+    })
+  ) {
+    return "A ruleset whose builder holds starting gear to the sheet requires schemaVersion 2 and capabilityApi 1.104 or newer";
+  }
   // A skill or save choice among what is already trained, 1.100: a new key on the strict choice.
   if (!declaresApi(100) && carriesHeldChoices) {
     return "A ruleset whose skill or save choices build on training already held requires schemaVersion 2 and capabilityApi 1.100 or newer";

@@ -914,8 +914,10 @@ function applyRulesetBuilderOnce(
       (rows) => Array.isArray(rows) && rows.some((row) => row?.[RULESET_CATALOG_ROW_KEY] === ref),
     );
   const entriesByRef = new Map<string, RulesetCatalogEntry>();
+  const stampsByRef = new Map<string, Record<string, Scalar>>();
   for (const { step, entry } of rulesetBuilderGranting(definition, state, catalogs, build)) {
     entriesByRef.set(catalogRowRef(step.catalog, entry.id), entry);
+    if (step.stamp) stampsByRef.set(catalogRowRef(step.catalog, entry.id), step.stamp);
   }
   for (const slot of rulesetBuilderEntrySlots(definition, state, catalogs, build)) {
     for (const id of slot.chosen) {
@@ -939,7 +941,7 @@ function applyRulesetBuilderOnce(
       // A full list takes no more; the pick still counts for everything else it grants, and its rows
       // are tried again on the next change.
       if (!spec || rows.length >= spec.maxItems) continue;
-      lists = { ...lists, [list]: [...rows, row] };
+      lists = { ...lists, [list]: [...rows, { ...row, ...stampsByRef.get(ref) }] };
       wrote = true;
     }
     if (wrote) next.rows.push(ref);

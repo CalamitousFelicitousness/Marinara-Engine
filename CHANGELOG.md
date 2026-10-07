@@ -24,6 +24,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 - Rulesets: fighters and creatures can have a size, and a grab or shove can't target anyone too much bigger (Capability API 1.98). A creature's grab can also set the DC to escape it, and escaping rolls against that DC instead of the holder's check. In 5e that means no grappling a giant, and 5e's "escape DC 13" grabs.
 - Rulesets: a creature's attack can deal another amount with both hands or once the creature is badly hurt (Capability API 1.97). In 5e that is a longsword's "or 1d10 + 3 if used with two hands", unless the creature carries a shield, and a swarm's weaker bite at half its hit points or fewer. The attack menu's average damage follows the same rule.
 - Rulesets: a spell or a creature's attack can carry what gets it past a resistance, as a magic weapon's tags do (Capability API 1.96). In 5e that is "resistance to slashing from nonmagical attacks": spells and magical creature attacks now hit such creatures for full damage, and ordinary blows are still halved.
+- A strict starting-gear step offers only kits the character fits, keeps unrestricted kits available, and clears picks that stop fitting; free edit still offers every kit (Capability API 1.104).
 - A guided builder can ask for up to 40 catalog picks in one step and set bounds for manually typed ability scores (Capability API 1.105).
 - A ruleset sheet can work out up to 400 derived values, for larger character sheets (Capability API 1.106).
 - A guided character builder can have up to 24 steps, for rulesets with more choices to walk through (Capability API 1.107).
@@ -994,6 +995,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 - Moved the agent connection bulk assignment control from the Agents panel to Connections -> Defaults -> Agents.
 
 ### Added
+- Rulesets can give each class its own spell attack bonus and save DC: builder spell steps stamp the class onto their rows, and combat, the sheet and the Game Master read that class's numbers (Capability API 1.103).
 
 - Chat search accepts a message number such as `#67` and jumps to that message, including older history (#6090).
 

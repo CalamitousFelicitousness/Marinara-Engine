@@ -37,6 +37,7 @@ import { RulesetSheetBuilder } from "./RulesetSheetBuilder";
 import { RulesetCatalogRefreshModal } from "./RulesetCatalogRefreshModal";
 import { rulesetCatalogQuery } from "../../hooks/use-capability-packages";
 import { applyCatalogRefresh, planCatalogRefresh, type CatalogRefreshRow } from "../../lib/ruleset-catalog";
+import { rulesetRowSpellcastingText } from "../../lib/ruleset-sheet-view";
 import { rulesetCheckValueText } from "../../lib/ruleset-resolution";
 import { DraftNumberInput } from "../ui/DraftNumberInput";
 import { api } from "../../lib/api-client";
@@ -675,62 +676,68 @@ export function RulesetSheetEditor({
                       </button>
                     </div>
                   )}
-                  {rows.map((row, index) => (
-                    <div
-                      key={index}
-                      className="flex items-start gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] p-2"
-                    >
-                      <div className="grid min-w-0 flex-1 grid-cols-2 gap-1.5 sm:grid-cols-3">
-                        {list.columns.map((column) => {
-                          // A cell the ruleset keeps follows this character's own numbers, so it is
-                          // shown where it always was and simply does not take edits.
-                          const setByRuleset = locked?.get(index)?.includes(column.id) ?? false;
-                          const hintId = setByRuleset ? `${hintBaseId}-${list.id}-${index}-${column.id}` : undefined;
-                          return (
-                            <label
-                              key={column.id}
-                              className={`flex min-w-0 flex-col gap-0.5 ${column.type === "longtext" ? "col-span-full" : ""}`}
-                            >
-                              <span className={labelClass}>{column.label}</span>
-                              <TypedInput
-                                spec={column}
-                                value={row[column.id]}
-                                onChange={(value) => updateRow(list.id, rows, index, column.id, value)}
-                                ariaLabel={`${list.label} ${index + 1}: ${column.label}`}
-                                disabled={setByRuleset}
-                                title={setByRuleset ? t("ui.rulesets.sheet.scaledHint") : undefined}
-                                describedBy={hintId}
-                              />
-                              {column.type === "number" && column.roll && !setByRuleset && (
-                                <RollCellButton
-                                  notation={rulesetListRollNotation(definition, build, column, row, evaluated)}
-                                  ariaLabel={`${list.label} ${index + 1}: ${column.label}`}
-                                  onRolled={(total) =>
-                                    writeRolled(list.id, index, column.id, clamp(total, column.min, column.max))
-                                  }
-                                />
-                              )}
-                              {hintId && (
-                                <span id={hintId} className="text-[0.625rem] text-[var(--muted-foreground)]">
-                                  {t("ui.rulesets.sheet.scaledHint")}
-                                </span>
-                              )}
-                            </label>
-                          );
-                        })}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          commit({ lists: { ...build.lists, [list.id]: rows.filter((_, i) => i !== index) } })
-                        }
-                        aria-label={t("ui.rulesets.sheet.removeRow", { list: list.label, index: index + 1 })}
-                        className="rounded-lg p-1 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--destructive)]"
+                  {rows.map((row, index) => {
+                    const spellcasting = rulesetRowSpellcastingText(definition, build, list.id, row, evaluated, t);
+                    return (
+                      <div
+                        key={index}
+                        className="flex items-start gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] p-2"
                       >
-                        <Trash2 size={14} aria-hidden="true" />
-                      </button>
-                    </div>
-                  ))}
+                        <div className="grid min-w-0 flex-1 grid-cols-2 gap-1.5 sm:grid-cols-3">
+                          {list.columns.map((column) => {
+                            // A cell the ruleset keeps follows this character's own numbers, so it is
+                            // shown where it always was and simply does not take edits.
+                            const setByRuleset = locked?.get(index)?.includes(column.id) ?? false;
+                            const hintId = setByRuleset ? `${hintBaseId}-${list.id}-${index}-${column.id}` : undefined;
+                            return (
+                              <label
+                                key={column.id}
+                                className={`flex min-w-0 flex-col gap-0.5 ${column.type === "longtext" ? "col-span-full" : ""}`}
+                              >
+                                <span className={labelClass}>{column.label}</span>
+                                <TypedInput
+                                  spec={column}
+                                  value={row[column.id]}
+                                  onChange={(value) => updateRow(list.id, rows, index, column.id, value)}
+                                  ariaLabel={`${list.label} ${index + 1}: ${column.label}`}
+                                  disabled={setByRuleset}
+                                  title={setByRuleset ? t("ui.rulesets.sheet.scaledHint") : undefined}
+                                  describedBy={hintId}
+                                />
+                                {column.type === "number" && column.roll && !setByRuleset && (
+                                  <RollCellButton
+                                    notation={rulesetListRollNotation(definition, build, column, row, evaluated)}
+                                    ariaLabel={`${list.label} ${index + 1}: ${column.label}`}
+                                    onRolled={(total) =>
+                                      writeRolled(list.id, index, column.id, clamp(total, column.min, column.max))
+                                    }
+                                  />
+                                )}
+                                {hintId && (
+                                  <span id={hintId} className="text-[0.625rem] text-[var(--muted-foreground)]">
+                                    {t("ui.rulesets.sheet.scaledHint")}
+                                  </span>
+                                )}
+                              </label>
+                            );
+                          })}
+                          {spellcasting && (
+                            <span className="col-span-full text-xs text-[var(--muted-foreground)]">{spellcasting}</span>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            commit({ lists: { ...build.lists, [list.id]: rows.filter((_, i) => i !== index) } })
+                          }
+                          aria-label={t("ui.rulesets.sheet.removeRow", { list: list.label, index: index + 1 })}
+                          className="rounded-lg p-1 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--destructive)]"
+                        >
+                          <Trash2 size={14} aria-hidden="true" />
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
               );
             })}

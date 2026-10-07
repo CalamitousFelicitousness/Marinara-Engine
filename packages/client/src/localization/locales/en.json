@@ -11748,6 +11748,8 @@
   "ui.rulesets.sheet.saves": "Saves",
   "ui.rulesets.sheet.scaledHint": "Set by the ruleset",
   "ui.rulesets.sheet.skills": "Skills",
+  "ui.rulesets.sheet.spellAttack": "Spell attack {{value}}",
+  "ui.rulesets.sheet.spellSave": "Save DC {{value}}",
   "ui.rulesets.sheet.trainingFor": "Training for {{name}}",
   "ui.rulesets.sheet.untrainedRefused": "Cannot be attempted untrained",
   "ui.rulesets.sheet.untrainedRefusedFor": "{{name}} cannot be attempted untrained",

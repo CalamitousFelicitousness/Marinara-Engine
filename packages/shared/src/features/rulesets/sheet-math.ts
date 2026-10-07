@@ -10,6 +10,7 @@ import {
   RULESET_POOL_MAX_DICE,
   rulesetSheetEnvelopeSchema,
   type RulesetCatalogItem,
+  type RulesetCombatAbilitySource,
   type RulesetDefinition,
   type RulesetDifficultyLadderStep,
   type RulesetHideWhen,
@@ -1098,4 +1099,30 @@ export function rulesetListRollNotation(
         ? rulesetDieSides(cell(sides.column))
         : rulesetDieSides(Math.trunc(resolveRulesetValueRef(definition, build, sides, evaluated)));
   return read === null ? null : `${count}d${read}`;
+}
+
+/** One row's spellcasting numbers (1.103). Missing columns never take their editor defaults: an old
+ *  row without a class keeps the source's references until the player assigns it one. */
+export function resolveRulesetAbilityValues(
+  definition: RulesetDefinition,
+  build: RulesetSheetBuild,
+  source: RulesetCombatAbilitySource,
+  row: Record<string, unknown>,
+  evaluated: EvaluatedRulesetSheet,
+): { toHit: number; saveDifficulty?: number; toHitRef?: RulesetValueRef } {
+  const column = source.byColumn?.column;
+  const value = column && Object.prototype.hasOwnProperty.call(row, column) ? row[column] : undefined;
+  const key =
+    typeof value === "string" || typeof value === "number" || typeof value === "boolean" ? String(value) : undefined;
+  const selected =
+    key !== undefined && source.byColumn && Object.prototype.hasOwnProperty.call(source.byColumn.values, key)
+      ? source.byColumn.values[key]
+      : undefined;
+  const toHitRef = selected?.toHit ?? source.toHit;
+  const saveRef = selected?.saveDifficulty ?? source.saveDifficulty;
+  return {
+    toHit: toHitRef ? resolveRulesetValueRef(definition, build, toHitRef, evaluated) : 0,
+    ...(toHitRef ? { toHitRef } : {}),
+    ...(saveRef ? { saveDifficulty: resolveRulesetValueRef(definition, build, saveRef, evaluated) } : {}),
+  };
 }

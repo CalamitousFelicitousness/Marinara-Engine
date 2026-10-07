@@ -709,6 +709,10 @@ const capabilityPackageManifestBaseSchema = z
 // 1.102: a builder fields step may show fields only while the sheet allows (`shownWhen`), and hold
 //        number fields to a combined maximum (`total`). Not a soft seam: an Engine that cannot read
 //        it refuses the file, so a package that ships it declares 1.102. No permission.
+// 1.103: a builder catalog step stamps columns onto its added rows (`stamp`), and a combat ability
+//        source reads spellcasting references by a row's column (`byColumn`). Not a soft seam: an
+//        older Engine refuses either key, so a package that ships it declares 1.103. No permission.
+// 1.104: claimed by the builder lane.
 // 1.105: a builder catalog step may ask for or take up to 40 entries, and `methods.manual` may bound
 //        typed base scores with `{ min, max }`. Not a soft seam: an older Engine refuses the ruleset,
 //        so a package with more than 20 picks or bounded manual scores declares 1.105. No permission.

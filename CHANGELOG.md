@@ -974,6 +974,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 - Moved the agent connection bulk assignment control from the Agents panel to Connections -> Defaults -> Agents.
 
 ### Added
+- Rulesets can give each class its own spell attack bonus and save DC: builder spell steps stamp the class onto their rows, and combat, the sheet and the Game Master read that class's numbers (Capability API 1.103).
 
 - Chat search accepts a message number such as `#67` and jumps to that message, including older history (#6090).
 

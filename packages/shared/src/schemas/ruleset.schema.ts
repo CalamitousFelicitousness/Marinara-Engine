@@ -935,6 +935,13 @@ const builderStepSchema = z.discriminatedUnion("kind", [
       max: z.number().int().min(1).max(40).default(1),
       /** A text or enum field the picked entries' labels are written to (a race, a class). */
       field: sheetId.optional(),
+      /** Values written onto every row this step adds (1.103). Later edits remain the player's. */
+      stamp: z
+        .record(sheetId, sheetScalar)
+        .refine((stamp) => Object.keys(stamp).length >= 1 && Object.keys(stamp).length <= 4, {
+          message: "A step stamps 1 to 4 columns",
+        })
+        .optional(),
       /** Fixed values of the catalog's filters: only entries that match are offered. */
       filters: z.record(z.union([z.number().finite(), z.string().max(80)])).optional(),
       /** Only entries whose `filter` names an entry picked at an earlier step (a subrace by its race). */
@@ -1043,6 +1050,7 @@ export type RulesetBuilderStep =
       min: number;
       max: number;
       field?: string;
+      stamp?: Record<string, string | number | boolean>;
       filters?: Record<string, string | number>;
       within?: { step: string; filter: string };
       upTo?: RulesetBuilderUpTo;
@@ -3165,7 +3173,7 @@ const combatAttackSourceSchema = z
   .strict();
 
 /** A sheet list whose catalog-marked rows are abilities, filtered exactly as `battle.skills` are.
- *  What each one DOES is the entry's own `mechanics`; this says what the whole list rolls with. */
+ *  What each one DOES is the entry's own `mechanics`; this says what its rows roll with by default. */
 const combatAbilitySourceSchema = battleSkillsSchema.extend({
   /** What a row of this list spends unless its own `mechanics.budget` says otherwise. */
   budget: sheetId,
@@ -3173,6 +3181,33 @@ const combatAbilitySourceSchema = battleSkillsSchema.extend({
   toHit: rulesetValueRefSchema.optional(),
   /** The difficulty an entry's save is rolled against. */
   saveDifficulty: rulesetValueRefSchema.optional(),
+  /** A row's column selects its own spellcasting references (1.103); other rows keep the source's. */
+  byColumn: (
+    z
+      .object({
+        column: sheetId,
+        values: z
+          .record(
+            z
+              .object({
+                toHit: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
+                saveDifficulty: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
+              })
+              .strict(),
+          )
+          .refine((values) => Object.keys(values).length >= 1 && Object.keys(values).length <= 20, {
+            message: "A column selects 1 to 20 spellcasting entries",
+          }),
+      })
+      .strict() as z.ZodType<
+      {
+        column: string;
+        values: Record<string, { toHit?: RulesetValueRef; saveDifficulty?: RulesetValueRef }>;
+      },
+      z.ZodTypeDef,
+      unknown
+    >
+  ).optional(),
 });
 
 /** What a condition DOES, from a closed list the kind implements. A ruleset maps its own condition
@@ -5305,6 +5340,16 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         if (!catalog || (catalog.holds ?? "rows") !== "rows") {
           issue([...path, "catalog"], `No catalog of rows "${step.catalog}"`);
         }
+        for (const column of Object.keys(step.stamp ?? {})) {
+          if (
+            !catalog?.feeds?.length ||
+            catalog.feeds.some(
+              (id) => !sheet.lists.find((list) => list.id === id)?.columns.some((each) => each.id === column),
+            )
+          ) {
+            issue([...path, "stamp", column], `Unknown column "${column}" in a target list`);
+          }
+        }
         if (step.min > step.max) issue([...path, "min"], "A step asks for at most its max");
         if (step.field !== undefined) {
           const field = fieldById.get(step.field);
@@ -5830,6 +5875,20 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       checkRowSource(source, path);
       if (source.toHit) checkRef(source.toHit, [...path, "toHit"], derivedIds);
       if (source.saveDifficulty) checkRef(source.saveDifficulty, [...path, "saveDifficulty"], derivedIds);
+      if (source.byColumn) {
+        if (
+          !sheet.lists
+            .find((list) => list.id === source.list)
+            ?.columns.some((column) => column.id === source.byColumn!.column)
+        ) {
+          issue([...path, "byColumn", "column"], `Unknown column "${source.byColumn.column}"`);
+        }
+        for (const [value, refs] of Object.entries(source.byColumn.values)) {
+          if (refs.toHit) checkRef(refs.toHit, [...path, "byColumn", "values", value, "toHit"], derivedIds);
+          if (refs.saveDifficulty)
+            checkRef(refs.saveDifficulty, [...path, "byColumn", "values", value, "saveDifficulty"], derivedIds);
+        }
+      }
     });
 
     const standard = new Set<string>();

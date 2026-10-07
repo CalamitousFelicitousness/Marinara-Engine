@@ -2064,7 +2064,8 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
         completed: needsClassification ? Math.min(from, ctx.messages.length) : 0,
         total: needsClassification ? ctx.messages.length : Math.min(starts.size, ctx.messages.length),
         error: null,
-        ...(fixAll ? { fixResult: null } : {}),
+        // null marks a running Fix; any other job clears it so Resume continues that job, not a Fix.
+        fixResult: fixAll ? null : undefined,
       },
       options,
     );
@@ -2181,11 +2182,12 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
               const eligible = new Set(allowed(ctx, ctx.messages, [id]).map((message) => message.id));
               return source.some((message) => eligible.has(message.id));
             });
+          // Fix never rewrites a hand-edited summary, even one that only needs newly shown messages added.
           if (
             !record &&
             !restoring &&
             previousRecord?.manualOverride &&
-            (!previousValid || visibilityChanged || eligibleAudience(audience).length < audience.length)
+            (fixAll || !previousValid || visibilityChanged || eligibleAudience(audience).length < audience.length)
           ) {
             if (!fixAll) throw correctionReviewError(ctx, previousRecord);
             // A hand-edited summary is never rewritten: Fix lists it and moves on.
@@ -2245,11 +2247,12 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
               candidate.dependencies.push(SCENE_TIMELINE);
             }
             const unclear = !candidate.manualOverride && !!result.audienceIssue;
-            // Fix never widens access on an unclear answer: a redone summary keeps the old one's characters.
+            // Fix never widens access on an unclear answer: a redone summary keeps only characters
+            // that both the old summary and the helper's new answer include.
             candidate.audienceCharacterIds = candidate.manualOverride
               ? audience
               : fixAll && unclear && previousRecord?.content && !restoring
-                ? eligibleAudience(previousRecord.audienceCharacterIds)
+                ? result.audienceCharacterIds.filter((id) => previousRecord.audienceCharacterIds.includes(id))
                 : result.audienceCharacterIds;
             candidate.dependencies.push(SCENE_AUDIENCE, sceneVisibility(ctx, candidate.messageIds));
             if (unclear) {
@@ -2288,10 +2291,12 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
             await progress(ctx, { stage: "summarizing", completed: index, total: scenes.length }, options);
             try {
               const result = await summarize(ctx, [logMessages(ctx, source, true)], null, options, accessWork, true);
-              // Fix never widens access on an unclear answer: the scene keeps its characters and stays marked.
+              // Fix never widens access on an unclear answer: the scene keeps only characters that both
+              // its current access and the helper's new answer include, and stays marked.
               const unclear = fixAll && !!result.audienceIssue;
+              const current = record.audienceCharacterIds;
               const audienceCharacterIds = unclear
-                ? eligibleAudience(record.audienceCharacterIds)
+                ? result.audienceCharacterIds.filter((id) => current.includes(id))
                 : result.audienceCharacterIds;
               if (unclear) review.add(scene.id);
               const checked: StoredRecord = {

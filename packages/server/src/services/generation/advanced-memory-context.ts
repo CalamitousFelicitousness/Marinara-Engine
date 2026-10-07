@@ -110,12 +110,10 @@ export async function prepareAdvancedMemoryContext(
     const receiptKey = JSON.stringify(cached.data.prepared.receipt);
     if (rejectedReceipts.has(receiptKey)) continue;
     try {
-      await input.service.validatePrepared(
-        input.chatId,
-        input.sourceMessages,
-        cached.data.prepared.receipt,
-        input.audienceMode === "owner" ? [] : audienceCharacterIds,
-      );
+      await input.service.validatePrepared(input.chatId, input.sourceMessages, cached.data.prepared.receipt, {
+        audienceCharacterIds: input.audienceMode === "owner" ? [] : audienceCharacterIds,
+        messageIds: cached.data.prepared.messageIds,
+      });
       input.signal?.throwIfAborted();
       prepared = cached.data.prepared;
       break;

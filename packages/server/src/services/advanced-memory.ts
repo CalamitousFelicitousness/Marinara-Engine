@@ -385,27 +385,41 @@ function audienceView(ctx: Context, audience: string[]): string[] {
   return !audience.length && ctx.settings.narratorCharacterId ? [ctx.settings.narratorCharacterId] : audience;
 }
 
-/** A participant the helper named: an ID, the full name, then a unique partial name ("Kaito" for "Kaito Nakamura"). */
-function matchAudienceName(ctx: Context, value: string): string[] {
+/**
+ * Who a participant the helper named is: a character ID, "" for the user's persona, or null when unknown
+ * or ambiguous. After IDs and full names, a plain partial name fits when it is unique: "Kaito" for
+ * "Kaito Nakamura", or "Pantalone Bisognosi" for a card named "Pantalone".
+ */
+function matchAudienceName(ctx: Context, personas: readonly string[], value: string): string | null {
   const name = value.trim();
-  if (ctx.characterIds.includes(name)) return [name];
+  if (ctx.characterIds.includes(name)) return name;
   const words = (text: string) =>
     text
       .toLocaleLowerCase()
-      .split(/[^\p{L}\p{N}'’-]+/u)
+      .split(/[^\p{L}\p{M}\p{N}'’-]+/u)
       .filter(Boolean);
-  const wanted = words(name);
-  if (!wanted.length) return [];
-  const cards = ctx.characterIds.map((id) => ({ id, words: words(ctx.names.get(id) ?? "") }));
-  const exact = cards.filter((card) => card.words.join(" ") === wanted.join(" "));
-  // Ambiguous names must use an explicit ID.
-  if (exact.length) return exact.length === 1 ? [exact[0]!.id] : [];
-  const partial = cards.filter(
-    (card) =>
-      card.words.length > 0 &&
-      (wanted.every((word) => card.words.includes(word)) || card.words.every((word) => wanted.includes(word))),
+  const wanted = words(name).join(" ");
+  // Personas compete too, so a name that may be the user's never grants a character.
+  const people = [
+    ...ctx.characterIds.map((id) => ({ id, words: words(ctx.names.get(id) ?? "") })),
+    ...personas.map((persona) => ({ id: "", words: words(persona) })),
+  ].filter((person) => person.words.length);
+  const exact = people.filter((person) => person.words.join(" ") === wanted);
+  if (exact.length === 1 && exact[0]!.id) return exact[0]!.id;
+  // "Kaito (mentioned)" or "sister of Kaito" is not Kaito: only a plain name may be partial.
+  const plain = /^[\p{L}\p{M}\p{N}\s.'’-]+$/u.test(name);
+  const ids = new Set(
+    people
+      .filter(
+        (person) =>
+          person.words.join(" ") === wanted ||
+          (plain &&
+            (wanted.split(" ").every((word) => person.words.includes(word)) ||
+              wanted.startsWith(`${person.words.join(" ")} `))),
+      )
+      .map((person) => person.id),
   );
-  return partial.length === 1 ? [partial[0]!.id] : [];
+  return wanted && ids.size === 1 ? [...ids][0]! : null;
 }
 
 function sceneSource(ctx: Context, messages = ctx.messages): AdvancedMemoryMessage[] {
@@ -1170,22 +1184,34 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
         if (!assignAudience) return { summary: outputs[0]!, audienceCharacterIds: [] };
         const result = tryParseJsonRecord(outputs[0]!) ?? {};
         const raw = result.audience;
-        // Anything but a name list or a string (including null) is a format slip, like a missing key.
-        const missing = typeof raw !== "string" && !Array.isArray(raw);
-        const names =
-          typeof raw === "string"
-            ? raw === "all"
-              ? []
-              : [raw]
-            : Array.isArray(raw)
-              ? raw.map((value) => (typeof value === "string" ? value : JSON.stringify(value)))
-              : [];
-        const matches = names.map((value) => matchAudienceName(ctx, value));
-        const unmatched = names.filter((_, index) => !matches[index]!.length);
+        // A missing key or null is a format slip. Any other shape is an unreadable answer and gets flagged.
+        const missing = raw === undefined || raw === null;
+        const names = (
+          missing || raw === "all"
+            ? []
+            : (Array.isArray(raw) ? raw : [raw]).map((value) =>
+                typeof value === "string" ? value : JSON.stringify(value),
+              )
+        ).filter((value) => value.trim());
+        // The transcript names the user by persona; the helper may list them despite the instructions.
+        const personas = [
+          ...new Set([
+            "User",
+            ...ctx.messages.flatMap((message) => {
+              const name = object(object(message.extra).personaSnapshot).name;
+              return message.role === "user" && typeof name === "string" ? [name] : [];
+            }),
+          ]),
+        ];
+        const matches = names.map((value) => matchAudienceName(ctx, personas, value));
+        const unmatched = names.filter((_, index) => matches[index] === null);
         const characters = ctx.characterIds.filter((id) => id !== ctx.settings.narratorCharacterId);
         // A missing key is a format slip, not "nobody": a one-character chat's character was there.
         // With several characters it cannot be guessed, so the scene stays narrator-only and is flagged.
-        const audience = raw === "all" || (missing && characters.length === 1) ? ctx.characterIds : matches.flat();
+        const audience =
+          raw === "all" || (missing && characters.length === 1)
+            ? ctx.characterIds
+            : matches.filter((id): id is string => !!id);
         const audienceIssue = unmatched.length
           ? unmatched.join(", ").slice(0, 200)
           : missing && characters.length > 1
@@ -2885,8 +2911,16 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     return characters.length ? characters.every((id) => record.audienceCharacterIds.includes(id)) : true;
   }
 
-  /** Finished scenes this audience could recall. A swipe recalls again once they change. */
-  function recallArchiveRevision(ctx: Context, validScenes: StoredRecord[], audience: string[]): string {
+  /**
+   * Finished scenes outside the live messages that this audience could recall. A swipe recalls again
+   * once they change; a scene that ends inside its live messages cannot be recalled and changes nothing.
+   */
+  function recallArchiveRevision(
+    ctx: Context,
+    validScenes: StoredRecord[],
+    audience: string[],
+    liveIds: ReadonlySet<string>,
+  ): string {
     return hash(
       validScenes
         .filter(
@@ -2896,7 +2930,8 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
             record.status === "closed" &&
             record.content &&
             record.enabled &&
-            recallAudienceMatches(ctx, record, audience),
+            recallAudienceMatches(ctx, record, audience) &&
+            record.messageIds.every((id) => !liveIds.has(id)),
         )
         .map((record) => `${record.id}:${recordRevision(record)}`)
         .sort(),
@@ -3512,7 +3547,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       );
     for (const record of [...constantTimelineRecords.values(), ...recalledRecords])
       receipt.recordRevisions[record.id] = recordRevision(record);
-    receipt.archiveRevision = recallArchiveRevision(ctx, available, audience);
+    receipt.archiveRevision = recallArchiveRevision(ctx, available, audience, liveIds);
     if (
       !input.readOnly &&
       !historical &&
@@ -3525,7 +3560,8 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       await saveContextStart(ctx, contextStart, input);
     }
     // Say why nothing was recalled: nothing to recall, no room, or nothing relevant.
-    if (!sceneTexts.length && !excerpts.length)
+    // With Maximum recalled scenes at 0, recall is off and needs no explanation.
+    if (!sceneTexts.length && !excerpts.length && ctx.settings.retrieveMaxScenes > 0)
       receipt.reasons.push(
         !candidates.length
           ? "no-recall-candidates"
@@ -4014,12 +4050,12 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     });
   }
 
-  /** With a swipe's audience, also require that no scene it could recall was added or changed since. */
+  /** For a swipe's snapshot, also require that no scene it could recall was added or changed since. */
   async function validatePrepared(
     chatId: string,
     sourceMessages: readonly AdvancedMemoryMessage[],
     receipt: PreparedAdvancedMemory["receipt"],
-    swipeAudience?: readonly string[],
+    swipe?: { audienceCharacterIds: readonly string[]; messageIds: readonly string[] },
   ) {
     const fullContext = await context(chatId);
     if (advancedMemorySourceFingerprint(sourceMessages) !== receipt.sourceFingerprint)
@@ -4053,12 +4089,13 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       }
     }
     if (
-      swipeAudience &&
+      swipe &&
       receipt.archiveRevision !==
         recallArchiveRevision(
           ctx,
           sceneRecords(current).filter((record) => record.kind === "scene" && recordValid(ctx, record)),
-          [...swipeAudience],
+          [...swipe.audienceCharacterIds],
+          new Set(swipe.messageIds),
         )
     )
       throw new Error("Memories this reply could recall changed; recall again");

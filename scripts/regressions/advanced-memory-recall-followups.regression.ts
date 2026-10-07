@@ -16,6 +16,7 @@ process.env.MARINARA_LITE = "true";
 const FILLER = " They talked for a long while about small things, the weather and the road home.".repeat(6);
 const participantChecks: string[] = [];
 let failNextParticipantCheck = false;
+let matrixAudience: unknown;
 const provider = createServer(async (request, response) => {
   const chunks: Buffer[] = [];
   for await (const chunk of request) chunks.push(Buffer.from(chunk));
@@ -49,15 +50,17 @@ const provider = createServer(async (request, response) => {
     const checkOnly = system.content.startsWith("Identify the participants");
     if (checkOnly) participantChecks.push(text);
     // The helper answers with a first name, no audience, null, a stranger, or "all".
-    const audience = text.includes("AUD_FIRSTNAME")
-      ? { audience: ["Kaito"] }
-      : text.includes("AUD_MISSING")
-        ? {}
-        : text.includes("AUD_NULL")
-          ? { audience: null }
-          : text.includes("AUD_STRANGER")
-            ? { audience: ["A stranger"] }
-            : { audience: "all" };
+    const audience = text.includes("AUD_MATRIX")
+      ? { audience: matrixAudience }
+      : text.includes("AUD_FIRSTNAME")
+        ? { audience: ["Kaito"] }
+        : text.includes("AUD_MISSING")
+          ? {}
+          : text.includes("AUD_NULL")
+            ? { audience: null }
+            : text.includes("AUD_STRANGER")
+              ? { audience: ["A stranger"] }
+              : { audience: "all" };
     const summary = text.includes("AUD_FIRSTNAME")
       ? "HARBOR: Mari and Kaito talked about the lighthouse key at the harbor."
       : text.includes("AUD_MISSING")
@@ -293,6 +296,102 @@ try {
   assert.deepEqual((await scene("HARBOR")).audienceCharacterIds, ["kaito"]);
   await endScene("SCENE_END Morning comes.");
   assert.equal(participantChecks.length, 5, "checked scenes are not checked again");
+
+  // (2) Looser names never give a scene to the wrong person: the user's persona, a shared first name,
+  // a description or an annotation leaves the scene narrator-only and flagged instead.
+  for (const [id, name] of [
+    ["rossi", "Mari Rossi"],
+    ["tanaka", "Kaito Tanaka"],
+  ])
+    await db
+      .insert(characters)
+      .values({ id, data: JSON.stringify({ name }), createdAt: "2026-01-01", updatedAt: "2026-01-01" });
+  for (const [answer, characterIds, expected, flagged, label] of [
+    [["Mari", "Kaito"], ["kaito", "rossi"], ["kaito"], true, "the persona Mari could be Mari Rossi"],
+    [["Mari Rossi", "Mari"], ["kaito", "rossi"], ["rossi"], true, "a full name still counts"],
+    [["Mari", "User"], ["kaito"], [], false, "the user alone is a user-only scene, not a mistake"],
+    [["Kaito"], ["kaito", "tanaka"], [], true, "two characters share the first name"],
+    [["Kaito Nakamura (mentioned only)"], ["kaito"], [], true, "an annotated name is not a plain name"],
+    [["sister of Kaito Nakamura"], ["kaito"], [], true, "a description naming a character"],
+    [[{ name: "Kaito Nakamura" }], ["kaito"], [], true, "an object is not a name"],
+    [{ Kaito: false }, ["kaito"], [], true, "an unreadable answer is not a missing one"],
+  ] as Array<[unknown, string[], string[], boolean, string]>) {
+    matrixAudience = answer;
+    const matrix = await chats.create({ name: label, mode: "roleplay", characterIds, connectionId: connection.id });
+    assert(matrix);
+    await memory.updateSettings(matrix.id, {
+      ...settings,
+      knowledgeStarts: Object.fromEntries(characterIds.map((id) => [id, null])),
+    });
+    const persona = { personaSnapshot: { name: "Mari" } };
+    await chats.createMessagesBatch(matrix.id, [
+      { role: "user", content: "SCENE_CHANGE AUD_MATRIX Mari waits at the pier.", extra: persona },
+      { role: "assistant", characterId: characterIds.at(-1), content: "The boats come in." },
+      { role: "user", content: "SCENE_CHANGE Later.", extra: { ...persona, isConversationStart: true } },
+    ]);
+    await memory.initialize(matrix.id);
+    const status = await memory.status(matrix.id);
+    const saved = status.records.find((record) => record.kind === "scene" && record.content)!;
+    assert.deepEqual(saved.audienceCharacterIds, expected, label);
+    assert.equal(status.warnings.includes("scene-audience-unmatched"), flagged, `${label}: warning`);
+  }
+
+  // (4) A scene that ends inside the swiped reply's live messages cannot be recalled, so the swipe reuses its memory.
+  const walk = await chats.create({
+    name: "Walk",
+    mode: "roleplay",
+    characterIds: ["kaito"],
+    connectionId: connection.id,
+  });
+  assert(walk);
+  await memory.updateSettings(walk.id, { ...settings, sceneCheckInterval: 2 });
+  await chats.createMessagesBatch(walk.id, [
+    { role: "user", content: "SCENE_CHANGE FESTIVAL Mari and Kaito go to the summer festival." },
+    { role: "assistant", characterId: "kaito", content: "Kaito lets a paper lantern drift away." },
+    {
+      role: "user",
+      content: "SCENE_CHANGE Kaito, do you remember the lantern festival? Let us walk home.",
+      extra: { isConversationStart: true },
+    },
+    { role: "assistant", characterId: "kaito", content: "Kaito nods, and they walk the road home." },
+  ]);
+  await memory.initialize(walk.id);
+  await chats.createMessage({ chatId: walk.id, role: "user", content: "We reach the door. SCENE_END" });
+  const walkSource = await chats.listMessages(walk.id);
+  const walkSettings = (await memory.status(walk.id)).settings;
+  const walkReply = (cachedSnapshots?: unknown[]) =>
+    prepareAdvancedMemoryContext({
+      service: memory,
+      chatId: walk.id,
+      settings: walkSettings,
+      sourceMessages: walkSource,
+      messages: [{ role: "user", content: "Continue the story." }],
+      placements: [],
+      audienceCharacterIds: ["kaito"],
+      cachedSnapshots,
+      toProviderMessages: (messages) => messages,
+    });
+  const walkFirst = await walkReply();
+  assert.equal(walkFirst.receipt.recalledSceneIds.length, 1, "the festival is recalled");
+  await chats.createMessage({ chatId: walk.id, role: "assistant", characterId: "kaito", content: "Kaito opens it." });
+  await memory.checkScenesAfterGeneration(walk.id);
+  assert.equal(
+    (await memory.status(walk.id)).records.filter((record) => record.kind === "scene" && record.content).length,
+    2,
+    "the walk home was saved after the reply",
+  );
+  assert((await walkReply([walkFirst.snapshot])).receipt.reasons.includes("reused-swipe-memory"));
+
+  // (1) With Maximum recalled scenes at 0, recall is off; the receipt does not claim nothing was available.
+  await memory.updateSettings(fresh.id, { retrieveMaxScenes: 0 });
+  const off = await memory.prepare({
+    chatId: fresh.id,
+    messages: await chats.listMessages(fresh.id),
+    audienceCharacterIds: ["kaito"],
+    budgetTokens: 50000,
+    readOnly: true,
+  });
+  assert(!off.receipt.reasons.some((reason) => reason.startsWith("no-")), JSON.stringify(off.receipt.reasons));
 
   console.log("Advanced Memory scene participants, recall receipts, swipe refresh and older-scene checks passed.");
 } finally {

@@ -70,6 +70,7 @@ const WINDOW_PROMPTS = {
   hit: "Hit",
   harmed: "Harmed",
   falls: "Falls",
+  "turn-start": "TurnStart",
   used: "Used",
   signature: "Between",
   reaction: "Leaving",
@@ -176,7 +177,12 @@ export function RulesetCombatMenu({
     }
     const stage = stageFor(aimed);
     if (stage) {
-      setStep({ stage, option: aimed, ...how, targets: [] });
+      setStep({
+        stage,
+        option: aimed,
+        ...how,
+        targets: view.window?.moment === "falls" ? aimed.targetIds.slice(0, aimed.targets.count) : [],
+      });
       return;
     }
     send(aimed, rulesetDefaultTargets(aimed), undefined, style, mode);
@@ -204,7 +210,12 @@ export function RulesetCombatMenu({
       send(step.option, rulesetDefaultTargets(step.option), payWith, step.style, step.mode);
       return;
     }
-    setStep({ ...step, stage, ...(payWith ? { payWith } : {}), targets: [] });
+    setStep({
+      ...step,
+      stage,
+      ...(payWith ? { payWith } : {}),
+      targets: view.window?.moment === "falls" ? step.option.targetIds.slice(0, step.option.targets.count) : [],
+    });
   };
   const pick = (id: string) => {
     if (!step) return;
@@ -429,18 +440,22 @@ export function RulesetCombatMenu({
           phone the shell above still names the actor, and the two would otherwise contradict. */}
       {view.window ? (
         <p className="text-[0.65rem] uppercase tracking-wide text-[var(--primary)]">
-          {t(`game.combat.ruleset.menu.window${WINDOW_PROMPTS[view.window.moment ?? view.window.kind]}`, {
-            name: askedName,
-            mover: nameOf(view.window.sourceId ?? view.window.moverId),
-            label: view.window.label ?? "",
-            total: view.window.total ?? "",
-            defense:
-              view.window.defense === undefined
-                ? ""
-                : defenseLabel
-                  ? `${defenseLabel} ${view.window.defense}`
-                  : String(view.window.defense),
-          })}
+          {t(
+            `game.combat.ruleset.menu.window${view.window.targetIds?.some((id) => id !== view.window!.actorId) && (view.window.moment === "aimed" || view.window.moment === "hit") ? "Bystander" : WINDOW_PROMPTS[view.window.moment ?? view.window.kind]}`,
+            {
+              name: askedName,
+              target: view.window.targetIds?.map(nameOf).join(", ") ?? askedName,
+              mover: nameOf(view.window.sourceId ?? view.window.moverId),
+              label: view.window.label ?? "",
+              total: view.window.total ?? "",
+              defense:
+                view.window.defense === undefined
+                  ? ""
+                  : defenseLabel
+                    ? `${defenseLabel} ${view.window.defense}`
+                    : String(view.window.defense),
+            },
+          )}
         </p>
       ) : (
         <p className="hidden text-[0.65rem] uppercase tracking-wide text-white/45 sm:block">
@@ -473,6 +488,14 @@ export function RulesetCombatMenu({
                     )}
                   >
                     <span className="block font-semibold text-white/90">{rulesetOptionLabel(option, t)}</span>
+                    {option.cancelSave && (
+                      <span className="block text-[0.65rem] text-white/55">
+                        {t("game.combat.ruleset.menu.cancelSave", {
+                          save: option.cancelSave.label,
+                          dc: option.cancelSave.dc,
+                        })}
+                      </span>
+                    )}
                     {cost && <span className="mt-0.5 block text-[0.65rem] text-white/45">{cost}</span>}
                     {forecast && <span className="block text-[0.65rem] text-white/45">{forecast}</span>}
                   </button>

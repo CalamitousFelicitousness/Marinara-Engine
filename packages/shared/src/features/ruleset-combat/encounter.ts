@@ -56,7 +56,7 @@ import {
 import { parseRulesetCombatDice, rollRulesetDice, rulesetCombatRoller, sumOf } from "./dice.js";
 import { rulesetInCells, rulesetLineOfSight, rulesetPositionOf } from "./grid.js";
 import { rulesetCombatAdvantage, rulesetCombatIsPool, rulesetPoolDie, throwRulesetCombatPool } from "./pool.js";
-import { rulesetPaidLevel } from "./options.js";
+import { rulesetPaidLevel, rulesetReactionsAt } from "./options.js";
 import { RULESET_MOVE_MODES } from "./types.js";
 import type {
   RulesetMoveMode,
@@ -1297,7 +1297,8 @@ function mechanicsAction(
             // `undefined` here would not survive the trip through JSON the state has to make.
             at: moment.at ?? "source",
             ...(moment.cancels ? { cancels: true as const } : {}),
-            ...rulesetReactionAnswers(moment),
+            ...rulesetReactionAnswers(moment, perCell),
+            ...(moment.cancelSave ? { cancelSave: { ...moment.cancelSave } } : {}),
             ...(moment.upTo ? { upTo: moment.upTo } : {}),
             ...(moment.above
               ? { above: { modifier: Math.trunc(resolve(moment.above.check)), dc: moment.above.dc } }
@@ -1696,7 +1697,8 @@ function blockActions(block: RulesetStatBlockLike, perCell: number | undefined):
             on: action.reaction.on,
             at: action.reaction.at ?? "source",
             ...(action.reaction.cancels ? { cancels: true as const } : {}),
-            ...rulesetReactionAnswers(action.reaction),
+            ...rulesetReactionAnswers(action.reaction, perCell),
+            ...(action.reaction.cancelSave ? { cancelSave: { ...action.reaction.cancelSave } } : {}),
             ...(action.reaction.upTo ? { upTo: action.reaction.upTo } : {}),
             ...(action.reaction.above
               ? { above: { modifier: action.reaction.above.check.const ?? 0, dc: action.reaction.above.dc } }
@@ -2336,6 +2338,31 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
       ? ([{ type: "turn", actorId: state.order[state.turn], round: 1 }] as RulesetCombatEvent[])
       : []),
   ];
+  const first = currentRulesetActor(state);
+  if (first) {
+    const waiting = state.order.filter((id) => {
+      const holder = rulesetCombatant(state, id);
+      return holder && rulesetReactionsAt(definition, combat, state, holder, "turn-start", first.id).length > 0;
+    });
+    if (waiting.length) {
+      state.windows = 1;
+      state.window = {
+        id: "w1",
+        kind: "reaction",
+        waiting,
+        trigger: { kind: "turn-start", sourceId: first.id, label: first.name },
+      };
+      state.opening.push({
+        type: "window",
+        window: "w1",
+        kind: "reaction",
+        waiting: [...waiting],
+        moment: "turn-start",
+        sourceId: first.id,
+        label: first.name,
+      });
+    }
+  }
   return state;
 }
 

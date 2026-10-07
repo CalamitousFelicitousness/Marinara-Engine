@@ -73,7 +73,7 @@ export interface RulesetCombatDamageAlternative extends RulesetCombatAmount {
 /** A condition a hit or a failed save puts on its target. */
 export interface RulesetCombatApplies {
   condition: string;
-  duration: "instant" | "until-save" | { rounds: number; at?: "turn-start"; of?: "source" };
+  duration: "instant" | "until-save" | "this-action" | { rounds: number; at?: "turn-start"; of?: "source" };
   saveEnds?: { save: string; at: "turn-end" | "turn-start" | "damaged" };
   endsAfter?: RulesetConditionEnding;
   /** What breaking free of it is rolled against, in place of the holder's own side of the contest
@@ -215,8 +215,11 @@ export interface RulesetStatBlockAction {
   /** Taken at a moment rather than on a turn, as a catalog entry's reaction is. */
   reaction?: {
     on: RulesetReactionMoment;
-    at?: "source" | "chosen";
+    at?: "source" | "chosen" | "target";
     cancels?: true;
+    cancelSave?: { save: string; dc: number };
+    for?: "self" | "ally" | "any";
+    within?: number;
     against?: RulesetReactionAgainst;
     /** More moments it is taken at, each with its own `against` (1.112). */
     also?: RulesetReactionAlso[];
@@ -386,8 +389,11 @@ export interface RulesetCombatAction {
    *  taking it stops what opened the window. On no turn's menu, ever. */
   reaction?: {
     on: RulesetReactionMoment;
-    at: "source" | "chosen";
+    at: "source" | "chosen" | "target";
     cancels?: true;
+    cancelSave?: { save: string; dc: number };
+    for?: "self" | "ally" | "any";
+    within?: number;
     /** Only an action from an entry of one of these catalogs, or one of these entries, opens its
      *  moment for this reaction. */
     against?: RulesetReactionAgainst;
@@ -516,6 +522,8 @@ export interface RulesetReachableCell extends RulesetCombatCell {
 /** A condition the fight is keeping time on. The condition itself lives on the sheet for a party
  *  member, so it outlives the battle; this is the bookkeeping beside it. */
 export interface RulesetTrackedCondition {
+  /** Removed once the action that opened its window finishes (1.126). */
+  thisAction?: true;
   condition: string;
   /** Turns of the affected combatant left, or null for a condition with no clock of its own. */
   rounds: number | null;
@@ -738,7 +746,15 @@ export type RulesetWindowTrigger =
   /** Something is ABOUT to land on the ones being asked. It is already paid for and is held here
    *  until they have answered, and an answer that cancels stops it from happening at all.
    *  `catalog` is where the entry behind it came from, when there is one. */
-  | { kind: "aimed"; sourceId: string; optionId: string; label: string; catalog?: string; entry?: string }
+  | {
+      kind: "aimed";
+      targetIds?: string[];
+      sourceId: string;
+      optionId: string;
+      label: string;
+      catalog?: string;
+      entry?: string;
+    }
   /** Somebody on the other side is ABOUT to use something, whoever it is aimed at: held the same
    *  way, for everybody holding an answer that reaches them. */
   | { kind: "used"; sourceId: string; optionId: string; label: string; catalog?: string; entry?: string }
@@ -746,6 +762,7 @@ export type RulesetWindowTrigger =
    *  take counts for it: the roll (`total`, made against `defense`) is checked again afterwards. */
   | {
       kind: "hit";
+      targetIds?: string[];
       sourceId: string;
       optionId: string;
       label: string;
@@ -760,13 +777,14 @@ export type RulesetWindowTrigger =
    *  unmakes it, and `sourceId` is whoever dealt it, for a reaction aimed back at them. */
   | { kind: "harmed"; sourceId: string; label: string; catalog?: string; entry?: string }
   /** Somebody is falling, before its damage and prone (1.119). The source is the faller. */
-  | { kind: "falls"; sourceId: string; label: "fall"; levels: number };
+  | { kind: "falls"; sourceId: string; label: "fall"; levels: number; fallerIds?: string[] }
+  | { kind: "turn-start"; sourceId: string; label: string };
 
 /** The moments the Engine notices, and opens a window for. `aimed` is before something lands on
  *  the holder, `used` is before somebody on the other side uses something, `hit` is after an attack
  *  roll has hit the holder and before its damage, `harmed` is after something has hurt them, and
- *  `falls` is before a falling creature lands. */
-export type RulesetReactionMoment = "aimed" | "hit" | "harmed" | "used" | "falls";
+ *  `falls` is before a falling creature lands, and `turn-start` before its creature acts (1.126). */
+export type RulesetReactionMoment = "aimed" | "hit" | "harmed" | "used" | "falls" | "turn-start";
 
 /** A blow struck in reach (`melee`) or from afar (`ranged`), as a reaction that answers only one
  *  of them reads it (1.113). */
@@ -774,6 +792,8 @@ export type RulesetBlowKind = "melee" | "ranged";
 
 /** One more moment a reaction is taken at, narrowed on its own (1.112, 1.113). */
 export interface RulesetReactionAlso {
+  for?: "self" | "ally" | "any";
+  within?: number;
   on: RulesetReactionMoment;
   against?: RulesetReactionAgainst;
   blow?: RulesetBlowKind;
@@ -783,6 +803,8 @@ export interface RulesetReactionAlso {
 /** What caused a moment, as far as a reaction narrows what it answers: the catalog and entry behind
  *  it, and for a hit, the kind of blow. */
 export interface RulesetMomentCause {
+  targetIds?: string[];
+  action?: string;
   catalog?: string;
   entry?: string;
   blow?: RulesetBlowKind;
@@ -791,6 +813,7 @@ export interface RulesetMomentCause {
 /** What opens a moment for one reaction: an action from an entry of one of `catalogs`, or one of
  *  `entries` (`<catalog>/<entry>`, 1.112). Either is enough. */
 export interface RulesetReactionAgainst {
+  actions?: string[];
   catalogs?: string[];
   entries?: string[];
 }
@@ -801,6 +824,7 @@ export type RulesetWindowResume = RulesetWalkResume | RulesetActionResume | Rule
 
 /** A fall lands after the answers have put their conditions on its target (1.119). */
 export interface RulesetFallResume {
+  others?: RulesetFallResume[];
   kind: "fall";
   actorId: string;
   targetId: string;
@@ -1134,6 +1158,7 @@ export type RulesetCombatEvent =
    *  exactly as it is on a turn, so a log reads the window as an interruption rather than a mode. */
   | {
       type: "window";
+      targetIds?: string[];
       window: string;
       kind: RulesetWindowKind;
       waiting: string[];
@@ -1264,6 +1289,8 @@ export type RulesetEncounterOutcome = "ongoing" | "victory" | "defeat";
 /** One legal thing the actor whose turn it is may do right now. Everything a player, an opponent's
  *  own choices and a forecast go through is on this menu: nothing else computes legality. */
 export interface RulesetCombatOption {
+  /** The holder must pass this save to cancel (1.126). */
+  cancelSave?: { save: string; dc: number; label: string };
   /** The holder and condition named by an ally's shake-off option (1.120). */
   shakeOff?: { holderId: string; condition: string; name: string; label: string };
   id: string;

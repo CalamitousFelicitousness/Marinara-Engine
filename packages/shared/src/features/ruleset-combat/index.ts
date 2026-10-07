@@ -182,6 +182,8 @@ export {
   rulesetTargetRefusal,
   rulesetWithinSpendLimits,
   rulesetReactionPointsAtSource,
+  rulesetReactionTarget,
+  rulesetFallTargets,
   rulesetReactionsAt,
   rulesetWindowMoment,
   rulesetWindowOptions,

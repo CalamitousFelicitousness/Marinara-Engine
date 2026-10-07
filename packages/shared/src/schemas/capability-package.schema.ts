@@ -810,7 +810,10 @@ const capabilityPackageManifestBaseSchema = z
 //        once per blow, at the stored DC. 5e's Dominate Person. No permission.
 // 1.125: a builder step's stamp can read the first offering parent pick's id, label or filter through
 //        `fromWithin`, so a spell names the class that offered it. Later edits remain the player's. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 125 } as const);
+// 1.126: reactions answer for nearby allies, at a turn's start, on a successful holder save, or for
+// several fallers of one event. An answer may land on the target, last this action, and name a
+// stat-block action in against.actions.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 126 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

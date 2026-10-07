@@ -244,6 +244,7 @@ const WINDOW_LINES = {
   hit: "windowHit",
   harmed: "windowHarmed",
   falls: "windowFalls",
+  "turn-start": "windowTurnStart",
   used: "windowUsed",
 } as const;
 
@@ -594,14 +595,20 @@ export function rulesetCombatEventLine(
     case "window":
       // Who the fight stopped for. The window between two turns is nobody's interruption, so it is
       // said as a pause rather than as somebody being caught out.
-      return key(WINDOW_LINES[event.moment ?? (event.kind === "signature" ? "between" : "leaving")], {
-        actor: names.combatant(event.waiting[0] ?? ""),
-        others: Math.max(0, event.waiting.length - 1),
-        mover: names.combatant(event.sourceId ?? event.moverId ?? ""),
-        label: event.label ?? "",
-        total: event.total ?? "",
-        defense: event.defense === undefined ? "" : defenseText(names, event.defense),
-      });
+      return key(
+        event.targetIds?.some((id) => id !== event.waiting[0]) && (event.moment === "aimed" || event.moment === "hit")
+          ? "windowBystander"
+          : WINDOW_LINES[event.moment ?? (event.kind === "signature" ? "between" : "leaving")],
+        {
+          actor: names.combatant(event.waiting[0] ?? ""),
+          others: Math.max(0, event.waiting.length - 1),
+          target: event.targetIds?.map(names.combatant).join(", ") ?? "",
+          mover: names.combatant(event.sourceId ?? event.moverId ?? ""),
+          label: event.label ?? "",
+          total: event.total ?? "",
+          defense: event.defense === undefined ? "" : defenseText(names, event.defense),
+        },
+      );
     case "recheck": {
       // The held roll against the defense the answer left: said whichever way it went, since the
       // reader saw it called a hit a moment ago.

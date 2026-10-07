@@ -30,6 +30,8 @@ import type {
   RulesetStatBlockAction,
 } from "./types.js";
 
+import { rulesetInCells } from "./grid.js";
+
 /** What narrows one moment of a reaction: what it answers, the kind of blow (1.113), and whether its
  *  holder must see the source (1.113). */
 type RulesetMomentNarrowing = Omit<RulesetReactionAlso, "on">;
@@ -38,14 +40,23 @@ type RulesetMomentNarrowing = Omit<RulesetReactionAlso, "on">;
  *  moment, and the moments it is `also` taken at (1.112), each with what narrows it. */
 export function rulesetReactionAnswers(
   reaction: RulesetMomentNarrowing & { also?: ReadonlyArray<RulesetReactionAlso> },
+  perCell?: number,
 ): RulesetMomentNarrowing & { also?: RulesetReactionAlso[] } {
   const narrowing = (moment: RulesetMomentNarrowing): RulesetMomentNarrowing => ({
     ...(moment.against
       ? {
           against: {
             ...(moment.against.catalogs ? { catalogs: [...moment.against.catalogs] } : {}),
+            ...(moment.against.actions ? { actions: [...moment.against.actions] } : {}),
             ...(moment.against.entries ? { entries: [...moment.against.entries] } : {}),
           },
+        }
+      : {}),
+    ...(moment.for ? { for: moment.for } : {}),
+    ...(moment.within !== undefined
+      ? {
+          within:
+            perCell === undefined ? moment.within : moment.within === 0 ? 0 : rulesetInCells(moment.within, perCell),
         }
       : {}),
     ...(moment.blow ? { blow: moment.blow } : {}),
@@ -187,6 +198,7 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
       ? {
           reaction: {
             ...action.reaction,
+            ...(action.reaction.cancelSave ? { cancelSave: { ...action.reaction.cancelSave } } : {}),
             ...rulesetReactionAnswers(action.reaction),
           },
         }

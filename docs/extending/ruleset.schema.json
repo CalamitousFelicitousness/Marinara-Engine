@@ -8766,16 +8766,30 @@
                                 "hit",
                                 "harmed",
                                 "used",
-                                "falls"
+                                "falls",
+                                "turn-start"
                               ]
                             },
                             "at": {
                               "type": "string",
                               "enum": [
                                 "source",
-                                "chosen"
+                                "chosen",
+                                "target"
                               ],
                               "default": "source"
+                            },
+                            "for": {
+                              "type": "string",
+                              "enum": [
+                                "self",
+                                "ally",
+                                "any"
+                              ]
+                            },
+                            "within": {
+                              "type": "number",
+                              "minimum": 0
                             },
                             "blow": {
                               "type": "string",
@@ -8791,6 +8805,27 @@
                             "cancels": {
                               "type": "boolean",
                               "const": true
+                            },
+                            "cancelSave": {
+                              "type": "object",
+                              "properties": {
+                                "save": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "dc": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 1000
+                                },
+                                "$comment": {}
+                              },
+                              "required": [
+                                "save",
+                                "dc"
+                              ],
+                              "additionalProperties": false
                             },
                             "against": {
                               "type": "object",
@@ -8815,6 +8850,16 @@
                                   "minItems": 1,
                                   "maxItems": 12
                                 },
+                                "actions": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 80
+                                  },
+                                  "minItems": 1,
+                                  "maxItems": 12
+                                },
                                 "$comment": {}
                               },
                               "additionalProperties": false
@@ -8831,7 +8876,8 @@
                                       "hit",
                                       "harmed",
                                       "used",
-                                      "falls"
+                                      "falls",
+                                      "turn-start"
                                     ]
                                   },
                                   "against": {
@@ -8857,9 +8903,31 @@
                                         "minItems": 1,
                                         "maxItems": 12
                                       },
+                                      "actions": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 80
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 12
+                                      },
                                       "$comment": {}
                                     },
                                     "additionalProperties": false
+                                  },
+                                  "for": {
+                                    "type": "string",
+                                    "enum": [
+                                      "self",
+                                      "ally",
+                                      "any"
+                                    ]
+                                  },
+                                  "within": {
+                                    "type": "number",
+                                    "minimum": 0
                                   },
                                   "blow": {
                                     "type": "string",
@@ -8911,6 +8979,72 @@
                                           {
                                             "required": [
                                               "against"
+                                            ]
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "if": {
+                                      "properties": {
+                                        "for": {
+                                          "enum": [
+                                            "ally",
+                                            "any"
+                                          ]
+                                        }
+                                      },
+                                      "required": [
+                                        "for"
+                                      ]
+                                    },
+                                    "then": {
+                                      "required": [
+                                        "within"
+                                      ],
+                                      "properties": {
+                                        "on": {
+                                          "enum": [
+                                            "aimed",
+                                            "hit"
+                                          ]
+                                        }
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "if": {
+                                      "properties": {
+                                        "on": {
+                                          "const": "turn-start"
+                                        }
+                                      },
+                                      "required": [
+                                        "on"
+                                      ]
+                                    },
+                                    "then": {
+                                      "not": {
+                                        "anyOf": [
+                                          {
+                                            "required": [
+                                              "cancels"
+                                            ]
+                                          },
+                                          {
+                                            "required": [
+                                              "blow"
+                                            ]
+                                          },
+                                          {
+                                            "required": [
+                                              "against"
+                                            ]
+                                          },
+                                          {
+                                            "required": [
+                                              "upTo"
                                             ]
                                           }
                                         ]
@@ -9132,6 +9266,84 @@
                                   ]
                                 }
                               }
+                            },
+                            {
+                              "if": {
+                                "properties": {
+                                  "for": {
+                                    "enum": [
+                                      "ally",
+                                      "any"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "for"
+                                ]
+                              },
+                              "then": {
+                                "required": [
+                                  "within"
+                                ],
+                                "properties": {
+                                  "on": {
+                                    "enum": [
+                                      "aimed",
+                                      "hit"
+                                    ]
+                                  }
+                                }
+                              }
+                            },
+                            {
+                              "if": {
+                                "properties": {
+                                  "on": {
+                                    "const": "turn-start"
+                                  }
+                                },
+                                "required": [
+                                  "on"
+                                ]
+                              },
+                              "then": {
+                                "not": {
+                                  "anyOf": [
+                                    {
+                                      "required": [
+                                        "cancels"
+                                      ]
+                                    },
+                                    {
+                                      "required": [
+                                        "blow"
+                                      ]
+                                    },
+                                    {
+                                      "required": [
+                                        "against"
+                                      ]
+                                    },
+                                    {
+                                      "required": [
+                                        "upTo"
+                                      ]
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            {
+                              "if": {
+                                "required": [
+                                  "cancelSave"
+                                ]
+                              },
+                              "then": {
+                                "required": [
+                                  "cancels"
+                                ]
+                              }
                             }
                           ],
                           "if": {
@@ -9182,6 +9394,10 @@
                               {
                                 "type": "string",
                                 "const": "until-save"
+                              },
+                              {
+                                "type": "string",
+                                "const": "this-action"
                               },
                               {
                                 "type": "object",
@@ -10290,6 +10506,10 @@
                                       "const": "until-save"
                                     },
                                     {
+                                      "type": "string",
+                                      "const": "this-action"
+                                    },
+                                    {
                                       "type": "object",
                                       "properties": {
                                         "rounds": {
@@ -10574,16 +10794,30 @@
                                   "hit",
                                   "harmed",
                                   "used",
-                                  "falls"
+                                  "falls",
+                                  "turn-start"
                                 ]
                               },
                               "at": {
                                 "type": "string",
                                 "enum": [
                                   "source",
-                                  "chosen"
+                                  "chosen",
+                                  "target"
                                 ],
                                 "default": "source"
+                              },
+                              "for": {
+                                "type": "string",
+                                "enum": [
+                                  "self",
+                                  "ally",
+                                  "any"
+                                ]
+                              },
+                              "within": {
+                                "type": "number",
+                                "minimum": 0
                               },
                               "blow": {
                                 "type": "string",
@@ -10599,6 +10833,27 @@
                               "cancels": {
                                 "type": "boolean",
                                 "const": true
+                              },
+                              "cancelSave": {
+                                "type": "object",
+                                "properties": {
+                                  "save": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "dc": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 1000
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "save",
+                                  "dc"
+                                ],
+                                "additionalProperties": false
                               },
                               "against": {
                                 "type": "object",
@@ -10623,6 +10878,16 @@
                                     "minItems": 1,
                                     "maxItems": 12
                                   },
+                                  "actions": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 80
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 12
+                                  },
                                   "$comment": {}
                                 },
                                 "additionalProperties": false
@@ -10639,7 +10904,8 @@
                                         "hit",
                                         "harmed",
                                         "used",
-                                        "falls"
+                                        "falls",
+                                        "turn-start"
                                       ]
                                     },
                                     "against": {
@@ -10665,9 +10931,31 @@
                                           "minItems": 1,
                                           "maxItems": 12
                                         },
+                                        "actions": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 80
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 12
+                                        },
                                         "$comment": {}
                                       },
                                       "additionalProperties": false
+                                    },
+                                    "for": {
+                                      "type": "string",
+                                      "enum": [
+                                        "self",
+                                        "ally",
+                                        "any"
+                                      ]
+                                    },
+                                    "within": {
+                                      "type": "number",
+                                      "minimum": 0
                                     },
                                     "blow": {
                                       "type": "string",
@@ -10719,6 +11007,72 @@
                                             {
                                               "required": [
                                                 "against"
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "if": {
+                                        "properties": {
+                                          "for": {
+                                            "enum": [
+                                              "ally",
+                                              "any"
+                                            ]
+                                          }
+                                        },
+                                        "required": [
+                                          "for"
+                                        ]
+                                      },
+                                      "then": {
+                                        "required": [
+                                          "within"
+                                        ],
+                                        "properties": {
+                                          "on": {
+                                            "enum": [
+                                              "aimed",
+                                              "hit"
+                                            ]
+                                          }
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "if": {
+                                        "properties": {
+                                          "on": {
+                                            "const": "turn-start"
+                                          }
+                                        },
+                                        "required": [
+                                          "on"
+                                        ]
+                                      },
+                                      "then": {
+                                        "not": {
+                                          "anyOf": [
+                                            {
+                                              "required": [
+                                                "cancels"
+                                              ]
+                                            },
+                                            {
+                                              "required": [
+                                                "blow"
+                                              ]
+                                            },
+                                            {
+                                              "required": [
+                                                "against"
+                                              ]
+                                            },
+                                            {
+                                              "required": [
+                                                "upTo"
                                               ]
                                             }
                                           ]
@@ -10939,6 +11293,84 @@
                                       }
                                     ]
                                   }
+                                }
+                              },
+                              {
+                                "if": {
+                                  "properties": {
+                                    "for": {
+                                      "enum": [
+                                        "ally",
+                                        "any"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "for"
+                                  ]
+                                },
+                                "then": {
+                                  "required": [
+                                    "within"
+                                  ],
+                                  "properties": {
+                                    "on": {
+                                      "enum": [
+                                        "aimed",
+                                        "hit"
+                                      ]
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "if": {
+                                  "properties": {
+                                    "on": {
+                                      "const": "turn-start"
+                                    }
+                                  },
+                                  "required": [
+                                    "on"
+                                  ]
+                                },
+                                "then": {
+                                  "not": {
+                                    "anyOf": [
+                                      {
+                                        "required": [
+                                          "cancels"
+                                        ]
+                                      },
+                                      {
+                                        "required": [
+                                          "blow"
+                                        ]
+                                      },
+                                      {
+                                        "required": [
+                                          "against"
+                                        ]
+                                      },
+                                      {
+                                        "required": [
+                                          "upTo"
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                }
+                              },
+                              {
+                                "if": {
+                                  "required": [
+                                    "cancelSave"
+                                  ]
+                                },
+                                "then": {
+                                  "required": [
+                                    "cancels"
+                                  ]
                                 }
                               }
                             ],
@@ -14730,6 +15162,10 @@
                                   {
                                     "type": "string",
                                     "const": "until-save"
+                                  },
+                                  {
+                                    "type": "string",
+                                    "const": "this-action"
                                   },
                                   {
                                     "type": "object",
@@ -22426,6 +22862,10 @@
                             {
                               "type": "string",
                               "const": "until-save"
+                            },
+                            {
+                              "type": "string",
+                              "const": "this-action"
                             },
                             {
                               "type": "object",

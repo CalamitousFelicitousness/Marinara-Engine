@@ -103,6 +103,8 @@ import {
   rulesetOptionTargets,
   rulesetProneCondition,
   rulesetReactionPointsAtSource,
+  rulesetReactionTarget,
+  rulesetFallTargets,
   rulesetReactionsAt,
   rulesetSequenceCanHappen,
   rulesetSequencePartAvailable,
@@ -120,6 +122,7 @@ import {
 } from "./options.js";
 import type {
   RulesetActionResume,
+  RulesetFallResume,
   RulesetBlowKind,
   RulesetCombatAction,
   RulesetCombatAmount,
@@ -165,6 +168,7 @@ interface RulesetCombatContext {
   harmEndings: Array<() => void>;
   /** The cell an area was aimed at in this step, which a save against it takes cover from. */
   aimedAt?: RulesetCombatCell;
+  falling?: RulesetFallResume[];
   /** Whose turn's own start or end is being counted down right now, so a condition left behind in
    *  the middle of a turn can be told from one left behind as the turn begins or ends. */
   ticking?: string;
@@ -200,12 +204,14 @@ function begin(
         const held = next.pendingFalls.shift()!;
         const actor = rulesetCombatant(next, held.actorId);
         const target = rulesetCombatant(next, held.targetId);
-        if (actor && target) fall(ctx, actor, target, held.levels);
+        if (held.others) fallTogether(ctx, [{ ...held, others: undefined }, ...held.others]);
+        else if (actor && target) fall(ctx, actor, target, held.levels);
         for (const end of ctx.harmEndings.splice(0)) end();
         landed = true;
       }
       if (next.pendingFalls?.length === 0) delete next.pendingFalls;
       if (landed) noteOutcome(ctx);
+      if (!next.window) endActionConditions(ctx);
       next.cursor = state.cursor + rolls;
       return { state: next, events: ctx.events };
     },
@@ -1042,6 +1048,7 @@ function applyConditionId(
     condition,
     rounds: rounds !== null && startsNext ? rounds + 1 : rounds,
     ...(clock ? { clock } : {}),
+    ...(applies.duration === "this-action" ? { thisAction: true as const } : {}),
     ...(sourced ? { clockOf: "source" as const } : {}),
     ...(applies.endsAfter ? { endsAfter: applies.endsAfter } : {}),
     ...(applies.saveEnds ? { saveEnds: applies.saveEnds } : {}),
@@ -1869,6 +1876,10 @@ function resolveContest(
  */
 function fall(ctx: RulesetCombatContext, actor: RulesetCombatant, target: RulesetCombatant, levels: number): void {
   const resume = { kind: "fall" as const, actorId: actor.id, targetId: target.id, levels };
+  if (ctx.falling) {
+    ctx.falling.push(resume);
+    return;
+  }
   // An area can ground several fliers while its first fall is held. Each gets its own moment.
   if (ctx.state.window) {
     const answers = ctx.state.combatants.some(
@@ -1882,6 +1893,49 @@ function fall(ctx: RulesetCombatContext, actor: RulesetCombatant, target: Rulese
     return;
   }
   landFall(ctx, actor, target, levels);
+}
+
+/** One blow or effect may drop several creatures; an answer never borrows a later event's fallers. */
+function fallTogether(ctx: RulesetCombatContext, falling: RulesetFallResume[]): void {
+  const first = falling[0];
+  const targetIds = falling.map((one) => one.targetId);
+  const several =
+    falling.length > 1 &&
+    ctx.state.combatants.some((one) =>
+      rulesetReactionsAt(ctx.definition, ctx.combat, ctx.state, one, "falls", first!.targetId, { targetIds }).some(
+        (answer) => answer.targets.count > 1,
+      ),
+    );
+  if (first && several) {
+    const resume = { ...first, others: falling.slice(1) };
+    if (ctx.state.window) {
+      (ctx.state.pendingFalls ??= []).push(resume);
+      return;
+    }
+    if (
+      openMoment(
+        ctx,
+        { kind: "falls", sourceId: first.targetId, label: "fall", levels: first.levels, fallerIds: targetIds },
+        ctx.state.combatants,
+        resume,
+      )
+    )
+      return;
+  }
+  for (const one of falling) {
+    const maker = rulesetCombatant(ctx.state, one.actorId);
+    const target = rulesetCombatant(ctx.state, one.targetId);
+    if (maker && target) fall(ctx, maker, target, one.levels);
+  }
+}
+
+/** A fall waiting for its moment keeps a later hit from replacing that window. */
+function hasFallingAnswer(ctx: RulesetCombatContext): boolean {
+  return !!ctx.falling?.some((fall) =>
+    ctx.state.combatants.some(
+      (one) => rulesetReactionsAt(ctx.definition, ctx.combat, ctx.state, one, "falls", fall.targetId).length > 0,
+    ),
+  );
 }
 
 function landFall(ctx: RulesetCombatContext, actor: RulesetCombatant, target: RulesetCombatant, levels: number): void {
@@ -2053,7 +2107,8 @@ function takeReaction(
     trigger.kind !== "hit" &&
     trigger.kind !== "harmed" &&
     trigger.kind !== "used" &&
-    trigger.kind !== "falls"
+    trigger.kind !== "falls" &&
+    trigger.kind !== "turn-start"
   ) {
     return refusal(state, choice.actorId, "unknown-option", choice.optionId);
   }
@@ -2064,17 +2119,38 @@ function takeReaction(
   // caused the moment, or, for something its holder does to THEMSELVES, at its holder. Bracing
   // yourself is not aimed at anybody, and pointing it at whoever hurt you would hand them what it
   // gives. A falling moment always points at the faller, even when the entry otherwise asks.
-  const source = rulesetCombatant(state, trigger.sourceId);
-  const targets =
-    trigger.kind !== "falls" && !rulesetReactionPointsAtSource(declared)
-      ? declared.targets.side === "self"
-        ? [actor]
-        : pickTargets(definition, state, actor, declared, choice.targetIds)
-      : // Still a target, checked the same way the menu checks it: an answer before this one may have
-        // taken the source out, and a blow aimed at somebody the fight is over for lands on nobody.
-        source && rulesetOptionTargets(definition, state, actor.id, declared).includes(source.id)
-        ? [source]
+  const about = rulesetReactionTarget(state, actor, declared, trigger.kind, trigger.sourceId, {
+    ...("targetIds" in trigger ? { targetIds: trigger.targetIds } : {}),
+    ...("catalog" in trigger ? { catalog: trigger.catalog } : {}),
+    ...("entry" in trigger ? { entry: trigger.entry } : {}),
+    ...("optionId" in trigger &&
+    rulesetCombatant(state, trigger.sourceId)?.block &&
+    !("catalog" in trigger && trigger.catalog)
+      ? { action: trigger.label }
+      : {}),
+    ...(trigger.kind === "hit" ? { blow: trigger.blow } : {}),
+  });
+  const source = rulesetCombatant(state, declared.reaction?.at === "target" ? (about ?? actor.id) : trigger.sourceId);
+  let targets: RulesetCombatant[] | RulesetCombatRefusal;
+  if (trigger.kind === "falls" && declared.targets.count > 1) {
+    const fallers = rulesetFallTargets(definition, state, actor, declared);
+    const picked = choice.targetIds.length ? choice.targetIds : fallers.slice(0, declared.targets.count);
+    targets =
+      picked.length > 0 &&
+      picked.length <= declared.targets.count &&
+      new Set(picked).size === picked.length &&
+      picked.every((id) => fallers.includes(id))
+        ? picked.map((id) => rulesetCombatant(state, id)!)
         : "bad-target";
+  } else if (declared.reaction?.at === "target") {
+    targets = source ? [source] : "bad-target";
+  } else if (trigger.kind !== "falls" && !rulesetReactionPointsAtSource(declared)) {
+    targets =
+      declared.targets.side === "self" ? [actor] : pickTargets(definition, state, actor, declared, choice.targetIds);
+  } else {
+    // The menu just checked the source, its side, range and the moment's own narrowing.
+    targets = source ? [source] : "bad-target";
+  }
   if (!Array.isArray(targets)) return refusal(state, choice.actorId, targets, choice.optionId);
 
   // The menu is the only source of legality here as well: a pool it did not offer is refused as the
@@ -2102,6 +2178,12 @@ function takeReaction(
     ctx.events.push({ type: "spend", actorId: taking.id, pool: entry.pool, label: entry.label, amount: entry.amount });
   }
   spendAvailability(ctx, taking, action);
+  const cancelSave = action.reaction?.cancelSave;
+  if (cancelSave && !rollSave(ctx, taking, cancelSave.save, cancelSave.dc, trigger.sourceId)) {
+    goOn(definition, combat, ctx);
+    noteOutcome(ctx);
+    return finish();
+  }
   // Calling it off happens BEFORE this one's own dice: what was held never lands, so nothing it
   // would have done can change what this reaction is resolved against.
   if (
@@ -2225,10 +2307,18 @@ function goOn(definition: RulesetDefinition, combat: RulesetCombat, ctx: Ruleset
     const actor = rulesetCombatant(ctx.state, resume.actorId);
     const target = rulesetCombatant(ctx.state, resume.targetId);
     if (actor && target) landFall(ctx, actor, target, resume.levels);
+    for (const other of resume.others ?? []) {
+      const maker = rulesetCombatant(ctx.state, other.actorId);
+      const faller = rulesetCombatant(ctx.state, other.targetId);
+      if (maker && faller) landFall(ctx, maker, faller, other.levels);
+    }
     return;
   }
   if (resume?.kind === "action") {
-    if (over && !resume.resolved) return;
+    if (over && !resume.resolved) {
+      endActionConditions(ctx);
+      return;
+    }
     // A use nobody stopped is aimed next: the ones it is aimed at get their own say before it lands.
     if (
       trigger.kind === "used" &&
@@ -2240,6 +2330,10 @@ function goOn(definition: RulesetDefinition, combat: RulesetCombat, ctx: Ruleset
     return;
   }
   if (!over && trigger.kind === "between-turns") beginNextTurn(definition, combat, ctx);
+  if (!over && trigger.kind === "turn-start") {
+    const actor = rulesetCombatant(ctx.state, trigger.sourceId);
+    if (actor) completeDelayed(ctx, actor);
+  }
 }
 
 function applySignature(
@@ -2484,7 +2578,7 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
  */
 function openMoment(
   ctx: RulesetCombatContext,
-  trigger: Extract<RulesetWindowTrigger, { kind: "aimed" | "harmed" | "used" | "falls" }>,
+  trigger: Extract<RulesetWindowTrigger, { kind: "aimed" | "harmed" | "used" | "falls" | "turn-start" }>,
   candidates: readonly RulesetCombatant[],
   resume?: RulesetWindowResume,
 ): boolean {
@@ -2499,11 +2593,19 @@ function openMoment(
   // with the answer's own target side deciding whom it can catch.
   const source = rulesetCombatant(ctx.state, trigger.sourceId);
   const waiting = candidates
-    .filter((one) => moment === "falls" || one.id !== trigger.sourceId)
-    .filter((one) => moment === "falls" || moment === "harmed" || !source || one.side !== source.side)
+    .filter((one) => moment === "falls" || moment === "turn-start" || one.id !== trigger.sourceId)
+    .filter(
+      (one) =>
+        moment === "turn-start" || moment === "falls" || moment === "harmed" || !source || one.side !== source.side,
+    )
     .filter(
       (one) =>
         rulesetReactionsAt(ctx.definition, ctx.combat, ctx.state, one, moment, trigger.sourceId, {
+          ...("targetIds" in trigger ? { targetIds: trigger.targetIds } : {}),
+          ...(trigger.kind === "falls" && trigger.fallerIds ? { targetIds: trigger.fallerIds } : {}),
+          ...("optionId" in trigger && source?.block && !("catalog" in trigger && trigger.catalog)
+            ? { action: trigger.label }
+            : {}),
           ...("catalog" in trigger && trigger.catalog ? { catalog: trigger.catalog } : {}),
           ...("entry" in trigger && trigger.entry ? { entry: trigger.entry } : {}),
         }).length > 0,
@@ -2535,13 +2637,14 @@ function openAimed(
     ctx,
     {
       kind: "aimed",
+      targetIds: targets.map((one) => one.id),
       sourceId: actor.id,
       optionId: resume.optionId,
       label,
       ...(catalog ? { catalog } : {}),
       ...(entry ? { entry } : {}),
     },
-    targets,
+    ctx.state.combatants,
     resume,
   );
 }
@@ -2554,8 +2657,10 @@ function resumeAction(ctx: RulesetCombatContext, resume: RulesetActionResume): v
   // Picked up in the mode it was made in.
   let action = own && resume.mode ? (rulesetModedAction(ctx.definition, own, resume.mode) ?? own) : own;
   if (!actor || !action) return;
-  if (resume.cancelled) return;
-  if (!rulesetCombatStanding(actor)) return;
+  if (resume.cancelled || !rulesetCombatStanding(actor)) {
+    endActionConditions(ctx);
+    return;
+  }
   if (resume.resolved) {
     finishSummon(ctx, actor, action, resume);
     return;
@@ -2577,6 +2682,34 @@ function resumeAction(ctx: RulesetCombatContext, resume: RulesetActionResume): v
   harmedBy(ctx, actor, action, resume, () =>
     resolveAction(ctx, actor, action, targets, resume.payWith, resume.held, resume.style, resume.spend),
   );
+}
+
+/** Everybody who can answer this hit, including its target's nearby protectors (1.126). */
+function hitAnswers(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  target: RulesetCombatant,
+  action: RulesetCombatAction,
+): string[] {
+  return ctx.state.combatants
+    .filter(
+      (one) =>
+        rulesetReactionsAt(ctx.definition, ctx.combat, ctx.state, one, "hit", actor.id, {
+          targetIds: [target.id],
+          ...(!action.catalog && actor.block ? { action: action.label } : {}),
+          ...(action.catalog ? { catalog: action.catalog } : {}),
+          ...(action.entry ? { entry: action.entry } : {}),
+          blow: rulesetBlowKind(ctx.state, actor, target, action),
+        }).length > 0,
+    )
+    .map((one) => one.id);
+}
+
+/** The action is over, including when an answer called it off (1.126). */
+function endActionConditions(ctx: RulesetCombatContext): void {
+  for (const holder of ctx.state.combatants)
+    for (const entry of [...holder.tracked])
+      if (entry.thisAction) removeCondition(ctx, holder, entry.condition, "expired");
 }
 
 /** An action, and then the window for everybody it hurt who has something that answers being hurt.
@@ -2609,6 +2742,7 @@ function harmedBy(
       kind: "reaction",
       trigger: {
         kind: "hit",
+        targetIds: [held.targetId],
         sourceId: actor.id,
         optionId,
         label,
@@ -2618,11 +2752,17 @@ function harmedBy(
         total: held.roll.total,
         defense: held.roll.defense,
       },
-      waiting: [held.targetId],
+      waiting: hitAnswers(
+        ctx,
+        actor,
+        rulesetCombatant(ctx.state, held.targetId)!,
+        actor.actions.find((one) => one.id === optionId) ?? action,
+      ),
       resume: { ...base, held: { ...held, hurt: [...hurt] } },
     });
     return;
   }
+  endActionConditions(ctx);
   const waiting =
     rulesetEncounterOutcome(ctx.state) === "ongoing" &&
     hurt.size > 0 &&
@@ -2651,6 +2791,26 @@ function rulesetLegacyWalk(resume: RulesetWindowResume): boolean {
 /** Hold the fight open. The id is one up from every window this fight has opened, so an answer
  *  written for a window that has already closed is refused rather than spent on its successor. */
 function openWindow(ctx: RulesetCombatContext, window: Omit<RulesetCombatWindow, "id">): void {
+  // Old self-only windows keep their original saved shape. A bystander may itself be one of an
+  // area's targets, so being on that list does not make its answer a self answer.
+  const trigger = window.trigger;
+  if (
+    (trigger.kind === "aimed" || trigger.kind === "hit") &&
+    trigger.targetIds &&
+    window.waiting.every(
+      (id) =>
+        trigger.targetIds!.includes(id) &&
+        !rulesetCombatant(ctx.state, id)?.actions.some(
+          (action) =>
+            action.reaction &&
+            [action.reaction, ...(action.reaction.also ?? [])].some(
+              (moment) => moment.on === trigger.kind && moment.for && moment.for !== "self",
+            ),
+        ),
+    )
+  ) {
+    delete trigger.targetIds;
+  }
   const serial = (ctx.state.windows ?? 0) + 1;
   ctx.state.windows = serial;
   // In the fight's OWN order, whatever order they were gathered in. Who is asked first decides who
@@ -2672,6 +2832,7 @@ function openWindow(ctx: RulesetCombatContext, window: Omit<RulesetCombatWindow,
     waiting: [...waiting],
     ...(window.trigger.kind === "leaves-reach" ? { moverId: window.trigger.moverId } : {}),
     ...(moment ? { moment } : {}),
+    ...("targetIds" in window.trigger && window.trigger.targetIds ? { targetIds: window.trigger.targetIds } : {}),
     ...("label" in window.trigger ? { label: window.trigger.label } : {}),
     ...("sourceId" in window.trigger ? { sourceId: window.trigger.sourceId } : {}),
     ...(window.trigger.kind === "hit" ? { total: window.trigger.total, defense: window.trigger.defense } : {}),
@@ -2885,6 +3046,42 @@ function resolveAction(
   /** The number a spending blow throws, read as it was made. */
   spend?: number,
 ): RulesetHitHold | null {
+  // A sequence's blows are separate events. Ordinary single-faller entries keep their old path.
+  if (
+    ctx.falling ||
+    action.sequence ||
+    !ctx.state.combatants.some((one) =>
+      one.actions.some(
+        (answer) =>
+          answer.targets.count > 1 &&
+          answer.reaction &&
+          [answer.reaction, ...(answer.reaction.also ?? [])].some((moment) => moment.on === "falls"),
+      ),
+    )
+  )
+    return resolveActionBody(ctx, actor, action, targets, payWith, held, styleId, spend);
+  ctx.falling = [];
+  const result = resolveActionBody(ctx, actor, action, targets, payWith, held, styleId, spend);
+  const falling = ctx.falling;
+  delete ctx.falling;
+  fallTogether(ctx, falling);
+  return result;
+}
+
+function resolveActionBody(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  targets: RulesetCombatant[],
+  payWith?: string,
+  /** Picking up an attack held after one of its rolls hit: that roll, then the targets after it. */
+  held?: RulesetHeldAttack,
+  /** The initiative style it was chosen in. An attack made out of a turn, in a window, is made in the
+   *  first style its maker may use. */
+  styleId?: string,
+  /** The number a spending blow throws, read as it was made. */
+  spend?: number,
+): RulesetHitHold | null {
   if (action.sequence) {
     return resolveSequence(
       ctx,
@@ -3061,12 +3258,9 @@ function resolveAction(
         if (
           landed &&
           !ctx.state.window &&
+          !hasFallingAnswer(ctx) &&
           rulesetEncounterOutcome(ctx.state) === "ongoing" &&
-          rulesetReactionsAt(ctx.definition, ctx.combat, ctx.state, target, "hit", actor.id, {
-            ...(action.catalog ? { catalog: action.catalog } : {}),
-            ...(action.entry ? { entry: action.entry } : {}),
-            blow: rulesetBlowKind(ctx.state, actor, target, action),
-          }).length > 0
+          hitAnswers(ctx, actor, target, action).length > 0
         ) {
           return {
             targetId: target.id,
@@ -3139,12 +3333,9 @@ function resolveAction(
         if (
           landed &&
           !ctx.state.window &&
+          !hasFallingAnswer(ctx) &&
           rulesetEncounterOutcome(ctx.state) === "ongoing" &&
-          rulesetReactionsAt(ctx.definition, ctx.combat, ctx.state, target, "hit", actor.id, {
-            ...(action.catalog ? { catalog: action.catalog } : {}),
-            ...(action.entry ? { entry: action.entry } : {}),
-            blow: rulesetBlowKind(ctx.state, actor, target, action),
-          }).length > 0
+          hitAnswers(ctx, actor, target, action).length > 0
         ) {
           return {
             targetId: target.id,
@@ -3732,7 +3923,8 @@ function beginNextTurn(definition: RulesetDefinition, combat: RulesetCombat, ctx
     );
     if (actor.dying && !actor.stable && !actor.defeated) deathSave(ctx, actor);
     // What a delay held over is completed before anything else is done this turn.
-    completeDelayed(ctx, actor);
+    openMoment(ctx, { kind: "turn-start", sourceId: actor.id, label: actor.name }, ctx.state.combatants);
+    if (!ctx.state.window) completeDelayed(ctx, actor);
   }
   const after = rulesetEncounterOutcome(ctx.state);
   if (after !== "ongoing") pushOutcome(ctx, after);

@@ -2652,7 +2652,10 @@ Seven things open one, and two of them come out of what you already declared:
 - **Somebody falls.** Before the damage and prone, for whoever holds a reaction that reaches the
   faller and permits its side (Capability API 1.119).
 
-The last five are what a catalog entry, or a creature's own action, asks for by naming the moment it
+- **Somebody starts their turn.** Before they act, for an entry that reaches them on its target side
+  (Capability API 1.126).
+
+The last six are what a catalog entry, or a creature's own action, asks for by naming the moment it
 waits for. When one action opens both `used` and `aimed`, the use is asked about first; if nobody
 calls it off, the ones it is aimed at are asked next, and it resolves once both have been answered.
 Being hit is asked about as each of its rolls hits, and being hurt once the whole action is over.
@@ -2682,12 +2685,13 @@ The first two you declare nothing for: a ruleset with `opportunity.budget` gets 
 "reaction": { "on": "aimed", "at": "source", "cancels": true }
 ```
 
-- `on` is `used`, `aimed`, `hit`, `harmed` or `falls`, and it is what puts the entry on that window's menu.
-  Those five are the only moments the Engine watches for. An entry that still says `"reaction": true` says only
+- `on` is `used`, `aimed`, `hit`, `harmed`, `falls` or `turn-start`, and it is what puts the entry on that window's menu.
+  Those six are the only moments the Engine watches for. An entry that still says `"reaction": true` says only
   that it is not taken on a turn, which is not enough to offer it anywhere, so it stays on no menu.
-- `at` is `source` (the default) or `chosen`. `source` points what is taken at whoever caused the
+- `at` is `source` (the default), `target` or `chosen`. `source` points what is taken at whoever caused the
   moment and fills the target in, so nobody is asked to pick; `chosen` keeps the entry's own
-  targets and asks. A `falls` answer always lands on the faller.
+  targets and asks. `target` points at the creature the moment is about. A `falls` answer lands on
+  its chosen fallers.
 - `cancels` stops what the window was holding from happening at all. Only a `used` or `aimed` entry
   may say it: a moment that has already happened cannot be called off, and a hit has been rolled.
 - `against` narrows what the entry answers to things used from certain catalogs:
@@ -2832,8 +2836,81 @@ Its `combat.conditions` entry is `{ "condition": "feather_falling", "fallsSafely
 While held, this condition prevents falling damage and the prone condition a fall would apply; it
 does not remove a condition that caused the fall. Use `targets: "self"` for an answer only to the
 caster's own fall. A fall has no source entry, so its reaction cannot carry `cancels`, `blow`,
-`seesSource` or `against`. Each falling creature gets its own moment. This resolves the landing;
-it does not track a slowed descent or choose up to five fallers in one casting.
+`seesSource` or `against`. A single-target entry asks about each fall separately. This resolves the
+landing; it does not track a slowed descent.
+
+
+**Answering for another creature** (Capability API 1.126). `for` is `self` by default; `ally`
+excludes the holder, while `any` includes them. Both ask holders on the target's side within the
+required `within`, in the catalog's distance unit, and only on `aimed` or `hit`. These keys work
+on each `also` moment too. `seesSource` still requires sight of the attacker. Protection puts
+`own-attacks-disadvantage` on the source before the attack dice are rolled. Its `this-action`
+duration ends when the action resolves or is cancelled. Without an explicit source range, a
+bystander's answer reaches that source; `within` measures the distance to the protected creature.
+Declare `protected_attack` on the sheet and give its combat condition that effect:
+
+```json
+{
+  "kind": "debuff", "targets": "enemy", "budget": "reaction",
+  "reaction": { "on": "aimed", "for": "ally", "within": 5, "at": "source", "seesSource": true },
+  "applies": [{ "condition": "protected_attack", "duration": "this-action" }]
+}
+```
+
+**Putting the answer on the target.** `at: "target"` applies to the creature attacked, while
+`source` stays the attacker. Shield Guardian models the amulet wearer as an ally within 5;
+`parrying` grants `+2` defense. The held hit rechecks that ally's defense after the answer:
+
+```json
+{
+  "kind": "buff", "targets": "ally", "range": 5, "budget": "reaction",
+  "reaction": { "on": "hit", "for": "ally", "within": 5, "at": "target" },
+  "applies": [{ "condition": "parrying", "duration": "this-action" }]
+}
+```
+
+**At the start of a turn.** `on: "turn-start"` asks when a creature on the entry's target side
+starts within its range, before that creature acts. That creature is the `source`. A harmful entry
+answers the other side, a helpful entry its own side. It cannot carry `cancels`, `blow`, `against`
+or `upTo`. The Unnerving Mask creature action asks for a Wisdom save; one round on the affected creature's clock lasts
+through this turn and expires at its end (leave `of: "source"` out):
+
+```json
+{
+  "id": "unnerving_mask", "name": "Unnerving Mask", "range": 30, "budget": "reaction",
+  "reaction": { "on": "turn-start", "at": "source", "seesSource": true },
+  "save": { "save": "wis_save", "difficulty": 14, "onSuccess": "negates" },
+  "applies": [{ "condition": "frightened", "duration": { "rounds": 1 } }]
+}
+```
+
+**Cancelling on a save.** `cancelSave: { save, dc }` requires `cancels`; the holder rolls with its
+usual save modifiers. Success cancels, failure lets the original action resolve, and either spends
+the reaction. `against.actions` names one to twelve stat-block actions, matching the whole name
+case-insensitively (at most 80 characters each). Rock Catching models catching the rock by cancelling
+the whole attack, including all its damage, rather than only its bludgeoning damage. Save ids are
+those of your ruleset (`dex` here; `dex_save` in the bundled 5e example):
+
+```json
+{
+  "on": "aimed", "cancels": true,
+  "cancelSave": { "save": "dex", "dc": 10 },
+  "against": { "actions": ["Rock"] }
+}
+```
+
+**Catching several fallers.** A `falls` entry with `targetCount` greater than one offers the eligible
+creatures falling from one blow or effect, within range and on its target side. The menu and director
+default to all eligible up to the count, nearest first; the player can change the selection. A later
+fall is a separate event. Feather Fall uses the same `fallsSafely` condition as above:
+
+```json
+{
+  "kind": "buff", "targets": "ally", "targetCount": 5, "range": 60, "budget": "reaction",
+  "reaction": { "on": "falls" },
+  "applies": [{ "condition": "feather_falling", "duration": { "rounds": 10 } }]
+}
+```
 
 ### Not yet
 
@@ -2843,10 +2920,10 @@ Said plainly, because a ruleset should not claim what the Engine does not do:
   obstacles, no squeezing, no mounts, no hiding or surprise, and nothing moves anybody but their own
   walk and a contest's push. Nobody drags a creature they hold.
 - **A contest is plain.** Its roll opens no window, but a fall it causes may be answered.
-- **An entry may wait for five moments only**, `used`, `aimed`, `hit`, `harmed` and `falls` (see Windows, above).
+- **An entry may wait for six moments only**, `used`, `aimed`, `hit`, `harmed`, `falls` and `turn-start` (see Windows, above).
   Those are the moments the Engine notices on an entry's behalf; the other two windows, somebody
   breaking away and the pause between two turns, are opened by the fight itself and are not moments
-  an entry can ask for. There is no moment for a save being rolled, a death, or a turn beginning.
+  an entry can ask for. There is no moment for a save being rolled or a death.
 - **A counter stops what it answers outright.** It cannot tell one entry of a catalog from another,
   and there is no check to stop something bigger than itself.
 - **No chain of them.** The fight keeps one window rather than a stack, so nothing opened inside a

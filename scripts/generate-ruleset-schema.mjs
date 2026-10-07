@@ -235,6 +235,15 @@ function cancelOnlyWhenAimed(node) {
       },
     ];
   }
+  if (node.type === "object" && ["on", "for", "within"].every((key) => keys.includes(key))) {
+    node.allOf = [...(node.allOf ?? []),
+      { if: { properties: { for: { enum: ["ally", "any"] } }, required: ["for"] },
+        then: { required: ["within"], properties: { on: { enum: ["aimed", "hit"] } } } },
+      { if: { properties: { on: { const: "turn-start" } }, required: ["on"] },
+        then: { not: { anyOf: ["cancels", "blow", "against", "upTo"].map((key) => ({ required: [key] })) } } },
+    ];
+    if (keys.includes("cancelSave")) node.allOf.push({ if: { required: ["cancelSave"] }, then: { required: ["cancels"] } });
+  }
   if (node.type === "object" && ["on", "at", "cancels", "against"].every((key) => keys.includes(key))) {
     // Only a moment BEFORE something resolves may call it off.
     node.if = { required: ["cancels"] };

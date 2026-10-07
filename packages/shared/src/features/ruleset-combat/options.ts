@@ -68,9 +68,9 @@ import type {
   RulesetCombatContest,
   RulesetCombatant,
   RulesetEncounterState,
-  RulesetBlowKind,
   RulesetMomentCause,
   RulesetReactionAgainst,
+  RulesetReactionAlso,
   RulesetReactionMoment,
   RulesetWindowTrigger,
 } from "./types.js";
@@ -899,6 +899,7 @@ export function rulesetOptionTargets(
   state: RulesetEncounterState,
   actorId: string,
   option: { id: string; targets: RulesetCombatAction["targets"] },
+  ignoreRange = false,
 ): string[] {
   const actor = rulesetCombatant(state, actorId);
   if (!actor || option.targets.count <= 0) return [];
@@ -939,7 +940,7 @@ export function rulesetOptionTargets(
         return true;
       })
       // And then how far away they are, which is nothing at all in a fight without a board.
-      .filter((combatant) => rulesetTargetRefusal(state, actor.id, option.id, combatant.id) === null)
+      .filter((combatant) => ignoreRange || rulesetTargetRefusal(state, actor.id, option.id, combatant.id) === null)
       .map((combatant) => combatant.id)
   );
 }
@@ -1210,6 +1211,16 @@ function optionFrom(
     ...(free ? {} : { budget }),
     ...(oneStrike ? { oneStrike: true as const } : {}),
     targets: action.targets,
+    ...(action.reaction?.cancelSave
+      ? {
+          cancelSave: {
+            ...action.reaction.cancelSave,
+            label:
+              definition.sheet.saves.find((one) => one.id === action.reaction!.cancelSave!.save)?.label ??
+              action.reaction.cancelSave.save,
+          },
+        }
+      : {}),
     ...(rulesetFreeStrike(actor, action) ? { strikes: actor.strikesLeft } : {}),
     ...(action.heal ? { heals: true } : {}),
     ...(action.restore ? { restores: action.restore.pool } : {}),
@@ -1647,6 +1658,10 @@ export function rulesetWindowOptions(
   const source = "sourceId" in window.trigger ? window.trigger.sourceId : "";
   const trigger = window.trigger;
   const cause: RulesetMomentCause = {
+    ...("targetIds" in trigger ? { targetIds: trigger.targetIds } : {}),
+    ...("optionId" in trigger && rulesetCombatant(state, source)?.block && !("catalog" in trigger && trigger.catalog)
+      ? { action: trigger.label }
+      : {}),
     ...("catalog" in trigger && trigger.catalog ? { catalog: trigger.catalog } : {}),
     ...("entry" in trigger && trigger.entry ? { entry: trigger.entry } : {}),
     ...(trigger.kind === "hit" && trigger.blow ? { blow: trigger.blow } : {}),
@@ -1655,7 +1670,8 @@ export function rulesetWindowOptions(
     const option = optionFrom(definition, combat, state, actor, action, true)!;
     // Nobody to pick unless the entry says its holder picks: it is aimed back at whoever caused
     // the moment, or, for something its holder does to themselves, at its holder.
-    return moment === "falls" || rulesetReactionPointsAtSource(action)
+    if (moment === "falls" && action.targets.count > 1) return option;
+    return moment === "falls" || action.reaction?.at === "target" || rulesetReactionPointsAtSource(action)
       ? { ...option, targets: { side: "self", count: 0 } }
       : option;
   });
@@ -1664,7 +1680,7 @@ export function rulesetWindowOptions(
 /** Whether what is taken at a moment is aimed back at whoever caused it. False for one its holder
  *  picks targets for, and for one they do to themselves. */
 export function rulesetReactionPointsAtSource(action: RulesetCombatAction): boolean {
-  return !!action.reaction && action.reaction.at !== "chosen" && action.targets.side !== "self";
+  return !!action.reaction && action.reaction.at === "source" && action.targets.side !== "self";
 }
 
 /**
@@ -1681,11 +1697,14 @@ export function rulesetAnswerDeflects(
   const combat = definition.combat;
   const window = state.window;
   const held = window?.resume?.kind === "action" ? window.resume.held : undefined;
-  if (!combat || window?.trigger.kind !== "hit" || !held || held.targetId !== actor.id) return null;
+  if (!combat || window?.trigger.kind !== "hit" || !held) return null;
   const action = actor.actions.find((entry) => entry.id === optionId);
-  if (!action || action.targets.side !== "self") return null;
+  if (!action || (action.reaction?.at !== "target" && (action.targets.side !== "self" || held.targetId !== actor.id)))
+    return null;
+  const target = rulesetCombatant(state, held.targetId);
+  if (!target) return null;
   const applied = new Set((action.applies ?? []).map((entry) => entry.condition));
-  const active = new Set(rulesetCombatConditions(definition, actor));
+  const active = new Set(rulesetCombatConditions(definition, target));
   const gain = (combat.conditions ?? [])
     .filter((entry) => applied.has(entry.condition) && !active.has(entry.condition))
     .flatMap((entry) => entry.modifiers ?? [])
@@ -1693,7 +1712,7 @@ export function rulesetAnswerDeflects(
   if (gain === 0) return null;
   if (held.roll.natural) return false;
   const attacker = window.resume?.kind === "action" ? rulesetCombatant(state, window.resume.actorId) : undefined;
-  return held.roll.total < rulesetDefenseAgainst(definition, combat, state, actor, attacker).defense + gain;
+  return held.roll.total < rulesetDefenseAgainst(definition, combat, state, target, attacker).defense + gain;
 }
 
 /** Which moment a window is, for the reactions that wait for one. A walk and the turn between two
@@ -1703,7 +1722,8 @@ export function rulesetWindowMoment(trigger: RulesetWindowTrigger): RulesetReact
     trigger.kind === "hit" ||
     trigger.kind === "harmed" ||
     trigger.kind === "used" ||
-    trigger.kind === "falls"
+    trigger.kind === "falls" ||
+    trigger.kind === "turn-start"
     ? trigger.kind
     : null;
 }
@@ -1721,10 +1741,10 @@ function momentAnswers(
   state: RulesetEncounterState,
   holder: RulesetCombatant,
   sourceId: string,
-  moment: { against?: RulesetReactionAgainst; blow?: RulesetBlowKind; seesSource?: true },
+  moment: RulesetReactionAlso,
   cause: RulesetMomentCause,
 ): boolean {
-  if (!rulesetAgainstMatches(moment.against, cause.catalog, cause.entry)) return false;
+  if (!rulesetAgainstMatches(moment.against, cause.catalog, cause.entry, cause.action)) return false;
   if (moment.blow && cause.blow !== moment.blow) return false;
   if (moment.seesSource && !rulesetSees(state, holder, rulesetCombatant(state, sourceId))) return false;
   return true;
@@ -1736,12 +1756,58 @@ function rulesetAgainstMatches(
   against: RulesetReactionAgainst | undefined,
   catalog: string | undefined,
   entry: string | undefined,
+  action: string | undefined,
 ): boolean {
   if (!against) return true;
   return (
     (catalog !== undefined && (against.catalogs ?? []).includes(catalog)) ||
-    (entry !== undefined && (against.entries ?? []).includes(entry))
+    (entry !== undefined && (against.entries ?? []).includes(entry)) ||
+    (action !== undefined && (against.actions ?? []).some((name) => name.toLowerCase() === action.toLowerCase()))
   );
+}
+
+/** The creature an aimed or hit moment is about, including a nearby ally (1.126). */
+export function rulesetReactionTarget(
+  state: RulesetEncounterState,
+  holder: RulesetCombatant,
+  action: RulesetCombatAction,
+  moment: RulesetReactionMoment,
+  sourceId: string,
+  cause: RulesetMomentCause,
+): string | undefined {
+  if (moment === "turn-start" || moment === "falls" || moment === "used") return sourceId;
+  return [action.reaction!, ...(action.reaction?.also ?? [])].flatMap((one) => {
+    if (one.on !== moment || !momentAnswers(state, holder, sourceId, one, cause)) return [];
+    return (cause.targetIds ?? [holder.id]).filter((id) => {
+      if (!one.for || one.for === "self") return id === holder.id;
+      const target = rulesetCombatant(state, id);
+      return (
+        !!target &&
+        target.side === holder.side &&
+        (one.for !== "ally" || id !== holder.id) &&
+        rulesetCombatantDistance(state, holder, target) <= (one.within ?? 0)
+      );
+    });
+  })[0];
+}
+
+/** Eligible fallers of this event, nearest first; other events never enter this choice (1.126). */
+export function rulesetFallTargets(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+): string[] {
+  const trigger = state.window?.trigger;
+  if (trigger?.kind !== "falls") return [];
+  const legal = rulesetOptionTargets(definition, state, actor.id, action);
+  return (trigger.fallerIds ?? [trigger.sourceId])
+    .filter((id) => legal.includes(id))
+    .sort(
+      (a, b) =>
+        rulesetCombatantDistance(state, actor, rulesetCombatant(state, a)!) -
+        rulesetCombatantDistance(state, actor, rulesetCombatant(state, b)!),
+    );
 }
 
 export function rulesetReactionsAt(
@@ -1765,11 +1831,46 @@ export function rulesetReactionsAt(
     // Its own moment, or any it is also taken at, each read with its own `against`.
     const moments = [action.reaction, ...(action.reaction.also ?? [])];
     if (!moments.some((one) => one.on === moment && momentAnswers(state, actor, sourceId, one, cause))) return false;
+    const target = rulesetReactionTarget(state, actor, action, moment, sourceId, cause);
+    if ((moment === "aimed" || moment === "hit") && !target) return false;
     if (optionFrom(definition, combat, state, actor, action, true) === null) return false;
+    // A bystander's distance is to the creature it protects. An explicit range still limits the
+    // answer, but an omitted range does not invent a melee reach to a distant attacker.
+    const nearby =
+      (moment === "aimed" || moment === "hit") &&
+      !!target &&
+      (target !== actor.id ||
+        moments.some(
+          (one) => one.on === moment && one.for === "any" && momentAnswers(state, actor, sourceId, one, cause),
+        )) &&
+      !action.range &&
+      action.reach === undefined;
+    if (moment === "turn-start") {
+      const source = rulesetCombatant(state, sourceId);
+      if (
+        !source ||
+        (action.targets.side === "enemy" || action.harmful ? source.side === actor.side : source.side !== actor.side)
+      )
+        return false;
+      return rulesetOptionTargets(definition, state, actor.id, action).includes(sourceId);
+    }
+    if (action.reaction.at === "target" && target && moment !== "falls")
+      return rulesetOptionTargets(definition, state, actor.id, action, nearby).includes(target);
+    if (moment === "falls" && cause.targetIds && action.targets.count > 1) {
+      const legal = rulesetOptionTargets(definition, state, actor.id, action);
+      return cause.targetIds.some((id) => legal.includes(id));
+    }
+    if (
+      moment === "falls" &&
+      state.window?.trigger.kind === "falls" &&
+      state.window.trigger.sourceId === sourceId &&
+      action.targets.count > 1
+    )
+      return rulesetFallTargets(definition, state, actor, action).length > 0;
     // Somebody using something is answered only from where the answer reaches them, whether or not
     // it is aimed back at them: a counter that simply calls it off still has to reach it.
     if (moment === "used" && rulesetTargetRefusal(state, actor.id, action.id, sourceId) !== null) return false;
     if (moment !== "falls" && !rulesetReactionPointsAtSource(action)) return true;
-    return rulesetOptionTargets(definition, state, actor.id, action).includes(sourceId);
+    return rulesetOptionTargets(definition, state, actor.id, action, nearby).includes(sourceId);
   });
 }

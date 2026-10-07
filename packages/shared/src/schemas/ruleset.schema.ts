@@ -1370,16 +1370,22 @@ const rulesetReactionAgainstSchema = z
   .object({
     catalogs: z.array(sheetId).min(1).max(12).optional(),
     entries: z.array(catalogEntryRef).min(1).max(12).optional(),
+    actions: z.array(z.string().trim().min(1).max(80)).min(1).max(12).optional(),
   })
   .strict()
-  .refine((against) => against.catalogs !== undefined || against.entries !== undefined, {
-    message: '"against" names catalogs, entries or both',
-  });
+  .refine(
+    (against) => against.catalogs !== undefined || against.entries !== undefined || against.actions !== undefined,
+    {
+      message: '"against" names catalogs, entries or both, or creature actions',
+    },
+  );
 
 /** What else narrows a moment (Capability API 1.113): `blow` answers only a hit struck in reach
  *  (`melee`) or from afar (`ranged`), and `seesSource` only while its holder sees whoever caused it.
  *  5e's Parry is both. */
 const rulesetMomentNarrowing = {
+  for: z.enum(["self", "ally", "any"]).optional(),
+  within: z.number().finite().min(0).optional(),
   blow: z.enum(["melee", "ranged"]).optional(),
   seesSource: z.literal(true).optional(),
 };
@@ -1395,13 +1401,17 @@ const blowOnlyOnHit = (moment: { on: string; blow?: string }, ctx: z.RefinementC
 
 const rulesetReactionMomentBase = z
   .object({
-    on: z.enum(["aimed", "hit", "harmed", "used", "falls"]),
-    at: z.enum(["source", "chosen"]).default("source"),
+    on: z.enum(["aimed", "hit", "harmed", "used", "falls", "turn-start"]),
+    at: z.enum(["source", "chosen", "target"]).default("source"),
     ...rulesetMomentNarrowing,
     /** Stops what opened the window from happening at all. Only a moment BEFORE something resolves
      *  may be answered that way: what has already happened cannot be called off, and a roll that
      *  has already hit is changed by what the answer does to the numbers, not undone. */
     cancels: z.literal(true).optional(),
+    cancelSave: z
+      .object({ save: sheetId, dc: z.number().int().min(1).max(1000) })
+      .strict()
+      .optional(),
     against: rulesetReactionAgainstSchema.optional(),
     /** More moments it may be taken at, each with its own `against` (Capability API 1.112): 5e's
      *  Shield, taken when an attack hits AND when Magic Missile is aimed at its caster. Only the
@@ -1410,7 +1420,7 @@ const rulesetReactionMomentBase = z
       .array(
         z
           .object({
-            on: z.enum(["aimed", "hit", "harmed", "used", "falls"]),
+            on: z.enum(["aimed", "hit", "harmed", "used", "falls", "turn-start"]),
             against: rulesetReactionAgainstSchema.optional(),
             ...rulesetMomentNarrowing,
           })
@@ -1431,7 +1441,10 @@ const rulesetReactionMomentBase = z
   })
   .strict()
   .superRefine((reaction, ctx) => {
-    if (reaction.cancels && (reaction.on === "harmed" || reaction.on === "hit" || reaction.on === "falls")) {
+    if (
+      reaction.cancels &&
+      (reaction.on === "harmed" || reaction.on === "hit" || reaction.on === "falls" || reaction.on === "turn-start")
+    ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: 'Only an "aimed" or "used" reaction cancels: what has already happened cannot be called off',
@@ -1444,6 +1457,32 @@ const rulesetReactionMomentBase = z
         message: '"upTo" says how much a "used" reaction that cancels can stop, so it needs both',
       });
     }
+    if (reaction.cancelSave && !reaction.cancels) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["cancelSave"], message: '"cancelSave" needs "cancels"' });
+    }
+    [reaction, ...(reaction.also ?? [])].forEach((moment, index) => {
+      const path = index === 0 ? [] : ["also", index - 1];
+      if (moment.for && moment.for !== "self") {
+        if (moment.on !== "aimed" && moment.on !== "hit")
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [...path, "for"],
+            message: 'Only "aimed" and "hit" moments answer for others',
+          });
+        if (moment.within === undefined)
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [...path, "within"],
+            message: 'Answering for others needs "within"',
+          });
+      }
+      if (moment.on === "turn-start" && moment.against)
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [...path, "against"],
+          message: 'A "turn-start" moment has no action to answer with "against"',
+        });
+    });
     // A fall has no source entry or blow to narrow (Capability API 1.119).
     [reaction, ...(reaction.also ?? [])].forEach((moment, index) => {
       if (moment.on !== "falls") return;
@@ -1525,6 +1564,7 @@ export const RULESET_COMBAT_STANDARD_ACTIONS = combatStandardActionSchema.option
 const catalogDurationSchema = z.union([
   z.literal("instant"),
   z.literal("until-save"),
+  z.literal("this-action"),
   z
     .object({
       rounds: z.number().int().min(1).max(1000),
@@ -1764,6 +1804,14 @@ const catalogMechanicsObject = z
      *    the amount is what the moment is about, and nothing taken there unmakes it.
      *  - `falls`: a creature is falling, before its damage and prone (Capability API 1.119).
      *    The answer lands on the faller, within its range and target side.
+     *  - `turn-start`: a creature on the entry's target side starts its turn within range (1.126).
+     *
+     *  `for: "ally" | "any"` on aimed or hit asks bystanders within `within` of the target (1.126).
+     *  `at: "target"` puts the answer on that target: Shield Guardian models its amulet wearer as
+     *  an ally within 5. Protection puts this-action disadvantage on the source before its roll.
+     *  `cancelSave` asks the holder for a save before cancelling; Rock Catching cancels the whole
+     *  attack. `against.actions` names stat-block actions, case-insensitively, by their whole name.
+     *  A falls answer may catch up to targetCount fallers of the same event, nearest first.
      *
      *  `at` says whom what is taken may be aimed at. `source` is whoever caused the moment, which
      *  is the only target most of these have, and is filled in rather than picked.
@@ -7280,6 +7328,8 @@ function creatureIssues(
       }
     });
     // What a reaction answers is named by catalog, so it has to be one this ruleset has.
+    if (action.reaction?.cancelSave && !saves.has(action.reaction.cancelSave.save))
+      add([...path, "reaction", "cancelSave", "save"], `Unknown save "${action.reaction.cancelSave.save}"`);
     if (action.reaction) reactionAgainstIssues(catalogIds, action.reaction, [...path, "reaction"], add);
     // A creature has no sheet to read a check off, so its own number is written down (1.111).
     if (action.reaction?.above) {
@@ -8197,6 +8247,11 @@ export function rulesetCatalogEntryIssues(
     if (mechanics?.reaction && typeof mechanics.reaction === "object") {
       const known = new Set((definition.catalogs ?? []).map((one) => one.id));
       reactionAgainstIssues(known, mechanics.reaction, [index, "mechanics", "reaction"], add);
+      if (mechanics.reaction.cancelSave && !saves.has(mechanics.reaction.cancelSave.save))
+        add(
+          [index, "mechanics", "reaction", "cancelSave", "save"],
+          `Unknown save "${mechanics.reaction.cancelSave.save}"`,
+        );
     }
     if (mechanics?.save && !saves.has(mechanics.save.save)) {
       add([index, "mechanics", "save", "save"], `Unknown save "${mechanics.save.save}"`);

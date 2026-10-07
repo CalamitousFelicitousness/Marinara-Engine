@@ -53,6 +53,8 @@ import {
   rulesetEncounterSummary,
   rulesetOptionTargets,
   rulesetReactionPointsAtSource,
+  rulesetReactionTarget,
+  rulesetFallTargets,
   rulesetPositionOf,
   rulesetWalkingDistances,
   rulesetSheetBuildsByName,
@@ -591,9 +593,15 @@ export function rulesetMenu(
     : rulesetCombatOptions(definition, encounter, actorId);
   return menu.map((option) => {
     const aim = option.area ? rulesetAimCells(encounter, actorId, option.id, RULESET_AIM_LIMIT) : [];
+    const actor = rulesetCombatant(encounter, actorId);
+    const action = actor?.actions.find((one) => one.id === option.id);
+    const fallers =
+      inWindow && encounter.window?.trigger.kind === "falls" && option.targets.count > 1 && actor && action
+        ? rulesetFallTargets(definition, encounter, actor, action)
+        : undefined;
     return {
       ...option,
-      targetIds: rulesetOptionTargets(definition, encounter, actorId, option),
+      targetIds: fallers ?? rulesetOptionTargets(definition, encounter, actorId, option),
       ...(aim.length > 0 ? { aim } : {}),
     };
   });
@@ -652,6 +660,7 @@ export function directedRulesetView(
             waiting: Math.max(0, held.window.waiting.length - 1),
             ...(held.window.trigger.kind === "leaves-reach" ? { moverId: held.window.trigger.moverId } : {}),
             ...("sourceId" in held.window.trigger ? { sourceId: held.window.trigger.sourceId } : {}),
+            ...("targetIds" in held.window.trigger ? { targetIds: held.window.trigger.targetIds } : {}),
             ...(rulesetWindowMoment(held.window.trigger) ? { moment: rulesetWindowMoment(held.window.trigger)! } : {}),
             ...("label" in held.window.trigger ? { label: held.window.trigger.label } : {}),
             ...(held.window.trigger.kind === "hit"
@@ -962,10 +971,28 @@ export function rulesetWindowTargetOf(
   if (!trigger || option.targets.count > 0 || option.id === RULESET_PASS_OPTION) return undefined;
   if (trigger.kind === "leaves-reach") return trigger.moverId;
   if (trigger.kind === "falls") return trigger.sourceId;
-  if (trigger.kind !== "aimed" && trigger.kind !== "hit" && trigger.kind !== "harmed" && trigger.kind !== "used") {
+  if (
+    trigger.kind !== "aimed" &&
+    trigger.kind !== "hit" &&
+    trigger.kind !== "harmed" &&
+    trigger.kind !== "used" &&
+    trigger.kind !== "turn-start"
+  ) {
     return undefined;
   }
   const action = actor.actions.find((entry) => entry.id === option.id);
+  if (action?.reaction?.at === "target")
+    return rulesetReactionTarget(encounter, actor, action, trigger.kind, trigger.sourceId, {
+      ...("targetIds" in trigger ? { targetIds: trigger.targetIds } : {}),
+      ...("optionId" in trigger &&
+      rulesetCombatant(encounter, trigger.sourceId)?.block &&
+      !("catalog" in trigger && trigger.catalog)
+        ? { action: trigger.label }
+        : {}),
+      ...("catalog" in trigger ? { catalog: trigger.catalog } : {}),
+      ...("entry" in trigger ? { entry: trigger.entry } : {}),
+      ...(trigger.kind === "hit" ? { blow: trigger.blow } : {}),
+    });
   return action && rulesetReactionPointsAtSource(action) ? trigger.sourceId : undefined;
 }
 
@@ -1052,6 +1079,16 @@ function rulesetCandidatesFrom(
     // In a window, an option that asks for nobody may still land on somebody: whoever is walking
     // away, or whoever caused the moment. It is weighed by what it would do to THEM, and its answer
     // still names nobody, because the rules fill that target in.
+    const fallingAction = actor.actions.find((entry) => entry.id === option.id);
+    if (menu && encounter.window?.trigger.kind === "falls" && option.targets.count > 1 && fallingAction) {
+      const targetIds = rulesetFallTargets(definition, encounter, actor, fallingAction).slice(0, option.targets.count);
+      candidates.push({
+        action: { choice: { actorId, optionId: option.id, targetIds, ...paying(way) }, option },
+        setup: targetIds.length,
+        cost: price,
+      });
+      continue;
+    }
     const lands = menu ? rulesetWindowTargetOf(encounter, actor, option) : undefined;
     if (option.targets.count <= 0 && !lands) {
       // Holding the thing it is already holding would end it and start it again for the same price.

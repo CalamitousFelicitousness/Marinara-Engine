@@ -3308,19 +3308,25 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
         });
       return found;
     };
-    // A private sentence of four or more words found in a section someone else can also read.
+    // A private sentence of four or more words found in a section someone else can also read; text with
+    // other macros counts as read by everyone. Segmenting counts words in languages without spaces too.
+    const words = new Intl.Segmenter(undefined, { granularity: "word" });
     const leaks = (before: Map<string, string>, after: Map<string, string>) =>
       [...before].some(
         ([key, text]) =>
           key !== "{{" &&
           [...after].some(
             ([wider, output]) =>
-              wider !== "{{" &&
-              (JSON.parse(wider) as string[]).some((name) => !(JSON.parse(key) as string[]).includes(name)) &&
+              (wider === "{{" ||
+                (JSON.parse(wider) as string[]).some((name) => !(JSON.parse(key) as string[]).includes(name))) &&
               text
-                .split(/[.!?]/u)
+                .split(/\p{Sentence_Terminal}/u)
                 .map((sentence) => sentence.trim())
-                .some((sentence) => sentence.split(" ").length >= 4 && output.includes(sentence)),
+                .some(
+                  (sentence) =>
+                    [...words.segment(sentence)].filter((word) => word.isWordLike).length >= 4 &&
+                    output.includes(sentence),
+                ),
           ),
       );
     // Combine the summaries the same characters read. One whose text differs by character joins
@@ -3339,7 +3345,8 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       // reader; replacing only one character's section would lose the others.
       if (!(ctx.individual ? audience : [""]).every((id) => outsideLive(entry, id))) continue;
       const readers = ctx.individual ? audience : ctx.characterIds;
-      if (new Set(readers.map((id) => renderEntry(ctx, entry.content, [id]))).size > 1) {
+      const texts = readers.map((id) => renderEntry(ctx, entry.content, [id]));
+      if (new Set(texts).size > 1) {
         // ponytail: Chat Summaries record no edits, so any updatedAt change counts as one, even
         // turning a summary off and on. Stamp hand edits on the entry to combine those too.
         if (entry.origin !== "automated" || entry.createdAt !== entry.updatedAt || sections([entry.content]).has("{{"))
@@ -3347,7 +3354,9 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
         conditional.add(entry.id);
       }
       const ranged = coverage(entry).length > 0;
-      const key = JSON.stringify([audience, ranged]);
+      // Every reader of a summary gets its whole message range and that range's story dates, so merged
+      // chats also combine only summaries the same characters read.
+      const key = JSON.stringify([readers.filter((_, index) => texts[index]!.trim()), ranged]);
       const group = groups.get(key) ?? { audience, ranged, entries: [], combine: false };
       group.entries.push(entry);
       group.combine ||= conditional.has(entry.id);

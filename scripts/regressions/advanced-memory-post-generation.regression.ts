@@ -1777,6 +1777,111 @@ try {
   assert.equal(mergedCombined.filter((entry) => entry.enabled).length, 1);
   assert(mergedCombined.find((entry) => entry.enabled)!.content.includes(maukieSecret));
   summaryResponse = undefined;
+
+  // A private sentence in Chinese or Japanese, which have no spaces, is caught when copied into shared text too.
+  const cjkRecap = recap(
+    "cjk-recap",
+    0,
+    `${forBoth}${"SHARED_WALK ".repeat(300)}{{#if char == "Maukie"}}毛奇把钥匙藏在了钟楼里。{{/if}}{{/if}}`,
+  );
+  summaryReply = (prompt) =>
+    prompt.includes("钟楼")
+      ? 'COMBINED_WALK. 毛奇把钥匙藏在了钟楼里。 {{#if char == "Maukie"}}毛奇保持沉默。{{/if}}'
+      : "PLAIN_COMPACTED";
+  await chats.patchMetadata(combineChat.id, { groupChatMode: "individual", summaryEntries: [cjkRecap, sharedRecap] });
+  await memory.checkScenesAfterGeneration(combineChat.id, { blocking: false });
+  assert.deepEqual((await combineEntries())[0], cjkRecap, "a copied private sentence without spaces is not saved");
+  assert.doesNotMatch(await recallFor(privateB.id), /钟楼/u);
+  // Text next to another macro counts as read by everyone.
+  summaryReply = (prompt) =>
+    prompt.includes("MAUKIE_SECRET")
+      ? 'COMBINED_WALK. {{#if char == "Maukie"}}Maukie kept quiet.{{/if}} {{foo}} MAUKIE_SECRET hid the key.'
+      : "PLAIN_COMPACTED";
+  await chats.patchMetadata(combineChat.id, {
+    summaryEntries: [privateRecap, recap("macro-recap", 1, `${forBoth}${"SHARED_TWO ".repeat(300)}{{foo}}{{/if}}`)],
+  });
+  await memory.checkScenesAfterGeneration(combineChat.id, { blocking: false });
+  assert.deepEqual((await combineEntries())[0], privateRecap, "a private sentence next to another macro is not saved");
+  assert.doesNotMatch(await recallFor(privateB.id), /MAUKIE_SECRET/u);
+
+  // A summary keeps one message range for all its readers, shown with that range's story dates, so in a
+  // merged chat a summary only Maukie reads is not combined with one Pantalone also reads.
+  const rangeChat = await chats.create({
+    name: "Merged private range",
+    mode: "roleplay",
+    characterIds: [privateA.id, privateB.id],
+    connectionId: connection.id,
+  });
+  assert(rangeChat);
+  chatIds.push(rangeChat.id);
+  await chats.createMessage({
+    chatId: rangeChat.id,
+    role: "user",
+    content: "Date: NIGHT_OF_THE_HEIST\nMaukie slips away alone.",
+    extra: { hiddenFromAICharacterIds: [privateB.id] },
+  });
+  await chats.createMessage({ chatId: rangeChat.id, role: "user", content: "Date: MORNING_AFTER\nA shared walk." });
+  await chats.createMessage({
+    chatId: rangeChat.id,
+    role: "user",
+    content: "The next shared scene.",
+    extra: { isConversationStart: true },
+  });
+  const rangeSource = await chats.listMessages(rangeChat.id);
+  const rangeRecap = (id: string, index: number, content: string) =>
+    createChatSummaryEntry({
+      id,
+      origin: "automated",
+      title: `Messages #${index + 1}–#${index + 1}`,
+      sourceMode: "range",
+      content,
+      enabled: true,
+      messageIds: [rangeSource[index]!.id],
+      messageCount: 1,
+      rangeStartIndex: index + 1,
+      rangeEndIndex: index + 1,
+    });
+  await chats.patchMetadata(rangeChat.id, {
+    groupChatMode: "shared",
+    advancedMemory: {
+      ...DEFAULT_ADVANCED_MEMORY_SETTINGS,
+      enabled: true,
+      summaryBudgetTokens: 1000,
+      sceneCheckInterval: 100,
+      knowledgeStarts: { [privateA.id]: null, [privateB.id]: null },
+    },
+    summaryEntries: [
+      rangeRecap("maukie-only", 0, `{{#if char == "Maukie"}}${"MAUKIE_ALONE ".repeat(300)}{{/if}}`),
+      rangeRecap("both-read", 1, `${forBoth}${"SHARED_TWO ".repeat(300)}{{/if}}`),
+    ],
+  });
+  summaryReply = (prompt) =>
+    `${prompt.includes("SHARED_TWO") ? "SHARED_SHORT. " : ""}${
+      prompt.includes("MAUKIE_ALONE") ? '{{#if char == "Maukie"}}MAUKIE_SHORT.{{/if}}' : ""
+    }`;
+  calls.length = 0;
+  await memory.checkScenesAfterGeneration(rangeChat.id, { blocking: false });
+  assert.equal(calls.length, 2, "each group of readers is shortened on its own");
+  const rangeFor = async (id: string) =>
+    (
+      await memory.prepare({
+        chatId: rangeChat.id,
+        messages: rangeSource,
+        audienceCharacterIds: [id],
+        budgetTokens: 50_000,
+        readOnly: true,
+      })
+    ).chatSummary ?? "";
+  const maukieRange = await rangeFor(privateA.id);
+  for (const text of ["NIGHT_OF_THE_HEIST", "MAUKIE_SHORT", "SHARED_SHORT"]) assert(maukieRange.includes(text), text);
+  const pantaloneRange = await rangeFor(privateB.id);
+  assert.match(pantaloneRange, /SHARED_SHORT/u);
+  assert.doesNotMatch(
+    pantaloneRange,
+    /NIGHT_OF_THE_HEIST|Messages #1/u,
+    "Pantalone never gets the range or story date of a message hidden from him",
+  );
+  summaryReply = undefined;
 } finally {
   finishStream?.();
   for (const chatId of chatIds) await memory.cancel(chatId);

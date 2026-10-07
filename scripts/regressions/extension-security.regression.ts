@@ -742,31 +742,36 @@ try {
       documentElement: { style: {} },
       body: { style: {}, appendChild: () => undefined },
     };
-    runInNewContext(bootstrap, {
-      Date: { now: () => now },
-      Blob: class {},
-      URL: { createObjectURL: () => "blob:test", revokeObjectURL: (url: string) => revokedUrls.push(url) },
-      Worker: class {
-        addEventListener(type: string, listener: (event: { data: unknown }) => void) {
-          if (type === "message") deliverWorkerMessage = listener;
-        }
-        postMessage() {}
-        terminate() {
-          terminated = true;
-        }
-      },
-      document: fakeDocument,
-      window: {
-        parent: { postMessage: (message: (typeof posted)[number]) => posted.push(message) },
-        setInterval: (callback: () => void) => {
-          watchdogTick = callback;
-          return 1;
+    const startSandbox = () => {
+      terminated = false;
+      posted.length = 0;
+      runInNewContext(bootstrap, {
+        Date: { now: () => now },
+        Blob: class {},
+        URL: { createObjectURL: () => "blob:test", revokeObjectURL: (url: string) => revokedUrls.push(url) },
+        Worker: class {
+          addEventListener(type: string, listener: (event: { data: unknown }) => void) {
+            if (type === "message") deliverWorkerMessage = listener;
+          }
+          postMessage() {}
+          terminate() {
+            terminated = true;
+          }
         },
-        clearInterval: () => undefined,
-        setTimeout: () => 0,
-        addEventListener: () => undefined,
-      },
-    });
+        document: fakeDocument,
+        window: {
+          parent: { postMessage: (message: (typeof posted)[number]) => posted.push(message) },
+          setInterval: (callback: () => void) => {
+            watchdogTick = callback;
+            return 1;
+          },
+          clearInterval: () => undefined,
+          setTimeout: () => 0,
+          addEventListener: () => undefined,
+        },
+      });
+    };
+    startSandbox();
     assert.ok(watchdogTick && deliverWorkerMessage, "Sandbox must start the heartbeat watchdog");
     // Safari/WebKit loads a Worker script after new Worker() returns, so
     // revoking its blob URL at once made the extension fail to start.
@@ -806,6 +811,24 @@ try {
       "The host must be told the worker was stopped so it can drop dead controls",
     );
     // e2e/personal-extension-restart.e2e.ts covers what the host does with it.
+
+    // Heartbeats skipped the message limit, so an extension could send them
+    // without end and freeze the page. The worker sends one a second, so a
+    // backlog that arrives at once after a pause (an open browser dialog, a
+    // frozen tab) stays within that rate and must not stop the worker.
+    startSandbox();
+    tick(300_000);
+    for (let beat = 0; beat < 300; beat += 1) heartbeat();
+    tick(1_000);
+    assert.equal(terminated, false, "A heartbeat backlog after a pause must not stop a healthy worker");
+    // Browsers drop a terminated worker's queued messages, so stop delivering.
+    for (let beat = 0; beat < 1_000 && !terminated; beat += 1) heartbeat();
+    assert.equal(terminated, true, "A heartbeat flood must count toward the sandbox message limit");
+    assert.deepEqual(
+      posted.filter((message) => message.type === "error").map(({ stopped, message }) => ({ stopped, message })),
+      [{ stopped: true, message: "Browser extension was stopped for exceeding the sandbox message limit" }],
+      "The host must be told a flooding worker was stopped",
+    );
   }
 
   const fullPageExtension = {

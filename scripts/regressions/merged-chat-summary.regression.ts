@@ -195,6 +195,7 @@ try {
     impersonate: false,
     narratorCharacterId: narrator.id,
     profilesById: profiles,
+    unreadableIds: new Set<string>(),
   };
   assert.deepEqual(
     mergedChatSummaryReaders(base)?.map((profile) => profile.name),
@@ -232,7 +233,7 @@ try {
   const brokenReaders = mergedChatSummaryReaders({
     ...base,
     characterIds: brokenCast,
-    profilesById: (await resolveCharacterMacroData(db, brokenCast)).profilesById,
+    ...(await resolveCharacterMacroData(db, brokenCast)),
   });
   for (const marker of [true, false]) {
     const cast = { groupCharacterIds: brokenCast };
@@ -243,6 +244,39 @@ try {
     );
   }
   assert.equal(brokenReaders, undefined, "an unreadable card keeps the usual single reading");
+  // An unreadable narrator is never a reader, so the rest are still marked.
+  assert.deepEqual(
+    mergedChatSummaryReaders({
+      ...base,
+      characterIds: [broken.id, maukie.id, pantalone.id],
+      narratorCharacterId: broken.id,
+      ...(await resolveCharacterMacroData(db, [broken.id, maukie.id, pantalone.id])),
+    })?.map((profile) => profile.name),
+    ["Maukie", "Pantalone"],
+    "an unreadable narrator still leaves the readers",
+  );
+
+  // A deleted card's id can linger in an older chat (before #6084). It does not reply, so the rest are still marked.
+  const staleCast = [...all, "deleted-card"];
+  assert.deepEqual(
+    (await loadCharacterPromptInfo({ chars: characters, characterIds: staleCast, chatMode: "roleplay" })).map(
+      (info) => info.name,
+    ),
+    ["Narrator", "Maukie", "Pantalone"],
+    "a deleted card's leftover id takes no part in the reply",
+  );
+  const staleReaders = mergedChatSummaryReaders({
+    ...base,
+    characterIds: staleCast,
+    ...(await resolveCharacterMacroData(db, staleCast)),
+  });
+  for (const marker of [true, false]) {
+    assert.equal(
+      await summaryBlock(staleCast, marker, { chatSummaryReaders: staleReaders }),
+      merged,
+      `a deleted card's leftover id keeps the marking (marker: ${marker})`,
+    );
+  }
 
   // Generation and the prompt preview both hand the readers to every summary placement.
   const source = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");

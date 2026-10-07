@@ -3683,7 +3683,7 @@ export async function chatsRoutes(app: FastifyInstance) {
                   individual: normalizeGroupChatMode(chatMeta.groupChatMode) === "individual",
                   impersonate: false,
                   narratorCharacterId: normalizeAdvancedMemorySettings(chatMeta.advancedMemory).narratorCharacterId,
-                  profilesById: (await resolveCharacterMacroData(app.db, assistantCharacterIds)).profilesById,
+                  ...(await resolveCharacterMacroData(app.db, assistantCharacterIds)),
                 })
               : undefined,
             enableAgents: chatMeta.enableAgents === true,

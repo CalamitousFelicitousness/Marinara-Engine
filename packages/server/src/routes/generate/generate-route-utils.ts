@@ -1263,10 +1263,11 @@ export function resolvePromptCharacterIdsForTarget(
 
 /**
  * Who a merged group reply may voice, so the Chat Summary can mark who knows what (#7252). Undefined keeps
- * the usual single reading: one character, Individual mode, impersonation, or a character whose card cannot
- * be read (it still replies, so reading for the rest would mislabel its sections). A chosen responder does not
- * pin a merged Roleplay reply to one speaker (mergedSpeaksOnlyTarget in generate.routes.ts), and Advanced
- * Memory reads for everyone present then too. The narrator is never a reader, so narrator-only sections stay out.
+ * the usual single reading: one character, Individual mode, impersonation, or a card that exists but cannot
+ * be read (it still replies, so reading for the rest would mislabel its sections). A deleted card's leftover
+ * id does not reply, so it is skipped. A chosen responder does not pin a merged Roleplay reply to one speaker
+ * (mergedSpeaksOnlyTarget in generate.routes.ts), and Advanced Memory reads for everyone present then too.
+ * The narrator is never a reader, so narrator-only sections stay out.
  */
 export function mergedChatSummaryReaders(input: {
   characterIds: readonly string[];
@@ -1274,11 +1275,12 @@ export function mergedChatSummaryReaders(input: {
   impersonate: boolean;
   narratorCharacterId: string | null;
   profilesById: ReadonlyMap<string, CharacterMacroProfile>;
+  unreadableIds: ReadonlySet<string>;
 }): CharacterMacroProfile[] | undefined {
   if (input.characterIds.length < 2 || input.individual || input.impersonate) return undefined;
   const readers = input.characterIds.filter((id) => id !== input.narratorCharacterId);
-  if (!readers.every((id) => input.profilesById.has(id))) return undefined;
-  return readers.map((id) => input.profilesById.get(id)!);
+  if (readers.some((id) => input.unreadableIds.has(id))) return undefined;
+  return readers.flatMap((id) => input.profilesById.get(id) ?? []);
 }
 
 export function shouldPreferLatestVisibleGameState(input: {

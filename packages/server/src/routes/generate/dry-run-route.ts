@@ -1124,13 +1124,17 @@ export async function registerDryRunRoute(app: FastifyInstance) {
         chatMode !== "game"
       ),
     });
-    const historyMacroProfilesById = (await resolveCharacterMacroData(app.db, allCharacterIds)).profilesById;
+    const { profilesById: historyMacroProfilesById, unreadableIds } = await resolveCharacterMacroData(
+      app.db,
+      allCharacterIds,
+    );
     const chatSummaryReaders = mergedChatSummaryReaders({
       characterIds,
       individual: dryRunGroupChatMode === "individual",
       impersonate,
       narratorCharacterId: advancedMemorySettings.narratorCharacterId,
       profilesById: historyMacroProfilesById,
+      unreadableIds,
     });
 
     // Normal previews only read live answers. An explicit diagnostic request uses its

@@ -70,6 +70,8 @@ export interface CharacterMacroData {
   phoneticNames: string[];
   profiles: NonNullable<MacroContext["characterProfiles"]>;
   profilesById: Map<string, CharacterMacroProfile>;
+  /** Cards that exist but cannot be read: they have no profile here, yet still reply. */
+  unreadableIds: Set<string>;
   primaryFields?: NonNullable<MacroContext["characterFields"]>;
 }
 
@@ -714,19 +716,24 @@ function parseCharacterData(raw: unknown): CharacterData | null {
 }
 
 export async function resolveCharacterMacroData(db: DB, characterIds: string[]): Promise<CharacterMacroData> {
-  if (characterIds.length === 0) return { names: [], phoneticNames: [], profiles: [], profilesById: new Map() };
+  if (characterIds.length === 0)
+    return { names: [], phoneticNames: [], profiles: [], profilesById: new Map(), unreadableIds: new Set() };
 
   const chars = createCharactersStorage(db);
   const names: string[] = [];
   const phoneticNames: string[] = [];
   const profiles: CharacterMacroData["profiles"] = [];
   const profilesById = new Map<string, CharacterMacroProfile>();
+  const unreadableIds = new Set<string>();
   let primaryFields: CharacterMacroData["primaryFields"] | undefined;
 
   for (const id of characterIds) {
     const row = await chars.getById(id);
     const data = parseCharacterData(row?.data);
-    if (!data) continue;
+    if (!data) {
+      if (row) unreadableIds.add(id);
+      continue;
+    }
 
     if (data.name) names.push(data.name);
     const phoneticName =
@@ -767,7 +774,7 @@ export async function resolveCharacterMacroData(db: DB, characterIds: string[]):
     }
   }
 
-  return { names, phoneticNames, profiles, profilesById, primaryFields };
+  return { names, phoneticNames, profiles, profilesById, unreadableIds, primaryFields };
 }
 
 /** What `{{include::...}}` reads (#6912), loaded only when one of `sources` uses it. */

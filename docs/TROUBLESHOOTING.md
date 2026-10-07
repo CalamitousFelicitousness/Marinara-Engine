@@ -212,6 +212,16 @@ For full setup, see [Local Model Setup](connections/local-model.md).
 
 A memory needs at least 5 new messages before it is created. Recall also only shows memories that closely match your new message, so it can return nothing even when memories exist.
 
+### Advanced Memory says scenes need attention
+
+A steady dot on the **Chat Settings** button, or a notice that Advanced Memory found problems, means some scene memories are unclear, out of date or missing.
+
+1. Open **Chat Settings** > **Memory Recall**, or press **Fix** in the notice.
+2. Press **Fix**. It repairs every scene it can with the Helper model and never changes summaries you edited.
+3. Select each scene number under **need your review** to open it in **Access memories for this chat**, then check its text and characters and press **Save correction**.
+
+If Fix stops with an error, check the Helper model's connection, then press **Resume processing** or **Fix** again. See [Fixing memory problems](agents/memory.md#fixing-memory-problems).
+
 ### Summaries are not generating
 
 Chat summaries need a working text connection to write them.

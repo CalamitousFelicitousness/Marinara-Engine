@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import {
   ADVANCED_MEMORY_SCENE_AUDIENCE as SCENE_AUDIENCE,
   ADVANCED_MEMORY_SCENE_AUDIENCE_UNMATCHED as SCENE_AUDIENCE_UNMATCHED,
+  ADVANCED_MEMORY_SCENE_AUDIENCE_UNRESOLVED as SCENE_AUDIENCE_UNRESOLVED,
+  advancedMemoryProblems,
   CHAT_SUMMARY_PROMPT_SETTINGS_KEY,
   DEFAULT_CHAT_SUMMARY_PROMPT,
   DEFAULT_DECISION_CALIBRATION,
@@ -115,6 +117,8 @@ type InitializationOptions = AdvancedMemoryOperationOptions & {
   detectScenes?: boolean;
   closedOnly?: boolean;
   sceneId?: string;
+  /** Fix: repair every flagged scene, list hand-edited ones for review instead of stopping, never widen access. */
+  fixAll?: boolean;
 };
 type SceneCheckOptions = AdvancedMemoryOperationOptions & {
   asOfMessageId?: string;
@@ -2006,6 +2010,12 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       ? unpreparedScenes(ctx, existing, true).find((scene) => scene.id === options.sceneId)
       : undefined;
     if (options.sceneId && !repair) return; // A completed retry must not turn a healthy archive into an error.
+    const fixAll = options.fixAll === true && !repair;
+    // Fix reports the scenes that were flagged before it ran and are healthy afterwards.
+    const before = fixAll ? advancedMemoryProblems(await status(chatId)) : null;
+    // Scenes Fix leaves for the user, with every other scene still processed.
+    const review = new Set<string>();
+    const jobId = newId();
     const processedIndex =
       typeof state.processedMessageId === "string"
         ? ctx.messages.findIndex((message) => message.id === state.processedMessageId)
@@ -2047,13 +2057,14 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     await progress(
       ctx,
       {
-        id: newId(),
+        id: jobId,
         blocking: options.blocking ?? true,
         status: "running",
         stage: needsClassification ? "classifying" : state.stage === "indexing" ? "indexing" : "summarizing",
         completed: needsClassification ? Math.min(from, ctx.messages.length) : 0,
         total: needsClassification ? ctx.messages.length : Math.min(starts.size, ctx.messages.length),
         error: null,
+        ...(fixAll ? { fixResult: null } : {}),
       },
       options,
     );
@@ -2073,6 +2084,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
             closed: index < ordered.length - 1,
           }));
     const saved = sceneRecords(existing);
+    const skipped = new Set<string>();
     for (const record of saved) {
       if (
         record.kind !== "scene" ||
@@ -2088,8 +2100,15 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
         (record.status === "closed" && !scene.closed) ||
         record.startMessageId !== ctx.messages[scene.start]!.id ||
         record.endMessageId !== ctx.messages[scene.end]!.id
-      )
-        throw correctionReviewError(ctx, record, true);
+      ) {
+        if (!fixAll) throw correctionReviewError(ctx, record, true);
+        // Fix keeps the user's text and leaves every scene it overlaps for the user to decide.
+        review.add(record.sceneId);
+        const ids = new Set(record.messageIds);
+        for (const item of scenes)
+          if (item.id === record.sceneId || ctx.messages.slice(item.start, item.end + 1).some((m) => ids.has(m.id)))
+            skipped.add(item.id);
+      }
     }
     const embeddingSource = await resolveMemoryRecallEmbeddingSource(db, {
       chatMetadata: ctx.metadata,
@@ -2108,10 +2127,17 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       const scaffold = buildRecord(ctx, scene, "scene", [], fullSource, "");
       await put(ctx, scaffold, options);
       retained.add(scaffold.id);
-      if (options.closedOnly && !scene.closed) {
-        // Automatic preparation archives finished scenes. Keep any previously
-        // prepared open-scene records until that scene closes or explicit rebuild.
-        for (const record of existing.filter((item) => item.sceneId === scene.id)) retained.add(record.id);
+      // Automatic preparation archives finished scenes. Keep any previously prepared open-scene
+      // records until that scene closes or explicit rebuild. A scene Fix leaves for review also
+      // keeps older summaries of its messages, since Fix writes no replacement for it.
+      const keepScene = () => {
+        const ids = new Set(fullSource.map((message) => message.id));
+        for (const record of existing)
+          if (record.sceneId === scene.id || (fixAll && record.messageIds.some((id) => ids.has(id))))
+            retained.add(record.id);
+      };
+      if ((options.closedOnly && !scene.closed) || skipped.has(scene.id)) {
+        keepScene();
         continue;
       }
       const source = fullSource.filter((message) => visibleIds.has(message.id));
@@ -2149,13 +2175,23 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
                 source.every((message) => previousRecord.messageIds.includes(message.id))))
               ? previousRecord
               : undefined;
-          if (!record && !restoring && previousRecord?.manualOverride && (!previousValid || visibilityChanged))
-            throw correctionReviewError(ctx, previousRecord);
-          if (!record && !restoring && previousRecord?.manualOverride && audience.length) {
-            for (const id of audience) {
+          // Only scenes some character can still see may keep that character.
+          const eligibleAudience = (ids: string[]) =>
+            ids.filter((id) => {
               const eligible = new Set(allowed(ctx, ctx.messages, [id]).map((message) => message.id));
-              if (!source.some((message) => eligible.has(message.id))) throw correctionReviewError(ctx, previousRecord);
-            }
+              return source.some((message) => eligible.has(message.id));
+            });
+          if (
+            !record &&
+            !restoring &&
+            previousRecord?.manualOverride &&
+            (!previousValid || visibilityChanged || eligibleAudience(audience).length < audience.length)
+          ) {
+            if (!fixAll) throw correctionReviewError(ctx, previousRecord);
+            // A hand-edited summary is never rewritten: Fix lists it and moves on.
+            review.add(scene.id);
+            keepScene();
+            continue;
           }
           const entries = sourceEntries(ctx, source, false).filter(
             (entry) => entry.messageIds?.length || entry.rangeStartIndex,
@@ -2183,6 +2219,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
                 `User-corrected scene summary (honor its corrections):\n${hasSceneTimelineCorrection(item) ? `User-corrected story timeframe (takes precedence): ${item.timeline || "unknown (use message order)"}.\n` : ""}${item.content}`,
             ),
           ];
+          const summarized = !record;
           if (!record) {
             await progress(ctx, { stage: "summarizing", completed: index, total: scenes.length }, options);
             candidate.dependencies = [
@@ -2207,10 +2244,21 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
               candidate.timeline = previousRecord.timeline;
               candidate.dependencies.push(SCENE_TIMELINE);
             }
-            candidate.audienceCharacterIds = candidate.manualOverride ? audience : result.audienceCharacterIds;
+            const unclear = !candidate.manualOverride && !!result.audienceIssue;
+            // Fix never widens access on an unclear answer: a redone summary keeps the old one's characters.
+            candidate.audienceCharacterIds = candidate.manualOverride
+              ? audience
+              : fixAll && unclear && previousRecord?.content && !restoring
+                ? eligibleAudience(previousRecord.audienceCharacterIds)
+                : result.audienceCharacterIds;
             candidate.dependencies.push(SCENE_AUDIENCE, sceneVisibility(ctx, candidate.messageIds));
-            if (!candidate.manualOverride && result.audienceIssue)
-              candidate.dependencies.push({ id: SCENE_AUDIENCE_UNMATCHED, revision: result.audienceIssue });
+            if (unclear) {
+              candidate.dependencies.push({ id: SCENE_AUDIENCE_UNMATCHED, revision: result.audienceIssue! });
+              if (fixAll) {
+                candidate.dependencies.push(SCENE_AUDIENCE_UNRESOLVED);
+                review.add(scene.id);
+              }
+            }
             candidate.sourceFingerprint = fingerprint(ctx, source, candidate.audienceCharacterIds);
             await put(ctx, candidate, options);
             if (work !== candidate) {
@@ -2219,32 +2267,48 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
             }
             record = candidate;
           }
+          // Fix asks the helper again about participants it couldn't match, unless it already tried.
+          const recheck =
+            fixAll &&
+            !summarized &&
+            !record.manualOverride &&
+            record.dependencies.some((item) => item.id === SCENE_AUDIENCE_UNMATCHED) &&
+            !record.dependencies.some((item) => item.id === SCENE_AUDIENCE_UNRESOLVED.id);
           // Older summaries lack a participant check. Automatic maintenance repairs a few per run.
           if (
             record.enabled &&
-            !hasSceneAudience(record) &&
-            (!options.closedOnly ||
-              (!record.dependencies.some((item) => item.id === LEGACY_AUDIENCE_CHECK_FAILED.id) &&
-                legacyAudienceChecks++ < LEGACY_AUDIENCE_CHECKS_PER_RUN))
+            (recheck ||
+              (!hasSceneAudience(record) &&
+                (!options.closedOnly ||
+                  (!record.dependencies.some((item) => item.id === LEGACY_AUDIENCE_CHECK_FAILED.id) &&
+                    legacyAudienceChecks++ < LEGACY_AUDIENCE_CHECKS_PER_RUN))))
           ) {
             const accessWork = buildRecord(ctx, scene, "scene", [], source, "pending");
             accessWork.id = `${record.id}-audience`;
             await progress(ctx, { stage: "summarizing", completed: index, total: scenes.length }, options);
             try {
               const result = await summarize(ctx, [logMessages(ctx, source, true)], null, options, accessWork, true);
+              // Fix never widens access on an unclear answer: the scene keeps its characters and stays marked.
+              const unclear = fixAll && !!result.audienceIssue;
+              const audienceCharacterIds = unclear
+                ? eligibleAudience(record.audienceCharacterIds)
+                : result.audienceCharacterIds;
+              if (unclear) review.add(scene.id);
               const checked: StoredRecord = {
                 ...record,
-                audienceCharacterIds: result.audienceCharacterIds,
-                sourceFingerprint: fingerprint(ctx, source, result.audienceCharacterIds),
+                audienceCharacterIds,
+                sourceFingerprint: fingerprint(ctx, source, audienceCharacterIds),
                 dependencies: [
                   ...record.dependencies.filter(
                     (item) =>
                       item.id !== SCENE_AUDIENCE.id &&
                       item.id !== SCENE_AUDIENCE_UNMATCHED &&
+                      item.id !== SCENE_AUDIENCE_UNRESOLVED.id &&
                       item.id !== LEGACY_AUDIENCE_CHECK_FAILED.id,
                   ),
                   SCENE_AUDIENCE,
                   ...(result.audienceIssue ? [{ id: SCENE_AUDIENCE_UNMATCHED, revision: result.audienceIssue }] : []),
+                  ...(unclear ? [SCENE_AUDIENCE_UNRESOLVED] : []),
                 ],
               };
               await put(ctx, checked, options);
@@ -2252,17 +2316,25 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
               await db.delete(advancedMemoryRecords).where(eq(advancedMemoryRecords.id, accessWork.id));
               ctx.recordCache = ctx.recordCache!.filter((item) => item.id !== accessWork.id);
             } catch (error) {
-              // A failed check of an older scene must not stop archiving the scene that just ended.
-              if (!options.closedOnly) throw error;
+              // A failed check of an older scene must not stop archiving the scene that just ended,
+              // nor Fix's other scenes. The scene keeps its access and stays marked.
+              if (!options.closedOnly && !fixAll) throw error;
               abortIfNeeded(options.signal);
               logger.warn(
                 error,
-                "[advanced-memory] Older scene participant check failed; Prepare existing history retries it",
+                "[advanced-memory] Scene %s participant check failed; Fix or Prepare existing history retries it",
+                scene.id,
               );
+              if (fixAll) review.add(scene.id);
               // Later automatic runs move on to other scenes instead of retrying this one.
-              const failed = { ...record, dependencies: [...record.dependencies, LEGACY_AUDIENCE_CHECK_FAILED] };
-              await put(ctx, failed, options);
-              record = failed;
+              if (
+                !hasSceneAudience(record) &&
+                !record.dependencies.some((item) => item.id === LEGACY_AUDIENCE_CHECK_FAILED.id)
+              ) {
+                const failed = { ...record, dependencies: [...record.dependencies, LEGACY_AUDIENCE_CHECK_FAILED] };
+                await put(ctx, failed, options);
+                record = failed;
+              }
             }
           }
           // Persist merged legacy access before retiring generated duplicate copies.
@@ -2335,11 +2407,29 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       );
       return;
     }
+    let fixResult: AdvancedMemoryJob["fixResult"];
+    if (before) {
+      // Anything still flagged afterwards, or set aside during the run, is the user's to review.
+      const after = advancedMemoryProblems(await status(chatId));
+      const reviewSceneIds = [...new Set([...review, ...after.reviewSceneIds, ...after.fixSceneIds])];
+      fixResult = {
+        jobId,
+        fixedSceneIds: [...before.fixSceneIds, ...before.reviewSceneIds].filter((id) => !reviewSceneIds.includes(id)),
+        reviewSceneIds,
+      };
+      logger.info(
+        "[advanced-memory] Fix for chat %s: %d scenes fixed, %d need review",
+        chatId,
+        fixResult.fixedSceneIds.length,
+        reviewSceneIds.length,
+      );
+    }
     await chats.patchMetadata(
       chatId,
       (fresh) => ({
         advancedMemoryState: {
           ...object(fresh.advancedMemoryState),
+          ...(fixResult ? { fixResult } : {}),
           status: "ready",
           stage: "ready",
           completed: ctx.messages.length,
@@ -2460,20 +2550,29 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
         const ctx = await context(chatId);
         const state = object(ctx.metadata.advancedMemoryState);
         if (state.paused === true) await progress(ctx, { paused: false }, operationOptions);
-        if (
+        const resumeCompaction =
           !options.sceneId &&
           state.stage === "compacting" &&
-          (state.status === "error" || state.status === "cancelled")
-        )
-          await updateConstantSummariesAfterGeneration(chatId, {}, operationOptions);
-        else
+          (state.status === "error" || state.status === "cancelled");
+        if (resumeCompaction)
+          try {
+            await updateConstantSummariesAfterGeneration(chatId, {}, operationOptions);
+          } catch (error) {
+            // Fix still repairs the scenes; the next reply retries the continuity update.
+            if (!options.fixAll || operationOptions.signal?.aborted) throw error;
+            logger.warn(error, "[advanced-memory] Continuity update failed before Fix; repairing scenes anyway");
+          }
+        // Fix finishes a stopped continuity update first, then repairs every scene.
+        if (!resumeCompaction || options.fixAll)
           await initializeImpl(chatId, {
             ...operationOptions,
             detectScenes: options.detectScenes,
             sceneId: options.sceneId,
+            fixAll: options.fixAll,
           });
       },
-      !options.sceneId,
+      // Fix waits for running work and then runs, instead of joining it.
+      !options.sceneId && !options.fixAll,
     );
   }
 

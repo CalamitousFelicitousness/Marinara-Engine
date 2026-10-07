@@ -16,7 +16,7 @@ Chat Settings opens automatically when you create a new chat. To close it, click
 
 Chats from before this update keep their familiar tools outside Chat Settings: as movable buttons on a computer, or in the **Chat tools** three-dot menu on a phone. When you upgrade an existing installation, that familiar arrangement also becomes the favorite layout for new chats in each mode, unless you already chose a favorite. Open a tool, then choose **Put back in Chat Settings** if you would rather keep it inside Chat Settings. Desktop Roleplay trackers are grouped in the **Trackers** window. Existing saved window and button positions are preserved.
 
-You can drag the sliders button to a convenient spot. It lines up with nearby chat buttons as you drag; on a computer, hold Alt to place it freely. Each chat remembers its position. A small dot on the button means agents are working.
+You can drag the sliders button to a convenient spot. It lines up with nearby chat buttons as you drag; on a computer, hold Alt to place it freely. Each chat remembers its position. A small dot on the button means agents are working. In a Roleplay chat with Advanced Memory Recall, a steady dot in the button's other corner means some scene memories need attention; see [Fixing memory problems](../agents/memory.md#fixing-memory-problems).
 
 The small reminder beside the sliders button in Roleplay only needs to be dismissed once. Its **X** keeps it hidden across chats and page refreshes.
 

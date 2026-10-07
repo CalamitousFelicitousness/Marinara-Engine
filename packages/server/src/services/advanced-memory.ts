@@ -20,7 +20,6 @@ import {
   characterTrackerLockKey,
   characterCustomFieldTrackerLockKey,
   extractLeadingThinkingBlocks,
-  getRoleplayWhispers,
   normalizeCharacterLookupName,
   type AdvancedMemoryJob,
   type AdvancedMemoryDecisionDiagnostics,
@@ -1116,14 +1115,9 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       const message = ctx.messages[index]!;
       const extra = object(message.extra);
       if (visibilitySettled(extra)) return [];
-      // The author always sees their own message.
-      // ponytail: a whisper's recipient is never hidden from the message carrying it, because a hidden
-      // message drops its whispers today. Once #7191's fix delivers whispers to hidden recipients, drop
-      // this so an absent recipient gets only the whisper.
-      const whispered = getRoleplayWhispers(extra).map(({ recipient }) => recipient.id);
-      const candidates = ctx.characterIds.filter(
-        (id) => !narrators.has(id) && id !== message.characterId && !whispered.includes(id),
-      );
+      // The author always sees their own message. An absent whisper recipient can lose the narration:
+      // the whisper itself still reaches them (#7191).
+      const candidates = ctx.characterIds.filter((id) => !narrators.has(id) && id !== message.characterId);
       return candidates.length ? [{ message, number: index + 1, candidates }] : [];
     });
     if (!items.length) return null;

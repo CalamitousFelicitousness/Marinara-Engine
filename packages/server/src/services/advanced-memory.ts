@@ -486,22 +486,43 @@ function visibilityReaders(ctx: Context): VisibilityReader[] {
 }
 
 const SCENE_VISIBILITY = "scene-visibility";
+function visibilityHash(readers: VisibilityReader[], messageIds: string[]): string {
+  // Relative visibility survives message-ID remapping during a verified transfer.
+  return hash(
+    readers
+      .slice()
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .map((reader) => [reader.id, reader.name, messageIds.map((id) => reader.visibleIds.has(id))]),
+  );
+}
+
+// The revision names the readers it covers, so a character who joins later leaves it current (#7245).
 function sceneVisibility(ctx: Context, messageIds: string[]) {
+  const readers = visibilityReaders(ctx);
   return {
     id: SCENE_VISIBILITY,
-    // Relative visibility survives message-ID remapping during a verified transfer.
-    revision: hash(
-      visibilityReaders(ctx)
-        .slice()
-        .sort((a, b) => a.id.localeCompare(b.id))
-        .map((reader) => [reader.id, reader.name, messageIds.map((id) => reader.visibleIds.has(id))]),
-    ),
+    revision: `${visibilityHash(readers, messageIds)}:${JSON.stringify(readers.map((reader) => reader.id))}`,
   };
 }
 
 function hasCurrentSceneVisibility(ctx: Context, record: StoredRecord): boolean {
-  const saved = record.dependencies.find((dependency) => dependency.id === SCENE_VISIBILITY);
-  return !!saved && saved.revision === sceneVisibility(ctx, record.messageIds).revision;
+  const saved = record.dependencies.find((dependency) => dependency.id === SCENE_VISIBILITY)?.revision;
+  if (!saved) return false;
+  const readers = visibilityReaders(ctx);
+  // A revision saved before #7245 names no readers: it covers every character in the chat.
+  const at = saved.indexOf(":");
+  const ids = at < 0 ? null : new Set(strings(saved.slice(at + 1)));
+  const covered = ids ? readers.filter((reader) => ids.has(reader.id)) : readers;
+  return (
+    visibilityHash(covered, record.messageIds) === (at < 0 ? saved : saved.slice(0, at)) &&
+    // The recap never considered a later reader, so it stays current only while they see all of it or none.
+    readers.every(
+      (reader) =>
+        covered.includes(reader) ||
+        record.messageIds.every((id) => reader.visibleIds.has(id)) ||
+        !record.messageIds.some((id) => reader.visibleIds.has(id)),
+    )
+  );
 }
 
 function needsSceneVisibilityReview(ctx: Context, record: StoredRecord): boolean {

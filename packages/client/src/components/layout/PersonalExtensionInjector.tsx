@@ -220,6 +220,10 @@ async function postSandboxContext(active: ActiveClientExtension, context = readP
 
 const activeExtensions = new Map<string, ActiveClientExtension>();
 const activeFullPageExtensions = new Map<string, ActiveFullPageExtension>();
+// Extensions whose worker the sandbox stopped (ID → content hash). They stay
+// stopped until the user restarts them, their code changes, or they leave the
+// runtime list.
+const stoppedExtensions = new Map<string, string>();
 
 function extensionFetch(id: string, path: string, init: RequestInit = {}) {
   const method = (init.method ?? "GET").toUpperCase();
@@ -520,14 +524,19 @@ export function PersonalExtensionInjector() {
         // The sandbox stopped this worker, so its buttons and panels can no
         // longer respond. Remove them and let the user restart the extension.
         if (message.stopped === true && message.contentHash === active.contentHash) {
-          void cleanupExtension(active.extension.id);
+          const { id } = active.extension;
+          stoppedExtensions.set(id, active.contentHash);
+          void cleanupExtension(id);
           toast.error(translate("extensions.runtime.stopped", { name: active.extension.name }), {
-            id: `personal-extension-stopped-${active.extension.id}`,
+            id: `personal-extension-stopped-${id}`,
             description: translate("extensions.runtime.stoppedDescription"),
             duration: Infinity,
             action: {
               label: translate("extensions.runtime.restart"),
-              onClick: () => setRestartRequest((count) => count + 1),
+              onClick: () => {
+                stoppedExtensions.delete(id);
+                setRestartRequest((count) => count + 1);
+              },
             },
           });
         }
@@ -550,6 +559,9 @@ export function PersonalExtensionInjector() {
 
   useEffect(() => {
     const expected = new Map(extensions.map((extension) => [extension.id, extension]));
+    for (const id of stoppedExtensions.keys()) {
+      if (!expected.has(id)) stoppedExtensions.delete(id);
+    }
     for (const [id, active] of activeExtensions) {
       const next = expected.get(id);
       if (!next || next.executionMode !== "sandboxed" || next.contentHash !== active.contentHash) {
@@ -607,6 +619,7 @@ export function PersonalExtensionInjector() {
       }
       const active = activeExtensions.get(extension.id);
       if (active?.contentHash === extension.contentHash) continue;
+      if (stoppedExtensions.get(extension.id) === extension.contentHash) continue;
       const iframe = document.createElement("iframe");
       iframe.setAttribute("sandbox", "allow-scripts");
       iframe.setAttribute("aria-hidden", "true");

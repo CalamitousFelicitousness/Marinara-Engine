@@ -865,11 +865,13 @@ try {
     await join(joined, { [newcomer.id]: null });
     const beforeJoinRecall = requests.length;
     for (const audience of partialReaders)
-      assert.deepEqual(
-        await recalled(audience),
-        new Set([current.sceneId]),
-        `${mode}: a character who joins later keeps the recap; one saved before #7245 still needs Fix`,
-      );
+      assert((await recalled(audience)).has(current.sceneId), `${mode}: a character who joins later keeps the recap`);
+    // Per-character merged recall (#7239) can still recall a scene through Maukie alone, so check Pantalone's view.
+    assert.deepEqual(
+      await recalled([otherPov.id]),
+      new Set([current.sceneId]),
+      `${mode}: a recap saved before #7245 still needs Fix`,
+    );
     assert.deepEqual(await flagged(), new Set([legacy.sceneId]), `${mode}: only the older recap is sent to Fix`);
     assert.deepEqual(await recalled([borrower.id]), both, `${mode}: a reader who sees every message keeps both`);
     assert(!(await recallJoin([otherPov.id])).recalledScenes!.includes("JOIN_SECRET"), "hidden parts stay private");
@@ -881,8 +883,7 @@ try {
 
     // A change for a reader the recap was written for still withholds it until it is prepared again.
     const withheld = async (change: string) => {
-      for (const audience of partialReaders)
-        assert(!(await recalled(audience)).has(current.sceneId), `${mode}: ${change} withholds the recap`);
+      assert(!(await recalled([otherPov.id])).has(current.sceneId), `${mode}: ${change} withholds the recap`);
       assert((await flagged()).has(current.sceneId), `${mode}: ${change} sends the recap to Fix`);
     };
     await chats.updateMessageExtra(joinSource[2]!.id, { hiddenFromAICharacterIds: [otherPov.id] });

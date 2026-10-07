@@ -170,6 +170,8 @@
   "chat.advancedMemory.audienceEmpty": "No characters selected: only the narrator can recall this scene.",
   "chat.advancedMemory.audienceHelp": "Select the characters who were present. Mentioning an absent character does not give them access. No selection means narrator only; the narrator always has access. Hidden messages and confirmed knowledge starts still apply.",
   "chat.advancedMemory.audienceLegend": "Characters who can recall this scene",
+  "chat.advancedMemory.autoMessageVisibility": "Decide who sees new messages",
+  "chat.advancedMemory.autoMessageVisibilityHelp": "The memory model hides each new message from characters who aren't in the scene, and your own Hide from AI changes always win.",
   "chat.advancedMemory.backToArchive": "Back to scenes",
   "chat.advancedMemory.boundary": "Live history boundary",
   "chat.advancedMemory.budgetHelp": "The maximum estimated outgoing prompt size before context is compressed, including instructions and recalled context. Reply tokens are separate. The model’s total context limit still applies.",

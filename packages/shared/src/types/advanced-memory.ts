@@ -19,6 +19,8 @@ export const advancedMemorySettingsSchema = z.object({
   retrieveMinMessages: z.number().int().min(0).max(50).default(3),
   retrieveMaxMessages: z.number().int().min(0).max(50).default(10),
   narratorCharacterId: z.string().nullable().default(null),
+  /** Individual group chats only: hide each new message from characters the memory model finds absent. */
+  autoMessageVisibility: z.boolean().default(false),
   /** A null value explicitly confirms knowledge from the beginning. Missing means unconfirmed. */
   knowledgeStarts: z.record(z.string().nullable()).default({}),
   knowledgeConfirmed: z.boolean().default(false),

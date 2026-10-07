@@ -89,6 +89,8 @@ A whisper inside a message still reaches its recipient when you hide the message
 
 You can also hide messages with `/hide [range] [name (optional)]`, for example `/hide 3-8`. In Roleplay, `/hide 3-8 Maukie` hides them only from Maukie; omitting the name hides them from everyone. `/unhide [range]` restores globally hidden messages. To undo character-specific hiding, use the avatar chooser in a group Roleplay chat, or the message's **Unhide from AI** action in a one-character Roleplay chat. Message numbers start at 1, counting from the first message in the chat. See [Slash Commands Reference](slash-commands.md) for formats and examples.
 
+When Advanced Memory's **Decide who sees new messages** is on, new messages in a group chat where characters reply one by one are hidden from absent characters automatically, with the same marker. Changing a message's choice yourself always wins; see [Deciding who sees new messages](../agents/memory.md#deciding-who-sees-new-messages).
+
 ## Message display toggles
 
 Two toggles change what extra detail shows on messages. Both live in **Settings**, then the **Advanced** tab, in the **Message Tools** section. Both are off by default.

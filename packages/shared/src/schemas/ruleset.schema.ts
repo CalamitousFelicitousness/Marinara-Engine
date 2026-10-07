@@ -682,7 +682,8 @@ const listSchema = z
     section: sheetId.optional(),
     hideWhen: hideWhenSchema.optional(),
     maxItems: z.number().int().min(1).max(500),
-    columns: z.array(rulesetListColumnSchema).min(1).max(12),
+    /** Up to 24 columns; a package with more than 12 declares Capability API 1.160. */
+    columns: z.array(rulesetListColumnSchema).min(1).max(24),
     /** Makes every row a live pool (a named class resource with its own maximum). Rows are keyed
      *  by `nameColumn`, so renaming a row starts its pool over. */
     pools: z

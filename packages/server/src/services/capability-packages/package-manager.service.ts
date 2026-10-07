@@ -2431,6 +2431,18 @@ export function getCapabilityPackageInstallIssue(
   if (!declaresApi(127) && (carriesTypedHides || hideCombat?.sheetHides !== undefined || carriesItemExceptions)) {
     return "A ruleset whose conditions, levels, sheet or items with exceptions keep harm off requires schemaVersion 2 and capabilityApi 1.127 or newer";
   }
+  // A sheet list with more than 12 columns, 1.160.
+  const sheetLists = plainRecord(ruleset?.sheet)?.lists;
+  if (
+    !declaresApi(160) &&
+    Array.isArray(sheetLists) &&
+    sheetLists.some((list) => {
+      const columns = plainRecord(list)?.columns;
+      return Array.isArray(columns) && columns.length > 12;
+    })
+  ) {
+    return "A ruleset with a sheet list of more than 12 columns requires schemaVersion 2 and capabilityApi 1.160 or newer";
+  }
   if (carriesCreatureSpellcasting) {
     // The references can only be checked once the catalog files are beside their headers.
     const complete = {

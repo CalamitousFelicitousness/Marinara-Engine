@@ -5394,7 +5394,7 @@
                   ]
                 },
                 "minItems": 1,
-                "maxItems": 12
+                "maxItems": 24
               },
               "pools": {
                 "type": "object",

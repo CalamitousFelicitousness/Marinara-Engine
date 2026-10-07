@@ -815,7 +815,10 @@ const capabilityPackageManifestBaseSchema = z
 //        stat-block action in against.actions. No permission.
 // 1.127: conditions, levels and sheet lists keep typed harm and conditions off; item hides name
 //        exception tags, as creatures do. A package that ships these declares 1.127. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 127 } as const);
+// 1.128-1.129: claimed by the Game Mode lane (in progress); 1.130-1.159: the Kenhito lane.
+// 1.160: a sheet list may have up to 24 columns. Not a soft seam: an older Engine refuses the
+//        ruleset, so a package with a list of more than 12 columns declares 1.160. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 160 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

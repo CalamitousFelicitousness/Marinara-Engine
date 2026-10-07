@@ -360,22 +360,28 @@ function readStringArray(value: unknown): string[] {
   return value.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0);
 }
 
-function getCharacterAppearance(data: Record<string, unknown>): string {
+/**
+ * The card's appearance text and its Image Appearance Override, kept apart (#7243).
+ *
+ * #7053 folded the override into the appearance, which left the prompt-builder with
+ * the override alone — an unexplained token for a ComfyUI LoRA user — and no visual
+ * context, so it discarded the token and invented a look.
+ */
+function getCharacterAppearance(data: Record<string, unknown>): {
+  appearance: string;
+  imageAppearance: string;
+} {
   const extensions = parseJsonRecord(data.extensions);
-  // #7053: gallery selfies are image prompts, so an enabled non-empty override
-  // replaces the card appearance here too. Read it before the fallback chain is
-  // resolved so the override wins over the normal appearance.
-  const override = readImageAppearanceOverride(extensions, null);
-  if (override) return override;
-  const appearance =
+  const appearance = (
     typeof extensions.appearance === "string"
       ? extensions.appearance
       : typeof data.appearance === "string"
         ? data.appearance
         : typeof data.description === "string"
           ? data.description
-          : "";
-  return appearance.trim();
+          : ""
+  ).trim();
+  return { appearance, imageAppearance: readImageAppearanceOverride(extensions, null) ?? "" };
 }
 
 function titleCaseSlug(value: string): string {
@@ -1257,7 +1263,7 @@ export async function galleryRoutes(app: FastifyInstance) {
 
     const characterData = parseJsonRecord(character.data);
     const characterName = readTrimmedString(characterData.name) ?? "character";
-    const appearance = getCharacterAppearance(characterData);
+    const { appearance, imageAppearance } = getCharacterAppearance(characterData);
     const selfiePromptTemplate = readTrimmedString(meta.selfiePrompt) ?? "";
     const selfieTags = readStringArray(meta.selfieTags);
     const selfiePositivePrompt = readTrimmedString(meta.selfiePositivePrompt) ?? selfieTags.join(", ").trim();
@@ -1282,6 +1288,7 @@ export async function galleryRoutes(app: FastifyInstance) {
       promptOverridesStorage,
       chatPromptTemplate: selfiePromptTemplate,
       appearance,
+      imageAppearance,
       charName: characterName,
     });
     const selfieSystemPrompt = styleGuidance

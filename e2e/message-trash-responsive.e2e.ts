@@ -20,6 +20,10 @@ test("a large message trash fills in batches and a restore leaves its rows alone
   const restoreHeld = new Promise<void>((resolve) => {
     releaseRestore = resolve;
   });
+  let releaseDelete!: () => void;
+  const deleteHeld = new Promise<void>((resolve) => {
+    releaseDelete = resolve;
+  });
   const handles: JSHandle[] = [];
   let cleanupFailure: unknown;
   try {
@@ -44,6 +48,13 @@ test("a large message trash fills in batches and a restore leaves its rows alone
       await restoreHeld;
       // Every entry conflicts, so the list stays the same and the warning toast shows.
       return route.fulfill({ json: { restoredMessageIds: [], conflictEntryIds: entryIds } });
+    });
+    const deleteRequests: unknown[] = [];
+    await page.route(`**/api/chats/${chat.id}/trash/delete`, async (route) => {
+      deleteRequests.push(route.request().postDataJSON());
+      await deleteHeld;
+      // Nothing is deleted, so the refetched trash keeps every row.
+      return route.fulfill({ json: { deleted: 0 } });
     });
     await page.route("**/api/app-settings/ui", (route) => route.fulfill({ json: { value: "" } }));
     await seedUIState(page, {
@@ -185,8 +196,19 @@ test("a large message trash fills in batches and a restore leaves its rows alone
     expect(await rowChanges.evaluate((changes) => changes.count)).toBe(0);
     expect(await renders.evaluate((counter) => counter.rowRenders)).toBe(rendersBefore);
     await expect(rowRestore).toHaveCount(ENTRY_COUNT);
+
+    // A running delete says so too, and the status empties again once it is done.
+    await panel.getByRole("button", { name: "Empty trash", exact: true }).click();
+    await panel.getByRole("button", { name: "Click again to empty", exact: true }).click();
+    await expect(list).toHaveAttribute("aria-busy", "true");
+    await expect(status).toHaveText("Deleting messages…");
+    releaseDelete();
+    await expect(list).toHaveAttribute("aria-busy", "false");
+    await expect(status).toBeEmpty();
+    expect(deleteRequests).toEqual([{ all: true }]);
   } finally {
     releaseRestore();
+    releaseDelete();
     for (const handle of handles) {
       await handle.dispose().catch((error) => {
         cleanupFailure = error;

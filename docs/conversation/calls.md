@@ -203,7 +203,7 @@ Characters can use the same hidden bracket commands in a call that they use in n
 - **Haptics**: a character drives a connected haptic device during intimate moments, if a device is connected.
 - **Reactions**: a character reacts to your latest typed call message with an emoji.
 - **Cross-Post**: a character moves the current topic into a different shared Conversation chat.
-- **Schedule Updates**: a character changes its own online, idle, do-not-disturb, or offline status and activity for the rest of a scheduled block. This only applies to characters that have a schedule. See [Character Schedules and Autonomous Messaging](schedules.md).
+- **Schedule Updates**: a character changes its own online, idle, do-not-disturb, or offline status and activity for a while, then returns to its schedule. See [Character Schedules and Autonomous Messaging](schedules.md#characters-can-change-their-own-status).
 - **Notes** and **Influence**: these save a durable note or a one-time nudge, and appear only when the chat has a connected chat set up.
 - **Soundboard**: a character plays one of the call soundboard sounds.
 - Leave and end: a character can leave the call alone, or end the call for everyone.

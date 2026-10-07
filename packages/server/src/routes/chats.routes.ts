@@ -3191,6 +3191,8 @@ export async function chatsRoutes(app: FastifyInstance) {
       if (cached) {
         return {
           messages: cached.messages,
+          // Whose reply this is, so Decision diagnostics can follow it in a one-by-one group chat (#7264).
+          characterId: promptSourceMessage.characterId ?? null,
           chatMode,
           parameters: null,
           source: "cached",

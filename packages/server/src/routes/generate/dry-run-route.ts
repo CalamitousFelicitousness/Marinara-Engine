@@ -2392,8 +2392,12 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       if (decisionDebug && advancedMemoryService && advancedMemorySettings.decisionEnabled) {
         // These are historical observations, not proof that a saved prompt can be reused today.
         let recall: AdvancedMemoryDecisionDiagnostics | undefined;
-        // Characters who reply one by one each recall alone, so show only the previewed character's own (#7264).
-        const recallOwner = dryRunGroupChatMode === "individual" ? promptTargetCharacterId : null;
+        // Characters who reply one by one each recall alone, so show only the previewed character's own (#7264),
+        // or the inspected reply's character's, even after they left the chat or became inactive.
+        const recallOwner =
+          dryRunGroupChatMode === "individual"
+            ? (typeof body.forCharacterId === "string" && body.forCharacterId) || promptTargetCharacterId
+            : null;
         for (const message of [...allChatMessages].reverse()) {
           if (recallOwner && message.characterId !== recallOwner) continue;
           const saved = advancedMemoryDecisionDiagnosticsSchema.safeParse(

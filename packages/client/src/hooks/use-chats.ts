@@ -1692,6 +1692,8 @@ export function usePeekPrompt() {
       const messageId = typeof request === "string" ? undefined : request.messageId;
       return api.post<{
         messages: Array<{ role: string; content: string }>;
+        /** The character whose saved reply prompt is shown. */
+        characterId?: string | null;
         chatMode?: string;
         parameters: unknown;
         source?: "cached" | "live_preview" | "raw_messages";

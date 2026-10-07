@@ -2662,21 +2662,28 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
                     },
                   ]
                 : null;
-            const messages = shared && helper.fits(shared) ? shared : plain;
-            if (!helper.fits(messages))
+            if (!helper.fits(plain))
               throw new Error(
                 "The recent scene-check messages exceed the helper context limit; reduce the scene-check interval or increase its context limit",
               );
-            // A failed shared call hides nothing rather than asking again.
-            if (plan && messages === shared) plan.asked = true;
-            decision = request.messages.length
-              ? await askHelperJson(ctx, helper, messages, operationOptions, "Post-generation scene prompt", {
-                  length:
-                    "The scene helper reached its output limit before completing its decision. Raise Chat Summary's Maximum output size or lower Reasoning Effort, then retry.",
-                  incomplete: "The scene helper did not complete its scene decision; retry the post-generation check",
-                })
-              : { ends: [] };
-            if (plan && messages === shared) plan.hidden = hiddenFromHelper(plan, decision);
+            const askScene = (messages: HelperMessages) =>
+              askHelperJson(ctx, helper, messages, operationOptions, "Post-generation scene prompt", {
+                length:
+                  "The scene helper reached its output limit before completing its decision. Raise Chat Summary's Maximum output size or lower Reasoning Effort, then retry.",
+                incomplete: "The scene helper did not complete its scene decision; retry the post-generation check",
+              });
+            if (plan && shared && helper.fits(shared)) {
+              // A failed shared call hides nothing rather than asking again.
+              plan.asked = true;
+              decision = await askScene(shared).catch((error: unknown) => {
+                abortIfNeeded(operationOptions.signal);
+                logger.warn(error, "[advanced-memory] Shared scene and visibility check failed for chat %s", chatId);
+                return null;
+              });
+              plan.hidden = hiddenFromHelper(plan, decision);
+              // An unusable shared answer must not cost the scene check its own decision.
+              if (!Array.isArray(object(decision).ends)) decision = await askScene(plain);
+            } else decision = request.messages.length ? await askScene(plain) : { ends: [] };
           }
           const previouslyClosed = new Map(
             (await operationRecords(ctx))

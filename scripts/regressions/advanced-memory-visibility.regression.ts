@@ -29,6 +29,7 @@ const decisionRequests: Array<{ state: Record<string, any>; questions: Record<st
 const ids = { maukie: "", pantalone: "", narrator: "" };
 let failVisibility = false;
 let dropPresence = false;
+let dropEnds = false;
 let mainReplies: string[] = [];
 
 /** The fake helper keeps Maukie (by first name only) and leaves Pantalone out of every scene. */
@@ -74,7 +75,10 @@ const provider = createServer(async (req, res) => {
   if (kind === "main") content = mainReplies.shift() ?? "A quiet reply.";
   else if (kind === "visibility") content = JSON.stringify({ visibility: presence(JSON.parse(user)) });
   else if (kind === "scene+visibility")
-    content = JSON.stringify({ ends: [], visibility: presence(JSON.parse(user.split("Presence task:\n")[1]!)) });
+    content = JSON.stringify({
+      ...(dropEnds ? {} : { ends: [] }),
+      visibility: presence(JSON.parse(user.split("Presence task:\n")[1]!)),
+    });
   else content = system.includes('"ends"') ? '{"ends":[]}' : '{"starts":[]}';
   if (body.stream) {
     res.end(
@@ -238,6 +242,19 @@ try {
     ).statusCode,
     200,
   );
+  // /hide then /unhide is the user's choice too.
+  const slashUnhidden = await say(helperChat, "user", "P mutters to himself.");
+  for (const hidden of [true, false])
+    assert.equal(
+      (
+        await app.inject({
+          method: "PATCH",
+          url: `/api/chats/${helperChat}/messages/bulk-hidden`,
+          payload: { messageIds: [slashUnhidden.id], hidden },
+        })
+      ).statusCode,
+      200,
+    );
   const presetHide = await say(helperChat, "assistant", "Maukie whispers.", ids.maukie, {
     hiddenFromAICharacterIds: [ids.narrator],
   });
@@ -256,6 +273,7 @@ try {
   assert.deepEqual((await extraOf(manualBefore.id)).hiddenFromAICharacterIds, []);
   assert.equal((await extraOf(manualBefore.id)).autoVisibility, undefined);
   assert.deepEqual((await extraOf(presetHide.id)).hiddenFromAICharacterIds, [ids.narrator]);
+  assert.equal((await extraOf(slashUnhidden.id)).hiddenFromAICharacterIds, undefined, "/unhide keeps it visible");
   assert.deepEqual((await extraOf(later.id)).hiddenFromAICharacterIds, [ids.pantalone]);
 
   // A failed decision hides nothing.
@@ -315,6 +333,20 @@ try {
   assert.deepEqual((await extraOf(sharedHelperMessage.id)).hiddenFromAICharacterIds, [ids.pantalone]);
   const sharedState = JSON.parse((await chats.getById(sharedHelperChat))!.metadata).advancedMemoryState;
   assert.equal(sharedState.sceneCheckMessageId, sharedHelperMessage.id, "the shared scene check still commits");
+  dropEnds = true;
+  const noEnds = await say(sharedHelperChat, "user", "P orders tea.");
+  calls.length = 0;
+  await memory.checkScenesAfterGeneration(sharedHelperChat);
+  dropEnds = false;
+  assert.deepEqual(
+    calls.map((call) => call.kind),
+    ["scene+visibility", "scene"],
+    "a shared answer without scene endings asks for the scene check alone",
+  );
+  assert.deepEqual((await extraOf(noEnds.id)).hiddenFromAICharacterIds, [ids.pantalone]);
+  const retriedState = JSON.parse((await chats.getById(sharedHelperChat))!.metadata).advancedMemoryState;
+  assert.equal(retriedState.sceneCheckMessageId, noEnds.id);
+  assert.equal(retriedState.error, null);
 
   // Decision model: presence questions ride along with the scene-end check, or go alone when it is not due.
   const jevChat = await createChat({

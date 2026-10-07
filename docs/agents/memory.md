@@ -118,7 +118,7 @@ When it is on, each new message, yours or a character's, is hidden from the char
 - The **Narrator** chosen here, and the **Narrator character** chosen under **Roleplay Commands**, always see every message. A message's author always sees their own message, and a whisper's recipient keeps the message that carries the whisper.
 - With **Use Decision model** on, the Decision model answers, for each character, whether they are present and could see or hear what happens. Otherwise the **Helper model** decides. When a scene check is due after a reply, the same request also answers who is present, so no extra call is made for those messages.
 - The model also gets a list of the characters who have spoken since the current scene began. It is only a hint: a character who is quietly listening in still counts as present, even if they haven't said anything.
-- If you change a message's **Hide from AI** yourself, before or after the automatic choice, your choice stays and Advanced Memory never changes that message again. Messages you had already hidden from someone are left alone.
+- If you change a message's **Hide from AI** yourself, or use `/hide` or `/unhide` on it, before or after the automatic choice, your choice stays and Advanced Memory never changes that message again. Messages you had already hidden from someone are left alone.
 - Each message is decided once. If the model fails or doesn't answer in time, nothing is hidden for that message, and the error appears in the server log.
 
 ### While chatting

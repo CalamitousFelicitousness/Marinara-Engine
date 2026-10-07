@@ -177,6 +177,10 @@ try {
     "explicit all expands current characters, excluding the implicit narrator",
   );
   assert.deepEqual(at(6).audienceCharacterIds, [], "unknown model IDs cannot grant access");
+  assert(
+    (await memory.status(chat.id)).warnings.includes("scene-audience-unmatched"),
+    "unknown or missing participants are flagged for review, not dropped silently",
+  );
   assert.equal(
     at(4).content,
     "The compass promise was recorded. The travelers remembered the compass.",

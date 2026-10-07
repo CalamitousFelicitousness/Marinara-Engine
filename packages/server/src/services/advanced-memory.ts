@@ -600,6 +600,14 @@ function tokenSize(content: string): number {
   return estimateChatSummaryTokens(content);
 }
 
+/** A long message within tokens: its start and its end, where arrivals and departures usually are. */
+function messageEnds(content: string, tokens: number): string {
+  if (tokenSize(content) <= tokens) return content;
+  const marker = "\n[interior of this same message omitted]\n";
+  const endTokens = Math.max(0, Math.floor((tokens - tokenSize(marker)) / 2));
+  return `${sliceTextToTokenBudget(content, endTokens)}${marker}${sliceTextToTokenBudget(content, endTokens, true)}`;
+}
+
 /** Hidden, user-set or already decided messages stay exactly as they are (#7192). */
 function visibilitySettled(extra: Metadata): boolean {
   return (
@@ -1240,8 +1248,9 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
 
   /**
    * Fit the transcript within limit, in order and with its speakers. The oldest context goes first, but never below
-   * VISIBILITY_MIN_CONTEXT earlier messages. Past that, every message is cut to one length, so a long new message
-   * cannot crowd out who left (#7263). One that still does not fit is refused by the request's own limit.
+   * VISIBILITY_MIN_CONTEXT earlier messages. Past that, every message is cut to one length, keeping its start and
+   * end, so a long new message cannot crowd out who left (#7263). One that still does not fit is refused by the
+   * request's own limit.
    */
   function visibilityTranscript(plan: VisibilityPlan, limit: number) {
     const fits = (transcript: VisibilityPlan["transcript"]) => tokenSize(JSON.stringify(transcript)) <= limit;
@@ -1250,8 +1259,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     while (context - start > VISIBILITY_MIN_CONTEXT && !fits(plan.transcript.slice(start))) start++;
     const kept = plan.transcript.slice(start);
     if (fits(kept)) return kept;
-    const cut = (tokens: number) =>
-      kept.map((entry) => ({ ...entry, content: sliceTextToTokenBudget(entry.content, tokens) }));
+    const cut = (tokens: number) => kept.map((entry) => ({ ...entry, content: messageEnds(entry.content, tokens) }));
     // The longest length that fits, found by bisection.
     let low = VISIBILITY_MIN_MESSAGE_TOKENS;
     let high = VISIBILITY_MESSAGE_TOKENS;
@@ -1921,14 +1929,9 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       const transcript = batch.map(({ message }) => {
         const tracker = trackerHints.get(message.id);
         const tokens = Math.max(16, perMessageTokens - tokenSize(JSON.stringify(tracker) ?? "") - 32);
-        const marker = "\n[interior of this same message omitted]\n";
-        const endTokens = Math.max(0, Math.floor((tokens - tokenSize(marker)) / 2));
         return {
           messageId: message.id,
-          content:
-            tokenSize(message.content) > tokens
-              ? `${sliceTextToTokenBudget(message.content, endTokens)}${marker}${sliceTextToTokenBudget(message.content, endTokens, true)}`
-              : message.content,
+          content: messageEnds(message.content, tokens),
           ...(tracker ? { tracker } : {}),
         };
       });

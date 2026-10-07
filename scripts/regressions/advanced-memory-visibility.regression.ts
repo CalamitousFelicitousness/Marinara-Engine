@@ -455,7 +455,10 @@ try {
   const besideQuestion = decisionRequests[0]!.questions[`presence:${besideLine.id}:${ids.maukie}`];
   assert(besideQuestion?.instructions.includes('by "Pantalone"'), "the question names who wrote the message");
   assert(besideQuestion.instructions.includes("present even when silent or left out of a whisper"));
-  assert(besideQuestion.instructions.includes("never places there"), "a character never shown in the scene is elsewhere");
+  assert(
+    besideQuestion.instructions.includes("never places there"),
+    "a character never shown in the scene is elsewhere",
+  );
   assert.equal(
     (await extraOf(besideLine.id)).hiddenFromAICharacterIds,
     undefined,
@@ -498,7 +501,15 @@ try {
   await say(longChat, "user", `EARLIER_1 Pantalone walks out toward the harbour.${rain}`, null, decided);
   await say(longChat, "assistant", `EARLIER_2 Maukie watches him go.${rain}`, ids.maukie, decided);
   await say(longChat, "user", `EARLIER_3 P shuts the door.${rain}`, null, decided);
-  await say(longChat, "assistant", `EARLIER_4 Maukie curls up by the fire.${rain}`, ids.maukie, decided);
+  // Under the 1000-token cap, so its last line reaches the shortening.
+  const lastLine = "Pantalone's footsteps fade down the stairs.";
+  await say(
+    longChat,
+    "assistant",
+    `EARLIER_4 Maukie curls up by the fire.${rain.slice(0, 3200)} ${lastLine}`,
+    ids.maukie,
+    decided,
+  );
   const longLine = await say(longChat, "user", `CURRENT_LINE P raises a toast.${rain}`);
   decisionRequests.length = 0;
   await memory.settleMessageVisibility(longChat);
@@ -518,6 +529,7 @@ try {
     "four earlier messages stay in order with their speakers beside a long new message",
   );
   assert(longTranscript[0]!.content.includes("walks out toward the harbour"), "who left is still in the context");
+  assert(longTranscript[3]!.content.endsWith(lastLine), "a shortened message keeps its end, where people often leave");
   assert(
     longTranscript.every((entry) => estimateChatSummaryTokens(entry.content) >= 64),
     "each message keeps a few sentences",

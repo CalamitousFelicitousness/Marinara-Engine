@@ -43,14 +43,16 @@ const provider = createServer(async (request, response) => {
     assert.match(system.content, /"all" ONLY/);
     const text: string = transcript.content;
     result = {
-      summary: `The compass promise was recorded. ${text.includes("ONLY_MAUKIE") ? "Maukie discussed the absent Pantalone." : "The travelers remembered the compass."}`,
+      summary: `The compass promise was recorded. ${text.includes("ONLY_MAUKIE") ? "Maukie discussed the absent Pantalone." : "The travelers remembered the compass."}${text.includes("PRIVATE_MAUKIE") ? ' {{#if char == "Maukie"}}MAUKIE_PRIVATE{{/if}}' : ""}`,
       ...(text.includes("ONLY_MAUKIE")
         ? { audience: ["maukie"] }
         : text.includes("EVERYONE_PRESENT")
           ? { audience: "all" }
-          : text.includes("UNKNOWN_PARTICIPANT")
-            ? { audience: ["not-a-chat-character"] }
-            : {}),
+          : text.includes("BOTH_PRESENT")
+            ? { audience: ["maukie", "pantalone"] }
+            : text.includes("UNKNOWN_PARTICIPANT")
+              ? { audience: ["not-a-chat-character"] }
+              : {}),
     };
   }
   const content = JSON.stringify(result);
@@ -69,6 +71,7 @@ const { createConnectionsStorage } = await import("../../packages/server/src/ser
 const { createAdvancedMemoryService, advancedMemorySourceFingerprint } =
   await import("../../packages/server/src/services/advanced-memory.js");
 const { advancedMemoryRecords } = await import("../../packages/server/src/db/schema/advanced-memory.js");
+const { characters } = await import("../../packages/server/src/db/schema/characters.js");
 const { eq } = await import("../../packages/server/src/db/file-query.js");
 const db = await createFileNativeDB();
 const chats = createChatsStorage(db);
@@ -245,9 +248,11 @@ try {
       4,
       "narrator recalls assigned and unassigned scenes without copies",
     );
+    // Mari decided on 2026-10-07 (#7237) that a merged group recalls what any present character
+    // remembers, marked with who does. It needed every present character before. Individual is unchanged.
     assert.deepEqual(
       (await recall(["maukie", "pantalone", "narrator"])).receipt.recalledSceneIds,
-      assigned.map((record) => record.sceneId),
+      (mode === "individual" ? assigned : [...assigned, at(0)]).map((record) => record.sceneId),
       "a mixed group cannot use narrator privilege for absent characters",
     );
     assert.equal((await recall(["maukie"])).receipt.recalledSceneIds.length, 3);
@@ -571,8 +576,260 @@ try {
   await memory.initialize(historicalChat.id);
   assert.equal(classifiedIds.size, 0, "hiding already classified history does not repeat paid scene decisions");
   assert.equal(summaries, beforeVisibilityChange, "visibility-only edits keep completed summaries");
+
+  // #7237: Cara joins a merged group chat after Maukie and Pantalone made memories. Her ID sorts first,
+  // which used to make her the `char` that every summary condition was checked against.
+  for (const [id, name] of [
+    ["maukie", "Maukie"],
+    ["pantalone", "Pantalone"],
+    ["narrator", "Narrator"],
+    ["aaa-newcomer", "Cara"],
+  ])
+    await db
+      .insert(characters)
+      .values({ id, data: JSON.stringify({ name }), createdAt: "2026-01-01", updatedAt: "2026-01-01" });
+  const group = await chats.create({
+    name: "Merged newcomer",
+    mode: "roleplay",
+    characterIds: ["maukie", "pantalone", "narrator"],
+    connectionId: connection.id,
+  });
+  assert(group);
+  const groupSettings = {
+    enabled: true,
+    narratorCharacterId: "narrator",
+    knowledgeStarts: { maukie: null, pantalone: null },
+    retrieveMinMessages: 1,
+    retrieveMaxMessages: 3,
+    retrieveMaxScenes: 10,
+  };
+  await chats.patchMetadata(group.id, {
+    groupChatMode: "merged",
+    advancedMemory: groupSettings,
+    macroVariables: { ready: "yes" },
+  });
+  await chats.createMessagesBatch(group.id, [
+    { role: "user", content: "ONLY_MAUKIE Maukie buries the compass promise." },
+    { role: "assistant", characterId: "maukie", content: "Maukie hides the compass promise alone." },
+    {
+      role: "user",
+      content: "SCENE_CHANGE BOTH_PRESENT PRIVATE_MAUKIE Maukie and Pantalone renew the compass promise.",
+    },
+    { role: "assistant", characterId: "pantalone", content: "Pantalone accepts the compass promise." },
+    { role: "user", content: "SCENE_CHANGE UNKNOWN_PARTICIPANT A stranger holds a compass." },
+    { role: "assistant", characterId: "narrator", content: "The stranger recalls a compass promise." },
+    { role: "user", content: "SCENE_CHANGE What about the compass promise?", extra: { isConversationStart: true } },
+  ]);
+  const groupSource = await chats.listMessages(group.id);
+  const { scopeCharacterSummary } = await import("../../packages/shared/src/index.js");
+  await chats.patchMetadata(group.id, {
+    summaryEntries: [
+      // Advanced Memory scopes a promoted scene to its participants and the narrator.
+      createChatSummaryEntry({
+        content: scopeCharacterSummary("CONST_SHARED The compass promise holds.", ["Maukie", "Pantalone", "Narrator"]),
+        enabled: true,
+        messageIds: groupSource.slice(2, 4).map((message) => message.id),
+      }),
+      createChatSummaryEntry({
+        content:
+          'CONST_PLAIN The compass promise. {{#if char == "Maukie" || "Narrator"}}CONST_MAUKIE{{/if}}{{#if char == "Narrator"}}CONST_NARRATOR{{/if}} {{#if char == "Maukie" && getvar::ready == "yes"}}MIXED_SECRET{{/if}}',
+        enabled: true,
+        messageIds: groupSource.slice(0, 2).map((message) => message.id),
+      }),
+    ],
+  });
+  await memory.initialize(group.id);
+  const groupScenes = (await memory.status(group.id)).records.filter(
+    (record) => record.kind === "scene" && record.content,
+  );
+  const sceneAt = (index: number) =>
+    groupScenes.find((record) => record.messageIds.includes(groupSource[index]!.id))!.sceneId;
+  const [maukieOnly, both, narratorOnly] = [sceneAt(0), sceneAt(2), sceneAt(4)];
+  const groupRecall = async (audienceCharacterIds: string[], chatId = group.id) =>
+    memory.prepare({
+      chatId,
+      messages: await chats.listMessages(chatId),
+      audienceCharacterIds,
+      budgetTokens: 12000,
+      readOnly: true,
+    });
+  const marked = (prepared: { chatSummary: string | null; recalledScenes: string | null }) =>
+    /known only to/iu.test(`${prepared.chatSummary}\n${prepared.recalledScenes}`);
+  // Before anyone joins, a scene only Maukie saw is recalled and marked as his. Shared memories carry no mark.
+  const beforeJoin = await groupRecall(["maukie", "pantalone", "narrator"]);
+  assert.deepEqual(
+    new Set(beforeJoin.receipt.recalledSceneIds),
+    new Set([maukieOnly, both]),
+    "a merged group recalls what any present character remembers",
+  );
+  assert.match(beforeJoin.recalledScenes!, /Scene summary \(known only to Maukie\):\nMessages #1–#2;/u);
+  assert.match(
+    beforeJoin.recalledScenes!,
+    /\n\nScene summary:\nMessages #3–#4;/u,
+    "a scene everyone present saw has no mark",
+  );
+  assert.match(beforeJoin.recalledScenes!, /remembered the compass\. \[Known only to Maukie: MAUKIE_PRIVATE\]$/u);
+  assert.match(
+    beforeJoin.chatSummary!,
+    /\nCONST_SHARED The compass promise holds\.\n/u,
+    "a summary everyone knows has no mark",
+  );
+  // A condition mixing a name with a variable is checked for each present character.
+  assert.match(
+    beforeJoin.chatSummary!,
+    /CONST_PLAIN The compass promise\. \[Known only to Maukie: CONST_MAUKIE\] \[Known only to Maukie: MIXED_SECRET\]$/u,
+  );
+  assert(!beforeJoin.chatSummary!.includes("CONST_NARRATOR"), "a mixed group gets no narrator-only knowledge");
+
+  await chats.update(group.id, { characterIds: ["maukie", "pantalone", "narrator", "aaa-newcomer"] });
+  await chats.createMessagesBatch(group.id, [
+    { role: "assistant", characterId: "aaa-newcomer", content: "Cara arrives and asks about the compass promise." },
+    { role: "user", content: "Tell Cara about the compass promise." },
+  ]);
+  // The merged audience is every chat character, the newcomer included.
+  const afterJoin = await groupRecall(["maukie", "pantalone", "narrator", "aaa-newcomer"]);
+  assert.deepEqual(
+    new Set(afterJoin.receipt.recalledSceneIds),
+    new Set([maukieOnly, both]),
+    "a character who joins later hides no earlier memory",
+  );
+  assert(!afterJoin.receipt.recalledSceneIds.includes(narratorOnly), "a memory no present character has stays out");
+  assert.deepEqual(
+    new Set(afterJoin.receipt.recalledMessageIds),
+    new Set(groupSource.slice(0, 2).map((message) => message.id)),
+    "raw excerpts still come only from scenes without private sections",
+  );
+  assert.match(afterJoin.recalledScenes!, /Scene summary \(known only to Maukie\):\nMessages #1–#2;/u);
+  assert.match(afterJoin.recalledScenes!, /Scene summary \(known only to Maukie, Pantalone\):\nMessages #3–#4;/u);
+  assert.match(afterJoin.recalledScenes!, /remembered the compass\. \[Known only to Maukie: MAUKIE_PRIVATE\]$/u);
+  assert.match(
+    afterJoin.chatSummary!,
+    /\n\[Known only to Maukie, Pantalone: CONST_SHARED The compass promise holds\.\]\n/u,
+    "summary conditions are never checked as the newcomer",
+  );
+  assert.match(
+    afterJoin.chatSummary!,
+    /CONST_PLAIN The compass promise\. \[Known only to Maukie: CONST_MAUKIE\] \[Known only to Maukie: MIXED_SECRET\]$/u,
+    "a mixed condition is not checked as the newcomer either",
+  );
+  assert(!afterJoin.chatSummary!.includes("CONST_NARRATOR"), "a mixed group gets no narrator-only knowledge");
+  assert(!/known only to[^\n\]]*Cara/iu.test(`${afterJoin.chatSummary}${afterJoin.recalledScenes}`));
+  // A reply pinned to one character (an @mention or a regeneration) keeps its single-reader rendering.
+  for (const id of ["maukie", "pantalone", "aaa-newcomer", "narrator"])
+    assert(!marked(await groupRecall([id])), `${id}: one reader needs no marks`);
+  // Messages hidden from Pantalone stay out of the shared live history, but Maukie still remembers them.
+  const hiddenFromPantalone = [0, 2].map((index) => groupSource[index]!.id);
+  for (const id of hiddenFromPantalone) await chats.updateMessageExtra(id, { hiddenFromAICharacterIds: ["pantalone"] });
+  const partlyHidden = await groupRecall(["maukie", "pantalone", "narrator", "aaa-newcomer"]);
+  assert.deepEqual(
+    new Set(partlyHidden.receipt.recalledSceneIds),
+    new Set([maukieOnly, both]),
+    "a scene stays recalled while a present character who remembers it may read its sources",
+  );
+  assert.match(
+    partlyHidden.recalledScenes!,
+    /Scene summary \(known only to Maukie\):\nMessages #3–#4;/u,
+    "a reader some of the scene was hidden from is not named as remembering it",
+  );
+  assert.match(partlyHidden.recalledScenes!, /known only to Maukie\):\nMessages #1–#2;[^]*\n#1 User: ONLY_MAUKIE/u);
+  for (const id of hiddenFromPantalone) await chats.updateMessageExtra(id, { hiddenFromAICharacterIds: [] });
+  // Messages excluded from Pantalone's excerpts still show in a scene only Maukie remembers,
+  // while messages excluded from Maukie's own excerpts stay out of it.
+  const maukieOnlyIds = groupSource.slice(0, 2).map((message) => message.id);
+  const excerptRow = (await db.select().from(advancedMemoryRecords)).find(
+    (record) => record.sceneId === maukieOnly && record.kind === "excerpt",
+  )!;
+  assert.equal(excerptRow.messageIds, JSON.stringify(maukieOnlyIds));
+  for (const [reader, expected, message] of [
+    [
+      "pantalone",
+      maukieOnlyIds,
+      "an exclusion for a character who doesn't remember the scene leaves its excerpt alone",
+    ],
+    ["maukie", [], "a message excluded for the scene's own reader never shows in its excerpt"],
+  ] as const) {
+    await db.insert(advancedMemoryRecords).values({
+      ...excerptRow,
+      id: `excluded-for-${reader}`,
+      audienceCharacterIds: JSON.stringify([reader]),
+      enabled: 0,
+    });
+    const excluded = await groupRecall(["maukie", "pantalone", "narrator", "aaa-newcomer"]);
+    assert.deepEqual(new Set(excluded.receipt.recalledSceneIds), new Set([maukieOnly, both]));
+    assert.deepEqual(new Set(excluded.receipt.recalledMessageIds), new Set(expected), message);
+    await db.delete(advancedMemoryRecords).where(eq(advancedMemoryRecords.id, `excluded-for-${reader}`));
+  }
+
+  // A merged chat of the narrator and one character, where the narrator's ID sorts first, checks conditions
+  // as that character, never with narrator privilege.
+  await db.insert(characters).values({
+    id: "aa-narrator",
+    data: JSON.stringify({ name: "Narrator" }),
+    createdAt: "2026-01-01",
+    updatedAt: "2026-01-01",
+  });
+  const duo = await chats.create({
+    name: "Merged narrator duo",
+    mode: "roleplay",
+    characterIds: ["maukie", "aa-narrator"],
+    connectionId: connection.id,
+  });
+  assert(duo);
+  await chats.patchMetadata(duo.id, {
+    groupChatMode: "merged",
+    advancedMemory: { ...groupSettings, narratorCharacterId: "aa-narrator", knowledgeStarts: { maukie: null } },
+  });
+  await chats.createMessagesBatch(duo.id, [
+    { role: "user", content: "ONLY_MAUKIE PRIVATE_MAUKIE Maukie buries the compass promise." },
+    { role: "assistant", characterId: "maukie", content: "Maukie hides the compass promise alone." },
+    { role: "user", content: "SCENE_CHANGE What about the compass promise?", extra: { isConversationStart: true } },
+  ]);
+  await chats.patchMetadata(duo.id, {
+    summaryEntries: [
+      createChatSummaryEntry({
+        content: 'DUO_PLAIN {{#if char == "Narrator"}}DUO_NARRATOR{{/if}}{{#if char == "Maukie"}}DUO_MAUKIE{{/if}}',
+        enabled: true,
+        messageIds: (await chats.listMessages(duo.id)).slice(0, 2).map((message) => message.id),
+      }),
+    ],
+  });
+  await memory.initialize(duo.id);
+  const duoRecall = await groupRecall(["aa-narrator", "maukie"], duo.id);
+  assert.match(duoRecall.chatSummary!, /\nDUO_PLAIN DUO_MAUKIE$/u, "the duo's summary is read as Maukie");
+  assert.match(duoRecall.recalledScenes!, /Maukie discussed the absent Pantalone\. MAUKIE_PRIVATE$/u);
+  assert(!/DUO_NARRATOR/u.test(duoRecall.chatSummary!), "a narrator-only section stays out");
+
+  // Individual group chats recall per responder exactly as before #7237.
+  const joinedAt = (await chats.listMessages(group.id)).at(-2)!.id;
+  await chats.patchMetadata(group.id, {
+    groupChatMode: "individual",
+    advancedMemory: { ...groupSettings, knowledgeStarts: { maukie: null, pantalone: null, "aaa-newcomer": joinedAt } },
+  });
+  const range = (span: string, source = true) =>
+    `Messages #${span}; ${source ? "source timeframe (summary corrections take precedence)" : "story timeframe"}: unknown (use message order).`;
+  const intro =
+    "Included below are recalled memories of scenes from the past chat history, together with small message excerpts from them. Present message range in the context is: #7–#9, with the last user message being #9.";
+  const sharedRecap = `Scene summary:\n${range("3–#4")}\nThe compass promise was recorded. The travelers remembered the compass.`;
+  const maukie = await groupRecall(["maukie"]);
+  assert.equal(
+    maukie.chatSummary,
+    `${range("3–#4")}\nCONST_SHARED The compass promise holds.\n\n${range("1–#2")}\nCONST_PLAIN The compass promise. CONST_MAUKIE MIXED_SECRET`,
+  );
+  assert.equal(
+    maukie.recalledScenes,
+    `${intro}\n\nScene summary:\n${range("1–#2")}\nThe compass promise was recorded. Maukie discussed the absent Pantalone.\n\nExcerpt:\n${range("1–#2", false)}\n#1 User: ONLY_MAUKIE Maukie buries the compass promise.\n#2 Maukie: Maukie hides the compass promise alone.\n\n${sharedRecap} MAUKIE_PRIVATE`,
+  );
+  const pantalone = await groupRecall(["pantalone"]);
+  assert.equal(
+    pantalone.chatSummary,
+    `${range("3–#4")}\nCONST_SHARED The compass promise holds.\n\n${range("1–#2")}\nCONST_PLAIN The compass promise.`,
+  );
+  assert.equal(pantalone.recalledScenes, `${intro}\n\n${sharedRecap}`);
+  const cara = await groupRecall(["aaa-newcomer"]);
+  assert.equal(cara.recalledScenes, null, "an individual newcomer recalls nothing from before joining");
+  assert(!/CONST_SHARED|CONST_MAUKIE|MIXED_SECRET/u.test(cara.chatSummary ?? ""));
   console.log(
-    "Advanced Memory unlisted-participant defaults, participant access, shared scenes and legacy duplicate corrections passed.",
+    "Advanced Memory unlisted-participant defaults, participant access, shared scenes, merged newcomers and legacy duplicate corrections passed.",
   );
 } finally {
   provider.closeAllConnections();

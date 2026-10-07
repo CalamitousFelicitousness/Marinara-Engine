@@ -696,6 +696,8 @@
   "chat.summary.injectionHint.disabledMarker": "The active preset's Chat Summary marker is disabled, so enabled summaries will be added at the end of the system prompt.",
   "chat.summary.injectionHint.missingMarker": "Enabled summaries will be added at the end of the system prompt. Add an enabled Chat Summary marker to the active preset to choose a specific position.",
   "chat.summary.manual": "Manual summary",
+  "chat.summary.selection.disableSelected": "Disable selected",
+  "chat.summary.selection.enableSelected": "Enable selected",
   "chat.summary.source.agent": "Agent",
   "chat.summary.source.batchMessages": "Summarizing {{count}} messages across {{ranges}} ranges",
   "chat.summary.source.batchRanges": "Multiple message ranges",

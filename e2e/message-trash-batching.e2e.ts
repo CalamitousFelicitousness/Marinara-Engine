@@ -140,13 +140,16 @@ for (const conflictsOnly of [false, true]) {
         // slow WebKit for about as long, so the toast may be gone before a locator can see it.
         // Record each toast as it mounts instead.
         const toasts = await page.evaluateHandle(() => {
-          const mounted: { type?: string; title?: string | null; description?: string | null }[] = [];
+          const mounted: { visible: boolean; type?: string; title?: string | null; description?: string | null }[] = [];
           const seen = new WeakSet<Element>();
           new MutationObserver(() => {
             for (const toast of document.querySelectorAll<HTMLElement>("[data-sonner-toast]")) {
               if (seen.has(toast)) continue;
               seen.add(toast);
+              const box = toast.getBoundingClientRect();
               mounted.push({
+                // Playwright's definition of visible.
+                visible: box.width > 0 && box.height > 0 && getComputedStyle(toast).visibility !== "hidden",
                 type: toast.dataset.type,
                 title: toast.querySelector("[data-title]")?.textContent ?? null,
                 description: toast.querySelector("[data-description]")?.textContent ?? null,
@@ -160,6 +163,7 @@ for (const conflictsOnly of [false, true]) {
         await expect
           .poll(() => toasts.evaluate((mounted) => mounted), { timeout: 30_000 })
           .toContainEqual({
+            visible: true,
             type: "warning",
             title: "Synthetic later-batch failure",
             description: conflictsOnly ? null : "4999 messages restored",

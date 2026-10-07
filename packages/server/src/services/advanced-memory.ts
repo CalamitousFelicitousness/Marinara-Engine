@@ -4093,7 +4093,11 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       receipt.archiveRevision !==
         recallArchiveRevision(
           ctx,
-          sceneRecords(current).filter((record) => record.kind === "scene" && recordValid(ctx, record)),
+          // The same scene set prepare hashed, including source timeframes.
+          withSourceTimelines(
+            sceneRecords(current).filter((record) => record.kind === "scene" && recordValid(ctx, record)),
+            ctx.messages,
+          ),
           [...swipe.audienceCharacterIds],
           new Set(swipe.messageIds),
         )

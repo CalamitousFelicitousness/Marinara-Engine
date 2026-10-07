@@ -1396,6 +1396,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     options: AdvancedMemoryOperationOptions,
     cacheOwner: StoredRecord,
     audienceOnly = false,
+    keepConditions = false,
   ): Promise<{ summary: string; audienceCharacterIds: string[]; audienceIssue?: string }> {
     const cachedRow = (
       await db.select().from(advancedMemoryRecords).where(eq(advancedMemoryRecords.id, cacheOwner.id))
@@ -1429,7 +1430,11 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     const audienceInstruction = assignAudience
       ? `\nAlso return "audience": an array of character names for participants actually present in these events, or the string "all" ONLY when every listed character was present. Use the names in the transcript and match them to the chat characters below; use an ID only to distinguish identical names. Empty, unknown, or user-only participation means [] (narrator only). A character merely mentioned, remembered, discussed, or addressed while absent is NOT a participant. The message author, narrator, user/persona, and available-character roster are not proof of presence. Never assign an absent character just because the scene is about them. The narrator automatically has access and must not be listed. Preserve the union of confirmed participants when combining partial recaps. Characters (IDs and names): ${JSON.stringify(ctx.characterIds.filter((id) => id !== ctx.settings.narratorCharacterId).map((id) => ({ name: ctx.names.get(id) ?? id, id })))}. Output: {"summary":"historical recap","audience":["participant name"]}.`
       : "";
-    const combinePrompt = resolveChatSummaryCombinePrompt(global);
+    const combinePrompt = `${resolveChatSummaryCombinePrompt(global)}${
+      keepConditions
+        ? '\n\nSome summaries contain {{#if char == "Name"}}...{{/if}} sections. Keep each fact inside a section with exactly its original condition; combine and shorten shared text freely, but never move a fact from a section into text more characters can read.'
+        : ""
+    }`;
     const storedConnection = await connections.getById(resolved.connectionId);
     const modelLimit = resolveModelAccessPolicy({
       provider: storedConnection?.provider,
@@ -3291,9 +3296,24 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       await progress(ctx, { status: "ready", stage: "ready", error: null }, options);
       return;
     }
-    // Combine only identical rendered text for the same audience; keep differing
-    // character sections intact instead of flattening their authored conditions.
-    const groups = new Map<string, { audience: string[]; ranged: boolean; entries: typeof eligible }>();
+    const names = ctx.characterIds.map((id) => ctx.names.get(id) ?? "Character");
+    // Who can read each non-empty section of these texts; "{{" stands for any other macro.
+    const sections = (texts: string[]) => {
+      const found = new Set<string>();
+      for (const text of texts)
+        scopeCharacterSummary(text, names, 0, (part, readers) => {
+          if (part.trim()) found.add(part.includes("{{") ? "{{" : JSON.stringify([...readers].sort()));
+          return part;
+        });
+      return found;
+    };
+    // Combine the summaries the same characters read. One whose text differs by character joins
+    // with its conditions kept, if Advanced Memory wrote it and nobody changed it since (#7270).
+    const conditional = new Set<string>();
+    const groups = new Map<
+      string,
+      { audience: string[]; ranged: boolean; entries: typeof eligible; combine: boolean }
+    >();
     for (const entry of eligible) {
       const audience = ctx.individual
         ? ctx.characterIds.filter((id) => rendered.get(id)!.get(entry.id)!.trim()).sort()
@@ -3304,20 +3324,29 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       if (!(ctx.individual ? audience : [""]).every((id) => outsideLive(entry, id))) continue;
       const readers = ctx.individual ? audience : ctx.characterIds;
       if (new Set(readers.map((id) => renderEntry(ctx, entry.content, [id]))).size > 1) {
-        // ponytail: preserve audience-dependent templates; combining them safely
-        // requires Chat Summary entries with explicit per-audience content.
-        continue;
+        // ponytail: Chat Summaries record no edits, so any updatedAt change counts as one, even
+        // turning a summary off and on. Stamp hand edits on the entry to combine those too.
+        if (entry.origin !== "automated" || entry.createdAt !== entry.updatedAt || sections([entry.content]).has("{{"))
+          continue;
+        conditional.add(entry.id);
       }
       const ranged = coverage(entry).length > 0;
       const key = JSON.stringify([audience, ranged]);
-      const group = groups.get(key) ?? { audience, ranged, entries: [] };
+      const group = groups.get(key) ?? { audience, ranged, entries: [], combine: false };
       group.entries.push(entry);
+      group.combine ||= conditional.has(entry.id);
       groups.set(key, group);
     }
-    for (const { audience, ranged, entries } of groups.values()) {
+    const queue = [...groups.values()];
+    for (const { audience, ranged, entries, combine } of queue) {
       ctx = await context(chatId);
       const audienceIds = ctx.individual ? audience : [""];
-      const inputs = entries.map((entry) => rendered.get(audienceIds[0]!)!.get(entry.id)!);
+      const readers = ctx.individual ? audience : ctx.characterIds;
+      // A combined group keeps character conditions; the other summaries read the same for all its readers.
+      const inputs = entries.map((entry) => {
+        const text = rendered.get(audienceIds[0]!)!.get(entry.id)!;
+        return combine ? scopeConstantSummary(ctx, conditional.has(entry.id) ? entry.content : text, readers) : text;
+      });
       const groupTokens = tokenSize(inputs.join("\n\n"));
       if (!groupTokens) continue;
       const target = Math.floor(
@@ -3342,10 +3371,24 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
         { id: newId(), blocking: false, status: "running", stage: "compacting", completed: 0, total: 1, error: null },
         options,
       );
-      const content = (await summarize(ctx, inputs, target, options, cache)).summary;
+      const content = (await summarize(ctx, inputs, target, options, cache, false, combine)).summary;
       // Keep originals if the helper did not shorten them. The completed work
       // stays cached so unchanged inputs do not repeat the same paid attempt.
       if (tokenSize(content) >= groupTokens) continue;
+      const scoped = scopeConstantSummary(ctx, content, readers);
+      const before = combine ? sections(inputs) : new Set<string>();
+      const after = combine ? sections([scoped]) : before;
+      // ponytail: this compares who reads each section, not the facts inside it, so a fact moved
+      // into a wider section that is still there passes. Upgrade: match facts per section.
+      if (after.size !== before.size || [...after].some((key) => !before.has(key))) {
+        logger.warn(
+          "[advanced-memory] Combined summaries for %s would change who can read a private section; keeping them",
+          chatId,
+        );
+        const plain = entries.filter((entry) => !conditional.has(entry.id));
+        if (plain.length) queue.push({ audience, ranged, entries: plain, combine: false });
+        continue;
+      }
       await validateSnapshot(ctx, source, options);
       await chats.patchMetadata(
         chatId,
@@ -3370,7 +3413,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
                 ? `Messages #${ctx.messages.indexOf(source[0]!) + 1}–#${ctx.messages.indexOf(source.at(-1)!) + 1}`
                 : "Compacted summaries",
               sourceMode: ranged ? "range" : "last",
-              content: scopeConstantSummary(ctx, content, ctx.individual ? audience : ctx.characterIds),
+              content: scoped,
               enabled: true,
               ...(!ranged
                 ? {}

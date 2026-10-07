@@ -81,7 +81,7 @@ export const CONVERSATION_SELFIE: PromptOverrideKeyDef<ConversationSelfieCtx> = 
         ? [
             `Image appearance override — this MUST appear in your prompt exactly as written, character for character: ${ctx.imageAppearance}`,
             `Do not reword, reorder, translate, or omit any part of the override above, even if a tag is not a word you recognize. It may be a LoRA trigger or another identifier the image model needs verbatim.`,
-            `Treat the character's appearance above and any other description of them, above and below, as background information: use it to fill in visual details the override does not cover, such as build, clothing and expression. Never contradict the override with it, and do not repeat or paraphrase any tag the override already contains.`,
+            `If this prompt describes the character anywhere else, treat that as background information: use it to fill in visual details the override does not cover, such as build, clothing and expression. Never contradict the override with it, and do not repeat or paraphrase any tag the override already contains.`,
           ]
         : []),
       `Character name: ${ctx.charName}`,

@@ -241,13 +241,23 @@ try {
   const beforeConditional = requests.length;
   const conditional = await memory.prepare(input);
   assert.match(conditional.recalledScenes!, /TARGET_SCENE/);
-  assert.deepEqual(conditional.receipt.recalledMessageIds, [], "private recap conditions withhold raw excerpts");
+  // Mari's rule (#7269): a private recap section no longer withholds the excerpt, because the
+  // reader saw these messages in the chat. Messages hidden from the reader still stay out.
+  assert.deepEqual(
+    conditional.receipt.recalledMessageIds,
+    [source[3]!.id],
+    "a recap with a private section still recalls the messages its reader saw",
+  );
+  assert.doesNotMatch(conditional.recalledScenes!, /CONDITION_SECRET|PRIVATE_SECRET/);
   for (const request of requests.slice(beforeConditional)) {
     assert.equal(request.kind, "decision");
-    assert.doesNotMatch(JSON.stringify(request.body), /CONDITION_SECRET|Cobalt refuge|PRIVATE_SECRET/);
+    assert.doesNotMatch(JSON.stringify(request.body), /CONDITION_SECRET|PRIVATE_SECRET/);
   }
-  assert(conditional.receipt.reasons.includes("excerpt-private-scene"), "the receipt says why the excerpt is missing");
-  assert.deepEqual(conditional.receipt.decisionRecall?.notes, ["excerpt-private-scene"]);
+  assert(
+    !conditional.receipt.reasons.some((reason) => reason.startsWith("excerpt-")),
+    "a scene with an excerpt needs no reason for a missing one",
+  );
+  assert.equal(conditional.receipt.decisionRecall?.notes, undefined);
 
   // The Decision model's picks size each excerpt within Minimum and Maximum, every recalled scene
   // gets its minimum before any excerpt grows, and a scene left without one says why (#7269).

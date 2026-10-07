@@ -138,25 +138,50 @@ async function dragBubble(page: Page, target: Locator, to: { x: number; y: numbe
   if (!options.hold) await page.mouse.up();
 }
 
-/** No bubble sits on the message box, and the page never scrolls sideways. */
+/** Once every bubble holds still, none sits on the message box, and the page never scrolls sideways. */
 async function expectComposerClearAndNoSideScroll(page: Page) {
-  const overlap = await page.evaluate(() => {
-    const composer = document.querySelector("[data-chat-mode] [data-chat-composer]");
-    const shell = composer?.closest("[data-chat-resource-drop-exclude]") ?? composer;
-    const composerRect = shell?.getBoundingClientRect();
-    if (!composerRect) return [];
-    return Array.from(document.querySelectorAll(".mari-window-bubble"))
-      .map((element) => ({ id: element.getAttribute("data-window"), rect: element.getBoundingClientRect() }))
-      .filter(
-        ({ rect }) =>
-          rect.left < composerRect.right &&
-          rect.right > composerRect.left &&
-          rect.top < composerRect.bottom &&
-          rect.bottom > composerRect.top,
-      )
-      .map(({ id }) => id);
+  const result = await page.evaluate(async () => {
+    const measure = () => {
+      const composer = document.querySelector("[data-chat-mode] [data-chat-composer]");
+      const shell = composer?.closest("[data-chat-resource-drop-exclude]") ?? composer;
+      return {
+        composer: shell?.getBoundingClientRect(),
+        bubbles: Array.from(document.querySelectorAll(".mari-window-bubble"), (element) => {
+          // Chat tools menu rows have no window id; name them by the tool or control they hold.
+          const control =
+            element.getAttribute("data-chat-tools-menu-tool") ?? element.getAttribute("data-window-control");
+          return {
+            id: element.getAttribute("data-window") ?? (control ? `menu:${control}` : element.outerHTML.slice(0, 120)),
+            rect: element.getBoundingClientRect(),
+          };
+        }),
+      };
+    };
+    // A message box that mounts late, or a screen change, moves the open Chat tools menu, and Framer glides its
+    // rows there with inline transforms (no Web Animation to await). Measure after a few still frames.
+    let latest = measure();
+    let still = 0;
+    for (const start = performance.now(); still < 3 && performance.now() - start < 3_000;) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      const next = measure();
+      still = JSON.stringify(next) === JSON.stringify(latest) ? still + 1 : 0;
+      latest = next;
+    }
+    const { composer, bubbles } = latest;
+    const overlap = composer
+      ? bubbles
+          .filter(
+            ({ rect }) =>
+              rect.left < composer.right &&
+              rect.right > composer.left &&
+              rect.top < composer.bottom &&
+              rect.bottom > composer.top,
+          )
+          .map(({ id }) => id)
+      : [];
+    return { settled: still >= 3, overlap };
   });
-  expect(overlap).toEqual([]);
+  expect(result).toEqual({ settled: true, overlap: [] });
   const sideScroll = await page.evaluate(
     () =>
       document.documentElement.scrollWidth > document.documentElement.clientWidth ||

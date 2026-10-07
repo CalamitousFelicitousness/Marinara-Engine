@@ -23,7 +23,8 @@ const { createCharactersStorage } = await import("../../packages/server/src/serv
 const { createAdvancedMemoryService } = await import("../../packages/server/src/services/advanced-memory.js");
 const { roleplayHiddenWhisperMessageIds } =
   await import("../../packages/server/src/services/generation/roleplay-commands.js");
-const { DEFAULT_ADVANCED_MEMORY_SETTINGS, characterDataSchema } = await import("../../packages/shared/dist/index.js");
+const { DEFAULT_ADVANCED_MEMORY_SETTINGS, characterDataSchema, estimateChatSummaryTokens } =
+  await import("../../packages/shared/dist/index.js");
 
 type Call = { kind: "main" | "visibility" | "scene" | "scene+visibility" | "other"; prompt: string };
 const calls: Call[] = [];
@@ -480,6 +481,48 @@ try {
   );
   assert.deepEqual(decisionRequests[0]!.state.presence.recentlyActive, ["Pantalone"], "speakers stay scene-only");
   assert.equal((await extraOf(opening.id)).hiddenFromAICharacterIds, undefined);
+
+  // A small Decision state limit shortens long messages instead of dropping the earlier ones (#7263).
+  const smallJev = await connections.create({
+    name: "Small Jev",
+    provider: "decision",
+    decisionSource: "custom",
+    baseUrl: `http://127.0.0.1:${address.port}`,
+    model: "jev-fixture",
+    apiKey: "",
+    maxStateTokens: 2000,
+  });
+  const longChat = await createChat({ decisionEnabled: true, decisionConnectionId: smallJev.id });
+  const rain = " The rain drums on the tavern roof.".repeat(300);
+  const decided = { autoVisibility: { decidedAt: "2026-01-01T00:00:00.000Z", hiddenCharacterIds: [] } };
+  await say(longChat, "user", `EARLIER_1 Pantalone walks out toward the harbour.${rain}`, null, decided);
+  await say(longChat, "assistant", `EARLIER_2 Maukie watches him go.${rain}`, ids.maukie, decided);
+  await say(longChat, "user", `EARLIER_3 P shuts the door.${rain}`, null, decided);
+  await say(longChat, "assistant", `EARLIER_4 Maukie curls up by the fire.${rain}`, ids.maukie, decided);
+  const longLine = await say(longChat, "user", `CURRENT_LINE P raises a toast.${rain}`);
+  decisionRequests.length = 0;
+  await memory.settleMessageVisibility(longChat);
+  assert.equal(decisionRequests.length, 1, "the shortened transcript fits the Decision request");
+  const longState = decisionRequests[0]!.state;
+  assert(estimateChatSummaryTokens(JSON.stringify(longState)) <= 2000, "the Decision state limit holds");
+  const longTranscript = longState.presence.transcript as Array<{ speaker: string; content: string }>;
+  assert.deepEqual(
+    longTranscript.map((entry) => [entry.speaker, entry.content.split(" ")[0]]),
+    [
+      ["P", "EARLIER_1"],
+      ["Maukie Whiskers", "EARLIER_2"],
+      ["P", "EARLIER_3"],
+      ["Maukie Whiskers", "EARLIER_4"],
+      ["P", "CURRENT_LINE"],
+    ],
+    "four earlier messages stay in order with their speakers beside a long new message",
+  );
+  assert(longTranscript[0]!.content.includes("walks out toward the harbour"), "who left is still in the context");
+  assert(
+    longTranscript.every((entry) => estimateChatSummaryTokens(entry.content) >= 64),
+    "each message keeps a few sentences",
+  );
+  assert.deepEqual((await extraOf(longLine.id)).hiddenFromAICharacterIds, [ids.pantalone]);
 
   // The generation guard decides earlier messages before each character's context is built.
   const routeChat = await createChat();

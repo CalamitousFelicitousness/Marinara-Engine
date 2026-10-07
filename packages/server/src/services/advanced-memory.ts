@@ -196,6 +196,9 @@ function hasSceneAudience(record: StoredRecord): boolean {
 const VISIBILITY_WINDOW = 8;
 const VISIBILITY_CONTEXT = 12;
 const VISIBILITY_MIN_CONTEXT = 4;
+/** Longest a transcript message gets, and the shortest worth asking about when the limit is tight. */
+const VISIBILITY_MESSAGE_TOKENS = 1000;
+const VISIBILITY_MIN_MESSAGE_TOKENS = 64;
 const VISIBILITY_TIMEOUT_MS = 20_000;
 const VISIBILITY_TRANSCRIPT_TOKENS = 6000;
 const VISIBILITY_PROMPT =
@@ -1229,22 +1232,35 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
         messageId: ctx.messages[index]!.id,
         messageNumber: index + 1,
         speaker: speakerName(ctx, ctx.messages[index]!),
-        content: sliceTextToTokenBudget(ctx.messages[index]!.content, 1000),
+        content: sliceTextToTokenBudget(ctx.messages[index]!.content, VISIBILITY_MESSAGE_TOKENS),
       })),
       recentlyActive: recentlyActive.map((id) => ctx.names.get(id) ?? id),
     };
   }
 
-  /** Drop the oldest context, never a message being decided, until the transcript fits. */
+  /**
+   * Fit the transcript within limit, in order and with its speakers. The oldest context goes first, but never below
+   * VISIBILITY_MIN_CONTEXT earlier messages. Past that, every message is cut to one length, so a long new message
+   * cannot crowd out who left (#7263). One that still does not fit is refused by the request's own limit.
+   */
   function visibilityTranscript(plan: VisibilityPlan, limit: number) {
-    const transcript = [...plan.transcript];
-    while (
-      transcript.length &&
-      transcript[0]!.messageId !== plan.items[0]!.message.id &&
-      tokenSize(JSON.stringify(transcript)) > limit
-    )
-      transcript.shift();
-    return transcript;
+    const fits = (transcript: VisibilityPlan["transcript"]) => tokenSize(JSON.stringify(transcript)) <= limit;
+    const context = plan.transcript.findIndex((entry) => entry.messageId === plan.items[0]!.message.id);
+    let start = 0;
+    while (context - start > VISIBILITY_MIN_CONTEXT && !fits(plan.transcript.slice(start))) start++;
+    const kept = plan.transcript.slice(start);
+    if (fits(kept)) return kept;
+    const cut = (tokens: number) =>
+      kept.map((entry) => ({ ...entry, content: sliceTextToTokenBudget(entry.content, tokens) }));
+    // The longest length that fits, found by bisection.
+    let low = VISIBILITY_MIN_MESSAGE_TOKENS;
+    let high = VISIBILITY_MESSAGE_TOKENS;
+    while (low < high) {
+      const mid = Math.ceil((low + high) / 2);
+      if (fits(cut(mid))) low = mid;
+      else high = mid - 1;
+    }
+    return cut(low);
   }
 
   function presenceAsk(plan: VisibilityPlan, maxStateTokens: number): PresenceAsk {

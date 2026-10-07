@@ -157,9 +157,17 @@ test("a large message trash fills in batches and a restore leaves its rows alone
     expect(rendersBefore).toBeGreaterThanOrEqual(ENTRY_COUNT);
 
     const restoreAll = panel.getByRole("button", { name: "Restore all", exact: true });
+    // The busy status stays on the page, empty while idle, so screen readers announce it when it fills in.
+    const status = panel.getByRole("status");
+    await expect(status).toBeEmpty();
+    const listTop = (await list.boundingBox())!.y;
     await restoreAll.click();
     await expect(restoreAll).toBeDisabled();
     await expect(list).toHaveAttribute("aria-busy", "true");
+    // It says why the rows pause, without moving the list.
+    await expect(status).toHaveText("Restoring messages…");
+    await expect(status.getByText("Restoring messages…", { exact: true })).toBeVisible();
+    expect((await list.boundingBox())!.y).toBe(listTop);
     // Row actions wait for the running restore, including from the keyboard.
     await rowRestore.first().focus();
     await page.keyboard.press("Enter");
@@ -171,6 +179,7 @@ test("a large message trash fills in batches and a restore leaves its rows alone
     ).toBeVisible();
     await expect(restoreAll).toBeEnabled();
     await expect(list).toHaveAttribute("aria-busy", "false");
+    await expect(status).toBeEmpty();
     expect(restoreRequests).toHaveLength(1);
     expect(restoreRequests[0]).toHaveLength(ENTRY_COUNT);
     expect(await rowChanges.evaluate((changes) => changes.count)).toBe(0);

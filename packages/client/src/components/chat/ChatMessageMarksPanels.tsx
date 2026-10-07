@@ -349,6 +349,15 @@ export function ChatTrashList({ chatId, enabled }: { chatId: string; enabled: bo
             : localizeUi("ui.chat.messagetrash.emptyTrash")}
         </button>
       </div>
+      {/* Says why the rows pause while busy. It stays on the page, empty when idle, so screen readers announce
+          it; it takes no space and floats over the dimmed rows wherever the list is scrolled. */}
+      <div role="status" aria-live="polite" className="pointer-events-none sticky top-0 z-10 h-0">
+        {busy && (
+          <span className="absolute left-1/2 top-2 w-max max-w-[calc(100%-1.5rem)] -translate-x-1/2 rounded-lg border border-[var(--border)] bg-[var(--background)] px-2.5 py-1 text-center text-xs font-medium text-[var(--foreground)] shadow-sm">
+            {restoring ? localizeUi("ui.chat.messagetrash.restoring") : localizeUi("ui.chat.messagetrash.deleting")}
+          </span>
+        )}
+      </div>
       <div aria-busy={busy} className="relative">
         {batches.slice(0, shownBatches).map((batch, index) => (
           <ChatTrashRowBatch

@@ -77,9 +77,14 @@ export function AdvancedMemoryInspector({
   const editableTimeline = selected?.kind === "scene" && selected.id !== selected.sceneId;
   const timelineChanged = editableTimeline && draftTimeline.trim() !== (selected.timeline ?? "").trim();
   const blockedRecord = records.find((record) => record.id === status.data?.job.reviewRecordId);
+  // Helper-assigned participants Advanced Memory couldn't confirm; the list marks these scenes too.
+  const unconfirmedAudience = (record: AdvancedMemoryRecord) =>
+    record.kind === "scene" &&
+    !!record.content &&
+    !record.manualOverride &&
+    record.dependencies.some((item) => item.id === SCENE_AUDIENCE_UNMATCHED);
   const generatedScene = selected?.kind === "scene" && !!selected.content && !selected.manualOverride;
-  const unmatchedAudience =
-    generatedScene && selected.dependencies.some((item) => item.id === SCENE_AUDIENCE_UNMATCHED);
+  const unmatchedAudience = !!selected && unconfirmedAudience(selected);
   const reviewAudience =
     unmatchedAudience ||
     (generatedScene &&
@@ -101,7 +106,14 @@ export function AdvancedMemoryInspector({
       : t("chat.advancedMemory.narratorOnly");
   const query = search.trim().toLocaleLowerCase();
   const filteredRecords = records.filter((record) =>
-    [recordTitle(record), record.title, record.content, record.timeline, audience(record)]
+    [
+      recordTitle(record),
+      record.title,
+      record.content,
+      record.timeline,
+      audience(record),
+      unconfirmedAudience(record) ? t("chat.advancedMemory.audienceUnconfirmed") : "",
+    ]
       .join(" ")
       .toLocaleLowerCase()
       .includes(query),
@@ -552,7 +564,18 @@ export function AdvancedMemoryInspector({
                       </>
                     )}
                   </span>
-                  <span className="block text-[0.6875rem] text-[var(--muted-foreground)]">{audience(record)}</span>
+                  <span className="block text-[0.6875rem] text-[var(--muted-foreground)]">
+                    {audience(record)}
+                    {unconfirmedAudience(record) && (
+                      <>
+                        {" "}
+                        ·{" "}
+                        <span className="text-[var(--marinara-app-accent-static)]">
+                          {t("chat.advancedMemory.audienceUnconfirmed")}
+                        </span>
+                      </>
+                    )}
+                  </span>
                   <span className="block text-[0.6875rem] text-[var(--muted-foreground)]">
                     {t("chat.advancedMemory.timeframe")}: {record.timeline || t("chat.advancedMemory.timeframeUnknown")}
                   </span>

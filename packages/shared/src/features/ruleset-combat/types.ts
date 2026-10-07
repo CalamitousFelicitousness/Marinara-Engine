@@ -215,6 +215,8 @@ export interface RulesetStatBlockAction {
   needs?: string[];
   /** Only a creature its maker can see may be picked (1.173). */
   seen?: true;
+  /** What using it needs, by the ids of `combat.components` (1.174). */
+  components?: string[];
   damage?: RulesetCombatDamage;
   heal?: RulesetCombatAmount;
   targets?: "ally" | "any";
@@ -390,6 +392,8 @@ export interface RulesetCombatAction {
   needs?: string[];
   /** Only a creature its maker can see may be picked (1.173). */
   seen?: true;
+  /** What using it needs, by the ids of `combat.components` (1.174). */
+  components?: string[];
   /** Offered only while this reads within its bounds off the holder's sheet (Capability API 1.161). */
   usableWhen?: RulesetSheetBounds;
   /** Who it may be pointed at or catch, by what they are (Capability API 1.163). */
@@ -1574,6 +1578,12 @@ export interface RulesetCombatZoneRule {
   side?: { distance: number; triggers: Array<"enter" | "turn-start" | "turn-end"> };
   /** Nobody sees into it, out of it or through it but by one of these senses, in range (1.173). */
   obscures?: { pierced: string[] };
+  /** Conditions on, and damage types kept off, whoever stands in it (1.174). */
+  inside?: { conditions?: string[]; immune?: string[] };
+  /** Components nothing used from inside it may need (1.174). */
+  forbids?: { components: string[] };
+  /** Off these catalogs, at this level or lower, nothing from outside reaches inside (1.174). */
+  wards?: { catalogs: string[]; maxLevel: number };
 }
 
 /** One lasting area standing on the board (1.167). A zone held at a point keeps the cells it was

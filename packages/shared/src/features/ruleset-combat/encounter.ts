@@ -62,7 +62,7 @@ import {
   rulesetReactionAnswers,
 } from "./creatures.js";
 import { parseRulesetCombatDice, rollRulesetDice, rulesetCombatRoller, sumOf } from "./dice.js";
-import { rulesetInCells, rulesetLineOfSight, rulesetPositionOf } from "./grid.js";
+import { rulesetInCells, rulesetLineOfSight, rulesetPositionOf, rulesetZoneCells } from "./grid.js";
 import { rulesetCombatAdvantage, rulesetCombatIsPool, rulesetPoolDie, throwRulesetCombatPool } from "./pool.js";
 import { rulesetPaidLevel, rulesetReactionsAt } from "./options.js";
 import { RULESET_MOVE_MODES } from "./types.js";
@@ -309,6 +309,23 @@ export function rulesetActiveConditions(
   rawLevels = false,
 ): RulesetActiveCondition[] {
   const active = new Set(rulesetCombatConditions(definition, combatant));
+  // Standing in a zone that says so (1.174): its conditions are on whoever is there, and what it
+  // keeps off or stops reads as one more source, named for the zone.
+  const inside = state ? zonesStoodIn(state, combatant) : [];
+  for (const { rule } of inside) for (const condition of rule.inside?.conditions ?? []) active.add(condition);
+  const zoned = inside.flatMap(({ label, rule }): RulesetActiveCondition[] =>
+    rule.inside?.immune || rule.forbids
+      ? [
+          {
+            condition: label,
+            zone: true,
+            effects: [],
+            ...(rule.inside?.immune ? { immune: [...rule.inside.immune] } : {}),
+            ...(rule.forbids ? { forbids: { components: [...rule.forbids.components] } } : {}),
+          },
+        ]
+      : [],
+  );
   const conditions = (combat.conditions ?? []).flatMap((entry): RulesetActiveCondition[] => {
     if (!active.has(entry.condition)) return [];
     const gate = entry.whileSourceInSight;
@@ -336,7 +353,41 @@ export function rulesetActiveConditions(
     ...(source.immune ? { immune: [...source.immune] } : {}),
     ...(source.conditionImmunities ? { conditionImmunities: [...source.conditionImmunities] } : {}),
   }));
-  return [...conditions, ...levels, ...items];
+  return [...conditions, ...levels, ...items, ...zoned];
+}
+
+/** The standing zones whose cells this combatant is in now, or that hold them off a board (1.174). */
+function zonesStoodIn(
+  state: RulesetEncounterState,
+  combatant: RulesetCombatant,
+): Array<{ key: string; label: string; rule: NonNullable<RulesetCombatAction["zone"]> }> {
+  const at = rulesetPositionOf(combatant);
+  const grid = state.board?.grid;
+  return state.combatants.flatMap((caster) =>
+    (caster.zones ?? []).flatMap((zone) => {
+      const rule = caster.actions.find((entry) => entry.id === zone.actionId)?.zone;
+      if (!rule || (!rule.inside && !rule.forbids && !rule.wards)) return [];
+      const inIt =
+        grid && at
+          ? rulesetZoneCells(state, caster, zone).some((cell) => cell.x === at.x && cell.y === at.y)
+          : !!zone.held?.includes(combatant.id);
+      return inIt ? [{ key: `${caster.id}/${zone.actionId}`, label: zone.label, rule }] : [];
+    }),
+  );
+}
+
+/** The conditions standing zones put on this combatant now (1.174): Silence's deafened. */
+export function rulesetZoneConditions(state: RulesetEncounterState, combatant: RulesetCombatant): string[] {
+  return [...new Set(zonesStoodIn(state, combatant).flatMap(({ rule }) => rule.inside?.conditions ?? []))];
+}
+
+/** The zones warding whoever stands in them (1.174), each by its caster and action, with what it
+ *  keeps out. */
+export function rulesetWardsOn(
+  state: RulesetEncounterState,
+  combatant: RulesetCombatant,
+): Array<{ key: string; wards: NonNullable<NonNullable<RulesetCombatAction["zone"]>["wards"]> }> {
+  return zonesStoodIn(state, combatant).flatMap(({ key, rule }) => (rule.wards ? [{ key, wards: rule.wards }] : []));
 }
 
 /** A condition can take away a sense an effect needs (1.122), so its holder is left out entirely. */
@@ -448,6 +499,8 @@ export type RulesetActiveCondition = RulesetCombatCondition & {
   item?: true;
   /** A level that takes its holder out of the fight (1.110). */
   defeats?: true;
+  /** What standing in a zone does (1.174), named for the zone. */
+  zone?: true;
 };
 
 /** The levels of the holder's own tracks, and of their derived values, that are reached. A sheet has
@@ -1525,6 +1578,7 @@ function mechanicsAction(
   if (mechanics.autoHit) action.autoHit = true;
   if (mechanics.needs) action.needs = [...mechanics.needs];
   if (mechanics.seen) action.seen = true;
+  if (mechanics.components) action.components = [...mechanics.components];
   if (mechanics.targetTypes) action.targetTypes = mechanics.targetTypes;
   if (mechanics.usableWhen) action.usableWhen = { ...mechanics.usableWhen };
   if (mechanics.save) {
@@ -1588,6 +1642,17 @@ function mechanicsAction(
       action.zone.side = { distance: rulesetInCells(side.distance, perCell ?? 1), triggers: [...side.triggers] };
     }
     if (mechanics.zone.obscures) action.zone.obscures = { pierced: [...(mechanics.zone.obscures.pierced ?? [])] };
+    const inside = mechanics.zone.inside;
+    if (inside) {
+      action.zone.inside = {
+        ...(inside.conditions ? { conditions: [...inside.conditions] } : {}),
+        ...(inside.immune ? { immune: [...inside.immune] } : {}),
+      };
+    }
+    if (mechanics.zone.forbids) action.zone.forbids = { components: [...mechanics.zone.forbids.components] };
+    if (mechanics.zone.wards) {
+      action.zone.wards = { catalogs: [...mechanics.zone.wards.catalogs], maxLevel: mechanics.zone.wards.maxLevel };
+    }
     const held = mechanics.zone.whileHeld;
     const heldAmount = held && amountOf(held.amount);
     if (held && heldAmount) {
@@ -1920,6 +1985,7 @@ function blockActions(block: RulesetStatBlockLike, perCell: number | undefined):
     ...(action.autoHit ? { autoHit: true } : {}),
     ...(action.needs ? { needs: [...action.needs] } : {}),
     ...(action.seen ? { seen: true as const } : {}),
+    ...(action.components ? { components: [...action.components] } : {}),
     ...(action.damage
       ? {
           damage: {

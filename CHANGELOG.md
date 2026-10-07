@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: zones can put conditions on whoever stands in them, keep damage types off them, stop spells that need a component and ward off weaker spells cast from outside, and a condition put on during its holder's turn takes that turn's budgets, so Silence, Globe of Invulnerability and Stinking Cloud work (Capability API 1.174).
 - Rulesets: fights know who can see whom, so Fog Cloud and Darkness hide what is inside them from all but the senses that see through them, darkvision, blindsight and truesight have ranges, invisible creatures are unseen, attacks at or from the unseen get advantage or disadvantage, "a creature you can see" spells pick only those, and Fire Storm lays ten cubes; on the board players now choose which way a wall runs, which side faces out, whether it is a ring, and where every copy lands (Capability API 1.173).
 - Rulesets: spell areas can be cubes, and lasting ones walls or rings that block movement, sight or both and hurt on one chosen side, so Web, Grease and Black Tentacles fill squares and Wall of Fire, Wall of Stone, Wall of Force and Blade Barrier stand on the board (Capability API 1.172).
 - Rulesets: spells and items can end named conditions, stabilize a dying creature or bring back one that died moments ago, so Lesser Restoration, Spare the Dying and Revivify work (Capability API 1.171).

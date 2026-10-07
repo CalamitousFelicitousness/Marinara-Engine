@@ -32,6 +32,7 @@ import {
 import {
   currentRulesetActor,
   rulesetActiveConditions,
+  rulesetWardsOn,
   rulesetTargetHasSenses,
   rulesetTargetIs,
   rulesetTargetTypesAllow,
@@ -1099,6 +1100,9 @@ export function rulesetOptionTargets(
         if (!rulesetTargetHasSenses(definition, state, combatant, needs)) return false;
         // "A creature you can see" (1.173).
         if (cure?.seen && !rulesetCanSee(definition, state, actor, combatant)) return false;
+        // Behind a ward it cannot reach (1.174). One that may be paid higher is offered, and its
+        // payment decides when it is used.
+        if (cure && !cure.use?.group && rulesetWarded(definition, state, actor, cure, combatant)) return false;
         if (!rulesetTargetTypesAllow(definition, combatant, targetTypes)) return false;
         if (option.id.startsWith("summon:") && !rulesetCombatStanding(combatant)) return false;
         // Breaking free is aimed at whoever holds on, on either side: a web an ally spun catches
@@ -1138,6 +1142,30 @@ function firstAreaTarget(state: RulesetEncounterState, actor: RulesetCombatant, 
   if (!action.area || !positioned(state)) return undefined;
   const id = rulesetAimCells(state, actor.id, action.id, 1, true)[0]?.targetIds[0];
   return id === undefined ? undefined : rulesetCombatant(state, id);
+}
+
+/**
+ * Whether a ward keeps this action off this target (1.174): the target stands in a zone that wards
+ * off the action's catalog at its level or lower, and its maker stands outside that zone. Read at
+ * the level it is paid at; without a payment, at its own.
+ */
+export function rulesetWarded(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  target: RulesetCombatant,
+  payWith?: string,
+): boolean {
+  const catalog = action.catalog;
+  if (!catalog) return false;
+  const wards = rulesetWardsOn(state, target);
+  if (wards.length === 0) return false;
+  const own = new Set(rulesetWardsOn(state, actor).map((ward) => ward.key));
+  const level = rulesetPaidLevel(definition, actor, action, payWith);
+  return wards.some(
+    (ward) => !own.has(ward.key) && ward.wards.catalogs.includes(catalog) && level <= ward.wards.maxLevel,
+  );
 }
 
 /** Uses left on this holder, or shared by its coven for this spell (1.118). */
@@ -1192,6 +1220,13 @@ export function rulesetActionAvailable(
   definition?: RulesetDefinition,
 ): boolean {
   if (!rulesetActionUsable(definition, actor, action)) return false;
+  // A component something stops (1.174): Silence around its holder, a gag on them.
+  if (action.components?.length && definition?.combat) {
+    const stopped = rulesetActiveConditions(definition, definition.combat, actor, state).flatMap(
+      (entry) => entry.forbids?.components ?? [],
+    );
+    if (action.components.some((component) => stopped.includes(component))) return false;
+  }
   if (action.innate?.coven) {
     const coven = action.innate.coven;
     if (!state || !coven) return false;

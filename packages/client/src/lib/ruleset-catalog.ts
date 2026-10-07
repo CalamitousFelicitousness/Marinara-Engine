@@ -768,6 +768,24 @@ export function formatCatalogMechanics(
           : t("game.ruleset.catalog.mechanics.zoneObscures"),
       );
     }
+    // What standing inside does, what it stops and what it wards off (1.174).
+    const inside = mechanics.zone.inside;
+    if (inside?.conditions?.length) {
+      parts.push(
+        t("game.ruleset.catalog.mechanics.zoneInsideConditions", { conditions: inside.conditions.join(", ") }),
+      );
+    }
+    if (inside?.immune?.length) {
+      parts.push(t("game.ruleset.catalog.mechanics.zoneInsideImmune", { types: inside.immune.join(", ") }));
+    }
+    if (mechanics.zone.forbids) {
+      parts.push(
+        t("game.ruleset.catalog.mechanics.zoneForbids", { components: mechanics.zone.forbids.components.join(", ") }),
+      );
+    }
+    if (mechanics.zone.wards) {
+      parts.push(t("game.ruleset.catalog.mechanics.zoneWards", { level: mechanics.zone.wards.maxLevel }));
+    }
     const side = mechanics.zone.side;
     if (side) {
       parts.push(
@@ -779,6 +797,9 @@ export function formatCatalogMechanics(
     }
   }
   if (mechanics.seen) parts.push(t("game.ruleset.catalog.mechanics.seen"));
+  if (mechanics.components?.length) {
+    parts.push(t("game.ruleset.catalog.mechanics.components", { components: mechanics.components.join(", ") }));
+  }
   if (mechanics.reaction) parts.push(t("game.ruleset.catalog.mechanics.reaction"));
   return parts.join(" · ");
 }

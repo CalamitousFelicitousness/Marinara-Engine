@@ -42,6 +42,7 @@ import {
   rulesetActiveConditions,
   rulesetItemEffectFacts,
   rulesetCombatConditions,
+  rulesetZoneConditions,
   rulesetCombatHealth,
   rulesetCombatHide,
   rulesetCombatOptions,
@@ -521,10 +522,16 @@ export function syncRulesetCombatants(definition: RulesetDefinition, state: Comb
 function conditionsOf(
   definition: RulesetDefinition,
   combatant: RulesetCombatant,
+  state?: RulesetEncounterState,
 ): Array<{ id: string; label: string; rounds?: number }> {
   const declared = new Map(definition.sheet.live.conditions.map((entry) => [entry.id, entry.label]));
   const tracked = new Map(combatant.tracked.map((entry) => [entry.condition, entry.rounds]));
-  return rulesetCombatConditions(definition, combatant).map((id) => {
+  // And what a zone they stand in puts on them while they stay (1.174).
+  const ids = new Set([
+    ...rulesetCombatConditions(definition, combatant),
+    ...(state ? rulesetZoneConditions(state, combatant) : []),
+  ]);
+  return [...ids].map((id) => {
     const rounds = tracked.get(id);
     return {
       id,
@@ -572,7 +579,7 @@ function projectCombatant(
     initiative: combatant.initiative,
     health,
     defense: combatant.defense,
-    conditions: conditionsOf(definition, combatant),
+    conditions: conditionsOf(definition, combatant, state),
     hides: rulesetCombatHide(definition, combatant, state),
     damageModifiers: rulesetActiveConditions(definition, combat, combatant, state).flatMap((source) => {
       const modifiers = source.modifiers?.filter((one) => one.to === "damage" || one.to === "damage-taken");

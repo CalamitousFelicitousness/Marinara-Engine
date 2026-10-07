@@ -884,7 +884,15 @@ const capabilityPackageManifestBaseSchema = z
 //        sense that is eyes (`eyes`). `mechanics.seen` takes only targets its maker can see. A burst
 //        or box may be set down several times at once (`area.copies`, the choice's `also`), each
 //        touching another (Fire Storm). No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 173 } as const);
+// 1.174: `combat.components` names what using something may need (verbal, somatic), and an entry or
+//        creature action lists its `components`. A zone may put conditions on and keep damage types
+//        off whoever stands in it (`zone.inside`: Silence deafens and keeps thunder out), stop what
+//        needs a component from inside it (`zone.forbids`, as a condition's `forbids` does: no
+//        verbal spells), and ward whoever is inside from entries off its `catalogs` at `maxLevel`
+//        or lower used from outside (`zone.wards`: Globe of Invulnerability). A condition that takes
+//        budgets away, put on during its holder's own turn, takes them from that turn (Stinking
+//        Cloud). No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 174 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

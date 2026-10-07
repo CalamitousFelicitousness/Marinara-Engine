@@ -1455,6 +1455,27 @@ function carriesWalls(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesWalls(one, depth + 1));
 }
 
+/** Components, and zones that work on whoever stands in them (1.174): the combat block's
+ *  components, what an entry, a creature's action or a condition needs or stops, and a zone's
+ *  `inside`, `forbids` or `wards`, in catalog files too. */
+function carriesZoneInside(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesZoneInside(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.combat)?.components !== undefined) return true;
+  if (record.condition !== undefined && record.forbids !== undefined) return true;
+  for (const mechanics of [plainRecord(record.mechanics), plainRecord(record.use), record]) {
+    if (!mechanics) continue;
+    const zone = plainRecord(mechanics.zone);
+    if (zone && (zone.inside !== undefined || zone.forbids !== undefined || zone.wards !== undefined)) return true;
+    if (mechanics.components !== undefined && (mechanics.budget !== undefined || mechanics.kind !== undefined)) {
+      return true;
+    }
+  }
+  return Object.values(record).some((one) => carriesZoneInside(one, depth + 1));
+}
+
 /** Senses and seeing (1.173): the combat block's senses or sight, a condition that hides, a zone
  *  that obscures, an area set down several times, "a creature you can see", or a creature's senses,
  *  in catalog files too. */
@@ -2759,6 +2780,14 @@ export function getCapabilityPackageInstallIssue(
     (carriesSight(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesSight(document)))
   ) {
     return "A ruleset with combat senses or sight, obscuring zones, hiding conditions, targets that must be seen or areas set down several times requires schemaVersion 2 and capabilityApi 1.173 or newer";
+  }
+  // Components, and zones that work on whoever stands in them, stop components or ward, 1.174.
+  if (
+    !declaresApi(174) &&
+    (carriesZoneInside(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesZoneInside(document)))
+  ) {
+    return "A ruleset with combat components, or zones that work on whoever stands inside, stop components or ward off spells, requires schemaVersion 2 and capabilityApi 1.174 or newer";
   }
   if (carriesCreatureSpellcasting) {
     // The references can only be checked once the catalog files are beside their headers.

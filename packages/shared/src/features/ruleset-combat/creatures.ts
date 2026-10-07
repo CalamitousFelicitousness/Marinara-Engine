@@ -172,6 +172,7 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
     ...(action.autoHit ? { autoHit: true } : {}),
     ...(action.needs ? { needs: [...action.needs] } : {}),
     ...(action.seen ? { seen: true as const } : {}),
+    ...(action.components ? { components: [...action.components] } : {}),
     ...(damage
       ? {
           damage: {

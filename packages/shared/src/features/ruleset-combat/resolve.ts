@@ -99,6 +99,7 @@ import {
   rulesetAimLegal,
   rulesetAimedCells,
   rulesetCopiesLegal,
+  rulesetWarded,
   type RulesetAreaLay,
   rulesetAreaTargets,
   rulesetAttackMode,
@@ -1099,6 +1100,16 @@ function applyConditionId(
   ctx.events.push({ type: "condition", targetId: target.id, condition, active: true, reason: "applied" });
   endImmuneConditions(ctx, target);
   groundFlier(ctx, target);
+  // Put on during its holder's own turn, a condition that takes budgets away takes them from this
+  // turn too (1.174): 5e's Stinking Cloud, failed as the turn begins or walked into later. The turn
+  // after is read afresh from the conditions as they stand then.
+  if (rulesetOnOwnTurn(ctx.state, target)) {
+    const entry = ctx.combat.conditions?.find((one) => one.condition === condition);
+    for (const change of entry?.budgets ?? []) {
+      if (change.flat >= 0 || target.budgets[change.budget] === undefined) continue;
+      target.budgets[change.budget] = Math.max(0, target.budgets[change.budget]! + change.flat);
+    }
+  }
 }
 
 /** A newly gained immunity ends a condition already on its holder (Capability API 1.127). */
@@ -2007,6 +2018,15 @@ export function applyRulesetCombatChoice(
         choice.targetIds,
       );
   if (!Array.isArray(targets)) return refusal(state, choice.actorId, targets, option.id);
+  // A target named behind a ward this payment does not get through (1.174).
+  const named = actor.actions.find((entry) => entry.id === option.id);
+  if (
+    !area &&
+    named &&
+    targets.some((target) => rulesetWarded(definition, state, actor, named, target, choice.payWith))
+  ) {
+    return refusal(state, choice.actorId, "bad-target", option.id);
+  }
 
   const { ctx, finish } = begin(definition, combat, state, roller);
   if (area && choice.at) ctx.aimedAt = { x: choice.at.x, y: choice.at.y };
@@ -3727,6 +3747,8 @@ function resolveActionBody(
   const spends = style?.spends ? { number: spend ?? actor.initiative, landed: false } : null;
   for (const target of targets) {
     if (!rulesetTargetHasSenses(ctx.definition, ctx.state, target, action.needs)) continue;
+    // Behind a ward this does not get through (1.174), at the level it was paid at.
+    if (rulesetWarded(ctx.definition, ctx.state, actor, action, target, payWith)) continue;
     // An area or a list catches only who the action may take, by what they are (1.163).
     if (!rulesetTargetTypesAllow(ctx.definition, target, action.targetTypes)) continue;
     const endHarm = endConditionsOnHarm(

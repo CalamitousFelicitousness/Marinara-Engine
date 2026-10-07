@@ -1376,6 +1376,47 @@ const seenThroughSchema: z.ZodType<RulesetSeenThrough, z.ZodTypeDef, unknown> = 
   })
   .strict();
 
+/** What standing in a zone does to whoever is there (1.174), and what it stops. */
+export interface RulesetZoneInside {
+  conditions?: string[];
+  immune?: string[];
+}
+const uniqueIds = (max: number) =>
+  z
+    .array(sheetId)
+    .min(1)
+    .max(max)
+    .refine((ids) => new Set(ids).size === ids.length, { message: "Each is named once" });
+const componentIdsSchema: z.ZodType<string[], z.ZodTypeDef, unknown> = uniqueIds(6);
+export interface RulesetCombatComponent {
+  id: string;
+  label: string;
+}
+const combatComponentsSchema: z.ZodType<RulesetCombatComponent[], z.ZodTypeDef, unknown> = z
+  .array(z.object({ id: sheetId, label }).strict())
+  .min(1)
+  .max(8);
+const zoneInsideSchema: z.ZodType<RulesetZoneInside, z.ZodTypeDef, unknown> = z
+  .object({
+    conditions: uniqueIds(8).optional(),
+    immune: z.array(promptSafeText(40)).min(1).max(12).optional(),
+  })
+  .strict()
+  .refine((inside) => inside.conditions !== undefined || inside.immune !== undefined, {
+    message: "Say what standing inside does: conditions, immune or both",
+  });
+export interface RulesetForbids {
+  components: string[];
+}
+const forbidsSchema: z.ZodType<RulesetForbids, z.ZodTypeDef, unknown> = z.object({ components: uniqueIds(8) }).strict();
+export interface RulesetZoneWards {
+  catalogs: string[];
+  maxLevel: number;
+}
+const zoneWardsSchema: z.ZodType<RulesetZoneWards, z.ZodTypeDef, unknown> = z
+  .object({ catalogs: uniqueIds(8), maxLevel: z.number().int().min(0).max(20) })
+  .strict();
+
 export interface RulesetCatalogZone {
   rounds: number;
   anchor?: "point" | "caster";
@@ -1395,6 +1436,9 @@ export interface RulesetCatalogZone {
   blocks?: Array<"move" | "sight">;
   side?: { distance: number; triggers: Array<"enter" | "turn-start" | "turn-end"> };
   obscures?: RulesetSeenThrough;
+  inside?: RulesetZoneInside;
+  forbids?: RulesetForbids;
+  wards?: RulesetZoneWards;
 }
 
 const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = z
@@ -1472,6 +1516,14 @@ const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = 
      *  `pierced` names, within that sense's range: 5e's Fog Cloud and Darkness (pierced by nothing
      *  but blindsight and truesight), or a plain darkness darkvision sees through. */
     obscures: seenThroughSchema.optional(),
+    /** Whoever stands in it has these conditions and shrugs off these damage types while there
+     *  (Capability API 1.174): 5e's Silence deafens and keeps thunder out. */
+    inside: zoneInsideSchema.optional(),
+    /** Nothing needing these components is used from inside it (1.174): Silence, no verbal spell. */
+    forbids: forbidsSchema.optional(),
+    /** What is cast from outside it at this level or lower, off these catalogs, does not reach whoever
+     *  is inside (1.174): 5e's Globe of Invulnerability, spells of 5th level or lower. */
+    wards: zoneWardsSchema.optional(),
     /** A wall that nobody walks through, sees through, or both (Capability API 1.172): 5e's Wall of
      *  Stone and Wall of Ice block both, Wall of Force movement only, Wall of Fire sight only. */
     blocks: z
@@ -1938,6 +1990,9 @@ const catalogMechanicsObject = z
     /** Only a creature its maker can see may be picked (Capability API 1.173): 5e's "a creature you
      *  can see within range". Who sees whom is the fight's `sight`, obscuring zones and senses. */
     seen: z.literal(true).optional(),
+    /** What using it needs, by the ids of `combat.components` (Capability API 1.174): a 5e spell's
+     *  verbal and somatic components, which Silence or a gag can take away. */
+    components: componentIdsSchema.optional(),
     /** Offered in a fight only while a value off its holder's sheet, live state and items stands
      *  within these bounds (Capability API 1.161): 5e's Protection, which needs a shield in hand. */
     usableWhen: catalogUsableWhenSchema.optional(),
@@ -2160,8 +2215,14 @@ function zoneIssue(mechanics: {
       ? "A zone that moves with its caster is a burst around them"
       : mechanics.summons || mechanics.reaction
         ? "A zone is cast on a turn and leaves no summon"
-        : zone.triggers.length === 0 && !zone.terrain && !wall && !zone.obscures
-          ? "A zone names at least one trigger, unless it is a wall, it obscures, or its ground is all it does"
+        : zone.triggers.length === 0 &&
+            !zone.terrain &&
+            !wall &&
+            !zone.obscures &&
+            !zone.inside &&
+            !zone.forbids &&
+            !zone.wards
+          ? "A zone names at least one trigger, unless it is a wall, or what it does is to its ground or to whoever stands in it"
           : (zone.move || zone.drift) && (zone.anchor === "caster" || mechanics.area.shape !== "burst")
             ? "Only a burst held at a point is moved or drifts"
             : zone.breaksConcentration && !mechanics.save
@@ -2442,6 +2503,9 @@ const creatureActionSchema = z
     /** Only a creature its maker can see may be picked (Capability API 1.173): 5e's "a creature you
      *  can see within range". Who sees whom is the fight's `sight`, obscuring zones and senses. */
     seen: z.literal(true).optional(),
+    /** What using it needs, by the ids of `combat.components` (Capability API 1.174): a 5e spell's
+     *  verbal and somatic components, which Silence or a gag can take away. */
+    components: componentIdsSchema.optional(),
     budget: sheetId,
     toHit: z.number().int().min(-50).max(100).optional(),
     /** The amount simply lands: no roll to make. */
@@ -4285,6 +4349,8 @@ const combatConditionSchema = z
     /** Nobody sees its holder while it lasts (Capability API 1.173) but with one of the senses
      *  `pierced` names, within its range: 5e's invisible, which blindsight and truesight see. */
     unseen: seenThroughSchema.optional(),
+    /** Nothing needing these components is used while it holds (Capability API 1.174): gagged. */
+    forbids: forbidsSchema.optional(),
     effects: z.array(combatConditionEffectSchema).max(12).default([]),
     /** The numbers it changes while it holds. */
     modifiers: z.array(combatModifierSchema).min(1).max(6).optional(),
@@ -4920,6 +4986,8 @@ const combatSchema = z
      *  condition's `lacks` names it, 1.122) that is sight: whoever lacks it sees only by a `blind`
      *  sense, so a blinded caster picks no "creature you can see". */
     sight: combatSightSchema.optional(),
+    /** What using something may need (Capability API 1.174): 5e's verbal, somatic and material. */
+    components: combatComponentsSchema.optional(),
     dying: combatDyingSchema.optional(),
     /** The damage types this system has. Matched without case, so "Fire" and "fire" are one type. */
     damageTypes: z.array(promptSafeText(40)).max(40).optional(),
@@ -6840,6 +6908,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
 
     // Senses that see in the dark (1.173): unique, each read off a number on the sheet, and reaching
     // a distance that is only ever measured on a board.
+    if (combat.components) unique(combat.components, at("components"), "component");
     if (combat.senses) {
       unique(combat.senses, at("senses"), "sense");
       combat.senses.forEach((sense, index) => {
@@ -7019,6 +7088,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       effectNameIssues(entry, skills, saves, abilityIds, def, path, issue);
       hideIssues(def, entry, path, issue);
       if (entry.unseen) sightIssues(def, entry.unseen.pierced, [...path, "unseen"], issue);
+      componentIssues(def, entry.forbids?.components, [...path, "forbids", "components"], issue);
       // The action economy it changes (1.71) is the ruleset's own: budgets it declares, conditions it has.
       entry.budgets?.forEach((change, changeIndex) => {
         const where = [...path, "budgets", changeIndex, "budget"];
@@ -7811,6 +7881,49 @@ function cureIssues(
 }
 
 /** The senses an obscuring zone or an unseen condition lets through are the fight's own (1.173). */
+/** The components something needs, or a zone or condition stops, are the fight's own (1.174). */
+function componentIssues(
+  definition: RulesetDefinition,
+  components: string[] | undefined,
+  at: (string | number)[],
+  add: (path: (string | number)[], message: string) => void,
+): void {
+  const known = new Set((definition.combat?.components ?? []).map((component) => component.id));
+  components?.forEach((component, index) => {
+    if (!known.has(component)) {
+      add(
+        [...at, index],
+        known.size ? `Unknown component "${component}"` : "This ruleset declares no combat components",
+      );
+    }
+  });
+}
+
+/** What a zone does to whoever stands in it, stops, or wards off names the ruleset's own words (1.174). */
+function zoneInsideIssues(
+  definition: RulesetDefinition,
+  zone: RulesetCatalogZone | undefined,
+  at: (string | number)[],
+  add: (path: (string | number)[], message: string) => void,
+): void {
+  if (!zone) return;
+  const conditions = new Set(definition.sheet.live.conditions.map((condition) => condition.id));
+  zone.inside?.conditions?.forEach((condition, index) => {
+    if (!conditions.has(condition)) add([...at, "inside", "conditions", index], `Unknown condition "${condition}"`);
+  });
+  const types = definition.combat?.damageTypes?.map((type) => type.trim().toLowerCase());
+  zone.inside?.immune?.forEach((type, index) => {
+    if (types && !types.includes(type.trim().toLowerCase())) {
+      add([...at, "inside", "immune", index], `Unknown damage type "${type}"`);
+    }
+  });
+  componentIssues(definition, zone.forbids?.components, [...at, "forbids", "components"], add);
+  const catalogs = new Set((definition.catalogs ?? []).map((catalog) => catalog.id));
+  zone.wards?.catalogs.forEach((catalog, index) => {
+    if (!catalogs.has(catalog)) add([...at, "wards", "catalogs", index], `Unknown catalog "${catalog}"`);
+  });
+}
+
 function sightIssues(
   definition: RulesetDefinition,
   pierced: string[] | undefined,
@@ -7987,6 +8100,7 @@ function creatureIssues(
   creature.actions.forEach((action, index) => {
     const path = [...at, "actions", index];
     if (!budgets.has(action.budget)) add([...path, "budget"], `Unknown budget "${action.budget}"`);
+    componentIssues(definition, action.components, [...path, "components"], add);
     if (action.damage?.type && damageTypes && !damageTypes.has(action.damage.type.trim().toLowerCase())) {
       add([...path, "damage", "type"], `Unknown damage type "${action.damage.type}"`);
     }
@@ -8408,6 +8522,8 @@ function useIssues(
   targetTestIssues(definition, use, at, add);
   cureIssues(definition, use, at, add);
   if (use.zone?.obscures) sightIssues(definition, use.zone.obscures.pierced, [...at, "zone", "obscures"], add);
+  zoneInsideIssues(definition, use.zone, [...at, "zone"], add);
+  componentIssues(definition, use.components, [...at, "components"], add);
   use.applies?.forEach((applies, index) => {
     if (!conditions.has(applies.condition)) {
       add([...at, "applies", index, "condition"], `Unknown condition "${applies.condition}"`);
@@ -9211,6 +9327,8 @@ export function rulesetCatalogEntryIssues(
     if (mechanics?.zone?.obscures) {
       sightIssues(definition, mechanics.zone.obscures.pierced, [index, "mechanics", "zone", "obscures"], add);
     }
+    zoneInsideIssues(definition, mechanics?.zone, [index, "mechanics", "zone"], add);
+    componentIssues(definition, mechanics?.components, [index, "mechanics", "components"], add);
     if (mechanics?.zone?.whileHeld && !liveConditions.has(mechanics.zone.whileHeld.condition)) {
       add(
         [index, "mechanics", "zone", "whileHeld", "condition"],

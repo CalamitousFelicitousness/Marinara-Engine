@@ -7,6 +7,7 @@ import { openChatMessageSearch } from "./chat-settings-tools.js";
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 
 type FeatureSettings = Record<string, unknown>;
+type MessageTrashHolds = { holders: number; original?: FeatureSettings };
 
 // Message Trash is a global switch, and the mobile projects and repeated runs share one server (#7220). Runs that
 // need it hold it together: the first saves the original settings and only the last one restores them.
@@ -16,36 +17,55 @@ async function holdMessageTrash(request: APIRequestContext, baseURL: string) {
   const dir = new URL(`../.tmp/playwright-data/message-trash-${new URL(baseURL).port}/`, import.meta.url);
   const holdersFile = new URL("holders.json", dir);
   const lock = new URL("lock/", dir);
-  const withLock = async (update: (state: { holders: number; original?: FeatureSettings }) => Promise<void>) => {
+  const unlock = async (state: MessageTrashHolds) => {
+    await writeFile(holdersFile, JSON.stringify(state));
+    await rm(lock, { recursive: true, force: true });
+  };
+  const withLock = async (update: (state: MessageTrashHolds) => Promise<void>) => {
     await mkdir(dir, { recursive: true });
     await expect(() => mkdir(lock)).toPass();
-    let state: { holders: number; original?: FeatureSettings } = { holders: 0 };
+    let state: MessageTrashHolds = { holders: 0 };
     try {
       state = await readFile(holdersFile, "utf8").then(JSON.parse, () => state);
       await update(state);
     } finally {
-      await writeFile(holdersFile, JSON.stringify(state));
-      await rm(lock, { recursive: true, force: true });
+      await unlock(state);
     }
   };
-  await withLock(async (state) => {
-    const response = await request.get("/api/app-settings/features");
-    expect(response.ok()).toBeTruthy();
-    const current = ((await response.json()) as { settings?: FeatureSettings }).settings ?? {};
-    const enabled = await request.put("/api/app-settings/features", { data: { ...current, messageTrash: true } });
-    expect(enabled.ok()).toBeTruthy();
-    // Only the first holder saves; an original a failed restore could not put back stays saved for the next try.
-    state.original ??= current;
-    state.holders += 1;
-  });
-  return () =>
-    withLock(async (state) => {
-      state.holders -= 1;
-      if (state.holders > 0) return;
-      const restored = await request.put("/api/app-settings/features", { data: state.original ?? {} });
-      if (!restored.ok()) throw new Error(`Feature settings cleanup failed (${restored.status()})`);
-      delete state.original;
+  const release = async (state: MessageTrashHolds) => {
+    state.holders -= 1;
+    if (state.holders > 0) return;
+    const restored = await request.put("/api/app-settings/features", { data: state.original ?? {} });
+    if (!restored.ok()) throw new Error(`Feature settings cleanup failed (${restored.status()})`);
+    delete state.original;
+  };
+  // Set once this hold is counted; after that only letting go of the lock can fail.
+  let held: MessageTrashHolds | undefined;
+  try {
+    await withLock(async (state) => {
+      const response = await request.get("/api/app-settings/features");
+      expect(response.ok()).toBeTruthy();
+      const current = ((await response.json()) as { settings?: FeatureSettings }).settings ?? {};
+      const enabled = await request.put("/api/app-settings/features", { data: { ...current, messageTrash: true } });
+      expect(enabled.ok()).toBeTruthy();
+      // Only the first holder saves; an original a failed restore could not put back stays saved for the next try.
+      state.original ??= current;
+      state.holders += 1;
+      held = state;
     });
+  } catch (error) {
+    // The caller gets no release callback, so take back a counted hold here while the lock is still ours: other
+    // holders keep theirs, and the setting is restored if this was the last one. Then fail with the original error.
+    const state = held;
+    if (state)
+      await release(state)
+        .finally(() => unlock(state))
+        .catch((rollbackError) => {
+          throw new AggregateError([error, rollbackError], "Could not take back a failed Message Trash hold");
+        });
+    throw error;
+  }
+  return () => withLock(release);
 }
 
 for (const mode of ["conversation", "roleplay"] as const) {

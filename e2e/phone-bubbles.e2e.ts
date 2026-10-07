@@ -959,6 +959,9 @@ test.describe("phone bubbles", () => {
           { preset, size },
         );
         await expect(launcher).toHaveCSS("width", `${size ?? 36}px`);
+        // A new size moves the launcher back inside the chat a frame after its width changes (#7220). Wait until every
+        // button holds still clear of the message box, so the next drag grabs the launcher where it really is.
+        await expectComposerClearAndNoSideScroll(page);
         for (const edge of ["right", "left"] as const) {
           for (const direction of ["below", "above"] as const) {
             await dragBubble(page, launcher, {

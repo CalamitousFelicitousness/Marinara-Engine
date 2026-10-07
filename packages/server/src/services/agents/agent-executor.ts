@@ -3639,6 +3639,12 @@ function sanitizeTextAgentResponse(text: string): string {
   return cleaned;
 }
 
+/** Tracker results with one row group, mapped to the key a root-level envelope belongs under. */
+const SINGLE_GROUP_TRACKER_KEYS: Partial<Record<AgentResultType, string>> = {
+  custom_tracker_update: "fields",
+  character_tracker_update: "presentCharacters",
+};
+
 /**
  * Parse the raw LLM response into a typed result.
  */
@@ -3674,11 +3680,13 @@ function parseAgentResponse(
         }
       }
       let data = config.type === "cyoa" ? normalizeCyoaChoiceOutput(parsedData) : parsedData;
-      // Custom Tracker has one row group; tolerate the incremental envelope at
-      // the root as well as under fields, then use the usual merge/lock path.
-      if (resultType === "custom_tracker_update" && isTrackerRowsUpdate(data) && !("fields" in data)) {
+      // Custom Tracker and Character Tracker each have one row group; tolerate
+      // the incremental envelope at the root as well as under its key, then use
+      // the usual merge/lock path (#7208).
+      const rowsKey = SINGLE_GROUP_TRACKER_KEYS[resultType];
+      if (rowsKey && isTrackerRowsUpdate(data) && !(rowsKey in data)) {
         const { updates, removed } = data;
-        data = { ...data, fields: { updates, removed } };
+        data = { ...data, [rowsKey]: { updates, removed } };
       }
       if (config.settings.jsonContextOutput === true && resultType === "context_injection") {
         const output = data as Record<string, unknown>;

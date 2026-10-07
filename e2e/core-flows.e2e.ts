@@ -22601,9 +22601,18 @@ test("page backing keeps the app running when the browser refuses canvas reads",
   });
   await page.goto("/");
   await expect(page.locator('[data-component="AppShell"]')).toBeVisible();
+  await page.evaluate(async () => {
+    const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+    useUIStore.getState().setAppBackgroundColor("#234567");
+  });
   await expect(page.getByText("Marinara hit a recoverable UI error.")).toHaveCount(0);
-  await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute("content", /\S/);
-  await expect(page.locator("html")).not.toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  // Without the canvas, the backing keeps the theme's own background color, unflattened.
+  await expect(page.locator("html")).toHaveCSS("background-color", "rgb(35, 69, 103)");
+  await expect(page.locator("body")).toHaveCSS("background-color", "rgb(35, 69, 103)");
+  await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute("content", "#234567");
+  await expect
+    .poll(() => page.locator("html").evaluate((element) => element.style.getPropertyValue("--marinara-page-backing")))
+    .toBe("#234567");
 });
 
 test("mobile Roleplay releases its inactive background after a crossfade", async ({ page }, testInfo) => {

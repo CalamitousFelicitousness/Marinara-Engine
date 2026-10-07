@@ -3232,10 +3232,11 @@ async function applyRetryResultEffects(args: {
           !isTrackerRowsUpdate(ctData.presentCharacters) &&
           (!Array.isArray(ctData.presentCharacters) || ctData.presentCharacters.length === 0)
         ) {
-          // An empty list deliberately keeps the snapshot; a missing or malformed one is lost output (#7208).
-          logger[Array.isArray(ctData.presentCharacters) ? "debug" : "warn"](
+          const resultKeys = Object.keys(ctData);
+          // `{}` and an empty list are the prompt's no-change replies; any other shape is lost output (#7208).
+          logger[resultKeys.length === 0 || Array.isArray(ctData.presentCharacters) ? "debug" : "warn"](
             "[retry-agents] character-tracker emitted no presentCharacters (result keys: %s); keeping existing snapshot",
-            Object.keys(ctData).join(", ") || "none",
+            resultKeys.join(", ") || "none",
           );
           continue;
         }

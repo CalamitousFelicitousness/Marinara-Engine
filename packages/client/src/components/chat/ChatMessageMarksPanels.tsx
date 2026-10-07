@@ -8,7 +8,8 @@ import {
   type MessageTrashEntry,
 } from "@marinara-engine/shared";
 import { Bookmark, Loader2, RotateCcw, Trash2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import type { TFunction } from "i18next";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { useCharacterSummaries } from "../../hooks/use-characters";
@@ -37,16 +38,19 @@ function useSpeakerName(characterIds: string[]) {
   const { t: localizeUi } = useUiTranslation();
   const { data: summaries } = useCharacterSummaries(characterIds);
   const names = useMemo(() => new Map((summaries ?? []).map((summary) => [summary.id, summary.name])), [summaries]);
-  return (message: { role: string; characterId?: string | null; extra?: unknown }) => {
-    if (message.role === "user") {
-      const extra = message.extra as { personaSnapshot?: { name?: unknown } | null } | null | undefined;
-      const personaName = typeof extra?.personaSnapshot?.name === "string" ? extra.personaSnapshot.name.trim() : "";
-      return personaName || localizeUi("ui.chat.messagemarks.you");
-    }
-    if (message.role === "narrator") return localizeUi("ui.chat.chatmessage.narrator");
-    if (message.role === "system") return localizeUi("ui.chat.messagemarks.system");
-    return (message.characterId && names.get(message.characterId)) || localizeUi("ui.chat.messagemarks.character");
-  };
+  return useCallback(
+    (message: { role: string; characterId?: string | null; extra?: unknown }) => {
+      if (message.role === "user") {
+        const extra = message.extra as { personaSnapshot?: { name?: unknown } | null } | null | undefined;
+        const personaName = typeof extra?.personaSnapshot?.name === "string" ? extra.personaSnapshot.name.trim() : "";
+        return personaName || localizeUi("ui.chat.messagemarks.you");
+      }
+      if (message.role === "narrator") return localizeUi("ui.chat.chatmessage.narrator");
+      if (message.role === "system") return localizeUi("ui.chat.messagemarks.system");
+      return (message.characterId && names.get(message.characterId)) || localizeUi("ui.chat.messagemarks.character");
+    },
+    [names, localizeUi],
+  );
 }
 
 /** Bookmarked messages of the loaded transcript; clicking one jumps to it. */
@@ -107,22 +111,135 @@ export function ChatBookmarksList({
   );
 }
 
+/** A large trash renders this many rows at a time, so the page stays responsive while it fills in (#7210). */
+const TRASH_ROW_BATCH = 100;
+/** Restore failures outlast the 6 s default: a large restore can keep a slow phone busy for a few seconds. */
+const RESTORE_FAILURE_TOAST_MS = 15_000;
+
+/** How many of `total` batches to render now: one at once, then one more each time the page is idle. */
+function useProgressiveCount(total: number) {
+  const [count, setCount] = useState(1);
+  // Shrink with the list, so a list that grows large again also fills in batch by batch.
+  if (count > Math.max(total, 1)) setCount(Math.max(total, 1));
+  useEffect(() => {
+    if (count >= total) return;
+    const grow = () => setCount(count + 1);
+    // WebKit has no requestIdleCallback; a short timer still lets input and painting run between batches.
+    if (typeof window.requestIdleCallback === "function") {
+      const handle = window.requestIdleCallback(grow, { timeout: 500 });
+      return () => window.cancelIdleCallback(handle);
+    }
+    const handle = window.setTimeout(grow, 16);
+    return () => window.clearTimeout(handle);
+  }, [count, total]);
+  return Math.min(count, total);
+}
+
+type TrashRowActions = {
+  localizeUi: TFunction;
+  onRestore: (entryId: string) => void;
+  onDelete: (entryId: string, confirmed: boolean) => void;
+};
+
+/** One trash entry; memoised so a refetch that keeps the entry does not re-render it. */
+const ChatTrashRow = memo(function ChatTrashRow({
+  entry,
+  speaker,
+  confirming,
+  localizeUi,
+  onRestore,
+  onDelete,
+}: TrashRowActions & { entry: MessageTrashEntry; speaker: string; confirming: boolean }) {
+  return (
+    // Its own top border, not divide-y: appended rows then never restyle the rows above them.
+    <div className="border-t border-[var(--border)] px-3 py-2.5">
+      <div className="flex items-baseline gap-2 text-xs">
+        <span className="min-w-0 truncate font-semibold text-[var(--foreground)]">{speaker}</span>
+        <span className="ml-auto shrink-0 text-[var(--muted-foreground)]">
+          {localizeUi("ui.chat.messagetrash.deletedAt", { time: formatWhen(entry.deletedAt) })}
+        </span>
+      </div>
+      <p className="mt-1 line-clamp-2 break-words text-sm leading-5 text-[var(--muted-foreground)]">
+        {snippet(entry.content) || localizeUi("ui.chat.messagetrash.noText")}
+      </p>
+      <div className="mt-1 flex items-center gap-1">
+        {entry.swipeCount > 1 && (
+          <span className="mr-auto text-[0.6875rem] text-[var(--muted-foreground)]">
+            {localizeUi("ui.chat.messagetrash.swipes", { count: entry.swipeCount })}
+          </span>
+        )}
+        <button
+          type="button"
+          onClick={() => onRestore(entry.id)}
+          className={cn(ICON_BUTTON_CLASS, entry.swipeCount <= 1 && "ml-auto")}
+        >
+          <RotateCcw size="0.75rem" />
+          {localizeUi("ui.chat.messagetrash.restore")}
+        </button>
+        <button
+          type="button"
+          onClick={() => onDelete(entry.id, confirming)}
+          className={cn(ICON_BUTTON_CLASS, confirming && "text-[var(--destructive)]")}
+        >
+          <Trash2 size="0.75rem" />
+          {confirming
+            ? localizeUi("ui.chat.messagetrash.confirmDeleteForever")
+            : localizeUi("ui.chat.messagetrash.deleteForever")}
+        </button>
+      </div>
+    </div>
+  );
+});
+
+/** One batch of trash rows; memoised so busy changes and newly shown batches leave it alone. */
+const ChatTrashRowBatch = memo(function ChatTrashRowBatch({
+  entries,
+  confirmingId,
+  speakerName,
+  ...actions
+}: TrashRowActions & {
+  entries: MessageTrashEntry[];
+  confirmingId: string | null;
+  speakerName: (entry: MessageTrashEntry) => string;
+}) {
+  return entries.map((entry) => (
+    <ChatTrashRow
+      key={entry.id}
+      entry={entry}
+      speaker={speakerName(entry)}
+      confirming={entry.id === confirmingId}
+      {...actions}
+    />
+  ));
+});
+
 /** Per-chat trash with restore, delete forever and empty trash. */
 export function ChatTrashList({ chatId, enabled }: { chatId: string; enabled: boolean }) {
   const { t: localizeUi } = useUiTranslation();
   const { data: entries, isLoading, isError, refetch } = useMessageTrash(chatId, enabled);
-  const restore = useRestoreTrashedMessages(chatId);
-  const deleteForever = useDeleteTrashedMessages(chatId);
+  const { mutate: restore, isPending: restoring } = useRestoreTrashedMessages(chatId);
+  const { mutate: deleteForever, isPending: deleting } = useDeleteTrashedMessages(chatId);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const speakerName = useSpeakerName(
     (entries ?? []).flatMap((entry) => (entry.characterId ? [entry.characterId] : [])),
   );
-  const busy = restore.isPending || deleteForever.isPending;
+  const batches = useMemo(() => {
+    const list = entries ?? [];
+    return Array.from({ length: Math.ceil(list.length / TRASH_ROW_BATCH) }, (_, index) =>
+      list.slice(index * TRASH_ROW_BATCH, (index + 1) * TRASH_ROW_BATCH),
+    );
+  }, [entries]);
+  const shownBatches = useProgressiveCount(batches.length);
+  const busy = restoring || deleting;
+  // Row actions check this ref instead of `busy`, so a busy change keeps their callbacks and every row unchanged.
+  const busyRef = useRef(busy);
+  useLayoutEffect(() => {
+    busyRef.current = busy;
+  }, [busy]);
 
-  const restoreEntries = (items: MessageTrashEntry[]) =>
-    restore.mutate(
-      items.map((entry) => entry.id),
-      {
+  const restoreEntries = useCallback(
+    (entryIds: string[]) =>
+      restore(entryIds, {
         onSuccess: (result) => {
           const restored =
             result.restoredMessageIds.length > 0
@@ -131,19 +248,40 @@ export function ChatTrashList({ chatId, enabled }: { chatId: string; enabled: bo
           if (result.error || result.conflictEntryIds.length > 0)
             toast.warning(result.error ?? localizeUi("ui.chat.messagetrash.restoreConflict"), {
               description: restored,
+              duration: RESTORE_FAILURE_TOAST_MS,
             });
           else if (restored) toast.success(restored);
         },
         onError: (error) =>
-          toast.error(error instanceof Error ? error.message : localizeUi("ui.chat.messagetrash.restoreFailed")),
-      },
-    );
-  const deleteEntries = (entryIds?: string[]) => {
-    setConfirmingId(null);
-    deleteForever.mutate(entryIds, {
-      onError: () => toast.error(localizeUi("ui.chat.messagetrash.deleteFailed")),
-    });
-  };
+          toast.error(error instanceof Error ? error.message : localizeUi("ui.chat.messagetrash.restoreFailed"), {
+            duration: RESTORE_FAILURE_TOAST_MS,
+          }),
+      }),
+    [restore, localizeUi],
+  );
+  const restoreEntry = useCallback(
+    (entryId: string) => {
+      if (!busyRef.current) restoreEntries([entryId]);
+    },
+    [restoreEntries],
+  );
+  const deleteEntries = useCallback(
+    (entryIds?: string[]) => {
+      setConfirmingId(null);
+      deleteForever(entryIds, {
+        onError: () => toast.error(localizeUi("ui.chat.messagetrash.deleteFailed")),
+      });
+    },
+    [deleteForever, localizeUi],
+  );
+  const deleteEntry = useCallback(
+    (entryId: string, confirmed: boolean) => {
+      if (busyRef.current) return;
+      if (confirmed) deleteEntries([entryId]);
+      else setConfirmingId(entryId);
+    },
+    [deleteEntries],
+  );
 
   if (isLoading) {
     return (
@@ -180,7 +318,7 @@ export function ChatTrashList({ chatId, enabled }: { chatId: string; enabled: bo
   }
   return (
     <div className="flex min-h-0 flex-col">
-      <div className="flex items-center gap-2 border-b border-[var(--border)] px-3 py-1.5">
+      <div className="flex items-center gap-2 px-3 py-1.5">
         <p className="min-w-0 flex-1 text-[0.6875rem] leading-4 text-[var(--muted-foreground)]">
           {localizeUi("ui.chat.messagetrash.retention", { count: MESSAGE_TRASH_RETENTION_DAYS })}
         </p>
@@ -188,7 +326,7 @@ export function ChatTrashList({ chatId, enabled }: { chatId: string; enabled: bo
           <button
             type="button"
             disabled={busy}
-            onClick={() => restoreEntries(entries)}
+            onClick={() => restoreEntries(entries.map((entry) => entry.id))}
             className={ICON_BUTTON_CLASS}
             title={localizeUi("ui.chat.messagetrash.restoreAll")}
           >
@@ -208,47 +346,22 @@ export function ChatTrashList({ chatId, enabled }: { chatId: string; enabled: bo
             : localizeUi("ui.chat.messagetrash.emptyTrash")}
         </button>
       </div>
-      <div className="divide-y divide-[var(--border)]">
-        {entries.map((entry) => (
-          <div key={entry.id} className="px-3 py-2.5">
-            <div className="flex items-baseline gap-2 text-xs">
-              <span className="min-w-0 truncate font-semibold text-[var(--foreground)]">{speakerName(entry)}</span>
-              <span className="ml-auto shrink-0 text-[var(--muted-foreground)]">
-                {localizeUi("ui.chat.messagetrash.deletedAt", { time: formatWhen(entry.deletedAt) })}
-              </span>
-            </div>
-            <p className="mt-1 line-clamp-2 break-words text-sm leading-5 text-[var(--muted-foreground)]">
-              {snippet(entry.content) || localizeUi("ui.chat.messagetrash.noText")}
-            </p>
-            <div className="mt-1 flex items-center gap-1">
-              {entry.swipeCount > 1 && (
-                <span className="mr-auto text-[0.6875rem] text-[var(--muted-foreground)]">
-                  {localizeUi("ui.chat.messagetrash.swipes", { count: entry.swipeCount })}
-                </span>
-              )}
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => restoreEntries([entry])}
-                className={cn(ICON_BUTTON_CLASS, entry.swipeCount <= 1 && "ml-auto")}
-              >
-                <RotateCcw size="0.75rem" />
-                {localizeUi("ui.chat.messagetrash.restore")}
-              </button>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => (confirmingId === entry.id ? deleteEntries([entry.id]) : setConfirmingId(entry.id))}
-                className={cn(ICON_BUTTON_CLASS, confirmingId === entry.id && "text-[var(--destructive)]")}
-              >
-                <Trash2 size="0.75rem" />
-                {confirmingId === entry.id
-                  ? localizeUi("ui.chat.messagetrash.confirmDeleteForever")
-                  : localizeUi("ui.chat.messagetrash.deleteForever")}
-              </button>
-            </div>
-          </div>
+      <div aria-busy={busy} className="relative">
+        {batches.slice(0, shownBatches).map((batch, index) => (
+          <ChatTrashRowBatch
+            key={index}
+            entries={batch}
+            // Only the batch holding the row waiting for a second click re-renders.
+            confirmingId={confirmingId && batch.some((entry) => entry.id === confirmingId) ? confirmingId : null}
+            speakerName={speakerName}
+            localizeUi={localizeUi}
+            onRestore={restoreEntry}
+            onDelete={deleteEntry}
+          />
         ))}
+        {/* While busy, a cover dims and blocks the rows. Disabling thousands of row buttons instead
+            restyles every row and freezes WebKit for seconds (#7210). */}
+        {busy && <div aria-hidden className="absolute inset-0 cursor-progress bg-[var(--background)]/50" />}
       </div>
     </div>
   );

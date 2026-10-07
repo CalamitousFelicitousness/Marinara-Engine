@@ -1155,7 +1155,14 @@ for (const [preset, theme] of [
       await controls.locator("#chat-widget-font").selectOption("@serif");
       await controls.locator("#chat-widget-shape").selectOption("cut-corner");
       await setGradientColors(controls);
+      // Cut corners keeps the preset's inner button ring under custom colors too (#7244).
+      await expectButtonRing(
+        page,
+        controls.locator(`[data-chat-widget-preview][data-chat-widget-preset="${preset}"] .mari-window-bubble`),
+        preset,
+      );
       await clickTopbarPanel(page, "settings");
+      await expectButtonRing(page, page.locator("[data-chat-settings-button]"), preset);
       const background = await resolvedStyle(page, "background-image", GRADIENT_COLORS.background);
       const border = await resolvedStyle(page, "background-image", GRADIENT_COLORS.border);
       const textGradient = await resolvedStyle(page, "background-image", GRADIENT_COLORS.text);

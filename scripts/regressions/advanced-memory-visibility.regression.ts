@@ -32,6 +32,8 @@ const ids = { maukie: "", pantalone: "", narrator: "" };
 let failVisibility = false;
 let dropPresence = false;
 let dropEnds = false;
+/** When set, the fake Jev gives this unsure score to every presence question. */
+let unsurePresence: number | null = null;
 let mainReplies: string[] = [];
 
 /** The fake helper keeps Maukie (by first name only) and leaves Pantalone out of every scene. */
@@ -58,7 +60,14 @@ const provider = createServer(async (req, res) => {
             .filter((id) => !dropPresence || !id.startsWith("presence:"))
             .map((id) => [
               id,
-              { type: "noul", noul: id.startsWith("presence:") && !id.endsWith(ids.pantalone) ? 0.99 : 0.01 },
+              {
+                type: "noul",
+                // The question asks whether the character can't see or hear the message:
+                // the fake Jev is sure only about the absent Pantalone.
+                noul: id.startsWith("presence:")
+                  ? (unsurePresence ?? (id.endsWith(ids.pantalone) ? 0.99 : 0.01))
+                  : 0.01,
+              },
             ]),
         ),
       }),
@@ -202,6 +211,10 @@ try {
     "one helper call decides every undecided recent message",
   );
   const task = JSON.parse(JSON.parse(calls[0]!.prompt)[1].content);
+  assert(
+    JSON.parse(calls[0]!.prompt)[0].content.includes("when unsure, mark them true"),
+    "the helper hides only on evidence",
+  );
   assert.deepEqual(task.recentlyActive, ["Maukie Whiskers", "Pantalone"], "speakers since the scene began are a hint");
   assert(
     task.decide.every((entry: { candidates: string[] }) => !entry.candidates.includes("Narrator")),
@@ -412,6 +425,55 @@ try {
   assert.equal(decisionRequests.length, 1);
   assert(Object.keys(decisionRequests[0]!.questions).every((id) => id.startsWith("presence:")));
   assert.deepEqual((await extraOf(jevAlone.id)).hiddenFromAICharacterIds, [ids.pantalone]);
+
+  // Maukie replies, then Pantalone answers beside her: an unsure Decision model hides nothing (#7263).
+  const besideChat = await createChat({ decisionEnabled: true, decisionConnectionId: decisionConnection.id });
+  await say(besideChat, "user", "P sits by the campfire with Maukie and Pantalone.");
+  await say(besideChat, "assistant", "MAUKIE_BESIDE_THE_FIRE", ids.maukie);
+  await memory.settleMessageVisibility(besideChat);
+  const besideLine = await say(besideChat, "assistant", "Pantalone passes Maukie the bread.", ids.pantalone);
+  unsurePresence = 0.3;
+  decisionRequests.length = 0;
+  await memory.settleMessageVisibility(besideChat);
+  unsurePresence = null;
+  assert.equal(decisionRequests.length, 1);
+  assert.deepEqual(
+    decisionRequests[0]!.state.presence.transcript
+      .slice(-2)
+      .map((entry: { speaker: string; content: string }) => [entry.speaker, entry.content]),
+    [
+      ["Maukie Whiskers", "MAUKIE_BESIDE_THE_FIRE"],
+      ["Pantalone", "Pantalone passes Maukie the bread."],
+    ],
+    "the reply just before is in the context, with its speaker",
+  );
+  const besideQuestion = decisionRequests[0]!.questions[`presence:${besideLine.id}:${ids.maukie}`];
+  assert(besideQuestion?.instructions.includes('by "Pantalone"'), "the question names who wrote the message");
+  assert.equal(
+    (await extraOf(besideLine.id)).hiddenFromAICharacterIds,
+    undefined,
+    "an unsure answer keeps a present character seeing the message",
+  );
+  assert.deepEqual((await extraOf(besideLine.id)).autoVisibility.hiddenCharacterIds, []);
+
+  // A new scene's opening message still shows the messages just before it (#7263).
+  const sceneChat = await createChat({ decisionEnabled: true, decisionConnectionId: decisionConnection.id });
+  await say(sceneChat, "user", "P and Maukie walk to the market together.");
+  await say(sceneChat, "assistant", "MAUKIE_FOLLOWS_TO_MARKET", ids.maukie);
+  await memory.settleMessageVisibility(sceneChat);
+  const closing = await memory.getSceneCheck(sceneChat, { force: true });
+  assert(closing && (await memory.commitSceneCheck(sceneChat, closing, { ends: [{ messageNumber: 2 }] })));
+  const opening = await say(sceneChat, "assistant", "Pantalone haggles at the market stall.", ids.pantalone);
+  decisionRequests.length = 0;
+  await memory.settleMessageVisibility(sceneChat);
+  assert.equal(decisionRequests.length, 1);
+  assert.deepEqual(
+    decisionRequests[0]!.state.presence.transcript.map((entry: { content: string }) => entry.content),
+    ["P and Maukie walk to the market together.", "MAUKIE_FOLLOWS_TO_MARKET", "Pantalone haggles at the market stall."],
+    "the messages before a new scene are still context",
+  );
+  assert.deepEqual(decisionRequests[0]!.state.presence.recentlyActive, ["Pantalone"], "speakers stay scene-only");
+  assert.equal((await extraOf(opening.id)).hiddenFromAICharacterIds, undefined);
 
   // The generation guard decides earlier messages before each character's context is built.
   const routeChat = await createChat();

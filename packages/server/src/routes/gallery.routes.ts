@@ -1264,6 +1264,11 @@ export async function galleryRoutes(app: FastifyInstance) {
     const characterData = parseJsonRecord(character.data);
     const characterName = readTrimmedString(characterData.name) ?? "character";
     const { appearance, imageAppearance } = getCharacterAppearance(characterData);
+    // Same inputs the character-sent selfie passes (conversation-selfie-command-runtime.ts),
+    // so `/selfie` and the gallery button get the personality and image-instruction blocks too.
+    const personality = readTrimmedString(characterData.personality) ?? "";
+    const characterImageInstructions =
+      readTrimmedString(parseJsonRecord(characterData.extensions).conversationImageInstructions) ?? "";
     const selfiePromptTemplate = readTrimmedString(meta.selfiePrompt) ?? "";
     const selfieTags = readStringArray(meta.selfieTags);
     const selfiePositivePrompt = readTrimmedString(meta.selfiePositivePrompt) ?? selfieTags.join(", ").trim();
@@ -1290,6 +1295,8 @@ export async function galleryRoutes(app: FastifyInstance) {
       appearance,
       imageAppearance,
       charName: characterName,
+      characterImageInstructions,
+      personality,
     });
     const selfieSystemPrompt = styleGuidance
       ? `${baseSelfieSystemPrompt}${formatImageStylePromptGuidance(styleGuidance)}`

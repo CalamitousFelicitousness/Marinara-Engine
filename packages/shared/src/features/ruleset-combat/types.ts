@@ -204,7 +204,7 @@ export interface RulesetStatBlockAction {
   reach?: number;
   range?: number | RulesetCombatRange;
   /** The shape it lands in, in the ruleset's own distance unit. */
-  area?: { shape: RulesetCombatArea["shape"]; size: number; friendlyFire?: boolean };
+  area?: { shape: RulesetCombatArea["shape"]; size: number; width?: number; friendlyFire?: boolean };
   uses?: RulesetCombatUses;
   recharge?: RulesetCombatRecharge;
   /** Other actions of this block, in order. ONE budget pays for the lot, and each part takes its
@@ -492,6 +492,8 @@ export interface RulesetCombatContest {
 export interface RulesetCombatArea {
   shape: "burst" | "cone" | "line";
   size: number;
+  /** A line's width in cells (Capability API 1.123). Without it, one cell. */
+  width?: number;
   friendlyFire?: boolean;
 }
 
@@ -1325,7 +1327,7 @@ export interface RulesetCombatOption {
   movementCost?: number;
   /** The shape this covers, in cells, and how far away it may be aimed. Present only in a
    *  positioned fight, and then the option is aimed at a cell rather than at anybody. */
-  area?: { shape: RulesetCombatArea["shape"]; size: number; range: number };
+  area?: { shape: RulesetCombatArea["shape"]; size: number; width?: number; range: number };
 }
 
 export interface RulesetCombatChoice {

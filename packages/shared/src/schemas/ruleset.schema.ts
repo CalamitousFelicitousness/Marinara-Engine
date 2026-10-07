@@ -1642,8 +1642,17 @@ const catalogMechanicsObject = z
     /** In the catalog's own distance unit. 0 is self or touch. */
     range: z.number().finite().min(0).optional(),
     area: z
-      .object({ shape: z.enum(["burst", "cone", "line"]), size: z.number().finite().gt(0) })
+      .object({
+        shape: z.enum(["burst", "cone", "line"]),
+        size: z.number().finite().gt(0),
+        /** A line's width in the same unit as its size (Capability API 1.123). Without it, one cell. */
+        width: z.number().finite().gt(0).optional(),
+      })
       .strict()
+      .refine((area) => area.width === undefined || area.shape === "line", {
+        message: "Only a line area may carry width",
+        path: ["width"],
+      })
       .optional(),
     targets: z.enum(["self", "ally", "enemy", "any"]).optional(),
     friendlyFire: z.boolean().optional(),
@@ -2080,10 +2089,16 @@ const creatureActionSchema = z
       .object({
         shape: z.enum(["burst", "cone", "line"]),
         size: z.number().finite().gt(0).max(10000),
+        /** A line's width in the same unit as its size (Capability API 1.123). Without it, one cell. */
+        width: z.number().finite().gt(0).optional(),
         /** False spares the creature's own side, as a catalog entry's does. */
         friendlyFire: z.boolean().optional(),
       })
       .strict()
+      .refine((area) => area.width === undefined || area.shape === "line", {
+        message: "Only a line area may carry width",
+        path: ["width"],
+      })
       .optional(),
     /** How many times it can be done at all, and over what stretch. */
     uses: creatureUsesSchema.optional(),
@@ -2968,6 +2983,11 @@ export const rulesetItemUseSchema = catalogMechanicsObject
   })
   .extend({
     kind: z.enum(["attack", "heal", "buff", "debuff"]),
+    // Line widths belong to catalog entries and creature actions (1.123).
+    area: z
+      .object({ shape: z.enum(["burst", "cone", "line"]), size: z.number().finite().gt(0) })
+      .strict()
+      .optional(),
     toHit: itemToHitSchema.optional(),
     saveDifficulty: orItemStat(z.number().int().min(0).max(100)).optional(),
     consumes: z.literal(true).optional(),

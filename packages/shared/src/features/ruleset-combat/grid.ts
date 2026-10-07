@@ -232,8 +232,8 @@ export function rulesetLineOfSight(grid: TacticalGrid, a: RulesetCombatCell, b: 
  * The cells a shape covers, in cells, with nothing solid in the way.
  *
  * A burst is every cell within `size` of the cell it was aimed at. A cone runs from the actor toward
- * that cell, as wide at each step as it is far, and a line runs the same way one cell wide. All
- * three stop at anything solid: a cell the origin cannot see is not in the area.
+ * that cell, as wide at each step as it is far, and a line runs the same way one cell wide by default.
+ * All three stop at anything solid: a cell the origin cannot see is not in the area.
  */
 export function rulesetAreaCells(
   shape: RulesetCombatArea["shape"],
@@ -241,6 +241,7 @@ export function rulesetAreaCells(
   origin: RulesetCombatCell,
   toward: RulesetCombatCell,
   grid: TacticalGrid,
+  width = 1,
 ): RulesetCombatCell[] {
   const reach = Math.max(1, Math.round(size));
   if (shape === "burst") return burstCells(reach, toward, grid);
@@ -248,7 +249,9 @@ export function rulesetAreaCells(
   const dy = Math.sign(toward.y - origin.y);
   // Aimed at the cell it is standing in: there is no direction, so the shape covers nothing.
   if (dx === 0 && dy === 0) return [];
-  return shape === "line" ? lineCells(reach, origin, dx, dy, grid) : coneCells(reach, origin, dx, dy, grid);
+  return shape === "line"
+    ? lineCells(reach, origin, dx, dy, grid, Math.max(1, Math.round(width)))
+    : coneCells(reach, origin, dx, dy, grid);
 }
 
 /** The part of the board within `reach` of a cell. Every shape is scanned over THIS, never over its
@@ -282,7 +285,31 @@ function lineCells(
   dx: number,
   dy: number,
   grid: TacticalGrid,
+  width: number,
 ): RulesetCombatCell[] {
+  // Keep the one-cell path unchanged, including how a diagonal stops at a wall.
+  if (width > 1) {
+    const cells: RulesetCombatCell[] = [];
+    const left = Math.floor(width / 2);
+    const right = Math.floor((width - 1) / 2);
+    const box = boardBox(grid, origin, reach + left);
+    const axes = dx !== 0 && dy !== 0 ? 2 : 1;
+    for (let y = box.top; y <= box.bottom; y++) {
+      for (let x = box.left; x <= box.right; x++) {
+        const offX = x - origin.x;
+        const offY = y - origin.y;
+        const along = offX * dx + offY * dy;
+        // Screen y grows downwards: positive across is the caster's left. An even width puts
+        // its extra column there. Diagonals measure across by the difference of their axes,
+        // and along by their average, so the band stays contiguous on a square grid.
+        const across = offX * dy - offY * dx;
+        if (along <= 0 || along > reach * axes || across < -right || across > left) continue;
+        if (rulesetCellBlocked(grid, x, y) || !rulesetLineOfSight(grid, origin, { x, y })) continue;
+        cells.push({ x, y });
+      }
+    }
+    return cells;
+  }
   const cells: RulesetCombatCell[] = [];
   // `blocksSight` reads off the board as solid, so the line ends at the edge whatever its size.
   for (let step = 1; step <= reach; step++) {

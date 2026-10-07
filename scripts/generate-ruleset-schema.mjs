@@ -647,6 +647,18 @@ function spendOnlyOnAPool(node) {
   if (kind !== undefined && kind !== "dice-pool") delete properties.spend;
 }
 
+// Only a line may carry a width. The refinement cannot be generated, so the editor is told here.
+function widthOnlyOnALine(node) {
+  if (Array.isArray(node)) return node.forEach(widthOnlyOnALine);
+  if (!node || typeof node !== "object") return;
+  Object.values(node).forEach(widthOnlyOnALine);
+  if (node.type !== "object" || !node.properties?.shape || !node.properties.width) return;
+  node.allOf = [
+    ...(node.allOf ?? []),
+    { if: { required: ["width"] }, then: { properties: { shape: { const: "line" } } } },
+  ];
+}
+
 const schema = zodToJsonSchema(rulesetDefinitionSchema, { $refStrategy: "none", target: "jsonSchema7" });
 requireLevelsWithKinds(schema);
 requireSpendBuysSomething(schema);
@@ -660,6 +672,7 @@ requireCatalogFeeds(schema);
 requireSaveEndsUntilSave(schema);
 uniqueConditionEndings(schema);
 uniqueCombatSenses(schema);
+widthOnlyOnALine(schema);
 cancelOnlyWhenAimed(schema);
 modifierSaysSomething(schema);
 creatureActionShape(schema);

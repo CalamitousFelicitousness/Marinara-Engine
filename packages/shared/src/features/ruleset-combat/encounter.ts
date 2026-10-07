@@ -1373,6 +1373,7 @@ function mechanicsAction(
       action.area = {
         shape: mechanics.area.shape,
         size: rulesetInCells(mechanics.area.size, perCell),
+        ...(mechanics.area.width !== undefined ? { width: rulesetInCells(mechanics.area.width, perCell) } : {}),
         ...(mechanics.friendlyFire === false ? { friendlyFire: false } : {}),
       };
     }
@@ -1701,6 +1702,7 @@ function blockActions(block: RulesetStatBlockLike, perCell: number | undefined):
           area: {
             shape: action.area.shape,
             size: rulesetInCells(action.area.size, perCell),
+            ...(action.area.width !== undefined ? { width: rulesetInCells(action.area.width, perCell) } : {}),
             ...(action.area.friendlyFire === false ? { friendlyFire: false } : {}),
           },
         }

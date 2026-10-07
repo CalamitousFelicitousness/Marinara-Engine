@@ -409,7 +409,9 @@ export function rulesetAreaTargets(
   const from = rulesetPositionOf(actor);
   if (!grid || !actor || !action?.area || !from) return [];
   const covered = new Set(
-    rulesetAreaCells(action.area.shape, action.area.size, from, at, grid).map((cell) => `${cell.x},${cell.y}`),
+    rulesetAreaCells(action.area.shape, action.area.size, from, at, grid, action.area.width).map(
+      (cell) => `${cell.x},${cell.y}`,
+    ),
   );
   return state.combatants
     .filter((combatant) => {
@@ -1225,7 +1227,12 @@ function optionFrom(
   // weigh it. Only in a positioned fight: without a board an area is still resolved by target ids.
   if (action.area && positioned(state)) {
     const reach = rulesetOptionReach(state, actor.id, action.id);
-    option.area = { shape: action.area.shape, size: action.area.size, range: reach?.max ?? action.area.size };
+    option.area = {
+      shape: action.area.shape,
+      size: action.area.size,
+      ...(action.area.width !== undefined ? { width: action.area.width } : {}),
+      range: reach?.max ?? action.area.size,
+    };
   }
   // Which higher pools of the same family could pay instead, so the menu offers the upcast rather
   // than a player discovering it.

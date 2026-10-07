@@ -8218,13 +8218,33 @@
                           "type": "number",
                           "exclusiveMinimum": 0
                         },
+                        "width": {
+                          "type": "number",
+                          "exclusiveMinimum": 0
+                        },
                         "$comment": {}
                       },
                       "required": [
                         "shape",
                         "size"
                       ],
-                      "additionalProperties": false
+                      "additionalProperties": false,
+                      "allOf": [
+                        {
+                          "if": {
+                            "required": [
+                              "width"
+                            ]
+                          },
+                          "then": {
+                            "properties": {
+                              "shape": {
+                                "const": "line"
+                              }
+                            }
+                          }
+                        }
+                      ]
                     },
                     "targets": {
                       "type": "string",
@@ -10361,6 +10381,10 @@
                                 "exclusiveMinimum": 0,
                                 "maximum": 10000
                               },
+                              "width": {
+                                "type": "number",
+                                "exclusiveMinimum": 0
+                              },
                               "friendlyFire": {
                                 "type": "boolean"
                               },
@@ -10370,7 +10394,23 @@
                               "shape",
                               "size"
                             ],
-                            "additionalProperties": false
+                            "additionalProperties": false,
+                            "allOf": [
+                              {
+                                "if": {
+                                  "required": [
+                                    "width"
+                                  ]
+                                },
+                                "then": {
+                                  "properties": {
+                                    "shape": {
+                                      "const": "line"
+                                    }
+                                  }
+                                }
+                              }
+                            ]
                           },
                           "uses": {
                             "type": "object",

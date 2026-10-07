@@ -2294,7 +2294,7 @@ function areaCellsFor(
   const action = actor.actions.find((entry) => entry.id === optionId);
   const grid = state.board?.grid;
   if (!action?.area || !grid || typeof actor.x !== "number" || typeof actor.y !== "number") return [];
-  return rulesetAreaCells(action.area.shape, action.area.size, { x: actor.x, y: actor.y }, at, grid);
+  return rulesetAreaCells(action.area.shape, action.area.size, { x: actor.x, y: actor.y }, at, grid, action.area.width);
 }
 
 /** The cell the menu offered, or null when the choice named one it did not. The menu is the only

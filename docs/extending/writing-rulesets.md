@@ -2416,6 +2416,8 @@ A burst is every cell within its size of the cell it was aimed at. A cone runs f
 that cell, as wide at each step as it is far. A line runs the same way, one cell wide. All three
 stop at anything solid.
 
+A line on an entry's `mechanics.area` or a creature action's `area` may carry `width` in the same unit as `size`, rounded to cells with a minimum of one (Capability API 1.123), for example `{ "shape": "line", "size": 60, "width": 10 }` for a 60-foot line that is 10 feet wide; omit it for one cell, and an even cell width puts its extra column on the caster's left.
+
 **Line of sight and cover.** A straight line of cells between the two of them: a wall or a mountain
 on it blocks a shot and stops an area spreading past it, and the target simply is not on the menu.
 Water is seen across: a shot crosses a river, and a line area carries on over it. The Engine's own

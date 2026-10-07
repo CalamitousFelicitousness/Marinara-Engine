@@ -799,7 +799,9 @@ const capabilityPackageManifestBaseSchema = z
 //        Sneak Attack does when the roll has no advantage. No permission.
 // 1.122: conditions can take away senses an effect needs, as Deafened keeps Command from affecting
 //        its holder. The ruleset names the senses; targets without them are skipped. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 122 } as const);
+// 1.123: a line area's `width` says how wide it is in the same unit as its size, on a catalog entry
+//        or a creature action. Without it the line stays one cell wide. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 123 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

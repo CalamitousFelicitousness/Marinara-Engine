@@ -1276,6 +1276,22 @@ function entriesCarryCreatureSpellcasting(entries: unknown): boolean {
   );
 }
 
+/** A line with a width (1.123), on an entry or a creature action. */
+function entriesCarryLineWidth(entries: unknown): boolean {
+  return (
+    Array.isArray(entries) &&
+    entries.some((entry) => {
+      const record = plainRecord(entry);
+      const actions = plainRecord(record?.creature)?.actions;
+      return (
+        plainRecord(plainRecord(record?.mechanics)?.area)?.width !== undefined ||
+        (Array.isArray(actions) &&
+          actions.some((action) => plainRecord(plainRecord(action)?.area)?.width !== undefined))
+      );
+    })
+  );
+}
+
 /** An effect whose target needs a sense (1.122), on an entry or a creature action. */
 function entriesCarrySenseNeeds(entries: unknown): boolean {
   return (
@@ -1692,6 +1708,7 @@ export function getCapabilityPackageInstallIssue(
   let carriesCreatureSpellcasting = false;
   let carriesRiderNoDisadvantage = false;
   let carriesSenseNeeds = false;
+  let carriesLineWidth = false;
   // The tracks a level reads and no condition shares a name with: an immunity naming one is new.
   const conditionIds = new Set(
     (Array.isArray(plainRecord(plainRecord(plainRecord(ruleset?.sheet)?.live))?.conditions)
@@ -1819,6 +1836,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryCreatureSpellcasting(header.entries)) carriesCreatureSpellcasting = true;
       if (entriesCarryRiderNoDisadvantage(header.entries)) carriesRiderNoDisadvantage = true;
       if (entriesCarrySenseNeeds(header.entries)) carriesSenseNeeds = true;
+      if (entriesCarryLineWidth(header.entries)) carriesLineWidth = true;
       if (carriesHealthMax(header.entries) || entriesImmuneToTracks(header.entries, leveledTracks)) {
         carriesExhaustion = true;
       }
@@ -1891,6 +1909,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryCreatureSpellcasting(fileEntries)) carriesCreatureSpellcasting = true;
       if (entriesCarryRiderNoDisadvantage(fileEntries)) carriesRiderNoDisadvantage = true;
       if (entriesCarrySenseNeeds(fileEntries)) carriesSenseNeeds = true;
+      if (entriesCarryLineWidth(fileEntries)) carriesLineWidth = true;
       if (entriesCarryHeldChoices(fileEntries)) carriesHeldChoices = true;
       if (entriesCarryExclusive(fileEntries)) carriesExclusive = true;
       if (entriesCarryToHitSheetBonus(fileEntries)) carriesSheetBonus = true;
@@ -2301,6 +2320,10 @@ export function getCapabilityPackageInstallIssue(
       ))
   ) {
     return "A ruleset whose effects need a sense a condition can take away requires schemaVersion 2 and capabilityApi 1.122 or newer";
+  }
+  // Lines wider than one cell, 1.123.
+  if (!declaresApi(123) && carriesLineWidth) {
+    return "A ruleset whose lines are wider than one cell requires schemaVersion 2 and capabilityApi 1.123 or newer";
   }
   if (carriesCreatureSpellcasting) {
     // The references can only be checked once the catalog files are beside their headers.

@@ -389,6 +389,13 @@ try {
     compacted.records.some((record) => record.kind === "scene" && record.content === "Recap of the COMPACT chapter."),
     "scenes are repaired even though the continuity update failed again",
   );
+
+  // An ordinary run after a stopped Fix is no longer marked as a Fix, so Resume continues it as itself.
+  await chats.patchMetadata(compact.id, {
+    advancedMemoryState: { ...stopped, stage: "summarizing", status: "cancelled", fixResult: null },
+  });
+  await memory.initialize(compact.id);
+  assert.notEqual((await memory.status(compact.id)).job.fixResult, null, "an ordinary run clears the Fix marker");
   console.log("Advanced Memory Fix repairs flagged scenes, keeps hand edits and reports what changed.");
 } finally {
   provider.closeAllConnections();

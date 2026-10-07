@@ -2064,7 +2064,8 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
         completed: needsClassification ? Math.min(from, ctx.messages.length) : 0,
         total: needsClassification ? ctx.messages.length : Math.min(starts.size, ctx.messages.length),
         error: null,
-        ...(fixAll ? { fixResult: null } : {}),
+        // null marks a running Fix; any other job clears it so Resume continues that job, not a Fix.
+        fixResult: fixAll ? null : undefined,
       },
       options,
     );

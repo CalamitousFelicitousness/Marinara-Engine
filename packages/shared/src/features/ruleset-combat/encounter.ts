@@ -1566,6 +1566,17 @@ function mechanicsAction(
     if (terrain?.halvesSpeed) action.zone.halvesSpeed = true;
     if (mechanics.zone.breaksConcentration) action.zone.breaksConcentration = true;
     if (mechanics.zone.damageCap !== undefined) action.zone.damageCap = mechanics.zone.damageCap;
+    const blocks = mechanics.zone.blocks;
+    if (blocks?.length) {
+      action.zone.blocks = {
+        ...(blocks.includes("move") ? { move: true } : {}),
+        ...(blocks.includes("sight") ? { sight: true } : {}),
+      };
+    }
+    const side = mechanics.zone.side;
+    if (side) {
+      action.zone.side = { distance: rulesetInCells(side.distance, perCell ?? 1), triggers: [...side.triggers] };
+    }
     const held = mechanics.zone.whileHeld;
     const heldAmount = held && amountOf(held.amount);
     if (held && heldAmount) {
@@ -1603,6 +1614,7 @@ function mechanicsAction(
         shape: mechanics.area.shape,
         size: rulesetInCells(mechanics.area.size, perCell),
         ...(mechanics.area.width !== undefined ? { width: rulesetInCells(mechanics.area.width, perCell) } : {}),
+        ...(mechanics.area.ring !== undefined ? { ring: rulesetInCells(mechanics.area.ring, perCell) } : {}),
         ...(mechanics.friendlyFire === false ? { friendlyFire: false } : {}),
       };
     }

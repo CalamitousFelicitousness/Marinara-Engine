@@ -145,6 +145,7 @@ export {
   rulesetCellDistance,
   rulesetInCells,
   rulesetLineOfSight,
+  rulesetWallShape,
   rulesetOpportunityAttack,
   rulesetPositionOf,
   rulesetReachableCells,

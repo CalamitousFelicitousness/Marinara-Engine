@@ -49,15 +49,56 @@ export function rulesetZoneOccupants(
     .map((one) => one.id);
 }
 
-/** The zones a fight shows: each one's caster, label, rounds left and cells. */
-export function rulesetZonesShown(
+/** Who stands on a wall's chosen side now (1.172), among those it may catch. */
+export function rulesetZoneSideOccupants(
   state: RulesetEncounterState,
-): Array<{ casterId: string; label: string; rounds: number; cells: RulesetCombatCell[] }> {
+  caster: RulesetCombatant,
+  zone: RulesetCombatZone,
+  action: RulesetCombatAction,
+): string[] {
+  const cells = zone.sideCells ?? [];
+  if (cells.length === 0) return [];
+  return state.combatants
+    .filter((one) => rulesetZoneCatches(caster, zone, action, one) && rulesetZoneHolds(cells, rulesetPositionOf(one)))
+    .map((one) => one.id);
+}
+
+/**
+ * The cells standing walls close (1.172), written onto the board's grid where moving and seeing read
+ * them, and taken off again as each wall ends. Worked out afresh from every standing zone, so a wall
+ * that ended however it ended closes nothing any more.
+ */
+export function rulesetSyncZoneWalls(state: RulesetEncounterState): void {
+  const grid = state.board?.grid;
+  if (!grid) return;
+  const walls: Record<string, number> = {};
+  for (const { zone, action } of rulesetStandingZones(state)) {
+    const blocks = action.zone?.blocks;
+    if (!blocks || zone.anchor !== "point") continue;
+    const bits = (blocks.move ? 1 : 0) | (blocks.sight ? 2 : 0);
+    for (const cell of zone.cells ?? []) {
+      const key = `${cell.x},${cell.y}`;
+      walls[key] = (walls[key] ?? 0) | bits;
+    }
+  }
+  if (Object.keys(walls).length > 0) grid.walls = walls;
+  else delete grid.walls;
+}
+
+/** The zones a fight shows: each one's caster, label, rounds left and cells, and a wall's side. */
+export function rulesetZonesShown(state: RulesetEncounterState): Array<{
+  casterId: string;
+  label: string;
+  rounds: number;
+  cells: RulesetCombatCell[];
+  side?: RulesetCombatCell[];
+}> {
   return rulesetStandingZones(state).map(({ caster, zone }) => ({
     casterId: caster.id,
     label: zone.label,
     rounds: zone.rounds,
     cells: rulesetZoneCells(state, rulesetCombatant(state, caster.id) ?? caster, zone).map((cell) => ({ ...cell })),
+    ...(zone.sideCells?.length ? { side: zone.sideCells.map((cell) => ({ ...cell })) } : {}),
   }));
 }
 

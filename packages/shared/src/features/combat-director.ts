@@ -173,6 +173,8 @@ export interface DirectedRulesetView {
     tiles: TacticalTerrain[][];
     /** How high each cell stands (combat C6b), elevation[y][x]; absent on a flat board. */
     elevation?: number[][];
+    /** Cells standing walls close (1.172), by "x,y": 1 movement, 2 sight, 3 both. */
+    walls?: Record<string, number>;
     distance: { label: string; perCell: number };
     /** The scene a board painted for the place (worldgen W9g) looks like, drawn instead of the fight's own. */
     scene?: TacticalEnvironment;
@@ -183,7 +185,14 @@ export interface DirectedRulesetView {
   combatants: DirectedRulesetCombatant[];
   /** The areas spells left standing (1.167): whose, what, how many of its caster's turns are left,
    *  and the cells it covers now (none off a board). */
-  zones?: Array<{ casterId: string; label: string; rounds: number; cells: Array<{ x: number; y: number }> }>;
+  zones?: Array<{
+    casterId: string;
+    label: string;
+    rounds: number;
+    cells: Array<{ x: number; y: number }>;
+    /** A wall's chosen side (1.172), the cells that catch beside it. */
+    side?: Array<{ x: number; y: number }>;
+  }>;
   /** The legal menu, present only while a human controls the one being asked: the actor whose turn
    *  it is, or, while a window holds the fight open, whoever that window is asking. */
   options?: DirectedRulesetOption[];

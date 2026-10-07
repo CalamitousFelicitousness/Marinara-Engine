@@ -678,6 +678,7 @@ export function directedRulesetView(
             height: grid.height,
             tiles: grid.tiles.map((row) => [...row]),
             ...(grid.elevation ? { elevation: grid.elevation.map((row) => [...row]) } : {}),
+            ...(grid.walls ? { walls: { ...grid.walls } } : {}),
             distance: { ...distance },
             ...(made ? { scene: made.scene } : {}),
           },

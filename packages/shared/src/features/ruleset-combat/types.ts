@@ -557,10 +557,13 @@ export interface RulesetCombatContest {
 
 /** A shape on the board, in cells. `friendlyFire` false leaves the actor's own side out of it. */
 export interface RulesetCombatArea {
-  shape: "burst" | "cone" | "line";
+  /** `box` is a square `size` a side reaching away from its maker; `wall` a wall `size` long (1.172). */
+  shape: "burst" | "cone" | "line" | "box" | "wall";
   size: number;
-  /** A line's width in cells (Capability API 1.123). Without it, one cell. */
+  /** A line's width, or a wall's thickness, in cells (Capability API 1.123, 1.172). Without it, one. */
   width?: number;
+  /** A wall that may be laid instead as a ring this many cells across (1.172). */
+  ring?: number;
   friendlyFire?: boolean;
 }
 
@@ -911,6 +914,10 @@ export interface RulesetActionResume {
   targetIds: string[];
   /** The cell an area was aimed at, which a save against it takes cover from (combat C6a-2). */
   at?: RulesetCombatCell;
+  /** Which way a wall runs, and which of its sides it faces (1.172). */
+  toward?: RulesetCombatCell;
+  side?: "near" | "far";
+  ring?: true;
   payWith?: string;
   /** The initiative style it was made in, so a held attack picks up in the same one. */
   style?: string;
@@ -1227,7 +1234,8 @@ export type RulesetCombatEvent =
       type: "zone";
       actorId: string;
       label: string;
-      outcome: "appeared" | "struck" | "ended" | "moved" | "drifted";
+      /** `shoved`: put off a wall that went up where they stood, to `to` (1.172). */
+      outcome: "appeared" | "struck" | "ended" | "moved" | "drifted" | "shoved";
       targetId?: string;
       /** What caught them: one of the zone's triggers, or walking on its ground (1.168). */
       trigger?: RulesetCombatZoneRule["triggers"][number] | "moving" | "ram";
@@ -1465,6 +1473,14 @@ export interface RulesetCombatChoice {
   to?: RulesetCombatCell;
   /** The cell an area is aimed at. An option with an area takes this instead of target ids. */
   at?: RulesetCombatCell;
+  /** Which way a wall runs from `at` (1.172): toward this cell. Across the line to its maker when
+   *  left out. A ring ignores it. */
+  toward?: RulesetCombatCell;
+  /** Which side of a wall its `side` is (1.172): toward its maker or away (inside or outside, for a
+   *  ring). Away when left out. */
+  side?: "near" | "far";
+  /** Lay a wall whose area allows it as a ring around `at` instead (1.172). */
+  ring?: boolean;
   /** The window this answers, when it answers one. An answer carrying the id of a window that has
    *  already closed changes nothing: it was written for a question the fight has moved past. */
   window?: string;
@@ -1526,6 +1542,10 @@ export interface RulesetCombatZoneRule {
   /** What it deals, with no save and in place of its effect, to whoever starts a turn in it held by
    *  this condition from its caster (1.170). */
   whileHeld?: { condition: string; amount: RulesetCombatAmount; damageType?: string };
+  /** A wall nobody moves or sees through (1.172). */
+  blocks?: { move?: boolean; sight?: boolean };
+  /** A wall's one side (1.172): cells within `distance` of it there catch as `triggers` say. */
+  side?: { distance: number; triggers: Array<"enter" | "turn-start" | "turn-end"> };
 }
 
 /** One lasting area standing on the board (1.167). A zone held at a point keeps the cells it was
@@ -1539,6 +1559,8 @@ export interface RulesetCombatZone {
   /** Where it was centred, for a zone held at a point. */
   at?: RulesetCombatCell;
   cells?: RulesetCombatCell[];
+  /** The cells on a wall's chosen side that catch as its `side` says (1.172). */
+  sideCells?: RulesetCombatCell[];
   payWith?: string;
   /** Who it holds off a board: those it was cast on (1.167). */
   held?: string[];

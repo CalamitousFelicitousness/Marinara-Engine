@@ -347,7 +347,7 @@ try {
       assert.equal(parseRulesetDefinition(only(undefined, shape)).ok, true);
       const parsed = parseRulesetDefinition(only(10, shape));
       assert.ok(!parsed.ok);
-      assert.match(parsed.issues.join("; "), /Only a line area may carry width/);
+      assert.match(parsed.issues.join("; "), /Only a line (area|or a wall) may carry width/);
     }
     for (const width of [0, -1, "10", null, Infinity, NaN]) {
       assert.equal(parseRulesetDefinition(only(width, "line")).ok, false, `${kind}: invalid width ${width}`);

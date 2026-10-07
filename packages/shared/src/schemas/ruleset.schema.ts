@@ -1377,6 +1377,8 @@ export interface RulesetCatalogZone {
   breaksConcentration?: true;
   damageCap?: number;
   whileHeld?: { condition: string; amount: { dice?: string; flat?: number }; damageType?: string };
+  blocks?: Array<"move" | "sight">;
+  side?: { distance: number; triggers: Array<"enter" | "turn-start" | "turn-end"> };
 }
 
 const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = z
@@ -1450,6 +1452,27 @@ const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = 
       .optional(),
     /** It ends once it has dealt this much damage in all (1.169): 5e's Guardian of Faith, 60. */
     damageCap: z.number().int().min(1).max(100000).optional(),
+    /** A wall that nobody walks through, sees through, or both (Capability API 1.172): 5e's Wall of
+     *  Stone and Wall of Ice block both, Wall of Force movement only, Wall of Fire sight only. */
+    blocks: z
+      .array(z.enum(["move", "sight"]))
+      .min(1)
+      .max(2)
+      .refine((blocks) => new Set(blocks).size === blocks.length, { message: "Each is named once" })
+      .optional(),
+    /** A wall's one side, chosen as it is cast (1.172): the cells within `distance` of it on that
+     *  side catch as `triggers` say, beside the wall's own. 5e's Wall of Fire, 10 ft, turn-end. */
+    side: z
+      .object({
+        distance: z.number().finite().gt(0),
+        triggers: z
+          .array(z.enum(["enter", "turn-start", "turn-end"]))
+          .min(1)
+          .max(3)
+          .refine((triggers) => new Set(triggers).size === triggers.length, { message: "A trigger is named once" }),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -1845,6 +1868,31 @@ const combatSensesSchema = z
   .max(4)
   .refine((entries) => new Set(entries).size === entries.length, { message: "Senses must be unique" });
 
+/** An area as a catalog entry or an item's use carries it. A `box` (1.172) is a square of `size`
+ *  a side, set down with its near corner on the cell aimed at and reaching away from its maker: 5e's
+ *  cubes. A `wall` (1.172) is `size` long and `width` thick (one cell without it), run through the
+ *  cell aimed at, or, where `ring` gives a diameter, laid as a ring that wide around it if its caster
+ *  chooses; it only ever stays, as a zone. */
+const catalogAreaSchema = z
+  .object({
+    shape: z.enum(["burst", "cone", "line", "box", "wall"]),
+    size: z.number().finite().gt(0),
+    /** A line's width in the same unit as its size (Capability API 1.123), or a wall's thickness
+     *  (1.172). Without it, one cell. */
+    width: z.number().finite().gt(0).optional(),
+    /** A wall its caster may lay as a ring instead (1.172), this many across: 5e's Wall of Fire, 20. */
+    ring: z.number().finite().gt(0).optional(),
+  })
+  .strict()
+  .refine((area) => area.width === undefined || area.shape === "line" || area.shape === "wall", {
+    message: "Only a line or a wall may carry width",
+    path: ["width"],
+  })
+  .refine((area) => area.ring === undefined || area.shape === "wall", {
+    message: "Only a wall is a ring",
+    path: ["ring"],
+  });
+
 /** What an entry DOES. The Engine does not act on it in this slice: it validates it and the client
  *  shows one compact line. A later combat bridge turns it into the Engine's own `CombatSkill`, so
  *  the vocabulary is closed and strict, and a typo is refused now rather than ignored then. */
@@ -1868,19 +1916,7 @@ const catalogMechanicsObject = z
       .optional(),
     /** In the catalog's own distance unit. 0 is self or touch. */
     range: z.number().finite().min(0).optional(),
-    area: z
-      .object({
-        shape: z.enum(["burst", "cone", "line"]),
-        size: z.number().finite().gt(0),
-        /** A line's width in the same unit as its size (Capability API 1.123). Without it, one cell. */
-        width: z.number().finite().gt(0).optional(),
-      })
-      .strict()
-      .refine((area) => area.width === undefined || area.shape === "line", {
-        message: "Only a line area may carry width",
-        path: ["width"],
-      })
-      .optional(),
+    area: catalogAreaSchema.optional(),
     targets: z.enum(["self", "ally", "enemy", "any"]).optional(),
     friendlyFire: z.boolean().optional(),
     amount: z.object(catalogAmountShape).strict().optional(),
@@ -2071,15 +2107,18 @@ function zoneIssue(mechanics: {
   save?: unknown;
 }): string | undefined {
   const zone = mechanics.zone;
-  if (!zone) return undefined;
+  if (!zone) return mechanics.area?.shape === "wall" ? "A wall only ever stays, so it needs a zone" : undefined;
+  const wall = mechanics.area?.shape === "wall";
+  if ((zone.blocks || zone.side) && !wall) return 'Only a wall "blocks" or has a "side"';
+  if (wall && (zone.anchor === "caster" || zone.move || zone.drift)) return "A wall stays where it is cast";
   return !mechanics.area
     ? "A zone is an area that stays, so it needs an area"
     : zone.anchor === "caster" && mechanics.area.shape !== "burst"
       ? "A zone that moves with its caster is a burst around them"
       : mechanics.summons || mechanics.reaction
         ? "A zone is cast on a turn and leaves no summon"
-        : zone.triggers.length === 0 && !zone.terrain
-          ? "A zone names at least one trigger, unless its ground is all it does"
+        : zone.triggers.length === 0 && !zone.terrain && !wall
+          ? "A zone names at least one trigger, unless it is a wall or its ground is all it does"
           : (zone.move || zone.drift) && (zone.anchor === "caster" || mechanics.area.shape !== "burst")
             ? "Only a burst held at a point is moved or drifts"
             : zone.breaksConcentration && !mechanics.save
@@ -2090,10 +2129,8 @@ function zoneIssue(mechanics: {
 }
 
 const catalogMechanicsSchema = catalogMechanicsObject.superRefine((mechanics, ctx) => {
-  if (mechanics.zone) {
-    const why = zoneIssue(mechanics);
-    if (why) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["zone"], message: why });
-  }
+  const why = zoneIssue(mechanics);
+  if (why) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["zone"], message: why });
   if (mechanics.summons && (mechanics.kind !== "attack" || (mechanics.targets ?? "enemy") !== "enemy")) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -2385,7 +2422,7 @@ const creatureActionSchema = z
      *  off it may be aimed, and a shape with none is aimed from where the creature stands. */
     area: z
       .object({
-        shape: z.enum(["burst", "cone", "line"]),
+        shape: z.enum(["burst", "cone", "line", "box"]),
         size: z.number().finite().gt(0).max(10000),
         /** A line's width in the same unit as its size (Capability API 1.123). Without it, one cell. */
         width: z.number().finite().gt(0).optional(),
@@ -3334,10 +3371,24 @@ export const rulesetItemUseSchema = catalogMechanicsObject
   })
   .extend({
     kind: z.enum(["attack", "heal", "buff", "debuff"]),
-    // Line widths belong to catalog entries and creature actions (1.123).
+    // Line widths belong to catalog entries and creature actions (1.123); a wall's thickness and a
+    // ring are a wand's or a scroll's too (1.172).
     area: z
-      .object({ shape: z.enum(["burst", "cone", "line"]), size: z.number().finite().gt(0) })
+      .object({
+        shape: z.enum(["burst", "cone", "line", "box", "wall"]),
+        size: z.number().finite().gt(0),
+        width: z.number().finite().gt(0).optional(),
+        ring: z.number().finite().gt(0).optional(),
+      })
       .strict()
+      .refine((area) => area.width === undefined || area.shape === "wall", {
+        message: "Only a wall carries width on an item's use",
+        path: ["width"],
+      })
+      .refine((area) => area.ring === undefined || area.shape === "wall", {
+        message: "Only a wall is a ring",
+        path: ["ring"],
+      })
       .optional(),
     toHit: itemToHitSchema.optional(),
     saveDifficulty: orItemStat(z.number().int().min(0).max(100)).optional(),

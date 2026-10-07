@@ -83,6 +83,7 @@ import {
   rulesetLevelOf,
   rulesetSlowedCells,
   rulesetSlowedStep,
+  rulesetWallShape,
 } from "./grid.js";
 import {
   rulesetDamageModifiers,
@@ -170,6 +171,8 @@ import {
   rulesetZoneHolds,
   rulesetZoneDriftCell,
   rulesetZoneOccupants,
+  rulesetZoneSideOccupants,
+  rulesetSyncZoneWalls,
 } from "./zones.js";
 
 /** Everything one step of the fight needs: the rules, the state it is changing, its dice and the
@@ -234,6 +237,8 @@ function begin(
       if (next.pendingFalls?.length === 0) delete next.pendingFalls;
       if (landed) noteOutcome(ctx);
       if (!next.window) endActionConditions(ctx);
+      // The cells standing walls close, as the zones now standing say (1.172).
+      rulesetSyncZoneWalls(next);
       next.cursor = state.cursor + rolls;
       return { state: next, events: ctx.events };
     },
@@ -1334,7 +1339,25 @@ function placeZone(
   endZones(ctx, actor, action.id);
   const grid = ctx.state.board?.grid;
   const at = resume.at;
-  const cells = grid && at && rule.anchor === "point" ? areaCellsFor(ctx.state, actor, action.id, at) : undefined;
+  const from = rulesetPositionOf(actor);
+  // A wall (1.172): its cells run the way it was aimed, and its side is the one chosen.
+  const wall =
+    grid && at && from && action.area?.shape === "wall"
+      ? rulesetWallShape(
+          grid,
+          action.area,
+          at,
+          from,
+          resume.toward,
+          rule.side ? { distance: rule.side.distance, which: resume.side ?? "far" } : undefined,
+          resume.ring === true,
+        )
+      : undefined;
+  const cells = wall
+    ? wall.cells
+    : grid && at && rule.anchor === "point"
+      ? areaCellsFor(ctx.state, actor, action.id, at)
+      : undefined;
   const stamp = turnStamp(ctx);
   const caught = rule.atCast ? resume.targetIds : [];
   (actor.zones ??= []).push({
@@ -1345,16 +1368,67 @@ function placeZone(
     triggers: [...rule.triggers],
     ...(at && rule.anchor === "point" ? { at: { x: at.x, y: at.y } } : {}),
     ...(cells ? { cells } : {}),
+    ...(wall?.side.length ? { sideCells: wall.side } : {}),
     ...(!grid ? { held: [...resume.targetIds] } : {}),
     ...(resume.payWith !== undefined ? { payWith: resume.payWith } : {}),
     ...(caught.length ? { struck: Object.fromEntries(caught.map((id) => [id, stamp])) } : {}),
   });
   (actor.flags.freshZones ??= []).push(action.id);
   ctx.events.push({ type: "zone", actorId: actor.id, label: action.label, outcome: "appeared" });
+  if (rule.blocks?.move && cells && grid) shoveOffWall(ctx, actor, cells, wall?.side ?? []);
   // Whoever the cast caught is caught by the storm too (1.169), as it appears.
   for (const id of caught) {
     const target = rulesetCombatant(ctx.state, id);
     if (target && rulesetCombatStanding(target)) zoneShakes(ctx, action, target);
+  }
+}
+
+/**
+ * Whoever stands where a wall that blocks movement goes up is put off it (1.172): to the nearest open
+ * cell, on the wall's chosen side when one is as near, as 5e's Wall of Force and Wall of Stone push a
+ * creature to one side. Nobody is left standing inside something nobody may stand in.
+ */
+function shoveOffWall(
+  ctx: RulesetCombatContext,
+  caster: RulesetCombatant,
+  cells: RulesetCombatCell[],
+  side: RulesetCombatCell[],
+): void {
+  const grid = ctx.state.board!.grid;
+  const wall = new Set(cells.map((cell) => `${cell.x},${cell.y}`));
+  const preferred = new Set(side.map((cell) => `${cell.x},${cell.y}`));
+  for (const one of ctx.state.combatants) {
+    const at = rulesetPositionOf(one);
+    if (one.defeated || !at || !wall.has(`${at.x},${at.y}`)) continue;
+    let best: RulesetCombatCell | null = null;
+    for (let reach = 1; reach <= Math.max(grid.width, grid.height) && !best; reach++) {
+      let fallback: RulesetCombatCell | null = null;
+      for (let y = at.y - reach; y <= at.y + reach && !best; y++) {
+        for (let x = at.x - reach; x <= at.x + reach; x++) {
+          if (Math.max(Math.abs(x - at.x), Math.abs(y - at.y)) !== reach) continue;
+          const key = `${x},${y}`;
+          if (wall.has(key) || rulesetCellBlocked(grid, x, y)) continue;
+          if (ctx.state.combatants.some((other) => !other.defeated && other.x === x && other.y === y)) continue;
+          if (preferred.size === 0 || preferred.has(key)) {
+            best = { x, y };
+            break;
+          }
+          fallback ??= { x, y };
+        }
+      }
+      best ??= fallback;
+    }
+    if (!best) continue;
+    one.x = best.x;
+    one.y = best.y;
+    ctx.events.push({
+      type: "zone",
+      actorId: caster.id,
+      label: caster.zones?.at(-1)?.label ?? "",
+      outcome: "shoved",
+      targetId: one.id,
+      to: { ...best },
+    });
   }
 }
 
@@ -1375,10 +1449,13 @@ function zoneStrike(
   zone: RulesetCombatZone,
   target: RulesetCombatant,
   trigger: RulesetCombatZoneRule["triggers"][number] | "ram",
+  /** Caught on a wall's chosen side (1.172), by the side's own triggers. */
+  region: "zone" | "side" = "zone",
 ): void {
-  // A ram is no trigger of its own: being rammed always catches, whatever moving in would do (1.170).
-  if ((trigger !== "ram" && !zone.triggers.includes(trigger)) || !rulesetCombatStanding(target)) return;
   const action = caster.actions.find((entry) => entry.id === zone.actionId);
+  const triggers = region === "side" ? (action?.zone?.side?.triggers ?? []) : zone.triggers;
+  // A ram is no trigger of its own: being rammed always catches, whatever moving in would do (1.170).
+  if ((trigger !== "ram" && !triggers.includes(trigger)) || !rulesetCombatStanding(target)) return;
   if (!action || !rulesetZoneCatches(caster, zone, action, target)) return;
   const stamp = turnStamp(ctx);
   if (zone.struck?.[target.id] === stamp) return;
@@ -1474,6 +1551,9 @@ function zonesAtTurn(ctx: RulesetCombatContext, actor: RulesetCombatant, trigger
       ? rulesetZoneHolds(rulesetZoneCells(ctx.state, caster, zone), rulesetPositionOf(actor))
       : (zone.held ?? []).includes(actor.id);
     if (inside) zoneStrike(ctx, caster, zone, actor, trigger);
+    else if (rulesetZoneHolds(zone.sideCells ?? [], rulesetPositionOf(actor))) {
+      zoneStrike(ctx, caster, zone, actor, trigger, "side");
+    }
   }
 }
 
@@ -1847,6 +1927,34 @@ export function applyRulesetCombatChoice(
   if (area && !(choice.at && rulesetAimLegal(state, actor.id, option.id, choice.at))) {
     return refusal(state, choice.actorId, "bad-cell", option.id);
   }
+  // Which way a wall runs and which side it faces (1.172): a cell of the board, and one of two words.
+  const grid = state.board?.grid;
+  if (
+    choice.toward !== undefined &&
+    !(
+      area &&
+      grid &&
+      Number.isInteger(choice.toward.x) &&
+      Number.isInteger(choice.toward.y) &&
+      choice.toward.x >= 0 &&
+      choice.toward.y >= 0 &&
+      choice.toward.x < grid.width &&
+      choice.toward.y < grid.height
+    )
+  ) {
+    return refusal(state, choice.actorId, "bad-cell", option.id);
+  }
+  if (choice.side !== undefined && choice.side !== "near" && choice.side !== "far") {
+    return refusal(state, choice.actorId, "bad-cell", option.id);
+  }
+  // Laid as a ring only where its area says it may be.
+  if (
+    choice.ring !== undefined &&
+    (typeof choice.ring !== "boolean" ||
+      (choice.ring && !actor.actions.find((entry) => entry.id === option.id)?.area?.ring))
+  ) {
+    return refusal(state, choice.actorId, "bad-cell", option.id);
+  }
   // A weapon's mode is one the option offers now, and aims at as many as the mode says.
   const mode = choice.mode === undefined ? undefined : option.modes?.find((entry) => entry.id === choice.mode);
   if (choice.mode !== undefined && !mode) return refusal(state, choice.actorId, "unknown-mode", option.id);
@@ -1857,7 +1965,9 @@ export function applyRulesetCombatChoice(
   // pool it is paid with lets it take (1.166).
   const paidCount = choice.payWith !== undefined ? option.targetsWith?.[choice.payWith] : undefined;
   const targets = area
-    ? rulesetAreaTargets(state, actor.id, option.id, choice.at!).map((id) => rulesetCombatant(state, id)!)
+    ? rulesetAreaTargets(state, actor.id, option.id, choice.at!, { toward: choice.toward, ring: choice.ring }).map(
+        (id) => rulesetCombatant(state, id)!,
+      )
     : pickTargets(
         definition,
         state,
@@ -1970,7 +2080,7 @@ export function applyRulesetCombatChoice(
       optionId: option.id,
       label: option.label,
       at: { ...choice.at },
-      cells: areaCellsFor(ctx.state, working, option.id, choice.at),
+      cells: areaCellsFor(ctx.state, working, option.id, choice.at, { toward: choice.toward, ring: choice.ring }),
     });
   }
 
@@ -2036,6 +2146,9 @@ export function applyRulesetCombatChoice(
     optionId: action.id,
     targetIds: workingTargets.map((target) => target.id),
     ...(ctx.aimedAt ? { at: ctx.aimedAt } : {}),
+    ...(area && choice.toward ? { toward: { x: choice.toward.x, y: choice.toward.y } } : {}),
+    ...(area && choice.side ? { side: choice.side } : {}),
+    ...(area && choice.ring ? { ring: true as const } : {}),
     ...(choice.payWith !== undefined ? { payWith: choice.payWith } : {}),
     ...(styleId ? { style: styleId } : {}),
     ...(mode ? { mode: mode.id } : {}),
@@ -2758,11 +2871,16 @@ function areaCellsFor(
   actor: RulesetCombatant,
   optionId: string,
   at: RulesetCombatCell,
+  lay?: { toward?: RulesetCombatCell; ring?: boolean },
 ): RulesetCombatCell[] {
   const action = actor.actions.find((entry) => entry.id === optionId);
   const grid = state.board?.grid;
   if (!action?.area || !grid || typeof actor.x !== "number" || typeof actor.y !== "number") return [];
-  return rulesetAreaCells(action.area.shape, action.area.size, { x: actor.x, y: actor.y }, at, grid, action.area.width);
+  const from = { x: actor.x, y: actor.y };
+  if (action.area.shape === "wall") {
+    return rulesetWallShape(grid, action.area, at, from, lay?.toward, undefined, lay?.ring).cells;
+  }
+  return rulesetAreaCells(action.area.shape, action.area.size, from, at, grid, action.area.width);
 }
 
 /** The cell the menu offered, or null when the choice named one it did not. The menu is the only
@@ -2840,11 +2958,15 @@ function resolveStand(ctx: RulesetCombatContext, actor: RulesetCombatant, option
  * were really crossed rather than the ones that were meant to be.
  */
 /** Who stands in which zone, before a step. Nothing is worked out in a fight with no zones. */
-function zonesAround(ctx: RulesetCombatContext): Map<RulesetCombatZone, Set<string>> {
-  const inside = new Map<RulesetCombatZone, Set<string>>();
+function zonesAround(ctx: RulesetCombatContext): Map<RulesetCombatZone, { zone: Set<string>; side: Set<string> }> {
+  const inside = new Map<RulesetCombatZone, { zone: Set<string>; side: Set<string> }>();
   if (!ctx.state.combatants.some((one) => one.zones?.length)) return inside;
   for (const { caster, zone, action } of rulesetStandingZones(ctx.state)) {
-    inside.set(zone, new Set(rulesetZoneOccupants(ctx.state, caster, zone, action)));
+    inside.set(zone, {
+      zone: new Set(rulesetZoneOccupants(ctx.state, caster, zone, action)),
+      // A wall's side counts apart (1.172): walking onto it catches as the side says.
+      side: new Set(rulesetZoneSideOccupants(ctx.state, caster, zone, action)),
+    });
   }
   return inside;
 }
@@ -2854,17 +2976,21 @@ function zonesAround(ctx: RulesetCombatContext): Map<RulesetCombatZone, Set<stri
 function zonesEntered(
   ctx: RulesetCombatContext,
   mover: RulesetCombatant,
-  before: Map<RulesetCombatZone, Set<string>>,
+  before: Map<RulesetCombatZone, { zone: Set<string>; side: Set<string> }>,
 ): void {
   for (const { caster, zone, action } of rulesetStandingZones(ctx.state)) {
     const was = before.get(zone);
     if (!was) continue;
     for (const id of rulesetZoneOccupants(ctx.state, caster, zone, action)) {
-      if (was.has(id)) continue;
+      if (was.zone.has(id)) continue;
       // Only the mover walks in, and only the mover's own zone moves onto anybody.
       if (id !== mover.id && caster.id !== mover.id) continue;
       const target = rulesetCombatant(ctx.state, id);
       if (target) zoneStrike(ctx, caster, zone, target, "enter");
+    }
+    for (const id of rulesetZoneSideOccupants(ctx.state, caster, zone, action)) {
+      if (was.side.has(id) || id !== mover.id) continue;
+      zoneStrike(ctx, caster, zone, mover, "enter", "side");
     }
   }
 }
@@ -3537,7 +3663,9 @@ function resolveActionBody(
   const extra = action.use?.perCostStep && steps > 0 ? { amount: action.use.perCostStep, times: steps } : undefined;
   // Where the action's own saves take cover from: a burst from where it landed, anything else (a cone,
   // a line, a spell aimed at somebody) from its maker.
-  const saveFrom = action.area?.shape === "burst" && ctx.aimedAt ? ctx.aimedAt : rulesetPositionOf(actor);
+  // Set down somewhere rather than coming off its maker: a burst, a box or a wall (1.172).
+  const setDown = !!action.area && action.area.shape !== "cone" && action.area.shape !== "line";
+  const saveFrom = setDown && ctx.aimedAt ? ctx.aimedAt : rulesetPositionOf(actor);
 
   // An ability that asks for no attack roll (an area everyone saves against, darts that simply hit)
   // rolls its dice ONCE and every target takes that number. One that rolls to hit each target rolls

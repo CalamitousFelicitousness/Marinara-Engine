@@ -160,7 +160,7 @@ export interface RulesetItemUseFact {
   applies?: string[];
   temporary?: string;
   range?: number;
-  area?: { shape: "burst" | "cone" | "line"; size: number };
+  area?: { shape: "burst" | "cone" | "line" | "box" | "wall"; size: number };
   /** The ruleset's own distance unit, beside a range or an area. */
   unit?: string;
   consumes?: true;

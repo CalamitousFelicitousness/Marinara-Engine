@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: spell areas can be cubes, and lasting ones walls or rings that block movement, sight or both and hurt on one chosen side, so Web, Grease and Black Tentacles fill squares and Wall of Fire, Wall of Stone, Wall of Force and Blade Barrier stand on the board (Capability API 1.172).
 - Rulesets: spells and items can end named conditions, stabilize a dying creature or bring back one that died moments ago, so Lesser Restoration, Spare the Dying and Revivify work (Capability API 1.171).
 - Rulesets: a moved area can ram into a creature and stop, and its ground can cost several steps or halve speed, so Flaming Sphere rams, Plant Growth slows to a crawl and Spirit Guardians halves speed even on rough ground; a spell's hold can be broken only against its DC with the checks it names, and a zone can hurt whoever it already holds, so Web and Black Tentacles work and petrification cannot be escaped (Capability API 1.170).
 - Rulesets: a condition can be escaped against the spell's save DC, a lasting area can shake the concentration of whoever it catches or end after dealing a set amount of damage, and spell scrolls keep their lasting areas and concentration, so Web, Black Tentacles, Sleet Storm and Guardian of Faith work (Capability API 1.169).

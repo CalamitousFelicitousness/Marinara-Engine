@@ -482,6 +482,13 @@ export function rulesetCombatEventLine(
     case "zone":
       // A lasting area (1.167): where it stands, what ends it, and whom it catches and how. Moved
       // by its caster or drifting, and hurting whoever crosses its ground (1.168).
+      if (event.outcome === "shoved") {
+        return key("zoneShoved", {
+          actor: names.combatant(event.actorId),
+          label: event.label,
+          target: names.combatant(event.targetId ?? ""),
+        });
+      }
       if (event.outcome === "moved" || event.outcome === "drifted") {
         return key(event.outcome === "moved" ? "zoneMoved" : "zoneDrifted", {
           actor: names.combatant(event.actorId),

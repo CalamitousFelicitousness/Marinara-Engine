@@ -73,7 +73,7 @@ function inBounds(grid: TacticalGrid, x: number, y: number): boolean {
 export function rulesetCellBlocked(grid: TacticalGrid, x: number, y: number): boolean {
   if (!inBounds(grid, x, y)) return true;
   const terrain = grid.tiles[y]?.[x];
-  return terrain === undefined || !!TERRAIN_DATA[terrain]?.impassable;
+  return terrain === undefined || !!TERRAIN_DATA[terrain]?.impassable || ((grid.walls?.[`${x},${y}`] ?? 0) & 1) === 1;
 }
 
 /** What it costs to step INTO this cell, by the same terrain table the Engine's own fights use. */
@@ -246,6 +246,9 @@ export function rulesetAreaCells(
 ): RulesetCombatCell[] {
   const reach = Math.max(1, Math.round(size));
   if (shape === "burst") return burstCells(reach, toward, grid);
+  if (shape === "box") return boxCells(reach, origin, toward, grid);
+  // A wall is shown run across the line from its maker; how it was really laid is the cast's.
+  if (shape === "wall") return rulesetWallShape(grid, { size, width }, toward, origin).cells;
   const dx = Math.sign(toward.x - origin.x);
   const dy = Math.sign(toward.y - origin.y);
   // Aimed at the cell it is standing in: there is no direction, so the shape covers nothing.
@@ -265,6 +268,136 @@ function boardBox(grid: TacticalGrid, around: RulesetCombatCell, reach: number) 
     left: Math.max(0, around.x - reach),
     right: Math.min(grid.width - 1, around.x + reach),
   };
+}
+
+/** A box (1.172): `side` cells a side, its near corner on the cell aimed at, reaching away from its
+ *  maker. Along an axis the maker is level with, it is centred on that cell instead, so a cube set
+ *  down straight ahead covers the cells either side of the line evenly. */
+function boxCells(
+  side: number,
+  maker: RulesetCombatCell,
+  at: RulesetCombatCell,
+  grid: TacticalGrid,
+): RulesetCombatCell[] {
+  const span = (from: number, toward: number) => {
+    const sign = Math.sign(toward - from);
+    if (sign > 0) return [toward, toward + side - 1] as const;
+    if (sign < 0) return [toward - side + 1, toward] as const;
+    const low = toward - Math.floor((side - 1) / 2);
+    return [low, low + side - 1] as const;
+  };
+  const [left, right] = span(maker.x, at.x);
+  const [top, bottom] = span(maker.y, at.y);
+  const cells: RulesetCombatCell[] = [];
+  for (let y = Math.max(0, top); y <= Math.min(grid.height - 1, bottom); y++) {
+    for (let x = Math.max(0, left); x <= Math.min(grid.width - 1, right); x++) {
+      if (rulesetCellBlocked(grid, x, y)) continue;
+      if (!rulesetLineOfSight(grid, at, { x, y })) continue;
+      cells.push({ x, y });
+    }
+  }
+  return cells;
+}
+
+/**
+ * A wall (1.172), in cells, and the cells of its chosen side.
+ *
+ * A straight wall is `size` cells long, run from `at` toward `toward`, or across the line from its
+ * maker to `at` and centred there when no way is given. A diagonal one fills the corner of every step
+ * so nothing slips between two of its cells. `width` thickens it to either side of that line. Laid as
+ * a ring, when its area allows one, it is the cells `ring / 2` out from `at`, thickened inward. Its side is the cells within `distance` of
+ * it toward its maker (`near`, inside a ring) or away (`far`, outside a ring), never its own cells.
+ */
+export function rulesetWallShape(
+  grid: TacticalGrid,
+  area: { size: number; width?: number; ring?: number },
+  at: RulesetCombatCell,
+  maker: RulesetCombatCell,
+  toward?: RulesetCombatCell,
+  side?: { distance: number; which: "near" | "far" },
+  asRing = false,
+): { cells: RulesetCombatCell[]; side: RulesetCombatCell[] } {
+  const length = Math.max(1, Math.round(area.size));
+  const thick = Math.max(1, Math.round(area.width ?? 1));
+  const keys = new Set<string>();
+  const cells: RulesetCombatCell[] = [];
+  const add = (x: number, y: number) => {
+    const key = `${x},${y}`;
+    if (keys.has(key) || x < 0 || y < 0 || x >= grid.width || y >= grid.height) return;
+    if (rulesetCellBlocked(grid, x, y)) return;
+    keys.add(key);
+    cells.push({ x, y });
+  };
+  const sideCells: RulesetCombatCell[] = [];
+  const reach = side ? Math.max(1, Math.round(side.distance)) : 0;
+  if (asRing && area.ring) {
+    const radius = Math.max(1, Math.round(area.ring / 2));
+    const inner = radius - thick + 1;
+    const box = boardBox(grid, at, radius + reach);
+    for (let y = box.top; y <= box.bottom; y++) {
+      for (let x = box.left; x <= box.right; x++) {
+        const away = rulesetCellDistance(at, { x, y });
+        if (away >= inner && away <= radius) add(x, y);
+      }
+    }
+    if (side) {
+      for (let y = box.top; y <= box.bottom; y++) {
+        for (let x = box.left; x <= box.right; x++) {
+          const away = rulesetCellDistance(at, { x, y });
+          const inside = away < inner && away >= inner - reach;
+          const outside = away > radius && away <= radius + reach;
+          if ((side.which === "near" ? inside : outside) && !rulesetCellBlocked(grid, x, y)) sideCells.push({ x, y });
+        }
+      }
+    }
+    return { cells, side: sideCells };
+  }
+  let dx: number;
+  let dy: number;
+  let start: RulesetCombatCell;
+  if (toward && (toward.x !== at.x || toward.y !== at.y)) {
+    dx = Math.sign(toward.x - at.x);
+    dy = Math.sign(toward.y - at.y);
+    start = at;
+  } else {
+    const mx = Math.sign(at.x - maker.x);
+    const my = Math.sign(at.y - maker.y);
+    [dx, dy] = mx === 0 && my === 0 ? [1, 0] : [-my, mx];
+    const back = Math.floor((length - 1) / 2);
+    start = { x: at.x - dx * back, y: at.y - dy * back };
+  }
+  // Across the wall: thickened to both sides of its line, an even thickness one more to the left.
+  const low = -Math.floor((thick - 1) / 2);
+  for (let step = 0; step < length; step++) {
+    const x = start.x + dx * step;
+    const y = start.y + dy * step;
+    for (let across = low; across < low + thick; across++) {
+      add(x - dy * across, y + dx * across);
+      // A diagonal step leaves two corners touching; fill one so the wall is closed.
+      if (dx !== 0 && dy !== 0 && step < length - 1) add(x + dx - dy * across, y + dx * across);
+    }
+  }
+  if (side && cells.length > 0) {
+    const crossOf = (cell: RulesetCombatCell) => (cell.x - start.x) * dy - (cell.y - start.y) * dx;
+    const makerSign = Math.sign(crossOf(maker)) || -1;
+    const wanted = side.which === "near" ? makerSign : -makerSign;
+    const xs = cells.map((cell) => cell.x);
+    const ys = cells.map((cell) => cell.y);
+    const top = Math.max(0, Math.min(...ys) - reach);
+    const bottom = Math.min(grid.height - 1, Math.max(...ys) + reach);
+    const left = Math.max(0, Math.min(...xs) - reach);
+    const right = Math.min(grid.width - 1, Math.max(...xs) + reach);
+    for (let y = top; y <= bottom; y++) {
+      for (let x = left; x <= right; x++) {
+        const cell = { x, y };
+        if (keys.has(`${x},${y}`) || rulesetCellBlocked(grid, x, y)) continue;
+        if (Math.sign(crossOf(cell)) !== wanted) continue;
+        if (!cells.some((one) => rulesetCellDistance(one, cell) <= reach)) continue;
+        sideCells.push(cell);
+      }
+    }
+  }
+  return { cells, side: sideCells };
 }
 
 function burstCells(reach: number, centre: RulesetCombatCell, grid: TacticalGrid): RulesetCombatCell[] {

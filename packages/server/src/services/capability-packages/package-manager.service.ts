@@ -1439,6 +1439,22 @@ function carriesZones(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesZones(one, depth + 1));
 }
 
+/** A box or wall area, or a zone that blocks or has a side, in catalog files too (1.172). */
+function carriesWalls(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesWalls(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  for (const mechanics of [plainRecord(record.mechanics), plainRecord(record.use), record]) {
+    if (!mechanics) continue;
+    const area = plainRecord(mechanics.area);
+    if (area && (area.shape === "box" || area.shape === "wall" || area.ring !== undefined)) return true;
+    const zone = plainRecord(mechanics.zone);
+    if (zone && (zone.blocks !== undefined || zone.side !== undefined)) return true;
+  }
+  return Object.values(record).some((one) => carriesWalls(one, depth + 1));
+}
+
 /** A catalog entry or item use that ends conditions, steadies the dying or brings back the dead, in
  *  catalog files too (1.171). */
 function carriesCures(value: unknown, depth = 0): boolean {
@@ -2707,6 +2723,13 @@ export function getCapabilityPackageInstallIssue(
     (carriesCures(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesCures(document)))
   ) {
     return "A ruleset with cures that end conditions, stabilize the dying or revive the dead requires schemaVersion 2 and capabilityApi 1.171 or newer";
+  }
+  // Square and cube areas, and walls that block or have a side, 1.172.
+  if (
+    !declaresApi(172) &&
+    (carriesWalls(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesWalls(document)))
+  ) {
+    return "A ruleset with box or wall areas, or walls that block or have a side, requires schemaVersion 2 and capabilityApi 1.172 or newer";
   }
   if (carriesCreatureSpellcasting) {
     // The references can only be checked once the catalog files are beside their headers.

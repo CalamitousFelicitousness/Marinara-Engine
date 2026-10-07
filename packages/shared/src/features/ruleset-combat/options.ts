@@ -53,6 +53,7 @@ import {
   rulesetAirborne,
   rulesetBlowKind,
   rulesetAreaCells,
+  rulesetWallShape,
   rulesetCellCover,
   rulesetCellDistance,
   rulesetCombatantDistance,
@@ -267,7 +268,8 @@ export function rulesetOptionReach(
     // goes off where it is set down, while a cone or a line is aimed within its own size, because
     // there the cell only says which way it points.
     const carried = action.range?.long ?? action.range?.normal;
-    const max = carried ?? (action.area.shape === "burst" ? 0 : action.area.size);
+    // A box with none sits against its maker (1.172), the cell beside them its near corner.
+    const max = carried ?? (action.area.shape === "burst" ? 0 : action.area.shape === "box" ? 1 : action.area.size);
     // Only a shape with a distance of its own is SHOT: one that comes off the actor, a breath or a
     // burst set down where they stand, is not made harder by a foe at their elbow.
     return { max, normal: action.range?.normal ?? max, shot: !!action.range, swing: 0 };
@@ -414,6 +416,8 @@ export function rulesetAreaTargets(
   actorId: string,
   optionId: string,
   at: RulesetCombatCell,
+  /** How a wall is laid from `at` (1.172): which way it runs, or as a ring. */
+  lay?: { toward?: RulesetCombatCell; ring?: boolean },
 ): string[] {
   const grid = state.board?.grid;
   const actor = rulesetCombatant(state, actorId);
@@ -421,9 +425,10 @@ export function rulesetAreaTargets(
   const from = rulesetPositionOf(actor);
   if (!grid || !actor || !action?.area || !from) return [];
   const covered = new Set(
-    rulesetAreaCells(action.area.shape, action.area.size, from, at, grid, action.area.width).map(
-      (cell) => `${cell.x},${cell.y}`,
-    ),
+    (action.area.shape === "wall"
+      ? rulesetWallShape(grid, action.area, at, from, lay?.toward, undefined, lay?.ring).cells
+      : rulesetAreaCells(action.area.shape, action.area.size, from, at, grid, action.area.width)
+    ).map((cell) => `${cell.x},${cell.y}`),
   );
   return state.combatants
     .filter((combatant) => {

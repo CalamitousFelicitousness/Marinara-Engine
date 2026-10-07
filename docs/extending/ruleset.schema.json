@@ -8493,7 +8493,9 @@
                           "enum": [
                             "burst",
                             "cone",
-                            "line"
+                            "line",
+                            "box",
+                            "wall"
                           ]
                         },
                         "size": {
@@ -8501,6 +8503,10 @@
                           "exclusiveMinimum": 0
                         },
                         "width": {
+                          "type": "number",
+                          "exclusiveMinimum": 0
+                        },
+                        "ring": {
                           "type": "number",
                           "exclusiveMinimum": 0
                         },
@@ -9175,6 +9181,46 @@
                           "type": "integer",
                           "minimum": 1,
                           "maximum": 100000
+                        },
+                        "blocks": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": [
+                              "move",
+                              "sight"
+                            ]
+                          },
+                          "minItems": 1,
+                          "maxItems": 2
+                        },
+                        "side": {
+                          "type": "object",
+                          "properties": {
+                            "distance": {
+                              "type": "number",
+                              "exclusiveMinimum": 0
+                            },
+                            "triggers": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "enum": [
+                                  "enter",
+                                  "turn-start",
+                                  "turn-end"
+                                ]
+                              },
+                              "minItems": 1,
+                              "maxItems": 3
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "distance",
+                            "triggers"
+                          ],
+                          "additionalProperties": false
                         },
                         "$comment": {}
                       },
@@ -11601,7 +11647,8 @@
                                 "enum": [
                                   "burst",
                                   "cone",
-                                  "line"
+                                  "line",
+                                  "box"
                                 ]
                               },
                               "size": {
@@ -17059,10 +17106,20 @@
                               "enum": [
                                 "burst",
                                 "cone",
-                                "line"
+                                "line",
+                                "box",
+                                "wall"
                               ]
                             },
                             "size": {
+                              "type": "number",
+                              "exclusiveMinimum": 0
+                            },
+                            "width": {
+                              "type": "number",
+                              "exclusiveMinimum": 0
+                            },
+                            "ring": {
                               "type": "number",
                               "exclusiveMinimum": 0
                             },
@@ -17072,7 +17129,23 @@
                             "shape",
                             "size"
                           ],
-                          "additionalProperties": false
+                          "additionalProperties": false,
+                          "allOf": [
+                            {
+                              "if": {
+                                "required": [
+                                  "width"
+                                ]
+                              },
+                              "then": {
+                                "properties": {
+                                  "shape": {
+                                    "const": "line"
+                                  }
+                                }
+                              }
+                            }
+                          ]
                         },
                         "targets": {
                           "type": "string",
@@ -17411,6 +17484,46 @@
                               "type": "integer",
                               "minimum": 1,
                               "maximum": 100000
+                            },
+                            "blocks": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "enum": [
+                                  "move",
+                                  "sight"
+                                ]
+                              },
+                              "minItems": 1,
+                              "maxItems": 2
+                            },
+                            "side": {
+                              "type": "object",
+                              "properties": {
+                                "distance": {
+                                  "type": "number",
+                                  "exclusiveMinimum": 0
+                                },
+                                "triggers": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "enum": [
+                                      "enter",
+                                      "turn-start",
+                                      "turn-end"
+                                    ]
+                                  },
+                                  "minItems": 1,
+                                  "maxItems": 3
+                                },
+                                "$comment": {}
+                              },
+                              "required": [
+                                "distance",
+                                "triggers"
+                              ],
+                              "additionalProperties": false
                             },
                             "$comment": {}
                           },

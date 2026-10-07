@@ -868,7 +868,15 @@ const capabilityPackageManifestBaseSchema = z
 //        `count` of them, Lesser Restoration), steady a dying target (`stabilizes`, Spare the
 //        Dying), or bring back one that died no more than `revives.withinRounds` rounds ago at
 //        `revives.health` (Revivify). No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 171 } as const);
+// 1.172: an area may be a `box`, a square of its size a side set down against the cell aimed at and
+//        reaching away from its maker (5e's cubes: Web, Grease, Entangle, Black Tentacles), and a
+//        lasting one may be a `wall`, its size long and `width` thick, run through the aimed cell
+//        (or toward the choice's `toward`), or laid as a ring of its `ring` diameter when the choice
+//        says `ring`; it needs no trigger. A wall's zone may block
+//        movement, sight or both (`zone.blocks`: Wall of Stone, Wall of Force, Wall of Fire's
+//        opaque face), shoving whoever stands where it goes up, and may catch on one side
+//        (`zone.side`, the choice's `side` near or far: Wall of Fire). No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 172 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

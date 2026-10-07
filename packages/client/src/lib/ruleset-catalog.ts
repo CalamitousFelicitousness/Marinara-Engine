@@ -455,10 +455,12 @@ const KIND_KEYS: Readonly<Record<RulesetCatalogMechanics["kind"], string>> = Obj
   rider: "game.ruleset.catalog.kind.rider",
 });
 
-const SHAPE_KEYS: Readonly<Record<"burst" | "cone" | "line", string>> = Object.freeze({
+const SHAPE_KEYS: Readonly<Record<"burst" | "cone" | "line" | "box" | "wall", string>> = Object.freeze({
   burst: "game.ruleset.catalog.shape.burst",
   cone: "game.ruleset.catalog.shape.cone",
   line: "game.ruleset.catalog.shape.line",
+  box: "game.ruleset.catalog.shape.box",
+  wall: "game.ruleset.catalog.shape.wall",
 });
 
 const TARGET_KEYS: Readonly<Record<"self" | "ally" | "enemy" | "any", string>> = Object.freeze({
@@ -566,6 +568,10 @@ export function formatCatalogMechanics(
         distance: distance(mechanics.area.size),
       }),
     );
+    // Or laid as a ring, as its caster chooses (1.172).
+    if (mechanics.area.ring !== undefined) {
+      parts.push(t("game.ruleset.catalog.mechanics.ringOf", { distance: distance(mechanics.area.ring) }));
+    }
   }
   // A rider never reaches the menu, so its line is the only place a reader learns what it does: how
   // much it adds, of what, and how often. Without this the picker says only the word "Rider".
@@ -735,6 +741,28 @@ export function formatCatalogMechanics(
     }
     if (mechanics.zone.damageCap !== undefined) {
       parts.push(t("game.ruleset.catalog.mechanics.zoneDamageCap", { count: mechanics.zone.damageCap }));
+    }
+    // What a wall stops, and its one side (1.172).
+    const blocks = mechanics.zone.blocks ?? [];
+    if (blocks.length) {
+      parts.push(
+        t(
+          blocks.length === 2
+            ? "game.ruleset.catalog.mechanics.zoneBlocksBoth"
+            : blocks[0] === "move"
+              ? "game.ruleset.catalog.mechanics.zoneBlocksMove"
+              : "game.ruleset.catalog.mechanics.zoneBlocksSight",
+        ),
+      );
+    }
+    const side = mechanics.zone.side;
+    if (side) {
+      parts.push(
+        t("game.ruleset.catalog.mechanics.zoneSide", {
+          distance: distance(side.distance),
+          when: side.triggers.map((trigger) => t(ZONE_WHEN_KEYS[trigger])).join(", "),
+        }),
+      );
     }
   }
   if (mechanics.reaction) parts.push(t("game.ruleset.catalog.mechanics.reaction"));

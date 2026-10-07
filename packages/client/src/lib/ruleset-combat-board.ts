@@ -98,6 +98,11 @@ export function rulesetBoardCells(view: DirectedRulesetView, step: RulesetMenuSt
       const key = rulesetCellKey(cell);
       zoned.set(key, [...(zoned.get(key) ?? []), zone.label]);
     }
+    // A wall's side (1.172) is drawn as the zone's too: walking there is caught as it says.
+    for (const cell of zone.side ?? []) {
+      const key = rulesetCellKey(cell);
+      zoned.set(key, [...(zoned.get(key) ?? []), zone.label]);
+    }
   }
   const cells: RulesetBoardCell[] = [];
   for (let y = 0; y < grid.height; y++) {
@@ -112,7 +117,8 @@ export function rulesetBoardCells(view: DirectedRulesetView, step: RulesetMenuSt
         x,
         y,
         terrain,
-        solid: TERRAIN_DATA[terrain]?.impassable === true,
+        // A standing wall that blocks movement is as solid as rock while it stands (1.172).
+        solid: TERRAIN_DATA[terrain]?.impassable === true || ((grid.walls?.[key] ?? 0) & 1) === 1,
         height: grid.elevation?.[y]?.[x] ?? 0,
         ...(occupant ? { occupant } : {}),
         ...(reach.has(key) ? { reach: reach.get(key)! } : {}),

@@ -207,8 +207,7 @@ function rulesetSheetValueWords(value: { what: string; of?: "modifier" | "items"
     : t("ui.game.gameinventory.requiresItems");
 }
 
-/** What an item does while worn, and while only carried, one line each: "While worn: -1 on Sneak
- *  checks". Empty when it does nothing either way. */
+/** One effect in the player's language, shared by items, sheets and battle details. */
 export function rulesetEffectPhrase(fact: RulesetItemEffectFact, t: TFunction): string {
   const names = fact.names
     .map((name, index) =>
@@ -289,9 +288,14 @@ export function rulesetEffectPhrase(fact: RulesetItemEffectFact, t: TFunction): 
       : t("ui.game.gameinventory.effectOnChecks", { change });
   }
   if (fact.to === "attacks") return t("ui.game.gameinventory.effectOnAttacks", { change });
-  return names
+  const save = names
     ? t("ui.game.gameinventory.effectOnNamedSaves", { change, names })
     : t("ui.game.gameinventory.effectOnSaves", { change });
+  if (!fact.against) return save;
+  const against = [...fact.against.names, ...(fact.against.magic ? [t("ui.game.gameinventory.effectMagic")] : [])].join(
+    t("ui.game.gameinventory.effectAgainstOr"),
+  );
+  return t("ui.game.gameinventory.effectAgainst", { effect: save, against });
 }
 
 export function rulesetItemEffectLines(facts: RulesetItemFacts, t: TFunction): string[] {

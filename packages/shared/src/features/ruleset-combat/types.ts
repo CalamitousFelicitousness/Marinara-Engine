@@ -339,6 +339,8 @@ export type RulesetCombatantInput =
 /** One thing a combatant may do, with every number already read off the sheet or the stat block.
  *  Resolved once, when the fight begins: armour and bonuses do not change mid-fight in this kind. */
 export interface RulesetCombatAction {
+  /** The entry's qualities, even without damage, for saves against magic (1.129). */
+  qualities?: string[];
   /** A catalog attack or debuff targets harmfully even if it deals no damage (1.120). */
   harmful?: true;
   id: string;

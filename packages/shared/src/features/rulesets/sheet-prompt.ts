@@ -195,6 +195,14 @@ export function renderRulesetSheetBlock(
   // fact the narration needs every turn, where a track at its default is the absence of one.
   push(live.states.map((state) => `${state.label} ${safeValue(state.valueLabel)}`).join(", "));
 
+  for (const source of rulesetCheckSources(definition, build, stored, items)) {
+    const facts = rulesetItemEffectFacts(definition, {
+      modifiers: source.modifiers?.filter((one) => one.against),
+      saves: source.saves ? [...source.saves] : undefined,
+    });
+    if (facts.length) push(`${safeValue(source.name)}: ${facts.map(rulesetItemEffectText).join("; ")}`);
+  }
+
   const conditions = live.conditions.flatMap((condition) => (condition.active ? [condition.label] : []));
   if (conditions.length > 0) push(`Conditions: ${conditions.join(", ")}`);
   for (const source of rulesetCheckSources(definition, build, stored, items)) {

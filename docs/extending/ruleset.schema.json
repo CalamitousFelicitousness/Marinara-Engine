@@ -12421,6 +12421,58 @@
                                 "minItems": 1,
                                 "maxItems": 12
                               },
+                              "against": {
+                                "type": "object",
+                                "properties": {
+                                  "conditions": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 24
+                                  },
+                                  "damage": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 40
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 24
+                                  },
+                                  "magic": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "$comment": {}
+                                },
+                                "additionalProperties": false,
+                                "allOf": [
+                                  {
+                                    "anyOf": [
+                                      {
+                                        "required": [
+                                          "conditions"
+                                        ]
+                                      },
+                                      {
+                                        "required": [
+                                          "damage"
+                                        ]
+                                      },
+                                      {
+                                        "required": [
+                                          "magic"
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                ]
+                              },
                               "mode": {
                                 "type": "string",
                                 "enum": [
@@ -12629,6 +12681,20 @@
                                 "if": {
                                   "required": [
                                     "saves"
+                                  ]
+                                },
+                                "then": {
+                                  "properties": {
+                                    "to": {
+                                      "const": "saves"
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "if": {
+                                  "required": [
+                                    "against"
                                   ]
                                 },
                                 "then": {
@@ -13069,6 +13135,58 @@
                                 "minItems": 1,
                                 "maxItems": 12
                               },
+                              "against": {
+                                "type": "object",
+                                "properties": {
+                                  "conditions": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 24
+                                  },
+                                  "damage": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 40
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 24
+                                  },
+                                  "magic": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "$comment": {}
+                                },
+                                "additionalProperties": false,
+                                "allOf": [
+                                  {
+                                    "anyOf": [
+                                      {
+                                        "required": [
+                                          "conditions"
+                                        ]
+                                      },
+                                      {
+                                        "required": [
+                                          "damage"
+                                        ]
+                                      },
+                                      {
+                                        "required": [
+                                          "magic"
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                ]
+                              },
                               "mode": {
                                 "type": "string",
                                 "enum": [
@@ -13277,6 +13395,20 @@
                                 "if": {
                                   "required": [
                                     "saves"
+                                  ]
+                                },
+                                "then": {
+                                  "properties": {
+                                    "to": {
+                                      "const": "saves"
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "if": {
+                                  "required": [
+                                    "against"
                                   ]
                                 },
                                 "then": {
@@ -13871,6 +14003,58 @@
                                       "minItems": 1,
                                       "maxItems": 12
                                     },
+                                    "against": {
+                                      "type": "object",
+                                      "properties": {
+                                        "conditions": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 24
+                                        },
+                                        "damage": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 40
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 24
+                                        },
+                                        "magic": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "additionalProperties": false,
+                                      "allOf": [
+                                        {
+                                          "anyOf": [
+                                            {
+                                              "required": [
+                                                "conditions"
+                                              ]
+                                            },
+                                            {
+                                              "required": [
+                                                "damage"
+                                              ]
+                                            },
+                                            {
+                                              "required": [
+                                                "magic"
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    },
                                     "mode": {
                                       "type": "string",
                                       "enum": [
@@ -14079,6 +14263,20 @@
                                       "if": {
                                         "required": [
                                           "saves"
+                                        ]
+                                      },
+                                      "then": {
+                                        "properties": {
+                                          "to": {
+                                            "const": "saves"
+                                          }
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "if": {
+                                        "required": [
+                                          "against"
                                         ]
                                       },
                                       "then": {
@@ -23429,6 +23627,58 @@
                       "minItems": 1,
                       "maxItems": 12
                     },
+                    "against": {
+                      "type": "object",
+                      "properties": {
+                        "conditions": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 24
+                        },
+                        "damage": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 40
+                          },
+                          "minItems": 1,
+                          "maxItems": 24
+                        },
+                        "magic": {
+                          "type": "boolean",
+                          "const": true
+                        },
+                        "$comment": {}
+                      },
+                      "additionalProperties": false,
+                      "allOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "required": [
+                                "conditions"
+                              ]
+                            },
+                            {
+                              "required": [
+                                "damage"
+                              ]
+                            },
+                            {
+                              "required": [
+                                "magic"
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
                     "mode": {
                       "type": "string",
                       "enum": [
@@ -23637,6 +23887,20 @@
                       "if": {
                         "required": [
                           "saves"
+                        ]
+                      },
+                      "then": {
+                        "properties": {
+                          "to": {
+                            "const": "saves"
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "if": {
+                        "required": [
+                          "against"
                         ]
                       },
                       "then": {
@@ -24385,6 +24649,58 @@
                       "minItems": 1,
                       "maxItems": 12
                     },
+                    "against": {
+                      "type": "object",
+                      "properties": {
+                        "conditions": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 24
+                        },
+                        "damage": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 40
+                          },
+                          "minItems": 1,
+                          "maxItems": 24
+                        },
+                        "magic": {
+                          "type": "boolean",
+                          "const": true
+                        },
+                        "$comment": {}
+                      },
+                      "additionalProperties": false,
+                      "allOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "required": [
+                                "conditions"
+                              ]
+                            },
+                            {
+                              "required": [
+                                "damage"
+                              ]
+                            },
+                            {
+                              "required": [
+                                "magic"
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
                     "mode": {
                       "type": "string",
                       "enum": [
@@ -24593,6 +24909,20 @@
                       "if": {
                         "required": [
                           "saves"
+                        ]
+                      },
+                      "then": {
+                        "properties": {
+                          "to": {
+                            "const": "saves"
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "if": {
+                        "required": [
+                          "against"
                         ]
                       },
                       "then": {

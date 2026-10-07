@@ -340,6 +340,12 @@ export function GameRulesetSheet({
     () => rulesetHideLines(definition, rulesetCheckSources(definition, build, live, items), localizeUi),
     [definition, build, live, items, localizeUi],
   );
+  const saveModifiers = rulesetCheckSources(definition, build, live, items).flatMap((source) =>
+    rulesetItemEffectFacts(definition, {
+      modifiers: source.modifiers?.filter((one) => one.against),
+      saves: source.saves ? [...source.saves] : undefined,
+    }),
+  );
 
   /** Every change a player makes takes the same route a Game Master command does. */
   const apply = (op: RulesetSheetOp) => {
@@ -639,6 +645,13 @@ export function GameRulesetSheet({
               {line}
             </p>
           ))}
+          {saveModifiers.length > 0 && (
+            <div className="space-y-1 text-xs text-[var(--muted-foreground)]">
+              {saveModifiers.map((fact, index) => (
+                <p key={index}>{rulesetEffectPhrase(fact, localizeUi)}</p>
+              ))}
+            </div>
+          )}
           {resolved.conditions.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
               {resolved.conditions.map((condition) => (

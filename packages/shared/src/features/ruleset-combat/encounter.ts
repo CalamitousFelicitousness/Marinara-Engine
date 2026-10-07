@@ -35,6 +35,8 @@ import {
   type RulesetSheetOp,
 } from "../rulesets/live-state.js";
 import {
+  rulesetSaveAgainstMatches,
+  type RulesetSaveAgainst,
   rulesetItemGateCheck,
   rulesetItemSources,
   rulesetSheetHideSources,
@@ -489,6 +491,7 @@ export function rulesetConditionModifiers(
   /** The save rolled, for modifiers to saves; the skill rolled, for modifiers to checks, so what is
    *  narrowed to it counts (a contest names none, and reads only what is narrowed to nothing). */
   save?: string,
+  against?: RulesetSaveAgainst,
 ): RulesetConditionModifier[] {
   // A ruleset with no items and no condition or level that changes a number has nothing to read. One
   // with items reads them once, below, with everything else that is on the combatant.
@@ -502,7 +505,7 @@ export function rulesetConditionModifiers(
   return rulesetActiveConditions(definition, combat, combatant, state).flatMap((entry) => {
     return (entry.modifiers ?? [])
       .filter((modifier) => {
-        if (modifier.to !== to) return false;
+        if (modifier.to !== to || !rulesetSaveAgainstMatches(modifier.against, against)) return false;
         if (modifier.flat === undefined && modifier.dice === undefined && modifier.times === undefined) return false;
         const skills = modifier.skills ?? entry.skills;
         if (to === "checks" && skills && !(save !== undefined && skills.includes(save))) return false;
@@ -555,6 +558,7 @@ export function rulesetSaveMode(
   combatant: RulesetCombatant,
   save: string,
   state?: RulesetEncounterState,
+  against?: RulesetSaveAgainst,
 ): "normal" | "advantage" | "disadvantage" {
   if (!rulesetCombatAdvantage(combat)) return "normal";
   let advantage = false;
@@ -564,6 +568,7 @@ export function rulesetSaveMode(
     for (const modifier of entry.modifiers ?? []) {
       const saves = modifier.saves ?? entry.saves;
       if (modifier.to !== "saves" || !modifier.mode || (saves && !saves.includes(save))) continue;
+      if (!rulesetSaveAgainstMatches(modifier.against, against)) continue;
       if (modifier.mode === "advantage") advantage = true;
       else disadvantage = true;
     }
@@ -1347,6 +1352,7 @@ function mechanicsAction(
     id: from.id,
     ...(from.ability ? { ability: from.ability } : {}),
     kind: from.kind,
+    ...(mechanics.qualities?.length ? { qualities: [...mechanics.qualities] } : {}),
     ...(mechanics.kind === "attack" || mechanics.kind === "debuff" ? { harmful: true as const } : {}),
     label: from.label,
     budget: from.budget,

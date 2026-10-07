@@ -817,7 +817,9 @@ const capabilityPackageManifestBaseSchema = z
 //        exception tags, as creatures do. A package that ships these declares 1.127. No permission.
 // 1.128: condition, level and item modifiers change damage dealt or taken on attack hits, narrowed
 //        by attack kind, blow or ability, with typed additions and source-bound damage taken. No permission.
-// 1.129: claimed by the Game Mode lane (in progress); 1.130-1.159: the Kenhito lane.
+// 1.129: save modifiers can count only against conditions, damage types or magic, together with
+//        the saves they name: Dwarven Resilience, Fey Ancestry and Gnome Cunning. No permission.
+// 1.130-1.159: the Kenhito lane.
 // 1.160: a sheet list may have up to 24 columns. Not a soft seam: an older Engine refuses the
 //        ruleset, so a package with a list of more than 12 columns declares 1.160. No permission.
 // 1.161: a catalog entry's mechanics may be usable in a fight only while a value off its holder's

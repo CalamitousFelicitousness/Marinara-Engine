@@ -1429,6 +1429,17 @@ function carriesBlowNarrowing(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesBlowNarrowing(one, depth + 1));
 }
 
+/** Save modifiers narrowed by what is saved against, including item effects in catalog files (1.129). */
+function carriesSaveAgainst(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesSaveAgainst(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (Array.isArray(record.modifiers) && record.modifiers.some((one) => plainRecord(one)?.against !== undefined))
+    return true;
+  return Object.values(record).some((one) => carriesSaveAgainst(one, depth + 1));
+}
+
 /** A save rolled only when its holder takes damage (1.124), wherever an `applies` is written. */
 function carriesDamageOnlySaves(value: unknown, depth = 0): boolean {
   if (depth > 40 || value === null || typeof value !== "object") return false;
@@ -2476,6 +2487,14 @@ export function getCapabilityPackageInstallIssue(
   // Mechanics offered only while the holder's sheet allows, 1.161.
   if (!declaresApi(161) && (carriesUsableWhenKeys || carriesUsableWhen(ruleset?.combat))) {
     return "A ruleset whose abilities are usable only while the sheet allows requires schemaVersion 2 and capabilityApi 1.161 or newer";
+  }
+  // Save modifiers narrowed by conditions, damage or magic, 1.129.
+  if (
+    !declaresApi(129) &&
+    (carriesSaveAgainst(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesSaveAgainst(document)))
+  ) {
+    return "A ruleset whose save modifiers count against conditions, damage or magic requires schemaVersion 2 and capabilityApi 1.129 or newer";
   }
   if (carriesCreatureSpellcasting) {
     // The references can only be checked once the catalog files are beside their headers.

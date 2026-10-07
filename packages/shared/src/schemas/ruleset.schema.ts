@@ -3689,6 +3689,17 @@ const combatModifierSchema = z
     times: z.union([z.literal(0.5), z.literal(2)]).optional(),
     skills: z.array(sheetId).min(1).max(24).optional(),
     saves: z.array(sheetId).min(1).max(12).optional(),
+    /** What this save is against (Capability API 1.129): any named condition, damage type or
+     *  magic qualifies; `saves` still narrows which save. Nothing matches a save with no source. */
+    against: z
+      .object({
+        conditions: z.array(sheetId).min(1).max(24).optional(),
+        damage: z.array(promptSafeText(40)).min(1).max(24).optional(),
+        magic: z.literal(true).optional(),
+      })
+      .strict()
+      .refine((against) => Object.keys(against).length > 0, "Against names conditions, damage or magic")
+      .optional(),
     mode: z.enum(RULESET_ROLL_MODES).optional(),
   })
   .strict()
@@ -3706,6 +3717,8 @@ const combatModifierSchema = z
       );
     }
     if (modifier.skills !== undefined && modifier.to !== "checks") add("skills", '"skills" narrows a change to checks');
+    if (modifier.against !== undefined && modifier.to !== "saves")
+      add("against", '"against" narrows a change to saves');
     if (modifier.saves !== undefined && modifier.to !== "saves") add("saves", '"saves" narrows a change to saves');
     if (modifier.mode !== undefined && modifier.to !== "checks" && modifier.to !== "saves") {
       add("mode", '"mode" rolls checks or saves twice, so it changes nothing else');
@@ -6528,7 +6541,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       if (!conditions.has(entry.condition)) issue([...path, "condition"], `Unknown condition "${entry.condition}"`);
       if (mapped.has(entry.condition)) issue([...path, "condition"], `Duplicate condition "${entry.condition}"`);
       mapped.add(entry.condition);
-      effectNameIssues(entry, skills, saves, abilityIds, path, issue);
+      effectNameIssues(entry, skills, saves, abilityIds, def, path, issue);
       hideIssues(def, entry, path, issue);
       // The action economy it changes (1.71) is the ruleset's own: budgets it declares, conditions it has.
       entry.budgets?.forEach((change, changeIndex) => {
@@ -6622,7 +6635,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       const key = `${entry.derived !== undefined ? "derived" : "track"}:${read}@${entry.at}`;
       if (levelled.has(key)) issue([...path, "at"], `Level ${entry.at} of "${read}" is given twice`);
       levelled.add(key);
-      effectNameIssues(entry, skills, saves, abilityIds, path, issue);
+      effectNameIssues(entry, skills, saves, abilityIds, def, path, issue);
       hideIssues(def, entry, path, issue);
     });
 
@@ -7477,11 +7490,17 @@ function effectNameIssues(
     skills?: string[];
     saves?: string[];
     failsSaves?: string[];
-    modifiers?: Array<{ skills?: string[]; saves?: string[]; ability?: string }>;
+    modifiers?: Array<{
+      skills?: string[];
+      saves?: string[];
+      ability?: string;
+      against?: { conditions?: string[]; damage?: string[] };
+    }>;
   },
   skills: ReadonlySet<string>,
   saves: ReadonlySet<string>,
   abilities: ReadonlySet<string>,
+  definition: RulesetDefinition,
   at: (string | number)[],
   add: (path: (string | number)[], message: string) => void,
 ): void {
@@ -7498,6 +7517,21 @@ function effectNameIssues(
     }
     each(modifier.skills, skills, [...at, "modifiers", index, "skills"], "skill");
     each(modifier.saves, saves, [...at, "modifiers", index, "saves"], "save");
+    const against = [...at, "modifiers", index, "against"];
+    each(
+      modifier.against?.conditions,
+      new Set(definition.sheet.live.conditions.map((one) => one.id)),
+      [...against, "conditions"],
+      "condition",
+    );
+    if (definition.combat?.damageTypes) {
+      each(
+        modifier.against?.damage?.map((type) => type.trim().toLowerCase()),
+        new Set(definition.combat.damageTypes.map((type) => type.trim().toLowerCase())),
+        [...against, "damage"],
+        "damage type",
+      );
+    }
   });
 }
 
@@ -7591,7 +7625,7 @@ function itemIssues(
   for (const key of ["worn", "carried"] as const) {
     const effect = item[key];
     if (!effect) continue;
-    effectNameIssues(effect, skills, saves, new Set(abilities.keys()), [...at, key], add);
+    effectNameIssues(effect, skills, saves, new Set(abilities.keys()), definition, [...at, key], add);
     itemHideIssues(definition, effect, [...at, key], add);
     for (const [id, change] of Object.entries(effect.abilities ?? {})) {
       const ability = abilities.get(id);
@@ -7609,7 +7643,15 @@ function itemIssues(
       for (const issue of rulesetValueRefIssues(requirement.value, names, names.derived, true)) {
         add([...path, "value", issue.key], issue.message);
       }
-      effectNameIssues(requirement.otherwise, skills, saves, new Set(abilities.keys()), [...path, "otherwise"], add);
+      effectNameIssues(
+        requirement.otherwise,
+        skills,
+        saves,
+        new Set(abilities.keys()),
+        definition,
+        [...path, "otherwise"],
+        add,
+      );
       itemHideIssues(definition, requirement.otherwise, [...path, "otherwise"], add);
     });
   }

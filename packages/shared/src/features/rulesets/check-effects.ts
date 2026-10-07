@@ -26,6 +26,29 @@ import {
 
 type RulesetEffectModifier = NonNullable<RulesetCombatCondition["modifiers"]>[number];
 
+/** What a save is rolled against (1.129). Missing context matches no narrowed modifier. */
+export interface RulesetSaveAgainst {
+  conditions?: readonly string[];
+  damage?: readonly string[];
+  magic?: boolean;
+}
+
+/** Any one match is enough; the save's own name is checked separately. */
+export function rulesetSaveAgainstMatches(
+  against: RulesetEffectModifier["against"],
+  source?: RulesetSaveAgainst,
+): boolean {
+  if (!against) return true;
+  if (!source) return false;
+  return !!(
+    against.conditions?.some((condition) => source.conditions?.includes(condition)) ||
+    against.damage?.some((type) =>
+      source.damage?.some((one) => one.trim().toLowerCase() === type.trim().toLowerCase()),
+    ) ||
+    (against.magic && source.magic)
+  );
+}
+
 /** One thing that changes this character's checks: an active condition, a level their track has
  *  reached, or one item's worn or carried effect. `name` is what a record calls it. */
 export interface RulesetCheckSource {
@@ -206,7 +229,7 @@ export function rulesetCheckEffects(
         save !== undefined
           ? modifier.to === "saves" && about(modifier.saves ?? source.saves, save)
           : modifier.to === "checks" && about(modifier.skills ?? source.skills, skill);
-      if (!applies) continue;
+      if (!applies || !rulesetSaveAgainstMatches(modifier.against)) continue;
       if (modifier.mode) lean(modifier.mode, source.name);
       if (modifier.flat !== undefined || modifier.dice !== undefined) {
         found.modifiers.push({ from: source.name, modifier });

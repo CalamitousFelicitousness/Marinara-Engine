@@ -90,6 +90,8 @@ export interface RulesetItemEffectFact {
     type?: string;
     fromSource?: true;
   };
+  /** Conditions and damage labels, and magic, that narrow this save modifier (1.129). */
+  against?: { names: string[]; magic?: true };
   change:
     | { mode: "advantage" | "disadvantage" }
     | { value: string }
@@ -612,9 +614,22 @@ export function rulesetItemEffectFacts(
         : to === "defense" && defense
           ? [defense]
           : [];
+    const against = modifier.against
+      ? {
+          against: {
+            names: [
+              ...(modifier.against.conditions ?? []).map(
+                (id) => definition.sheet.live.conditions.find((one) => one.id === id)?.label ?? id,
+              ),
+              ...(modifier.against.damage ?? []),
+            ],
+            ...(modifier.against.magic ? { magic: true as const } : {}),
+          },
+        }
+      : {};
     const dice = modifier.dice ? `${modifier.minus ? "-" : "+"}${modifier.dice}` : "";
     const flat = modifier.flat ? `${modifier.flat > 0 ? "+" : ""}${modifier.flat}` : "";
-    if (dice || flat) facts.push({ to, names: narrowed, ...damage, change: { value: `${dice}${flat}` } });
+    if (dice || flat) facts.push({ to, names: narrowed, ...damage, ...against, change: { value: `${dice}${flat}` } });
     if (modifier.times) {
       facts.push({
         to,
@@ -623,7 +638,7 @@ export function rulesetItemEffectFacts(
         change: { times: modifier.times },
       });
     }
-    if (modifier.mode) facts.push({ to, names: narrowed, change: { mode: modifier.mode } });
+    if (modifier.mode) facts.push({ to, names: narrowed, ...against, change: { mode: modifier.mode } });
   }
   if (effect.failsSaves?.length) {
     facts.push({ to: "saves", names: names("saves", effect.failsSaves), change: { fails: true } });
@@ -692,7 +707,10 @@ export function rulesetItemEffectText(fact: RulesetItemEffectFact): string {
       ? `${ability} at least ${fact.change.atLeast}`
       : `${"value" in fact.change ? fact.change.value : ""} ${ability}`;
   }
-  const which = `${fact.to}${fact.names.length ? ` (${fact.names.join(", ")})` : ""}`;
+  const against = fact.against
+    ? ` against ${[...fact.against.names, ...(fact.against.magic ? ["magic"] : [])].join(" or ")}`
+    : "";
+  const which = `${fact.to}${fact.names.length ? ` (${fact.names.join(", ")})` : ""}${against}`;
   if ("fails" in change) return `fails ${which}`;
   return `${"mode" in change ? change.mode : "value" in change ? change.value : ""} on ${which}`;
 }

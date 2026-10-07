@@ -6,6 +6,7 @@
 // `applyRulesetSheetOp`, so a fight can never write something the sheet would refuse from the
 // player or from the Game Master.
 
+import type { RulesetSaveAgainst } from "../rulesets/check-effects.js";
 import {
   rulesetPoolMaxSuccesses,
   type RulesetCombat,
@@ -795,6 +796,7 @@ function rollSave(
   /** Where an action's own save comes from, which cover is read against. Never for a save that ends
    *  a condition or keeps concentration: nothing is coming at them. */
   from?: RulesetCombatCell | null,
+  against?: RulesetSaveAgainst,
 ): boolean {
   const own = combatant.saves[save] ?? 0;
   // A condition that fails this save takes the roll away entirely, rather than rolling and ignoring
@@ -823,12 +825,12 @@ function rollSave(
       : 0;
   if (cover > 0) ctx.events.push({ type: "cover", targetId: combatant.id, bonus: cover, save });
   const modifier = own + cover;
-  const mode = rulesetSaveMode(ctx.definition, ctx.combat, combatant, save, ctx.state);
+  const mode = rulesetSaveMode(ctx.definition, ctx.combat, combatant, save, ctx.state, against);
   if (rulesetCombatIsPool(ctx.combat)) {
     // The save's number is its pool, and its difficulty the successes it needs, never fewer than one.
     const bonuses = rollBonuses(
       ctx,
-      rulesetConditionModifiers(ctx.definition, ctx.combat, combatant, "saves", ctx.state, save),
+      rulesetConditionModifiers(ctx.definition, ctx.combat, combatant, "saves", ctx.state, save, against),
     );
     const needed = Math.max(1, difficulty);
     const thrown = throwPool(ctx, combatant, modifier + bonusTotal(bonuses), mode);
@@ -865,7 +867,7 @@ function rollSave(
   // What the saver's conditions add, rolled after the save's own dice.
   const bonuses = rollBonuses(
     ctx,
-    rulesetConditionModifiers(ctx.definition, ctx.combat, combatant, "saves", ctx.state, save),
+    rulesetConditionModifiers(ctx.definition, ctx.combat, combatant, "saves", ctx.state, save, against),
   );
   const total = kept + modifier + bonusTotal(bonuses);
   const success = total >= difficulty;
@@ -1160,7 +1162,11 @@ function endConditionsOnHarm(
       !(onDamage && damageSaves?.has(tracked))
     ) {
       if (onDamage) damageSaves?.add(tracked);
-      if (rollSave(ctx, target, tracked.saveEnds.save, tracked.difficulty, tracked.source)) {
+      if (
+        rollSave(ctx, target, tracked.saveEnds.save, tracked.difficulty, tracked.source, undefined, {
+          conditions: [condition],
+        })
+      ) {
         removeCondition(ctx, target, condition, "save");
         continue;
       }
@@ -1222,7 +1228,9 @@ function tickConditionsNow(ctx: RulesetCombatContext, actor: RulesetCombatant, a
   for (const entry of [...actor.tracked]) {
     // A save with nothing to be rolled against is not rolled: the condition runs on its clock.
     if (entry.saveEnds?.at === at && entry.difficulty !== undefined) {
-      const ended = rollSave(ctx, actor, entry.saveEnds.save, entry.difficulty, entry.source);
+      const ended = rollSave(ctx, actor, entry.saveEnds.save, entry.difficulty, entry.source, undefined, {
+        conditions: [entry.condition],
+      });
       if (ended) {
         removeCondition(ctx, actor, entry.condition, "save");
         continue;
@@ -3370,6 +3378,13 @@ function resolveActionBody(
       continue;
     }
 
+    const against: RulesetSaveAgainst = {
+      conditions: action.applies?.map((one) => one.condition),
+      damage: [action.damage?.type, ...(action.damage?.plus ?? []).map((one) => one.type)].filter(
+        (type): type is string => type !== undefined,
+      ),
+      magic: (action.qualities ?? action.damage?.qualities)?.includes("magical") === true,
+    };
     let saved = false;
     if (action.save) {
       saved = rollSave(
@@ -3379,6 +3394,7 @@ function resolveActionBody(
         action.save.difficulty,
         actor.id,
         action.save.ignoresCover ? null : saveFrom,
+        against,
       );
       if (saved && action.save.onSuccess === "negates") {
         spendUsed();
@@ -3505,7 +3521,7 @@ function resolveActionBody(
       });
       (action.damage.plus ?? []).forEach((clause) => {
         const own = clause.save
-          ? rollSave(ctx, target, clause.save.save, clause.save.difficulty, actor.id, saveFrom)
+          ? rollSave(ctx, target, clause.save.save, clause.save.difficulty, actor.id, saveFrom, against)
           : false;
         if (own && clause.save?.onSuccess === "none") return;
         const clauseHalved = clause.save ? own : halved;
@@ -3542,7 +3558,7 @@ function resolveActionBody(
       (action.damage.plus ?? []).forEach((clause, index) => {
         // A clause with a save of its own asks the TARGET for it, whatever the action already asked.
         const own = clause.save
-          ? rollSave(ctx, target, clause.save.save, clause.save.difficulty, actor.id, saveFrom)
+          ? rollSave(ctx, target, clause.save.save, clause.save.difficulty, actor.id, saveFrom, against)
           : false;
         if (own && clause.save?.onSuccess === "none") return;
         // Halved by its own save when it has one, and by the action's save-for-half when it does not.

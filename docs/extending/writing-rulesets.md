@@ -1818,6 +1818,38 @@ same keys for a d20 system:
   one the Game Master asked for, so nothing lands off your scale. The `damagePerRound` band is read
   as what a creature does to ONE target in a round, its whole sequence included.
 
+### Saves against conditions, damage or magic (Capability API 1.129)
+
+A modifier with `to: "saves"` may carry `against`. It needs at least one of
+`conditions` (sheet condition ids), `damage` (damage types), or `magic: true`.
+Any one match is enough; `saves` still narrows which save as an AND. Use the
+modifier's `mode: "advantage"`, not `effects`, to narrow advantage this way.
+These modifiers work on conditions, reached track or derived levels, and item effects.
+For race features, derive a value from the sheet's race pick and attach the modifier
+to a level reached when that value is 1. Example modifiers:
+
+```json
+[
+  { "$comment": "Dwarven Resilience", "to": "saves", "mode": "advantage", "against": { "conditions": ["poisoned"], "damage": ["poison"] } },
+  { "$comment": "Fey Ancestry", "to": "saves", "mode": "advantage", "against": { "conditions": ["charmed"] } },
+  { "$comment": "Gnome Cunning", "to": "saves", "saves": ["int_save", "wis_save", "cha_save"], "mode": "advantage", "against": { "magic": true } }
+]
+```
+
+Brave uses `conditions: ["frightened"]`. Magic Resistance uses `magic: true`
+without `saves`, on a creature's sheet-derived level or track level.
+An action's `applies` counts even if the save prevents the condition; its damage
+includes every `plus` clause. Damage names match without case. Magic means the
+1.96 `"magical"` quality: catalog `mechanics.qualities` (even without damage),
+a creature action's `damage.qualities`, or a weapon item's tags. A spell must
+carry that quality; its name or catalog alone does not make it magical.
+A save to end a condition, including `saveWhenDamaged` and `saveEnds.at: "damaged"`,
+is against that condition only. Concentration and death saves are against nothing.
+Outside combat, Game Master save requests carry no structured source or condition;
+`against` never matches those requests. The sheet, item details, battle details and
+Game Master sheet summary show these restrictions. Requires schemaVersion 2 and
+capabilityApi 1.129 or newer.
+
 ### A fight thrown in pools: `dice-pool`
 
 A `dice-pool` ruleset counts successes rather than adding dice up, and its fights can too.

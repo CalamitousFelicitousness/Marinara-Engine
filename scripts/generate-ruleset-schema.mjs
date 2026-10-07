@@ -263,6 +263,7 @@ function modifierSaysSomething(node) {
   const properties = node.properties;
   if (node.type !== "object" || !properties?.to || !properties.flat || !properties.dice || !properties.times) return;
   requireAnyOf(node, ["flat", "dice", "times", "mode"]);
+  if (properties.against) requireAnyOf(properties.against, ["conditions", "damage", "magic"]);
   properties.flat = { ...properties.flat, not: { const: 0 } };
   node.allOf = [
     ...(node.allOf ?? []),
@@ -279,6 +280,7 @@ function modifierSaysSomething(node) {
     { if: { required: ["mode"] }, then: { properties: { to: { enum: ["checks", "saves"] } } } },
     { if: { required: ["skills"] }, then: { properties: { to: { const: "checks" } } } },
     { if: { required: ["saves"] }, then: { properties: { to: { const: "saves" } } } },
+    { if: { required: ["against"] }, then: { properties: { to: { const: "saves" } } } },
   ];
 }
 

@@ -203,7 +203,9 @@ export function RulesetCombatStatus({
                       })}
                     </span>
                   )}
-                  {(!!combatant.tier || (combatant.traits?.length ?? 0) > 0) && (
+                  {(!!combatant.tier ||
+                    (combatant.traits?.length ?? 0) > 0 ||
+                    (combatant.saveModifiers?.length ?? 0) > 0) && (
                     <details className="mt-0.5">
                       <summary className="cursor-pointer text-[0.65rem] text-[var(--muted-foreground)]">
                         {t("game.combat.ruleset.status.details")}
@@ -212,6 +214,9 @@ export function RulesetCombatStatus({
                         {combatant.tier && (
                           <p>{t("game.combat.ruleset.status.tier", { label: names.tier(combatant.tier) })}</p>
                         )}
+                        {(combatant.saveModifiers ?? []).map((fact, index) => (
+                          <p key={index}>{rulesetEffectPhrase(fact, t)}</p>
+                        ))}
                         {(combatant.traits ?? []).map((trait) => (
                           <p key={trait.name}>
                             <span className="font-medium text-[var(--foreground)]">{trait.name}</span> {trait.text}

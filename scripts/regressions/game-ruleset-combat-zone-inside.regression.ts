@@ -28,6 +28,7 @@ import {
   rulesetCombatOptions,
   rulesetOptionTargets,
   rulesetSheetBuildSchema,
+  rulesetWarded,
   rulesetZoneConditions,
   supportedCapabilityApi,
   type RulesetCatalogEntry,
@@ -132,6 +133,8 @@ try {
       // Here, poisoned costs the turn's action, as Stinking Cloud's retching does.
       const poisoned = doc.combat.conditions.find((entry: any) => entry.condition === "poisoned");
       poisoned.budgets = [{ budget: "action", flat: -1 }];
+      // And deafened does something in a fight here, so the zone's condition is one the fight reads.
+      doc.combat.conditions.push({ condition: "deafened", effects: ["own-attacks-disadvantage"] });
       doc.catalogs.push({ id: "spells", label: "Spells", feeds: ["spells"], entries: spells });
     }),
   );
@@ -229,6 +232,10 @@ try {
     assert.equal(refused(step), undefined);
     const state = around(step.state);
     assert.ok(conditionsOf(state, "a").includes("deafened"), "deafened inside");
+    assert.ok(
+      rulesetActiveConditions(definition, combat, who(state, "a"), state).some((one) => one.condition === "deafened"),
+      "and the fight reads it as on A",
+    );
     assert.ok(!conditionsOf(state, "b").includes("deafened"), "not outside");
     const clapped = use(state, "Clap", { targetIds: ["a"] });
     assert.equal(hp(clapped.state, "a"), 100, "no thunder inside");
@@ -244,6 +251,37 @@ try {
       after = advanceRulesetTurn(definition, after, roll).state;
     }
     assert.ok(!conditionsOf(after, "a").includes("deafened"), "gone with it");
+  }
+
+  // ── Off a board, whoever it was cast on is inside ──
+  {
+    const state = createRulesetEncounter({
+      definition,
+      seed: 1,
+      roller: () => 10,
+      bestiary: { spells },
+      combatants: [
+        {
+          id: "mage",
+          name: "Mage",
+          side: "party",
+          build: rulesetSheetBuildSchema.parse({
+            fields: { level: 5, hp_max: 30, spellcasting_ability: "wis", slots_max_1: 4 },
+            lists: { spells: spells.flatMap((entry) => rowsFromCatalogEntry("spells", entry).map((row) => row.row)) },
+          }),
+          live: {},
+          catalogs: { spells },
+        },
+        { id: "a", name: "A", side: "enemy", block: block() },
+        { id: "b", name: "B", side: "enemy", block: block() },
+      ],
+    });
+    state.order = ["mage", "a", "b"];
+    state.turn = 0;
+    const cast = use(state, "Silence", { targetIds: ["a"] });
+    assert.equal(refused(cast), undefined);
+    assert.ok(conditionsOf(cast.state, "a").includes("deafened"), "held on A");
+    assert.ok(!conditionsOf(cast.state, "b").includes("deafened"), "not on B");
   }
 
   // ── A gag ──
@@ -292,6 +330,12 @@ try {
     assert.ok(offered.includes("b"));
     const named = use(state, "Sign", { targetIds: ["a"] });
     assert.ok(refused(named), "named behind the globe at level 1");
+    // Something off another catalog is not warded at all.
+    const signAction = who(state, "mage").actions.find((one) => one.id === sign.id)!;
+    assert.ok(rulesetWarded(definition, state, who(state, "mage"), signAction, who(state, "a")));
+    assert.ok(
+      !rulesetWarded(definition, state, who(state, "mage"), { ...signAction, catalog: "feats" }, who(state, "a")),
+    );
     // Paid at level 2, it goes through.
     assert.ok(sign.payWith?.includes("slots_2"), `payWith ${JSON.stringify(sign.payWith)}`);
     const upcast = use(state, "Sign", { targetIds: ["a"], payWith: "slots_2" });
@@ -395,6 +439,27 @@ try {
       ];
     }, /Unknown component "somatic"/);
   }
+
+  // A zone that only puts a condition on whoever stands in it needs no trigger.
+  parsed(
+    fiveE((doc) => {
+      doc.catalogs.push({
+        id: "spells",
+        label: "Spells",
+        feeds: ["spells"],
+        entries: [
+          {
+            ...spell("hush", {}),
+            mechanics: {
+              kind: "utility",
+              area: { shape: "burst", size: 10 },
+              zone: { rounds: 1, triggers: [], inside: { conditions: ["deafened"] } },
+            },
+          },
+        ],
+      });
+    }),
+  );
 
   // ── The gate ──
   {

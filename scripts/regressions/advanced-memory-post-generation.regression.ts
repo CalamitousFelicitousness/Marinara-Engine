@@ -759,6 +759,65 @@ try {
   assert.deepEqual(savedDiagnostics.recall, savedJev.latestReceipt!.decisionRecall);
   assert.deepEqual(savedDiagnostics.sceneCheck, savedJev.job.decisionSceneCheck);
   assert.equal(calls.length, callsBeforeInspection, "viewing saved memory decisions cannot call any provider");
+  // #7264: characters who reply one by one recall alone, so the inspector shows only the inspected
+  // character's own saved recall. A newcomer with nothing to recall never shows someone else's.
+  const newcomer = await createCharactersStorage(db).create(characterDataSchema.parse({ name: "Cyno" }));
+  assert.ok(newcomer);
+  const turnsChat = await chats.create({
+    name: "Recall reports by character",
+    mode: "roleplay",
+    characterIds: [character.id, newcomer.id],
+    connectionId: connection.id,
+  });
+  assert(turnsChat);
+  chatIds.push(turnsChat.id);
+  const joined = await chats.createMessage({
+    chatId: turnsChat.id,
+    role: "user",
+    content: "Cyno arrives at the camp.",
+    extra: { isConversationStart: true },
+  });
+  assert(joined);
+  await chats.patchMetadata(turnsChat.id, {
+    enableAgents: false,
+    groupChatMode: "individual",
+    advancedMemory: {
+      ...DEFAULT_ADVANCED_MEMORY_SETTINGS,
+      enabled: true,
+      maxContextTokens: 16_384,
+      decisionEnabled: true,
+      decisionConnectionId: decisionConnection.id,
+      knowledgeStarts: { [character.id]: null, [newcomer.id]: joined.id },
+      knowledgeConfirmed: true,
+    },
+  });
+  const ownRecall = savedJev.latestReceipt!.decisionRecall!;
+  await chats.createMessage({
+    chatId: turnsChat.id,
+    role: "assistant",
+    characterId: character.id,
+    content: "Dottore remembers the silver compass.",
+    extra: { advancedMemoryReceipt: { reasons: ["decision-recall"], decisionRecall: ownRecall } },
+  });
+  await chats.createMessage({
+    chatId: turnsChat.id,
+    role: "assistant",
+    characterId: newcomer.id,
+    content: "Cyno studies the camp.",
+    extra: { advancedMemoryReceipt: { reasons: ["no-recall-candidates"] } },
+  });
+  const inspectRecall = async (forCharacterId: string) => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/generate/dryRun",
+      payload: { chatId: turnsChat.id, forCharacterId, returnPrompt: true, decisionDebug: "inspect" },
+    });
+    assert.equal(response.statusCode, 200, response.body);
+    return response.json().prompt.decisionDebug.advancedMemory?.recall;
+  };
+  assert.equal(await inspectRecall(newcomer.id), undefined, "Cyno is not shown Dottore's recalled scenes");
+  assert.deepEqual(await inspectRecall(character.id), ownRecall, "Dottore still sees his own recall");
+  assert.equal(calls.length, callsBeforeInspection, "inspecting either character calls no provider");
   closeLatestScene = false;
 
   const actualUsageChat = await chats.create({

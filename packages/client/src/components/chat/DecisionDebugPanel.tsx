@@ -6,14 +6,16 @@ import { useDecisionDebug } from "../../hooks/use-decision-debug";
 
 export function DecisionDebugPanel({
   chatId,
+  characterId,
   onPreview,
 }: {
   chatId: string;
+  characterId?: string;
   onPreview: (preview: DecisionDebugPreview | null) => void;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
-  const test = useDecisionDebug(chatId);
+  const test = useDecisionDebug(chatId, characterId);
   const report = test.data?.prompt.decisionDebug;
   const canRun = report?.results.some((row) =>
     ["ready", "evaluated", "cached", "deferred", "unanswered"].includes(row.status),
@@ -92,6 +94,9 @@ export function DecisionDebugPanel({
                   <p className="text-[var(--muted-foreground)]">{t("decisionDebug.memory.scope")}</p>
                   {!report.advancedMemory.recall && !report.advancedMemory.sceneCheck && (
                     <p role="status">{t("decisionDebug.memory.empty")}</p>
+                  )}
+                  {!report.advancedMemory.recall && report.advancedMemory.sceneCheck && (
+                    <p role="status">{t("decisionDebug.memory.noRecall")}</p>
                   )}
                   {(
                     [

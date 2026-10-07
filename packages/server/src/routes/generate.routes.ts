@@ -2839,7 +2839,6 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         const chatSummaryReaders = mergedChatSummaryReaders({
           characterIds,
           individual: promptGroupChatMode === "individual",
-          targetCharacterId: promptTargetCharacterId,
           impersonate: input.impersonate === true,
           narratorCharacterId: advancedMemorySettings.narratorCharacterId,
           profilesById: historyMacroProfilesById,

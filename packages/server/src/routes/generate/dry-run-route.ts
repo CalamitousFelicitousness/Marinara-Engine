@@ -1128,7 +1128,6 @@ export async function registerDryRunRoute(app: FastifyInstance) {
     const chatSummaryReaders = mergedChatSummaryReaders({
       characterIds,
       individual: dryRunGroupChatMode === "individual",
-      targetCharacterId: promptTargetCharacterId,
       impersonate,
       narratorCharacterId: advancedMemorySettings.narratorCharacterId,
       profilesById: historyMacroProfilesById,

@@ -1263,20 +1263,18 @@ export function resolvePromptCharacterIdsForTarget(
 
 /**
  * Who a merged group reply may voice, so the Chat Summary can mark who knows what (#7252). Undefined keeps
- * the usual single reading: one character, Individual mode, a pinned speaker or impersonation. The narrator
- * is never a reader, so narrator-only sections stay out of the shared prompt.
+ * the usual single reading: one character, Individual mode or impersonation. A chosen responder does not
+ * pin a merged Roleplay reply to one speaker (mergedSpeaksOnlyTarget in generate.routes.ts), and Advanced
+ * Memory reads for everyone present then too. The narrator is never a reader, so narrator-only sections stay out.
  */
 export function mergedChatSummaryReaders(input: {
   characterIds: readonly string[];
   individual: boolean;
-  targetCharacterId: string | null;
   impersonate: boolean;
   narratorCharacterId: string | null;
   profilesById: ReadonlyMap<string, CharacterMacroProfile>;
 }): CharacterMacroProfile[] | undefined {
-  if (input.characterIds.length < 2 || input.individual || input.targetCharacterId || input.impersonate) {
-    return undefined;
-  }
+  if (input.characterIds.length < 2 || input.individual || input.impersonate) return undefined;
   return input.characterIds.flatMap((id) => {
     const profile = id === input.narratorCharacterId ? undefined : input.profilesById.get(id);
     return profile ? [profile] : [];

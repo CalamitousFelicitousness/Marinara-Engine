@@ -2,8 +2,9 @@
  * Classic Chat Summary in a merged group chat (#7252). A merged reply may voice anyone present, so a
  * section that depends on the character is checked for each present character and marked with who
  * knows it, as Advanced Memory does since #7239. Narrator-only sections stay out. Text outside every
- * condition keeps its usual reading, {{char}} included. Individual mode, a pinned speaker,
- * impersonation and single-character chats read the summary exactly as on staging.
+ * condition keeps its usual reading, {{char}} included. A chosen responder does not pin a merged reply
+ * to one speaker, so it still marks. Individual mode, impersonation and single-character chats read the
+ * summary exactly as on staging.
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -156,7 +157,7 @@ try {
     "a group block in the summary is left to the usual per-character repeat",
   );
 
-  // Exact staging output: Individual mode, a pinned speaker and single-character chats get no readers.
+  // Exact staging output without readers: Individual mode (deferred, or one chosen speaker) and solo chats.
   const individual =
     MAIN +
     "<chat_summary>\n    Mari and \u001eMARINARA_DEFERRED_CHARACTER_CHAR\u001f reached the harbor.\n" +
@@ -175,7 +176,7 @@ try {
     "    The travelers kept the compass promise.\n\n    Nobody mentions the debt.\n</chat_summary>";
   for (const marker of [true, false]) {
     assert.equal(await summaryBlock(all, marker, { deferCharacterMacros: true }), individual, "Individual mode");
-    assert.equal(await summaryBlock([pantalone.id], marker), pinned, "a pinned speaker");
+    assert.equal(await summaryBlock([pantalone.id], marker), pinned, "an Individual-mode reply for one chosen speaker");
     assert.equal(await summaryBlock([maukie.id], marker, { groupCharacterIds: undefined }), MAIN + single, "solo");
   }
   const soloCtx = await buildPromptMacroContext({
@@ -191,7 +192,6 @@ try {
   const base = {
     characterIds: all,
     individual: false,
-    targetCharacterId: null,
     impersonate: false,
     narratorCharacterId: narrator.id,
     profilesById: profiles,
@@ -208,7 +208,6 @@ try {
   );
   for (const [label, input] of [
     ["Individual mode", { ...base, individual: true }],
-    ["a pinned speaker", { ...base, targetCharacterId: maukie.id }],
     ["impersonation", { ...base, impersonate: true }],
     ["a single-character chat", { ...base, characterIds: [maukie.id] }],
   ] as const) {
@@ -219,6 +218,7 @@ try {
   const source = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
   const generate = source("../../packages/server/src/routes/generate.routes.ts");
   const preview = source("../../packages/server/src/routes/generate/dry-run-route.ts");
+  const peek = source("../../packages/server/src/routes/chats.routes.ts");
   for (const [name, text] of [
     ["generation", generate],
     ["preview", preview],
@@ -230,6 +230,17 @@ try {
     generate,
     /appendFallbackChatSummaryToSystemPrompt\(\s*finalMessages,\s*activeChatSummary,[^)]*chatSummaryReaders,\s*\)/u,
     "preset-less generation passes them too",
+  );
+  // A chosen responder in a merged chat still voices the cast (mergedSpeaksOnlyTarget), as Advanced Memory reads it.
+  assert.doesNotMatch(
+    `${generate}\n${preview}`,
+    /mergedChatSummaryReaders\(\{[^}]*targetCharacterId/u,
+    "a chosen responder keeps the readers",
+  );
+  assert.match(
+    peek,
+    /chatSummary: activeChatSummary,\n[^\n]*\n\s+chatSummaryReaders: activeChatSummary\s+\? mergedChatSummaryReaders\(/u,
+    "Peek Prompt's live preview reads the summary as generation does",
   );
 } finally {
   closeDB?.();

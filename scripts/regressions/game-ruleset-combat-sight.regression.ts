@@ -107,7 +107,14 @@ try {
   const bolt = spell("bolt", { range: 120, amount: { flat: 5 }, seen: true });
   // Fire Storm, small: up to three 10-ft cubes, each touching another.
   const storm = spell("storm", { area: { shape: "box", size: 10, copies: 3 }, range: 150, amount: { flat: 7 } });
-  const spells = [fog, dark, bolt, storm];
+  // Murk: pierced only by truesight, which needs eyes.
+  const murk = spell("murk", {
+    kind: "utility",
+    area: { shape: "burst", size: 5 },
+    range: 60,
+    zone: { rounds: 10, triggers: [], obscures: { pierced: ["truesight"] } },
+  });
+  const spells = [fog, dark, bolt, storm, murk];
   const block = (extra: Partial<RulesetStatBlock> = {}): RulesetStatBlock => ({
     health: 100,
     defense: 5,
@@ -293,6 +300,53 @@ try {
     const tooFar = fight({ placements: { a: { x: 10, y: 7 } }, a: { senses: { blindsight: 10, truesight: 120 } } });
     who(tooFar, "a").tracked.push({ condition: "blinded", source: "mage" } as never);
     assert.equal(sees(tooFar, "a", "mage"), false, "truesight needs eyes; blindsight does not reach");
+    // Within its blindsight, a blinded creature still does not see into murk only truesight pierces.
+    const murky = cast(
+      fight({ placements: { a: { x: 4, y: 7 } }, a: { senses: { blindsight: 10, truesight: 120 } } }),
+      "Murk",
+      { x: 2, y: 7 },
+    ).state;
+    assert.equal(sees(murky, "a", "mage"), true, "with eyes, truesight sees through it");
+    who(murky, "a").tracked.push({ condition: "blinded", source: "mage" } as never);
+    assert.equal(sees(murky, "a", "mage"), false, "blind, truesight is gone and blindsight does not pierce it");
+    // A bestiary creature carries its senses onto its block.
+    const batFight = createRulesetEncounter({
+      definition,
+      seed: 1,
+      roller: () => 10,
+      bestiary: {
+        spells,
+        beasts: [
+          {
+            id: "bat",
+            label: "Bat",
+            creature: {
+              health: 5,
+              defense: 12,
+              initiativeModifier: 0,
+              speed: 30,
+              tier: "cr_0",
+              actions: [],
+              senses: { blindsight: 60 },
+            },
+          } as unknown as RulesetCatalogEntry,
+        ],
+      },
+      combatants: [
+        {
+          id: "mage",
+          name: "Mage",
+          side: "party",
+          build: rulesetSheetBuildSchema.parse({ fields: { level: 1, hp_max: 10 } }),
+          live: { conditions: ["invisible"] } as never,
+          catalogs: {},
+        },
+        { id: "bat", name: "Bat", side: "enemy", creature: { catalogId: "beasts", entryId: "bat" } },
+      ],
+      board: { grid: grid(), placements: { mage: { x: 2, y: 7 }, bat: { x: 8, y: 7 } } },
+    });
+    assert.deepEqual(who(batFight, "bat").block?.senses, { blindsight: 60 });
+    assert.equal(sees(batFight, "bat", "mage"), true, "the bat's blindsight finds the invisible mage");
   }
 
   // ── Fire Storm: copies, each touching another ──

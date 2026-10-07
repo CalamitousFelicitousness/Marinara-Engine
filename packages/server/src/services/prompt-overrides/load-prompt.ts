@@ -17,12 +17,12 @@ export async function loadPrompt<TCtx extends Record<string, string | number | u
   storage: PromptOverridesStorage,
   def: PromptOverrideKeyDef<TCtx>,
   ctx: TCtx,
-  /** Optional per-template context, for keys whose variables changed meaning after users saved templates. */
-  templateCtx?: (template: string) => TCtx,
+  /** Optional renderer for saved templates, for keys that need compatibility handling. */
+  renderSaved?: (template: string) => string,
 ): Promise<string> {
   try {
     const declared = def.variables.map((v) => v.name);
-    const render = (template: string) => renderTemplate(template, templateCtx?.(template) ?? ctx, declared);
+    const render = (template: string) => renderSaved?.(template) ?? renderTemplate(template, ctx, declared);
     const row = await storage.get(def.key);
     if (row) {
       return row.enabled ? render(row.template) : def.defaultBuilder(ctx);

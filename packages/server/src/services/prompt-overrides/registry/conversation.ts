@@ -34,6 +34,21 @@ export interface ConversationSelfieCtx extends Record<string, string | number | 
   selfieTagsBlock: string;
 }
 
+/** Label of the default builder's override line; the override value follows it. */
+export const SELFIE_OVERRIDE_LINE_LABEL =
+  "Image appearance override — this MUST appear in your prompt exactly as written, character for character: ";
+
+/**
+ * The default builder's override block as it appears in a template copied from the
+ * editor. Exported so such templates can drop it when a card has no override (see
+ * `resolveConversationSelfieSystemPrompt`).
+ */
+export const SELFIE_OVERRIDE_INSTRUCTION_LINES = [
+  `${SELFIE_OVERRIDE_LINE_LABEL}\${imageAppearance}`,
+  `Do not reword, reorder, translate, or omit any part of the override above, even if a tag is not a word you recognize. It may be a LoRA trigger or another identifier the image model needs verbatim.`,
+  `If this prompt describes the character anywhere else, treat that as background information: use it to fill in visual details the override does not cover, such as build, clothing and expression. Never contradict the override with it, and do not repeat or paraphrase any tag the override already contains.`,
+] as const;
+
 export const CONVERSATION_SELFIE: PromptOverrideKeyDef<ConversationSelfieCtx> = {
   key: "conversation.selfie",
   description: "Meta-prompt that asks the chat LLM to write a selfie image prompt for the active character.",
@@ -78,11 +93,7 @@ export const CONVERSATION_SELFIE: PromptOverrideKeyDef<ConversationSelfieCtx> = 
       // it. The instruction sits next to the override so the two cannot drift apart,
       // and the whole block falls away when no override is set.
       ...(ctx.imageAppearance
-        ? [
-            `Image appearance override — this MUST appear in your prompt exactly as written, character for character: ${ctx.imageAppearance}`,
-            `Do not reword, reorder, translate, or omit any part of the override above, even if a tag is not a word you recognize. It may be a LoRA trigger or another identifier the image model needs verbatim.`,
-            `If this prompt describes the character anywhere else, treat that as background information: use it to fill in visual details the override does not cover, such as build, clothing and expression. Never contradict the override with it, and do not repeat or paraphrase any tag the override already contains.`,
-          ]
+        ? [`${SELFIE_OVERRIDE_LINE_LABEL}${ctx.imageAppearance}`, ...SELFIE_OVERRIDE_INSTRUCTION_LINES.slice(1)]
         : []),
       `Character name: ${ctx.charName}`,
       ...(ctx.personality

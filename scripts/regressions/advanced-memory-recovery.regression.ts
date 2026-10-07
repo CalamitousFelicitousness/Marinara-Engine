@@ -580,6 +580,8 @@ try {
       ],
       [["maukie"], ["maukie"]],
       [["Absent stranger", "Powers That Be"], []],
+      [["Pantalone Bisognosi"], ["pantalone"]],
+      [["Powers"], []],
       [[], []],
       ["all", ["maukie", "pantalone"]],
     ] as Array<[string[] | "all", string[]]>) {

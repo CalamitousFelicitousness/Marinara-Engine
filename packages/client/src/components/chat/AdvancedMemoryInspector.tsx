@@ -2,7 +2,11 @@ import { useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { Download, RefreshCw, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
-import { ADVANCED_MEMORY_SCENE_AUDIENCE as SCENE_AUDIENCE, type AdvancedMemoryRecord } from "@marinara-engine/shared";
+import {
+  ADVANCED_MEMORY_SCENE_AUDIENCE as SCENE_AUDIENCE,
+  ADVANCED_MEMORY_SCENE_AUDIENCE_UNMATCHED as SCENE_AUDIENCE_UNMATCHED,
+  type AdvancedMemoryRecord,
+} from "@marinara-engine/shared";
 import {
   useAdvancedMemoryAction,
   useAdvancedMemorySources,
@@ -25,6 +29,8 @@ const reasonKeys: Record<string, string> = {
   "scene-boundary-rollover": "chat.advancedMemory.reason.sceneBoundaryRollover",
   "open-scene-prefix-summary": "chat.advancedMemory.reason.openScenePrefixSummary",
   "no-relevant-recall": "chat.advancedMemory.reason.noRelevantRecall",
+  "no-recall-candidates": "chat.advancedMemory.reason.noRecallCandidates",
+  "no-recall-budget": "chat.advancedMemory.reason.noRecallBudget",
 };
 
 export function AdvancedMemoryInspector({
@@ -71,11 +77,15 @@ export function AdvancedMemoryInspector({
   const editableTimeline = selected?.kind === "scene" && selected.id !== selected.sceneId;
   const timelineChanged = editableTimeline && draftTimeline.trim() !== (selected.timeline ?? "").trim();
   const blockedRecord = records.find((record) => record.id === status.data?.job.reviewRecordId);
+  const generatedScene = selected?.kind === "scene" && !!selected.content && !selected.manualOverride;
+  const unmatchedAudience =
+    generatedScene && selected.dependencies.some((item) => item.id === SCENE_AUDIENCE_UNMATCHED);
   const reviewAudience =
-    selected?.kind === "scene" &&
-    !!selected.content &&
-    !selected.manualOverride &&
-    !selected.dependencies.some((item) => item.id === SCENE_AUDIENCE.id && item.revision === SCENE_AUDIENCE.revision);
+    unmatchedAudience ||
+    (generatedScene &&
+      !selected.dependencies.some(
+        (item) => item.id === SCENE_AUDIENCE.id && item.revision === SCENE_AUDIENCE.revision,
+      ));
   const reviewCorrection =
     selected?.kind === "scene" &&
     selected.manualOverride &&
@@ -364,7 +374,11 @@ export function AdvancedMemoryInspector({
           />
           {reviewAudience && (
             <p role="status" className="text-xs text-[var(--muted-foreground)]">
-              {t("chat.advancedMemory.reviewAudienceHelp")}
+              {t(
+                unmatchedAudience
+                  ? "chat.advancedMemory.unmatchedAudienceHelp"
+                  : "chat.advancedMemory.reviewAudienceHelp",
+              )}
             </p>
           )}
           {selected.kind === "scene" && selected.id !== selected.sceneId && (

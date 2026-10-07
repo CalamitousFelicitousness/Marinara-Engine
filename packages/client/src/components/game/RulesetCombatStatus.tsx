@@ -11,6 +11,13 @@ import { rulesetDistanceText } from "../../lib/ruleset-combat-board";
 import { rulesetEffectPhrase } from "./RulesetItemPicker";
 import { cn } from "../../lib/utils";
 
+/** The ruleset's own words for what a combatant is (1.163): "Fiend (devil)". */
+function kindLine(kind: { type?: string; tags?: string[] }): string {
+  const tags = (kind.tags ?? []).join(", ");
+  if (!kind.type) return tags;
+  return tags ? `${kind.type} (${tags})` : kind.type;
+}
+
 export function RulesetCombatStatus({
   definition,
   view,
@@ -180,6 +187,11 @@ export function RulesetCombatStatus({
                       ]
                         .filter(Boolean)
                         .join(" · ")}
+                    </span>
+                  )}
+                  {combatant.kind && (
+                    <span className="mt-0.5 block break-words text-[0.65rem] text-[var(--muted-foreground)]">
+                      {kindLine(combatant.kind)}
                     </span>
                   )}
                   {combatant.hides &&

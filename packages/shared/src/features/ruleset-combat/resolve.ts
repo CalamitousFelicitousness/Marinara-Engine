@@ -41,6 +41,8 @@ import {
   rulesetCombatant,
   rulesetActiveConditions,
   rulesetTargetHasSenses,
+  rulesetTargetIs,
+  rulesetTargetTypesAllow,
   rulesetCombatConditions,
   rulesetCombatEffects,
   rulesetCombatFailsSave,
@@ -3167,6 +3169,8 @@ function resolveActionBody(
   const spends = style?.spends ? { number: spend ?? actor.initiative, landed: false } : null;
   for (const target of targets) {
     if (!rulesetTargetHasSenses(ctx.definition, ctx.state, target, action.needs)) continue;
+    // An area or a list catches only who the action may take, by what they are (1.163).
+    if (!rulesetTargetTypesAllow(ctx.definition, target, action.targetTypes)) continue;
     const endHarm = endConditionsOnHarm(
       ctx,
       target,
@@ -3521,6 +3525,8 @@ function resolveActionBody(
         pool: first.pool,
       });
       (action.damage.plus ?? []).forEach((clause) => {
+        // Dealt only to a target that is what it names (1.163).
+        if (!rulesetTargetIs(ctx.definition, target, clause.targetIs)) return;
         const own = clause.save
           ? rollSave(ctx, target, clause.save.save, clause.save.difficulty, actor.id, saveFrom, against)
           : false;
@@ -3557,6 +3563,7 @@ function resolveActionBody(
         ...(critical ? { critical: true } : {}),
       });
       (action.damage.plus ?? []).forEach((clause, index) => {
+        if (!rulesetTargetIs(ctx.definition, target, clause.targetIs)) return;
         // A clause with a save of its own asks the TARGET for it, whatever the action already asked.
         const own = clause.save
           ? rollSave(ctx, target, clause.save.save, clause.save.difficulty, actor.id, saveFrom, against)
@@ -3703,6 +3710,7 @@ function resolveActionBody(
       for (const applies of action.applies ?? []) {
         // Read off whoever applies it, as it applies (1.162): Rage's bonus by barbarian level.
         if (!rulesetSheetWithin(ctx.definition, actor, applies.when)) continue;
+        if (!rulesetTargetIs(ctx.definition, target, applies.targetIs)) continue;
         applyConditionId(ctx, target, applies.condition, applies, {
           sourceId: actor.id,
           // The action's own save when it has one, otherwise what its source says saves are rolled

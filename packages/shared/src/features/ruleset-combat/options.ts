@@ -2,7 +2,7 @@
 // forecast - picks an id from here, so legality is decided in exactly one place and a client never
 // computes it.
 
-import type { RulesetCombat, RulesetDefinition } from "../../schemas/ruleset.schema.js";
+import type { RulesetCombat, RulesetDefinition, RulesetTargetIs } from "../../schemas/ruleset.schema.js";
 import {
   applyRulesetSheetOp,
   evaluateRulesetSheetLive,
@@ -32,6 +32,8 @@ import {
   currentRulesetActor,
   rulesetActiveConditions,
   rulesetTargetHasSenses,
+  rulesetTargetIs,
+  rulesetTargetTypesAllow,
   rulesetCombatant,
   rulesetCombatConditions,
   rulesetCombatDamageKind,
@@ -911,6 +913,7 @@ export function rulesetOptionTargets(
   if (positioned(state) && actionOf(actor, option.id)?.area) return [];
   const forbidden = rulesetForbiddenTargets(definition, state, actor);
   const needs = actionOf(actor, option.id)?.needs;
+  const targetTypes = actionOf(actor, option.id)?.targetTypes;
   // Breaking free is aimed at whoever is holding on, and at nobody else.
   const contest = actionOf(actor, option.id)?.contest;
   const holder = contest?.from ? rulesetContestHolder(state, actor, contest)?.id : undefined;
@@ -928,6 +931,7 @@ export function rulesetOptionTargets(
       .filter((combatant) => {
         if (combatant.defeated) return false;
         if (!rulesetTargetHasSenses(definition, state, combatant, needs)) return false;
+        if (!rulesetTargetTypesAllow(definition, combatant, targetTypes)) return false;
         if (option.id.startsWith("summon:") && !rulesetCombatStanding(combatant)) return false;
         if (contest?.from && combatant.id !== holder) return false;
         if (tooBig(combatant)) return false;
@@ -1222,7 +1226,15 @@ function averageHarm(
   damage: NonNullable<RulesetCombatAction["damage"]>,
   target?: RulesetCombatant,
 ): number {
-  if (!rulesetCombatIsPool(combat)) return rulesetAverageDamage(damage);
+  // A clause dealt only to some targets counts against one it would reach, and never unaimed (1.163).
+  const reaches = (clause: { targetIs?: RulesetTargetIs }) =>
+    !clause.targetIs || (!!target && rulesetTargetIs(definition, target, clause.targetIs));
+  if (!rulesetCombatIsPool(combat)) {
+    return rulesetAverageDamage({
+      ...damage,
+      ...(damage.plus ? { plus: damage.plus.filter(reaches).map(({ targetIs: _, ...clause }) => clause) } : {}),
+    });
+  }
   const one = (amount: { count: number; flat: number }, type: string | undefined) => {
     const kind = combat.damageKinds ? rulesetCombatDamageKind(combat, type) : undefined;
     // Soak is taken only the way the ruleset says; a fight whose pool block says nothing takes none.
@@ -1236,7 +1248,7 @@ function averageHarm(
   };
   return (
     one(damage, damage.type) +
-    (damage.plus ?? []).reduce((sum, clause) => sum + one(clause, clause.type ?? damage.type), 0)
+    (damage.plus ?? []).filter(reaches).reduce((sum, clause) => sum + one(clause, clause.type ?? damage.type), 0)
   );
 }
 

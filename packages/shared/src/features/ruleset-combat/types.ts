@@ -9,6 +9,7 @@ import type {
   RulesetCreatureHideEntry,
   RulesetCreature,
   RulesetSheetBuild,
+  RulesetTargetIs,
   RulesetValueRef,
 } from "../../schemas/ruleset.schema.js";
 import type { RulesetLiveState } from "../rulesets/live-state.js";
@@ -42,6 +43,8 @@ export interface RulesetCombatClauseSave {
 export interface RulesetCombatDamageClause extends RulesetCombatAmount {
   type?: string;
   save?: RulesetCombatClauseSave;
+  /** Dealt only to a target that is this (1.163). */
+  targetIs?: RulesetTargetIs;
 }
 
 /** An amount of damage, and what kind it is. The type is matched without case against a stat
@@ -82,6 +85,8 @@ export interface RulesetCombatApplies {
   escapeDc?: number;
   /** It goes on only while this value off its applier's sheet stands within the bounds (1.162). */
   when?: RulesetSheetBounds;
+  /** It goes on only a target that is this (1.163). */
+  targetIs?: RulesetTargetIs;
 }
 
 /** A value read off a sheet and the bounds it must stand within: one bound or both. */
@@ -275,6 +280,9 @@ export interface RulesetStatBlock {
   shield?: true;
   /** One of `combat.sizes`, by id (1.98). */
   size?: string;
+  /** One of `combat.creatureTypes.types`, and its tags (1.163): what a target test reads. */
+  type?: string;
+  tags?: string[];
   /** Ability scores by the ruleset's own ability ids. Carried for the Game Master, not resolved. */
   abilities?: Record<string, number>;
   /** Save modifiers by the ruleset's own save ids. A save it does not name reads as zero. */
@@ -372,6 +380,8 @@ export interface RulesetCombatAction {
   needs?: string[];
   /** Offered only while this reads within its bounds off the holder's sheet (Capability API 1.161). */
   usableWhen?: RulesetSheetBounds;
+  /** Who it may be pointed at or catch, by what they are (Capability API 1.163). */
+  targetTypes?: { is?: RulesetTargetIs; not?: RulesetTargetIs };
   damage?: RulesetCombatDamage;
   heal?: RulesetCombatAmount;
   temporary?: RulesetCombatAmount;

@@ -1536,6 +1536,22 @@ const catalogClauseSaveSchema = z
   })
   .strict();
 
+/** What a target is (Capability API 1.163): one of these `combat.creatureTypes` types, or carrying
+ *  one of these tags. Any one match passes; a combatant with no type and no tags never does. */
+export interface RulesetTargetIs {
+  types?: string[];
+  tags?: string[];
+}
+const targetIsSchema: z.ZodType<RulesetTargetIs, z.ZodTypeDef, unknown> = z
+  .object({
+    types: z.array(sheetId).min(1).max(20).optional(),
+    tags: z.array(sheetId).min(1).max(20).optional(),
+  })
+  .strict()
+  .refine((test) => test.types !== undefined || test.tags !== undefined, {
+    message: "A target test names types, tags or both",
+  });
+
 /** One more amount on the same blow, rolled and typed on its own: "and 2d6 fire", "and 1d6 poison
  *  the target may shake off". Never a second attack roll: a clause rides the blow that carried it. */
 const catalogPlusClauseSchema = z
@@ -1544,6 +1560,9 @@ const catalogPlusClauseSchema = z
     flat: z.number().int().min(-1000).max(10000).optional(),
     type: promptSafeText(40).optional(),
     save: catalogClauseSaveSchema.optional(),
+    /** Dealt only to a target that is this (Capability API 1.163): a dragon slayer's "+3d6 against
+     *  dragons", a holy avenger's radiant against fiends and undead. */
+    targetIs: targetIsSchema.optional(),
   })
   .strict()
   .superRefine((clause, ctx) => {
@@ -1620,6 +1639,8 @@ const catalogAppliesSchema = z
      *  read as it applies (Capability API 1.162); one that does not is skipped. 5e's Rage puts on a
      *  damage bonus by barbarian level: +2 `when` the level is at most 8, +3 from 9, +4 from 16. */
     when: sheetBoundsSchema("when", "applied").optional(),
+    /** It goes on only a target that is this (Capability API 1.163). */
+    targetIs: targetIsSchema.optional(),
   })
   .strict()
   .superRefine((applies, ctx) => {
@@ -1727,6 +1748,16 @@ const catalogMechanicsObject = z
     /** Offered in a fight only while a value off its holder's sheet, live state and items stands
      *  within these bounds (Capability API 1.161): 5e's Protection, which needs a shield in hand. */
     usableWhen: catalogUsableWhenSchema.optional(),
+    /** Who may be picked or caught at all, by what they are (Capability API 1.163): Animal
+     *  Friendship takes only a beast (`is`), Sleep passes over the undead (`not`). A combatant with
+     *  no type never matches `is` and always passes `not`. */
+    targetTypes: z
+      .object({ is: targetIsSchema.optional(), not: targetIsSchema.optional() })
+      .strict()
+      .refine((types) => types.is !== undefined || types.not !== undefined, {
+        message: '"targetTypes" says "is", "not" or both',
+      })
+      .optional(),
     /** In the catalog's own distance unit. 0 is self or touch. */
     range: z.number().finite().min(0).optional(),
     area: z
@@ -2424,6 +2455,10 @@ const creatureFields = {
   /** One of `combat.sizes`, by id (Capability API 1.98). A creature written as a sheet that names one
    *  is that size whatever its sheet reads. */
   size: sheetId.optional(),
+  /** One of `combat.creatureTypes.types`, by id, and its tags (Capability API 1.163): a 5e dragon,
+   *  a fiend tagged "devil", a humanoid tagged "goblinoid". What a target test reads. */
+  type: sheetId.optional(),
+  tags: z.array(sheetId).min(1).max(8).optional(),
   /** Damage types, matched without case: half, double, none at all. A resistance or an immunity may
    *  say what gets through it (`{ "type": "cut", "except": ["silver"] }`): a blow from a weapon item
    *  with any of those tags is taken as it comes. */
@@ -4489,6 +4524,25 @@ const combatSchema = z
     contests: z.array(combatContestSchema).max(12).optional(),
     /** How big a combatant is, smallest first: what a contest's `maxSizeAbove` reads (1.98). */
     sizes: combatSizesSchema.optional(),
+    /** What a combatant is (Capability API 1.163): the types and tags a creature names and a target
+     *  test reads. A character takes its type from `field` (a text or choice field holding a type id)
+     *  or else `default`; a creature from its own `type` and `tags`. */
+    creatureTypes: z
+      .object({
+        types: z
+          .array(z.object({ id: sheetId, label }).strict())
+          .min(1)
+          .max(40),
+        tags: z
+          .array(z.object({ id: sheetId, label }).strict())
+          .min(1)
+          .max(60)
+          .optional(),
+        field: sheetId.optional(),
+        default: sheetId.optional(),
+      })
+      .strict()
+      .optional(),
     concentration: combatConcentrationSchema.optional(),
     dying: combatDyingSchema.optional(),
     /** The damage types this system has. Matched without case, so "Fire" and "fire" are one type. */
@@ -6401,6 +6455,25 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       if (combat.sizes.sheet) checkRef(combat.sizes.sheet, at("sizes", "sheet"), derivedIds);
     }
 
+    if (combat.creatureTypes) {
+      const kinds = combat.creatureTypes;
+      const typeIds = unique(kinds.types, at("creatureTypes", "types"), "creature type");
+      if (kinds.tags) unique(kinds.tags, at("creatureTypes", "tags"), "creature tag");
+      if (kinds.default !== undefined && !typeIds.has(kinds.default)) {
+        issue(at("creatureTypes", "default"), `Unknown creature type "${kinds.default}"`);
+      }
+      if (kinds.field !== undefined) {
+        const field = sheet.fields.find((one) => one.id === kinds.field);
+        if (!field) issue(at("creatureTypes", "field"), `Unknown field "${kinds.field}"`);
+        else if (field.type !== "text" && field.type !== "enum") {
+          issue(
+            at("creatureTypes", "field"),
+            `A character's type is read off a text or choice field, not "${field.type}"`,
+          );
+        }
+      }
+    }
+
     combat.attacks?.forEach((source, index) => {
       const path = at("attacks", index);
       checkBudget(source.budget, [...path, "budget"]);
@@ -7281,6 +7354,49 @@ function poolDieSides(definition: RulesetDefinition): number | undefined {
  *  `ruleset.json` and by a `catalogs/<id>.json` asset, so both are held to one rule. */
 /** An escape DC is what breaking free of a condition is rolled against, so the fight has a contest
  *  that breaks free of it, and it is a number a summed roll can meet: a pool fight counts successes. */
+/** What is wrong with a target test (1.163): every type and tag it names is the ruleset's own. */
+function targetIsIssues(
+  definition: RulesetDefinition,
+  test: RulesetTargetIs | undefined,
+  at: (string | number)[],
+  add: (path: (string | number)[], message: string) => void,
+): void {
+  if (!test) return;
+  const kinds = definition.combat?.creatureTypes;
+  if (!kinds) {
+    add(at, "This ruleset declares no creature types for a target to be");
+    return;
+  }
+  test.types?.forEach((type, index) => {
+    if (!kinds.types.some((one) => one.id === type)) add([...at, "types", index], `Unknown creature type "${type}"`);
+  });
+  test.tags?.forEach((tag, index) => {
+    if (!kinds.tags?.some((one) => one.id === tag)) add([...at, "tags", index], `Unknown creature tag "${tag}"`);
+  });
+}
+
+/** The target tests one action, entry or use carries (1.163): on its extra clauses, the conditions it
+ *  applies, and who it may be pointed at. */
+function targetTestIssues(
+  definition: RulesetDefinition,
+  carrier: {
+    plus?: ReadonlyArray<{ targetIs?: RulesetTargetIs }>;
+    applies?: ReadonlyArray<{ targetIs?: RulesetTargetIs }>;
+    targetTypes?: { is?: RulesetTargetIs; not?: RulesetTargetIs };
+  },
+  at: (string | number)[],
+  add: (path: (string | number)[], message: string) => void,
+): void {
+  carrier.plus?.forEach((clause, index) =>
+    targetIsIssues(definition, clause.targetIs, [...at, "plus", index, "targetIs"], add),
+  );
+  carrier.applies?.forEach((entry, index) =>
+    targetIsIssues(definition, entry.targetIs, [...at, "applies", index, "targetIs"], add),
+  );
+  targetIsIssues(definition, carrier.targetTypes?.is, [...at, "targetTypes", "is"], add);
+  targetIsIssues(definition, carrier.targetTypes?.not, [...at, "targetTypes", "not"], add);
+}
+
 function escapeDcIssues(
   definition: RulesetDefinition,
   applies: { condition: string; escapeDc?: number },
@@ -7335,6 +7451,18 @@ function creatureIssues(
     if (!checks.has(check)) add([...at, "checks", check], `Unknown contest check "${check}"`);
   }
   if (creature.hover && !creature.speeds?.fly) add([...at, "hover"], "A creature that hovers has a fly speed");
+  if (creature.type !== undefined || creature.tags) {
+    const kinds = combat.creatureTypes;
+    if (!kinds) add([...at, creature.type !== undefined ? "type" : "tags"], "This ruleset declares no creature types");
+    else {
+      if (creature.type !== undefined && !kinds.types.some((one) => one.id === creature.type)) {
+        add([...at, "type"], `Unknown creature type "${creature.type}"`);
+      }
+      creature.tags?.forEach((tag, index) => {
+        if (!kinds.tags?.some((one) => one.id === tag)) add([...at, "tags", index], `Unknown creature tag "${tag}"`);
+      });
+    }
+  }
   if (creature.size !== undefined) {
     if (!combat.sizes) add([...at, "size"], "This ruleset declares no sizes for a creature to be");
     else if (!combat.sizes.order.some((size) => size.id === creature.size)) {
@@ -7443,6 +7571,8 @@ function creatureIssues(
     if (action.save && !saves.has(action.save.save)) {
       add([...path, "save", "save"], `Unknown save "${action.save.save}"`);
     }
+    targetTestIssues(definition, { plus: action.damage?.plus }, [...path, "damage"], add);
+    targetTestIssues(definition, { applies: action.applies }, path, add);
     action.applies?.forEach((applies, appliesIndex) => {
       const where = [...path, "applies", appliesIndex];
       if (!conditions.has(applies.condition)) add([...where, "condition"], `Unknown condition "${applies.condition}"`);
@@ -7816,6 +7946,7 @@ function useIssues(
       add([...at, "plus", index, "save", "save"], `Unknown save "${clause.save.save}"`);
     }
   });
+  targetTestIssues(definition, use, at, add);
   use.applies?.forEach((applies, index) => {
     if (!conditions.has(applies.condition)) {
       add([...at, "applies", index, "condition"], `Unknown condition "${applies.condition}"`);
@@ -8496,6 +8627,7 @@ export function rulesetCatalogEntryIssues(
     });
     // A condition an entry applies is one of the sheet's own, so a fight and the sheet keep one
     // record of what is wrong with a character.
+    if (mechanics) targetTestIssues(definition, mechanics, [index, "mechanics"], add);
     mechanics?.applies?.forEach((applies, appliesIndex) => {
       const path = [index, "mechanics", "applies", appliesIndex];
       if (!liveConditions.has(applies.condition)) {

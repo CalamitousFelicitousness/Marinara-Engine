@@ -131,6 +131,8 @@ export interface DirectedRulesetCombatant {
   /** An opponent's rung of the threat scale, and the lines the Game Master is shown. */
   tier?: string;
   traits?: Array<{ name: string; text: string }>;
+  /** What it is, in the ruleset's words (1.163): its creature type and tags, read by target tests. */
+  kind?: { type?: string; tags?: string[] };
   /** Active save modifiers narrowed by what the roll is against (1.129). */
   saveModifiers?: RulesetItemEffectFact[];
   /** Where they stand and how many cells of this turn's allowance they have left. Present exactly

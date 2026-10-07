@@ -38,6 +38,7 @@ import {
   rulesetAnswerDeflects,
   rulesetCellDistance,
   rulesetCombatant,
+  rulesetCreatureKind,
   rulesetActiveConditions,
   rulesetItemEffectFacts,
   rulesetCombatConditions,
@@ -584,6 +585,15 @@ function projectCombatant(
     defeated: combatant.defeated,
     ...(deathTrack ? { deathTrack } : {}),
     ...(saveModifiers.length ? { saveModifiers } : {}),
+    ...(() => {
+      // Its creature type and tags, by their labels (1.163).
+      const kinds = combat.creatureTypes;
+      const kind = rulesetCreatureKind(definition, combatant);
+      if (!kinds || (kind.type === undefined && !kind.tags.length)) return {};
+      const type = kinds.types.find((one) => one.id === kind.type)?.label;
+      const tags = kind.tags.map((tag) => kinds.tags?.find((one) => one.id === tag)?.label ?? tag);
+      return { kind: { ...(type ? { type } : {}), ...(tags.length ? { tags } : {}) } };
+    })(),
     ...(combatant.concentrating ? { concentrating: combatant.concentrating.label } : {}),
     ...(combatant.block?.tier ? { tier: combatant.block.tier } : {}),
     ...(combatant.block?.traits?.length ? { traits: combatant.block.traits.map((trait) => ({ ...trait })) } : {}),

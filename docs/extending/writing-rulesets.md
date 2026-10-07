@@ -1615,6 +1615,23 @@ same keys for a d20 system:
     `"atLeast": 16`. An applier without a sheet applies every entry. A creature's stat block and a
     condition's `onEnd` have no applier's sheet to read, so `when` is refused there. Requires
     schemaVersion 2 and capabilityApi 1.162 or newer.
+  - Creature types and target tests (Capability API 1.163): `combat.creatureTypes` lists what a
+    combatant can be, `{ "types": [{ "id": "dragon", "label": "Dragon" }, ...], "tags": [{ "id":
+    "devil", "label": "devil" }], "field": "race", "default": "humanoid" }`. A creature names its
+    own `type` and `tags`; a character's type is the value of the text or choice field `field` when
+    that is one of the types, otherwise `default` (5e characters are humanoids). A target test is
+    `{ "types": [...], "tags": [...] }` and passes for any one match; a combatant with no type and
+    no tags never matches. It goes in three places:
+    a damage clause's `targetIs` deals that clause only to a target that matches (a dragon slayer:
+    `"plus": [{ "dice": "3d6", "type": "slashing", "targetIs": { "types": ["dragon"] } }]`, holy
+    water: `{ "dice": "2d6", "type": "radiant", "targetIs": { "types": ["fiend", "undead"] } }`);
+    an `applies` entry's `targetIs` puts that condition only on a target that matches; and
+    `mechanics.targetTypes: { "is": test, "not": test }` says who may be picked or caught at all
+    (Animal Friendship: `{ "is": { "types": ["beast"] } }`; Sleep: `{ "not": { "types": ["undead"] } }`).
+    An area passes over whoever `targetTypes` leaves out. A forecast counts a `targetIs` clause only
+    against a target it would reach; the sheet's plain average leaves it out. The battle panel and
+    the Game Master see each combatant's type and tags. Requires schemaVersion 2 and
+    capabilityApi 1.163 or newer.
   - Condition endings (Capability API 1.120): Charm Person uses
     `"endsWhen": ["harmed-by-source-side"]`. Damage above zero from whoever applied it or anyone on
     their side, or their targeting its holder with an attack, save or harmful condition, ends it
@@ -2175,6 +2192,8 @@ as a `sheet`, takes `health`, `defense`, `initiativeModifier`, `speed`, `abiliti
   Capability API 1.97.
 - `size`: one of `combat.sizes`, by id, which a contest's `maxSizeAbove` reads (see Sizes and
   escape DCs). Capability API 1.98.
+- `type` and `tags`: one of `combat.creatureTypes.types` and up to eight of its `tags`, by id, which
+  target tests read (see Creature types and target tests). Capability API 1.163.
 - `resist`, `vulnerable`, `immune`: damage types, matched without case, and checked against
   `combat.damageTypes` when you declare any. A `resist` or `immune` entry may also say what gets
   through it, `{ "type": "tearing", "except": ["silver"] }`: a blow from a weapon item carrying one

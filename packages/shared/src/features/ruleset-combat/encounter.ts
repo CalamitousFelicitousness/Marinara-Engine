@@ -24,6 +24,7 @@ import {
   type RulesetCreatureHideEntry,
   type RulesetDefinition,
   type RulesetSheetBuild,
+  type RulesetTargetIs,
   type RulesetValueRef,
 } from "../../schemas/ruleset.schema.js";
 import type { TacticalGrid } from "../tactical-combat/types.js";
@@ -350,6 +351,49 @@ export function rulesetTargetHasSenses(
   return !rulesetActiveConditions(definition, combat, target, state).some((entry) =>
     entry.lacks?.some((sense) => needs.includes(sense)),
   );
+}
+
+/** What a combatant is (1.163): a creature's own type and tags, or else a character's type read off
+ *  `combat.creatureTypes.field`, or the ruleset's `default`. Nothing without creature types. */
+export function rulesetCreatureKind(
+  definition: RulesetDefinition,
+  combatant: RulesetCombatant,
+): { type?: string; tags: string[] } {
+  const kinds = definition.combat?.creatureTypes;
+  if (!kinds) return { tags: [] };
+  const block = combatant.block;
+  if (block?.type !== undefined || block?.tags) {
+    return { ...(block.type !== undefined ? { type: block.type } : {}), tags: [...(block.tags ?? [])] };
+  }
+  if (!combatant.sheet) return { tags: [] };
+  const read = kinds.field ? combatant.sheet.build.fields?.[kinds.field] : undefined;
+  const type = typeof read === "string" && kinds.types.some((one) => one.id === read) ? read : kinds.default;
+  return { ...(type !== undefined ? { type } : {}), tags: [] };
+}
+
+/** Whether a combatant is what a target test asks (1.163): any of its types or tags. No test passes. */
+export function rulesetTargetIs(
+  definition: RulesetDefinition,
+  combatant: RulesetCombatant,
+  test: RulesetTargetIs | undefined,
+): boolean {
+  if (!test) return true;
+  const kind = rulesetCreatureKind(definition, combatant);
+  return (
+    (kind.type !== undefined && !!test.types?.includes(kind.type)) ||
+    kind.tags.some((tag) => !!test.tags?.includes(tag))
+  );
+}
+
+/** Whether an action may be pointed at or catch this combatant, by what it is (1.163). */
+export function rulesetTargetTypesAllow(
+  definition: RulesetDefinition,
+  combatant: RulesetCombatant,
+  targetTypes: { is?: RulesetTargetIs; not?: RulesetTargetIs } | undefined,
+): boolean {
+  if (!targetTypes) return true;
+  if (targetTypes.is && !rulesetTargetIs(definition, combatant, targetTypes.is)) return false;
+  return !(targetTypes.not && rulesetTargetIs(definition, combatant, targetTypes.not));
 }
 
 /** What a fighter's items do, as they hold them in this fight: see `rulesetItemSources`. A requirement
@@ -1242,6 +1286,7 @@ function clausesOf(
       {
         ...amount,
         ...(clause.type ? { type: clause.type } : {}),
+        ...(clause.targetIs ? { targetIs: clause.targetIs } : {}),
         ...(clause.save
           ? {
               save: {
@@ -1407,6 +1452,7 @@ function mechanicsAction(
   if (mechanics.attackRoll) action.toHit = from.toHit;
   if (mechanics.autoHit) action.autoHit = true;
   if (mechanics.needs) action.needs = [...mechanics.needs];
+  if (mechanics.targetTypes) action.targetTypes = mechanics.targetTypes;
   if (mechanics.usableWhen) action.usableWhen = { ...mechanics.usableWhen };
   if (mechanics.save) {
     action.save = {

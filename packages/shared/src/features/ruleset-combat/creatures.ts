@@ -140,6 +140,7 @@ function clausesOf(action: RulesetCreatureAction): RulesetCombatDamageClause[] |
       {
         ...amount,
         ...(clause.type ? { type: clause.type } : {}),
+        ...(clause.targetIs ? { targetIs: clause.targetIs } : {}),
         ...(clause.save
           ? {
               save: {
@@ -360,6 +361,8 @@ function blockFromCreature(creature: RulesetCreature, budgets: ReadonlySet<strin
     ...(creature.hardness !== undefined ? { hardness: creature.hardness } : {}),
     ...(creature.shield ? { shield: true as const } : {}),
     ...(creature.size !== undefined ? { size: creature.size } : {}),
+    ...(creature.type !== undefined ? { type: creature.type } : {}),
+    ...(creature.tags ? { tags: [...creature.tags] } : {}),
     ...(creature.soak
       ? {
           soak: {

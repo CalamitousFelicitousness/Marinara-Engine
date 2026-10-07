@@ -1429,6 +1429,19 @@ function carriesBlowNarrowing(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesBlowNarrowing(one, depth + 1));
 }
 
+/** Creature types, a creature's type or tags, or a target test, in catalog files too (1.163). */
+function carriesCreatureTypes(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCreatureTypes(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.creatureTypes !== undefined || record.targetIs !== undefined || record.targetTypes !== undefined)
+    return true;
+  // A creature is the record with actions: its `type` is what it is, never a damage type.
+  if (Array.isArray(record.actions) && (record.type !== undefined || record.tags !== undefined)) return true;
+  return Object.values(record).some((one) => carriesCreatureTypes(one, depth + 1));
+}
+
 /** A condition an entry applies only while its applier's sheet allows, in catalog files too (1.162). */
 function carriesAppliesWhen(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -2513,6 +2526,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesAppliesWhen(document)))
   ) {
     return "A ruleset whose conditions are applied only while the applier's sheet allows requires schemaVersion 2 and capabilityApi 1.162 or newer";
+  }
+  // Creature types and the target tests that read them, 1.163.
+  if (
+    !declaresApi(163) &&
+    (carriesCreatureTypes(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesCreatureTypes(document)))
+  ) {
+    return "A ruleset with creature types or target tests requires schemaVersion 2 and capabilityApi 1.163 or newer";
   }
   if (carriesCreatureSpellcasting) {
     // The references can only be checked once the catalog files are beside their headers.

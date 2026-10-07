@@ -472,6 +472,7 @@ import {
   resolveUserRegenerationPersistentAttachments,
   resolveVisibleGameStateAnchor,
   resolveKnowledgeSourceLorebookIds,
+  mergedChatSummaryReaders,
   shouldPreferLatestVisibleGameState,
   shouldRunCharacterActivityAgents,
   shouldAbortOnPassiveGenerationDisconnect,
@@ -2834,7 +2835,18 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         });
         const referencedCharacterIds = new Set(Object.keys(promptMacroContext.characterReferences ?? {}));
         const conversationMacroFieldsByCharacterId = new Map<string, NonNullable<MacroContext["convoFields"]>>();
-        const historyMacroProfilesById = (await resolveCharacterMacroData(app.db, allCharacterIds)).profilesById;
+        const { profilesById: historyMacroProfilesById, unreadableIds } = await resolveCharacterMacroData(
+          app.db,
+          allCharacterIds,
+        );
+        const chatSummaryReaders = mergedChatSummaryReaders({
+          characterIds,
+          individual: promptGroupChatMode === "individual",
+          impersonate: input.impersonate === true,
+          narratorCharacterId: advancedMemorySettings.narratorCharacterId,
+          profilesById: historyMacroProfilesById,
+          unreadableIds,
+        });
 
         // Decision statements in prompt conditionals (#6569). Asked once, before anything
         // below resolves a macro, so every place a condition is evaluated finds its answer.
@@ -3356,6 +3368,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             chatMessages: mappedMessages,
             lorebookScanMessages: toLorebookScanMessages(),
             chatSummary: activeChatSummary,
+            chatSummaryReaders,
             ...(advancedMemoryEnabled ? { advancedMemory: {}, deferAdvancedMemory: true } : {}),
             enableAgents: chatEnableAgents,
             activeAgentIds: chatActiveAgentIds,
@@ -4368,6 +4381,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             wrapFormat,
             promptMacroContext,
             deferCharacterMacros ? { deferCharacterMacros: "all" } : undefined,
+            chatSummaryReaders,
           );
         }
 

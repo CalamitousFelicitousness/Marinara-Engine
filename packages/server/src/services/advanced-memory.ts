@@ -17,6 +17,7 @@ import {
   compileChatSummaryEntries,
   resolveMacros,
   scopeCharacterSummary,
+  markReaderVersions,
   parseTrackerHiddenFields,
   isTrackerFieldHidden,
   worldTrackerLockKey,
@@ -1728,22 +1729,10 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     const readers = [...new Set(mergedReaders(ctx, audience).map((id) => ctx.names.get(id) ?? "Character"))];
     const rendered =
       readers.length > 1
-        ? scopeCharacterSummary(text, readers, 0, (part, known) => {
+        ? scopeCharacterSummary(text, readers, 0, (part, known) =>
             // Check what scoping left (variable conditions mixed with names, {{char}}) for each reader.
-            const readersByText = new Map<string, string[]>();
-            for (const reader of known) {
-              const output = part.includes("{{") ? render(part, reader) : part;
-              readersByText.set(output, [...(readersByText.get(output) ?? []), reader]);
-            }
-            return [...readersByText]
-              .map(([output, who]) => {
-                if (who.length === readers.length || !output.trim()) return output;
-                const start = output.length - output.trimStart().length;
-                const end = output.trimEnd().length;
-                return `${output.slice(0, start)}[Known only to ${who.join(", ")}: ${output.slice(start, end)}]${output.slice(end)}`;
-              })
-              .join("");
-          })
+            markReaderVersions(known, readers.length, (reader) => (part.includes("{{") ? render(part, reader) : part)),
+          )
         : render(text, char ? (ctx.names.get(char) ?? "Character") : (names[0] ?? "Character"));
     return parseRoleplayUserCommands(rendered).content;
   }

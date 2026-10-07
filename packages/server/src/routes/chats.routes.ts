@@ -173,6 +173,7 @@ import {
   resolveBaseUrl,
   resolveActiveCharacterIds,
   resolveVisibleGameStateAnchor,
+  mergedChatSummaryReaders,
   shouldEnableAgentsForGeneration,
   formatConversationInstructionsForWrap,
   injectIntoOutputFormatOrLastUser,
@@ -3237,8 +3238,13 @@ export async function chatsRoutes(app: FastifyInstance) {
       try {
         const { createPromptsStorage } = await import("../services/storage/prompts.storage.js");
         const { createCharactersStorage } = await import("../services/storage/characters.storage.js");
-        const { assemblePrompt, buildPromptMacroContext, resolvePromptIdleDuration, setLorebookEntryCounts } =
-          await import("../services/prompt/index.js");
+        const {
+          assemblePrompt,
+          buildPromptMacroContext,
+          resolveCharacterMacroData,
+          resolvePromptIdleDuration,
+          setLorebookEntryCounts,
+        } = await import("../services/prompt/index.js");
         const presetStore = createPromptsStorage(app.db);
         const charStore = createCharactersStorage(app.db);
 
@@ -3670,6 +3676,16 @@ export async function chatsRoutes(app: FastifyInstance) {
             personaStats,
             chatMessages: mappedMessages,
             chatSummary: activeChatSummary,
+            // Read the summary as the next merged reply will, so the preview matches it (#7252).
+            chatSummaryReaders: activeChatSummary
+              ? mergedChatSummaryReaders({
+                  characterIds: assistantCharacterIds,
+                  individual: normalizeGroupChatMode(chatMeta.groupChatMode) === "individual",
+                  impersonate: false,
+                  narratorCharacterId: normalizeAdvancedMemorySettings(chatMeta.advancedMemory).narratorCharacterId,
+                  ...(await resolveCharacterMacroData(app.db, assistantCharacterIds)),
+                })
+              : undefined,
             enableAgents: chatMeta.enableAgents === true,
             activeAgentIds: activePromptAgentIds,
             activeLorebookIds: Array.isArray(chatMeta.activeLorebookIds)

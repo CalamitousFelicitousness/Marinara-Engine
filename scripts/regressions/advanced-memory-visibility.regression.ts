@@ -255,6 +255,19 @@ try {
       ).statusCode,
       200,
     );
+  // Hiding for everyone and back through the message menu is the user's choice too.
+  const globalUnhidden = await say(helperChat, "user", "P checks the door.");
+  for (const hiddenFromAI of [true, false])
+    assert.equal(
+      (
+        await app.inject({
+          method: "PATCH",
+          url: `/api/chats/${helperChat}/messages/${globalUnhidden.id}/extra`,
+          payload: { hiddenFromAI },
+        })
+      ).statusCode,
+      200,
+    );
   const presetHide = await say(helperChat, "assistant", "Maukie whispers.", ids.maukie, {
     hiddenFromAICharacterIds: [ids.narrator],
   });
@@ -274,6 +287,8 @@ try {
   assert.equal((await extraOf(manualBefore.id)).autoVisibility, undefined);
   assert.deepEqual((await extraOf(presetHide.id)).hiddenFromAICharacterIds, [ids.narrator]);
   assert.equal((await extraOf(slashUnhidden.id)).hiddenFromAICharacterIds, undefined, "/unhide keeps it visible");
+  assert.equal((await extraOf(globalUnhidden.id)).visibilityManual, true, "Hide from AI for everyone counts as manual");
+  assert.equal((await extraOf(globalUnhidden.id)).hiddenFromAICharacterIds, undefined, "unhiding keeps it visible");
   assert.deepEqual((await extraOf(later.id)).hiddenFromAICharacterIds, [ids.pantalone]);
 
   // A failed decision hides nothing.

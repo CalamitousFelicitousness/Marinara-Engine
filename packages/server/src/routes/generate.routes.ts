@@ -10649,8 +10649,12 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               for (const [index, message] of runningMessages.entries()) {
                 if (!message.id || !inTurnMessageIds.has(message.id)) continue;
                 const saved = await chats.getMessage(message.id);
-                const hiddenFromAICharacterIds = saved ? getMessageHiddenFromAICharacterIds(saved) : [];
-                if (hiddenFromAICharacterIds.length) runningMessages[index] = { ...message, hiddenFromAICharacterIds };
+                // Apply the saved list even when empty: the user may have unhidden this reply mid-turn.
+                if (saved)
+                  runningMessages[index] = {
+                    ...message,
+                    hiddenFromAICharacterIds: getMessageHiddenFromAICharacterIds(saved),
+                  };
               }
               inTurnMessageIds.clear();
             }

@@ -2559,7 +2559,12 @@ export async function chatsRoutes(app: FastifyInstance) {
         }
         if (Object.prototype.hasOwnProperty.call(partial, "hiddenFromAICharacterIds")) {
           syncAllSwipeExtra.hiddenFromAICharacterIds = partial.hiddenFromAICharacterIds;
-          // A user's visibility choice always wins over Advanced Memory's automatic one (#7192).
+        }
+        // A user's visibility choice, for everyone or per character, always wins over Advanced Memory's automatic one (#7192).
+        if (
+          Object.prototype.hasOwnProperty.call(partial, "hiddenFromAI") ||
+          Object.prototype.hasOwnProperty.call(partial, "hiddenFromAICharacterIds")
+        ) {
           partial.visibilityManual = syncAllSwipeExtra.visibilityManual = true;
         }
         if (Object.prototype.hasOwnProperty.call(partial, "isConversationStart")) {

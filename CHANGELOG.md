@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- For contributors: the Impeccable design skill is back at `.agents/skills/impeccable`. The `.claude/skills` copy and the `.agents/skills` alias that pointed to it are gone.
 - **Chat Summary** supports Shift-clicking a visible range on desktop and enabling or disabling only the selected summaries. Combine resets range selection, desktop rows stay compact, and selection controls wrap on narrow screens (#7163).
 - A chat's message trash with thousands of entries no longer freezes the page. The list now fills in 200 entries at a time, restoring or deleting no longer redraws every entry, and the entries dim while it runs. A failed or partial restore warning now stays up for 15 seconds, so a slow device can't hide it before you read it (#7210).
 - On Android/Termux, updating from **Settings → Advanced → Updates** no longer downloads builds for every other platform, about 1.7 GB the phone cannot use. It now installs only what Android needs, the same way `start-termux.sh` does, and the manual update command shown when an update fails does the same (#7214).

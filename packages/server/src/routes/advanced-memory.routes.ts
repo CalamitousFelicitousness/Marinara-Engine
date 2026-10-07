@@ -8,6 +8,8 @@ const operationSchema = z.object({
   settings: advancedMemorySettingsSchema.partial().optional(),
   debugMode: z.boolean().optional(),
   sceneId: z.string().min(1).optional(),
+  /** Repair every flagged scene in one run instead of stopping at the first one that needs review. */
+  fixAll: z.boolean().optional(),
 });
 const recordPatchSchema = z
   .object({
@@ -79,6 +81,7 @@ export async function advancedMemoryRoutes(app: FastifyInstance) {
         .initialize(req.params.id, {
           debugMode: options.debugMode,
           sceneId: options.sceneId,
+          fixAll: options.sceneId ? undefined : options.fixAll,
           blocking: true,
           onProgress: acknowledgeStart,
         })

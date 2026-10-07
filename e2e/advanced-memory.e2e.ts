@@ -1838,3 +1838,175 @@ test("Advanced Memory offers automatic message visibility only in individual gro
     await fixture.cleanup();
   }
 });
+
+test("Advanced Memory problems show a dot and one notice, Fix repairs them and lists changed scenes", async ({
+  page,
+  request,
+}, info) => {
+  const fixture = await createFixture(request);
+  const now = new Date().toISOString();
+  const scene = (
+    sceneId: string,
+    startIndex: number,
+    patch: Partial<AdvancedMemoryStatus["records"][number]> = {},
+  ) => ({
+    id: `${sceneId}-summary`,
+    chatId: fixture.chat.id,
+    sceneId,
+    kind: "scene" as const,
+    status: "closed" as const,
+    startMessageId: fixture.firstMessage.id,
+    endMessageId: fixture.lastMessage.id,
+    startIndex,
+    endIndex: startIndex + 9,
+    messageIds: fixture.messages.map(({ id }) => id),
+    audienceCharacterIds: [fixture.character.id],
+    content: `The ${sceneId} recap.`,
+    title: "Scene",
+    timeline: null,
+    enabled: true,
+    manualOverride: false,
+    sourceFingerprint: "fixture",
+    dependencies: [ADVANCED_MEMORY_SCENE_AUDIENCE] as Array<{ id: string; revision: string }>,
+    embeddingStatus: "vectorized" as const,
+    createdAt: now,
+    updatedAt: now,
+    ...patch,
+  });
+  const settings = {
+    ...DEFAULT_ADVANCED_MEMORY_SETTINGS,
+    enabled: true,
+    knowledgeStarts: { [fixture.character.id]: null, [fixture.narrator.id]: null },
+    knowledgeConfirmed: true,
+  };
+  const status: AdvancedMemoryStatus = {
+    settings,
+    job: { id: "earlier-job", status: "ready", stage: "ready", completed: 2, total: 2, error: null },
+    missingKnowledgeCharacterIds: [],
+    records: [
+      // Scene #1: the helper named someone who isn't in the chat.
+      scene("scene-one", 1, {
+        dependencies: [ADVANCED_MEMORY_SCENE_AUDIENCE, { id: "scene-audience-unmatched", revision: "Stranger" }],
+      }),
+      // Scene #2: a summary the user edited no longer matches its messages.
+      scene("scene-two", 11, { manualOverride: true, embeddingStatus: "stale" }),
+    ],
+    helperModel: "Fixture helper",
+    summaryModel: "Fixture helper",
+    warnings: ["scene-audience-unmatched"],
+    // Scene #3 has no summary yet.
+    unpreparedScenes: [{ sceneId: "scene-three", startIndex: 21, endIndex: 30 }],
+  };
+  const fixRequests: unknown[] = [];
+  expect(
+    (await request.patch(`/api/chats/${fixture.chat.id}/metadata`, { data: { advancedMemory: settings } })).ok(),
+  ).toBeTruthy();
+  await page.route(`**/api/chats/${fixture.chat.id}/advanced-memory**`, async (route) => {
+    const { pathname } = new URL(route.request().url());
+    if (route.request().method() === "POST" && pathname.endsWith("/initialize")) {
+      fixRequests.push(route.request().postDataJSON());
+      status.job = {
+        id: "fix-job",
+        blocking: true,
+        status: "running",
+        stage: "summarizing",
+        completed: 1,
+        total: 3,
+        error: null,
+      };
+      return route.fulfill({ status: 202, json: status });
+    }
+    return route.fulfill({ json: status });
+  });
+  try {
+    await openChat(page, fixture.chat.id, false);
+    const bubble = page.locator("[data-chat-settings-button]");
+    await expect(bubble.locator("[data-advanced-memory-attention]")).toBeVisible();
+    await expect(bubble).toHaveAccessibleDescription(/Advanced Memory needs attention/);
+    const notice = page
+      .locator("[data-sonner-toast]")
+      .filter({ hasText: "Advanced Memory found problems in 3 scenes." });
+    await expect(notice).toHaveCount(1);
+    await captureThemes(page, info, "memory-fix-notice");
+
+    // The same problems are not announced again; the dot stays until they are fixed.
+    await page.reload();
+    await expect(page.locator("textarea[data-chat-composer]")).toBeVisible();
+    await expect(bubble.locator("[data-advanced-memory-attention]")).toBeVisible();
+    await page.waitForTimeout(1500);
+    await expect(page.locator("[data-sonner-toast]").filter({ hasText: "found problems" })).toHaveCount(0);
+
+    // Chat Settings lists the same problems with a Fix button and the scenes only the user can settle.
+    const drawer = page.locator(".mari-chat-settings-drawer");
+    const fix = drawer.locator('[data-component="AdvancedMemoryFix"]');
+    await openChatSettings(page);
+    await drawerToggle(drawer.locator('[data-chat-settings-section="roleplay-memory-recall"]')).click();
+    await expect(fix.getByRole("status")).toContainText("2 scenes need fixing.");
+    await expect(fix.getByRole("status")).toContainText("1 scene needs your review:");
+    await expect(fix.getByRole("button", { name: "Open Scene #2", exact: true })).toBeVisible();
+    await expect(fix.getByRole("button", { name: "Fix", exact: true })).toBeEnabled();
+    await expect(drawer.getByText("couldn't confirm who was in some scenes")).toHaveCount(0);
+    await fix.scrollIntoViewIfNeeded();
+    await captureThemes(page, info, "memory-fix-box", fix);
+    await closeChatSettings(page);
+
+    // A new problem scene is announced once more, and its Fix button starts the repair in Chat Settings.
+    status.unpreparedScenes = [...status.unpreparedScenes!, { sceneId: "scene-four", startIndex: 31, endIndex: 40 }];
+    await page.reload();
+    await expect(
+      page.locator("[data-sonner-toast]").filter({ hasText: "Advanced Memory found problems in 4 scenes." }),
+    ).toHaveCount(1);
+    status.unpreparedScenes = status.unpreparedScenes.slice(0, 1);
+    await page.locator("[data-sonner-toast]").getByRole("button", { name: "Fix", exact: true }).click();
+    await expect.poll(() => fixRequests).toEqual([expect.objectContaining({ fixAll: true })]);
+    const progress = drawer.locator('[data-component="AdvancedMemoryProgress"]');
+    await expect(progress).toContainText("Summarizing scenes");
+    await expect(progress.getByRole("button", { name: "Pause processing", exact: true })).toBeVisible();
+
+    // Closing Chat Settings mid-run still reports the result once.
+    await closeChatSettings(page);
+    status.job = {
+      id: "fix-job",
+      status: "ready",
+      stage: "ready",
+      completed: 3,
+      total: 3,
+      error: null,
+      fixResult: { jobId: "fix-job", fixedSceneIds: ["scene-one", "scene-three"], reviewSceneIds: ["scene-two"] },
+    };
+    status.records = [
+      scene("scene-one", 1),
+      status.records[1]!,
+      scene("scene-three", 21, { content: "The prepared scene-three recap." }),
+    ];
+    status.unpreparedScenes = [];
+    status.warnings = [];
+    const done = page.locator("[data-sonner-toast]").filter({ hasText: "Advanced Memory fixed 2 scenes." });
+    await expect(done).toContainText("1 scene still needs your review.");
+    await done.getByRole("button", { name: "Show", exact: true }).click();
+
+    await expect(fix.getByRole("status")).toContainText("Fixed 2 scenes:");
+    await expect(fix.getByRole("status")).toContainText("1 scene needs your review:");
+    await expect(fix.getByRole("button", { name: "Fix", exact: true })).toHaveCount(0);
+    await expect(fix.getByRole("button", { name: /^Open Scene #/ })).toHaveText(["#1", "#3", "#2"]);
+    await expect(
+      drawer.getByRole("button", { name: "Access memories for this chat", exact: true }),
+    ).toHaveAccessibleDescription("Some scenes need attention.");
+    await fix.scrollIntoViewIfNeeded();
+    await captureThemes(page, info, "memory-fix-result", fix);
+
+    await fix.getByRole("button", { name: "Open Scene #3", exact: true }).click();
+    const inspector = drawer.locator('[data-component="AdvancedMemoryInspector"]');
+    const heading = inspector.getByRole("heading", { name: "Scene #3", exact: true });
+    await expect(heading).toBeFocused();
+    await expect(inspector.getByRole("textbox", { name: "Summary text", exact: true })).toHaveValue(
+      "The prepared scene-three recap.",
+    );
+    await fix.getByRole("button", { name: "Open Scene #2", exact: true }).click();
+    await expect(inspector.getByRole("heading", { name: "Scene #2", exact: true })).toBeFocused();
+    await expect(inspector).toContainText("Check the source messages, the summary, and which characters know it");
+    expect(fixRequests).toHaveLength(1);
+  } finally {
+    await fixture.cleanup();
+  }
+});

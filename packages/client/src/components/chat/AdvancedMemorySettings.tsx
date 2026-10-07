@@ -1,14 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  advancedMemoryProblems,
   normalizeAdvancedMemorySettings,
   type AdvancedMemorySettings as MemorySettings,
 } from "@marinara-engine/shared";
 import {
+  advancedMemorySceneNumbers,
+  markAdvancedMemoryNotified,
   useAdvancedMemoryAction,
   useAdvancedMemoryKnowledgeMessages,
   useAdvancedMemoryStatus,
 } from "../../hooks/use-advanced-memory";
+import { useUIStore } from "../../stores/ui.store";
 import { SettingsSwitch } from "../panels/settings/SettingControls";
 import { DraftNumberInput } from "../ui/DraftNumberInput";
 import { AdvancedMemoryProgress } from "./AdvancedMemoryProgress";
@@ -16,11 +20,11 @@ import { useConnections } from "../../hooks/use-connections";
 
 const fieldClass = "mari-chrome-field w-full rounded-lg px-3 py-2 text-xs disabled:opacity-50";
 const actionClass = "mari-chrome-control min-h-9 rounded-lg px-3 py-2 text-xs font-medium disabled:opacity-50";
+// Scenes with unclear participants are listed with the other scene problems in the Fix box.
 const warningKeys: Record<string, string> = {
   "decision-connection-unavailable": "chat.advancedMemory.warning.decisionConnectionUnavailable",
   "unscoped-agent-memory": "chat.advancedMemory.warning.unscopedAgentMemory",
   "unscoped-summaries": "chat.advancedMemory.warning.unscopedSummaries",
-  "scene-audience-unmatched": "chat.advancedMemory.warning.sceneAudienceUnmatched",
 };
 
 export interface MemoryCharacterOption {
@@ -105,6 +109,57 @@ export function AdvancedMemorySettings({
     setKnowledgeCursors([undefined]);
     setConfirmKnowledge(true);
   };
+  // Fix: every scene Advanced Memory flagged, repaired in one run. Hand-edited and unclear ones are listed.
+  const problems = status.data ? advancedMemoryProblems(status.data) : null;
+  const sceneNumbers = advancedMemorySceneNumbers(status.data);
+  const fixResult = status.data?.job.fixResult;
+  const showResult = !!fixResult && !running && status.data?.job.id === fixResult.jobId;
+  const numbered = (ids: readonly string[]) =>
+    [...new Set(ids)].filter((id) => sceneNumbers.has(id)).sort((a, b) => sceneNumbers.get(a)! - sceneNumbers.get(b)!);
+  const fixIds = numbered(problems?.fixSceneIds ?? []);
+  const reviewIds = numbered([
+    ...(problems?.reviewSceneIds ?? []),
+    ...(showResult ? fixResult.reviewSceneIds : []),
+  ]).filter((id) => !fixIds.includes(id));
+  const fixedIds = showResult ? numbered(fixResult.fixedSceneIds) : [];
+  const knowledgeBlocked = !!problems?.blockers.includes("needs_confirmation");
+  const canFix = fixIds.length > 0 && !knowledgeBlocked && !running && !action.isPending;
+  const fixPending = action.isPending && action.variables?.action === "initialize" && !!action.variables.fixAll;
+  const fix = () => action.mutate({ action: "initialize", fixAll: true, debugMode: useUIStore.getState().debugMode });
+  const openScene = (sceneId: string) => useUIStore.getState().setAdvancedMemoryRequest({ chatId, sceneId });
+  const showFix = variant === "drawer" && settings.enabled && (fixIds.length > 0 || reviewIds.length > 0 || showResult);
+  // Re-render when a request arrives; the effect below takes it.
+  useUIStore((state) => state.advancedMemoryRequest);
+  const problemKey = [...fixIds, ...reviewIds].join(" ");
+  useEffect(() => {
+    // Seen here, so the notice outside Chat Settings doesn't repeat these scenes.
+    if (variant === "drawer" && problemKey) markAdvancedMemoryNotified(chatId, problemKey.split(" "));
+  }, [chatId, problemKey, variant]);
+  useEffect(() => {
+    // The notice's Fix button opens Chat Settings here and starts Fix once memory has loaded.
+    // Read the store, not this render's value: the request is taken once.
+    const request = useUIStore.getState().advancedMemoryRequest;
+    if (variant !== "drawer" || !request?.fix || request.chatId !== chatId || !status.data) return;
+    // Wait for running work or another save to finish rather than dropping the request.
+    if (!canFix && (action.isPending || running)) return;
+    useUIStore.getState().setAdvancedMemoryRequest(null);
+    if (canFix) fix();
+  });
+  const sceneButtons = (ids: string[]) => (
+    <span className="flex flex-wrap gap-1.5">
+      {ids.map((id) => (
+        <button
+          key={id}
+          type="button"
+          className="mari-chrome-control min-h-9 min-w-9 rounded-lg px-2 py-1 text-xs font-medium tabular-nums"
+          aria-label={t("chat.advancedMemory.fix.openScene", { number: sceneNumbers.get(id) })}
+          onClick={() => openScene(id)}
+        >
+          #{sceneNumbers.get(id)}
+        </button>
+      ))}
+    </span>
+  );
   const confirmAndInitialize = () => {
     const knowledgeStarts = { ...settings.knowledgeStarts };
     for (const id of knowledgeCharacterIds) {
@@ -156,11 +211,64 @@ export function AdvancedMemorySettings({
               {t("chat.advancedMemory.prepareHistoryHelp")}
             </p>
           )}
-          {status.data?.warnings?.length ? (
+          {showFix && (
+            <section
+              aria-label={t("chat.advancedMemory.fix.title")}
+              data-component="AdvancedMemoryFix"
+              className="space-y-2 rounded-lg border border-[var(--marinara-app-accent-static)] bg-[var(--secondary)] p-3 text-xs"
+            >
+              <div role="status" aria-live="polite" className="space-y-2">
+                {showResult && (
+                  <div className="space-y-1.5">
+                    <p className="font-medium">
+                      {fixedIds.length
+                        ? t("chat.advancedMemory.fix.fixed", { count: fixedIds.length })
+                        : t("chat.advancedMemory.fix.noneFixed")}
+                    </p>
+                    {sceneButtons(fixedIds)}
+                  </div>
+                )}
+                {reviewIds.length > 0 && (
+                  <div className="space-y-1.5">
+                    <p className="font-medium">{t("chat.advancedMemory.fix.review", { count: reviewIds.length })}</p>
+                    {sceneButtons(reviewIds)}
+                  </div>
+                )}
+                {fixIds.length > 0 && (
+                  <p className="font-medium">{t("chat.advancedMemory.fix.needsFixing", { count: fixIds.length })}</p>
+                )}
+              </div>
+              {fixIds.length > 0 && (
+                <>
+                  <p className="leading-relaxed text-[var(--muted-foreground)]">
+                    {t(knowledgeBlocked ? "chat.advancedMemory.fix.confirmKnowledge" : "chat.advancedMemory.fix.help")}
+                  </p>
+                  {knowledgeBlocked ? (
+                    <button type="button" className={`${actionClass} w-full`} disabled={disabled} onClick={initialize}>
+                      {t("chat.advancedMemory.confirmKnowledge")}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className={`${actionClass} w-full disabled:cursor-wait`}
+                      disabled={!canFix}
+                      aria-busy={fixPending}
+                      onClick={fix}
+                    >
+                      {t("chat.advancedMemory.fix.action")}
+                    </button>
+                  )}
+                </>
+              )}
+            </section>
+          )}
+          {status.data?.warnings?.some((warning) => warningKeys[warning]) ? (
             <ul className="list-disc space-y-1 pl-4 text-xs text-[var(--muted-foreground)]">
-              {status.data.warnings.map((warning, index) => (
-                <li key={index}>{t(warningKeys[warning] ?? warning, { defaultValue: warning })}</li>
-              ))}
+              {status.data.warnings
+                .filter((warning) => warningKeys[warning])
+                .map((warning) => (
+                  <li key={warning}>{t(warningKeys[warning]!)}</li>
+                ))}
             </ul>
           ) : null}
           {/* Chat Settings follows its window's width; the setup wizard follows the screen. */}

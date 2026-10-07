@@ -651,6 +651,8 @@ interface UIState {
   /** Transient control id that the Settings panel should reveal and focus. */
   settingsTargetControlId: string | null;
   modal: { type: string; props?: Record<string, unknown> } | null;
+  /** Not saved: an Advanced Memory scene to open, or a Fix to start, once its Chat Settings section shows. */
+  advancedMemoryRequest: { chatId: string; sceneId?: string; fix?: boolean } | null;
   theme: "dark" | "light";
   appBackgroundColor: string;
   appAccentColor: string;
@@ -1102,6 +1104,7 @@ interface UIState {
   setSettingsTargetControlId: (controlId: string | null) => void;
   openModal: (type: string, props?: Record<string, unknown>) => void;
   closeModal: () => void;
+  setAdvancedMemoryRequest: (request: UIState["advancedMemoryRequest"]) => void;
   setTheme: (theme: "dark" | "light") => void;
   setAppBackgroundColor: (color: string) => void;
   setAppAccentColor: (color: string) => void;
@@ -1855,6 +1858,7 @@ export const useUIStore = create<UIState>()(
         settingsTab: "general",
         settingsTargetControlId: null,
         modal: null,
+        advancedMemoryRequest: null,
         theme: "dark" as const,
         appBackgroundColor: "",
         appAccentColor: "",
@@ -2201,6 +2205,7 @@ export const useUIStore = create<UIState>()(
         setSettingsTargetControlId: (controlId) => set({ settingsTargetControlId: controlId }),
         openModal: (type, props) => set({ modal: { type, props } }),
         closeModal: () => set({ modal: null }),
+        setAdvancedMemoryRequest: (advancedMemoryRequest) => set({ advancedMemoryRequest }),
         setTheme: (theme) => set({ theme }),
         setAppBackgroundColor: (color) => set({ appBackgroundColor: normalizeAppBackgroundColor(color) }),
         setAppAccentColor: (color) => set({ appAccentColor: normalizeAppAccentColor(color) }),

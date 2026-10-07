@@ -77,6 +77,7 @@ import {
   PROFESSOR_MARI_ID,
   buildGuidedGenerationInstructionMessage,
   normalizeAvatarCrop,
+  normalizeAdvancedMemorySettings,
   normalizeGroupChatMode,
   normalizeManualTrackerAgentTypes,
   type GeneratedSceneVideo,
@@ -579,7 +580,13 @@ export const ChatArea = memo(function ChatArea({
       <ChatOpeningState error={error} onRetry={refetch} onBack={() => useChatStore.getState().setActiveChatId(null)} />
     );
   const chatSettingsButton =
-    chat && chatSettingsHosted ? <ChatSettingsBubble chatId={chat.id} mode={readChatMode(chat)} /> : null;
+    chat && chatSettingsHosted ? (
+      <ChatSettingsBubble
+        chatId={chat.id}
+        mode={readChatMode(chat)}
+        advancedMemory={normalizeAdvancedMemorySettings(metadata.advancedMemory).enabled}
+      />
+    ) : null;
   if (chat && (metadata.multiplayerSetup === true || metadata.multiplayer)) {
     return (
       <Suspense fallback={null}>

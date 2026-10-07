@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { Download, RefreshCw, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
@@ -8,11 +8,13 @@ import {
   type AdvancedMemoryRecord,
 } from "@marinara-engine/shared";
 import {
+  advancedMemorySceneNumbers,
   useAdvancedMemoryAction,
   useAdvancedMemorySources,
   useAdvancedMemoryStatus,
   useExportAdvancedMemory,
 } from "../../hooks/use-advanced-memory";
+import { useUIStore } from "../../stores/ui.store";
 import { SettingsSwitch } from "../panels/settings/SettingControls";
 import { showConfirmDialog } from "../../lib/app-dialogs";
 import type { MemoryCharacterOption } from "./AdvancedMemorySettings";
@@ -60,15 +62,7 @@ export function AdvancedMemoryInspector({
       .filter((record) => record.kind !== "excerpt")
       .sort((a, b) => a.startIndex - b.startIndex || a.endIndex - b.endIndex);
   }, [status.data?.records]);
-  const sceneNumbers = new Map(
-    [
-      ...new Set(
-        [...records.filter((record) => record.kind === "scene"), ...(status.data?.unpreparedScenes ?? [])]
-          .sort((a, b) => a.startIndex - b.startIndex)
-          .map((record) => record.sceneId),
-      ),
-    ].map((id, index) => [id, index + 1]),
-  );
+  const sceneNumbers = advancedMemorySceneNumbers(status.data);
   const recordTitle = (record: AdvancedMemoryRecord) =>
     record.kind === "scene"
       ? t("chat.advancedMemory.sceneNumber", { number: sceneNumbers.get(record.sceneId) })
@@ -146,6 +140,37 @@ export function AdvancedMemoryInspector({
     setEditAudience(false);
     setShowSources(false);
   };
+  // A scene number from the Fix box opens that scene, or its missing-summary card, and moves focus there.
+  const sceneRequest = useUIStore((state) =>
+    state.advancedMemoryRequest?.chatId === chatId ? state.advancedMemoryRequest.sceneId : undefined,
+  );
+  const focusRef = useRef<HTMLElement | null>(null);
+  const setFocusElement = (element: HTMLElement | null) => {
+    focusRef.current = element;
+  };
+  // A new object per request, so asking for the same scene again moves focus again.
+  const [focusScene, setFocusScene] = useState<{ sceneId: string } | null>(null);
+  useEffect(() => {
+    // Read the store, not this render's value: the request is taken once.
+    if (!sceneRequest || !status.data || useUIStore.getState().advancedMemoryRequest?.sceneId !== sceneRequest) return;
+    useUIStore.getState().setAdvancedMemoryRequest(null);
+    const record =
+      records.find((item) => item.kind === "scene" && item.sceneId === sceneRequest && item.id !== item.sceneId) ??
+      records.find((item) => item.kind === "scene" && item.sceneId === sceneRequest);
+    setSearch("");
+    if (record) openRecord(record);
+    else setSelectedId(null);
+    setFocusScene({ sceneId: sceneRequest });
+  }, [records, sceneRequest, status.data]);
+  useEffect(() => {
+    if (!focusScene) return;
+    const frame = window.requestAnimationFrame(() => {
+      focusRef.current?.scrollIntoView({ block: "nearest" });
+      focusRef.current?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [focusScene]);
+  const focusedScene = focusScene?.sceneId;
   const deleteSummary = async (record: AdvancedMemoryRecord) => {
     const confirmed = await showConfirmDialog({
       title: t("chat.advancedMemory.deleteSummary"),
@@ -267,7 +292,9 @@ export function AdvancedMemoryInspector({
           (status.data?.unpreparedScenes ?? []).map((scene) => (
             <div
               key={scene.sceneId}
-              className="space-y-2 rounded-lg border border-[var(--border)] bg-[var(--card)] p-3 text-xs"
+              ref={scene.sceneId === focusedScene ? setFocusElement : undefined}
+              tabIndex={scene.sceneId === focusedScene ? -1 : undefined}
+              className="space-y-2 rounded-lg border border-[var(--border)] bg-[var(--card)] p-3 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
             >
               <p className="font-medium">
                 {t(scene.deleted ? "chat.advancedMemory.deletedScene" : "chat.advancedMemory.missingScene", {
@@ -348,7 +375,13 @@ export function AdvancedMemoryInspector({
           >
             {t("chat.advancedMemory.backToArchive")}
           </button>
-          <h5 className="break-words text-sm font-semibold">{recordTitle(selected)}</h5>
+          <h5
+            ref={selected.sceneId === focusedScene ? setFocusElement : undefined}
+            tabIndex={-1}
+            className="break-words text-sm font-semibold focus-visible:outline-none"
+          >
+            {recordTitle(selected)}
+          </h5>
           {selected.kind === "scene" && (
             <p className="text-xs text-[var(--muted-foreground)]">
               {t(selected.status === "open" ? "chat.advancedMemory.sceneOpen" : "chat.advancedMemory.sceneClosed")}

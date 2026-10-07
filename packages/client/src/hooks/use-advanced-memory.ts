@@ -1,12 +1,19 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import type { AdvancedMemoryJob, AdvancedMemorySettings, AdvancedMemoryStatus, Message } from "@marinara-engine/shared";
+import {
+  advancedMemoryProblems,
+  type AdvancedMemoryJob,
+  type AdvancedMemorySettings,
+  type AdvancedMemoryStatus,
+  type Message,
+} from "@marinara-engine/shared";
 import { api } from "../lib/api-client";
 import { EXPORT_FAILED_TOAST_ID } from "../lib/file-download";
 import { translate } from "../localization/i18n";
 import { useChatStore } from "../stores/chat.store";
+import { useUIStore } from "../stores/ui.store";
 import { chatKeys } from "./use-chats";
 
 export const advancedMemoryKeys = {
@@ -41,6 +48,106 @@ export function notifyAdvancedMemoryFailure(chatId: string, job: Pick<AdvancedMe
   });
 }
 
+/** Opens Chat Settings at Advanced Memory for a chat, optionally at one scene or starting Fix there. */
+export function openAdvancedMemory(chatId: string, request: { sceneId?: string; fix?: boolean } = {}) {
+  useChatStore.getState().setActiveChatId(chatId);
+  const ui = useUIStore.getState();
+  if (request.sceneId || request.fix) ui.setAdvancedMemoryRequest({ chatId, ...request });
+  ui.setChatSettingsSectionExpanded("roleplay-memory-recall", true);
+  window.dispatchEvent(new CustomEvent(ADVANCED_MEMORY_SETTINGS_EVENT, { detail: { chatId } }));
+}
+
+/** Scene numbers as Access memories shows them: saved and missing scenes in message order. */
+export function advancedMemorySceneNumbers(status: AdvancedMemoryStatus | undefined): Map<string, number> {
+  const scenes = (status?.records ?? [])
+    .filter((record) => record.kind === "scene")
+    .sort((a, b) => a.startIndex - b.startIndex || a.endIndex - b.endIndex);
+  const ids = [...scenes, ...(status?.unpreparedScenes ?? [])]
+    .sort((a, b) => a.startIndex - b.startIndex)
+    .map((scene) => scene.sceneId);
+  return new Map([...new Set(ids)].map((id, index) => [id, index + 1]));
+}
+
+// ponytail: which problem scenes and Fix results this browser already announced, per chat. Capped at
+// 50 chats; a forgotten chat is announced once more. Server-side seen state would follow the user across devices.
+const NOTIFIED_KEY = "marinara:advanced-memory-notified";
+function readNotified(): Record<string, string[]> {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(NOTIFIED_KEY) ?? "{}");
+    return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, string[]>) : {};
+  } catch {
+    return {};
+  }
+}
+
+/** Remembers that these problem scenes (or `fix:<jobId>` results) were shown, so no notice repeats them. */
+export function markAdvancedMemoryNotified(chatId: string, ids: string[]) {
+  const all = readNotified();
+  const known = Array.isArray(all[chatId]) ? all[chatId] : [];
+  if (ids.every((id) => known.includes(id))) return;
+  delete all[chatId];
+  all[chatId] = [...new Set([...known, ...ids])].slice(-500);
+  for (const id of Object.keys(all).slice(0, -50)) delete all[id];
+  try {
+    localStorage.setItem(NOTIFIED_KEY, JSON.stringify(all));
+  } catch {
+    /* Private windows may refuse storage; the notice may then show again. */
+  }
+}
+
+function notified(chatId: string, id: string) {
+  const known = readNotified()[chatId];
+  return Array.isArray(known) && known.includes(id);
+}
+
+/**
+ * Watches the open chat's Advanced Memory while Chat Settings is closed: problems show a dot on the Chat
+ * Settings button and one notice per new problem scene, and a finished Fix shows its result once.
+ */
+export function useAdvancedMemoryAttention(chatId: string, enabled: boolean, settingsOpen: boolean) {
+  const { t } = useTranslation();
+  const { data } = useAdvancedMemoryStatus(chatId, enabled);
+  const status = enabled ? data : undefined;
+  const problems = useMemo(() => (status ? advancedMemoryProblems(status) : null), [status]);
+  const job = status?.job;
+  const busy = job?.status === "running" || job?.status === "error";
+  const sceneIds = problems ? [...problems.fixSceneIds, ...problems.reviewSceneIds] : [];
+  const sceneKey = sceneIds.join("\0");
+  const fixable = !!problems?.fixSceneIds.length;
+  const fixResult = job?.fixResult;
+  const fixFinished = !!fixResult && !(job?.status === "running" && job.id === fixResult.jobId);
+  useEffect(() => {
+    if (!fixResult || !fixFinished || notified(chatId, `fix:${fixResult.jobId}`)) return;
+    // Problems Fix reports are not announced again as new ones.
+    markAdvancedMemoryNotified(chatId, [`fix:${fixResult.jobId}`, ...(sceneKey ? sceneKey.split("\0") : [])]);
+    if (settingsOpen) return; // The Fix box shows and announces the result.
+    const fixed = fixResult.fixedSceneIds.length;
+    const review = fixResult.reviewSceneIds.length;
+    toast(fixed ? t("chat.advancedMemory.fix.doneNotice", { count: fixed }) : t("chat.advancedMemory.fix.noneFixed"), {
+      id: `advanced-memory-fix-${chatId}`,
+      duration: 15_000,
+      ...(review ? { description: t("chat.advancedMemory.fix.doneReviewNotice", { count: review }) } : {}),
+      action: { label: t("chat.advancedMemory.fix.show"), onClick: () => openAdvancedMemory(chatId) },
+    });
+  }, [chatId, fixFinished, fixResult, sceneKey, settingsOpen, t]);
+  useEffect(() => {
+    // A stopped job already has its own notice; Chat Settings shows the problems itself.
+    if (busy || settingsOpen || !sceneKey) return;
+    const ids = sceneKey.split("\0");
+    if (ids.every((id) => notified(chatId, id))) return;
+    markAdvancedMemoryNotified(chatId, ids);
+    toast(t("chat.advancedMemory.fix.notice", { count: ids.length }), {
+      id: `advanced-memory-problems-${chatId}`,
+      duration: 15_000,
+      action: {
+        label: t(fixable ? "chat.advancedMemory.fix.action" : "chat.advancedMemory.reviewFailure"),
+        onClick: () => openAdvancedMemory(chatId, { fix: fixable }),
+      },
+    });
+  }, [busy, chatId, fixable, sceneKey, settingsOpen, t]);
+  return !!problems && job?.status !== "running" && (!!sceneKey || problems.blockers.length > 0 || problems.stopped);
+}
+
 export function useAdvancedMemoryStatus(chatId: string, enabled = true) {
   const qc = useQueryClient();
   const query = useQuery({
@@ -69,7 +176,14 @@ type AdvancedMemoryAction =
       settings:
         Partial<AdvancedMemorySettings> | ((current: AdvancedMemorySettings) => Partial<AdvancedMemorySettings>);
     }
-  | { action: "initialize"; settings?: Partial<AdvancedMemorySettings>; debugMode?: boolean; sceneId?: string }
+  | {
+      action: "initialize";
+      settings?: Partial<AdvancedMemorySettings>;
+      debugMode?: boolean;
+      sceneId?: string;
+      /** Fix: repair every flagged scene in one run. */
+      fixAll?: boolean;
+    }
   | { action: "cancel" | "reindex" | "reset" }
   | {
       action: "record";
@@ -109,6 +223,7 @@ export function useAdvancedMemoryAction(chatId: string) {
             settings: request.settings,
             debugMode: request.debugMode,
             sceneId: request.sceneId,
+            fixAll: request.fixAll,
           });
         case "import":
           return api.post<AdvancedMemoryStatus>(`${base}/import`, request.envelope);

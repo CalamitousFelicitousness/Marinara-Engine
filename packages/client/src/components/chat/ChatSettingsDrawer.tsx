@@ -1,7 +1,18 @@
 // ──────────────────────────────────────────────
 // Chat: Settings Drawer — per-chat configuration
 // ──────────────────────────────────────────────
-import { Fragment, lazy, Suspense, useState, useRef, useEffect, useMemo, useCallback, type ReactNode } from "react";
+import {
+  Fragment,
+  lazy,
+  Suspense,
+  useState,
+  useRef,
+  useEffect,
+  useMemo,
+  useCallback,
+  useId,
+  type ReactNode,
+} from "react";
 import { useQuery, useQueryClient, useQueries } from "@tanstack/react-query";
 import { useTranslation, useTranslation as useUiTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -105,6 +116,7 @@ import type { AvatarCrop, MultiplayerHostAction } from "@marinara-engine/shared"
 import {
   DEFAULT_GAME_DICE_POOL_AGE_TURNS as DEFAULT_DICE_POOL_AGE_TURNS,
   DEFAULT_GAME_DICE_POOL_WINDOW as DEFAULT_DICE_POOL_WINDOW,
+  advancedMemoryProblems,
   estimateTextTokens,
   isRoleplayCommandEnabled,
   normalizeAdvancedMemorySettings,
@@ -3696,6 +3708,18 @@ export function ChatSettingsDrawer({
     isRoleplayMode &&
     (advancedMemoryStatus.data?.settings ?? normalizeAdvancedMemorySettings(metadata.advancedMemory)).enabled;
   useEffect(() => setMemoryView(null), [advancedMemoryEnabled, chat.id]);
+  // A scene number in the Fix box (or a notice) opens Access memories at that scene.
+  const advancedMemorySceneRequest = useUIStore((state) =>
+    state.advancedMemoryRequest?.chatId === chat.id ? state.advancedMemoryRequest.sceneId : undefined,
+  );
+  useEffect(() => {
+    if (advancedMemorySceneRequest && advancedMemoryEnabled) setMemoryView("advanced");
+  }, [advancedMemoryEnabled, advancedMemorySceneRequest]);
+  const advancedMemoryNeedsReview = useMemo(() => {
+    const problems = advancedMemoryStatus.data ? advancedMemoryProblems(advancedMemoryStatus.data) : null;
+    return !!problems && problems.fixSceneIds.length + problems.reviewSceneIds.length > 0;
+  }, [advancedMemoryStatus.data]);
+  const advancedMemoryAttentionId = useId();
   const [inlineResourceEditor, setInlineResourceEditor] = useState<{
     kind: "character" | "persona" | "lorebook";
     id: string;
@@ -4582,12 +4606,26 @@ export function ChatSettingsDrawer({
               advancedMemoryEnabled ? (current === "advanced" ? null : "advanced") : "standard",
             )
           }
-          className="mari-chrome-control flex min-h-9 w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium disabled:opacity-50"
+          className="mari-chrome-control relative flex min-h-9 w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium disabled:opacity-50"
           aria-expanded={advancedMemoryEnabled ? memoryView === "advanced" : undefined}
+          aria-describedby={advancedMemoryEnabled && advancedMemoryNeedsReview ? advancedMemoryAttentionId : undefined}
         >
           <Brain size="0.75rem" />
           {localizeUi("ui.chat.chatsettingsdrawer.accessMemoriesForThisChat")}
+          {advancedMemoryEnabled && advancedMemoryNeedsReview && (
+            // The theme's accent held steady marks scenes that need attention.
+            <span
+              data-advanced-memory-attention
+              aria-hidden="true"
+              className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--marinara-app-accent-static)]"
+            />
+          )}
         </button>
+        {advancedMemoryEnabled && advancedMemoryNeedsReview && (
+          <span id={advancedMemoryAttentionId} className="sr-only">
+            {localizeUi("chat.advancedMemory.fix.scenesNeedAttention")}
+          </span>
+        )}
         {advancedMemoryEnabled && memoryView === "advanced" && (
           <AdvancedMemoryInspector
             chatId={chat.id}

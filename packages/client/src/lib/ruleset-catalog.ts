@@ -572,6 +572,10 @@ export function formatCatalogMechanics(
     if (mechanics.area.ring !== undefined) {
       parts.push(t("game.ruleset.catalog.mechanics.ringOf", { distance: distance(mechanics.area.ring) }));
     }
+    // Set down several times at once (1.173).
+    if (mechanics.area.copies !== undefined) {
+      parts.push(t("game.ruleset.catalog.mechanics.copies", { count: mechanics.area.copies }));
+    }
   }
   // A rider never reaches the menu, so its line is the only place a reader learns what it does: how
   // much it adds, of what, and how often. Without this the picker says only the word "Rider".
@@ -755,6 +759,15 @@ export function formatCatalogMechanics(
         ),
       );
     }
+    // Nobody sees into it but by the senses that pierce it (1.173).
+    if (mechanics.zone.obscures) {
+      const pierced = mechanics.zone.obscures.pierced ?? [];
+      parts.push(
+        pierced.length
+          ? t("game.ruleset.catalog.mechanics.zoneObscuresBut", { senses: pierced.join(", ") })
+          : t("game.ruleset.catalog.mechanics.zoneObscures"),
+      );
+    }
     const side = mechanics.zone.side;
     if (side) {
       parts.push(
@@ -765,6 +778,7 @@ export function formatCatalogMechanics(
       );
     }
   }
+  if (mechanics.seen) parts.push(t("game.ruleset.catalog.mechanics.seen"));
   if (mechanics.reaction) parts.push(t("game.ruleset.catalog.mechanics.reaction"));
   return parts.join(" · ");
 }

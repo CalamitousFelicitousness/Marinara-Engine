@@ -171,6 +171,7 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
     ...(action.toHit !== undefined ? { toHit: action.toHit } : {}),
     ...(action.autoHit ? { autoHit: true } : {}),
     ...(action.needs ? { needs: [...action.needs] } : {}),
+    ...(action.seen ? { seen: true as const } : {}),
     ...(damage
       ? {
           damage: {
@@ -358,6 +359,7 @@ function blockFromCreature(creature: RulesetCreature, budgets: ReadonlySet<strin
     ...(creature.vulnerable ? { vulnerable: [...creature.vulnerable] } : {}),
     ...(creature.immune ? { immune: [...creature.immune] } : {}),
     ...(creature.conditionImmunities ? { conditionImmunities: [...creature.conditionImmunities] } : {}),
+    ...(creature.senses ? { senses: { ...creature.senses } } : {}),
     ...(creature.hardness !== undefined ? { hardness: creature.hardness } : {}),
     ...(creature.shield ? { shield: true as const } : {}),
     ...(creature.size !== undefined ? { size: creature.size } : {}),
@@ -587,6 +589,18 @@ export function clampRulesetStatBlock(
     }
     if (kept.length > 0) block.conditionImmunities = kept;
     else delete block.conditionImmunities;
+  }
+  // Senses are the fight's own (1.173); one it does not have is nothing to see by.
+  if (block.senses) {
+    const known = new Set((combat.senses ?? []).map((sense) => sense.id));
+    const kept = Object.fromEntries(
+      Object.entries(block.senses).filter(([id, range]) => known.has(id) && Number.isFinite(range) && range > 0),
+    );
+    if (Object.keys(kept).length < Object.keys(block.senses).length) {
+      adjusted.push("A sense this ruleset does not have was dropped.");
+    }
+    if (Object.keys(kept).length > 0) block.senses = kept;
+    else delete block.senses;
   }
   if (block.tracks) {
     const tracks = new Map(definition.sheet.live.tracks.map((track) => [track.id, track]));

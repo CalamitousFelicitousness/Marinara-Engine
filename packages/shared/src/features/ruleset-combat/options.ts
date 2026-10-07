@@ -66,6 +66,7 @@ import {
 } from "./grid.js";
 import { coverTier, elevationAt } from "../tactical-combat/math.js";
 import { rulesetZoneMoveCells } from "./zones.js";
+import { rulesetCanSee } from "./sight.js";
 import type {
   RulesetConditionBonus,
   RulesetCombatAction,
@@ -354,6 +355,8 @@ export function rulesetAimCells(
   /** Stop after this many aims. A forecast only needs to know that ONE exists and whom it catches,
    *  and scanning the rest of the board for it on every menu read is work nobody sees. */
   limit = Infinity,
+  /** Only aims that catch somebody, even for something worth setting down on nobody. */
+  occupiedOnly = false,
 ): Array<{ x: number; y: number; targetIds: string[] }> {
   const grid = state.board?.grid;
   const from = rulesetPositionOf(rulesetCombatant(state, actorId));
@@ -373,9 +376,13 @@ export function rulesetAimCells(
   // to: a long throw over a wide board is otherwise thousands of cells, every one of them drawing
   // its whole shape. A cone and a line reach out from the ACTOR, so a cell next to them can catch
   // somebody at the far end, and for those the cells to look at are the ones the aim may be sent to.
-  const shape = actionOf(rulesetCombatant(state, actorId)!, optionId)?.area;
+  const action = actionOf(rulesetCombatant(state, actorId)!, optionId);
+  const shape = action?.area;
+  // Something that stays (a zone, a wall) or is set down several times is worth putting down where
+  // nobody stands yet (1.173): a wall across a corridor, a cube beside the one on the foe.
+  const anywhere = !occupiedOnly && (!!action?.zone || !!shape?.copies);
   const boxes =
-    shape?.shape === "burst"
+    shape?.shape === "burst" && !anywhere
       ? state.combatants
           // Anybody still in the fight, on their feet or on the ground: a shape that MENDS is set
           // down on the ally who fell, and that cell has to be offered.
@@ -401,12 +408,74 @@ export function rulesetAimCells(
         const targetIds = rulesetAreaTargets(state, actorId, optionId, at);
         // A cell the shape would catch nobody from is still somewhere it may be aimed, but it is not
         // worth carrying to a screen or to a picker.
-        if (targetIds.length > 0) aims.push({ x, y, targetIds });
+        if (targetIds.length > 0 || anywhere) aims.push({ x, y, targetIds });
         if (aims.length >= limit) return aims;
       }
     }
   }
   return aims;
+}
+
+/** How an area is laid from the cell it is aimed at: which way a wall runs or whether it is a ring
+ *  (1.172), and the cells further copies are set down on (1.173). */
+export interface RulesetAreaLay {
+  toward?: RulesetCombatCell;
+  ring?: boolean;
+  also?: readonly RulesetCombatCell[];
+}
+
+/** The cells an area aimed at `at` covers, every copy of it included, each cell once. */
+export function rulesetAimedCells(
+  state: RulesetEncounterState,
+  actorId: string,
+  optionId: string,
+  at: RulesetCombatCell,
+  lay?: RulesetAreaLay,
+): RulesetCombatCell[] {
+  const grid = state.board?.grid;
+  const actor = rulesetCombatant(state, actorId);
+  const action = actor ? actionOf(actor, optionId) : undefined;
+  const from = rulesetPositionOf(actor);
+  if (!grid || !actor || !action?.area || !from) return [];
+  const area = action.area;
+  const one = (aim: RulesetCombatCell) =>
+    area.shape === "wall"
+      ? rulesetWallShape(grid, area, aim, from, lay?.toward, undefined, lay?.ring).cells
+      : rulesetAreaCells(area.shape, area.size, from, aim, grid, area.width);
+  const cells = new Map<string, RulesetCombatCell>();
+  for (const aim of [at, ...(lay?.also ?? [])]) {
+    for (const cell of one(aim)) cells.set(`${cell.x},${cell.y}`, cell);
+  }
+  return [...cells.values()];
+}
+
+/**
+ * Whether further copies of an area may be set down where `also` says (1.173): as many as its
+ * `copies` allows, each on a cell it may be aimed at, none twice, and each one's cells touching the
+ * cells of those set down before it, as Fire Storm's cubes each touch another.
+ */
+export function rulesetCopiesLegal(
+  state: RulesetEncounterState,
+  actorId: string,
+  optionId: string,
+  at: RulesetCombatCell,
+  also: readonly RulesetCombatCell[],
+): boolean {
+  const actor = rulesetCombatant(state, actorId);
+  const area = actor ? actionOf(actor, optionId)?.area : undefined;
+  if (!area?.copies || also.length > area.copies - 1) return false;
+  const aims = new Set([`${at.x},${at.y}`]);
+  let placed = rulesetAimedCells(state, actorId, optionId, at);
+  for (const aim of also) {
+    if (!rulesetAimLegal(state, actorId, optionId, aim)) return false;
+    const key = `${aim.x},${aim.y}`;
+    if (aims.has(key)) return false;
+    aims.add(key);
+    const cells = rulesetAimedCells(state, actorId, optionId, aim);
+    if (!cells.some((cell) => placed.some((other) => rulesetCellDistance(cell, other) <= 1))) return false;
+    placed = [...placed, ...cells];
+  }
+  return true;
 }
 
 /** Everybody standing in the cells an area aimed at this one would cover. Friend and foe alike,
@@ -416,20 +485,13 @@ export function rulesetAreaTargets(
   actorId: string,
   optionId: string,
   at: RulesetCombatCell,
-  /** How a wall is laid from `at` (1.172): which way it runs, or as a ring. */
-  lay?: { toward?: RulesetCombatCell; ring?: boolean },
+  /** How it is laid from `at` (1.172, 1.173): which way a wall runs, a ring, further copies. */
+  lay?: RulesetAreaLay,
 ): string[] {
-  const grid = state.board?.grid;
   const actor = rulesetCombatant(state, actorId);
   const action = actor ? actionOf(actor, optionId) : undefined;
-  const from = rulesetPositionOf(actor);
-  if (!grid || !actor || !action?.area || !from) return [];
-  const covered = new Set(
-    (action.area.shape === "wall"
-      ? rulesetWallShape(grid, action.area, at, from, lay?.toward, undefined, lay?.ring).cells
-      : rulesetAreaCells(action.area.shape, action.area.size, from, at, grid, action.area.width)
-    ).map((cell) => `${cell.x},${cell.y}`),
-  );
+  if (!actor || !action?.area) return [];
+  const covered = new Set(rulesetAimedCells(state, actorId, optionId, at, lay).map((cell) => `${cell.x},${cell.y}`));
   return state.combatants
     .filter((combatant) => {
       if (combatant.defeated) return false;
@@ -1035,6 +1097,8 @@ export function rulesetOptionTargets(
         } else if (combatant.defeated) return false;
         if (cure && !rulesetCureReaches(cure, combatant)) return false;
         if (!rulesetTargetHasSenses(definition, state, combatant, needs)) return false;
+        // "A creature you can see" (1.173).
+        if (cure?.seen && !rulesetCanSee(definition, state, actor, combatant)) return false;
         if (!rulesetTargetTypesAllow(definition, combatant, targetTypes)) return false;
         if (option.id.startsWith("summon:") && !rulesetCombatStanding(combatant)) return false;
         // Breaking free is aimed at whoever holds on, on either side: a web an ally spun catches
@@ -1072,7 +1136,7 @@ function firstTarget(
  *  it a shape that only ever lands on cells would promise no chance to hit at all. */
 function firstAreaTarget(state: RulesetEncounterState, actor: RulesetCombatant, action: RulesetCombatAction) {
   if (!action.area || !positioned(state)) return undefined;
-  const id = rulesetAimCells(state, actor.id, action.id, 1)[0]?.targetIds[0];
+  const id = rulesetAimCells(state, actor.id, action.id, 1, true)[0]?.targetIds[0];
   return id === undefined ? undefined : rulesetCombatant(state, id);
 }
 
@@ -1485,6 +1549,10 @@ function optionFrom(
       shape: action.area.shape,
       size: action.area.size,
       ...(action.area.width !== undefined ? { width: action.area.width } : {}),
+      // How a wall may be laid (1.172) and how many times it may be set down (1.173).
+      ...(action.area.ring !== undefined ? { ring: action.area.ring } : {}),
+      ...(action.zone?.side ? { sided: true as const } : {}),
+      ...(action.area.copies !== undefined ? { copies: action.area.copies } : {}),
       range: reach?.max ?? action.area.size,
     };
   }
@@ -1578,17 +1646,24 @@ export function rulesetAttackMode(
   const own = rulesetCombatEffects(definition, combat, actor, where?.state);
   const theirs = rulesetCombatEffects(definition, combat, target, where?.state);
   const distance = where ? distanceModes(combat, where.state, where.optionId, actor, target, theirs) : null;
+  // Not seeing (1.173): striking at somebody you cannot see is harder, at somebody who cannot see
+  // you easier.
+  const unseen = combat.sight?.unseenAttacks && where;
+  const blindStrike = !!unseen && !rulesetCanSee(definition, where.state, actor, target);
+  const blindSide = !!unseen && !rulesetCanSee(definition, where.state, target, actor);
   const advantage =
     own.has("own-attacks-advantage") ||
     theirs.has("attacks-against-advantage") ||
     !!actor.flags.helped ||
     !!distance?.advantage ||
+    blindSide ||
     (combat.elevation?.highGround === "advantage" && !!where && rulesetAbove(where.state, actor, target));
   const disadvantage =
     own.has("own-attacks-disadvantage") ||
     theirs.has("attacks-against-disadvantage") ||
     !!target.flags.dodging ||
-    !!distance?.disadvantage;
+    !!distance?.disadvantage ||
+    blindStrike;
   if (advantage === disadvantage) return "normal";
   return advantage ? "advantage" : "disadvantage";
 }

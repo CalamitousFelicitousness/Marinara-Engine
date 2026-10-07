@@ -33,7 +33,10 @@ import {
   heightWash,
 } from "../../lib/tactical-board-look";
 import {
+  rulesetAimTake,
+  rulesetAimTurning,
   rulesetBoardCells,
+  type RulesetCellChoice,
   rulesetCellKey,
   rulesetCellSentences,
   rulesetDistanceText,
@@ -62,7 +65,7 @@ export interface RulesetCombatBoardProps {
     optionId: string,
     targetIds: string[],
     payWith?: string,
-    cell?: { to?: RulesetCombatCell; at?: RulesetCombatCell },
+    cell?: RulesetCellChoice,
     style?: string,
     mode?: string,
   ) => void;
@@ -155,9 +158,15 @@ export function RulesetCombatBoard({
       onChoose(step.option.id, [], step.payWith, { to: { x: cell.x, y: cell.y } }, step.style, step.mode);
       return;
     }
-    if (step.stage === "aim" && cell.aim) {
+    // A wall set down waits for the way it runs, and any square turns it (1.172).
+    if (step.stage === "aim" && (cell.aim || rulesetAimTurning(step.option, step.lay))) {
+      const taken = rulesetAimTake(step.option, step.lay, cell);
+      if ("lay" in taken) {
+        setStep({ ...step, lay: taken.lay });
+        return;
+      }
       setStep(null);
-      onChoose(step.option.id, [], step.payWith, { at: { x: cell.x, y: cell.y } }, step.style, step.mode);
+      onChoose(step.option.id, [], step.payWith, taken.send, step.style, step.mode);
       return;
     }
     // The same two rules the list in the menu picks by, so clicking a token and clicking its name
@@ -400,11 +409,13 @@ export function RulesetCombatBoard({
                       title={cell.zones.join(", ")}
                     />
                   )}
-                  {cell.aim && (
+                  {(cell.aim || cell.laid) && (
                     <span
                       className={cn(
                         "pointer-events-none absolute inset-0 ring-1 ring-inset",
-                        isAimed ? "bg-amber-400/55 ring-2 ring-amber-200" : "bg-amber-400/20 ring-amber-300/40",
+                        isAimed || cell.laid
+                          ? "bg-amber-400/55 ring-2 ring-amber-200"
+                          : "bg-amber-400/20 ring-amber-300/40",
                       )}
                     />
                   )}

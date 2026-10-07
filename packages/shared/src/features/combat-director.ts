@@ -55,6 +55,12 @@ export type DirectedCommand =
       mode?: string;
       to?: { x: number; y: number };
       at?: { x: number; y: number };
+      /** How a wall is laid from `at` (1.172): the way it runs, the side it faces, or as a ring. */
+      toward?: { x: number; y: number };
+      side?: "near" | "far";
+      ring?: boolean;
+      /** Where further copies of an area that allows them are set down (1.173). */
+      also?: Array<{ x: number; y: number }>;
     }
   | { type: "choose"; candidateId: string }
   | { type: "continue" }

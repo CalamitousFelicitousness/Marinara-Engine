@@ -97,6 +97,9 @@ import {
   rulesetActionAvailable,
   rulesetSheetWithin,
   rulesetAimLegal,
+  rulesetAimedCells,
+  rulesetCopiesLegal,
+  type RulesetAreaLay,
   rulesetAreaTargets,
   rulesetAttackMode,
   rulesetCombatOptions,
@@ -191,6 +194,8 @@ interface RulesetCombatContext {
   harmEndings: Array<() => void>;
   /** The cell an area was aimed at in this step, which a save against it takes cover from. */
   aimedAt?: RulesetCombatCell;
+  /** Where further copies of the area were set down (1.173). */
+  aimedAlso?: RulesetCombatCell[];
   falling?: RulesetFallResume[];
   /** Whose turn's own start or end is being counted down right now, so a condition left behind in
    *  the middle of a turn can be told from one left behind as the turn begins or ends. */
@@ -1356,7 +1361,7 @@ function placeZone(
   const cells = wall
     ? wall.cells
     : grid && at && rule.anchor === "point"
-      ? areaCellsFor(ctx.state, actor, action.id, at)
+      ? areaCellsFor(ctx.state, actor, action.id, at, resume.also ? { also: resume.also } : undefined)
       : undefined;
   const stamp = turnStamp(ctx);
   const caught = rule.atCast ? resume.targetIds : [];
@@ -1473,6 +1478,8 @@ function zoneStrike(
     trigger,
   });
   const aimed = ctx.aimedAt;
+  const aimedAlso = ctx.aimedAlso;
+  delete ctx.aimedAlso;
   const centre = zone.at ?? rulesetPositionOf(caster);
   if (centre) ctx.aimedAt = { x: centre.x, y: centre.y };
   else delete ctx.aimedAt;
@@ -1503,6 +1510,7 @@ function zoneStrike(
     if (action.zone?.damageCap !== undefined) zoneDealt(ctx, caster, zone, action.zone.damageCap, from);
     if (aimed) ctx.aimedAt = aimed;
     else delete ctx.aimedAt;
+    if (aimedAlso) ctx.aimedAlso = aimedAlso;
     return;
   }
   const { concentration: _held, zone: _zone, summons: _summons, gives: _gives, ...again } = action;
@@ -1510,6 +1518,7 @@ function zoneStrike(
   resolveAction(ctx, caster, again, [target], zone.payWith);
   if (aimed) ctx.aimedAt = aimed;
   else delete ctx.aimedAt;
+  if (aimedAlso) ctx.aimedAlso = aimedAlso;
   if (action.zone?.damageCap !== undefined) zoneDealt(ctx, caster, zone, action.zone.damageCap, from);
 }
 
@@ -1947,6 +1956,22 @@ export function applyRulesetCombatChoice(
   if (choice.side !== undefined && choice.side !== "near" && choice.side !== "far") {
     return refusal(state, choice.actorId, "bad-cell", option.id);
   }
+  // Further copies (1.173): only where the area allows them, each legal and touching the rest.
+  if (
+    choice.also !== undefined &&
+    !(
+      area &&
+      choice.at &&
+      Array.isArray(choice.also) &&
+      choice.also.every(
+        (cell) => !!cell && typeof cell === "object" && Number.isInteger(cell.x) && Number.isInteger(cell.y),
+      ) &&
+      rulesetCopiesLegal(state, actor.id, option.id, choice.at, choice.also)
+    )
+  ) {
+    return refusal(state, choice.actorId, "bad-cell", option.id);
+  }
+  const also = area && choice.also?.length ? choice.also.map((cell) => ({ x: cell.x, y: cell.y })) : undefined;
   // Laid as a ring only where its area says it may be.
   if (
     choice.ring !== undefined &&
@@ -1965,9 +1990,11 @@ export function applyRulesetCombatChoice(
   // pool it is paid with lets it take (1.166).
   const paidCount = choice.payWith !== undefined ? option.targetsWith?.[choice.payWith] : undefined;
   const targets = area
-    ? rulesetAreaTargets(state, actor.id, option.id, choice.at!, { toward: choice.toward, ring: choice.ring }).map(
-        (id) => rulesetCombatant(state, id)!,
-      )
+    ? rulesetAreaTargets(state, actor.id, option.id, choice.at!, {
+        toward: choice.toward,
+        ring: choice.ring,
+        also,
+      }).map((id) => rulesetCombatant(state, id)!)
     : pickTargets(
         definition,
         state,
@@ -1983,6 +2010,7 @@ export function applyRulesetCombatChoice(
 
   const { ctx, finish } = begin(definition, combat, state, roller);
   if (area && choice.at) ctx.aimedAt = { x: choice.at.x, y: choice.at.y };
+  if (also) ctx.aimedAlso = also;
   const working = rulesetCombatant(ctx.state, actor.id)!;
   const workingTargets = targets.map((target) => rulesetCombatant(ctx.state, target.id)!);
 
@@ -2080,7 +2108,7 @@ export function applyRulesetCombatChoice(
       optionId: option.id,
       label: option.label,
       at: { ...choice.at },
-      cells: areaCellsFor(ctx.state, working, option.id, choice.at, { toward: choice.toward, ring: choice.ring }),
+      cells: areaCellsFor(ctx.state, working, option.id, choice.at, { toward: choice.toward, ring: choice.ring, also }),
     });
   }
 
@@ -2149,6 +2177,7 @@ export function applyRulesetCombatChoice(
     ...(area && choice.toward ? { toward: { x: choice.toward.x, y: choice.toward.y } } : {}),
     ...(area && choice.side ? { side: choice.side } : {}),
     ...(area && choice.ring ? { ring: true as const } : {}),
+    ...(also ? { also: also.map((cell) => ({ ...cell })) } : {}),
     ...(choice.payWith !== undefined ? { payWith: choice.payWith } : {}),
     ...(styleId ? { style: styleId } : {}),
     ...(mode ? { mode: mode.id } : {}),
@@ -2871,16 +2900,9 @@ function areaCellsFor(
   actor: RulesetCombatant,
   optionId: string,
   at: RulesetCombatCell,
-  lay?: { toward?: RulesetCombatCell; ring?: boolean },
+  lay?: RulesetAreaLay,
 ): RulesetCombatCell[] {
-  const action = actor.actions.find((entry) => entry.id === optionId);
-  const grid = state.board?.grid;
-  if (!action?.area || !grid || typeof actor.x !== "number" || typeof actor.y !== "number") return [];
-  const from = { x: actor.x, y: actor.y };
-  if (action.area.shape === "wall") {
-    return rulesetWallShape(grid, action.area, at, from, lay?.toward, undefined, lay?.ring).cells;
-  }
-  return rulesetAreaCells(action.area.shape, action.area.size, from, at, grid, action.area.width);
+  return rulesetAimedCells(state, actor.id, optionId, at, lay);
 }
 
 /** The cell the menu offered, or null when the choice named one it did not. The menu is the only
@@ -3203,6 +3225,10 @@ function resumeAction(ctx: RulesetCombatContext, resume: RulesetActionResume): v
   const at = resume.at;
   const onBoard = (n: number, size: number) => Number.isInteger(n) && n >= 0 && n < size;
   if (grid && at && onBoard(at.x, grid.width) && onBoard(at.y, grid.height)) ctx.aimedAt = { x: at.x, y: at.y };
+  const also = grid
+    ? (resume.also ?? []).filter((cell) => onBoard(cell.x, grid.width) && onBoard(cell.y, grid.height))
+    : [];
+  if (ctx.aimedAt && also.length) ctx.aimedAlso = also.map((cell) => ({ x: cell.x, y: cell.y }));
   // What resumes lands on the fight as it stands NOW rather than as it stood when it was aimed, so
   // anybody the fight is already over for is left out, the same way a sequence leaves them out. A
   // ruleset with a dying rule keeps a character on the board at zero, so this is about an opponent
@@ -3665,7 +3691,14 @@ function resolveActionBody(
   // a line, a spell aimed at somebody) from its maker.
   // Set down somewhere rather than coming off its maker: a burst, a box or a wall (1.172).
   const setDown = !!action.area && action.area.shape !== "cone" && action.area.shape !== "line";
-  const saveFrom = setDown && ctx.aimedAt ? ctx.aimedAt : rulesetPositionOf(actor);
+  // Copies set down at once (1.173): each target takes cover from the nearest of them.
+  const aims = ctx.aimedAt ? [ctx.aimedAt, ...(ctx.aimedAlso ?? [])] : [];
+  const saveFromFor = (target: RulesetCombatant) => {
+    if (!setDown || aims.length === 0) return rulesetPositionOf(actor);
+    const cell = rulesetPositionOf(target);
+    if (!cell || aims.length === 1) return aims[0]!;
+    return aims.reduce((best, aim) => (rulesetCellDistance(aim, cell) < rulesetCellDistance(best, cell) ? aim : best));
+  };
 
   // An ability that asks for no attack roll (an area everyone saves against, darts that simply hit)
   // rolls its dice ONCE and every target takes that number. One that rolls to hit each target rolls
@@ -3923,7 +3956,7 @@ function resolveActionBody(
         action.save.save,
         action.save.difficulty,
         actor.id,
-        action.save.ignoresCover ? null : saveFrom,
+        action.save.ignoresCover ? null : saveFromFor(target),
         against,
       );
       if (saved && action.save.onSuccess === "negates") {
@@ -4055,7 +4088,7 @@ function resolveActionBody(
         if (!rulesetTargetIs(ctx.definition, target, clause.targetIs) || clause.onCritical) return;
         if (clause.whileOn !== undefined && !rulesetItemOn(actor, clause.whileOn)) return;
         const own = clause.save
-          ? rollSave(ctx, target, clause.save.save, clause.save.difficulty, actor.id, saveFrom, against)
+          ? rollSave(ctx, target, clause.save.save, clause.save.difficulty, actor.id, saveFromFor(target), against)
           : false;
         if (own && clause.save?.onSuccess === "none") return;
         const clauseHalved = clause.save ? own : halved;
@@ -4097,7 +4130,7 @@ function resolveActionBody(
         if (clause.whileOn !== undefined && !rulesetItemOn(actor, clause.whileOn)) return;
         // A clause with a save of its own asks the TARGET for it, whatever the action already asked.
         const own = clause.save
-          ? rollSave(ctx, target, clause.save.save, clause.save.difficulty, actor.id, saveFrom, against)
+          ? rollSave(ctx, target, clause.save.save, clause.save.difficulty, actor.id, saveFromFor(target), against)
           : false;
         if (own && clause.save?.onSuccess === "none") return;
         // Halved by its own save when it has one, and by the action's save-for-half when it does not.

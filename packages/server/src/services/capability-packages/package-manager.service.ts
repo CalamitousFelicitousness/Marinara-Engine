@@ -1455,6 +1455,28 @@ function carriesWalls(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesWalls(one, depth + 1));
 }
 
+/** Senses and seeing (1.173): the combat block's senses or sight, a condition that hides, a zone
+ *  that obscures, an area set down several times, "a creature you can see", or a creature's senses,
+ *  in catalog files too. */
+function carriesSight(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesSight(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const combat = plainRecord(record.combat);
+  if (combat && (combat.senses !== undefined || combat.sight !== undefined)) return true;
+  if (record.condition !== undefined && record.unseen !== undefined) return true;
+  // A creature's senses are a record of ranges, where the combat block's are a list.
+  if (record.tier !== undefined && plainRecord(record.senses)) return true;
+  for (const mechanics of [plainRecord(record.mechanics), plainRecord(record.use), record]) {
+    if (!mechanics) continue;
+    if (plainRecord(mechanics.area)?.copies !== undefined) return true;
+    if (plainRecord(mechanics.zone)?.obscures !== undefined) return true;
+    if (mechanics.seen !== undefined && (mechanics.budget !== undefined || mechanics.kind !== undefined)) return true;
+  }
+  return Object.values(record).some((one) => carriesSight(one, depth + 1));
+}
+
 /** A catalog entry or item use that ends conditions, steadies the dying or brings back the dead, in
  *  catalog files too (1.171). */
 function carriesCures(value: unknown, depth = 0): boolean {
@@ -2730,6 +2752,13 @@ export function getCapabilityPackageInstallIssue(
     (carriesWalls(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesWalls(document)))
   ) {
     return "A ruleset with box or wall areas, or walls that block or have a side, requires schemaVersion 2 and capabilityApi 1.172 or newer";
+  }
+  // Senses, obscuring zones, hiding conditions, seen-only targets and area copies, 1.173.
+  if (
+    !declaresApi(173) &&
+    (carriesSight(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesSight(document)))
+  ) {
+    return "A ruleset with combat senses or sight, obscuring zones, hiding conditions, targets that must be seen or areas set down several times requires schemaVersion 2 and capabilityApi 1.173 or newer";
   }
   if (carriesCreatureSpellcasting) {
     // The references can only be checked once the catalog files are beside their headers.

@@ -56,6 +56,17 @@ export interface RulesetMenuStep {
   mode?: string;
   payWith?: string;
   targets: string[];
+  /** How a shape is being laid while it is aimed (1.172, 1.173). */
+  lay?: RulesetAimLay;
+}
+
+/** A shape half laid on the board: the cell it was first set down on, further copies of it, and for
+ *  a wall whether it is a ring and which side faces out. */
+export interface RulesetAimLay {
+  at?: { x: number; y: number };
+  also?: Array<{ x: number; y: number }>;
+  ring?: boolean;
+  side?: "near" | "far";
 }
 
 export interface RulesetMenuGroup {

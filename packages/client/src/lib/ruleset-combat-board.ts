@@ -18,7 +18,7 @@ import type {
 } from "@marinara-engine/shared";
 import { TERRAIN_DATA } from "@marinara-engine/shared";
 import type { TFunction } from "i18next";
-import type { RulesetMenuStep } from "./ruleset-combat-menu";
+import type { RulesetAimLay, RulesetMenuStep } from "./ruleset-combat-menu";
 
 /** What this ruleset calls one cell's worth of distance. */
 export type RulesetBoardDistance = { label: string; perCell: number };
@@ -42,6 +42,8 @@ export interface RulesetBoardCell {
   targetable?: boolean;
   /** Set while a shape is being aimed: the ids this aim would catch, which may be nobody. */
   aim?: { targetIds: string[] };
+  /** A cell the shape being laid has already been set down on (1.172, 1.173). */
+  laid?: true;
   /** The labels of the lasting areas covering it (1.167), first cast first. */
   zones?: string[];
 }
@@ -58,6 +60,64 @@ export function rulesetOptionNeedsAim(option: DirectedRulesetOption): boolean {
 /** Whether a shape has any square it may be aimed at right now. */
 export function rulesetOptionHasAim(option: DirectedRulesetOption): boolean {
   return (option.aim?.length ?? 0) > 0;
+}
+
+/** What an aimed shape sends: where it lands, and how it is laid (1.172, 1.173). */
+export interface RulesetAimChoice {
+  at: RulesetCombatCell;
+  toward?: RulesetCombatCell;
+  side?: "near" | "far";
+  ring?: boolean;
+  also?: RulesetCombatCell[];
+}
+
+/** The cells a choice made on the board carries: where a walk goes, or where a shape lands and how
+ *  it is laid. */
+export type RulesetCellChoice = { to?: RulesetCombatCell } & Partial<RulesetAimChoice>;
+
+/** Whether a wall being aimed has been set down and waits for the way it runs: any cell picks it. */
+export function rulesetAimTurning(option: DirectedRulesetOption, lay: RulesetAimLay | undefined): boolean {
+  return option.area?.shape === "wall" && !lay?.ring && !!lay?.at;
+}
+
+/** What is sent for the shape as it is laid so far, or null while nothing has been set down. */
+export function rulesetAimSoFar(lay: RulesetAimLay | undefined): RulesetAimChoice | null {
+  if (!lay?.at) return null;
+  return {
+    at: { ...lay.at },
+    ...(lay.side ? { side: lay.side } : {}),
+    ...(lay.ring ? { ring: true } : {}),
+    ...(lay.also?.length ? { also: lay.also.map((cell) => ({ ...cell })) } : {}),
+  };
+}
+
+/**
+ * Picking a cell while a shape is aimed. Most shapes are sent there and then. A wall is set down on
+ * the first cell and turned by the second, which is the cell it runs toward (the first again lays
+ * it across its maker's line); a ring is sent at once. A shape set down several times (1.173) takes
+ * one cell for each copy, and is sent with the last one it may have.
+ */
+export function rulesetAimTake(
+  option: DirectedRulesetOption,
+  lay: RulesetAimLay | undefined,
+  cell: RulesetCombatCell,
+): { send: RulesetAimChoice } | { lay: RulesetAimLay } {
+  const at = { x: cell.x, y: cell.y };
+  const area = option.area;
+  if (area?.shape === "wall") {
+    if (lay?.ring) return { send: { ...rulesetAimSoFar({ ...lay, at })!, ring: true } };
+    if (!lay?.at) return { lay: { ...lay, at } };
+    const across = lay.at.x === at.x && lay.at.y === at.y;
+    return { send: { ...rulesetAimSoFar(lay)!, ...(across ? {} : { toward: at }) } };
+  }
+  if ((area?.copies ?? 1) > 1) {
+    if (!lay?.at) return { lay: { ...lay, at } };
+    const taken = [lay.at, ...(lay.also ?? [])].some((one) => one.x === at.x && one.y === at.y);
+    if (taken) return { lay };
+    const next = { ...lay, also: [...(lay.also ?? []), at] };
+    return 1 + next.also.length >= area!.copies! ? { send: rulesetAimSoFar(next)! } : { lay: next };
+  }
+  return { send: { at } };
 }
 
 /** Whether taking this option asks the player to pick a cell to walk to. Getting back up spends
@@ -88,8 +148,10 @@ export function rulesetBoardCells(view: DirectedRulesetView, step: RulesetMenuSt
     }
   }
   const aims = new Map<string, { targetIds: string[] }>();
+  const laid = new Set<string>();
   if (step?.stage === "aim") {
     for (const entry of step.option.aim ?? []) aims.set(rulesetCellKey(entry), { targetIds: [...entry.targetIds] });
+    for (const cell of [step.lay?.at, ...(step.lay?.also ?? [])]) if (cell) laid.add(rulesetCellKey(cell));
   }
   const targets = new Set(step?.stage === "target" ? step.option.targetIds : []);
   const zoned = new Map<string, string[]>();
@@ -124,6 +186,7 @@ export function rulesetBoardCells(view: DirectedRulesetView, step: RulesetMenuSt
         ...(reach.has(key) ? { reach: reach.get(key)! } : {}),
         ...(occupant && targets.has(occupant.id) ? { targetable: true } : {}),
         ...(aim ? { aim } : {}),
+        ...(laid.has(key) ? { laid: true as const } : {}),
         ...(zoned.has(key) ? { zones: zoned.get(key)! } : {}),
       });
     }

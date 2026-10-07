@@ -213,6 +213,8 @@ export interface RulesetStatBlockAction {
   autoHit?: boolean;
   /** Senses a target must have for this to affect it (Capability API 1.122). */
   needs?: string[];
+  /** Only a creature its maker can see may be picked (1.173). */
+  seen?: true;
   damage?: RulesetCombatDamage;
   heal?: RulesetCombatAmount;
   targets?: "ally" | "any";
@@ -302,6 +304,8 @@ export interface RulesetStatBlock {
   immune?: RulesetCreatureHideEntry[];
   /** Conditions it shrugs off, and tracks whose levels it never suffers (1.110). */
   conditionImmunities?: string[];
+  /** How far it senses with each of `combat.senses`, in the ruleset's distance (1.173). */
+  senses?: Record<string, number>;
   /** Where its live tracks stand as the fight begins (1.110). */
   tracks?: Record<string, number>;
   /** What it soaks in a `dice-pool` fight, for any harm and by kind of the health track. */
@@ -384,6 +388,8 @@ export interface RulesetCombatAction {
   autoHit?: boolean;
   /** Senses a target must have for this to affect it (Capability API 1.122). */
   needs?: string[];
+  /** Only a creature its maker can see may be picked (1.173). */
+  seen?: true;
   /** Offered only while this reads within its bounds off the holder's sheet (Capability API 1.161). */
   usableWhen?: RulesetSheetBounds;
   /** Who it may be pointed at or catch, by what they are (Capability API 1.163). */
@@ -564,6 +570,8 @@ export interface RulesetCombatArea {
   width?: number;
   /** A wall that may be laid instead as a ring this many cells across (1.172). */
   ring?: number;
+  /** How many of it may be set down at once, each touching another (1.173): Fire Storm's cubes. */
+  copies?: number;
   friendlyFire?: boolean;
 }
 
@@ -676,6 +684,9 @@ export interface RulesetCombatant {
   /** Its size, by the id of one of `combat.sizes`, read once as the fight began (1.98). Absent when
    *  the ruleset has no sizes or nothing says this one's. */
   size?: string;
+  /** How far they sense with each of `combat.senses`, in CELLS, read once as the fight began
+   *  (1.173). A creature's comes off its block. Absent when none. */
+  senses?: Record<string, number>;
   /** What they soak in a `dice-pool` fight, read once as the fight began. Absent when nothing. */
   soak?: RulesetCombatSoak;
   /** Their hardness, read once as the fight began: a spending blow whose dice are below it lands and
@@ -918,6 +929,8 @@ export interface RulesetActionResume {
   toward?: RulesetCombatCell;
   side?: "near" | "far";
   ring?: true;
+  /** The further cells copies of the area were set down on (1.173). */
+  also?: RulesetCombatCell[];
   payWith?: string;
   /** The initiative style it was made in, so a held attack picks up in the same one. */
   style?: string;
@@ -1457,7 +1470,17 @@ export interface RulesetCombatOption {
   movementCost?: number;
   /** The shape this covers, in cells, and how far away it may be aimed. Present only in a
    *  positioned fight, and then the option is aimed at a cell rather than at anybody. */
-  area?: { shape: RulesetCombatArea["shape"]; size: number; width?: number; range: number };
+  area?: {
+    shape: RulesetCombatArea["shape"];
+    size: number;
+    width?: number;
+    /** A wall that may be laid as a ring this many across, and one with a side to choose (1.172). */
+    ring?: number;
+    sided?: true;
+    /** How many times it may be set down at once (1.173). */
+    copies?: number;
+    range: number;
+  };
 }
 
 export interface RulesetCombatChoice {
@@ -1481,6 +1504,9 @@ export interface RulesetCombatChoice {
   side?: "near" | "far";
   /** Lay a wall whose area allows it as a ring around `at` instead (1.172). */
   ring?: boolean;
+  /** Where further copies of an area that allows them are set down (1.173), each touching the cells
+   *  of those before it. At most its `copies` less one. */
+  also?: RulesetCombatCell[];
   /** The window this answers, when it answers one. An answer carrying the id of a window that has
    *  already closed changes nothing: it was written for a question the fight has moved past. */
   window?: string;
@@ -1546,6 +1572,8 @@ export interface RulesetCombatZoneRule {
   blocks?: { move?: boolean; sight?: boolean };
   /** A wall's one side (1.172): cells within `distance` of it there catch as `triggers` say. */
   side?: { distance: number; triggers: Array<"enter" | "turn-start" | "turn-end"> };
+  /** Nobody sees into it, out of it or through it but by one of these senses, in range (1.173). */
+  obscures?: { pierced: string[] };
 }
 
 /** One lasting area standing on the board (1.167). A zone held at a point keeps the cells it was

@@ -49,6 +49,7 @@
 
 export * from "./types.js";
 export * from "./zones.js";
+export * from "./sight.js";
 export {
   applyRulesetFightItemChanges,
   rulesetAmmoLeft,

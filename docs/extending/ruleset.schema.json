@@ -8258,6 +8258,10 @@
                       "maxItems": 4,
                       "uniqueItems": true
                     },
+                    "seen": {
+                      "type": "boolean",
+                      "const": true
+                    },
                     "usableWhen": {
                       "type": "object",
                       "properties": {
@@ -8509,6 +8513,11 @@
                         "ring": {
                           "type": "number",
                           "exclusiveMinimum": 0
+                        },
+                        "copies": {
+                          "type": "integer",
+                          "minimum": 2,
+                          "maximum": 10
                         },
                         "$comment": {}
                       },
@@ -9181,6 +9190,23 @@
                           "type": "integer",
                           "minimum": 1,
                           "maximum": 100000
+                        },
+                        "obscures": {
+                          "type": "object",
+                          "properties": {
+                            "pierced": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 8
+                            },
+                            "$comment": {}
+                          },
+                          "additionalProperties": false
                         },
                         "blocks": {
                           "type": "array",
@@ -10925,6 +10951,21 @@
                       },
                       "maxItems": 40
                     },
+                    "senses": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "number",
+                        "exclusiveMinimum": 0,
+                        "maximum": 10000
+                      },
+                      "propertyNames": {
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "properties": {
+                        "$comment": {}
+                      }
+                    },
                     "tier": {
                       "type": "string",
                       "maxLength": 40,
@@ -10985,6 +11026,10 @@
                             "minItems": 1,
                             "maxItems": 4,
                             "uniqueItems": true
+                          },
+                          "seen": {
+                            "type": "boolean",
+                            "const": true
                           },
                           "budget": {
                             "type": "string",
@@ -16871,6 +16916,10 @@
                     "use": {
                       "type": "object",
                       "properties": {
+                        "seen": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "usableWhen": {
                           "type": "object",
                           "properties": {
@@ -17122,6 +17171,11 @@
                             "ring": {
                               "type": "number",
                               "exclusiveMinimum": 0
+                            },
+                            "copies": {
+                              "type": "integer",
+                              "minimum": 2,
+                              "maximum": 10
                             },
                             "$comment": {}
                           },
@@ -17484,6 +17538,23 @@
                               "type": "integer",
                               "minimum": 1,
                               "maximum": 100000
+                            },
+                            "obscures": {
+                              "type": "object",
+                              "properties": {
+                                "pierced": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "minItems": 1,
+                                  "maxItems": 8
+                                },
+                                "$comment": {}
+                              },
+                              "additionalProperties": false
                             },
                             "blocks": {
                               "type": "array",
@@ -25128,6 +25199,23 @@
                 "maxItems": 4,
                 "uniqueItems": true
               },
+              "unseen": {
+                "type": "object",
+                "properties": {
+                  "pierced": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "minItems": 1,
+                    "maxItems": 8
+                  },
+                  "$comment": {}
+                },
+                "additionalProperties": false
+              },
               "effects": {
                 "type": "array",
                 "items": {
@@ -27631,6 +27719,198 @@
             "floor",
             "fromDamage"
           ],
+          "additionalProperties": false
+        },
+        "senses": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "maxLength": 40,
+                "pattern": "^[a-z][a-z0-9_]*$"
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              },
+              "sheet": {
+                "type": "object",
+                "properties": {
+                  "const": {
+                    "type": "number"
+                  },
+                  "field": {
+                    "type": "string",
+                    "maxLength": 40,
+                    "pattern": "^[a-z][a-z0-9_]*$"
+                  },
+                  "derived": {
+                    "type": "string",
+                    "maxLength": 40,
+                    "pattern": "^[a-z][a-z0-9_]*$"
+                  },
+                  "abilityScore": {
+                    "type": "string",
+                    "maxLength": 40,
+                    "pattern": "^[a-z][a-z0-9_]*$"
+                  },
+                  "abilityMod": {
+                    "type": "string",
+                    "maxLength": 40,
+                    "pattern": "^[a-z][a-z0-9_]*$"
+                  },
+                  "abilityModFromField": {
+                    "type": "string",
+                    "maxLength": 40,
+                    "pattern": "^[a-z][a-z0-9_]*$"
+                  },
+                  "skillMod": {
+                    "type": "string",
+                    "maxLength": 40,
+                    "pattern": "^[a-z][a-z0-9_]*$"
+                  },
+                  "saveMod": {
+                    "type": "string",
+                    "maxLength": 40,
+                    "pattern": "^[a-z][a-z0-9_]*$"
+                  },
+                  "liveTrack": {
+                    "type": "string",
+                    "maxLength": 40,
+                    "pattern": "^[a-z][a-z0-9_]*$"
+                  },
+                  "read": {
+                    "type": "string",
+                    "enum": [
+                      "value",
+                      "filled",
+                      "remaining",
+                      "penalty"
+                    ]
+                  },
+                  "livePool": {
+                    "type": "string",
+                    "maxLength": 40,
+                    "pattern": "^[a-z][a-z0-9_]*$"
+                  },
+                  "listSum": {
+                    "type": "object",
+                    "properties": {
+                      "list": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "column": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "onlyWhen": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "$comment": {}
+                    },
+                    "required": [
+                      "list",
+                      "column"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "itemStat": {
+                    "type": "object",
+                    "properties": {
+                      "stat": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "from": {
+                        "type": "string",
+                        "enum": [
+                          "worn",
+                          "carried",
+                          "all"
+                        ]
+                      },
+                      "pick": {
+                        "type": "string",
+                        "enum": [
+                          "sum",
+                          "max",
+                          "min",
+                          "count"
+                        ]
+                      },
+                      "slot": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "category": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "tag": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "default": {
+                        "type": "number"
+                      },
+                      "$comment": {}
+                    },
+                    "required": [
+                      "from",
+                      "pick"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "$comment": {}
+                },
+                "additionalProperties": false,
+                "dependencies": {
+                  "read": [
+                    "liveTrack"
+                  ]
+                }
+              },
+              "blind": {
+                "type": "boolean",
+                "const": true
+              },
+              "$comment": {}
+            },
+            "required": [
+              "id",
+              "label"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 1,
+          "maxItems": 8
+        },
+        "sight": {
+          "type": "object",
+          "properties": {
+            "unseenAttacks": {
+              "type": "boolean",
+              "const": true
+            },
+            "eyes": {
+              "type": "string",
+              "maxLength": 40,
+              "pattern": "^[a-z][a-z0-9_]*$"
+            },
+            "$comment": {}
+          },
           "additionalProperties": false
         },
         "dying": {

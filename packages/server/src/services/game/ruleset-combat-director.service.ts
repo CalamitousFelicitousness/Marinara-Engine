@@ -1847,6 +1847,10 @@ export function commandRulesetCombatDirector(
       ...(command.mode !== undefined ? { mode: command.mode } : {}),
       ...(command.to ? { to: command.to } : {}),
       ...(command.at ? { at: command.at } : {}),
+      ...(command.toward ? { toward: command.toward } : {}),
+      ...(command.side ? { side: command.side } : {}),
+      ...(command.ring !== undefined ? { ring: command.ring } : {}),
+      ...(command.also?.length ? { also: command.also } : {}),
     });
     if (step.refused && step.refused.type === "refused") {
       return refuse(rulesetRefusalMessage(step.refused.reason), `ruleset_combat_${step.refused.reason}`);

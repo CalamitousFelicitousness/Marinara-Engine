@@ -56,6 +56,9 @@ import {
   rulesetValueLabel,
 } from "../../packages/client/src/lib/ruleset-combat-log.js";
 import {
+  rulesetAimSoFar,
+  rulesetAimTake,
+  rulesetAimTurning,
   rulesetBoardCells,
   rulesetCellKey,
   rulesetCellSentences,
@@ -1575,6 +1578,44 @@ function drawn(...rows: string[]): TacticalGrid {
     t("game.combat.ruleset.board.aimNobody", { label: "Fireball" }),
     "Fireball would catch nobody from here. Move closer, or go back.",
   );
+}
+
+// ── Laying a wall, and setting down copies (1.172, 1.173) ──
+{
+  const base = { id: "w", kind: "ability", label: "Wall", targets: { side: "any", count: 1 }, targetIds: [] } as const;
+  const wall = { ...base, area: { shape: "wall", size: 3, ring: 4, sided: true, range: 12 } } as never;
+  // Set down first, then turned by the square it runs toward; the same square lays it across.
+  const first = rulesetAimTake(wall, undefined, { x: 5, y: 5 });
+  assert.deepEqual(first, { lay: { at: { x: 5, y: 5 } } });
+  assert.ok(rulesetAimTurning(wall, "lay" in first ? first.lay : undefined));
+  assert.deepEqual(rulesetAimTake(wall, { at: { x: 5, y: 5 }, side: "near" }, { x: 8, y: 5 }), {
+    send: { at: { x: 5, y: 5 }, side: "near", toward: { x: 8, y: 5 } },
+  });
+  assert.deepEqual(rulesetAimTake(wall, { at: { x: 5, y: 5 } }, { x: 5, y: 5 }), { send: { at: { x: 5, y: 5 } } });
+  // A ring goes at once, and is never turning.
+  assert.deepEqual(rulesetAimTake(wall, { ring: true }, { x: 6, y: 6 }), { send: { at: { x: 6, y: 6 }, ring: true } });
+  assert.ok(!rulesetAimTurning(wall, { ring: true, at: { x: 6, y: 6 } }));
+  // Three copies: two picks wait, the third sends; a square picked twice changes nothing.
+  const storm = { ...base, area: { shape: "box", size: 2, copies: 3, range: 30 } } as never;
+  const one = rulesetAimTake(storm, undefined, { x: 1, y: 1 });
+  assert.ok("lay" in one);
+  assert.deepEqual(rulesetAimTake(storm, one.lay, { x: 1, y: 1 }), { lay: one.lay });
+  const two = rulesetAimTake(storm, one.lay, { x: 3, y: 1 });
+  assert.ok("lay" in two);
+  assert.deepEqual(rulesetAimSoFar(two.lay), { at: { x: 1, y: 1 }, also: [{ x: 3, y: 1 }] });
+  assert.deepEqual(rulesetAimTake(storm, two.lay, { x: 5, y: 1 }), {
+    send: {
+      at: { x: 1, y: 1 },
+      also: [
+        { x: 3, y: 1 },
+        { x: 5, y: 1 },
+      ],
+    },
+  });
+  // A plain shape sends where it is aimed.
+  const ball = { ...base, area: { shape: "burst", size: 2, range: 30 } } as never;
+  assert.deepEqual(rulesetAimTake(ball, undefined, { x: 2, y: 2 }), { send: { at: { x: 2, y: 2 } } });
+  assert.equal(rulesetAimSoFar(undefined), null);
 }
 
 // ── The menu groups, the movement group first ──

@@ -1364,6 +1364,11 @@ function targetsOf(mechanics: RulesetCatalogMechanics): RulesetCombatAction["tar
   // changes is the holder's own economy: there is nobody to point it at. One that cures (1.171) is
   // pointed at whom it cures, an ally unless it says otherwise.
   const cures = !!mechanics.ends || !!mechanics.stabilizes || !!mechanics.revives;
+  // One that leaves an area standing (1.173: Fog Cloud, Darkness) is set down wherever its caster
+  // likes, and off a board held on whoever it is cast on.
+  if (mechanics.kind === "utility" && mechanics.zone && mechanics.area) {
+    return { side: mechanics.targets ?? "any", count: Math.max(1, mechanics.targetCount ?? 1) };
+  }
   if (mechanics.kind === "utility" && !cures) return { side: "self", count: 0 };
   if (mechanics.kind === "utility") {
     return { side: mechanics.targets ?? "ally", count: Math.max(1, mechanics.targetCount ?? 1) };
@@ -1438,7 +1443,11 @@ function mechanicsAction(
   const cancels = moment?.cancels === true;
   // Taking a condition off, steadying the dying or bringing back the dead is something to resolve.
   const cures = !!mechanics.ends || !!mechanics.stabilizes || !!mechanics.revives;
-  if (mechanics.kind === "utility" && !mechanics.gives && !mechanics.standard && !cancels && !cures) return null;
+  // And so is leaving an area standing that only hides or blocks (1.173).
+  const places = !!mechanics.zone && !!mechanics.area;
+  if (mechanics.kind === "utility" && !mechanics.gives && !mechanics.standard && !cancels && !cures && !places) {
+    return null;
+  }
   const { build, evaluated, perCell } = from;
   const resolve = (ref: RulesetValueRef) => resolveRulesetValueRef(definition, build, ref, evaluated);
   // What the sheet adds to it (1.78), read as the entry is put on the menu: 1d10 plus a level.
@@ -1515,6 +1524,7 @@ function mechanicsAction(
   if (mechanics.attackRoll) action.toHit = from.toHit;
   if (mechanics.autoHit) action.autoHit = true;
   if (mechanics.needs) action.needs = [...mechanics.needs];
+  if (mechanics.seen) action.seen = true;
   if (mechanics.targetTypes) action.targetTypes = mechanics.targetTypes;
   if (mechanics.usableWhen) action.usableWhen = { ...mechanics.usableWhen };
   if (mechanics.save) {
@@ -1577,6 +1587,7 @@ function mechanicsAction(
     if (side) {
       action.zone.side = { distance: rulesetInCells(side.distance, perCell ?? 1), triggers: [...side.triggers] };
     }
+    if (mechanics.zone.obscures) action.zone.obscures = { pierced: [...(mechanics.zone.obscures.pierced ?? [])] };
     const held = mechanics.zone.whileHeld;
     const heldAmount = held && amountOf(held.amount);
     if (held && heldAmount) {
@@ -1615,6 +1626,7 @@ function mechanicsAction(
         size: rulesetInCells(mechanics.area.size, perCell),
         ...(mechanics.area.width !== undefined ? { width: rulesetInCells(mechanics.area.width, perCell) } : {}),
         ...(mechanics.area.ring !== undefined ? { ring: rulesetInCells(mechanics.area.ring, perCell) } : {}),
+        ...(mechanics.area.copies !== undefined ? { copies: mechanics.area.copies } : {}),
         ...(mechanics.friendlyFire === false ? { friendlyFire: false } : {}),
       };
     }
@@ -1907,6 +1919,7 @@ function blockActions(block: RulesetStatBlockLike, perCell: number | undefined):
     ...(action.toHit !== undefined ? { toHit: action.toHit } : {}),
     ...(action.autoHit ? { autoHit: true } : {}),
     ...(action.needs ? { needs: [...action.needs] } : {}),
+    ...(action.seen ? { seen: true as const } : {}),
     ...(action.damage
       ? {
           damage: {
@@ -2091,6 +2104,17 @@ function sheetCombatant(
     ...(() => {
       const size = sheetSize(definition, combat, build, evaluated);
       return size !== undefined ? { size } : {};
+    })(),
+    // How far each of the fight's senses reaches off this sheet (1.173), in cells; nought is none.
+    ...(() => {
+      const perCell = combat.distance?.perCell;
+      if (!combat.senses || perCell === undefined) return {};
+      const senses: Record<string, number> = {};
+      for (const sense of combat.senses) {
+        const range = sense.sheet ? resolveRulesetValueRef(definition, build, sense.sheet, evaluated) : 0;
+        if (Number.isFinite(range) && range > 0) senses[sense.id] = rulesetInCells(range, perCell);
+      }
+      return Object.keys(senses).length > 0 ? { senses } : {};
     })(),
     ...(soak ? { soak } : {}),
     ...(hardness > 0 ? { hardness } : {}),

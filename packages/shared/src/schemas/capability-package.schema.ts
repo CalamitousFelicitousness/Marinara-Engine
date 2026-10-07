@@ -876,7 +876,15 @@ const capabilityPackageManifestBaseSchema = z
 //        movement, sight or both (`zone.blocks`: Wall of Stone, Wall of Force, Wall of Fire's
 //        opaque face), shoving whoever stands where it goes up, and may catch on one side
 //        (`zone.side`, the choice's `side` near or far: Wall of Fire). No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 172 } as const);
+// 1.173: seeing. `combat.senses` names senses (darkvision, blindsight, truesight; `blind` ones work
+//        without eyes) whose range a character reads off its sheet and a creature carries in its
+//        `senses`. A zone may obscure (`zone.obscures`, pierced by the senses it names, in range:
+//        Fog Cloud, Darkness), a condition may hide its holder the same way (`unseen`: invisible),
+//        and `combat.sight` may make not seeing count in attacks (`unseenAttacks`) and name the
+//        sense that is eyes (`eyes`). `mechanics.seen` takes only targets its maker can see. A burst
+//        or box may be set down several times at once (`area.copies`, the choice's `also`), each
+//        touching another (Fire Storm). No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 173 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

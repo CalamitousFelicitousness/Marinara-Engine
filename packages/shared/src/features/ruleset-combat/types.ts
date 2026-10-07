@@ -398,7 +398,14 @@ export interface RulesetCombatAction {
   concentration?: boolean;
   /** How the price is paid. The name is what the sheet's own `use` command knows the row by, and
    *  the pool and its family are what a higher-pool payment is measured against. */
-  use?: { name: string; pool?: string; group?: string; perCostStep?: RulesetCombatAmount };
+  use?: {
+    name: string;
+    pool?: string;
+    group?: string;
+    perCostStep?: RulesetCombatAmount;
+    /** More targets for each step of a higher cost (1.166). */
+    targetsPerStep?: number;
+  };
   uses?: RulesetCombatUses;
   recharge?: RulesetCombatRecharge;
   /** How many strikes ONE spend of this action's budget buys, when its source said so. Taking it
@@ -1352,6 +1359,10 @@ export interface RulesetCombatOption {
   cost?: Array<{ pool: string; label: string; amount: number }>;
   /** Other pools of the same family this could be paid from instead, in declaration order. */
   payWith?: string[];
+  /** Its own pool cannot pay right now, so it is taken only with one of `payWith` (1.166). */
+  upcastOnly?: true;
+  /** How many targets it takes when paid with each of `payWith`, where that grows (1.166). */
+  targetsWith?: Record<string, number>;
   /** What it costs in the actor's own points, and how many they have. A signature option spends no
    *  budget: it is bought at the end of somebody else's turn. */
   signature?: { cost: number; points: number };

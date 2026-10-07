@@ -891,7 +891,11 @@ export function priced(
   const out: PricedOption[] = [];
   for (const option of menu ?? rulesetCombatOptions(definition, encounter, actor.id)) {
     const base = (option.cost ?? []).reduce((total, entry) => total + entry.amount, 0) + (option.signature?.cost ?? 0);
-    const ways: PricedOption[] = [{ option, price: base }, ...biggerWays(definition, actor, option)];
+    // One that only a higher pool can pay for now (1.166) is never taken at its own price.
+    const ways: PricedOption[] = [
+      ...(option.upcastOnly ? [] : [{ option, price: base }]),
+      ...biggerWays(definition, actor, option),
+    ];
     // Modes first, so each mode is then made in every style, forecast as that style does.
     out.push(...ways.flatMap(modedWays).flatMap((way) => styledWays(definition, way)));
   }
@@ -906,14 +910,16 @@ function biggerWays(
   option: RulesetCombatOption,
 ): PricedOption[] {
   const action = actor.actions.find((entry) => entry.id === option.id);
-  if (!action?.use?.perCostStep) return [];
+  // What grows paid bigger, or what can only be paid out of another pool now (1.166).
+  const grows = !!action?.use?.perCostStep || !!action?.use?.targetsPerStep;
+  if (!action || (!grows && !option.upcastOnly)) return [];
   const ways: PricedOption[] = [];
   for (const pool of option.payWith ?? []) {
-    const steps = rulesetCostSteps(definition, action, pool);
-    if (steps < 1) continue;
+    const steps = rulesetCostSteps(definition, action, pool, actor);
+    if (steps < 1 && !option.upcastOnly) continue;
     const paid = planRulesetCombatCost(definition, actor, action, pool);
     if (!paid) continue;
-    const extra = steps * rulesetAverageAmount(action.use.perCostStep);
+    const extra = action.use?.perCostStep ? steps * rulesetAverageAmount(action.use.perCostStep) : 0;
     const forecast = option.forecast ? { ...option.forecast } : undefined;
     if (forecast?.averageDamage !== undefined) {
       forecast.averageDamage = Math.round((forecast.averageDamage + extra) * 100) / 100;
@@ -925,6 +931,10 @@ function biggerWays(
         label: `${option.label} (${paid.cost[0]?.label ?? pool})`,
         cost: paid.cost.map((entry) => ({ pool: entry.pool, label: entry.label, amount: entry.amount })),
         ...(forecast ? { forecast } : {}),
+        // As many targets as this pool lets it take (1.166).
+        ...(option.targetsWith?.[pool] !== undefined
+          ? { targets: { ...option.targets, count: option.targetsWith[pool]! } }
+          : {}),
       },
       payWith: pool,
       price: paid.cost.reduce((total, entry) => total + entry.amount, 0) + steps,

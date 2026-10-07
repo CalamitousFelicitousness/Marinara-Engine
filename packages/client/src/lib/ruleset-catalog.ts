@@ -645,6 +645,9 @@ export function formatCatalogMechanics(
   }
   const perStep = formatAmount(mechanics.perCostStep);
   if (perStep) parts.push(t("game.ruleset.catalog.mechanics.perStep", { amount: perStep }));
+  if (mechanics.targetsPerCostStep) {
+    parts.push(t("game.ruleset.catalog.mechanics.targetsPerStep", { count: mechanics.targetsPerCostStep }));
+  }
 
   if (mechanics.save) {
     const save = labels.saves[mechanics.save.save] ?? mechanics.save.save;

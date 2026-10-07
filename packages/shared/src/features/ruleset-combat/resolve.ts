@@ -1521,20 +1521,26 @@ export function applyRulesetCombatChoice(
   // A weapon's mode is one the option offers now, and aims at as many as the mode says.
   const mode = choice.mode === undefined ? undefined : option.modes?.find((entry) => entry.id === choice.mode);
   if (choice.mode !== undefined && !mode) return refusal(state, choice.actorId, "unknown-mode", option.id);
-  // Targets, checked against the side and the count the option itself declared.
+  if (choice.payWith !== undefined && !(option.payWith ?? []).includes(choice.payWith)) {
+    return refusal(state, choice.actorId, "bad-pool", option.id);
+  }
+  // Targets, checked against the side and the count the option itself declared, or the count the
+  // pool it is paid with lets it take (1.166).
+  const paidCount = choice.payWith !== undefined ? option.targetsWith?.[choice.payWith] : undefined;
   const targets = area
     ? rulesetAreaTargets(state, actor.id, option.id, choice.at!).map((id) => rulesetCombatant(state, id)!)
     : pickTargets(
         definition,
         state,
         actor,
-        mode ? { id: option.id, targets: { ...option.targets, count: mode.targets } } : option,
+        mode
+          ? { id: option.id, targets: { ...option.targets, count: mode.targets } }
+          : paidCount !== undefined
+            ? { id: option.id, targets: { ...option.targets, count: paidCount } }
+            : option,
         choice.targetIds,
       );
   if (!Array.isArray(targets)) return refusal(state, choice.actorId, targets, option.id);
-  if (choice.payWith !== undefined && !(option.payWith ?? []).includes(choice.payWith)) {
-    return refusal(state, choice.actorId, "bad-pool", option.id);
-  }
 
   const { ctx, finish } = begin(definition, combat, state, roller);
   if (area && choice.at) ctx.aimedAt = { x: choice.at.x, y: choice.at.y };
@@ -3147,7 +3153,7 @@ function resolveActionBody(
   const steps = action.innate
     ? Math.max(0, action.innate.level - action.innate.baseLevel)
     : payWith
-      ? rulesetCostSteps(ctx.definition, action, payWith)
+      ? rulesetCostSteps(ctx.definition, action, payWith, actor)
       : 0;
   const extra = action.use?.perCostStep && steps > 0 ? { amount: action.use.perCostStep, times: steps } : undefined;
   // Where the action's own saves take cover from: a burst from where it landed, anything else (a cone,

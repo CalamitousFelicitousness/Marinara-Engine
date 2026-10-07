@@ -1485,6 +1485,7 @@ function mechanicsAction(
             ...(mechanics.perCostStep
               ? { perCostStep: amountOf(mechanics.perCostStep) ?? { count: 0, sides: 0, flat: 0 } }
               : {}),
+            ...(mechanics.targetsPerCostStep ? { targetsPerStep: mechanics.targetsPerCostStep } : {}),
           },
         }
       : {}),

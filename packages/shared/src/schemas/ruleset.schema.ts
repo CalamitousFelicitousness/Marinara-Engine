@@ -705,6 +705,9 @@ const livePoolSchema = z
      *  not: 5e's pact slots, one pool whose spells are cast at the warlock's slot level. Without it,
      *  the first pool of a group is level 1, the next 2, and a pool in no group has none. */
     level: rulesetValueRefSchema.optional(),
+    /** The groups whose costs it may pay too (Capability API 1.166), at its own level: 5e's pact
+     *  slots pay for a spell costed from the spell slots, as a multiclass warlock may. */
+    pays: z.array(sheetId).min(1).max(4).optional(),
     /** `full` starts at the maximum (hit points); `empty` starts at zero (stress, corruption). */
     start: z.enum(["full", "empty"]).default("full"),
     hideWhen: hideWhenSchema.optional(),
@@ -1718,6 +1721,7 @@ const RIDER_ENTRY_FORBIDS = [
   "save",
   "cost",
   "perCostStep",
+  "targetsPerCostStep",
   "concentration",
   "reaction",
   "targetCount",
@@ -1804,6 +1808,9 @@ const catalogMechanicsObject = z
       .optional(),
     /** What one step of a higher cost adds, for systems that let a player pay more. */
     perCostStep: z.object(catalogAmountShape).strict().optional(),
+    /** How many more targets one step of a higher cost lets a use take (Capability API 1.166), up
+     *  to 20 in all: 5e's Hold Person, one more creature for each slot level above 2nd. */
+    targetsPerCostStep: z.number().int().min(1).max(10).optional(),
     /** What using this entry does to a CHECK the character is about to make, rather than to a
      *  fight. A charm that lets a roll be re-thrown, or that simply hands out successes. Only a
      *  pool ruleset can honour any of it, and the cross-checks say so at import. */
@@ -3151,6 +3158,7 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     amountAdd: true,
     cost: true,
     perCostStep: true,
+    targetsPerCostStep: true,
     check: true,
     concentration: true,
     summons: true,
@@ -5660,6 +5668,13 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
     const path = ["sheet", "live", "pools", index];
     checkRef(pool.max, [...path, "max"], derivedIds, false);
     if (pool.level) checkRef(pool.level, [...path, "level"], derivedIds, false);
+    (pool.pays ?? []).forEach((group, at) => {
+      if (!sheet.live.pools.some((other) => other.group === group)) {
+        issue([...path, "pays", at], `Unknown pool group "${group}"`);
+      } else if (group === pool.group) {
+        issue([...path, "pays", at], `"${pool.id}" already pays for its own group "${group}"`);
+      }
+    });
     checkHideWhen(pool.hideWhen, path);
   });
 

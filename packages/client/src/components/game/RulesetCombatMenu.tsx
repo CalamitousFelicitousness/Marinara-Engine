@@ -205,16 +205,20 @@ export function RulesetCombatMenu({
   };
   const paid = (payWith?: string) => {
     if (!step) return;
-    const stage = stageFor(step.option);
+    // A pool that lets it take more targets aims at as many as it lets it (1.166).
+    const count = payWith ? step.option.targetsWith?.[payWith] : undefined;
+    const option = count !== undefined ? { ...step.option, targets: { ...step.option.targets, count } } : step.option;
+    const stage = stageFor(option);
     if (!stage) {
-      send(step.option, rulesetDefaultTargets(step.option), payWith, step.style, step.mode);
+      send(option, rulesetDefaultTargets(option), payWith, step.style, step.mode);
       return;
     }
     setStep({
       ...step,
+      option,
       stage,
       ...(payWith ? { payWith } : {}),
-      targets: view.window?.moment === "falls" ? step.option.targetIds.slice(0, step.option.targets.count) : [],
+      targets: view.window?.moment === "falls" ? option.targetIds.slice(0, option.targets.count) : [],
     });
   };
   const pick = (id: string) => {
@@ -311,18 +315,22 @@ export function RulesetCombatMenu({
           {t("game.combat.ruleset.upcast.prompt", { label: rulesetOptionLabel(option, t) })}
         </p>
         <div className="flex flex-wrap gap-2">
-          <button
-            ref={first}
-            type="button"
-            disabled={busy}
-            onClick={() => paid(undefined)}
-            className={cn(buttonClass, "border-white/15 bg-white/5 text-white/85 hover:bg-white/10")}
-          >
-            {t("game.combat.ruleset.upcast.own", { cost: rulesetOptionCostText(option, budgetLabel, t, distance) })}
-          </button>
-          {pools.map((pool) => (
+          {/* Its own pool is empty, so only a higher one pays for it now (1.166). */}
+          {!option.upcastOnly && (
+            <button
+              ref={first}
+              type="button"
+              disabled={busy}
+              onClick={() => paid(undefined)}
+              className={cn(buttonClass, "border-white/15 bg-white/5 text-white/85 hover:bg-white/10")}
+            >
+              {t("game.combat.ruleset.upcast.own", { cost: rulesetOptionCostText(option, budgetLabel, t, distance) })}
+            </button>
+          )}
+          {pools.map((pool, index) => (
             <button
               key={pool}
+              ref={option.upcastOnly && index === 0 ? first : undefined}
               type="button"
               disabled={busy}
               onClick={() => paid(pool)}

@@ -839,7 +839,11 @@ const capabilityPackageManifestBaseSchema = z
 // 1.165: an item may carry a switch (`toggle`: a label and the budget a fight turns it with), kept
 //        on its stack between fights, and a weapon's extra damage clause may be dealt only while the
 //        switch is on (`attack.plus[].when: "toggled"`): 5e's flame tongue. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 165 } as const);
+// 1.166: a live pool may pay for the costs of other groups at its own level (`pays`), and a
+//        catalog entry may take more targets for each step of a higher cost (`targetsPerCostStep`):
+//        5e's pact slots paying for spell-slot spells, and Hold Person. A use whose own pool is empty
+//        is offered paid from a higher one. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 166 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

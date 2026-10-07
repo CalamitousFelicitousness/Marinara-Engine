@@ -569,7 +569,7 @@ So rewording or renaming an entry can reach characters who already picked it, if
 
 ### `mechanics`: what an entry does in numbers
 
-An entry may carry an optional `mechanics` block that says what it does in numbers: `kind` (`attack`, `heal`, `buff`, `debuff`, `utility`, `rider`), `range`, `area`, `targets`, `targetCount`, `friendlyFire`, `amount` (dice such as `2d6`, or a flat number), `amountAdd` (a value read off the user's sheet and added to the amount, such as `{ "field": "level_fighter" }` for a Second Wind of 1d10 plus the fighter's level; it needs an `amount`, is read only in the ruleset's own fights (the Engine's Classic and Tactical fights use the amount as written), and is Capability API 1.78), `damageType`, `attackRoll`, `autoHit`, `save` (one of your sheet's saves, and what a success does), `applies` (conditions it puts on what it touches), `temporary` (temporary points on the health pool), `scales` (an amount that grows with the sheet), `cost` (which pool using it spends), `perCostStep`, `budget` (which part of the action economy it spends), `concentration`, `reaction`, `plus`, `free`, `gives`, `standard`, `rider` and `check`.
+An entry may carry an optional `mechanics` block that says what it does in numbers: `kind` (`attack`, `heal`, `buff`, `debuff`, `utility`, `rider`), `range`, `area`, `targets`, `targetCount`, `friendlyFire`, `amount` (dice such as `2d6`, or a flat number), `amountAdd` (a value read off the user's sheet and added to the amount, such as `{ "field": "level_fighter" }` for a Second Wind of 1d10 plus the fighter's level; it needs an `amount`, is read only in the ruleset's own fights (the Engine's Classic and Tactical fights use the amount as written), and is Capability API 1.78), `damageType`, `attackRoll`, `autoHit`, `save` (one of your sheet's saves, and what a success does), `applies` (conditions it puts on what it touches), `temporary` (temporary points on the health pool), `scales` (an amount that grows with the sheet), `cost` (which pool using it spends), `perCostStep`, `targetsPerCostStep`, `budget` (which part of the action economy it spends), `concentration`, `reaction`, `plus`, `free`, `gives`, `standard`, `rider` and `check`.
 
 An attack that targets enemies can leave something to strike on later turns with `summons` (Capability API 1.117). For Spiritual Weapon, put `"summons": { "budget": "bonus", "rounds": 10, "move": 20, "reach": 5 }` on its attack entry. The cast makes the first attack and leaves the weapon beside its first target once reactions finish; a cancelled cast leaves nothing. Later strikes spend only the declared economy budget, keep the cast's payment level for damage scaling, and open the same reaction windows. Distances use the catalog's unit; omitted movement is zero and omitted reach is one cell. On a board the weapon can strike an enemy within movement plus reach, ignoring walls, and moves beside it. Without a board any standing enemy is in reach. Rounds count down at the end of the holder's turns, excluding the casting turn. The summon ends at zero, on the holder's defeat, or when its entry's concentration ends. Casting the same entry again replaces its summon.
 
@@ -612,8 +612,26 @@ What it spends:
   uses to give, so the command is refused instead of going through for free.
 
 `pool=` is the upcast: the same single price, paid from another pool of the same group. It is only
-accepted when the cost has exactly one term and the named pool shares that term's group. Anything
-else is refused rather than reinterpreted.
+accepted when the cost has exactly one term and the named pool shares that term's group, or pays
+for it. Anything else is refused rather than reinterpreted.
+
+**A pool that pays for another group** (Capability API 1.166). A live pool's `pays` names up to four
+other groups whose costs it may pay too, at its own level (its `level`, or its place in its own
+group), and never for a cost of a higher level than its own. 5e's pact slots pay for spells costed
+from the spell slots, as a multiclass warlock may:
+
+```json
+{ "id": "pact_slots", "label": "Pact Slots", "group": "pact", "max": { "field": "pact_slot_count" },
+  "level": { "field": "pact_slot_level" }, "pays": ["slots"] }
+```
+
+A fight offers such a pool beside the higher pools of the spell's own group, and a payment from it
+grows the spell by as many steps as its level is above the spell's: a 3rd-level pact slot pays for
+Magic Missile as a 3rd-level slot would. A use whose own pool is empty is still offered, paid only
+from a higher pool or one that pays for it, so a 1st-level spell is cast with a 2nd-level slot once
+the 1st-level slots are gone. `targetsPerCostStep` (1.166, 1 to 10) on an entry's `mechanics` adds
+that many targets for each step it is paid up, to 20 at most: Hold Person is `"targetCount": 1,
+"targetsPerCostStep": 1`.
 
 It is all or nothing. If any part cannot be paid the whole command is refused, nothing changes, and
 the player is told. An entry with no cost at all, such as a cantrip or a passive feature, is accepted

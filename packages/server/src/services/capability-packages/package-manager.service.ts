@@ -1429,6 +1429,18 @@ function carriesBlowNarrowing(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesBlowNarrowing(one, depth + 1));
 }
 
+/** A live pool that pays for another group, or a catalog entry whose targets grow with its cost,
+ *  in catalog files too (1.166). */
+function carriesCostLadder(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCostLadder(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.mechanics)?.targetsPerCostStep !== undefined) return true;
+  if (Array.isArray(record.pays) && record.max !== undefined) return true;
+  return Object.values(record).some((one) => carriesCostLadder(one, depth + 1));
+}
+
 /** An item's switch, or a weapon clause dealt while it is on, in catalog files too (1.165). */
 function carriesItemToggles(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -2578,6 +2590,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesItemToggles(document)))
   ) {
     return "A ruleset whose items switch on and off requires schemaVersion 2 and capabilityApi 1.165 or newer";
+  }
+  // Pools that pay for other groups, and targets that grow with the cost, 1.166.
+  if (
+    !declaresApi(166) &&
+    (carriesCostLadder(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesCostLadder(document)))
+  ) {
+    return "A ruleset whose pools pay for another group or whose targets grow with the cost requires schemaVersion 2 and capabilityApi 1.166 or newer";
   }
   if (carriesCreatureSpellcasting) {
     // The references can only be checked once the catalog files are beside their headers.

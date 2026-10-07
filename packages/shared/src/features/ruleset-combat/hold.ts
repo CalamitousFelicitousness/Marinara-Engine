@@ -548,13 +548,18 @@ function poolValues(definition: RulesetDefinition, combatant: RulesetCombatant):
  *  out of a bigger pool. */
 function stepsAffordable(
   definition: RulesetDefinition,
+  combatant: RulesetCombatant,
   action: RulesetCombatAction,
   pools: Map<string, number>,
 ): number {
   if (!action.use?.perCostStep) return 0;
   let steps = 0;
-  for (const pool of rulesetPoolFamily(definition, action.use.group)) {
-    if ((pools.get(pool) ?? 0) >= 1) steps = Math.max(steps, rulesetCostSteps(definition, action, pool));
+  // Its own family, and the pools of other groups that pay for it (1.166).
+  const payers = definition.sheet.live.pools
+    .filter((pool) => pool.pays?.includes(action.use!.group ?? ""))
+    .map((pool) => pool.id);
+  for (const pool of [...rulesetPoolFamily(definition, action.use.group), ...payers]) {
+    if ((pools.get(pool) ?? 0) >= 1) steps = Math.max(steps, rulesetCostSteps(definition, action, pool, combatant));
   }
   return steps;
 }
@@ -578,7 +583,7 @@ function bestSheetRound(definition: RulesetDefinition, combatant: RulesetCombata
   const carried = rider ? Math.max(0, rulesetAverageAmount(rider.amount)) : 0;
   const once = (action: RulesetCombatAction | undefined) => {
     if (!action?.damage) return 0;
-    const steps = stepsAffordable(definition, action, pools);
+    const steps = stepsAffordable(definition, combatant, action, pools);
     const grown = steps > 0 ? steps * rulesetAverageAmount(action.use!.perCostStep!) : 0;
     return Math.max(0, rulesetAverageDamage(action.damage) + grown);
   };
@@ -678,7 +683,9 @@ export function holdRulesetCombatant(
     const parts = round.parts;
     // Only a part that can really climb gives up what the climb buys: a striking row or a sequence's
     // step is measured for itself, not by the action the round was spent on.
-    const grown = parts.find((part) => part.use?.perCostStep && stepsAffordable(definition, part, pools) > 0);
+    const grown = parts.find(
+      (part) => part.use?.perCostStep && stepsAffordable(definition, combatant, part, pools) > 0,
+    );
     if (grown?.use?.perCostStep) {
       if (!shave(grown.use.perCostStep)) delete grown.use.perCostStep;
       growth = true;

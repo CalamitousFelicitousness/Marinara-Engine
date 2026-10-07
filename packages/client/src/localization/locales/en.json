@@ -1601,6 +1601,7 @@
   "game.ruleset.catalog.mechanics.saveNone": "{{save}}: a success changes nothing",
   "game.ruleset.catalog.mechanics.selfOrTouch": "self or touch",
   "game.ruleset.catalog.mechanics.standard": "{{actions}} for a {{budget}}",
+  "game.ruleset.catalog.mechanics.targetsPerStep": "+{{count}} targets for each step paid up",
   "game.ruleset.catalog.mechanicsNote": "These numbers are for reference. Battles do not use them yet.",
   "game.ruleset.catalog.mechanicsNoteBattle": "Battles use the range, area, amount and cost shown here, through Marinara's own combat math. Attack rolls and saves are not applied.",
   "game.ruleset.catalog.noMatches": "Nothing here matches the search and the filters.",

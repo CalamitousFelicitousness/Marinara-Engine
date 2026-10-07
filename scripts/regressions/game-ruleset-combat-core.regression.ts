@@ -1202,12 +1202,22 @@ const labels = (definition: RulesetDefinition, state: RulesetEncounterState, id:
   );
 }
 
-// ── A price the sheet would refuse is not offered, and is refused if asked for anyway ──
+// ── A price the sheet would refuse is offered only from a higher pool, and refused if asked for anyway ──
 {
   const state = fight(fiveE, [wizard({ pools: { slots_3: { value: 0 } } }), snag()], 20, 5);
+  // No third-level slot: Fireball is cast with a higher one or not at all (1.166).
+  const fireball = rulesetCombatOptions(fiveE, state, "corwin").find((option) => option.label === "Fireball");
+  assert.equal(fireball?.upcastOnly, true, "no third-level slot, Fireball only from a higher one");
+  assert.ok(!fireball?.payWith?.includes("slots_3"));
+  const none = fight(
+    fiveE,
+    [wizard({ pools: { slots_3: { value: 0 }, slots_4: { value: 0 }, slots_5: { value: 0 } } }), snag()],
+    20,
+    5,
+  );
   assert.ok(
-    !rulesetCombatOptions(fiveE, state, "corwin").some((option) => option.label === "Fireball"),
-    "no third-level slot, no Fireball",
+    !rulesetCombatOptions(fiveE, none, "corwin").some((option) => option.label === "Fireball"),
+    "no slot that could pay, no Fireball",
   );
   assert.deepEqual(act(fiveE, state, { actorId: "corwin", optionId: "ability:0:1", targetIds: ["snag"] }).events, [
     { type: "refused", actorId: "corwin", optionId: "ability:0:1", reason: "insufficient" },

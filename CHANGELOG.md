@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: a pool can pay for another group's costs at its own level, so a warlock's pact slots cast spells costed from spell slots; a spell whose own slots are gone is still offered from a higher slot; and spells such as Hold Person take more targets when cast with a higher slot (Capability API 1.166).
 - Rulesets: items can carry a switch the player turns on or off in a fight or from the inventory, kept between fights, and a weapon's extra damage can be dealt only while it is on, so a flame tongue works (Capability API 1.165).
 - Rulesets: save modifiers can count only against conditions, damage types or magic, so Dwarven Resilience, Fey Ancestry, Brave and Gnome Cunning grant advantage only on the saves they protect (Capability API 1.129).
 - Rulesets: weapons can deal extra damage, against certain creatures or on a critical hit, and their hits can put on conditions a save resists or ends, so dragon slayers, javelins of lightning and swords of wounding work (Capability API 1.164).

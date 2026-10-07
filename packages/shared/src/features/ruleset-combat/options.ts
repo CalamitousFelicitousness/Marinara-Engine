@@ -662,12 +662,68 @@ export function rulesetPaidLevel(
   return at < 0 ? 0 : at + 1;
 }
 
-/** How many steps up the family a payment is, or 0 when it is not a climb at all. */
-export function rulesetCostSteps(definition: RulesetDefinition, action: RulesetCombatAction, payWith: string): number {
+/** How many steps up the family a payment is, or 0 when it is not a climb at all. A pool of
+ *  another group that pays for this one (`pays`, 1.166) climbs as far as its level is above the
+ *  action's, read off the payer's sheet. */
+export function rulesetCostSteps(
+  definition: RulesetDefinition,
+  action: RulesetCombatAction,
+  payWith: string,
+  combatant?: Pick<RulesetCombatant, "sheet">,
+): number {
   const family = rulesetPoolFamily(definition, action.use?.group);
   const from = family.indexOf(action.use?.pool ?? "");
   const to = family.indexOf(payWith);
+  if (to < 0 && from >= 0 && combatant && rulesetPoolPaysFor(definition, payWith, action.use?.group)) {
+    return Math.max(
+      0,
+      rulesetPaidLevel(definition, combatant, action, payWith) - rulesetPaidLevel(definition, combatant, action),
+    );
+  }
   return from >= 0 && to > from ? to - from : 0;
+}
+
+/** Whether a pool of another group may pay for this group's costs (1.166). */
+export function rulesetPoolPaysFor(definition: RulesetDefinition, pool: string, group: string | undefined): boolean {
+  if (!group) return false;
+  return definition.sheet.live.pools.find((entry) => entry.id === pool)?.pays?.includes(group) === true;
+}
+
+/**
+ * The other pools that could pay for an action right now: the higher pools of its own family, in
+ * the order the ruleset declared them, then the pools of other groups that pay for it (`pays`,
+ * 1.166) at a level no lower than its own. Each is one the sheet would accept the price from.
+ */
+export function rulesetPaymentPools(
+  definition: RulesetDefinition,
+  combatant: RulesetCombatant,
+  action: RulesetCombatAction,
+): string[] {
+  const group = action.use?.group;
+  const family = rulesetPoolFamily(definition, group);
+  const from = family.indexOf(action.use?.pool ?? "");
+  if (from < 0) return [];
+  const base = rulesetPaidLevel(definition, combatant, action);
+  const others = definition.sheet.live.pools
+    .filter((pool) => pool.group !== group && pool.pays?.includes(group!))
+    .filter((pool) => rulesetPaidLevel(definition, combatant, action, pool.id) >= base)
+    .map((pool) => pool.id);
+  return [...family.slice(from + 1), ...others].filter(
+    (pool) => planRulesetCombatCost(definition, combatant, action, pool) !== null,
+  );
+}
+
+/** How many targets an action takes when paid for this way: one more for each step of a higher cost
+ *  by its `targetsPerCostStep` (1.166), up to 20. */
+export function rulesetPaidTargetCount(
+  definition: RulesetDefinition,
+  combatant: Pick<RulesetCombatant, "sheet">,
+  action: RulesetCombatAction,
+  payWith: string | undefined,
+): number {
+  const per = action.use?.targetsPerStep;
+  if (!per || payWith === undefined || action.targets.count <= 0) return action.targets.count;
+  return Math.min(20, action.targets.count + per * rulesetCostSteps(definition, action, payWith, combatant));
 }
 
 // ── Forecasts ──
@@ -1330,8 +1386,11 @@ function optionFrom(
     oneStrike = grant.attacks === true && weapon;
   }
   if (!rulesetActionAvailable(actor, action, state, definition)) return null;
+  // Its own price, or, with that pool empty, a higher one that pays for it: a 1st-level spell is
+  // still cast with a 2nd-level slot, or a warlock's pact slot (1.166).
   const paid = planRulesetCombatCost(definition, actor, action);
-  if (!paid) return null;
+  const payments = rulesetPaymentPools(definition, actor, action);
+  if (!paid && payments.length === 0) return null;
   const option: RulesetCombatOption = {
     id: action.id,
     kind: action.kind,
@@ -1354,7 +1413,13 @@ function optionFrom(
     ...(action.switches ? { on: rulesetItemOn(actor, action.switches.item) } : {}),
     ...(action.restore ? { restores: action.restore.pool } : {}),
   };
-  if (paid.cost.length > 0) option.cost = paid.cost;
+  if (paid && paid.cost.length > 0) option.cost = paid.cost;
+  if (!paid) {
+    option.upcastOnly = true;
+    // What the cheapest of the ways it can still be paid costs, so the menu has a price to show.
+    const cheapest = planRulesetCombatCost(definition, actor, action, payments[0]);
+    if (cheapest && cheapest.cost.length > 0) option.cost = cheapest.cost;
+  }
   if (action.uses) option.left = rulesetActionUses(actor, action, state);
   if (action.ammo) option.ammo = rulesetAmmoLeft(actor, action.ammo.tag);
   if (action.clip) option.loaded = { now: rulesetLoaded(actor, action.clip), max: action.clip.max };
@@ -1376,13 +1441,14 @@ function optionFrom(
   }
   // Which higher pools of the same family could pay instead, so the menu offers the upcast rather
   // than a player discovering it.
-  const family = rulesetPoolFamily(definition, action.use?.group);
-  const from = family.indexOf(action.use?.pool ?? "");
-  if (from >= 0) {
-    const payWith = family
-      .slice(from + 1)
-      .filter((pool) => planRulesetCombatCost(definition, actor, action, pool) !== null);
-    if (payWith.length > 0) option.payWith = payWith;
+  if (payments.length > 0) {
+    option.payWith = payments;
+    // A use that takes more targets the more it is paid says how many each way takes (1.166).
+    if (action.use?.targetsPerStep && action.targets.count > 0) {
+      option.targetsWith = Object.fromEntries(
+        payments.map((pool) => [pool, rulesetPaidTargetCount(definition, actor, action, pool)]),
+      );
+    }
   }
   const forecast = forecastFor(definition, combat, state, actor, action);
   if (forecast) option.forecast = forecast;

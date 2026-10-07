@@ -2746,6 +2746,9 @@ export function useGenerate() {
             }
 
             case "schedule_updated": {
+              // The server has already refreshed this chat's presence cache.
+              void qc.invalidateQueries({ queryKey: chatKeys.detail(params.chatId) });
+              void qc.invalidateQueries({ queryKey: ["conversation-status", params.chatId] });
               break;
             }
 

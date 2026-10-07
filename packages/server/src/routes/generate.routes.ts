@@ -13739,6 +13739,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   characterId,
                   chatId: input.chatId,
                   chats,
+                  characters: chars,
                   sendUpdated: (data) => {
                     sendSseEvent(reply, { type: "schedule_updated", data });
                   },

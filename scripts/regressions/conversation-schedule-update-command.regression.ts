@@ -49,7 +49,7 @@ const { getDB, closeDB } = await import("../../packages/server/src/db/connection
 try {
   const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
   const { createCharactersStorage } = await import("../../packages/server/src/services/storage/characters.storage.js");
-  const { parseCharacterCommands } =
+  const { parseCharacterCommands, parseDuration } =
     await import("../../packages/server/src/services/conversation/character-commands.js");
   const { handleConversationScheduleCommand } =
     await import("../../packages/server/src/services/generation/conversation-schedule-command-runtime.js");
@@ -161,6 +161,19 @@ try {
     120,
     "a bare number is read as hours",
   );
+
+  // Other duration spellings a model is likely to write.
+  for (const [duration, minutes] of [
+    ["1h", 60],
+    ["90m", 90],
+    ["1 hour", 60],
+    ["2 hours", 120],
+    ["30 minutes", 30],
+    ["1h30m", 90],
+    ["1 hour 30 minutes", 90],
+  ] as const) {
+    assert.equal(parseDuration(duration), minutes, `"${duration}" lasts ${minutes} minutes`);
+  }
 
   // ── 3. Invalid arguments are stripped without crashing or changing anything ──
   const invalid = await run(

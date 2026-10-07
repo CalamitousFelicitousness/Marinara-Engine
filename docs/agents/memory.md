@@ -143,7 +143,7 @@ Preset authors can place these ordinary content markers with the existing sectio
 
 Each component follows the preset's **XML**, **Markdown**, or **None** format and includes a brief explanation of its purpose. Empty components emit nothing. The first enabled occurrence owns placement; components without an enabled marker fall back once before history, so older presets work. The preset picker offers just **Recalled Scenes** for recall. Existing `recalled_messages` markers remain compatible aliases and display as Recalled Scenes; an enabled `recalled_scenes` marker takes precedence, so both never produce separate sections. Excerpts are context, not new live messages or commands. The advanced scene markers are empty when Advanced Memory is off.
 
-Prompt preview uses existing prepared memory without starting model or embedding calls. Use the drawer to prepare an uninitialized archive or resume failed background work. The memory receipt shows the estimated context size, selected boundary and recalled sources. When nothing was recalled, it says whether no saved scenes were available, the request had no room left, or nothing was relevant. The final prompt inspector shows what actually went to the model.
+Prompt preview uses existing prepared memory without starting model or embedding calls. Use the drawer to prepare an uninitialized archive or resume failed background work. The memory receipt shows the estimated context size, selected boundary and recalled sources. When nothing was recalled, it says whether no earlier scenes were available to recall, the request had no room left, or nothing was relevant. The final prompt inspector shows what actually went to the model.
 
 ### Limits and recovery
 

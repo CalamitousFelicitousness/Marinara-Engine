@@ -258,7 +258,7 @@
   "chat.advancedMemory.reason.decisionRecallFallback": "The Decision model was unavailable, too slow, or could not evaluate every candidate. Ordinary recall was used.",
   "chat.advancedMemory.reason.decisionRecallPreview": "This preview uses ordinary recall without calling the Decision model. A new reply may select different memories.",
   "chat.advancedMemory.reason.noRecallBudget": "Nothing was recalled because this request had no room left for memories.",
-  "chat.advancedMemory.reason.noRecallCandidates": "Nothing was recalled because no saved scenes were available to recall.",
+  "chat.advancedMemory.reason.noRecallCandidates": "Nothing was recalled because no earlier scenes were available to recall.",
   "chat.advancedMemory.reason.noRelevantRecall": "No relevant earlier scenes or messages were recalled.",
   "chat.advancedMemory.reason.openScenePrefixSummary": "The older part of the ongoing scene was summarized.",
   "chat.advancedMemory.reason.preparationNeeded": "Memory needs preparation.",

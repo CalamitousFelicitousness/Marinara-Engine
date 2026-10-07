@@ -2387,8 +2387,14 @@ const LocalChatArea = memo(function LocalChatArea({
   const handlePeekPrompt = useCallback(
     (messageId?: string) => {
       if (!activeChatId) return;
+      // Characters who reply one by one each have their own prompt, so diagnostics follow the inspected reply.
+      const characterId =
+        groupChatMode === "individual" && messageId
+          ? messages?.find((message) => message.id === messageId)?.characterId
+          : null;
       peekPrompt.mutate(messageId ? { chatId: activeChatId, messageId } : activeChatId, {
-        onSuccess: (data) => setPeekPromptData({ ...data, chatId: activeChatId }),
+        onSuccess: (data) =>
+          setPeekPromptData({ ...data, chatId: activeChatId, ...(characterId ? { characterId } : {}) }),
         onError: (error) => {
           const message =
             error instanceof ApiError
@@ -2400,7 +2406,7 @@ const LocalChatArea = memo(function LocalChatArea({
         },
       });
     },
-    [activeChatId, peekPrompt],
+    [activeChatId, groupChatMode, messages, peekPrompt],
   );
 
   // Find the last assistant message for peek-prompt eligibility

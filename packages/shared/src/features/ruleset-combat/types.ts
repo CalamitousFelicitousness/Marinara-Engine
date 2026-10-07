@@ -85,8 +85,8 @@ export interface RulesetCombatApplies {
   saveEnds?: { save: string; at: "turn-end" | "turn-start" | "damaged" };
   endsAfter?: RulesetConditionEnding;
   /** What breaking free of it is rolled against, in place of the holder's own side of the contest
-   *  (1.98): 5e's "grappled (escape DC 13)". */
-  escapeDc?: number;
+   *  (1.98): 5e's "grappled (escape DC 13)"; `"save"` is the applier's save difficulty (1.169). */
+  escapeDc?: number | "save";
   /** It goes on only while this value off its applier's sheet stands within the bounds (1.162). */
   when?: RulesetSheetBounds;
   /** It goes on only a target that is this (1.163). */
@@ -1188,7 +1188,8 @@ export type RulesetCombatEvent =
       actorId: string;
       label: string;
       state: "started" | "kept" | "ended";
-      reason?: "replaced" | "damage" | "down";
+      /** `zone`: a zone that breaks concentration caught them and they failed the save (1.169). */
+      reason?: "replaced" | "damage" | "down" | "zone";
     }
   | { type: "standard"; actorId: string; action: string; targetId?: string }
   | {
@@ -1496,6 +1497,10 @@ export interface RulesetCombatZoneRule {
   difficult?: boolean;
   /** What moving inside it deals: `amount` for every `every` cells, no save (1.168). */
   perDistance?: { every: number; amount: RulesetCombatAmount; damageType?: string };
+  /** Whoever it catches while concentrating saves against its save difficulty or loses it (1.169). */
+  breaksConcentration?: boolean;
+  /** It ends once it has dealt this much damage in all (1.169). */
+  damageCap?: number;
 }
 
 /** One lasting area standing on the board (1.167). A zone held at a point keeps the cells it was
@@ -1516,4 +1521,6 @@ export interface RulesetCombatZone {
   struck?: Record<string, string>;
   /** Cells each mover has walked inside it, toward its next `perDistance` harm (1.168). */
   walked?: Record<string, number>;
+  /** Damage it has dealt in all, toward its `damageCap` (1.169). */
+  dealt?: number;
 }

@@ -584,7 +584,7 @@ export function rulesetCombatEventLine(
     case "concentration":
       if (event.state === "ended") {
         return key(
-          event.reason === "damage"
+          event.reason === "damage" || event.reason === "zone"
             ? "concentrationLost"
             : event.reason === "replaced"
               ? "concentrationReplaced"

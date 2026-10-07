@@ -851,7 +851,12 @@ const capabilityPackageManifestBaseSchema = z
 //        from them as their turns start (`zone.drift`), catching whoever it reaches; and its ground
 //        may be hard going (`zone.terrain.difficult`) or hurt for every distance moved inside
 //        (`zone.terrain.perDistance`). 5e's Moonbeam, Cloudkill and Spike Growth. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 168 } as const);
+// 1.169: an applied condition's `escapeDc` may be `"save"`, the save difficulty of whatever applied
+//        it (Web, Black Tentacles); a zone may make whoever it catches while concentrating save or
+//        lose it (`zone.breaksConcentration`, Sleet Storm) and end once it has dealt `zone.damageCap`
+//        in all (Guardian of Faith); and an item's use may concentrate and leave a zone, as a spell
+//        scroll's spell does. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 169 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

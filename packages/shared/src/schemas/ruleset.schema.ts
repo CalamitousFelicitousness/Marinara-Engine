@@ -1359,6 +1359,72 @@ const catalogAmountShape = { dice: catalogDice.optional(), flat: z.number().int(
 
 /** The moment a reaction waits for, and what it answers. A catalog entry and a creature's own action
  *  say it the same way. */
+/** An area that stays (Capability API 1.167), as a catalog entry or an item's use carries it. Typed by
+ *  hand: written out, its inferred type is too long for the definition schema around it to emit. */
+export interface RulesetCatalogZone {
+  rounds: number;
+  anchor?: "point" | "caster";
+  triggers: Array<"enter" | "turn-start" | "turn-end">;
+  atCast?: boolean;
+  move?: { budget: string; distance: number };
+  drift?: { distance: number };
+  terrain?: {
+    difficult?: true;
+    perDistance?: { every: number; amount: { dice?: string; flat?: number }; damageType?: string };
+  };
+  breaksConcentration?: true;
+  damageCap?: number;
+}
+
+const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = z
+  .object({
+    rounds: z.number().int().min(1).max(1000),
+    anchor: z.enum(["point", "caster"]).optional(),
+    triggers: z
+      .array(z.enum(["enter", "turn-start", "turn-end"]))
+      .max(3)
+      .refine((triggers) => new Set(triggers).size === triggers.length, { message: "A trigger is named once" }),
+    atCast: z.boolean().optional(),
+    /** Its caster may move it on their turn (Capability API 1.168), spending `budget`, up to
+     *  `distance` in the catalog's unit: 5e's Moonbeam and Flaming Sphere. */
+    move: z
+      .object({ budget: sheetId, distance: z.number().finite().gt(0) })
+      .strict()
+      .optional(),
+    /** It moves `distance` straight away from its caster as each of their turns starts (1.168):
+     *  5e's Cloudkill. */
+    drift: z
+      .object({ distance: z.number().finite().gt(0) })
+      .strict()
+      .optional(),
+    /** What its ground does to whoever moves through it (1.168): `difficult` costs double to move
+     *  into, and `perDistance` deals `amount` for every `every` moved inside, with no save
+     *  (5e's Spike Growth). */
+    terrain: z
+      .object({
+        difficult: z.literal(true).optional(),
+        perDistance: z
+          .object({
+            every: z.number().finite().gt(0),
+            amount: z.object(catalogAmountShape).strict(),
+            damageType: promptSafeText(40).optional(),
+          })
+          .strict()
+          .optional(),
+      })
+      .strict()
+      .refine((terrain) => terrain.difficult || terrain.perDistance, {
+        message: '"terrain" says "difficult", "perDistance" or both',
+      })
+      .optional(),
+    /** Whoever it catches while concentrating makes the ruleset's concentration save against the
+     *  entry's own save difficulty, or loses it (Capability API 1.169): 5e's Sleet Storm. */
+    breaksConcentration: z.literal(true).optional(),
+    /** It ends once it has dealt this much damage in all (1.169): 5e's Guardian of Faith, 60. */
+    damageCap: z.number().int().min(1).max(100000).optional(),
+  })
+  .strict();
+
 /** One catalog entry, named the way a sheet row points at it: `<catalog>/<entry>`. */
 const catalogEntryRef = z
   .string()
@@ -1636,8 +1702,9 @@ const catalogAppliesSchema = z
      *  runs beside it, so "on its next attack before the end of its next turn" is both. */
     endsAfter: z.enum(["own-attack", "attacked", "own-save"]).optional(),
     /** What breaking free of it is rolled against, in place of the holder's own side of the contest
-     *  that breaks free of it (Capability API 1.98): 5e's "the target is grappled (escape DC 13)". */
-    escapeDc: z.number().int().min(1).max(1000).optional(),
+     *  that breaks free of it (Capability API 1.98): 5e's "the target is grappled (escape DC 13)".
+     *  `"save"` is the save difficulty of whatever applied it (1.169): Web and Black Tentacles. */
+    escapeDc: z.union([z.number().int().min(1).max(1000), z.literal("save")]).optional(),
     /** It goes on only while a value off the sheet of whoever applies it stands within these bounds,
      *  read as it applies (Capability API 1.162); one that does not is skipped. 5e's Rage puts on a
      *  damage bonus by barbarian level: +2 `when` the level is at most 8, +3 from 9, +4 from 16. */
@@ -1861,50 +1928,7 @@ const catalogMechanicsObject = z
      *  ending a turn in it. `anchor: "caster"` keeps a burst centred on its caster as they move (5e's
      *  Spirit Guardians); `atCast: false` does nothing as it appears. A zone whose `terrain` is all
      *  it does names no triggers (1.168). */
-    zone: z
-      .object({
-        rounds: z.number().int().min(1).max(1000),
-        anchor: z.enum(["point", "caster"]).optional(),
-        triggers: z
-          .array(z.enum(["enter", "turn-start", "turn-end"]))
-          .max(3)
-          .refine((triggers) => new Set(triggers).size === triggers.length, { message: "A trigger is named once" }),
-        atCast: z.boolean().optional(),
-        /** Its caster may move it on their turn (Capability API 1.168), spending `budget`, up to
-         *  `distance` in the catalog's unit: 5e's Moonbeam and Flaming Sphere. */
-        move: z
-          .object({ budget: sheetId, distance: z.number().finite().gt(0) })
-          .strict()
-          .optional(),
-        /** It moves `distance` straight away from its caster as each of their turns starts (1.168):
-         *  5e's Cloudkill. */
-        drift: z
-          .object({ distance: z.number().finite().gt(0) })
-          .strict()
-          .optional(),
-        /** What its ground does to whoever moves through it (1.168): `difficult` costs double to move
-         *  into, and `perDistance` deals `amount` for every `every` moved inside, with no save
-         *  (5e's Spike Growth). */
-        terrain: z
-          .object({
-            difficult: z.literal(true).optional(),
-            perDistance: z
-              .object({
-                every: z.number().finite().gt(0),
-                amount: z.object(catalogAmountShape).strict(),
-                damageType: promptSafeText(40).optional(),
-              })
-              .strict()
-              .optional(),
-          })
-          .strict()
-          .refine((terrain) => terrain.difficult || terrain.perDistance, {
-            message: '"terrain" says "difficult", "perDistance" or both',
-          })
-          .optional(),
-      })
-      .strict()
-      .optional(),
+    zone: catalogZoneSchema.optional(),
     concentration: z.boolean().optional(),
     /** Something taken at a MOMENT rather than on a turn. `true` says only that much, and an entry
      *  that says only that much is on no menu: nothing knows which moment it waits for. An object
@@ -1979,20 +2003,36 @@ const catalogMechanicsObject = z
   })
   .strict();
 
+/** What is wrong with a zone, wherever it is carried: a catalog entry, or an item's use (1.169). */
+function zoneIssue(mechanics: {
+  zone?: RulesetCatalogZone;
+  area?: { shape: string };
+  summons?: unknown;
+  reaction?: unknown;
+  save?: unknown;
+}): string | undefined {
+  const zone = mechanics.zone;
+  if (!zone) return undefined;
+  return !mechanics.area
+    ? "A zone is an area that stays, so it needs an area"
+    : zone.anchor === "caster" && mechanics.area.shape !== "burst"
+      ? "A zone that moves with its caster is a burst around them"
+      : mechanics.summons || mechanics.reaction
+        ? "A zone is cast on a turn and leaves no summon"
+        : zone.triggers.length === 0 && !zone.terrain
+          ? "A zone names at least one trigger, unless its ground is all it does"
+          : (zone.move || zone.drift) && (zone.anchor === "caster" || mechanics.area.shape !== "burst")
+            ? "Only a burst held at a point is moved or drifts"
+            : zone.breaksConcentration && !mechanics.save
+              ? "A zone that breaks concentration rolls it against the entry's own save"
+              : zone.breaksConcentration && zone.triggers.length === 0
+                ? "A zone breaks concentration at one of its triggers"
+                : undefined;
+}
+
 const catalogMechanicsSchema = catalogMechanicsObject.superRefine((mechanics, ctx) => {
   if (mechanics.zone) {
-    const why = !mechanics.area
-      ? "A zone is an area that stays, so it needs an area"
-      : mechanics.zone.anchor === "caster" && mechanics.area.shape !== "burst"
-        ? "A zone that moves with its caster is a burst around them"
-        : mechanics.summons || mechanics.reaction
-          ? "A zone is cast on a turn and leaves no summon"
-          : mechanics.zone.triggers.length === 0 && !mechanics.zone.terrain
-            ? "A zone names at least one trigger, unless its ground is all it does"
-            : (mechanics.zone.move || mechanics.zone.drift) &&
-                (mechanics.zone.anchor === "caster" || mechanics.area.shape !== "burst")
-              ? "Only a burst held at a point is moved or drifts"
-              : undefined;
+    const why = zoneIssue(mechanics);
     if (why) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["zone"], message: why });
   }
   if (mechanics.summons && (mechanics.kind !== "attack" || (mechanics.targets ?? "enemy") !== "enemy")) {
@@ -3205,8 +3245,9 @@ export type RulesetItemAttack = z.infer<typeof rulesetItemAttackSchema>;
 
 /**
  * What an item does when it is used, in the words a catalog entry's `mechanics` has (heal, harm, a
- * save, conditions, temporary points, range and area), less what only a sheet row can mean: a cost
- * off a pool, a check, a reaction, concentration, scaling and a turn's economy. It spends its own
+ * save, conditions, temporary points, range and area, and since Capability API 1.169 concentration
+ * and an area that stays, as a spell scroll's spell has), less what only a sheet row can mean: a
+ * cost off a pool, a check, a reaction, scaling and a turn's economy. It spends its own
  * `budget` (unless `free`), rolls to hit with its own `toHit` where it rolls, and asks its own
  * `saveDifficulty` where it asks a save. It may take the item off its stack (`consumes`) or spend the
  * item's `charges`, and may `restore` a pool of whoever it lands on.
@@ -3225,9 +3266,7 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     perCostStep: true,
     targetsPerCostStep: true,
     check: true,
-    concentration: true,
     summons: true,
-    zone: true,
     reaction: true,
     scales: true,
     gives: true,
@@ -3283,6 +3322,9 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     if (use.restore && use.kind !== "heal" && use.kind !== "buff") {
       issue("restore", "A restore is on a use that helps, a heal or a buff");
     }
+    // An area that stays, as a scroll of the spell leaves one (1.169).
+    const zone = zoneIssue(use);
+    if (zone) issue("zone", zone);
   });
 export type RulesetItemUse = z.infer<typeof rulesetItemUseSchema>;
 
@@ -7536,7 +7578,7 @@ function targetTestIssues(
 
 function escapeDcIssues(
   definition: RulesetDefinition,
-  applies: { condition: string; escapeDc?: number },
+  applies: { condition: string; escapeDc?: number | "save" },
   at: (string | number)[],
   add: (path: (string | number)[], message: string) => void,
 ): void {

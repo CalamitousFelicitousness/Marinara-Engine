@@ -9118,6 +9118,15 @@
                           },
                           "additionalProperties": false
                         },
+                        "breaksConcentration": {
+                          "type": "boolean",
+                          "const": true
+                        },
+                        "damageCap": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 100000
+                        },
                         "$comment": {}
                       },
                       "required": [
@@ -9840,9 +9849,17 @@
                             ]
                           },
                           "escapeDc": {
-                            "type": "integer",
-                            "minimum": 1,
-                            "maximum": 1000
+                            "anyOf": [
+                              {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 1000
+                              },
+                              {
+                                "type": "string",
+                                "const": "save"
+                              }
+                            ]
                           },
                           "when": {
                             "type": "object",
@@ -11181,9 +11198,17 @@
                                   ]
                                 },
                                 "escapeDc": {
-                                  "type": "integer",
-                                  "minimum": 1,
-                                  "maximum": 1000
+                                  "anyOf": [
+                                    {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 1000
+                                    },
+                                    {
+                                      "type": "string",
+                                      "const": "save"
+                                    }
+                                  ]
                                 },
                                 "when": {
                                   "type": "object",
@@ -17090,6 +17115,136 @@
                           ],
                           "additionalProperties": false
                         },
+                        "zone": {
+                          "type": "object",
+                          "properties": {
+                            "rounds": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 1000
+                            },
+                            "anchor": {
+                              "type": "string",
+                              "enum": [
+                                "point",
+                                "caster"
+                              ]
+                            },
+                            "triggers": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "enum": [
+                                  "enter",
+                                  "turn-start",
+                                  "turn-end"
+                                ]
+                              },
+                              "maxItems": 3
+                            },
+                            "atCast": {
+                              "type": "boolean"
+                            },
+                            "move": {
+                              "type": "object",
+                              "properties": {
+                                "budget": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "distance": {
+                                  "type": "number",
+                                  "exclusiveMinimum": 0
+                                },
+                                "$comment": {}
+                              },
+                              "required": [
+                                "budget",
+                                "distance"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "drift": {
+                              "type": "object",
+                              "properties": {
+                                "distance": {
+                                  "type": "number",
+                                  "exclusiveMinimum": 0
+                                },
+                                "$comment": {}
+                              },
+                              "required": [
+                                "distance"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "terrain": {
+                              "type": "object",
+                              "properties": {
+                                "difficult": {
+                                  "type": "boolean",
+                                  "const": true
+                                },
+                                "perDistance": {
+                                  "type": "object",
+                                  "properties": {
+                                    "every": {
+                                      "type": "number",
+                                      "exclusiveMinimum": 0
+                                    },
+                                    "amount": {
+                                      "type": "object",
+                                      "properties": {
+                                        "dice": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                        },
+                                        "flat": {
+                                          "type": "integer"
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "additionalProperties": false
+                                    },
+                                    "damageType": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 40
+                                    },
+                                    "$comment": {}
+                                  },
+                                  "required": [
+                                    "every",
+                                    "amount"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                "$comment": {}
+                              },
+                              "additionalProperties": false
+                            },
+                            "breaksConcentration": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "damageCap": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 100000
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "rounds",
+                            "triggers"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "concentration": {
+                          "type": "boolean"
+                        },
                         "targetCount": {
                           "type": "integer",
                           "minimum": 1,
@@ -17180,9 +17335,17 @@
                                 ]
                               },
                               "escapeDc": {
-                                "type": "integer",
-                                "minimum": 1,
-                                "maximum": 1000
+                                "anyOf": [
+                                  {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 1000
+                                  },
+                                  {
+                                    "type": "string",
+                                    "const": "save"
+                                  }
+                                ]
                               },
                               "when": {
                                 "type": "object",
@@ -25378,9 +25541,17 @@
                           ]
                         },
                         "escapeDc": {
-                          "type": "integer",
-                          "minimum": 1,
-                          "maximum": 1000
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 1000
+                            },
+                            {
+                              "type": "string",
+                              "const": "save"
+                            }
+                          ]
                         },
                         "when": {
                           "type": "object",

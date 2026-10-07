@@ -201,6 +201,8 @@ function rulesetItemUseLine(facts: RulesetItemFacts, t: TFunction): string {
         })
       : "",
     use.consumes ? t("ui.game.gameinventory.useConsumes") : "",
+    use.concentration ? t("game.ruleset.catalog.mechanics.concentration") : "",
+    use.zone ? t("ui.game.gameinventory.useZone", { count: use.zone.rounds }) : "",
     use.charges ? t("ui.game.gameinventory.useCharges", { cost: use.charges.cost, max: use.charges.max }) : "",
     use.charges?.recharge
       ? use.charges.recharge.amount === "max"

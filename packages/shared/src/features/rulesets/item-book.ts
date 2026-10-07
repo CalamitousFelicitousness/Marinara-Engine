@@ -164,6 +164,10 @@ export interface RulesetItemUseFact {
   /** The ruleset's own distance unit, beside a range or an area. */
   unit?: string;
   consumes?: true;
+  /** It is held by its user's concentration (1.169), as a scroll's spell is. */
+  concentration?: true;
+  /** The area it leaves, and for how many rounds (1.169). */
+  zone?: { rounds: number };
   /** What one use spends of the charges the item holds at most, the rests (by label) that bring them
    *  back and how many (`"max"` or a sum), and the die it rolls to break when emptied. */
   charges?: {
@@ -337,6 +341,8 @@ function rulesetItemUseFacts(
       ? { unit: definition.combat.distance.label }
       : {}),
     ...(use.consumes ? { consumes: true as const } : {}),
+    ...(use.concentration ? { concentration: true as const } : {}),
+    ...(use.zone ? { zone: { rounds: use.zone.rounds } } : {}),
     ...(use.charges !== undefined && max !== undefined
       ? {
           charges: {
@@ -1272,6 +1278,8 @@ export function rulesetItemUseText(use: RulesetItemUseFact): string {
   return `use (${use.budget ?? "free"}): ${[
     ...rulesetItemUseDoes(use),
     use.consumes ? "used up" : "",
+    use.concentration ? "concentration" : "",
+    use.zone ? `the area stays ${use.zone.rounds} round${use.zone.rounds === 1 ? "" : "s"}` : "",
     use.charges ? `spends ${use.charges.cost} of ${use.charges.max} charges` : "",
     use.charges?.recharge
       ? `regains ${use.charges.recharge.amount === "max" ? "all" : use.charges.recharge.amount} on ${use.charges.recharge.rests.join(" or ")}`

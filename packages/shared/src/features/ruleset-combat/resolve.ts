@@ -1070,7 +1070,13 @@ function applyConditionId(
     ...(extra.difficulty !== undefined ? { difficulty: extra.difficulty } : {}),
     ...(extra.sourceId ? { source: extra.sourceId } : {}),
     ...(extra.concentration ? { concentration: true } : {}),
-    ...(applies.escapeDc !== undefined ? { escapeDc: applies.escapeDc } : {}),
+    // The applier's own save difficulty where it said "save" (1.169); with none, the holder's side
+    // of the contest is rolled as usual.
+    ...(typeof applies.escapeDc === "number"
+      ? { escapeDc: applies.escapeDc }
+      : applies.escapeDc === "save" && extra.difficulty !== undefined
+        ? { escapeDc: extra.difficulty }
+        : {}),
   });
   ctx.events.push({ type: "condition", targetId: target.id, condition, active: true, reason: "applied" });
   endImmuneConditions(ctx, target);
@@ -1336,6 +1342,11 @@ function placeZone(
   });
   (actor.flags.freshZones ??= []).push(action.id);
   ctx.events.push({ type: "zone", actorId: actor.id, label: action.label, outcome: "appeared" });
+  // Whoever the cast caught is caught by the storm too (1.169), as it appears.
+  for (const id of caught) {
+    const target = rulesetCombatant(ctx.state, id);
+    if (target && rulesetCombatStanding(target)) zoneShakes(ctx, action, target);
+  }
 }
 
 /** The turn a zone counts its catches by: once a turn, whoever's turn it is. */
@@ -1378,10 +1389,43 @@ function zoneStrike(
   const centre = zone.at ?? rulesetPositionOf(caster);
   if (centre) ctx.aimedAt = { x: centre.x, y: centre.y };
   else delete ctx.aimedAt;
+  zoneShakes(ctx, action, target);
   const { concentration: _held, zone: _zone, summons: _summons, gives: _gives, ...again } = action;
+  const from = ctx.events.length;
   resolveAction(ctx, caster, again, [target], zone.payWith);
   if (aimed) ctx.aimedAt = aimed;
   else delete ctx.aimedAt;
+  if (action.zone?.damageCap !== undefined) zoneDealt(ctx, caster, zone, action.zone.damageCap, from);
+}
+
+/** A storm that shakes concentration (1.169): whoever it catches while concentrating rolls the
+ *  ruleset's concentration save against the entry's own save difficulty, before what it does. */
+function zoneShakes(ctx: RulesetCombatContext, action: RulesetCombatAction, target: RulesetCombatant): void {
+  const difficulty = action.save?.difficulty ?? action.saveDifficulty;
+  const concentration = ctx.combat.concentration;
+  if (!action.zone?.breaksConcentration || !concentration || !target.concentrating || difficulty === undefined) return;
+  if (rollSave(ctx, target, concentration.save, difficulty)) {
+    ctx.events.push({ type: "concentration", actorId: target.id, label: target.concentrating.label, state: "kept" });
+  } else endConcentration(ctx, target, "zone");
+}
+
+/** A zone that ends once it has dealt so much (1.169): what its own damage events since `from` took
+ *  off, added to what it had dealt, and the zone gone once that reaches the cap. */
+function zoneDealt(
+  ctx: RulesetCombatContext,
+  caster: RulesetCombatant,
+  zone: RulesetCombatZone,
+  cap: number,
+  from: number,
+): void {
+  const dealt = ctx.events
+    .slice(from)
+    .reduce((total, one) => (one.type === "damage" && one.sourceId === caster.id ? total + one.dealt : total), 0);
+  zone.dealt = (zone.dealt ?? 0) + dealt;
+  if (zone.dealt < cap || !caster.zones?.includes(zone)) return;
+  caster.zones = caster.zones.filter((one) => one !== zone);
+  if (caster.zones.length === 0) delete caster.zones;
+  ctx.events.push({ type: "zone", actorId: caster.id, label: zone.label, outcome: "ended" });
 }
 
 /** Everybody a zone catches at the start or end of their turn: those standing in it on a board, or
@@ -1440,6 +1484,7 @@ function zoneGround(ctx: RulesetCombatContext, mover: RulesetCombatant, cell: Ru
   for (const { caster, zone, action } of rulesetStandingZones(ctx.state)) {
     const ground = action.zone?.perDistance;
     if (!ground || !rulesetCombatStanding(mover) || !rulesetZoneCatches(caster, zone, action, mover)) continue;
+    const from = ctx.events.length;
     if (!rulesetZoneHolds(rulesetZoneCells(ctx.state, caster, zone), cell)) continue;
     const walked = (zone.walked?.[mover.id] ?? 0) + 1;
     const times = Math.floor(walked / ground.every);
@@ -1469,6 +1514,7 @@ function zoneGround(ctx: RulesetCombatContext, mover: RulesetCombatant, cell: Ru
       });
       afterBlow(ctx, mover, dealt, false);
     }
+    if (action.zone?.damageCap !== undefined) zoneDealt(ctx, caster, zone, action.zone.damageCap, from);
   }
 }
 
@@ -1508,7 +1554,7 @@ function finishSummon(
 function endConcentration(
   ctx: RulesetCombatContext,
   actor: RulesetCombatant,
-  reason: "replaced" | "damage" | "down",
+  reason: "replaced" | "damage" | "down" | "zone",
 ): void {
   const held = actor.concentrating;
   if (!held) return;

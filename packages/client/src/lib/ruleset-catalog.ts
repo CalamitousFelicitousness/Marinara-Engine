@@ -692,6 +692,11 @@ export function formatCatalogMechanics(
         }),
       );
     }
+    // What it does to concentration, and the damage it ends at (1.169).
+    if (mechanics.zone.breaksConcentration) parts.push(t("game.ruleset.catalog.mechanics.zoneBreaksConcentration"));
+    if (mechanics.zone.damageCap !== undefined) {
+      parts.push(t("game.ruleset.catalog.mechanics.zoneDamageCap", { count: mechanics.zone.damageCap }));
+    }
   }
   if (mechanics.reaction) parts.push(t("game.ruleset.catalog.mechanics.reaction"));
   return parts.join(" · ");

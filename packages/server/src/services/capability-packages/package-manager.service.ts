@@ -1439,6 +1439,23 @@ function carriesZones(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesZones(one, depth + 1));
 }
 
+/** An escape against the applier's save, a zone that breaks concentration or ends at a damage cap,
+ *  or an item use that concentrates or leaves a zone, in catalog files too (1.169). */
+function carriesZoneRules(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesZoneRules(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.escapeDc === "save") return true;
+  const zone = plainRecord(plainRecord(record.mechanics)?.zone);
+  if (zone && (zone.breaksConcentration !== undefined || zone.damageCap !== undefined)) return true;
+  const use = plainRecord(record.use);
+  if (use && typeof record.category === "string" && (use.zone !== undefined || use.concentration !== undefined)) {
+    return true;
+  }
+  return Object.values(record).some((one) => carriesZoneRules(one, depth + 1));
+}
+
 /** A lasting area that moves, drifts, or makes its ground hard going, in catalog files too (1.168). */
 function carriesMovingZones(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -2634,6 +2651,15 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesMovingZones(document)))
   ) {
     return "A ruleset with zones that move or change the ground requires schemaVersion 2 and capabilityApi 1.168 or newer";
+  }
+  // Escapes against the applier's save, zones that shake concentration or stop at a damage cap, and
+  // items whose use concentrates or leaves a zone, 1.169.
+  if (
+    !declaresApi(169) &&
+    (carriesZoneRules(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesZoneRules(document)))
+  ) {
+    return "A ruleset with save escapes, concentration-breaking or capped zones, or zones on item uses requires schemaVersion 2 and capabilityApi 1.169 or newer";
   }
   if (carriesCreatureSpellcasting) {
     // The references can only be checked once the catalog files are beside their headers.

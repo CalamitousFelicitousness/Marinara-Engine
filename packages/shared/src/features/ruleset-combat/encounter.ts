@@ -1038,6 +1038,8 @@ export const RULESET_FAKE_EFFECT_KEYS = [
   "saveDifficulty",
   "applies",
   "concentration",
+  // What a scroll's spell leaves behind (1.169) is what it truly does too.
+  "zone",
 ] as const satisfies ReadonlyArray<keyof RulesetCombatAction>;
 
 /** The action a use resolves as: for a fake (1.74), the one offered with what it truly does in place
@@ -1538,6 +1540,8 @@ function mechanicsAction(
     if (move) action.zone.move = { budget: move.budget, distance: rulesetInCells(move.distance, perCell ?? 1) };
     if (drift) action.zone.drift = rulesetInCells(drift.distance, perCell ?? 1);
     if (terrain?.difficult) action.zone.difficult = true;
+    if (mechanics.zone.breaksConcentration) action.zone.breaksConcentration = true;
+    if (mechanics.zone.damageCap !== undefined) action.zone.damageCap = mechanics.zone.damageCap;
     const harm = terrain?.perDistance && amountOf(terrain.perDistance.amount);
     if (terrain?.perDistance && harm) {
       action.zone.perDistance = {

@@ -593,7 +593,13 @@ A zone held at a point can move and change its ground (Capability API 1.168). `m
     "zone": { "rounds": 10, "triggers": ["enter", "turn-start"], "move": { "budget": "action", "distance": 60 } } } }
 ```
 
-Cloudkill adds `"drift": { "distance": 10 }`. Spike Growth is a 20-foot burst with no amount of its own, `"triggers": ["enter"]`, `"atCast": false` and `"terrain": { "difficult": true, "perDistance": { "every": 5, "amount": { "dice": "2d4" }, "damageType": "piercing" } }`.
+Cloudkill adds `"drift": { "distance": 10 }`. Spike Growth is a 20-foot burst with no amount of its own, `"triggers": []` (its ground is all it does), `"atCast": false` and `"terrain": { "difficult": true, "perDistance": { "every": 5, "amount": { "dice": "2d4" }, "damageType": "piercing" } }`.
+
+A zone can do more to whoever it catches (Capability API 1.169). `breaksConcentration: true` makes a creature it catches while concentrating roll the ruleset's concentration save against the entry's own save difficulty, before the entry's effect, and lose its concentration on a failure; the entry needs a `save`. `damageCap` ends the zone once it has dealt that much damage in all after it appears, counting its catches and its ground. Sleet Storm is a 40-foot burst with `"save": { "save": "dex" }`, `"applies": [{ "condition": "prone", "duration": "instant" }]` and `"zone": { "rounds": 10, "triggers": ["enter", "turn-start"], "breaksConcentration": true, "terrain": { "difficult": true } }`. Guardian of Faith is a burst with `"friendlyFire": false`, `"amount": { "flat": 20 }` and `"zone": { "rounds": 1000, "triggers": ["enter", "turn-start"], "atCast": false, "damageCap": 60 }`.
+
+What a condition applied by an entry is escaped against can be the entry's own save difficulty (1.169): `"escapeDc": "save"` on the `applies` entry, beside a contest whose `from.holding` is that condition. Web and Black Tentacles restrain with `{ "condition": "restrained", "duration": "until-save", "escapeDc": "save" }`, and the restrained creature's escape contest is rolled against the caster's spell save DC. Whatever applied it with no save difficulty leaves it escaped as the contest says, against its holder.
+
+An item's `use` may also carry `concentration` and `zone` (1.169), as a catalog entry does, so a spell scroll of Cloudkill or Moonbeam keeps its lasting area and is held by its reader's concentration.
 
 The picker shows this block as one line. Who reads the rest depends on which block your ruleset opted in with:
 
@@ -1120,7 +1126,7 @@ A fight reads each item once, named for the stack ("Widow's ring" beside a roll 
 
 ### Using items in a fight
 
-An item may be used in a fight (Capability API 1.59): a poultice pressed on a cut, a tonic swallowed, a bell rung. Its `use` says what using it does in the words a catalog entry's `mechanics` use (see [What a fight reads from `mechanics`](#what-a-fight-reads-from-mechanics)): `kind` (`heal`, `attack`, `buff` or `debuff`), `amount`, `damageType`, `plus`, `attackRoll`, `save`, `applies`, `temporary`, `range`, `area`, `targets`, `targetCount` and `friendlyFire`, with the `budget` it spends, or `free`. Ember Roads' poultice, and Gravewatch's warming tonic and dawn bell:
+An item may be used in a fight (Capability API 1.59): a poultice pressed on a cut, a tonic swallowed, a bell rung. Its `use` says what using it does in the words a catalog entry's `mechanics` use (see [What a fight reads from `mechanics`](#what-a-fight-reads-from-mechanics)): `kind` (`heal`, `attack`, `buff` or `debuff`), `amount`, `damageType`, `plus`, `attackRoll`, `save`, `applies`, `temporary`, `range`, `area`, `targets`, `targetCount`, `friendlyFire`, and since Capability API 1.169 `concentration` and `zone`, with the `budget` it spends, or `free`. Ember Roads' poultice, and Gravewatch's warming tonic and dawn bell:
 
 ```json
 "use": { "kind": "heal", "budget": "act", "range": 0, "targets": "ally", "amount": { "dice": "1d4", "flat": 1 }, "consumes": true }

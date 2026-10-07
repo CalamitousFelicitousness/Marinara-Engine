@@ -8,6 +8,9 @@
  *     trigger, makes the concentration save against the entry's save or loses it (Sleet Storm).
  *   - `zone.damageCap`: the zone ends once it has dealt that much in all (Guardian of Faith).
  *   - An item's use may concentrate and leave a zone (a scroll of the spell).
+ *   - 1.170: a breaking-free contest marked `escapable` is offered only against a hold with an escape
+ *     DC; `escapeChecks` names the checks that break a hold; `zone.whileHeld` hurts whoever starts a
+ *     turn in it already held by it, with no save, in place of its effect (Black Tentacles).
  *   - Import refusals and the install gate.
  */
 import assert from "node:assert/strict";
@@ -58,7 +61,7 @@ try {
     budget: "action",
     attacker: { checks: ["might"] },
     defender: { checks: ["might"] },
-    from: { holding: "restrained" },
+    from: { holding: "restrained", escapable: true },
     onWin: { ends: [{ condition: "restrained", on: "actor" }] },
   };
   const fiveE = (edit: (doc: Record<string, any>) => void = () => {}): Record<string, any> => {
@@ -98,6 +101,29 @@ try {
     applies: [{ condition: "prone", duration: "instant" }],
     zone: { rounds: 10, triggers: ["enter", "turn-start"], breaksConcentration: true },
   });
+  // Flesh to Stone, small: restrained with no escape.
+  const stone = spell("stone", {
+    kind: "debuff",
+    range: 60,
+    targetCount: 1,
+    applies: [{ condition: "restrained", duration: "until-save" }],
+  });
+  // Black Tentacles, small: a Dexterity save or 5 and restrained, broken only with Dexterity; 7 with
+  // no save to whoever starts a turn already held.
+  const tentacles = spell("tentacles", {
+    area: { shape: "burst", size: 5 },
+    range: 60,
+    amount: { flat: 5 },
+    damageType: "bludgeoning",
+    concentration: true,
+    save: { save: "dex_save", onSuccess: "negates" },
+    applies: [{ condition: "restrained", duration: "until-save", escapeDc: "save", escapeChecks: ["agility"] }],
+    zone: {
+      rounds: 10,
+      triggers: ["enter", "turn-start"],
+      whileHeld: { condition: "restrained", amount: { flat: 7 }, damageType: "bludgeoning" },
+    },
+  });
   const hold = spell("hold", { amount: { flat: 1 }, concentration: true, range: 60 });
   const guardian = spell("guardian", {
     area: { shape: "burst", size: 5 },
@@ -107,7 +133,7 @@ try {
     damageType: "radiant",
     zone: { rounds: 1000, triggers: ["enter", "turn-start"], atCast: false, damageCap: 60 },
   });
-  const spells = [web, storm, hold, guardian];
+  const spells = [web, storm, hold, guardian, stone, tentacles];
   const block: RulesetStatBlock = { health: 100, defense: 5, initiativeModifier: 0, speed: 30, actions: [] };
   const grid = (): TacticalGrid => ({
     width: 15,
@@ -350,6 +376,58 @@ try {
     );
   }
 
+  // ── Holds broken only as the spell says (1.170) ──
+  {
+    die = 10;
+    const breaks = (state: RulesetEncounterState, id: string) =>
+      rulesetCombatOptions(definition, state, id).some((one) => one.label === "Break free");
+    // Web names an escape DC, so the contest is offered; stone names none, so it is not.
+    const webbed = end(take(fight({ a: { x: 3, y: 7 } }), "mage", "Web", { targetIds: ["a"] }).state);
+    assert.equal(breaks(webbed.state, "a"), true);
+    const stoned = end(take(fight({ a: { x: 3, y: 7 } }), "mage", "Stone", { targetIds: ["a"] }).state);
+    assert.ok(rulesetCombatant(stoned.state, "a")!.tracked.some((one) => one.condition === "restrained"));
+    assert.equal(breaks(stoned.state, "a"), false, "no escape from stone");
+    // The web is broken with the contest's own check; the tentacles only with Dexterity.
+    const webTry = take(webbed.state, "a", "Break free", { targetIds: ["mage"] });
+    const webContest = webTry.events.find((one) => one.type === "contest");
+    assert.equal(webContest && webContest.type === "contest" ? webContest.attacker.check : "", "might");
+    let grip: { state: RulesetEncounterState; events: RulesetCombatEvent[] } = take(fight(), "mage", "Tentacles", {
+      at: { x: 8, y: 7 },
+    });
+    assert.equal(hp(grip.state, "a"), 95, "the cast: 5 and restrained");
+    const held = rulesetCombatant(grip.state, "a")!.tracked.find((one) => one.condition === "restrained")!;
+    assert.deepEqual(held.escapeChecks, ["agility"]);
+    // A starts a turn held: 7 with no save, and nothing else.
+    grip = end(grip.state);
+    assert.equal(hp(grip.state, "a"), 88);
+    assert.deepEqual(
+      grip.events.filter((one) => one.type === "save").length,
+      0,
+      "no save for whoever it already holds",
+    );
+    const gripTry = take(grip.state, "a", "Break free", { targetIds: ["mage"] });
+    assert.equal(refused(gripTry), undefined, JSON.stringify(refused(gripTry)));
+    const gripContest = gripTry.events.find((one) => one.type === "contest");
+    assert.equal(gripContest && gripContest.type === "contest" ? gripContest.attacker.check : "", "agility");
+    // B walks in, unheld: the save, 5, and restrained.
+    let walkIn = end(grip.state);
+    walkIn = walk(walkIn.state, "b", { x: 9, y: 7 });
+    assert.equal(hp(walkIn.state, "b"), 95);
+    assert.ok(rulesetCombatant(walkIn.state, "b")!.tracked.some((one) => one.condition === "restrained"));
+    // Broken free, A is caught as anybody is at the next turn's start.
+    die = 20;
+    const free = take(grip.state, "a", "Break free", { targetIds: ["mage"] });
+    assert.equal(
+      rulesetCombatant(free.state, "a")!.tracked.some((one) => one.condition === "restrained"),
+      false,
+      "broken free",
+    );
+    die = 10;
+    const again = toMage(free.state);
+    const aTurn = end(again.state);
+    assert.equal(hp(aTurn.state, "a"), 83, "5 again, with the save, as anybody");
+  }
+
   // ── Import refusals ──
   {
     const refusedDoc = (edit: (doc: Record<string, any>) => void, pattern: RegExp) => {
@@ -393,6 +471,25 @@ try {
       doc.combat.contests = doc.combat.contests.filter((one: { id: string }) => one.id !== "break_free");
       entry({ kind: "debuff", applies: [{ condition: "restrained", duration: "instant", escapeDc: "save" }] })(doc);
     }, /No contest breaks free of "restrained"/);
+    refusedDoc(
+      entry({ kind: "debuff", applies: [{ condition: "restrained", duration: "instant", escapeChecks: ["might"] }] }),
+      /go with the "escapeDc"/,
+    );
+    refusedDoc(
+      entry({
+        kind: "debuff",
+        applies: [{ condition: "restrained", duration: "instant", escapeDc: "save", escapeChecks: ["nope"] }],
+      }),
+      /Unknown contest check "nope"/,
+    );
+    refusedDoc(
+      entry({
+        kind: "attack",
+        area: { shape: "burst", size: 5 },
+        zone: { rounds: 1, triggers: ["turn-start"], whileHeld: { condition: "nope", amount: { flat: 1 } } },
+      }),
+      /Unknown condition "nope"/,
+    );
     // An item's zone is held to what an entry's is.
     refusedDoc((doc) => {
       doc.catalogs.push({

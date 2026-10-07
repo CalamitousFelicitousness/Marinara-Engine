@@ -1366,14 +1366,17 @@ export interface RulesetCatalogZone {
   anchor?: "point" | "caster";
   triggers: Array<"enter" | "turn-start" | "turn-end">;
   atCast?: boolean;
-  move?: { budget: string; distance: number };
+  move?: { budget: string; distance: number; ram?: true };
   drift?: { distance: number };
   terrain?: {
     difficult?: true;
+    costTimes?: number;
+    halvesSpeed?: true;
     perDistance?: { every: number; amount: { dice?: string; flat?: number }; damageType?: string };
   };
   breaksConcentration?: true;
   damageCap?: number;
+  whileHeld?: { condition: string; amount: { dice?: string; flat?: number }; damageType?: string };
 }
 
 const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = z
@@ -1388,7 +1391,13 @@ const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = 
     /** Its caster may move it on their turn (Capability API 1.168), spending `budget`, up to
      *  `distance` in the catalog's unit: 5e's Moonbeam and Flaming Sphere. */
     move: z
-      .object({ budget: sheetId, distance: z.number().finite().gt(0) })
+      .object({
+        budget: sheetId,
+        distance: z.number().finite().gt(0),
+        /** Moved into a creature, it stops for the turn and catches them (Capability API 1.170),
+         *  in place of `enter`: 5e's Flaming Sphere rammed into a creature. */
+        ram: z.literal(true).optional(),
+      })
       .strict()
       .optional(),
     /** It moves `distance` straight away from its caster as each of their turns starts (1.168):
@@ -1403,6 +1412,11 @@ const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = 
     terrain: z
       .object({
         difficult: z.literal(true).optional(),
+        /** Moving into it costs this many times a plain step, instead of double (1.170): 5e's Plant
+         *  Growth, 4. Ground already hard going costs no more than this. */
+        costTimes: z.number().int().min(2).max(10).optional(),
+        /** Speed is halved inside it (1.170), on top of any hard going: 5e's Spirit Guardians. */
+        halvesSpeed: z.literal(true).optional(),
         perDistance: z
           .object({
             every: z.number().finite().gt(0),
@@ -1413,13 +1427,27 @@ const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = 
           .optional(),
       })
       .strict()
-      .refine((terrain) => terrain.difficult || terrain.perDistance, {
-        message: '"terrain" says "difficult", "perDistance" or both',
+      .refine((terrain) => terrain.difficult || terrain.costTimes || terrain.halvesSpeed || terrain.perDistance, {
+        message: '"terrain" says "difficult", "costTimes", "halvesSpeed", "perDistance" or several',
+      })
+      .refine((terrain) => !(terrain.difficult && terrain.costTimes), {
+        message: '"costTimes" is its own price for the ground, so it is not also "difficult"',
       })
       .optional(),
     /** Whoever it catches while concentrating makes the ruleset's concentration save against the
      *  entry's own save difficulty, or loses it (Capability API 1.169): 5e's Sleet Storm. */
     breaksConcentration: z.literal(true).optional(),
+    /** Whoever starts a turn in it already held by this condition from its caster takes this, with no
+     *  save, in place of its effect (Capability API 1.170): 5e's Black Tentacles, 3d6 bludgeoning to
+     *  a creature it already restrains. */
+    whileHeld: z
+      .object({
+        condition: sheetId,
+        amount: z.object(catalogAmountShape).strict(),
+        damageType: promptSafeText(40).optional(),
+      })
+      .strict()
+      .optional(),
     /** It ends once it has dealt this much damage in all (1.169): 5e's Guardian of Faith, 60. */
     damageCap: z.number().int().min(1).max(100000).optional(),
   })
@@ -1705,6 +1733,15 @@ const catalogAppliesSchema = z
      *  that breaks free of it (Capability API 1.98): 5e's "the target is grappled (escape DC 13)".
      *  `"save"` is the save difficulty of whatever applied it (1.169): Web and Black Tentacles. */
     escapeDc: z.union([z.number().int().min(1).max(1000), z.literal("save")]).optional(),
+    /** The contest checks that may break it, in place of the breaking-free contest's own attacker
+     *  checks (Capability API 1.170): 5e's Black Tentacles allows Strength or Dexterity, Web only
+     *  Strength. */
+    escapeChecks: z
+      .array(sheetId)
+      .min(1)
+      .max(4)
+      .refine((checks) => new Set(checks).size === checks.length, { message: "A check is named once" })
+      .optional(),
     /** It goes on only while a value off the sheet of whoever applies it stands within these bounds,
      *  read as it applies (Capability API 1.162); one that does not is skipped. 5e's Rage puts on a
      *  damage bonus by barbarian level: +2 `when` the level is at most 8, +3 from 9, +4 from 16. */
@@ -4321,7 +4358,15 @@ const combatContestBaseSchema = z
     ties: z.enum(["defender", "attacker"]).default("defender"),
     /** Aimed only at whoever put this condition on the actor, and offered only while it holds: how
      *  breaking free is said. */
-    from: z.object({ holding: sheetId }).strict().optional(),
+    from: z
+      .object({
+        holding: sheetId,
+        /** Offered only against a hold that names an escape DC (Capability API 1.170), so the
+         *  restraint of a web is broken and petrification is not. */
+        escapable: z.literal(true).optional(),
+      })
+      .strict()
+      .optional(),
     /** Not taken against a target more than this many of `combat.sizes` larger than the one taking it
      *  (Capability API 1.98): 5e's grapple and shove are `1`. A combatant whose size nothing says is
      *  never refused. */
@@ -7578,10 +7623,19 @@ function targetTestIssues(
 
 function escapeDcIssues(
   definition: RulesetDefinition,
-  applies: { condition: string; escapeDc?: number | "save" },
+  applies: { condition: string; escapeDc?: number | "save"; escapeChecks?: string[] },
   at: (string | number)[],
   add: (path: (string | number)[], message: string) => void,
 ): void {
+  // The checks that may break it (1.170) are contest checks, and only mean something with an escape DC.
+  applies.escapeChecks?.forEach((check, index) => {
+    if (!definition.combat?.checks?.some((one) => one.id === check)) {
+      add([...at, "escapeChecks", index], `Unknown contest check "${check}"`);
+    }
+  });
+  if (applies.escapeChecks && applies.escapeDc === undefined) {
+    add([...at, "escapeChecks"], 'Checks that break a hold go with the "escapeDc" they are rolled against');
+  }
   if (applies.escapeDc === undefined) return;
   const combat = definition.combat;
   if (!combat?.contests?.some((contest) => contest.from?.holding === applies.condition)) {
@@ -8933,6 +8987,12 @@ export function rulesetCatalogEntryIssues(
     }
     if (mechanics?.budget !== undefined && budgets && !budgets.has(mechanics.budget)) {
       add([index, "mechanics", "budget"], `Unknown budget "${mechanics.budget}"`);
+    }
+    if (mechanics?.zone?.whileHeld && !liveConditions.has(mechanics.zone.whileHeld.condition)) {
+      add(
+        [index, "mechanics", "zone", "whileHeld", "condition"],
+        `Unknown condition "${mechanics.zone.whileHeld.condition}"`,
+      );
     }
     if (mechanics?.zone?.move && !budgets?.has(mechanics.zone.move.budget)) {
       add([index, "mechanics", "zone", "move", "budget"], `Unknown budget "${mechanics.zone.move.budget}"`);

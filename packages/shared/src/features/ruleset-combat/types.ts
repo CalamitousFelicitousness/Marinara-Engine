@@ -87,6 +87,8 @@ export interface RulesetCombatApplies {
   /** What breaking free of it is rolled against, in place of the holder's own side of the contest
    *  (1.98): 5e's "grappled (escape DC 13)"; `"save"` is the applier's save difficulty (1.169). */
   escapeDc?: number | "save";
+  /** The contest checks that may break it, in place of the contest's own (1.170). */
+  escapeChecks?: string[];
   /** It goes on only while this value off its applier's sheet stands within the bounds (1.162). */
   when?: RulesetSheetBounds;
   /** It goes on only a target that is this (1.163). */
@@ -537,6 +539,8 @@ export interface RulesetCombatContest {
   ties: "defender" | "attacker";
   /** Aimed only at whoever put this condition on the actor, and offered only while it holds. */
   from?: string;
+  /** Offered only while that hold names an escape DC (1.170). */
+  escapable?: true;
   /** Not taken against a target more than this many of `combat.sizes` larger than the actor (1.98). */
   maxSizeAbove?: number;
   applies?: Array<{ condition: string; rounds?: number }>;
@@ -592,6 +596,8 @@ export interface RulesetTrackedCondition {
   concentration?: boolean;
   /** What breaking free of it is rolled against, from what applied it (1.98). */
   escapeDc?: number;
+  /** The contest checks that may break it (1.170). */
+  escapeChecks?: string[];
 }
 
 export interface RulesetCombatant {
@@ -1215,7 +1221,7 @@ export type RulesetCombatEvent =
       outcome: "appeared" | "struck" | "ended" | "moved" | "drifted";
       targetId?: string;
       /** What caught them: one of the zone's triggers, or walking on its ground (1.168). */
-      trigger?: RulesetCombatZoneRule["triggers"][number] | "moving";
+      trigger?: RulesetCombatZoneRule["triggers"][number] | "moving" | "ram";
       /** Where it was centred after moving or drifting (1.168). */
       to?: RulesetCombatCell;
     }
@@ -1489,18 +1495,26 @@ export interface RulesetCombatZoneRule {
   anchor: "point" | "caster";
   triggers: Array<"enter" | "turn-start" | "turn-end">;
   atCast: boolean;
-  /** Its caster may move it on their turn, spending `budget`, up to `distance` cells (1.168). */
-  move?: { budget: string; distance: number };
+  /** Its caster may move it on their turn, spending `budget`, up to `distance` cells (1.168); `ram`
+   *  stops it on the first creature it reaches and catches them (1.170). */
+  move?: { budget: string; distance: number; ram?: boolean };
   /** Cells it moves straight away from its caster as each of their turns starts (1.168). */
   drift?: number;
   /** Moving into one of its cells costs double (1.168). */
   difficult?: boolean;
+  /** Moving into one of its cells costs this many plain steps (1.170). */
+  costTimes?: number;
+  /** Speed is halved inside it, on top of any hard going (1.170). */
+  halvesSpeed?: boolean;
   /** What moving inside it deals: `amount` for every `every` cells, no save (1.168). */
   perDistance?: { every: number; amount: RulesetCombatAmount; damageType?: string };
   /** Whoever it catches while concentrating saves against its save difficulty or loses it (1.169). */
   breaksConcentration?: boolean;
   /** It ends once it has dealt this much damage in all (1.169). */
   damageCap?: number;
+  /** What it deals, with no save and in place of its effect, to whoever starts a turn in it held by
+   *  this condition from its caster (1.170). */
+  whileHeld?: { condition: string; amount: RulesetCombatAmount; damageType?: string };
 }
 
 /** One lasting area standing on the board (1.167). A zone held at a point keeps the cells it was
@@ -1523,4 +1537,6 @@ export interface RulesetCombatZone {
   walked?: Record<string, number>;
   /** Damage it has dealt in all, toward its `damageCap` (1.169). */
   dealt?: number;
+  /** The turn ("round:turn") it was rammed into somebody, and moves no more in (1.170). */
+  rammed?: string;
 }

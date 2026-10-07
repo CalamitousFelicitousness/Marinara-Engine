@@ -492,11 +492,13 @@ export function rulesetCombatEventLine(
         ? key(
             event.trigger === "moving"
               ? "zoneStruckMoving"
-              : event.trigger === "enter"
-                ? "zoneStruckEnter"
-                : event.trigger === "turn-end"
-                  ? "zoneStruckEnd"
-                  : "zoneStruckStart",
+              : event.trigger === "ram"
+                ? "zoneStruckRam"
+                : event.trigger === "enter"
+                  ? "zoneStruckEnter"
+                  : event.trigger === "turn-end"
+                    ? "zoneStruckEnd"
+                    : "zoneStruckStart",
             {
               actor: names.combatant(event.actorId),
               label: event.label,

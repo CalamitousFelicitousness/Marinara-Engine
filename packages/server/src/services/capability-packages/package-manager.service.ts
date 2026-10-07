@@ -1439,6 +1439,21 @@ function carriesZones(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesZones(one, depth + 1));
 }
 
+/** A zone moved to ram or hurting whom it holds, ground that costs several steps or halves speed, or
+ *  a hold broken only by its escape DC and checks, in catalog files too (1.170). */
+function carriesZoneGround(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesZoneGround(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const zone = plainRecord(plainRecord(record.mechanics)?.zone) ?? plainRecord(plainRecord(record.use)?.zone);
+  const terrain = plainRecord(zone?.terrain);
+  if (plainRecord(zone?.move)?.ram !== undefined || zone?.whileHeld !== undefined) return true;
+  if (record.escapeChecks !== undefined || plainRecord(record.from)?.escapable !== undefined) return true;
+  if (terrain && (terrain.costTimes !== undefined || terrain.halvesSpeed !== undefined)) return true;
+  return Object.values(record).some((one) => carriesZoneGround(one, depth + 1));
+}
+
 /** An escape against the applier's save, a zone that breaks concentration or ends at a damage cap,
  *  or an item use that concentrates or leaves a zone, in catalog files too (1.169). */
 function carriesZoneRules(value: unknown, depth = 0): boolean {
@@ -2660,6 +2675,15 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesZoneRules(document)))
   ) {
     return "A ruleset with save escapes, concentration-breaking or capped zones, or zones on item uses requires schemaVersion 2 and capabilityApi 1.169 or newer";
+  }
+  // Zones that ram or hurt whom they hold, ground that costs several steps or halves speed, and
+  // holds broken only by their escape DC and checks, 1.170.
+  if (
+    !declaresApi(170) &&
+    (carriesZoneGround(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesZoneGround(document)))
+  ) {
+    return "A ruleset with zones that ram or hurt whom they hold, ground that costs more or halves speed, or holds broken only by their escape DC and checks requires schemaVersion 2 and capabilityApi 1.170 or newer";
   }
   if (carriesCreatureSpellcasting) {
     // The references can only be checked once the catalog files are beside their headers.

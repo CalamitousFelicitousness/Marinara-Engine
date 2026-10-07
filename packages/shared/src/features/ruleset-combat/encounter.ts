@@ -1537,11 +1537,28 @@ function mechanicsAction(
       atCast: mechanics.zone.atCast !== false,
     };
     const { move, drift, terrain } = mechanics.zone;
-    if (move) action.zone.move = { budget: move.budget, distance: rulesetInCells(move.distance, perCell ?? 1) };
+    if (move) {
+      action.zone.move = {
+        budget: move.budget,
+        distance: rulesetInCells(move.distance, perCell ?? 1),
+        ...(move.ram ? { ram: true } : {}),
+      };
+    }
     if (drift) action.zone.drift = rulesetInCells(drift.distance, perCell ?? 1);
     if (terrain?.difficult) action.zone.difficult = true;
+    if (terrain?.costTimes !== undefined) action.zone.costTimes = terrain.costTimes;
+    if (terrain?.halvesSpeed) action.zone.halvesSpeed = true;
     if (mechanics.zone.breaksConcentration) action.zone.breaksConcentration = true;
     if (mechanics.zone.damageCap !== undefined) action.zone.damageCap = mechanics.zone.damageCap;
+    const held = mechanics.zone.whileHeld;
+    const heldAmount = held && amountOf(held.amount);
+    if (held && heldAmount) {
+      action.zone.whileHeld = {
+        condition: held.condition,
+        amount: heldAmount,
+        ...(held.damageType ? { damageType: held.damageType } : {}),
+      };
+    }
     const harm = terrain?.perDistance && amountOf(terrain.perDistance.amount);
     if (terrain?.perDistance && harm) {
       action.zone.perDistance = {
@@ -2101,6 +2118,7 @@ function contestActions(
         defender: [...contest.defender.checks],
         ties: contest.ties,
         ...(contest.from ? { from: contest.from.holding } : {}),
+        ...(contest.from?.escapable ? { escapable: true as const } : {}),
         ...(contest.maxSizeAbove !== undefined ? { maxSizeAbove: contest.maxSizeAbove } : {}),
         ...(contest.onWin.applies ? { applies: contest.onWin.applies.map((entry) => ({ ...entry })) } : {}),
         ...(contest.onWin.ends ? { ends: contest.onWin.ends.map((entry) => ({ ...entry })) } : {}),

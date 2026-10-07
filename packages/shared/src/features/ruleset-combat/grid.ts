@@ -722,27 +722,51 @@ export function rulesetZoneCatches(
   return true;
 }
 
-/** The cells a mover finds hard going because a zone that catches them covers them (1.168). */
-export function rulesetSlowedCells(state: RulesetEncounterState, mover: RulesetCombatant): Set<string> {
-  const slowed = new Set<string>();
+/** How a zone slows a cell for one mover: the plain steps moving into it costs at least (1.168, 1.170),
+ *  and whether speed is halved there on top (1.170). */
+export interface RulesetSlowedCell {
+  times: number;
+  halves: boolean;
+}
+
+/** The cells a mover finds hard going because a zone that catches them covers them (1.168): the
+ *  slowest of each cell's zones, and halved where any of them halves speed (1.170). */
+export function rulesetSlowedCells(
+  state: RulesetEncounterState,
+  mover: RulesetCombatant,
+): Map<string, RulesetSlowedCell> {
+  const slowed = new Map<string, RulesetSlowedCell>();
   for (const caster of state.combatants) {
     for (const zone of caster.zones ?? []) {
       const action = caster.actions.find((entry) => entry.id === zone.actionId);
-      if (!action?.zone?.difficult || !rulesetZoneCatches(caster, zone, action, mover)) continue;
-      for (const cell of rulesetZoneCells(state, caster, zone)) slowed.add(`${cell.x},${cell.y}`);
+      const rule = action?.zone;
+      if (!rule || !(rule.difficult || rule.costTimes || rule.halvesSpeed)) continue;
+      if (!rulesetZoneCatches(caster, zone, action, mover)) continue;
+      const times = rule.costTimes ?? (rule.difficult ? 2 : 1);
+      for (const cell of rulesetZoneCells(state, caster, zone)) {
+        const key = `${cell.x},${cell.y}`;
+        const was = slowed.get(key);
+        slowed.set(key, {
+          times: Math.max(was?.times ?? 1, times),
+          halves: (was?.halves ?? false) || !!rule.halvesSpeed,
+        });
+      }
     }
   }
   return slowed;
 }
 
-/** A step into a cell a zone slows costs double the ground's own price, without doubling ground
- *  that was already hard going: difficult terrain does not stack (1.168). */
+/** A step into a cell a zone slows costs its times the ground's plain price, without charging again
+ *  for ground that was already hard going: difficult terrain does not stack (1.168). Halved speed is
+ *  on top of that, as the step costs double again (1.170). */
 export function rulesetSlowedStep(
   grid: TacticalGrid,
   cell: RulesetCombatCell,
   step: number,
-  slowed: ReadonlySet<string>,
+  slowed: ReadonlyMap<string, RulesetSlowedCell>,
 ): number {
-  if (!slowed.has(`${cell.x},${cell.y}`)) return step;
-  return step + Math.max(0, 2 - rulesetCellEnterCost(grid, cell.x, cell.y));
+  const slow = slowed.get(`${cell.x},${cell.y}`);
+  if (!slow) return step;
+  const hard = step + Math.max(0, slow.times - rulesetCellEnterCost(grid, cell.x, cell.y));
+  return slow.halves ? hard * 2 : hard;
 }

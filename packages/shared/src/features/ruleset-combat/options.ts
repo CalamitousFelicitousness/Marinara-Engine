@@ -258,6 +258,9 @@ export function rulesetOptionReach(
   if (!actor) return null;
   const action = actionOf(actor, optionId);
   if (!action) return { max: 1, normal: 1, shot: false, swing: 1 };
+  // Breaking free of a hold that names its escape DC is a struggle against the hold itself, which
+  // its holder throws nothing for, so it is not limited by how far away they stand (1.170).
+  if (action.contest?.from && rulesetEscapeDc(actor, action.contest) !== undefined) return null;
   if (action.area) {
     // An area is aimed at a cell rather than at anybody. With a distance of its own it may be sent
     // that far off. With none, a BURST is centred on the actor, because a ball of fire with no range
@@ -766,7 +769,12 @@ export function rulesetContestCheck(
   contest: RulesetCombatContest,
   side: "attacker" | "defender",
 ): { check: string; modifier: number } {
-  const checks = contest[side];
+  // A hold that names the checks that break it (1.170) is broken with those.
+  const named =
+    side === "attacker" && contest.from
+      ? combatant.tracked.find((entry) => entry.condition === contest.from)?.escapeChecks
+      : undefined;
+  const checks = named ?? contest[side];
   let best = { check: checks[0]!, modifier: combatant.checks?.[checks[0]!] ?? 0 };
   for (const check of checks.slice(1)) {
     const modifier = combatant.checks?.[check] ?? 0;
@@ -868,7 +876,10 @@ export function rulesetContestHolder(
   contest: RulesetCombatContest,
 ): RulesetCombatant | undefined {
   if (!contest.from) return undefined;
-  const source = actor.tracked.find((entry) => entry.condition === contest.from)?.source;
+  const hold = actor.tracked.find((entry) => entry.condition === contest.from);
+  // Only a hold that names an escape DC is broken by an `escapable` contest (1.170).
+  if (contest.escapable && hold?.escapeDc === undefined) return undefined;
+  const source = hold?.source;
   const holder = source === undefined ? undefined : rulesetCombatant(state, source);
   return holder && !holder.defeated ? holder : undefined;
 }
@@ -1729,6 +1740,8 @@ export function rulesetCombatOptions(
   for (const zone of actor.zones ?? []) {
     const move = actor.actions.find((entry) => entry.id === zone.actionId)?.zone?.move;
     if (!move || (actor.budgets[move.budget] ?? 0) < 1) continue;
+    // Rammed into somebody, it has stopped for the turn (1.170).
+    if (zone.rammed === `${state.round}:${state.turn}`) continue;
     const cells = rulesetZoneMoveCells(state, zone, move.distance);
     if (cells.length === 0) continue;
     options.push({

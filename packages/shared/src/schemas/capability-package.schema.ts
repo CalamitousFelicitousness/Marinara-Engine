@@ -856,7 +856,15 @@ const capabilityPackageManifestBaseSchema = z
 //        lose it (`zone.breaksConcentration`, Sleet Storm) and end once it has dealt `zone.damageCap`
 //        in all (Guardian of Faith); and an item's use may concentrate and leave a zone, as a spell
 //        scroll's spell does. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 169 } as const);
+// 1.170: a zone its caster moves may ram (`zone.move.ram`): it stops on the first creature it
+//        reaches, catches them, and moves no more that turn (Flaming Sphere); and its ground may cost
+//        several plain steps (`zone.terrain.costTimes`, Plant Growth) or halve speed on top of any
+//        hard going (`zone.terrain.halvesSpeed`, Spirit Guardians). A breaking-free contest may be
+//        offered only against a hold with an escape DC (`from.escapable`), a hold may name the
+//        checks that break it (`applies[].escapeChecks`), and a zone may hurt whoever starts a turn
+//        in it already held by it, with no save (`zone.whileHeld`): Web, Black Tentacles, and no
+//        escape from petrification. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 170 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

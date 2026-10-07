@@ -1077,6 +1077,11 @@ function applyConditionId(
       : applies.escapeDc === "save" && extra.difficulty !== undefined
         ? { escapeDc: extra.difficulty }
         : {}),
+    // The checks that break it go with the number they are rolled against (1.170).
+    ...(applies.escapeChecks &&
+    (typeof applies.escapeDc === "number" || (applies.escapeDc === "save" && extra.difficulty !== undefined))
+      ? { escapeChecks: [...applies.escapeChecks] }
+      : {}),
   });
   ctx.events.push({ type: "condition", targetId: target.id, condition, active: true, reason: "applied" });
   endImmuneConditions(ctx, target);
@@ -1365,9 +1370,10 @@ function zoneStrike(
   caster: RulesetCombatant,
   zone: RulesetCombatZone,
   target: RulesetCombatant,
-  trigger: RulesetCombatZoneRule["triggers"][number],
+  trigger: RulesetCombatZoneRule["triggers"][number] | "ram",
 ): void {
-  if (!zone.triggers.includes(trigger) || !rulesetCombatStanding(target)) return;
+  // A ram is no trigger of its own: being rammed always catches, whatever moving in would do (1.170).
+  if ((trigger !== "ram" && !zone.triggers.includes(trigger)) || !rulesetCombatStanding(target)) return;
   const action = caster.actions.find((entry) => entry.id === zone.actionId);
   if (!action || !rulesetZoneCatches(caster, zone, action, target)) return;
   const stamp = turnStamp(ctx);
@@ -1390,6 +1396,34 @@ function zoneStrike(
   if (centre) ctx.aimedAt = { x: centre.x, y: centre.y };
   else delete ctx.aimedAt;
   zoneShakes(ctx, action, target);
+  // Already held by it (1.170): what it does to a creature it holds, with no save, in its place.
+  const held = action.zone?.whileHeld;
+  if (
+    held &&
+    trigger === "turn-start" &&
+    target.tracked.some((entry) => entry.condition === held.condition && entry.source === caster.id)
+  ) {
+    const from = ctx.events.length;
+    const harm = rulesetCombatIsPool(ctx.combat)
+      ? (({ rolls, flat, total, pool }) => ({ rolls, flat, amount: total, pool }))(
+          throwHarm(ctx, target, held.amount, held.damageType, 0),
+        )
+      : (() => {
+          const rolls = rollRulesetDice(ctx.roll, held.amount.count, held.amount.sides);
+          return { rolls, flat: held.amount.flat, amount: sumOf(rolls) + held.amount.flat };
+        })();
+    const dealt = applyDamage(ctx, target, {
+      sourceId: caster.id,
+      label: zone.label,
+      ...(held.damageType ? { damageType: held.damageType } : {}),
+      ...harm,
+    });
+    afterBlow(ctx, target, dealt, false);
+    if (action.zone?.damageCap !== undefined) zoneDealt(ctx, caster, zone, action.zone.damageCap, from);
+    if (aimed) ctx.aimedAt = aimed;
+    else delete ctx.aimedAt;
+    return;
+  }
   const { concentration: _held, zone: _zone, summons: _summons, gives: _gives, ...again } = action;
   const from = ctx.events.length;
   resolveAction(ctx, caster, again, [target], zone.payWith);
@@ -1455,9 +1489,32 @@ function moveZone(
   const grid = ctx.state.board?.grid;
   if (!action?.area || !grid) return;
   const before = new Set(rulesetZoneOccupants(ctx.state, caster, zone, action));
-  zone.at = { x: to.x, y: to.y };
-  zone.cells = rulesetAreaCells("burst", action.area.size, zone.at, zone.at, grid);
-  ctx.events.push({ type: "zone", actorId: caster.id, label: zone.label, outcome, to: { ...zone.at } });
+  const place = (at: RulesetCombatCell) => {
+    zone.at = { x: at.x, y: at.y };
+    zone.cells = rulesetAreaCells("burst", action.area!.size, zone.at, zone.at, grid);
+  };
+  // Rammed (1.170): it goes a cell at a time, straight for where it was sent, and stops on the
+  // first cell that reaches somebody new; they are caught by that, not by moving in.
+  if (outcome === "moved" && action.zone?.move?.ram) {
+    let at = zone.at ?? to;
+    let hit: string[] = [];
+    while ((at.x !== to.x || at.y !== to.y) && hit.length === 0) {
+      at = { x: at.x + Math.sign(to.x - at.x), y: at.y + Math.sign(to.y - at.y) };
+      place(at);
+      hit = rulesetZoneOccupants(ctx.state, caster, zone, action).filter((id) => !before.has(id));
+    }
+    place(at);
+    ctx.events.push({ type: "zone", actorId: caster.id, label: zone.label, outcome, to: { ...zone.at! } });
+    if (hit.length === 0) return;
+    zone.rammed = turnStamp(ctx);
+    for (const id of hit) {
+      const target = rulesetCombatant(ctx.state, id);
+      if (target) zoneStrike(ctx, caster, zone, target, "ram");
+    }
+    return;
+  }
+  place(to);
+  ctx.events.push({ type: "zone", actorId: caster.id, label: zone.label, outcome, to: { ...zone.at! } });
   for (const id of rulesetZoneOccupants(ctx.state, caster, zone, action)) {
     if (before.has(id)) continue;
     const target = rulesetCombatant(ctx.state, id);

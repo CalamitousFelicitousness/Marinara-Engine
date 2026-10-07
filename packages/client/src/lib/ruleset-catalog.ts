@@ -682,7 +682,13 @@ export function formatCatalogMechanics(
     if (mechanics.zone.drift) {
       parts.push(t("game.ruleset.catalog.mechanics.zoneDrift", { distance: distance(mechanics.zone.drift.distance) }));
     }
+    if (mechanics.zone.move?.ram) parts.push(t("game.ruleset.catalog.mechanics.zoneRam"));
     if (mechanics.zone.terrain?.difficult) parts.push(t("game.ruleset.catalog.mechanics.zoneDifficult"));
+    // Ground that costs several steps, and halved speed (1.170).
+    if (mechanics.zone.terrain?.costTimes !== undefined) {
+      parts.push(t("game.ruleset.catalog.mechanics.zoneCostTimes", { count: mechanics.zone.terrain.costTimes }));
+    }
+    if (mechanics.zone.terrain?.halvesSpeed) parts.push(t("game.ruleset.catalog.mechanics.zoneHalvesSpeed"));
     const ground = mechanics.zone.terrain?.perDistance;
     if (ground) {
       parts.push(
@@ -694,6 +700,16 @@ export function formatCatalogMechanics(
     }
     // What it does to concentration, and the damage it ends at (1.169).
     if (mechanics.zone.breaksConcentration) parts.push(t("game.ruleset.catalog.mechanics.zoneBreaksConcentration"));
+    // What it does to whoever it already holds (1.170).
+    const held = mechanics.zone.whileHeld;
+    if (held) {
+      parts.push(
+        t("game.ruleset.catalog.mechanics.zoneWhileHeld", {
+          amount: [held.amount.dice, held.amount.flat].filter((part) => part !== undefined).join("+"),
+          condition: held.condition,
+        }),
+      );
+    }
     if (mechanics.zone.damageCap !== undefined) {
       parts.push(t("game.ruleset.catalog.mechanics.zoneDamageCap", { count: mechanics.zone.damageCap }));
     }

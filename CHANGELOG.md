@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: a moved area can ram into a creature and stop, and its ground can cost several steps or halve speed, so Flaming Sphere rams, Plant Growth slows to a crawl and Spirit Guardians halves speed even on rough ground; a spell's hold can be broken only against its DC with the checks it names, and a zone can hurt whoever it already holds, so Web and Black Tentacles work and petrification cannot be escaped (Capability API 1.170).
 - Rulesets: a condition can be escaped against the spell's save DC, a lasting area can shake the concentration of whoever it catches or end after dealing a set amount of damage, and spell scrolls keep their lasting areas and concentration, so Web, Black Tentacles, Sleet Storm and Guardian of Faith work (Capability API 1.169).
 - Rulesets: a lasting area can be moved by its caster or drift away from them, catching whoever it reaches, and its ground can be hard going or hurt for every step taken inside, so Moonbeam moves, Cloudkill rolls away and Spike Growth slows and cuts (Capability API 1.168).
 - Rulesets: a spell's area can stay on the board for rounds or while concentrated on, held where it was cast or moving with its caster, and does its effect again to whoever walks in or starts or ends a turn there, so Cloudkill, Spirit Guardians and Moonbeam work (Capability API 1.167).

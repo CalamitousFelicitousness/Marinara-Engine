@@ -2361,6 +2361,18 @@ export function getCapabilityPackageInstallIssue(
   if (!declaresApi(124) && (carriesDamageOnlySaveKeys || carriesDamageOnlySaves(ruleset?.combat))) {
     return "A ruleset whose saves are rolled only on damage requires schemaVersion 2 and capabilityApi 1.124 or newer";
   }
+  // Builder stamps read from the offering parent pick, 1.125.
+  if (
+    !declaresApi(125) &&
+    Array.isArray(fieldsSteps) &&
+    fieldsSteps.some((step) =>
+      Object.values(plainRecord(plainRecord(step)?.stamp) ?? {}).some(
+        (value) => plainRecord(value)?.fromWithin !== undefined,
+      ),
+    )
+  ) {
+    return "A ruleset whose builder stamps from the offering pick requires schemaVersion 2 and capabilityApi 1.125 or newer";
+  }
   if (carriesCreatureSpellcasting) {
     // The references can only be checked once the catalog files are beside their headers.
     const complete = {

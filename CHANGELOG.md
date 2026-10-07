@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: a builder can stamp a spell row with the class that offered it, using the first matching class picked, so multiclass spells keep their own spellcasting ability without typing the class on the sheet (Capability API 1.125).
 - Rulesets: a condition can roll its ending save only when its holder takes damage, once per blow at the applying DC, without a turn save, as Dominate Person does (Capability API 1.124).
 - Rulesets: line areas can have a width, so a breath weapon or spell can cover more than one column of cells (Capability API 1.123).
 - Rulesets: conditions can take away senses an effect needs, so Deafened keeps spells such as Command and creature actions such as a harpy's Luring Song from affecting their holder (Capability API 1.122).

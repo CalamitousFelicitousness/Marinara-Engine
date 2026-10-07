@@ -939,9 +939,10 @@ const builderStepSchema = z.discriminatedUnion("kind", [
       max: z.number().int().min(1).max(40).default(1),
       /** A text or enum field the picked entries' labels are written to (a race, a class). */
       field: sheetId.optional(),
-      /** Values written onto every row this step adds (1.103). Later edits remain the player's. */
+      /** Values written onto every row this step adds (1.103). Later edits remain the player's.
+       *  `fromWithin` reads the first offering parent pick's id, label or filter (Capability API 1.125). */
       stamp: z
-        .record(sheetId, sheetScalar)
+        .record(sheetId, z.union([sheetScalar, z.object({ fromWithin: sheetId }).strict()]))
         .refine((stamp) => Object.keys(stamp).length >= 1 && Object.keys(stamp).length <= 4, {
           message: "A step stamps 1 to 4 columns",
         })
@@ -1061,7 +1062,7 @@ export type RulesetBuilderStep =
       min: number;
       max: number;
       field?: string;
-      stamp?: Record<string, string | number | boolean>;
+      stamp?: Record<string, string | number | boolean | { fromWithin: string }>;
       filters?: Record<string, string | number>;
       within?: { step: string; filter: string };
       upTo?: RulesetBuilderUpTo;
@@ -5764,7 +5765,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         if (!catalog || (catalog.holds ?? "rows") !== "rows") {
           issue([...path, "catalog"], `No catalog of rows "${step.catalog}"`);
         }
-        for (const column of Object.keys(step.stamp ?? {})) {
+        for (const [column, value] of Object.entries(step.stamp ?? {})) {
           if (
             !catalog?.feeds?.length ||
             catalog.feeds.some(
@@ -5772,6 +5773,16 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
             )
           ) {
             issue([...path, "stamp", column], `Unknown column "${column}" in a target list`);
+          }
+          if (typeof value === "object") {
+            if (!step.within) {
+              issue([...path, "stamp", column], "A stamp from the offering pick needs the step's within");
+            } else if (value.fromWithin !== "id" && value.fromWithin !== "label") {
+              const parent = catalogs.find((each) => each.id === catalogSteps.get(step.within!.step));
+              if (!parent?.filters?.some((filter) => filter.id === value.fromWithin)) {
+                issue([...path, "stamp", column, "fromWithin"], `Unknown filter "${value.fromWithin}"`);
+              }
+            }
           }
         }
         if (step.min > step.max) issue([...path, "min"], "A step asks for at most its max");

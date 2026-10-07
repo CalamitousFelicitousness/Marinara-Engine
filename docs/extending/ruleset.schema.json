@@ -6584,14 +6584,33 @@
                         "additionalProperties": {
                           "anyOf": [
                             {
-                              "type": "number"
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "string",
+                                  "maxLength": 4000
+                                },
+                                {
+                                  "type": "boolean"
+                                }
+                              ]
                             },
                             {
-                              "type": "string",
-                              "maxLength": 4000
-                            },
-                            {
-                              "type": "boolean"
+                              "type": "object",
+                              "properties": {
+                                "fromWithin": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "$comment": {}
+                              },
+                              "required": [
+                                "fromWithin"
+                              ],
+                              "additionalProperties": false
                             }
                           ]
                         },

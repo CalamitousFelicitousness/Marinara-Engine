@@ -808,7 +808,9 @@ const capabilityPackageManifestBaseSchema = z
 //        or a creature action. Without it the line stays one cell wide. No permission.
 // 1.124: an applies' `saveEnds.at: "damaged"` rolls only when its holder takes damage above zero,
 //        once per blow, at the stored DC. 5e's Dominate Person. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 124 } as const);
+// 1.125: a builder step's stamp can read the first offering parent pick's id, label or filter through
+//        `fromWithin`, so a spell names the class that offered it. Later edits remain the player's. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 125 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

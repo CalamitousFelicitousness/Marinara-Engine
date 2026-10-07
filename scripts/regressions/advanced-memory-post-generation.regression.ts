@@ -818,6 +818,10 @@ try {
   assert.equal(await inspectRecall(newcomer.id), undefined, "Cyno is not shown Dottore's recalled scenes");
   assert.deepEqual(await inspectRecall(character.id), ownRecall, "Dottore still sees his own recall");
   assert.equal(calls.length, callsBeforeInspection, "inspecting either character calls no provider");
+  // An inactive character's preview falls back to an active one, but recall stays the inspected character's own.
+  await chats.patchMetadata(turnsChat.id, { inactiveCharacterIds: [newcomer.id] });
+  assert.equal(await inspectRecall(newcomer.id), undefined, "an inactive Cyno is not shown Dottore's recall either");
+  assert.equal(calls.length, callsBeforeInspection, "inspecting an inactive character calls no provider");
   closeLatestScene = false;
 
   const actualUsageChat = await chats.create({

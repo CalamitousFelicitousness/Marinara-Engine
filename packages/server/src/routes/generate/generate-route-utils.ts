@@ -1263,7 +1263,8 @@ export function resolvePromptCharacterIdsForTarget(
 
 /**
  * Who a merged group reply may voice, so the Chat Summary can mark who knows what (#7252). Undefined keeps
- * the usual single reading: one character, Individual mode or impersonation. A chosen responder does not
+ * the usual single reading: one character, Individual mode, impersonation, or a character whose card cannot
+ * be read (it still replies, so reading for the rest would mislabel its sections). A chosen responder does not
  * pin a merged Roleplay reply to one speaker (mergedSpeaksOnlyTarget in generate.routes.ts), and Advanced
  * Memory reads for everyone present then too. The narrator is never a reader, so narrator-only sections stay out.
  */
@@ -1275,10 +1276,9 @@ export function mergedChatSummaryReaders(input: {
   profilesById: ReadonlyMap<string, CharacterMacroProfile>;
 }): CharacterMacroProfile[] | undefined {
   if (input.characterIds.length < 2 || input.individual || input.impersonate) return undefined;
-  return input.characterIds.flatMap((id) => {
-    const profile = id === input.narratorCharacterId ? undefined : input.profilesById.get(id);
-    return profile ? [profile] : [];
-  });
+  const readers = input.characterIds.filter((id) => id !== input.narratorCharacterId);
+  if (!readers.every((id) => input.profilesById.has(id))) return undefined;
+  return readers.map((id) => input.profilesById.get(id)!);
 }
 
 export function shouldPreferLatestVisibleGameState(input: {

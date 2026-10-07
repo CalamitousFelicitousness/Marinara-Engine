@@ -214,6 +214,36 @@ try {
     assert.equal(mergedChatSummaryReaders(input), undefined, `${label} keeps the usual single reading`);
   }
 
+  // A card whose data is not JSON still gets a reply profile, but no macro profile, so reading for the
+  // rest would leave Maukie's sections unmarked and the unreadable character's out. Keep the single reading.
+  const broken = await characters.create(characterDataSchema.parse({ name: "Broken" }));
+  const { characters: characterTable } = await import("../../packages/server/src/db/schema/characters.js");
+  const { eq } = await import("../../packages/server/src/db/file-query.js");
+  await db.update(characterTable).set({ data: "{not json" }).where(eq(characterTable.id, broken.id));
+  const brokenCast = [narrator.id, maukie.id, broken.id];
+  const { loadCharacterPromptInfo } =
+    await import("../../packages/server/src/services/generation/character-prompt-context.js");
+  assert.ok(
+    (await loadCharacterPromptInfo({ chars: characters, characterIds: brokenCast, chatMode: "roleplay" })).some(
+      (info) => info.id === broken.id,
+    ),
+    "the unreadable card still takes part in the merged reply",
+  );
+  const brokenReaders = mergedChatSummaryReaders({
+    ...base,
+    characterIds: brokenCast,
+    profilesById: (await resolveCharacterMacroData(db, brokenCast)).profilesById,
+  });
+  for (const marker of [true, false]) {
+    const cast = { groupCharacterIds: brokenCast };
+    assert.equal(
+      await summaryBlock(brokenCast, marker, { ...cast, chatSummaryReaders: brokenReaders }),
+      await summaryBlock(brokenCast, marker, cast),
+      `an unreadable card leaves no partial marking (marker: ${marker})`,
+    );
+  }
+  assert.equal(brokenReaders, undefined, "an unreadable card keeps the usual single reading");
+
   // Generation and the prompt preview both hand the readers to every summary placement.
   const source = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
   const generate = source("../../packages/server/src/routes/generate.routes.ts");

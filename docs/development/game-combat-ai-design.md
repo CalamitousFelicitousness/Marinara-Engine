@@ -690,7 +690,7 @@ Implementation ownership and scope are tracked in [#6299](https://github.com/Pas
 
 Publication-round review dispositions:
 
-- `.agents/skills` remains an intentional, working alias for `.claude/skills`. Rewriting every executable reference is unnecessary. The Impeccable project guard and full baseline checks pass through the alias.
+- The Impeccable skill lives in `.agents/skills/impeccable`. The `.claude/skills` copy and its `.agents/skills` alias were removed on 2026-10-07; the Impeccable project guard reads the skill from `.agents/skills`.
 - Findings about Impeccable examples, wording, vendored bundle provenance and existing live-tool internals concern files moved without content changes. They are not regressions from this PR. This migration preserves the installed skill, rather than incorporating a separate upstream skill-maintenance project.
 - Tactical item scope `any` is explicitly supported by `CombatItemEffect`, route validation and the director's target checks. Replacing every non-self/non-enemy scope with `ally` would break that supported behavior. The existing default applies only to missing scope.
 - Eager pursuit computation is bounded and does not change which legal action wins. Making it lazy is an optional performance refinement; the recorded mixed-movement phase measurement remains the current evidence, not a claim that further optimization is impossible.

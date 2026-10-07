@@ -2,7 +2,7 @@
 
 This is the repository guide for coding agents. Canonical workflow, validation, and release guidance lives in `CONTRIBUTING.md`.
 
-Shared skills live in `.claude/skills`; Codex accesses them through `.agents/skills → ../.claude/skills`. Use the instructions and capabilities supported by the current agent host.
+Shared skills live in `.agents/skills`, where Codex discovers them. Use the instructions and capabilities supported by the current agent host.
 
 ## Codex Runtime and Models
 

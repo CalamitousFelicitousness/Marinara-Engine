@@ -973,7 +973,8 @@ async function buildRetryAgentContext(args: {
     idleDuration: resolvePromptIdleDuration(recentMessages),
     macroSources: [
       ...recentMessages.map((message: any) => (typeof message.content === "string" ? message.content : "")),
-      ...resolvedAgents.map((agent) => JSON.stringify(agent.settings)),
+      // Agent prompts too, so `{{include::...}}` in them has lorebooks to read (#7212).
+      ...resolvedAgents.flatMap((agent) => [agent.promptTemplate, JSON.stringify(agent.settings)]),
     ],
   });
   const historyMacroProfilesById = (await resolveCharacterMacroData(db, allCharacterIds)).profilesById;
@@ -1219,6 +1220,7 @@ async function buildRetryAgentContext(args: {
     streaming,
     memory: {},
     lorebookEntryCounts: promptMacroContext.lorebookEntryCounts,
+    lorebookIncludes: promptMacroContext.lorebookIncludes,
   };
 
   const previousBeholderState = await loadPriorBeholderState({

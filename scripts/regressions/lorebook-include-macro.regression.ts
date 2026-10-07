@@ -1,7 +1,8 @@
 /**
  * `{{include::ENTRY}}` and `{{include::BOOK::ENTRY}}` (#6912): a lorebook entry's text,
  * found by ID first, then by name. The short form looks in an entry's own lorebook, or in
- * the chat's lorebooks elsewhere; an include that loops back reads as empty.
+ * the chat's lorebooks elsewhere; an include that loops back reads as empty. Agent prompts
+ * read the same lorebooks as the chat (#7212).
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -22,6 +23,7 @@ const { resolveMacros, createLorebookSchema, createLorebookEntrySchema } =
 const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
 const { createLorebooksStorage } = await import("../../packages/server/src/services/storage/lorebooks.storage.js");
 const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
+const { createAgentsStorage } = await import("../../packages/server/src/services/storage/agents.storage.js");
 const { processLorebooks } = await import("../../packages/server/src/services/lorebook/index.js");
 const { buildPromptMacroContext } = await import("../../packages/server/src/services/prompt/macro-context.js");
 const { assemblePrompt } = await import("../../packages/server/src/services/prompt/assembler.js");
@@ -270,6 +272,73 @@ try {
     });
     assert.equal(response.statusCode, 200, response.body);
     assert.match(sent.at(-1) ?? "", /Note: SHARED_RULES for /u, "an author's note includes an entry");
+
+    // Agent prompts (#7212): each place the route runs an agent from reads the chat's lorebooks too.
+    const agents = createAgentsStorage(db);
+    const agentFixtures = [
+      ["include-pre-fixture", "pre_generation", { resultType: "context_injection" }],
+      [
+        "include-activity-fixture",
+        "pre_generation",
+        { resultType: "character_activity_update", customCapabilities: { manage_chat_characters: true } },
+      ],
+      ["include-post-fixture", "post_processing", { resultType: "context_injection" }],
+    ] as const;
+    for (const [type, phase, settings] of agentFixtures) {
+      await agents.create({
+        type,
+        name: type,
+        phase,
+        connectionId: null,
+        promptTemplate: `AGENT ${type}: {{include::Shared rules}} | {{include::Vault::Secret}}`,
+        settings,
+      } as never);
+    }
+    const agentChat = await chats.create({
+      name: "Include agents",
+      mode: "roleplay",
+      characterIds: [],
+      connectionId: connection.id,
+      promptPresetId: preset.id,
+    } as never);
+    assert(agentChat);
+    await chats.patchMetadata(agentChat.id, {
+      activeLorebookIds: [world.id],
+      enableAgents: true,
+      activeAgentIds: agentFixtures.map(([type]) => type),
+      enableMemoryRecall: false,
+    });
+    const agentPrompt = (type: string, requests: string[]) => {
+      const request = requests.find((body) => body.includes(`AGENT ${type}:`));
+      assert.ok(request, `${type} ran`);
+      return request;
+    };
+    const before = sent.length;
+    const agentTurn = await app.inject({
+      method: "POST",
+      url: "/api/generate/",
+      payload: { chatId: agentChat.id, userMessage: "Hello." },
+    });
+    assert.equal(agentTurn.statusCode, 200, agentTurn.body);
+    for (const [type] of agentFixtures) {
+      assert.ok(
+        agentPrompt(type, sent.slice(before)).includes(`AGENT ${type}: SHARED_RULES for User | VAULT_SECRET`),
+        `${type} includes an entry by name from the chat's lorebook and by lorebook name`,
+      );
+    }
+    const beforeRetry = sent.length;
+    const retried = await app.inject({
+      method: "POST",
+      url: "/api/generate/retry-agents",
+      payload: { chatId: agentChat.id, agentTypes: ["include-post-fixture"] },
+    });
+    assert.equal(retried.statusCode, 200, retried.body);
+    assert.ok(
+      agentPrompt("include-post-fixture", sent.slice(beforeRetry)).includes(
+        "AGENT include-post-fixture: SHARED_RULES for User | VAULT_SECRET",
+      ),
+      "a retried agent includes entries too",
+    );
   } finally {
     await app.close();
     await new Promise<void>((done) => provider.close(() => done()));

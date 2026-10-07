@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- `{{include::ENTRY}}` and `{{include::BOOK::ENTRY}}` now work in agent prompts, including custom agents, edited built-in agents and retried agents. They read the same lorebooks as the chat's own prompt, so a shared agent can pick up chat-specific instructions from an entry. Before, the macro reached the model as written (#7212).
 - While the message trash is restoring or deleting, a short **Restoring messages…** or **Deleting messages…** note now shows over the dimmed entries, and screen readers announce it, so it is clear why the entries pause (#7210).
 - **Character Tracker** no longer throws away a turn's mood, outfit and thought changes when the model sends them without the `presentCharacters` wrapper. Those turns used to count as successful while the tracker panel kept the old values, and the next turn could undo recent changes. A reply that has other data but no character list now logs a server warning, while an empty "no changes" reply stays quiet (#7208).
 - For contributors: the Impeccable design skill is back at `.agents/skills/impeccable`. The `.claude/skills` copy and the `.agents/skills` alias that pointed to it are gone.

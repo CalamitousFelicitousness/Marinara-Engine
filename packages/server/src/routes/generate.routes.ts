@@ -310,6 +310,7 @@ import {
   appendFallbackChatSummaryToSystemPrompt,
   buildPromptMacroContext,
   decodeDeferredPresetConditionals,
+  loadLorebookIncludesFor,
   normalizeChatMacroVariables,
   mergeGeneratedChatMacroVariables,
   parsePresetVariableNames,
@@ -2394,6 +2395,11 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   }
                 : null,
             memory: {},
+            lorebookIncludes: await loadLorebookIncludesFor(
+              app.db,
+              input.chatId,
+              characterActivityAgents.flatMap((agent) => [agent.promptTemplate, JSON.stringify(agent.settings)]),
+            ),
             writableLorebookIds: null,
             chatSummary: null,
             authorNotes: typeof chatMeta.authorNotes === "string" ? chatMeta.authorNotes : null,
@@ -2815,7 +2821,11 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           macroSources: [
             activeChatSummary ?? "",
             ...currentInputMessages().map((message) => message.content),
-            ...pipelineConfiguredPromptAgents.map((agent) => JSON.stringify(agent.settings)),
+            // Agent prompts too, so `{{include::...}}` in them has lorebooks to read (#7212).
+            ...pipelineConfiguredPromptAgents.flatMap((agent) => [
+              agent.promptTemplate ?? "",
+              JSON.stringify(agent.settings),
+            ]),
             // Author's notes, a chat's own system or Game prompt, and the preset's mode prompts.
             JSON.stringify(chatMeta),
             resolvedPreset ? JSON.stringify(resolvedPreset) : "",
@@ -5199,6 +5209,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               : null,
           memory: {},
           lorebookEntryCounts: promptMacroContext.lorebookEntryCounts,
+          lorebookIncludes: promptMacroContext.lorebookIncludes,
           writableLorebookIds: null,
           chatSummary: shouldAttachSummariesToAgents(chatMode, chatMeta) ? activeChatSummary : null,
           authorNotes: authorNotes || null,

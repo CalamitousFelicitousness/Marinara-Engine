@@ -209,67 +209,93 @@ function rulesetSheetValueWords(value: { what: string; of?: "modifier" | "items"
 
 /** What an item does while worn, and while only carried, one line each: "While worn: -1 on Sneak
  *  checks". Empty when it does nothing either way. */
-export function rulesetItemEffectLines(facts: RulesetItemFacts, t: TFunction): string[] {
-  const phrase = (fact: RulesetItemEffectFact) => {
-    const names = fact.names
-      .map((name, index) =>
-        fact.except?.[index]?.length
-          ? t("game.ruleset.hides.except", { type: name, tags: fact.except[index]!.join(" ") })
-          : name,
-      )
+export function rulesetEffectPhrase(fact: RulesetItemEffectFact, t: TFunction): string {
+  const names = fact.names
+    .map((name, index) =>
+      fact.except?.[index]?.length
+        ? t("game.ruleset.hides.except", { type: name, tags: fact.except[index]!.join(" ") })
+        : name,
+    )
+    .join(", ");
+  if ("effect" in fact.change)
+    return t(FIGHT_EFFECT_KEYS[fact.change.effect] ?? "ui.game.gameinventory.effectFight", {
+      effect: fact.change.effect,
+    });
+  if ("hide" in fact.change) {
+    const key =
+      fact.change.hide === "resist"
+        ? "ui.game.gameinventory.effectResist"
+        : fact.change.hide === "vulnerable"
+          ? "ui.game.gameinventory.effectVulnerable"
+          : "ui.game.gameinventory.effectImmune";
+    return t(key, { names });
+  }
+  if (fact.damage) {
+    const scope = [
+      fact.damage.attacks && fact.damage.attacks !== "any"
+        ? t(`ui.game.gameinventory.damageAttack.${fact.damage.attacks}`)
+        : "",
+      fact.damage.blow ? t(`ui.game.gameinventory.damageBlow.${fact.damage.blow}`) : "",
+      fact.damage.ability ? t("ui.game.gameinventory.damageAbility", { name: fact.damage.ability }) : "",
+      fact.damage.type,
+      fact.damage.fromSource ? t("ui.game.gameinventory.damageSource") : "",
+    ]
+      .filter(Boolean)
       .join(", ");
-    if ("effect" in fact.change)
-      return t(FIGHT_EFFECT_KEYS[fact.change.effect] ?? "ui.game.gameinventory.effectFight", {
-        effect: fact.change.effect,
-      });
-    if ("hide" in fact.change) {
-      const key =
-        fact.change.hide === "resist"
-          ? "ui.game.gameinventory.effectResist"
-          : fact.change.hide === "vulnerable"
-            ? "ui.game.gameinventory.effectVulnerable"
-            : "ui.game.gameinventory.effectImmune";
-      return t(key, { names });
-    }
-    if (fact.to === "health-max") return t("ui.game.gameinventory.effectHealthMaxHalf");
-    if ("times" in fact.change) {
-      return t(
-        fact.change.times === 0.5 ? "ui.game.gameinventory.effectSpeedHalf" : "ui.game.gameinventory.effectSpeedDouble",
-      );
-    }
-    if (fact.to === "speed" && "value" in fact.change) {
-      return t("ui.game.gameinventory.effectSpeed", { change: fact.change.value });
-    }
-    if (fact.to === "defense" && "value" in fact.change) {
-      return names
-        ? t("ui.game.gameinventory.effectDefenseNamed", { change: fact.change.value, names })
-        : t("ui.game.gameinventory.effectDefense", { change: fact.change.value });
-    }
-    if ("atLeast" in fact.change) {
-      return t("ui.game.gameinventory.effectAbilitySet", { names, value: fact.change.atLeast });
-    }
-    if (fact.to === "ability" && "value" in fact.change) {
-      return t("ui.game.gameinventory.effectAbilityAdd", { names, change: fact.change.value });
-    }
-    if ("fails" in fact.change) return t("ui.game.gameinventory.effectFailsSaves", { names });
     const change =
-      "mode" in fact.change
-        ? t(
-            fact.change.mode === "advantage"
-              ? "ui.game.gameinventory.effectAdvantage"
-              : "ui.game.gameinventory.effectDisadvantage",
-          )
-        : fact.change.value;
-    if (fact.to === "checks") {
-      return names
-        ? t("ui.game.gameinventory.effectOnNamedChecks", { change, names })
-        : t("ui.game.gameinventory.effectOnChecks", { change });
-    }
-    if (fact.to === "attacks") return t("ui.game.gameinventory.effectOnAttacks", { change });
+      "times" in fact.change
+        ? t(fact.change.times === 0.5 ? "ui.game.gameinventory.damageHalf" : "ui.game.gameinventory.damageDouble")
+        : "value" in fact.change
+          ? fact.change.value
+          : "";
+    return (
+      t(fact.to === "damage-taken" ? "ui.game.gameinventory.damageTaken" : "ui.game.gameinventory.damageDealt", {
+        change,
+      }) + (scope ? ` (${scope})` : "")
+    );
+  }
+  if (fact.to === "health-max") return t("ui.game.gameinventory.effectHealthMaxHalf");
+  if ("times" in fact.change) {
+    return t(
+      fact.change.times === 0.5 ? "ui.game.gameinventory.effectSpeedHalf" : "ui.game.gameinventory.effectSpeedDouble",
+    );
+  }
+  if (fact.to === "speed" && "value" in fact.change) {
+    return t("ui.game.gameinventory.effectSpeed", { change: fact.change.value });
+  }
+  if (fact.to === "defense" && "value" in fact.change) {
     return names
-      ? t("ui.game.gameinventory.effectOnNamedSaves", { change, names })
-      : t("ui.game.gameinventory.effectOnSaves", { change });
-  };
+      ? t("ui.game.gameinventory.effectDefenseNamed", { change: fact.change.value, names })
+      : t("ui.game.gameinventory.effectDefense", { change: fact.change.value });
+  }
+  if ("atLeast" in fact.change) {
+    return t("ui.game.gameinventory.effectAbilitySet", { names, value: fact.change.atLeast });
+  }
+  if (fact.to === "ability" && "value" in fact.change) {
+    return t("ui.game.gameinventory.effectAbilityAdd", { names, change: fact.change.value });
+  }
+  if ("fails" in fact.change) return t("ui.game.gameinventory.effectFailsSaves", { names });
+  const change =
+    "mode" in fact.change
+      ? t(
+          fact.change.mode === "advantage"
+            ? "ui.game.gameinventory.effectAdvantage"
+            : "ui.game.gameinventory.effectDisadvantage",
+        )
+      : fact.change.value;
+  if (fact.to === "checks") {
+    return names
+      ? t("ui.game.gameinventory.effectOnNamedChecks", { change, names })
+      : t("ui.game.gameinventory.effectOnChecks", { change });
+  }
+  if (fact.to === "attacks") return t("ui.game.gameinventory.effectOnAttacks", { change });
+  return names
+    ? t("ui.game.gameinventory.effectOnNamedSaves", { change, names })
+    : t("ui.game.gameinventory.effectOnSaves", { change });
+}
+
+export function rulesetItemEffectLines(facts: RulesetItemFacts, t: TFunction): string[] {
+  const phrase = (fact: RulesetItemEffectFact) => rulesetEffectPhrase(fact, t);
   const useLine = rulesetItemUseLine(facts, t);
   return [
     ...rulesetItemAttackLines(facts, t),

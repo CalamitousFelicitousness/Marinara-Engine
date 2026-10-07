@@ -12343,8 +12343,39 @@
                                   "saves",
                                   "checks",
                                   "speed",
-                                  "health-max"
+                                  "health-max",
+                                  "damage",
+                                  "damage-taken"
                                 ]
+                              },
+                              "attacks": {
+                                "type": "string",
+                                "enum": [
+                                  "weapon",
+                                  "spell",
+                                  "any"
+                                ]
+                              },
+                              "blow": {
+                                "type": "string",
+                                "enum": [
+                                  "melee",
+                                  "ranged"
+                                ]
+                              },
+                              "ability": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "damageType": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 80
+                              },
+                              "fromSource": {
+                                "type": "boolean",
+                                "const": true
                               },
                               "flat": {
                                 "type": "integer",
@@ -12440,7 +12471,9 @@
                                       "enum": [
                                         "attacks",
                                         "saves",
-                                        "checks"
+                                        "checks",
+                                        "damage",
+                                        "damage-taken"
                                       ]
                                     }
                                   }
@@ -12455,7 +12488,96 @@
                                 "then": {
                                   "properties": {
                                     "to": {
-                                      "const": "speed"
+                                      "enum": [
+                                        "speed",
+                                        "health-max",
+                                        "damage",
+                                        "damage-taken"
+                                      ]
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "if": {
+                                  "required": [
+                                    "attacks"
+                                  ]
+                                },
+                                "then": {
+                                  "properties": {
+                                    "to": {
+                                      "enum": [
+                                        "damage",
+                                        "damage-taken"
+                                      ]
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "if": {
+                                  "required": [
+                                    "blow"
+                                  ]
+                                },
+                                "then": {
+                                  "properties": {
+                                    "to": {
+                                      "enum": [
+                                        "damage",
+                                        "damage-taken"
+                                      ]
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "if": {
+                                  "required": [
+                                    "ability"
+                                  ]
+                                },
+                                "then": {
+                                  "properties": {
+                                    "to": {
+                                      "enum": [
+                                        "damage",
+                                        "damage-taken"
+                                      ]
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "if": {
+                                  "required": [
+                                    "damageType"
+                                  ]
+                                },
+                                "then": {
+                                  "properties": {
+                                    "to": {
+                                      "enum": [
+                                        "damage",
+                                        "damage-taken"
+                                      ]
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "if": {
+                                  "required": [
+                                    "fromSource"
+                                  ]
+                                },
+                                "then": {
+                                  "properties": {
+                                    "to": {
+                                      "enum": [
+                                        "damage-taken"
+                                      ]
                                     }
                                   }
                                 }
@@ -12869,8 +12991,39 @@
                                   "saves",
                                   "checks",
                                   "speed",
-                                  "health-max"
+                                  "health-max",
+                                  "damage",
+                                  "damage-taken"
                                 ]
+                              },
+                              "attacks": {
+                                "type": "string",
+                                "enum": [
+                                  "weapon",
+                                  "spell",
+                                  "any"
+                                ]
+                              },
+                              "blow": {
+                                "type": "string",
+                                "enum": [
+                                  "melee",
+                                  "ranged"
+                                ]
+                              },
+                              "ability": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "damageType": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 80
+                              },
+                              "fromSource": {
+                                "type": "boolean",
+                                "const": true
                               },
                               "flat": {
                                 "type": "integer",
@@ -12966,7 +13119,9 @@
                                       "enum": [
                                         "attacks",
                                         "saves",
-                                        "checks"
+                                        "checks",
+                                        "damage",
+                                        "damage-taken"
                                       ]
                                     }
                                   }
@@ -12981,7 +13136,96 @@
                                 "then": {
                                   "properties": {
                                     "to": {
-                                      "const": "speed"
+                                      "enum": [
+                                        "speed",
+                                        "health-max",
+                                        "damage",
+                                        "damage-taken"
+                                      ]
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "if": {
+                                  "required": [
+                                    "attacks"
+                                  ]
+                                },
+                                "then": {
+                                  "properties": {
+                                    "to": {
+                                      "enum": [
+                                        "damage",
+                                        "damage-taken"
+                                      ]
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "if": {
+                                  "required": [
+                                    "blow"
+                                  ]
+                                },
+                                "then": {
+                                  "properties": {
+                                    "to": {
+                                      "enum": [
+                                        "damage",
+                                        "damage-taken"
+                                      ]
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "if": {
+                                  "required": [
+                                    "ability"
+                                  ]
+                                },
+                                "then": {
+                                  "properties": {
+                                    "to": {
+                                      "enum": [
+                                        "damage",
+                                        "damage-taken"
+                                      ]
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "if": {
+                                  "required": [
+                                    "damageType"
+                                  ]
+                                },
+                                "then": {
+                                  "properties": {
+                                    "to": {
+                                      "enum": [
+                                        "damage",
+                                        "damage-taken"
+                                      ]
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "if": {
+                                  "required": [
+                                    "fromSource"
+                                  ]
+                                },
+                                "then": {
+                                  "properties": {
+                                    "to": {
+                                      "enum": [
+                                        "damage-taken"
+                                      ]
                                     }
                                   }
                                 }
@@ -13549,8 +13793,39 @@
                                         "saves",
                                         "checks",
                                         "speed",
-                                        "health-max"
+                                        "health-max",
+                                        "damage",
+                                        "damage-taken"
                                       ]
+                                    },
+                                    "attacks": {
+                                      "type": "string",
+                                      "enum": [
+                                        "weapon",
+                                        "spell",
+                                        "any"
+                                      ]
+                                    },
+                                    "blow": {
+                                      "type": "string",
+                                      "enum": [
+                                        "melee",
+                                        "ranged"
+                                      ]
+                                    },
+                                    "ability": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "damageType": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 80
+                                    },
+                                    "fromSource": {
+                                      "type": "boolean",
+                                      "const": true
                                     },
                                     "flat": {
                                       "type": "integer",
@@ -13646,7 +13921,9 @@
                                             "enum": [
                                               "attacks",
                                               "saves",
-                                              "checks"
+                                              "checks",
+                                              "damage",
+                                              "damage-taken"
                                             ]
                                           }
                                         }
@@ -13661,7 +13938,96 @@
                                       "then": {
                                         "properties": {
                                           "to": {
-                                            "const": "speed"
+                                            "enum": [
+                                              "speed",
+                                              "health-max",
+                                              "damage",
+                                              "damage-taken"
+                                            ]
+                                          }
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "if": {
+                                        "required": [
+                                          "attacks"
+                                        ]
+                                      },
+                                      "then": {
+                                        "properties": {
+                                          "to": {
+                                            "enum": [
+                                              "damage",
+                                              "damage-taken"
+                                            ]
+                                          }
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "if": {
+                                        "required": [
+                                          "blow"
+                                        ]
+                                      },
+                                      "then": {
+                                        "properties": {
+                                          "to": {
+                                            "enum": [
+                                              "damage",
+                                              "damage-taken"
+                                            ]
+                                          }
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "if": {
+                                        "required": [
+                                          "ability"
+                                        ]
+                                      },
+                                      "then": {
+                                        "properties": {
+                                          "to": {
+                                            "enum": [
+                                              "damage",
+                                              "damage-taken"
+                                            ]
+                                          }
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "if": {
+                                        "required": [
+                                          "damageType"
+                                        ]
+                                      },
+                                      "then": {
+                                        "properties": {
+                                          "to": {
+                                            "enum": [
+                                              "damage",
+                                              "damage-taken"
+                                            ]
+                                          }
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "if": {
+                                        "required": [
+                                          "fromSource"
+                                        ]
+                                      },
+                                      "then": {
+                                        "properties": {
+                                          "to": {
+                                            "enum": [
+                                              "damage-taken"
+                                            ]
                                           }
                                         }
                                       }
@@ -22985,8 +23351,39 @@
                         "saves",
                         "checks",
                         "speed",
-                        "health-max"
+                        "health-max",
+                        "damage",
+                        "damage-taken"
                       ]
+                    },
+                    "attacks": {
+                      "type": "string",
+                      "enum": [
+                        "weapon",
+                        "spell",
+                        "any"
+                      ]
+                    },
+                    "blow": {
+                      "type": "string",
+                      "enum": [
+                        "melee",
+                        "ranged"
+                      ]
+                    },
+                    "ability": {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "damageType": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 80
+                    },
+                    "fromSource": {
+                      "type": "boolean",
+                      "const": true
                     },
                     "flat": {
                       "type": "integer",
@@ -23082,7 +23479,9 @@
                             "enum": [
                               "attacks",
                               "saves",
-                              "checks"
+                              "checks",
+                              "damage",
+                              "damage-taken"
                             ]
                           }
                         }
@@ -23097,7 +23496,96 @@
                       "then": {
                         "properties": {
                           "to": {
-                            "const": "speed"
+                            "enum": [
+                              "speed",
+                              "health-max",
+                              "damage",
+                              "damage-taken"
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "if": {
+                        "required": [
+                          "attacks"
+                        ]
+                      },
+                      "then": {
+                        "properties": {
+                          "to": {
+                            "enum": [
+                              "damage",
+                              "damage-taken"
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "if": {
+                        "required": [
+                          "blow"
+                        ]
+                      },
+                      "then": {
+                        "properties": {
+                          "to": {
+                            "enum": [
+                              "damage",
+                              "damage-taken"
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "if": {
+                        "required": [
+                          "ability"
+                        ]
+                      },
+                      "then": {
+                        "properties": {
+                          "to": {
+                            "enum": [
+                              "damage",
+                              "damage-taken"
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "if": {
+                        "required": [
+                          "damageType"
+                        ]
+                      },
+                      "then": {
+                        "properties": {
+                          "to": {
+                            "enum": [
+                              "damage",
+                              "damage-taken"
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "if": {
+                        "required": [
+                          "fromSource"
+                        ]
+                      },
+                      "then": {
+                        "properties": {
+                          "to": {
+                            "enum": [
+                              "damage-taken"
+                            ]
                           }
                         }
                       }
@@ -23819,8 +24307,39 @@
                         "saves",
                         "checks",
                         "speed",
-                        "health-max"
+                        "health-max",
+                        "damage",
+                        "damage-taken"
                       ]
+                    },
+                    "attacks": {
+                      "type": "string",
+                      "enum": [
+                        "weapon",
+                        "spell",
+                        "any"
+                      ]
+                    },
+                    "blow": {
+                      "type": "string",
+                      "enum": [
+                        "melee",
+                        "ranged"
+                      ]
+                    },
+                    "ability": {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "damageType": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 80
+                    },
+                    "fromSource": {
+                      "type": "boolean",
+                      "const": true
                     },
                     "flat": {
                       "type": "integer",
@@ -23916,7 +24435,9 @@
                             "enum": [
                               "attacks",
                               "saves",
-                              "checks"
+                              "checks",
+                              "damage",
+                              "damage-taken"
                             ]
                           }
                         }
@@ -23931,7 +24452,96 @@
                       "then": {
                         "properties": {
                           "to": {
-                            "const": "speed"
+                            "enum": [
+                              "speed",
+                              "health-max",
+                              "damage",
+                              "damage-taken"
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "if": {
+                        "required": [
+                          "attacks"
+                        ]
+                      },
+                      "then": {
+                        "properties": {
+                          "to": {
+                            "enum": [
+                              "damage",
+                              "damage-taken"
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "if": {
+                        "required": [
+                          "blow"
+                        ]
+                      },
+                      "then": {
+                        "properties": {
+                          "to": {
+                            "enum": [
+                              "damage",
+                              "damage-taken"
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "if": {
+                        "required": [
+                          "ability"
+                        ]
+                      },
+                      "then": {
+                        "properties": {
+                          "to": {
+                            "enum": [
+                              "damage",
+                              "damage-taken"
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "if": {
+                        "required": [
+                          "damageType"
+                        ]
+                      },
+                      "then": {
+                        "properties": {
+                          "to": {
+                            "enum": [
+                              "damage",
+                              "damage-taken"
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "if": {
+                        "required": [
+                          "fromSource"
+                        ]
+                      },
+                      "then": {
+                        "properties": {
+                          "to": {
+                            "enum": [
+                              "damage-taken"
+                            ]
                           }
                         }
                       }

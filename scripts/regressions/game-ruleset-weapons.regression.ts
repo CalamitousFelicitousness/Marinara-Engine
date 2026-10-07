@@ -477,6 +477,7 @@ try {
         // Two paces a cell: a swing one cell off, a throw five, ten at the longest.
         reach: 1,
         range: { normal: 5, long: 10 },
+        ability: "brawn",
         toHit: 2,
         damage: { count: 1, sides: 6, flat: 2, type: "cut", qualities: ["thrown"] },
       },
@@ -488,6 +489,7 @@ try {
         targets: { side: "enemy", count: 1 },
         reach: 2,
         range: { normal: 5 },
+        ability: "brawn",
         toHit: 2,
         // Both hands are full, so the spear deals its own die rather than its versatile one.
         damage: { count: 1, sides: 6, flat: 2, type: "cut", qualities: ["thrown"] },

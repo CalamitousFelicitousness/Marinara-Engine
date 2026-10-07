@@ -3653,20 +3653,36 @@ export const RULESET_COMBAT_MODIFIER_TARGETS = [
   "checks",
   "speed",
   "health-max",
+  "damage",
+  "damage-taken",
 ] as const;
 /** The ones that are ROLLED, so dice may be added to them and are rolled every time. */
-export const RULESET_ROLLED_MODIFIER_TARGETS: readonly string[] = ["attacks", "saves", "checks"];
+export const RULESET_ROLLED_MODIFIER_TARGETS: readonly string[] = [
+  "attacks",
+  "saves",
+  "checks",
+  "damage",
+  "damage-taken",
+];
 
 /** Whether a roll is thrown twice with the better or the worse kept. */
 export const RULESET_ROLL_MODES = ["advantage", "disadvantage"] as const;
 
 /** One number a condition changes, and by how much: a flat number (with its own sign), dice rolled
- *  each time the number is used (`minus` takes them away instead), or, for speed only, `times` half or
- *  double, applied after any flat change. A change to checks may name the `skills` it is about, and
- *  one to saves the `saves`; either may roll twice (`mode`) where the ruleset rolls twice at all. */
+ *  each time the number is used (`minus` takes them away instead), or `times` half or double on speed
+ *  and damage (the health maximum only halves), applied after additions. A change to checks may name
+ *  the `skills` it is about, and one to saves the `saves`; either may roll twice (`mode`) where the
+ *  ruleset rolls twice at all. */
 const combatModifierSchema = z
   .object({
     to: z.enum(RULESET_COMBAT_MODIFIER_TARGETS),
+    /** Damage dealt or taken on an attack hit (Capability API 1.128): narrowed to its kind,
+     *  reach or ability, typed on its own, and, on the target, only from the applying source. */
+    attacks: z.enum(["weapon", "spell", "any"]).optional(),
+    blow: z.enum(["melee", "ranged"]).optional(),
+    ability: sheetId.optional(),
+    damageType: z.string().trim().min(1).max(80).optional(),
+    fromSource: z.literal(true).optional(),
     flat: z.number().int().min(-100).max(100).optional(),
     dice: catalogDice.optional(),
     minus: z.literal(true).optional(),
@@ -3686,7 +3702,7 @@ const combatModifierSchema = z
     ) {
       add(
         "to",
-        "A modifier changes its number by a flat amount, by dice, for speed by times, or for checks and saves by a mode",
+        "A modifier changes its number by a flat amount, by dice, for speed, health-max or damage by times, or for checks and saves by a mode",
       );
     }
     if (modifier.skills !== undefined && modifier.to !== "checks") add("skills", '"skills" narrows a change to checks');
@@ -3694,13 +3710,20 @@ const combatModifierSchema = z
     if (modifier.mode !== undefined && modifier.to !== "checks" && modifier.to !== "saves") {
       add("mode", '"mode" rolls checks or saves twice, so it changes nothing else');
     }
+    const damage = modifier.to === "damage" || modifier.to === "damage-taken";
+    for (const key of ["attacks", "blow", "ability", "damageType", "fromSource"] as const) {
+      if (modifier[key] !== undefined && !damage) add(key, `"${key}" narrows damage only`);
+    }
+    if (modifier.fromSource && modifier.to !== "damage-taken") {
+      add("fromSource", '"fromSource" narrows damage-taken only');
+    }
     if (modifier.flat === 0) add("flat", "A flat change of 0 changes nothing");
     if (modifier.dice !== undefined && !RULESET_ROLLED_MODIFIER_TARGETS.includes(modifier.to)) {
       add("dice", `Dice are rolled, so they change ${RULESET_ROLLED_MODIFIER_TARGETS.join(", ")} and nothing else`);
     }
     if (modifier.minus && modifier.dice === undefined) add("minus", '"minus" takes dice away, so it needs "dice"');
-    if (modifier.times !== undefined && modifier.to !== "speed" && modifier.to !== "health-max") {
-      add("times", '"times" changes speed and the health maximum only');
+    if (modifier.times !== undefined && modifier.to !== "speed" && modifier.to !== "health-max" && !damage) {
+      add("times", '"times" changes speed, the health maximum and damage only');
     }
     if (modifier.to === "health-max" && (modifier.times !== 0.5 || modifier.flat !== undefined)) {
       add("times", 'The health maximum is only halved: "times": 0.5 and nothing else');
@@ -6505,7 +6528,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       if (!conditions.has(entry.condition)) issue([...path, "condition"], `Unknown condition "${entry.condition}"`);
       if (mapped.has(entry.condition)) issue([...path, "condition"], `Duplicate condition "${entry.condition}"`);
       mapped.add(entry.condition);
-      effectNameIssues(entry, skills, saves, path, issue);
+      effectNameIssues(entry, skills, saves, abilityIds, path, issue);
       hideIssues(def, entry, path, issue);
       // The action economy it changes (1.71) is the ruleset's own: budgets it declares, conditions it has.
       entry.budgets?.forEach((change, changeIndex) => {
@@ -6599,7 +6622,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       const key = `${entry.derived !== undefined ? "derived" : "track"}:${read}@${entry.at}`;
       if (levelled.has(key)) issue([...path, "at"], `Level ${entry.at} of "${read}" is given twice`);
       levelled.add(key);
-      effectNameIssues(entry, skills, saves, path, issue);
+      effectNameIssues(entry, skills, saves, abilityIds, path, issue);
       hideIssues(def, entry, path, issue);
     });
 
@@ -7454,10 +7477,11 @@ function effectNameIssues(
     skills?: string[];
     saves?: string[];
     failsSaves?: string[];
-    modifiers?: Array<{ skills?: string[]; saves?: string[] }>;
+    modifiers?: Array<{ skills?: string[]; saves?: string[]; ability?: string }>;
   },
   skills: ReadonlySet<string>,
   saves: ReadonlySet<string>,
+  abilities: ReadonlySet<string>,
   at: (string | number)[],
   add: (path: (string | number)[], message: string) => void,
 ): void {
@@ -7469,6 +7493,9 @@ function effectNameIssues(
   each(entry.saves, saves, [...at, "saves"], "save");
   each(entry.failsSaves, saves, [...at, "failsSaves"], "save");
   entry.modifiers?.forEach((modifier, index) => {
+    if (modifier.ability !== undefined && !abilities.has(modifier.ability)) {
+      add([...at, "modifiers", index, "ability"], `Unknown ability "${modifier.ability}"`);
+    }
     each(modifier.skills, skills, [...at, "modifiers", index, "skills"], "skill");
     each(modifier.saves, saves, [...at, "modifiers", index, "saves"], "save");
   });
@@ -7564,7 +7591,7 @@ function itemIssues(
   for (const key of ["worn", "carried"] as const) {
     const effect = item[key];
     if (!effect) continue;
-    effectNameIssues(effect, skills, saves, [...at, key], add);
+    effectNameIssues(effect, skills, saves, new Set(abilities.keys()), [...at, key], add);
     itemHideIssues(definition, effect, [...at, key], add);
     for (const [id, change] of Object.entries(effect.abilities ?? {})) {
       const ability = abilities.get(id);
@@ -7582,7 +7609,7 @@ function itemIssues(
       for (const issue of rulesetValueRefIssues(requirement.value, names, names.derived, true)) {
         add([...path, "value", issue.key], issue.message);
       }
-      effectNameIssues(requirement.otherwise, skills, saves, [...path, "otherwise"], add);
+      effectNameIssues(requirement.otherwise, skills, saves, new Set(abilities.keys()), [...path, "otherwise"], add);
       itemHideIssues(definition, requirement.otherwise, [...path, "otherwise"], add);
     });
   }

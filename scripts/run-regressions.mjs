@@ -28,6 +28,8 @@ export function regressionTimeoutMs(relativePath) {
     return 270_000;
   }
   if (relativePath === 'scripts/regressions/restart-supervisor.regression.ts') return 90_000;
+  // Hundreds of complete d20 and dice-pool fights take about a minute even on the pre-1.128 base.
+  if (relativePath === 'scripts/regressions/ruleset-combat-director.regression.ts') return 90_000;
   return FILE_TIMEOUT_MS;
 }
 

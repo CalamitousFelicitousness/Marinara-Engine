@@ -776,11 +776,17 @@ function attackActions(
     const dice = pooled ? (parsed ?? { count: 0, sides: rulesetPoolDie(definition), flat: 0 }) : parsed;
     if (!name || !dice) return;
     const proficient = columnValue(row, source.toHit.proficiency?.column) === true;
+    const namedAbility = columnValue(row, source.toHit.ability?.column);
+    const ability =
+      typeof namedAbility === "string" && namedAbility in evaluated.abilityMods
+        ? namedAbility
+        : definition.sheet.skills.find((entry) => entry.id === columnValue(row, source.toHit.skill?.column))?.ability;
     const reach = distanceInCells(source.reach, row, perCell);
     const normal = distanceInCells(source.range?.normal, row, perCell);
     const long = distanceInCells(source.range?.long, row, perCell);
     actions.push({
       id: `attack:${index}:${rowIndex}`,
+      ...(ability ? { ability } : {}),
       kind: "attack",
       label: name,
       budget: source.budget,
@@ -850,14 +856,20 @@ function itemToHit(
   item: RulesetCatalogItem,
   toHit: NonNullable<RulesetItemUse["toHit"]>,
   pooled: boolean,
-): { toHit: number; target?: number } {
+): { toHit: number; target?: number; ability?: string } {
   const read = (value: unknown) => itemAttackValue(item, value);
   const number = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : 0);
   const skill = read(toHit.skill);
   const hitWith = attackAbilities(read(toHit.abilities));
-  const base = hitWith.length
-    ? Math.max(...hitWith.map((ability) => abilityAndSkill(definition, build, evaluated, skill, ability)))
-    : abilityAndSkill(definition, build, evaluated, skill, undefined);
+  const ability = hitWith.length
+    ? hitWith.reduce((best, one) =>
+        abilityAndSkill(definition, build, evaluated, skill, one) >
+        abilityAndSkill(definition, build, evaluated, skill, best)
+          ? one
+          : best,
+      )
+    : definition.sheet.skills.find((entry) => entry.id === skill)?.ability;
+  const base = abilityAndSkill(definition, build, evaluated, skill, ability);
   const proficient =
     toHit.proficiency !== undefined && resolveRulesetValueRef(definition, build, toHit.proficiency, evaluated) > 0;
   const target = read(toHit.target);
@@ -867,6 +879,7 @@ function itemToHit(
       ? Math.trunc(resolveRulesetValueRef(definition, build, toHit.sheetBonus, evaluated))
       : 0;
   return {
+    ...(ability ? { ability } : {}),
     toHit:
       base +
       (proficient ? evaluated.proficiencyBonus : 0) +
@@ -965,6 +978,7 @@ function itemUseActions(
 /** What one use does, as an action holds it: the parts a fake takes from what it truly is (1.74). */
 export const RULESET_FAKE_EFFECT_KEYS = [
   "toHit",
+  "ability",
   "target",
   "autoHit",
   "damage",
@@ -1009,6 +1023,7 @@ function itemUseMechanics(
     kind: "item",
     budget: use.budget ?? "",
     toHit: aim.toHit,
+    ...(aim.ability ? { ability: aim.ability } : {}),
     ...(difficulty !== undefined ? { saveDifficulty: difficulty } : {}),
     build,
     evaluated,
@@ -1171,6 +1186,7 @@ function itemAttackActions(
       ...(strikes !== undefined ? { strikes } : {}),
       ...(reach !== undefined ? { reach } : {}),
       ...(normal !== undefined ? { range: { normal, ...(long !== undefined && long > normal ? { long } : {}) } } : {}),
+      ...(aim.ability ? { ability: aim.ability } : {}),
       toHit: aim.toHit,
       ...(aim.target !== undefined ? { target: aim.target } : {}),
       damage: damageOf(damageAbility),
@@ -1261,8 +1277,11 @@ function abilityAction(
   const mechanics = entry.mechanics;
   if (!mechanics) return null;
   const values = resolveRulesetAbilityValues(definition, build, source, row, evaluated);
+  const rolled = refTarget(definition, build, values.toHitRef);
+  const ability = rolled?.type === "ability" ? rolled.id : rolled?.ability;
   return mechanicsAction(definition, mechanics, {
     id: `ability:${sourceIndex}:${rowIndex}`,
+    ...(ability ? { ability } : {}),
     kind: "ability",
     label: name,
     budget: mechanics.budget ?? source.budget,
@@ -1290,6 +1309,7 @@ function mechanicsAction(
     label: string;
     budget: string;
     toHit: number;
+    ability?: string;
     saveDifficulty?: number;
     build: RulesetSheetBuild;
     evaluated: EvaluatedRulesetSheet;
@@ -1325,6 +1345,7 @@ function mechanicsAction(
   const family = cost ? (pool ? pool.group : cost.pool) : undefined;
   const action: RulesetCombatAction = {
     id: from.id,
+    ...(from.ability ? { ability: from.ability } : {}),
     kind: from.kind,
     ...(mechanics.kind === "attack" || mechanics.kind === "debuff" ? { harmful: true as const } : {}),
     label: from.label,

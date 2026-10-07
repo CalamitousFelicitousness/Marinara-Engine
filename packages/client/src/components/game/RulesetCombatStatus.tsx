@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { rulesetCombatLogLines, rulesetCombatNames } from "../../lib/ruleset-combat-log";
 import { rulesetDistanceText } from "../../lib/ruleset-combat-board";
+import { rulesetEffectPhrase } from "./RulesetItemPicker";
 import { cn } from "../../lib/utils";
 
 export function RulesetCombatStatus({
@@ -160,6 +161,14 @@ export function RulesetCombatStatus({
                     )}
                     {onTurn && <span className="text-[var(--primary)]">{t("game.combat.ruleset.status.turn")}</span>}
                   </span>
+                  {combatant.damageModifiers?.map((source, index) => (
+                    <span
+                      key={`damage-${index}`}
+                      className="mt-0.5 block text-[0.65rem] text-[var(--muted-foreground)]"
+                    >
+                      {source.name}: {source.facts.map((fact) => rulesetEffectPhrase(fact, t)).join("; ")}
+                    </span>
+                  ))}
                   {(state || conditions.length > 0 || combatant.concentrating) && (
                     <span className="mt-0.5 block text-[0.65rem] text-[var(--muted-foreground)]">
                       {[

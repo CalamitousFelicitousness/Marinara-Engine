@@ -48,6 +48,7 @@ import {
 } from "./encounter.js";
 import {
   rulesetAirborne,
+  rulesetBlowKind,
   rulesetAreaCells,
   rulesetCellCover,
   rulesetCellDistance,
@@ -1083,7 +1084,17 @@ function forecastFor(
       return (
         sum +
         (part.damage
-          ? strikes * averageHarm(definition, combat, rulesetDamageInEffect(definition, combat, actor, part.damage))
+          ? strikes *
+            modifiedAverage(
+              averageHarm(definition, combat, rulesetDamageInEffect(definition, combat, actor, part.damage)),
+              rulesetDamageModifiers(
+                definition,
+                state,
+                actor,
+                part,
+                firstTarget(definition, state, actor, part) ?? undefined,
+              ),
+            )
           : 0)
       );
     }, 0);
@@ -1133,7 +1144,60 @@ function forecastFor(
       forecast.averageDamage = Math.round(averageHarm(definition, combat, scaled, target ?? undefined) * 100) / 100;
     } else forecast.averageDamage += rulesetAverageDamage(action.use.perCostStep) * steps;
   }
+  if (action.damage && forecast.averageDamage !== undefined) {
+    forecast.averageDamage =
+      Math.round(
+        modifiedAverage(
+          forecast.averageDamage,
+          rulesetDamageModifiers(definition, state, actor, action, target ?? undefined),
+        ) * 100,
+      ) / 100;
+  }
   return forecast.hitChance !== undefined || forecast.averageDamage !== undefined ? forecast : undefined;
+}
+
+/** Modifiers that belong to THIS attack hit (Capability API 1.128). Rows and held weapons are
+ *  attacks; a single-target stat-block roll is a creature's weapon. Catalog abilities and item
+ *  uses are spell/other attacks. A save or an automatic hit never carries these additions. */
+export function rulesetDamageModifiers(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  target?: RulesetCombatant,
+  taken = false,
+): RulesetConditionModifier[] {
+  const combat = definition.combat;
+  if (!combat || !action.damage || action.toHit === undefined || action.autoHit || action.save) return [];
+  const weapon =
+    (action.kind === "attack" || (action.kind === "block" && action.targets.count === 1)) &&
+    !action.catalog &&
+    !action.itemUse;
+  const holder = taken ? target : actor;
+  if (!holder) return [];
+  return rulesetConditionModifiers(definition, combat, holder, taken ? "damage-taken" : "damage", state).filter(
+    ({ condition, level, item, modifier }) => {
+      if (modifier.attacks && modifier.attacks !== "any" && modifier.attacks !== (weapon ? "weapon" : "spell"))
+        return false;
+      if (modifier.blow && modifier.blow !== rulesetBlowKind(state, actor, target ?? actor, action)) return false;
+      if (modifier.ability && modifier.ability !== action.ability) return false;
+      return (
+        !modifier.fromSource ||
+        (!item &&
+          level === undefined &&
+          holder.tracked.some((one) => one.condition === condition && one.source === actor.id))
+      );
+    },
+  );
+}
+
+/** Own additions and multipliers only: a menu cannot promise a target's mark. */
+function modifiedAverage(average: number, modifiers: RulesetConditionModifier[]): number {
+  for (const { modifier } of modifiers) {
+    const dice = modifier.dice ? parseRulesetCombatDice(modifier.dice) : null;
+    average += (modifier.flat ?? 0) + (dice ? (modifier.minus ? -1 : 1) * rulesetAverageDamage(dice) : 0);
+  }
+  return Math.max(0, average * modifiers.reduce((times, { modifier }) => times * (modifier.times ?? 1), 1));
 }
 
 /** What one blow's harm is worth on average. A sum is its dice and flat part; in a pool fight each

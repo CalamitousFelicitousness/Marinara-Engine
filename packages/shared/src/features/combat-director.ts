@@ -1,4 +1,5 @@
 import type { RulesetCheckSource } from "./rulesets/check-effects.js";
+import type { RulesetItemEffectFact } from "./rulesets/item-book.js";
 import type { CombatWeather } from "./combat-conditions.js";
 import { z } from "zod";
 import type { Combatant, CombatPlayerAction, CombatSummary } from "../types/game.js";
@@ -115,6 +116,8 @@ export interface DirectedRulesetCombatant {
   conditions: Array<{ id: string; label: string; rounds?: number }>;
   /** All active typed defenses, including exceptions (Capability API 1.127). */
   hides?: Pick<RulesetCheckSource, "resist" | "vulnerable" | "immune" | "conditionImmunities">;
+  /** Active damage dealt/taken sources (Capability API 1.128), also read by the Game Master. */
+  damageModifiers?: Array<{ name: string; facts: RulesetItemEffectFact[] }>;
   /** What is left of each budget this turn, keyed by budget id. */
   budgets: Record<string, number>;
   down: boolean;

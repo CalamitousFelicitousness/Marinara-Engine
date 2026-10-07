@@ -349,6 +349,9 @@ export interface RulesetCombatAction {
   budget: string;
   /** Who it may be pointed at, relative to the actor: "enemy" is the other side. */
   targets: { side: "enemy" | "ally" | "self" | "any"; count: number };
+  /** The ability actually used for the attack roll (Capability API 1.128). A plain stat-block
+   *  action has none; a weapon offering several keeps the first best one, as its roll does. */
+  ability?: string;
   toHit?: number;
   /** The per-die target a pool fight throws this attack against, where the ruleset lets it move: a
    *  weapon's own. Without one the attack is thrown against the pool's usual target. */

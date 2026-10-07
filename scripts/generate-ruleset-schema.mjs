@@ -267,7 +267,14 @@ function modifierSaysSomething(node) {
   node.allOf = [
     ...(node.allOf ?? []),
     { if: { required: ["dice"] }, then: { properties: { to: { enum: [...RULESET_ROLLED_MODIFIER_TARGETS] } } } },
-    { if: { required: ["times"] }, then: { properties: { to: { const: "speed" } } } },
+    {
+      if: { required: ["times"] },
+      then: { properties: { to: { enum: ["speed", "health-max", "damage", "damage-taken"] } } },
+    },
+    ...["attacks", "blow", "ability", "damageType", "fromSource"].map((key) => ({
+      if: { required: [key] },
+      then: { properties: { to: { enum: key === "fromSource" ? ["damage-taken"] : ["damage", "damage-taken"] } } },
+    })),
     { if: { required: ["minus"] }, then: { required: ["dice"] } },
     { if: { required: ["mode"] }, then: { properties: { to: { enum: ["checks", "saves"] } } } },
     { if: { required: ["skills"] }, then: { properties: { to: { const: "checks" } } } },

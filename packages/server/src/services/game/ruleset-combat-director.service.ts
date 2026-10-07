@@ -11,6 +11,7 @@
 // no database and no network. The two things that are not pure, reading the ruleset and writing the
 // party's live sheet state back, live in the route.
 
+import { rulesetActiveConditions, rulesetItemEffectFacts } from "@marinara-engine/shared";
 import {
   advanceRulesetTurn,
   applyRulesetCombatChoice,
@@ -561,6 +562,14 @@ function projectCombatant(
     defense: combatant.defense,
     conditions: conditionsOf(definition, combatant),
     hides: rulesetCombatHide(definition, combatant, state),
+    damageModifiers: rulesetActiveConditions(definition, combat, combatant, state).flatMap((source) => {
+      const modifiers = source.modifiers?.filter((one) => one.to === "damage" || one.to === "damage-taken");
+      if (!modifiers?.length) return [];
+      const name = source.item
+        ? source.condition
+        : (definition.sheet.live.conditions.find((one) => one.id === source.condition)?.label ?? source.condition);
+      return [{ name, facts: rulesetItemEffectFacts(definition, { modifiers }) }];
+    }),
     budgets: { ...combatant.budgets },
     down: combatant.down,
     dying: combatant.dying,

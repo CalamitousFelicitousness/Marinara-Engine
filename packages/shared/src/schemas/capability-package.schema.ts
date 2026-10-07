@@ -815,7 +815,9 @@ const capabilityPackageManifestBaseSchema = z
 //        stat-block action in against.actions. No permission.
 // 1.127: conditions, levels and sheet lists keep typed harm and conditions off; item hides name
 //        exception tags, as creatures do. A package that ships these declares 1.127. No permission.
-// 1.128-1.129: claimed by the Game Mode lane (in progress); 1.130-1.159: the Kenhito lane.
+// 1.128: condition, level and item modifiers change damage dealt or taken on attack hits, narrowed
+//        by attack kind, blow or ability, with typed additions and source-bound damage taken. No permission.
+// 1.129: claimed by the Game Mode lane (in progress); 1.130-1.159: the Kenhito lane.
 // 1.160: a sheet list may have up to 24 columns. Not a soft seam: an older Engine refuses the
 //        ruleset, so a package with a list of more than 12 columns declares 1.160. No permission.
 // 1.161: a catalog entry's mechanics may be usable in a fight only while a value off its holder's

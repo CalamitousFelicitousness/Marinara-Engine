@@ -2443,6 +2443,24 @@ export function getCapabilityPackageInstallIssue(
   if (!declaresApi(127) && (carriesTypedHides || hideCombat?.sheetHides !== undefined || carriesItemExceptions)) {
     return "A ruleset whose conditions, levels, sheet or items with exceptions keep harm off requires schemaVersion 2 and capabilityApi 1.127 or newer";
   }
+  // Modifiers to damage dealt or taken, 1.128, including worn and carried items in catalog files.
+  const carriesDamageModifiers = (value: unknown): boolean => {
+    if (Array.isArray(value)) return value.some(carriesDamageModifiers);
+    const record = plainRecord(value);
+    if (!record) return false;
+    if (
+      Array.isArray(record.modifiers) &&
+      record.modifiers.some((one) => plainRecord(one)?.to === "damage" || plainRecord(one)?.to === "damage-taken")
+    )
+      return true;
+    return Object.values(record).some(carriesDamageModifiers);
+  };
+  if (
+    !declaresApi(128) &&
+    (carriesDamageModifiers(ruleset) || [...(catalogDocuments?.values() ?? [])].some(carriesDamageModifiers))
+  ) {
+    return "A ruleset whose modifiers change damage requires schemaVersion 2 and capabilityApi 1.128 or newer";
+  }
   // A sheet list with more than 12 columns, 1.160.
   const sheetLists = plainRecord(ruleset?.sheet)?.lists;
   if (

@@ -17,6 +17,7 @@ import {
   type RulesetSheetBuild,
 } from "../../schemas/ruleset.schema.js";
 import { rulesetCheckSources, rulesetHideLines } from "./check-effects.js";
+import { rulesetItemEffectFacts, rulesetItemEffectText } from "./item-book.js";
 import { readRulesetLive } from "./live-state.js";
 import { rulesetCatalogEntriesByRef } from "./scaled-rows.js";
 import {
@@ -196,6 +197,15 @@ export function renderRulesetSheetBlock(
 
   const conditions = live.conditions.flatMap((condition) => (condition.active ? [condition.label] : []));
   if (conditions.length > 0) push(`Conditions: ${conditions.join(", ")}`);
+  for (const source of rulesetCheckSources(definition, build, stored, items)) {
+    const modifiers = source.modifiers?.filter((one) => one.to === "damage");
+    if (modifiers?.length)
+      push(
+        `${safeValue(source.name)}: ${rulesetItemEffectFacts(definition, { modifiers })
+          .map((fact) => safeValue(rulesetItemEffectText(fact)))
+          .join("; ")}`,
+      );
+  }
 
   for (const entry of gm.sheetSummary.lists) {
     const list = sheet.lists.find((candidate) => candidate.id === entry.list);

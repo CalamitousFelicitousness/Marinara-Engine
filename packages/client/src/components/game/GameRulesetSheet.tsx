@@ -14,6 +14,7 @@ import { Minus, Pencil, Plus } from "lucide-react";
 import type { TFunction } from "i18next";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import {
+  rulesetItemEffectFacts,
   applyRulesetSheetOp,
   readResolvedSheetCommandTags,
   rulesetSheetStamp,
@@ -34,6 +35,7 @@ import {
   type RulesetSheetOp,
   type RulesetSheetItem,
 } from "@marinara-engine/shared";
+import { rulesetEffectPhrase } from "./RulesetItemPicker";
 import { RulesetSheetEditor } from "../rulesets/RulesetSheetEditor";
 import { rulesetCheckValueText } from "../../lib/ruleset-resolution";
 import { rulesetPoolGroupLabel, rulesetSheetSummaryShown } from "../../lib/ruleset-sheet-view";
@@ -658,6 +660,19 @@ export function GameRulesetSheet({
             </div>
           )}
 
+          {rulesetCheckSources(definition, build, live, items).flatMap((source, index) => {
+            const modifiers = source.modifiers?.filter((one) => one.to === "damage");
+            return modifiers?.length ? (
+              <p key={`damage-${index}`} className="text-xs text-[var(--muted-foreground)]">
+                {source.name}:{" "}
+                {rulesetItemEffectFacts(definition, { modifiers })
+                  .map((fact) => rulesetEffectPhrase(fact, localizeUi))
+                  .join("; ")}
+              </p>
+            ) : (
+              []
+            );
+          })}
           {definition.rests.length > 0 && (
             <div className="space-y-1.5">
               <div className="flex flex-wrap gap-1.5">

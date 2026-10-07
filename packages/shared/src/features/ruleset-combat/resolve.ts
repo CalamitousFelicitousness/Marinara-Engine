@@ -79,6 +79,7 @@ import {
   rulesetLevelOf,
 } from "./grid.js";
 import {
+  rulesetDamageModifiers,
   RULESET_MOVE_OPTION,
   RULESET_PASS_OPTION,
   RULESET_STAND_OPTION,
@@ -3409,7 +3410,12 @@ function resolveActionBody(
     const takes = style?.takes ? { from: target.initiative, taken: 0 } : null;
     // A damage-only save is tested once for this holder and blow, including clauses and riders (1.124).
     const damageSaves = new Set<RulesetTrackedCondition>();
-    const land = (part: RulesetDamageInput) => {
+    const modifiers = [
+      ...rulesetDamageModifiers(ctx.definition, ctx.state, actor, action, target),
+      ...rulesetDamageModifiers(ctx.definition, ctx.state, actor, action, target, true),
+    ];
+    const parts: RulesetDamageInput[] = [];
+    const landNow = (part: RulesetDamageInput) => {
       if (takes) {
         const amount = Math.max(0, Math.floor(part.amount));
         takes.taken += amount;
@@ -3441,6 +3447,9 @@ function resolveActionBody(
         if (kind && (!woundKind || kind.severity > woundKind.severity)) woundKind = kind;
       }
     };
+    // Keep the old path unchanged unless this hit actually has damage modifiers. A modified blow
+    // collects its amounts so additions happen once and times changes the whole hit before hide.
+    const land = (part: RulesetDamageInput) => (modifiers.length ? parts.push(part) : landNow(part));
     if (pooled && action.damage && spends && target.hardness !== undefined && spends.number < target.hardness) {
       // A number below the target's hardness lands and does nothing: the maker's number still goes
       // back to the base, as it does for any spending blow that landed.
@@ -3577,6 +3586,42 @@ function resolveActionBody(
         ...(critical ? { critical: true } : {}),
         ...(rolled.pool ? { pool: rolled.pool } : {}),
       });
+    }
+    if (parts.length) {
+      for (const { modifier } of modifiers) {
+        const dice = modifier.dice ? parseRulesetCombatDice(modifier.dice) : null;
+        if (!dice && modifier.flat === undefined) continue;
+        const amount = dice ?? { count: 0, sides: 0, flat: 0 };
+        const rolled = rollAmount(ctx, amount);
+        const bonus = critical ? criticalExtra(ctx, amount) : { rolls: [], flat: 0 };
+        const sign = modifier.minus ? -1 : 1;
+        const flat = (modifier.flat ?? 0) + sign * (rolled.flat + bonus.flat);
+        const addition = (modifier.flat ?? 0) + sign * (rolled.total + sumOf(bonus.rolls) + bonus.flat);
+        const damageType = modifier.damageType ?? action.damage?.type;
+        const matching = parts.find((part) => part.damageType?.toLowerCase() === damageType?.toLowerCase());
+        if (matching) {
+          matching.amount += addition;
+          matching.flat += flat;
+          matching.rolls.push(...rolled.rolls.map((face) => sign * face), ...bonus.rolls.map((face) => sign * face));
+        } else
+          parts.push({
+            sourceId: actor.id,
+            label: action.label,
+            damageType,
+            rolls: [...rolled.rolls, ...bonus.rolls].map((face) => sign * face),
+            flat,
+            amount: addition,
+            ...(critical ? { critical: true } : {}),
+          });
+      }
+      const times = modifiers.reduce((value, { modifier }) => value * (modifier.times ?? 1), 1);
+      // Round the scaled TOTAL down once, carrying a fraction across clauses in their written order.
+      let total = 0;
+      for (const part of parts) {
+        const previous = Math.floor(total);
+        total += Math.max(0, part.amount) * times;
+        landNow({ ...part, amount: Math.floor(total) - previous });
+      }
     }
     if (woundKind && woundTrack && "track" in health) {
       const box = ctx.combat.damageKinds?.marks === "per-point" ? Math.max(1, Math.floor(dealt)) : 1;

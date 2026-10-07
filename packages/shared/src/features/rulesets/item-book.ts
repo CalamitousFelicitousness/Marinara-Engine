@@ -67,10 +67,29 @@ export interface RulesetItemEffectFact {
    *  ruleset's own word for it in `names`), speed, one of the fight's effects, kinds of harm kept off
    *  (in `names`), or conditions kept off (their labels in `names`). */
   to:
-    "checks" | "saves" | "ability" | "attacks" | "defense" | "speed" | "health-max" | "effect" | "harm" | "conditions";
+    | "checks"
+    | "saves"
+    | "ability"
+    | "attacks"
+    | "defense"
+    | "speed"
+    | "health-max"
+    | "damage"
+    | "damage-taken"
+    | "effect"
+    | "harm"
+    | "conditions";
   names: string[];
   /** Exception tags beside each damage name, kept structured for translation (Capability API 1.127). */
   except?: string[][];
+  /** What narrows damage on a hit (Capability API 1.128), kept as facts for localized screens. */
+  damage?: {
+    attacks?: "weapon" | "spell" | "any";
+    blow?: "melee" | "ranged";
+    ability?: string;
+    type?: string;
+    fromSource?: true;
+  };
   change:
     | { mode: "advantage" | "disadvantage" }
     | { value: string }
@@ -570,6 +589,23 @@ export function rulesetItemEffectFacts(
   }
   for (const modifier of effect.modifiers ?? []) {
     const to = modifier.to;
+    const damage =
+      to === "damage" || to === "damage-taken"
+        ? {
+            damage: {
+              ...(modifier.attacks ? { attacks: modifier.attacks } : {}),
+              ...(modifier.blow ? { blow: modifier.blow } : {}),
+              ...(modifier.ability
+                ? {
+                    ability:
+                      definition.sheet.abilities.find((one) => one.id === modifier.ability)?.label ?? modifier.ability,
+                  }
+                : {}),
+              ...(modifier.damageType ? { type: modifier.damageType } : {}),
+              ...(modifier.fromSource ? { fromSource: modifier.fromSource } : {}),
+            },
+          }
+        : {};
     const narrowed =
       to === "checks" || to === "saves"
         ? names(to, to === "checks" ? (modifier.skills ?? effect.skills) : (modifier.saves ?? effect.saves))
@@ -578,11 +614,12 @@ export function rulesetItemEffectFacts(
           : [];
     const dice = modifier.dice ? `${modifier.minus ? "-" : "+"}${modifier.dice}` : "";
     const flat = modifier.flat ? `${modifier.flat > 0 ? "+" : ""}${modifier.flat}` : "";
-    if (dice || flat) facts.push({ to, names: narrowed, change: { value: `${dice}${flat}` } });
+    if (dice || flat) facts.push({ to, names: narrowed, ...damage, change: { value: `${dice}${flat}` } });
     if (modifier.times) {
       facts.push({
-        to: modifier.to === "health-max" ? "health-max" : "speed",
+        to,
         names: [],
+        ...damage,
         change: { times: modifier.times },
       });
     }
@@ -630,6 +667,20 @@ export function rulesetItemEffectText(fact: RulesetItemEffectFact): string {
       : change.hide === "vulnerable"
         ? `vulnerable to ${list}`
         : `immune to ${list}`;
+  }
+  if (fact.damage) {
+    const scope = [
+      fact.damage.attacks && fact.damage.attacks !== "any" ? fact.damage.attacks : "",
+      fact.damage.blow,
+      fact.damage.ability ? `using ${fact.damage.ability}` : "",
+      fact.damage.type,
+      fact.damage.fromSource ? "from the condition's source only" : "",
+    ]
+      .filter(Boolean)
+      .join(", ");
+    const amount =
+      "times" in change ? (change.times === 0.5 ? "half" : "double") : "value" in change ? change.value : "";
+    return `${amount} damage ${fact.to === "damage-taken" ? "taken" : "dealt"} on attack hits${scope ? ` (${scope})` : ""}`;
   }
   if ("times" in change) return change.times === 0.5 ? "half speed" : "double speed";
   if (fact.to === "defense" || fact.to === "speed") {

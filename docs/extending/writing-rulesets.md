@@ -1664,6 +1664,43 @@ same keys for a d20 system:
   { "condition": "restrained", "effects": ["own-saves-disadvantage"], "saves": ["dex_save"] }
   ```
 
+  **Damage a condition changes (Capability API 1.128).** `damage` changes what its holder deals;
+  `damage-taken` changes what its holder takes. Both accept `flat`, `dice` (and `minus`), or
+  `times: 0.5 | 2`. Additions happen once per attack hit, even when the hit has several damage
+  clauses; criticals double the added dice as the ruleset doubles its other dice. Saves and
+  automatic hits get none. `times` changes the whole hit after additions and before resistance,
+  rounding the total down once across its clauses. Added amounts meet resistance by their own
+  `damageType`, or the hit's type when omitted. Same-type additions join that amount before resistance.
+
+  `attacks` is `weapon`, `spell` or `any` (the default). Attack-list rows and equipped item attacks
+  are weapons, as are single-target stat-block attack rolls; catalog abilities (including creature
+  spellcasting) and item uses are spell/other attacks. `blow: "melee" | "ranged"` follows 1.113,
+  so a thrown weapon in reach is melee. `ability` names the ability actually chosen for the attack
+  roll: a row's ability, or the first best ability offered by an item (including finesse). Plain
+  stat-block actions have none and never match an ability restriction. These keys and `damageType`
+  are refused on other modifier targets. `fromSource: true` is only for `damage-taken`: the hit must
+  come from whoever applied the tracked condition. An untracked condition, level or item has no
+  applying source and cannot match it.
+
+  In 5e, declare these condition ids on the sheet, then put these entries in `combat.conditions`:
+
+  ```json
+  [
+    { "condition": "divine_favor", "modifiers": [{ "to": "damage", "attacks": "weapon", "dice": "1d4", "damageType": "radiant" }] },
+    { "condition": "rage", "modifiers": [{ "to": "damage", "attacks": "weapon", "blow": "melee", "ability": "str", "flat": 2 }] },
+    { "condition": "enfeebled", "modifiers": [{ "to": "damage", "attacks": "weapon", "ability": "str", "times": 0.5 }] },
+    { "condition": "hunters_mark", "modifiers": [{ "to": "damage-taken", "attacks": "weapon", "fromSource": true, "dice": "1d6" }] }
+  ]
+  ```
+
+  Divine Favor and Rage go on their caster; Ray of Enfeeblement and Hunter's Mark go on their
+  target. Hex uses the mark's `damage-taken` entry with `attacks: "any"` and `damageType: "necrotic"`.
+  Levels and items' `worn`, `carried` and requirement `otherwise` effects share these modifiers.
+  The attack menu counts only the holder's own additions and multipliers; a target's mark is never
+  promised there. Sheet and prompt summaries describe the holder's own damage modifiers, and the
+  battle view also describes incoming ones. Packages using either target require schemaVersion 2
+  and capabilityApi 1.128 or newer, including when the item lives in a separate catalog file.
+
   **Numbers a condition changes.** Each entry in `modifiers` names what it changes, `to`, and by how
   much:
   - `defense`: the number an attack against the holder has to reach. A flat number only.
@@ -2985,12 +3022,12 @@ Said plainly, because a ruleset should not claim what the Engine does not do:
 - **Only an attack roll is a hit.** Something that lands without one (darts that simply hit, an area
   everyone saves against) opens no `hit` moment, and an answer cannot tell a swing from a shot, so a
   Parry the rules keep to swords parries arrows too.
-- **Damage is changed by halving, not by an amount.** An answer can make one attack's harm half
-  (`resist-all` for that attack); it cannot take a rolled number off it.
+- **Damage modifiers belong to attack hits.** An answer can put a damage modifier on its holder
+  or halve incoming harm with `resist-all`; damage modifiers never change a save-only effect.
 - **Nothing is refunded.** What a cancelled action cost is spent.
-- **What a condition changes is a closed list.** Defense, attack rolls, saves, contest checks and
-  speed (and so for a level and what an item does in a fight), and nothing else: no bonus to the damage its holder deals, and no level that lowers the
-  most a character can have or takes them out of the fight.
+- **What a condition changes is a closed list.** Defense, attack rolls, saves, contest checks,
+  speed, health maximum, damage dealt and damage taken (also for levels and item effects).
+  Damage modifiers change attack hits only; they never add to save-based damage or automatic hits.
 - **A creature written in plain numbers has no wound track.** On a ruleset whose health is a track,
   such a creature still loses points; give it a `sheet` and its blows mark boxes, softened first by
   its own `resist`, `vulnerable` and `immune`.

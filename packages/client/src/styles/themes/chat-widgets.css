@@ -48,6 +48,7 @@
   --mari-widget-button-crest: initial;
   --mari-widget-button-text: initial;
   --mari-widget-button-shadow: initial;
+  --mari-widget-button-ring: initial;
   --mari-widget-ornament-inset: initial;
   --mari-widget-ornament-border: initial;
   --mari-widget-ornament-bg: initial;
@@ -97,6 +98,14 @@
   --mari-widget-soft: oklch(0.34 0.05 245);
 }
 
+/* The framed presets' thin inner button ring. Custom border paint redraws it too. */
+[data-chat-widget-preset="dottore"],
+[data-chat-widget-preset="mari"] {
+  --mari-widget-button-ring:
+    inset 0 0 0 2px var(--mari-widget-custom-background-solid, var(--mari-widget-bg)),
+    inset 0 0 0 3px var(--mari-widget-custom-border-solid, var(--mari-widget-gold));
+}
+
 [data-chat-widget-preset="mari"] {
   --mari-widget-bg: oklch(0.975 0.012 80);
   --mari-widget-text: oklch(0.32 0.04 273);
@@ -127,9 +136,7 @@
     inset 0 0 0 3px var(--mari-widget-custom-background-solid, var(--mari-widget-bg)),
     inset 0 0 0 4px var(--mari-widget-custom-border-solid, var(--mari-widget-gold));
   --mari-widget-button-crest: none;
-  --mari-widget-button-shadow:
-    inset 0 0 0 2px var(--mari-widget-custom-background-solid, var(--mari-widget-bg)),
-    inset 0 0 0 3px var(--mari-widget-custom-border-solid, var(--mari-widget-gold)), 0 3px 8px rgb(0 0 0 / 0.3);
+  --mari-widget-button-shadow: var(--mari-widget-button-ring), 0 3px 8px rgb(0 0 0 / 0.3);
   --mari-widget-ornament-inset: -0.375rem -1px;
   --mari-widget-ornament-border: 0;
   --mari-widget-ornament-bg: var(--mari-widget-button-crest) top center / 0.75rem 0.75rem no-repeat;
@@ -458,6 +465,8 @@
       --mari-window-bubble-bg,
       var(--mari-widget-custom-background, var(--mari-widget-bg, var(--marinara-chat-chrome-button-bg)))
     );
+    /* Keep the preset's inner ring, which the hidden ornament or button shadow drew. */
+    box-shadow: var(--mari-widget-ornament-shadow, var(--mari-widget-button-ring, none));
     clip-path: var(--mari-widget-button-inner-clip, none);
   }
 

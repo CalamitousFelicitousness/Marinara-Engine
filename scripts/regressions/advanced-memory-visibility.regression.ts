@@ -21,6 +21,8 @@ const { createChatsStorage } = await import("../../packages/server/src/services/
 const { createConnectionsStorage } = await import("../../packages/server/src/services/storage/connections.storage.js");
 const { createCharactersStorage } = await import("../../packages/server/src/services/storage/characters.storage.js");
 const { createAdvancedMemoryService } = await import("../../packages/server/src/services/advanced-memory.js");
+const { roleplayHiddenWhisperMessageIds } =
+  await import("../../packages/server/src/services/generation/roleplay-commands.js");
 const { DEFAULT_ADVANCED_MEMORY_SETTINGS, characterDataSchema } = await import("../../packages/shared/dist/index.js");
 
 type Call = { kind: "main" | "visibility" | "scene" | "scene+visibility" | "other"; prompt: string };
@@ -299,7 +301,7 @@ try {
   assert.equal((await extraOf(failed.id)).hiddenFromAICharacterIds, undefined);
   assert.deepEqual((await extraOf(failed.id)).autoVisibility.hiddenCharacterIds, []);
 
-  // A whisper's recipient keeps the message that carries the whisper.
+  // An absent whisper recipient loses the narration, and the whisper still reaches them (#7191).
   const whisper = { type: "whisper", character: "Pantalone", text: "Meet me at dawn." };
   const whispered = await say(helperChat, "user", "P glances at the window.", null, {
     roleplayCommandActivity: [
@@ -308,8 +310,15 @@ try {
   });
   calls.length = 0;
   await memory.settleMessageVisibility(helperChat);
-  assert.deepEqual(JSON.parse(JSON.parse(calls[0]!.prompt)[1].content).decide[0].candidates, ["Maukie Whiskers"]);
-  assert.equal((await extraOf(whispered.id)).hiddenFromAICharacterIds, undefined);
+  assert.deepEqual(JSON.parse(JSON.parse(calls[0]!.prompt)[1].content).decide[0].candidates, [
+    "Maukie Whiskers",
+    "Pantalone",
+  ]);
+  assert.deepEqual((await extraOf(whispered.id)).hiddenFromAICharacterIds, [ids.pantalone]);
+  assert(
+    roleplayHiddenWhisperMessageIds(await chats.listMessages(helperChat), ids.pantalone).has(whispered.id),
+    "the hidden message still delivers its whisper to Pantalone",
+  );
 
   // Off, merged mode and one-character chats make no extra call.
   const offChat = await createChat({ autoMessageVisibility: false });

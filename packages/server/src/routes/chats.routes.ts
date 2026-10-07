@@ -3195,6 +3195,8 @@ export async function chatsRoutes(app: FastifyInstance) {
           parameters: null,
           source: "cached",
           exact: true,
+          // Whose saved prompt this is, so Decision diagnostics can follow that character (#7264).
+          characterId: promptSourceMessage.characterId ?? null,
           generationInfo: cached.generationInfo ?? null,
           gameToolPlanning: cached.gameToolPlanning ?? null,
           agentNote: requestedMessage

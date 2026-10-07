@@ -21,15 +21,22 @@ export async function resolveConversationSelfieSystemPrompt(input: {
     personality: input.personality?.trim() ?? "",
     selfieTagsBlock: input.selfieTagsBlock ?? "",
   };
+  // #7258: custom templates saved before `${imageAppearance}` existed only reference
+  // `${appearance}`, which used to carry the override. Keep that meaning for them so
+  // their override (e.g. a LoRA trigger) is not silently dropped.
+  const templateContext = (template: string): ConversationSelfieCtx =>
+    template.includes("${imageAppearance}") || !promptContext.imageAppearance
+      ? promptContext
+      : { ...promptContext, appearance: promptContext.imageAppearance };
   const chatPromptTemplate = input.chatPromptTemplate?.trim() ?? "";
 
   if (chatPromptTemplate) {
     return renderTemplate(
       chatPromptTemplate,
-      promptContext,
+      templateContext(chatPromptTemplate),
       CONVERSATION_SELFIE.variables.map((variable) => variable.name),
     );
   }
 
-  return loadPrompt(input.promptOverridesStorage, CONVERSATION_SELFIE, promptContext);
+  return loadPrompt(input.promptOverridesStorage, CONVERSATION_SELFIE, promptContext, templateContext);
 }

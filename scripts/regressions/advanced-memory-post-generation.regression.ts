@@ -819,8 +819,7 @@ try {
   };
   assert.equal(await inspectRecall(newcomer.id), undefined, "Cyno is not shown Dottore's recalled scenes");
   assert.deepEqual(await inspectRecall(character.id), ownRecall, "Dottore still sees his own recall");
-  // Peek Prompt without a selected reply shows the latest reply's saved prompt, so the inspector
-  // follows that reply's character, also after they leave the scene.
+  // {{prompt}} opens Peek Prompt with no reply selected: the latest reply's saved prompt names its character.
   const turns = await chats.listMessages(turnsChat.id);
   const cynoPrepared = await memory.prepare({
     chatId: turnsChat.id,
@@ -837,9 +836,11 @@ try {
   assert.equal(latestPeek.statusCode, 200, latestPeek.body);
   assert.equal(latestPeek.json().source, "cached", latestPeek.body);
   assert.equal(latestPeek.json().characterId, newcomer.id, "Peek Prompt names whose saved prompt it shows");
-  await chats.patchMetadata(turnsChat.id, { inactiveCharacterIds: [newcomer.id] });
-  assert.equal(await inspectRecall(newcomer.id), undefined, "Cyno, now inactive, is not shown Dottore's recall");
   assert.equal(calls.length, callsBeforeInspection, "inspecting either character calls no provider");
+  // An inactive character's preview falls back to an active one, but recall stays the inspected character's own.
+  await chats.patchMetadata(turnsChat.id, { inactiveCharacterIds: [newcomer.id] });
+  assert.equal(await inspectRecall(newcomer.id), undefined, "an inactive Cyno is not shown Dottore's recall either");
+  assert.equal(calls.length, callsBeforeInspection, "inspecting an inactive character calls no provider");
   closeLatestScene = false;
 
   const actualUsageChat = await chats.create({

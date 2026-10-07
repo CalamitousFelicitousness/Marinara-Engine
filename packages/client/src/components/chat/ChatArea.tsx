@@ -2388,9 +2388,9 @@ const LocalChatArea = memo(function LocalChatArea({
     (messageId?: string) => {
       if (!activeChatId) return;
       peekPrompt.mutate(messageId ? { chatId: activeChatId, messageId } : activeChatId, {
-        // Characters who reply one by one each have their own prompt, so diagnostics follow the shown reply,
-        // including the latest one that {{prompt}} opens without a selected message. The saved mode still
-        // applies after the group shrinks to one character, as on the server.
+        // Characters who reply one by one each have their own prompt, so diagnostics follow
+        // the character whose saved prompt is shown, also when {{prompt}} opens the latest one.
+        // Like the server, use the saved mode, which still applies after the group shrinks to one character.
         onSuccess: ({ characterId, ...data }) =>
           setPeekPromptData({
             ...data,

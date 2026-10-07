@@ -645,10 +645,10 @@ try {
   const sceneAt = (index: number) =>
     groupScenes.find((record) => record.messageIds.includes(groupSource[index]!.id))!.sceneId;
   const [maukieOnly, both, narratorOnly] = [sceneAt(0), sceneAt(2), sceneAt(4)];
-  const groupRecall = async (audienceCharacterIds: string[]) =>
+  const groupRecall = async (audienceCharacterIds: string[], chatId = group.id) =>
     memory.prepare({
-      chatId: group.id,
-      messages: await chats.listMessages(group.id),
+      chatId,
+      messages: await chats.listMessages(chatId),
       audienceCharacterIds,
       budgetTokens: 12000,
       readOnly: true,
@@ -733,6 +733,45 @@ try {
   );
   assert.match(partlyHidden.recalledScenes!, /known only to Maukie\):\nMessages #1–#2;[^]*\n#1 User: ONLY_MAUKIE/u);
   for (const id of hiddenFromPantalone) await chats.updateMessageExtra(id, { hiddenFromAICharacterIds: [] });
+
+  // A merged chat of the narrator and one character, where the narrator's ID sorts first, checks conditions
+  // as that character, never with narrator privilege.
+  await db.insert(characters).values({
+    id: "aa-narrator",
+    data: JSON.stringify({ name: "Narrator" }),
+    createdAt: "2026-01-01",
+    updatedAt: "2026-01-01",
+  });
+  const duo = await chats.create({
+    name: "Merged narrator duo",
+    mode: "roleplay",
+    characterIds: ["maukie", "aa-narrator"],
+    connectionId: connection.id,
+  });
+  assert(duo);
+  await chats.patchMetadata(duo.id, {
+    groupChatMode: "merged",
+    advancedMemory: { ...groupSettings, narratorCharacterId: "aa-narrator", knowledgeStarts: { maukie: null } },
+  });
+  await chats.createMessagesBatch(duo.id, [
+    { role: "user", content: "ONLY_MAUKIE PRIVATE_MAUKIE Maukie buries the compass promise." },
+    { role: "assistant", characterId: "maukie", content: "Maukie hides the compass promise alone." },
+    { role: "user", content: "SCENE_CHANGE What about the compass promise?", extra: { isConversationStart: true } },
+  ]);
+  await chats.patchMetadata(duo.id, {
+    summaryEntries: [
+      createChatSummaryEntry({
+        content: 'DUO_PLAIN {{#if char == "Narrator"}}DUO_NARRATOR{{/if}}{{#if char == "Maukie"}}DUO_MAUKIE{{/if}}',
+        enabled: true,
+        messageIds: (await chats.listMessages(duo.id)).slice(0, 2).map((message) => message.id),
+      }),
+    ],
+  });
+  await memory.initialize(duo.id);
+  const duoRecall = await groupRecall(["aa-narrator", "maukie"], duo.id);
+  assert.match(duoRecall.chatSummary!, /\nDUO_PLAIN DUO_MAUKIE$/u, "the duo's summary is read as Maukie");
+  assert.match(duoRecall.recalledScenes!, /Maukie discussed the absent Pantalone\. MAUKIE_PRIVATE$/u);
+  assert(!/DUO_NARRATOR/u.test(duoRecall.chatSummary!), "a narrator-only section stays out");
 
   // Individual group chats recall per responder exactly as before #7237.
   const joinedAt = (await chats.listMessages(group.id)).at(-2)!.id;

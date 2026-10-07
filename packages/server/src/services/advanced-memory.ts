@@ -1681,6 +1681,8 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
 
   function renderEntry(ctx: Context, text: string, audience: string[]): string {
     const names = (audience.length ? audience : ctx.characterIds).map((id) => ctx.names.get(id) ?? "Character");
+    // Narrator privilege needs the narrator as the only reader, even in a merged chat with one character (#7237).
+    const char = audience.find((id) => id !== ctx.settings.narratorCharacterId);
     const user = String(
       object(
         object(
@@ -1721,7 +1723,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
               })
               .join("");
           })
-        : render(text, names[0] ?? "Character");
+        : render(text, char ? (ctx.names.get(char) ?? "Character") : (names[0] ?? "Character"));
     return parseRoleplayUserCommands(rendered).content;
   }
 

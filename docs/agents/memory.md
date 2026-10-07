@@ -101,14 +101,14 @@ To remove a saved summary, open it in **Access memories for this chat** and choo
 
 When something in a chat's memory is broken, you see it without opening the memory settings. A steady dot in your accent color appears in a corner of the **Chat Settings** button, and a notice says how many scenes have problems. Each set of problems is announced once; the dot stays until they are settled. In **Chat Settings → Memory Recall**, the same problems are listed above the settings, and **Access memories for this chat** shows the same dot.
 
-Press **Fix**, in the notice or in that list, to repair every flagged scene in one run. It uses the **Helper model** and the usual progress bar, **Pause processing** stops it, and work already done is kept. Fix:
+Press **Fix**, in the notice or in that list, to repair every flagged scene in one run. It uses the **Helper model** and the usual progress bar. **Pause processing** stops it and **Resume processing** continues the Fix; work already done is kept. Fix:
 
-- asks the helper again who was in scenes marked **Check who was there**, and saves a clear answer. If the helper still can't tell, the scene keeps the characters it already had, so nobody gains access, and it is listed for you to check;
+- asks the helper again who was in scenes marked **Check who was there**, and saves a clear answer. If the helper still can't tell, nobody gains access: the scene keeps only characters it already had and the helper didn't leave out, and it is listed for you to check;
 - checks who was in older scenes saved before participant checks, including ones whose automatic check failed;
 - writes new summaries for scenes whose messages, hidden messages, character names or supporting summaries changed, and for finished scenes that have no summary. Summaries you deleted stay deleted;
 - resumes memory work that stopped with an error.
 
-Fix never rewrites a summary you edited by hand. If one no longer matches its messages, or its scene boundaries moved, Fix leaves it alone and lists it under **need your review**, then carries on with the other scenes. Settings it can't change for you, such as confirming each character's knowledge range or choosing a working Decision connection, stay listed until you change them.
+Fix never rewrites a summary you edited by hand. If one no longer matches its messages, misses messages that are shown again, or its scene boundaries moved, Fix leaves it alone and lists it under **need your review**, then carries on with the other scenes. Settings it can't change for you, such as confirming each character's knowledge range or choosing a working Decision connection, stay listed until you change them.
 
 When Fix finishes, it shows **Fixed N scenes** and the scenes that **need your review** as scene numbers. Select a number to open that scene in **Access memories for this chat**. If Chat Settings was closed, a notice with **Show** brings you there. A scene Fix couldn't decide is not asked about again on the next Fix; save its character access yourself.
 

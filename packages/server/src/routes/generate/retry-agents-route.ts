@@ -3232,7 +3232,11 @@ async function applyRetryResultEffects(args: {
           !isTrackerRowsUpdate(ctData.presentCharacters) &&
           (!Array.isArray(ctData.presentCharacters) || ctData.presentCharacters.length === 0)
         ) {
-          logger.debug("[retry-agents] character-tracker emitted no presentCharacters; keeping existing snapshot");
+          // An empty list deliberately keeps the snapshot; a missing or malformed one is lost output (#7208).
+          logger[Array.isArray(ctData.presentCharacters) ? "debug" : "warn"](
+            "[retry-agents] character-tracker emitted no presentCharacters (result keys: %s); keeping existing snapshot",
+            Object.keys(ctData).join(", ") || "none",
+          );
           continue;
         }
         const previousSnapshot = await loadRetryTargetGameStateSnapshot();

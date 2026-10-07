@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- **Character Tracker** no longer throws away a turn's mood, outfit and thought changes when the model sends them without the `presentCharacters` wrapper. Those turns used to count as successful while the tracker panel kept the old values, and the next turn could undo recent changes. If a Character Tracker reply still has no character list, the server log now shows a warning (#7208).
 - **Chat Summary** supports Shift-clicking a visible range on desktop and enabling or disabling only the selected summaries. Combine resets range selection, desktop rows stay compact, and selection controls wrap on narrow screens (#7163).
 - A chat's message trash with thousands of entries no longer freezes the page. The list now fills in 200 entries at a time, restoring or deleting no longer redraws every entry, and the entries dim while it runs. A failed or partial restore warning now stays up for 15 seconds, so a slow device can't hide it before you read it (#7210).
 - On Android/Termux, updating from **Settings → Advanced → Updates** no longer downloads builds for every other platform, about 1.7 GB the phone cannot use. It now installs only what Android needs, the same way `start-termux.sh` does, and the manual update command shown when an update fails does the same (#7214).

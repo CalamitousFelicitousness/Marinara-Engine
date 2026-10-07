@@ -1439,6 +1439,22 @@ function carriesZones(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesZones(one, depth + 1));
 }
 
+/** A catalog entry or item use that ends conditions, steadies the dying or brings back the dead, in
+ *  catalog files too (1.171). */
+function carriesCures(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCures(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  for (const mechanics of [plainRecord(record.mechanics), plainRecord(record.use)]) {
+    if (!mechanics) continue;
+    if (mechanics.ends !== undefined || mechanics.stabilizes !== undefined || mechanics.revives !== undefined) {
+      return true;
+    }
+  }
+  return Object.values(record).some((one) => carriesCures(one, depth + 1));
+}
+
 /** A zone moved to ram or hurting whom it holds, ground that costs several steps or halves speed, or
  *  a hold broken only by its escape DC and checks, in catalog files too (1.170). */
 function carriesZoneGround(value: unknown, depth = 0): boolean {
@@ -2684,6 +2700,13 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesZoneGround(document)))
   ) {
     return "A ruleset with zones that ram or hurt whom they hold, ground that costs more or halves speed, or holds broken only by their escape DC and checks requires schemaVersion 2 and capabilityApi 1.170 or newer";
+  }
+  // Cures that end conditions, steady the dying or bring back the dead, 1.171.
+  if (
+    !declaresApi(171) &&
+    (carriesCures(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesCures(document)))
+  ) {
+    return "A ruleset with cures that end conditions, stabilize the dying or revive the dead requires schemaVersion 2 and capabilityApi 1.171 or newer";
   }
   if (carriesCreatureSpellcasting) {
     // The references can only be checked once the catalog files are beside their headers.

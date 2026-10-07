@@ -168,6 +168,11 @@ export interface RulesetItemUseFact {
   concentration?: true;
   /** The area it leaves, and for how many rounds (1.169). */
   zone?: { rounds: number };
+  /** What it cures (1.171): conditions it ends (by label, at most `count`), the dying it steadies,
+   *  and the dead it brings back within so many rounds. */
+  ends?: { conditions: string[]; count?: number };
+  stabilizes?: true;
+  revives?: { withinRounds: number; health: string };
   /** What one use spends of the charges the item holds at most, the rests (by label) that bring them
    *  back and how many (`"max"` or a sum), and the die it rolls to break when emptied. */
   charges?: {
@@ -343,6 +348,16 @@ function rulesetItemUseFacts(
     ...(use.consumes ? { consumes: true as const } : {}),
     ...(use.concentration ? { concentration: true as const } : {}),
     ...(use.zone ? { zone: { rounds: use.zone.rounds } } : {}),
+    ...(use.ends
+      ? {
+          ends: {
+            conditions: use.ends.conditions.map((id) => labelOf(definition.sheet.live.conditions, id)),
+            ...(use.ends.count !== undefined ? { count: use.ends.count } : {}),
+          },
+        }
+      : {}),
+    ...(use.stabilizes ? { stabilizes: true as const } : {}),
+    ...(use.revives ? { revives: { withinRounds: use.revives.withinRounds, health: amount(use.revives.health) } } : {}),
     ...(use.charges !== undefined && max !== undefined
       ? {
           charges: {
@@ -1280,6 +1295,13 @@ export function rulesetItemUseText(use: RulesetItemUseFact): string {
     use.consumes ? "used up" : "",
     use.concentration ? "concentration" : "",
     use.zone ? `the area stays ${use.zone.rounds} round${use.zone.rounds === 1 ? "" : "s"}` : "",
+    use.ends
+      ? `ends ${use.ends.count !== undefined && use.ends.count < use.ends.conditions.length ? `${use.ends.count} of ` : ""}${use.ends.conditions.join(", ")}`
+      : "",
+    use.stabilizes ? "stabilizes the dying" : "",
+    use.revives
+      ? `revives one dead no longer than ${use.revives.withinRounds} round${use.revives.withinRounds === 1 ? "" : "s"} at ${use.revives.health}`
+      : "",
     use.charges ? `spends ${use.charges.cost} of ${use.charges.max} charges` : "",
     use.charges?.recharge
       ? `regains ${use.charges.recharge.amount === "max" ? "all" : use.charges.recharge.amount} on ${use.charges.recharge.rests.join(" or ")}`

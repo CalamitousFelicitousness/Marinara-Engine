@@ -388,6 +388,14 @@ try {
     assert.ok(rulesetCombatant(stoned.state, "a")!.tracked.some((one) => one.condition === "restrained"));
     assert.equal(breaks(stoned.state, "a"), false, "no escape from stone");
     // The web is broken with the contest's own check; the tentacles only with Dexterity.
+    // A web spun by somebody on the held one's own side is broken the same way (1.171 fix).
+    {
+      const friendly = structuredClone(webbed.state);
+      rulesetCombatant(friendly, "mage")!.side = "enemy";
+      assert.equal(breaks(friendly, "a"), true, "a friend's web is escaped too");
+      const out = take(friendly, "a", "Break free", { targetIds: ["mage"] });
+      assert.equal(refused(out), undefined, JSON.stringify(refused(out)));
+    }
     const webTry = take(webbed.state, "a", "Break free", { targetIds: ["mage"] });
     const webContest = webTry.events.find((one) => one.type === "contest");
     assert.equal(webContest && webContest.type === "contest" ? webContest.attacker.check : "", "might");

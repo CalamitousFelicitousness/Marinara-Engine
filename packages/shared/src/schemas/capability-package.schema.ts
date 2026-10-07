@@ -864,7 +864,11 @@ const capabilityPackageManifestBaseSchema = z
 //        checks that break it (`applies[].escapeChecks`), and a zone may hurt whoever starts a turn
 //        in it already held by it, with no save (`zone.whileHeld`): Web, Black Tentacles, and no
 //        escape from petrification. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 170 } as const);
+// 1.171: a catalog entry or item use may cure: end named conditions on its target (`ends`, up to
+//        `count` of them, Lesser Restoration), steady a dying target (`stabilizes`, Spare the
+//        Dying), or bring back one that died no more than `revives.withinRounds` rounds ago at
+//        `revives.health` (Revivify). No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 171 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

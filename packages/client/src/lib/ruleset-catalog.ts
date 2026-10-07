@@ -486,6 +486,8 @@ export type CatalogMechanicsLabels = {
   budgets: Readonly<Record<string, string>>;
   /** A sheet value by the ruleset's own name, for an amount that adds one (1.78). */
   value?: (ref: RulesetValueRef) => string;
+  /** Condition id to the name the sheet shows, for a cure that ends some (1.171). */
+  conditions?: Readonly<Record<string, string>>;
 };
 
 /** The ruleset's own names for everything a mechanics block can point at. A pool group has no label
@@ -504,7 +506,9 @@ export function catalogMechanicsLabels(
   const budgets: Record<string, string> = {};
   for (const budget of definition.combat?.economy.budgets ?? []) budgets[budget.id] = budget.label;
   const value = (ref: RulesetValueRef) => rulesetValueRefLabel(definition, ref).what;
-  return { units: catalog.units, saves, pools, budgets, value };
+  const conditions: Record<string, string> = {};
+  for (const condition of definition.sheet.live.conditions) conditions[condition.id] = condition.label;
+  return { units: catalog.units, saves, pools, budgets, value, conditions };
 }
 
 /** Dice and a flat adjustment read as one die expression (`1d8+3`), which every system writes the
@@ -659,6 +663,25 @@ export function formatCatalogMechanics(
     );
   }
   if (mechanics.concentration) parts.push(t("game.ruleset.catalog.mechanics.concentration"));
+  // What it cures (1.171): conditions it ends, the dying it steadies, the dead it brings back.
+  if (mechanics.ends) {
+    const named = mechanics.ends.conditions.map((id) => labels.conditions?.[id] ?? id).join(", ");
+    const count = mechanics.ends.count;
+    parts.push(
+      count !== undefined && count < mechanics.ends.conditions.length
+        ? t("game.ruleset.catalog.mechanics.endsSome", { count, conditions: named })
+        : t("game.ruleset.catalog.mechanics.ends", { conditions: named }),
+    );
+  }
+  if (mechanics.stabilizes) parts.push(t("game.ruleset.catalog.mechanics.stabilizes"));
+  if (mechanics.revives) {
+    parts.push(
+      t("game.ruleset.catalog.mechanics.revives", {
+        count: mechanics.revives.withinRounds,
+        amount: formatAmount(mechanics.revives.health),
+      }),
+    );
+  }
   // An area that stays (1.167): how long, and when it does its effect again.
   if (mechanics.zone) {
     parts.push(

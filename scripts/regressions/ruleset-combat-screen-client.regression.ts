@@ -653,6 +653,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["down", say({ type: "down", actorId: "brenna", dying: true })],
     ["defeated", say({ type: "defeated", actorId: "lurker" })],
     ["revived", say({ type: "revived", actorId: "brenna", health: 1 })],
+    ["stabilized", say({ type: "stabilized", targetId: "brenna", sourceId: "lurker" })],
     ["outcome", say({ type: "outcome", outcome: "victory" })],
     ["refused", say({ type: "refused", actorId: "brenna", optionId: "sword", reason: "no-budget" })],
     ["director", say({ type: "director", reason: "ruleset-unavailable", text: "The rules are gone." })],
@@ -901,6 +902,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.equal(printed.get("down"), "Brenna goes down and is fighting to hold on.");
   assert.equal(printed.get("defeated"), "Thorn Lurker is out of the fight.");
   assert.equal(printed.get("revived"), "Brenna is back up on 1.");
+  assert.equal(printed.get("stabilized"), "Thorn Lurker stabilizes Brenna.");
   assert.equal(printed.get("outcome"), "The fight is won.");
   assert.equal(printed.get("refused"), "Brenna could not do that: They have nothing left to spend on it this turn.");
   assert.equal(printed.get("director"), "The fight stopped here: The rules are gone.");

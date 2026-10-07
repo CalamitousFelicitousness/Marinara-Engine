@@ -393,6 +393,12 @@ export interface RulesetCombatAction {
   temporary?: RulesetCombatAmount;
   /** A pool of each target's sheet this gives back some of: an item's `restore`. */
   restore?: { pool: string; amount: RulesetCombatAmount };
+  /** Conditions it takes off its target, in the order named, at most `count` of them (1.171). */
+  ends?: { conditions: string[]; count?: number };
+  /** It steadies a dying target: no more dying rolls (1.171). */
+  stabilizes?: boolean;
+  /** It brings back a target that died no more than `withinRounds` rounds ago, at `amount` (1.171). */
+  revives?: { withinRounds: number; amount: RulesetCombatAmount };
   save?: RulesetCombatSaveRider;
   /** The source's own save difficulty, for a save-ends on an action with no save of its own. */
   saveDifficulty?: number;
@@ -654,6 +660,8 @@ export interface RulesetCombatant {
   dying: boolean;
   stable: boolean;
   defeated: boolean;
+  /** The round it was defeated in, which a revive's window is measured from (1.171). */
+  diedRound?: number;
   /** Read from the sheet or the block once, when the fight began. */
   defense: number;
   /** The lowest natural attack face that is a critical for this fighter, read off their sheet
@@ -1129,7 +1137,8 @@ export type RulesetCombatEvent =
         | "spent"
         | "recovered"
         | "harmed"
-        | "shaken";
+        | "shaken"
+        | "cured";
     }
   /** A number that attacks move: what came off it or went on it, why, and what it is now. A style
    *  that takes carries the damage dice that decided it, as a damage event does. */
@@ -1359,6 +1368,8 @@ export type RulesetCombatEvent =
   | { type: "down"; actorId: string; dying: boolean }
   | { type: "defeated"; actorId: string }
   | { type: "revived"; actorId: string; health: number }
+  /** Steadied by somebody's action (1.171): no more dying rolls. */
+  | { type: "stabilized"; targetId: string; sourceId: string }
   | { type: "outcome"; outcome: RulesetEncounterOutcome }
   | { type: "refused"; actorId: string; optionId?: string; reason: RulesetCombatRefusal };
 

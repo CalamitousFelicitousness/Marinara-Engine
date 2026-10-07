@@ -970,6 +970,29 @@ export function rulesetForbiddenTargets(
  * A combatant who is down can still be healed and can still be hit while they are down. Only one
  * the fight is over for is off the table.
  */
+/** Whether a revive may be aimed at this one: dead, and not for longer than it reaches back (1.171).
+ *  Somebody a condition took out was never killed, and no round of death is on them to measure. */
+export function rulesetCanRevive(
+  state: RulesetEncounterState,
+  action: Pick<RulesetCombatAction, "revives">,
+  combatant: RulesetCombatant,
+): boolean {
+  if (!action.revives || !combatant.defeated || combatant.diedRound === undefined) return false;
+  return state.round - combatant.diedRound <= action.revives.withinRounds;
+}
+
+/** Whether an action that does nothing but cure has something to cure on this one (1.171): a
+ *  condition it ends that they hold, or a dying they can be steadied from. One that also heals or
+ *  harms or puts something on is aimed as that says. */
+function rulesetCureReaches(action: RulesetCombatAction, combatant: RulesetCombatant): boolean {
+  if (!action.ends && !action.stabilizes) return true;
+  if (action.damage || action.heal || action.temporary || action.restore || action.applies?.length) return true;
+  if (action.revives || action.save || action.contest || action.summons || action.zone) return true;
+  if (action.stabilizes && combatant.dying && !combatant.stable && !combatant.defeated) return true;
+  const ends = new Set(action.ends?.conditions ?? []);
+  return combatant.tracked.some((entry) => ends.has(entry.condition));
+}
+
 export function rulesetOptionTargets(
   definition: RulesetDefinition,
   state: RulesetEncounterState,
@@ -985,6 +1008,7 @@ export function rulesetOptionTargets(
   const forbidden = rulesetForbiddenTargets(definition, state, actor);
   const needs = actionOf(actor, option.id)?.needs;
   const targetTypes = actionOf(actor, option.id)?.targetTypes;
+  const cure = actionOf(actor, option.id);
   // Breaking free is aimed at whoever is holding on, and at nobody else.
   const contest = actionOf(actor, option.id)?.contest;
   const holder = contest?.from ? rulesetContestHolder(state, actor, contest)?.id : undefined;
@@ -1000,11 +1024,17 @@ export function rulesetOptionTargets(
   return (
     state.combatants
       .filter((combatant) => {
-        if (combatant.defeated) return false;
+        // Bringing back the dead is aimed at the dead, and only them (1.171).
+        if (cure?.revives) {
+          if (!rulesetCanRevive(state, cure, combatant)) return false;
+        } else if (combatant.defeated) return false;
+        if (cure && !rulesetCureReaches(cure, combatant)) return false;
         if (!rulesetTargetHasSenses(definition, state, combatant, needs)) return false;
         if (!rulesetTargetTypesAllow(definition, combatant, targetTypes)) return false;
         if (option.id.startsWith("summon:") && !rulesetCombatStanding(combatant)) return false;
-        if (contest?.from && combatant.id !== holder) return false;
+        // Breaking free is aimed at whoever holds on, on either side: a web an ally spun catches
+        // friends too, and the hold is what is broken, not the one who made it.
+        if (contest?.from) return combatant.id === holder && !forbidden.has(combatant.id);
         if (tooBig(combatant)) return false;
         // Whoever put a condition on this actor that says they may not be pointed at.
         if (forbidden.has(combatant.id)) return false;

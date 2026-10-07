@@ -746,6 +746,8 @@ export function rulesetCombatEventLine(
       return key(event.dying ? "downDying" : "down", { actor: names.combatant(event.actorId) });
     case "defeated":
       return key("defeated", { target: names.combatant(event.actorId) });
+    case "stabilized":
+      return key("stabilized", { actor: names.combatant(event.sourceId), target: names.combatant(event.targetId) });
     case "revived":
       return key("revived", { actor: names.combatant(event.actorId), health: event.health });
     case "outcome":

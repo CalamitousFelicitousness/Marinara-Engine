@@ -128,6 +128,7 @@ import {
   rulesetActionTakesStyle,
   rulesetAttackStyles,
   type RulesetInitiativeStyle,
+  rulesetCanRevive,
 } from "./options.js";
 import type {
   RulesetActionResume,
@@ -674,6 +675,7 @@ function dropToZero(ctx: RulesetCombatContext, target: RulesetCombatant): void {
   // lethargy) is not put on somebody already out of the fight.
   if (target.side === "enemy") {
     target.defeated = true;
+    target.diedRound = ctx.state.round;
     endSummons(ctx, target);
     endZones(ctx, target);
   }
@@ -738,6 +740,7 @@ function addDeathFailures(ctx: RulesetCombatContext, target: RulesetCombatant, a
   const successes = trackValue(ctx, target, dying.successes);
   if (failures < trackMax(ctx, target, dying.failures)) return;
   target.defeated = true;
+  target.diedRound = ctx.state.round;
   endSummons(ctx, target);
   endZones(ctx, target);
   target.dying = false;
@@ -1143,7 +1146,8 @@ function removeCondition(
     | "recovered"
     | "harmed"
     | "shaken"
-    | "immune",
+    | "immune"
+    | "cured",
 ): void {
   target.tracked = target.tracked.filter((entry) => entry.condition !== condition);
   if (target.sheet) writeRulesetSheet(ctx.definition, target, { op: "condition", condition, active: false });
@@ -3083,7 +3087,10 @@ function resumeAction(ctx: RulesetCombatContext, resume: RulesetActionResume): v
       ? []
       : resume.targetIds
           .map((id) => rulesetCombatant(ctx.state, id))
-          .filter((target): target is RulesetCombatant => !!target && !target.defeated);
+          .filter(
+            (target): target is RulesetCombatant =>
+              !!target && (!target.defeated || rulesetCanRevive(ctx.state, action, target)),
+          );
   harmedBy(ctx, actor, action, resume, () =>
     resolveAction(ctx, actor, action, targets, resume.payWith, resume.held, resume.style, resume.spend),
   );
@@ -3334,7 +3341,7 @@ function resolveSequence(
   for (const [index, part] of parts.entries()) {
     const count = part.targets.count;
     const chosen = (enough ? targets.slice(cursor, cursor + count) : targets.slice(0, count)).filter(
-      (target) => !target.defeated,
+      (target) => !target.defeated || rulesetCanRevive(ctx.state, part, target),
     );
     cursor += count;
     // A sequence picked up after one of its parts was held starts at that part, which was paid for
@@ -3506,7 +3513,10 @@ function resolveActionBody(
     // Everything before the held roll has happened, what the use gives its user included.
     targets = [held.targetId, ...held.rest]
       .map((id) => rulesetCombatant(ctx.state, id))
-      .filter((target): target is RulesetCombatant => !!target && !target.defeated);
+      .filter(
+        (target): target is RulesetCombatant =>
+          !!target && (!target.defeated || rulesetCanRevive(ctx.state, action, target)),
+      );
     // The one it hit is gone before the blow could land: what the roll used is spent all the same.
     if (targets[0]?.id !== held.targetId) {
       spendOneUse(
@@ -4088,6 +4098,36 @@ function resolveActionBody(
       if (line && takes.from > line.at && target.initiative <= line.at) {
         settleCrash(ctx, target, actor.id);
         if (line.bonus > 0) shiftInitiative(ctx, actor, line.bonus, "crash", { sourceId: target.id });
+      }
+    }
+    // Cures (1.171): brought back from the dead first, so whatever else the action gives lands on
+    // somebody alive; then steadied; then the conditions it ends, in the order the entry named them.
+    if (action.revives && rulesetCanRevive(ctx.state, action, target)) {
+      target.defeated = false;
+      delete target.diedRound;
+      target.down = true;
+      target.dying = false;
+      target.stable = false;
+      const rolled = rollAmount(ctx, action.revives.amount);
+      dealHeal(ctx, target, {
+        sourceId: actor.id,
+        rolls: rolled.rolls,
+        flat: rolled.flat,
+        amount: Math.max(1, rolled.total),
+      });
+    }
+    if (action.stabilizes && target.dying && !target.stable && !target.defeated) {
+      target.stable = true;
+      clearDyingTracks(ctx, target);
+      ctx.events.push({ type: "stabilized", targetId: target.id, sourceId: actor.id });
+    }
+    if (action.ends) {
+      let left = action.ends.count ?? action.ends.conditions.length;
+      for (const condition of action.ends.conditions) {
+        if (left <= 0) break;
+        if (!target.tracked.some((entry) => entry.condition === condition)) continue;
+        removeCondition(ctx, target, condition, "cured");
+        left--;
       }
     }
     if (heal) {

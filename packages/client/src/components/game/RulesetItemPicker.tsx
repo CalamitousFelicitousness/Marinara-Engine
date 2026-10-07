@@ -203,6 +203,21 @@ function rulesetItemUseLine(facts: RulesetItemFacts, t: TFunction): string {
     use.consumes ? t("ui.game.gameinventory.useConsumes") : "",
     use.concentration ? t("game.ruleset.catalog.mechanics.concentration") : "",
     use.zone ? t("ui.game.gameinventory.useZone", { count: use.zone.rounds }) : "",
+    use.ends
+      ? use.ends.count !== undefined && use.ends.count < use.ends.conditions.length
+        ? t("game.ruleset.catalog.mechanics.endsSome", {
+            count: use.ends.count,
+            conditions: use.ends.conditions.join(", "),
+          })
+        : t("game.ruleset.catalog.mechanics.ends", { conditions: use.ends.conditions.join(", ") })
+      : "",
+    use.stabilizes ? t("game.ruleset.catalog.mechanics.stabilizes") : "",
+    use.revives
+      ? t("game.ruleset.catalog.mechanics.revives", {
+          count: use.revives.withinRounds,
+          amount: use.revives.health,
+        })
+      : "",
     use.charges ? t("ui.game.gameinventory.useCharges", { cost: use.charges.cost, max: use.charges.max }) : "",
     use.charges?.recharge
       ? use.charges.recharge.amount === "max"

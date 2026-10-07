@@ -1361,8 +1361,13 @@ function clausesOf(
  *  heal or a buff goes to the actor's own side, anything else to the other one. */
 function targetsOf(mechanics: RulesetCatalogMechanics): RulesetCombatAction["targets"] {
   // A `utility` entry is only ever here because it changes what the turn may hold, and what it
-  // changes is the holder's own economy: there is nobody to point it at.
-  if (mechanics.kind === "utility") return { side: "self", count: 0 };
+  // changes is the holder's own economy: there is nobody to point it at. One that cures (1.171) is
+  // pointed at whom it cures, an ally unless it says otherwise.
+  const cures = !!mechanics.ends || !!mechanics.stabilizes || !!mechanics.revives;
+  if (mechanics.kind === "utility" && !cures) return { side: "self", count: 0 };
+  if (mechanics.kind === "utility") {
+    return { side: mechanics.targets ?? "ally", count: Math.max(1, mechanics.targetCount ?? 1) };
+  }
   const side = mechanics.targets ?? (mechanics.kind === "heal" || mechanics.kind === "buff" ? "ally" : "enemy");
   return { side, count: Math.max(1, mechanics.targetCount ?? 1) };
 }
@@ -1431,7 +1436,9 @@ function mechanicsAction(
   // that hands a budget back, lets its holder buy a standard action with another one, or stops
   // something from happening at all. Calling something off IS what such an entry does.
   const cancels = moment?.cancels === true;
-  if (mechanics.kind === "utility" && !mechanics.gives && !mechanics.standard && !cancels) return null;
+  // Taking a condition off, steadying the dying or bringing back the dead is something to resolve.
+  const cures = !!mechanics.ends || !!mechanics.stabilizes || !!mechanics.revives;
+  if (mechanics.kind === "utility" && !mechanics.gives && !mechanics.standard && !cancels && !cures) return null;
   const { build, evaluated, perCell } = from;
   const resolve = (ref: RulesetValueRef) => resolveRulesetValueRef(definition, build, ref, evaluated);
   // What the sheet adds to it (1.78), read as the entry is put on the menu: 1d10 plus a level.
@@ -1521,6 +1528,15 @@ function mechanicsAction(
   if (from.saveDifficulty !== undefined) action.saveDifficulty = sourceDifficulty;
   if (mechanics.applies?.length) action.applies = mechanics.applies.map((entry2) => ({ ...entry2 }));
   if (mechanics.concentration) action.concentration = true;
+  if (mechanics.ends) {
+    action.ends = {
+      conditions: [...mechanics.ends.conditions],
+      ...(mechanics.ends.count !== undefined ? { count: mechanics.ends.count } : {}),
+    };
+  }
+  if (mechanics.stabilizes) action.stabilizes = true;
+  const revival = mechanics.revives && amountOf(mechanics.revives.health);
+  if (mechanics.revives && revival) action.revives = { withinRounds: mechanics.revives.withinRounds, amount: revival };
   if (mechanics.summons) {
     const { move, reach, ...summons } = mechanics.summons;
     action.summons = {

@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: spells and items can end named conditions, stabilize a dying creature or bring back one that died moments ago, so Lesser Restoration, Spare the Dying and Revivify work (Capability API 1.171).
 - Rulesets: a moved area can ram into a creature and stop, and its ground can cost several steps or halve speed, so Flaming Sphere rams, Plant Growth slows to a crawl and Spirit Guardians halves speed even on rough ground; a spell's hold can be broken only against its DC with the checks it names, and a zone can hurt whoever it already holds, so Web and Black Tentacles work and petrification cannot be escaped (Capability API 1.170).
 - Rulesets: a condition can be escaped against the spell's save DC, a lasting area can shake the concentration of whoever it catches or end after dealing a set amount of damage, and spell scrolls keep their lasting areas and concentration, so Web, Black Tentacles, Sleet Storm and Guardian of Faith work (Capability API 1.169).
 - Rulesets: a lasting area can be moved by its caster or drift away from them, catching whoever it reaches, and its ground can be hard going or hurt for every step taken inside, so Moonbeam moves, Cloudkill rolls away and Spike Growth slows and cuts (Capability API 1.168).
@@ -1012,6 +1013,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 - Moved the agent connection bulk assignment control from the Agents panel to Connections -> Defaults -> Agents.
 
 ### Added
+
 - Rulesets can give each class its own spell attack bonus and save DC: builder spell steps stamp the class onto their rows, and combat, the sheet and the Game Master read that class's numbers (Capability API 1.103).
 
 - Chat search accepts a message number such as `#67` and jumps to that message, including older history (#6090).

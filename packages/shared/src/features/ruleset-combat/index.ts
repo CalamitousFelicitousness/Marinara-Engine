@@ -176,6 +176,7 @@ export {
   rulesetGrantedStandard,
   rulesetOptionReach,
   rulesetOptionTargets,
+  rulesetCanRevive,
   rulesetHitChance,
   rulesetPoolFamily,
   rulesetPaymentPools,

@@ -1966,6 +1966,28 @@ const catalogMechanicsObject = z
      *  Spirit Guardians); `atCast: false` does nothing as it appears. A zone whose `terrain` is all
      *  it does names no triggers (1.168). */
     zone: catalogZoneSchema.optional(),
+    /** Takes these conditions off whoever it lands on, up to `count` of them (all when left out) in
+     *  the order named (Capability API 1.171): 5e's Lesser Restoration ends one of blinded, deafened,
+     *  paralyzed or poisoned. */
+    ends: z
+      .object({
+        conditions: z
+          .array(sheetId)
+          .min(1)
+          .max(16)
+          .refine((ids) => new Set(ids).size === ids.length, { message: "A condition is named once" }),
+        count: z.number().int().min(1).max(16).optional(),
+      })
+      .strict()
+      .optional(),
+    /** Whoever it lands on who is dying stops rolling, stable (1.171): 5e's Spare the Dying. */
+    stabilizes: z.literal(true).optional(),
+    /** Brings back whoever died no more than `withinRounds` rounds ago, with `health` (1.171): 5e's
+     *  Revivify, within 10 rounds with 1 hit point. It is pointed only at them. */
+    revives: z
+      .object({ withinRounds: z.number().int().min(1).max(1000), health: z.object(catalogAmountShape).strict() })
+      .strict()
+      .optional(),
     concentration: z.boolean().optional(),
     /** Something taken at a MOMENT rather than on a turn. `true` says only that much, and an entry
      *  that says only that much is on no menu: nothing knows which moment it waits for. An object
@@ -7621,6 +7643,25 @@ function targetTestIssues(
   targetIsIssues(definition, carrier.targetTypes?.not, [...at, "targetTypes", "not"], add);
 }
 
+/** What a cure names (1.171): conditions the sheet has, and a dying rule for steadying to stop. */
+function cureIssues(
+  definition: RulesetDefinition,
+  mechanics: { ends?: { conditions: string[]; count?: number }; stabilizes?: true },
+  at: (string | number)[],
+  add: (path: (string | number)[], message: string) => void,
+): void {
+  const conditions = new Set(definition.sheet.live.conditions.map((condition) => condition.id));
+  mechanics.ends?.conditions.forEach((condition, index) => {
+    if (!conditions.has(condition)) add([...at, "ends", "conditions", index], `Unknown condition "${condition}"`);
+  });
+  if (mechanics.ends?.count !== undefined && mechanics.ends.count > mechanics.ends.conditions.length) {
+    add([...at, "ends", "count"], "A cure ends at most as many conditions as it names");
+  }
+  if (mechanics.stabilizes && !definition.combat?.dying) {
+    add([...at, "stabilizes"], "Steadying the dying needs a combat block with a dying rule");
+  }
+}
+
 function escapeDcIssues(
   definition: RulesetDefinition,
   applies: { condition: string; escapeDc?: number | "save"; escapeChecks?: string[] },
@@ -8189,6 +8230,7 @@ function useIssues(
     }
   });
   targetTestIssues(definition, use, at, add);
+  cureIssues(definition, use, at, add);
   use.applies?.forEach((applies, index) => {
     if (!conditions.has(applies.condition)) {
       add([...at, "applies", index, "condition"], `Unknown condition "${applies.condition}"`);
@@ -8988,6 +9030,7 @@ export function rulesetCatalogEntryIssues(
     if (mechanics?.budget !== undefined && budgets && !budgets.has(mechanics.budget)) {
       add([index, "mechanics", "budget"], `Unknown budget "${mechanics.budget}"`);
     }
+    if (mechanics) cureIssues(definition, mechanics, [index, "mechanics"], add);
     if (mechanics?.zone?.whileHeld && !liveConditions.has(mechanics.zone.whileHeld.condition)) {
       add(
         [index, "mechanics", "zone", "whileHeld", "condition"],

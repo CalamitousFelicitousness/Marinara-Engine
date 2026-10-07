@@ -50,7 +50,7 @@ You may add a `"$comment": "..."` line to any object in the file to leave yourse
 | `rests`         | What each kind of rest restores and clears.                                                       |
 | `gm`            | The text the Game Master model is given, and which sheet values it sees for each character.       |
 | `catalogs`      | Optional. Ready-made entries the sheet editor offers, so players do not type long lists by hand.  |
-| `items`         | Optional. The words your items are written in: categories, rarities, stats, slots, money.        |
+| `items`         | Optional. The words your items are written in: categories, rarities, stats, slots, money.         |
 | `battle`        | Optional. What a battle may read from the sheet, and what it writes back afterwards.              |
 | `combat`        | Optional. How a fight is resolved by your own rules, and what the battle screen then plays.       |
 | `layers`        | Optional. Variants of your ruleset a player turns on when a game is created.                      |
@@ -586,11 +586,20 @@ That is Cloudkill. Spirit Guardians is `"area": { "shape": "burst", "size": 15 }
 A zone held at a point can move and change its ground (Capability API 1.168). `move: { "budget", "distance" }` lets its caster move it on their turn: the fight offers "Move <zone>" for that budget, picked on the board like a walk, to any cell within `distance` of its centre. `drift: { "distance" }` moves it that far straight away from its caster as each of their turns starts, stopping at the board's edge. Either way, whoever it now covers and did not before is caught as `enter` says. Only a burst held at a point moves or drifts. `terrain: { "difficult": true }` makes every cell of it cost double to move into for whoever it catches (ground that is already hard going is not doubled again), and `terrain: { "perDistance": { "every", "amount", "damageType" } }` deals `amount` (dice and flat, as an entry's own) to whoever it catches for every `every` they move inside it, with no save, counted across walks. The log says each move, drift and hurt.
 
 ```json
-{ "id": "moonbeam", "name": "Moonbeam",
-  "mechanics": { "kind": "attack", "range": 120, "area": { "shape": "burst", "size": 5 },
-    "amount": { "dice": "2d10" }, "damageType": "radiant", "save": { "ability": "con", "half": true },
+{
+  "id": "moonbeam",
+  "name": "Moonbeam",
+  "mechanics": {
+    "kind": "attack",
+    "range": 120,
+    "area": { "shape": "burst", "size": 5 },
+    "amount": { "dice": "2d10" },
+    "damageType": "radiant",
+    "save": { "ability": "con", "half": true },
     "concentration": true,
-    "zone": { "rounds": 10, "triggers": ["enter", "turn-start"], "move": { "budget": "action", "distance": 60 } } } }
+    "zone": { "rounds": 10, "triggers": ["enter", "turn-start"], "move": { "budget": "action", "distance": 60 } }
+  }
+}
 ```
 
 Cloudkill adds `"drift": { "distance": 10 }`. Spike Growth is a 20-foot burst with no amount of its own, `"triggers": []` (its ground is all it does), `"atCast": false` and `"terrain": { "difficult": true, "perDistance": { "every": 5, "amount": { "dice": "2d4" }, "damageType": "piercing" } }`.
@@ -604,6 +613,8 @@ An item's `use` may also carry `concentration` and `zone` (1.169), as a catalog 
 A moved zone may ram, and its ground may cost more (Capability API 1.170). `move: { ..., "ram": true }` sends it a cell at a time straight for where it was moved to; on the first cell where it reaches somebody it did not cover before, it stops, catches them as if rammed (whatever its triggers say), and cannot be moved again that turn. Creatures who walk into it are caught only as its triggers say. Flaming Sphere is a 5-foot burst with `"triggers": ["turn-end"]` and `"move": { "budget": "bonus", "distance": 30, "ram": true }`. `terrain.costTimes` (2 to 10) makes every step into it cost that many plain steps, and ground already hard going costs no more than that: Plant Growth is `"terrain": { "costTimes": 4 }`. It replaces `difficult`, which is `costTimes: 2`. `terrain.halvesSpeed: true` makes every step inside cost double again, on top of any hard going: Spirit Guardians is `"terrain": { "halvesSpeed": true }`.
 
 Holds a spell puts on can be broken only as the spell says (also 1.170). A breaking-free contest with `"from": { "holding": "restrained", "escapable": true }` is offered only against a hold that names an `escapeDc`, so the same contest breaks a web and never petrification. `applies[].escapeChecks` names the contest checks that may break that hold, in place of the contest's own attacker checks: Black Tentacles restrains with `"escapeDc": "save", "escapeChecks": ["might", "agility"]`, and Web with `"escapeChecks": ["might"]`. `zone.whileHeld: { "condition", "amount", "damageType" }` deals its amount, with no save and in place of the zone's own effect, to whoever starts a turn in it already held by that condition from its caster: Black Tentacles' `"whileHeld": { "condition": "restrained", "amount": { "dice": "3d6" }, "damageType": "bludgeoning" }`.
+
+An entry or an item's use may cure (Capability API 1.171). `ends: { "conditions": [...], "count"? }` takes those conditions off its target in the order named, at most `count` of them: Lesser Restoration is `"ends": { "conditions": ["blinded", "deafened", "paralyzed", "poisoned"], "count": 1 }`. `stabilizes: true` steadies a dying target, who rolls no more dying saves, and needs a combat block with a `dying` rule: Spare the Dying. `revives: { "withinRounds", "health" }` is aimed only at somebody who died no more than that many rounds ago and brings them back at that amount: Revivify is `"revives": { "withinRounds": 10, "health": { "flat": 1 } }`. An entry that only ends conditions or steadies is offered only against somebody it would help; one of the kind `utility` with nothing else to do is offered as long as it cures.
 
 The picker shows this block as one line. Who reads the rest depends on which block your ruleset opted in with:
 
@@ -653,8 +664,14 @@ group), and never for a cost of a higher level than its own. 5e's pact slots pay
 from the spell slots, as a multiclass warlock may:
 
 ```json
-{ "id": "pact_slots", "label": "Pact Slots", "group": "pact", "max": { "field": "pact_slot_count" },
-  "level": { "field": "pact_slot_level" }, "pays": ["slots"] }
+{
+  "id": "pact_slots",
+  "label": "Pact Slots",
+  "group": "pact",
+  "max": { "field": "pact_slot_count" },
+  "level": { "field": "pact_slot_level" },
+  "pays": ["slots"]
+}
 ```
 
 A fight offers such a pool beside the higher pools of the spell's own group, and a payment from it
@@ -726,6 +743,7 @@ Up to 24 steps, each `{ id, label, kind, ... }`; a package with more than 16 dec
     "stamp": { "class": { "fromWithin": "label" } }
   }
   ```
+
 - `fields`: a short form of named fields. Its badge counts the ones still empty, except those listed in `optional` (a subclass chosen at a later level). `shownWhen: { "field_id": { "field": "level" } }` (Capability API 1.102) shows and counts a named field of the step only while its value reference reads above 0 on the sheet as it stands; hidden fields keep their values. `total: { "fields": ["level_bard", "level_other"], "max": 20 }` (1.102) holds at least two number fields of the step to a combined maximum (an integer from 1 to 1000), lowering each input's maximum by the others' current values without going below its own minimum, and adds one to the badge if the total is over the limit; **Next** still works.
 - `abilities`: the scores (`abilities`, all of them when left out), set by any of `methods`: `pointBuy` (a `budget` no more than buying every score to the top costs, and the cost of every score from the lowest, where every score starts, up one at a time; a score typed by hand starts from the nearest score on the table), `standardArray` (one value to each score), `roll` (`count` dice of `sides`, keeping the highest `keep`, thrown by the Engine's own dice, one roll per score, then handed out like an array) and `manual`. `manual: true` keeps the existing score bounds; `manual: { min, max }` (Capability API 1.105) clamps typed base scores before grants to those integer bounds, with min at least -100, max at most 1000 and min at most max, while each ability's own bounds still hold the total. `default` (1.82) is the method a character the builder starts from a blank sheet begins on (and keeps, even if the ruleset's default later changes), so a beginner sees point buy, say, until they choose another; a described character never takes it, and its scores stay as they are until the player chooses a method after describing; **Manual entry** stays the typed edit within its bounds, and **All fields** is always there. What the picks add goes on top: the step shows base, bonus, total and modifier. One abilities step at most.
 - `trained`: the skill and save choices the picks offer, and the step's own `choose: [{ "what": "skills", "count": 2, "from": [...] }]` (any of them when `from` is left out).
@@ -737,10 +755,15 @@ A starting-gear step may carry `"strict": true` (Capability API 1.104). In legal
 What a pick gives is its entry's `grants`, read only by the builder:
 
 ```json
-{ "id": "half-elf", "label": "Half-Elf", "grants": {
-  "abilities": { "add": { "cha": 2 }, "choose": [{ "count": 2, "amount": 1, "except": ["cha"] }] },
-  "trained": { "skills": [], "saves": [], "choose": [{ "what": "skills", "count": 2 }] },
-  "sets": { "speed": 30 } } }
+{
+  "id": "half-elf",
+  "label": "Half-Elf",
+  "grants": {
+    "abilities": { "add": { "cha": 2 }, "choose": [{ "count": 2, "amount": 1, "except": ["cha"] }] },
+    "trained": { "skills": [], "saves": [], "choose": [{ "what": "skills", "count": 2 }] },
+    "sets": { "speed": 30 }
+  }
+}
 ```
 
 - `abilities.add` adds to scores; `abilities.choose` lets the player pick `count` scores (never one twice, never one in `except`) that get `amount` each. With `"repeat": true` (Capability API 1.88) one score may be picked more than once, `amount` each time, so `{ "count": 2, "amount": 1, "repeat": true }` is an ability score improvement's +2 to one score or +1 to two; the step shows a minus beside a score to take one back. Either way no score goes past its `max`. `upTo` (Capability API 1.91) caps what the choice itself may raise a score to, after what every other grant adds: `{ "count": 2, "amount": 1, "repeat": true, "upTo": 20 }` is the SRD's improvement, which "can't increase an ability score above 20"; the step disables a score that stands at it. The choice is shown at the abilities step, or where the entry was picked when there is none.
@@ -931,7 +954,6 @@ Items change in play, so `itemStat` is held to the same rule as a live read: a p
 
 A character's items are the ones in their own bag. The player's card (the one named for who the chat plays as, else the first) reads the player's bag, and every other card its own. Only your ruleset's items count, since a plain item has no stats to read. The sheet on screen, a check, the Game Master's sheet block, and a fight as it begins all read what each character holds right then. Outside a game, in the sheet editor or an import review, nobody holds anything and `itemStat` reads its `default`.
 
-
 ### Checks outside a fight
 
 A check or save the Game Master calls for outside a fight reads more than the sheet: the character's own active conditions, the levels they have reached, what their items do while worn or carried, and what a worn item's requirement costs while they fall short of it. It is the same vocabulary a fight's conditions use (Capability API 1.53 for the item keys and the narrowing).
@@ -1000,11 +1022,14 @@ Declare the exception tags in `items.tags` and put them on the weapon or spell's
 For example, Stoneskin is a condition mapping:
 
 ```json
-{ "condition": "stoneskin", "resist": [
-  { "type": "bludgeoning", "except": ["magical"] },
-  { "type": "piercing", "except": ["magical"] },
-  { "type": "slashing", "except": ["magical"] }
-] }
+{
+  "condition": "stoneskin",
+  "resist": [
+    { "type": "bludgeoning", "except": ["magical"] },
+    { "type": "piercing", "except": ["magical"] },
+    { "type": "slashing", "except": ["magical"] }
+  ]
+}
 ```
 
 Armor of invulnerability uses that same `resist` array inside its `worn` effect. Protection
@@ -1095,6 +1120,7 @@ A weapon may have other ways to make its attack, a partner in the off hand, a le
   ```
 
   Once its holder has attacked this turn with one weapon marked `offHand`, each other such weapon they wear offers a second attack on that budget, named "Silver coffin nail, off hand" on the menu. `ability` is `full` (the default) or `penalty-only`, which adds the damage ability only when it takes something away, as 5e's two-weapon fighting does. An off-hand attack is one blow, whatever strikes the main attack buys, and never a strike at somebody walking away. A weapon marked `offHand` needs the combat block's `offHand`. `fullWhen` (Capability API 1.92) is a value off the fighter's sheet: above 0, that fighter's off hand keeps the full ability whatever `ability` says, as 5e's Two-Weapon Fighting style does.
+
 - `floor`: the least a hit deals, written down or read off a number stat of the item. A pool fight's harm after soak, or a summed fight's damage, is raised to it before a resistance halves it, and the log says so. A spending blow throws its maker's number and is never raised.
 - `onHit`: up to four of your conditions the target takes when the harm the blow dealt reached `atLeast`, for `rounds` of their own turns or, without it, until something takes it off. The harm is what reached them after soak and their resistances; a taking blow takes initiative rather than harm, so it puts none on.
   An entry may also carry `save: { "save": <save id>, "difficulty": n }`, which the target rolls as the condition would go on, a success keeping it off, and `saveEnds: { "save", "difficulty", "at": "turn-start" | "turn-end" | "damaged" }`, which makes it last until its holder makes that save at the start or end of each of their turns or on damage above zero (it then has no `rounds`). Both count as saves against that condition, and against magic when the weapon is magical (Capability API 1.164). 5e's sword of wounding: `{ "condition": "wounded", "atLeast": 1, "saveEnds": { "save": "con_save", "difficulty": 15, "at": "turn-start" } }`.
@@ -1168,6 +1194,7 @@ An item may be used in a fight (Capability API 1.59): a poultice pressed on a cu
 
   - `recharge`: which of your `rests` bring the charges back, and how many: `"max"` fills the item, and an amount (`{ "dice": "1d6", "flat": 1 }`) gives back that many, never past `max`. A rest brings back the charges of every item its character carries that names it, whether the sheet's Rest button takes it or the Game Master's `[sheet: op="rest"]` does; the sheet and the bag are written together, and a regenerated reply recharges only once. The sheet says what came back after the rest ("Dawn bell 3/3 charges"), and the Game Master sees each item's charges left beside it in the inventory ("2 of 3 charges left").
   - `breaksOn`: when a use spends the last charge, the Engine rolls a d`die`, and at or under `atMost` the item breaks and is gone from the bag, in a fight and outside one. The fight log says so ("Dawn bell breaks (a 1 on its die)."), the Use button's report does ("Its last charge spent, it breaks."), and the journal counts it as lost.
+
 - `gate` (Capability API 1.62) is a check its user passes before the item works, as a scroll of a spell above the reader's own asks for one. `check` names what is rolled: `{ "skill": "ward" }`, `{ "ability": "wits" }`, or a value off the sheet (`{ "value": { "derived": "spell_mod" } }`, for a number that differs from one character to the next, as a 5e caster's spellcasting modifier does). `difficulty` is from 1 to 100, written down or read off a number stat of the item (an item that does not give it is left off the menu, and its Use button says it plainly). `unless` skips the check when a value on the user's sheet is at least `atLeast`. A failed check uses the item up (or spends its charges) for nothing. In a fight the check is rolled as the item is spent, with the fight's own dice (a pool in a pool fight, where `difficulty` is the successes it needs) and the sheet's number read as the fight began, and what the user's conditions and worn items add to that check counts, a skill's own included. The log says it ("Ada rolls Ward to use Page of the vigil litany: 2 successes from 2 dice at 7 or more (8, 9), needing 2 successes, a success."). Gravewatch's page of the vigil litany has one:
 
   ```json
@@ -1670,7 +1697,7 @@ same keys for a d20 system:
     schemaVersion 2 and capabilityApi 1.162 or newer.
   - Creature types and target tests (Capability API 1.163): `combat.creatureTypes` lists what a
     combatant can be, `{ "types": [{ "id": "dragon", "label": "Dragon" }, ...], "tags": [{ "id":
-    "devil", "label": "devil" }], "field": "race", "default": "humanoid" }`. A creature names its
+"devil", "label": "devil" }], "field": "race", "default": "humanoid" }`. A creature names its
     own `type` and `tags`; a character's type is the value of the text or choice field `field` when
     that is one of the types, otherwise `default` (5e characters are humanoids). A target test is
     `{ "types": [...], "tags": [...] }` and passes for any one match; a combatant with no type and
@@ -1707,7 +1734,7 @@ same keys for a d20 system:
       this way. A budget may be declared with `"count": 0` for one only a condition fills, and the
       screen shows it only while somebody has some. An invented opponent never spends one.
     - `grants`: `{ "budget": "haste", "standard": ["dash", "disengage", "hide"], "attacks": true,
-      "items": true }` says what that budget may be spent on: the standard actions named (from the
+"items": true }` says what that budget may be spent on: the standard actions named (from the
       ruleset's own `standard` list, never on the first budget, where every standard action already
       is), one weapon attack of a single strike (whatever strikes an action would otherwise put in
       hand; for a creature, an attack of its stat block at one target, never a multiattack), and an
@@ -1766,10 +1793,22 @@ same keys for a d20 system:
 
   ```json
   [
-    { "condition": "divine_favor", "modifiers": [{ "to": "damage", "attacks": "weapon", "dice": "1d4", "damageType": "radiant" }] },
-    { "condition": "rage", "modifiers": [{ "to": "damage", "attacks": "weapon", "blow": "melee", "ability": "str", "flat": 2 }] },
-    { "condition": "enfeebled", "modifiers": [{ "to": "damage", "attacks": "weapon", "ability": "str", "times": 0.5 }] },
-    { "condition": "hunters_mark", "modifiers": [{ "to": "damage-taken", "attacks": "weapon", "fromSource": true, "dice": "1d6" }] }
+    {
+      "condition": "divine_favor",
+      "modifiers": [{ "to": "damage", "attacks": "weapon", "dice": "1d4", "damageType": "radiant" }]
+    },
+    {
+      "condition": "rage",
+      "modifiers": [{ "to": "damage", "attacks": "weapon", "blow": "melee", "ability": "str", "flat": 2 }]
+    },
+    {
+      "condition": "enfeebled",
+      "modifiers": [{ "to": "damage", "attacks": "weapon", "ability": "str", "times": 0.5 }]
+    },
+    {
+      "condition": "hunters_mark",
+      "modifiers": [{ "to": "damage-taken", "attacks": "weapon", "fromSource": true, "dice": "1d6" }]
+    }
   ]
   ```
 
@@ -1830,7 +1869,14 @@ same keys for a d20 system:
   10 bulk or more.
 
   ```json
-  { "derived": "bulk_carried", "at": 10, "modifiers": [{ "to": "speed", "flat": -2 }, { "to": "checks", "skills": ["sneak"], "flat": -1 }] }
+  {
+    "derived": "bulk_carried",
+    "at": 10,
+    "modifiers": [
+      { "to": "speed", "flat": -2 },
+      { "to": "checks", "skills": ["sneak"], "flat": -1 }
+    ]
+  }
   ```
 
   A threshold that differs from one character to the next ("more than five times Strength") is a
@@ -1910,9 +1956,20 @@ to a level reached when that value is 1. Example modifiers:
 
 ```json
 [
-  { "$comment": "Dwarven Resilience", "to": "saves", "mode": "advantage", "against": { "conditions": ["poisoned"], "damage": ["poison"] } },
+  {
+    "$comment": "Dwarven Resilience",
+    "to": "saves",
+    "mode": "advantage",
+    "against": { "conditions": ["poisoned"], "damage": ["poison"] }
+  },
   { "$comment": "Fey Ancestry", "to": "saves", "mode": "advantage", "against": { "conditions": ["charmed"] } },
-  { "$comment": "Gnome Cunning", "to": "saves", "saves": ["int_save", "wis_save", "cha_save"], "mode": "advantage", "against": { "magic": true } }
+  {
+    "$comment": "Gnome Cunning",
+    "to": "saves",
+    "saves": ["int_save", "wis_save", "cha_save"],
+    "mode": "advantage",
+    "against": { "magic": true }
+  }
 ]
 ```
 
@@ -3042,7 +3099,6 @@ caster's own fall. A fall has no source entry, so its reaction cannot carry `can
 `seesSource` or `against`. A single-target entry asks about each fall separately. This resolves the
 landing; it does not track a slowed descent.
 
-
 **Answering for another creature** (Capability API 1.126). `for` is `self` by default; `ally`
 excludes the holder, while `any` includes them. Both ask holders on the target's side within the
 required `within`, in the catalog's distance unit, and only on `aimed` or `hit`. These keys work
@@ -3054,7 +3110,9 @@ Declare `protected_attack` on the sheet and give its combat condition that effec
 
 ```json
 {
-  "kind": "debuff", "targets": "enemy", "budget": "reaction",
+  "kind": "debuff",
+  "targets": "enemy",
+  "budget": "reaction",
   "reaction": { "on": "aimed", "for": "ally", "within": 5, "at": "source", "seesSource": true },
   "applies": [{ "condition": "protected_attack", "duration": "this-action" }]
 }
@@ -3066,7 +3124,10 @@ Declare `protected_attack` on the sheet and give its combat condition that effec
 
 ```json
 {
-  "kind": "buff", "targets": "ally", "range": 5, "budget": "reaction",
+  "kind": "buff",
+  "targets": "ally",
+  "range": 5,
+  "budget": "reaction",
   "reaction": { "on": "hit", "for": "ally", "within": 5, "at": "target" },
   "applies": [{ "condition": "parrying", "duration": "this-action" }]
 }
@@ -3080,7 +3141,10 @@ through this turn and expires at its end (leave `of: "source"` out):
 
 ```json
 {
-  "id": "unnerving_mask", "name": "Unnerving Mask", "range": 30, "budget": "reaction",
+  "id": "unnerving_mask",
+  "name": "Unnerving Mask",
+  "range": 30,
+  "budget": "reaction",
   "reaction": { "on": "turn-start", "at": "source", "seesSource": true },
   "save": { "save": "wis_save", "difficulty": 14, "onSuccess": "negates" },
   "applies": [{ "condition": "frightened", "duration": { "rounds": 1 } }]
@@ -3096,7 +3160,8 @@ those of your ruleset (`dex` here; `dex_save` in the bundled 5e example):
 
 ```json
 {
-  "on": "aimed", "cancels": true,
+  "on": "aimed",
+  "cancels": true,
   "cancelSave": { "save": "dex", "dc": 10 },
   "against": { "actions": ["Rock"] }
 }
@@ -3109,7 +3174,11 @@ fall is a separate event. Feather Fall uses the same `fallsSafely` condition as 
 
 ```json
 {
-  "kind": "buff", "targets": "ally", "targetCount": 5, "range": 60, "budget": "reaction",
+  "kind": "buff",
+  "targets": "ally",
+  "targetCount": 5,
+  "range": 60,
+  "budget": "reaction",
   "reaction": { "on": "falls" },
   "applies": [{ "condition": "feather_falling", "duration": { "rounds": 10 } }]
 }

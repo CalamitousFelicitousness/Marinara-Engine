@@ -668,6 +668,8 @@ function freshSwipeMessageExtra(value: unknown): Record<string, unknown> {
   for (const key of [
     "hiddenFromAI",
     "hiddenFromAICharacterIds",
+    "autoVisibility",
+    "visibilityManual",
     "hiddenFromUser",
     "isConversationStart",
     "conversationStartForCharacterIds",
@@ -2887,7 +2889,13 @@ export function createChatsStorage(db: DB) {
      * pre-mutation snapshot. The request is scoped to this chat; use `.length` for
      * a count of changed messages.
      */
-    async bulkSetHiddenFromAI(chatId: string, messageIds: string[], hidden: boolean): Promise<string[]> {
+    async bulkSetHiddenFromAI(
+      chatId: string,
+      messageIds: string[],
+      hidden: boolean,
+      /** Extra fields saved with the flag, e.g. a user's `visibilityManual` choice (#7192). */
+      extra: Record<string, unknown> = {},
+    ): Promise<string[]> {
       if (messageIds.length === 0) return [];
       const uniqueIds = Array.from(new Set(messageIds));
       const scopedRows: { id: string; extra: string | null }[] = [];
@@ -2916,14 +2924,14 @@ export function createChatsStorage(db: DB) {
           } catch {
             wasHidden = false;
           }
-          await this.updateMessageExtra(row.id, { hiddenFromAI: hidden });
+          await this.updateMessageExtra(row.id, { ...extra, hiddenFromAI: hidden });
           // Mirror what the single-message /extra route does: propagate the flag to
           // all swipe rows so setActiveSwipe() cannot clobber it. Done for every
           // scoped row (idempotent when already in the target state) so swipe
           // consistency never depends on whether the main row happened to flip.
           const swipes = await this.getSwipes(row.id);
           for (const swipe of swipes) {
-            await this.updateSwipeExtra(row.id, swipe.index, { hiddenFromAI: hidden });
+            await this.updateSwipeExtra(row.id, swipe.index, { ...extra, hiddenFromAI: hidden });
           }
           if (wasHidden !== hidden) flipped.push(row.id);
         }

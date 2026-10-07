@@ -215,6 +215,10 @@ try {
     JSON.parse(calls[0]!.prompt)[0].content.includes("when unsure, mark them true"),
     "the helper hides only on evidence",
   );
+  assert(
+    JSON.parse(calls[0]!.prompt)[0].content.includes("being left out of a whisper does not count"),
+    "a whisper stays private on its own, so a bystander keeps the rest of the message",
+  );
   assert.deepEqual(task.recentlyActive, ["Maukie Whiskers", "Pantalone"], "speakers since the scene began are a hint");
   assert(
     task.decide.every((entry: { candidates: string[] }) => !entry.candidates.includes("Narrator")),
@@ -449,6 +453,8 @@ try {
   );
   const besideQuestion = decisionRequests[0]!.questions[`presence:${besideLine.id}:${ids.maukie}`];
   assert(besideQuestion?.instructions.includes('by "Pantalone"'), "the question names who wrote the message");
+  assert(besideQuestion.instructions.includes("present even when silent or left out of a whisper"));
+  assert(besideQuestion.instructions.includes("never places there"), "a character never shown in the scene is elsewhere");
   assert.equal(
     (await extraOf(besideLine.id)).hiddenFromAICharacterIds,
     undefined,

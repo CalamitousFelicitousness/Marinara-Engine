@@ -1609,8 +1609,9 @@ export function parseDirectMessageCommands(content: string): {
  */
 export function parseDuration(duration: string): number | null {
   const bareHours = duration.match(/^\s*(\d+(?:\.\d+)?)\s*$/);
-  const hourMatch = bareHours ?? duration.match(/(\d+(?:\.\d+)?)\s*h/i);
-  const minMatch = bareHours ? null : duration.match(/(\d+)\s*m/i);
+  // A unit must end at a non-letter, so "months" is not minutes and "1h30m" still splits.
+  const hourMatch = bareHours ?? duration.match(/(\d+(?:\.\d+)?)\s*(?:hours?|hrs?|h)(?![a-z])/i);
+  const minMatch = bareHours ? null : duration.match(/(\d+(?:\.\d+)?)\s*(?:minutes?|mins?|m)(?![a-z])/i);
 
   let total = 0;
   if (hourMatch) total += Number(hourMatch[1]) * 60;

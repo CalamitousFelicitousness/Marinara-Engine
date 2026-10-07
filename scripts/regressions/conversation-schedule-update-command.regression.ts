@@ -171,9 +171,13 @@ try {
     ["30 minutes", 30],
     ["1h30m", 90],
     ["1 hour 30 minutes", 90],
+    ["2hrs", 120],
+    ["45 mins", 45],
+    ["1.5m", 2],
   ] as const) {
     assert.equal(parseDuration(duration), minutes, `"${duration}" lasts ${minutes} minutes`);
   }
+  assert.equal(parseDuration("2 months"), null, "a unit that is not hours or minutes is not read as minutes");
 
   // ── 3. Invalid arguments are stripped without crashing or changing anything ──
   const invalid = await run(

@@ -3279,7 +3279,9 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
         tokenSize(
           eligible
             .filter((entry) => outsideLive(entry, id))
-            .map((entry) => rendered.get(id)!.get(entry.id))
+            .map((entry) => rendered.get(id)!.get(entry.id)!)
+            // An entry with no text for this view adds nothing here, not even a separator (#7250).
+            .filter((text) => text.trim())
             .join("\n\n"),
         ),
       ]),
@@ -3569,6 +3571,10 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
             ? sources.slice(entry.rangeStartIndex - 1, entry.rangeEndIndex)
             : [];
         const text = renderEntry(ctx, entry.content, audience);
+        // Nothing for this reader: leave the entry out, unless it covers a scene they took part in
+        // (read any of its messages) that has a story date, which participants share (#7250).
+        if (!text.trim() && !(covered.some((message) => recallIds.has(message.id)) && sourceTimeline(covered)))
+          return { messageIds: [], text: "", timelineRecords: [] };
         const coveredIds = new Set(covered.map((message) => message.id));
         const timelineRecords = text.trim()
           ? constantScenes.filter((record) => record.messageIds.some((id) => coveredIds.has(id)))

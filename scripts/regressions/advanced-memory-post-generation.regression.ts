@@ -1190,6 +1190,37 @@ try {
   calls.length = 0;
   await memory.checkScenesAfterGeneration(privateChat.id, { blocking: false });
   assert.deepEqual(calls, [], "separate 5k character constants do not jointly exceed a 7k per-view share");
+  // Entries with no text for a character add nothing to that character's share, as they add nothing to recall.
+  const maukieFill = "MAUKIE_ONLY ".repeat(2326);
+  const maukieShare = estimateChatSummaryTokens(`${maukieFill}\n\nMAUKIE_TAIL`);
+  assert(maukieShare <= 7000 && maukieShare + 20 > 7000, "Maukie's entries sit just under the 7k share");
+  await chats.patchMetadata(privateChat.id, {
+    summaryEntries: [
+      createChatSummaryEntry({
+        content: `{{#if char == "Maukie"}}${maukieFill}{{/if}}`,
+        enabled: true,
+        rangeStartIndex: 1,
+        rangeEndIndex: 1,
+      }),
+      // 40 entries joined by blank lines would add 20 estimated tokens.
+      ...Array.from({ length: 40 }, () =>
+        createChatSummaryEntry({
+          content: '{{#if char == "Pantalone"}}PANTALONE_NOTE{{/if}}',
+          enabled: true,
+          rangeStartIndex: 2,
+          rangeEndIndex: 2,
+        }),
+      ),
+      createChatSummaryEntry({
+        content: '{{#if char == "Maukie"}}MAUKIE_TAIL{{/if}}',
+        enabled: true,
+        rangeStartIndex: 1,
+        rangeEndIndex: 1,
+      }),
+    ],
+  });
+  await memory.checkScenesAfterGeneration(privateChat.id, { blocking: false });
+  assert.deepEqual(calls, [], "another character's entries do not push Maukie over his share");
   await chats.patchMetadata(privateChat.id, {
     summaryEntries: [
       { ...privateEntries[0], content: `{{#if char == "Maukie"}}${"PRIVATE_A_CONSTANT ".repeat(1700)}{{/if}}` },

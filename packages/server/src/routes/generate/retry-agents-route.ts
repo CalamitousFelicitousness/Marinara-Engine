@@ -973,8 +973,9 @@ async function buildRetryAgentContext(args: {
     idleDuration: resolvePromptIdleDuration(recentMessages),
     macroSources: [
       ...recentMessages.map((message: any) => (typeof message.content === "string" ? message.content : "")),
-      // Agent prompts too, so `{{include::...}}` in them has lorebooks to read (#7212).
+      // Agent prompts and the author's note too, so `{{include::...}}` in them has lorebooks to read (#7212).
       ...resolvedAgents.flatMap((agent) => [agent.promptTemplate, JSON.stringify(agent.settings)]),
+      typeof chatMeta.authorNotes === "string" ? chatMeta.authorNotes : "",
     ],
   });
   const historyMacroProfilesById = (await resolveCharacterMacroData(db, allCharacterIds)).profilesById;

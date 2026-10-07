@@ -290,10 +290,19 @@ try {
         name: type,
         phase,
         connectionId: null,
-        promptTemplate: `AGENT ${type}: {{include::Shared rules}} | {{include::Vault::Secret}}`,
+        promptTemplate: `AGENT ${type}: {{include::Shared rules}} | {{include::Vault::Secret}} | [{{include::Secret}}]`,
         settings,
       } as never);
     }
+    // Only its author's note uses the macro, so a retry must load lorebooks for the note alone.
+    await agents.create({
+      type: "include-note-fixture",
+      name: "include-note-fixture",
+      phase: "post_processing",
+      connectionId: null,
+      promptTemplate: "AGENT include-note-fixture: no include here",
+      settings: { resultType: "context_injection", contextSources: { chatHistory: true, authorNotes: true } },
+    } as never);
     const agentChat = await chats.create({
       name: "Include agents",
       mode: "roleplay",
@@ -305,13 +314,15 @@ try {
     await chats.patchMetadata(agentChat.id, {
       activeLorebookIds: [world.id],
       enableAgents: true,
-      activeAgentIds: agentFixtures.map(([type]) => type),
+      activeAgentIds: [...agentFixtures.map(([type]) => type), "include-note-fixture"],
       enableMemoryRecall: false,
     });
-    const agentPrompt = (type: string, requests: string[]) => {
+    // The short form stays in the chat's lorebooks, and no raw include reaches the provider.
+    const assertAgentIncludes = (type: string, requests: string[], message: string) => {
       const request = requests.find((body) => body.includes(`AGENT ${type}:`));
       assert.ok(request, `${type} ran`);
-      return request;
+      assert.ok(request.includes(`AGENT ${type}: SHARED_RULES for User | VAULT_SECRET | []`), message);
+      assert.doesNotMatch(request, /\{\{\s*include::/iu, `${type} sends no raw include`);
     };
     const before = sent.length;
     const agentTurn = await app.inject({
@@ -321,9 +332,10 @@ try {
     });
     assert.equal(agentTurn.statusCode, 200, agentTurn.body);
     for (const [type] of agentFixtures) {
-      assert.ok(
-        agentPrompt(type, sent.slice(before)).includes(`AGENT ${type}: SHARED_RULES for User | VAULT_SECRET`),
-        `${type} includes an entry by name from the chat's lorebook and by lorebook name`,
+      assertAgentIncludes(
+        type,
+        sent.slice(before),
+        `${type} includes an entry by name from the chat's lorebooks only, and by lorebook name`,
       );
     }
     const beforeRetry = sent.length;
@@ -333,11 +345,20 @@ try {
       payload: { chatId: agentChat.id, agentTypes: ["include-post-fixture"] },
     });
     assert.equal(retried.statusCode, 200, retried.body);
-    assert.ok(
-      agentPrompt("include-post-fixture", sent.slice(beforeRetry)).includes(
-        "AGENT include-post-fixture: SHARED_RULES for User | VAULT_SECRET",
-      ),
-      "a retried agent includes entries too",
+    assertAgentIncludes("include-post-fixture", sent.slice(beforeRetry), "a retried agent includes entries too");
+    // Added only now, so nothing but agent prompts triggered the loads above.
+    await chats.patchMetadata(agentChat.id, { authorNotes: "AGENT_NOTE {{include::Shared rules}}" });
+    const beforeNoteRetry = sent.length;
+    const noteRetried = await app.inject({
+      method: "POST",
+      url: "/api/generate/retry-agents",
+      payload: { chatId: agentChat.id, agentTypes: ["include-note-fixture"] },
+    });
+    assert.equal(noteRetried.statusCode, 200, noteRetried.body);
+    assert.match(
+      sent.slice(beforeNoteRetry).find((body) => body.includes("AGENT include-note-fixture:")) ?? "",
+      /AGENT_NOTE SHARED_RULES for User/u,
+      "a retried agent reads the author's note with its include filled in",
     );
   } finally {
     await app.close();

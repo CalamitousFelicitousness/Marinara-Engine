@@ -202,7 +202,8 @@ export function AdvancedMemorySettings({
             <AdvancedMemoryProgress
               chatId={chatId}
               status={status.data}
-              onResume={initialize}
+              // A paused or stopped Fix resumes as Fix, so a hand-edited scene can't stop it.
+              onResume={status.data.job.fixResult === null && !knowledgeBlocked ? fix : initialize}
               pending={action.isPending && action.variables?.action === "initialize"}
             />
           )}

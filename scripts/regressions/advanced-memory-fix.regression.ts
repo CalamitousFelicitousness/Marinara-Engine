@@ -25,6 +25,8 @@ const MARKERS = [
   "BOUNDARY",
 ] as const;
 type Marker = (typeof MARKERS)[number];
+// A second chat: a hand-edited scene that gains a shown message, and unclear participants that narrow.
+const EXTRA_MARKERS = ["GROWN", "NARROWED"] as const;
 let phase: "initial" | "fix" = "initial";
 let compactionCalls = 0;
 const calls: string[] = [];
@@ -72,9 +74,20 @@ const provider = createServer(async (request, response) => {
     content = JSON.stringify({ summary: "Recap of the COMPACT chapter.", audience: ["maukie"] });
   } else {
     const audienceOnly = system.content.startsWith("Identify the participants");
-    const marker = MARKERS.find((item) => transcript.content.includes(item)) ?? "OTHER";
+    const marker = [...MARKERS, ...EXTRA_MARKERS].find((item) => transcript.content.includes(item)) ?? "OTHER";
     calls.push(`${phase}:${audienceOnly ? "audience" : "summary"}:${marker}`);
-    if (phase === "initial") {
+    if (marker === "GROWN" || marker === "NARROWED") {
+      content = JSON.stringify(
+        phase === "initial"
+          ? {
+              summary: `Recap of ${marker}.`,
+              audience: marker === "NARROWED" ? ["maukie", "pantalone", "stranger-x"] : ["maukie"],
+            }
+          : audienceOnly
+            ? { audience: ["maukie", "stranger-y"] }
+            : { summary: `Fixed recap of ${marker}.`, audience: ["maukie"] },
+      );
+    } else if (phase === "initial") {
       const audience = initialAudience[marker as Marker];
       content = JSON.stringify({ summary: `Recap of ${marker}.`, ...(audience === undefined ? {} : { audience }) });
     } else if (audienceOnly) {
@@ -288,6 +301,62 @@ try {
   // Saving access by hand settles the scene.
   await memory.updateRecord(chat.id, unclear.id, { audienceCharacterIds: ["maukie"] });
   assert(!advancedMemoryProblems(await status()).reviewSceneIds.includes(sceneId("STILL_UNCLEAR")));
+
+  // A hand-edited summary is not rewritten even when it only needs a newly shown message added,
+  // and an unclear answer keeps only characters both the old and the new answer include.
+  const second = await chats.create({
+    name: "Memory fix edges",
+    mode: "roleplay",
+    characterIds: ["maukie", "pantalone", "narrator"],
+    connectionId: connection.id,
+  });
+  assert(second);
+  await chats.patchMetadata(second.id, {
+    groupChatMode: "individual",
+    advancedMemory: {
+      enabled: true,
+      narratorCharacterId: "narrator",
+      knowledgeStarts: { maukie: null, pantalone: null },
+      knowledgeConfirmed: true,
+    },
+  });
+  await chats.createMessagesBatch(second.id, [
+    { role: "user", content: "GROWN Mari opens the GROWN chapter." },
+    { role: "assistant", characterId: "maukie", content: "Maukie remembers the GROWN chapter." },
+    { role: "user", content: "GROWN Mari adds an aside.", extra: { hiddenFromAICharacterIds: ["narrator"] } },
+    { role: "user", content: "SCENE_CHANGE NARROWED Mari opens the NARROWED chapter." },
+    { role: "assistant", characterId: "maukie", content: "Maukie remembers the NARROWED chapter." },
+    { role: "user", content: "SCENE_CHANGE The story goes on." },
+  ]);
+  const secondMessages = await chats.listMessages(second.id);
+  phase = "initial";
+  await memory.initialize(second.id);
+  const secondScene = async (index: number) =>
+    (await memory.status(second.id)).records.find(
+      (record) =>
+        record.kind === "scene" && record.id !== record.sceneId && record.startMessageId === secondMessages[index]!.id,
+    )!;
+  const narrowed = await secondScene(3);
+  assert.deepEqual(narrowed.audienceCharacterIds, ["maukie", "pantalone"]);
+  assert(has(narrowed, "scene-audience-unmatched"), "an unknown name is flagged");
+  const grown = await secondScene(0);
+  await memory.updateRecord(second.id, grown.id, { content: "Hand-written GROWN recap." });
+  // The aside is shown again, so the hand-edited summary no longer covers every message of its scene.
+  await chats.updateMessageExtra(secondMessages[2]!.id, { hiddenFromAICharacterIds: [] });
+  assert.deepEqual(advancedMemoryProblems(await memory.status(second.id)).reviewSceneIds, [grown.sceneId]);
+  phase = "fix";
+  calls.length = 0;
+  await memory.initialize(second.id, { fixAll: true });
+  assert.deepEqual(calls, ["fix:audience:NARROWED"], "Fix doesn't ask the helper to rewrite a hand edit");
+  assert.equal((await secondScene(0)).content, "Hand-written GROWN recap.", "a hand edit is never rewritten");
+  assert.deepEqual(
+    (await secondScene(3)).audienceCharacterIds,
+    ["maukie"],
+    "an unclear answer never keeps a character the helper no longer names",
+  );
+  const edges = (await memory.status(second.id)).job.fixResult;
+  assert.deepEqual(edges?.fixedSceneIds, []);
+  assert.deepEqual(new Set(edges?.reviewSceneIds), new Set([grown.sceneId, narrowed.sceneId]));
 
   // A stopped continuity update that fails again doesn't keep Fix from repairing scenes.
   const compact = await chats.create({

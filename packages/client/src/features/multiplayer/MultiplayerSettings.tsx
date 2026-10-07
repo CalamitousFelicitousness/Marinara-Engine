@@ -1,13 +1,17 @@
 import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Users } from "lucide-react";
+import { LogIn, Power, PowerOff, Users } from "lucide-react";
 import type { MultiplayerGuestSession, MultiplayerPersona, MultiplayerPreview } from "@marinara-engine/shared";
 import { multiplayerActionError, useMultiplayerMutation, useMultiplayerStatus } from "../../hooks/use-multiplayer";
 import { useChatStore } from "../../stores/chat.store";
 import { useUIStore } from "../../stores/ui.store";
-import { SettingsSection } from "../../components/panels/settings/SettingControls";
+import {
+  SETTINGS_BUTTON_CLASS,
+  SETTINGS_PRIMARY_FULL_BUTTON_CLASS,
+  SettingsSection,
+} from "../../components/panels/settings/SettingControls";
 import { ChatModeSelectorModal, type ChatLaunchMode } from "../../components/chat/ChatModeSelectorModal";
-import { MultiplayerPersonaFields, MULTIPLAYER_BUTTON_CLASS, MULTIPLAYER_INPUT_CLASS } from "./MultiplayerFields";
+import { MultiplayerPersonaFields, MULTIPLAYER_INPUT_CLASS } from "./MultiplayerFields";
 
 export function MultiplayerSettings() {
   const { t } = useTranslation();
@@ -32,7 +36,7 @@ export function MultiplayerSettings() {
       <div className="space-y-3">
         <button
           type="button"
-          className={MULTIPLAYER_BUTTON_CLASS}
+          className={SETTINGS_BUTTON_CLASS}
           disabled={status.isFetching}
           onClick={() => void status.refetch()}
         >
@@ -64,7 +68,7 @@ export function MultiplayerSettings() {
               aria-checked={status.data.enabled}
               aria-describedby={id}
               disabled={settings.isPending || (!status.data.enabled && !consent)}
-              className={MULTIPLAYER_BUTTON_CLASS}
+              className={SETTINGS_PRIMARY_FULL_BUTTON_CLASS}
               onClick={() =>
                 settings.mutate(
                   { enabled: !status.data!.enabled, consent: true },
@@ -72,6 +76,7 @@ export function MultiplayerSettings() {
                 )
               }
             >
+              {status.data.enabled ? <PowerOff size="0.8125rem" /> : <Power size="0.8125rem" />}
               {t(status.data.enabled ? "multiplayer.disable" : "multiplayer.enable")}
             </button>
             <p id={id} className="text-xs text-[var(--muted-foreground)]">
@@ -79,13 +84,14 @@ export function MultiplayerSettings() {
             </p>
             {status.data.enabled && (
               <div className="flex flex-wrap gap-2">
-                <button type="button" className={MULTIPLAYER_BUTTON_CLASS} onClick={() => setCreateOpen(true)}>
+                <button type="button" className={SETTINGS_BUTTON_CLASS} onClick={() => setCreateOpen(true)}>
                   {t("multiplayer.create")}
                 </button>
                 <button
                   type="button"
                   disabled={"MarinaraAndroidNative" in window}
-                  className={MULTIPLAYER_BUTTON_CLASS}
+                  aria-expanded={joinOpen}
+                  className={SETTINGS_BUTTON_CLASS}
                   onClick={() => setJoinOpen((value) => !value)}
                 >
                   {t("multiplayer.join")}
@@ -163,7 +169,7 @@ function MultiplayerJoin() {
       />
       <button
         type="button"
-        className={MULTIPLAYER_BUTTON_CLASS}
+        className={SETTINGS_BUTTON_CLASS}
         disabled={!inviteCode.trim() || preview.isPending}
         onClick={() => preview.mutate({ inviteCode }, { onSuccess: () => setReviewedCode(inviteCode) })}
       >
@@ -218,7 +224,7 @@ function MultiplayerJoin() {
           </label>
           <button
             type="button"
-            className={MULTIPLAYER_BUTTON_CLASS}
+            className={SETTINGS_PRIMARY_FULL_BUTTON_CLASS}
             disabled={join.isPending || !consent || !password || !displayName.trim() || !persona.name.trim()}
             onClick={() =>
               join.mutate(
@@ -233,6 +239,7 @@ function MultiplayerJoin() {
               )
             }
           >
+            <LogIn size="0.8125rem" />
             {t("multiplayer.requestJoin")}
           </button>
           {join.isError && (

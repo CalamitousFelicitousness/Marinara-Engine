@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: an ability can be usable in a fight only while the character's sheet allows it, so Protection needs a shield in hand (Capability API 1.161).
 - Rulesets: sheet lists can have up to 24 columns, so a features list can carry every field a class needs (Capability API 1.160).
 - Rulesets: conditions, levels, sheet traits and item exceptions can grant resistances, vulnerabilities and immunities, shown on the sheet and in battle, so Stoneskin, dwarf resilience and armor of invulnerability keep off the right harm (Capability API 1.127).
 - Rulesets: reactions can protect nearby allies, answer the start of a turn, cancel an attack on a successful save, and catch several creatures falling together, as Protection, Shield Guardian, Unnerving Mask, Rock Catching and Feather Fall do (Capability API 1.126).

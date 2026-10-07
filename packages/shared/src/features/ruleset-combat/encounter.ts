@@ -1380,6 +1380,7 @@ function mechanicsAction(
   if (mechanics.attackRoll) action.toHit = from.toHit;
   if (mechanics.autoHit) action.autoHit = true;
   if (mechanics.needs) action.needs = [...mechanics.needs];
+  if (mechanics.usableWhen) action.usableWhen = { ...mechanics.usableWhen };
   if (mechanics.save) {
     action.save = {
       save: mechanics.save.save,

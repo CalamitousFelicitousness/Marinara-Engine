@@ -2364,7 +2364,7 @@ function applySignature(
   if (
     points === undefined ||
     points < cost ||
-    !rulesetActionAvailable(actor, action) ||
+    !rulesetActionAvailable(actor, action, state, definition) ||
     !rulesetSequenceCanHappen(actor, action)
   ) {
     return refusal(state, choice.actorId, "insufficient", action.id);

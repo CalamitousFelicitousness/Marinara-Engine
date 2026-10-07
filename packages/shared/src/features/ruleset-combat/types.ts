@@ -9,6 +9,7 @@ import type {
   RulesetCreatureHideEntry,
   RulesetCreature,
   RulesetSheetBuild,
+  RulesetValueRef,
 } from "../../schemas/ruleset.schema.js";
 import type { RulesetLiveState } from "../rulesets/live-state.js";
 import type { RulesetSheetItem } from "../rulesets/sheet-math.js";
@@ -355,6 +356,8 @@ export interface RulesetCombatAction {
   autoHit?: boolean;
   /** Senses a target must have for this to affect it (Capability API 1.122). */
   needs?: string[];
+  /** Offered only while this reads within its bounds off the holder's sheet (Capability API 1.161). */
+  usableWhen?: { value: RulesetValueRef; atLeast?: number; atMost?: number };
   damage?: RulesetCombatDamage;
   heal?: RulesetCombatAmount;
   temporary?: RulesetCombatAmount;

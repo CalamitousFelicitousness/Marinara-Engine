@@ -5,6 +5,7 @@
 import type { RulesetCombat, RulesetDefinition } from "../../schemas/ruleset.schema.js";
 import {
   applyRulesetSheetOp,
+  evaluateRulesetSheetLive,
   planRulesetUse,
   type RulesetLiveState,
   type RulesetSheetOp,
@@ -144,7 +145,7 @@ function grantedStandardOptions(
   for (const action of actor.actions) {
     const granted = action.standard;
     if (!granted || (actor.budgets[granted.budget] ?? 0) < 1) continue;
-    if (!rulesetActionAvailable(actor, action, state)) continue;
+    if (!rulesetActionAvailable(actor, action, state, definition)) continue;
     const paid = planRulesetCombatCost(definition, actor, action);
     if (!paid) continue;
     for (const name of granted.actions) {
@@ -185,7 +186,7 @@ export function rulesetGrantedStandard(
     (entry) =>
       entry.standard?.budget === budget &&
       entry.standard.actions.includes(name) &&
-      rulesetActionAvailable(actor, entry, state) &&
+      rulesetActionAvailable(actor, entry, state, definition) &&
       !!planRulesetCombatCost(definition, actor, entry),
   );
   return action ? { action, name, budget } : null;
@@ -975,12 +976,34 @@ export function rulesetActionUses(
     : (actor.uses[action.id] ?? 0);
 }
 
-/** Whether the action has uses left, has recharged, and has the coven members it needs nearby. */
+/** Whether its holder's sheet, as it stands, allows the action (1.161). A holder without a sheet, or
+ *  a caller without the ruleset, has nothing to read, so nothing holds it back. */
+export function rulesetActionUsable(
+  definition: RulesetDefinition | undefined,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+): boolean {
+  const when = action.usableWhen;
+  if (!when || !definition || !actor.sheet) return true;
+  const { build, live, items } = actor.sheet;
+  const value = resolveRulesetValueRef(
+    definition,
+    build,
+    when.value,
+    evaluateRulesetSheetLive(definition, build, live, items),
+  );
+  return (when.atLeast === undefined || value >= when.atLeast) && (when.atMost === undefined || value <= when.atMost);
+}
+
+/** Whether the action has uses left, has recharged, and has the coven members it needs nearby, and
+ *  (given the ruleset) whether its holder's sheet allows it (1.161). */
 export function rulesetActionAvailable(
   actor: RulesetCombatant,
   action: RulesetCombatAction,
   state?: RulesetEncounterState,
+  definition?: RulesetDefinition,
 ): boolean {
+  if (!rulesetActionUsable(definition, actor, action)) return false;
   if (action.innate?.coven) {
     const coven = action.innate.coven;
     if (!state || !coven) return false;
@@ -1201,7 +1224,7 @@ function optionFrom(
     budget = grant.budget;
     oneStrike = grant.attacks === true && weapon;
   }
-  if (!rulesetActionAvailable(actor, action, state)) return null;
+  if (!rulesetActionAvailable(actor, action, state, definition)) return null;
   const paid = planRulesetCombatCost(definition, actor, action);
   if (!paid) return null;
   const option: RulesetCombatOption = {
@@ -1584,7 +1607,7 @@ export function rulesetSignatureOptions(
   const options: RulesetCombatOption[] = [];
   for (const action of actor.actions) {
     if (!action.signature || action.signature.cost > points) continue;
-    if (!rulesetActionAvailable(actor, action, state) || !rulesetSequenceCanHappen(actor, action)) continue;
+    if (!rulesetActionAvailable(actor, action, state, definition) || !rulesetSequenceCanHappen(actor, action)) continue;
     const option: RulesetCombatOption = {
       id: action.id,
       kind: action.kind,

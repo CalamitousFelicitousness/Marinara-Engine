@@ -1552,6 +1552,23 @@ const catalogPlusClauseSchema = z
     }
   });
 
+/** When a catalog entry's mechanics may be used in a fight (Capability API 1.161): a value read off
+ *  its holder as the menu is drawn, at least `atLeast` and at most `atMost`. One bound or both. */
+const catalogUsableWhenSchema = z
+  .object({
+    value: rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>,
+    atLeast: z.number().finite().optional(),
+    atMost: z.number().finite().optional(),
+  })
+  .strict()
+  .refine((when) => when.atLeast !== undefined || when.atMost !== undefined, {
+    message: '"usableWhen" says at least one of "atLeast" and "atMost"',
+  })
+  .refine((when) => when.atLeast === undefined || when.atMost === undefined || when.atLeast <= when.atMost, {
+    message: '"atLeast" is above "atMost", so it is never usable',
+    path: ["atMost"],
+  });
+
 /** The generic actions the kind implements, named once so a ruleset opts into the ones it has. Up
  *  here rather than beside the combat block because a catalog entry names them too: an ability that
  *  lets its holder buy one of them with another budget says which ones. */
@@ -1698,6 +1715,9 @@ const catalogMechanicsObject = z
     kind: z.enum(["attack", "heal", "buff", "debuff", "utility", "rider"]),
     /** Senses a target must have for this to affect it (Capability API 1.122). */
     needs: combatSensesSchema.optional(),
+    /** Offered in a fight only while a value off its holder's sheet, live state and items stands
+     *  within these bounds (Capability API 1.161): 5e's Protection, which needs a shield in hand. */
+    usableWhen: catalogUsableWhenSchema.optional(),
     /** In the catalog's own distance unit. 0 is self or touch. */
     range: z.number().finite().min(0).optional(),
     area: z
@@ -8224,6 +8244,11 @@ export function rulesetCatalogEntryIssues(
     }
 
     if (entry.grants) grantsIssues(definition, entry.grants, [index, "grants"], add);
+    if (entry.mechanics?.usableWhen) {
+      for (const issue of rulesetValueRefIssues(entry.mechanics.usableWhen.value, names, names.derived)) {
+        add([index, "mechanics", "usableWhen", "value", issue.key], issue.message);
+      }
+    }
     if (entry.offeredWhen) {
       for (const issue of rulesetValueRefIssues(entry.offeredWhen, names, names.derived, false)) {
         add([index, "offeredWhen", issue.key], issue.message);

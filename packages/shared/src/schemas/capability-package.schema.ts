@@ -818,7 +818,10 @@ const capabilityPackageManifestBaseSchema = z
 // 1.128-1.129: claimed by the Game Mode lane (in progress); 1.130-1.159: the Kenhito lane.
 // 1.160: a sheet list may have up to 24 columns. Not a soft seam: an older Engine refuses the
 //        ruleset, so a package with a list of more than 12 columns declares 1.160. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 160 } as const);
+// 1.161: a catalog entry's mechanics may be usable in a fight only while a value off its holder's
+//        sheet, live state and items stands within bounds (`usableWhen`): 5e's Protection needs a
+//        shield. Not a soft seam: an older Engine refuses the key. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 161 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

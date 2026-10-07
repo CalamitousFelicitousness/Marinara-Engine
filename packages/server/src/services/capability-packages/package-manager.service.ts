@@ -1395,6 +1395,15 @@ function carriesReactionMoments(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesReactionMoments(one, depth + 1));
 }
 
+/** Mechanics offered only while the holder's sheet allows (1.161). */
+function carriesUsableWhen(value: unknown, depth = 0): boolean {
+  if (depth > 40 || value === null || typeof value !== "object") return false;
+  if (Array.isArray(value)) return value.some((one) => carriesUsableWhen(one, depth + 1));
+  const record = value as Record<string, unknown>;
+  if (plainRecord(record.mechanics)?.usableWhen !== undefined) return true;
+  return Object.values(record).some((one) => carriesUsableWhen(one, depth + 1));
+}
+
 /** A reaction that catches a fall, at its first moment or one it is also taken at (1.119). */
 function carriesFalls(value: unknown, depth = 0): boolean {
   if (depth > 40 || value === null || typeof value !== "object") return false;
@@ -1736,6 +1745,7 @@ export function getCapabilityPackageInstallIssue(
   let carriesBlowNarrowingKeys = false;
   let carriesFallMoments = false;
   let carriesReactionMomentKeys = false;
+  let carriesUsableWhenKeys = false;
   let carriesSourceClockKeys = false;
   let carriesCreatureHealing = false;
   let carriesSummons = false;
@@ -1865,6 +1875,7 @@ export function getCapabilityPackageInstallIssue(
       if (carriesNamedAnswers(header.entries)) carriesNamedAnswerKeys = true;
       if (carriesBlowNarrowing(header.entries)) carriesBlowNarrowingKeys = true;
       if (carriesReactionMoments(header.entries)) carriesReactionMomentKeys = true;
+      if (carriesUsableWhen(header.entries)) carriesUsableWhenKeys = true;
       if (carriesFalls(header.entries)) carriesFallMoments = true;
       if (carriesSourceClock(header.entries)) carriesSourceClockKeys = true;
       if (entriesCarryCreatureHealing(header.entries)) carriesCreatureHealing = true;
@@ -1940,6 +1951,7 @@ export function getCapabilityPackageInstallIssue(
       if (carriesNamedAnswers(fileEntries)) carriesNamedAnswerKeys = true;
       if (carriesBlowNarrowing(fileEntries)) carriesBlowNarrowingKeys = true;
       if (carriesReactionMoments(fileEntries)) carriesReactionMomentKeys = true;
+      if (carriesUsableWhen(fileEntries)) carriesUsableWhenKeys = true;
       if (carriesFalls(fileEntries)) carriesFallMoments = true;
       if (carriesSourceClock(fileEntries)) carriesSourceClockKeys = true;
       if (entriesCarryCreatureHealing(fileEntries)) carriesCreatureHealing = true;
@@ -2442,6 +2454,10 @@ export function getCapabilityPackageInstallIssue(
     })
   ) {
     return "A ruleset with a sheet list of more than 12 columns requires schemaVersion 2 and capabilityApi 1.160 or newer";
+  }
+  // Mechanics offered only while the holder's sheet allows, 1.161.
+  if (!declaresApi(161) && (carriesUsableWhenKeys || carriesUsableWhen(ruleset?.combat))) {
+    return "A ruleset whose abilities are usable only while the sheet allows requires schemaVersion 2 and capabilityApi 1.161 or newer";
   }
   if (carriesCreatureSpellcasting) {
     // The references can only be checked once the catalog files are beside their headers.

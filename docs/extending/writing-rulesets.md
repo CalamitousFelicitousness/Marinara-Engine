@@ -1597,6 +1597,14 @@ same keys for a d20 system:
     menu. An area or multi-target effect needing hearing skips that target entirely: no save,
     damage or conditions. Once Deafened ends, the target is legal again. Each list has one to four
     unique sense ids, in the ruleset's own words; the Engine knows no sense names.
+  - Usable only while the sheet allows (Capability API 1.161): a catalog entry's
+    `mechanics.usableWhen` is `{ "value": <value reference>, "atLeast": n, "atMost": n }` (one
+    bound or both). In a fight the entry is offered, on its holder's turn or in a reaction window,
+    only while the value read off its holder's sheet, live state and items stands within the
+    bounds; it is read each time the menu is drawn. 5e's Protection needs a shield in hand:
+    `"usableWhen": { "value": { "itemStat": { "from": "worn", "pick": "count", "category": "shield" } }, "atLeast": 1 }`.
+    Rage's "no heavy armor" is the same with `"atMost": 0` on the heavy armor count. A creature written as a stat block has no sheet,
+    so nothing holds it back.
   - Condition endings (Capability API 1.120): Charm Person uses
     `"endsWhen": ["harmed-by-source-side"]`. Damage above zero from whoever applied it or anyone on
     their side, or their targeting its holder with an attack, save or harmful condition, ends it

@@ -801,7 +801,9 @@ const capabilityPackageManifestBaseSchema = z
 //        its holder. The ruleset names the senses; targets without them are skipped. No permission.
 // 1.123: a line area's `width` says how wide it is in the same unit as its size, on a catalog entry
 //        or a creature action. Without it the line stays one cell wide. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 123 } as const);
+// 1.124: an applies' `saveEnds.at: "damaged"` rolls only when its holder takes damage above zero,
+//        once per blow, at the stored DC. 5e's Dominate Person. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 124 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

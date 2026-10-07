@@ -1396,6 +1396,15 @@ function carriesBlowNarrowing(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesBlowNarrowing(one, depth + 1));
 }
 
+/** A save rolled only when its holder takes damage (1.124), wherever an `applies` is written. */
+function carriesDamageOnlySaves(value: unknown, depth = 0): boolean {
+  if (depth > 40 || value === null || typeof value !== "object") return false;
+  if (Array.isArray(value)) return value.some((one) => carriesDamageOnlySaves(one, depth + 1));
+  const record = value as Record<string, unknown>;
+  if (plainRecord(record.saveEnds)?.at === "damaged") return true;
+  return Object.values(record).some((one) => carriesDamageOnlySaves(one, depth + 1));
+}
+
 /** A condition's duration counted on its source's turns (1.114): `of`, a new key on the strict
  *  duration, wherever an `applies` is written. */
 function carriesSourceClock(value: unknown, depth = 0): boolean {
@@ -1709,6 +1718,7 @@ export function getCapabilityPackageInstallIssue(
   let carriesRiderNoDisadvantage = false;
   let carriesSenseNeeds = false;
   let carriesLineWidth = false;
+  let carriesDamageOnlySaveKeys = false;
   // The tracks a level reads and no condition shares a name with: an immunity naming one is new.
   const conditionIds = new Set(
     (Array.isArray(plainRecord(plainRecord(plainRecord(ruleset?.sheet)?.live))?.conditions)
@@ -1837,6 +1847,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryRiderNoDisadvantage(header.entries)) carriesRiderNoDisadvantage = true;
       if (entriesCarrySenseNeeds(header.entries)) carriesSenseNeeds = true;
       if (entriesCarryLineWidth(header.entries)) carriesLineWidth = true;
+      if (carriesDamageOnlySaves(header.entries)) carriesDamageOnlySaveKeys = true;
       if (carriesHealthMax(header.entries) || entriesImmuneToTracks(header.entries, leveledTracks)) {
         carriesExhaustion = true;
       }
@@ -1910,6 +1921,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryRiderNoDisadvantage(fileEntries)) carriesRiderNoDisadvantage = true;
       if (entriesCarrySenseNeeds(fileEntries)) carriesSenseNeeds = true;
       if (entriesCarryLineWidth(fileEntries)) carriesLineWidth = true;
+      if (carriesDamageOnlySaves(fileEntries)) carriesDamageOnlySaveKeys = true;
       if (entriesCarryHeldChoices(fileEntries)) carriesHeldChoices = true;
       if (entriesCarryExclusive(fileEntries)) carriesExclusive = true;
       if (entriesCarryToHitSheetBonus(fileEntries)) carriesSheetBonus = true;
@@ -2324,6 +2336,10 @@ export function getCapabilityPackageInstallIssue(
   // Lines wider than one cell, 1.123.
   if (!declaresApi(123) && carriesLineWidth) {
     return "A ruleset whose lines are wider than one cell requires schemaVersion 2 and capabilityApi 1.123 or newer";
+  }
+  // Saves rolled only on damage, 1.124.
+  if (!declaresApi(124) && (carriesDamageOnlySaveKeys || carriesDamageOnlySaves(ruleset?.combat))) {
+    return "A ruleset whose saves are rolled only on damage requires schemaVersion 2 and capabilityApi 1.124 or newer";
   }
   if (carriesCreatureSpellcasting) {
     // The references can only be checked once the catalog files are beside their headers.

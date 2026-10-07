@@ -74,7 +74,7 @@ export interface RulesetCombatDamageAlternative extends RulesetCombatAmount {
 export interface RulesetCombatApplies {
   condition: string;
   duration: "instant" | "until-save" | { rounds: number; at?: "turn-start"; of?: "source" };
-  saveEnds?: { save: string; at: "turn-end" | "turn-start" };
+  saveEnds?: { save: string; at: "turn-end" | "turn-start" | "damaged" };
   endsAfter?: RulesetConditionEnding;
   /** What breaking free of it is rolled against, in place of the holder's own side of the contest
    *  (1.98): 5e's "grappled (escape DC 13)". */
@@ -519,7 +519,7 @@ export interface RulesetTrackedCondition {
   condition: string;
   /** Turns of the affected combatant left, or null for a condition with no clock of its own. */
   rounds: number | null;
-  saveEnds?: { save: string; at: "turn-end" | "turn-start" };
+  saveEnds?: { save: string; at: "turn-end" | "turn-start" | "damaged" };
   /** When its rounds count down: as each of the holder's turns begins, rather than as each ends. */
   clock?: "turn-start";
   /** Whose turns its rounds count (1.114): whoever put it on, while they are in the fight. */

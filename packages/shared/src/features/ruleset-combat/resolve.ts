@@ -370,6 +370,7 @@ function applyDamage(
   target: RulesetCombatant,
   input: RulesetDamageInput,
   deferWound = false,
+  damageSaves?: Set<RulesetTrackedCondition>,
 ): number {
   const before = healthOf(ctx, target);
   const type = input.damageType?.trim().toLowerCase();
@@ -441,7 +442,7 @@ function applyDamage(
     ...(input.pool ? { pool: input.pool } : {}),
     ...(input.floor !== undefined ? { floor: input.floor } : {}),
   });
-  ctx.harmEndings.push(endConditionsOnHarm(ctx, target, input.sourceId, dealt));
+  ctx.harmEndings.push(endConditionsOnHarm(ctx, target, input.sourceId, dealt, false, damageSaves));
   return dealt;
 }
 
@@ -1125,24 +1126,32 @@ function endConditionsOnHarm(
   sourceId: string | undefined,
   dealt = 0,
   harmful = false,
+  damageSaves?: Set<RulesetTrackedCondition>,
 ): () => void {
   const endings: RulesetTrackedCondition[] = [];
   const actor = rulesetCombatant(ctx.state, sourceId ?? "");
   for (const condition of rulesetCombatConditions(ctx.definition, target)) {
     const rule = ctx.combat.conditions?.find((entry) => entry.condition === condition);
-    if (!rule) continue;
     const tracked = target.tracked.find((entry) => entry.condition === condition);
-    if (dealt > 0 && rule.endsWhen?.includes("damaged")) {
+    if (dealt > 0 && rule?.endsWhen?.includes("damaged")) {
       removeCondition(ctx, target, condition, "damage");
       continue;
     }
-    if (dealt > 0 && rule.saveWhenDamaged && tracked?.saveEnds && tracked.difficulty !== undefined) {
+    const onDamage = tracked?.saveEnds?.at === "damaged";
+    if (
+      dealt > 0 &&
+      (onDamage || rule?.saveWhenDamaged) &&
+      tracked?.saveEnds &&
+      tracked.difficulty !== undefined &&
+      !(onDamage && damageSaves?.has(tracked))
+    ) {
+      if (onDamage) damageSaves?.add(tracked);
       if (rollSave(ctx, target, tracked.saveEnds.save, tracked.difficulty, tracked.source)) {
         removeCondition(ctx, target, condition, "save");
         continue;
       }
     }
-    if (!(dealt > 0 || harmful) || !rule.endsWhen?.includes("harmed-by-source-side") || !tracked || !actor) continue;
+    if (!(dealt > 0 || harmful) || !rule?.endsWhen?.includes("harmed-by-source-side") || !tracked || !actor) continue;
     const source = rulesetCombatant(ctx.state, tracked.source ?? "");
     if (source && source.side === actor.side) endings.push(tracked);
   }
@@ -3201,6 +3210,8 @@ function resolveAction(
     // A blow made in a style that takes lands on the target's number instead of their health: each
     // part of it takes its successes off, and the whole blow is settled once every part has landed.
     const takes = style?.takes ? { from: target.initiative, taken: 0 } : null;
+    // A damage-only save is tested once for this holder and blow, including clauses and riders (1.124).
+    const damageSaves = new Set<RulesetTrackedCondition>();
     const land = (part: RulesetDamageInput) => {
       if (takes) {
         const amount = Math.max(0, Math.floor(part.amount));
@@ -3222,6 +3233,7 @@ function resolveAction(
         target,
         { ...part, ...(qualities ? { qualities } : {}), ...(action.entry ? { entry: action.entry } : {}) },
         !!woundTrack,
+        damageSaves,
       );
       dealt += partDealt;
       // A compound hit marks once, using the most severe kind that actually landed.

@@ -1524,8 +1524,10 @@ const catalogAppliesSchema = z
   .object({
     condition: sheetId,
     duration: catalogDurationSchema,
+    /** `at: "damaged"` rolls only on damage above zero, never on a turn (Capability API 1.124):
+     *  5e's Dominate Person. */
     saveEnds: z
-      .object({ save: sheetId, at: z.enum(["turn-end", "turn-start"]) })
+      .object({ save: sheetId, at: z.enum(["turn-end", "turn-start", "damaged"]) })
       .strict()
       .optional(),
     /** It comes off after the first of these that happens to its holder: their own next attack roll,

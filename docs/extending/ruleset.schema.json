@@ -9171,7 +9171,8 @@
                                 "type": "string",
                                 "enum": [
                                   "turn-end",
-                                  "turn-start"
+                                  "turn-start",
+                                  "damaged"
                                 ]
                               },
                               "$comment": {}
@@ -10276,7 +10277,8 @@
                                       "type": "string",
                                       "enum": [
                                         "turn-end",
-                                        "turn-start"
+                                        "turn-start",
+                                        "damaged"
                                       ]
                                     },
                                     "$comment": {}
@@ -14717,7 +14719,8 @@
                                     "type": "string",
                                     "enum": [
                                       "turn-end",
-                                      "turn-start"
+                                      "turn-start",
+                                      "damaged"
                                     ]
                                   },
                                   "$comment": {}
@@ -22089,7 +22092,8 @@
                               "type": "string",
                               "enum": [
                                 "turn-end",
-                                "turn-start"
+                                "turn-start",
+                                "damaged"
                               ]
                             },
                             "$comment": {}

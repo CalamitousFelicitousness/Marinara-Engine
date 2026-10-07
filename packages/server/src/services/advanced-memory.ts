@@ -284,7 +284,7 @@ function preparationPolicyRevision(ctx: Context): string {
   // Automatic message visibility changes no prepared memory; keep existing snapshots reusable.
   const { autoMessageVisibility: _visibility, ...settings } = ctx.settings;
   return hash([
-    "scene-timeframe-constants-v20", // Invalidate reusable contexts without rebuilding valid source archives.
+    "scene-timeframe-constants-v21", // Invalidate reusable contexts without rebuilding valid source archives.
     policyFingerprint(ctx),
     settings,
     ctx.metadata.summaryEntries,
@@ -405,6 +405,12 @@ export function selectAdvancedMemoryMessages(
       (message.content.trim().length > 0 || (Array.isArray(extra.attachments) && extra.attachments.length > 0))
     );
   });
+}
+
+/** In a merged group chat, the present characters other than the narrator, when there are several. */
+function mergedReaders(ctx: Context, audience: string[]): string[] {
+  const readers = ctx.individual ? [] : audience.filter((id) => id !== ctx.settings.narratorCharacterId);
+  return readers.length > 1 ? readers : [];
 }
 
 // The single scene archive follows the narrator; its character access is a separate list.
@@ -1671,6 +1677,17 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
 
   function renderEntry(ctx: Context, text: string, audience: string[]): string {
     const names = (audience.length ? audience : ctx.characterIds).map((id) => ctx.names.get(id) ?? "Character");
+    // A merged reply may voice any present character: keep what any of them knows and say who (#7237).
+    // ponytail: a condition mixing a name with a variable, or a bare {{char}}, still uses names[0];
+    // evaluating those per reader is the upgrade path.
+    const readers = [...new Set(mergedReaders(ctx, audience).map((id) => ctx.names.get(id) ?? "Character"))];
+    if (readers.length > 1)
+      text = scopeCharacterSummary(text, readers, 0, (part, known) => {
+        if (known.length === readers.length) return part;
+        const start = part.length - part.trimStart().length;
+        const end = part.trimEnd().length;
+        return `${part.slice(0, start)}[Known only to ${known.join(", ")}: ${part.slice(start, end)}]${part.slice(end)}`;
+      });
     const rendered = resolveMacros(text, {
       user: String(
         object(
@@ -3259,7 +3276,11 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
   function recallAudienceMatches(ctx: Context, record: StoredRecord, audience: string[]): boolean {
     if (record.kind !== "scene" && record.kind !== "excerpt") return audienceMatches(record, audience);
     const characters = audience.filter((id) => id !== ctx.settings.narratorCharacterId);
-    return characters.length ? characters.every((id) => record.audienceCharacterIds.includes(id)) : true;
+    if (!characters.length) return true;
+    // A merged group recalls what any present character remembers, labelled with who does (#7237).
+    return ctx.individual
+      ? characters.every((id) => record.audienceCharacterIds.includes(id))
+      : characters.some((id) => record.audienceCharacterIds.includes(id));
   }
 
   /**
@@ -3547,8 +3568,20 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
         )
         .map((record) => [record.sceneId, record]),
     );
+    // Merged groups render each recap for the present characters who remember it, and name them.
+    const readers = mergedReaders(ctx, audience);
+    const rememberers = (record: StoredRecord) => readers.filter((id) => record.audienceCharacterIds.includes(id));
+    const sceneHeading = (scene: StoredRecord) => {
+      const known = rememberers(scene);
+      return known.length < readers.length
+        ? `Scene summary (known only to ${known.map((id) => ctx.names.get(id) ?? "Character").join(", ")}):`
+        : "Scene summary:";
+    };
     const renderedRecaps = new Map(
-      [...recalledSceneRecords].map(([id, record]) => [id, renderEntry(ctx, record.content, audience)]),
+      [...recalledSceneRecords].map(([id, record]) => [
+        id,
+        renderEntry(ctx, record.content, readers.length ? rememberers(record) : audience),
+      ]),
     );
     for (const [id, text] of renderedRecaps) if (!text.trim()) recalledSceneRecords.delete(id);
     const candidates = available.filter(
@@ -3749,7 +3782,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     for (const sceneId of sceneOrder) {
       if (selectedScenes.size >= ctx.settings.retrieveMaxScenes) break;
       const scene = recalledSceneRecords.get(sceneId)!;
-      const text = `Scene summary:\n${renderMemoryRecord(scene, indexes, renderedRecaps.get(scene.sceneId))}`;
+      const text = `${sceneHeading(scene)}\n${renderMemoryRecord(scene, indexes, renderedRecaps.get(scene.sceneId))}`;
       if (recalledTokens + tokenSize(text) > recallBudget) continue;
       recalledTokens += tokenSize(text);
       selectedScenes.add(scene.sceneId);
@@ -3822,7 +3855,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     for (const { scene, excerptRecords, sceneSource, textMatches } of excerptPlans) {
       const start = indexes.get(scene.startMessageId)!;
       const recap = renderedRecaps.get(scene.sceneId)!;
-      let text = `Scene summary:\n${renderMemoryRecord(scene, indexes, recap)}`;
+      let text = `${sceneHeading(scene)}\n${renderMemoryRecord(scene, indexes, recap)}`;
       const summaryTokens = tokenSize(text);
       // The model's best message centres the excerpt. Text matching does when it judged none suitable.
       const scores = messageScores;

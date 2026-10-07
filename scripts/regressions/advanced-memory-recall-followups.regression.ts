@@ -306,7 +306,7 @@ try {
     await db
       .insert(characters)
       .values({ id, data: JSON.stringify({ name }), createdAt: "2026-01-01", updatedAt: "2026-01-01" });
-  for (const [answer, characterIds, expected, flagged, label] of [
+  for (const [answer, characterIds, expected, flagged, label, hiddenFrom = []] of [
     [["Mari", "Kaito"], ["kaito", "rossi"], ["kaito"], true, "the persona Mari could be Mari Rossi"],
     [["Mari Rossi", "Mari"], ["kaito", "rossi"], ["rossi"], true, "a full name still counts"],
     [["Mari", "User"], ["kaito"], [], false, "the user alone is a user-only scene, not a mistake"],
@@ -319,10 +319,13 @@ try {
     // character and is flagged, so the user removes anyone who wasn't there. It was narrator-only before.
     [undefined, ["kaito", "tanaka"], ["kaito", "tanaka"], true, "a group's missing audience goes to everyone"],
     [null, ["kaito", "tanaka"], ["kaito", "tanaka"], true, "a group's null audience goes to everyone"],
+    [undefined, ["kaito", "tanaka"], ["tanaka"], true, "everyone skips a hidden character", ["kaito"]],
+    [undefined, ["kaito"], ["kaito"], false, "a one-character chat's missing audience is unchanged"],
+    [null, ["kaito"], ["kaito"], false, "a one-character chat's null audience is unchanged"],
     [[], ["kaito", "tanaka"], [], false, "a group's empty list is a user-only scene"],
     [{ Kaito: false }, ["kaito", "tanaka"], [], true, "a group's unreadable answer still grants nothing"],
     [["sister of Kaito Nakamura"], ["kaito", "tanaka"], [], true, "a group's description still grants nothing"],
-  ] as Array<[unknown, string[], string[], boolean, string]>) {
+  ] as Array<[unknown, string[], string[], boolean, string, string[]?]>) {
     matrixAudience = answer;
     const matrix = await chats.create({ name: label, mode: "roleplay", characterIds, connectionId: connection.id });
     assert(matrix);
@@ -331,9 +334,10 @@ try {
       knowledgeStarts: Object.fromEntries(characterIds.map((id) => [id, null])),
     });
     const persona = { personaSnapshot: { name: "Mari" } };
+    const hidden = hiddenFrom.length ? { hiddenFromAICharacterIds: hiddenFrom } : {};
     await chats.createMessagesBatch(matrix.id, [
-      { role: "user", content: "SCENE_CHANGE AUD_MATRIX Mari waits at the pier.", extra: persona },
-      { role: "assistant", characterId: characterIds.at(-1), content: "The boats come in." },
+      { role: "user", content: "SCENE_CHANGE AUD_MATRIX Mari waits at the pier.", extra: { ...persona, ...hidden } },
+      { role: "assistant", characterId: characterIds.at(-1), content: "The boats come in.", extra: hidden },
       { role: "user", content: "SCENE_CHANGE Later.", extra: { ...persona, isConversationStart: true } },
     ]);
     await memory.initialize(matrix.id);
@@ -356,6 +360,15 @@ try {
       `${label}: older-scene check`,
     );
     assert.equal(checked.warnings.includes("scene-audience-unmatched"), flagged, `${label}: older-scene warning`);
+    if (expected.length < 2) continue;
+    // Edit character access removes someone who wasn't there, and later preparation keeps that choice.
+    await memory.updateRecord(matrix.id, saved.id, { audienceCharacterIds: [expected[0]!] });
+    const before = participantChecks.length;
+    await memory.initialize(matrix.id, { detectScenes: false });
+    const edited = await memory.status(matrix.id);
+    assert.deepEqual(edited.records.find((record) => record.id === saved.id)!.audienceCharacterIds, [expected[0]]);
+    assert(!edited.warnings.includes("scene-audience-unmatched"), `${label}: saving access clears the warning`);
+    assert.equal(participantChecks.length, before, `${label}: an edited scene is not checked again`);
   }
 
   // (4) A scene that ends inside the swiped reply's live messages cannot be recalled, so the swipe reuses its memory.

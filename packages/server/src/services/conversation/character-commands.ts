@@ -1603,16 +1603,19 @@ export function parseDirectMessageCommands(content: string): {
 }
 
 /**
- * Parse a duration string like "2h", "30m", "1h30m" into minutes.
+ * Parse a duration string like "2h", "1.5h", "30m", "1h30m" into minutes.
+ * A bare number is hours, as the command prompt asks for "number of hours".
  * Returns null if unparseable.
  */
 export function parseDuration(duration: string): number | null {
-  const hourMatch = duration.match(/(\d+)\s*h/i);
-  const minMatch = duration.match(/(\d+)\s*m/i);
+  const bareHours = duration.match(/^\s*(\d+(?:\.\d+)?)\s*$/);
+  const hourMatch = bareHours ?? duration.match(/(\d+(?:\.\d+)?)\s*h/i);
+  const minMatch = bareHours ? null : duration.match(/(\d+)\s*m/i);
 
   let total = 0;
-  if (hourMatch) total += parseInt(hourMatch[1]!) * 60;
-  if (minMatch) total += parseInt(minMatch[1]!);
+  if (hourMatch) total += Number(hourMatch[1]) * 60;
+  if (minMatch) total += Number(minMatch[1]);
 
+  total = Math.round(total);
   return total > 0 ? total : null;
 }

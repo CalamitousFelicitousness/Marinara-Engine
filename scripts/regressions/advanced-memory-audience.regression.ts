@@ -733,6 +733,32 @@ try {
   );
   assert.match(partlyHidden.recalledScenes!, /known only to Maukie\):\nMessages #1–#2;[^]*\n#1 User: ONLY_MAUKIE/u);
   for (const id of hiddenFromPantalone) await chats.updateMessageExtra(id, { hiddenFromAICharacterIds: [] });
+  // Messages excluded from Pantalone's excerpts still show in a scene only Maukie remembers,
+  // while messages excluded from Maukie's own excerpts stay out of it.
+  const maukieOnlyIds = groupSource.slice(0, 2).map((message) => message.id);
+  const excerptRow = (await db.select().from(advancedMemoryRecords)).find(
+    (record) => record.sceneId === maukieOnly && record.kind === "excerpt",
+  )!;
+  assert.equal(excerptRow.messageIds, JSON.stringify(maukieOnlyIds));
+  for (const [reader, expected, message] of [
+    [
+      "pantalone",
+      maukieOnlyIds,
+      "an exclusion for a character who doesn't remember the scene leaves its excerpt alone",
+    ],
+    ["maukie", [], "a message excluded for the scene's own reader never shows in its excerpt"],
+  ] as const) {
+    await db.insert(advancedMemoryRecords).values({
+      ...excerptRow,
+      id: `excluded-for-${reader}`,
+      audienceCharacterIds: JSON.stringify([reader]),
+      enabled: 0,
+    });
+    const excluded = await groupRecall(["maukie", "pantalone", "narrator", "aaa-newcomer"]);
+    assert.deepEqual(new Set(excluded.receipt.recalledSceneIds), new Set([maukieOnly, both]));
+    assert.deepEqual(new Set(excluded.receipt.recalledMessageIds), new Set(expected), message);
+    await db.delete(advancedMemoryRecords).where(eq(advancedMemoryRecords.id, `excluded-for-${reader}`));
+  }
 
   // A merged chat of the narrator and one character, where the narrator's ID sorts first, checks conditions
   // as that character, never with narrator privilege.

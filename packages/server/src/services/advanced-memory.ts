@@ -3670,15 +3670,8 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
         .filter((record) => record.kind === "scene" && !record.enabled && recallAudienceMatches(ctx, record, audience))
         .map((record) => record.sceneId),
     );
-    const disabledSourceIds = new Set(
-      available
-        .filter(
-          (record) =>
-            (record.kind === "scene" || record.kind === "excerpt") &&
-            !record.enabled &&
-            recallAudienceMatches(ctx, record, audience),
-        )
-        .flatMap((record) => record.messageIds),
+    const disabledSources = available.filter(
+      (record) => (record.kind === "scene" || record.kind === "excerpt") && !record.enabled,
     );
     // Only finished, wholly archived scenes can supply a recap and its excerpt together.
     // A scene crossing the live window is represented by required continuity instead.
@@ -3710,6 +3703,18 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
             : eligibleIds,
         ];
       }),
+    );
+    // A message excluded for any reader of a scene stays out of its excerpt. In a merged group, an
+    // exclusion for a present character who doesn't remember the scene leaves it alone.
+    const disabledSourceIds = new Map(
+      [...sceneReaders].map(([id, known]) => [
+        id,
+        new Set(
+          disabledSources
+            .filter((record) => recallAudienceMatches(ctx, record, readers.length ? known : audience))
+            .flatMap((record) => record.messageIds),
+        ),
+      ]),
     );
     const sceneHeading = (scene: StoredRecord) => {
       const known = sceneReaders.get(scene.sceneId)!;
@@ -3747,7 +3752,9 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
         : record.messageIds.every((id) => sceneSourceIds.get(record.sceneId)!.has(id))
           ? parseRoleplayUserCommands(record.content).content
           : record.messageIds
-              .filter((id) => sceneSourceIds.get(record.sceneId)!.has(id) && !disabledSourceIds.has(id))
+              .filter(
+                (id) => sceneSourceIds.get(record.sceneId)!.has(id) && !disabledSourceIds.get(record.sceneId)!.has(id),
+              )
               .map((id) => messageText(ctx, fullById.get(id)!, indexes.get(id)!))
               .join("\n"),
     );
@@ -3937,7 +3944,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
           (message) =>
             sceneSourceIds.get(sceneId)!.has(message.id) &&
             indexedIds.has(message.id) &&
-            !disabledSourceIds.has(message.id),
+            !disabledSourceIds.get(sceneId)!.has(message.id),
         );
       return { scene, excerptRecords, sceneSource, words: sceneSource.map((message) => recallTerms(message.content)) };
     });

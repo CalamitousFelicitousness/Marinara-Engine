@@ -160,6 +160,7 @@ import {
   readPersonaSnapshotName,
   resolveActiveCharacterIds,
   resolvePromptCharacterIdsForTarget,
+  mergedChatSummaryReaders,
   resolveCharacterNameMap,
   resolveGroupGenerationMode,
   resolveRegenerationGameStateAnchor,
@@ -1124,6 +1125,14 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       ),
     });
     const historyMacroProfilesById = (await resolveCharacterMacroData(app.db, allCharacterIds)).profilesById;
+    const chatSummaryReaders = mergedChatSummaryReaders({
+      characterIds,
+      individual: dryRunGroupChatMode === "individual",
+      targetCharacterId: promptTargetCharacterId,
+      impersonate,
+      narratorCharacterId: advancedMemorySettings.narratorCharacterId,
+      profilesById: historyMacroProfilesById,
+    });
 
     // Normal previews only read live answers. An explicit diagnostic request uses its
     // own cache; only run mode sends Decision requests, never the main generation.
@@ -1760,6 +1769,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
         })(),
         chatMessages: mappedMessages,
         chatSummary: resolvedInjectChatSummary ? activeChatSummary : null,
+        chatSummaryReaders,
         ...(advancedMemoryEnabled ? { advancedMemory: {}, deferAdvancedMemory: true } : {}),
         runtimeAgentData,
         enableAgents: false,

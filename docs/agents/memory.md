@@ -194,6 +194,8 @@ Each entry in the list shows a title, a source range or message count, and an es
 
 Tick entries to select them; on a computer, Shift-click another entry to select the visible range between them, then use **Enable selected** or **Disable selected** to change only the selected entries.
 
+In a merged group chat, one reply can speak for every character. A part of an entry written for certain characters, such as `{{#if char == "Kaito"}}…{{/if}}`, is kept for every character in the chat it applies to and marked with who knows it, such as "known only to Kaito". Parts only the Advanced Memory **Narrator** gets stay out. In group chats where characters reply one by one, and in one-character chats, each character reads the entries as before.
+
 ### Automatic Summaries
 
 The **Automatic Summaries** panel keeps summaries updated as you keep chatting. It appears in Roleplay chats only.

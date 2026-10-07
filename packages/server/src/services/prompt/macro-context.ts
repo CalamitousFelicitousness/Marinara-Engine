@@ -15,7 +15,9 @@ import {
   MAX_CHAT_VARIABLES,
   PERSONA_REFERENCE_ID_PATTERN,
   formatRpgStatsForPrompt,
+  markReaderVersions,
   resolveMacros,
+  scopeCharacterSummary,
   stripMacroComments,
   usesLorebookIncludes,
   type CharacterMacroProfile,
@@ -884,6 +886,34 @@ export function scopePromptMacroContextToCharacter(
     charPhonetic: profile.phoneticName || profile.name,
     characterFields: characterFieldsFromProfile(profile),
   };
+}
+
+/**
+ * Resolve the Chat Summary. A merged group reply may voice any of `readers` (#7252), so a section that
+ * depends on the character is resolved for each reader who gets it and marked with who knows it, as
+ * Advanced Memory does. Text outside every condition resolves once, as before, `{{char}}` included.
+ * Sections no reader gets, such as narrator-only ones, are left out.
+ */
+export function resolveChatSummaryMacros(
+  summary: string,
+  macroCtx: MacroContext,
+  options?: ResolveMacroOptions,
+  readers?: readonly CharacterMacroProfile[],
+): string {
+  // ponytail: splitting a group block (`[` … `]`) at a condition would undo its per-character repeat, so a
+  // summary with one keeps the single reading. Expand group blocks before scoping if that ever matters.
+  if (!readers?.length || /^[ \t]*\[[ \t]*\r?$/mu.test(summary)) return resolveMacros(summary, macroCtx, options);
+  const profiles = new Map(readers.map((profile) => [profile.name, profile]));
+  const partOptions = { ...options, trimResult: false };
+  // A top-level part with a condition is one scoping kept whole, such as a name mixed with a variable.
+  const resolved = scopeCharacterSummary(summary, [...profiles.keys()], 0, (part, known, depth) =>
+    depth === 0 && !/\{\{\s*#if\b/iu.test(part)
+      ? resolveMacros(part, macroCtx, partOptions)
+      : markReaderVersions(known, profiles.size, (name) =>
+          resolveMacros(part, scopePromptMacroContextToCharacter(macroCtx, profiles.get(name)!), partOptions),
+        ),
+  );
+  return options?.trimResult === false ? resolved : resolved.trim();
 }
 
 function macroContextForMessage(

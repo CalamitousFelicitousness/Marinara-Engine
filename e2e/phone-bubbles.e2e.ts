@@ -438,6 +438,7 @@ test.describe("phone bubbles", () => {
                     innerClip: inner.clipPath,
                     border: outer.backgroundImage,
                     background: inner.backgroundImage,
+                    ring: inner.boxShadow,
                   };
                 }, gradient);
                 expect(paint.clip).toBe(expected.clip);
@@ -445,6 +446,13 @@ test.describe("phone bubbles", () => {
                   expect(paint.innerClip).toBe(expected.innerClip);
                   expect(paint.border).toContain("linear-gradient");
                   expect(paint.background).toContain("linear-gradient");
+                  // Mari's and Dottore's thin inner ring survives custom border paint on every shape (#7244):
+                  // a gap in the background's first stop, then a ring in the border's first stop.
+                  expect(paint.ring).toBe(
+                    preset === "default"
+                      ? "none"
+                      : "rgb(32, 40, 56) 0px 0px 0px 2px inset, rgb(204, 160, 119) 0px 0px 0px 3px inset",
+                  );
                 }
               }
               await expectComposerClearAndNoSideScroll(page);

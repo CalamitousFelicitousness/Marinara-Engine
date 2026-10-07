@@ -95,14 +95,6 @@ assert.match(
 );
 assert.match(clientInjectorSource, /registerPersonalExtensionContribution/u);
 assert.match(clientInjectorSource, /removePersonalExtensionContributions/u);
-// #7260: a worker stopped by the sandbox must not leave dead controls behind.
-assert.match(
-  clientInjectorSource,
-  /message\.stopped === true && message\.contentHash === active\.contentHash\) \{\s*void cleanupExtension\(active\.extension\.id\)/u,
-);
-assert.match(clientInjectorSource, /extensions\.runtime\.restart/u);
-assert.match(clientInjectorSource, /\[extensions, restartRequest\]/u);
-assert.match(localizationSource, /"extensions\.runtime\.stopped": "\{\{name\}\} stopped working\."/u);
 assert.match(clientInjectorSource, /message\.contentHash === active\.contentHash/u);
 assert.match(clientInjectorSource, /useChatStore\.subscribe/u);
 assert.match(clientInjectorSource, /type:\s*"context-update"/u);
@@ -735,6 +727,7 @@ try {
     let watchdogTick: (() => void) | undefined;
     let deliverWorkerMessage: ((event: { data: unknown }) => void) | undefined;
     let terminated = false;
+    const revokedUrls: string[] = [];
     const posted: Array<{ type?: string; stopped?: boolean; message?: string }> = [];
     const fakeElement = () => ({
       style: { setProperty: () => undefined },
@@ -752,7 +745,7 @@ try {
     runInNewContext(bootstrap, {
       Date: { now: () => now },
       Blob: class {},
-      URL: { createObjectURL: () => "blob:test", revokeObjectURL: () => undefined },
+      URL: { createObjectURL: () => "blob:test", revokeObjectURL: (url: string) => revokedUrls.push(url) },
       Worker: class {
         addEventListener(type: string, listener: (event: { data: unknown }) => void) {
           if (type === "message") deliverWorkerMessage = listener;
@@ -775,6 +768,9 @@ try {
       },
     });
     assert.ok(watchdogTick && deliverWorkerMessage, "Sandbox must start the heartbeat watchdog");
+    // Safari/WebKit loads a Worker script after new Worker() returns, so
+    // revoking its blob URL at once made the extension fail to start.
+    assert.deepEqual(revokedUrls, [], "The worker blob URL must outlive the Worker constructor call");
     const tick = (elapsedMs: number) => {
       now += elapsedMs;
       watchdogTick!();
@@ -809,6 +805,7 @@ try {
       [{ stopped: true, message: "Browser extension was stopped because its sandbox became unresponsive" }],
       "The host must be told the worker was stopped so it can drop dead controls",
     );
+    // e2e/personal-extension-restart.e2e.ts covers what the host does with it.
   }
 
   const fullPageExtension = {

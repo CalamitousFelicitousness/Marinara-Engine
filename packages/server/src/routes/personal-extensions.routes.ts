@@ -797,9 +797,11 @@ export function sandboxDocument(extension: PersonalExtension, nonce: string) {
   "use strict";
   const extension = ${boot};
   const post = (message) => window.parent.postMessage({ channel: "marinara-personal-extension", ...message }, "*");
+  // Do not revoke this URL right after new Worker(): Safari/WebKit loads the
+  // worker script later, so the load fails and the extension never starts.
+  // The URL is released when this sandbox iframe is removed.
   const workerUrl = URL.createObjectURL(new Blob([extension.workerSource], { type: "text/javascript" }));
   const worker = new Worker(workerUrl);
-  URL.revokeObjectURL(workerUrl);
 
   // Host-rendered window layer. The worker only sends element descriptors;
   // everything below builds DOM with textContent (never parsed markup) inside

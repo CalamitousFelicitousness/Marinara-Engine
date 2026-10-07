@@ -3115,7 +3115,7 @@ export const rulesetItemAttackSchema = z
               .strict()
               .optional(),
             targetIs: targetIsSchema.optional(),
-            when: z.enum(["always", "critical"]).optional(),
+            when: z.enum(["always", "critical", "toggled"]).optional(),
           })
           .strict()
           .superRefine((clause, ctx) => {
@@ -3283,6 +3283,14 @@ const catalogItemSchema = z
           })
           .optional(),
       })
+      .strict()
+      .optional(),
+    /** A switch its holder turns on and off (Capability API 1.165), a command word: `label` says what
+     *  it does ("Ignite"), and turning it either way in a fight spends `budget`. Kept on its stack, so
+     *  it stays as it was left; it starts off. A weapon's `plus` clause `when: "toggled"` is dealt
+     *  only while it is on: 5e's flame tongue. */
+    toggle: z
+      .object({ label: promptSafeText(40), budget: sheetId })
       .strict()
       .optional(),
   })
@@ -7852,6 +7860,15 @@ function itemIssues(
     });
   }
   if (item.attack) attackIssues(definition, item, item.attack, [...at, "attack"], add);
+  const toggle = item.toggle;
+  if (toggle && definition.combat && !definition.combat.economy.budgets.some((one) => one.id === toggle.budget)) {
+    add([...at, "toggle", "budget"], `Unknown budget "${toggle.budget}"`);
+  }
+  item.attack?.plus?.forEach((clause, index) => {
+    if (clause.when === "toggled" && !toggle) {
+      add([...at, "attack", "plus", index, "when"], 'A clause dealt while the item is on needs the item\'s "toggle"');
+    }
+  });
   if (item.use) useIssues(definition, item, item.use, [...at, "use"], add);
   if (item.charges) {
     itemValueChecker(definition, add)(item.charges.max, "number", [...at, "charges", "max"]);

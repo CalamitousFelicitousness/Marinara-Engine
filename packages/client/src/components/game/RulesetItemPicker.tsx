@@ -110,6 +110,7 @@ function rulesetItemAttackLines(facts: RulesetItemFacts, t: TFunction): string[]
         clause.type ?? "",
         clause.against ? t("ui.game.gameinventory.attackPlusAgainst", { what: clause.against.join(", ") }) : "",
         clause.critical ? t("ui.game.gameinventory.attackPlusCritical") : "",
+        clause.toggled ? t("ui.game.gameinventory.attackPlusToggled", { label: clause.toggled }) : "",
         clause.save
           ? t(
               clause.save.onSuccess === "half"
@@ -339,6 +340,7 @@ export function rulesetItemEffectLines(facts: RulesetItemFacts, t: TFunction): s
   return [
     ...rulesetItemAttackLines(facts, t),
     ...(useLine ? [useLine] : []),
+    ...(facts.toggle ? [t("ui.game.gameinventory.toggleLine", { ...facts.toggle })] : []),
     ...(["worn", "carried"] as const).flatMap((when) =>
       facts[when]?.length
         ? [

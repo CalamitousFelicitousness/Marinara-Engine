@@ -12,6 +12,7 @@ import {
 } from "../rulesets/live-state.js";
 import {
   rulesetAmmoLeft,
+  rulesetItemOn,
   rulesetItemUseLeft,
   rulesetLoaded,
   rulesetModedAction,
@@ -1103,7 +1104,13 @@ function forecastFor(
         (part.damage
           ? strikes *
             modifiedAverage(
-              averageHarm(definition, combat, rulesetDamageInEffect(definition, combat, actor, part.damage)),
+              averageHarm(
+                definition,
+                combat,
+                rulesetDamageInEffect(definition, combat, actor, part.damage),
+                undefined,
+                actor,
+              ),
               rulesetDamageModifiers(
                 definition,
                 state,
@@ -1146,7 +1153,7 @@ function forecastFor(
   // harm is what its dice are worth after what the first target soaks; healing is an amount.
   if (action.damage) {
     const damage = rulesetDamageInEffect(definition, combat, actor, action.damage);
-    const average = averageHarm(definition, combat, damage, target ?? undefined);
+    const average = averageHarm(definition, combat, damage, target ?? undefined, actor);
     forecast.averageDamage = Math.round(average * 100) / 100;
   } else if (action.heal) forecast.averageDamage = Math.round(rulesetAverageDamage(action.heal) * 100) / 100;
   if (action.innate && action.use?.perCostStep && forecast.averageDamage !== undefined) {
@@ -1158,7 +1165,8 @@ function forecastFor(
         count: damage.count + action.use.perCostStep.count * steps,
         flat: damage.flat + action.use.perCostStep.flat * steps,
       };
-      forecast.averageDamage = Math.round(averageHarm(definition, combat, scaled, target ?? undefined) * 100) / 100;
+      forecast.averageDamage =
+        Math.round(averageHarm(definition, combat, scaled, target ?? undefined, actor) * 100) / 100;
     } else forecast.averageDamage += rulesetAverageDamage(action.use.perCostStep) * steps;
   }
   if (action.damage && forecast.averageDamage !== undefined) {
@@ -1225,15 +1233,21 @@ function averageHarm(
   combat: RulesetCombat,
   damage: NonNullable<RulesetCombatAction["damage"]>,
   target?: RulesetCombatant,
+  actor?: RulesetCombatant,
 ): number {
   // A clause dealt only to some targets counts against one it would reach, and never unaimed (1.163).
-  const reaches = (clause: { targetIs?: RulesetTargetIs; onCritical?: true }) =>
-    !clause.onCritical && (!clause.targetIs || (!!target && rulesetTargetIs(definition, target, clause.targetIs)));
+  // One of an item's switch counts only while the item is on (1.165).
+  const reaches = (clause: { targetIs?: RulesetTargetIs; onCritical?: true; whileOn?: number }) =>
+    !clause.onCritical &&
+    (clause.whileOn === undefined || (!!actor && rulesetItemOn(actor, clause.whileOn))) &&
+    (!clause.targetIs || (!!target && rulesetTargetIs(definition, target, clause.targetIs)));
   if (!rulesetCombatIsPool(combat)) {
     return rulesetAverageDamage({
       ...damage,
       ...(damage.plus
-        ? { plus: damage.plus.filter(reaches).map(({ targetIs: _, onCritical: __, ...clause }) => clause) }
+        ? {
+            plus: damage.plus.filter(reaches).map(({ targetIs: _, onCritical: __, whileOn: ___, ...clause }) => clause),
+          }
         : {}),
     });
   }
@@ -1337,6 +1351,7 @@ function optionFrom(
       : {}),
     ...(rulesetFreeStrike(actor, action) ? { strikes: actor.strikesLeft } : {}),
     ...(action.heal ? { heals: true } : {}),
+    ...(action.switches ? { on: rulesetItemOn(actor, action.switches.item) } : {}),
     ...(action.restore ? { restores: action.restore.pool } : {}),
   };
   if (paid.cost.length > 0) option.cost = paid.cost;

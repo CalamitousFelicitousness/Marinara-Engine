@@ -1429,6 +1429,18 @@ function carriesBlowNarrowing(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesBlowNarrowing(one, depth + 1));
 }
 
+/** An item's switch, or a weapon clause dealt while it is on, in catalog files too (1.165). */
+function carriesItemToggles(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesItemToggles(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.toggle) && typeof record.category === "string") return true;
+  const plus = plainRecord(record.attack)?.plus;
+  if (Array.isArray(plus) && plus.some((one) => plainRecord(one)?.when === "toggled")) return true;
+  return Object.values(record).some((one) => carriesItemToggles(one, depth + 1));
+}
+
 /** A weapon item's extra damage, or a save on what its hit puts on, in catalog files too (1.164). */
 function carriesItemAttackExtras(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -2558,6 +2570,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesItemAttackExtras(document)))
   ) {
     return "A ruleset whose weapons deal extra damage or put on conditions a save resists requires schemaVersion 2 and capabilityApi 1.164 or newer";
+  }
+  // An item's switch and the clauses dealt while it is on, 1.165.
+  if (
+    !declaresApi(165) &&
+    (carriesItemToggles(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesItemToggles(document)))
+  ) {
+    return "A ruleset whose items switch on and off requires schemaVersion 2 and capabilityApi 1.165 or newer";
   }
   if (carriesCreatureSpellcasting) {
     // The references can only be checked once the catalog files are beside their headers.

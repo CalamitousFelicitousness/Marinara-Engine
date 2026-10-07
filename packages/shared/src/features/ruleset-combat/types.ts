@@ -47,6 +47,8 @@ export interface RulesetCombatDamageClause extends RulesetCombatAmount {
   targetIs?: RulesetTargetIs;
   /** Dealt only on a critical hit (1.164): a sword of sharpness's extra. */
   onCritical?: true;
+  /** Dealt only while this item of its holder's (its place in `sheet.items`) is switched on (1.165). */
+  whileOn?: number;
 }
 
 /** An amount of damage, and what kind it is. The type is matched without case against a stat
@@ -365,7 +367,7 @@ export interface RulesetCombatAction {
   id: string;
   /** `reload` fills a weapon's clip: it has no target and does nothing else. `item` is using an
    *  item the fighter holds. */
-  kind: "attack" | "ability" | "block" | "contest" | "reload" | "item";
+  kind: "attack" | "ability" | "block" | "contest" | "reload" | "item" | "switch";
   label: string;
   budget: string;
   /** Who it may be pointed at, relative to the actor: "enemy" is the other side. */
@@ -462,6 +464,8 @@ export interface RulesetCombatAction {
   /** The loaded count a weapon keeps on itself: which of the holder's items it is (its place in
    *  `sheet.items`) and how many it holds. An attack spends what is loaded; a `reload` fills it. */
   clip?: { item: number; max: number };
+  /** Turning one of the holder's items on or off (1.165): its place in `sheet.items`. */
+  switches?: { item: number };
   /** Other ways to make this attack, chosen with it like an initiative style. */
   modes?: RulesetCombatMode[];
   /** How many one attack shoots when a mode says so, in place of its ammunition's own. */
@@ -680,6 +684,8 @@ export interface RulesetCombatant {
   charges?: Record<string, number>;
   /** The items that broke when their last charge was spent, keyed as the rest are. */
   broken?: Record<string, true>;
+  /** Each item switched on or off in this fight, keyed as the rest are (1.165). */
+  on?: Record<string, boolean>;
   /** A party member's sheet, which is where their health and conditions really live. */
   sheet?: {
     build: RulesetSheetBuild;
@@ -1294,6 +1300,8 @@ export type RulesetCombatEvent =
   | { type: "shot"; actorId: string; optionId: string; label: string; left: number; of?: number }
   /** A clip filled, with how many of what it shoots went into it when it draws any. */
   | { type: "reload"; actorId: string; optionId: string; label: string; loaded: number; of: number; drew?: number }
+  /** An item switched on or off (1.165). */
+  | { type: "switch"; actorId: string; optionId: string; label: string; on: boolean }
   /** Won back after the fight: some of what was shot out of one stack. */
   | { type: "recovered"; actorId: string; label: string; count: number }
   /** Where an area landed, and the cells it covered. */
@@ -1333,7 +1341,7 @@ export interface RulesetCombatOption {
   id: string;
   /** `move` is the one a positioned fight adds: walking, and getting back up. `reload` fills a
    *  weapon's clip. */
-  kind: "attack" | "ability" | "block" | "contest" | "standard" | "end-turn" | "move" | "reload" | "item";
+  kind: "attack" | "ability" | "block" | "contest" | "standard" | "end-turn" | "move" | "reload" | "item" | "switch";
   label: string;
   /** Absent on "end turn", which spends nothing, and on anything that costs no budget: something
    *  the entry called free, or a strike taken out of what a spend already bought. */
@@ -1355,6 +1363,8 @@ export interface RulesetCombatOption {
   loaded?: { now: number; max: number };
   /** A second attack with a weapon in the off hand, on the ruleset's off-hand budget. */
   offHand?: true;
+  /** Whether the item a switch turns is on now (1.165). */
+  on?: boolean;
   /** Paid out of a budget a condition grants for an attack of one strike (combat C6d, Haste's extra
    *  action): the strikes the attack would otherwise put in hand are not given. */
   oneStrike?: true;

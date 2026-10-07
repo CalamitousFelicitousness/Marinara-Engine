@@ -16499,7 +16499,8 @@
                                 "type": "string",
                                 "enum": [
                                   "always",
-                                  "critical"
+                                  "critical",
+                                  "toggled"
                                 ]
                               },
                               "$comment": {}
@@ -18249,6 +18250,27 @@
                       },
                       "required": [
                         "max"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "toggle": {
+                      "type": "object",
+                      "properties": {
+                        "label": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 40
+                        },
+                        "budget": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "$comment": {}
+                      },
+                      "required": [
+                        "label",
+                        "budget"
                       ],
                       "additionalProperties": false
                     },

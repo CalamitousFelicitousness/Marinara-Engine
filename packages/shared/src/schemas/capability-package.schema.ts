@@ -836,7 +836,10 @@ const capabilityPackageManifestBaseSchema = z
 //        save, a target test, or only on a critical hit), and what its hit puts on may be resisted
 //        by a save (`onHit[].save`) or last until one (`onHit[].saveEnds`): 5e's dragon slayer,
 //        javelin of lightning, sword of sharpness and sword of wounding. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 164 } as const);
+// 1.165: an item may carry a switch (`toggle`: a label and the budget a fight turns it with), kept
+//        on its stack between fights, and a weapon's extra damage clause may be dealt only while the
+//        switch is on (`attack.plus[].when: "toggled"`): 5e's flame tongue. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 165 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

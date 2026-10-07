@@ -670,6 +670,8 @@ export function rulesetCombatEventLine(
             loaded: event.loaded,
             of: event.of,
           });
+    case "switch":
+      return key(event.on ? "switchOn" : "switchOff", { actor: names.combatant(event.actorId), label: event.label });
     case "recovered":
       return key("recovered", { actor: names.combatant(event.actorId), label: event.label, count: event.count });
     case "hardness":

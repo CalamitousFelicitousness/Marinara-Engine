@@ -24,6 +24,7 @@ export const RULESET_MENU_KINDS = [
   "reload",
   "ability",
   "item",
+  "switch",
   "block",
   "contest",
   "standard",
@@ -103,6 +104,11 @@ export function rulesetOptionLabel(option: DirectedRulesetOption, t: TFunction):
   // blow with a weapon in the off hand.
   if (option.kind === "reload") return t("game.combat.ruleset.menu.reload", { weapon: option.label });
   if (option.offHand) return t("game.combat.ruleset.menu.offHand", { weapon: option.label });
+  // A switch says which way it turns the item, which is the Engine's own word too.
+  if (option.kind === "switch")
+    return t(option.on ? "game.combat.ruleset.menu.switchOff" : "game.combat.ruleset.menu.switchOn", {
+      item: option.label,
+    });
   if (option.kind !== "standard") return option.label;
   return t(`game.combat.ruleset.standard.${option.label}`, { defaultValue: option.label });
 }

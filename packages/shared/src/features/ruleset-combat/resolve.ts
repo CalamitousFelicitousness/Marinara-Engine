@@ -18,6 +18,7 @@ import {
   breakRulesetItem,
   recoverRulesetAmmo,
   reloadRulesetClip,
+  rulesetItemOn,
   rulesetModedAction,
   spendRulesetShots,
 } from "./ammo.js";
@@ -1589,6 +1590,17 @@ export function applyRulesetCombatChoice(
       spendAvailability(ctx, working, granted.action);
     }
     resolveStandard(ctx, working, rulesetStandardName(option.id), workingTargets[0]);
+    return finish();
+  }
+
+  // A switch turns its item on or off and does nothing else (1.165).
+  if (option.kind === "switch") {
+    const switching = working.actions.find((entry) => entry.id === option.id);
+    if (switching?.switches) {
+      const on = !rulesetItemOn(working, switching.switches.item);
+      working.on = { ...(working.on ?? {}), [switching.switches.item]: on };
+      ctx.events.push({ type: "switch", actorId: working.id, optionId: switching.id, label: switching.label, on });
+    }
     return finish();
   }
 
@@ -3528,6 +3540,7 @@ function resolveActionBody(
         // Dealt only to a target that is what it names (1.163), and a save-for-half blow is never a
         // critical one (1.164).
         if (!rulesetTargetIs(ctx.definition, target, clause.targetIs) || clause.onCritical) return;
+        if (clause.whileOn !== undefined && !rulesetItemOn(actor, clause.whileOn)) return;
         const own = clause.save
           ? rollSave(ctx, target, clause.save.save, clause.save.difficulty, actor.id, saveFrom, against)
           : false;
@@ -3565,8 +3578,10 @@ function resolveActionBody(
       });
       (action.damage.plus ?? []).forEach((clause, index) => {
         if (!rulesetTargetIs(ctx.definition, target, clause.targetIs)) return;
-        // Only a critical hit carries a clause that says so (1.164).
+        // Only a critical hit carries a clause that says so (1.164), and only an item switched on one
+        // dealt while it is (1.165).
         if (clause.onCritical && !critical) return;
+        if (clause.whileOn !== undefined && !rulesetItemOn(actor, clause.whileOn)) return;
         // A clause with a save of its own asks the TARGET for it, whatever the action already asked.
         const own = clause.save
           ? rollSave(ctx, target, clause.save.save, clause.save.difficulty, actor.id, saveFrom, against)

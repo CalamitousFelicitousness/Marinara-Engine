@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: items can carry a switch the player turns on or off in a fight or from the inventory, kept between fights, and a weapon's extra damage can be dealt only while it is on, so a flame tongue works (Capability API 1.165).
 - Rulesets: save modifiers can count only against conditions, damage types or magic, so Dwarven Resilience, Fey Ancestry, Brave and Gnome Cunning grant advantage only on the saves they protect (Capability API 1.129).
 - Rulesets: weapons can deal extra damage, against certain creatures or on a critical hit, and their hits can put on conditions a save resists or ends, so dragon slayers, javelins of lightning and swords of wounding work (Capability API 1.164).
 - Rulesets: creatures and characters have types, and damage, conditions and targeting can depend on them, so slayer weapons, holy water and Animal Friendship work against the right creatures (Capability API 1.163).

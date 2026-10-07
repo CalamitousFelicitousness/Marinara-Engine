@@ -769,6 +769,10 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
       say({ type: "reload", actorId: "brenna", optionId: "reload:1", label: "Pistol", loaded: 6, of: 6, drew: 2 }),
     ],
     ["recovered", say({ type: "recovered", actorId: "brenna", label: "Arrows", count: 3 })],
+    [
+      "switch",
+      say({ type: "switch", actorId: "brenna", optionId: "switch:0", label: "Flame Tongue: Flames", on: true }),
+    ],
   ];
   const printed = new Map(table);
   for (const [type, text] of table) {
@@ -1564,7 +1568,7 @@ function drawn(...rows: string[]): TacticalGrid {
 {
   assert.deepEqual(
     [...RULESET_MENU_KINDS],
-    ["move", "attack", "reload", "ability", "item", "block", "contest", "standard", "end-turn"],
+    ["move", "attack", "reload", "ability", "item", "switch", "block", "contest", "standard", "end-turn"],
   );
   const grid = drawn(".....", ".....");
   const state = createRulesetEncounter({

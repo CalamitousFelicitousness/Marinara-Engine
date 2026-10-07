@@ -141,6 +141,8 @@ export interface RulesetItemFacts {
   requires?: RulesetItemRequirementFact[];
   attack?: RulesetItemAttackFact;
   use?: RulesetItemUseFact;
+  /** Its switch (1.165): what it is called and the budget's label a fight turns it with. */
+  toggle?: { label: string; budget: string };
 }
 
 /** What using an item does, as labels and numbers: the budget it spends (none when free), what it
@@ -226,6 +228,8 @@ export interface RulesetItemAttackFact {
     type?: string;
     against?: string[];
     critical?: true;
+    /** Dealt only while the item's switch is on (1.165): the switch's label. */
+    toggled?: string;
     save?: { save: string; difficulty: number; onSuccess: "none" | "half" };
   }>;
 }
@@ -508,6 +512,7 @@ function rulesetItemAttackFacts(
               ...(clause.type ? { type: clause.type } : {}),
               ...(against.length ? { against } : {}),
               ...(clause.when === "critical" ? { critical: true as const } : {}),
+              ...(clause.when === "toggled" && item.toggle ? { toggled: item.toggle.label } : {}),
               ...(clause.save
                 ? { save: { ...clause.save, save: labelOf(definition.sheet.saves, clause.save.save) } }
                 : {}),
@@ -867,6 +872,14 @@ export function rulesetItemFacts(
     ...(requires.length ? { requires } : {}),
     ...(item.attack ? { attack: rulesetItemAttackFacts(definition, item, item.attack) } : {}),
     ...(item.use ? { use: rulesetItemUseFacts(definition, item, item.use) } : {}),
+    ...(item.toggle
+      ? {
+          toggle: {
+            label: item.toggle.label,
+            budget: labelOf(definition.combat?.economy.budgets ?? [], item.toggle.budget),
+          },
+        }
+      : {}),
   };
 }
 
@@ -906,6 +919,7 @@ export function rulesetItemBook(
       ...(entry.item.slots && Object.keys(entry.item.slots).length > 0 ? { slots: entry.item.slots } : {}),
       ...(entry.item.binds ? { binds: { ...(entry.item.binds.cursed ? { cursed: true } : {}) } } : {}),
       ...(entry.item.service ? { service: true as const } : {}),
+      ...(entry.item.toggle ? { toggle: { label: entry.item.toggle.label } } : {}),
       ...(charges
         ? {
             charges: {
@@ -1182,6 +1196,7 @@ export function rulesetSheetItems(
         name: stack.name,
         stack: { id: stack.id, ref: stack.item, ...(stack.holder !== undefined ? { holder: stack.holder } : {}) },
         ...(stack.loaded !== undefined ? { loaded: stack.loaded } : {}),
+        ...(stack.on ? { on: true as const } : {}),
         ...(stack.charges !== undefined ? { charges: stack.charges } : {}),
         ...(truly ? { truly } : {}),
       },
@@ -1232,6 +1247,7 @@ export function rulesetItemPromptFacts(facts: RulesetItemFacts): string {
     ...needs,
     facts.attack ? rulesetItemAttackText(facts.attack) : "",
     facts.use ? rulesetItemUseText(facts.use) : "",
+    facts.toggle ? `${facts.toggle.label} turned on or off (${facts.toggle.budget})` : "",
   ]
     .filter(Boolean)
     .join("; ");
@@ -1332,7 +1348,7 @@ export function rulesetItemAttackText(attack: RulesetItemAttackFact): string {
       (clause) =>
         `+${clause.amount}${clause.type ? ` ${clause.type}` : ""}${
           clause.against ? ` against ${clause.against.join(" or ")}` : ""
-        }${clause.critical ? " on a critical hit" : ""}${
+        }${clause.critical ? " on a critical hit" : ""}${clause.toggled ? ` while ${clause.toggled} is on` : ""}${
           clause.save
             ? ` (${clause.save.save} ${clause.save.difficulty} ${clause.save.onSuccess === "half" ? "for half" : "negates"})`
             : ""

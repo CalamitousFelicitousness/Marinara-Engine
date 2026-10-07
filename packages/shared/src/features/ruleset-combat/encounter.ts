@@ -1106,6 +1106,25 @@ function fakeUseAction(
   return does;
 }
 
+/** The switches on a fighter's items (1.165): one of an item with a `toggle` turned on or off, on its
+ *  budget. Its place in `sheet.items` is what the fight keeps the state by. */
+function itemSwitchActions(items: readonly RulesetSheetItem[] | undefined): RulesetCombatAction[] {
+  return (items ?? []).flatMap((held, index): RulesetCombatAction[] => {
+    const toggle = held.item.toggle;
+    if (!toggle || held.quantity !== 1) return [];
+    return [
+      {
+        id: `switch:${index}`,
+        kind: "switch",
+        label: `${held.name ?? toggle.label}: ${toggle.label}`,
+        budget: toggle.budget,
+        targets: { side: "self", count: 0 },
+        switches: { item: index },
+      },
+    ];
+  });
+}
+
 /**
  * The weapons a fighter holds, as attacks: each worn item with an `attack`, read the way an attack
  * row is, with its values in place of columns and each stat it reads off the item itself. It adds
@@ -1247,6 +1266,7 @@ function itemAttackActions(
           ...(clause.save ? { save: { ...clause.save } } : {}),
           ...(clause.targetIs ? { targetIs: clause.targetIs } : {}),
           ...(clause.when === "critical" ? { onCritical: true as const } : {}),
+          ...(clause.when === "toggled" ? { whileOn: index } : {}),
         },
       ];
     });
@@ -1947,6 +1967,7 @@ function sheetCombatant(
       attackActions(definition, combat, source, index, build, evaluated, perCell),
     ),
     ...itemAttackActions(definition, combat, input.items, build, evaluated, perCell),
+    ...itemSwitchActions(input.items),
     ...itemUseActions(definition, combat, input.items, build, evaluated, perCell),
     ...abilities.flatMap((entry) => entry.actions),
   ];

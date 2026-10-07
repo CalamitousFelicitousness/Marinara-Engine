@@ -44,6 +44,12 @@ export function rulesetModedAction(
   };
 }
 
+/** Whether one of the fighter's items is switched on (1.165): as this fight left it, else as its stack
+ *  kept it. Off unless something turned it on. */
+export function rulesetItemOn(actor: RulesetCombatant, item: number): boolean {
+  return actor.on?.[item] ?? actor.sheet?.items?.[item]?.on === true;
+}
+
 /** How many of the items with this tag the fighter still carries. */
 export function rulesetAmmoLeft(actor: RulesetCombatant, tag: string): number {
   let left = 0;
@@ -209,6 +215,8 @@ export interface RulesetFightItemChange {
   broke?: true;
   /** A fake's true name (1.74): what a use of it is written as. */
   truly?: string;
+  /** Its switch as the fight left it, when the fight turned it (1.165). */
+  on?: boolean;
 }
 
 /**
@@ -223,7 +231,11 @@ export function rulesetFightItemChanges(
   const changes: RulesetFightItemChange[] = [];
   for (const combatant of after.combatants) {
     const items = combatant.sheet?.items;
-    if (combatant.side !== "party" || !items || (!combatant.itemsUsed && !combatant.loaded && !combatant.charges)) {
+    if (
+      combatant.side !== "party" ||
+      !items ||
+      (!combatant.itemsUsed && !combatant.loaded && !combatant.charges && !combatant.on)
+    ) {
       continue;
     }
     const earlier = before?.combatants.find((entry) => entry.id === combatant.id);
@@ -234,13 +246,16 @@ export function rulesetFightItemChanges(
       const reloaded = loaded !== undefined && loaded !== earlier?.loaded?.[index];
       const charges = combatant.charges?.[index];
       const spent = charges !== undefined && charges !== earlier?.charges?.[index];
-      if (taken === 0 && !reloaded && !spent) return;
+      const on = combatant.on?.[index];
+      const switched = on !== undefined && on !== (earlier?.on?.[index] ?? held.on === true);
+      if (taken === 0 && !reloaded && !spent && !switched) return;
       changes.push({
         stack: { ...held.stack },
         name: held.name ?? held.stack.ref,
         taken,
         ...(reloaded ? { loaded } : {}),
         ...(spent ? { charges } : {}),
+        ...(switched ? { on } : {}),
         ...(combatant.broken?.[index] && !earlier?.broken?.[index] ? { broke: true as const } : {}),
         ...(held.truly ? { truly: held.truly.name } : {}),
       });
@@ -293,11 +308,14 @@ export function applyRulesetFightItemChanges(
       next = next.filter((_, index) => index !== at);
       continue;
     }
+    const { on: wasOn, ...kept } = stack;
+    const on = change.on ?? wasOn === true;
     next[at] = {
-      ...stack,
+      ...kept,
       quantity,
       ...(change.loaded !== undefined ? { loaded: change.loaded } : {}),
       ...(change.charges !== undefined ? { charges: change.charges } : {}),
+      ...(on && quantity === 1 ? { on: true as const } : {}),
     };
   }
   return { stacks: next, journal };

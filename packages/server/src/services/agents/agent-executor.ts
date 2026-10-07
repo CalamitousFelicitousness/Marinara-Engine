@@ -308,6 +308,7 @@ export function buildAgentPromptMacroContext(
         }
       : undefined,
     lorebookEntryCounts: context.lorebookEntryCounts,
+    lorebookIncludes: context.lorebookIncludes,
     decisions: context.decisions,
   };
 }

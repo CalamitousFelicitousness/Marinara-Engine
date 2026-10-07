@@ -669,6 +669,8 @@ Up to 24 steps, each `{ id, label, kind, ... }`; a package with more than 16 dec
 - `startingGear`: lists the ruleset's starting gear. Gear is taken in a game, from the inventory, as always.
 - `choices` (Capability API 1.86): `catalog` names a catalog of rows, and the step is where the entries the picks grant from it are chosen (`grants.entries`, below), such as a language of your choice.
 
+A starting-gear step may carry `"strict": true` (Capability API 1.104). In legal-only mode, the default, it offers only gear whose `fits` reads true on the sheet as it stands, without live state, plus gear without `fits`; there is no Other gear list. For 5e, put `fits: { "value": { "field": "wizard_level" }, "atLeast": 1 }` on the Wizard kit and the corresponding class-level field on each other class kit; leave `fits` off the Acolyte kit so it fits everyone. Free edit offers every kit again. The inventory picker clears a selection that stops fitting after a class change or leaving free edit and says why; it also checks the fit before taking the gear. With no fitting gear the step shows its empty state, and Next stays open. Steps without `strict` keep offering every kit. The mode is local to each screen, not recorded with a saved build or sent to the server.
+
 What a pick gives is its entry's `grants`, read only by the builder:
 
 ```json

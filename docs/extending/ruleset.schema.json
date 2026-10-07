@@ -7276,6 +7276,10 @@
                         "type": "string",
                         "const": "startingGear"
                       },
+                      "strict": {
+                        "type": "boolean",
+                        "const": true
+                      },
                       "$comment": {}
                     },
                     "required": [

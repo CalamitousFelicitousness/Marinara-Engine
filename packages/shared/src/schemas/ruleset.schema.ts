@@ -1031,7 +1031,14 @@ const builderStepSchema = z.discriminatedUnion("kind", [
         .optional(),
     })
     .strict(),
-  z.object({ ...builderStepBase, kind: z.literal("startingGear") }).strict(),
+  z
+    .object({
+      ...builderStepBase,
+      kind: z.literal("startingGear"),
+      /** Only gear the sheet fits is offered in legal-only mode (Capability API 1.104). */
+      strict: z.literal(true).optional(),
+    })
+    .strict(),
   /** Where the entries the picks grant from `catalog` are chosen (`grants.entries`, 1.86). */
   z.object({ ...builderStepBase, kind: z.literal("choices"), catalog: sheetId }).strict(),
 ]);
@@ -1079,7 +1086,7 @@ export type RulesetBuilderStep =
       kind: "trained";
       choose?: { what: "skills" | "saves"; count: number; from?: string[] }[];
     })
-  | (BuilderStepBase & { kind: "startingGear" });
+  | (BuilderStepBase & { kind: "startingGear"; strict?: true });
 export interface RulesetSheetBuilder {
   steps: RulesetBuilderStep[];
   tier?: string;

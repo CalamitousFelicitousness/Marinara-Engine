@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- A strict starting-gear step offers only kits the character fits, keeps unrestricted kits available, and clears picks that stop fitting; free edit still offers every kit (Capability API 1.104).
 - A guided builder can ask for up to 40 catalog picks in one step and set bounds for manually typed ability scores (Capability API 1.105).
 - A ruleset sheet can work out up to 400 derived values, for larger character sheets (Capability API 1.106).
 - A guided character builder can have up to 24 steps, for rulesets with more choices to walk through (Capability API 1.107).

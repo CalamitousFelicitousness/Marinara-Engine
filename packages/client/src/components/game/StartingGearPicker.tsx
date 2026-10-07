@@ -1,7 +1,7 @@
 // The inventory's "Starting gear": a ruleset's gear a character may take into their bag at the start
 // (Capability API 1.73). Never given on its own: the player picks a gear, an option for each of its
 // choices and an item from each list, and takes it. Gear the character's sheet fits is listed first;
-// every gear is offered, because a character's concept is the player's and the Game Master's to agree.
+// a strict builder step (1.104) keeps other gear for free edit.
 //
 // What the gear adds is worked out by the shared resolver the server also uses, so what is shown is
 // what is added; the server checks it all again.
@@ -12,10 +12,12 @@ import {
   gameInventoryBearerStatus,
   resolveRulesetStartingGear,
   rulesetStartingGearCoins,
+  rulesetBuilderStartingGearOptions,
   rulesetStartingGearFits,
   rulesetStartingGearKind,
   rulesetStartingGearTakenBy,
   type GameInventoryStack,
+  type RulesetBuilderStep,
   type RulesetDefinition,
   type RulesetItemBook,
   type RulesetItemBookSheets,
@@ -70,7 +72,11 @@ export function StartingGearPicker({
 }) {
   const { t } = useUiTranslation();
   const firstRef = useRef<HTMLSelectElement>(null);
-  const gear = useMemo(() => definition.items?.startingGear ?? [], [definition]);
+  const [freeEdit, setFreeEdit] = useState(false);
+  const step = definition.sheet.builder?.steps.find(
+    (each): each is Extract<RulesetBuilderStep, { kind: "startingGear" }> =>
+      each.kind === "startingGear" && !!each.strict,
+  );
   const [holder, setHolder] = useState<string | undefined>(initialHolder);
   const bagKey = gameInventoryBagKey(holder);
   const who = bags.find((bag) => gameInventoryBagKey(bag.holder) === bagKey)?.name ?? bags[0]?.name ?? "";
@@ -78,6 +84,13 @@ export function StartingGearPicker({
     holder === undefined
       ? sheets?.player
       : sheets?.members?.find((member) => gameInventoryBagKey(member.name) === bagKey)?.build;
+  const gear = useMemo(
+    () =>
+      step
+        ? rulesetBuilderStartingGearOptions(definition, step, build, freeEdit)
+        : (definition.items?.startingGear ?? []),
+    [build, definition, freeEdit, step],
+  );
   const fits = useMemo(
     () => new Set(gear.filter((each) => rulesetStartingGearFits(definition, each, build)).map((each) => each.id)),
     [build, definition, gear],
@@ -89,8 +102,19 @@ export function StartingGearPicker({
   const [picks, setPicks] = useState<Record<string, string>>({});
   const [again, setAgain] = useState(false);
   const [pending, setPending] = useState(false);
+  const [pickCleared, setPickCleared] = useState(false);
   const chosen = gear.find((each) => each.id === gearId);
+  // A sheet changed behind the picker, or free edit ended: discard the whole stale selection before
+  // it can be taken, so returning to that class never restores a pick the player was told was gone.
+  if (step && !freeEdit && gearId !== null && !chosen) {
+    setGearId(null);
+    setChoices([]);
+    setPicks({});
+    setAgain(false);
+    setPickCleared(true);
+  }
   const chooseGear = (next: RulesetStartingGear) => {
+    setPickCleared(false);
     setGearId(next.id);
     setChoices(next.choices.map(() => -1));
     setPicks({});
@@ -104,9 +128,18 @@ export function StartingGearPicker({
 
   const selection: RulesetStartingGearSelection | null = chosen ? { gear: chosen.id, choices, picks } : null;
   const resolved = useMemo(
-    () => (selection ? resolveRulesetStartingGear(definition, book, selection, layerOptions) : null),
+    () =>
+      selection
+        ? resolveRulesetStartingGear(
+            definition,
+            book,
+            selection,
+            layerOptions,
+            step ? { step, build, freeEdit } : undefined,
+          )
+        : null,
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [book, definition, layerOptions, gearId, choices, picks],
+    [book, definition, layerOptions, gearId, choices, picks, step, build, freeEdit],
   );
   // What the gear weighs against what this bag's bearer can still carry, where the ruleset says.
   const status = useMemo(() => gameInventoryBearerStatus(stacks, holder, book), [book, holder, stacks]);
@@ -230,6 +263,20 @@ export function StartingGearPicker({
     >
       <div className="flex min-h-0 flex-1 flex-col gap-3">
         <p className="text-[0.6875rem] text-[var(--muted-foreground)]">{t("game.ruleset.startingGear.intro")}</p>
+        {step && (
+          <label className="flex items-center gap-2 text-xs text-[var(--foreground)]">
+            <input type="checkbox" checked={freeEdit} onChange={(event) => setFreeEdit(event.target.checked)} />
+            {t("ui.rulesets.builder.freeEditGear")}
+          </label>
+        )}
+        {pickCleared && (
+          <p role="status" className="text-xs text-[var(--muted-foreground)]">
+            {t("ui.rulesets.builder.pickCleared")}
+          </p>
+        )}
+        {step && !freeEdit && gear.length === 0 && (
+          <p className="text-xs text-[var(--muted-foreground)]">{t("ui.rulesets.builder.noOptions")}</p>
+        )}
         {bags.length > 1 && (
           <label className="flex max-w-xs flex-col gap-1">
             <span className={labelClass}>{t("game.ruleset.startingGear.for")}</span>

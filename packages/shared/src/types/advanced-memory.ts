@@ -2,6 +2,8 @@ import { z } from "zod";
 
 /** Distinguishes explicit scene participants from legacy visibility-based assignments. */
 export const ADVANCED_MEMORY_SCENE_AUDIENCE = { id: "scene-audience", revision: "participants-v1" } as const;
+/** The helper named participants that match no character, or none in a group chat. Saving access clears it. */
+export const ADVANCED_MEMORY_SCENE_AUDIENCE_UNMATCHED = "scene-audience-unmatched";
 
 export const advancedMemorySettingsSchema = z.object({
   enabled: z.boolean().default(false),
@@ -17,6 +19,8 @@ export const advancedMemorySettingsSchema = z.object({
   retrieveMinMessages: z.number().int().min(0).max(50).default(3),
   retrieveMaxMessages: z.number().int().min(0).max(50).default(10),
   narratorCharacterId: z.string().nullable().default(null),
+  /** Individual group chats only: hide each new message from characters the memory model finds absent. */
+  autoMessageVisibility: z.boolean().default(false),
   /** A null value explicitly confirms knowledge from the beginning. Missing means unconfirmed. */
   knowledgeStarts: z.record(z.string().nullable()).default({}),
   knowledgeConfirmed: z.boolean().default(false),
@@ -126,6 +130,8 @@ export interface AdvancedMemoryStatus {
 
 export interface AdvancedMemoryReceipt {
   decisionRecall?: AdvancedMemoryDecisionDiagnostics;
+  /** The finished scenes this audience could recall; a swipe recalls again when they change. */
+  archiveRevision?: string;
   sourceEndMessageId?: string | null;
   sourceFingerprint: string;
   policyRevision: string;

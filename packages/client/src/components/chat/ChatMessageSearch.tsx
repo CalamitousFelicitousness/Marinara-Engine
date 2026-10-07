@@ -142,7 +142,8 @@ export function ChatMessageSearch({ chatId }: { chatId: string }) {
       {showList && (
         <div className={cn("max-h-72 overflow-y-auto", view === "search" && "border-t border-[var(--border)]")}>
           {view === "trash" ? (
-            <ChatTrashList chatId={chatId} enabled />
+            // Keyed by chat so another chat's trash starts its progressive fill from the first batch.
+            <ChatTrashList key={chatId} chatId={chatId} enabled />
           ) : isLoading ? (
             <div className="flex items-center justify-center gap-2 px-3 py-8 text-sm text-[var(--muted-foreground)]">
               <Loader2 size="0.875rem" className="animate-spin" />

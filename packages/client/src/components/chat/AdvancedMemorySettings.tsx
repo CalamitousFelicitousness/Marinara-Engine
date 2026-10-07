@@ -20,6 +20,7 @@ const warningKeys: Record<string, string> = {
   "decision-connection-unavailable": "chat.advancedMemory.warning.decisionConnectionUnavailable",
   "unscoped-agent-memory": "chat.advancedMemory.warning.unscopedAgentMemory",
   "unscoped-summaries": "chat.advancedMemory.warning.unscopedSummaries",
+  "scene-audience-unmatched": "chat.advancedMemory.warning.sceneAudienceUnmatched",
 };
 
 export interface MemoryCharacterOption {
@@ -384,6 +385,18 @@ export function AdvancedMemorySettings({
                 {t("chat.advancedMemory.narratorHelp")}
               </span>
             </label>
+          )}
+          {individual && characters.length > 1 && (
+            <SettingsSwitch
+              label={t("chat.advancedMemory.autoMessageVisibility")}
+              description={t("chat.advancedMemory.autoMessageVisibilityHelp")}
+              checked={settings.autoMessageVisibility}
+              disabled={disabled}
+              onChange={(autoMessageVisibility) => save({ autoMessageVisibility })}
+              labelPosition="start"
+              className="justify-between rounded-md bg-[var(--secondary)] px-3 py-2.5 text-left"
+              labelClassName="text-xs font-medium"
+            />
           )}
           {individual && (
             <button type="button" className={`${actionClass} w-full`} disabled={disabled} onClick={reviewKnowledge}>

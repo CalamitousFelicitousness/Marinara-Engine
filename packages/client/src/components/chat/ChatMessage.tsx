@@ -3011,7 +3011,8 @@ export const ChatMessage = memo(function ChatMessage({
     (command: (typeof inlineRoleplayCommands)[number]) =>
       command.kind === "whisper" ? (
         <RoleplayWhisper
-          key={`whisper-${message.id}-${message.activeSwipeIndex}-${command.index}-${personaInfo?.id}`}
+          // The original command text identifies the whisper, so an open editor never saves over a replacement.
+          key={`whisper-${message.id}-${message.activeSwipeIndex}-${command.index}-${personaInfo?.id}-${command.activity.raw}`}
           chatId={message.chatId}
           messageId={message.id}
           swipeIndex={message.activeSwipeIndex}

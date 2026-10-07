@@ -201,7 +201,10 @@ try {
     assert(!content.includes("BOB_ONLY_SECRET"));
   }
   await chats.updateMessageExtra(saved.id, { hiddenFromAICharacterIds: [bob.id] });
-  assert(!(await preview(bob.id)).includes("BOB_ONLY_SECRET"));
+  // #7191 reversed the original rule: hiding a message from its whisper's recipient hides only the narration.
+  const hiddenFromBob = await preview(bob.id);
+  assert(hiddenFromBob.includes("BOB_ONLY_SECRET"), "the recipient keeps its whisper");
+  assert(!hiddenFromBob.includes("Before.") && !hiddenFromBob.includes("After."), "the hidden narration stays hidden");
   assert((await preview(narrator.id)).includes("BOB_ONLY_SECRET"));
   await chats.updateMessageExtra(saved.id, { hiddenFromAICharacterIds: [], hiddenFromAI: true });
   assert(!(await preview(narrator.id)).includes("BOB_ONLY_SECRET"));

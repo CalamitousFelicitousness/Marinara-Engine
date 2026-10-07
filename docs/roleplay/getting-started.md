@@ -103,9 +103,11 @@ In **Chat Settings → Agents → Roleplay Commands**, enable **Whisper** to all
 
 The command is `[whisper: character="name" text="the secret"]`. Name exactly one character in the chat or your selected persona. Only that recipient and the appointed narrator receive the text in their prompts. An unknown or ambiguous name is ignored without exposing the secret. Shared agents do not receive whispers.
 
-A whisper stays at its place in the message. Whispers addressed to your persona are visible immediately; otherwise, choose **Reveal a secret** to read one. Revealing only changes your screen, not what any character knows. Secrets follow their message and active swipe, and leave the prompt when that message is hidden or falls outside the selected history.
+A whisper stays at its place in the message. Whispers addressed to your persona are visible immediately; otherwise, choose **Reveal a secret** to read one. Revealing only changes your screen, not what any character knows. Secrets follow their message and active swipe, and leave the prompt when that message is hidden from everyone or falls outside the selected history.
 
-Once a whisper is visible, choose **Edit whisper**, change the text, then **Save**. The correction stays with that message's swipe and is used in later prompts for its original recipient and the narrator. **Cancel** leaves it unchanged.
+A whisper always reaches its recipient. If you use **Hide from AI** to hide a message only from some characters, the recipient still gets its whisper at that point in the story, but none of the rest of the message. Other characters who cannot see the message get nothing from it.
+
+Once a whisper is visible, choose **Edit whisper**, change the text, then **Save**. The correction stays with that message's swipe and is used in later prompts for its original recipient and the narrator. To take a whisper back, clear its text and choose **Save**: the whisper is removed from the message. **Cancel** leaves it unchanged.
 
 You can also write `[whisper: character="name" text="the secret"]` in your own Roleplay message to whisper to one chat character. Your own whispers are visible to you immediately. This works in ordinary chats without enabling multiplayer.
 

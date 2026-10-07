@@ -2666,18 +2666,24 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
               throw new Error(
                 "The recent scene-check messages exceed the helper context limit; reduce the scene-check interval or increase its context limit",
               );
+            const sceneErrors = {
+              length:
+                "The scene helper reached its output limit before completing its decision. Raise Chat Summary's Maximum output size or lower Reasoning Effort, then retry.",
+              incomplete: "The scene helper did not complete its scene decision; retry the post-generation check",
+            };
             const askScene = (messages: HelperMessages) =>
-              askHelperJson(ctx, helper, messages, operationOptions, "Post-generation scene prompt", {
-                length:
-                  "The scene helper reached its output limit before completing its decision. Raise Chat Summary's Maximum output size or lower Reasoning Effort, then retry.",
-                incomplete: "The scene helper did not complete its scene decision; retry the post-generation check",
-              });
+              askHelperJson(ctx, helper, messages, operationOptions, "Post-generation scene prompt", sceneErrors);
             if (plan && shared && helper.fits(shared)) {
               // A failed shared call hides nothing rather than asking again.
               plan.asked = true;
               decision = await askScene(shared).catch((error: unknown) => {
-                abortIfNeeded(operationOptions.signal);
-                logger.warn(error, "[advanced-memory] Shared scene and visibility check failed for chat %s", chatId);
+                // Only an unusable answer is asked again; a failed connection would just fail twice.
+                if (!(error instanceof Error) || !Object.values(sceneErrors).includes(error.message)) throw error;
+                logger.warn(
+                  error,
+                  "[advanced-memory] Shared scene and visibility answer was unusable for chat %s",
+                  chatId,
+                );
                 return null;
               });
               plan.hidden = hiddenFromHelper(plan, decision);

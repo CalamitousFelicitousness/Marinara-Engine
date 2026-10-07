@@ -3582,8 +3582,9 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
             ? sources.slice(entry.rangeStartIndex - 1, entry.rangeEndIndex)
             : [];
         const text = renderEntry(ctx, entry.content, audience);
-        // Nothing for this reader: leave the entry out, unless its range still has a shared story date (#7250).
-        if (!text.trim() && !(covered.length && sourceTimeline(covered)))
+        // Nothing for this reader: leave the entry out, unless it covers a scene they took part in
+        // (read any of its messages) that has a story date, which participants share (#7250).
+        if (!text.trim() && !(covered.some((message) => recallIds.has(message.id)) && sourceTimeline(covered)))
           return { messageIds: [], text: "", timelineRecords: [] };
         const coveredIds = new Set(covered.map((message) => message.id));
         const timelineRecords = text.trim()

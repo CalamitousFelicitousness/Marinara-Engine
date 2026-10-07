@@ -863,6 +863,15 @@ try {
     /\n\nMessages #5–#6; [^\n]+\nNARRATOR_ONLY_NOTE$/u,
     "the reader it is written for still gets it, header and all",
   );
+  // A story date keeps the header only for characters who read part of that range, never for a newcomer.
+  await chats.updateMessageContent(groupSource[2]!.id, `Date: June 12\n${groupSource[2]!.content}`);
+  await chats.updateMessageContent(groupSource[4]!.id, `Date: June 13\n${groupSource[4]!.content}`);
+  assert.equal(
+    (await groupRecall(["aaa-newcomer"])).chatSummary,
+    `${range("1–#2")}\nCONST_PLAIN The compass promise.`,
+    "no dated header for scenes Cara never read",
+  );
+  assert.match((await groupRecall(["pantalone"])).chatSummary!, /\n\nMessages #5–#6; [^\n]+: June 13\.\n$/u);
   // A one-character chat drops an entry written only for someone else, and keeps its own unchanged.
   const solo = await chats.create({
     name: "Solo empty summary",

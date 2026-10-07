@@ -768,6 +768,21 @@ export async function resolveCharacterMacroData(db: DB, characterIds: string[]):
   return { names, phoneticNames, profiles, profilesById, primaryFields };
 }
 
+/** What `{{include::...}}` reads (#6912), loaded only when one of `sources` uses it. */
+export async function loadLorebookIncludesFor(
+  db: DB,
+  chatId: string | undefined,
+  sources: readonly string[],
+): Promise<LorebookIncludeSource | undefined> {
+  if (!sources.some(usesLorebookIncludes)) return undefined;
+  try {
+    return await loadLorebookIncludes(db, chatId);
+  } catch (err) {
+    logger.warn(err, "Failed to load lorebooks for include macros; leaving them as written");
+    return undefined;
+  }
+}
+
 export async function buildPromptMacroContext(input: BuildPromptMacroContextInput): Promise<MacroContext> {
   const characterMacroData = await resolveCharacterMacroData(input.db, input.characterIds);
   const groupCharacterMacroData = input.groupCharacterIds
@@ -794,14 +809,7 @@ export async function buildPromptMacroContext(input: BuildPromptMacroContextInpu
       // If the count fails, continue with empty counts — {{lorebooksize::ID}} resolves to 0.
     }
   }
-  let lorebookIncludes: LorebookIncludeSource | undefined;
-  if (macroSources.some(usesLorebookIncludes)) {
-    try {
-      lorebookIncludes = await loadLorebookIncludes(input.db, input.chatId);
-    } catch (err) {
-      logger.warn(err, "Failed to load lorebooks for include macros; leaving them as written");
-    }
-  }
+  const lorebookIncludes = await loadLorebookIncludesFor(input.db, input.chatId, macroSources);
 
   const macroCtx: MacroContext = {
     user: input.personaName || "User",

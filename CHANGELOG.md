@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- **Character Tracker** no longer throws away a turn's mood, outfit and thought changes when the model sends them without the `presentCharacters` wrapper. Those turns used to count as successful while the tracker panel kept the old values, and the next turn could undo recent changes. A reply that has other data but no character list now logs a server warning, while an empty "no changes" reply stays quiet (#7208).
 - For contributors: the Impeccable design skill is back at `.agents/skills/impeccable`. The `.claude/skills` copy and the `.agents/skills` alias that pointed to it are gone.
 - In Advanced Memory group chats, a scene whose Helper model doesn't say who took part now goes to every character instead of only the narrator. It is still flagged and marked **Check who was there** in **Access memories**, so you can remove anyone who wasn't there with **Edit character access**. Names that fit no character still give no access (#7184).
 - **Chat Summary** supports Shift-clicking a visible range on desktop and enabling or disabling only the selected summaries. Combine resets range selection, desktop rows stay compact, and selection controls wrap on narrow screens (#7163).

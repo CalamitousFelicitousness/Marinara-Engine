@@ -828,6 +828,87 @@ try {
   const cara = await groupRecall(["aaa-newcomer"]);
   assert.equal(cara.recalledScenes, null, "an individual newcomer recalls nothing from before joining");
   assert(!/CONST_SHARED|CONST_MAUKIE|MIXED_SECRET/u.test(cara.chatSummary ?? ""));
+
+  // A summary whose sections all render empty for its reader adds nothing, not even its range header.
+  assert.equal(cara.chatSummary, `${range("1–#2")}\nCONST_PLAIN The compass promise.`, "no bare header for Cara");
+  const groupEntries = JSON.parse((await chats.getById(group.id))!.metadata).summaryEntries;
+  const narratorNote = createChatSummaryEntry({
+    content: '{{#if char == "Narrator"}}NARRATOR_ONLY_NOTE{{/if}}',
+    enabled: true,
+    messageIds: groupSource.slice(4, 6).map((message) => message.id),
+  });
+  const promptOf = ({ chatSummary, recalledScenes, receipt }: Awaited<ReturnType<typeof groupRecall>>) => ({
+    chatSummary,
+    recalledScenes,
+    tokens: receipt.estimatedTokensAfter,
+  });
+  for (const [mode, audiences] of [
+    ["individual", [["maukie"], ["pantalone"], ["aaa-newcomer"]]],
+    ["merged", [["maukie", "pantalone", "narrator", "aaa-newcomer"], ["maukie", "pantalone", "narrator"], ["maukie"]]],
+  ] as const) {
+    await chats.patchMetadata(group.id, { groupChatMode: mode, summaryEntries: groupEntries });
+    const without = [];
+    for (const audience of audiences) without.push(promptOf(await groupRecall([...audience])));
+    await chats.patchMetadata(group.id, { summaryEntries: [...groupEntries, narratorNote] });
+    for (const [index, audience] of audiences.entries())
+      assert.deepEqual(
+        promptOf(await groupRecall([...audience])),
+        without[index],
+        `${mode} ${audience.join("+")}: an empty summary adds no header and no tokens`,
+      );
+  }
+  await chats.patchMetadata(group.id, { groupChatMode: "individual" });
+  assert.match(
+    (await groupRecall(["narrator"])).chatSummary!,
+    /\n\nMessages #5–#6; [^\n]+\nNARRATOR_ONLY_NOTE$/u,
+    "the reader it is written for still gets it, header and all",
+  );
+  // A story date keeps the header only for characters who read part of that range, never for a newcomer.
+  await chats.updateMessageContent(groupSource[2]!.id, `Date: June 12\n${groupSource[2]!.content}`);
+  await chats.updateMessageContent(groupSource[4]!.id, `Date: June 13\n${groupSource[4]!.content}`);
+  assert.equal(
+    (await groupRecall(["aaa-newcomer"])).chatSummary,
+    `${range("1–#2")}\nCONST_PLAIN The compass promise.`,
+    "no dated header for scenes Cara never read",
+  );
+  assert.match((await groupRecall(["pantalone"])).chatSummary!, /\n\nMessages #5–#6; [^\n]+: June 13\.\n$/u);
+  // A one-character chat drops an entry written only for someone else, and keeps its own unchanged.
+  const solo = await chats.create({
+    name: "Solo empty summary",
+    mode: "roleplay",
+    characterIds: ["maukie"],
+    connectionId: connection.id,
+  });
+  assert(solo);
+  await chats.patchMetadata(solo.id, {
+    advancedMemory: { ...groupSettings, narratorCharacterId: null, knowledgeStarts: { maukie: null } },
+  });
+  await chats.createMessagesBatch(solo.id, [
+    { role: "user", content: "ONLY_MAUKIE Maukie buries the compass promise." },
+    { role: "assistant", characterId: "maukie", content: "Maukie hides the compass promise alone." },
+    { role: "user", content: "SCENE_CHANGE What about the compass promise?", extra: { isConversationStart: true } },
+  ]);
+  const soloIds = (await chats.listMessages(solo.id)).slice(0, 2).map((message) => message.id);
+  const soloOwn = createChatSummaryEntry({
+    content: 'SOLO_PLAIN {{#if char == "Maukie"}}SOLO_MAUKIE{{/if}}',
+    enabled: true,
+    messageIds: soloIds,
+  });
+  await chats.patchMetadata(solo.id, { summaryEntries: [soloOwn] });
+  await memory.initialize(solo.id);
+  const soloWithout = promptOf(await groupRecall(["maukie"], solo.id));
+  assert.equal(soloWithout.chatSummary, `${range("1–#2")}\nSOLO_PLAIN SOLO_MAUKIE`);
+  await chats.patchMetadata(solo.id, {
+    summaryEntries: [
+      createChatSummaryEntry({
+        content: '{{#if char == "Pantalone"}}SOLO_ABSENT{{/if}}',
+        enabled: true,
+        messageIds: soloIds,
+      }),
+      soloOwn,
+    ],
+  });
+  assert.deepEqual(promptOf(await groupRecall(["maukie"], solo.id)), soloWithout, "no header for an absent reader");
   console.log(
     "Advanced Memory unlisted-participant defaults, participant access, shared scenes, merged newcomers and legacy duplicate corrections passed.",
   );

@@ -34,6 +34,7 @@ import {
   buildRoleplayPersonalContext,
   parseRoleplayUserCommands,
   prepareUserRoleplayCommands,
+  roleplayHiddenWhisperMessageIds,
 } from "../../services/generation/roleplay-commands.js";
 import { randomUUID } from "crypto";
 import { createChatsStorage } from "../../services/storage/chats.storage.js";
@@ -132,6 +133,7 @@ import {
 } from "../../services/generation/generation-parameters.js";
 import {
   filterPromptMessagesForCharacterAudience,
+  keptWindowStart,
   scopeIndividualGroupMessagesForTarget,
 } from "../../services/generation/prompt-message-scope.js";
 import { applyAllSegmentEdits } from "../../services/game/segment-edits.js";
@@ -206,6 +208,7 @@ type DryRunPromptMessage = {
   personaSnapshotName?: string | null;
   hiddenFromAICharacterIds?: string[];
   conversationStartForCharacterIds?: string[];
+  whisperSourceId?: string;
   providerMetadata?: Record<string, unknown>;
 };
 
@@ -894,6 +897,23 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       (promptGroupResponseOrder !== "manual" || chatMode === "conversation") &&
       !impersonate;
     const audienceCharacterIds = impersonate ? [] : promptTargetCharacterId ? [promptTargetCharacterId] : characterIds;
+    // The character who receives whispers in this preview, matching the live route.
+    const whisperTargetId = promptTargetCharacterId ?? (allCharacterIds.length === 1 ? allCharacterIds[0]! : null);
+    const whisperViewerId =
+      chatMode === "roleplay" &&
+      !impersonate &&
+      whisperTargetId &&
+      (allCharacterIds.length === 1 || dryRunGroupChatMode === "individual")
+        ? whisperTargetId
+        : null;
+    // Like the live route, only messages from the latest conversation start on can keep a whisper.
+    const conversationStart = chatMessages
+      .map((message) => parseExtra(message.extra).isConversationStart === true)
+      .lastIndexOf(true);
+    const hiddenWhisperIds =
+      whisperViewerId && audienceCharacterIds.length === 1 && audienceCharacterIds[0] === whisperViewerId
+        ? roleplayHiddenWhisperMessageIds(chatMessages.slice(Math.max(0, conversationStart)), whisperViewerId)
+        : new Set<string>();
     if (advancedMemoryEnabled) {
       const allowedIds = new Set(
         selectAdvancedMemoryMessages(
@@ -903,12 +923,29 @@ export async function registerDryRunRoute(app: FastifyInstance) {
           dryRunGroupChatMode === "individual",
         ).map((message) => message.id),
       );
+      // A hidden message keeps its whisper inside the same window as in the live prompt,
+      // where only messages shown before memory selection can end it.
+      const globallyHidden = new Set(chatMessages.filter(isMessageHiddenFromAI).map((message) => message.id));
+      const windowStart = keptWindowStart(
+        mappedMessages,
+        (message) => !!message.id && allowedIds.has(message.id),
+        (message) =>
+          !!message.id &&
+          message.id !== "__dryrun_user__" &&
+          !allowedIds.has(message.id) &&
+          !globallyHidden.has(message.id) &&
+          !message.hiddenFromAICharacterIds?.some((id) => audienceCharacterIds.includes(id)),
+      );
       mappedMessages = mappedMessages.filter(
-        (message) => message.id === "__dryrun_user__" || (message.id && allowedIds.has(message.id)),
+        (message, index) =>
+          message.id === "__dryrun_user__" ||
+          (message.id &&
+            (allowedIds.has(message.id) ||
+              (hiddenWhisperIds.has(message.id) && windowStart >= 0 && index >= windowStart))),
       );
     }
     if (audienceCharacterIds.length > 0) {
-      mappedMessages = filterPromptMessagesForCharacterAudience(mappedMessages, audienceCharacterIds);
+      mappedMessages = filterPromptMessagesForCharacterAudience(mappedMessages, audienceCharacterIds, hiddenWhisperIds);
     }
 
     let summaryEmbeddingSource: Awaited<ReturnType<typeof resolveMemoryRecallEmbeddingSource>> | null = null;
@@ -1520,6 +1557,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
             content: m.content,
             contextKind: "history" as const,
             characterId: m.characterId ?? null,
+            ...(m.whisperSourceId ? { whisperSourceId: m.whisperSourceId } : {}),
             ...(m.images ? { images: m.images } : {}),
             ...(m.files ? { files: m.files } : {}),
             ...(m.providerMetadata ? { providerMetadata: m.providerMetadata } : {}),
@@ -1820,6 +1858,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
         content: m.content,
         characterId: m.characterId,
         ...(m.contextKind ? { contextKind: m.contextKind } : {}),
+        ...(m.whisperSourceId ? { whisperSourceId: m.whisperSourceId } : {}),
         ...(m.providerMetadata ? { providerMetadata: m.providerMetadata } : {}),
         ...(m.images ? { images: m.images } : {}),
         ...(m.files ? { files: m.files } : {}),
@@ -2111,14 +2150,13 @@ export async function registerDryRunRoute(app: FastifyInstance) {
     }
 
     if (chatMode === "roleplay") {
-      const target = promptTargetCharacterId ?? (allCharacterIds.length === 1 ? allCharacterIds[0]! : null);
       appendRoleplayWhispers(
         finalMessages,
         chatMessages,
         impersonate
           ? { id: persona?.id ?? "user", kind: "persona" }
-          : target && (allCharacterIds.length === 1 || dryRunGroupChatMode === "individual")
-            ? { id: target, kind: "character" }
+          : whisperViewerId
+            ? { id: whisperViewerId, kind: "character" }
             : null,
         characterIds.includes(chatMeta.roleplayCommandNarratorId as string)
           ? (chatMeta.roleplayCommandNarratorId as string)
@@ -2128,9 +2166,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
         appendRoleplayMessageNotes(
           finalMessages,
           chatMessages,
-          target && (allCharacterIds.length === 1 || dryRunGroupChatMode === "individual")
-            ? { id: target, kind: "character" }
-            : null,
+          whisperViewerId ? { id: whisperViewerId, kind: "character" } : null,
         );
       }
     }

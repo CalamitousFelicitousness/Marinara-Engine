@@ -38,6 +38,7 @@ const calls: Array<{
 }> = [];
 let summaryGate: Promise<void> | undefined;
 let summaryResponse: string | undefined;
+let summaryReply: ((prompt: string) => string) | undefined;
 let summaryFinishReason = "stop";
 let closeLatestScene = false;
 let mainInputTokens = 40;
@@ -136,7 +137,10 @@ const provider = createServer(async (req, res) => {
         : kind === "summary"
           ? JSON.stringify({
               audience: "all",
-              summary: summaryResponse ?? "ARCHIVED_RECAP: The silver compass promise guided the travelers.",
+              summary:
+                summaryReply?.(prompt) ??
+                summaryResponse ??
+                "ARCHIVED_RECAP: The silver compass promise guided the travelers.",
             })
           : "The character continues the silver compass journey.";
   const response = {
@@ -1620,6 +1624,159 @@ try {
     /summary corrections changed/u,
     "manual activation changes still invalidate a saved swipe",
   );
+
+  // #7270: compaction combines Advanced Memory's own summaries with private character sections,
+  // keeping each section for exactly the characters who knew it.
+  const combineChat = await chats.create({
+    name: "Combine private summaries",
+    mode: "roleplay",
+    characterIds: [privateA.id, privateB.id],
+    connectionId: connection.id,
+  });
+  assert(combineChat);
+  chatIds.push(combineChat.id);
+  for (const content of ["A shared walk.", "A second shared event.", "The next shared scene."])
+    await chats.createMessage({
+      chatId: combineChat.id,
+      role: "user",
+      content,
+      ...(content.startsWith("The next") ? { extra: { isConversationStart: true } } : {}),
+    });
+  const combineSource = await chats.listMessages(combineChat.id);
+  const forBoth = '{{#if char == "Maukie" || "Pantalone"}}';
+  const maukieSecret = '{{#if char == "Maukie"}}MAUKIE_SECRET hid the key.{{/if}}';
+  const recap = (id: string, index: number, content: string) =>
+    createChatSummaryEntry({
+      id,
+      origin: "automated",
+      title: `Messages #${index + 1}–#${index + 1}`,
+      sourceMode: "range",
+      content,
+      enabled: true,
+      messageIds: [combineSource[index]!.id],
+      messageCount: 1,
+      rangeStartIndex: index + 1,
+      rangeEndIndex: index + 1,
+    });
+  const privateRecap = recap("private-recap", 0, `${forBoth}${"SHARED_WALK ".repeat(300)}${maukieSecret}{{/if}}`);
+  const sharedRecap = recap("shared-recap", 1, `${forBoth}${"SHARED_TWO ".repeat(300)}{{/if}}`);
+  await chats.patchMetadata(combineChat.id, {
+    groupChatMode: "individual",
+    advancedMemory: {
+      ...DEFAULT_ADVANCED_MEMORY_SETTINGS,
+      enabled: true,
+      summaryBudgetTokens: 1000,
+      sceneCheckInterval: 100,
+      knowledgeStarts: { [privateA.id]: null, [privateB.id]: null },
+    },
+    summaryEntries: [privateRecap, sharedRecap],
+  });
+  const combineEntries = async () =>
+    JSON.parse((await chats.getById(combineChat.id))!.metadata).summaryEntries as Array<
+      ReturnType<typeof createChatSummaryEntry>
+    >;
+  const recallFor = async (id: string) =>
+    (
+      await memory.prepare({
+        chatId: combineChat.id,
+        messages: combineSource,
+        audienceCharacterIds: [id],
+        budgetTokens: 50_000,
+        readOnly: true,
+      })
+    ).chatSummary ?? "";
+  summaryResponse = `COMBINED_WALK. ${maukieSecret}`;
+  calls.length = 0;
+  await memory.checkScenesAfterGeneration(combineChat.id, { blocking: false });
+  assert.deepEqual(
+    calls.map((call) => call.kind),
+    ["summary"],
+    "one Helper call combines every summary both characters read, including the one with a private section",
+  );
+  const [combineSystem, combineInput] = calls[0]!.messages;
+  assert.match(combineSystem!.content, /Condense the ordered summaries below into one summary/u);
+  assert.match(combineSystem!.content, /exactly its original condition/u);
+  assert(combineInput!.content.includes(maukieSecret), "the private section reaches the Helper with its condition");
+  assert.match(combineInput!.content, /SHARED_WALK[\s\S]*SHARED_TWO/u, "summaries stay in chat order");
+  const privateCombined = await combineEntries();
+  assert.deepEqual(
+    privateCombined.filter((entry) => !entry.enabled).map((entry) => entry.id),
+    [privateRecap.id, sharedRecap.id],
+    "the combined summaries become inactive together",
+  );
+  const privateResult = privateCombined.find((entry) => entry.enabled)!;
+  assert.equal(privateResult.origin, "automated");
+  assert.equal(privateResult.title, "Messages #1–#2");
+  assert.deepEqual(privateResult.messageIds, [combineSource[0]!.id, combineSource[1]!.id]);
+  assert.match(await recallFor(privateA.id), /COMBINED_WALK[\s\S]*MAUKIE_SECRET/u);
+  const pantaloneRecall = await recallFor(privateB.id);
+  assert.match(pantaloneRecall, /COMBINED_WALK/u);
+  assert.doesNotMatch(pantaloneRecall, /MAUKIE_SECRET/u, "Pantalone still never reads Maukie's private section");
+  calls.length = 0;
+  await memory.checkScenesAfterGeneration(combineChat.id, { blocking: false });
+  assert.deepEqual(calls, [], "combined summaries within the share need no further calls");
+
+  // A result that would show Maukie's secret to Pantalone is not saved; the plain summary is still shortened.
+  // This one keeps a Maukie section but copies the secret into the text both characters read.
+  summaryReply = (prompt) =>
+    prompt.includes("MAUKIE_SECRET")
+      ? `COMBINED_WALK. MAUKIE_SECRET hid the key. {{#if char == "Maukie"}}Maukie kept quiet.{{/if}}`
+      : "PLAIN_COMPACTED";
+  await chats.patchMetadata(combineChat.id, { summaryEntries: [privateRecap, sharedRecap] });
+  calls.length = 0;
+  await memory.checkScenesAfterGeneration(combineChat.id, { blocking: false });
+  assert.equal(calls.length, 2);
+  assert.match(JSON.stringify(calls[0]!.messages), /MAUKIE_SECRET/u);
+  assert.doesNotMatch(
+    JSON.stringify(calls[1]!.messages),
+    /MAUKIE_SECRET|SHARED_WALK|exactly its original condition/u,
+    "the plain summary is shortened on its own, as before",
+  );
+  const leakEntries = await combineEntries();
+  assert.deepEqual(
+    leakEntries[0],
+    privateRecap,
+    "a result that copies a private sentence into shared text is not saved",
+  );
+  assert.equal(leakEntries.find((entry) => entry.id === sharedRecap.id)!.enabled, false);
+  assert(leakEntries.some((entry) => entry.enabled && entry.content.includes("PLAIN_COMPACTED")));
+  assert.doesNotMatch(await recallFor(privateB.id), /MAUKIE_SECRET/u);
+
+  // A result that drops the private section is rejected too, and the rejected attempt is kept,
+  // so unchanged summaries do not pay for it again.
+  summaryReply = () => "COMBINED_WALK. MAUKIE_SECRET hid the key.";
+  await chats.patchMetadata(combineChat.id, { summaryEntries: [privateRecap] });
+  calls.length = 0;
+  await memory.checkScenesAfterGeneration(combineChat.id, { blocking: false });
+  await memory.checkScenesAfterGeneration(combineChat.id, { blocking: false });
+  assert.equal(calls.length, 1, "a rejected combination is not requested again for the same summaries");
+  assert.deepEqual(await combineEntries(), [privateRecap]);
+
+  // A summary edited by hand keeps its text; only the plain summary is shortened.
+  summaryReply = undefined;
+  const editedRecap = {
+    ...privateRecap,
+    content: privateRecap.content.replace("hid", "buried"),
+    updatedAt: new Date(Date.parse(privateRecap.createdAt) + 1000).toISOString(),
+  };
+  await chats.patchMetadata(combineChat.id, { summaryEntries: [editedRecap, sharedRecap] });
+  calls.length = 0;
+  await memory.checkScenesAfterGeneration(combineChat.id, { blocking: false });
+  assert.equal(calls.length, 1);
+  assert.doesNotMatch(JSON.stringify(calls[0]!.messages), /MAUKIE_SECRET/u);
+  assert.deepEqual((await combineEntries())[0], editedRecap, "an edited summary is never rewritten");
+
+  // Merged group chats combine them too, instead of skipping every summary with a character condition.
+  summaryResponse = `COMBINED_WALK. ${maukieSecret}`;
+  await chats.patchMetadata(combineChat.id, { groupChatMode: "shared", summaryEntries: [privateRecap, sharedRecap] });
+  calls.length = 0;
+  await memory.checkScenesAfterGeneration(combineChat.id, { blocking: false });
+  assert.equal(calls.length, 1);
+  assert(calls[0]!.messages[1]!.content.includes(maukieSecret));
+  const mergedCombined = await combineEntries();
+  assert.equal(mergedCombined.filter((entry) => entry.enabled).length, 1);
+  assert(mergedCombined.find((entry) => entry.enabled)!.content.includes(maukieSecret));
+  summaryResponse = undefined;
 } finally {
   finishStream?.();
   for (const chatId of chatIds) await memory.cancel(chatId);

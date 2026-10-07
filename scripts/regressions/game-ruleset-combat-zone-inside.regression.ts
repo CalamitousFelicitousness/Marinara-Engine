@@ -20,6 +20,7 @@ import {
   applyRulesetCombatChoice,
   createRulesetEncounter,
   parseRulesetDefinition,
+  RULESET_MOVE_OPTION,
   rowsFromCatalogEntry,
   rulesetActiveConditions,
   rulesetCombatant,
@@ -112,7 +113,16 @@ try {
     amount: { flat: 5 },
     cost: [{ pool: "slots_1", amount: 1 }],
   });
-  const spells = [silence, shout, sign, clap, globe, stink, blast];
+  // The same cloud catching whoever walks into it, to put the condition on in the middle of a turn.
+  const foul = spell("foul", {
+    kind: "debuff",
+    area: { shape: "burst", size: 10 },
+    range: 90,
+    save: { save: "con_save", onSuccess: "negates" },
+    applies: [{ condition: "poisoned", duration: { rounds: 1 } }],
+    zone: { rounds: 10, triggers: ["enter"], atCast: false },
+  });
+  const spells = [silence, shout, sign, clap, globe, stink, blast, foul];
   const definition = parsed(
     fiveE((doc) => {
       doc.combat.components = [
@@ -314,6 +324,23 @@ try {
       !rulesetCombatOptions(definition, aTurn, "a").some((one) => one.label === "Claw"),
       "nothing on the action budget",
     );
+  }
+
+  // ── Walked into in the middle of a turn: this turn's action goes too ──
+  {
+    const cast = use(fight(), "Foul", { at: { x: 13, y: 7 } });
+    assert.equal(refused(cast), undefined);
+    const aTurn = advanceRulesetTurn(definition, cast.state, roll).state;
+    assert.equal(who(aTurn, "a").budgets.action, 1, "A starts its turn outside, with its action");
+    const walked = applyRulesetCombatChoice(
+      definition,
+      aTurn,
+      { actorId: "a", optionId: RULESET_MOVE_OPTION, targetIds: [], to: { x: 11, y: 7 } },
+      roll,
+    );
+    assert.equal(refused(walked), undefined);
+    assert.ok(conditionsOf(walked.state, "a").includes("poisoned"), "caught walking in");
+    assert.equal(who(walked.state, "a").budgets.action, 0, "and the action is gone this turn");
   }
 
   // ── Import refusals ──

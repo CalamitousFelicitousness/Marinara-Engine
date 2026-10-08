@@ -153,7 +153,7 @@ import {
 } from "../services/chat-insights/transcript-document.js";
 import { readSmallAvatarDataUri } from "../services/chat-insights/transcript-avatars.js";
 import { characters, gameStateSnapshots, memoryChunks } from "../db/schema/index.js";
-import { and, desc, eq, inArray } from "../db/file-query.js";
+import { and, desc, eq, inArray, isNotNull } from "../db/file-query.js";
 import { existsSync } from "fs";
 import { join } from "path";
 import { DATA_DIR } from "../utils/data-dir.js";
@@ -3003,12 +3003,13 @@ export async function chatsRoutes(app: FastifyInstance) {
     if (!updated && !hasExplicitTarget) {
       updated = await gameStateStore.updateLatest(req.params.id, fields, manual);
     }
-    // Wipe all manual overrides when explicitly requested
+    // Wipe all manual overrides when explicitly requested. Every row's, because a regeneration
+    // starts from the edits on any swipe of the reply it replaces.
     if (clearOverrides && updated) {
       await app.db
         .update(gameStateSnapshots)
         .set({ manualOverrides: null })
-        .where(and(eq(gameStateSnapshots.chatId, req.params.id), eq(gameStateSnapshots.id, (updated as any).id)));
+        .where(and(eq(gameStateSnapshots.chatId, req.params.id), isNotNull(gameStateSnapshots.manualOverrides)));
       updated = { ...updated, manualOverrides: null };
     }
     // If no snapshot exists yet, create one so manual edits aren't lost

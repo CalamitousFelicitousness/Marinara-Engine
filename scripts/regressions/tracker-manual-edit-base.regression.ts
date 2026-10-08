@@ -338,6 +338,41 @@ try {
     assert.equal(summarize(await states.getByChatAndMessage(chat.id, a2.id, 1)).location, "Older place");
   }
 
+  // ── Clear Trackers wipes the edits on every swipe, also of a value the cleared swipe already had empty ──
+  {
+    const { chat, chatApi, a2, target } = await setUpEditedReply();
+    trackerOutputs = NO_CHANGES;
+    await chatApi.regenerate(a2.id);
+    await chats.setActiveSwipe(a2.id, 0);
+    await chatApi.edit(target, { temperature: "temp-hot" });
+    await chats.setActiveSwipe(a2.id, 1);
+    // What the Clear Trackers button sends: no target, so it clears the swipe on screen.
+    const cleared = await app.inject({
+      method: "PATCH",
+      url: `/api/chats/${chat.id}/game-state`,
+      payload: {
+        date: null,
+        time: null,
+        location: null,
+        weather: null,
+        temperature: null,
+        worldCustomFields: [],
+        presentCharacters: [],
+        playerStats: { stats: [], attributes: null, skills: {}, inventory: [], activeQuests: [], status: "" },
+        personaStats: [],
+        manual: true,
+        clearOverrides: true,
+      },
+    });
+    assert.equal(cleared.statusCode, 200, cleared.body);
+    assertShows(
+      await chatApi.peekRegeneration(a2.id),
+      ["Old town"],
+      ["temp-hot", ...EDITED],
+      "a regeneration after Clear Trackers",
+    );
+  }
+
   // ── A new message from the edited swipe starts from the edit ──
   {
     const { chat, chatApi, a2 } = await setUpEditedReply();

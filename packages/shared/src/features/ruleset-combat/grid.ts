@@ -148,6 +148,24 @@ export function rulesetSees(
   return rulesetLineOfSight(grid, from, to);
 }
 
+/** How many cells the actor's walk this turn ran straight at the target, ending where the actor stands
+ *  now (1.181): counted back from the last step, each one a cell closer to them than the one before.
+ *  A step that came no closer ends the run, and so does being moved off the end of the walk. */
+export function rulesetChargeRun(actor: RulesetCombatant, target: RulesetCombatant): number {
+  const trail = actor.trail;
+  const at = rulesetPositionOf(actor);
+  const to = rulesetPositionOf(target);
+  if (!trail || trail.length < 2 || !at || !to) return 0;
+  const last = trail[trail.length - 1]!;
+  if (last.x !== at.x || last.y !== at.y) return 0;
+  let run = 0;
+  for (let index = trail.length - 1; index > 0; index--) {
+    if (rulesetCellDistance(trail[index]!, to) !== rulesetCellDistance(trail[index - 1]!, to) - 1) break;
+    run++;
+  }
+  return run;
+}
+
 /** Whether a blow is struck in reach or from afar (1.113). Something with a reach and no range is
  *  melee and something with a range and no reach is ranged; something with both (a thrown dagger) is
  *  melee while its target stands in its reach, and with no board it is taken as swung in hand. */

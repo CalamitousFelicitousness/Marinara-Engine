@@ -1522,6 +1522,16 @@ function carriesWardsAndSaves(value: unknown, depth = 0): boolean {
 
 const MODIFIER_TARGETS = new Set<string>(RULESET_COMBAT_MODIFIER_TARGETS);
 
+/** A creature's actions that recharge together, or that charge (1.181), in catalog files too. */
+function carriesChargeAndGroups(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesChargeAndGroups(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.charge !== undefined || plainRecord(record.recharge)?.group !== undefined) return true;
+  return Object.values(record).some((one) => carriesChargeAndGroups(one, depth + 1));
+}
+
 /** What a creature is, read further (1.180): saves rolled twice by it, damage at its most against it,
  *  targets by ability score or condition immunity, and changes to attacks that roll twice, from or
  *  at somebody, or saves against what a kind of creature does. In catalog files too. */
@@ -2927,6 +2937,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Creature actions that recharge together or charge, 1.181.
+  if (
+    !declaresApi(181) &&
+    (carriesChargeAndGroups(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesChargeAndGroups(document)))
+  ) {
+    return "A ruleset with creature actions that recharge together or charge requires schemaVersion 2 and capabilityApi 1.181 or newer";
   }
   // Creature kinds read further, 1.180.
   if (

@@ -22,6 +22,7 @@ import { parseRulesetCombatDice, rulesetAverageAmount, rulesetAverageDamage } fr
 import type {
   RulesetCombatAmount,
   RulesetCombatDamage,
+  RulesetCombatCharge,
   RulesetCombatDamageClause,
   RulesetCombatRider,
   RulesetPlainStatBlock,
@@ -131,9 +132,12 @@ function amountOf(input: { dice?: string; flat?: number } | undefined): RulesetC
 
 /** The clauses beside a blow's first amount. A clause with a save of its own falls back to the
  *  action's number when it named none, and a block has no other number to reach for. */
-function clausesOf(action: RulesetCreatureAction): RulesetCombatDamageClause[] | null {
-  const fallback = action.save?.difficulty ?? action.saveDifficulty ?? 0;
-  const clauses = (action.damage?.plus ?? []).flatMap((clause) => {
+function clausesOf(
+  action: RulesetCreatureAction,
+  plus = action.damage?.plus,
+  fallback = action.save?.difficulty ?? action.saveDifficulty ?? 0,
+): RulesetCombatDamageClause[] | null {
+  const clauses = (plus ?? []).flatMap((clause) => {
     const amount = amountOf(clause);
     if (!amount) return [];
     return [
@@ -154,6 +158,25 @@ function clausesOf(action: RulesetCreatureAction): RulesetCombatDamageClause[] |
     ];
   });
   return clauses.length > 0 ? clauses : null;
+}
+
+/** A charge as a block carries it (1.181): its clauses' saves fall back to the charge's own number. */
+function chargeOf(
+  action: RulesetCreatureAction,
+  charge: NonNullable<RulesetCreatureAction["charge"]>,
+): RulesetCombatCharge {
+  const plus = clausesOf(
+    action,
+    charge.plus,
+    charge.save?.difficulty ?? action.save?.difficulty ?? action.saveDifficulty ?? 0,
+  );
+  return {
+    atLeast: charge.atLeast,
+    ...(plus ? { plus } : {}),
+    ...(charge.save ? { save: { ...charge.save } } : {}),
+    ...(charge.push !== undefined ? { push: charge.push } : {}),
+    ...(charge.applies ? { applies: charge.applies.map((entry) => ({ ...entry })) } : {}),
+  };
 }
 
 function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
@@ -196,7 +219,16 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
     ...(action.range !== undefined ? { range: action.range } : {}),
     ...(action.area ? { area: { ...action.area } } : {}),
     ...(action.uses ? { uses: { ...action.uses } } : {}),
-    ...(action.recharge ? { recharge: { dice: { ...action.recharge.dice }, from: action.recharge.from } } : {}),
+    ...(action.recharge
+      ? {
+          recharge: {
+            dice: { ...action.recharge.dice },
+            from: action.recharge.from,
+            ...(action.recharge.group ? { group: action.recharge.group } : {}),
+          },
+        }
+      : {}),
+    ...(action.charge ? { charge: chargeOf(action, action.charge) } : {}),
     ...(action.sequence ? { sequence: action.sequence.map((step) => ({ ...step })) } : {}),
     ...(action.signature ? { signature: { ...action.signature } } : {}),
     ...(action.reaction

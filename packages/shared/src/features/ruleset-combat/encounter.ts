@@ -2077,7 +2077,15 @@ function blockActions(block: RulesetStatBlockLike, perCell: number | undefined):
     ...(action.saveDifficulty !== undefined ? { saveDifficulty: action.saveDifficulty } : {}),
     ...(action.applies?.length ? { applies: action.applies.map((entry) => ({ ...entry })) } : {}),
     ...(action.uses ? { uses: { ...action.uses } } : {}),
-    ...(action.recharge ? { recharge: { dice: { ...action.recharge.dice }, from: action.recharge.from } } : {}),
+    ...(action.recharge
+      ? {
+          recharge: {
+            dice: { ...action.recharge.dice },
+            from: action.recharge.from,
+            ...(action.recharge.group ? { group: action.recharge.group } : {}),
+          },
+        }
+      : {}),
     ...(action.sequence
       ? {
           sequence: action.sequence.flatMap((step) =>
@@ -2102,6 +2110,16 @@ function blockActions(block: RulesetStatBlockLike, perCell: number | undefined):
         }
       : {}),
     ...(perCell !== undefined && action.push !== undefined ? { push: rulesetInCells(action.push, perCell) } : {}),
+    // A run is measured on a board (1.181), so a fight with none never charges.
+    ...(perCell !== undefined && action.charge
+      ? {
+          charge: {
+            ...structuredClone(action.charge),
+            atLeast: rulesetInCells(action.charge.atLeast, perCell),
+            ...(action.charge.push !== undefined ? { push: rulesetInCells(action.charge.push, perCell) } : {}),
+          },
+        }
+      : {}),
     // A reach written as 0 is no reach, exactly as a weapon column reading 0 is: without it a
     // creature that only shoots would be read as swinging, and could strike a passer-by.
     ...(perCell !== undefined && action.reach !== undefined && action.reach > 0

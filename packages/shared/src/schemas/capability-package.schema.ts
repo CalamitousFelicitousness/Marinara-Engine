@@ -915,7 +915,9 @@ const capabilityPackageManifestBaseSchema = z
 // a kind (`maxAgainst`), `targetTypes` may bound ability scores and condition immunities, and
 // condition modifiers roll attacks twice (`attacks`, `attacks-taken` with `from`, `atSource`) or
 // narrow saves to what a kind of creature does (`against.from`).
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 180 } as const);
+// 1.181: a creature's actions may recharge together (`recharge.group`), and a blow may `charge`:
+// more damage, a save, a push and conditions after a straight run at its target this turn.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 181 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

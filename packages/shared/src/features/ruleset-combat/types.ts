@@ -173,6 +173,21 @@ export interface RulesetCombatUses {
 export interface RulesetCombatRecharge {
   dice: { count: number; sides: number };
   from: number;
+  /** Actions of one block naming the same group are spent together and come back on one roll (1.181):
+   *  a metallic dragon's two breaths. */
+  group?: string;
+}
+
+/** What a blow adds after its maker ran straight at the one it hit this turn (1.181): a minotaur's
+ *  Charge. More damage, then a save, and on a failed one (or with no save) a push and conditions. */
+export interface RulesetCombatCharge {
+  /** How far the run toward the target must be: the ruleset's distance on a block, cells in a fight. */
+  atLeast: number;
+  plus?: RulesetCombatDamageClause[];
+  save?: { save: string; difficulty: number };
+  /** The ruleset's distance on a block, cells in a fight. */
+  push?: number;
+  applies?: RulesetCombatApplies[];
 }
 
 /** One step of a sequence: another action of the same block, done this many times. */
@@ -233,6 +248,8 @@ export interface RulesetStatBlockAction {
   /** Pushed this far straight away from the creature, in the ruleset's own distance, on a failed save
    *  when it has one (1.179). */
   push?: number;
+  /** What it adds after a straight run at its target this turn (1.181). */
+  charge?: RulesetCombatCharge;
   /** What a save that ENDS one of `applies` is rolled against, when the action has no save of its
    *  own to borrow the number from. */
   saveDifficulty?: number;
@@ -507,6 +524,8 @@ export interface RulesetCombatAction {
   /** Cells whoever it lands on and does not save against is pushed straight away from its maker
    *  (1.177): 5e's Gust of Wind. */
   push?: number;
+  /** What it adds after a straight run at its target this turn, in cells (1.181). */
+  charge?: RulesetCombatCharge;
   /** The shape this one covers, in cells, aimed at a cell rather than at anybody. */
   area?: RulesetCombatArea;
   /** What a contest rolls and what winning it does, on an action of kind `contest`. */
@@ -665,6 +684,9 @@ export interface RulesetCombatant {
   uses: Record<string, number>;
   /** The ids of the actions that have been used and are waiting for a recharge roll. */
   spent: string[];
+  /** The cells walked this turn, where the walking began first (1.181): what a charge reads. Cleared
+   *  as their turn starts. */
+  trail?: RulesetCombatCell[];
   /** The points a signature action is bought with, when this combatant has any. */
   signature?: { points: number; max: number };
   /** Strikes in hand: what is left of a spend that bought several. Absent when there are none, and
@@ -1363,6 +1385,13 @@ export type RulesetCombatEvent =
    *  allowance and draws no strike on the way. */
   /** Somebody shoved off a step of two levels or more (combat C6b), before what the fall does. */
   | { type: "fell"; targetId: string; levels: number }
+  /** A blow that follows a straight run at its target, before what the charge adds lands (1.181). */
+  | {
+      type: "charged";
+      actorId: string;
+      targetId: string;
+      label: string;
+    }
   | {
       type: "pushed";
       actorId: string;

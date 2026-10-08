@@ -138,6 +138,7 @@ export {
 export {
   rulesetAreaCells,
   rulesetBlowKind,
+  rulesetChargeRun,
   rulesetCellBlocked,
   rulesetCellSolidFor,
   rulesetAirborne,

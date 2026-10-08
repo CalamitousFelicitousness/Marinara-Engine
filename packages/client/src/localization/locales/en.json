@@ -1202,6 +1202,7 @@
   "game.combat.ruleset.event.broke": "{{label}} breaks (a {{roll}} on its die).",
   "game.combat.ruleset.event.budget": "{{actor}} has {{left}} {{budget}} left.",
   "game.combat.ruleset.event.cancelled": "{{by}} stops {{actor}}: {{label}} never happens.",
+  "game.combat.ruleset.event.charged": "{{actor}} charges {{target}} with {{label}}.",
   "game.combat.ruleset.event.concentrationDown": "{{actor}} goes down and loses hold of {{label}}.",
   "game.combat.ruleset.event.concentrationEnded": "{{actor}} stops holding {{label}}.",
   "game.combat.ruleset.event.concentrationKept": "{{actor}} keeps hold of {{label}}.",

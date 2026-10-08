@@ -2756,8 +2756,33 @@ const creatureActionSchema = z
     /** Spent when it is used, and rolled for at the start of the creature's own turn: `from` or
      *  higher on these dice brings it back. It starts the fight available. */
     recharge: z
-      .object({ dice: combatDiceSchema, from: z.number().int().min(1).max(1000) })
+      .object({
+        dice: combatDiceSchema,
+        from: z.number().int().min(1).max(1000),
+        /** Actions of this block naming the same group are spent together, and one roll brings them
+         *  all back (Capability API 1.181): a metallic dragon's two breath weapons. */
+        group: sheetId.optional(),
+      })
       .strict()
+      .optional(),
+    /** What a blow adds when its creature ran at least `atLeast`, in the ruleset's own distance,
+     *  straight at the one it hit this turn (Capability API 1.181): a minotaur's Charge. More damage
+     *  (`plus`), then `save`, and on a failed one, or always with no save, a `push` and `applies`. */
+    charge: z
+      .object({
+        atLeast: z.number().finite().gt(0).max(10000),
+        plus: z.array(catalogPlusClauseSchema).min(1).max(4).optional(),
+        save: z
+          .object({ save: sheetId, difficulty: z.number().int().min(0).max(1000) })
+          .strict()
+          .optional(),
+        push: z.number().finite().gt(0).max(10000).optional(),
+        applies: z.array(catalogAppliesSchema).min(1).max(4).optional(),
+      })
+      .strict()
+      .refine((charge) => charge.plus || charge.push !== undefined || charge.applies, {
+        message: 'A charge adds damage ("plus"), a "push" or conditions ("applies")',
+      })
       .optional(),
     /** Other actions of this same block, in order, each with its own target choice. ONE budget pays
      *  for the lot: this is how a creature that strikes twice in one action is written. A step may
@@ -2860,6 +2885,23 @@ const creatureActionSchema = z
         path: ["recharge", "from"],
         message: `These dice roll ${action.recharge.dice.count * action.recharge.dice.sides} at most, so the action would never come back`,
       });
+    }
+    // A charge rides one blow at one target (1.181), and asks a save only where the blow asks none.
+    if (action.charge) {
+      if ((action.toHit === undefined && !action.autoHit) || action.area || (action.targetCount ?? 1) > 1) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["charge"],
+          message: "A charge rides a blow at one target: an action that rolls to hit or simply lands, with no area",
+        });
+      }
+      if (action.charge.save && action.save) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["charge", "save"],
+          message: "The action asks a save already, so its charge cannot ask another",
+        });
+      }
     }
     // A save with nothing to be rolled against is a save everybody passes, so it is refused here
     // rather than rolled for nothing in the middle of a turn.
@@ -8488,6 +8530,43 @@ function creatureIssues(
         add([...where, "saveEnds", "save"], `Unknown save "${applies.saveEnds.save}"`);
       }
     });
+    // A charge's clauses, save and conditions are held to the same names the blow's own are (1.181).
+    const charge = action.charge;
+    if (charge) {
+      const where = [...path, "charge"];
+      charge.plus?.forEach((clause, clauseIndex) => {
+        wrongDie(clause.dice, [...where, "plus", clauseIndex, "dice"]);
+        if (clause.type && damageTypes && !damageTypes.has(clause.type.trim().toLowerCase())) {
+          add([...where, "plus", clauseIndex, "type"], `Unknown damage type "${clause.type}"`);
+        }
+        if (clause.save && !saves.has(clause.save.save)) {
+          add([...where, "plus", clauseIndex, "save", "save"], `Unknown save "${clause.save.save}"`);
+        }
+        if (clause.save && clause.save.difficulty === undefined && !charge.save && !action.save) {
+          add(
+            [...where, "plus", clauseIndex, "save", "difficulty"],
+            "This clause's save has no difficulty to be rolled against",
+          );
+        }
+      });
+      targetTestIssues(definition, { plus: charge.plus, applies: charge.applies }, where, add);
+      if (charge.save && !saves.has(charge.save.save))
+        add([...where, "save", "save"], `Unknown save "${charge.save.save}"`);
+      charge.applies?.forEach((applies, appliesIndex) => {
+        const at = [...where, "applies", appliesIndex];
+        if (!conditions.has(applies.condition)) add([...at, "condition"], `Unknown condition "${applies.condition}"`);
+        if (applies.when) add([...at, "when"], 'A creature has no sheet to read "when" off');
+        if (applies.saveEnds && !saves.has(applies.saveEnds.save)) {
+          add([...at, "saveEnds", "save"], `Unknown save "${applies.saveEnds.save}"`);
+        }
+        if (applies.saveEnds && !charge.save && !action.save && action.saveDifficulty === undefined) {
+          add(
+            [...at, "saveEnds"],
+            "A condition that ends on a save needs a difficulty for that save to be rolled against",
+          );
+        }
+      });
+    }
     // What a reaction answers is named by catalog, so it has to be one this ruleset has.
     if (action.reaction?.cancelSave && !saves.has(action.reaction.cancelSave.save))
       add([...path, "reaction", "cancelSave", "save"], `Unknown save "${action.reaction.cancelSave.save}"`);
@@ -8519,6 +8598,29 @@ function creatureIssues(
       if (named.signature) add(where, `"${step.action}" is bought with points, so a sequence cannot name it`);
     });
   });
+
+  // Actions that recharge together roll one set of dice for it (1.181), so they all name the same.
+  const groups = new Map<string, NonNullable<RulesetCreatureAction["recharge"]>>();
+  creature.actions.forEach((action, index) => {
+    const group = action.recharge?.group;
+    if (!group) return;
+    const first = groups.get(group);
+    if (!first) return void groups.set(group, action.recharge!);
+    const same =
+      first.from === action.recharge!.from &&
+      first.dice.count === action.recharge!.dice.count &&
+      first.dice.sides === action.recharge!.dice.sides;
+    if (!same)
+      add(
+        [...at, "actions", index, "recharge"],
+        `Actions recharging as "${group}" roll the same dice from the same number`,
+      );
+  });
+  for (const [group] of groups) {
+    if (creature.actions.filter((action) => action.recharge?.group === group).length < 2) {
+      add([...at, "actions"], `Only one action recharges as "${group}": a group shares its roll with another`);
+    }
+  }
 
   // Every rider names this block's own actions and this ruleset's own damage types.
   const riderIds = new Set<string>();

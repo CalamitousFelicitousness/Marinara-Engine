@@ -71,6 +71,7 @@ import {
 import {
   rulesetAreaCells,
   rulesetBlowKind,
+  rulesetChargeRun,
   rulesetCellDistance,
   rulesetCellEnterCost,
   rulesetMoveStep,
@@ -142,6 +143,7 @@ import type {
   RulesetFallResume,
   RulesetBlowKind,
   RulesetCombatAction,
+  RulesetCombatCharge,
   RulesetCombatAmount,
   RulesetCombatApplies,
   RulesetCombatCell,
@@ -2019,6 +2021,13 @@ function spendAvailability(ctx: RulesetCombatContext, actor: RulesetCombatant, a
     });
   }
   if (action.recharge && !actor.spent.includes(action.id)) actor.spent.push(action.id);
+  // The rest of its recharge group goes with it (1.181): one breath spends the other.
+  const group = action.recharge?.group;
+  if (group) {
+    for (const other of actor.actions) {
+      if (other.recharge?.group === group && !actor.spent.includes(other.id)) actor.spent.push(other.id);
+    }
+  }
 }
 
 /** Why an option the caller named is not on the menu, as precisely as the rules can say. */
@@ -3362,6 +3371,9 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
         )
       : 1;
     walked.push(cell);
+    // What a charge reads (1.181): where this turn's walking began, then each cell of it.
+    if (!actor.trail?.length) actor.trail = [{ ...at }];
+    actor.trail.push({ ...cell });
     at = cell;
     actor.x = cell.x;
     actor.y = cell.y;
@@ -3953,6 +3965,20 @@ function resolveActionFalling(
   return result;
 }
 
+/** An action with its charge added to it (1.181): the clauses after its own, the charge's save as one
+ *  that keeps the blow's damage whole, and the push and conditions that follow a failed one. */
+function chargedAction(action: RulesetCombatAction, charge: RulesetCombatCharge): RulesetCombatAction {
+  return {
+    ...action,
+    ...(action.damage && charge.plus
+      ? { damage: { ...action.damage, plus: [...(action.damage.plus ?? []), ...charge.plus] } }
+      : {}),
+    ...(charge.save ? { save: { ...charge.save, onSuccess: "none" as const } } : {}),
+    ...(charge.push !== undefined ? { push: charge.push } : {}),
+    ...(charge.applies ? { applies: [...(action.applies ?? []), ...charge.applies] } : {}),
+  };
+}
+
 function resolveActionBody(
   ctx: RulesetCombatContext,
   actor: RulesetCombatant,
@@ -3980,6 +4006,13 @@ function resolveActionBody(
   // What a creature deals with both hands, or bloodied, is read as the blow is made (1.97).
   if (action.damage?.alternatives) {
     action = { ...action, damage: rulesetDamageInEffect(ctx.definition, ctx.combat, actor, action.damage) };
+  }
+  // A blow after a straight run at its one target carries the charge (1.181), read again as a held
+  // blow picks up, since the run is still the one this turn walked.
+  const charging = action.charge && (held ? rulesetCombatant(ctx.state, held.targetId) : targets[0]);
+  if (action.charge && charging && rulesetChargeRun(actor, charging) >= action.charge.atLeast) {
+    if (!held) ctx.events.push({ type: "charged", actorId: actor.id, targetId: charging.id, label: action.label });
+    action = chargedAction(action, action.charge);
   }
   const style = attackStyle(ctx, actor, action, styleId);
   if (held) {
@@ -4792,8 +4825,15 @@ function refreshRulesetSignature(actor: RulesetCombatant): void {
 /** The roll an action that recharges makes at the start of its owner's turn. `from` or higher on
  *  its own dice brings it back; anything else leaves it spent and says what it rolled. */
 function rollRulesetRecharges(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
+  // A recharge group rolls once (1.181), its first spent action rolling for all of them.
+  const rolled = new Set<string>();
   for (const id of [...actor.spent]) {
     const action = actor.actions.find((entry) => entry.id === id);
+    const group = action?.recharge?.group;
+    if (group) {
+      if (rolled.has(group)) continue;
+      rolled.add(group);
+    }
     // Nothing on this block recharges it any more, so it is simply available again rather than
     // spent forever by a block that changed under it.
     if (!action?.recharge) {
@@ -4803,12 +4843,15 @@ function rollRulesetRecharges(ctx: RulesetCombatContext, actor: RulesetCombatant
     const rolls = rollRulesetDice(ctx.roll, action.recharge.dice.count, action.recharge.dice.sides);
     const kept = sumOf(rolls);
     const back = kept >= action.recharge.from;
-    if (back) actor.spent = actor.spent.filter((entry) => entry !== id);
+    const members = group
+      ? actor.actions.filter((entry) => entry.recharge?.group === group && actor.spent.includes(entry.id))
+      : [action];
+    if (back) actor.spent = actor.spent.filter((entry) => !members.some((member) => member.id === entry));
     ctx.events.push({
       type: "recharge",
       actorId: actor.id,
       optionId: id,
-      label: action.label,
+      label: members.map((member) => member.label).join(", "),
       rolls,
       kept,
       from: action.recharge.from,
@@ -4952,6 +4995,7 @@ function beginNextTurn(definition: RulesetDefinition, combat: RulesetCombat, ctx
     // else and is spent by their own next attack, so it survives this.
     actor.flags = actor.flags.helped ? { helped: true } : {};
     refreshRulesetMovement(definition, combat, actor, ctx.state);
+    delete actor.trail;
     ctx.events.push({ type: "turn", actorId: actor.id, round });
     refreshRulesetSignature(actor);
     rollRulesetRecharges(ctx, actor);

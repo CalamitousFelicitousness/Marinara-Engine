@@ -1522,6 +1522,29 @@ function carriesWardsAndSaves(value: unknown, depth = 0): boolean {
 
 const MODIFIER_TARGETS = new Set<string>(RULESET_COMBAT_MODIFIER_TARGETS);
 
+/** A lowered maximum with no save of its own, on the entry's failed save, of one damage type or
+ *  healing its maker; damage that leaves at least some health; targets limited by what they hold
+ *  (1.230), in catalogs too. */
+function carriesDrainsAndHolds(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesDrainsAndHolds(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const reduces = plainRecord(record.reducesMax);
+  if (
+    reduces &&
+    (reduces.save === undefined ||
+      reduces.onFailedSave !== undefined ||
+      reduces.damageType !== undefined ||
+      reduces.heals !== undefined)
+  )
+    return true;
+  if (record.leavesAtLeast !== undefined) return true;
+  // A contest's targetHolds is a word; this one is an object.
+  if (plainRecord(record.targetHolds)) return true;
+  return Object.values(record).some((one) => carriesDrainsAndHolds(one, depth + 1));
+}
+
 /** A cure that does one of its cures (1.199), in catalogs too. */
 function carriesCureOneOf(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -3201,6 +3224,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Lowered maximums without a save of their own, damage that leaves some health, targets by what they hold, 1.230.
+  if (
+    !declaresApi(230) &&
+    (carriesDrainsAndHolds(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesDrainsAndHolds(document)))
+  ) {
+    return "A ruleset with lowered health maximums that need no save of their own, damage that leaves some health, or actions whose targets must hold a condition, requires schemaVersion 2 and capabilityApi 1.230 or newer";
   }
   // A cure that does one of its cures, 1.199.
   if (

@@ -1186,6 +1186,21 @@ function rulesetCureReaches(
   return combatant.tracked.some((entry) => ends.has(entry.condition));
 }
 
+/** Whether this one holds a condition an action names (1.230): one of `conditions` from anybody, or
+ *  one of `fromSelf` that the actor put on them. */
+function rulesetHoldsFor(
+  definition: RulesetDefinition,
+  combatant: RulesetCombatant,
+  actorId: string,
+  holds: NonNullable<RulesetCombatAction["targetHolds"]>,
+): boolean {
+  const held = rulesetCombatConditions(definition, combatant);
+  if (holds.conditions?.some((condition) => held.includes(condition))) return true;
+  return !!holds.fromSelf?.some((condition) =>
+    combatant.tracked.some((entry) => entry.condition === condition && entry.source === actorId),
+  );
+}
+
 /** What only a rest would give back to this one (1.188). */
 function rulesetSealedHealth(definition: RulesetDefinition, combatant: RulesetCombatant): number {
   if (!combatant.sheet) return combatant.health?.sealed ?? 0;
@@ -1245,6 +1260,8 @@ export function rulesetOptionTargets(
         if (!rulesetTargetHasSenses(definition, state, combatant, needs)) return false;
         // "A creature you can see" (1.173).
         if (cure?.seen && !rulesetCanSee(definition, state, actor, combatant)) return false;
+        // Only on somebody holding what it names (1.230): grappled by its maker, or restrained.
+        if (cure?.targetHolds && !rulesetHoldsFor(definition, combatant, actor.id, cure.targetHolds)) return false;
         // Behind a ward it cannot reach (1.174). One that may be paid higher is offered, and its
         // payment decides when it is used.
         if (cure && !cure.use?.group && rulesetWarded(definition, state, actor, cure, combatant)) return false;

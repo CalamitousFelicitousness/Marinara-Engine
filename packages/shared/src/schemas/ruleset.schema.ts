@@ -2374,6 +2374,78 @@ const catalogTracksSchema: z.ZodType<Array<{ track: string; by: number }>, z.Zod
     message: "A track is named once",
   });
 
+/** What an entry's summons spends and how long it stays. Typed, to keep the mechanics' type small. */
+const catalogSummonsSchema: z.ZodType<
+  { budget: string; rounds: number; move?: number; reach?: number },
+  z.ZodTypeDef,
+  unknown
+> = z
+  .object({
+    budget: sheetId,
+    rounds: z.number().int().min(1).max(100),
+    move: z.number().finite().gt(0).optional(),
+    reach: z.number().finite().gt(0).optional(),
+  })
+  .strict();
+
+/** A blow lowering the health maximum (1.198, 1.230), on a creature's action or a catalog entry. */
+export interface RulesetReducesMax {
+  save?: string;
+  difficulty?: number;
+  onFailedSave?: true;
+  damageType?: string;
+  heals?: true;
+  lasting?: true;
+}
+/** Typed, to keep the block's and the mechanics' types small. */
+const reducesMaxSchema: z.ZodType<RulesetReducesMax, z.ZodTypeDef, unknown> = z
+  .object({
+    /** Its own save and the number it is rolled against (1.198); without either, every blow that
+     *  lands lowers it (1.230): a vampire's Bite, a succubus's Draining Kiss. */
+    save: sheetId.optional(),
+    difficulty: z.number().int().min(0).max(1000).optional(),
+    /** Only when the target failed the entry's OWN save (1.230): 5e's Harm. */
+    onFailedSave: z.literal(true).optional(),
+    /** Only the damage of this type counts (1.230): a vampire's necrotic. */
+    damageType: promptSafeText(40).optional(),
+    /** Its maker regains what it lowered (1.230): a vampire's Bite. */
+    heals: z.literal(true).optional(),
+    lasting: z.literal(true).optional(),
+  })
+  .strict()
+  .superRefine((reduces, ctx) => {
+    if ((reduces.save === undefined) !== (reduces.difficulty === undefined)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'A lowered maximum\'s own "save" comes with the "difficulty" it is rolled against',
+      });
+    }
+    if (reduces.save !== undefined && reduces.onFailedSave) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["onFailedSave"],
+        message: 'A lowered maximum rolls its own "save" or follows the entry\'s, not both',
+      });
+    }
+  });
+
+/** Whom an action may be pointed at by what they hold (1.230): one of `conditions`, or one of
+ *  `fromSelf` that its maker put on them. A vampire's Bite: grappled by it, incapacitated or
+ *  restrained. */
+export interface RulesetTargetHolds {
+  conditions?: string[];
+  fromSelf?: string[];
+}
+const targetHoldsSchema: z.ZodType<RulesetTargetHolds, z.ZodTypeDef, unknown> = z
+  .object({
+    conditions: z.array(sheetId).min(1).max(8).optional(),
+    fromSelf: z.array(sheetId).min(1).max(8).optional(),
+  })
+  .strict()
+  .refine((holds) => holds.conditions || holds.fromSelf, {
+    message: '"targetHolds" names "conditions", "fromSelf" or both',
+  });
+
 const catalogMechanicsObject = z
   .object({
     kind: z.enum(["attack", "heal", "buff", "debuff", "utility", "rider"]),
@@ -2439,15 +2511,7 @@ const catalogMechanicsObject = z
     check: catalogCheckSchema.optional(),
     /** What an attack leaves behind to strike on later turns (Capability API 1.117). Distances
      *  are in the catalog's unit; without a reach it touches the next cell. */
-    summons: z
-      .object({
-        budget: sheetId,
-        rounds: z.number().int().min(1).max(100),
-        move: z.number().finite().gt(0).optional(),
-        reach: z.number().finite().gt(0).optional(),
-      })
-      .strict()
-      .optional(),
+    summons: catalogSummonsSchema.optional(),
     /** An area that stays (Capability API 1.167): it lasts `rounds` of its caster's turns, or until
      *  the concentration that holds it ends, and does the entry's own effect again to a creature at
      *  each of its `triggers`, once a turn whatever it was: moving into it (`enter`), or starting or
@@ -2477,6 +2541,14 @@ const catalogMechanicsObject = z
      *  of `tracks`, or `unseals`, picked as it is used like a weapon's mode, and otherwise the first
      *  of them, in that order, the target has something for. 5e's Greater Restoration. */
     cureOneOf: z.literal(true).optional(),
+    /** Its damage lowers the health maximum as a creature's can (Capability API 1.230), with no save
+     *  of its own: on every target, or with `onFailedSave` only on one that failed the entry's save
+     *  (5e's Harm). Health only in points. */
+    reducesMax: reducesMaxSchema.optional(),
+    /** Its damage never takes a target below this much health (Capability API 1.230): Harm's 1. */
+    leavesAtLeast: z.number().int().min(1).max(100000).optional(),
+    /** Offered only on a target that holds one of these (Capability API 1.230). */
+    targetHolds: targetHoldsSchema.optional(),
     /** Brings back whoever died no more than `withinRounds` rounds ago, with `health` (1.171): 5e's
      *  Revivify, within 10 rounds with 1 hit point. It is pointed only at them. */
     revives: z
@@ -2647,7 +2719,12 @@ function zoneIssue(mechanics: {
                     : undefined;
 }
 
-const catalogMechanicsSchema = catalogMechanicsObject.superRefine((mechanics, ctx) => {
+/** Typed, to keep the definition's type small. */
+const catalogMechanicsSchema: z.ZodType<
+  z.infer<typeof catalogMechanicsObject>,
+  z.ZodTypeDef,
+  unknown
+> = catalogMechanicsObject.superRefine((mechanics, ctx) => {
   const why = zoneIssue(mechanics);
   if (why) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["zone"], message: why });
   const cureParts =
@@ -2657,6 +2734,30 @@ const catalogMechanicsSchema = catalogMechanicsObject.superRefine((mechanics, ct
       code: z.ZodIssueCode.custom,
       path: ["cureOneOf"],
       message: '"cureOneOf" picks one of at least two cures among "ends", "tracks" and "unseals"',
+    });
+  }
+  if (
+    mechanics.reducesMax &&
+    (mechanics.reducesMax.save !== undefined || mechanics.reducesMax.difficulty !== undefined)
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["reducesMax"],
+      message: "An entry's lowered maximum has no save of its own: \"onFailedSave\" follows the entry's",
+    });
+  }
+  if (mechanics.reducesMax?.onFailedSave && !mechanics.save) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["reducesMax", "onFailedSave"],
+      message: '"onFailedSave" follows the entry\'s own save, so it has one',
+    });
+  }
+  if ((mechanics.reducesMax || mechanics.leavesAtLeast !== undefined) && !mechanics.amount) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: [mechanics.reducesMax ? "reducesMax" : "leavesAtLeast"],
+      message: "It works on the entry's damage, so it has an amount",
     });
   }
   if (mechanics.healthPoolSkips && !mechanics.healthPool) {
@@ -2938,16 +3039,6 @@ const creatureSpellcastingSchema = z
       });
   });
 
-/** A save against a blow lowering the health maximum (1.198). Typed, to keep the block's type small. */
-const creatureReducesMaxSchema: z.ZodType<{ save: string; difficulty: number; lasting?: true }, z.ZodTypeDef, unknown> =
-  z
-    .object({
-      save: sheetId,
-      difficulty: z.number().int().min(0).max(1000),
-      lasting: z.literal(true).optional(),
-    })
-    .strict();
-
 const creatureActionSchema = z
   .object({
     id: sheetId,
@@ -2981,7 +3072,9 @@ const creatureActionSchema = z
     /** A target that fails this save has its health maximum lowered by the damage it took
      *  (Capability API 1.198), until a rest, or with `lasting` until something gives it back
      *  (`unseals`); brought to 0 that way, it dies. 5e's wraith's Life Drain, a clay golem's Slam. */
-    reducesMax: creatureReducesMaxSchema.optional(),
+    reducesMax: reducesMaxSchema.optional(),
+    /** Offered only on a target that holds one of these (Capability API 1.230). */
+    targetHolds: targetHoldsSchema.optional(),
     /** What a save that ENDS one of `applies` is rolled against, when the action has no save of its
      *  own to borrow the number from. */
     saveDifficulty: z.number().int().min(0).max(1000).optional(),
@@ -8759,6 +8852,41 @@ function saveExtrasIssues(
   save.modes?.forEach((entry, index) => targetIsIssues(definition, entry.is, [...at, "modes", index, "is"], add));
 }
 
+/** What a lowered maximum names (1.198, 1.230): a save and a damage type the ruleset has, and health
+ *  in points to lower. */
+function reducesMaxIssues(
+  definition: RulesetDefinition,
+  reduces: RulesetReducesMax,
+  at: (string | number)[],
+  add: (path: (string | number)[], message: string) => void,
+): void {
+  if (reduces.save !== undefined && !definition.sheet.saves.some((save) => save.id === reduces.save)) {
+    add([...at, "save"], `Unknown save "${reduces.save}"`);
+  }
+  const types = definition.combat?.damageTypes?.map((type) => type.trim().toLowerCase());
+  if (reduces.damageType && types && !types.includes(reduces.damageType.trim().toLowerCase())) {
+    add([...at, "damageType"], `Unknown damage type "${reduces.damageType}"`);
+  }
+  if (!definition.combat || "track" in definition.combat.health) {
+    add(at, "Only health kept in points has a maximum to lower");
+  }
+}
+
+/** What a target must hold to be picked (1.230): conditions the sheet has. */
+function targetHoldsIssues(
+  definition: RulesetDefinition,
+  holds: RulesetTargetHolds | undefined,
+  at: (string | number)[],
+  add: (path: (string | number)[], message: string) => void,
+): void {
+  const conditions = new Set(definition.sheet.live.conditions.map((condition) => condition.id));
+  for (const key of ["conditions", "fromSelf"] as const) {
+    holds?.[key]?.forEach((condition, index) => {
+      if (!conditions.has(condition)) add([...at, key, index], `Unknown condition "${condition}"`);
+    });
+  }
+}
+
 /** What a cure names (1.171): conditions the sheet has, and a dying rule for steadying to stop. */
 function cureIssues(
   definition: RulesetDefinition,
@@ -9119,14 +9247,13 @@ function creatureIssues(
     }
     // A lowered maximum (1.198) is a save against a blow, and only health in points has one to lower.
     if (action.reducesMax) {
-      if (!saves.has(action.reducesMax.save)) {
-        add([...path, "reducesMax", "save"], `Unknown save "${action.reducesMax.save}"`);
+      reducesMaxIssues(definition, action.reducesMax, [...path, "reducesMax"], add);
+      if (action.reducesMax.onFailedSave && !action.save) {
+        add([...path, "reducesMax", "onFailedSave"], '"onFailedSave" follows the action\'s own save, so it has one');
       }
       if (!action.damage) add([...path, "reducesMax"], "A maximum is lowered by the damage taken, so it has damage");
-      if ("track" in combat.health) {
-        add([...path, "reducesMax"], "Only health kept in points has a maximum to lower");
-      }
     }
+    targetHoldsIssues(definition, action.targetHolds, [...path, "targetHolds"], add);
     targetTestIssues(definition, { plus: action.damage?.plus }, [...path, "damage"], add);
     targetTestIssues(definition, { applies: action.applies, save: action.save }, path, add);
     action.applies?.forEach((applies, appliesIndex) => {
@@ -10307,6 +10434,9 @@ export function rulesetCatalogEntryIssues(
     });
 
     const mechanics = entry.mechanics;
+    if (mechanics?.reducesMax)
+      reducesMaxIssues(definition, mechanics.reducesMax, [index, "mechanics", "reducesMax"], add);
+    targetHoldsIssues(definition, mechanics?.targetHolds, [index, "mechanics", "targetHolds"], add);
     mechanics?.healthPoolSkips?.conditions?.forEach((condition, conditionIndex) => {
       if (!liveConditions.has(condition))
         add([index, "mechanics", "healthPoolSkips", "conditions", conditionIndex], `Unknown condition "${condition}"`);

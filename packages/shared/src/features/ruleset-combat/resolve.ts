@@ -477,6 +477,8 @@ interface RulesetDamageInput {
   seals?: true;
   /** Not even with a rest, only something that unseals (1.198): a clay golem's Slam. */
   lasting?: true;
+  /** It never takes the target below this much health (1.230): Harm's 1. */
+  leavesAtLeast?: number;
 }
 
 /**
@@ -530,6 +532,10 @@ function applyDamage(
       dealt *= 2;
       adjust = "vulnerable";
     }
+  }
+  // Never below the floor it leaves (1.230), what the buffer soaks counted.
+  if (input.leavesAtLeast !== undefined) {
+    dealt = Math.max(0, Math.min(dealt, before.value + before.temp - input.leavesAtLeast));
   }
   const toTemp = Math.min(before.temp, dealt);
   if (dealt > 0) {
@@ -5105,6 +5111,8 @@ function resolveActionBody(
     // Whether the target failed its save against the blow lowering its maximum (1.198), rolled as
     // the first part lands, so what it takes is what the maximum loses.
     let sapped: boolean | undefined;
+    // What of it lowered the maximum (1.230): its maker regains it with `heals`.
+    let sappedDealt = 0;
     const landNow = (part: RulesetDamageInput) => {
       if (takes) {
         const amount = Math.max(0, Math.floor(part.amount));
@@ -5121,8 +5129,17 @@ function resolveActionBody(
       before ??= healthOf(ctx, target);
       const sap = action.reducesMax;
       if (sap && sapped === undefined && !("track" in ctx.combat.health)) {
-        sapped = !rollSave(ctx, target, sap.save, sap.difficulty, actor.id, undefined, against);
+        // Its own save (1.198), the entry's failed (1.230), or no save at all.
+        sapped =
+          sap.save !== undefined && sap.difficulty !== undefined
+            ? !rollSave(ctx, target, sap.save, sap.difficulty, actor.id, undefined, against)
+            : sap.onFailedSave
+              ? !saved
+              : true;
       }
+      // Only the damage of its type, when it names one (1.230).
+      const saps =
+        !!sapped && (!sap?.damageType || sap.damageType.trim().toLowerCase() === part.damageType?.trim().toLowerCase());
       // Every part of the blow carries what the weapon does past a resistance.
       const qualities = action.damage?.qualities;
       // A weapon that ignores resistance to its own kind of harm (1.187) does so for every part of
@@ -5139,13 +5156,15 @@ function resolveActionBody(
           ...(qualities ? { qualities } : {}),
           ...(action.entry ? { entry: action.entry } : {}),
           ...(ignores ? { ignoresResistance: true as const } : {}),
-          ...(action.healedOnlyByRest || sapped ? { seals: true as const } : {}),
-          ...(sapped && sap?.lasting ? { lasting: true as const } : {}),
+          ...(action.healedOnlyByRest || saps ? { seals: true as const } : {}),
+          ...(saps && sap?.lasting ? { lasting: true as const } : {}),
+          ...(action.leavesAtLeast !== undefined ? { leavesAtLeast: action.leavesAtLeast } : {}),
         },
         !!woundTrack,
         damageSaves,
       );
       dealt += partDealt;
+      if (saps) sappedDealt += partDealt;
       if (part.drains) drained += partDealt;
       // A compound hit marks once, using the most severe kind that actually landed.
       if (woundTrack && partDealt > 0) {
@@ -5369,8 +5388,12 @@ function resolveActionBody(
     }
     if (before) afterBlow(ctx, target, dealt, critical);
     // Its maximum lowered to nothing (1.198), it dies.
-    if (sapped && dealt > 0 && !target.defeated && rulesetSealedAway(ctx, target)) {
+    if (sappedDealt > 0 && !target.defeated && rulesetSealedAway(ctx, target)) {
       slay(ctx, target, actor.id, action.label);
+    }
+    // What it lowered, its maker regains (1.230): a vampire's Bite.
+    if (sappedDealt > 0 && action.reducesMax?.heals) {
+      dealHeal(ctx, actor, { sourceId: actor.id, rolls: [], flat: sappedDealt, amount: sappedDealt });
     }
     if (drained > 0) grantTemporary(ctx, actor, { sourceId: actor.id, rolls: [], flat: drained, amount: drained });
     // A blow that slays (1.182) kills somebody it left low enough, after what it dealt.

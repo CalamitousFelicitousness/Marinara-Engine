@@ -964,7 +964,12 @@ const capabilityPackageManifestBaseSchema = z
 //        Life Drain, a clay golem's Slam), and a live pool's `lasting`.
 // 1.199: catalog mechanics' `cureOneOf` (one of its `ends` conditions, `tracks` or `unseals`, picked
 //        as a mode of the option, else the first the target needs: 5e's Greater Restoration).
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 199 } as const);
+// 1.200-1.229 are the Kenhito lane's; this lane goes on at 1.230.
+// 1.230: `reducesMax` with no save of its own (every blow that lands), `onFailedSave` (the entry's
+//        own failed save), `damageType` and `heals` (its maker regains what it lowered), on catalog
+//        mechanics too; catalog `leavesAtLeast` (5e's Harm); `targetHolds` on a creature action or
+//        catalog mechanics (a vampire's Bite: grappled by it, incapacitated or restrained).
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 230 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

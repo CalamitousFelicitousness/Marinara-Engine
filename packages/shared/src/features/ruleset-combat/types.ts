@@ -260,8 +260,19 @@ export interface RulesetStatBlockAction {
   push?: number;
   /** The ability its attack is made with (1.184), so changes narrowed to an ability reach it. */
   ability?: string;
-  /** A failed save against it lowers the health maximum by the damage taken (1.198). */
-  reducesMax?: { save: string; difficulty: number; lasting?: true };
+  /** Its damage lowers the health maximum (1.198): on a failed save of its own, on a failed save of
+   *  the action's (`onFailedSave`), or on every blow (1.230); only `damageType`'s, healing its maker
+   *  with `heals`. */
+  reducesMax?: {
+    save?: string;
+    difficulty?: number;
+    onFailedSave?: true;
+    damageType?: string;
+    heals?: true;
+    lasting?: true;
+  };
+  /** Offered only on a target holding one of these, or one of `fromSelf` its maker put on (1.230). */
+  targetHolds?: { conditions?: string[]; fromSelf?: string[] };
   /** What it adds after a straight run at its target this turn (1.181). */
   charge?: RulesetCombatCharge;
   /** What a save that ENDS one of `applies` is rolled against, when the action has no save of its
@@ -426,8 +437,19 @@ export interface RulesetCombatAction {
   /** The ability actually used for the attack roll (Capability API 1.128). A plain stat-block
    *  action has none; a weapon offering several keeps the first best one, as its roll does. */
   ability?: string;
-  /** A failed save against it lowers the health maximum by the damage taken (1.198). */
-  reducesMax?: { save: string; difficulty: number; lasting?: true };
+  /** Its damage lowers the health maximum (1.198): on a failed save of its own, on a failed save of
+   *  the action's (`onFailedSave`), or on every blow (1.230); only `damageType`'s, healing its maker
+   *  with `heals`. */
+  reducesMax?: {
+    save?: string;
+    difficulty?: number;
+    onFailedSave?: true;
+    damageType?: string;
+    heals?: true;
+    lasting?: true;
+  };
+  /** Offered only on a target holding one of these, or one of `fromSelf` its maker put on (1.230). */
+  targetHolds?: { conditions?: string[]; fromSelf?: string[] };
   toHit?: number;
   /** The per-die target a pool fight throws this attack against, where the ruleset lets it move: a
    *  weapon's own. Without one the attack is thrown against the pool's usual target. */
@@ -476,6 +498,8 @@ export interface RulesetCombatAction {
   unseals?: true;
   /** It does one of its cures, not all (1.199): the mode picked, else the first the target needs. */
   cureOneOf?: true;
+  /** Its damage never takes a target below this much health (1.230). */
+  leavesAtLeast?: number;
   /** It brings back a target that died no more than `withinRounds` rounds ago, at `amount` (1.171). */
   revives?: { withinRounds: number; amount: RulesetCombatAmount };
   save?: RulesetCombatSaveRider;

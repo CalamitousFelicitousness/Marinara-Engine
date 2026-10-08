@@ -9867,6 +9867,72 @@
                       "type": "boolean",
                       "const": true
                     },
+                    "reducesMax": {
+                      "type": "object",
+                      "properties": {
+                        "save": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "difficulty": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 1000
+                        },
+                        "onFailedSave": {
+                          "type": "boolean",
+                          "const": true
+                        },
+                        "damageType": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 40
+                        },
+                        "heals": {
+                          "type": "boolean",
+                          "const": true
+                        },
+                        "lasting": {
+                          "type": "boolean",
+                          "const": true
+                        },
+                        "$comment": {}
+                      },
+                      "additionalProperties": false
+                    },
+                    "leavesAtLeast": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 100000
+                    },
+                    "targetHolds": {
+                      "type": "object",
+                      "properties": {
+                        "conditions": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 8
+                        },
+                        "fromSelf": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 8
+                        },
+                        "$comment": {}
+                      },
+                      "additionalProperties": false
+                    },
                     "revives": {
                       "type": "object",
                       "properties": {
@@ -12194,16 +12260,52 @@
                                 "minimum": 0,
                                 "maximum": 1000
                               },
+                              "onFailedSave": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "damageType": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 40
+                              },
+                              "heals": {
+                                "type": "boolean",
+                                "const": true
+                              },
                               "lasting": {
                                 "type": "boolean",
                                 "const": true
                               },
                               "$comment": {}
                             },
-                            "required": [
-                              "save",
-                              "difficulty"
-                            ],
+                            "additionalProperties": false
+                          },
+                          "targetHolds": {
+                            "type": "object",
+                            "properties": {
+                              "conditions": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "minItems": 1,
+                                "maxItems": 8
+                              },
+                              "fromSelf": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "minItems": 1,
+                                "maxItems": 8
+                              },
+                              "$comment": {}
+                            },
                             "additionalProperties": false
                           },
                           "saveDifficulty": {
@@ -20846,6 +20948,72 @@
                         "cureOneOf": {
                           "type": "boolean",
                           "const": true
+                        },
+                        "reducesMax": {
+                          "type": "object",
+                          "properties": {
+                            "save": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "difficulty": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 1000
+                            },
+                            "onFailedSave": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "damageType": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 40
+                            },
+                            "heals": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "lasting": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "$comment": {}
+                          },
+                          "additionalProperties": false
+                        },
+                        "leavesAtLeast": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 100000
+                        },
+                        "targetHolds": {
+                          "type": "object",
+                          "properties": {
+                            "conditions": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 8
+                            },
+                            "fromSelf": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 8
+                            },
+                            "$comment": {}
+                          },
+                          "additionalProperties": false
                         },
                         "revives": {
                           "type": "object",

@@ -457,7 +457,13 @@ export function rulesetTargetTypesAllow(
   definition: RulesetDefinition,
   combatant: RulesetCombatant,
   targetTypes:
-    | { is?: RulesetTargetIs; not?: RulesetTargetIs; abilityAtMost?: Record<string, number>; notImmuneTo?: string[] }
+    | {
+        is?: RulesetTargetIs;
+        not?: RulesetTargetIs;
+        abilityAtMost?: Record<string, number>;
+        abilityAtLeast?: Record<string, number>;
+        notImmuneTo?: string[];
+      }
     | undefined,
 ): boolean {
   if (!targetTypes) return true;
@@ -467,6 +473,11 @@ export function rulesetTargetTypesAllow(
   for (const [ability, most] of Object.entries(targetTypes.abilityAtMost ?? {})) {
     const score = rulesetAbilityScore(definition, combatant, ability);
     if (score !== undefined && score > most) return false;
+  }
+  // And at least these (1.186), read the same way.
+  for (const [ability, least] of Object.entries(targetTypes.abilityAtLeast ?? {})) {
+    const score = rulesetAbilityScore(definition, combatant, ability);
+    if (score !== undefined && score < least) return false;
   }
   // And not immune to any of these conditions (1.180).
   if (targetTypes.notImmuneTo?.length) {
@@ -2904,13 +2915,23 @@ export function rulesetImmuneToCondition(
   /** Given, what the fighter's items keep off counts too. */
   definition?: RulesetDefinition,
   state?: RulesetEncounterState,
+  /** Given, who would put it on, which a condition's `conditionImmunitiesFrom` reads (1.186). */
+  source?: RulesetCombatant,
 ): boolean {
   const wanted = condition.trim().toLowerCase();
   // Read reached levels without asking immunity again: a track's own immunity must not recurse.
   const immunities = definition
     ? rulesetCombatHide(definition, combatant, state, true).conditionImmunities
     : (combatant.block?.conditionImmunities ?? []);
-  return immunities.some((entry) => entry.trim().toLowerCase() === wanted);
+  if (immunities.some((entry) => entry.trim().toLowerCase() === wanted)) return true;
+  if (!source || !definition?.combat) return false;
+  return rulesetActiveConditions(definition, definition.combat, combatant, state, true).some((entry) =>
+    entry.conditionImmunitiesFrom?.some(
+      (one) =>
+        one.conditions.some((id) => id.trim().toLowerCase() === wanted) &&
+        rulesetTargetIs(definition, source, one.from),
+    ),
+  );
 }
 
 /**

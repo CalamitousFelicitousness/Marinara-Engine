@@ -33,6 +33,9 @@ export interface RulesetSaveAgainst {
   magic?: boolean;
   /** What the creature the save is against is (1.180): its type and tags. */
   from?: { type?: string; tags: readonly string[] };
+  /** What the action the save is against is known by (1.186): its id, its name and its shared
+   *  recharge group. */
+  action?: readonly string[];
 }
 
 /** Any one match is enough; the save's own name is checked separately. */
@@ -42,6 +45,12 @@ export function rulesetSaveAgainstMatches(
 ): boolean {
   if (!against) return true;
   if (!source) return false;
+  // Named actions narrow everything else it says (1.186): one of them, and then the rest as usual.
+  if (against.actions) {
+    const known = (source.action ?? []).map((name) => name.trim().toLowerCase());
+    if (!against.actions.some((name) => known.includes(name.trim().toLowerCase()))) return false;
+    if (!against.conditions && !against.damage && !against.magic && !against.from) return true;
+  }
   return !!(
     against.conditions?.some((condition) => source.conditions?.includes(condition)) ||
     against.damage?.some((type) =>

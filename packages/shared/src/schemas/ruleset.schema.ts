@@ -2151,6 +2151,10 @@ const catalogMechanicsObject = z
          *  Animal Friendship, a beast of Intelligence 3 or less. A creature written with no score
          *  for one is not kept out by it. */
         abilityAtMost: z.record(sheetId, z.number().int().min(-100).max(1000)).optional(),
+        /** Only a target whose ability scores are at least these (Capability API 1.186): 5e's
+         *  Hideous Laughter passes over a creature of Intelligence 4 or less. Read as `abilityAtMost`
+         *  is: a creature written with no score for one is not kept out by it. */
+        abilityAtLeast: z.record(sheetId, z.number().int().min(-100).max(1000)).optional(),
         /** Only a target not immune to any of these conditions (1.180): 5e's Sleep, which passes over
          *  whoever cannot be charmed. */
         notImmuneTo: z.array(sheetId).min(1).max(8).optional(),
@@ -2161,8 +2165,9 @@ const catalogMechanicsObject = z
           types.is !== undefined ||
           types.not !== undefined ||
           types.abilityAtMost !== undefined ||
+          types.abilityAtLeast !== undefined ||
           types.notImmuneTo !== undefined,
-        { message: '"targetTypes" says "is", "not", "abilityAtMost", "notImmuneTo" or several' },
+        { message: '"targetTypes" says "is", "not", "abilityAtMost", "abilityAtLeast", "notImmuneTo" or several' },
       )
       .optional(),
     /** It deals its most to a target that is this (Capability API 1.180): every die at its top face.
@@ -4486,6 +4491,9 @@ const combatConditionEffectSchema = z.enum([
   /** And may not walk to a cell nearer them than the one they stand in. Read only by a fight with
    *  a board, exactly as the three effects above it are, so a ruleset may say it either way. */
   "cannot-approach-source",
+  /** Its holder regains nothing from any heal while it holds (Capability API 1.186): 5e's Chill
+   *  Touch. */
+  "cannot-heal",
 ]);
 export const RULESET_COMBAT_CONDITION_EFFECTS = combatConditionEffectSchema.options;
 
@@ -4558,9 +4566,13 @@ const combatModifierSchema = z
         /** A save against something a creature that is this does (Capability API 1.180): 5e's
          *  Dragon Scale Mail, against a dragon's breath and its Frightful Presence. */
         from: targetIsSchema.optional(),
+        /** Only a save against one of these actions (Capability API 1.186), by id, name or shared
+         *  recharge group, case-insensitively, AND whatever else it names: Dragon Scale Mail's
+         *  dragons' breath and Frightful Presence, never their Wing Attack. */
+        actions: z.array(promptSafeText(80)).min(1).max(12).optional(),
       })
       .strict()
-      .refine((against) => Object.keys(against).length > 0, "Against names conditions, damage, magic or from")
+      .refine((against) => Object.keys(against).length > 0, "Against names conditions, damage, magic, from or actions")
       .optional(),
     mode: z.enum(RULESET_ROLL_MODES).optional(),
     /** Narrows a change to attacks-taken to attackers that are this (Capability API 1.180). */
@@ -4768,6 +4780,11 @@ export interface RulesetCombatSense {
   sheet?: RulesetValueRef;
   blind?: true;
 }
+/** Conditions kept off when a creature that is `from` puts them on (1.186). */
+export interface RulesetConditionImmunityFrom {
+  conditions: string[];
+  from: RulesetTargetIs;
+}
 const combatSenseSchema: z.ZodType<RulesetCombatSense, z.ZodTypeDef, unknown> = z
   .object({ id: sheetId, label, sheet: rulesetValueRefSchema.optional(), blind: z.literal(true).optional() })
   .strict();
@@ -4788,6 +4805,20 @@ const combatConditionSchema = z
     vulnerable: z.array(promptSafeText(40)).min(1).max(30).optional(),
     immune: z.array(creatureHideEntrySchema).min(1).max(30).optional(),
     conditionImmunities: z.array(sheetId).min(1).max(40).optional(),
+    /** Conditions kept off only when a creature that is `from` would put them on (Capability API
+     *  1.186): 5e's Protection from Evil and Good, no charm or fright from a fiend or undead. One
+     *  already on stays. */
+    conditionImmunitiesFrom: z
+      .array(
+        z.object({ conditions: z.array(sheetId).min(1).max(40), from: targetIsSchema }).strict() as z.ZodType<
+          RulesetConditionImmunityFrom,
+          z.ZodTypeDef,
+          unknown
+        >,
+      )
+      .min(1)
+      .max(10)
+      .optional(),
     condition: sheetId,
     /** Senses its holder does not have while it lasts (Capability API 1.122). */
     lacks: combatSensesSchema.optional(),
@@ -7570,6 +7601,15 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       mapped.add(entry.condition);
       effectNameIssues(entry, skills, saves, abilityIds, def, path, issue);
       hideIssues(def, entry, path, issue);
+      // Kept off by who puts them on (1.186): the ruleset's own conditions, from creatures it names.
+      entry.conditionImmunitiesFrom?.forEach((ward, wardIndex) => {
+        const where = [...path, "conditionImmunitiesFrom", wardIndex];
+        ward.conditions.forEach((condition, conditionIndex) => {
+          if (!conditions.has(condition))
+            issue([...where, "conditions", conditionIndex], `Unknown condition "${condition}"`);
+        });
+        targetIsIssues(def, ward.from, [...where, "from"], issue);
+      });
       // What it harms with is one of the ruleset's damage types (1.184).
       const harmType = entry.harms?.type;
       const damageTypes = combat.damageTypes?.map((type) => type.trim().toLowerCase());
@@ -8338,6 +8378,7 @@ function targetTestIssues(
       is?: RulesetTargetIs;
       not?: RulesetTargetIs;
       abilityAtMost?: Record<string, number>;
+      abilityAtLeast?: Record<string, number>;
       notImmuneTo?: string[];
     };
     save?: RulesetSaveExtras;
@@ -8357,8 +8398,10 @@ function targetTestIssues(
   targetIsIssues(definition, carrier.targetTypes?.not, [...at, "targetTypes", "not"], add);
   targetIsIssues(definition, carrier.maxAgainst, [...at, "maxAgainst"], add);
   const abilities = new Set(definition.sheet.abilities.map((ability) => ability.id));
-  for (const id of Object.keys(carrier.targetTypes?.abilityAtMost ?? {})) {
-    if (!abilities.has(id)) add([...at, "targetTypes", "abilityAtMost", id], `Unknown ability "${id}"`);
+  for (const key of ["abilityAtMost", "abilityAtLeast"] as const) {
+    for (const id of Object.keys(carrier.targetTypes?.[key] ?? {})) {
+      if (!abilities.has(id)) add([...at, "targetTypes", key, id], `Unknown ability "${id}"`);
+    }
   }
   const conditions = new Set(definition.sheet.live.conditions.map((condition) => condition.id));
   carrier.targetTypes?.notImmuneTo?.forEach((id, index) => {

@@ -654,7 +654,9 @@ function dealHeal(
   input: { sourceId?: string; rolls: number[]; flat: number; amount: number },
 ): void {
   const before = healthOf(ctx, target);
-  const amount = Math.max(0, Math.floor(input.amount));
+  // A condition that keeps every heal off (1.186) leaves the roll in the log and gives back nothing.
+  const blocked = rulesetCombatEffects(ctx.definition, ctx.combat, target, ctx.state).has("cannot-heal");
+  const amount = blocked ? 0 : Math.max(0, Math.floor(input.amount));
   if (amount > 0) {
     // Never past the maximum as it stands, which a level may have halved (1.110).
     if (target.sheet) writeHealthGain(ctx, target, amount, before);
@@ -670,6 +672,7 @@ function dealHeal(
     amount,
     health: after.value,
     maxHealth: after.max,
+    ...(blocked ? { blocked: true as const } : {}),
   });
   // Back up when the heal gave them something back: from nothing, or, for somebody taken out with
   // boxes still clear, a mark cleared.
@@ -1140,9 +1143,10 @@ function applyConditionId(
   target: RulesetCombatant,
   condition: string,
   applies: RulesetCombatApplies,
-  extra: { sourceId?: string; difficulty?: number; concentration?: boolean } = {},
+  extra: { sourceId?: string; difficulty?: number; concentration?: boolean; action?: readonly string[] } = {},
 ): void {
-  if (rulesetImmuneToCondition(target, condition, ctx.definition, ctx.state)) {
+  const putter = extra.sourceId ? rulesetCombatant(ctx.state, extra.sourceId) : undefined;
+  if (rulesetImmuneToCondition(target, condition, ctx.definition, ctx.state, putter)) {
     ctx.events.push({ type: "condition", targetId: target.id, condition, active: false, reason: "immune" });
     return;
   }
@@ -1184,6 +1188,7 @@ function applyConditionId(
     ...(applies.saveEnds ? { saveEnds: applies.saveEnds } : {}),
     ...(extra.difficulty !== undefined ? { difficulty: extra.difficulty } : {}),
     ...(extra.sourceId ? { source: extra.sourceId } : {}),
+    ...(extra.action ? { action: [...extra.action] } : {}),
     ...(extra.concentration ? { concentration: true } : {}),
     // The applier's own save difficulty where it said "save" (1.169); with none, the holder's side
     // of the contest is rolled as usual.
@@ -1327,6 +1332,7 @@ function endConditionsOnHarm(
       if (
         rollSave(ctx, target, tracked.saveEnds.save, tracked.difficulty, tracked.source, undefined, {
           conditions: [condition],
+          ...(tracked.action ? { action: tracked.action } : {}),
         })
       ) {
         removeCondition(ctx, target, condition, "save");
@@ -1398,6 +1404,8 @@ function tickConditionsNow(ctx: RulesetCombatContext, actor: RulesetCombatant, a
     if (entry.saveEnds?.at === at && entry.difficulty !== undefined) {
       const ended = rollSave(ctx, actor, entry.saveEnds.save, entry.difficulty, entry.source, undefined, {
         conditions: [entry.condition],
+        // Still a save against the action that put it on (1.186).
+        ...(entry.action ? { action: entry.action } : {}),
       });
       if (ended) {
         removeCondition(ctx, actor, entry.condition, "save");
@@ -4567,6 +4575,7 @@ function resolveActionBody(
         ...(action.save?.against?.damage ?? []),
       ].filter((type): type is string => type !== undefined),
       magic: (action.qualities ?? action.damage?.qualities)?.includes("magical") === true,
+      action: [action.id, action.label, ...(action.recharge?.group ? [action.recharge.group] : [])],
     };
     let saved = false;
     if (action.save && savesOutright(ctx, target, action.save)) {
@@ -4900,7 +4909,11 @@ function resolveActionBody(
           duration: entry.saveEnds ? "until-save" : entry.rounds ? { rounds: entry.rounds } : "instant",
           ...(entry.saveEnds ? { saveEnds: { save: entry.saveEnds.save, at: entry.saveEnds.at } } : {}),
         },
-        { sourceId: actor.id, ...(entry.saveEnds ? { difficulty: entry.saveEnds.difficulty } : {}) },
+        {
+          sourceId: actor.id,
+          action: against.action,
+          ...(entry.saveEnds ? { difficulty: entry.saveEnds.difficulty } : {}),
+        },
       );
     }
     // What a taking blow took goes to its maker, with what landing one is worth on top; and taking
@@ -4972,6 +4985,7 @@ function resolveActionBody(
         if (!rulesetTargetIs(ctx.definition, target, applies.targetIs)) continue;
         applyConditionId(ctx, target, applies.condition, applies, {
           sourceId: actor.id,
+          action: against.action,
           // The action's own save when it has one, otherwise what its source says saves are rolled
           // against. Never zero by default: that would let everybody shake a condition off.
           ...(action.save

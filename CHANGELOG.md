@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: Chill Touch stops its target healing, Protection from Evil and Good keeps charm and fright from fiends and undead away, Hideous Laughter skips creatures of Intelligence 4 or less, and dragon scale mail helps against a dragon's breath and Frightful Presence but not its Wing Attack
 - Rulesets: a javelin of lightning turns into a bolt that strikes everybody on the way to its target, reaches 120 feet and adds its lightning to the hit, once until its charge comes back
 - Rulesets: a sword of wounding's wounds stack and hurt every turn until a save ends them, an oathbow's sworn enemy is struck with advantage, through cover and at long range, and Weakening Breath and Ray of Enfeeblement weaken monsters' Strength attacks too
 - Rulesets: a ruleset can declare up to 160 conditions, a gold dragon's Weakening Breath weakens only Strength attacks, and Rage gives advantage only on Strength checks, contests included

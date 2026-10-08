@@ -1270,6 +1270,7 @@
   "game.combat.ruleset.event.gives": "{{actor}} uses {{label}} and has {{left}} {{budget}}.",
   "game.combat.ruleset.event.hardness": "{{actor}}'s {{label}} lands on {{target}} with {{dice}} dice, below a hardness of {{hardness}}, and does nothing.",
   "game.combat.ruleset.event.heal": "{{target}} recovers {{amount}}, and is on {{health}} of {{maxHealth}}.",
+  "game.combat.ruleset.event.healBlocked": "{{target}} regains nothing: something keeps them from healing.",
   "game.combat.ruleset.event.initiative": "Initiative: {{order}}.",
   "game.combat.ruleset.event.move": "{{actor}} moves to {{x}}, {{y}} for {{cost}} and has {{left}} left.",
   "game.combat.ruleset.event.moveStood": "{{actor}} gets back up, which costs {{cost}}.",

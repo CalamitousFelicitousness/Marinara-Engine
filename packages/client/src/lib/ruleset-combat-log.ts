@@ -374,6 +374,7 @@ export function rulesetCombatEventLine(
       return key(event.reason === "spent" ? "shiftSpent" : "shiftRecovered", { actor, total: event.total });
     }
     case "heal":
+      if (event.blocked) return key("healBlocked", { target: names.combatant(event.targetId) });
       return key("heal", {
         target: names.combatant(event.targetId),
         amount: event.amount,

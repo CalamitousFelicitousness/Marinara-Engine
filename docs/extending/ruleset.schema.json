@@ -8506,6 +8506,21 @@
                             "$comment": {}
                           }
                         },
+                        "abilityAtLeast": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "integer",
+                            "minimum": -100,
+                            "maximum": 1000
+                          },
+                          "propertyNames": {
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "properties": {
+                            "$comment": {}
+                          }
+                        },
                         "notImmuneTo": {
                           "type": "array",
                           "items": {
@@ -14293,7 +14308,8 @@
                               "own-saves-disadvantage",
                               "own-checks-advantage",
                               "own-checks-disadvantage",
-                              "resist-all"
+                              "resist-all",
+                              "cannot-heal"
                             ]
                           },
                           "minItems": 1,
@@ -14454,6 +14470,16 @@
                                       "$comment": {}
                                     },
                                     "additionalProperties": false
+                                  },
+                                  "actions": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 80
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 12
                                   },
                                   "$comment": {}
                                 },
@@ -15110,7 +15136,8 @@
                               "own-saves-disadvantage",
                               "own-checks-advantage",
                               "own-checks-disadvantage",
-                              "resist-all"
+                              "resist-all",
+                              "cannot-heal"
                             ]
                           },
                           "minItems": 1,
@@ -15271,6 +15298,16 @@
                                       "$comment": {}
                                     },
                                     "additionalProperties": false
+                                  },
+                                  "actions": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 80
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 12
                                   },
                                   "$comment": {}
                                 },
@@ -16081,7 +16118,8 @@
                                     "own-saves-disadvantage",
                                     "own-checks-advantage",
                                     "own-checks-disadvantage",
-                                    "resist-all"
+                                    "resist-all",
+                                    "cannot-heal"
                                   ]
                                 },
                                 "minItems": 1,
@@ -16242,6 +16280,16 @@
                                             "$comment": {}
                                           },
                                           "additionalProperties": false
+                                        },
+                                        "actions": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 80
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 12
                                         },
                                         "$comment": {}
                                       },
@@ -19006,6 +19054,21 @@
                               "additionalProperties": false
                             },
                             "abilityAtMost": {
+                              "type": "object",
+                              "additionalProperties": {
+                                "type": "integer",
+                                "minimum": -100,
+                                "maximum": 1000
+                              },
+                              "propertyNames": {
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "properties": {
+                                "$comment": {}
+                              }
+                            },
+                            "abilityAtLeast": {
                               "type": "object",
                               "additionalProperties": {
                                 "type": "integer",
@@ -27455,6 +27518,59 @@
                 "minItems": 1,
                 "maxItems": 40
               },
+              "conditionImmunitiesFrom": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "conditions": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "minItems": 1,
+                      "maxItems": 40
+                    },
+                    "from": {
+                      "type": "object",
+                      "properties": {
+                        "types": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 20
+                        },
+                        "tags": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 20
+                        },
+                        "$comment": {}
+                      },
+                      "additionalProperties": false
+                    },
+                    "$comment": {}
+                  },
+                  "required": [
+                    "conditions",
+                    "from"
+                  ],
+                  "additionalProperties": false
+                },
+                "minItems": 1,
+                "maxItems": 10
+              },
               "condition": {
                 "type": "string",
                 "maxLength": 40,
@@ -27569,7 +27685,8 @@
                     "own-checks-disadvantage",
                     "resist-all",
                     "cannot-target-source",
-                    "cannot-approach-source"
+                    "cannot-approach-source",
+                    "cannot-heal"
                   ]
                 },
                 "maxItems": 12,
@@ -27730,6 +27847,16 @@
                             "$comment": {}
                           },
                           "additionalProperties": false
+                        },
+                        "actions": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 80
+                          },
+                          "minItems": 1,
+                          "maxItems": 12
                         },
                         "$comment": {}
                       },
@@ -28083,7 +28210,8 @@
                         "own-checks-disadvantage",
                         "resist-all",
                         "cannot-target-source",
-                        "cannot-approach-source"
+                        "cannot-approach-source",
+                        "cannot-heal"
                       ]
                     },
                     "minItems": 1,
@@ -28929,7 +29057,8 @@
                     "own-saves-disadvantage",
                     "own-checks-advantage",
                     "own-checks-disadvantage",
-                    "resist-all"
+                    "resist-all",
+                    "cannot-heal"
                   ]
                 },
                 "maxItems": 12,
@@ -29090,6 +29219,16 @@
                             "$comment": {}
                           },
                           "additionalProperties": false
+                        },
+                        "actions": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 80
+                          },
+                          "minItems": 1,
+                          "maxItems": 12
                         },
                         "$comment": {}
                       },

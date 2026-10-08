@@ -578,6 +578,7 @@ try {
         rounds: 1,
         clock: "turn-start",
         source: "snag",
+        action: ["slow", "Slow"],
       },
     );
     const hers = endTurn(fiveE, slow.state, "snag");
@@ -635,7 +636,7 @@ try {
     assert.ok(!eventsOf(brand.events, "condition").some((event) => event.reason === "spent"));
     assert.deepEqual(
       rulesetCombatant(brand.state, "brenna")!.tracked.find((entry) => entry.condition === "marked"),
-      { condition: "marked", rounds: 2, endsAfter: "attacked", source: "snag" },
+      { condition: "marked", rounds: 2, endsAfter: "attacked", source: "snag", action: ["brand", "Brand"] },
       "the new one, with its whole clock",
     );
 

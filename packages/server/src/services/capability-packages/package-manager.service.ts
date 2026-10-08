@@ -1522,6 +1522,20 @@ function carriesWardsAndSaves(value: unknown, depth = 0): boolean {
 
 const MODIFIER_TARGETS = new Set<string>(RULESET_COMBAT_MODIFIER_TARGETS);
 
+/** A condition that keeps heals off or keeps conditions off by who puts them on, a target floor on
+ *  ability scores, or a save narrowed to named actions (1.186), in catalog files too. */
+function carriesHealWardsAndActionSaves(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesHealWardsAndActionSaves(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (Array.isArray(record.effects) && record.effects.includes("cannot-heal")) return true;
+  if (record.conditionImmunitiesFrom !== undefined) return true;
+  if (plainRecord(record.targetTypes)?.abilityAtLeast !== undefined) return true;
+  if (record.to === "saves" && plainRecord(record.against)?.actions !== undefined) return true;
+  return Object.values(record).some((one) => carriesHealWardsAndActionSaves(one, depth + 1));
+}
+
 /** A weapon mode with its own reach, clauses, bolt or charges (1.185), in catalog files too. */
 function carriesModeExtras(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -3027,6 +3041,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Heals kept off, conditions kept off by source, ability floors and saves against actions, 1.186.
+  if (
+    !declaresApi(186) &&
+    (carriesHealWardsAndActionSaves(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesHealWardsAndActionSaves(document)))
+  ) {
+    return "A ruleset with conditions that keep heals off or keep conditions off by who puts them on, targets that need an ability score of at least some number, or saves against named actions requires schemaVersion 2 and capabilityApi 1.186 or newer";
   }
   // Weapon modes with their own reach, clauses, bolt or charges, 1.185.
   if (

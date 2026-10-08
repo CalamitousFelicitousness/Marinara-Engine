@@ -928,7 +928,11 @@ const capabilityPackageManifestBaseSchema = z
 // the `ability` its attack is made with.
 // 1.185: an item attack's mode may carry its own `range`, `plus` clauses, a `line` that everybody
 // between the wielder and the target saves against, and `charges` it spends of the item.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 185 } as const);
+// 1.186: a combat condition effect "cannot-heal" keeps every heal off its holder; a combat condition's
+//        `conditionImmunitiesFrom` keeps conditions off only when a creature that is `from` puts them
+//        on; `targetTypes.abilityAtLeast` floors a target's ability scores; and a saves modifier's
+//        `against.actions` narrows it to named actions, AND whatever else it names.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 186 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

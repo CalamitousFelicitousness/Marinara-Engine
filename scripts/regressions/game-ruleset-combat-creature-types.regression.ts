@@ -265,7 +265,7 @@ try {
     refused((doc) => (holy(doc).plus[0].targetIs = { types: ["giant"] }), /Unknown creature type "giant"/);
     refused((doc) => (holy(doc).plus[0].targetIs = { tags: ["demon"] }), /Unknown creature tag "demon"/);
     refused((doc) => (holy(doc).plus[0].targetIs = {}), /names types, tags or both/);
-    refused((doc) => (holy(doc).targetTypes = {}), /"is", "not", "abilityAtMost", "notImmuneTo" or several/);
+    refused((doc) => (holy(doc).targetTypes = {}), /"is", "not", "abilityAtMost", "abilityAtLeast", "notImmuneTo" or several/);
     refused((doc) => (doc.combat.creatureTypes.default = "giant"), /Unknown creature type "giant"/);
     refused((doc) => (doc.combat.creatureTypes.field = "level"), /text or choice field/);
     refused((doc) => (doc.catalogs[0].entries[0].creature.type = "giant"), /Unknown creature type "giant"/);

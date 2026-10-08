@@ -441,6 +441,7 @@ export interface RulesetCombatAction {
     not?: RulesetTargetIs;
     /** Ability scores at most these, and not immune to these conditions (1.180). */
     abilityAtMost?: Record<string, number>;
+    abilityAtLeast?: Record<string, number>;
     notImmuneTo?: string[];
   };
   /** Dealt at its most to a target that is this (1.180). */
@@ -714,6 +715,8 @@ export interface RulesetTrackedCondition {
   difficulty?: number;
   /** Who applied it, and whether their concentration is what holds it. */
   source?: string;
+  /** What the action that put it on is known by (1.186), which a repeated save is against too. */
+  action?: string[];
   concentration?: boolean;
   /** What breaking free of it is rolled against, from what applied it (1.98). */
   escapeDc?: number;
@@ -1237,6 +1240,8 @@ export type RulesetCombatEvent =
       amount: number;
       health: number;
       maxHealth: number;
+      /** A condition kept all of it off (1.186): 5e's Chill Touch. */
+      blocked?: true;
     }
   | { type: "temporary"; targetId: string; sourceId?: string; rolls: number[]; flat: number; amount: number }
   | {

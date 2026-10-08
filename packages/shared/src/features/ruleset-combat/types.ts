@@ -1745,6 +1745,8 @@ export interface RulesetCombatZoneRule {
   breaksConcentration?: boolean;
   /** It ends once it has dealt this much damage in all (1.169). */
   damageCap?: number;
+  /** What it deals at its triggers is this type in place of the entry's own (1.193). */
+  damageType?: string;
   /** What it deals, with no save and in place of its effect, to whoever starts a turn in it held by
    *  this condition from its caster (1.170). */
   whileHeld?: { condition: string; amount: RulesetCombatAmount; damageType?: string };

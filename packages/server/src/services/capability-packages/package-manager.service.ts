@@ -1522,6 +1522,17 @@ function carriesWardsAndSaves(value: unknown, depth = 0): boolean {
 
 const MODIFIER_TARGETS = new Set<string>(RULESET_COMBAT_MODIFIER_TARGETS);
 
+/** A zone whose triggers deal another damage type than it does as it appears (1.193), in catalogs too. */
+function carriesZoneDamageType(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesZoneDamageType(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const zone = plainRecord(record.zone);
+  if (zone && zone.damageType !== undefined) return true;
+  return Object.values(record).some((one) => carriesZoneDamageType(one, depth + 1));
+}
+
 /** A damage modifier that throws a blow's own dice more times over (1.192), wherever modifiers sit. */
 function carriesDiceTimes(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -3124,6 +3135,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // A zone's own damage type at its triggers, 1.193.
+  if (
+    !declaresApi(193) &&
+    (carriesZoneDamageType(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesZoneDamageType(document)))
+  ) {
+    return "A ruleset with zones that deal another damage type at their triggers requires schemaVersion 2 and capabilityApi 1.193 or newer";
   }
   // A blow's own dice thrown more times over, 1.192.
   if (

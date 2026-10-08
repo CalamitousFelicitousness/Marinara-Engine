@@ -1836,6 +1836,9 @@ function zoneStrike(
     return;
   }
   const { concentration: _held, zone: _zone, summons: _summons, gives: _gives, ...again } = action;
+  // What it deals at its triggers may be another type than as it appeared (1.193).
+  const struckType = action.zone?.damageType;
+  if (struckType && again.damage) again.damage = { ...again.damage, type: struckType };
   const from = ctx.events.length;
   // The zone acting, not its caster (1.175).
   const byZone = ctx.byZone;

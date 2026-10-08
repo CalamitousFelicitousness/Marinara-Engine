@@ -947,7 +947,9 @@ const capabilityPackageManifestBaseSchema = z
 //        `healthAtMost` (Power Word Stun) and `kills` (Power Word Kill).
 // 1.192: a damage modifier's `diceTimes` (a blow's own dice that many times over: an enlarged
 //        duergar), and a creature's `self` action taken on its turn landing on itself.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 192 } as const);
+// 1.193: a catalog zone's `damageType`, dealt at its triggers in place of the entry's own (5e's
+//        Wall of Thorns: piercing as it appears, slashing to whoever moves into it).
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 193 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

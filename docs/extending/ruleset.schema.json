@@ -9484,6 +9484,11 @@
                           "minimum": 1,
                           "maximum": 100000
                         },
+                        "damageType": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 40
+                        },
                         "obscures": {
                           "type": "object",
                           "properties": {
@@ -20185,6 +20190,11 @@
                               "type": "integer",
                               "minimum": 1,
                               "maximum": 100000
+                            },
+                            "damageType": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 40
                             },
                             "obscures": {
                               "type": "object",

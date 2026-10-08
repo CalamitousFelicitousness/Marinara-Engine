@@ -1842,6 +1842,7 @@ function mechanicsAction(
     if (terrain?.halvesSpeed) action.zone.halvesSpeed = true;
     if (mechanics.zone.breaksConcentration) action.zone.breaksConcentration = true;
     if (mechanics.zone.damageCap !== undefined) action.zone.damageCap = mechanics.zone.damageCap;
+    if (mechanics.zone.damageType) action.zone.damageType = mechanics.zone.damageType;
     const blocks = mechanics.zone.blocks;
     if (blocks?.length) {
       action.zone.blocks = {

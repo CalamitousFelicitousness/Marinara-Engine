@@ -1482,6 +1482,7 @@ export interface RulesetCatalogZone {
   };
   breaksConcentration?: true;
   damageCap?: number;
+  damageType?: string;
   whileHeld?: { condition: string; amount: { dice?: string; flat?: number }; damageType?: string };
   blocks?: Array<"move" | "sight">;
   side?: { distance: number; triggers: Array<"enter" | "turn-start" | "turn-end"> };
@@ -1602,6 +1603,10 @@ const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = 
       .optional(),
     /** It ends once it has dealt this much damage in all (1.169): 5e's Guardian of Faith, 60. */
     damageCap: z.number().int().min(1).max(100000).optional(),
+    /** What it deals when it catches somebody at one of its triggers is this type in place of the
+     *  entry's own (Capability API 1.193); as it appears it deals the entry's own. 5e's Wall of
+     *  Thorns: piercing to whoever it appears around, slashing to whoever moves into it. */
+    damageType: promptSafeText(40).optional(),
     /** Nobody sees into it, out of it or through it (Capability API 1.173) but with one of the senses
      *  `pierced` names, within that sense's range: 5e's Fog Cloud and Darkness (pierced by nothing
      *  but blindsight and truesight), or a plain darkness darkvision sees through. */
@@ -2453,6 +2458,11 @@ function zoneIssue(mechanics: {
   }
   if (zone.detonates?.touched && !mechanics.save) return "Whoever touches it rolls the entry's own save, so it has one";
   if (zone.burns?.amount && !zone.burns.damageType) return 'What burning deals has a "damageType"';
+  if (zone.damageType && !mechanics.amount)
+    return "A zone's \"damageType\" is for the entry's own amount, so it has one";
+  if (zone.damageType && zone.triggers.length === 0 && !zone.side && !zone.move?.ram) {
+    return 'A zone\'s "damageType" is what it deals at its triggers, so it names one';
+  }
   return !mechanics.area
     ? "A zone is an area that stays, so it needs an area"
     : zone.anchor === "caster" && !["burst", "line", "cone"].includes(mechanics.area.shape)
@@ -8624,6 +8634,9 @@ function zoneInsideIssues(
     if (types && !types.includes(type.trim().toLowerCase()))
       add([...at, "burns", "by", index], `Unknown damage type "${type}"`);
   });
+  if (zone.damageType && types && !types.includes(zone.damageType.trim().toLowerCase())) {
+    add([...at, "damageType"], `Unknown damage type "${zone.damageType}"`);
+  }
   const burnType = zone.burns?.damageType;
   if (burnType && types && !types.includes(burnType.trim().toLowerCase())) {
     add([...at, "burns", "damageType"], `Unknown damage type "${burnType}"`);

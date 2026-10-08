@@ -58,6 +58,7 @@ import {
   Regex,
   Activity,
   Puzzle,
+  Radar,
   Save,
   FileText,
   FilePlus2,
@@ -114,6 +115,7 @@ import { TranslationSection } from "../../features/chat-settings/sections/Transl
 import { CapabilityElement } from "../capabilities/CapabilityElement";
 import type { AvatarCrop, MultiplayerHostAction } from "@marinara-engine/shared";
 import {
+  BUILT_IN_AGENTS,
   DEFAULT_GAME_DICE_POOL_AGE_TURNS as DEFAULT_DICE_POOL_AGE_TURNS,
   DEFAULT_GAME_DICE_POOL_WINDOW as DEFAULT_DICE_POOL_WINDOW,
   advancedMemoryProblems,
@@ -949,6 +951,8 @@ export function ChatSettingsDrawer({
   const updateTranslationMeta = useUpdateChatMetadata({ serialize: true });
   // Generation waits for queued saves, so the next reply uses the narration mode shown here (#6959).
   const updateGroupChatModeMeta = useUpdateChatMetadata({ serialize: true });
+  // Each tracker schedule switch saves the whole map, so quick clicks must reach the server in order.
+  const updateTrackerScheduleMeta = useUpdateChatMetadata({ serialize: true });
   const updateMetaMutateAsyncRef = useRef(updateMeta.mutateAsync);
   const pendingCustomAgentImageSettingsRef = useRef<{
     chatId: string;
@@ -1812,15 +1816,40 @@ export function ChatSettingsDrawer({
   }, [activeTrackerAgents, manualTrackerAgentTypes, metadata.manualTrackers]);
   const toggleManualTrackerAgent = useCallback(
     (agentId: string) => {
+      if (metadata.manualTrackers === true) {
+        // The removed Manual Trackers switch made every tracker manual. Keep the others manual and drop it,
+        // so from now on only the individual choices count.
+        // Also pin active trackers this list cannot show right now (uninstalled or turned off), and unknown ids,
+        // which may be trackers, plus every installed tracker not added yet, which the old switch also covered.
+        // Entries for non-trackers are ignored by the HUD and the server.
+        const next: Record<string, boolean> = { ...manualTrackerAgentTypes };
+        for (const id of Array.isArray(metadata.activeAgentIds) ? metadata.activeAgentIds : []) {
+          if (typeof id !== "string") continue;
+          const category = BUILT_IN_AGENTS.find((agent) => agent.id === id)?.category;
+          if (category === undefined || category === "tracker") next[id] = true;
+        }
+        for (const agent of BUILT_IN_AGENTS) if (agent.category === "tracker") next[agent.id] = true;
+        for (const agent of activeTrackerAgents) next[agent.id] = true;
+        next[agentId] = false;
+        updateTrackerScheduleMeta.mutate({ id: chat.id, manualTrackerAgentTypes: next, manualTrackers: false });
+        return;
+      }
       const next = { ...manualTrackerAgentTypes };
       if (next[agentId] === true) {
         delete next[agentId];
       } else {
         next[agentId] = true;
       }
-      updateMeta.mutate({ id: chat.id, manualTrackerAgentTypes: next });
+      updateTrackerScheduleMeta.mutate({ id: chat.id, manualTrackerAgentTypes: next });
     },
-    [chat.id, manualTrackerAgentTypes, updateMeta],
+    [
+      activeTrackerAgents,
+      chat.id,
+      manualTrackerAgentTypes,
+      metadata.activeAgentIds,
+      metadata.manualTrackers,
+      updateTrackerScheduleMeta,
+    ],
   );
   const agentSuiteAgents = useMemo(
     () =>
@@ -1943,6 +1972,24 @@ export function ChatSettingsDrawer({
       ? metadata.hapticSensitivity
       : "standard";
   const agentWriteApprovalRequired = metadata.agentWriteApprovalRequired === true;
+  const renderReviewAgentOutputsToggle = (surface: "card" | "secondary") => (
+    <AgentSettingsToggle
+      label={localizeUi("ui.chat.chatsettingsdrawer.reviewAgentOutputs")}
+      description={
+        agentWriteApprovalRequired
+          ? localizeUi("ui.chat.chatsettingsdrawer.lorebookSummaryCharacterCardUpdatesAndReviewableWriterAgent")
+          : localizeUi("ui.chat.chatsettingsdrawer.lorebookAndSummaryUpdatesCanBeCommittedAutomaticallyCharacter")
+      }
+      enabled={agentWriteApprovalRequired}
+      surface={surface}
+      onToggle={() =>
+        updateMeta.mutate({
+          id: chat.id,
+          agentWriteApprovalRequired: !agentWriteApprovalRequired,
+        })
+      }
+    />
+  );
   const knowledgeRetrievalActive = activeAgentIds.includes("knowledge-retrieval");
   const knowledgeRouterActive = activeAgentIds.includes("knowledge-router");
   const illustratorConfig = agentConfigsByType.get("illustrator");
@@ -7755,118 +7802,117 @@ export function ChatSettingsDrawer({
                     )}
                     labelClassName="text-xs font-medium"
                   />
-                  {isRoleplayMode && (
-                    <AgentSettingsToggle
-                      label={localizeUi("chat.settings.agents.attachSummaries")}
-                      description={localizeUi("chat.settings.agents.attachSummariesHelp")}
-                      enabled={metadata.attachSummariesToAgents === true}
-                      surface="secondary"
-                      onToggle={() =>
-                        updateMeta.mutate({
-                          id: chat.id,
-                          attachSummariesToAgents: metadata.attachSummariesToAgents !== true,
-                        })
-                      }
-                    />
-                  )}
-                  <AgentSettingsToggle
-                    label={localizeUi("ui.chat.chatsettingsdrawer.reviewAgentOutputs")}
-                    description={
-                      agentWriteApprovalRequired
-                        ? localizeUi(
-                            "ui.chat.chatsettingsdrawer.lorebookSummaryCharacterCardUpdatesAndReviewableWriterAgent",
-                          )
-                        : localizeUi(
-                            "ui.chat.chatsettingsdrawer.lorebookAndSummaryUpdatesCanBeCommittedAutomaticallyCharacter",
-                          )
-                    }
-                    enabled={agentWriteApprovalRequired}
-                    surface="secondary"
-                    onToggle={() =>
-                      updateMeta.mutate({
-                        id: chat.id,
-                        agentWriteApprovalRequired: !agentWriteApprovalRequired,
-                      })
-                    }
-                  />
-                  {/* Manual trackers run only in roleplay-style chats. */}
-                  {metadata.enableAgents && isRoleplayMode && activeTrackerAgents.length > 0 && (
-                    <>
-                      <AgentSettingsToggle
-                        label={localizeUi("ui.chat.chatsettingsdrawer.manualTrackers")}
-                        description={
-                          metadata.manualTrackers
-                            ? localizeUi("ui.chat.chatsettingsdrawer.trackersWonTRunAutomaticallyUseTheButtonIn")
-                            : localizeUi("ui.chat.chatsettingsdrawer.trackersRunAutomaticallyAfterEveryGeneration")
-                        }
-                        enabled={metadata.manualTrackers === true}
-                        surface="secondary"
-                        onToggle={() => updateMeta.mutate({ id: chat.id, manualTrackers: !metadata.manualTrackers })}
-                      />
-                      <AgentSettingsToggle
-                        label={localizeUi("ui.chat.chatsettingsdrawer.attachLorebooksToTrackers")}
-                        description={localizeUi("ui.chat.chatsettingsdrawer.attachLorebooksToTrackersDescription")}
-                        enabled={metadata.attachLorebooksToTrackers === true}
-                        surface="secondary"
-                        onToggle={() =>
-                          updateMeta.mutate({
-                            id: chat.id,
-                            attachLorebooksToTrackers: !metadata.attachLorebooksToTrackers,
-                          })
-                        }
-                      />
-                    </>
-                  )}
-                  {metadata.enableAgents && isRoleplayMode && activeTrackerAgents.length > 0 && (
-                    <div className="space-y-1.5 rounded-lg bg-[var(--background)]/45 p-2 ring-1 ring-[var(--border)]">
-                      <div className="flex items-center justify-between gap-2 px-1">
-                        <span className="text-[0.625rem] font-medium text-[var(--muted-foreground)]">
-                          {localizeUi("ui.chat.chatsettingsdrawer.individualTrackerSchedule")}
-                        </span>
-                        {metadata.manualTrackers === true && (
-                          <span className="text-[0.5625rem] text-[var(--primary)]">
-                            {localizeUi("ui.chat.chatsettingsdrawer.allManual")}
-                          </span>
-                        )}
+                  {roleplayAgentMenuLinks.length > 0 && (
+                    <div
+                      data-agent-menus
+                      className="rounded-lg bg-[var(--background)]/45 px-2.5 py-2 ring-1 ring-[var(--border)]"
+                    >
+                      <div className="mb-1.5 flex items-center gap-1.5 text-[0.625rem] font-medium text-[var(--muted-foreground)]">
+                        <ChevronRight size="0.6875rem" className="shrink-0" />
+                        <span>{localizeUi("ui.chat.chatsettingsdrawer.agentMenus")}</span>
                       </div>
-                      <div className="space-y-1">
-                        {activeTrackerAgents.map((agent) => {
-                          const manuallyTriggered = activeManualTrackerTypes.has(agent.id);
-                          const globallyManual = metadata.manualTrackers === true;
-                          return (
-                            <SettingsSwitch
-                              key={agent.id}
-                              label={
-                                <span className="flex min-w-0 items-center gap-2">
-                                  <Sparkles size="0.75rem" className="shrink-0 text-[var(--primary)]" />
-                                  <span className="min-w-0">
-                                    <span className="block truncate text-[0.625rem] font-medium">{agent.name}</span>
-                                    <span className="block truncate text-[0.5625rem] text-[var(--muted-foreground)]">
-                                      {globallyManual
-                                        ? localizeUi("ui.chat.chatsettingsdrawer.controlledByManualTrackers")
-                                        : manuallyTriggered
-                                          ? localizeUi("ui.chat.chatsettingsdrawer.runsOnlyFromHudControls")
-                                          : localizeUi("ui.chat.chatsettingsdrawer.runsAutomatically")}
-                                    </span>
-                                  </span>
-                                </span>
-                              }
-                              checked={manuallyTriggered}
-                              onChange={() => toggleManualTrackerAgent(agent.id)}
-                              disabled={globallyManual}
-                              labelPosition="start"
-                              className={cn(
-                                "justify-between rounded-md px-2 py-1.5 text-left",
-                                manuallyTriggered
-                                  ? "bg-[var(--primary)]/10 text-[var(--foreground)] ring-1 ring-[var(--primary)]/25"
-                                  : "bg-[var(--secondary)] text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]",
-                              )}
-                              labelClassName="min-w-0"
-                            />
-                          );
-                        })}
+                      <div className="flex flex-wrap gap-1.5">
+                        {roleplayAgentMenuLinks.map((link) => (
+                          <button
+                            key={link.id}
+                            type="button"
+                            onClick={() => scrollToAgentMenu(link.targetId)}
+                            className="inline-flex min-h-7 max-w-full items-center gap-1.5 rounded-md bg-[var(--secondary)] px-2 py-1 text-[0.625rem] font-medium text-[var(--foreground)] ring-1 ring-[var(--border)] transition-colors hover:bg-[var(--accent)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--primary)]/60"
+                            title={localizeUi("ui.chat.chatsettingsdrawer.jumpToValue1", { value1: link.label })}
+                          >
+                            {renderRoleplayAgentMenuIcon(link.id, "chip")}
+                            <span className="min-w-0 truncate">{link.label}</span>
+                            {link.count != null && (
+                              <span className="shrink-0 rounded-full bg-[var(--primary)]/15 px-1.5 py-0.5 text-[0.5625rem] text-[var(--primary)]">
+                                {link.count}
+                              </span>
+                            )}
+                          </button>
+                        ))}
                       </div>
                     </div>
+                  )}
+                  {isRoleplayMode ? (
+                    <div data-trackers-control>
+                      <AgentSettingsCard
+                        id={`${chat.id}:trackers-control`}
+                        icon={<Radar size="0.75rem" className="mt-0.5 text-[var(--primary)]" />}
+                        title={localizeUi("chat.settings.agents.trackersControl")}
+                        description={localizeUi("chat.settings.agents.trackersControlHelp")}
+                        initialOpen={false}
+                      >
+                        <AgentSettingsToggle
+                          label={localizeUi("chat.settings.agents.attachSummaries")}
+                          description={localizeUi("chat.settings.agents.attachSummariesHelp")}
+                          enabled={metadata.attachSummariesToAgents === true}
+                          onToggle={() =>
+                            updateMeta.mutate({
+                              id: chat.id,
+                              attachSummariesToAgents: metadata.attachSummariesToAgents !== true,
+                            })
+                          }
+                        />
+                        {/* Manual trackers run only in roleplay-style chats. */}
+                        {metadata.enableAgents && isRoleplayMode && activeTrackerAgents.length > 0 && (
+                          <AgentSettingsToggle
+                            label={localizeUi("ui.chat.chatsettingsdrawer.attachLorebooksToTrackers")}
+                            description={localizeUi("ui.chat.chatsettingsdrawer.attachLorebooksToTrackersDescription")}
+                            enabled={metadata.attachLorebooksToTrackers === true}
+                            onToggle={() =>
+                              updateMeta.mutate({
+                                id: chat.id,
+                                attachLorebooksToTrackers: !metadata.attachLorebooksToTrackers,
+                              })
+                            }
+                          />
+                        )}
+                        {renderReviewAgentOutputsToggle("card")}
+                        {metadata.enableAgents && isRoleplayMode && activeTrackerAgents.length > 0 && (
+                          <div className="space-y-1.5 rounded-lg bg-[var(--background)]/45 p-2 ring-1 ring-[var(--border)]">
+                            <span className="block px-1 text-[0.625rem] font-medium text-[var(--muted-foreground)]">
+                              {localizeUi("ui.chat.chatsettingsdrawer.individualTrackerSchedule")}
+                            </span>
+                            <div className="space-y-1">
+                              {activeTrackerAgents.map((agent) => {
+                                const manuallyTriggered = activeManualTrackerTypes.has(agent.id);
+                                return (
+                                  <SettingsSwitch
+                                    key={agent.id}
+                                    label={
+                                      <span className="flex min-w-0 items-center gap-2">
+                                        <Sparkles size="0.75rem" className="shrink-0 text-[var(--primary)]" />
+                                        <span className="min-w-0">
+                                          <span className="block truncate text-[0.625rem] font-medium">
+                                            {agent.name}
+                                          </span>
+                                          <span className="block truncate text-[0.5625rem] text-[var(--muted-foreground)]">
+                                            {manuallyTriggered
+                                              ? localizeUi("ui.chat.chatsettingsdrawer.runsOnlyFromHudControls")
+                                              : localizeUi("ui.chat.chatsettingsdrawer.runsAutomatically")}
+                                          </span>
+                                        </span>
+                                      </span>
+                                    }
+                                    checked={manuallyTriggered}
+                                    onChange={() => toggleManualTrackerAgent(agent.id)}
+                                    labelPosition="start"
+                                    className={cn(
+                                      "justify-between rounded-md px-2 py-1.5 text-left",
+                                      manuallyTriggered
+                                        ? "bg-[var(--primary)]/10 text-[var(--foreground)] ring-1 ring-[var(--primary)]/25"
+                                        : "bg-[var(--secondary)] text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]",
+                                    )}
+                                    labelClassName="min-w-0"
+                                  />
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </AgentSettingsCard>
+                    </div>
+                  ) : (
+                    renderReviewAgentOutputsToggle("secondary")
                   )}
                   {isRoleplayMode && (activeGeneration || stoppingGeneration) && (
                     <button
@@ -7908,33 +7954,6 @@ export function ChatSettingsDrawer({
                       <Wrench size="0.75rem" />
                     </div>
                   </button>
-                  {roleplayAgentMenuLinks.length > 0 && (
-                    <div className="rounded-lg bg-[var(--background)]/45 px-2.5 py-2 ring-1 ring-[var(--border)]">
-                      <div className="mb-1.5 flex items-center gap-1.5 text-[0.625rem] font-medium text-[var(--muted-foreground)]">
-                        <ChevronRight size="0.6875rem" className="shrink-0" />
-                        <span>{localizeUi("ui.chat.chatsettingsdrawer.agentMenus")}</span>
-                      </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {roleplayAgentMenuLinks.map((link) => (
-                          <button
-                            key={link.id}
-                            type="button"
-                            onClick={() => scrollToAgentMenu(link.targetId)}
-                            className="inline-flex min-h-7 max-w-full items-center gap-1.5 rounded-md bg-[var(--secondary)] px-2 py-1 text-[0.625rem] font-medium text-[var(--foreground)] ring-1 ring-[var(--border)] transition-colors hover:bg-[var(--accent)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--primary)]/60"
-                            title={localizeUi("ui.chat.chatsettingsdrawer.jumpToValue1", { value1: link.label })}
-                          >
-                            {renderRoleplayAgentMenuIcon(link.id, "chip")}
-                            <span className="min-w-0 truncate">{link.label}</span>
-                            {link.count != null && (
-                              <span className="shrink-0 rounded-full bg-[var(--primary)]/15 px-1.5 py-0.5 text-[0.5625rem] text-[var(--primary)]">
-                                {link.count}
-                              </span>
-                            )}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                   {isGame && metadata.enableAgents && (
                     <div className="mt-1.5 px-3">
                       <select

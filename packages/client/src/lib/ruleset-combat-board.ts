@@ -48,6 +48,10 @@ export interface RulesetBoardCell {
   laid?: true;
   /** The labels of the lasting areas covering it (1.167), first cast first. */
   zones?: string[];
+  /** A wall's section standing here (1.195): whose wall, and what it has left of what; 0 is broken. */
+  section?: { wall: string; health: number; max: number };
+  /** Set while a target is being chosen and the attack may strike the section here (1.195). */
+  strikable?: true;
 }
 
 export const rulesetCellKey = (cell: { x: number; y: number }): string => `${cell.x},${cell.y}`;
@@ -75,7 +79,7 @@ export interface RulesetAimChoice {
 
 /** The cells a choice made on the board carries: where a walk goes, or where a shape lands and how
  *  it is laid. */
-export type RulesetCellChoice = { to?: RulesetCombatCell } & Partial<RulesetAimChoice>;
+export type RulesetCellChoice = { to?: RulesetCombatCell; wall?: RulesetCombatCell } & Partial<RulesetAimChoice>;
 
 /** Whether a wall being aimed has been set down and waits for the way it runs: any cell picks it. */
 export function rulesetAimTurning(option: DirectedRulesetOption, lay: RulesetAimLay | undefined): boolean {
@@ -162,8 +166,15 @@ export function rulesetBoardCells(view: DirectedRulesetView, step: RulesetMenuSt
     for (const cell of [step.lay?.at, ...(step.lay?.also ?? [])]) if (cell) laid.add(rulesetCellKey(cell));
   }
   const targets = new Set(step?.stage === "target" ? step.option.targetIds : []);
+  const strikable = new Set(step?.stage === "target" ? (step.option.walls ?? []).map(rulesetCellKey) : []);
+  const sections = new Map<string, { wall: string; health: number; max: number }>();
   const zoned = new Map<string, string[]>();
   for (const zone of view.zones ?? []) {
+    for (const section of zone.sections ?? []) {
+      for (const cell of section.cells) {
+        sections.set(rulesetCellKey(cell), { wall: zone.label, health: section.health, max: section.max });
+      }
+    }
     for (const cell of zone.cells) {
       const key = rulesetCellKey(cell);
       zoned.set(key, [...(zoned.get(key) ?? []), zone.label]);
@@ -197,6 +208,8 @@ export function rulesetBoardCells(view: DirectedRulesetView, step: RulesetMenuSt
         ...(aim ? { aim } : {}),
         ...(laid.has(key) ? { laid: true as const } : {}),
         ...(zoned.has(key) ? { zones: zoned.get(key)! } : {}),
+        ...(sections.has(key) ? { section: sections.get(key)! } : {}),
+        ...(strikable.has(key) ? { strikable: true as const } : {}),
       });
     }
   }
@@ -239,7 +252,9 @@ export function rulesetNothingInReach(view: DirectedRulesetView): boolean {
       (option.targets.side === "enemy" || option.targets.side === "any" || !!option.area),
   );
   if (offensive.length === 0) return false;
-  return offensive.every((option) => option.targetIds.length === 0 && (option.aim?.length ?? 0) === 0);
+  return offensive.every(
+    (option) => option.targetIds.length === 0 && (option.aim?.length ?? 0) === 0 && (option.walls?.length ?? 0) === 0,
+  );
 }
 
 /** The ids on a line, as names, for the sentences that have to say who. */
@@ -296,7 +311,15 @@ export function rulesetCellSentences(cell: RulesetBoardCell, view: DirectedRules
       );
     }
   }
+  if (cell.section) {
+    said.push(
+      cell.section.health > 0
+        ? t("game.combat.ruleset.board.section", cell.section)
+        : t("game.combat.ruleset.board.sectionBroken", { wall: cell.section.wall }),
+    );
+  }
   if (cell.targetable) said.push(t("game.combat.ruleset.board.targetable"));
+  if (cell.strikable) said.push(t("game.combat.ruleset.board.strikable"));
   if (cell.aim) {
     const names = rulesetNamesOf(view, cell.aim.targetIds);
     said.push(

@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: Wall of Ice stands in 10-foot sections that can be attacked and broken; fire does double, and a broken section stops blocking and leaves frigid air that hurts whoever moves through it (Capability API 1.195).
 - Rulesets: Sleep passes over creatures already unconscious, and Color Spray over creatures that can't see, without spending any of the hit points they roll on them (Capability API 1.194).
 - Rulesets: Wall of Thorns deals piercing damage to whoever it appears around and slashing damage to whoever moves into it (Capability API 1.193).
 - Rulesets: an enlarged duergar's weapons roll twice their dice, and a creature's own action that targets itself (the duergar's Enlarge) now lands on it when taken on its turn (Capability API 1.192).

@@ -474,6 +474,14 @@ export function rulesetCombatEventLine(
         : key("healthPoolNone", { actor: names.combatant(event.actorId), label: event.label, total: event.total });
     case "resized":
       return key("resized", { target: names.combatant(event.targetId), size: event.label });
+    case "section":
+      return key(event.outcome === "miss" ? "sectionMiss" : event.broken ? "sectionBroken" : "section", {
+        actor: names.combatant(event.actorId),
+        label: event.label,
+        wall: event.wall,
+        dealt: event.dealt,
+        health: event.health,
+      });
     case "pushed":
       return key("pushed", {
         actor: names.combatant(event.actorId),

@@ -75,7 +75,7 @@ import {
   rulesetSpanOf,
 } from "./grid.js";
 import { coverTier, elevationAt } from "../tactical-combat/math.js";
-import { rulesetZoneMoveCells, rulesetZoneTurnCells } from "./zones.js";
+import { rulesetStandingSections, rulesetZoneMoveCells, rulesetZoneTurnCells } from "./zones.js";
 import { rulesetCanSee } from "./sight.js";
 import type {
   RulesetCombatAmount,
@@ -346,6 +346,37 @@ export function rulesetTargetRefusal(
   const actor = rulesetCombatant(state, actorId);
   if (rulesetGap(actor, target) > 1 && !rulesetFootprintsSee(grid, actor, target)) return "no-line-of-sight";
   return null;
+}
+
+/**
+ * The cells of standing wall sections an attack may be pointed at instead of a creature (1.195):
+ * one aimed at a single foe or anybody, dealing damage, not an area, a contest or a sequence, with the
+ * section within its reach and seen from where its maker stands.
+ */
+export function rulesetWallTargets(
+  state: RulesetEncounterState,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+): RulesetCombatCell[] {
+  const grid = state.board?.grid;
+  if (!grid || !rulesetPositionOf(actor)) return [];
+  if (action.toHit === undefined || !action.damage || action.area || action.contest || action.sequence) return [];
+  if (action.targets.count < 1 || (action.targets.side !== "enemy" && action.targets.side !== "any")) return [];
+  const sections = rulesetStandingSections(state);
+  if (sections.length === 0) return [];
+  const reach = rulesetOptionReach(state, actor.id, action.id);
+  if (!reach) return [];
+  return sections.flatMap(({ section }) =>
+    section.cells
+      .filter(
+        (cell) =>
+          rulesetDistanceTo(cell, actor) <= reach.max &&
+          rulesetFootprint(actor).some(
+            (from) => rulesetCellDistance(from, cell) <= 1 || rulesetLineOfSight(grid, from, cell),
+          ),
+      )
+      .map((cell) => ({ x: cell.x, y: cell.y })),
+  );
 }
 
 /** Whether an area option may be aimed at this cell: on the board, within the distance it carries,
@@ -1764,6 +1795,12 @@ function optionFrom(
   }
   const forecast = forecastFor(definition, combat, state, actor, action);
   if (forecast) option.forecast = forecast;
+  // Wall sections it may strike instead (1.195). Not in a window: what is taken at its moment is
+  // aimed where its moment says.
+  if (!atItsMoment) {
+    const walls = rulesetWallTargets(state, actor, action);
+    if (walls.length > 0) option.walls = walls;
+  }
   // The weapon's other ways to make this attack, each only while its holder has the shots for it,
   // and each with what it is expected to do. Not in a window: what is taken at its moment is made
   // as it is.

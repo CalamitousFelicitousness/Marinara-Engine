@@ -1928,6 +1928,7 @@ export function commandRulesetCombatDirector(
       ...(command.side ? { side: command.side } : {}),
       ...(command.ring !== undefined ? { ring: command.ring } : {}),
       ...(command.also?.length ? { also: command.also } : {}),
+      ...(command.wall ? { wall: command.wall } : {}),
     });
     if (step.refused && step.refused.type === "refused") {
       return refuse(rulesetRefusalMessage(step.refused.reason), `ruleset_combat_${step.refused.reason}`);

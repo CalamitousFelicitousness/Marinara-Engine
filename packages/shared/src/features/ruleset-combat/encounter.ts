@@ -1850,6 +1850,30 @@ function mechanicsAction(
     if (mechanics.zone.breaksConcentration) action.zone.breaksConcentration = true;
     if (mechanics.zone.damageCap !== undefined) action.zone.damageCap = mechanics.zone.damageCap;
     if (mechanics.zone.damageType) action.zone.damageType = mechanics.zone.damageType;
+    const sections = mechanics.zone.sections;
+    if (sections) {
+      const broken = sections.broken;
+      const brokenAmount = broken ? amountOf(broken.amount) : undefined;
+      action.zone.sections = {
+        every: Math.max(1, rulesetInCells(sections.every, perCell ?? 1)),
+        health: sections.health,
+        defense: sections.defense,
+        ...(sections.vulnerable ? { vulnerable: [...sections.vulnerable] } : {}),
+        ...(sections.resist ? { resist: [...sections.resist] } : {}),
+        ...(sections.immune ? { immune: [...sections.immune] } : {}),
+        ...(broken && brokenAmount
+          ? {
+              broken: {
+                triggers: [...broken.triggers],
+                amount: brokenAmount,
+                ...(broken.damageType ? { damageType: broken.damageType } : {}),
+                ...(broken.save ? { save: broken.save } : {}),
+                ...(broken.onSave ? { onSave: broken.onSave } : {}),
+              },
+            }
+          : {}),
+      };
+    }
     const blocks = mechanics.zone.blocks;
     if (blocks?.length) {
       action.zone.blocks = {

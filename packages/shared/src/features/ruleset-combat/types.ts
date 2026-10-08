@@ -812,6 +812,9 @@ export interface RulesetCombatant {
   dying: boolean;
   stable: boolean;
   defeated: boolean;
+  /** A wall's section stood in for a blow struck at it (1.195), and gone again as it lands: never
+   *  in a fight's list between choices, and asked nothing a creature is asked. */
+  object?: true;
   /** The round it was defeated in, which a revive's window is measured from (1.171). */
   diedRound?: number;
   /** Read from the sheet or the block once, when the fight began. */
@@ -1500,6 +1503,18 @@ export type RulesetCombatEvent =
     }
   /** A pool of health rolled to share out among an action's targets (1.191), and whom it took. */
   | { type: "healthPool"; actorId: string; label: string; rolls: number[]; total: number; affected: string[] }
+  /** A wall's section struck at (1.195): by whom, with what, whether it landed, what it took and
+   *  what it has left; `broken` when that was the last of it. */
+  | {
+      type: "section";
+      actorId: string;
+      label: string;
+      wall: string;
+      outcome: "hit" | "miss" | "critical";
+      dealt: number;
+      health: number;
+      broken?: true;
+    }
   /** Somebody grown or shrunk by a condition (1.190), to the size named, as `label` reads it. */
   | { type: "resized"; targetId: string; size: string; label: string }
   | {
@@ -1592,6 +1607,8 @@ export interface RulesetCombatOption {
   upcastOnly?: true;
   /** How many targets it takes when paid with each of `payWith`, where that grows (1.166). */
   targetsWith?: Record<string, number>;
+  /** The cells of standing wall sections this attack may be pointed at instead (1.195). */
+  walls?: RulesetCombatCell[];
   /** What it costs in the actor's own points, and how many they have. A signature option spends no
    *  budget: it is bought at the end of somebody else's turn. */
   signature?: { cost: number; points: number };
@@ -1673,6 +1690,9 @@ export interface RulesetCombatChoice {
   /** Which side of a wall its `side` is (1.172): toward its maker or away (inside or outside, for a
    *  ring). Away when left out. */
   side?: "near" | "far";
+  /** A wall's section to strike at instead of a creature (1.195): any cell of it, one the option's
+   *  `walls` offers. */
+  wall?: RulesetCombatCell;
   /** Lay a wall whose area allows it as a ring around `at` instead (1.172). */
   ring?: boolean;
   /** Where further copies of an area that allows them are set down (1.173), each touching the cells
@@ -1757,6 +1777,23 @@ export interface RulesetCombatZoneRule {
   blocks?: { move?: boolean; sight?: boolean };
   /** A wall's one side (1.172): cells within `distance` of it there catch as `triggers` say. */
   side?: { distance: number; triggers: Array<"enter" | "turn-start" | "turn-end"> };
+  /** Sections `every` cells long, each struck at and broken apart (1.195); a broken one stops
+   *  blocking and catches whoever is in it at the `broken` triggers. */
+  sections?: {
+    every: number;
+    health: number;
+    defense: number;
+    vulnerable?: string[];
+    resist?: string[];
+    immune?: string[];
+    broken?: {
+      triggers: Array<"enter" | "turn-start" | "turn-end">;
+      amount: RulesetCombatAmount;
+      damageType?: string;
+      save?: string;
+      onSave?: "half" | "none";
+    };
+  };
   /** Nobody sees into it, out of it or through it but by one of these senses, in range (1.173). */
   obscures?: { pierced: string[] };
   /** Conditions on, and damage types kept off, whoever stands in it (1.174). */
@@ -1796,6 +1833,8 @@ export interface RulesetCombatZone {
   rammed?: string;
   /** How many of its caster's turns have ended since it was cast, each adding its `grows` (1.178). */
   grown?: number;
+  /** Its sections and the health each has left (1.195); one at 0 is broken. */
+  sections?: Array<{ cells: RulesetCombatCell[]; health: number }>;
   /** Set alight, and burning away (1.178). */
   burning?: boolean;
 }

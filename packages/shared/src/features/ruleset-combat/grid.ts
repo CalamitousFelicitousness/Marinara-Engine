@@ -427,7 +427,9 @@ export function rulesetWallShape(
   toward?: RulesetCombatCell,
   side?: { distance: number; which: "near" | "far" },
   asRing = false,
-): { cells: RulesetCombatCell[]; side: RulesetCombatCell[] } {
+  /** Cut into sections this many cells long (1.195): along its run, or around a ring. */
+  every?: number,
+): { cells: RulesetCombatCell[]; side: RulesetCombatCell[]; sections?: RulesetCombatCell[][] } {
   const length = Math.max(1, Math.round(area.size));
   const thick = Math.max(1, Math.round(area.width ?? 1));
   const keys = new Set<string>();
@@ -461,7 +463,16 @@ export function rulesetWallShape(
         }
       }
     }
-    return { cells, side: sideCells };
+    if (!every) return { cells, side: sideCells };
+    // Around the ring: as many sections as its outer edge holds, each an equal share of the turn.
+    const outer = cells.filter((cell) => rulesetCellDistance(at, cell) === radius).length;
+    const count = Math.max(1, Math.round(outer / every));
+    const turn = (cell: RulesetCombatCell) => (Math.atan2(cell.y - at.y, cell.x - at.x) + Math.PI) / (2 * Math.PI);
+    return {
+      cells,
+      side: sideCells,
+      sections: cutInto(cells, (cell) => Math.min(count - 1, Math.floor(turn(cell) * count))),
+    };
   }
   let dx: number;
   let dy: number;
@@ -508,7 +519,23 @@ export function rulesetWallShape(
       }
     }
   }
-  return { cells, side: sideCells };
+  if (!every) return { cells, side: sideCells };
+  // Along its run: how far along each cell is, whatever its place across the wall.
+  const along = (cell: RulesetCombatCell) =>
+    Math.max(0, Math.floor(((cell.x - start.x) * dx + (cell.y - start.y) * dy) / (dx * dx + dy * dy) + 1e-9));
+  return { cells, side: sideCells, sections: cutInto(cells, (cell) => Math.floor(along(cell) / every)) };
+}
+
+/** Cells grouped by the section each falls in, in order, with no empty section. */
+function cutInto(cells: RulesetCombatCell[], sectionOf: (cell: RulesetCombatCell) => number): RulesetCombatCell[][] {
+  const groups = new Map<number, RulesetCombatCell[]>();
+  for (const cell of cells) {
+    const index = sectionOf(cell);
+    const group = groups.get(index);
+    if (group) group.push(cell);
+    else groups.set(index, [cell]);
+  }
+  return [...groups.entries()].sort(([a], [b]) => a - b).map(([, group]) => group);
 }
 
 function burstCells(reach: number, centre: RulesetCombatCell, grid: TacticalGrid): RulesetCombatCell[] {

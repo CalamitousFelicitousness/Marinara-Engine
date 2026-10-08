@@ -125,6 +125,7 @@ export function DirectedCombatUI(props: Props) {
       ...(cell?.side ? { side: cell.side } : {}),
       ...(cell?.ring ? { ring: true } : {}),
       ...(cell?.also?.length ? { also: cell.also } : {}),
+      ...(cell?.wall ? { wall: cell.wall } : {}),
     });
   return (
     <div className="flex h-full min-h-0 flex-col">

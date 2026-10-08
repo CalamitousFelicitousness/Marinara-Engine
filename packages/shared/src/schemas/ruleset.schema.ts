@@ -1465,6 +1465,56 @@ const zoneWardsSchema: z.ZodType<RulesetZoneWards, z.ZodTypeDef, unknown> = z
   })
   .strict();
 
+/** A wall in sections that are struck and broken one by one (Capability API 1.195). */
+export interface RulesetZoneSections {
+  every: number;
+  health: number;
+  defense: number;
+  vulnerable?: string[];
+  resist?: string[];
+  immune?: string[];
+  broken?: {
+    triggers: Array<"enter" | "turn-start" | "turn-end">;
+    amount: { dice?: string; flat?: number };
+    damageType?: string;
+    save?: string;
+    onSave?: "half" | "none";
+  };
+}
+
+const zoneSectionsSchema: z.ZodType<RulesetZoneSections, z.ZodTypeDef, unknown> = z
+  .object({
+    every: z.number().finite().gt(0),
+    health: z.number().int().min(1).max(100000),
+    defense: z.number().int().min(0).max(1000),
+    vulnerable: z.array(promptSafeText(40)).min(1).max(16).optional(),
+    resist: z.array(promptSafeText(40)).min(1).max(16).optional(),
+    immune: z.array(promptSafeText(40)).min(1).max(16).optional(),
+    broken: z
+      .object({
+        triggers: z
+          .array(z.enum(["enter", "turn-start", "turn-end"]))
+          .min(1)
+          .max(3)
+          .refine((triggers) => new Set(triggers).size === triggers.length, { message: "A trigger is named once" }),
+        amount: z
+          .object(catalogAmountShape)
+          .strict()
+          .refine((amount) => amount.dice !== undefined || amount.flat !== undefined, {
+            message: "What a broken section deals names dice or a flat number",
+          }),
+        damageType: promptSafeText(40).optional(),
+        save: sheetId.optional(),
+        onSave: z.enum(["half", "none"]).optional(),
+      })
+      .strict()
+      .refine((broken) => broken.onSave === undefined || broken.save !== undefined, {
+        message: '"onSave" says what a "save" does, so it has one',
+      })
+      .optional(),
+  })
+  .strict();
+
 export interface RulesetCatalogZone {
   rounds: number;
   anchor?: "point" | "caster";
@@ -1486,6 +1536,7 @@ export interface RulesetCatalogZone {
   whileHeld?: { condition: string; amount: { dice?: string; flat?: number }; damageType?: string };
   blocks?: Array<"move" | "sight">;
   side?: { distance: number; triggers: Array<"enter" | "turn-start" | "turn-end"> };
+  sections?: RulesetZoneSections;
   obscures?: RulesetSeenThrough;
   inside?: RulesetZoneInside;
   forbids?: RulesetForbids;
@@ -1627,6 +1678,13 @@ const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = 
       .max(2)
       .refine((blocks) => new Set(blocks).size === blocks.length, { message: "Each is named once" })
       .optional(),
+    /** The wall stands in sections `every` long (Capability API 1.195), each struck at like a creature
+     *  with this `defense` and `health`, taking double, half or none of the damage types it is
+     *  `vulnerable` to, `resist`s or is `immune` to. One brought to 0 is broken: it stops blocking,
+     *  and its cells catch whoever is there at the `broken` triggers with that amount, saved against
+     *  with its `save` at the entry's own difficulty. 5e's Wall of Ice: 10-foot panels, AC 12, 30 hit
+     *  points, vulnerable to fire, leaving frigid air that deals 5d6 cold on a Constitution save. */
+    sections: zoneSectionsSchema.optional(),
     /** A wall's one side, chosen as it is cast (1.172): the cells within `distance` of it on that
      *  side catch as `triggers` say, beside the wall's own. 5e's Wall of Fire, 10 ft, turn-end. */
     side: z
@@ -2452,6 +2510,10 @@ function zoneIssue(mechanics: {
   if (!zone) return mechanics.area?.shape === "wall" ? "A wall only ever stays, so it needs a zone" : undefined;
   const wall = mechanics.area?.shape === "wall";
   if ((zone.blocks || zone.side) && !wall) return 'Only a wall "blocks" or has a "side"';
+  if (zone.sections && !zone.blocks) return 'A wall in "sections" is one that "blocks"';
+  if (zone.sections?.broken?.save && !mechanics.save) {
+    return "A broken section's save is rolled against the entry's own difficulty, so it has a save";
+  }
   if (wall && (zone.anchor === "caster" || zone.move || zone.drift)) return "A wall stays where it is cast";
   if (
     (mechanics.area as { copies?: number } | undefined)?.copies &&
@@ -8656,6 +8718,21 @@ function zoneInsideIssues(
     if (types && !types.includes(type.trim().toLowerCase()))
       add([...at, "burns", "by", index], `Unknown damage type "${type}"`);
   });
+  const sections = zone.sections;
+  for (const key of ["vulnerable", "resist", "immune"] as const) {
+    sections?.[key]?.forEach((type, index) => {
+      if (types && !types.includes(type.trim().toLowerCase()))
+        add([...at, "sections", key, index], `Unknown damage type "${type}"`);
+    });
+  }
+  const brokenType = sections?.broken?.damageType;
+  if (brokenType && types && !types.includes(brokenType.trim().toLowerCase())) {
+    add([...at, "sections", "broken", "damageType"], `Unknown damage type "${brokenType}"`);
+  }
+  const brokenSave = sections?.broken?.save;
+  if (brokenSave && !definition.sheet.saves.some((save) => save.id === brokenSave)) {
+    add([...at, "sections", "broken", "save"], `Unknown save "${brokenSave}"`);
+  }
   if (zone.damageType && types && !types.includes(zone.damageType.trim().toLowerCase())) {
     add([...at, "damageType"], `Unknown damage type "${zone.damageType}"`);
   }

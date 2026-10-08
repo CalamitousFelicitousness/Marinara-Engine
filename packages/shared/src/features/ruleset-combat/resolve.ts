@@ -190,6 +190,7 @@ import type {
   RulesetWindowTrigger,
 } from "./types.js";
 import {
+  rulesetStandingSections,
   rulesetStandingZones,
   rulesetZoneCatches,
   rulesetZoneCells,
@@ -1665,6 +1666,7 @@ function placeZone(
           resume.toward,
           rule.side ? { distance: rule.side.distance, which: resume.side ?? "far" } : undefined,
           resume.ring === true,
+          rule.sections?.every,
         )
       : undefined;
   const cells = wall
@@ -1690,6 +1692,10 @@ function placeZone(
     ...(facing && (facing.dx || facing.dy) ? { facing } : {}),
     ...(cells ? { cells } : {}),
     ...(wall?.side.length ? { sideCells: wall.side } : {}),
+    // Each section at its full health (1.195).
+    ...(wall?.sections && rule.sections
+      ? { sections: wall.sections.map((cells) => ({ cells, health: rule.sections!.health })) }
+      : {}),
     ...(!grid ? { held: [...resume.targetIds] } : {}),
     ...(resume.payWith !== undefined ? { payWith: resume.payWith } : {}),
     ...(caught.length ? { struck: Object.fromEntries(caught.map((id) => [id, stamp])) } : {}),
@@ -1781,7 +1787,17 @@ function zoneStrike(
   region: "zone" | "side" = "zone",
 ): void {
   const action = caster.actions.find((entry) => entry.id === zone.actionId);
-  const triggers = region === "side" ? (action?.zone?.side?.triggers ?? []) : zone.triggers;
+  // Standing where a section broke (1.195): what is left there catches as it says, in place of the wall.
+  const broken = action?.zone?.sections?.broken;
+  const inBroken =
+    region === "zone" &&
+    !!broken &&
+    (zone.sections ?? []).some((section) => section.health <= 0 && rulesetZoneHoldsOne(section.cells, target));
+  const triggers = inBroken
+    ? broken!.triggers
+    : region === "side"
+      ? (action?.zone?.side?.triggers ?? [])
+      : zone.triggers;
   // A ram is no trigger of its own: being rammed always catches, whatever moving in would do (1.170).
   if ((trigger !== "ram" && !triggers.includes(trigger)) || !rulesetCombatStanding(target)) return;
   if (!action || !rulesetZoneCatches(caster, zone, action, target)) return;
@@ -1800,6 +1816,10 @@ function zoneStrike(
     targetId: target.id,
     trigger,
   });
+  if (inBroken) {
+    brokenStrike(ctx, caster, zone, action, broken!, target);
+    return;
+  }
   const aimed = ctx.aimedAt;
   const aimedAlso = ctx.aimedAlso;
   delete ctx.aimedAlso;
@@ -1850,6 +1870,42 @@ function zoneStrike(
   if (aimed) ctx.aimedAt = aimed;
   else delete ctx.aimedAt;
   if (aimedAlso) ctx.aimedAlso = aimedAlso;
+  if (action.zone?.damageCap !== undefined) zoneDealt(ctx, caster, zone, action.zone.damageCap, from);
+}
+
+/** What a wall's broken section does to whoever it catches (1.195): its amount of its type, saved
+ *  against with its save at the entry's own difficulty, half or none of it on a success. */
+function brokenStrike(
+  ctx: RulesetCombatContext,
+  caster: RulesetCombatant,
+  zone: RulesetCombatZone,
+  action: RulesetCombatAction,
+  broken: NonNullable<NonNullable<NonNullable<RulesetCombatAction["zone"]>["sections"]>["broken"]>,
+  target: RulesetCombatant,
+): void {
+  const difficulty = action.save?.difficulty ?? action.saveDifficulty;
+  const saved =
+    broken.save !== undefined && difficulty !== undefined
+      ? rollSave(ctx, target, broken.save, difficulty, caster.id)
+      : false;
+  if (saved && broken.onSave !== "half") return;
+  const from = ctx.events.length;
+  const harm = rulesetCombatIsPool(ctx.combat)
+    ? (({ rolls, flat, total, pool }) => ({ rolls, flat, amount: total, pool }))(
+        throwHarm(ctx, target, broken.amount, broken.damageType, 0),
+      )
+    : (() => {
+        const rolls = rollRulesetDice(ctx.roll, broken.amount.count, broken.amount.sides);
+        return { rolls, flat: broken.amount.flat, amount: sumOf(rolls) + broken.amount.flat };
+      })();
+  const dealt = applyDamage(ctx, target, {
+    sourceId: caster.id,
+    label: zone.label,
+    ...(broken.damageType ? { damageType: broken.damageType } : {}),
+    ...harm,
+    ...(saved ? { amount: Math.floor(harm.amount / 2) } : {}),
+  });
+  afterBlow(ctx, target, dealt, false);
   if (action.zone?.damageCap !== undefined) zoneDealt(ctx, caster, zone, action.zone.damageCap, from);
 }
 
@@ -2381,6 +2437,8 @@ export function applyRulesetCombatChoice(
   if (choice.payWith !== undefined && !(option.payWith ?? []).includes(choice.payWith)) {
     return refusal(state, choice.actorId, "bad-pool", option.id);
   }
+  // A wall's section struck at instead of a creature (1.195).
+  if (choice.wall !== undefined) return strikeSection(definition, combat, state, actor, option, choice, roller);
   // Targets, checked against the side and the count the option itself declared, or the count the
   // pool it is paid with lets it take (1.166).
   const paidCount = choice.payWith !== undefined ? option.targetsWith?.[choice.payWith] : undefined;
@@ -2617,6 +2675,130 @@ export function applyRulesetCombatChoice(
   }
   // A paid use opens its moments before anything lands.
   reopenAction(ctx, working, action, resume);
+  noteOutcome(ctx);
+  return finish();
+}
+
+/** Who stands in for a wall's section while a blow is struck at it (1.195). */
+const SECTION_ID = "wall-section";
+
+/**
+ * A blow struck at a wall's section (1.195), paid for as any attack is. The section stands in as a
+ * creature with its defense, its health and what it shrugs off or suffers double, for that blow only;
+ * the attack is made at it as at anybody, and what it took is written back to the section. Nobody's
+ * answers are asked: a wall is not anybody. At 0 it is broken and stops closing its cells.
+ */
+function strikeSection(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  state: RulesetEncounterState,
+  actor: RulesetCombatant,
+  option: RulesetCombatOption,
+  choice: RulesetCombatChoice,
+  roller: RulesetCombatRoller,
+): RulesetCombatStep {
+  const cell = choice.wall;
+  const offered =
+    !!cell && typeof cell === "object" && option.walls?.some((one) => one.x === cell.x && one.y === cell.y);
+  if (!cell || !offered || choice.mode !== undefined) return refusal(state, choice.actorId, "bad-target", option.id);
+  const found = rulesetStandingSections(state).find(({ section }) =>
+    section.cells.some((one) => one.x === cell.x && one.y === cell.y),
+  );
+  if (!found) return refusal(state, choice.actorId, "bad-target", option.id);
+  const own = actor.actions.find((entry) => entry.id === option.id)!;
+  const styles = rulesetAttackStyles(combat, actor, own);
+  if (choice.style !== undefined && !styles.some((style) => style.id === choice.style)) {
+    return refusal(state, choice.actorId, "unknown-style", option.id);
+  }
+  const style = styles.find((one) => one.id === choice.style) ?? styles[0];
+  const { ctx, finish } = begin(definition, combat, state, roller);
+  const working = rulesetCombatant(ctx.state, actor.id)!;
+  const action = working.actions.find((entry) => entry.id === option.id)!;
+  if (option.budget) spendBudget(ctx, working, option.budget);
+  countAttack(ctx, working);
+  const paid = planRulesetCombatCost(definition, working, action, choice.payWith);
+  if (!paid) return refusal(state, choice.actorId, "insufficient", option.id);
+  if (paid.live && working.sheet) working.sheet.live = paid.live;
+  countRulesetSpend(working, paid.cost);
+  for (const entry of paid.cost) {
+    ctx.events.push({ type: "spend", actorId: working.id, pool: entry.pool, label: entry.label, amount: entry.amount });
+  }
+  spendAvailability(ctx, working, action);
+  const standing = rulesetStandingSections(ctx.state).find(({ section }) =>
+    section.cells.some((one) => one.x === cell.x && one.y === cell.y),
+  )!;
+  const rule = standing.action.zone!.sections!;
+  const stand: RulesetCombatant = {
+    id: SECTION_ID,
+    name: standing.zone.label,
+    side: working.side === "party" ? "enemy" : "party",
+    initiative: 0,
+    initiativeRoll: [],
+    initiativeModifier: 0,
+    budgets: {},
+    actions: [],
+    uses: {},
+    spent: [],
+    tracked: [],
+    concentrating: null,
+    flags: {},
+    down: false,
+    dying: false,
+    stable: false,
+    defeated: false,
+    defense: rule.defense,
+    speed: 0,
+    saves: {},
+    block: {
+      health: rule.health,
+      defense: rule.defense,
+      initiativeModifier: 0,
+      speed: 0,
+      actions: [],
+      ...(rule.resist ? { resist: [...rule.resist] } : {}),
+      ...(rule.vulnerable ? { vulnerable: [...rule.vulnerable] } : {}),
+      ...(rule.immune ? { immune: [...rule.immune] } : {}),
+    },
+    health: { value: standing.section.health, max: rule.health, temp: 0 },
+    x: cell.x,
+    y: cell.y,
+    object: true,
+  };
+  const from = ctx.events.length;
+  ctx.state.combatants.push(stand);
+  resolveAction(
+    ctx,
+    working,
+    action,
+    [stand],
+    choice.payWith,
+    undefined,
+    style?.id,
+    style?.spends ? working.initiative : undefined,
+  );
+  ctx.state.combatants = ctx.state.combatants.filter((one) => one !== stand);
+  // What the blow did to the section is told as one line of its own; the rest stays as it was.
+  const about = (event: RulesetCombatEvent) =>
+    ("targetId" in event && event.targetId === SECTION_ID) || ("actorId" in event && event.actorId === SECTION_ID);
+  const said = ctx.events.splice(from);
+  const roll = said.find((event) => event.type === "attack" && event.targetId === SECTION_ID);
+  const dealt = said.reduce(
+    (total, event) => (event.type === "damage" && event.targetId === SECTION_ID ? total + event.dealt : total),
+    0,
+  );
+  ctx.events.push(...said.filter((event) => !about(event)));
+  const left = Math.max(0, stand.health!.value);
+  standing.section.health = left;
+  ctx.events.push({
+    type: "section",
+    actorId: working.id,
+    label: action.label,
+    wall: standing.zone.label,
+    outcome: roll?.type === "attack" && (roll.outcome === "miss" || roll.outcome === "critical") ? roll.outcome : "hit",
+    dealt,
+    health: left,
+    ...(left <= 0 ? { broken: true as const } : {}),
+  });
   noteOutcome(ctx);
   return finish();
 }
@@ -2863,6 +3045,7 @@ function pushTarget(ctx: RulesetCombatContext, actor: RulesetCombatant, target: 
  * nothing about falling only notes it.
  */
 function fall(ctx: RulesetCombatContext, actor: RulesetCombatant, target: RulesetCombatant, levels: number): void {
+  if (target.object) return;
   const resume = { kind: "fall" as const, actorId: actor.id, targetId: target.id, levels };
   if (ctx.falling) {
     ctx.falling.push(resume);
@@ -3762,6 +3945,8 @@ function hitAnswers(
   target: RulesetCombatant,
   action: RulesetCombatAction,
 ): string[] {
+  // A wall's section is nobody to answer for (1.195).
+  if (target.object) return [];
   return ctx.state.combatants
     .filter(
       (one) =>

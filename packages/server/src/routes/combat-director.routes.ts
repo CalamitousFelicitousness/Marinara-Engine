@@ -215,6 +215,8 @@ const command = z.discriminatedUnion("type", [
     side: z.enum(["near", "far"]).optional(),
     ring: z.boolean().optional(),
     also: z.array(coord).max(9).optional(),
+    /** A wall's section struck at instead of a creature (1.195), checked by the resolver. */
+    wall: coord.optional(),
   }),
   z.object({ type: z.literal("choose"), candidateId: key }),
   z.object({ type: z.literal("continue") }),

@@ -578,6 +578,18 @@ function soakSaysSomething(node) {
   requireAnyOf(node, ["all", "byKind"]);
 }
 
+// What a wall's broken section deals (1.195) names dice or a flat number, and its `onSave` its save.
+// Found by its shape: `triggers`, `amount` and `onSave` together, wherever a zone sits.
+function brokenSectionRules(node) {
+  if (Array.isArray(node)) return node.forEach(brokenSectionRules);
+  if (!node || typeof node !== "object") return;
+  Object.values(node).forEach(brokenSectionRules);
+  const properties = node.properties;
+  if (node.type !== "object" || !properties?.triggers || !properties.amount || !properties.onSave) return;
+  requireAnyOf(properties.amount, ["dice", "flat"]);
+  node.allOf = [...(node.allOf ?? []), { if: { required: ["onSave"] }, then: { required: ["save"] } }];
+}
+
 /**
  * Rules a catalog entry's mechanics keep that the shape alone does not say: riders carry their
  * rider, free actions name no budget, and summons belong to attacks against enemies. Zod refuses
@@ -730,6 +742,7 @@ requireCheckEffectDoesSomething(schema);
 requireFaceRuleSaysSomething(schema);
 spendOnlyOnAPool(schema);
 requireMechanicsPairs(schema);
+brokenSectionRules(schema);
 requireOneCatalogSource(schema);
 requireOneEntryContent(schema);
 requireCatalogFeeds(schema);

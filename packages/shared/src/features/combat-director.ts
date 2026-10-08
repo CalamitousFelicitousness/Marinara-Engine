@@ -61,6 +61,8 @@ export type DirectedCommand =
       ring?: boolean;
       /** Where further copies of an area that allows them are set down (1.173). */
       also?: Array<{ x: number; y: number }>;
+      /** A wall's section struck at instead of a creature (1.195): one of the option's `walls`. */
+      wall?: { x: number; y: number };
     }
   | { type: "choose"; candidateId: string }
   | { type: "continue" }
@@ -200,6 +202,8 @@ export interface DirectedRulesetView {
     cells: Array<{ x: number; y: number }>;
     /** A wall's chosen side (1.172), the cells that catch beside it. */
     side?: Array<{ x: number; y: number }>;
+    /** A wall's sections (1.195): their cells and the health each has left; one at 0 is broken. */
+    sections?: Array<{ cells: Array<{ x: number; y: number }>; health: number; max: number }>;
   }>;
   /** The legal menu, present only while a human controls the one being asked: the actor whose turn
    *  it is, or, while a window holds the fight open, whoever that window is asking. */

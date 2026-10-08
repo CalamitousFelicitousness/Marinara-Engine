@@ -1522,6 +1522,17 @@ function carriesWardsAndSaves(value: unknown, depth = 0): boolean {
 
 const MODIFIER_TARGETS = new Set<string>(RULESET_COMBAT_MODIFIER_TARGETS);
 
+/** A wall in sections that are struck and broken (1.195), in catalogs too. */
+function carriesWallSections(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesWallSections(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const zone = plainRecord(record.zone);
+  if (zone && zone.sections !== undefined) return true;
+  return Object.values(record).some((one) => carriesWallSections(one, depth + 1));
+}
+
 /** An entry's health pool that passes over some of its targets (1.194), in catalogs too. */
 function carriesHealthPoolSkips(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -3146,6 +3157,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Walls in sections, 1.195.
+  if (
+    !declaresApi(195) &&
+    (carriesWallSections(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesWallSections(document)))
+  ) {
+    return "A ruleset with walls in sections that are struck and broken requires schemaVersion 2 and capabilityApi 1.195 or newer";
   }
   // A health pool passing over some, 1.194.
   if (

@@ -437,6 +437,14 @@ export function RulesetCombatMenu({
     const option = step.option;
     const many = option.targets.count > 1;
     const targets = view.combatants.filter((combatant) => option.targetIds.includes(combatant.id));
+    // The walls' sections it may strike instead (1.195), each by the first of its cells offered.
+    const offered = new Set((option.walls ?? []).map((cell) => `${cell.x},${cell.y}`));
+    const sections = (view.zones ?? []).flatMap((zone) =>
+      (zone.sections ?? []).flatMap((section) => {
+        const cell = section.cells.find((one) => offered.has(`${one.x},${one.y}`));
+        return cell ? [{ wall: zone.label, health: section.health, max: section.max, cell }] : [];
+      }),
+    );
     return (
       <div className="flex flex-col gap-2 p-3">
         <p className="text-xs text-amber-200" id="ruleset-target-prompt">
@@ -477,6 +485,33 @@ export function RulesetCombatMenu({
               </button>
             );
           })}
+          {sections.map((section, index) => (
+            <button
+              ref={index === 0 && targets.length === 0 ? first : undefined}
+              key={`${section.cell.x},${section.cell.y}`}
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                closeStep();
+                onChoose(
+                  option.id,
+                  [],
+                  step.payWith,
+                  { wall: { x: section.cell.x, y: section.cell.y } },
+                  step.style,
+                  step.mode,
+                );
+              }}
+              className={cn(buttonClass, "border-sky-300/30 bg-sky-500/10 text-white/85 hover:bg-sky-500/20")}
+            >
+              <span className="block font-semibold">
+                {t("game.combat.ruleset.target.wall", { wall: section.wall })}
+              </span>
+              <span className="mt-0.5 block text-[0.65rem] tabular-nums text-white/55">
+                {t("game.combat.ruleset.status.health", { value: section.health, max: section.max })}
+              </span>
+            </button>
+          ))}
         </div>
         <div className="flex flex-wrap gap-2">
           {many && (

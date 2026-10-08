@@ -951,7 +951,10 @@ const capabilityPackageManifestBaseSchema = z
 //        Wall of Thorns: piercing as it appears, slashing to whoever moves into it).
 // 1.194: catalog mechanics' `healthPoolSkips` (whom a health pool passes over: holders of its
 //        `conditions`, as Sleep the unconscious, and with `unseeing` those who can't see its maker).
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 194 } as const);
+// 1.195: a wall zone's `sections` (struck at like creatures with their own defense and health, and
+//        broken apart, a broken one leaving what its `broken` says: 5e's Wall of Ice), and a
+//        choice's `wall` cell, which an attack option's `walls` offers.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 195 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

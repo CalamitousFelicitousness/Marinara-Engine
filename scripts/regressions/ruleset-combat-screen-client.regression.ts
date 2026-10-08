@@ -750,6 +750,18 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["fell", say({ type: "fell", targetId: "lurker", levels: 2 })],
     ["resized", say({ type: "resized", targetId: "lurker", size: "large", label: "Large" })],
     [
+      "section",
+      say({
+        type: "section",
+        actorId: "brenna",
+        label: "Mace",
+        wall: "Wall of Ice",
+        outcome: "hit",
+        dealt: 7,
+        health: 23,
+      }),
+    ],
+    [
       "healthPool",
       say({ type: "healthPool", actorId: "brenna", label: "Sleep", rolls: [8, 7], total: 15, affected: ["lurker"] }),
     ],
@@ -929,6 +941,23 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.equal(printed.get("charged"), "Thorn Lurker charges Brenna with Gore.");
   assert.equal(printed.get("pushed"), "Brenna pushes Thorn Lurker back 1, to 4, 2.");
   assert.equal(printed.get("resized"), "Thorn Lurker is now Large.");
+  assert.equal(printed.get("section"), "Brenna's Mace strikes the Wall of Ice for 7; that section has 23 left.");
+  const struck = (outcome: "hit" | "miss" | "critical", dealt: number, health: number, broken?: true) =>
+    say({
+      type: "section",
+      actorId: "brenna",
+      label: "Mace",
+      wall: "Wall of Ice",
+      outcome,
+      dealt,
+      health,
+      ...(broken ? { broken } : {}),
+    });
+  assert.equal(struck("miss", 0, 30), "Brenna's Mace misses the Wall of Ice.");
+  assert.equal(
+    struck("critical", 30, 0, true),
+    "Brenna's Mace strikes the Wall of Ice for 30 and breaks that section.",
+  );
   assert.equal(printed.get("healthPool"), "Brenna's Sleep rolls 15, enough for Thorn Lurker.");
   assert.equal(
     say({ type: "healthPool", actorId: "brenna", label: "Sleep", rolls: [1, 1], total: 2, affected: [] }),
@@ -1488,6 +1517,50 @@ function drawn(...rows: string[]): TacticalGrid {
   // Whoever is up is said out loud, so a screen reader is told where the turn is.
   const onTurn = rulesetBoardCells(near, null).find((cell) => cell.occupant?.id === "brenna")!;
   assert.ok(rulesetCellSentences(onTurn, near, t).includes("On turn."));
+
+  // A wall's sections (1.195): what each has left, and the ones an attack may strike instead.
+  const iced: DirectedRulesetView = {
+    ...near,
+    zones: [
+      {
+        casterId: "corwin",
+        label: "Wall of Ice",
+        rounds: 10,
+        cells: [
+          { x: 3, y: 1 },
+          { x: 3, y: 2 },
+        ],
+        sections: [
+          { cells: [{ x: 3, y: 1 }], health: 20, max: 30 },
+          { cells: [{ x: 3, y: 2 }], health: 0, max: 30 },
+        ],
+      },
+    ],
+  };
+  const striking = { ...nearSword, targetIds: [], walls: [{ x: 3, y: 1 }] };
+  assert.ok(rulesetOptionNeedsTargets(striking), "a section to strike is something to point it at");
+  const strikes = rulesetBoardCells(iced, { stage: "target", option: striking, targets: [] });
+  assert.deepEqual(
+    strikes.filter((cell) => cell.strikable).map((cell) => rulesetCellKey(cell)),
+    ["3,1"],
+  );
+  assert.deepEqual(at(strikes, 3, 1).section, { wall: "Wall of Ice", health: 20, max: 30 });
+  assert.match(
+    rulesetCellSentences(at(strikes, 3, 1), iced, t).join(" "),
+    /A section of Wall of Ice, with 20 of 30 left\. Can be struck\.$/u,
+  );
+  assert.match(rulesetCellSentences(at(strikes, 3, 2), iced, t).join(" "), /A broken section of Wall of Ice\.$/u);
+  assert.equal(at(rulesetBoardCells(iced, null), 3, 1).strikable, undefined, "only while a target is chosen");
+  assert.equal(
+    rulesetNothingInReach({
+      ...view,
+      options: view.options!.map((option) =>
+        option.label === "Longsword" ? { ...option, walls: [{ x: 3, y: 1 }] } : option,
+      ),
+    }),
+    false,
+    "a section in reach is something to do",
+  );
 }
 
 // ── Ember Roads, in paces: the same code, a different unit, and no strikes at all ──

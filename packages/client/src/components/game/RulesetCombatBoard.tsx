@@ -169,6 +169,12 @@ export function RulesetCombatBoard({
       onChoose(step.option.id, [], step.payWith, taken.send, step.style, step.mode);
       return;
     }
+    // A wall's section the attack may strike (1.195): sent at once, as one target is.
+    if (step.stage === "target" && cell.strikable) {
+      setStep(null);
+      onChoose(step.option.id, [], step.payWith, { wall: { x: cell.x, y: cell.y } }, step.style, step.mode);
+      return;
+    }
     // The same two rules the list in the menu picks by, so clicking a token and clicking its name
     // can never disagree about what was picked.
     if (step.stage === "target" && cell.targetable && cell.occupant) {
@@ -408,6 +414,15 @@ export function RulesetCombatBoard({
                       className="pointer-events-none absolute inset-0 bg-fuchsia-500/20 ring-1 ring-inset ring-fuchsia-300/40"
                       title={cell.zones.join(", ")}
                     />
+                  )}
+                  {/* A wall's section (1.195): how much it has left, and a ring while it may be struck. */}
+                  {cell.section && cell.section.health > 0 && (
+                    <span className="pointer-events-none absolute bottom-0 left-0 bg-black/60 px-[2px] text-[0.5rem] font-bold leading-tight tabular-nums text-sky-100">
+                      {cell.section.health}
+                    </span>
+                  )}
+                  {cell.strikable && (
+                    <span className="pointer-events-none absolute inset-0 ring-2 ring-inset ring-[var(--destructive)]" />
                   )}
                   {(cell.aim || cell.laid) && (
                     <span

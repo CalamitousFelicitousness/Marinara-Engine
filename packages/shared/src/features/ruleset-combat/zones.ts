@@ -87,7 +87,14 @@ export function rulesetSyncZoneWalls(state: RulesetEncounterState): void {
     const blocks = action.zone?.blocks;
     if (!blocks || zone.anchor !== "point") continue;
     const bits = (blocks.move ? 1 : 0) | (blocks.sight ? 2 : 0);
+    // A broken section closes nothing (1.195).
+    const broken = new Set(
+      (zone.sections ?? [])
+        .filter((section) => section.health <= 0)
+        .flatMap((section) => section.cells.map((cell) => `${cell.x},${cell.y}`)),
+    );
     for (const cell of zone.cells ?? []) {
+      if (broken.has(`${cell.x},${cell.y}`)) continue;
       const key = `${cell.x},${cell.y}`;
       walls[key] = (walls[key] ?? 0) | bits;
     }
@@ -103,14 +110,41 @@ export function rulesetZonesShown(state: RulesetEncounterState): Array<{
   rounds: number;
   cells: RulesetCombatCell[];
   side?: RulesetCombatCell[];
+  sections?: Array<{ cells: RulesetCombatCell[]; health: number; max: number }>;
 }> {
-  return rulesetStandingZones(state).map(({ caster, zone }) => ({
+  return rulesetStandingZones(state).map(({ caster, zone, action }) => ({
     casterId: caster.id,
     label: zone.label,
     rounds: zone.rounds,
     cells: rulesetZoneCells(state, rulesetCombatant(state, caster.id) ?? caster, zone).map((cell) => ({ ...cell })),
     ...(zone.sideCells?.length ? { side: zone.sideCells.map((cell) => ({ ...cell })) } : {}),
+    // Each section and what it has left (1.195).
+    ...(zone.sections?.length && action.zone?.sections
+      ? {
+          sections: zone.sections.map((section) => ({
+            cells: section.cells.map((cell) => ({ ...cell })),
+            health: Math.max(0, section.health),
+            max: action.zone!.sections!.health,
+          })),
+        }
+      : {}),
   }));
+}
+
+/** The standing sections of walls that may be struck (1.195), each with its zone. */
+export function rulesetStandingSections(state: RulesetEncounterState): Array<{
+  caster: RulesetCombatant;
+  zone: RulesetCombatZone;
+  action: RulesetCombatAction;
+  section: { cells: RulesetCombatCell[]; health: number };
+}> {
+  return rulesetStandingZones(state).flatMap(({ caster, zone, action }) =>
+    action.zone?.sections
+      ? (zone.sections ?? [])
+          .filter((section) => section.health > 0)
+          .map((section) => ({ caster, zone, action, section }))
+      : [],
+  );
 }
 
 /** Where a zone may be moved to (1.168): any cell of the board within its `move` distance of where

@@ -157,6 +157,8 @@ export interface RulesetCombatSaveRider {
   /** Who succeeds without rolling (1.176): immune to one of these damage types or conditions, or
    *  one that is this. */
   succeeds?: { immune?: string[]; conditionImmune?: string[]; is?: RulesetTargetIs };
+  /** A target that is this rolls it twice, the better or the worse kept (1.180). */
+  modes?: Array<{ is: RulesetTargetIs; mode: "advantage" | "disadvantage" }>;
 }
 
 /** How often something can be done at all, and over what stretch. `day` outlives one fight, so the
@@ -407,7 +409,15 @@ export interface RulesetCombatAction {
   /** Offered only while this reads within its bounds off the holder's sheet (Capability API 1.161). */
   usableWhen?: RulesetSheetBounds;
   /** Who it may be pointed at or catch, by what they are (Capability API 1.163). */
-  targetTypes?: { is?: RulesetTargetIs; not?: RulesetTargetIs };
+  targetTypes?: {
+    is?: RulesetTargetIs;
+    not?: RulesetTargetIs;
+    /** Ability scores at most these, and not immune to these conditions (1.180). */
+    abilityAtMost?: Record<string, number>;
+    notImmuneTo?: string[];
+  };
+  /** Dealt at its most to a target that is this (1.180). */
+  maxAgainst?: RulesetTargetIs;
   damage?: RulesetCombatDamage;
   heal?: RulesetCombatAmount;
   temporary?: RulesetCombatAmount;

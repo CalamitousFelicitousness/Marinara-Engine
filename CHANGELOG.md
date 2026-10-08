@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: Sunbeam and Moonbeam are harder to save against for undead, oozes and shapechangers, Blight deals its most to plants, Animal Friendship and Sleep pass over creatures they cannot affect, and Protection from Evil and Good, Dragon Scale Mail and Chill Touch work in a fight
 - Rulesets: monsters can push on a hit or a failed save, like a bronze dragon's Repulsion Breath or a dragon turtle's Tail, and a scroll's line can be wider than one square
 - Rulesets: Delayed Blast Fireball's bead grows each turn and goes off when the spell ends or someone touches it, and fire burns a Web away, burning whoever starts a turn in it
 - Rulesets: spells can push whoever they hit away from the caster, Gust of Wind's line moves with its caster, turns on a bonus action and makes walking toward the caster cost double, and goggles of night add 60 feet to darkvision a wearer already has

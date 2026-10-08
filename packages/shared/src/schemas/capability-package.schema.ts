@@ -911,7 +911,11 @@ const capabilityPackageManifestBaseSchema = z
 // away when damage of a type it names reaches it (`burns`).
 // 1.179: a creature's action may `push` (on a failed save when it has one), and an item's use may
 // give its line a `width`.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 179 } as const);
+// 1.180: a save may roll twice by what its target is (`save.modes`), damage may be at its most against
+// a kind (`maxAgainst`), `targetTypes` may bound ability scores and condition immunities, and
+// condition modifiers roll attacks twice (`attacks`, `attacks-taken` with `from`, `atSource`) or
+// narrow saves to what a kind of creature does (`against.from`).
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 180 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

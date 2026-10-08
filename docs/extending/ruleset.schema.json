@@ -8491,6 +8491,58 @@
                           },
                           "additionalProperties": false
                         },
+                        "abilityAtMost": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "integer",
+                            "minimum": -100,
+                            "maximum": 1000
+                          },
+                          "propertyNames": {
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "properties": {
+                            "$comment": {}
+                          }
+                        },
+                        "notImmuneTo": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 8
+                        },
+                        "$comment": {}
+                      },
+                      "additionalProperties": false
+                    },
+                    "maxAgainst": {
+                      "type": "object",
+                      "properties": {
+                        "types": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 20
+                        },
+                        "tags": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 20
+                        },
                         "$comment": {}
                       },
                       "additionalProperties": false
@@ -8941,6 +8993,56 @@
                             "$comment": {}
                           },
                           "additionalProperties": false
+                        },
+                        "modes": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "is": {
+                                "type": "object",
+                                "properties": {
+                                  "types": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 20
+                                  },
+                                  "tags": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 20
+                                  },
+                                  "$comment": {}
+                                },
+                                "additionalProperties": false
+                              },
+                              "mode": {
+                                "type": "string",
+                                "enum": [
+                                  "advantage",
+                                  "disadvantage"
+                                ]
+                              },
+                              "$comment": {}
+                            },
+                            "required": [
+                              "is",
+                              "mode"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "minItems": 1,
+                          "maxItems": 4
                         },
                         "$comment": {}
                       },
@@ -11709,6 +11811,56 @@
                                 },
                                 "additionalProperties": false
                               },
+                              "modes": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "is": {
+                                      "type": "object",
+                                      "properties": {
+                                        "types": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 20
+                                        },
+                                        "tags": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 20
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "additionalProperties": false
+                                    },
+                                    "mode": {
+                                      "type": "string",
+                                      "enum": [
+                                        "advantage",
+                                        "disadvantage"
+                                      ]
+                                    },
+                                    "$comment": {}
+                                  },
+                                  "required": [
+                                    "is",
+                                    "mode"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                "minItems": 1,
+                                "maxItems": 4
+                              },
                               "$comment": {}
                             },
                             "required": [
@@ -13673,7 +13825,8 @@
                                   "speed",
                                   "health-max",
                                   "damage",
-                                  "damage-taken"
+                                  "damage-taken",
+                                  "attacks-taken"
                                 ]
                               },
                               "attacks": {
@@ -13776,6 +13929,33 @@
                                     "type": "boolean",
                                     "const": true
                                   },
+                                  "from": {
+                                    "type": "object",
+                                    "properties": {
+                                      "types": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 20
+                                      },
+                                      "tags": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 20
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "additionalProperties": false
+                                  },
                                   "$comment": {}
                                 },
                                 "additionalProperties": false,
@@ -13807,6 +13987,37 @@
                                   "advantage",
                                   "disadvantage"
                                 ]
+                              },
+                              "from": {
+                                "type": "object",
+                                "properties": {
+                                  "types": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 20
+                                  },
+                                  "tags": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 20
+                                  },
+                                  "$comment": {}
+                                },
+                                "additionalProperties": false
+                              },
+                              "atSource": {
+                                "type": "boolean",
+                                "const": true
                               },
                               "$comment": {}
                             },
@@ -14421,7 +14632,8 @@
                                   "speed",
                                   "health-max",
                                   "damage",
-                                  "damage-taken"
+                                  "damage-taken",
+                                  "attacks-taken"
                                 ]
                               },
                               "attacks": {
@@ -14524,6 +14736,33 @@
                                     "type": "boolean",
                                     "const": true
                                   },
+                                  "from": {
+                                    "type": "object",
+                                    "properties": {
+                                      "types": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 20
+                                      },
+                                      "tags": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 20
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "additionalProperties": false
+                                  },
                                   "$comment": {}
                                 },
                                 "additionalProperties": false,
@@ -14555,6 +14794,37 @@
                                   "advantage",
                                   "disadvantage"
                                 ]
+                              },
+                              "from": {
+                                "type": "object",
+                                "properties": {
+                                  "types": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 20
+                                  },
+                                  "tags": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 20
+                                  },
+                                  "$comment": {}
+                                },
+                                "additionalProperties": false
+                              },
+                              "atSource": {
+                                "type": "boolean",
+                                "const": true
                               },
                               "$comment": {}
                             },
@@ -15323,7 +15593,8 @@
                                         "speed",
                                         "health-max",
                                         "damage",
-                                        "damage-taken"
+                                        "damage-taken",
+                                        "attacks-taken"
                                       ]
                                     },
                                     "attacks": {
@@ -15426,6 +15697,33 @@
                                           "type": "boolean",
                                           "const": true
                                         },
+                                        "from": {
+                                          "type": "object",
+                                          "properties": {
+                                            "types": {
+                                              "type": "array",
+                                              "items": {
+                                                "type": "string",
+                                                "maxLength": 40,
+                                                "pattern": "^[a-z][a-z0-9_]*$"
+                                              },
+                                              "minItems": 1,
+                                              "maxItems": 20
+                                            },
+                                            "tags": {
+                                              "type": "array",
+                                              "items": {
+                                                "type": "string",
+                                                "maxLength": 40,
+                                                "pattern": "^[a-z][a-z0-9_]*$"
+                                              },
+                                              "minItems": 1,
+                                              "maxItems": 20
+                                            },
+                                            "$comment": {}
+                                          },
+                                          "additionalProperties": false
+                                        },
                                         "$comment": {}
                                       },
                                       "additionalProperties": false,
@@ -15457,6 +15755,37 @@
                                         "advantage",
                                         "disadvantage"
                                       ]
+                                    },
+                                    "from": {
+                                      "type": "object",
+                                      "properties": {
+                                        "types": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 20
+                                        },
+                                        "tags": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 20
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "additionalProperties": false
+                                    },
+                                    "atSource": {
+                                      "type": "boolean",
+                                      "const": true
                                     },
                                     "$comment": {}
                                   },
@@ -17692,6 +18021,58 @@
                               },
                               "additionalProperties": false
                             },
+                            "abilityAtMost": {
+                              "type": "object",
+                              "additionalProperties": {
+                                "type": "integer",
+                                "minimum": -100,
+                                "maximum": 1000
+                              },
+                              "propertyNames": {
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "properties": {
+                                "$comment": {}
+                              }
+                            },
+                            "notImmuneTo": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 8
+                            },
+                            "$comment": {}
+                          },
+                          "additionalProperties": false
+                        },
+                        "maxAgainst": {
+                          "type": "object",
+                          "properties": {
+                            "types": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 20
+                            },
+                            "tags": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 20
+                            },
                             "$comment": {}
                           },
                           "additionalProperties": false
@@ -17996,6 +18377,56 @@
                                 "$comment": {}
                               },
                               "additionalProperties": false
+                            },
+                            "modes": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "is": {
+                                    "type": "object",
+                                    "properties": {
+                                      "types": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 20
+                                      },
+                                      "tags": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 20
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "additionalProperties": false
+                                  },
+                                  "mode": {
+                                    "type": "string",
+                                    "enum": [
+                                      "advantage",
+                                      "disadvantage"
+                                    ]
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "is",
+                                  "mode"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "minItems": 1,
+                              "maxItems": 4
                             },
                             "$comment": {}
                           },
@@ -26175,7 +26606,8 @@
                         "speed",
                         "health-max",
                         "damage",
-                        "damage-taken"
+                        "damage-taken",
+                        "attacks-taken"
                       ]
                     },
                     "attacks": {
@@ -26278,6 +26710,33 @@
                           "type": "boolean",
                           "const": true
                         },
+                        "from": {
+                          "type": "object",
+                          "properties": {
+                            "types": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 20
+                            },
+                            "tags": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 20
+                            },
+                            "$comment": {}
+                          },
+                          "additionalProperties": false
+                        },
                         "$comment": {}
                       },
                       "additionalProperties": false,
@@ -26309,6 +26768,37 @@
                         "advantage",
                         "disadvantage"
                       ]
+                    },
+                    "from": {
+                      "type": "object",
+                      "properties": {
+                        "types": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 20
+                        },
+                        "tags": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 20
+                        },
+                        "$comment": {}
+                      },
+                      "additionalProperties": false
+                    },
+                    "atSource": {
+                      "type": "boolean",
+                      "const": true
                     },
                     "$comment": {}
                   },
@@ -27425,7 +27915,8 @@
                         "speed",
                         "health-max",
                         "damage",
-                        "damage-taken"
+                        "damage-taken",
+                        "attacks-taken"
                       ]
                     },
                     "attacks": {
@@ -27528,6 +28019,33 @@
                           "type": "boolean",
                           "const": true
                         },
+                        "from": {
+                          "type": "object",
+                          "properties": {
+                            "types": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 20
+                            },
+                            "tags": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 20
+                            },
+                            "$comment": {}
+                          },
+                          "additionalProperties": false
+                        },
                         "$comment": {}
                       },
                       "additionalProperties": false,
@@ -27559,6 +28077,37 @@
                         "advantage",
                         "disadvantage"
                       ]
+                    },
+                    "from": {
+                      "type": "object",
+                      "properties": {
+                        "types": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 20
+                        },
+                        "tags": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 20
+                        },
+                        "$comment": {}
+                      },
+                      "additionalProperties": false
+                    },
+                    "atSource": {
+                      "type": "boolean",
+                      "const": true
                     },
                     "$comment": {}
                   },

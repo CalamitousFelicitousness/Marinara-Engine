@@ -37,6 +37,7 @@ import {
   RULESET_DERIVED_MAX_BEFORE_183,
   RULESET_DERIVED_MAX_BEFORE_1106,
   RULESET_BUILDER_STEPS_MAX_BEFORE_1107,
+  RULESET_COMBAT_MODIFIER_TARGETS,
   type RulesetCatalogItem,
 } from "@marinara-engine/shared";
 import { WORLD_SHARE_FILE_MAX_BYTES } from "@marinara-engine/shared";
@@ -1519,6 +1520,28 @@ function carriesWardsAndSaves(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesWardsAndSaves(one, depth + 1));
 }
 
+const MODIFIER_TARGETS = new Set<string>(RULESET_COMBAT_MODIFIER_TARGETS);
+
+/** What a creature is, read further (1.180): saves rolled twice by it, damage at its most against it,
+ *  targets by ability score or condition immunity, and changes to attacks that roll twice, from or
+ *  at somebody, or saves against what a kind of creature does. In catalog files too. */
+function carriesCreatureKinds(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCreatureKinds(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.maxAgainst !== undefined || plainRecord(record.save)?.modes !== undefined) return true;
+  const gates = plainRecord(record.targetTypes);
+  if (gates && (gates.abilityAtMost !== undefined || gates.notImmuneTo !== undefined)) return true;
+  // A condition's modifier: `to` one of the numbers a condition changes.
+  if (typeof record.to === "string" && MODIFIER_TARGETS.has(record.to)) {
+    if (record.to === "attacks-taken" || record.from !== undefined || record.atSource !== undefined) return true;
+    if (record.to === "attacks" && record.mode !== undefined) return true;
+    if (plainRecord(record.against)?.from !== undefined) return true;
+  }
+  return Object.values(record).some((one) => carriesCreatureKinds(one, depth + 1));
+}
+
 /** A creature's action that pushes, or an item's use whose line has a width, in catalog files too
  *  (1.179). */
 function carriesCreaturePush(value: unknown, depth = 0): boolean {
@@ -2904,6 +2927,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Creature kinds read further, 1.180.
+  if (
+    !declaresApi(180) &&
+    (carriesCreatureKinds(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesCreatureKinds(document)))
+  ) {
+    return "A ruleset with saves or damage that change by what the target is, targets limited by ability scores or condition immunities, or changes to attacks that roll twice by who is attacking whom, requires schemaVersion 2 and capabilityApi 1.180 or newer";
   }
   // Creature actions that push, item uses with a line's width, 1.179.
   if (

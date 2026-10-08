@@ -31,6 +31,8 @@ export interface RulesetSaveAgainst {
   conditions?: readonly string[];
   damage?: readonly string[];
   magic?: boolean;
+  /** What the creature the save is against is (1.180): its type and tags. */
+  from?: { type?: string; tags: readonly string[] };
 }
 
 /** Any one match is enough; the save's own name is checked separately. */
@@ -45,7 +47,11 @@ export function rulesetSaveAgainstMatches(
     against.damage?.some((type) =>
       source.damage?.some((one) => one.trim().toLowerCase() === type.trim().toLowerCase()),
     ) ||
-    (against.magic && source.magic)
+    (against.magic && source.magic) ||
+    (against.from &&
+      source.from &&
+      ((source.from.type !== undefined && !!against.from.types?.includes(source.from.type)) ||
+        source.from.tags.some((tag) => !!against.from?.tags?.includes(tag))))
   );
 }
 

@@ -455,11 +455,38 @@ export function rulesetTargetIs(
 export function rulesetTargetTypesAllow(
   definition: RulesetDefinition,
   combatant: RulesetCombatant,
-  targetTypes: { is?: RulesetTargetIs; not?: RulesetTargetIs } | undefined,
+  targetTypes:
+    | { is?: RulesetTargetIs; not?: RulesetTargetIs; abilityAtMost?: Record<string, number>; notImmuneTo?: string[] }
+    | undefined,
 ): boolean {
   if (!targetTypes) return true;
   if (targetTypes.is && !rulesetTargetIs(definition, combatant, targetTypes.is)) return false;
-  return !(targetTypes.not && rulesetTargetIs(definition, combatant, targetTypes.not));
+  if (targetTypes.not && rulesetTargetIs(definition, combatant, targetTypes.not)) return false;
+  // Its ability scores at most these (1.180); a score nobody wrote down keeps nobody out.
+  for (const [ability, most] of Object.entries(targetTypes.abilityAtMost ?? {})) {
+    const score = rulesetAbilityScore(definition, combatant, ability);
+    if (score !== undefined && score > most) return false;
+  }
+  // And not immune to any of these conditions (1.180).
+  if (targetTypes.notImmuneTo?.length) {
+    const immune = rulesetCombatHide(definition, combatant).conditionImmunities.map((id) => id.trim().toLowerCase());
+    if (targetTypes.notImmuneTo.some((id) => immune.includes(id.trim().toLowerCase()))) return false;
+  }
+  return true;
+}
+
+/** One of a combatant's ability scores (1.180): off their sheet, or as their stat block writes it.
+ *  Undefined for a creature written without it. */
+export function rulesetAbilityScore(
+  definition: RulesetDefinition,
+  combatant: RulesetCombatant,
+  ability: string,
+): number | undefined {
+  if (combatant.sheet) {
+    if (!definition.sheet.abilities.some((entry) => entry.id === ability)) return undefined;
+    return resolveRulesetValueRef(definition, combatant.sheet.build, { abilityScore: ability } as RulesetValueRef);
+  }
+  return combatant.block?.abilities?.[ability];
 }
 
 /** What a fighter's items do, as they hold them in this fight: see `rulesetItemSources`. A requirement
@@ -671,10 +698,12 @@ export function rulesetSaveMode(
   save: string,
   state?: RulesetEncounterState,
   against?: RulesetSaveAgainst,
+  /** What the save itself says about who rolls it twice (1.180): Sunbeam, against an undead. */
+  lean?: "advantage" | "disadvantage",
 ): "normal" | "advantage" | "disadvantage" {
   if (!rulesetCombatAdvantage(combat)) return "normal";
-  let advantage = false;
-  let disadvantage = false;
+  let advantage = lean === "advantage";
+  let disadvantage = lean === "disadvantage";
   for (const entry of rulesetActiveConditions(definition, combat, combatant, state)) {
     // A change to saves that rolls twice counts like the effect, narrowed by its own saves first.
     for (const modifier of entry.modifiers ?? []) {
@@ -1596,6 +1625,7 @@ function mechanicsAction(
   if (mechanics.seen) action.seen = true;
   if (mechanics.components) action.components = [...mechanics.components];
   if (mechanics.targetTypes) action.targetTypes = mechanics.targetTypes;
+  if (mechanics.maxAgainst) action.maxAgainst = structuredClone(mechanics.maxAgainst);
   if (mechanics.usableWhen) action.usableWhen = { ...mechanics.usableWhen };
   if (mechanics.save) {
     action.save = {
@@ -1605,6 +1635,7 @@ function mechanicsAction(
       ...(mechanics.save.ignoresCover ? { ignoresCover: true as const } : {}),
       ...(mechanics.save.against ? { against: structuredClone(mechanics.save.against) } : {}),
       ...(mechanics.save.succeeds ? { succeeds: structuredClone(mechanics.save.succeeds) } : {}),
+      ...(mechanics.save.modes ? { modes: structuredClone(mechanics.save.modes) } : {}),
     };
   }
   if (from.saveDifficulty !== undefined) action.saveDifficulty = sourceDifficulty;

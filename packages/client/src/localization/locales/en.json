@@ -7758,6 +7758,7 @@
   "ui.game.gameinventory.effectImmune": "immune to {{names}}",
   "ui.game.gameinventory.effectMagic": "magic",
   "ui.game.gameinventory.effectOnAttacks": "{{change}} on attacks",
+  "ui.game.gameinventory.effectOnAttacksTaken": "{{change}} on attacks against them",
   "ui.game.gameinventory.effectOnChecks": "{{change}} on checks",
   "ui.game.gameinventory.effectOnNamedChecks": "{{change}} on checks ({{names}})",
   "ui.game.gameinventory.effectOnNamedSaves": "{{change}} on saves ({{names}})",

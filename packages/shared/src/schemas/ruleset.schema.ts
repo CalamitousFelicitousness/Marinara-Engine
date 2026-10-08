@@ -1895,6 +1895,7 @@ const holderEndingSchema: z.ZodType<RulesetHolderEnding, z.ZodTypeDef, unknown> 
 export interface RulesetSaveExtras {
   against?: { conditions?: string[]; damage?: string[] };
   succeeds?: { immune?: string[]; conditionImmune?: string[]; is?: RulesetTargetIs };
+  modes?: Array<{ is: RulesetTargetIs; mode: (typeof RULESET_ROLL_MODES)[number] }>;
 }
 const saveExtrasShape = {
   /** What else the save counts as being against (Capability API 1.176), for a save modifier's
@@ -1920,6 +1921,13 @@ const saveExtrasShape = {
     .refine((succeeds) => succeeds.immune || succeeds.conditionImmune || succeeds.is, {
       message: "Say who succeeds: immune to damage, to a condition, or what they are",
     })
+    .optional(),
+  /** A target that is this rolls it twice, keeping the better or the worse (Capability API 1.180):
+   *  5e's Sunbeam, which undead and oozes save against with disadvantage. */
+  modes: z
+    .array(z.object({ is: targetIsSchema, mode: z.enum(["advantage", "disadvantage"]) }).strict())
+    .min(1)
+    .max(4)
     .optional(),
 };
 
@@ -2132,12 +2140,30 @@ const catalogMechanicsObject = z
      *  Friendship takes only a beast (`is`), Sleep passes over the undead (`not`). A combatant with
      *  no type never matches `is` and always passes `not`. */
     targetTypes: z
-      .object({ is: targetIsSchema.optional(), not: targetIsSchema.optional() })
-      .strict()
-      .refine((types) => types.is !== undefined || types.not !== undefined, {
-        message: '"targetTypes" says "is", "not" or both',
+      .object({
+        is: targetIsSchema.optional(),
+        not: targetIsSchema.optional(),
+        /** Only a target whose ability scores are at most these (Capability API 1.180): 5e's
+         *  Animal Friendship, a beast of Intelligence 3 or less. A creature written with no score
+         *  for one is not kept out by it. */
+        abilityAtMost: z.record(sheetId, z.number().int().min(-100).max(1000)).optional(),
+        /** Only a target not immune to any of these conditions (1.180): 5e's Sleep, which passes over
+         *  whoever cannot be charmed. */
+        notImmuneTo: z.array(sheetId).min(1).max(8).optional(),
       })
+      .strict()
+      .refine(
+        (types) =>
+          types.is !== undefined ||
+          types.not !== undefined ||
+          types.abilityAtMost !== undefined ||
+          types.notImmuneTo !== undefined,
+        { message: '"targetTypes" says "is", "not", "abilityAtMost", "notImmuneTo" or several' },
+      )
       .optional(),
+    /** It deals its most to a target that is this (Capability API 1.180): every die at its top face.
+     *  5e's Blight, against a plant creature. */
+    maxAgainst: targetIsSchema.optional(),
     /** In the catalog's own distance unit. 0 is self or touch. */
     range: z.number().finite().min(0).optional(),
     area: catalogAreaSchema.optional(),
@@ -4287,6 +4313,9 @@ export const RULESET_COMBAT_MODIFIER_TARGETS = [
   "health-max",
   "damage",
   "damage-taken",
+  /** Attacks made against the holder (Capability API 1.180), rolled twice by `mode`, from attackers
+   *  that are `from`: 5e's Protection from Evil and Good. */
+  "attacks-taken",
 ] as const;
 /** The ones that are ROLLED, so dice may be added to them and are rolled every time. */
 export const RULESET_ROLLED_MODIFIER_TARGETS: readonly string[] = [
@@ -4328,11 +4357,19 @@ const combatModifierSchema = z
         conditions: z.array(sheetId).min(1).max(24).optional(),
         damage: z.array(promptSafeText(40)).min(1).max(24).optional(),
         magic: z.literal(true).optional(),
+        /** A save against something a creature that is this does (Capability API 1.180): 5e's
+         *  Dragon Scale Mail, against a dragon's breath and its Frightful Presence. */
+        from: targetIsSchema.optional(),
       })
       .strict()
-      .refine((against) => Object.keys(against).length > 0, "Against names conditions, damage or magic")
+      .refine((against) => Object.keys(against).length > 0, "Against names conditions, damage, magic or from")
       .optional(),
     mode: z.enum(RULESET_ROLL_MODES).optional(),
+    /** Narrows a change to attacks-taken to attackers that are this (Capability API 1.180). */
+    from: targetIsSchema.optional(),
+    /** Narrows a change to the holder's own attacks to those against whoever put this on them
+     *  (Capability API 1.180): 5e's Chill Touch, an undead's attacks against the caster. */
+    atSource: z.literal(true).optional(),
   })
   .strict()
   .superRefine((modifier, ctx) => {
@@ -4352,9 +4389,25 @@ const combatModifierSchema = z
     if (modifier.against !== undefined && modifier.to !== "saves")
       add("against", '"against" narrows a change to saves');
     if (modifier.saves !== undefined && modifier.to !== "saves") add("saves", '"saves" narrows a change to saves');
-    if (modifier.mode !== undefined && modifier.to !== "checks" && modifier.to !== "saves") {
-      add("mode", '"mode" rolls checks or saves twice, so it changes nothing else');
+    if (
+      modifier.mode !== undefined &&
+      modifier.to !== "checks" &&
+      modifier.to !== "saves" &&
+      modifier.to !== "attacks" &&
+      modifier.to !== "attacks-taken"
+    ) {
+      add("mode", '"mode" rolls checks, saves or attacks twice, so it changes nothing else');
     }
+    if (
+      modifier.to === "attacks-taken" &&
+      (modifier.mode === undefined || modifier.flat !== undefined || modifier.dice !== undefined)
+    ) {
+      add("to", '"attacks-taken" rolls attacks against the holder twice, so it takes a "mode" and nothing else');
+    }
+    if (modifier.from !== undefined && modifier.to !== "attacks-taken")
+      add("from", '"from" narrows attacks-taken only');
+    if (modifier.atSource && modifier.to !== "attacks")
+      add("atSource", '"atSource" narrows the holder\'s own attacks only');
     const damage = modifier.to === "damage" || modifier.to === "damage-taken";
     for (const key of ["attacks", "blow", "ability", "damageType", "fromSource"] as const) {
       if (modifier[key] !== undefined && !damage) add(key, `"${key}" narrows damage only`);
@@ -8043,8 +8096,14 @@ function targetTestIssues(
   carrier: {
     plus?: ReadonlyArray<{ targetIs?: RulesetTargetIs }>;
     applies?: ReadonlyArray<{ targetIs?: RulesetTargetIs }>;
-    targetTypes?: { is?: RulesetTargetIs; not?: RulesetTargetIs };
+    targetTypes?: {
+      is?: RulesetTargetIs;
+      not?: RulesetTargetIs;
+      abilityAtMost?: Record<string, number>;
+      notImmuneTo?: string[];
+    };
     save?: RulesetSaveExtras;
+    maxAgainst?: RulesetTargetIs;
   },
   at: (string | number)[],
   add: (path: (string | number)[], message: string) => void,
@@ -8058,6 +8117,15 @@ function targetTestIssues(
   );
   targetIsIssues(definition, carrier.targetTypes?.is, [...at, "targetTypes", "is"], add);
   targetIsIssues(definition, carrier.targetTypes?.not, [...at, "targetTypes", "not"], add);
+  targetIsIssues(definition, carrier.maxAgainst, [...at, "maxAgainst"], add);
+  const abilities = new Set(definition.sheet.abilities.map((ability) => ability.id));
+  for (const id of Object.keys(carrier.targetTypes?.abilityAtMost ?? {})) {
+    if (!abilities.has(id)) add([...at, "targetTypes", "abilityAtMost", id], `Unknown ability "${id}"`);
+  }
+  const conditions = new Set(definition.sheet.live.conditions.map((condition) => condition.id));
+  carrier.targetTypes?.notImmuneTo?.forEach((id, index) => {
+    if (!conditions.has(id)) add([...at, "targetTypes", "notImmuneTo", index], `Unknown condition "${id}"`);
+  });
 }
 
 /** What a save says it is against, and who passes it outright (1.176), are the ruleset's own:
@@ -8085,6 +8153,7 @@ function saveExtrasIssues(
   condition(save.succeeds?.conditionImmune, [...at, "succeeds", "conditionImmune"]);
   damage(save.succeeds?.immune, [...at, "succeeds", "immune"]);
   targetIsIssues(definition, save.succeeds?.is, [...at, "succeeds", "is"], add);
+  save.modes?.forEach((entry, index) => targetIsIssues(definition, entry.is, [...at, "modes", index, "is"], add));
 }
 
 /** What a cure names (1.171): conditions the sheet has, and a dying rule for steadying to stop. */
@@ -8478,7 +8547,8 @@ function effectNameIssues(
       skills?: string[];
       saves?: string[];
       ability?: string;
-      against?: { conditions?: string[]; damage?: string[] };
+      against?: { conditions?: string[]; damage?: string[]; from?: RulesetTargetIs };
+      from?: RulesetTargetIs;
     }>;
   },
   skills: ReadonlySet<string>,
@@ -8501,6 +8571,8 @@ function effectNameIssues(
     }
     each(modifier.skills, skills, [...at, "modifiers", index, "skills"], "skill");
     each(modifier.saves, saves, [...at, "modifiers", index, "saves"], "save");
+    targetIsIssues(definition, modifier.from, [...at, "modifiers", index, "from"], add);
+    targetIsIssues(definition, modifier.against?.from, [...at, "modifiers", index, "against", "from"], add);
     const against = [...at, "modifiers", index, "against"];
     each(
       modifier.against?.conditions,

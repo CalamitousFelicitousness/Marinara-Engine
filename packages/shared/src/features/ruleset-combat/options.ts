@@ -1714,8 +1714,31 @@ export function rulesetAttackMode(
     !!target.flags.dodging ||
     !!distance?.disadvantage ||
     blindStrike;
-  if (advantage === disadvantage) return "normal";
-  return advantage ? "advantage" : "disadvantage";
+  // Changes that roll attacks twice (1.180): the attacker's own, some only against whoever put them
+  // on (Chill Touch), and the target's against attackers of some kind (Protection from Evil and Good).
+  const leans = new Set<string>();
+  for (const entry of rulesetActiveConditions(definition, combat, actor, where?.state)) {
+    for (const modifier of entry.modifiers ?? []) {
+      if (modifier.to !== "attacks" || !modifier.mode) continue;
+      if (
+        modifier.atSource &&
+        !actor.tracked.some((one) => one.condition === entry.condition && one.source === target.id)
+      )
+        continue;
+      leans.add(modifier.mode);
+    }
+  }
+  for (const entry of rulesetActiveConditions(definition, combat, target, where?.state)) {
+    for (const modifier of entry.modifiers ?? []) {
+      if (modifier.to !== "attacks-taken" || !modifier.mode) continue;
+      if (modifier.from && !rulesetTargetIs(definition, actor, modifier.from)) continue;
+      leans.add(modifier.mode);
+    }
+  }
+  const up = advantage || leans.has("advantage");
+  const down = disadvantage || leans.has("disadvantage");
+  if (up === down) return "normal";
+  return up ? "advantage" : "disadvantage";
 }
 
 /** Whether the actor is next to somebody on the other side, which is what a ruleset that says

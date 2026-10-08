@@ -60,6 +60,7 @@ import {
   grantRulesetMovement,
   spendRulesetMovement,
   rulesetSaveMode,
+  rulesetCreatureKind,
   rulesetCombatHide,
   rulesetActionAsUsed,
   rulesetImmuneToCondition,
@@ -150,6 +151,7 @@ import type {
   RulesetCombatPoolRoll,
   RulesetCombatRefusal,
   RulesetCombatRider,
+  RulesetCombatSaveRider,
   RulesetCombatRollMode,
   RulesetCombatRoller,
   RulesetCombatStep,
@@ -311,6 +313,33 @@ function rollAmount(
     flat += extra.amount.flat * extra.times;
   }
   return { rolls, flat, total: sumOf(rolls) + flat };
+}
+
+/** An amount at its most (1.180): every die, and every extra one a higher payment adds, at its top
+ *  face. */
+function maxAmount(
+  amount: RulesetCombatAmount,
+  extra?: { amount: RulesetCombatAmount; times: number },
+): { rolls: number[]; flat: number; total: number } {
+  const rolls: number[] = Array(amount.count).fill(amount.sides);
+  let flat = amount.flat;
+  if (extra && extra.times > 0) {
+    rolls.push(...Array(extra.amount.count * extra.times).fill(extra.amount.sides));
+    flat += extra.amount.flat * extra.times;
+  }
+  return { rolls, flat, total: sumOf(rolls) + flat };
+}
+
+/** Which way a save's own modes lean for this target (1.180), the two cancelling as they do anywhere. */
+function saveLean(
+  ctx: RulesetCombatContext,
+  target: RulesetCombatant,
+  modes: RulesetCombatSaveRider["modes"],
+): "advantage" | "disadvantage" | undefined {
+  const leans = new Set(
+    (modes ?? []).filter((entry) => rulesetTargetIs(ctx.definition, target, entry.is)).map((entry) => entry.mode),
+  );
+  return leans.size === 1 ? [...leans][0] : undefined;
 }
 
 /** Faces at or below `upTo` thrown again once, each new face standing whatever it is: 5e's Great Weapon
@@ -857,8 +886,13 @@ function rollSave(
    *  a condition or keeps concentration: nothing is coming at them. */
   from?: RulesetCombatCell | null,
   against?: RulesetSaveAgainst,
+  /** The save's own word on who rolls it twice (1.180). */
+  lean?: "advantage" | "disadvantage",
 ): boolean {
   const own = combatant.saves[save] ?? 0;
+  // Whatever it is against, it is against what its source is (1.180): Dragon Scale Mail's dragons.
+  const source = sourceId ? rulesetCombatant(ctx.state, sourceId) : undefined;
+  if (source) against = { ...against, from: rulesetCreatureKind(ctx.definition, source) };
   // A condition that fails this save takes the roll away entirely, rather than rolling and ignoring
   // the dice, so a log never shows a number that decided nothing.
   if (rulesetCombatFailsSave(ctx.definition, ctx.combat, combatant, save, ctx.state)) {
@@ -885,7 +919,7 @@ function rollSave(
       : 0;
   if (cover > 0) ctx.events.push({ type: "cover", targetId: combatant.id, bonus: cover, save });
   const modifier = own + cover;
-  const mode = rulesetSaveMode(ctx.definition, ctx.combat, combatant, save, ctx.state, against);
+  const mode = rulesetSaveMode(ctx.definition, ctx.combat, combatant, save, ctx.state, against, lean);
   if (rulesetCombatIsPool(ctx.combat)) {
     // The save's number is its pool, and its difficulty the successes it needs, never fewer than one.
     const bonuses = rollBonuses(
@@ -4265,6 +4299,7 @@ function resolveActionBody(
         actor.id,
         action.save.ignoresCover ? null : saveFromFor(target),
         against,
+        saveLean(ctx, target, action.save.modes),
       );
       if (saved && action.save.onSuccess === "negates") {
         spendUsed();
@@ -4413,7 +4448,11 @@ function resolveActionBody(
         });
       });
     } else if (damage && action.damage) {
-      const rolled = damage();
+      // At its most against what it names (1.180): Blight on a plant.
+      const rolled =
+        action.maxAgainst && rulesetTargetIs(ctx.definition, target, action.maxAgainst)
+          ? maxAmount(action.damage, extra)
+          : damage();
       const bonus = critical ? criticalExtra(ctx, action.damage, extra, action.damage.reroll) : { rolls: [], flat: 0 };
       const thrown = rolled.total + sumOf(bonus.rolls) + bonus.flat;
       // Never less than the weapon's floor.

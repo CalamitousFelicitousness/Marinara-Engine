@@ -272,8 +272,10 @@ import type {
 } from "@marinara-engine/shared";
 import {
   MAX_ILLUSTRATOR_IMAGES_PER_GENERATION,
+  MAX_ILLUSTRATOR_RUN_INTERVAL,
   customAgentHasCapability,
   normalizeIllustratorImagesPerGeneration,
+  normalizeIllustratorRunInterval,
   normalizeSpotifySourceType,
   parseAgentSettingsRecord,
 } from "@marinara-engine/shared";
@@ -2006,6 +2008,11 @@ export function ChatSettingsDrawer({
   const illustratorImagesPerGeneration = normalizeIllustratorImagesPerGeneration(
     metadata.illustratorImagesPerGeneration,
   );
+  // This chat's Run Interval, else the Agent Editor's (which is only the default for chats).
+  const illustratorChatRunInterval = normalizeIllustratorRunInterval(metadata.illustratorRunInterval);
+  const illustratorRunInterval =
+    illustratorChatRunInterval ??
+    normalizePositiveInteger(illustratorDefaults.runInterval, 5, MAX_ILLUSTRATOR_RUN_INTERVAL, 0);
   const illustratorAutoBackgroundsEnabled = metadata.illustratorAutoBackgroundsEnabled === true;
   const selectedIllustratorPromptConnectionMissing =
     illustratorPromptConnectionId.length > 0 &&
@@ -2225,6 +2232,37 @@ export function ChatSettingsDrawer({
         {localizeUi("ui.chat.chatsettingsdrawer.generateThisManyVariantsForEachIllustrationOrSelfie")}
       </span>
     </label>
+  );
+  const renderIllustratorRunInterval = () => (
+    <div className="flex flex-col gap-1">
+      <label className="flex flex-col gap-1">
+        <span className="text-[0.625rem] font-medium text-[var(--foreground)]">
+          {localizeUi("ui.agents.agenteditor.runInterval")}
+        </span>
+        <span className="flex items-center gap-2">
+          <DraftNumberInput
+            value={illustratorRunInterval}
+            min={0}
+            max={MAX_ILLUSTRATOR_RUN_INTERVAL}
+            onCommit={(value) => {
+              // Leaving the field unchanged must not turn the agent default into a chat value.
+              if (value !== illustratorRunInterval) updateMeta.mutate({ id: chat.id, illustratorRunInterval: value });
+            }}
+            className="w-24 rounded-lg border border-[var(--border)] bg-[var(--background)] px-2.5 py-2 text-xs tabular-nums text-[var(--foreground)] outline-none transition-colors focus:border-[var(--primary)]/50"
+          />
+          <span className="text-[0.625rem] text-[var(--muted-foreground)]">
+            {localizeUi("ui.agents.agenteditor.messages")}
+          </span>
+        </span>
+        <span className="text-[0.625rem] leading-snug text-[var(--muted-foreground)]">
+          {localizeUi("agents.illustrator.chatRunIntervalHelp")}
+        </span>
+      </label>
+      <AgentDefaultStatus
+        overridden={illustratorChatRunInterval !== null}
+        onReset={() => updateMeta.mutate({ id: chat.id, illustratorRunInterval: null })}
+      />
+    </div>
   );
   const proseGuardianBannedWords =
     typeof metadata.proseGuardianBannedWords === "string"
@@ -4022,7 +4060,9 @@ export function ChatSettingsDrawer({
         maxTokens: normalizeAgentMaxTokens(mergedSettings.maxTokens),
         runInterval: intervalMeta
           ? normalizePositiveInteger(
-              mergedSettings.runInterval,
+              // Illustrator's Run Interval belongs to this chat; the agent's value is only its default.
+              (agent.id === "illustrator" ? normalizeIllustratorRunInterval(metadata.illustratorRunInterval) : null) ??
+                mergedSettings.runInterval,
               intervalMeta.defaultValue,
               intervalMeta.max,
               intervalMeta.min,
@@ -4093,7 +4133,8 @@ export function ChatSettingsDrawer({
       maxTokens: normalizedMaxTokens,
     };
     const intervalMeta = getAgentRunIntervalMeta(agent.id, !!builtInMeta);
-    if (intervalMeta && runInterval != null) {
+    // Illustrator saves its Run Interval to this chat, so the agent's value stays the default for other chats.
+    if (intervalMeta && runInterval != null && agent.id !== "illustrator") {
       nextSettings.runInterval = runInterval;
     }
     nextSettings = applyAgentAddSetupToAgentSettings(agent.id, setup, nextSettings, {
@@ -4133,9 +4174,18 @@ export function ChatSettingsDrawer({
         ...buildAgentAddMetadataPatch(agent.id, setup, metadata, {
           allowSecretPlot: supportsNarrativeDirectorSecretPlot,
           defaultPromptTemplateId: resolveDefaultAgentPromptTemplateId(nextSettings),
+          runInterval,
           illustratorDefaults: {
             includeCharacterAppearance: nextSettings.includeCharacterAppearance === true,
             useAvatarReferences: nextSettings.useAvatarReferences === true,
+            runInterval: intervalMeta
+              ? normalizePositiveInteger(
+                  nextSettings.runInterval,
+                  intervalMeta.defaultValue,
+                  intervalMeta.max,
+                  intervalMeta.min,
+                )
+              : undefined,
           },
         }),
       });
@@ -8630,6 +8680,7 @@ export function ChatSettingsDrawer({
                           />
                           {renderIllustratorPromptConnectionSelect()}
                           {renderIllustratorImageConnectionSelect()}
+                          {renderIllustratorRunInterval()}
                           <AgentSettingsToggle
                             label={localizeUi("ui.chat.chatsettingsdrawer.generateSceneBackgrounds")}
                             description={localizeUi(
@@ -9346,6 +9397,7 @@ export function ChatSettingsDrawer({
                                           }
                                         />
                                         {renderIllustratorPromptConnectionSelect()}
+                                        {renderIllustratorRunInterval()}
                                         {renderIllustratorImagesPerGeneration()}
                                         <AgentSettingsToggle
                                           label={localizeUi("ui.chat.agentaddsetupfields.attachCardAppearance")}
@@ -10266,12 +10318,11 @@ export function ChatSettingsDrawer({
                   )}
                   <span className="text-[0.6875rem] text-[var(--muted-foreground)]">{agentAddIntervalMeta.unit}</span>
                 </div>
-                {agentAddPreview.agent.id === "illustrator" && (
-                  <p className="text-[0.625rem] text-[var(--muted-foreground)]">
-                    {localizeUi("agents.illustrator.manualOnlyIntervalHelp")}
-                  </p>
-                )}
-                <p className="text-[0.625rem] text-[var(--muted-foreground)]">{agentAddIntervalMeta.help}</p>
+                <p className="text-[0.625rem] text-[var(--muted-foreground)]">
+                  {agentAddPreview.agent.id === "illustrator"
+                    ? localizeUi("agents.illustrator.chatRunIntervalHelp")
+                    : agentAddIntervalMeta.help}
+                </p>
               </div>
             )}
 

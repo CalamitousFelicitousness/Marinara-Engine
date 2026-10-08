@@ -1,3 +1,5 @@
+import { normalizeIllustratorRunInterval } from "@marinara-engine/shared";
+
 type AgentsStore = {
   getLastSuccessfulRunByType(agentType: string, chatId: string): Promise<{ messageId?: string | null } | null>;
 };
@@ -14,6 +16,17 @@ export function resolveAgentRunInterval(settings: unknown, fallback: number): nu
   const parsed =
     typeof rawInterval === "number" ? rawInterval : typeof rawInterval === "string" ? Number(rawInterval) : NaN;
   return Number.isFinite(parsed) && parsed >= 1 ? Math.min(100, Math.floor(parsed)) : normalizedFallback;
+}
+
+/** Illustrator settings with this chat's Run Interval (0-100) in place of the agent's; other agents pass through. */
+export function applyIllustratorChatRunInterval(
+  agentType: string,
+  settings: Record<string, unknown>,
+  chatMetadata: Record<string, unknown> | null | undefined,
+): Record<string, unknown> {
+  if (agentType !== "illustrator") return settings;
+  const runInterval = normalizeIllustratorRunInterval(chatMetadata?.illustratorRunInterval);
+  return runInterval === null ? settings : { ...settings, runInterval };
 }
 
 export async function shouldSkipAgentByMessageInterval({

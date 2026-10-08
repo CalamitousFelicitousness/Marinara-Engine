@@ -52,6 +52,7 @@ import {
   isMessagePinnedToContext,
   normalizeMessageMarkPatch,
   normalizeGroupChatMode,
+  normalizeIllustratorRunInterval,
   readMessagePrivateNote,
   stripPrivateMessageNote,
   MESSAGE_MARK_EXTRA_KEYS,
@@ -1439,6 +1440,10 @@ export async function chatsRoutes(app: FastifyInstance) {
     }
     if (Object.prototype.hasOwnProperty.call(incoming, "summaryMaxTokens")) {
       incoming.summaryMaxTokens = clampRoleplaySummaryMaxTokens(incoming.summaryMaxTokens);
+    }
+    if (Object.prototype.hasOwnProperty.call(incoming, "illustratorRunInterval")) {
+      // Numbers clamp to 0-100; anything else returns the chat to the agent's Run Interval.
+      incoming.illustratorRunInterval = normalizeIllustratorRunInterval(incoming.illustratorRunInterval);
     }
     if (
       Object.prototype.hasOwnProperty.call(incoming, "noodleTimelineContextEnabled") &&

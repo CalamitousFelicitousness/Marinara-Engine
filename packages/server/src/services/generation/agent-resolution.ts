@@ -38,6 +38,7 @@ import { resolveAgentConnectionParameters, type AgentGenerationParameters } from
 import { applyTextRewriteAgentChatSettings, normalizeProseGuardianPromptTemplate } from "./prose-guardian-settings.js";
 import { applyKnowledgeAgentChatSettings } from "./knowledge-agent-settings.js";
 import { applyCustomAgentImageChatSettings } from "./custom-agent-image-settings.js";
+import { applyIllustratorChatRunInterval } from "./agent-cadence.js";
 import { withConnectionFallbackProvider, type FallbackConnection } from "../llm/connection-fallback-provider.js";
 import type { GenerationFallbackNotifier } from "./fallback-notification.js";
 
@@ -195,6 +196,7 @@ export function resolveEffectiveAgentSettings(args: {
   settings = applyTextRewriteAgentChatSettings(agentType, settings, chatMetadata);
   settings = applyKnowledgeAgentChatSettings(agentType, settings, chatMetadata);
   settings = applyCustomAgentImageChatSettings(agentType, settings, chatMetadata);
+  settings = applyIllustratorChatRunInterval(agentType, settings, chatMetadata);
 
   const usesNonSpotifyMusicSource =
     agentType === "spotify" &&

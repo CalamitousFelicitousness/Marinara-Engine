@@ -1519,6 +1519,19 @@ function carriesWardsAndSaves(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesWardsAndSaves(one, depth + 1));
 }
 
+/** A zone that goes off later or burns away, in catalog files too (1.178). */
+function carriesDetonations(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesDetonations(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  for (const mechanics of [plainRecord(record.mechanics), plainRecord(record.use)]) {
+    const zone = plainRecord(mechanics?.zone);
+    if (zone && (zone.detonates !== undefined || zone.burns !== undefined)) return true;
+  }
+  return Object.values(record).some((one) => carriesDetonations(one, depth + 1));
+}
+
 /** A sense given as a number added to the holder's own, a push, a line or cone its caster carries or
  *  turns, or hard going only toward a caster, in catalog files too (1.177). */
 function carriesPushAndTurn(value: unknown, depth = 0): boolean {
@@ -2876,6 +2889,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Zones that go off later or burn away, 1.178.
+  if (
+    !declaresApi(178) &&
+    (carriesDetonations(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesDetonations(document)))
+  ) {
+    return "A ruleset with zones that go off later or burn away requires schemaVersion 2 and capabilityApi 1.178 or newer";
   }
   if (carriesCreatureSpellcasting) {
     // The references can only be checked once the catalog files are beside their headers.

@@ -907,7 +907,9 @@ const capabilityPackageManifestBaseSchema = z
 // 1.177: a sense a condition or an item gives may add to the holder's own (`{ add }`), an action may
 // `push` whoever it lands on away from its maker, a line or cone may move with its caster and be
 // turned (`zone.turn`), and a zone's hard going may count only toward its caster (`towardCaster`).
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 177 } as const);
+// 1.178: a zone may go off later (`detonates`, growing each turn and set off when touched) and burn
+// away when damage of a type it names reaches it (`burns`).
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 178 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

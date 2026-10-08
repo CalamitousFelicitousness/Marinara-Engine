@@ -492,6 +492,13 @@ export function rulesetCombatEventLine(
           target: names.combatant(event.targetId ?? ""),
         });
       }
+      // Going off, and catching fire (1.178).
+      if (event.outcome === "detonated" || event.outcome === "burning") {
+        return key(event.outcome === "detonated" ? "zoneDetonated" : "zoneBurning", {
+          actor: names.combatant(event.actorId),
+          label: event.label,
+        });
+      }
       if (event.outcome === "turned") {
         return key("zoneTurned", { actor: names.combatant(event.actorId), label: event.label });
       }

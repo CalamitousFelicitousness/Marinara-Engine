@@ -1462,6 +1462,8 @@ export interface RulesetCatalogZone {
   inside?: RulesetZoneInside;
   forbids?: RulesetForbids;
   wards?: RulesetZoneWards;
+  detonates?: { grows?: { dice?: string; flat?: number }; touched?: true };
+  burns?: { by: string[]; amount?: { dice?: string; flat?: number }; damageType?: string };
 }
 
 const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = z
@@ -1488,6 +1490,38 @@ const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = 
     /** Its caster may turn it to blast another way on their turn (Capability API 1.177), spending
      *  `budget`: a line or cone that moves with them, as 5e's Gust of Wind on a bonus action. */
     turn: z.object({ budget: sheetId }).strict().optional(),
+    /** It does nothing where it stands until it goes off (Capability API 1.178): when it ends, by its
+     *  concentration ending or its rounds running out, it does the entry's own effect once to
+     *  everybody in it. Its amount `grows` by this at the end of each of its caster's turns, and
+     *  `touched` sets it off when somebody moves onto its middle and fails the entry's save: 5e's
+     *  Delayed Blast Fireball. */
+    detonates: z
+      .object({
+        grows: z
+          .object(catalogAmountShape)
+          .strict()
+          .refine((amount) => amount.dice !== undefined || amount.flat !== undefined, {
+            message: '"grows" names dice, a flat amount, or both',
+          })
+          .optional(),
+        touched: z.literal(true).optional(),
+      })
+      .strict()
+      .refine((detonates) => detonates.grows || detonates.touched, {
+        message: '"detonates" says how it "grows", that it goes off when "touched", or both',
+      })
+      .optional(),
+    /** Damage of one of these types reaching it sets it alight (Capability API 1.178): it burns away
+     *  by the time its caster's turn comes round again, dealing `amount` with no save to whoever
+     *  starts a turn in it meanwhile. 5e's Web, burning for 2d4 fire. */
+    burns: z
+      .object({
+        by: z.array(promptSafeText(40)).min(1).max(8),
+        amount: z.object(catalogAmountShape).strict().optional(),
+        damageType: promptSafeText(40).optional(),
+      })
+      .strict()
+      .optional(),
     /** It moves `distance` straight away from its caster as each of their turns starts (1.168):
      *  5e's Cloudkill. */
     drift: z
@@ -2294,12 +2328,18 @@ const catalogMechanicsObject = z
   .strict();
 
 /** What is wrong with a zone, wherever it is carried: a catalog entry, or an item's use (1.169). */
+/** How many sides dice text like "12d6" or "1d6+2" rolls. */
+function diceSides(dice: string): number {
+  return Number(/d(\d+)/.exec(dice)?.[1] ?? 0);
+}
+
 function zoneIssue(mechanics: {
   zone?: RulesetCatalogZone;
   area?: { shape: string };
   summons?: unknown;
   reaction?: unknown;
   save?: unknown;
+  amount?: { dice?: string; flat?: number };
 }): string | undefined {
   const zone = mechanics.zone;
   if (!zone) return mechanics.area?.shape === "wall" ? "A wall only ever stays, so it needs a zone" : undefined;
@@ -2312,6 +2352,20 @@ function zoneIssue(mechanics: {
   ) {
     return "A zone set down several times stays where it is cast";
   }
+  // Going off later and burning away (1.178).
+  if (zone.detonates && (zone.anchor === "caster" || zone.move || zone.drift || wall)) {
+    return "A zone that goes off stays where it is cast";
+  }
+  const grows = zone.detonates?.grows;
+  if (grows && !mechanics.amount) return 'What "grows" is the entry\'s own amount, so it has one';
+  if (
+    grows?.dice &&
+    diceSides(grows.dice) !== (mechanics.amount?.dice ? diceSides(mechanics.amount.dice) : undefined)
+  ) {
+    return '"grows" rolls the same dice as the entry\'s own amount';
+  }
+  if (zone.detonates?.touched && !mechanics.save) return "Whoever touches it rolls the entry's own save, so it has one";
+  if (zone.burns?.amount && !zone.burns.damageType) return 'What burning deals has a "damageType"';
   return !mechanics.area
     ? "A zone is an area that stays, so it needs an area"
     : zone.anchor === "caster" && !["burst", "line", "cone"].includes(mechanics.area.shape)
@@ -2328,7 +2382,9 @@ function zoneIssue(mechanics: {
                 !zone.obscures &&
                 !zone.inside &&
                 !zone.forbids &&
-                !zone.wards
+                !zone.wards &&
+                !zone.detonates &&
+                !zone.burns
               ? "A zone names at least one trigger, unless it is a wall, or what it does is to its ground or to whoever stands in it"
               : (zone.move || zone.drift) && (zone.anchor === "caster" || mechanics.area.shape !== "burst")
                 ? "Only a burst held at a point is moved or drifts"
@@ -8084,6 +8140,14 @@ function zoneInsideIssues(
     }
   });
   componentIssues(definition, zone.forbids?.components, [...at, "forbids", "components"], add);
+  zone.burns?.by.forEach((type, index) => {
+    if (types && !types.includes(type.trim().toLowerCase()))
+      add([...at, "burns", "by", index], `Unknown damage type "${type}"`);
+  });
+  const burnType = zone.burns?.damageType;
+  if (burnType && types && !types.includes(burnType.trim().toLowerCase())) {
+    add([...at, "burns", "damageType"], `Unknown damage type "${burnType}"`);
+  }
   const catalogs = new Set((definition.catalogs ?? []).map((catalog) => catalog.id));
   zone.wards?.catalogs.forEach((catalog, index) => {
     if (!catalogs.has(catalog)) add([...at, "wards", "catalogs", index], `Unknown catalog "${catalog}"`);

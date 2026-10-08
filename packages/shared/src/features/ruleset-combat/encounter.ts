@@ -1646,6 +1646,21 @@ function mechanicsAction(
     if (drift) action.zone.drift = rulesetInCells(drift.distance, perCell ?? 1);
     if (mechanics.zone.turn) action.zone.turn = { budget: mechanics.zone.turn.budget };
     if (terrain?.towardCaster) action.zone.towardCaster = true;
+    const { detonates, burns } = mechanics.zone;
+    if (detonates) {
+      // What goes off later does nothing as it appears.
+      action.zone.atCast = false;
+      const grows = amountOf(detonates.grows);
+      action.zone.detonates = { ...(grows ? { grows } : {}), ...(detonates.touched ? { touched: true } : {}) };
+    }
+    if (burns) {
+      const amount = amountOf(burns.amount);
+      action.zone.burns = {
+        by: [...burns.by],
+        ...(amount ? { amount } : {}),
+        ...(burns.damageType ? { damageType: burns.damageType } : {}),
+      };
+    }
     if (terrain?.difficult) action.zone.difficult = true;
     if (terrain?.costTimes !== undefined) action.zone.costTimes = terrain.costTimes;
     if (terrain?.halvesSpeed) action.zone.halvesSpeed = true;

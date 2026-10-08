@@ -1242,7 +1242,7 @@ export type RulesetCombatEvent =
       label: string;
       state: "started" | "kept" | "ended";
       /** `zone`: a zone that breaks concentration caught them and they failed the save (1.169). */
-      reason?: "replaced" | "damage" | "down" | "zone";
+      reason?: "replaced" | "damage" | "down" | "zone" | "spent";
     }
   | { type: "standard"; actorId: string; action: string; targetId?: string }
   | {
@@ -1267,7 +1267,7 @@ export type RulesetCombatEvent =
       label: string;
       /** `shoved`: put off a wall that went up where they stood, to `to` (1.172). `turned`: a line
        *  or cone its caster turned to face another way (1.177). */
-      outcome: "appeared" | "struck" | "ended" | "moved" | "drifted" | "shoved" | "turned";
+      outcome: "appeared" | "struck" | "ended" | "moved" | "drifted" | "shoved" | "turned" | "detonated" | "burning";
       targetId?: string;
       /** What caught them: one of the zone's triggers, or walking on its ground (1.168). */
       trigger?: RulesetCombatZoneRule["triggers"][number] | "moving" | "ram";
@@ -1575,6 +1575,13 @@ export interface RulesetCombatZoneRule {
   /** A line or cone held by its caster that they may turn to face another way, spending `budget`
    *  (1.177). */
   turn?: { budget: string };
+  /** It goes off as it ends, doing its effect once to everybody in it (1.178): `grows` is added to its
+   *  amount at the end of each of its caster's turns, and `touched` sets it off when somebody moves
+   *  onto its middle and fails its save. */
+  detonates?: { grows?: RulesetCombatAmount; touched?: boolean };
+  /** Damage of one of these types reaching it sets it alight (1.178); it burns away when its caster's
+   *  turn comes round, dealing `amount` to whoever starts a turn in it meanwhile. */
+  burns?: { by: string[]; amount?: RulesetCombatAmount; damageType?: string };
   /** Moving into one of its cells costs double (1.168). */
   difficult?: boolean;
   /** Moving into one of its cells costs this many plain steps (1.170). */
@@ -1633,4 +1640,8 @@ export interface RulesetCombatZone {
   dealt?: number;
   /** The turn ("round:turn") it was rammed into somebody, and moves no more in (1.170). */
   rammed?: string;
+  /** How many of its caster's turns have ended since it was cast, each adding its `grows` (1.178). */
+  grown?: number;
+  /** Set alight, and burning away (1.178). */
+  burning?: boolean;
 }

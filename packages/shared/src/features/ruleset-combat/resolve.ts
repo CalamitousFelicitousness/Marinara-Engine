@@ -437,6 +437,9 @@ function applyDamage(
 ): number {
   const before = healthOf(ctx, target);
   const type = input.damageType?.trim().toLowerCase();
+  // Fire reaching somebody standing in a web sets it alight (1.178).
+  const standing = rulesetPositionOf(target);
+  if (type && standing) igniteZones(ctx, [type], [standing]);
   let dealt = Math.max(0, Math.floor(input.amount));
   let adjust: "none" | "resist" | "vulnerable" | "immune" = "none";
   // A creature's own hide, and what the target's items keep off.
@@ -1365,12 +1368,116 @@ function endSummons(ctx: RulesetCombatContext, actor: RulesetCombatant, actionId
 /** Each ending of a zone is said once, as a summon's is (1.167). */
 function endZones(ctx: RulesetCombatContext, actor: RulesetCombatant, actionId?: string): void {
   if (!actor.zones) return;
+  const ended: RulesetCombatZone[] = [];
   actor.zones = actor.zones.filter((zone) => {
     if (actionId !== undefined && zone.actionId !== actionId) return true;
-    ctx.events.push({ type: "zone", actorId: actor.id, label: zone.label, outcome: "ended" });
+    ended.push(zone);
     return false;
   });
   if (actor.zones.length === 0) delete actor.zones;
+  // Off the board before it goes off (1.178), so nothing its blast sets moving can end it twice.
+  for (const zone of ended) {
+    detonate(ctx, actor, zone);
+    ctx.events.push({ type: "zone", actorId: actor.id, label: zone.label, outcome: "ended" });
+  }
+}
+
+/** A zone that goes off as it ends (1.178): the entry's own effect, once, on everybody in it, with
+ *  what it has grown by added to its amount. Its caster's, though they may be down by now. */
+function detonate(ctx: RulesetCombatContext, caster: RulesetCombatant, zone: RulesetCombatZone): void {
+  const action = caster.actions.find((entry) => entry.id === zone.actionId);
+  const rule = action?.zone?.detonates;
+  if (!action || !rule) return;
+  ctx.events.push({ type: "zone", actorId: caster.id, label: zone.label, outcome: "detonated" });
+  const ids = ctx.state.board?.grid ? rulesetZoneOccupants(ctx.state, caster, zone, action) : (zone.held ?? []);
+  const targets = ids
+    .map((id) => rulesetCombatant(ctx.state, id))
+    .filter((target): target is RulesetCombatant => !!target && rulesetCombatStanding(target));
+  const { concentration: _held, zone: _zone, summons: _summons, gives: _gives, ...again } = action;
+  const times = zone.grown ?? 0;
+  if (rule.grows && times > 0 && again.damage) {
+    again.damage = {
+      ...again.damage,
+      count: again.damage.count + rule.grows.count * times,
+      flat: again.damage.flat + rule.grows.flat * times,
+    };
+  }
+  const aimed = ctx.aimedAt;
+  const aimedAlso = ctx.aimedAlso;
+  delete ctx.aimedAlso;
+  if (zone.at) ctx.aimedAt = { x: zone.at.x, y: zone.at.y };
+  else delete ctx.aimedAt;
+  const byZone = ctx.byZone;
+  ctx.byZone = true;
+  resolveAction(ctx, caster, again, targets, zone.payWith);
+  if (byZone) ctx.byZone = byZone;
+  else delete ctx.byZone;
+  if (aimed) ctx.aimedAt = aimed;
+  else delete ctx.aimedAt;
+  if (aimedAlso) ctx.aimedAlso = aimedAlso;
+  if (again.damage && ctx.state.board?.grid) {
+    igniteZones(
+      ctx,
+      [again.damage.type, ...(again.damage.plus ?? []).map((clause) => clause.type)],
+      rulesetZoneCells(ctx.state, caster, zone),
+    );
+  }
+}
+
+/** A spell's zone used up (1.178), gone off or burned away: the spell is over, and the concentration
+ *  holding it with it. */
+function spendZone(ctx: RulesetCombatContext, caster: RulesetCombatant, zone: RulesetCombatZone): void {
+  if (caster.concentrating?.actionId === zone.actionId) endConcentration(ctx, caster, "spent");
+  else endZones(ctx, caster, zone.actionId);
+}
+
+/** Damage of these types reaching these cells (1.178): every zone that burns by one of them and
+ *  covers one of the cells is set alight. */
+function igniteZones(ctx: RulesetCombatContext, types: Array<string | undefined>, cells: RulesetCombatCell[]): void {
+  const lower = new Set(types.flatMap((type) => (type ? [type.trim().toLowerCase()] : [])));
+  if (lower.size === 0 || cells.length === 0) return;
+  const keys = new Set(cells.map((cell) => `${cell.x},${cell.y}`));
+  for (const { caster, zone, action } of rulesetStandingZones(ctx.state)) {
+    const burns = action.zone?.burns;
+    if (!burns || zone.burning || !burns.by.some((type) => lower.has(type.trim().toLowerCase()))) continue;
+    if (!rulesetZoneCells(ctx.state, caster, zone).some((cell) => keys.has(`${cell.x},${cell.y}`))) continue;
+    zone.burning = true;
+    ctx.events.push({ type: "zone", actorId: caster.id, label: zone.label, outcome: "burning" });
+  }
+}
+
+/** A turn starting by a burning zone (1.178): its own caster's, and it has burned away; anybody else's
+ *  inside it, and they are burned, with no save. */
+function burnAtTurn(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
+  for (const { caster, zone, action } of rulesetStandingZones(ctx.state)) {
+    const burns = action.zone?.burns;
+    if (!zone.burning || !burns) continue;
+    if (caster.id === actor.id) {
+      spendZone(ctx, caster, zone);
+      continue;
+    }
+    if (!burns.amount || !rulesetCombatStanding(actor)) continue;
+    const inside = ctx.state.board?.grid
+      ? rulesetZoneHolds(rulesetZoneCells(ctx.state, caster, zone), rulesetPositionOf(actor))
+      : (zone.held ?? []).includes(actor.id);
+    if (!inside) continue;
+    const amount = burns.amount;
+    const harm = rulesetCombatIsPool(ctx.combat)
+      ? (({ rolls, flat, total, pool }) => ({ rolls, flat, amount: total, pool }))(
+          throwHarm(ctx, actor, amount, burns.damageType, 0),
+        )
+      : (() => {
+          const rolls = rollRulesetDice(ctx.roll, amount.count, amount.sides);
+          return { rolls, flat: amount.flat, amount: sumOf(rolls) + amount.flat };
+        })();
+    const dealt = applyDamage(ctx, actor, {
+      sourceId: caster.id,
+      label: zone.label,
+      ...(burns.damageType ? { damageType: burns.damageType } : {}),
+      ...harm,
+    });
+    afterBlow(ctx, actor, dealt, false);
+  }
 }
 
 /** A cast that stays leaves its area once the last reaction has been answered (1.167): the cells it
@@ -1780,7 +1887,7 @@ function finishSummon(
 function endConcentration(
   ctx: RulesetCombatContext,
   actor: RulesetCombatant,
-  reason: "replaced" | "damage" | "down" | "zone",
+  reason: "replaced" | "damage" | "down" | "zone" | "spent",
 ): void {
   const held = actor.concentrating;
   if (!held) return;
@@ -3119,6 +3226,16 @@ function zonesEntered(
   for (const { caster, zone, action } of rulesetStandingZones(ctx.state)) {
     const was = before.get(zone);
     if (!was) continue;
+    // Stepping onto a bead (1.178): its save, or it goes off.
+    const cell = rulesetPositionOf(mover);
+    if (action.zone?.detonates?.touched && zone.at && cell && cell.x === zone.at.x && cell.y === zone.at.y) {
+      if (!caster.zones?.includes(zone)) continue;
+      const save = action.save;
+      if (!save || !rollSave(ctx, mover, save.save, save.difficulty, caster.id, null, save.against)) {
+        spendZone(ctx, caster, zone);
+        continue;
+      }
+    }
     for (const id of rulesetZoneOccupants(ctx.state, caster, zone, action)) {
       if (was.zone.has(id)) continue;
       // Only the mover walks in, and only the mover's own zone moves onto anybody.
@@ -3365,6 +3482,14 @@ function resumeAction(ctx: RulesetCombatContext, resume: RulesetActionResume): v
   harmedBy(ctx, actor, action, resume, () =>
     resolveAction(ctx, actor, action, targets, resume.payWith, resume.held, resume.style, resume.spend),
   );
+  // Fire landing on a web with nobody in it sets it alight all the same (1.178).
+  if (grid && at && action.area && action.damage && !action.zone?.detonates) {
+    igniteZones(
+      ctx,
+      [action.damage.type, ...(action.damage.plus ?? []).map((clause) => clause.type)],
+      areaCellsFor(ctx.state, actor, action.id, at, resume.also ? { also: resume.also } : undefined),
+    );
+  }
 }
 
 /** Everybody who can answer this hit, including its target's nearby protectors (1.126). */
@@ -4688,6 +4813,10 @@ export function advanceRulesetTurn(
       if (summon.rounds <= 0) endSummons(ctx, leaving, summon.actionId);
     }
     for (const zone of [...(leaving.zones ?? [])]) {
+      // A bead grows as each of its caster's turns ends, the one it was cast on too (1.178).
+      if (leaving.actions.find((entry) => entry.id === zone.actionId)?.zone?.detonates?.grows) {
+        zone.grown = (zone.grown ?? 0) + 1;
+      }
       if (leaving.flags.freshZones?.includes(zone.actionId)) continue;
       zone.rounds -= 1;
       if (zone.rounds <= 0) endZones(ctx, leaving, zone.actionId);
@@ -4791,6 +4920,7 @@ function beginNextTurn(definition: RulesetDefinition, combat: RulesetCombat, ctx
     // Its own drifting zones move first (1.168), then starting a turn in a zone (1.167), before
     // the turn's own conditions tick.
     driftZones(ctx, actor);
+    burnAtTurn(ctx, actor);
     zonesAtTurn(ctx, actor, "turn-start");
     tickConditions(ctx, actor, "turn-start");
     // A condition that ended as the turn began no longer holds this turn's walk: nothing has been

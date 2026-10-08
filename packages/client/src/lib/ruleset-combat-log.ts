@@ -427,6 +427,17 @@ export function rulesetCombatEventLine(
           dc: event.escapeDc,
         });
       }
+      // A treatment against its own number (1.188): nobody else rolled.
+      if (event.difficulty !== undefined) {
+        return key(event.winner === "actor" ? "contestDifficultyWon" : "contestDifficultyLost", {
+          actor: names.combatant(event.actorId),
+          target: names.combatant(event.targetId),
+          label: event.label,
+          roll: attacker.roll,
+          check: attacker.check,
+          dc: event.difficulty,
+        });
+      }
       const defender = side(event.defender);
       return key(event.winner === "actor" ? "contestWon" : "contestLost", {
         actor: names.combatant(event.actorId),

@@ -460,6 +460,8 @@ interface RulesetDamageInput {
   floor?: number;
   /** A resistance to it counts for nothing (1.187): a vorpal sword's slashing. */
   ignoresResistance?: true;
+  /** What it takes off health comes back only with a rest (1.188): a sword of wounding's. */
+  seals?: true;
 }
 
 /**
@@ -516,10 +518,15 @@ function applyDamage(
   const toTemp = Math.min(before.temp, dealt);
   if (dealt > 0) {
     if (target.sheet) {
-      if (!deferWound) writeHealthLoss(ctx, target, dealt, input.damageType);
+      if (!deferWound) writeHealthLoss(ctx, target, dealt, input.damageType, input.seals);
     } else if (target.health) {
       target.health.temp = before.temp - toTemp;
-      target.health.value = Math.max(0, before.value - (dealt - toTemp));
+      const value = Math.max(0, before.value - (dealt - toTemp));
+      // What only a rest gives back (1.188): the points it took off, not the buffer.
+      if (input.seals) {
+        target.health.sealed = Math.min(before.max, (target.health.sealed ?? 0) + (target.health.value - value));
+      }
+      target.health.value = value;
     }
   }
   const after = healthOf(ctx, target);
@@ -601,10 +608,17 @@ function writeHealthLoss(
   target: RulesetCombatant,
   dealt: number,
   damageType: string | undefined,
+  /** What it takes comes back only with a rest (1.188). A wound track has no such points. */
+  seals?: true,
 ): void {
   const health = ctx.combat.health;
   if (!("track" in health)) {
-    writeRulesetSheet(ctx.definition, target, { op: "damage", pool: health.pool, amount: dealt });
+    writeRulesetSheet(ctx.definition, target, {
+      op: "damage",
+      pool: health.pool,
+      amount: dealt,
+      ...(seals ? { seals } : {}),
+    });
     return;
   }
   // On an indexed track a blow names the box it lands on rather than how many it fills: its damage
@@ -663,7 +677,11 @@ function dealHeal(
   if (amount > 0) {
     // Never past the maximum as it stands, which a level may have halved (1.110).
     if (target.sheet) writeHealthGain(ctx, target, amount, before);
-    else if (target.health) target.health.value = Math.min(before.max, before.value + amount);
+    // Never past what only a rest gives back (1.188).
+    else if (target.health) {
+      const cap = Math.max(before.value, before.max - (target.health.sealed ?? 0));
+      target.health.value = Math.min(cap, before.value + amount);
+    }
   }
   const after = healthOf(ctx, target);
   ctx.events.push({
@@ -1453,6 +1471,7 @@ function harmFromCondition(
     label,
     ...(harms.type ? { damageType: harms.type } : {}),
     ...harm,
+    ...(harms.healedOnlyByRest ? { seals: true as const } : {}),
   });
   afterBlow(ctx, holder, dealt, false);
 }
@@ -2762,7 +2781,8 @@ function resolveContest(
     label: action.label,
     attacker,
     defender,
-    ...(escapeDc !== undefined ? { escapeDc } : {}),
+    // A fixed number nobody holds (1.188) is the contest's own difficulty, not an escape.
+    ...(escapeDc !== undefined ? (contest.from ? { escapeDc } : { difficulty: escapeDc }) : {}),
     winner,
   });
   if (winner !== "actor") return;
@@ -2782,6 +2802,12 @@ function resolveContest(
     );
   }
   if (contest.push !== undefined) pushTarget(ctx, actor, target, contest.push);
+  // Treated in time (1.188): the DC 10 Medicine check that keeps the dying from dying.
+  if (contest.stabilizes && target.dying && !target.stable && !target.defeated) {
+    target.stable = true;
+    clearDyingTracks(ctx, target);
+    ctx.events.push({ type: "stabilized", targetId: target.id, sourceId: actor.id });
+  }
 }
 
 /** Somebody pushed `cells` straight away from `actor`, as far as the way allows: by a contest won
@@ -4685,6 +4711,7 @@ function resolveActionBody(
           ...(qualities ? { qualities } : {}),
           ...(action.entry ? { entry: action.entry } : {}),
           ...(ignores ? { ignoresResistance: true as const } : {}),
+          ...(action.healedOnlyByRest ? { seals: true as const } : {}),
         },
         !!woundTrack,
         damageSaves,

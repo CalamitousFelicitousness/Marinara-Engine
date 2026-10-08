@@ -40,6 +40,9 @@ import {
 export interface RulesetLivePoolValue {
   value: number;
   temp?: number;
+  /** Points lost that only a rest gives back (Capability API 1.188): a sword of wounding's. A
+   *  restore never lifts the pool past its maximum less these; any rest clears them. */
+  sealed?: number;
 }
 
 /** What one WOUND TRACK carries in play. The definition holds `kinds`; this holds MARKS, which are
@@ -89,7 +92,9 @@ const MAX_OP_AMOUNT = 100_000;
 
 const liveNumber = z.number().int().min(-MAX_LIVE_NUMBER).max(MAX_LIVE_NUMBER);
 
-export const rulesetLivePoolValueSchema = z.object({ value: liveNumber, temp: liveNumber.min(0).optional() }).strict();
+export const rulesetLivePoolValueSchema = z
+  .object({ value: liveNumber, temp: liveNumber.min(0).optional(), sealed: liveNumber.min(0).optional() })
+  .strict();
 
 /** A track holds at most one mark per level, and the format caps how long one character's track may
  *  come to, so a longer list is a corrupt or hostile blob rather than a sheet. Kind ids are sheet
@@ -263,7 +268,7 @@ export interface ResolvedRulesetWounds {
 }
 
 export interface ResolvedRulesetLive {
-  pools: Array<RulesetLivePoolSpec & { value: number; temp: number }>;
+  pools: Array<RulesetLivePoolSpec & { value: number; temp: number; sealed: number }>;
   tracks: Array<{ id: string; label: string; min: number; max: number; value: number; wound?: ResolvedRulesetWounds }>;
   text: Array<{ id: string; label: string; maxLength: number; value: string }>;
   conditions: Array<{ id: string; label: string; active: boolean }>;
@@ -700,6 +705,7 @@ function resolveLive(
         value: clamp(entry?.value ?? fallback, 0, spec.max),
         // A pool that carries no buffer can never show one, however the blob got written.
         temp: spec.allowTemp ? Math.max(0, entry?.temp ?? 0) : 0,
+        sealed: clamp(entry?.sealed ?? 0, 0, spec.max),
       };
     }),
     // A track a field takes off the sheet is not on it, exactly as a hidden pool is not.
@@ -803,7 +809,13 @@ export function evaluateRulesetSheetLive(
 export type RulesetSheetOp =
   /** The four that move one pool. One member rather than four, because `damage` also has a track
    *  shape below and two members under one name could not be told apart by the name alone. */
-  | { op: "spend" | "restore" | "damage" | "temp"; pool: string; amount: number }
+  | {
+      op: "spend" | "restore" | "damage" | "temp";
+      pool: string;
+      amount: number;
+      /** On `damage`: what it takes off the pool comes back only with a rest (1.188). */
+      seals?: true;
+    }
   /** Marks a WOUND track. `kind` is one the track declares; `amount` is a number of marks of that
    *  one kind, and a NEGATIVE amount heals, clearing marks of that kind (the lightest first when the
    *  kind is not one the track knows). `box` is where the first mark aims on an indexed track: that
@@ -909,12 +921,18 @@ export function applyRulesetSheetOp(
   const next = readStoredLiveState(definition, build, stored);
   const resolved = resolveLive(definition, build, next);
 
-  const setPool = (spec: RulesetLivePoolSpec, value: number, temp: number): void => {
+  const setPool = (
+    spec: RulesetLivePoolSpec,
+    value: number,
+    temp: number,
+    /** What only a rest gives back (1.188); what is stored already when left out. */
+    sealed = own(next.pools, spec.key)?.sealed ?? 0,
+  ): void => {
     const pools = next.pools ?? {};
     // Back at its default, with no buffer, the entry goes away again: that is what lets an
     // untouched pool follow its maximum when a level-up raises it.
-    if (value === (spec.start === "full" ? spec.max : 0) && temp === 0) delete pools[spec.key];
-    else pools[spec.key] = temp > 0 ? { value, temp } : { value };
+    if (value === (spec.start === "full" ? spec.max : 0) && temp === 0 && sealed === 0) delete pools[spec.key];
+    else pools[spec.key] = { value, ...(temp > 0 ? { temp } : {}), ...(sealed > 0 ? { sealed } : {}) };
     next.pools = pools;
   };
   const setTrack = (track: ResolvedRulesetLive["tracks"][number], value: number): void => {
@@ -1012,7 +1030,8 @@ export function applyRulesetSheetOp(
       return done(poolNow(pool, value, pool.temp));
     }
     if (op.op === "restore") {
-      const value = Math.min(pool.max, pool.value + op.amount);
+      // Never past what only a rest gives back (1.188), and never down for it either.
+      const value = Math.min(Math.max(pool.value, pool.max - pool.sealed), pool.value + op.amount);
       setPool(pool, value, pool.temp);
       return done(poolNow(pool, value, pool.temp));
     }
@@ -1021,7 +1040,9 @@ export function applyRulesetSheetOp(
     const fromTemp = Math.min(pool.temp, op.amount);
     const temp = pool.temp - fromTemp;
     const value = Math.max(0, pool.value - (op.amount - fromTemp));
-    setPool(pool, value, temp);
+    // What it took off the pool itself, not the buffer, comes back only with a rest (1.188).
+    const sealed = op.seals ? Math.min(pool.max, pool.sealed + (pool.value - value)) : pool.sealed;
+    setPool(pool, value, temp, sealed);
     return done(poolNow(pool, value, temp));
   }
 
@@ -1169,6 +1190,12 @@ export function applyRulesetSheetOp(
       target.value = value;
       setPool(target.pool, value, target.temp);
     }
+  }
+  // Any rest gives back what only a rest could (1.188): nothing is sealed after one.
+  for (const pool of resolved.pools) {
+    if (pool.sealed === 0) continue;
+    const now = values.get(pool.key);
+    setPool(pool, now?.value ?? pool.value, now?.temp ?? pool.temp, 0);
   }
   for (const id of rest.clear.text) setText(id, "");
   if (rest.clear.conditions === "all") next.conditions = [];

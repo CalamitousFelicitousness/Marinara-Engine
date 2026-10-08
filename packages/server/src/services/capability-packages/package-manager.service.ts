@@ -1522,6 +1522,33 @@ function carriesWardsAndSaves(value: unknown, depth = 0): boolean {
 
 const MODIFIER_TARGETS = new Set<string>(RULESET_COMBAT_MODIFIER_TARGETS);
 
+/** A contest rolled against a fixed number, offered on allies, the wounded or the dying, or one that
+ *  stabilizes, and a weapon whose damage only a rest restores (1.188), in catalog files too. */
+function carriesTreatmentsAndSeals(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesTreatmentsAndSeals(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const attack = plainRecord(record.attack);
+  if (attack?.healedOnlyByRest !== undefined) return true;
+  if (plainRecord(record.harms)?.healedOnlyByRest !== undefined) return true;
+  const contests = Array.isArray(record.contests) ? record.contests.map(plainRecord) : [];
+  if (
+    contests.some(
+      (contest) =>
+        !!contest &&
+        (contest.difficulty !== undefined ||
+          contest.targets !== undefined ||
+          contest.targetHolds !== undefined ||
+          contest.targetDying !== undefined ||
+          plainRecord(contest.onWin)?.stabilizes !== undefined),
+    )
+  ) {
+    return true;
+  }
+  return Object.values(record).some((one) => carriesTreatmentsAndSeals(one, depth + 1));
+}
+
 /** A weapon that ignores resistance, a slay that leaves conditions on a made save, or a weapon that
  *  hinders its wielder's others while a mark stands (1.187), in catalog files too. */
 function carriesWeaponRiders(value: unknown, depth = 0): boolean {
@@ -3057,6 +3084,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Contests against a fixed number, on allies, the wounded or the dying, and rest-only wounds, 1.188.
+  if (
+    !declaresApi(188) &&
+    (carriesTreatmentsAndSeals(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesTreatmentsAndSeals(document)))
+  ) {
+    return "A ruleset with contests rolled against a fixed number, taken on allies, the wounded or the dying, contests that stabilize, or weapons whose damage only a rest restores requires schemaVersion 2 and capabilityApi 1.188 or newer";
   }
   // Weapons through resistance, slays that frighten instead, an oathbow's other weapons, 1.187.
   if (

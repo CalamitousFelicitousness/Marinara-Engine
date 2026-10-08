@@ -19019,6 +19019,10 @@
                           "type": "boolean",
                           "const": true
                         },
+                        "healedOnlyByRest": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "othersWhileMarked": {
                           "type": "object",
                           "properties": {
@@ -28828,6 +28832,10 @@
                     "minLength": 1,
                     "maxLength": 40
                   },
+                  "healedOnlyByRest": {
+                    "type": "boolean",
+                    "const": true
+                  },
                   "$comment": {}
                 },
                 "required": [
@@ -30337,6 +30345,28 @@
                 ],
                 "additionalProperties": false
               },
+              "difficulty": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000
+              },
+              "targets": {
+                "type": "string",
+                "enum": [
+                  "enemy",
+                  "ally",
+                  "any"
+                ]
+              },
+              "targetHolds": {
+                "type": "string",
+                "maxLength": 40,
+                "pattern": "^[a-z][a-z0-9_]*$"
+              },
+              "targetDying": {
+                "type": "boolean",
+                "const": true
+              },
               "ties": {
                 "type": "string",
                 "enum": [
@@ -30430,6 +30460,10 @@
                     "exclusiveMinimum": 0,
                     "maximum": 10000
                   },
+                  "stabilizes": {
+                    "type": "boolean",
+                    "const": true
+                  },
                   "$comment": {}
                 },
                 "additionalProperties": false,
@@ -30462,7 +30496,6 @@
               "label",
               "budget",
               "attacker",
-              "defender",
               "onWin"
             ],
             "additionalProperties": false

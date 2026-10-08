@@ -1365,6 +1365,29 @@ const catalogAmountShape = { dice: catalogDice.optional(), flat: z.number().int(
  *  say it the same way. */
 /** An area that stays (Capability API 1.167), as a catalog entry or an item's use carries it. Typed by
  *  hand: written out, its inferred type is too long for the definition schema around it to emit. */
+/** Damage a combat condition deals its holder each turn (Capability API 1.184). Typed by hand:
+ *  written out, its inferred type is too long for the definition schema around it to emit. */
+export interface RulesetConditionHarms {
+  at: "turn-start" | "turn-end";
+  dice?: string;
+  flat?: number;
+  type?: string;
+  healedOnlyByRest?: true;
+}
+const conditionHarmsSchema: z.ZodType<RulesetConditionHarms, z.ZodTypeDef, unknown> = z
+  .object({
+    at: z.enum(["turn-start", "turn-end"]),
+    dice: catalogDice.optional(),
+    flat: z.number().int().min(0).max(1000).optional(),
+    type: promptSafeText(40).optional(),
+    /** What it takes comes back only with a rest (Capability API 1.188): a sword of wounding's. */
+    healedOnlyByRest: z.literal(true).optional(),
+  })
+  .strict()
+  .refine((harm) => harm.dice !== undefined || harm.flat !== undefined, {
+    message: "What it harms with names dice, a flat amount, or both",
+  });
+
 /** The senses that see through an obscuring zone or past a condition that hides (1.173). */
 export interface RulesetSeenThrough {
   pierced?: string[];
@@ -3858,6 +3881,10 @@ export const rulesetItemAttackSchema = z
     /** Its damage ignores the target's resistance to its own damage type (Capability API 1.187),
      *  resistance to every kind of harm included: a vorpal sword's slashing. */
     ignoresResistance: z.literal(true).optional(),
+    /** What its damage takes off the target's health comes back only with a rest, never from a heal
+     *  (Capability API 1.188): a sword of wounding. Written to a sheet's pool, so it holds after the
+     *  fight until any rest. */
+    healedOnlyByRest: z.literal(true).optional(),
     /** While a creature the wielder put this condition on still stands, the wielder's attacks with
      *  every OTHER weapon roll with `mode`, or only the ranged ones with `ranged` (Capability API
      *  1.187): an oathbow's disadvantage while its sworn enemy lives. */
@@ -4929,18 +4956,7 @@ const combatConditionSchema = z
     attacksPerTurn: z.number().int().min(0).max(10).optional(),
     /** Damage its holder takes as each of their turns starts or ends (Capability API 1.184), from
      *  whoever put it on: a sword of wounding's 1d4 necrotic, before the save that ends it. */
-    harms: z
-      .object({
-        at: z.enum(["turn-start", "turn-end"]),
-        dice: catalogDice.optional(),
-        flat: z.number().int().min(0).max(1000).optional(),
-        type: promptSafeText(40).optional(),
-      })
-      .strict()
-      .refine((harm) => harm.dice !== undefined || harm.flat !== undefined, {
-        message: "What it harms with names dice, a flat amount, or both",
-      })
-      .optional(),
+    harms: conditionHarmsSchema.optional(),
     /** Put on again while it holds, it stacks up to this many times rather than starting over
      *  (Capability API 1.184), and its `harms` is dealt once for each: a sword of wounding's wounds.
      *  Ending it ends them all. */
@@ -5101,7 +5117,22 @@ const combatContestBaseSchema = z
     reach: z.number().finite().gt(0).max(10000).optional(),
     /** Each side rolls the best of the checks it may use here. */
     attacker: z.object({ checks: z.array(sheetId).min(1).max(4) }).strict(),
-    defender: z.object({ checks: z.array(sheetId).min(1).max(4) }).strict(),
+    /** Left out where the contest is rolled against a fixed `difficulty` instead. */
+    defender: z
+      .object({ checks: z.array(sheetId).min(1).max(4) })
+      .strict()
+      .optional(),
+    /** A number the actor's check meets to win, in place of anybody rolling against it (Capability
+     *  API 1.188): 5e's DC 15 Wisdom (Medicine) check that closes a sword of wounding's wounds, or
+     *  the DC 10 one that stabilizes the dying. One of this and `defender`. */
+    difficulty: z.number().int().min(0).max(1000).optional(),
+    /** Who it may be taken on (Capability API 1.188): the other side, the actor's own, or anybody,
+     *  the actor included. The other side when left out. */
+    targets: z.enum(["enemy", "ally", "any"]).optional(),
+    /** Offered only on a target that holds this condition (Capability API 1.188): the wounded. */
+    targetHolds: sheetId.optional(),
+    /** Offered only on a target that is dying and not yet stable (Capability API 1.188). */
+    targetDying: z.literal(true).optional(),
     /** Who takes a tie. */
     ties: z.enum(["defender", "attacker"]).default("defender"),
     /** Aimed only at whoever put this condition on the actor, and offered only while it holds: how
@@ -5138,13 +5169,19 @@ const combatContestBaseSchema = z
         /** How far the loser is pushed straight away from the winner, in the ruleset's own distance
          *  unit. Only a fight on a board moves anybody. */
         push: z.number().finite().gt(0).max(10000).optional(),
+        /** The target, if dying, is stable (Capability API 1.188). */
+        stabilizes: z.literal(true).optional(),
       })
       .strict()
-      .refine((onWin) => !!(onWin.applies || onWin.ends || onWin.push), {
-        message: "A contest's onWin applies, ends or pushes something",
+      .refine((onWin) => !!(onWin.applies || onWin.ends || onWin.push || onWin.stabilizes), {
+        message: "A contest's onWin applies, ends, pushes or stabilizes something",
       }),
   })
-  .strict();
+  .strict()
+  .refine((contest) => (contest.defender === undefined) !== (contest.difficulty === undefined), {
+    message: 'A contest is rolled against a "defender" or a fixed "difficulty": one of them',
+    path: ["difficulty"],
+  });
 
 /** Named, so the whole definition's inferred type stays short enough for the compiler to write. */
 export type RulesetCombatContestDeclaration = z.infer<typeof combatContestBaseSchema>;
@@ -7396,14 +7433,22 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       };
       checkBudget(contest.budget, [...path, "budget"]);
       for (const side of ["attacker", "defender"] as const) {
-        contest[side].checks.forEach((id, checkIndex) => {
+        contest[side]?.checks.forEach((id, checkIndex) => {
           checkId(id, [...path, side, "checks", checkIndex]);
-          if (contest[side].checks.indexOf(id) !== checkIndex) {
+          if (contest[side]!.checks.indexOf(id) !== checkIndex) {
             issue([...path, side, "checks", checkIndex], `Duplicate check "${id}"`);
           }
         });
       }
       if (contest.from) conditionId(contest.from.holding, [...path, "from", "holding"]);
+      if (contest.targetHolds) conditionId(contest.targetHolds, [...path, "targetHolds"]);
+      // A fixed number is met on the fight's own dice, which a pool fight does not add up (1.188).
+      if (contest.difficulty !== undefined && resolution.kind === "dice-pool") {
+        issue(
+          [...path, "difficulty"],
+          "A pool fight counts successes, so a contest there is rolled against a defender",
+        );
+      }
       if (contest.maxSizeAbove !== undefined && !combat.sizes) {
         issue([...path, "maxSizeAbove"], '"maxSizeAbove" reads sizes, so the block declares "sizes" too');
       }

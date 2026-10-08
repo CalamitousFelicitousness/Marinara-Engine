@@ -957,7 +957,7 @@ function keptDistribution(count: number, sides: number, mode: RulesetCombatRollM
 /** What breaking free is rolled against, when what holds the actor names it (1.98). Only a summed
  *  fight has one: the schema refuses it in a pool fight. */
 export function rulesetEscapeDc(actor: RulesetCombatant, contest: RulesetCombatContest): number | undefined {
-  if (!contest.from) return undefined;
+  if (!contest.from) return contest.difficulty;
   return actor.tracked.find((entry) => entry.condition === contest.from)?.escapeDc;
 }
 
@@ -1078,6 +1078,10 @@ export function rulesetCanRevive(
  *  condition it ends that they hold, or a dying they can be steadied from. One that also heals or
  *  harms or puts something on is aimed as that says. */
 function rulesetCureReaches(action: RulesetCombatAction, combatant: RulesetCombatant): boolean {
+  // A contest that treats somebody (1.188) is taken only on whoever has what it treats.
+  const contest = action.contest;
+  if (contest?.targetHolds && !combatant.tracked.some((entry) => entry.condition === contest.targetHolds)) return false;
+  if (contest?.targetDying && !(combatant.dying && !combatant.stable && !combatant.defeated)) return false;
   if (!action.ends && !action.stabilizes) return true;
   if (action.damage || action.heal || action.temporary || action.restore || action.applies?.length) return true;
   if (action.revives || action.save || action.contest || action.summons || action.zone) return true;

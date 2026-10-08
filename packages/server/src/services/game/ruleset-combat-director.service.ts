@@ -1126,14 +1126,23 @@ function rulesetCandidatesFrom(
       if (!contest) continue;
       for (const targetId of rulesetOptionTargets(definition, encounter, actorId, option)) {
         const target = rulesetCombatant(encounter, targetId);
-        if (!target || target.down) continue;
+        if (!target) continue;
+        // Treating somebody (1.188): steadying a friend who is dying, or ending what holds a friend.
+        const ally = target.side === actor.side;
+        const steadies = ally && !!contest.stabilizes && target.dying && !target.stable && !target.defeated;
+        if (target.down && !steadies) continue;
         const chance = rulesetContestChance(definition, combat, actor, target, contest, encounter) ?? 0.5;
         const held = new Set(rulesetCombatConditions(definition, actor));
         const theirs = new Set(rulesetCombatConditions(definition, target));
         const frees = (contest.ends ?? []).some((entry) => entry.on === "actor" && held.has(entry.condition));
-        const holds = (contest.applies ?? []).some((entry) => !theirs.has(entry.condition));
-        const worth = frees ? 1 : holds ? 0.3 : contest.push !== undefined && encounter.board ? 0.15 : 0;
-        if (worth <= 0) continue;
+        const treats =
+          ally && (contest.ends ?? []).some((entry) => entry.on === "target" && theirs.has(entry.condition));
+        const holds = !ally && (contest.applies ?? []).some((entry) => !theirs.has(entry.condition));
+        const shoves = !ally && contest.push !== undefined && !!encounter.board;
+        const worth = frees ? 1 : holds ? 0.3 : shoves ? 0.15 : 0;
+        // A treatment is weighed as the heal it stands in for.
+        const care = steadies ? 1 : treats ? 0.5 : 0;
+        if (worth <= 0 && care <= 0) continue;
         candidates.push({
           action: {
             choice: { actorId, optionId: option.id, targetIds: [targetId], ...paying(way) },
@@ -1141,7 +1150,7 @@ function rulesetCandidatesFrom(
             targetId,
           },
           targetId,
-          setup: worth * chance,
+          ...(care > 0 ? { healing: care * chance } : { setup: worth * chance }),
           cost: price,
         });
       }

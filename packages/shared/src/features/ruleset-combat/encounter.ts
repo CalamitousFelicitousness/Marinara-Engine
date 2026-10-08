@@ -1511,6 +1511,7 @@ function itemAttackActions(
       ...(attack.against?.length ? { against: structuredClone(attack.against) } : {}),
       ...(slay.length ? { slay } : {}),
       ...(attack.ignoresResistance ? { ignoresResistance: true as const } : {}),
+      ...(attack.healedOnlyByRest ? { healedOnlyByRest: true as const } : {}),
       ...(attack.othersWhileMarked ? { othersWhileMarked: { ...attack.othersWhileMarked, item: index } } : {}),
     };
     actions.push(offHand ? { ...weapon, pairs: index } : weapon);
@@ -2448,7 +2449,7 @@ function contestActions(
       kind: "contest",
       label: contest.label,
       budget: contest.budget,
-      targets: { side: "enemy", count: 1 },
+      targets: { side: contest.targets ?? "enemy", count: 1 },
       ...(contest.reach !== undefined && perCell !== undefined
         ? { reach: rulesetInCells(contest.reach, perCell) }
         : {}),
@@ -2457,7 +2458,11 @@ function contestActions(
         id: contest.id,
         ...(contest.strike ? { strike: true as const } : {}),
         attacker: [...contest.attacker.checks],
-        defender: [...contest.defender.checks],
+        defender: [...(contest.defender?.checks ?? [])],
+        ...(contest.difficulty !== undefined ? { difficulty: contest.difficulty } : {}),
+        ...(contest.targetHolds ? { targetHolds: contest.targetHolds } : {}),
+        ...(contest.targetDying ? { targetDying: true as const } : {}),
+        ...(contest.onWin.stabilizes ? { stabilizes: true as const } : {}),
         ties: contest.ties,
         ...(contest.from ? { from: contest.from.holding } : {}),
         ...(contest.from?.escapable ? { escapable: true as const } : {}),

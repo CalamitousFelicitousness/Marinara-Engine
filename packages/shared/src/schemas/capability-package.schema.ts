@@ -935,7 +935,11 @@ const capabilityPackageManifestBaseSchema = z
 // 1.187: an item attack's `ignoresResistance` (a vorpal sword), a slay's `saved` conditions on a made
 //        save (a mace of disruption), and `othersWhileMarked` (an oathbow's other weapons). Off a
 //        board, an area names either side unless it spares its own (no key: a behavior change).
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 187 } as const);
+// 1.188: a contest's `difficulty` (rolled against a fixed number, no defender), `targets`,
+//        `targetHolds`, `targetDying` and `onWin.stabilizes` (5e's Medicine checks), and an item
+//        attack's and a condition's `harms.healedOnlyByRest` (a sword of wounding: hit points they
+//        take come back only by rest).
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 188 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

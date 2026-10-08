@@ -591,6 +591,8 @@ export interface RulesetCombatAction {
   }>;
   /** Its damage ignores resistance to its own type (1.187): a vorpal sword. */
   ignoresResistance?: true;
+  /** What its damage takes off comes back only with a rest (1.188): a sword of wounding. */
+  healedOnlyByRest?: true;
   /** While a creature its wielder marked with `condition` stands, their attacks with every other
    *  weapon (the ranged ones with `ranged`) roll with `mode` (1.187). `item` is this weapon's place
    *  in `sheet.items`. */
@@ -660,6 +662,13 @@ export interface RulesetCombatContest {
   ends?: Array<{ condition: string; on: "actor" | "target" }>;
   /** How far the loser is pushed straight away, IN CELLS. Read only by a positioned fight. */
   push?: number;
+  /** A fixed number the actor meets to win, with nobody rolling against it (1.188). */
+  difficulty?: number;
+  /** Offered only on a target holding this, or only on one dying and not stable (1.188). */
+  targetHolds?: string;
+  targetDying?: true;
+  /** Winning stabilizes a dying target (1.188). */
+  stabilizes?: true;
 }
 
 /** A shape on the board, in cells. `friendlyFire` false leaves the actor's own side out of it. */
@@ -861,7 +870,8 @@ export interface RulesetCombatant {
   };
   /** An opponent's block, and the health the encounter keeps for it. */
   block?: RulesetStatBlock;
-  health?: { value: number; max: number; temp: number };
+  /** `sealed` is what only a rest gives back (1.188), which no heal lifts it past. */
+  health?: { value: number; max: number; temp: number; sealed?: number };
   /** Where they stand. Present only in a positioned fight, and then on everybody at once. */
   x?: number;
   y?: number;
@@ -1456,6 +1466,8 @@ export type RulesetCombatEvent =
       /** Breaking free of a hold that names what escaping it is rolled against (1.98): the actor wins
        *  on meeting it. */
       escapeDc?: number;
+      /** A contest rolled against its own fixed number (1.188), met to win. */
+      difficulty?: number;
       winner: "actor" | "target";
     }
   /** Somebody pushed across the board by somebody else. Forced, so it spends nothing of their own

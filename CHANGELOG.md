@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: a Wisdom (Medicine) check can close a sword of wounding's wounds or stabilize the dying, contests can be rolled against a fixed number and taken on allies, and hit points a sword of wounding takes come back only with a rest (Capability API 1.188).
 - Rulesets: a vorpal sword cuts through resistance to slashing, a mace of disruption frightens the fiend or undead it fails to destroy, an oathbow hinders its wielder's other weapons while the sworn enemy stands, and without a board a breath or a fireball can catch its maker's allies too
 - Rulesets: Chill Touch stops its target healing, Protection from Evil and Good keeps charm and fright from fiends and undead away, Hideous Laughter skips creatures of Intelligence 4 or less, and dragon scale mail helps against a dragon's breath and Frightful Presence but not its Wing Attack
 - Rulesets: a javelin of lightning turns into a bolt that strikes everybody on the way to its target, reaches 120 feet and adds its lightning to the hit, once until its charge comes back

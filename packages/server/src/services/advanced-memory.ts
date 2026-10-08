@@ -3310,7 +3310,22 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     };
     // A private sentence of four or more words found in a section someone else can also read; text with
     // other macros counts as read by everyone. Segmenting counts words in languages without spaces too.
+    // A piece up to a sentence end with under four words is checked with the pieces after it, so a decimal
+    // or an abbreviation, as in "meet at 3.5 now." or "mr. fox hid it.", cannot hide a sentence. Sentence
+    // segmenting can't do this: on this lowercase text it joins every sentence, and it splits "Mr. Fox".
     const words = new Intl.Segmenter(undefined, { granularity: "word" });
+    const sentences = (text: string) => {
+      const pieces = text.split(/(?<=\p{Sentence_Terminal})/u);
+      return pieces.flatMap((_, start) => {
+        let sentence = "";
+        for (const piece of pieces.slice(start)) {
+          sentence += piece;
+          if ([...words.segment(sentence)].filter((word) => word.isWordLike).length >= 4)
+            return [sentence.trim().replace(/[\s\p{Sentence_Terminal}]+$/u, "")];
+        }
+        return [];
+      });
+    };
     const leaks = (before: Map<string, string>, after: Map<string, string>) =>
       [...before].some(
         ([key, text]) =>
@@ -3319,14 +3334,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
             ([wider, output]) =>
               (wider === "{{" ||
                 (JSON.parse(wider) as string[]).some((name) => !(JSON.parse(key) as string[]).includes(name))) &&
-              text
-                .split(/\p{Sentence_Terminal}/u)
-                .map((sentence) => sentence.trim())
-                .some(
-                  (sentence) =>
-                    [...words.segment(sentence)].filter((word) => word.isWordLike).length >= 4 &&
-                    output.includes(sentence),
-                ),
+              sentences(text).some((sentence) => output.includes(sentence)),
           ),
       );
     // Combine the summaries the same characters read. One whose text differs by character joins

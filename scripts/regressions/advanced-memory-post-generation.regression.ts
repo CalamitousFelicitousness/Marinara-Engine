@@ -1792,6 +1792,42 @@ try {
   await memory.checkScenesAfterGeneration(combineChat.id, { blocking: false });
   assert.deepEqual((await combineEntries())[0], cjkRecap, "a copied private sentence without spaces is not saved");
   assert.doesNotMatch(await recallFor(privateB.id), /钟楼/u);
+  // So is one whose full stops split it into pieces under four words: a decimal or an abbreviation.
+  for (const [index, secret] of ["Meet at 3.5 now.", "Mr. Fox hid it."].entries()) {
+    const pieceRecap = recap(
+      `piece-recap-${index}`,
+      0,
+      `${forBoth}${"SHARED_WALK ".repeat(300)}{{#if char == "Maukie"}}${secret}{{/if}}{{/if}}`,
+    );
+    summaryReply = (prompt) =>
+      prompt.includes(secret)
+        ? `COMBINED_WALK. ${secret} {{#if char == "Maukie"}}Maukie kept quiet.{{/if}}`
+        : "PLAIN_COMPACTED";
+    await chats.patchMetadata(combineChat.id, { summaryEntries: [pieceRecap, sharedRecap] });
+    await memory.checkScenesAfterGeneration(combineChat.id, { blocking: false });
+    assert.deepEqual((await combineEntries())[0], pieceRecap, `copied "${secret}" is not saved`);
+    assert(!(await recallFor(privateB.id)).includes(secret));
+  }
+  // Shared text that only reuses words from those sentences is still saved.
+  const piecesRecap = recap(
+    "pieces-recap",
+    0,
+    `${forBoth}${"SHARED_WALK ".repeat(300)}{{#if char == "Maukie"}}Meet at 3.5 now. Mr. Fox hid it.{{/if}}{{/if}}`,
+  );
+  summaryReply = (prompt) =>
+    prompt.includes("Mr. Fox hid it.")
+      ? 'COMBINED_WALK. Mr. Fox met them at 3.5 now. {{#if char == "Maukie"}}Meet at 3.5 now. Mr. Fox hid it.{{/if}}'
+      : "PLAIN_COMPACTED";
+  await chats.patchMetadata(combineChat.id, { summaryEntries: [piecesRecap, sharedRecap] });
+  await memory.checkScenesAfterGeneration(combineChat.id, { blocking: false });
+  assert.deepEqual(
+    (await combineEntries()).filter((entry) => !entry.enabled).map((entry) => entry.id),
+    [piecesRecap.id, sharedRecap.id],
+    "a harmless shared sentence is saved",
+  );
+  const piecesRecall = await recallFor(privateB.id);
+  assert.match(piecesRecall, /Mr\. Fox met them at 3\.5 now\./u);
+  assert.doesNotMatch(piecesRecall, /Meet at 3\.5 now|hid it/u);
   // Text next to another macro counts as read by everyone.
   summaryReply = (prompt) =>
     prompt.includes("MAUKIE_SECRET")

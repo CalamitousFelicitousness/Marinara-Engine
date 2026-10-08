@@ -798,7 +798,10 @@ import { loadPriorBeholderState } from "../services/agents/beholder-state.js";
 import { gameGmPromptDecisionTexts, injectGameGmPromptRuntime } from "../services/generation/game-gm-prompt-runtime.js";
 import { mergeConversationCharacterMemories } from "../services/generation/conversation-memory-context.js";
 import { injectMemoryRecallContext } from "../services/generation/memory-recall-context.js";
-import { shouldSkipAgentByMessageInterval } from "../services/generation/agent-cadence.js";
+import {
+  applyIllustratorChatRunInterval,
+  shouldSkipAgentByMessageInterval,
+} from "../services/generation/agent-cadence.js";
 import {
   appendTrackerLorebookBatchContextKey,
   applyTrackerLorebookContextPolicy,
@@ -5451,7 +5454,12 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             agentsStore,
             chatId: input.chatId,
             agentType: "illustrator",
-            settings: illustratorAgentForInterval.settings,
+            settings: applyIllustratorChatRunInterval(
+              "illustrator",
+              illustratorAgentForInterval.settings,
+              chatMeta,
+              requestChatMode,
+            ),
             fallbackInterval: (getDefaultBuiltInAgentSettings("illustrator").runInterval as number) ?? 5,
             messages: allChatMessages,
             countUpcomingAssistantMessage: createsAssistantMessage,

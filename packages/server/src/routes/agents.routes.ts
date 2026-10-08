@@ -440,6 +440,7 @@ export async function agentsRoutes(app: FastifyInstance) {
       agentType,
       { ...defaults, ...parseAgentSettings(config?.settings) },
       parseAgentSettings(chat?.metadata),
+      chat?.mode,
     );
     // Illustrator's 0 means it only runs when the user asks, matching shouldSkipAgentByMessageInterval.
     const manualOnly = agentType === "illustrator" && (settings.runInterval === 0 || settings.runInterval === "0");

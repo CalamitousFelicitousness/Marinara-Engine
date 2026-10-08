@@ -6,8 +6,10 @@ import {
   parseCadenceInputValue,
   stepCadenceValue,
 } from "../../packages/client/src/lib/agent-cadence.js";
-import { shouldSkipAgentByMessageInterval } from "../../packages/server/src/services/generation/agent-cadence.js";
-import { resolveEffectiveAgentSettings } from "../../packages/server/src/services/generation/agent-resolution.js";
+import {
+  applyIllustratorChatRunInterval,
+  shouldSkipAgentByMessageInterval,
+} from "../../packages/server/src/services/generation/agent-cadence.js";
 import { normalizeIllustratorRunInterval } from "../../packages/shared/src/utils/illustrator-generation-count.js";
 import {
   applyAgentAddSetupToAgentSettings,
@@ -99,24 +101,22 @@ assert.equal(normalizeIllustratorRunInterval(2.7), 2);
 assert.equal(normalizeIllustratorRunInterval(-4), 0);
 assert.equal(normalizeIllustratorRunInterval(250), 100);
 
-const chatSettings = (agentRunInterval: number, chatMetadata?: Record<string, unknown>) =>
-  resolveEffectiveAgentSettings({
-    agentType: "illustrator",
-    settings: { runInterval: agentRunInterval },
-    chatMetadata,
-  });
+const chatSettings = (agentRunInterval: number, chatMetadata?: Record<string, unknown>, chatMode = "roleplay") =>
+  applyIllustratorChatRunInterval("illustrator", { runInterval: agentRunInterval }, chatMetadata, chatMode);
 assert.equal(chatSettings(5, { illustratorRunInterval: 2 }).runInterval, 2, "the chat value wins");
 assert.equal(chatSettings(5, {}).runInterval, 5, "a missing chat value falls back to the agent");
 assert.equal(chatSettings(5, { illustratorRunInterval: null }).runInterval, 5, "a cleared chat value falls back");
 assert.equal(chatSettings(5).runInterval, 5);
 assert.equal(
-  resolveEffectiveAgentSettings({
-    agentType: "lorebook-keeper",
-    settings: { runInterval: 8 },
-    chatMetadata: { illustratorRunInterval: 2 },
-  }).runInterval,
+  applyIllustratorChatRunInterval("lorebook-keeper", { runInterval: 8 }, { illustratorRunInterval: 2 }, "roleplay")
+    .runInterval,
   8,
   "other agents ignore the Illustrator chat value",
+);
+assert.equal(
+  chatSettings(5, { illustratorRunInterval: 2 }, "game").runInterval,
+  5,
+  "Game orders illustrations by scenes, so it ignores the chat value",
 );
 const sinceLastImage = {
   ...base,

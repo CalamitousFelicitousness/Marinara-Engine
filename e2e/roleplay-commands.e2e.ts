@@ -2202,7 +2202,7 @@ test("Roleplay commands require attached agents, enforce combat audience, and fo
     const commands = page.locator("[data-roleplay-commands]");
     await commands.getByRole("button", { name: "Expand Commands", exact: true }).click();
     await expect(commands).toContainText(
-      "Let characters request extra Illustrator images. Automatic runs still follow this chat's Run Interval.",
+      "Let characters request extra Illustrator images. Automatic runs still follow the agent's Run Interval.",
     );
     await expect(commands.getByRole("checkbox", { name: /^Combat\b/u })).toBeChecked();
     await expect(commands.getByRole("checkbox", { name: /^Illustrations\b/u })).toBeChecked();

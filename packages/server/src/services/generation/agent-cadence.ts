@@ -18,13 +18,17 @@ export function resolveAgentRunInterval(settings: unknown, fallback: number): nu
   return Number.isFinite(parsed) && parsed >= 1 ? Math.min(100, Math.floor(parsed)) : normalizedFallback;
 }
 
-/** Illustrator settings with this chat's Run Interval (0-100) in place of the agent's; other agents pass through. */
+/**
+ * Illustrator settings with a Roleplay chat's Run Interval (0-100) in place of the agent's. Other agents and other
+ * modes pass through: Game orders its illustrations by scenes and asset needs, not by a per-chat interval.
+ */
 export function applyIllustratorChatRunInterval(
   agentType: string,
   settings: Record<string, unknown>,
   chatMetadata: Record<string, unknown> | null | undefined,
+  chatMode: unknown,
 ): Record<string, unknown> {
-  if (agentType !== "illustrator") return settings;
+  if (agentType !== "illustrator" || chatMode !== "roleplay") return settings;
   const runInterval = normalizeIllustratorRunInterval(chatMetadata?.illustratorRunInterval);
   return runInterval === null ? settings : { ...settings, runInterval };
 }

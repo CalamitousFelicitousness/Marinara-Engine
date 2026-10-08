@@ -1776,6 +1776,20 @@ try {
     /COMBINED_WALK/u,
     "a sentence that was already shared does not block the combination",
   );
+  // Nor does one the shared text writes with curly quote marks and apostrophes.
+  const curlyRecap = recap(
+    "curly-recap",
+    0,
+    `${forBoth}“They returned to Maukie’s inn.” ${"SHARED_WALK ".repeat(300)}{{#if char == "Maukie"}}MAUKIE_SECRET hid the key. They returned to Maukie's inn.{{/if}}{{/if}}`,
+  );
+  summaryReply = () => `They returned to Maukie's inn. COMBINED_CURLY. ${maukieSecret}`;
+  await chats.patchMetadata(combineChat.id, { summaryEntries: [curlyRecap] });
+  await memory.checkScenesAfterGeneration(combineChat.id, { blocking: false });
+  assert.match(
+    (await combineEntries()).find((entry) => entry.enabled)!.content,
+    /COMBINED_CURLY/u,
+    "a shared sentence with other quote marks and apostrophes does not block the combination",
+  );
 
   // A summary edited by hand keeps its text; only the plain summary is shortened.
   summaryReply = undefined;

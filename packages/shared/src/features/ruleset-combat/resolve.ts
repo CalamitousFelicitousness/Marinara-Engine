@@ -1306,6 +1306,7 @@ function applyConditionId(
       ? { escapeChecks: [...applies.escapeChecks] }
       : {}),
     ...(stacks !== undefined ? { stacks } : {}),
+    ...(applies.endsWith ? { endsWith: applies.endsWith } : {}),
   });
   ctx.events.push(
     stacks !== undefined
@@ -1383,11 +1384,25 @@ function removeCondition(
     | "shaken"
     | "immune"
     | "cured"
-    | "moved",
+    | "moved"
+    | "linked",
 ): void {
+  const removed = target.tracked.find((entry) => entry.condition === condition);
+  // Already gone, with what it was put on with (1.197): a loop over a list read before that is not
+  // told twice.
+  if (!removed && !rulesetCombatConditions(ctx.definition, target).includes(condition)) return;
   target.tracked = target.tracked.filter((entry) => entry.condition !== condition);
   if (target.sheet) writeRulesetSheet(ctx.definition, target, { op: "condition", condition, active: false });
   ctx.events.push({ type: "condition", targetId: target.id, condition, active: false, reason });
+  // What was put on with it to last only as long as it ends with it (1.197): put on by the same
+  // source with the same use, whatever took this one off.
+  const sameUse = (entry: RulesetTrackedCondition) =>
+    !removed ||
+    (entry.source === removed.source && (entry.action ?? []).join("\n") === (removed.action ?? []).join("\n"));
+  for (const entry of [...target.tracked]) {
+    if (entry.endsWith !== condition || !sameUse(entry)) continue;
+    if (target.tracked.includes(entry)) removeCondition(ctx, target, entry.condition, "linked");
+  }
   // What it leaves behind when it ends (combat C6d), as Haste's lethargy is. Putting it on again
   // replaces it without ending it, so that never comes here.
   const ending = ctx.combat.conditions?.find((entry) => entry.condition === condition)?.onEnd;
@@ -3256,10 +3271,14 @@ export function liftRulesetFightEffects(
   const crash = definition.combat?.initiative.resource?.crash?.condition;
   const concentration = definition.combat?.concentration;
   const events: RulesetCombatEvent[] = [];
-  const lift = (combatant: RulesetCombatant, condition: string, reason: "recovered" | "expired") => {
+  const lift = (combatant: RulesetCombatant, condition: string, reason: "recovered" | "expired" | "linked") => {
+    if (!combatant.tracked.some((entry) => entry.condition === condition) && reason === "linked") return;
     combatant.tracked = combatant.tracked.filter((entry) => entry.condition !== condition);
     if (combatant.sheet) writeRulesetSheet(definition, combatant, { op: "condition", condition, active: false });
     events.push({ type: "condition", targetId: combatant.id, condition, active: false, reason });
+    // What was put on to last only as long as it goes with it (1.197), clock or none.
+    for (const entry of [...combatant.tracked])
+      if (entry.endsWith === condition) lift(combatant, entry.condition, "linked");
   };
   for (const combatant of state.combatants) {
     if (combatant.crashedTurns !== undefined) {
@@ -3267,6 +3286,7 @@ export function liftRulesetFightEffects(
       if (crash && rulesetCombatConditions(definition, combatant).includes(crash)) lift(combatant, crash, "recovered");
     }
     for (const entry of [...combatant.tracked]) {
+      if (!combatant.tracked.includes(entry)) continue;
       if (entry.rounds !== null || entry.endsAfter || entry.endsWhenHolder || entry.concentration) {
         lift(combatant, entry.condition, "expired");
       }

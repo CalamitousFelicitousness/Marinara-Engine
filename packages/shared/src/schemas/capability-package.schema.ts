@@ -957,7 +957,9 @@ const capabilityPackageManifestBaseSchema = z
 // 1.196: catalog mechanics' `tracks` (live tracks moved by levels on whoever it lands on: 5e's
 //        Greater Restoration takes exhaustion off, Sickening Radiance adds it) and `unseals` (the
 //        health only a rest gives back, given back), and a wall section's `broken.perCostStep`.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 196 } as const);
+// 1.197: an applied condition's `endsWith` (it ends whenever another condition put on with it by
+//        the same use ends: 5e's Hypnotic Pattern's incapacitation goes with its charm).
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 197 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

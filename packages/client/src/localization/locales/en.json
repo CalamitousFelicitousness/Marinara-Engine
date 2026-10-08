@@ -1221,6 +1221,7 @@
   "game.combat.ruleset.event.conditionExpired": "{{condition}} runs out on {{target}}.",
   "game.combat.ruleset.event.conditionHarmed": "{{condition}} ends on {{target}} after harm from its source's side.",
   "game.combat.ruleset.event.conditionImmune": "{{target}} is immune to {{condition}}.",
+  "game.combat.ruleset.event.conditionLinked": "{{target}} is no longer {{condition}}: what came with it has ended.",
   "game.combat.ruleset.event.conditionMoved": "{{target}} is no longer {{condition}}: it went to somebody else.",
   "game.combat.ruleset.event.conditionRecovered": "{{target}} is no longer {{condition}}.",
   "game.combat.ruleset.event.conditionRevived": "{{condition}} ends on {{target}}, who is back up.",

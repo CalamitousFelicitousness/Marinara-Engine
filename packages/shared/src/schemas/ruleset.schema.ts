@@ -2037,6 +2037,7 @@ export interface RulesetCatalogApplies {
   escapeChecks?: string[];
   when?: z.infer<ReturnType<typeof sheetBoundsSchema>>;
   targetIs?: RulesetTargetIs;
+  endsWith?: string;
 }
 
 const catalogAppliesSchema: z.ZodType<RulesetCatalogApplies, z.ZodTypeDef, unknown> = z
@@ -2077,9 +2078,20 @@ const catalogAppliesSchema: z.ZodType<RulesetCatalogApplies, z.ZodTypeDef, unkno
     when: sheetBoundsSchema("when", "applied").optional(),
     /** It goes on only a target that is this (Capability API 1.163). */
     targetIs: targetIsSchema.optional(),
+    /** It ends whenever the other condition named here, put on in the same list by the same use,
+     *  ends on its holder, however that ends (Capability API 1.197): 5e's Hypnotic Pattern, whose
+     *  incapacitation lasts only as long as its charm. */
+    endsWith: sheetId.optional(),
   })
   .strict()
   .superRefine((applies, ctx) => {
+    if (applies.endsWith !== undefined && applies.endsWith === applies.condition) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["endsWith"],
+        message: "A condition ends with another one, not with itself",
+      });
+    }
     if (applies.duration === "until-save" && !applies.saveEnds) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -2088,6 +2100,20 @@ const catalogAppliesSchema: z.ZodType<RulesetCatalogApplies, z.ZodTypeDef, unkno
       });
     }
   });
+
+/** A list of conditions put on together: each `endsWith` names another one of the same list (1.197). */
+function linkedApplies(list: RulesetCatalogApplies[], ctx: z.RefinementCtx): void {
+  const named = new Set(list.map((entry) => entry.condition));
+  list.forEach((entry, index) => {
+    if (entry.endsWith !== undefined && entry.endsWith !== entry.condition && !named.has(entry.endsWith)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [index, "endsWith"],
+        message: `"endsWith" names a condition put on in the same list, and "${entry.endsWith}" is not one`,
+      });
+    }
+  });
+}
 
 /** What a rider is, minus where it comes from. A rider is PASSIVE: nobody takes it, and it adds one
  *  more damage clause to the first qualifying hit of its period, automatically.
@@ -2499,7 +2525,7 @@ const catalogMechanicsObject = z
     /** The amount simply lands: no roll and no save. */
     autoHit: z.boolean().optional(),
     /** Conditions a use puts on the targets it affects. */
-    applies: z.array(catalogAppliesSchema).max(4).optional(),
+    applies: z.array(catalogAppliesSchema).max(4).superRefine(linkedApplies).optional(),
     /** An amount granted as temporary points on the health pool, which damage drains first. */
     temporary: z.object(catalogAmountShape).strict().optional(),
     /** Health to share out among its targets (Capability API 1.191): the one with the least health
@@ -2932,7 +2958,7 @@ const creatureActionSchema = z
     /** What a save that ENDS one of `applies` is rolled against, when the action has no save of its
      *  own to borrow the number from. */
     saveDifficulty: z.number().int().min(0).max(1000).optional(),
-    applies: z.array(catalogAppliesSchema).max(4).optional(),
+    applies: z.array(catalogAppliesSchema).max(4).superRefine(linkedApplies).optional(),
     targetCount: z.number().int().min(1).max(20).optional(),
     /** In the ruleset's own distance unit, read once a fight has positions. */
     reach: z.number().finite().min(0).max(10000).optional(),
@@ -2983,7 +3009,7 @@ const creatureActionSchema = z
           .strict()
           .optional(),
         push: z.number().finite().gt(0).max(10000).optional(),
-        applies: z.array(catalogAppliesSchema).min(1).max(4).optional(),
+        applies: z.array(catalogAppliesSchema).min(1).max(4).superRefine(linkedApplies).optional(),
       })
       .strict()
       .refine((charge) => charge.plus || charge.push !== undefined || charge.applies, {
@@ -4038,7 +4064,7 @@ export const rulesetItemAttackSchema = z
             /** What a target that makes the save takes instead (Capability API 1.187): a mace of
              *  disruption's fiend or undead, frightened of the wielder until the end of the
              *  wielder's next turn. Needs a `save`. */
-            saved: z.array(catalogAppliesSchema).min(1).max(2).optional(),
+            saved: z.array(catalogAppliesSchema).min(1).max(2).superRefine(linkedApplies).optional(),
           })
           .strict()
           .refine((entry) => entry.saved === undefined || entry.save !== undefined, {
@@ -5168,7 +5194,8 @@ const combatConditionSchema = z
             }),
           )
           .min(1)
-          .max(4),
+          .max(4)
+          .superRefine(linkedApplies),
       })
       .strict()
       .optional(),

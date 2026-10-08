@@ -973,6 +973,10 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   );
   assert.equal(printed.get("track"), "Brenna takes Thorn Lurker's Exhaustion down from 2 to 1.");
   assert.equal(
+    say({ type: "condition", targetId: "lurker", condition: "incapacitated", active: false, reason: "linked" }),
+    "Thorn Lurker is no longer Incapacitated: what came with it has ended.",
+  );
+  assert.equal(
     say({
       type: "track",
       targetId: "lurker",

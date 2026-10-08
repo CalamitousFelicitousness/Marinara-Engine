@@ -1522,6 +1522,16 @@ function carriesWardsAndSaves(value: unknown, depth = 0): boolean {
 
 const MODIFIER_TARGETS = new Set<string>(RULESET_COMBAT_MODIFIER_TARGETS);
 
+/** A condition put on to end with another one put on with it (1.197), in catalogs too. */
+function carriesLinkedConditions(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesLinkedConditions(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (typeof record.condition === "string" && record.endsWith !== undefined) return true;
+  return Object.values(record).some((one) => carriesLinkedConditions(one, depth + 1));
+}
+
 /** Tracks an entry moves by levels, health it gives back from sealed, or a broken section's own
  *  step (1.196), in catalogs too. A creature's `tracks` is a record, not a list of moves. */
 function carriesTrackMoves(value: unknown, depth = 0): boolean {
@@ -3171,6 +3181,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Conditions that end with another put on with them, 1.197.
+  if (
+    !declaresApi(197) &&
+    (carriesLinkedConditions(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesLinkedConditions(document)))
+  ) {
+    return "A ruleset with conditions that end with another condition put on with them requires schemaVersion 2 and capabilityApi 1.197 or newer";
   }
   // Tracks moved, sealed health given back, a broken section's step, 1.196.
   if (

@@ -103,6 +103,8 @@ export interface RulesetCombatApplies {
   when?: RulesetSheetBounds;
   /** It goes on only a target that is this (1.163). */
   targetIs?: RulesetTargetIs;
+  /** It ends whenever this other condition put on with it ends (1.197). */
+  endsWith?: string;
 }
 
 /** A value read off a sheet and the bounds it must stand within: one bound or both. */
@@ -752,6 +754,8 @@ export interface RulesetTrackedCondition {
   escapeDc?: number;
   /** The contest checks that may break it (1.170). */
   escapeChecks?: string[];
+  /** The condition put on with it that it ends with (1.197). */
+  endsWith?: string;
   /** How many times it is on, where the condition stacks (1.184). */
   stacks?: number;
 }
@@ -1319,7 +1323,9 @@ export type RulesetCombatEvent =
         /** Put on again, one more of it (1.184): `stacks` is how many there are now. */
         | "stacked"
         /** Gone because its source put it on somebody else (1.184). */
-        | "moved";
+        | "moved"
+        /** Gone because the condition it was put on with ended (1.197). */
+        | "linked";
       stacks?: number;
     }
   /** A number that attacks move: what came off it or went on it, why, and what it is now. A style

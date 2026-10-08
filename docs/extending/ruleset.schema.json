@@ -9863,6 +9863,25 @@
                       "maxLength": 121,
                       "pattern": "^[a-z][a-z0-9_]*\\/[a-z0-9]+(?:-[a-z0-9]+)*$"
                     },
+                    "extraFirstTurn": {
+                      "type": "object",
+                      "properties": {
+                        "initiative": {
+                          "type": "integer",
+                          "minimum": -100,
+                          "maximum": 100
+                        },
+                        "unlessSurprised": {
+                          "type": "boolean",
+                          "const": true
+                        },
+                        "$comment": {}
+                      },
+                      "required": [
+                        "initiative"
+                      ],
+                      "additionalProperties": false
+                    },
                     "dismisses": {
                       "anyOf": [
                         {
@@ -21034,6 +21053,25 @@
                           "type": "string",
                           "maxLength": 121,
                           "pattern": "^[a-z][a-z0-9_]*\\/[a-z0-9]+(?:-[a-z0-9]+)*$"
+                        },
+                        "extraFirstTurn": {
+                          "type": "object",
+                          "properties": {
+                            "initiative": {
+                              "type": "integer",
+                              "minimum": -100,
+                              "maximum": 100
+                            },
+                            "unlessSurprised": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "initiative"
+                          ],
+                          "additionalProperties": false
                         },
                         "dismisses": {
                           "anyOf": [

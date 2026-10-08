@@ -1522,6 +1522,16 @@ function carriesWardsAndSaves(value: unknown, depth = 0): boolean {
 
 const MODIFIER_TARGETS = new Set<string>(RULESET_COMBAT_MODIFIER_TARGETS);
 
+/** A use that gives a second turn in a fight's first round (1.233), in catalogs too. */
+function carriesExtraTurn(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesExtraTurn(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.extraFirstTurn !== undefined) return true;
+  return Object.values(record).some((one) => carriesExtraTurn(one, depth + 1));
+}
+
 /** Never surprised, or surprise shaken off by a use (1.232), in catalogs too. */
 function carriesSurprise(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -3252,6 +3262,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // A second turn in the first round, 1.233.
+  if (
+    !declaresApi(233) &&
+    (carriesExtraTurn(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesExtraTurn(document)))
+  ) {
+    return "A ruleset with uses that give a second turn in a fight's first round requires schemaVersion 2 and capabilityApi 1.233 or newer";
   }
   // Conditions that keep surprise off, uses that shake it off, 1.232.
   if (

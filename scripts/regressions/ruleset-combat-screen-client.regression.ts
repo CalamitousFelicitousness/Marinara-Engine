@@ -778,6 +778,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["returned", say({ type: "returned", targetId: "lurker" })],
     ["surprised", say({ type: "surprised", actorIds: ["brenna", "lurker"] })],
     ["surpriseOver", say({ type: "surpriseOver", actorId: "lurker" })],
+    ["extraTurn", say({ type: "extraTurn", actorId: "brenna", initiative: 7, label: "Thief's Reflexes" })],
     [
       "healthPool",
       say({ type: "healthPool", actorId: "brenna", label: "Sleep", rolls: [8, 7], total: 15, affected: ["lurker"] }),
@@ -1011,6 +1012,10 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     "Caught unaware: Brenna, Thorn Lurker. They cannot move or act on their first turn, or react until it ends.",
   );
   assert.equal(say({ type: "surpriseOver", actorId: "lurker" }), "Thorn Lurker is no longer surprised.");
+  assert.equal(
+    printed.get("extraTurn"),
+    "Brenna takes a second turn this round with Thief's Reflexes, at initiative 7.",
+  );
   assert.equal(
     say({ type: "surpriseOver", actorId: "brenna", label: "Rage" }),
     "Brenna shakes off the surprise with Rage.",

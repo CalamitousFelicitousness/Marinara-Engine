@@ -55,7 +55,8 @@ export function RulesetCombatStatus({
     if (box) box.scrollTop = box.scrollHeight;
   }, [newest]);
   const byId = new Map(view.combatants.map((combatant) => [combatant.id, combatant]));
-  const order = view.order.flatMap((id) => {
+  // One who takes two turns this round (1.233) is listed once.
+  const order = [...new Set(view.order)].flatMap((id) => {
     const combatant = byId.get(id);
     return combatant ? [combatant] : [];
   });

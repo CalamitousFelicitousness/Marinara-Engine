@@ -1266,6 +1266,7 @@
   "game.combat.ruleset.event.dyingRevived": "{{actor}} is back on their feet.",
   "game.combat.ruleset.event.dyingStable": "{{actor}} is stable.",
   "game.combat.ruleset.event.dyingSuccess": "{{actor}} holds on: {{roll}} against {{difficulty}}. Held {{successes}}, slipped {{failures}}.",
+  "game.combat.ruleset.event.extraTurn": "{{actor}} takes a second turn this round with {{label}}, at initiative {{initiative}}.",
   "game.combat.ruleset.event.fake": "The {{label}} was really {{truly}}.",
   "game.combat.ruleset.event.fakeDud": "The {{label}} was really {{truly}}, and it did nothing.",
   "game.combat.ruleset.event.fell": "{{target}} falls {{distance}}.",

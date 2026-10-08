@@ -3020,6 +3020,20 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
       combatant.actions = [...combatant.actions, ...conditionActions(definition, combatant, handed(), perCell)];
     }
   }
+  // The catalog entries a combatant's sheet rows came from, each once.
+  const heldEntries = (combatant: RulesetCombatant): RulesetCatalogEntry[] => {
+    const rows = Object.values(combatant.sheet?.build.lists ?? {}).flatMap((list) => (Array.isArray(list) ? list : []));
+    const refs = new Set(
+      rows.flatMap((row) => {
+        const ref =
+          row && typeof row === "object"
+            ? columnValue(row as Record<string, unknown>, RULESET_CATALOG_ROW_KEY)
+            : undefined;
+        return typeof ref === "string" ? [ref] : [];
+      }),
+    );
+    return [...refs].flatMap((ref) => handed().get(ref) ?? []);
+  };
   // Caught unaware (1.232), unless what they hold says they never are: 5e's Foresight. What shakes it
   // off is read off their own rows: Feral Instinct's rage.
   const surprised: string[] = [];
@@ -3031,13 +3045,8 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
     }
     combatant.surprised = true;
     surprised.push(id);
-    const rows = Object.values(combatant.sheet?.build.lists ?? {}).flatMap((list) => (Array.isArray(list) ? list : []));
-    const out = rows.flatMap((row) => {
-      const ref =
-        row && typeof row === "object"
-          ? columnValue(row as Record<string, unknown>, RULESET_CATALOG_ROW_KEY)
-          : undefined;
-      const by = typeof ref === "string" ? handed().get(ref)?.mechanics?.ignoresSurpriseWith : undefined;
+    const out = heldEntries(combatant).flatMap((entry) => {
+      const by = entry.mechanics?.ignoresSurpriseWith;
       return by ? combatant.actions.filter((action) => action.entry === by).map((action) => action.id) : [];
     });
     if (out.length) combatant.surpriseOut = [...new Set(out)];
@@ -3063,6 +3072,27 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
 
   const leveled = openLevels(definition, combat, state);
   state.order = rulesetInitiativeOrder(state.combatants);
+  // A second turn this first round (1.233), placed at its own number among everybody's: 5e's
+  // Thief's Reflexes. The order holds them twice until the round is over.
+  const extraTurns: RulesetCombatEvent[] = [];
+  {
+    const slots = state.order.map((id) => rulesetCombatant(state, id)!.initiative);
+    for (const combatant of state.combatants) {
+      if (combatant.defeated) continue;
+      const entry = heldEntries(combatant).find(
+        (one) =>
+          one.mechanics?.extraFirstTurn && !(one.mechanics.extraFirstTurn.unlessSurprised && combatant.surprised),
+      );
+      if (!entry) continue;
+      const at = combatant.initiative + entry.mechanics!.extraFirstTurn!.initiative;
+      // After everybody at that number or above it.
+      let place = slots.length;
+      while (place > 0 && slots[place - 1]! < at) place -= 1;
+      state.order.splice(place, 0, combatant.id);
+      slots.splice(place, 0, at);
+      extraTurns.push({ type: "extraTurn", actorId: combatant.id, initiative: at, label: entry.label });
+    }
+  }
   state.cursor = rolls;
   // Whoever a level took out never takes the first turn.
   state.turn = Math.max(
@@ -3074,7 +3104,7 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
     ...refused,
     {
       type: "initiative",
-      entries: state.order.flatMap((id) => {
+      entries: [...new Set(state.order)].flatMap((id) => {
         const combatant = rulesetCombatant(state, id);
         return combatant
           ? [
@@ -3091,6 +3121,7 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
     ...leveled,
     ...crashed,
     ...(surprised.length ? ([{ type: "surprised", actorIds: surprised }] as RulesetCombatEvent[]) : []),
+    ...extraTurns,
     { type: "round", round: 1 },
     ...(state.order[state.turn]
       ? ([{ type: "turn", actorId: state.order[state.turn], round: 1 }] as RulesetCombatEvent[])
@@ -3098,7 +3129,7 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
   ];
   const first = currentRulesetActor(state);
   if (first) {
-    const waiting = state.order.filter((id) => {
+    const waiting = [...new Set(state.order)].filter((id) => {
       const holder = rulesetCombatant(state, id);
       return holder && rulesetReactionsAt(definition, combat, state, holder, "turn-start", first.id).length > 0;
     });

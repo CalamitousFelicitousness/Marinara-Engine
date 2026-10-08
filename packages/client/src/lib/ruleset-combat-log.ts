@@ -269,6 +269,12 @@ export function rulesetCombatEventLine(
       return key("round", { round: event.round });
     case "surprised":
       return key("surprised", { names: event.actorIds.map((id) => names.combatant(id)).join(", ") });
+    case "extraTurn":
+      return key("extraTurn", {
+        actor: names.combatant(event.actorId),
+        initiative: event.initiative,
+        label: event.label,
+      });
     case "surpriseOver":
       return key(event.label ? "surpriseShaken" : "surpriseOver", {
         actor: names.combatant(event.actorId),

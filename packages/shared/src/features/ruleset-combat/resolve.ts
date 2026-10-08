@@ -5853,7 +5853,9 @@ export function advanceRulesetTurn(
  *  that asks them. Nobody is asked when nobody can afford anything: an empty window would hold the
  *  fight open for an answer with nothing in it. */
 function openSignatureWindow(ctx: RulesetCombatContext): boolean {
-  const waiting = ctx.state.order.filter((id) => rulesetSignatureOptions(ctx.definition, ctx.state, id).length > 0);
+  const waiting = [...new Set(ctx.state.order)].filter(
+    (id) => rulesetSignatureOptions(ctx.definition, ctx.state, id).length > 0,
+  );
   if (waiting.length === 0) return false;
   // A round that throws initiative again has no next actor until it has been thrown, and that is
   // done once the window has closed, so a window at the end of a round names nobody rather than
@@ -5892,6 +5894,8 @@ function beginNextTurn(definition: RulesetDefinition, combat: RulesetCombat, ctx
       turn = 0;
       round += 1;
       fresh = true;
+      // A second turn was for the first round only (1.233).
+      ctx.state.order = [...new Set(ctx.state.order)];
     }
     const candidate = rulesetCombatant(ctx.state, ctx.state.order[turn]!);
     if (candidate && canTakeTurn(candidate)) break;
@@ -5988,7 +5992,7 @@ function reorderByInitiative(ctx: RulesetCombatContext): void {
 function pushInitiativeOrder(ctx: RulesetCombatContext): void {
   ctx.events.push({
     type: "initiative",
-    entries: ctx.state.order.flatMap((id) => {
+    entries: [...new Set(ctx.state.order)].flatMap((id) => {
       const combatant = rulesetCombatant(ctx.state, id);
       return combatant && !combatant.defeated
         ? [

@@ -977,7 +977,9 @@ const capabilityPackageManifestBaseSchema = z
 // 1.232: surprise. A fight's `surprised` combatants take no move and no action on their first turn and
 //        no reaction until it ends; a combat condition's `cannotBeSurprised` (5e's Foresight); catalog
 //        mechanics' `ignoresSurpriseWith` (taking that entry first shakes it off: Feral Instinct).
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 232 } as const);
+// 1.233: catalog mechanics' `extraFirstTurn` (a second turn in a fight's first round at the holder's
+//        initiative plus its number, unless surprised if it says so: 5e's Thief's Reflexes).
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 233 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

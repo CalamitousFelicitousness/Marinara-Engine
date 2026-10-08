@@ -1562,6 +1562,8 @@ export type RulesetCombatEvent =
   | { type: "surprised"; actorIds: string[] }
   /** No longer surprised (1.232): their first turn is over, or `label` shook it off. */
   | { type: "surpriseOver"; actorId: string; label?: string }
+  /** A second turn this first round (1.233), at `initiative`, from the entry `label`. */
+  | { type: "extraTurn"; actorId: string; initiative: number; label: string }
   /** A blow that follows a straight run at its target, before what the charge adds lands (1.181). */
   | {
       type: "charged";

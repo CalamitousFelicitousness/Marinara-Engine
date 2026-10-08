@@ -2543,6 +2543,13 @@ const catalogMechanicsObject = z
      *  turn (Capability API 1.232), when nothing keeps its holder from acting: 5e's Feral Instinct
      *  with Rage. The entry is otherwise passive. */
     ignoresSurpriseWith: catalogEntryRef.optional(),
+    /** Held on a sheet's list, its holder takes a second turn in a fight's first round (Capability
+     *  API 1.233), at their own initiative plus `initiative` (a negative number is later):
+     *  5e's Thief's Reflexes at -10. `unlessSurprised`: not when they begin the fight surprised. */
+    extraFirstTurn: z
+      .object({ initiative: z.number().int().min(-100).max(100), unlessSurprised: z.literal(true).optional() })
+      .strict()
+      .optional(),
     /** Whoever it lands on and does not save against leaves the fight (Capability API 1.231), alive:
      *  `true` for good (Dispel Evil and Good's Dismissal); `{ "while": <condition> }` only while
      *  they hold that condition, which the entry puts on, back where they were (or the nearest free

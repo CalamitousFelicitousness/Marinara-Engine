@@ -115,6 +115,7 @@ import { TranslationSection } from "../../features/chat-settings/sections/Transl
 import { CapabilityElement } from "../capabilities/CapabilityElement";
 import type { AvatarCrop, MultiplayerHostAction } from "@marinara-engine/shared";
 import {
+  BUILT_IN_AGENTS,
   DEFAULT_GAME_DICE_POOL_AGE_TURNS as DEFAULT_DICE_POOL_AGE_TURNS,
   DEFAULT_GAME_DICE_POOL_WINDOW as DEFAULT_DICE_POOL_WINDOW,
   advancedMemoryProblems,
@@ -1816,8 +1817,16 @@ export function ChatSettingsDrawer({
       if (metadata.manualTrackers === true) {
         // The removed Manual Trackers switch made every tracker manual. Keep the others manual and drop it,
         // so from now on only the individual choices count.
+        // Also pin active trackers this list cannot show right now (uninstalled or turned off), and unknown ids,
+        // which may be trackers. Entries for non-trackers are ignored by the HUD and the server.
         const next: Record<string, boolean> = { ...manualTrackerAgentTypes };
-        for (const agent of activeTrackerAgents) next[agent.id] = agent.id !== agentId;
+        for (const id of Array.isArray(metadata.activeAgentIds) ? metadata.activeAgentIds : []) {
+          if (typeof id !== "string") continue;
+          const category = BUILT_IN_AGENTS.find((agent) => agent.id === id)?.category;
+          if (category === undefined || category === "tracker") next[id] = true;
+        }
+        for (const agent of activeTrackerAgents) next[agent.id] = true;
+        next[agentId] = false;
         updateMeta.mutate({ id: chat.id, manualTrackerAgentTypes: next, manualTrackers: false });
         return;
       }
@@ -1829,7 +1838,14 @@ export function ChatSettingsDrawer({
       }
       updateMeta.mutate({ id: chat.id, manualTrackerAgentTypes: next });
     },
-    [activeTrackerAgents, chat.id, manualTrackerAgentTypes, metadata.manualTrackers, updateMeta],
+    [
+      activeTrackerAgents,
+      chat.id,
+      manualTrackerAgentTypes,
+      metadata.activeAgentIds,
+      metadata.manualTrackers,
+      updateMeta,
+    ],
   );
   const agentSuiteAgents = useMemo(
     () =>

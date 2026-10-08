@@ -26,7 +26,11 @@ test("Trackers Control replaces Manual Trackers in Roleplay Agents", async ({ pa
   const chat = (await chatResponse.json()) as { id: string };
   try {
     const legacy = await request.patch(`/api/chats/${chat.id}/metadata`, {
-      data: { enableAgents: true, activeAgentIds: ["world-state", "quest", "echo-chamber"], manualTrackers: true },
+      data: {
+        enableAgents: true,
+        activeAgentIds: ["world-state", "quest", "echo-chamber", "uninstalled-tracker"],
+        manualTrackers: true,
+      },
     });
     expect(legacy.ok(), await legacy.text()).toBeTruthy();
     const message = await request.post(`/api/chats/${chat.id}/messages`, {
@@ -126,7 +130,11 @@ test("Trackers Control replaces Manual Trackers in Roleplay Agents", async ({ pa
     };
     await expect
       .poll(saved)
-      .toEqual({ manualTrackers: false, manualTrackerAgentTypes: { "world-state": false, quest: true } });
+      // The uninstalled id may be a tracker, so it stays manual; Echo Chamber is known not to be one.
+      .toEqual({
+        manualTrackers: false,
+        manualTrackerAgentTypes: { "world-state": false, quest: true, "uninstalled-tracker": true },
+      });
     await expect(worldState).not.toBeChecked();
     await expect(quest).toBeChecked();
     await expect(worldState).toBeEnabled();

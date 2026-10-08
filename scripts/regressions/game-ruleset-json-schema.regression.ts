@@ -275,7 +275,7 @@ console.info("game ruleset JSON Schema regression passed.");
       node.allOf?.some(
         (rule: Record<string, any>) =>
           JSON.stringify(rule.anyOf) ===
-          JSON.stringify(["flat", "dice", "times", "mode"].map((key) => ({ required: [key] }))),
+          JSON.stringify(["flat", "dice", "times", "diceTimes", "mode"].map((key) => ({ required: [key] }))),
       ),
       "a mode alone is a change",
     );

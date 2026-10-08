@@ -97,6 +97,16 @@ function parseStoredManualOverrides(value: unknown): Record<string, string> | nu
   return typeof value === "object" && !Array.isArray(value) ? (value as Record<string, string>) : null;
 }
 
+/** The edits of the five scene fields. The others are stored as fingerprints, which mean nothing in a prompt. */
+export function parseSceneManualOverrides(value: unknown): Record<string, string> | null {
+  const scene = Object.fromEntries(
+    Object.entries(parseStoredManualOverrides(value) ?? {}).filter(([key]) =>
+      (MANUAL_OVERRIDE_FIELDS as readonly string[]).includes(key),
+    ),
+  );
+  return Object.keys(scene).length > 0 ? scene : null;
+}
+
 function serializeManualOverrides(manualOverrides: Record<string, string> | null | undefined) {
   return manualOverrides && Object.keys(manualOverrides).length > 0 ? JSON.stringify(manualOverrides) : null;
 }
@@ -331,6 +341,7 @@ export function createGameStateStorage(db: DB) {
         .where(and(eq(gameStateSnapshots.chatId, chatId), eq(gameStateSnapshots.messageId, messageId)))
         .orderBy(asc(gameStateSnapshots.swipeIndex));
       let edited: GameStateRow | null = null;
+      const laid: Record<string, string> = {};
       // A newer edit of a value retires the reply's older edits of it (retireOtherSwipeEdits),
       // so at most one swipe holds each edit.
       // ponytail: a list (characters, custom world fields, persona stats, one playerStats key)
@@ -339,6 +350,7 @@ export function createGameStateStorage(db: DB) {
         for (const [key, value] of Object.entries(parseStoredManualOverrides(row.manualOverrides) ?? {})) {
           if (manualEditValue(row, key) !== value) continue;
           edited ??= { ...(base ?? emptyGameStateRow(chatId)) };
+          laid[key] = value;
           if (key.startsWith(PLAYER_STATS_EDIT_PREFIX)) {
             const statKey = key.slice(PLAYER_STATS_EDIT_PREFIX.length);
             edited.playerStats = JSON.stringify({
@@ -349,6 +361,12 @@ export function createGameStateStorage(db: DB) {
             Object.assign(edited, { [key]: row[key as keyof GameStateRow] });
           }
         }
+      }
+      // The agents are shown the edit record, so it must not keep the base's edits these replaced.
+      if (edited) {
+        edited.manualOverrides = serializeManualOverrides(
+          retainManualEdits({ ...parseStoredManualOverrides(base?.manualOverrides), ...laid }, edited),
+        );
       }
       return edited;
     },

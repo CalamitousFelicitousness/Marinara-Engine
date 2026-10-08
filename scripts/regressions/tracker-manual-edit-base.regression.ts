@@ -307,6 +307,16 @@ try {
     assert.deepEqual(await states.getByChatAndMessage(chat.id, a1.id, 0), a1Before);
   }
 
+  // ── An edit on the reply before does not contradict the regenerated reply's edit ──
+  {
+    const { chatApi, a1, a2 } = await setUpEditedReply();
+    await chatApi.edit({ messageId: a1.id, swipeIndex: 0 }, { location: "Earlier edit" });
+    trackerOutputs = NO_CHANGES;
+    const regen = await capture(() => chatApi.regenerate(a2.id));
+    assertShows(regen.trackers, EDITED, ["Earlier edit", ...STALE], "tracker prompts after edits on two replies");
+    assert.ok(!/manualOverrides\\?":\{[^}]*[0-9a-f]{16}/.test(regen.trackers), "edit fingerprints stay out of prompts");
+  }
+
   // ── The newest edit wins, whichever swipe it was made on ──
   {
     const { chat, chatApi, a2 } = await setUpEditedReply();

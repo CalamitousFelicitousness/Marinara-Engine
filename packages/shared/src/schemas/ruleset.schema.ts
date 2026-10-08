@@ -4628,6 +4628,9 @@ const combatModifierSchema = z
     dice: catalogDice.optional(),
     minus: z.literal(true).optional(),
     times: z.union([z.literal(0.5), z.literal(2)]).optional(),
+    /** The blow's own damage dice this many times over, its flat part as it was (Capability API
+     *  1.192): an enlarged duergar's war pick, 1d8 + 2 as 2d8 + 2. Damage dealt only. */
+    diceTimes: z.number().int().min(2).max(4).optional(),
     skills: z.array(sheetId).min(1).max(24).optional(),
     saves: z.array(sheetId).min(1).max(12).optional(),
     /** What this save is against (Capability API 1.129): any named condition, damage type or
@@ -4662,6 +4665,7 @@ const combatModifierSchema = z
       modifier.flat === undefined &&
       modifier.dice === undefined &&
       modifier.times === undefined &&
+      modifier.diceTimes === undefined &&
       modifier.mode === undefined
     ) {
       add(
@@ -4712,6 +4716,9 @@ const combatModifierSchema = z
     if (modifier.minus && modifier.dice === undefined) add("minus", '"minus" takes dice away, so it needs "dice"');
     if (modifier.times !== undefined && modifier.to !== "speed" && modifier.to !== "health-max" && !damage) {
       add("times", '"times" changes speed, the health maximum and damage only');
+    }
+    if (modifier.diceTimes !== undefined && modifier.to !== "damage") {
+      add("diceTimes", '"diceTimes" changes the damage a blow deals only');
     }
     if (modifier.to === "health-max" && (modifier.times !== 0.5 || modifier.flat !== undefined)) {
       add("times", 'The health maximum is only halved: "times": 0.5 and nothing else');

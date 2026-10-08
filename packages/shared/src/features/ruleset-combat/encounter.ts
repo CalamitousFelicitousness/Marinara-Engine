@@ -670,7 +670,13 @@ export function rulesetConditionModifiers(
     return (entry.modifiers ?? [])
       .filter((modifier) => {
         if (modifier.to !== to || !rulesetSaveAgainstMatches(modifier.against, against)) return false;
-        if (modifier.flat === undefined && modifier.dice === undefined && modifier.times === undefined) return false;
+        if (
+          modifier.flat === undefined &&
+          modifier.dice === undefined &&
+          modifier.times === undefined &&
+          modifier.diceTimes === undefined
+        )
+          return false;
         const skills = modifier.skills ?? entry.skills;
         if (to === "checks" && skills && !(save !== undefined && skills.includes(save))) return false;
         if (!rulesetAbilityNarrowing(modifier, to, ability)) return false;

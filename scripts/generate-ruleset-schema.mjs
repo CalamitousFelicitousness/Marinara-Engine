@@ -284,7 +284,7 @@ function modifierSaysSomething(node) {
   Object.values(node).forEach(modifierSaysSomething);
   const properties = node.properties;
   if (node.type !== "object" || !properties?.to || !properties.flat || !properties.dice || !properties.times) return;
-  requireAnyOf(node, ["flat", "dice", "times", "mode"]);
+  requireAnyOf(node, ["flat", "dice", "times", "diceTimes", "mode"]);
   if (properties.against) requireAnyOf(properties.against, ["conditions", "damage", "magic"]);
   properties.flat = { ...properties.flat, not: { const: 0 } };
   node.allOf = [

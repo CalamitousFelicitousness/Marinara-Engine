@@ -945,7 +945,9 @@ const capabilityPackageManifestBaseSchema = z
 //        holds (5e's Enlarge/Reduce), filling its new size on a board where there is room.
 // 1.191: catalog mechanics' `healthPool` (shared out least health first: Sleep, Color Spray),
 //        `healthAtMost` (Power Word Stun) and `kills` (Power Word Kill).
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 191 } as const);
+// 1.192: a damage modifier's `diceTimes` (a blow's own dice that many times over: an enlarged
+//        duergar), and a creature's `self` action taken on its turn landing on itself.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 192 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

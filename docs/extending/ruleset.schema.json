@@ -14442,6 +14442,11 @@
                                   2
                                 ]
                               },
+                              "diceTimes": {
+                                "type": "integer",
+                                "minimum": 2,
+                                "maximum": 4
+                              },
                               "skills": {
                                 "type": "array",
                                 "items": {
@@ -14611,6 +14616,11 @@
                                   {
                                     "required": [
                                       "times"
+                                    ]
+                                  },
+                                  {
+                                    "required": [
+                                      "diceTimes"
                                     ]
                                   },
                                   {
@@ -15270,6 +15280,11 @@
                                   2
                                 ]
                               },
+                              "diceTimes": {
+                                "type": "integer",
+                                "minimum": 2,
+                                "maximum": 4
+                              },
                               "skills": {
                                 "type": "array",
                                 "items": {
@@ -15439,6 +15454,11 @@
                                   {
                                     "required": [
                                       "times"
+                                    ]
+                                  },
+                                  {
+                                    "required": [
+                                      "diceTimes"
                                     ]
                                   },
                                   {
@@ -16252,6 +16272,11 @@
                                         2
                                       ]
                                     },
+                                    "diceTimes": {
+                                      "type": "integer",
+                                      "minimum": 2,
+                                      "maximum": 4
+                                    },
                                     "skills": {
                                       "type": "array",
                                       "items": {
@@ -16421,6 +16446,11 @@
                                         {
                                           "required": [
                                             "times"
+                                          ]
+                                        },
+                                        {
+                                          "required": [
+                                            "diceTimes"
                                           ]
                                         },
                                         {
@@ -28223,6 +28253,11 @@
                         2
                       ]
                     },
+                    "diceTimes": {
+                      "type": "integer",
+                      "minimum": 2,
+                      "maximum": 4
+                    },
                     "skills": {
                       "type": "array",
                       "items": {
@@ -28392,6 +28427,11 @@
                         {
                           "required": [
                             "times"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "diceTimes"
                           ]
                         },
                         {
@@ -29617,6 +29657,11 @@
                         2
                       ]
                     },
+                    "diceTimes": {
+                      "type": "integer",
+                      "minimum": 2,
+                      "maximum": 4
+                    },
                     "skills": {
                       "type": "array",
                       "items": {
@@ -29786,6 +29831,11 @@
                         {
                           "required": [
                             "times"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "diceTimes"
                           ]
                         },
                         {

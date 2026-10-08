@@ -78,6 +78,7 @@ import { coverTier, elevationAt } from "../tactical-combat/math.js";
 import { rulesetZoneMoveCells, rulesetZoneTurnCells } from "./zones.js";
 import { rulesetCanSee } from "./sight.js";
 import type {
+  RulesetCombatAmount,
   RulesetCombatAgainst,
   RulesetConditionBonus,
   RulesetCombatAction,
@@ -1424,6 +1425,7 @@ function forecastFor(
                 part,
                 firstTarget(definition, state, actor, part) ?? undefined,
               ),
+              part.damage,
             )
           : 0)
       );
@@ -1485,6 +1487,7 @@ function forecastFor(
         modifiedAverage(
           forecast.averageDamage,
           rulesetDamageModifiers(definition, state, actor, action, target ?? undefined),
+          action.damage,
         ) * 100,
       ) / 100;
   }
@@ -1527,9 +1530,19 @@ export function rulesetDamageModifiers(
 }
 
 /** Own additions and multipliers only: a menu cannot promise a target's mark. */
-function modifiedAverage(average: number, modifiers: RulesetConditionModifier[]): number {
+function modifiedAverage(
+  average: number,
+  modifiers: RulesetConditionModifier[],
+  /** The blow's own damage, whose dice a `diceTimes` throws again (1.192). */
+  own?: RulesetCombatAmount,
+): number {
   for (const { modifier } of modifiers) {
-    const dice = modifier.dice ? parseRulesetCombatDice(modifier.dice) : null;
+    const dice =
+      modifier.diceTimes && own && own.count > 0
+        ? { count: own.count * (modifier.diceTimes - 1), sides: own.sides, flat: 0 }
+        : modifier.dice
+          ? parseRulesetCombatDice(modifier.dice)
+          : null;
     average += (modifier.flat ?? 0) + (dice ? (modifier.minus ? -1 : 1) * rulesetAverageDamage(dice) : 0);
   }
   return Math.max(0, average * modifiers.reduce((times, { modifier }) => times * (modifier.times ?? 1), 1));

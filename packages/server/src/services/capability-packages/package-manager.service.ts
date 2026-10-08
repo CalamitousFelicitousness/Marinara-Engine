@@ -1522,6 +1522,16 @@ function carriesWardsAndSaves(value: unknown, depth = 0): boolean {
 
 const MODIFIER_TARGETS = new Set<string>(RULESET_COMBAT_MODIFIER_TARGETS);
 
+/** A damage modifier that throws a blow's own dice more times over (1.192), wherever modifiers sit. */
+function carriesDiceTimes(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesDiceTimes(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.diceTimes !== undefined && typeof record.to === "string") return true;
+  return Object.values(record).some((one) => carriesDiceTimes(one, depth + 1));
+}
+
 /** An entry whose mechanics share out a pool of health, stop at a health ceiling or kill outright
  *  (1.191), in catalog files too. */
 function carriesHealthTargeting(value: unknown, depth = 0): boolean {
@@ -3114,6 +3124,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // A blow's own dice thrown more times over, 1.192.
+  if (
+    !declaresApi(192) &&
+    (carriesDiceTimes(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesDiceTimes(document)))
+  ) {
+    return "A ruleset with damage modifiers that throw a blow's own dice more times over requires schemaVersion 2 and capabilityApi 1.192 or newer";
   }
   // Health pools, health ceilings and killing outright, 1.191.
   if (

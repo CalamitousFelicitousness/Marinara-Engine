@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: an enlarged duergar's weapons roll twice their dice, and a creature's own action that targets itself (the duergar's Enlarge) now lands on it when taken on its turn (Capability API 1.192).
 - Rulesets: Sleep and Color Spray take the weakest creatures first, as far as the hit points they roll go, and Power Word Stun and Power Word Kill affect only a creature with few enough hit points left (Capability API 1.191).
 - Rulesets: Enlarge/Reduce and anything like it make a creature bigger or smaller in the middle of a fight, growing on the battle board only as far as there is room (Capability API 1.190).
 - Rulesets: Large, Huge and Gargantuan creatures fill 2x2, 3x3 and 4x4 squares on the battle board, for where they stand, who they reach, what areas catch them, how they move and are pushed, and what they see and hide behind (Capability API 1.189).

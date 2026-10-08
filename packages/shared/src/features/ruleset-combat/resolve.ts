@@ -2126,7 +2126,8 @@ function pickTargets(
   option: { id: string; targets: RulesetCombatAction["targets"]; range?: { normal: number; long?: number } },
   targetIds: readonly string[],
 ): RulesetCombatant[] | RulesetCombatRefusal {
-  if (option.targets.count <= 0) return [];
+  // One that lands on its user, taken on their turn as much as in a reaction, lands on them.
+  if (option.targets.count <= 0) return option.targets.side === "self" ? [actor] : [];
   const ids = [...new Set(targetIds)];
   if (ids.length < 1 || ids.length > option.targets.count) return "bad-target";
   const legal = new Set(rulesetOptionTargets(definition, state, actor.id, option));
@@ -4960,7 +4961,14 @@ function resolveActionBody(
     }
     if (parts.length) {
       for (const { modifier } of modifiers) {
-        const dice = modifier.dice ? parseRulesetCombatDice(modifier.dice) : null;
+        // The blow's own dice again, as many more times as it says (1.192), its flat part left be.
+        const own = action.damage;
+        const dice =
+          modifier.diceTimes && own && own.count > 0
+            ? { count: own.count * (modifier.diceTimes - 1), sides: own.sides, flat: 0 }
+            : modifier.dice
+              ? parseRulesetCombatDice(modifier.dice)
+              : null;
         if (!dice && modifier.flat === undefined) continue;
         const amount = dice ?? { count: 0, sides: 0, flat: 0 };
         const rolled = rollAmount(ctx, amount);

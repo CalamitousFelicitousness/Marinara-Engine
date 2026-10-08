@@ -228,6 +228,9 @@ export interface RulesetStatBlockAction {
   heal?: RulesetCombatAmount;
   targets?: "ally" | "any";
   save?: RulesetCombatSaveRider;
+  /** Pushed this far straight away from the creature, in the ruleset's own distance, on a failed save
+   *  when it has one (1.179). */
+  push?: number;
   /** What a save that ENDS one of `applies` is rolled against, when the action has no save of its
    *  own to borrow the number from. */
   saveDifficulty?: number;

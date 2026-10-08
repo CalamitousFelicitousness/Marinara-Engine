@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: monsters can push on a hit or a failed save, like a bronze dragon's Repulsion Breath or a dragon turtle's Tail, and a scroll's line can be wider than one square
 - Rulesets: Delayed Blast Fireball's bead grows each turn and goes off when the spell ends or someone touches it, and fire burns a Web away, burning whoever starts a turn in it
 - Rulesets: spells can push whoever they hit away from the caster, Gust of Wind's line moves with its caster, turns on a bonus action and makes walking toward the caster cost double, and goggles of night add 60 feet to darkvision a wearer already has
 - Rulesets: Globe of Invulnerability keeps out spells by their own level and grows when upcast, Stinking Cloud's save passes outright for creatures immune to poison and counts as a save against poison, a monster's innate spells can need no components, and scrolls of spells that only leave an area (Fog Cloud, Darkness, Silence, Globe) can be used (Capability API 1.176).

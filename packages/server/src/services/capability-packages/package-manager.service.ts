@@ -1519,6 +1519,21 @@ function carriesWardsAndSaves(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesWardsAndSaves(one, depth + 1));
 }
 
+/** A creature's action that pushes, or an item's use whose line has a width, in catalog files too
+ *  (1.179). */
+function carriesCreaturePush(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCreaturePush(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const creature = plainRecord(record.creature);
+  const actions = Array.isArray(creature?.actions) ? creature.actions : [];
+  if (actions.some((action) => plainRecord(action)?.push !== undefined)) return true;
+  const area = plainRecord(plainRecord(record.use)?.area);
+  if (area?.shape === "line" && area.width !== undefined) return true;
+  return Object.values(record).some((one) => carriesCreaturePush(one, depth + 1));
+}
+
 /** A zone that goes off later or burns away, in catalog files too (1.178). */
 function carriesDetonations(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -2889,6 +2904,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Creature actions that push, item uses with a line's width, 1.179.
+  if (
+    !declaresApi(179) &&
+    (carriesCreaturePush(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesCreaturePush(document)))
+  ) {
+    return "A ruleset with creature actions that push or item uses whose line has a width requires schemaVersion 2 and capabilityApi 1.179 or newer";
   }
   // Zones that go off later or burn away, 1.178.
   if (

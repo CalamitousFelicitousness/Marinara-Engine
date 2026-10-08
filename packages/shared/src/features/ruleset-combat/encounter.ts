@@ -2070,6 +2070,7 @@ function blockActions(block: RulesetStatBlockLike, perCell: number | undefined):
           },
         }
       : {}),
+    ...(perCell !== undefined && action.push !== undefined ? { push: rulesetInCells(action.push, perCell) } : {}),
     // A reach written as 0 is no reach, exactly as a weapon column reading 0 is: without it a
     // creature that only shoots would be read as swinging, and could strike a passer-by.
     ...(perCell !== undefined && action.reach !== undefined && action.reach > 0

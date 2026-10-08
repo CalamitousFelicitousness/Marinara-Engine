@@ -909,7 +909,9 @@ const capabilityPackageManifestBaseSchema = z
 // turned (`zone.turn`), and a zone's hard going may count only toward its caster (`towardCaster`).
 // 1.178: a zone may go off later (`detonates`, growing each turn and set off when touched) and burn
 // away when damage of a type it names reaches it (`burns`).
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 178 } as const);
+// 1.179: a creature's action may `push` (on a failed save when it has one), and an item's use may
+// give its line a `width`.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 179 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

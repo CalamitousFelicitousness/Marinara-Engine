@@ -355,10 +355,11 @@ try {
   }
 
   assert.ok(rulesetItemUseSchema.safeParse({ kind: "attack", area: { shape: "line", size: 15 } }).success);
+  // An item's use gives its line a width too (1.179), and nothing else one.
+  assert.ok(rulesetItemUseSchema.safeParse({ kind: "attack", area: { shape: "line", size: 15, width: 10 } }).success);
   assert.equal(
-    rulesetItemUseSchema.safeParse({ kind: "attack", area: { shape: "line", size: 15, width: 10 } }).success,
+    rulesetItemUseSchema.safeParse({ kind: "attack", area: { shape: "cone", size: 15, width: 10 } }).success,
     false,
-    "an item's use keeps its existing area schema",
   );
 
   // Compile each generated area node, so editor help refuses what the import refuses.

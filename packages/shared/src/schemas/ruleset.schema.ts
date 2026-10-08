@@ -2693,6 +2693,10 @@ const creatureActionSchema = z
      *  other side, as before. */
     targets: z.enum(["ally", "any"]).optional(),
     save: creatureSaveSchema.optional(),
+    /** Whoever it lands on is pushed this far straight away from the creature, in the ruleset's own
+     *  distance (Capability API 1.179); with a save, only on a failed one: a bronze dragon's
+     *  Repulsion Breath, a dragon turtle's Tail. */
+    push: z.number().finite().gt(0).max(10000).optional(),
     /** What a save that ENDS one of `applies` is rolled against, when the action has no save of its
      *  own to borrow the number from. */
     saveDifficulty: z.number().int().min(0).max(1000).optional(),
@@ -3662,8 +3666,8 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     /** `utility` (Capability API 1.176) is a use that only leaves an area standing: a scroll of Fog
      *  Cloud, Darkness or Silence. */
     kind: z.enum(["attack", "heal", "buff", "debuff", "utility"]),
-    // Line widths belong to catalog entries and creature actions (1.123); a wall's thickness and a
-    // ring are a wand's or a scroll's too (1.172).
+    // A wall's thickness and a ring are a wand's or a scroll's too (1.172), and a line's width
+    // (1.179): a scroll of Gust of Wind.
     area: z
       .object({
         shape: z.enum(["burst", "cone", "line", "box", "wall"]),
@@ -3677,8 +3681,8 @@ export const rulesetItemUseSchema = catalogMechanicsObject
         message: "Only a burst or a box is set down several times",
         path: ["copies"],
       })
-      .refine((area) => area.width === undefined || area.shape === "wall", {
-        message: "Only a wall carries width on an item's use",
+      .refine((area) => area.width === undefined || area.shape === "wall" || area.shape === "line", {
+        message: "Only a line or a wall carries width on an item's use",
         path: ["width"],
       })
       .refine((area) => area.ring === undefined || area.shape === "wall", {

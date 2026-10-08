@@ -917,7 +917,10 @@ const capabilityPackageManifestBaseSchema = z
 // narrow saves to what a kind of creature does (`against.from`).
 // 1.181: a creature's actions may recharge together (`recharge.group`), and a blow may `charge`:
 // more damage, a save, a push and conditions after a straight run at its target this turn.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 181 } as const);
+// 1.182: an item's attack may add to hit by what it hits (`against`) and `slay`, and its `plus`
+// clauses may skip some targets (`not`), count only in reach or thrown (`blow`) and drain (`tempHp`);
+// its `onHit` conditions may need a target that is something and land once a turn.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 182 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

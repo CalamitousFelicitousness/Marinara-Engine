@@ -1304,6 +1304,7 @@
   "game.combat.ruleset.event.shot": "{{label}}: {{left}} left to shoot.",
   "game.combat.ruleset.event.shotLoaded": "{{label}}: {{left}} of {{of}} loaded.",
   "game.combat.ruleset.event.signature": "{{actor}} spends {{cost}} on {{label}}, with {{left}} left.",
+  "game.combat.ruleset.event.slain": "{{actor}}'s {{label}} destroys {{target}} outright.",
   "game.combat.ruleset.event.soakDice_one": "{{target}} soaks {{count}} die off the damage.",
   "game.combat.ruleset.event.soakDice_other": "{{target}} soaks {{count}} dice off the damage.",
   "game.combat.ruleset.event.soakRolled": "{{target}} soaks {{taken}}: {{roll}}.",

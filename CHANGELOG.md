@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: magic weapons hit harder against what they are made for, maces of disruption and smiting, nine lives stealers and vorpal swords can kill outright, swords of life stealing grant temporary hit points, a dwarven thrower adds its extra only when thrown, and a giant slayer's knockdown and a sword of wounding's wound land on the right targets
 - Rulesets: a metallic dragon's second breath weapon is a real action that recharges together with its first, and a minotaur's Charge adds its gore damage, push and knockdown after a straight run at its target
 - Rulesets: Sunbeam and Moonbeam are harder to save against for undead, oozes and shapechangers, Blight deals its most to plants, Animal Friendship and Sleep pass over creatures they cannot affect, and Protection from Evil and Good, Dragon Scale Mail and Chill Touch work in a fight
 - Rulesets: monsters can push on a hit or a failed save, like a bronze dragon's Repulsion Breath or a dragon turtle's Tail, and a scroll's line can be wider than one square

@@ -1367,6 +1367,26 @@ function itemAttackActions(
           ...(clause.targetIs ? { targetIs: clause.targetIs } : {}),
           ...(clause.when === "critical" ? { onCritical: true as const } : {}),
           ...(clause.when === "toggled" ? { whileOn: index } : {}),
+          ...(clause.not ? { not: clause.not } : {}),
+          ...(clause.blow ? { blow: clause.blow } : {}),
+          ...(clause.tempHp ? { tempHp: true as const } : {}),
+        },
+      ];
+    });
+    // The item's own charges, which a slay spends (1.182): a stat holds its own range, held to the
+    // most a written count may be. One that reads nothing never slays.
+    const counted = item.charges ? read(item.charges.max) : undefined;
+    const chargesMax =
+      typeof counted === "number" && Number.isFinite(counted)
+        ? Math.min(RULESET_ITEM_CHARGES_MAX, Math.trunc(counted))
+        : undefined;
+    const slay = (attack.slay ?? []).flatMap((entry) => {
+      if (entry.charges !== undefined && !(chargesMax !== undefined && chargesMax >= 1)) return [];
+      const { charges, ...rest } = structuredClone(entry);
+      return [
+        {
+          ...rest,
+          ...(charges !== undefined ? { charges: { cost: charges, max: chargesMax!, item: index } } : {}),
         },
       ];
     });
@@ -1396,6 +1416,8 @@ function itemAttackActions(
             })),
           }
         : {}),
+      ...(attack.against?.length ? { against: structuredClone(attack.against) } : {}),
+      ...(slay.length ? { slay } : {}),
     };
     actions.push(offHand ? { ...weapon, pairs: index } : weapon);
     if (offHand) {

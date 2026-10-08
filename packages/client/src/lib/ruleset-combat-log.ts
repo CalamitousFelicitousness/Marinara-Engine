@@ -438,6 +438,12 @@ export function rulesetCombatEventLine(
     }
     case "fell":
       return key("fell", { target: names.combatant(event.targetId), distance: names.height(event.levels) });
+    case "slain":
+      return key("slain", {
+        actor: names.combatant(event.actorId),
+        target: names.combatant(event.targetId),
+        label: event.label,
+      });
     case "charged":
       return key("charged", {
         actor: names.combatant(event.actorId),

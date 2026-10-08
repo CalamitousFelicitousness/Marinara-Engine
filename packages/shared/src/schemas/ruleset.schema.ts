@@ -3658,11 +3658,49 @@ export const rulesetItemAttackSchema = z
               })
               .strict()
               .optional(),
+            /** Only on a target that is this (Capability API 1.182): a giant slayer's knockdown of a
+             *  giant. */
+            targetIs: targetIsSchema.optional(),
+            /** At most once in any one turn, the holder's or anybody else's (Capability API 1.182): a
+             *  sword of wounding's wound. */
+            oncePerTurn: z.literal(true).optional(),
           })
           .strict(),
       )
       .min(1)
       .max(4)
+      .optional(),
+    /** More to hit against a target that is this (Capability API 1.182): a mace of smiting's +2 more
+     *  against constructs. Its damage is a `plus` clause with the same `targetIs`. */
+    against: z
+      .array(z.object({ is: targetIsSchema, toHit: z.number().int().min(-20).max(20) }).strict())
+      .min(1)
+      .max(4)
+      .optional(),
+    /** A hit that leaves its target at `healthAtMost` or less kills it outright, on a failed `save`
+     *  where it has one (Capability API 1.182): a mace of disruption against fiends and undead, a
+     *  mace of smiting's construct, a nine lives stealer (on a `critical`, spending a `charges` of
+     *  the item's own when it slays), a vorpal sword's beheading. `is` and `not` say who it can kill,
+     *  and a target immune to one of `immuneTo` is spared. */
+    slay: z
+      .array(
+        z
+          .object({
+            when: z.enum(["always", "critical"]).optional(),
+            is: targetIsSchema.optional(),
+            not: targetIsSchema.optional(),
+            immuneTo: z.array(promptSafeText(40)).min(1).max(8).optional(),
+            healthAtMost: z.number().int().min(0).max(100000).optional(),
+            save: z
+              .object({ save: sheetId, difficulty: z.number().int().min(0).max(1000) })
+              .strict()
+              .optional(),
+            charges: z.number().int().min(1).max(100).optional(),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(3)
       .optional(),
     /** More damage on the same blow, each rolled and typed on its own (Capability API 1.164): a
      *  javelin of lightning's lightning, a dragon slayer's dice against dragons (`targetIs`), a
@@ -3684,7 +3722,16 @@ export const rulesetItemAttackSchema = z
               .strict()
               .optional(),
             targetIs: targetIsSchema.optional(),
+            /** Not dealt to a target that is this (Capability API 1.182): a sword of life stealing's
+             *  necrotic, which constructs and undead do not feed. */
+            not: targetIsSchema.optional(),
             when: z.enum(["always", "critical", "toggled"]).optional(),
+            /** Only on a blow struck in reach, or thrown or shot (Capability API 1.182): a dwarven
+             *  thrower's extra when it is hurled. */
+            blow: z.enum(["melee", "ranged"]).optional(),
+            /** Its holder gains temporary points equal to what this clause dealt (Capability API
+             *  1.182): a sword of life stealing. */
+            tempHp: z.literal(true).optional(),
           })
           .strict()
           .superRefine((clause, ctx) => {
@@ -8828,8 +8875,12 @@ function itemIssues(
   if (item.use) useIssues(definition, item, item.use, [...at, "use"], add);
   if (item.charges) {
     itemValueChecker(definition, add)(item.charges.max, "number", [...at, "charges", "max"]);
-    if (item.use?.charges === undefined) {
-      add([...at, "charges"], "An item's charges are spent by its use, so its use spends some");
+    // Or by its weapon slaying (1.182): a nine lives stealer's.
+    if (item.use?.charges === undefined && !item.attack?.slay?.some((entry) => entry.charges !== undefined)) {
+      add(
+        [...at, "charges"],
+        "An item's charges are spent by its use or its weapon's slay, so one of them spends some",
+      );
     }
     // Charges are one item's, so a stack of several would hold none of its own.
     if (item.stack !== 1) add([...at, "stack"], "An item that holds charges is one to a stack, so its stack is 1");
@@ -9231,6 +9282,7 @@ function attackIssues(
   value(attack.floor, "number", [...at, "floor"]);
   const conditions = new Set(definition.sheet.live.conditions.map((condition) => condition.id));
   const saves = new Set(definition.sheet.saves.map((save) => save.id));
+  const damageTypes = definition.combat?.damageTypes?.map((type) => type.trim().toLowerCase());
   attack.onHit?.forEach((entry, index) => {
     if (!conditions.has(entry.condition))
       add([...at, "onHit", index, "condition"], `Unknown condition "${entry.condition}"`);
@@ -9242,8 +9294,23 @@ function attackIssues(
     if (entry.saveEnds && entry.rounds !== undefined) {
       add([...at, "onHit", index, "rounds"], "A condition that ends on a save lasts until it is made, not some rounds");
     }
+    targetIsIssues(definition, entry.targetIs, [...at, "onHit", index, "targetIs"], add);
   });
-  const damageTypes = definition.combat?.damageTypes?.map((type) => type.trim().toLowerCase());
+  attack.against?.forEach((entry, index) => targetIsIssues(definition, entry.is, [...at, "against", index, "is"], add));
+  attack.slay?.forEach((entry, index) => {
+    const where = [...at, "slay", index];
+    targetIsIssues(definition, entry.is, [...where, "is"], add);
+    targetIsIssues(definition, entry.not, [...where, "not"], add);
+    if (entry.save && !saves.has(entry.save.save)) add([...where, "save", "save"], `Unknown save "${entry.save.save}"`);
+    entry.immuneTo?.forEach((type, typeIndex) => {
+      if (damageTypes && !damageTypes.includes(type.trim().toLowerCase()))
+        add([...where, "immuneTo", typeIndex], `Unknown damage type "${type}"`);
+    });
+    // What it spends is the item's own count, so the item has one.
+    if (entry.charges !== undefined && !item.charges) {
+      add([...where, "charges"], "A slay that spends charges is on an item that holds some");
+    }
+  });
   attack.plus?.forEach((clause, index) => {
     const where = [...at, "plus", index];
     if (clause.type && damageTypes && !damageTypes.includes(clause.type.trim().toLowerCase())) {
@@ -9252,6 +9319,7 @@ function attackIssues(
     if (clause.save && !saves.has(clause.save.save))
       add([...where, "save", "save"], `Unknown save "${clause.save.save}"`);
     targetIsIssues(definition, clause.targetIs, [...where, "targetIs"], add);
+    targetIsIssues(definition, clause.not, [...where, "not"], add);
   });
 }
 

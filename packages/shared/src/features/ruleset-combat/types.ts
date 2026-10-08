@@ -49,6 +49,12 @@ export interface RulesetCombatDamageClause extends RulesetCombatAmount {
   onCritical?: true;
   /** Dealt only while this item of its holder's (its place in `sheet.items`) is switched on (1.165). */
   whileOn?: number;
+  /** Not dealt to a target that is this (1.182). */
+  not?: RulesetTargetIs;
+  /** Dealt only on a blow struck in reach, or thrown or shot (1.182). */
+  blow?: RulesetBlowKind;
+  /** Its maker gains temporary points equal to what it dealt (1.182). */
+  tempHp?: true;
 }
 
 /** An amount of damage, and what kind it is. The type is matched without case against a stat
@@ -557,6 +563,23 @@ export interface RulesetCombatAction {
     save?: { save: string; difficulty: number };
     /** It lasts until its holder makes this save at a turn's start or end (1.164). */
     saveEnds?: { save: string; difficulty: number; at: "turn-start" | "turn-end" | "damaged" };
+    /** Only on a target that is this (1.182). */
+    targetIs?: RulesetTargetIs;
+    /** At most once in any one turn (1.182). */
+    oncePerTurn?: true;
+  }>;
+  /** More to hit against a target that is this (1.182). */
+  against?: Array<{ is: RulesetTargetIs; toHit: number }>;
+  /** A hit that leaves its target low enough kills it outright (1.182); `charges` is what it spends of
+   *  the item at this place in `sheet.items` when it does, out of `max`. */
+  slay?: Array<{
+    when?: "always" | "critical";
+    is?: RulesetTargetIs;
+    not?: RulesetTargetIs;
+    immuneTo?: string[];
+    healthAtMost?: number;
+    save?: { save: string; difficulty: number };
+    charges?: { cost: number; max: number; item: number };
   }>;
   /** Using an item: which of the holder's items it is (its place in `sheet.items`), and what using
    *  it spends of it: one off the stack, or some of its charges. */
@@ -687,6 +710,9 @@ export interface RulesetCombatant {
   /** The cells walked this turn, where the walking began first (1.181): what a charge reads. Cleared
    *  as their turn starts. */
   trail?: RulesetCombatCell[];
+  /** What this combatant's blows did that may happen once a turn, and in which turn (1.182), as
+   *  `<round>:<turn>`: a weapon's wound. */
+  oncePerTurn?: { at: string; keys: string[] };
   /** The points a signature action is bought with, when this combatant has any. */
   signature?: { points: number; max: number };
   /** Strikes in hand: what is left of a spend that bought several. Absent when there are none, and
@@ -1385,6 +1411,8 @@ export type RulesetCombatEvent =
    *  allowance and draws no strike on the way. */
   /** Somebody shoved off a step of two levels or more (combat C6b), before what the fall does. */
   | { type: "fell"; targetId: string; levels: number }
+  /** Killed outright by a blow that slays (1.182). */
+  | { type: "slain"; actorId: string; targetId: string; label: string }
   /** A blow that follows a straight run at its target, before what the charge adds lands (1.181). */
   | {
       type: "charged";

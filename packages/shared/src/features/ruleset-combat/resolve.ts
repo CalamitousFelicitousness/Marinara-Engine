@@ -115,6 +115,7 @@ import {
   rulesetCriticalFromAdjacent,
   rulesetCoverBonus,
   rulesetDefenseAgainst,
+  rulesetToHitAgainst,
   rulesetFreeStrike,
   rulesetGrantedStandard,
   rulesetOptionTargets,
@@ -144,6 +145,7 @@ import type {
   RulesetBlowKind,
   RulesetCombatAction,
   RulesetCombatCharge,
+  RulesetCombatDamageClause,
   RulesetCombatAmount,
   RulesetCombatApplies,
   RulesetCombatCell,
@@ -447,6 +449,8 @@ interface RulesetDamageInput {
   critical?: boolean;
   /** Under `dice-pool`: what the damage dice counted, and what soak took off before `amount`. */
   pool?: Extract<RulesetCombatEvent, { type: "damage" }>["pool"];
+  /** What it deals its maker gains as temporary points (1.182). */
+  drains?: true;
   /** The weapon's floor, when it raised `amount` to it. */
   floor?: number;
 }
@@ -3965,6 +3969,94 @@ function resolveActionFalling(
   return result;
 }
 
+/** Whether a clause of a blow reaches this target: one that is what it names and not what it is kept
+ *  off (1.182), on a blow struck the way it says (1.182). */
+function clauseReaches(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  target: RulesetCombatant,
+  action: RulesetCombatAction,
+  clause: RulesetCombatDamageClause,
+): boolean {
+  if (!rulesetTargetIs(ctx.definition, target, clause.targetIs)) return false;
+  if (clause.not && rulesetTargetIs(ctx.definition, target, clause.not)) return false;
+  return !clause.blow || rulesetBlowKind(ctx.state, actor, target, action) === clause.blow;
+}
+
+/** Whether something its maker may do once a turn is still to be done in this one, noting it done
+ *  when it is (1.182). Any turn counts, the maker's own or anybody else's. */
+function spendOncePerTurn(ctx: RulesetCombatContext, actor: RulesetCombatant, key: string): boolean {
+  const at = `${ctx.state.round}:${ctx.state.turn}`;
+  if (actor.oncePerTurn?.at !== at) actor.oncePerTurn = { at, keys: [] };
+  if (actor.oncePerTurn.keys.includes(key)) return false;
+  actor.oncePerTurn.keys.push(key);
+  return true;
+}
+
+/** A blow that slays (1.182): somebody it may kill, left at its health or less, dies outright on a
+ *  failed save where it asks one, and the item spends what slaying costs it. One immune to a kind of
+ *  harm it names is spared, and one with too few charges left is never asked. */
+function slayOnHit(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  target: RulesetCombatant,
+  entry: NonNullable<RulesetCombatAction["slay"]>[number],
+  critical: boolean,
+): void {
+  if (target.defeated || (entry.when === "critical" && !critical)) return;
+  if (!rulesetTargetIs(ctx.definition, target, entry.is)) return;
+  if (entry.not && rulesetTargetIs(ctx.definition, target, entry.not)) return;
+  if (entry.immuneTo?.length) {
+    // Immune as the blow finds them: what it carries past an exception counts.
+    const hide = rulesetCombatHide(ctx.definition, target, ctx.state);
+    const qualities = action.damage?.qualities;
+    if (entry.immuneTo.some((type) => matches(hide.immune, type.trim().toLowerCase(), qualities))) return;
+  }
+  if (entry.healthAtMost !== undefined && healthOf(ctx, target).value > entry.healthAtMost) return;
+  const charges = entry.charges;
+  const left = charges
+    ? (actor.charges?.[charges.item] ?? actor.sheet?.items?.[charges.item]?.charges ?? charges.max)
+    : 0;
+  if (charges && left < charges.cost) return;
+  if (entry.save && rollSave(ctx, target, entry.save.save, entry.save.difficulty, actor.id)) return;
+  slay(ctx, target, actor.id, action.label);
+  if (charges) {
+    const now = Math.max(0, Math.min(charges.max, left) - charges.cost);
+    (actor.charges ??= {})[charges.item] = now;
+    ctx.events.push({
+      type: "uses",
+      actorId: actor.id,
+      optionId: action.id,
+      label: action.label,
+      left: now,
+      of: charges.max,
+    });
+  }
+}
+
+/** Killed outright (1.182): no health left, and dead rather than dying, whichever side they are on. */
+function slay(ctx: RulesetCombatContext, target: RulesetCombatant, sourceId: string, label: string): void {
+  const before = healthOf(ctx, target);
+  if (target.sheet) {
+    if (!("track" in ctx.combat.health) && before.value + before.temp > 0) {
+      writeHealthLoss(ctx, target, before.value + before.temp, undefined);
+    }
+  } else if (target.health) {
+    target.health.temp = 0;
+    target.health.value = 0;
+  }
+  ctx.events.push({ type: "slain", actorId: sourceId, targetId: target.id, label });
+  if (!target.down) dropToZero(ctx, target);
+  if (target.defeated) return;
+  target.defeated = true;
+  target.dying = false;
+  target.stable = false;
+  target.diedRound = ctx.state.round;
+  endSummons(ctx, target);
+  endZones(ctx, target);
+}
+
 /** An action with its charge added to it (1.181): the clauses after its own, the charge's save as one
  *  that keeps the blow's damage whole, and the push and conditions that follow a failed one. */
 function chargedAction(action: RulesetCombatAction, charge: RulesetCombatCharge): RulesetCombatAction {
@@ -4151,6 +4243,8 @@ function resolveActionBody(
         state: ctx.state,
         optionId: action.id,
       });
+      // What the weapon adds against what the target is (1.182).
+      const toHit = action.toHit + rulesetToHitAgainst(ctx.definition, action, target);
       // What the ground the target stands on is worth, said out loud before the roll it changed.
       const guarded = rulesetDefenseAgainst(ctx.definition, ctx.combat, ctx.state, target, actor);
       if (guarded.cover > 0) {
@@ -4164,7 +4258,7 @@ function resolveActionBody(
           ctx,
           rulesetConditionModifiers(ctx.definition, ctx.combat, actor, "attacks", ctx.state),
         );
-        const thrown = throwPool(ctx, actor, action.toHit + bonusTotal(bonuses), mode, action.target);
+        const thrown = throwPool(ctx, actor, toHit + bonusTotal(bonuses), mode, action.target);
         const needed = Math.max(1, guarded.defense);
         const outcome = !thrown.botch && thrown.successes >= needed ? "hit" : "miss";
         ctx.events.push({
@@ -4176,7 +4270,7 @@ function resolveActionBody(
           mode,
           rolls: thrown.rolls,
           kept: thrown.successes,
-          modifier: action.toHit,
+          modifier: toHit,
           ...(bonuses.length > 0 ? { bonuses } : {}),
           total: thrown.successes,
           defense: needed,
@@ -4225,7 +4319,7 @@ function resolveActionBody(
           ctx,
           rulesetConditionModifiers(ctx.definition, ctx.combat, actor, "attacks", ctx.state),
         );
-        const total = kept + action.toHit + bonusTotal(bonuses);
+        const total = kept + toHit + bonusTotal(bonuses);
         let outcome: "hit" | "miss" | "critical" = total >= guarded.defense ? "hit" : "miss";
         // A critical range the attacker's sheet reads (1.76) widens a critical face down to it.
         const criticalFrom =
@@ -4249,7 +4343,7 @@ function resolveActionBody(
           mode,
           rolls: second ? [...first, ...second] : first,
           kept,
-          modifier: action.toHit,
+          modifier: toHit,
           ...(bonuses.length > 0 ? { bonuses } : {}),
           total,
           defense: guarded.defense,
@@ -4369,6 +4463,8 @@ function resolveActionBody(
       ...rulesetDamageModifiers(ctx.definition, ctx.state, actor, action, target, true),
     ];
     const parts: RulesetDamageInput[] = [];
+    // What the blow's draining clauses dealt, which its maker gains as temporary points (1.182).
+    let drained = 0;
     const landNow = (part: RulesetDamageInput) => {
       if (takes) {
         const amount = Math.max(0, Math.floor(part.amount));
@@ -4393,6 +4489,7 @@ function resolveActionBody(
         damageSaves,
       );
       dealt += partDealt;
+      if (part.drains) drained += partDealt;
       // A compound hit marks once, using the most severe kind that actually landed.
       if (woundTrack && partDealt > 0) {
         const kind = woundTrack.kinds?.find(
@@ -4460,7 +4557,7 @@ function resolveActionBody(
       (action.damage.plus ?? []).forEach((clause) => {
         // Dealt only to a target that is what it names (1.163), and a save-for-half blow is never a
         // critical one (1.164).
-        if (!rulesetTargetIs(ctx.definition, target, clause.targetIs) || clause.onCritical) return;
+        if (!clauseReaches(ctx, actor, target, action, clause) || clause.onCritical) return;
         if (clause.whileOn !== undefined && !rulesetItemOn(actor, clause.whileOn)) return;
         const own = clause.save
           ? rollSave(ctx, target, clause.save.save, clause.save.difficulty, actor.id, saveFromFor(target), against)
@@ -4478,6 +4575,7 @@ function resolveActionBody(
           amount: clauseHalved ? Math.floor(thrown.total / 2) : thrown.total,
           ...(clauseHalved ? { saved: true } : {}),
           pool: thrown.pool,
+          ...(clause.tempHp ? { drains: true as const } : {}),
         });
       });
     } else if (damage && action.damage) {
@@ -4502,7 +4600,7 @@ function resolveActionBody(
         ...(critical ? { critical: true } : {}),
       });
       (action.damage.plus ?? []).forEach((clause, index) => {
-        if (!rulesetTargetIs(ctx.definition, target, clause.targetIs)) return;
+        if (!clauseReaches(ctx, actor, target, action, clause)) return;
         // Only a critical hit carries a clause that says so (1.164), and only an item switched on one
         // dealt while it is (1.165).
         if (clause.onCritical && !critical) return;
@@ -4527,6 +4625,7 @@ function resolveActionBody(
           amount: clauseHalved ? Math.floor(clauseTotal / 2) : clauseTotal,
           ...(clauseHalved ? { saved: true } : {}),
           ...(critical ? { critical: true } : {}),
+          ...(clause.tempHp ? { drains: true as const } : {}),
         });
       });
     }
@@ -4605,10 +4704,16 @@ function resolveActionBody(
       }
     }
     if (before) afterBlow(ctx, target, dealt, critical);
+    if (drained > 0) grantTemporary(ctx, actor, { sourceId: actor.id, rolls: [], flat: drained, amount: drained });
+    // A blow that slays (1.182) kills somebody it left low enough, after what it dealt.
+    if (dealt > 0) for (const entry of action.slay ?? []) slayOnHit(ctx, actor, action, target, entry, critical);
     // A blow that dealt enough harm puts the weapon's conditions on the one it hit, after what the
     // blow itself ended, as an action's own conditions are, so one that ends on damage stays on.
-    for (const entry of action.onHit ?? []) {
+    for (const [onHitIndex, entry] of (action.onHit ?? []).entries()) {
       if (dealt < entry.atLeast) continue;
+      // Only on a target that is what it names, and once a turn where it says so (1.182).
+      if (!rulesetTargetIs(ctx.definition, target, entry.targetIs)) continue;
+      if (entry.oncePerTurn && !spendOncePerTurn(ctx, actor, `${action.id}:${onHitIndex}`)) continue;
       // A save against it keeps it off (1.164), and it is a save against that condition.
       if (
         entry.save &&

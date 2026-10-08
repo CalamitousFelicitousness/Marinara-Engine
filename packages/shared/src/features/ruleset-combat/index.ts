@@ -168,6 +168,7 @@ export {
   rulesetAnswerDeflects,
   rulesetAreaTargets,
   rulesetAttackMode,
+  rulesetToHitAgainst,
   rulesetBonusDice,
   rulesetCombatOptions,
   rulesetContestChance,

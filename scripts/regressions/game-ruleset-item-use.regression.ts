@@ -165,7 +165,7 @@ try {
     refused(
       gravewatchText,
       bellItem((item) => delete item.use.charges),
-      /charges: An item's charges are spent by its use, so its use spends some/,
+      /charges: An item's charges are spent by its use or its weapon's slay, so one of them spends some/,
       "charges nothing spends",
     );
     refused(

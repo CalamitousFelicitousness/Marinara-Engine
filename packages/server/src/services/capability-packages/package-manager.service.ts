@@ -1522,6 +1522,29 @@ function carriesWardsAndSaves(value: unknown, depth = 0): boolean {
 
 const MODIFIER_TARGETS = new Set<string>(RULESET_COMBAT_MODIFIER_TARGETS);
 
+/** A weapon that hits harder by what it hits, slays, drains, adds only when thrown, or wounds once a
+ *  turn or only some targets (1.182), in catalog files too: an item's `attack` is where they live. */
+function carriesWeaponKinds(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesWeaponKinds(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const attack = plainRecord(record.attack);
+  if (attack) {
+    if (attack.against !== undefined || attack.slay !== undefined) return true;
+    const plus = Array.isArray(attack.plus) ? attack.plus.map(plainRecord) : [];
+    if (
+      plus.some(
+        (clause) => clause && (clause.not !== undefined || clause.blow !== undefined || clause.tempHp !== undefined),
+      )
+    )
+      return true;
+    const onHit = Array.isArray(attack.onHit) ? attack.onHit.map(plainRecord) : [];
+    if (onHit.some((entry) => entry && (entry.targetIs !== undefined || entry.oncePerTurn !== undefined))) return true;
+  }
+  return Object.values(record).some((one) => carriesWeaponKinds(one, depth + 1));
+}
+
 /** A creature's actions that recharge together, or that charge (1.181), in catalog files too. */
 function carriesChargeAndGroups(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -2937,6 +2960,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Weapons by what they hit, slaying, draining, thrown extras and once-a-turn wounds, 1.182.
+  if (
+    !declaresApi(182) &&
+    (carriesWeaponKinds(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesWeaponKinds(document)))
+  ) {
+    return "A ruleset with weapons that hit harder by what they hit, slay, drain, add only when thrown, or wound once a turn requires schemaVersion 2 and capabilityApi 1.182 or newer";
   }
   // Creature actions that recharge together or charge, 1.181.
   if (

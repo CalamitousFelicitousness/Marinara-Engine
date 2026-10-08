@@ -1356,15 +1356,17 @@ function forecastFor(
     const defense = rulesetDefenseAgainst(definition, combat, state, target, actor).defense;
     const mode = rulesetAttackMode(definition, combat, actor, target, { state, optionId: action.id });
     const bonus = rulesetBonusDice(rulesetConditionModifiers(definition, combat, actor, "attacks", state));
+    // What the weapon adds against what the target is (1.182), as the roll will.
+    const toHit = action.toHit + rulesetToHitAgainst(definition, action, target);
     const chance = rulesetCombatIsPool(combat)
       ? rulesetPoolChance(
           definition,
-          action.toHit + bonus.flat + rulesetCombatPenalty(definition, actor),
+          toHit + bonus.flat + rulesetCombatPenalty(definition, actor),
           Math.max(1, defense),
           mode,
           action.target,
         )
-      : rulesetHitChance(combat, action.toHit, defense, mode, bonus, actor.criticalFrom);
+      : rulesetHitChance(combat, toHit, defense, mode, bonus, actor.criticalFrom);
     if (chance !== null) forecast.hitChance = Math.round(chance * 1000) / 1000;
   }
   // The whole blow, clauses and all. A clause with a save of its own is counted in full: a forecast
@@ -1444,6 +1446,19 @@ function modifiedAverage(average: number, modifiers: RulesetConditionModifier[])
   return Math.max(0, average * modifiers.reduce((times, { modifier }) => times * (modifier.times ?? 1), 1));
 }
 
+/** What a weapon adds to hit against this target, by what it is (1.182): a mace of smiting's +2 more
+ *  against a construct. Every entry that matches adds. */
+export function rulesetToHitAgainst(
+  definition: RulesetDefinition,
+  action: RulesetCombatAction,
+  target: RulesetCombatant,
+): number {
+  return (action.against ?? []).reduce(
+    (sum, entry) => sum + (rulesetTargetIs(definition, target, entry.is) ? entry.toHit : 0),
+    0,
+  );
+}
+
 /** What one blow's harm is worth on average. A sum is its dice and flat part; in a pool fight each
  *  amount is its dice counted against the damage target, its automatic successes, and less what the
  *  target soaks of its kind, thrown or taken off the dice. Never below nothing. */
@@ -1456,10 +1471,17 @@ function averageHarm(
 ): number {
   // A clause dealt only to some targets counts against one it would reach, and never unaimed (1.163).
   // One of an item's switch counts only while the item is on (1.165).
-  const reaches = (clause: { targetIs?: RulesetTargetIs; onCritical?: true; whileOn?: number }) =>
+  // One kept off some targets (1.182) counts against one it would still reach.
+  const reaches = (clause: {
+    targetIs?: RulesetTargetIs;
+    not?: RulesetTargetIs;
+    onCritical?: true;
+    whileOn?: number;
+  }) =>
     !clause.onCritical &&
     (clause.whileOn === undefined || (!!actor && rulesetItemOn(actor, clause.whileOn))) &&
-    (!clause.targetIs || (!!target && rulesetTargetIs(definition, target, clause.targetIs)));
+    (!clause.targetIs || (!!target && rulesetTargetIs(definition, target, clause.targetIs))) &&
+    (!clause.not || (!!target && !rulesetTargetIs(definition, target, clause.not)));
   if (!rulesetCombatIsPool(combat)) {
     return rulesetAverageDamage({
       ...damage,

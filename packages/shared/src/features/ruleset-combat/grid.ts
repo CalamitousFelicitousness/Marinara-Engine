@@ -650,7 +650,7 @@ export function rulesetReachableCells(
       const plain = rulesetMoveStep(grid, at, { x, y }, actor, cheapest)?.cost;
       if (plain === undefined) continue;
       // Ground a lasting area makes hard going (1.168).
-      const step = rulesetSlowedStep(grid, { x, y }, plain, slowed);
+      const step = rulesetSlowedStep(grid, { x, y }, plain, slowed, at);
       const cost = cheapest + step;
       if (cost > budget || cost >= (best.get(next) ?? Infinity)) continue;
       best.set(next, cost);
@@ -834,6 +834,12 @@ export function rulesetZoneCells(
   const action = caster.actions.find((entry) => entry.id === zone.actionId);
   const at = rulesetPositionOf(caster);
   if (!action?.area || !at) return [];
+  // A line or cone held by its caster points the way it was cast, or last turned (1.177).
+  if (action.area.shape === "line" || action.area.shape === "cone") {
+    if (!zone.facing) return [];
+    const toward = { x: at.x + zone.facing.dx, y: at.y + zone.facing.dy };
+    return rulesetAreaCells(action.area.shape, action.area.size, at, toward, grid, action.area.width);
+  }
   return rulesetAreaCells("burst", action.area.size, at, at, grid);
 }
 
@@ -860,6 +866,8 @@ export function rulesetZoneCatches(
 export interface RulesetSlowedCell {
   times: number;
   halves: boolean;
+  /** Hard going that counts only on a step nearer `at`, its zone's caster (1.177). */
+  toward?: Array<{ at: RulesetCombatCell; times: number }>;
 }
 
 /** The cells a mover finds hard going because a zone that catches them covers them (1.168): the
@@ -876,12 +884,18 @@ export function rulesetSlowedCells(
       if (!rule || !(rule.difficult || rule.costTimes || rule.halvesSpeed)) continue;
       if (!rulesetZoneCatches(caster, zone, action, mover)) continue;
       const times = rule.costTimes ?? (rule.difficult ? 2 : 1);
+      // Hard going only toward its caster (1.177): kept apart, and priced by the step.
+      const from = rule.towardCaster ? rulesetPositionOf(caster) : null;
+      if (rule.towardCaster && !from) continue;
       for (const cell of rulesetZoneCells(state, caster, zone)) {
         const key = `${cell.x},${cell.y}`;
         const was = slowed.get(key);
         slowed.set(key, {
-          times: Math.max(was?.times ?? 1, times),
+          times: Math.max(was?.times ?? 1, from ? 1 : times),
           halves: (was?.halves ?? false) || !!rule.halvesSpeed,
+          ...(from || was?.toward
+            ? { toward: [...(was?.toward ?? []), ...(from ? [{ at: { x: from.x, y: from.y }, times }] : [])] }
+            : {}),
         });
       }
     }
@@ -891,15 +905,23 @@ export function rulesetSlowedCells(
 
 /** A step into a cell a zone slows costs its times the ground's plain price, without charging again
  *  for ground that was already hard going: difficult terrain does not stack (1.168). Halved speed is
- *  on top of that, as the step costs double again (1.170). */
+ *  on top of that, as the step costs double again (1.170). Ground hard going only toward a caster
+ *  counts when the step, from `from`, brings the mover nearer them (1.177). */
 export function rulesetSlowedStep(
   grid: TacticalGrid,
   cell: RulesetCombatCell,
   step: number,
   slowed: ReadonlyMap<string, RulesetSlowedCell>,
+  from?: RulesetCombatCell,
 ): number {
   const slow = slowed.get(`${cell.x},${cell.y}`);
   if (!slow) return step;
-  const hard = step + Math.max(0, slow.times - rulesetCellEnterCost(grid, cell.x, cell.y));
+  let times = slow.times;
+  for (const toward of slow.toward ?? []) {
+    if (from && rulesetCellDistance(cell, toward.at) < rulesetCellDistance(from, toward.at)) {
+      times = Math.max(times, toward.times);
+    }
+  }
+  const hard = step + Math.max(0, times - rulesetCellEnterCost(grid, cell.x, cell.y));
   return slow.halves ? hard * 2 : hard;
 }

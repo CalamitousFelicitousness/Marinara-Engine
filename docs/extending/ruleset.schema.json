@@ -9168,6 +9168,21 @@
                           ],
                           "additionalProperties": false
                         },
+                        "turn": {
+                          "type": "object",
+                          "properties": {
+                            "budget": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "budget"
+                          ],
+                          "additionalProperties": false
+                        },
                         "drift": {
                           "type": "object",
                           "properties": {
@@ -9195,6 +9210,10 @@
                               "maximum": 10
                             },
                             "halvesSpeed": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "towardCaster": {
                               "type": "boolean",
                               "const": true
                             },
@@ -9431,6 +9450,11 @@
                         "triggers"
                       ],
                       "additionalProperties": false
+                    },
+                    "push": {
+                      "type": "number",
+                      "exclusiveMinimum": 0,
+                      "maximum": 10000
                     },
                     "ends": {
                       "type": "object",
@@ -10886,6 +10910,25 @@
                           }
                         }
                       }
+                    },
+                    {
+                      "anyOf": [
+                        {
+                          "required": [
+                            "applies"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "ends"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "push"
+                          ]
+                        }
+                      ]
                     }
                   ]
                 },
@@ -14099,9 +14142,28 @@
                         "senses": {
                           "type": "object",
                           "additionalProperties": {
-                            "type": "number",
-                            "exclusiveMinimum": 0,
-                            "maximum": 10000
+                            "anyOf": [
+                              {
+                                "type": "number",
+                                "exclusiveMinimum": 0,
+                                "maximum": 10000
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "add": {
+                                    "type": "number",
+                                    "exclusiveMinimum": 0,
+                                    "maximum": 10000
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "add"
+                                ],
+                                "additionalProperties": false
+                              }
+                            ]
                           },
                           "propertyNames": {
                             "maxLength": 40,
@@ -14828,9 +14890,28 @@
                         "senses": {
                           "type": "object",
                           "additionalProperties": {
-                            "type": "number",
-                            "exclusiveMinimum": 0,
-                            "maximum": 10000
+                            "anyOf": [
+                              {
+                                "type": "number",
+                                "exclusiveMinimum": 0,
+                                "maximum": 10000
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "add": {
+                                    "type": "number",
+                                    "exclusiveMinimum": 0,
+                                    "maximum": 10000
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "add"
+                                ],
+                                "additionalProperties": false
+                              }
+                            ]
                           },
                           "propertyNames": {
                             "maxLength": 40,
@@ -15711,9 +15792,28 @@
                               "senses": {
                                 "type": "object",
                                 "additionalProperties": {
-                                  "type": "number",
-                                  "exclusiveMinimum": 0,
-                                  "maximum": 10000
+                                  "anyOf": [
+                                    {
+                                      "type": "number",
+                                      "exclusiveMinimum": 0,
+                                      "maximum": 10000
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "add": {
+                                          "type": "number",
+                                          "exclusiveMinimum": 0,
+                                          "maximum": 10000
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "required": [
+                                        "add"
+                                      ],
+                                      "additionalProperties": false
+                                    }
+                                  ]
                                 },
                                 "propertyNames": {
                                   "maxLength": 40,
@@ -17888,6 +17988,21 @@
                               ],
                               "additionalProperties": false
                             },
+                            "turn": {
+                              "type": "object",
+                              "properties": {
+                                "budget": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "$comment": {}
+                              },
+                              "required": [
+                                "budget"
+                              ],
+                              "additionalProperties": false
+                            },
                             "drift": {
                               "type": "object",
                               "properties": {
@@ -17915,6 +18030,10 @@
                                   "maximum": 10
                                 },
                                 "halvesSpeed": {
+                                  "type": "boolean",
+                                  "const": true
+                                },
+                                "towardCaster": {
                                   "type": "boolean",
                                   "const": true
                                 },
@@ -18151,6 +18270,11 @@
                             "triggers"
                           ],
                           "additionalProperties": false
+                        },
+                        "push": {
+                          "type": "number",
+                          "exclusiveMinimum": 0,
+                          "maximum": 10000
                         },
                         "ends": {
                           "type": "object",
@@ -19455,7 +19579,28 @@
                       "required": [
                         "kind"
                       ],
-                      "additionalProperties": false
+                      "additionalProperties": false,
+                      "allOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "required": [
+                                "applies"
+                              ]
+                            },
+                            {
+                              "required": [
+                                "ends"
+                              ]
+                            },
+                            {
+                              "required": [
+                                "push"
+                              ]
+                            }
+                          ]
+                        }
+                      ]
                     },
                     "charges": {
                       "type": "object",
@@ -25814,9 +25959,28 @@
               "senses": {
                 "type": "object",
                 "additionalProperties": {
-                  "type": "number",
-                  "exclusiveMinimum": 0,
-                  "maximum": 10000
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "exclusiveMinimum": 0,
+                      "maximum": 10000
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "add": {
+                          "type": "number",
+                          "exclusiveMinimum": 0,
+                          "maximum": 10000
+                        },
+                        "$comment": {}
+                      },
+                      "required": [
+                        "add"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
                 },
                 "propertyNames": {
                   "maxLength": 40,

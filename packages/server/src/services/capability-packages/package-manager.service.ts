@@ -1519,6 +1519,27 @@ function carriesWardsAndSaves(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesWardsAndSaves(one, depth + 1));
 }
 
+/** A sense given as a number added to the holder's own, a push, a line or cone its caster carries or
+ *  turns, or hard going only toward a caster, in catalog files too (1.177). */
+function carriesPushAndTurn(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesPushAndTurn(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const senses = plainRecord(record.senses);
+  if (senses && Object.values(senses).some((one) => plainRecord(one) !== null)) return true;
+  for (const mechanics of [plainRecord(record.mechanics), plainRecord(record.use)]) {
+    if (!mechanics) continue;
+    if (mechanics.push !== undefined) return true;
+    const zone = plainRecord(mechanics.zone);
+    if (!zone) continue;
+    if (zone.turn !== undefined || plainRecord(zone.terrain)?.towardCaster !== undefined) return true;
+    const shape = plainRecord(mechanics.area)?.shape;
+    if (zone.anchor === "caster" && (shape === "line" || shape === "cone")) return true;
+  }
+  return Object.values(record).some((one) => carriesPushAndTurn(one, depth + 1));
+}
+
 /** Senses and seeing (1.173): the combat block's senses or sight, a condition that hides, a zone
  *  that obscures, an area set down several times, "a creature you can see", or a creature's senses,
  *  in catalog files too. */
@@ -2847,6 +2868,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesWardsAndSaves(document)))
   ) {
     return "A ruleset with wards by base level or raised by their cast, saves that say what else they are against or who passes them outright, creature spell components, or utility item uses, requires schemaVersion 2 and capabilityApi 1.176 or newer";
+  }
+  // Senses added to the holder's own, pushes, lines and cones carried and turned, 1.177.
+  if (
+    !declaresApi(177) &&
+    (carriesPushAndTurn(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
+  ) {
+    return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
   }
   if (carriesCreatureSpellcasting) {
     // The references can only be checked once the catalog files are beside their headers.

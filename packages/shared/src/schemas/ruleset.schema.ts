@@ -1376,10 +1376,13 @@ const seenThroughSchema: z.ZodType<RulesetSeenThrough, z.ZodTypeDef, unknown> = 
   })
   .strict();
 
-/** How far something senses with each of the fight's senses, in the ruleset's distance (1.173). */
-const senseRangesSchema: z.ZodType<Record<string, number>, z.ZodTypeDef, unknown> = z.record(
+/** How far something senses with each of the fight's senses, in the ruleset's distance (1.173):
+ *  a range, or (Capability API 1.177) `{ "add": N }`, which adds N to the holder's own range of that
+ *  sense and is the range N for a holder without it (5e's goggles of night). */
+export type RulesetSenseGrant = number | { add: number };
+const senseRangesSchema: z.ZodType<Record<string, RulesetSenseGrant>, z.ZodTypeDef, unknown> = z.record(
   sheetId,
-  z.number().finite().gt(0).max(10000),
+  z.union([z.number().finite().gt(0).max(10000), z.object({ add: z.number().finite().gt(0).max(10000) }).strict()]),
 );
 
 /** What standing in a zone does to whoever is there (1.174), and what it stops. */
@@ -1442,10 +1445,12 @@ export interface RulesetCatalogZone {
   atCast?: boolean;
   move?: { budget: string; distance: number; ram?: true };
   drift?: { distance: number };
+  turn?: { budget: string };
   terrain?: {
     difficult?: true;
     costTimes?: number;
     halvesSpeed?: true;
+    towardCaster?: true;
     perDistance?: { every: number; amount: { dice?: string; flat?: number }; damageType?: string };
   };
   breaksConcentration?: true;
@@ -1480,6 +1485,9 @@ const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = 
       })
       .strict()
       .optional(),
+    /** Its caster may turn it to blast another way on their turn (Capability API 1.177), spending
+     *  `budget`: a line or cone that moves with them, as 5e's Gust of Wind on a bonus action. */
+    turn: z.object({ budget: sheetId }).strict().optional(),
     /** It moves `distance` straight away from its caster as each of their turns starts (1.168):
      *  5e's Cloudkill. */
     drift: z
@@ -1497,6 +1505,9 @@ const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = 
         costTimes: z.number().int().min(2).max(10).optional(),
         /** Speed is halved inside it (1.170), on top of any hard going: 5e's Spirit Guardians. */
         halvesSpeed: z.literal(true).optional(),
+        /** Its hard going counts only for a step that brings the mover nearer its caster
+         *  (Capability API 1.177): 5e's Gust of Wind, 2 feet for every 1 moving closer. */
+        towardCaster: z.literal(true).optional(),
         perDistance: z
           .object({
             every: z.number().finite().gt(0),
@@ -2182,6 +2193,10 @@ const catalogMechanicsObject = z
      *  Spirit Guardians); `atCast: false` does nothing as it appears. A zone whose `terrain` is all
      *  it does names no triggers (1.168). */
     zone: catalogZoneSchema.optional(),
+    /** Whoever it lands on and does not save against is pushed this far straight away from its maker,
+     *  in the catalog's unit (Capability API 1.177): 5e's Gust of Wind, 15 feet. A zone pushes
+     *  whoever it catches the same way. */
+    push: z.number().finite().gt(0).max(10000).optional(),
     /** Takes these conditions off whoever it lands on, up to `count` of them (all when left out) in
      *  the order named (Capability API 1.171): 5e's Lesser Restoration ends one of blinded, deafened,
      *  paralyzed or poisoned. */
@@ -2299,25 +2314,29 @@ function zoneIssue(mechanics: {
   }
   return !mechanics.area
     ? "A zone is an area that stays, so it needs an area"
-    : zone.anchor === "caster" && mechanics.area.shape !== "burst"
-      ? "A zone that moves with its caster is a burst around them"
-      : mechanics.summons || mechanics.reaction
-        ? "A zone is cast on a turn and leaves no summon"
-        : zone.triggers.length === 0 &&
-            !zone.terrain &&
-            !wall &&
-            !zone.obscures &&
-            !zone.inside &&
-            !zone.forbids &&
-            !zone.wards
-          ? "A zone names at least one trigger, unless it is a wall, or what it does is to its ground or to whoever stands in it"
-          : (zone.move || zone.drift) && (zone.anchor === "caster" || mechanics.area.shape !== "burst")
-            ? "Only a burst held at a point is moved or drifts"
-            : zone.breaksConcentration && !mechanics.save
-              ? "A zone that breaks concentration rolls it against the entry's own save"
-              : zone.breaksConcentration && zone.triggers.length === 0
-                ? "A zone breaks concentration at one of its triggers"
-                : undefined;
+    : zone.anchor === "caster" && !["burst", "line", "cone"].includes(mechanics.area.shape)
+      ? "A zone that moves with its caster is a burst around them, or a line or cone from them"
+      : zone.turn && (zone.anchor !== "caster" || mechanics.area.shape === "burst")
+        ? "Only a line or cone that moves with its caster is turned"
+        : zone.terrain?.towardCaster && !(zone.terrain.difficult || zone.terrain.costTimes)
+          ? '"towardCaster" says when its hard going counts, so the ground is "difficult" or has "costTimes"'
+          : mechanics.summons || mechanics.reaction
+            ? "A zone is cast on a turn and leaves no summon"
+            : zone.triggers.length === 0 &&
+                !zone.terrain &&
+                !wall &&
+                !zone.obscures &&
+                !zone.inside &&
+                !zone.forbids &&
+                !zone.wards
+              ? "A zone names at least one trigger, unless it is a wall, or what it does is to its ground or to whoever stands in it"
+              : (zone.move || zone.drift) && (zone.anchor === "caster" || mechanics.area.shape !== "burst")
+                ? "Only a burst held at a point is moved or drifts"
+                : zone.breaksConcentration && !mechanics.save
+                  ? "A zone that breaks concentration rolls it against the entry's own save"
+                  : zone.breaksConcentration && zone.triggers.length === 0
+                    ? "A zone breaks concentration at one of its triggers"
+                    : undefined;
 }
 
 const catalogMechanicsSchema = catalogMechanicsObject.superRefine((mechanics, ctx) => {
@@ -4462,7 +4481,7 @@ const combatConditionSchema = z
     forbids: forbidsSchema.optional(),
     /** How far its holder senses with each of `combat.senses` while it holds, in the ruleset's
      *  distance (Capability API 1.175): 5e's Darkvision spell, True Seeing's truesight. Their own
-     *  reach stands where it is longer. */
+     *  reach stands where it is longer; `{ "add": N }` (1.177) adds to it. */
     senses: senseRangesSchema.optional(),
     /** A condition's `unseen` hides its holder from nobody while this holds (Capability API 1.175):
      *  5e's Faerie Fire, under which the invisible are outlined. */
@@ -8091,7 +8110,7 @@ function sightIssues(
 /** The senses something gives are the fight's own (1.175), each with its range. */
 function senseRangeIssues(
   definition: RulesetDefinition,
-  senses: Record<string, number> | undefined,
+  senses: Record<string, RulesetSenseGrant> | undefined,
   at: (string | number)[],
   add: (path: (string | number)[], message: string) => void,
 ): void {
@@ -9534,6 +9553,9 @@ export function rulesetCatalogEntryIssues(
     }
     if (mechanics?.zone?.move && !budgets?.has(mechanics.zone.move.budget)) {
       add([index, "mechanics", "zone", "move", "budget"], `Unknown budget "${mechanics.zone.move.budget}"`);
+    }
+    if (mechanics?.zone?.turn && !budgets?.has(mechanics.zone.turn.budget)) {
+      add([index, "mechanics", "zone", "turn", "budget"], `Unknown budget "${mechanics.zone.turn.budget}"`);
     }
     if (mechanics?.summons && !budgets?.has(mechanics.summons.budget)) {
       add([index, "mechanics", "summons", "budget"], `Unknown budget "${mechanics.summons.budget}"`);

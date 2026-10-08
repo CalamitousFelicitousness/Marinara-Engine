@@ -1627,6 +1627,7 @@ function mechanicsAction(
       ...(reach !== undefined ? { reach: rulesetInCells(reach, perCell ?? 1) } : {}),
     };
   }
+  if (mechanics.push !== undefined) action.push = rulesetInCells(mechanics.push, perCell ?? 1);
   if (mechanics.zone) {
     action.zone = {
       rounds: mechanics.zone.rounds,
@@ -1643,6 +1644,8 @@ function mechanicsAction(
       };
     }
     if (drift) action.zone.drift = rulesetInCells(drift.distance, perCell ?? 1);
+    if (mechanics.zone.turn) action.zone.turn = { budget: mechanics.zone.turn.budget };
+    if (terrain?.towardCaster) action.zone.towardCaster = true;
     if (terrain?.difficult) action.zone.difficult = true;
     if (terrain?.costTimes !== undefined) action.zone.costTimes = terrain.costTimes;
     if (terrain?.halvesSpeed) action.zone.halvesSpeed = true;

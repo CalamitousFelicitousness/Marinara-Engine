@@ -66,7 +66,7 @@ import {
   rulesetReachableCells,
 } from "./grid.js";
 import { coverTier, elevationAt } from "../tactical-combat/math.js";
-import { rulesetZoneMoveCells } from "./zones.js";
+import { rulesetZoneMoveCells, rulesetZoneTurnCells } from "./zones.js";
 import { rulesetCanSee } from "./sight.js";
 import type {
   RulesetConditionBonus,
@@ -216,6 +216,8 @@ const RULESET_AIM_SCAN_CEILING = 64 * 64;
 export const RULESET_MOVE_OPTION = "move:walk";
 /** Moving a lasting area (1.168): this, then the id of the action that left it. */
 export const RULESET_ZONE_OPTION_PREFIX = "zone:";
+/** Turning a line or cone its caster carries to face another way (1.177): this, then the action's id. */
+export const RULESET_ZONE_TURN_OPTION_PREFIX = "zone-turn:";
 export const RULESET_STAND_OPTION = "move:stand";
 /** A flier going up a level, or down one, where it stands (1.109). */
 export const RULESET_FLY_UP_OPTION = "move:fly-up";
@@ -1907,6 +1909,21 @@ export function rulesetCombatOptions(
       kind: "move",
       label: zone.label,
       budget: move.budget,
+      targets: { side: "self", count: 0 },
+      cells,
+    });
+  }
+  // Turning a line or cone its caster carries (1.177): picked on the board as the cell it now faces.
+  for (const zone of actor.zones ?? []) {
+    const turn = actor.actions.find((entry) => entry.id === zone.actionId)?.zone?.turn;
+    if (!turn || (actor.budgets[turn.budget] ?? 0) < 1) continue;
+    const cells = rulesetZoneTurnCells(state, actor, zone);
+    if (cells.length === 0) continue;
+    options.push({
+      id: `${RULESET_ZONE_TURN_OPTION_PREFIX}${zone.actionId}`,
+      kind: "move",
+      label: zone.label,
+      budget: turn.budget,
       targets: { side: "self", count: 0 },
       cells,
     });

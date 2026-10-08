@@ -37,9 +37,15 @@ export function rulesetSenseRanges(
       : { ...(combatant.senses ?? {}) };
   const combat = definition.combat;
   if (!combat || perCell === undefined) return ranges;
+  // What is added (1.177) is added to the holder's own range, never to what another grant gave.
+  const own = { ...ranges };
   for (const source of rulesetActiveConditions(definition, combat, combatant, state)) {
-    for (const [id, range] of Object.entries(source.senses ?? {})) {
-      ranges[id] = Math.max(ranges[id] ?? 0, rulesetInCells(range, perCell));
+    for (const [id, grant] of Object.entries(source.senses ?? {})) {
+      const range =
+        typeof grant === "number"
+          ? rulesetInCells(grant, perCell)
+          : (own[id] ?? 0) + rulesetInCells(grant.add, perCell);
+      ranges[id] = Math.max(ranges[id] ?? 0, range);
     }
   }
   return ranges;

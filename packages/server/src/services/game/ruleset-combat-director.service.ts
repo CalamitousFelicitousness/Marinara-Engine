@@ -73,8 +73,10 @@ import {
   rulesetWindowOptions,
   rulesetAreaCells,
   rulesetZoneCatches,
+  rulesetZoneCells,
   RULESET_MOVE_OPTION,
   RULESET_ZONE_OPTION_PREFIX,
+  RULESET_ZONE_TURN_OPTION_PREFIX,
   RULESET_PASS_OPTION,
   RULESET_STAND_OPTION,
   type CombatAiCandidate,
@@ -1081,6 +1083,12 @@ function rulesetCandidatesFrom(
   }
   for (const way of priced(definition, encounter, actor, menu)) {
     const { option, price } = way;
+    // Turning a line or cone the actor carries (1.177) is weighed the same way, before any walk.
+    if (option.id.startsWith(RULESET_ZONE_TURN_OPTION_PREFIX)) {
+      const turned = standing ? null : zoneTurnCandidate(encounter, actor, option, price);
+      if (turned) candidates.push(turned);
+      continue;
+    }
     // Moving a lasting area (1.168) is weighed from where the actor stands, by whom it would catch.
     if (option.id.startsWith(RULESET_ZONE_OPTION_PREFIX)) {
       const moved = standing ? null : zoneMoveCandidate(encounter, actor, option, price);
@@ -1374,6 +1382,47 @@ function zoneMoveCandidate(
   let best: { cell: { x: number; y: number }; gain: number } | null = null;
   for (const cell of option.cells ?? []) {
     const gain = worth(cell) - now;
+    if (gain > 0 && (!best || gain > best.gain)) best = { cell, gain };
+  }
+  if (!best) return null;
+  return {
+    action: {
+      choice: { actorId: actor.id, optionId: option.id, targetIds: [], to: { x: best.cell.x, y: best.cell.y } },
+      option,
+    },
+    setup: Math.min(1, 0.4 * best.gain),
+    cost: price,
+  };
+}
+
+/**
+ * Which way to turn a line or cone its actor carries (1.177): the facing that would catch the most
+ * standing opponents less friends, and only when that beats the way it faces now.
+ */
+function zoneTurnCandidate(
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+  option: RulesetCombatOption,
+  price: number,
+): CombatAiCandidate<RulesetCandidate> | null {
+  const actionId = option.id.slice(RULESET_ZONE_TURN_OPTION_PREFIX.length);
+  const zone = actor.zones?.find((entry) => entry.actionId === actionId);
+  const action = actor.actions.find((entry) => entry.id === actionId);
+  if (!zone?.facing || !action || typeof actor.x !== "number" || typeof actor.y !== "number") return null;
+  const worth = (facing: { dx: number; dy: number }) => {
+    const cells = new Set(rulesetZoneCells(encounter, actor, { ...zone, facing }).map((cell) => `${cell.x},${cell.y}`));
+    let total = 0;
+    for (const one of encounter.combatants) {
+      if (typeof one.x !== "number" || typeof one.y !== "number" || one.down) continue;
+      if (!cells.has(`${one.x},${one.y}`) || !rulesetZoneCatches(actor, zone, action, one)) continue;
+      total += one.side === actor.side ? -1 : 1;
+    }
+    return total;
+  };
+  const now = worth(zone.facing);
+  let best: { cell: { x: number; y: number }; gain: number } | null = null;
+  for (const cell of option.cells ?? []) {
+    const gain = worth({ dx: cell.x - actor.x, dy: cell.y - actor.y }) - now;
     if (gain > 0 && (!best || gain > best.gain)) best = { cell, gain };
   }
   if (!best) return null;

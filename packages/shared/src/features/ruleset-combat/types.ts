@@ -491,6 +491,9 @@ export interface RulesetCombatAction {
   /** The area stays (1.167): for how many of its caster's turns, where it is held, and when it does
    *  its effect again. */
   zone?: RulesetCombatZoneRule;
+  /** Cells whoever it lands on and does not save against is pushed straight away from its maker
+   *  (1.177): 5e's Gust of Wind. */
+  push?: number;
   /** The shape this one covers, in cells, aimed at a cell rather than at anybody. */
   area?: RulesetCombatArea;
   /** What a contest rolls and what winning it does, on an action of kind `contest`. */
@@ -1262,8 +1265,9 @@ export type RulesetCombatEvent =
       type: "zone";
       actorId: string;
       label: string;
-      /** `shoved`: put off a wall that went up where they stood, to `to` (1.172). */
-      outcome: "appeared" | "struck" | "ended" | "moved" | "drifted" | "shoved";
+      /** `shoved`: put off a wall that went up where they stood, to `to` (1.172). `turned`: a line
+       *  or cone its caster turned to face another way (1.177). */
+      outcome: "appeared" | "struck" | "ended" | "moved" | "drifted" | "shoved" | "turned";
       targetId?: string;
       /** What caught them: one of the zone's triggers, or walking on its ground (1.168). */
       trigger?: RulesetCombatZoneRule["triggers"][number] | "moving" | "ram";
@@ -1568,12 +1572,17 @@ export interface RulesetCombatZoneRule {
   move?: { budget: string; distance: number; ram?: boolean };
   /** Cells it moves straight away from its caster as each of their turns starts (1.168). */
   drift?: number;
+  /** A line or cone held by its caster that they may turn to face another way, spending `budget`
+   *  (1.177). */
+  turn?: { budget: string };
   /** Moving into one of its cells costs double (1.168). */
   difficult?: boolean;
   /** Moving into one of its cells costs this many plain steps (1.170). */
   costTimes?: number;
   /** Speed is halved inside it, on top of any hard going (1.170). */
   halvesSpeed?: boolean;
+  /** Its hard going counts only for a step that brings the mover nearer its caster (1.177). */
+  towardCaster?: boolean;
   /** What moving inside it deals: `amount` for every `every` cells, no save (1.168). */
   perDistance?: { every: number; amount: RulesetCombatAmount; damageType?: string };
   /** Whoever it catches while concentrating saves against its save difficulty or loses it (1.169). */
@@ -1607,6 +1616,9 @@ export interface RulesetCombatZone {
   triggers: RulesetCombatZoneRule["triggers"];
   /** Where it was centred, for a zone held at a point. */
   at?: RulesetCombatCell;
+  /** The way a line or cone held by its caster points from them, a step of -1, 0 or 1 each way
+   *  (1.177). */
+  facing?: { dx: number; dy: number };
   cells?: RulesetCombatCell[];
   /** The cells on a wall's chosen side that catch as its `side` says (1.172). */
   sideCells?: RulesetCombatCell[];

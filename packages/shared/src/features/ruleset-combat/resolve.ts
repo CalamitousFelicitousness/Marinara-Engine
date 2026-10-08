@@ -89,6 +89,7 @@ import {
   rulesetDamageModifiers,
   RULESET_MOVE_OPTION,
   RULESET_ZONE_OPTION_PREFIX,
+  RULESET_ZONE_TURN_OPTION_PREFIX,
   RULESET_PASS_OPTION,
   RULESET_STAND_OPTION,
   RULESET_FLY_DOWN_OPTION,
@@ -1407,6 +1408,12 @@ function placeZone(
       : undefined;
   const stamp = turnStamp(ctx);
   const caught = rule.atCast ? resume.targetIds : [];
+  // A line or cone its caster carries points the way it was cast (1.177).
+  const shape = action.area?.shape;
+  const facing =
+    rule.anchor === "caster" && (shape === "line" || shape === "cone") && at && from
+      ? { dx: Math.sign(at.x - from.x), dy: Math.sign(at.y - from.y) }
+      : undefined;
   (actor.zones ??= []).push({
     actionId: action.id,
     label: action.label,
@@ -1414,6 +1421,7 @@ function placeZone(
     anchor: rule.anchor,
     triggers: [...rule.triggers],
     ...(at && rule.anchor === "point" ? { at: { x: at.x, y: at.y } } : {}),
+    ...(facing && (facing.dx || facing.dy) ? { facing } : {}),
     ...(cells ? { cells } : {}),
     ...(wall?.side.length ? { sideCells: wall.side } : {}),
     ...(!grid ? { held: [...resume.targetIds] } : {}),
@@ -1662,6 +1670,27 @@ function moveZone(
   }
 }
 
+/** A line or cone its caster carries, turned to face `toward` (1.177). Whoever it now covers that it
+ *  did not is caught as moving into it. */
+function turnZone(
+  ctx: RulesetCombatContext,
+  caster: RulesetCombatant,
+  zone: RulesetCombatZone,
+  toward: RulesetCombatCell,
+): void {
+  const action = caster.actions.find((entry) => entry.id === zone.actionId);
+  const at = rulesetPositionOf(caster);
+  if (!action || !at) return;
+  const before = new Set(rulesetZoneOccupants(ctx.state, caster, zone, action));
+  zone.facing = { dx: Math.sign(toward.x - at.x), dy: Math.sign(toward.y - at.y) };
+  ctx.events.push({ type: "zone", actorId: caster.id, label: zone.label, outcome: "turned" });
+  for (const id of rulesetZoneOccupants(ctx.state, caster, zone, action)) {
+    if (before.has(id)) continue;
+    const target = rulesetCombatant(ctx.state, id);
+    if (target) zoneStrike(ctx, caster, zone, target, "enter");
+  }
+}
+
 /** Every zone of this caster's that drifts, moving as their turn starts (1.168). */
 function driftZones(ctx: RulesetCombatContext, caster: RulesetCombatant): void {
   for (const zone of [...(caster.zones ?? [])]) {
@@ -1860,6 +1889,15 @@ function whyNotOffered(
 ): RulesetCombatRefusal {
   // The two a positioned fight adds. Off the menu, they are movement that cannot be paid for.
   if (optionId === RULESET_MOVE_OPTION || optionId === RULESET_STAND_OPTION) return "unreachable";
+  // Turning a zone (1.177): none to turn, or nothing left to turn it with.
+  if (optionId.startsWith(RULESET_ZONE_TURN_OPTION_PREFIX)) {
+    const actionId = optionId.slice(RULESET_ZONE_TURN_OPTION_PREFIX.length);
+    const turn = actor.actions.find((entry) => entry.id === actionId)?.zone?.turn;
+    if (turn && actor.zones?.some((zone) => zone.actionId === actionId) && (actor.budgets[turn.budget] ?? 0) < 1) {
+      return "no-budget";
+    }
+    return "unreachable";
+  }
   // Moving a zone (1.168): none to move, or nothing left to move it with.
   if (optionId.startsWith(RULESET_ZONE_OPTION_PREFIX)) {
     const actionId = optionId.slice(RULESET_ZONE_OPTION_PREFIX.length);
@@ -1946,6 +1984,20 @@ export function applyRulesetCombatChoice(
       return refusal(state, choice.actorId, "cannot-act", choice.optionId);
     }
     return refusal(state, choice.actorId, whyNotOffered(definition, combat, actor, choice.optionId), choice.optionId);
+  }
+
+  // Turning a line or cone its caster carries (1.177): to face a cell the menu offered.
+  if (option.id.startsWith(RULESET_ZONE_TURN_OPTION_PREFIX)) {
+    const cell = destinationOf(option, choice.to);
+    if (!cell) return refusal(state, choice.actorId, "unreachable", option.id);
+    const { ctx, finish } = begin(definition, combat, state, roller);
+    const working = rulesetCombatant(ctx.state, actor.id)!;
+    spendBudget(ctx, working, option.budget!);
+    const actionId = option.id.slice(RULESET_ZONE_TURN_OPTION_PREFIX.length);
+    const zone = working.zones!.find((entry) => entry.actionId === actionId)!;
+    turnZone(ctx, working, zone, cell);
+    noteOutcome(ctx);
+    return finish();
   }
 
   // Moving a zone its caster holds (1.168): to a cell the menu offered, for the budget it named.
@@ -2417,21 +2469,24 @@ function resolveContest(
       { sourceId: actor.id },
     );
   }
-  if (contest.push !== undefined) {
-    const path = rulesetPushPath(ctx.state, actor.id, target.id, contest.push);
-    const from = rulesetPositionOf(target);
-    const to = path[path.length - 1];
-    if (from && to) {
-      target.x = to.x;
-      target.y = to.y;
-      ctx.events.push({ type: "pushed", actorId: actor.id, targetId: target.id, from, to: { ...to }, path });
-      // Shoved off a step of two levels or more, which is where a push stops: a fall (combat C6b).
-      const grid = ctx.state.board?.grid;
-      const edge = path.length > 1 ? path[path.length - 2]! : from;
-      const levels = grid ? elevationAt(grid, edge.x, edge.y) - elevationAt(grid, to.x, to.y) : 0;
-      if (levels >= 2) fall(ctx, actor, target, levels);
-    }
-  }
+  if (contest.push !== undefined) pushTarget(ctx, actor, target, contest.push);
+}
+
+/** Somebody pushed `cells` straight away from `actor`, as far as the way allows: by a contest won
+ *  (combat C6b) or by an action that lands (1.177). */
+function pushTarget(ctx: RulesetCombatContext, actor: RulesetCombatant, target: RulesetCombatant, cells: number): void {
+  const path = rulesetPushPath(ctx.state, actor.id, target.id, cells);
+  const from = rulesetPositionOf(target);
+  const to = path[path.length - 1];
+  if (!from || !to) return;
+  target.x = to.x;
+  target.y = to.y;
+  ctx.events.push({ type: "pushed", actorId: actor.id, targetId: target.id, from, to: { ...to }, path });
+  // Shoved off a step of two levels or more, which is where a push stops: a fall (combat C6b).
+  const grid = ctx.state.board?.grid;
+  const edge = path.length > 1 ? path[path.length - 2]! : from;
+  const levels = grid ? elevationAt(grid, edge.x, edge.y) - elevationAt(grid, to.x, to.y) : 0;
+  if (levels >= 2) fall(ctx, actor, target, levels);
 }
 
 /**
@@ -3152,6 +3207,7 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
           cell,
           rulesetMoveStep(grid, at, cell, actor, spent)?.cost ?? rulesetCellEnterCost(grid, cell.x, cell.y),
           rulesetSlowedCells(ctx.state, actor),
+          at,
         )
       : 1;
     walked.push(cell);
@@ -4455,6 +4511,10 @@ function resolveActionBody(
               : {}),
           ...(action.concentration ? { concentration: true } : {}),
         });
+      }
+      // Pushed away from its maker (1.177), once whatever else it does has landed.
+      if (action.push !== undefined && target.id !== actor.id && rulesetCombatStanding(target)) {
+        pushTarget(ctx, actor, target, action.push);
       }
     }
     spendUsed();

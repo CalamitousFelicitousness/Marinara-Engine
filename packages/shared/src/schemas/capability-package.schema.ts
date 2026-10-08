@@ -904,7 +904,10 @@ const capabilityPackageManifestBaseSchema = z
 //        A creature's spellcasting may say the components its spells need (`components`, `[]` for
 //        none), and an item's use may be `utility`, leaving only an area (a scroll of Fog Cloud). No
 //        permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 176 } as const);
+// 1.177: a sense a condition or an item gives may add to the holder's own (`{ add }`), an action may
+// `push` whoever it lands on away from its maker, a line or cone may move with its caster and be
+// turned (`zone.turn`), and a zone's hard going may count only toward its caster (`towardCaster`).
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 177 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

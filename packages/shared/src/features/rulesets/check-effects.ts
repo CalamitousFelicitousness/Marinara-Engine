@@ -64,7 +64,7 @@ export interface RulesetCheckSource {
   immune?: readonly RulesetCreatureHideEntry[];
   conditionImmunities?: readonly string[];
   /** How far it lets its holder sense with each of the fight's senses (Capability API 1.175). */
-  senses?: Readonly<Record<string, number>>;
+  senses?: Readonly<Record<string, number | { add: number }>>;
 }
 
 /**

@@ -121,6 +121,29 @@ export function rulesetZoneMoveCells(
   return cells;
 }
 
+/** The ways a line or cone its caster carries may be turned to face (1.177): toward any cell next
+ *  to them on the board but the one it faces now, each a step away. */
+export function rulesetZoneTurnCells(
+  state: RulesetEncounterState,
+  caster: RulesetCombatant,
+  zone: RulesetCombatZone,
+): RulesetReachableCell[] {
+  const grid = state.board?.grid;
+  const at = rulesetPositionOf(caster);
+  if (!grid || !at || !zone.facing) return [];
+  const cells: RulesetReachableCell[] = [];
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      if ((dx === 0 && dy === 0) || (dx === zone.facing.dx && dy === zone.facing.dy)) continue;
+      const x = at.x + dx;
+      const y = at.y + dy;
+      if (x < 0 || y < 0 || x >= grid.width || y >= grid.height) continue;
+      cells.push({ x, y, cost: 1, path: [], provokes: [] });
+    }
+  }
+  return cells;
+}
+
 /** Where a drifting zone goes next (1.168): `distance` cells straight away from its caster, stopping
  *  at the board's edge. A zone centred on its caster's own cell has no "away" and stays. */
 export function rulesetZoneDriftCell(

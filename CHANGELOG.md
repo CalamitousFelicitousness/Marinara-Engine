@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: spells can push whoever they hit away from the caster, Gust of Wind's line moves with its caster, turns on a bonus action and makes walking toward the caster cost double, and goggles of night add 60 feet to darkvision a wearer already has
 - Rulesets: Globe of Invulnerability keeps out spells by their own level and grows when upcast, Stinking Cloud's save passes outright for creatures immune to poison and counts as a save against poison, a monster's innate spells can need no components, and scrolls of spells that only leave an area (Fog Cloud, Darkness, Silence, Globe) can be used (Capability API 1.176).
 - Rulesets: a condition can end when its holder attacks or casts a spell, conditions and worn or carried items can give senses like darkvision and truesight, and a condition can give away an invisible holder, so Invisibility, the Darkvision spell, True Seeing, goggles of night and Faerie Fire work (Capability API 1.175).
 - Rulesets: zones can put conditions on whoever stands in them, keep damage types off them, stop spells that need a component and ward off weaker spells cast from outside, and a condition put on during its holder's turn takes that turn's budgets, so Silence, Globe of Invulnerability and Stinking Cloud work (Capability API 1.174).

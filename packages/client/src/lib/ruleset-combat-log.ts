@@ -492,6 +492,9 @@ export function rulesetCombatEventLine(
           target: names.combatant(event.targetId ?? ""),
         });
       }
+      if (event.outcome === "turned") {
+        return key("zoneTurned", { actor: names.combatant(event.actorId), label: event.label });
+      }
       if (event.outcome === "moved" || event.outcome === "drifted") {
         return key(event.outcome === "moved" ? "zoneMoved" : "zoneDrifted", {
           actor: names.combatant(event.actorId),

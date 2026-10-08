@@ -331,8 +331,8 @@ export function createGameStateStorage(db: DB) {
         .where(and(eq(gameStateSnapshots.chatId, chatId), eq(gameStateSnapshots.messageId, messageId)))
         .orderBy(asc(gameStateSnapshots.swipeIndex));
       let edited: GameStateRow | null = null;
-      // ponytail: when two swipes of one reply edit the same value, the higher swipe wins.
-      // Recording when each edit was made would let the newest one win instead.
+      // A newer edit of a value retires the reply's older edits of it (retireOtherSwipeEdits),
+      // so at most one swipe holds each edit.
       // ponytail: a list (characters, custom world fields, persona stats, one playerStats key)
       // is taken whole from the edited swipe. A per-row diff would carry only the edited rows.
       for (const row of rows) {
@@ -351,6 +351,30 @@ export function createGameStateStorage(db: DB) {
         }
       }
       return edited;
+    },
+
+    /** A Tracker Panel edit replaces the edits of the same values on the reply's other swipes, so the newest one wins. */
+    async retireOtherSwipeEdits(target: { chatId: string; messageId: string; swipeIndex: number }, keys: string[]) {
+      if (!target.messageId || keys.length === 0) return;
+      const rows = await db
+        .select()
+        .from(gameStateSnapshots)
+        .where(
+          and(
+            eq(gameStateSnapshots.chatId, target.chatId),
+            eq(gameStateSnapshots.messageId, target.messageId),
+            ne(gameStateSnapshots.swipeIndex, target.swipeIndex),
+          ),
+        );
+      for (const row of rows) {
+        const overrides = { ...(parseStoredManualOverrides(row.manualOverrides) ?? {}) };
+        if (!keys.some((key) => key in overrides)) continue;
+        for (const key of keys) delete overrides[key];
+        await db
+          .update(gameStateSnapshots)
+          .set({ manualOverrides: serializeManualOverrides(overrides) })
+          .where(and(eq(gameStateSnapshots.chatId, row.chatId), eq(gameStateSnapshots.id, row.id)));
+      }
     },
 
     /** Get latest game state excluding snapshots tied to a specific message (for regen/swipes). */
@@ -691,6 +715,7 @@ export function createGameStateStorage(db: DB) {
       const manualOverrides: Record<string, string> = {};
       if (manual) recordManualEdits(manualOverrides, clonedState, baseState);
       await this.create(baseState as any, Object.keys(manualOverrides).length > 0 ? manualOverrides : null);
+      await this.retireOtherSwipeEdits({ chatId, messageId, swipeIndex }, Object.keys(manualOverrides));
       return this.getByChatAndMessage(chatId, messageId, swipeIndex);
     },
 
@@ -714,12 +739,14 @@ export function createGameStateStorage(db: DB) {
         updates.hiddenTrackerFields = serializeHiddenTrackerFields(fields.hiddenTrackerFields);
       if (fields.rulesetLive !== undefined) updates.rulesetLive = serializeRulesetLive(fields.rulesetLive);
 
+      const edits: Record<string, string> = {};
       if (manual || (row.manualOverrides && Object.keys(updates).length > 0)) {
-        const storedOverrides = parseStoredManualOverrides(row.manualOverrides) ?? {};
         const updated = { ...row, ...updates };
         // A cleared field is an edit too: the next generation starts from it empty.
-        if (manual) recordManualEdits(storedOverrides, row, updated);
-        updates.manualOverrides = serializeManualOverrides(retainManualEdits(storedOverrides, updated));
+        if (manual) recordManualEdits(edits, row, updated);
+        updates.manualOverrides = serializeManualOverrides(
+          retainManualEdits({ ...parseStoredManualOverrides(row.manualOverrides), ...edits }, updated),
+        );
       }
 
       if (fields.fieldLocks !== undefined) {
@@ -747,6 +774,7 @@ export function createGameStateStorage(db: DB) {
         .update(gameStateSnapshots)
         .set(updates)
         .where(and(eq(gameStateSnapshots.chatId, row.chatId), eq(gameStateSnapshots.id, row.id)));
+      await this.retireOtherSwipeEdits(row, Object.keys(edits));
       return { ...row, ...updates };
     },
 

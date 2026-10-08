@@ -307,6 +307,27 @@ try {
     assert.deepEqual(await states.getByChatAndMessage(chat.id, a1.id, 0), a1Before);
   }
 
+  // ── The newest edit wins, whichever swipe it was made on ──
+  {
+    const { chat, chatApi, a2 } = await setUpEditedReply();
+    trackerOutputs = NO_CHANGES;
+    await chatApi.regenerate(a2.id);
+    await chatApi.edit({ messageId: a2.id, swipeIndex: 1 }, { location: "Older place" });
+    await chats.setActiveSwipe(a2.id, 0);
+    await chatApi.edit({ messageId: a2.id, swipeIndex: 0 }, { location: "Newest place" });
+    assertShows(
+      await chatApi.peekRegeneration(a2.id),
+      ["Newest place"],
+      ["Older place", ...STALE],
+      "a regeneration after editing two swipes",
+    );
+    const regen = await capture(() => chatApi.regenerate(a2.id));
+    assertShows(regen.main, ["Newest place"], ["Older place", ...STALE], "the regeneration's main prompt");
+    assert.equal(summarize(await states.getByChatAndMessage(chat.id, a2.id, 2)).location, "Newest place");
+    // The older swipe still shows its own value.
+    assert.equal(summarize(await states.getByChatAndMessage(chat.id, a2.id, 1)).location, "Older place");
+  }
+
   // ── A new message from the edited swipe starts from the edit ──
   {
     const { chat, chatApi, a2 } = await setUpEditedReply();

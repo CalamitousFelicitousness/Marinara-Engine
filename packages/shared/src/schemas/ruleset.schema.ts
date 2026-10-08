@@ -2149,6 +2149,52 @@ const catalogAreaSchema: z.ZodType<RulesetCatalogArea, z.ZodTypeDef, unknown> = 
 /** What an entry DOES. The Engine does not act on it in this slice: it validates it and the client
  *  shows one compact line. A later combat bridge turns it into the Engine's own `CombatSkill`, so
  *  the vocabulary is closed and strict, and a typo is refused now rather than ignored then. */
+/** Who an entry may be pointed at or catch, by what they are (Capability API 1.163). Typed by hand:
+ *  written out, its inferred type is too long for the definition schema around it to emit. */
+const catalogTargetTypesSchema: z.ZodType<
+  {
+    is?: RulesetTargetIs;
+    not?: RulesetTargetIs;
+    abilityAtMost?: Record<string, number>;
+    abilityAtLeast?: Record<string, number>;
+    notImmuneTo?: string[];
+  },
+  z.ZodTypeDef,
+  unknown
+> = z
+  .object({
+    is: targetIsSchema.optional(),
+    not: targetIsSchema.optional(),
+    /** Only a target whose ability scores are at most these (Capability API 1.180): 5e's
+     *  Animal Friendship, a beast of Intelligence 3 or less. A creature written with no score
+     *  for one is not kept out by it. */
+    abilityAtMost: z.record(sheetId, z.number().int().min(-100).max(1000)).optional(),
+    /** Only a target whose ability scores are at least these (Capability API 1.186): 5e's
+     *  Hideous Laughter passes over a creature of Intelligence 4 or less. Read as `abilityAtMost`
+     *  is: a creature written with no score for one is not kept out by it. */
+    abilityAtLeast: z.record(sheetId, z.number().int().min(-100).max(1000)).optional(),
+    /** Only a target not immune to any of these conditions (1.180): 5e's Sleep, which passes over
+     *  whoever cannot be charmed. */
+    notImmuneTo: z.array(sheetId).min(1).max(8).optional(),
+  })
+  .strict()
+  .refine(
+    (types) =>
+      types.is !== undefined ||
+      types.not !== undefined ||
+      types.abilityAtMost !== undefined ||
+      types.abilityAtLeast !== undefined ||
+      types.notImmuneTo !== undefined,
+    { message: '"targetTypes" says "is", "not", "abilityAtMost", "abilityAtLeast", "notImmuneTo" or several' },
+  );
+
+/** A health pool an entry shares out among its targets (Capability API 1.191). Typed by hand:
+ *  written out, its inferred type is too long for the definition schema around it to emit. */
+const catalogHealthPoolSchema: z.ZodType<{ dice?: string; flat?: number }, z.ZodTypeDef, unknown> = z
+  .object(catalogAmountShape)
+  .strict()
+  .refine((pool) => pool.dice !== undefined || pool.flat !== undefined, '"healthPool" names dice or a flat number');
+
 const catalogMechanicsObject = z
   .object({
     kind: z.enum(["attack", "heal", "buff", "debuff", "utility", "rider"]),
@@ -2166,33 +2212,7 @@ const catalogMechanicsObject = z
     /** Who may be picked or caught at all, by what they are (Capability API 1.163): Animal
      *  Friendship takes only a beast (`is`), Sleep passes over the undead (`not`). A combatant with
      *  no type never matches `is` and always passes `not`. */
-    targetTypes: z
-      .object({
-        is: targetIsSchema.optional(),
-        not: targetIsSchema.optional(),
-        /** Only a target whose ability scores are at most these (Capability API 1.180): 5e's
-         *  Animal Friendship, a beast of Intelligence 3 or less. A creature written with no score
-         *  for one is not kept out by it. */
-        abilityAtMost: z.record(sheetId, z.number().int().min(-100).max(1000)).optional(),
-        /** Only a target whose ability scores are at least these (Capability API 1.186): 5e's
-         *  Hideous Laughter passes over a creature of Intelligence 4 or less. Read as `abilityAtMost`
-         *  is: a creature written with no score for one is not kept out by it. */
-        abilityAtLeast: z.record(sheetId, z.number().int().min(-100).max(1000)).optional(),
-        /** Only a target not immune to any of these conditions (1.180): 5e's Sleep, which passes over
-         *  whoever cannot be charmed. */
-        notImmuneTo: z.array(sheetId).min(1).max(8).optional(),
-      })
-      .strict()
-      .refine(
-        (types) =>
-          types.is !== undefined ||
-          types.not !== undefined ||
-          types.abilityAtMost !== undefined ||
-          types.abilityAtLeast !== undefined ||
-          types.notImmuneTo !== undefined,
-        { message: '"targetTypes" says "is", "not", "abilityAtMost", "abilityAtLeast", "notImmuneTo" or several' },
-      )
-      .optional(),
+    targetTypes: catalogTargetTypesSchema.optional(),
     /** It deals its most to a target that is this (Capability API 1.180): every die at its top face.
      *  5e's Blight, against a plant creature. */
     maxAgainst: targetIsSchema.optional(),
@@ -2360,6 +2380,15 @@ const catalogMechanicsObject = z
     applies: z.array(catalogAppliesSchema).max(4).optional(),
     /** An amount granted as temporary points on the health pool, which damage drains first. */
     temporary: z.object(catalogAmountShape).strict().optional(),
+    /** Health to share out among its targets (Capability API 1.191): the one with the least health
+     *  left first, each affected only while their health is no more than what remains of it, which
+     *  they then use up; the rest are left alone. 5e's Sleep and Color Spray. `perCostStep` adds to it. */
+    healthPool: catalogHealthPoolSchema.optional(),
+    /** Affects only a target with this much health left or less (Capability API 1.191): 5e's Power
+     *  Word Stun at 150, Power Word Kill at 100. */
+    healthAtMost: z.number().int().min(0).max(100000).optional(),
+    /** Kills outright whoever it affects (Capability API 1.191): Power Word Kill. */
+    kills: z.literal(true).optional(),
     /** An amount that grows with the sheet: the table gives the EXTRA dice at each step of the
      *  value it reads, so a trick that grows with a level needs no second entry. */
     scales: z.object({ from: rulesetValueRefSchema, table: stepTableSchema }).strict().optional(),

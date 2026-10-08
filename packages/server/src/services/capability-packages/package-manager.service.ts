@@ -1522,13 +1522,30 @@ function carriesWardsAndSaves(value: unknown, depth = 0): boolean {
 
 const MODIFIER_TARGETS = new Set<string>(RULESET_COMBAT_MODIFIER_TARGETS);
 
-/** Sizes that fill more than one cell on a board (1.189). */
+/** An entry whose mechanics share out a pool of health, stop at a health ceiling or kill outright
+ *  (1.191), in catalog files too. */
+function carriesHealthTargeting(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesHealthTargeting(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const mechanics = plainRecord(record.mechanics);
+  if (
+    mechanics &&
+    (mechanics.healthPool !== undefined || mechanics.healthAtMost !== undefined || mechanics.kills !== undefined)
+  ) {
+    return true;
+  }
+  return Object.values(record).some((one) => carriesHealthTargeting(one, depth + 1));
+}
+
 /** A combat condition that makes its holder bigger or smaller (1.190). */
 function carriesSizeChanges(value: unknown): boolean {
   const conditions = plainRecord(plainRecord(value)?.combat)?.conditions;
   return Array.isArray(conditions) && conditions.some((entry) => plainRecord(entry)?.size !== undefined);
 }
 
+/** Sizes that fill more than one cell on a board (1.189). */
 function carriesFootprints(value: unknown): boolean {
   const combat = plainRecord(plainRecord(value)?.combat);
   const order = plainRecord(combat?.sizes)?.order;
@@ -3097,6 +3114,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Health pools, health ceilings and killing outright, 1.191.
+  if (
+    !declaresApi(191) &&
+    (carriesHealthTargeting(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesHealthTargeting(document)))
+  ) {
+    return "A ruleset with entries that share out a pool of health, affect only those at or below some health, or kill outright requires schemaVersion 2 and capabilityApi 1.191 or newer";
   }
   // Conditions that make their holder bigger or smaller, 1.190.
   if (!declaresApi(190) && carriesSizeChanges(ruleset)) {

@@ -449,6 +449,12 @@ export interface RulesetCombatAction {
   damage?: RulesetCombatDamage;
   heal?: RulesetCombatAmount;
   temporary?: RulesetCombatAmount;
+  /** Health shared out among its targets, least health first (1.191); the rest are left alone. */
+  healthPool?: RulesetCombatAmount;
+  /** Affects only a target with this much health or less (1.191). */
+  healthAtMost?: number;
+  /** Kills outright whoever it affects (1.191). */
+  kills?: true;
   /** A pool of each target's sheet this gives back some of: an item's `restore`. */
   restore?: { pool: string; amount: RulesetCombatAmount };
   /** Conditions it takes off its target, in the order named, at most `count` of them (1.171). */
@@ -1489,6 +1495,8 @@ export type RulesetCombatEvent =
       targetId: string;
       label: string;
     }
+  /** A pool of health rolled to share out among an action's targets (1.191), and whom it took. */
+  | { type: "healthPool"; actorId: string; label: string; rolls: number[]; total: number; affected: string[] }
   /** Somebody grown or shrunk by a condition (1.190), to the size named, as `label` reads it. */
   | { type: "resized"; targetId: string; size: string; label: string }
   | {

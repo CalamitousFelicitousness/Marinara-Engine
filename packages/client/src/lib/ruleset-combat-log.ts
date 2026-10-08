@@ -463,6 +463,15 @@ export function rulesetCombatEventLine(
         target: names.combatant(event.targetId),
         label: event.label,
       });
+    case "healthPool":
+      return event.affected.length
+        ? key("healthPool", {
+            actor: names.combatant(event.actorId),
+            label: event.label,
+            total: event.total,
+            names: event.affected.map((id) => names.combatant(id)).join(", "),
+          })
+        : key("healthPoolNone", { actor: names.combatant(event.actorId), label: event.label, total: event.total });
     case "resized":
       return key("resized", { target: names.combatant(event.targetId), size: event.label });
     case "pushed":

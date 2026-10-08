@@ -1753,6 +1753,10 @@ function mechanicsAction(
   }
   const temporary = amountOf(mechanics.temporary);
   if (temporary) action.temporary = temporary;
+  const healthPool = amountOf(mechanics.healthPool);
+  if (healthPool) action.healthPool = healthPool;
+  if (mechanics.healthAtMost !== undefined) action.healthAtMost = mechanics.healthAtMost;
+  if (mechanics.kills) action.kills = true;
   // Leaving `toHit` unset here would send it down the no-roll path and land it automatically.
   if (mechanics.attackRoll) action.toHit = from.toHit;
   if (mechanics.autoHit) action.autoHit = true;

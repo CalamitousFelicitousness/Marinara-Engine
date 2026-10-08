@@ -4255,6 +4255,50 @@ function slayOnHit(
   }
 }
 
+/**
+ * Who an action's health pool or health ceiling leaves alone (1.191). A pool is rolled once, then
+ * shared out from the least health left upward: each is affected only while their health is no more
+ * than what remains, which they use up, and the rest are passed over, as 5e's Sleep takes the weakest
+ * first. A ceiling passes over anybody with more health than it.
+ */
+function sparedByHealth(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  targets: RulesetCombatant[],
+  extra?: { amount: RulesetCombatAmount; times: number },
+): Set<string> {
+  const spared = new Set<string>();
+  if (action.healthAtMost !== undefined) {
+    for (const target of targets) if (healthOf(ctx, target).value > action.healthAtMost) spared.add(target.id);
+  }
+  if (action.healthPool) {
+    const rolled = rollAmount(ctx, action.healthPool, extra);
+    let left = rolled.total;
+    const affected: string[] = [];
+    // A stable sort, so those with as much health as each other are taken in the order picked.
+    for (const target of [...targets].sort((a, b) => healthOf(ctx, a).value - healthOf(ctx, b).value)) {
+      if (spared.has(target.id)) continue;
+      const health = healthOf(ctx, target).value;
+      if (health > left) {
+        spared.add(target.id);
+        continue;
+      }
+      left -= health;
+      affected.push(target.id);
+    }
+    ctx.events.push({
+      type: "healthPool",
+      actorId: actor.id,
+      label: action.label,
+      rolls: rolled.rolls,
+      total: rolled.total,
+      affected,
+    });
+  }
+  return spared;
+}
+
 /** Killed outright (1.182): no health left, and dead rather than dying, whichever side they are on. */
 function slay(ctx: RulesetCombatContext, target: RulesetCombatant, sourceId: string, label: string): void {
   const before = healthOf(ctx, target);
@@ -4392,12 +4436,20 @@ function resolveActionBody(
   // A spending attack throws the number its maker has as the blow lands, and whether anything landed
   // decides, once every target has been tried, whether the number resets or a miss costs some of it.
   const spends = style?.spends ? { number: spend ?? actor.initiative, landed: false } : null;
-  for (const target of targets) {
-    if (!rulesetTargetHasSenses(ctx.definition, ctx.state, target, action.needs)) continue;
+  const reaches = (target: RulesetCombatant) =>
+    rulesetTargetHasSenses(ctx.definition, ctx.state, target, action.needs) &&
     // Behind a ward this does not get through (1.174), at the level it was paid at.
-    if (rulesetWarded(ctx.definition, ctx.state, actor, action, target, payWith)) continue;
+    !rulesetWarded(ctx.definition, ctx.state, actor, action, target, payWith) &&
     // An area or a list catches only who the action may take, by what they are (1.163).
-    if (!rulesetTargetTypesAllow(ctx.definition, target, action.targetTypes)) continue;
+    rulesetTargetTypesAllow(ctx.definition, target, action.targetTypes);
+  const spared = sparedByHealth(ctx, actor, action, targets.filter(reaches), extra);
+  for (const target of targets) {
+    if (!reaches(target) || spared.has(target.id)) continue;
+    // Killed outright (1.191): nothing else it does matters to the dead.
+    if (action.kills) {
+      slay(ctx, target, actor.id, action.label);
+      continue;
+    }
     const endHarm = endConditionsOnHarm(
       ctx,
       target,

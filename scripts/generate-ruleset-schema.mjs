@@ -589,6 +589,8 @@ function requireMechanicsPairs(node) {
   Object.values(node).forEach(requireMechanicsPairs);
   const properties = node.properties;
   if (node.type !== "object" || !properties?.kind || !properties.rider || !properties.free) return;
+  // A health pool (1.191) names dice or a flat number.
+  if (properties.healthPool) requireAnyOf(properties.healthPool, ["dice", "flat"]);
   node.allOf = [
     ...(node.allOf ?? []),
     { if: { properties: { kind: { const: "rider" } }, required: ["kind"] }, then: { required: ["rider"] } },

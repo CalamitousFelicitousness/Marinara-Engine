@@ -599,6 +599,7 @@ function projectCombatant(
     dying: combatant.dying,
     stable: combatant.stable,
     defeated: combatant.defeated,
+    ...(combatant.away ? { away: true as const } : {}),
     ...(deathTrack ? { deathTrack } : {}),
     ...(saveModifiers.length ? { saveModifiers } : {}),
     ...(() => {

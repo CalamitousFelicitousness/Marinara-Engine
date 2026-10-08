@@ -151,6 +151,7 @@ import {
   rulesetAttackStyles,
   type RulesetInitiativeStyle,
   rulesetCanRevive,
+  rulesetPutOnBy,
 } from "./options.js";
 import type {
   RulesetActionResume,
@@ -804,7 +805,16 @@ function firstCure(
   for (const mode of action.modes ?? []) {
     const cure = mode.cure;
     if (!cure) continue;
-    if (cure.ends !== undefined && holds.has(cure.ends)) return cure;
+    if (
+      cure.ends !== undefined &&
+      holds.has(cure.ends) &&
+      (!action.ends?.from ||
+        target.tracked.some(
+          (entry) =>
+            entry.condition === cure.ends && rulesetPutOnBy(ctx.definition, ctx.state, entry, action.ends?.from),
+        ))
+    )
+      return cure;
     if (cure.track) {
       if (cure.track.by > 0) return cure;
       const declared = ctx.definition.sheet.live.tracks.find((entry) => entry.id === cure.track!.track);
@@ -1450,6 +1460,10 @@ function removeCondition(
   target.tracked = target.tracked.filter((entry) => entry.condition !== condition);
   if (target.sheet) writeRulesetSheet(ctx.definition, target, { op: "condition", condition, active: false });
   ctx.events.push({ type: "condition", targetId: target.id, condition, active: false, reason });
+  // Away only while it held this (1.231), it comes back, or stays gone.
+  if (target.away?.while === condition && (!removed || removed.source === target.away.by)) {
+    bringBack(ctx, target, reason);
+  }
   // What was put on with it to last only as long as it ends with it (1.197): put on by the same
   // source with the same use, whatever took this one off.
   const sameUse = (entry: RulesetTrackedCondition) =>
@@ -4482,7 +4496,94 @@ function resolveAction(
   const result = resolveActionFalling(ctx, actor, action, targets, payWith, held, styleId, spend);
   // Finished, rather than held for an answer to one of its rolls (1.175).
   if (!result) holderActed(ctx, actor, action, before);
+  if (!result && action.endsCondition) endOwnCondition(ctx, actor, action.endsCondition);
   return result;
+}
+
+/** Out of the fight, alive (1.231): for good, or while it holds what the same use put on it, whose
+ *  clock then runs on its sender's turns since it takes none of its own. What it held up ends. */
+function dismiss(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  target: RulesetCombatant,
+): void {
+  const rule = action.dismisses;
+  if (!rule || target.defeated) return;
+  const held =
+    rule === true
+      ? undefined
+      : target.tracked.find((entry) => entry.condition === rule.while && entry.source === actor.id);
+  // Kept off what it is away under, it stays.
+  if (rule !== true && !held) return;
+  if (held && held.rounds !== null) held.clockOf = "source";
+  target.defeated = true;
+  target.away = {
+    by: actor.id,
+    label: action.label,
+    ...(rule !== true ? { while: rule.while, ...(rule.gone ? { gone: structuredClone(rule.gone) } : {}) } : {}),
+  };
+  ctx.events.push({
+    type: "dismissed",
+    actorId: actor.id,
+    targetId: target.id,
+    label: action.label,
+    ...(rule !== true ? { while: rule.while } : {}),
+  });
+  endSummons(ctx, target);
+  endZones(ctx, target);
+  endConcentration(ctx, target, "spent");
+  endConditionsFromSource(ctx, target);
+}
+
+/** Back from being sent away, when what kept it there ends (1.231): where it was, or the nearest
+ *  free place its size fits. One that is `gone` stays away if its time ran out. */
+function bringBack(ctx: RulesetCombatContext, target: RulesetCombatant, reason: string): void {
+  const away = target.away;
+  if (!away?.while) return;
+  if (reason === "expired" && away.gone && rulesetTargetIs(ctx.definition, target, away.gone)) {
+    delete away.while;
+    ctx.events.push({ type: "returned", targetId: target.id, gone: true });
+    return;
+  }
+  delete target.away;
+  target.defeated = false;
+  const at = rulesetPositionOf(target);
+  const grid = ctx.state.board?.grid;
+  if (at && grid) {
+    const span = rulesetSpanOf(target);
+    const fits = (x: number, y: number) =>
+      rulesetFootprintAt({ x, y }, span).every(
+        (cell) =>
+          !rulesetCellBlocked(grid, cell.x, cell.y) &&
+          !ctx.state.combatants.some((other) => other !== target && !other.defeated && rulesetFills(other, cell)),
+      );
+    let best: RulesetCombatCell | null = fits(at.x, at.y) ? at : null;
+    for (let reach = 1; reach <= Math.max(grid.width, grid.height) && !best; reach++) {
+      for (let y = at.y - reach; y <= at.y + reach && !best; y++) {
+        for (let x = at.x - reach; x <= at.x + reach; x++) {
+          if (Math.max(Math.abs(x - at.x), Math.abs(y - at.y)) !== reach || !fits(x, y)) continue;
+          best = { x, y };
+          break;
+        }
+      }
+    }
+    if (best) {
+      target.x = best.x;
+      target.y = best.y;
+    }
+  }
+  ctx.events.push({ type: "returned", targetId: target.id });
+}
+
+/** A use that ends the condition that gave it (1.231): with the concentration holding it, when that
+ *  is its user's own, so the spell is over and not only its mark. */
+function endOwnCondition(ctx: RulesetCombatContext, actor: RulesetCombatant, condition: string): void {
+  const held = actor.tracked.find((entry) => entry.condition === condition);
+  if (held?.concentration && held.source === actor.id && actor.concentrating) {
+    endConcentration(ctx, actor, "spent");
+  }
+  removeCondition(ctx, actor, condition, "spent");
 }
 
 function resolveActionFalling(
@@ -5474,8 +5575,13 @@ function resolveActionBody(
       let left = cureEnds.count ?? cureEnds.conditions.length;
       for (const condition of cureEnds.conditions) {
         if (left <= 0) break;
-        if (!target.tracked.some((entry) => entry.condition === condition)) continue;
-        removeCondition(ctx, target, condition, "cured");
+        // Only what a creature that is `from` put on (1.231); the same held from another stays on.
+        const by = (entry: RulesetTrackedCondition) =>
+          entry.condition === condition && rulesetPutOnBy(ctx.definition, ctx.state, entry, action.ends?.from);
+        if (!target.tracked.some(by)) continue;
+        if (target.tracked.some((entry) => entry.condition === condition && !by(entry))) {
+          target.tracked = target.tracked.filter((entry) => !by(entry));
+        } else removeCondition(ctx, target, condition, "cured");
         left--;
       }
     }
@@ -5526,6 +5632,8 @@ function resolveActionBody(
       if (action.push !== undefined && target.id !== actor.id && rulesetCombatStanding(target)) {
         pushTarget(ctx, actor, target, action.push);
       }
+      // Sent out of the fight (1.231), last of all.
+      if (action.dismisses && target.id !== actor.id) dismiss(ctx, actor, action, target);
     }
     spendUsed();
   }

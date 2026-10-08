@@ -1522,6 +1522,24 @@ function carriesWardsAndSaves(value: unknown, depth = 0): boolean {
 
 const MODIFIER_TARGETS = new Set<string>(RULESET_COMBAT_MODIFIER_TARGETS);
 
+/** A use that ends the condition it came from, a cure only of what some creatures put on, or one
+ *  that sends somebody out of the fight (1.231), in catalogs too. */
+function carriesDismissals(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesDismissals(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.endsCondition !== undefined || record.dismisses !== undefined) return true;
+  if (plainRecord(record.ends)?.from !== undefined) return true;
+  return Object.values(record).some((one) => carriesDismissals(one, depth + 1));
+}
+
+/** Conditions that give their holder actions (1.231). */
+function conditionsGiveActions(ruleset: unknown): boolean {
+  const conditions = plainRecord(plainRecord(ruleset)?.combat)?.conditions;
+  return Array.isArray(conditions) && conditions.some((one) => plainRecord(one)?.actions !== undefined);
+}
+
 /** A lowered maximum with no save of its own, on the entry's failed save, of one damage type or
  *  healing its maker; damage that leaves at least some health; targets limited by what they hold
  *  (1.230), in catalogs too. */
@@ -3224,6 +3242,15 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Actions a condition gives, uses that end it, cures by who put it on, sending away, 1.231.
+  if (
+    !declaresApi(231) &&
+    (conditionsGiveActions(ruleset) ||
+      carriesDismissals(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesDismissals(document)))
+  ) {
+    return "A ruleset with conditions that give actions, uses that end a condition, cures of only what some creatures put on, or uses that send somebody out of the fight, requires schemaVersion 2 and capabilityApi 1.231 or newer";
   }
   // Lowered maximums without a save of their own, damage that leaves some health, targets by what they hold, 1.230.
   if (

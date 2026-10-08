@@ -2342,7 +2342,11 @@ const catalogCheckSchema: z.ZodType<
   });
 
 /** Conditions a cure takes off (Capability API 1.171). Typed, to keep the mechanics' type small. */
-const catalogEndsSchema: z.ZodType<{ conditions: string[]; count?: number }, z.ZodTypeDef, unknown> = z
+const catalogEndsSchema: z.ZodType<
+  { conditions: string[]; count?: number; from?: RulesetTargetIs },
+  z.ZodTypeDef,
+  unknown
+> = z
   .object({
     conditions: z
       .array(sheetId)
@@ -2350,6 +2354,10 @@ const catalogEndsSchema: z.ZodType<{ conditions: string[]; count?: number }, z.Z
       .max(16)
       .refine((ids) => new Set(ids).size === ids.length, { message: "A condition is named once" }),
     count: z.number().int().min(1).max(16).optional(),
+    /** Only what a creature that is this put on (Capability API 1.231): Dispel Evil and Good's Break
+     *  Enchantment ends a charm, a fright or a possession by a celestial, an elemental, a fey, a
+     *  fiend or an undead. */
+    from: targetIsSchema.optional(),
   })
   .strict();
 
@@ -2527,6 +2535,25 @@ const catalogMechanicsObject = z
      *  the order named (Capability API 1.171): 5e's Lesser Restoration ends one of blinded, deafened,
      *  paralyzed or poisoned. */
     ends: catalogEndsSchema.optional(),
+    /** Used, it ends this condition on its user (Capability API 1.231), with the concentration that
+     *  holds it when that is theirs: Dispel Evil and Good's Break Enchantment and Dismissal end the
+     *  spell. */
+    endsCondition: sheetId.optional(),
+    /** Whoever it lands on and does not save against leaves the fight (Capability API 1.231), alive:
+     *  `true` for good (Dispel Evil and Good's Dismissal); `{ "while": <condition> }` only while
+     *  they hold that condition, which the entry puts on, back where they were (or the nearest free
+     *  place) when it ends, by its time, a save or its caster's concentration (5e's Banishment); one
+     *  that is `gone` stays away if it ran its whole time (Banishment's creature of another plane). */
+    dismisses: z
+      .union([
+        z.literal(true),
+        z.object({ while: sheetId, gone: targetIsSchema.optional() }).strict() as z.ZodType<
+          { while: string; gone?: RulesetTargetIs },
+          z.ZodTypeDef,
+          unknown
+        >,
+      ])
+      .optional(),
     /** Whoever it lands on who is dying stops rolling, stable (1.171): 5e's Spare the Dying. */
     stabilizes: z.literal(true).optional(),
     /** Moves the sheet's live tracks of whoever it lands on and does not save against by `by` levels
@@ -2744,6 +2771,14 @@ const catalogMechanicsSchema: z.ZodType<
       code: z.ZodIssueCode.custom,
       path: ["reducesMax"],
       message: "An entry's lowered maximum has no save of its own: \"onFailedSave\" follows the entry's",
+    });
+  }
+  const away = mechanics.dismisses;
+  if (away && away !== true && !mechanics.applies?.some((applied) => applied.condition === away.while)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["dismisses", "while"],
+      message: `Away while it holds "${away.while}", so the entry puts it on`,
     });
   }
   if (mechanics.reducesMax?.onFailedSave && !mechanics.save) {
@@ -5246,6 +5281,10 @@ const combatConditionSchema = z
     /** Its holder takes no damage from these entries while it holds (Capability API 1.112), whatever
      *  kind of harm they deal: 5e's Shield, under which Magic Missile does nothing. */
     noDamageFrom: z.array(catalogEntryRef).min(1).max(12).optional(),
+    /** Catalog entries its holder may use while it holds (Capability API 1.231), paying nothing for
+     *  them but the budget each spends, with their own numbers as their spells': 5e's Dispel Evil and
+     *  Good, whose caster may Break Enchantment or Dismiss. */
+    actions: z.array(catalogEntryRef).min(1).max(6).optional(),
     /** Its holder takes no falling damage and is not left prone by a fall (Capability API 1.119):
      *  5e's Feather Fall. */
     fallsSafely: z.literal(true).optional(),
@@ -8094,6 +8133,12 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
           issue([...path, "noDamageFrom", refIndex], `Unknown catalog "${catalogId}"`);
         }
       });
+      entry.actions?.forEach((ref, refIndex) => {
+        const catalogId = ref.slice(0, ref.indexOf("/"));
+        if (!def.catalogs?.some((catalog) => catalog.id === catalogId)) {
+          issue([...path, "actions", refIndex], `Unknown catalog "${catalogId}"`);
+        }
+      });
       if (entry.size && !combat.sizes) {
         issue([...path, "size"], "A condition that changes size needs combat.sizes");
       }
@@ -10609,6 +10654,13 @@ export function rulesetCatalogEntryIssues(
       add([index, "mechanics", "budget"], `Unknown budget "${mechanics.budget}"`);
     }
     if (mechanics) cureIssues(definition, mechanics, [index, "mechanics"], add);
+    targetIsIssues(definition, mechanics?.ends?.from, [index, "mechanics", "ends", "from"], add);
+    if (mechanics?.dismisses && mechanics.dismisses !== true) {
+      targetIsIssues(definition, mechanics.dismisses.gone, [index, "mechanics", "dismisses", "gone"], add);
+    }
+    if (mechanics?.endsCondition && !liveConditions.has(mechanics.endsCondition)) {
+      add([index, "mechanics", "endsCondition"], `Unknown condition "${mechanics.endsCondition}"`);
+    }
     if (mechanics?.zone?.obscures) {
       sightIssues(definition, mechanics.zone.obscures.pierced, [index, "mechanics", "zone", "obscures"], add);
     }

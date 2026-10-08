@@ -145,6 +145,8 @@ export function rulesetBoardCells(view: DirectedRulesetView, step: RulesetMenuSt
   const standing = new Map<string, DirectedRulesetCombatant>();
   for (const combatant of view.combatants) {
     if (typeof combatant.x !== "number" || typeof combatant.y !== "number") continue;
+    // Sent away (1.231): not on the board at all.
+    if (combatant.away) continue;
     // Every cell they fill (1.189).
     const span = Math.max(1, combatant.span ?? 1);
     for (let dy = 0; dy < span; dy++) {

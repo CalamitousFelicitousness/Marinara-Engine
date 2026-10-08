@@ -1801,8 +1801,13 @@ function mechanicsAction(
     action.ends = {
       conditions: [...mechanics.ends.conditions],
       ...(mechanics.ends.count !== undefined ? { count: mechanics.ends.count } : {}),
+      ...(mechanics.ends.from ? { from: structuredClone(mechanics.ends.from) } : {}),
     };
   }
+  // Used, it ends a condition on its user (1.231): the spell that gave it.
+  if (mechanics.endsCondition) action.endsCondition = mechanics.endsCondition;
+  // Sent out of the fight (1.231): Dismissal, Banishment.
+  if (mechanics.dismisses) action.dismisses = structuredClone(mechanics.dismisses);
   if (mechanics.stabilizes) action.stabilizes = true;
   if (mechanics.tracks) action.tracks = mechanics.tracks.map((entry) => ({ ...entry }));
   if (mechanics.unseals) action.unseals = true;
@@ -2211,6 +2216,57 @@ function innateActions(
     else if (components) delete action.components;
     return [action];
   });
+}
+
+/** What the conditions of the fight let their holder use while they hold (1.231), put on everybody's
+ *  list now and offered only while they hold it: 5e's Dispel Evil and Good, whose Break Enchantment
+ *  and Dismissal are its caster's. Their numbers are the holder's own, as their spells' are; a
+ *  creature that casts reads its casting's. */
+function conditionActions(
+  definition: RulesetDefinition,
+  combatant: RulesetCombatant,
+  byRef: ReturnType<typeof rulesetCatalogEntriesByRef>,
+  perCell: number | undefined,
+): RulesetCombatAction[] {
+  const granting = (definition.combat?.conditions ?? []).filter((condition) => condition.actions?.length);
+  if (granting.length === 0) return [];
+  const build = combatant.sheet?.build ?? combatant.block?.sheet ?? rulesetSheetBuildSchema.parse({});
+  const evaluated = evaluateRulesetSheetLive(definition, build, combatant.sheet?.live ?? {});
+  const casting = combatant.block?.spellcasting;
+  const resolve = (ref: RulesetValueRef) => resolveRulesetValueRef(definition, build, ref, evaluated);
+  return granting.flatMap((condition) =>
+    (condition.actions ?? []).flatMap((ref) => {
+      const entry = byRef.get(ref);
+      if (!entry?.mechanics) return [];
+      const catalogId = ref.slice(0, ref.indexOf("/"));
+      const header = definition.catalogs?.find((catalog) => catalog.id === catalogId);
+      const source = definition.combat?.abilities?.find((ability) =>
+        entry.rows?.some((row) => row.list === ability.list),
+      );
+      const difficulty =
+        casting?.saveDifficulty ?? (source?.saveDifficulty ? resolve(source.saveDifficulty) : undefined);
+      const action = mechanicsAction(definition, entry.mechanics, {
+        id: `granted:${condition.condition}:${ref}`,
+        kind: "ability",
+        label: entry.label,
+        budget: entry.mechanics.budget ?? source?.budget ?? definition.combat!.economy.budgets[0]!.id,
+        toHit:
+          casting?.toHit ??
+          (source?.toHit ? resolve(source.toHit) : 0) + fightAdjust(definition, build, evaluated, source?.toHit),
+        ...(difficulty !== undefined ? { saveDifficulty: difficulty } : {}),
+        build,
+        evaluated,
+        perCell: perCell === undefined ? undefined : (header?.units?.distance?.perCell ?? perCell),
+      });
+      if (!action) return [];
+      action.catalog = catalogId;
+      action.entry = ref;
+      action.whileHolds = condition.condition;
+      // Paid for by the condition that gives it: nothing off the sheet.
+      delete action.use;
+      return [action];
+    }),
+  );
 }
 
 /** Only the entries this member's own rows point at, so the state stays small enough to persist
@@ -2935,6 +2991,23 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
       }
     }
     state.combatants.push(combatant);
+  }
+
+  // What a condition lets its holder use (1.231), looked up in every catalog the fight was handed.
+  if (combat.conditions?.some((condition) => condition.actions?.length)) {
+    const handed: Record<string, RulesetCatalogEntry[]> = {};
+    const hand = (catalogs: RulesetCatalogEntriesById | undefined) => {
+      for (const [catalogId, entries] of Object.entries(catalogs ?? {})) {
+        handed[catalogId] = [...(handed[catalogId] ?? []), ...entries];
+      }
+    };
+    for (const catalog of definition.catalogs ?? []) hand({ [catalog.id]: catalog.entries ?? [] });
+    hand(input.bestiary);
+    for (const entry of input.combatants) hand("catalogs" in entry ? entry.catalogs : undefined);
+    const byRef = rulesetCatalogEntriesByRef(handed);
+    for (const combatant of state.combatants) {
+      combatant.actions = [...combatant.actions, ...conditionActions(definition, combatant, byRef, perCell)];
+    }
   }
 
   // Everybody's contests, last, so one that takes the place of a strike can see what strikes the

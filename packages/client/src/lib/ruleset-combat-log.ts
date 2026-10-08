@@ -457,6 +457,15 @@ export function rulesetCombatEventLine(
         target: names.combatant(event.targetId),
         label: event.label,
       });
+    case "dismissed":
+      return key(event.while ? "dismissedWhile" : "dismissed", {
+        actor: names.combatant(event.actorId),
+        target: names.combatant(event.targetId),
+        label: event.label,
+        ...(event.while ? { condition: names.condition(event.while) } : {}),
+      });
+    case "returned":
+      return key(event.gone ? "returnedGone" : "returned", { target: names.combatant(event.targetId) });
     case "charged":
       return key("charged", {
         actor: names.combatant(event.actorId),

@@ -774,6 +774,8 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
       }),
     ],
     ["unsealed", say({ type: "unsealed", targetId: "lurker", sourceId: "brenna", amount: 5, maxHealth: 30 })],
+    ["dismissed", say({ type: "dismissed", actorId: "brenna", targetId: "lurker", label: "Dismissal" })],
+    ["returned", say({ type: "returned", targetId: "lurker" })],
     [
       "healthPool",
       say({ type: "healthPool", actorId: "brenna", label: "Sleep", rolls: [8, 7], total: 15, affected: ["lurker"] }),
@@ -991,6 +993,16 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.equal(
     printed.get("unsealed"),
     "Brenna lifts what kept 5 of Thorn Lurker's health from healing; their maximum is 30 again.",
+  );
+  assert.equal(printed.get("dismissed"), "Brenna's Dismissal sends Thorn Lurker out of the fight for good.");
+  assert.equal(
+    say({ type: "dismissed", actorId: "brenna", targetId: "lurker", label: "Banishment", while: "prone" }),
+    "Brenna's Banishment sends Thorn Lurker away for as long as they are Prone.",
+  );
+  assert.equal(printed.get("returned"), "Thorn Lurker comes back into the fight.");
+  assert.equal(
+    say({ type: "returned", targetId: "lurker", gone: true }),
+    "Thorn Lurker stays where they were sent, gone for good.",
   );
   assert.equal(printed.get("healthPool"), "Brenna's Sleep rolls 15, enough for Thorn Lurker.");
   assert.equal(
@@ -1420,6 +1432,12 @@ function drawn(...rows: string[]): TacticalGrid {
   assert.equal(at(plain, 0, 1).occupant?.name, "Brenna");
   assert.equal(at(plain, 6, 1).occupant?.name, "Thorn Lurker");
   assert.equal(at(plain, 3, 0).occupant, undefined);
+  // Sent away (1.231), it is on no square at all.
+  const awayView = {
+    ...view,
+    combatants: view.combatants.map((one) => (one.name === "Thorn Lurker" ? { ...one, away: true as const } : one)),
+  };
+  assert.equal(at(rulesetBoardCells(awayView, null), 6, 1).occupant, undefined);
   // Outside a half-made choice nothing is highlighted: the board is information, not a command.
   assert.ok(plain.every((cell) => !cell.reach && !cell.targetable && !cell.aim));
   // A view with no grid is no board at all, whatever else it carries.

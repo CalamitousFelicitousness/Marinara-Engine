@@ -132,6 +132,8 @@ export interface DirectedRulesetCombatant {
   dying: boolean;
   stable: boolean;
   defeated: boolean;
+  /** Sent out of the fight, alive (1.231): off the board until it comes back, if it does. */
+  away?: true;
   /** The two counts of the ruleset's dying rule, for a member the fight is still rolling for. */
   deathTrack?: { successes: number; failures: number; successesMax: number; failuresMax: number };
   /** What this combatant is holding together, when the ruleset has concentration. */

@@ -88,6 +88,7 @@ import type {
   RulesetCombatRollMode,
   RulesetCombatContest,
   RulesetCombatant,
+  RulesetTrackedCondition,
   RulesetEncounterState,
   RulesetMomentCause,
   RulesetReactionAgainst,
@@ -1168,6 +1169,7 @@ function rulesetCureReaches(
   definition: RulesetDefinition,
   action: RulesetCombatAction,
   combatant: RulesetCombatant,
+  state?: RulesetEncounterState,
 ): boolean {
   // A contest that treats somebody (1.188) is taken only on whoever has what it treats.
   const contest = action.contest;
@@ -1183,7 +1185,22 @@ function rulesetCureReaches(
   if (action.revives || action.save || action.contest || action.summons || action.zone) return true;
   if (action.stabilizes && combatant.dying && !combatant.stable && !combatant.defeated) return true;
   const ends = new Set(action.ends?.conditions ?? []);
-  return combatant.tracked.some((entry) => ends.has(entry.condition));
+  return combatant.tracked.some(
+    (entry) => ends.has(entry.condition) && rulesetPutOnBy(definition, state, entry, action.ends?.from),
+  );
+}
+
+/** Whether a creature that is `from` put this on (1.231); anything does without a test. One whose
+ *  maker is not in the fight was put on by nobody it can name. */
+export function rulesetPutOnBy(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState | undefined,
+  entry: RulesetTrackedCondition,
+  from: RulesetTargetIs | undefined,
+): boolean {
+  if (!from) return true;
+  const source = entry.source && state ? rulesetCombatant(state, entry.source) : undefined;
+  return !!source && rulesetTargetIs(definition, source, from);
 }
 
 /** Whether this one holds a condition an action names (1.230): one of `conditions` from anybody, or
@@ -1256,7 +1273,7 @@ export function rulesetOptionTargets(
         if (cure?.revives) {
           if (!rulesetCanRevive(state, cure, combatant)) return false;
         } else if (combatant.defeated) return false;
-        if (cure && !rulesetCureReaches(definition, cure, combatant)) return false;
+        if (cure && !rulesetCureReaches(definition, cure, combatant, state)) return false;
         if (!rulesetTargetHasSenses(definition, state, combatant, needs)) return false;
         // "A creature you can see" (1.173).
         if (cure?.seen && !rulesetCanSee(definition, state, actor, combatant)) return false;
@@ -1400,6 +1417,13 @@ export function rulesetActionAvailable(
   definition?: RulesetDefinition,
 ): boolean {
   if (!rulesetActionUsable(definition, actor, action)) return false;
+  // Given by a condition, only while its user holds it (1.231).
+  if (action.whileHolds) {
+    const held = definition
+      ? rulesetCombatConditions(definition, actor)
+      : actor.tracked.map((entry) => entry.condition);
+    if (!held.includes(action.whileHolds)) return false;
+  }
   // A component something stops (1.174): Silence around its holder, a gag on them.
   if (action.components?.length && definition?.combat) {
     const stopped = rulesetActiveConditions(definition, definition.combat, actor, state).flatMap(

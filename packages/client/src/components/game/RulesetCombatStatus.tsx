@@ -123,15 +123,17 @@ export function RulesetCombatStatus({
                     })
                   : condition.label,
               );
-              const state = combatant.defeated
-                ? t("game.combat.ruleset.status.defeated")
-                : combatant.stable
-                  ? t("game.combat.ruleset.status.stable")
-                  : combatant.dying
-                    ? t("game.combat.ruleset.status.dying")
-                    : combatant.down
-                      ? t("game.combat.ruleset.status.down")
-                      : "";
+              const state = combatant.away
+                ? t("game.combat.ruleset.status.away")
+                : combatant.defeated
+                  ? t("game.combat.ruleset.status.defeated")
+                  : combatant.stable
+                    ? t("game.combat.ruleset.status.stable")
+                    : combatant.dying
+                      ? t("game.combat.ruleset.status.dying")
+                      : combatant.down
+                        ? t("game.combat.ruleset.status.down")
+                        : "";
               return (
                 <li
                   key={combatant.id}

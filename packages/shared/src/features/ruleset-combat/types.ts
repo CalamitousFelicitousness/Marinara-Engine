@@ -488,8 +488,17 @@ export interface RulesetCombatAction {
   kills?: true;
   /** A pool of each target's sheet this gives back some of: an item's `restore`. */
   restore?: { pool: string; amount: RulesetCombatAmount };
-  /** Conditions it takes off its target, in the order named, at most `count` of them (1.171). */
-  ends?: { conditions: string[]; count?: number };
+  /** Conditions it takes off its target, in the order named, at most `count` of them (1.171); with
+   *  `from`, only what a creature that is that put on (1.231). */
+  ends?: { conditions: string[]; count?: number; from?: RulesetTargetIs };
+  /** Offered only while its user holds this condition, which gave it to them (1.231). */
+  whileHolds?: string;
+  /** Used, it ends this condition on its user (1.231): Dispel Evil and Good's Dismissal ends the
+   *  spell. */
+  endsCondition?: string;
+  /** Whoever it lands on leaves the fight (1.231): for good, or only while they hold `while`, put on
+   *  by the same use; with `gone`, one that is that stays gone if `while` ran its whole time. */
+  dismisses?: true | { while: string; gone?: RulesetTargetIs };
   /** It steadies a dying target: no more dying rolls (1.171). */
   stabilizes?: boolean;
   /** Live tracks it moves on whoever it lands on and who does not save, by levels (1.196). */
@@ -855,6 +864,9 @@ export interface RulesetCombatant {
   /** A wall's section stood in for a blow struck at it (1.195), and gone again as it lands: never
    *  in a fight's list between choices, and asked nothing a creature is asked. */
   object?: true;
+  /** Sent out of the fight by somebody (1.231), and `defeated` while away: for good, or until they
+   *  no longer hold `while` (5e's Banishment), when they come back where they were. */
+  away?: { by: string; label: string; while?: string; gone?: RulesetTargetIs };
   /** The round it was defeated in, which a revive's window is measured from (1.171). */
   diedRound?: number;
   /** Read from the sheet or the block once, when the fight began. */
@@ -1536,6 +1548,10 @@ export type RulesetCombatEvent =
   | { type: "fell"; targetId: string; levels: number }
   /** Killed outright by a blow that slays (1.182). */
   | { type: "slain"; actorId: string; targetId: string; label: string }
+  /** Sent out of the fight (1.231): for good, or for as long as `while` holds. */
+  | { type: "dismissed"; actorId: string; targetId: string; label: string; while?: string }
+  /** Back from where it was sent (1.231), or, with `gone`, kept there for good. */
+  | { type: "returned"; targetId: string; gone?: true }
   /** A blow that follows a straight run at its target, before what the charge adds lands (1.181). */
   | {
       type: "charged";

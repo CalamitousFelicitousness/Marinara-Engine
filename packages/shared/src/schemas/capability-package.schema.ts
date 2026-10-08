@@ -969,7 +969,12 @@ const capabilityPackageManifestBaseSchema = z
 //        own failed save), `damageType` and `heals` (its maker regains what it lowered), on catalog
 //        mechanics too; catalog `leavesAtLeast` (5e's Harm); `targetHolds` on a creature action or
 //        catalog mechanics (a vampire's Bite: grappled by it, incapacitated or restrained).
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 230 } as const);
+// 1.231: a combat condition's `actions` (catalog entries its holder may use while it holds) and
+//        catalog mechanics' `endsCondition` (used, it ends that condition on its user, with its
+//        concentration); `ends.from` (only what a creature of those types or tags put on); and
+//        `dismisses` (out of the fight for good, or while a condition holds, back when it ends:
+//        5e's Dispel Evil and Good, Banishment).
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 231 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

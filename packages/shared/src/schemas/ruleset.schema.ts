@@ -1376,6 +1376,12 @@ const seenThroughSchema: z.ZodType<RulesetSeenThrough, z.ZodTypeDef, unknown> = 
   })
   .strict();
 
+/** How far something senses with each of the fight's senses, in the ruleset's distance (1.173). */
+const senseRangesSchema: z.ZodType<Record<string, number>, z.ZodTypeDef, unknown> = z.record(
+  sheetId,
+  z.number().finite().gt(0).max(10000),
+);
+
 /** What standing in a zone does to whoever is there (1.174), and what it stops. */
 export interface RulesetZoneInside {
   conditions?: string[];
@@ -1810,7 +1816,39 @@ const catalogDurationSchema = z.union([
     .strict(),
 ]);
 
-const catalogAppliesSchema = z
+/** What its holder does that takes a condition off (1.175). */
+export interface RulesetHolderEnding {
+  attacks?: true;
+  casts?: string[];
+}
+const holderEndingSchema: z.ZodType<RulesetHolderEnding, z.ZodTypeDef, unknown> = z
+  .object({
+    attacks: z.literal(true).optional(),
+    casts: z
+      .array(sheetId)
+      .min(1)
+      .max(8)
+      .refine((catalogs) => new Set(catalogs).size === catalogs.length, { message: "A catalog is named once" })
+      .optional(),
+  })
+  .strict()
+  .refine((ends) => ends.attacks || ends.casts, { message: "Say what ends it: attacking, casting, or both" });
+
+/** One condition a catalog entry puts on what it touches. Typed by hand: written out, its inferred type is too long for the
+ *  definition schema around it to emit. */
+export interface RulesetCatalogApplies {
+  condition: string;
+  duration: z.infer<typeof catalogDurationSchema>;
+  saveEnds?: { save: string; at: "turn-end" | "turn-start" | "damaged" };
+  endsAfter?: "own-attack" | "attacked" | "own-save";
+  endsWhenHolder?: RulesetHolderEnding;
+  escapeDc?: number | "save";
+  escapeChecks?: string[];
+  when?: z.infer<ReturnType<typeof sheetBoundsSchema>>;
+  targetIs?: RulesetTargetIs;
+}
+
+const catalogAppliesSchema: z.ZodType<RulesetCatalogApplies, z.ZodTypeDef, unknown> = z
   .object({
     condition: sheetId,
     duration: catalogDurationSchema,
@@ -1824,6 +1862,11 @@ const catalogAppliesSchema = z
      *  the next attack roll made against them, or their own next save. Whatever clock it has still
      *  runs beside it, so "on its next attack before the end of its next turn" is both. */
     endsAfter: z.enum(["own-attack", "attacked", "own-save"]).optional(),
+    /** It comes off once its holder has made an attack (`attacks`), or used an entry of one of the
+     *  catalogs `casts` names, or an item's use that casts one (Capability API 1.175): 5e's
+     *  Invisibility, which ends for a target that attacks or casts a spell. What the attack or the
+     *  spell rolled still had it; whatever came after does not. */
+    endsWhenHolder: holderEndingSchema.optional(),
     /** What breaking free of it is rolled against, in place of the holder's own side of the contest
      *  that breaks free of it (Capability API 1.98): 5e's "the target is grappled (escape DC 13)".
      *  `"save"` is the save difficulty of whatever applied it (1.169): Web and Black Tentacles. */
@@ -3511,6 +3554,9 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     toHit: itemToHitSchema.optional(),
     saveDifficulty: orItemStat(z.number().int().min(0).max(100)).optional(),
     consumes: z.literal(true).optional(),
+    /** Using it casts an entry of this catalog (Capability API 1.175), as a scroll or a wand does: a
+     *  condition that ends when its holder casts from that catalog ends when they use it. */
+    casts: sheetId.optional(),
     charges: z.number().int().min(1).max(RULESET_ITEM_CHARGES_MAX).optional(),
     /** A pool of the user's sheet it gives back some of, as a blood bag gives back blood. */
     restore: z
@@ -4351,6 +4397,13 @@ const combatConditionSchema = z
     unseen: seenThroughSchema.optional(),
     /** Nothing needing these components is used while it holds (Capability API 1.174): gagged. */
     forbids: forbidsSchema.optional(),
+    /** How far its holder senses with each of `combat.senses` while it holds, in the ruleset's
+     *  distance (Capability API 1.175): 5e's Darkvision spell, True Seeing's truesight. Their own
+     *  reach stands where it is longer. */
+    senses: senseRangesSchema.optional(),
+    /** A condition's `unseen` hides its holder from nobody while this holds (Capability API 1.175):
+     *  5e's Faerie Fire, under which the invisible are outlined. */
+    cancelsUnseen: z.literal(true).optional(),
     effects: z.array(combatConditionEffectSchema).max(12).default([]),
     /** The numbers it changes while it holds. */
     modifiers: z.array(combatModifierSchema).min(1).max(6).optional(),
@@ -4497,17 +4550,20 @@ export const rulesetItemEffectSchema = z
     immune: z.array(creatureHideEntrySchema).min(1).max(30).optional(),
     /** The sheet's own conditions a fight never puts on its holder. */
     conditionImmunities: z.array(sheetId).min(1).max(40).optional(),
+    /** How far its holder senses with each of `combat.senses`, in the ruleset's distance (Capability
+     *  API 1.175): 5e's goggles of night give darkvision. Their own reach stands where it is longer. */
+    senses: senseRangesSchema.optional(),
   })
   .strict()
   .superRefine((entry, ctx) => {
     const abilities = Object.entries(entry.abilities ?? {});
     const hide = entry.resist ?? entry.vulnerable ?? entry.immune ?? entry.conditionImmunities;
-    if (!entry.effects && !entry.modifiers && !entry.failsSaves && abilities.length === 0 && !hide) {
+    if (!entry.effects && !entry.modifiers && !entry.failsSaves && abilities.length === 0 && !hide && !entry.senses) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["effects"],
         message:
-          "An item's effect does something: effects, modifiers, saves it fails, abilities it changes, or harm or conditions it keeps off",
+          "An item's effect does something: effects, modifiers, saves it fails, abilities it changes, senses it gives, or harm or conditions it keeps off",
       });
     }
     if (abilities.length > 12) {
@@ -7088,6 +7144,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       effectNameIssues(entry, skills, saves, abilityIds, def, path, issue);
       hideIssues(def, entry, path, issue);
       if (entry.unseen) sightIssues(def, entry.unseen.pierced, [...path, "unseen"], issue);
+      senseRangeIssues(def, entry.senses, path, issue);
       componentIssues(def, entry.forbids?.components, [...path, "forbids", "components"], issue);
       // The action economy it changes (1.71) is the ruleset's own: budgets it declares, conditions it has.
       entry.budgets?.forEach((change, changeIndex) => {
@@ -7507,8 +7564,6 @@ export type RulesetCombatDistanceSource = z.infer<typeof combatDistanceSourceSch
 export type RulesetCombatConcentration = NonNullable<RulesetCombat["concentration"]>;
 export type RulesetCombatDying = NonNullable<RulesetCombat["dying"]>;
 export type RulesetCombatThreatTier = NonNullable<RulesetCombat["threat"]>["tiers"][number];
-/** One condition a catalog entry puts on what it touches. */
-export type RulesetCatalogApplies = NonNullable<RulesetCatalogMechanics["applies"]>[number];
 /** Where a community ruleset was imported from. `url` is null for a file the user picked. */
 export type CommunityRulesetSource = { kind: "repository" | "local"; url: string | null };
 
@@ -7941,12 +7996,50 @@ function sightIssues(
   });
 }
 
-function escapeDcIssues(
+/** The senses something gives are the fight's own (1.175), each with its range. */
+function senseRangeIssues(
   definition: RulesetDefinition,
-  applies: { condition: string; escapeDc?: number | "save"; escapeChecks?: string[] },
+  senses: Record<string, number> | undefined,
   at: (string | number)[],
   add: (path: (string | number)[], message: string) => void,
 ): void {
+  const known = new Set((definition.combat?.senses ?? []).map((sense) => sense.id));
+  Object.keys(senses ?? {}).forEach((sense) => {
+    if (!known.has(sense)) {
+      add(
+        [...at, "senses", sense],
+        known.size ? `Unknown sense "${sense}"` : "This ruleset declares no combat senses to give",
+      );
+    }
+  });
+}
+
+/** The catalogs casting from which ends something are the ruleset's own (1.175). */
+function castsIssues(
+  definition: RulesetDefinition,
+  catalogs: string[] | undefined,
+  at: (string | number)[],
+  add: (path: (string | number)[], message: string) => void,
+): void {
+  const known = new Set((definition.catalogs ?? []).map((catalog) => catalog.id));
+  catalogs?.forEach((catalog, index) => {
+    if (!known.has(catalog)) add([...at, index], `Unknown catalog "${catalog}"`);
+  });
+}
+
+function escapeDcIssues(
+  definition: RulesetDefinition,
+  applies: {
+    condition: string;
+    escapeDc?: number | "save";
+    escapeChecks?: string[];
+    endsWhenHolder?: { casts?: string[] };
+  },
+  at: (string | number)[],
+  add: (path: (string | number)[], message: string) => void,
+): void {
+  // What ends it when its holder casts (1.175) is cast from the ruleset's own catalogs.
+  castsIssues(definition, applies.endsWhenHolder?.casts, [...at, "endsWhenHolder", "casts"], add);
   // The checks that may break it (1.170) are contest checks, and only mean something with an escape DC.
   applies.escapeChecks?.forEach((check, index) => {
     if (!definition.combat?.checks?.some((one) => one.id === check)) {
@@ -8339,6 +8432,7 @@ function itemIssues(
     if (!effect) continue;
     effectNameIssues(effect, skills, saves, new Set(abilities.keys()), definition, [...at, key], add);
     itemHideIssues(definition, effect, [...at, key], add);
+    senseRangeIssues(definition, effect.senses, [...at, key], add);
     for (const [id, change] of Object.entries(effect.abilities ?? {})) {
       const ability = abilities.get(id);
       if (!ability) add([...at, key, "abilities", id], `Unknown ability "${id}"`);
@@ -8365,6 +8459,7 @@ function itemIssues(
         add,
       );
       itemHideIssues(definition, requirement.otherwise, [...path, "otherwise"], add);
+      senseRangeIssues(definition, requirement.otherwise.senses, [...path, "otherwise"], add);
     });
   }
   if (item.attack) attackIssues(definition, item, item.attack, [...at, "attack"], add);
@@ -8524,6 +8619,8 @@ function useIssues(
   if (use.zone?.obscures) sightIssues(definition, use.zone.obscures.pierced, [...at, "zone", "obscures"], add);
   zoneInsideIssues(definition, use.zone, [...at, "zone"], add);
   componentIssues(definition, use.components, [...at, "components"], add);
+  if (use.casts !== undefined)
+    castsIssues(definition, [use.casts], at, (_path, message) => add([...at, "casts"], message));
   use.applies?.forEach((applies, index) => {
     if (!conditions.has(applies.condition)) {
       add([...at, "applies", index, "condition"], `Unknown condition "${applies.condition}"`);

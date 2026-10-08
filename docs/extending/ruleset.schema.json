@@ -10112,6 +10112,27 @@
                               "own-save"
                             ]
                           },
+                          "endsWhenHolder": {
+                            "type": "object",
+                            "properties": {
+                              "attacks": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "casts": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "minItems": 1,
+                                "maxItems": 8
+                              },
+                              "$comment": {}
+                            },
+                            "additionalProperties": false
+                          },
                           "escapeDc": {
                             "anyOf": [
                               {
@@ -11499,6 +11520,27 @@
                                     "attacked",
                                     "own-save"
                                   ]
+                                },
+                                "endsWhenHolder": {
+                                  "type": "object",
+                                  "properties": {
+                                    "attacks": {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
+                                    "casts": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "minItems": 1,
+                                      "maxItems": 8
+                                    },
+                                    "$comment": {}
+                                  },
+                                  "additionalProperties": false
                                 },
                                 "escapeDc": {
                                   "anyOf": [
@@ -13862,6 +13904,21 @@
                           "minItems": 1,
                           "maxItems": 40
                         },
+                        "senses": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "number",
+                            "exclusiveMinimum": 0,
+                            "maximum": 10000
+                          },
+                          "propertyNames": {
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "properties": {
+                            "$comment": {}
+                          }
+                        },
                         "$comment": {}
                       },
                       "additionalProperties": false,
@@ -14575,6 +14632,21 @@
                           },
                           "minItems": 1,
                           "maxItems": 40
+                        },
+                        "senses": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "number",
+                            "exclusiveMinimum": 0,
+                            "maximum": 10000
+                          },
+                          "propertyNames": {
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "properties": {
+                            "$comment": {}
+                          }
                         },
                         "$comment": {}
                       },
@@ -15443,6 +15515,21 @@
                                 },
                                 "minItems": 1,
                                 "maxItems": 40
+                              },
+                              "senses": {
+                                "type": "object",
+                                "additionalProperties": {
+                                  "type": "number",
+                                  "exclusiveMinimum": 0,
+                                  "maximum": 10000
+                                },
+                                "propertyNames": {
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "properties": {
+                                  "$comment": {}
+                                }
                               },
                               "$comment": {}
                             },
@@ -17932,6 +18019,27 @@
                                   "own-save"
                                 ]
                               },
+                              "endsWhenHolder": {
+                                "type": "object",
+                                "properties": {
+                                  "attacks": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "casts": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 8
+                                  },
+                                  "$comment": {}
+                                },
+                                "additionalProperties": false
+                              },
                               "escapeDc": {
                                 "anyOf": [
                                   {
@@ -18629,6 +18737,11 @@
                         "consumes": {
                           "type": "boolean",
                           "const": true
+                        },
+                        "casts": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
                         },
                         "charges": {
                           "type": "integer",
@@ -25412,6 +25525,25 @@
                 ],
                 "additionalProperties": false
               },
+              "senses": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 10000
+                },
+                "propertyNames": {
+                  "maxLength": 40,
+                  "pattern": "^[a-z][a-z0-9_]*$"
+                },
+                "properties": {
+                  "$comment": {}
+                }
+              },
+              "cancelsUnseen": {
+                "type": "boolean",
+                "const": true
+              },
               "effects": {
                 "type": "array",
                 "items": {
@@ -26184,6 +26316,27 @@
                             "attacked",
                             "own-save"
                           ]
+                        },
+                        "endsWhenHolder": {
+                          "type": "object",
+                          "properties": {
+                            "attacks": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "casts": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 8
+                            },
+                            "$comment": {}
+                          },
+                          "additionalProperties": false
                         },
                         "escapeDc": {
                           "anyOf": [

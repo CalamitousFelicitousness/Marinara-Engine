@@ -352,6 +352,7 @@ export function rulesetActiveConditions(
     ...(source.vulnerable ? { vulnerable: [...source.vulnerable] } : {}),
     ...(source.immune ? { immune: [...source.immune] } : {}),
     ...(source.conditionImmunities ? { conditionImmunities: [...source.conditionImmunities] } : {}),
+    ...(source.senses ? { senses: { ...source.senses } } : {}),
   }));
   return [...conditions, ...levels, ...items, ...zoned];
 }
@@ -1135,6 +1136,7 @@ function itemUseMechanics(
   });
   if (!action) return null;
   if (aim.target !== undefined) action.target = aim.target;
+  if (use.casts) action.casts = use.casts;
   const restored = amountOf(use.restore?.amount);
   if (use.restore && restored) action.restore = { pool: use.restore.pool, amount: restored };
   return action;

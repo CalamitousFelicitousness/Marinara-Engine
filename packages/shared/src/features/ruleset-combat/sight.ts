@@ -1,5 +1,6 @@
 /**
- * Who sees whom (Capability API 1.173).
+ * Who sees whom (Capability API 1.173; senses conditions and items give, and conditions that give
+ * away the unseen, 1.175).
  *
  * Off a board everybody sees everybody, as before. On one, a viewer does not see somebody it has no
  * line to (walls and solid ground), somebody standing in, behind or beyond an obscuring zone from
@@ -9,7 +10,7 @@
  * read it for their roll's mode, and "a creature you can see" reads it for who may be picked.
  */
 import type { RulesetDefinition } from "../../schemas/ruleset.schema.js";
-import { rulesetCombatConditions } from "./encounter.js";
+import { rulesetActiveConditions, rulesetCombatConditions } from "./encounter.js";
 import {
   rulesetCellDistance,
   rulesetInCells,
@@ -20,14 +21,28 @@ import {
 import type { RulesetCombatant, RulesetCombatCell, RulesetEncounterState } from "./types.js";
 
 /** How far each of the fight's senses reaches for this combatant, in cells: a creature's off its
- *  block, anybody else's as it was read off their sheet when the fight began. */
-export function rulesetSenseRanges(definition: RulesetDefinition, combatant: RulesetCombatant): Record<string, number> {
+ *  block, anybody else's as it was read off their sheet when the fight began. What their conditions
+ *  and items give now (1.175) reaches further where it is longer: 5e's Darkvision spell, goggles of
+ *  night, True Seeing. */
+export function rulesetSenseRanges(
+  definition: RulesetDefinition,
+  combatant: RulesetCombatant,
+  state?: RulesetEncounterState,
+): Record<string, number> {
   const block = combatant.block?.senses;
   const perCell = definition.combat?.distance?.perCell;
-  if (block && perCell !== undefined) {
-    return Object.fromEntries(Object.entries(block).map(([id, range]) => [id, rulesetInCells(range, perCell)]));
+  const ranges: Record<string, number> =
+    block && perCell !== undefined
+      ? Object.fromEntries(Object.entries(block).map(([id, range]) => [id, rulesetInCells(range, perCell)]))
+      : { ...(combatant.senses ?? {}) };
+  const combat = definition.combat;
+  if (!combat || perCell === undefined) return ranges;
+  for (const source of rulesetActiveConditions(definition, combat, combatant, state)) {
+    for (const [id, range] of Object.entries(source.senses ?? {})) {
+      ranges[id] = Math.max(ranges[id] ?? 0, rulesetInCells(range, perCell));
+    }
   }
-  return { ...(combatant.senses ?? {}) };
+  return ranges;
 }
 
 /** Every cell a straight line from one cell's middle to another's passes through, both ends included. */
@@ -72,7 +87,7 @@ export function rulesetCanSee(
   if (viewer.id === seen.id) return true;
   const combat = definition.combat;
   if (!combat) return true;
-  const ranges = rulesetSenseRanges(definition, viewer);
+  const ranges = rulesetSenseRanges(definition, viewer, state);
   const blindSenses = new Set((combat.senses ?? []).filter((sense) => sense.blind).map((sense) => sense.id));
   // Conditions read raw, without their gates: a gate may itself ask who sees whom.
   const own = new Set(rulesetCombatConditions(definition, viewer));
@@ -96,10 +111,12 @@ export function rulesetCanSee(
     if (!positioned) return blindSenses.size > 0 && [...blindSenses].some((sense) => (ranges[sense] ?? 0) > 0);
     if (![...blindSenses].some((sense) => (ranges[sense] ?? 0) >= away)) return false;
   }
-  // Hidden by a condition (5e's invisible) unless a sense sees it.
+  // Hidden by a condition (5e's invisible) unless a sense sees it, or another of theirs gives them
+  // away (1.175: Faerie Fire outlines the invisible).
   const theirs = new Set(rulesetCombatConditions(definition, seen));
+  const outlined = entries.some((entry) => entry.cancelsUnseen && theirs.has(entry.condition));
   for (const entry of entries) {
-    if (entry.unseen && theirs.has(entry.condition) && !pierces(entry.unseen.pierced)) return false;
+    if (!outlined && entry.unseen && theirs.has(entry.condition) && !pierces(entry.unseen.pierced)) return false;
   }
   if (!positioned) return true;
   if (!rulesetLineOfSight(grid, from, to)) return false;

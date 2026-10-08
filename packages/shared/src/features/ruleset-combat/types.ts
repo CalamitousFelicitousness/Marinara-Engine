@@ -84,6 +84,8 @@ export interface RulesetCombatApplies {
   duration: "instant" | "until-save" | "this-action" | { rounds: number; at?: "turn-start"; of?: "source" };
   saveEnds?: { save: string; at: "turn-end" | "turn-start" | "damaged" };
   endsAfter?: RulesetConditionEnding;
+  /** It comes off once its holder attacks, or casts from one of these catalogs (1.175). */
+  endsWhenHolder?: { attacks?: true; casts?: string[] };
   /** What breaking free of it is rolled against, in place of the holder's own side of the contest
    *  (1.98): 5e's "grappled (escape DC 13)"; `"save"` is the applier's save difficulty (1.169). */
   escapeDc?: number | "save";
@@ -468,6 +470,8 @@ export interface RulesetCombatAction {
   /** The catalog of the entry this action was built from, when it was built from one. A weapon row,
    *  a stat block's own action, a contest and a standard action have none. */
   catalog?: string;
+  /** The catalog an item's use casts from (1.175), as a scroll does: casting, without being an entry. */
+  casts?: string;
   /** And the entry itself, as `<catalog>/<entry>` (1.112): what a reaction or a condition that names
    *  one entry reads. */
   entry?: string;
@@ -610,6 +614,8 @@ export interface RulesetTrackedCondition {
   clockOf?: "source";
   /** What takes it off after one use, whatever its clock says. */
   endsAfter?: RulesetConditionEnding;
+  /** What its holder does that takes it off (1.175): attacking, or casting from these catalogs. */
+  endsWhenHolder?: { attacks?: true; casts?: string[] };
   /** The difficulty the repeated save is rolled against: the one that applied it. */
   difficulty?: number;
   /** Who applied it, and whether their concentration is what holds it. */

@@ -892,7 +892,12 @@ const capabilityPackageManifestBaseSchema = z
 //        or lower used from outside (`zone.wards`: Globe of Invulnerability). A condition that takes
 //        budgets away, put on during its holder's own turn, takes them from that turn (Stinking
 //        Cloud). No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 174 } as const);
+// 1.175: an applied condition may end once its holder attacks or casts from named catalogs
+//        (`endsWhenHolder`: Invisibility), an item's use may say it casts from one (`use.casts`: a
+//        scroll), a condition or a worn or carried item may give senses with a range (`senses`:
+//        Darkvision, True Seeing, goggles of night), and a condition may give away its holder
+//        whatever hides them (`cancelsUnseen`: Faerie Fire). No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 175 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

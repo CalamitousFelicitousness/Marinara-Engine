@@ -1476,6 +1476,24 @@ function carriesZoneInside(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesZoneInside(one, depth + 1));
 }
 
+/** What ends a condition when its holder attacks or casts, senses a condition or an item gives, a
+ *  condition that gives away the unseen, and an item's use that casts (1.175), in catalog files too. */
+function carriesSightExtras(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesSightExtras(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.condition !== undefined && record.endsWhenHolder !== undefined) return true;
+  if (record.condition !== undefined && (record.senses !== undefined || record.cancelsUnseen !== undefined)) {
+    return true;
+  }
+  for (const effect of [plainRecord(record.worn), plainRecord(record.carried), plainRecord(record.otherwise)]) {
+    if (effect?.senses !== undefined) return true;
+  }
+  if (plainRecord(record.use)?.casts !== undefined) return true;
+  return Object.values(record).some((one) => carriesSightExtras(one, depth + 1));
+}
+
 /** Senses and seeing (1.173): the combat block's senses or sight, a condition that hides, a zone
  *  that obscures, an area set down several times, "a creature you can see", or a creature's senses,
  *  in catalog files too. */
@@ -2788,6 +2806,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesZoneInside(document)))
   ) {
     return "A ruleset with combat components, or zones that work on whoever stands inside, stop components or ward off spells, requires schemaVersion 2 and capabilityApi 1.174 or newer";
+  }
+  // Conditions that end when their holder attacks or casts, granted senses, giving away the unseen, 1.175.
+  if (
+    !declaresApi(175) &&
+    (carriesSightExtras(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesSightExtras(document)))
+  ) {
+    return "A ruleset with conditions that end when their holder attacks or casts, senses given by conditions or items, conditions that give away the unseen, or item uses that cast, requires schemaVersion 2 and capabilityApi 1.175 or newer";
   }
   if (carriesCreatureSpellcasting) {
     // The references can only be checked once the catalog files are beside their headers.

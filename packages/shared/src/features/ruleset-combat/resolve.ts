@@ -198,6 +198,8 @@ interface RulesetCombatContext {
   /** Where further copies of the area were set down (1.173). */
   aimedAlso?: RulesetCombatCell[];
   falling?: RulesetFallResume[];
+  /** A standing zone is striking on its own, not its caster acting (1.175). */
+  byZone?: true;
   /** Whose turn's own start or end is being counted down right now, so a condition left behind in
    *  the middle of a turn can be told from one left behind as the turn begins or ends. */
   ticking?: string;
@@ -1080,6 +1082,14 @@ function applyConditionId(
     ...(applies.duration === "this-action" ? { thisAction: true as const } : {}),
     ...(sourced ? { clockOf: "source" as const } : {}),
     ...(applies.endsAfter ? { endsAfter: applies.endsAfter } : {}),
+    ...(applies.endsWhenHolder
+      ? {
+          endsWhenHolder: {
+            ...(applies.endsWhenHolder.attacks ? { attacks: true as const } : {}),
+            ...(applies.endsWhenHolder.casts ? { casts: [...applies.endsWhenHolder.casts] } : {}),
+          },
+        }
+      : {}),
     ...(applies.saveEnds ? { saveEnds: applies.saveEnds } : {}),
     ...(extra.difficulty !== undefined ? { difficulty: extra.difficulty } : {}),
     ...(extra.sourceId ? { source: extra.sourceId } : {}),
@@ -1526,7 +1536,12 @@ function zoneStrike(
   }
   const { concentration: _held, zone: _zone, summons: _summons, gives: _gives, ...again } = action;
   const from = ctx.events.length;
+  // The zone acting, not its caster (1.175).
+  const byZone = ctx.byZone;
+  ctx.byZone = true;
   resolveAction(ctx, caster, again, [target], zone.payWith);
+  if (byZone) ctx.byZone = byZone;
+  else delete ctx.byZone;
   if (aimed) ctx.aimedAt = aimed;
   else delete ctx.aimedAt;
   if (aimedAlso) ctx.aimedAlso = aimedAlso;
@@ -2181,7 +2196,9 @@ export function applyRulesetCombatChoice(
   if (action.pairs !== undefined) working.flags.offHand = action.pairs;
   // A contest is settled between the two of them on the spot. A fall it causes can be held.
   if (action.contest) {
+    const before = new Set(working.tracked);
     resolveContest(ctx, working, action, action.contest, workingTargets[0]!);
+    holderActed(ctx, working, action, before);
     noteOutcome(ctx);
     return finish();
   }
@@ -2549,7 +2566,9 @@ export function liftRulesetFightEffects(
       if (crash && rulesetCombatConditions(definition, combatant).includes(crash)) lift(combatant, crash, "recovered");
     }
     for (const entry of [...combatant.tracked]) {
-      if (entry.rounds !== null || entry.endsAfter || entry.concentration) lift(combatant, entry.condition, "expired");
+      if (entry.rounds !== null || entry.endsAfter || entry.endsWhenHolder || entry.concentration) {
+        lift(combatant, entry.condition, "expired");
+      }
     }
     if (combatant.concentrating) {
       combatant.concentrating = null;
@@ -2707,6 +2726,7 @@ function takeReaction(
   spendAvailability(ctx, taking, action);
   const cancelSave = action.reaction?.cancelSave;
   if (cancelSave && !rollSave(ctx, taking, cancelSave.save, cancelSave.dc, trigger.sourceId)) {
+    holderActed(ctx, taking, action);
     goOn(definition, combat, ctx);
     noteOutcome(ctx);
     return finish();
@@ -3231,6 +3251,8 @@ function resumeAction(ctx: RulesetCombatContext, resume: RulesetActionResume): v
   let action = own && resume.mode ? (rulesetModedAction(ctx.definition, own, resume.mode) ?? own) : own;
   if (!actor || !action) return;
   if (resume.cancelled || !rulesetCombatStanding(actor)) {
+    // A spell called off was cast all the same (1.175).
+    if (resume.cancelled && !resume.summon) holderActed(ctx, actor, action);
     endActionConditions(ctx);
     return;
   }
@@ -3616,6 +3638,32 @@ function firingRider(
   return null;
 }
 
+/**
+ * What its holder just finished doing takes these conditions off (1.175): an attack, or casting from
+ * a catalog one names, a scroll's spell included. Whatever the attack or the spell rolled had them
+ * still. What a standing zone does on its own is not its caster acting.
+ */
+function holderActed(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  /** What they held before it: one it put on them itself (Invisibility cast on oneself) stays. */
+  before?: ReadonlySet<RulesetTrackedCondition>,
+): void {
+  if (ctx.byZone) return;
+  const attacks = rulesetIsAttack(action);
+  const casts = action.catalog ?? action.casts;
+  const ended = actor.tracked.filter(
+    (entry) =>
+      (!before || before.has(entry)) &&
+      ((entry.endsWhenHolder?.attacks && attacks) ||
+        (casts !== undefined && !!entry.endsWhenHolder?.casts?.includes(casts))),
+  );
+  for (const entry of ended) {
+    if (actor.tracked.includes(entry)) removeCondition(ctx, actor, entry.condition, "spent");
+  }
+}
+
 function resolveAction(
   ctx: RulesetCombatContext,
   actor: RulesetCombatant,
@@ -3628,6 +3676,23 @@ function resolveAction(
    *  first style its maker may use. */
   styleId?: string,
   /** The number a spending blow throws, read as it was made. */
+  spend?: number,
+): RulesetHitHold | null {
+  const before = new Set(actor.tracked);
+  const result = resolveActionFalling(ctx, actor, action, targets, payWith, held, styleId, spend);
+  // Finished, rather than held for an answer to one of its rolls (1.175).
+  if (!result) holderActed(ctx, actor, action, before);
+  return result;
+}
+
+function resolveActionFalling(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  targets: RulesetCombatant[],
+  payWith?: string,
+  held?: RulesetHeldAttack,
+  styleId?: string,
   spend?: number,
 ): RulesetHitHold | null {
   // A sequence's blows are separate events. Ordinary single-faller entries keep their old path.

@@ -293,7 +293,7 @@ function preparationPolicyRevision(ctx: Context): string {
   // Automatic message visibility changes no prepared memory; keep existing snapshots reusable.
   const { autoMessageVisibility: _visibility, ...settings } = ctx.settings;
   return hash([
-    "scene-timeframe-constants-v21", // Invalidate reusable contexts without rebuilding valid source archives.
+    "scene-timeframe-constants-v22", // Invalidate reusable contexts without rebuilding valid source archives.
     policyFingerprint(ctx),
     settings,
     ctx.metadata.summaryEntries,
@@ -3868,11 +3868,6 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     const queryWords = recallTerms(query);
     const lastUser = [...visible].reverse().find((message) => message.role === "user");
     const cueWords = recallTerms(lastUser?.content.slice(-6000) ?? query);
-    const canRecallExcerpt = (scene: StoredRecord) =>
-      !/\{\{#?if\s+(?:char|charname|character|speaker)\b/iu.test(scene.content) ||
-      (ctx.settings.narratorCharacterId != null &&
-        audience.length === 1 &&
-        audience[0] === ctx.settings.narratorCharacterId);
     const recallDiagnostics: AdvancedMemoryDecisionDiagnostics | undefined =
       ctx.settings.decisionEnabled && !input.readOnly
         ? {
@@ -4075,7 +4070,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     });
     // Pass 2: the model picks which original messages of the chosen scenes to recall.
     let messageScores: Map<string, number> | null = null;
-    const judgedPlans = excerptPlans.filter((plan) => canRecallExcerpt(plan.scene) && plan.sceneSource.length);
+    const judgedPlans = excerptPlans.filter((plan) => plan.sceneSource.length);
     if (decisionThreshold !== null && ctx.settings.retrieveMaxMessages > 0 && judgedPlans.length) {
       try {
         const signal = decisionSignal();
@@ -4129,16 +4124,15 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       for (const { index } of picks)
         if (Math.max(last, index) - Math.min(first, index) < maxMessages)
           [first, last] = [Math.min(first, index), Math.max(last, index)];
-      // ponytail: raw excerpts have scene-level access, not per-fact knowledge.
-      // Withhold conditional-scene excerpts from non-narrators until they have that finer access mapping.
-      const count =
-        matched && canRecallExcerpt(scene)
-          ? Math.min(
-              sceneSource.length,
-              maxMessages,
-              Math.max(minMessages, picks.length ? last - first + 1 : Math.ceil(matched.score)),
-            )
-          : 0;
+      // A recap's private sections never gate its excerpt: sceneSource holds only messages every
+      // reader of this scene saw in the chat, so quoting them reveals nothing new (#7269).
+      const count = matched
+        ? Math.min(
+            sceneSource.length,
+            maxMessages,
+            Math.max(minMessages, picks.length ? last - first + 1 : Math.ceil(matched.score)),
+          )
+        : 0;
       const from = Math.max(0, Math.min(first - Math.floor((count - (last - first)) / 2), sceneSource.length - count));
       return {
         ...plan,
@@ -4177,13 +4171,11 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       const missing =
         excerpt.length || !maxMessages
           ? null
-          : !canRecallExcerpt(scene)
-            ? "excerpt-private-scene"
-            : !sceneSource.length
-              ? "excerpt-no-source"
-              : wanted.length
-                ? "excerpt-no-room"
-                : null;
+          : !sceneSource.length
+            ? "excerpt-no-source"
+            : wanted.length
+              ? "excerpt-no-room"
+              : null;
       if (missing && !receipt.reasons.includes(missing)) receipt.reasons.push(missing);
       for (const message of excerpt) excerptIds.add(message.id);
       sceneTexts.push({

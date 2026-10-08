@@ -1808,6 +1808,35 @@ try {
     assert.deepEqual((await combineEntries())[0], pieceRecap, `copied "${secret}" is not saved`);
     assert(!(await recallFor(privateB.id)).includes(secret));
   }
+  // So is one copied without its quote marks, from a list without full stops, with a plain apostrophe or
+  // with a part for Maukie in the middle. A long run of "!" in a private section is still checked quickly.
+  for (const [index, [secret, copy, found]] of [
+    ['"Maukie hid the key in the attic."', "Maukie hid the key in the attic.", "hid the key"],
+    ["- Maukie hid the key in the attic\n- Maukie fears the butler", "Maukie fears the butler.", "butler"],
+    ["Maukie’s key is in the attic.", "Maukie's key is in the attic.", "key is in"],
+    [
+      "Maukie hid the key in the attic.",
+      'Maukie {{#if char == "Maukie"}}quietly {{/if}}hid the key in the attic.',
+      "hid the key",
+    ],
+    [`Maukie hid the key in the attic${"!".repeat(1000)}`, "Maukie hid the key in the attic.", "hid the key"],
+  ].entries()) {
+    const copyRecap = recap(
+      `copy-recap-${index}`,
+      0,
+      `${forBoth}${"SHARED_WALK ".repeat(300)}{{#if char == "Maukie"}}${secret}{{/if}}{{/if}}`,
+    );
+    summaryReply = (prompt) =>
+      prompt.includes("SHARED_WALK")
+        ? `COMBINED_WALK. ${copy} {{#if char == "Maukie"}}Maukie kept quiet.{{/if}}`
+        : "PLAIN_COMPACTED";
+    await chats.patchMetadata(combineChat.id, { summaryEntries: [copyRecap, sharedRecap] });
+    const started = Date.now();
+    await memory.checkScenesAfterGeneration(combineChat.id, { blocking: false });
+    assert(Date.now() - started < 5000, `checking "${copy}" takes under five seconds`);
+    assert.deepEqual((await combineEntries())[0], copyRecap, `copied "${copy}" is not saved`);
+    assert(!(await recallFor(privateB.id)).includes(found));
+  }
   // Shared text that only reuses words from those sentences is still saved.
   const piecesRecap = recap(
     "pieces-recap",

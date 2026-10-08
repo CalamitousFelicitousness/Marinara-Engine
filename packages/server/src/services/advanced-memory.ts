@@ -3297,31 +3297,52 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       return;
     }
     const names = ctx.characterIds.map((id) => ctx.names.get(id) ?? "Character");
-    // The text of each group of readers in these texts, lowercased; "{{" stands for any other macro.
+    // The text of each group of readers in these texts; "{{" stands for any other macro. It is lowercased,
+    // with plain quote marks and one space or line break between words, also where a condition splits a
+    // sentence, so spacing, a condition or a curly apostrophe can't hide a copied sentence.
     const sections = (texts: string[]) => {
       const found = new Map<string, string>();
       for (const text of texts)
         scopeCharacterSummary(text, names, 0, (part, readers) => {
           const key = part.includes("{{") ? "{{" : JSON.stringify([...readers].sort());
-          if (part.trim()) found.set(key, `${found.get(key) ?? ""} ${part.toLowerCase().replace(/\s+/gu, " ")}`);
+          if (part.trim()) found.set(key, `${found.get(key) ?? ""} ${part}`);
           return part;
         });
+      for (const [key, text] of found)
+        found.set(
+          key,
+          text
+            .normalize("NFKC")
+            .toLowerCase()
+            .replace(/[‘’]/gu, "'")
+            .replace(/[“”]/gu, '"')
+            .replace(/\s*\n\s*/gu, "\n")
+            .replace(/[^\S\n]+/gu, " "),
+        );
       return found;
     };
     // A private sentence of four or more words found in a section someone else can also read; text with
     // other macros counts as read by everyone. Segmenting counts words in languages without spaces too.
-    // A piece up to a sentence end with under four words is checked with the pieces after it, so a decimal
-    // or an abbreviation, as in "meet at 3.5 now." or "mr. fox hid it.", cannot hide a sentence. Sentence
+    // A line break ends a sentence too, as in a list. A piece up to a sentence end with under four words is
+    // checked with the pieces after it, so a decimal or an abbreviation, as in "meet at 3.5 now." or "mr. fox
+    // hid it.", cannot hide a sentence; a piece without words, such as "!", joins the one before it. Sentence
     // segmenting can't do this: on this lowercase text it joins every sentence, and it splits "Mr. Fox".
+    // Quote marks, brackets and list marks around a sentence are left out, so a copy without them is found.
     const words = new Intl.Segmenter(undefined, { granularity: "word" });
+    const count = (text: string) => [...words.segment(text)].filter((word) => word.isWordLike).length;
     const sentences = (text: string) => {
-      const pieces = text.split(/(?<=\p{Sentence_Terminal})/u);
+      const pieces: string[] = [];
+      for (const piece of text.split(/(?<=[\p{Sentence_Terminal}\n])/u))
+        if (pieces.length && !count(piece)) pieces[pieces.length - 1] += piece;
+        else pieces.push(piece);
+      // ponytail: joining at most 8 pieces keeps this fast on a run like "1.2.3.4.5.6.7.8.9", one word however
+      // long, so a short sentence starting with one may go unchecked. Upgrade by counting each piece's words
+      // once and summing them.
       return pieces.flatMap((_, start) => {
         let sentence = "";
-        for (const piece of pieces.slice(start)) {
+        for (const piece of pieces.slice(start, start + 8)) {
           sentence += piece;
-          if ([...words.segment(sentence)].filter((word) => word.isWordLike).length >= 4)
-            return [sentence.trim().replace(/[\s\p{Sentence_Terminal}]+$/u, "")];
+          if (count(sentence) >= 4) return [sentence.replace(/^[^\p{L}\p{N}\p{M}]+|[^\p{L}\p{N}\p{M}]+$/gu, "")];
         }
         return [];
       });

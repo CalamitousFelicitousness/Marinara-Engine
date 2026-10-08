@@ -1,6 +1,12 @@
 import { resolveDecisionConnection } from "../services/decision/decision-connection.js";
 import { askNoulQuestions } from "../services/decision/system-one.client.js";
 import { connectionChatTarget, probeDecisionSlot } from "../services/decision/sidecar-decision.backend.js";
+import {
+  BUNDLED_CLAUDE_CODE_VERSION,
+  claudeCodeExecutableOption,
+  readClaudeCodeModelCatalog,
+  resolveClaudeCodeInstall,
+} from "../services/llm/providers/claude-subscription/installed-cli.js";
 // ──────────────────────────────────────────────
 // Routes: Connections
 // ──────────────────────────────────────────────
@@ -986,11 +992,15 @@ export async function connectionsRoutes(app: FastifyInstance) {
       return { models: model ? [{ id: model, name: model }] : [], builtIn: true };
     }
     try {
-      // Claude (Subscription) has no remote /models endpoint — return the
-      // curated static list for the subscription path.
+      // Claude (Subscription) has no remote /models endpoint. Use the catalog
+      // Claude Code caches for the signed-in account, then the curated list.
       if (conn.provider === "claude_subscription") {
         const { MODEL_LISTS } = await import("@marinara-engine/shared");
-        const models = MODEL_LISTS.claude_subscription.map((m) => ({ id: m.id, name: m.name }));
+        const install = await resolveClaudeCodeInstall();
+        const catalog = await readClaudeCodeModelCatalog(install?.version ?? BUNDLED_CLAUDE_CODE_VERSION);
+        const seen = new Set(catalog.map((m) => m.id));
+        const curated = MODEL_LISTS.claude_subscription.filter((m) => !seen.has(m.id));
+        const models = [...catalog, ...curated.map((m) => ({ id: m.id, name: m.name }))];
         return { models, builtIn: true };
       }
 
@@ -1724,6 +1734,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
           permissionMode: "bypassPermissions",
           includePartialMessages: false,
           settings: { fastMode },
+          ...(await claudeCodeExecutableOption()),
           ...(conn.apiKey ? { env: { ...process.env, ANTHROPIC_API_KEY: conn.apiKey } } : {}),
         },
       });

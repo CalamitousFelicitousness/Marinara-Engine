@@ -451,6 +451,9 @@ export interface RulesetCombatAction {
   temporary?: RulesetCombatAmount;
   /** Health shared out among its targets, least health first (1.191); the rest are left alone. */
   healthPool?: RulesetCombatAmount;
+  /** Whom the pool passes over (1.194): holders of these conditions, and those who cannot see its
+   *  maker when `unseeing`. */
+  healthPoolSkips?: { conditions?: string[]; unseeing?: true };
   /** Affects only a target with this much health or less (1.191). */
   healthAtMost?: number;
   /** Kills outright whoever it affects (1.191). */

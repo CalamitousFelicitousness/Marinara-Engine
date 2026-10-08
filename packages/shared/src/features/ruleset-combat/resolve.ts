@@ -25,6 +25,7 @@ import {
 } from "./ammo.js";
 import { parseRulesetCombatDice, rollRulesetDice, sumOf } from "./dice.js";
 import { elevationAt } from "../tactical-combat/math.js";
+import { rulesetCanSee } from "./sight.js";
 import {
   rulesetCombatIsPool,
   rulesetCombatPenalty,
@@ -4280,9 +4281,19 @@ function sparedByHealth(
     const rolled = rollAmount(ctx, action.healthPool, extra);
     let left = rolled.total;
     const affected: string[] = [];
+    // Who it passes over uses none of it (1.194).
+    const skips = action.healthPoolSkips;
+    const passedOver = (target: RulesetCombatant) =>
+      (!!skips?.conditions &&
+        rulesetCombatConditions(ctx.definition, target).some((condition) => skips.conditions!.includes(condition))) ||
+      (!!skips?.unseeing && !rulesetCanSee(ctx.definition, ctx.state, target, actor));
     // A stable sort, so those with as much health as each other are taken in the order picked.
     for (const target of [...targets].sort((a, b) => healthOf(ctx, a).value - healthOf(ctx, b).value)) {
       if (spared.has(target.id)) continue;
+      if (passedOver(target)) {
+        spared.add(target.id);
+        continue;
+      }
       const health = healthOf(ctx, target).value;
       if (health > left) {
         spared.add(target.id);

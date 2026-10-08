@@ -591,6 +591,7 @@ function requireMechanicsPairs(node) {
   if (node.type !== "object" || !properties?.kind || !properties.rider || !properties.free) return;
   // A health pool (1.191) names dice or a flat number.
   if (properties.healthPool) requireAnyOf(properties.healthPool, ["dice", "flat"]);
+  if (properties.healthPoolSkips) requireAnyOf(properties.healthPoolSkips, ["conditions", "unseeing"]);
   node.allOf = [
     ...(node.allOf ?? []),
     { if: { properties: { kind: { const: "rider" } }, required: ["kind"] }, then: { required: ["rider"] } },

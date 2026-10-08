@@ -2200,6 +2200,17 @@ const catalogHealthPoolSchema: z.ZodType<{ dice?: string; flat?: number }, z.Zod
   .strict()
   .refine((pool) => pool.dice !== undefined || pool.flat !== undefined, '"healthPool" names dice or a flat number');
 
+/** Who a health pool passes over (Capability API 1.194). Typed by hand, as the pool is. */
+const catalogHealthPoolSkipsSchema: z.ZodType<{ conditions?: string[]; unseeing?: true }, z.ZodTypeDef, unknown> = z
+  .object({
+    conditions: z.array(sheetId).min(1).max(16).optional(),
+    unseeing: z.literal(true).optional(),
+  })
+  .strict()
+  .refine((skips) => skips.conditions !== undefined || skips.unseeing !== undefined, {
+    message: '"healthPoolSkips" names "conditions", "unseeing" or both',
+  });
+
 const catalogMechanicsObject = z
   .object({
     kind: z.enum(["attack", "heal", "buff", "debuff", "utility", "rider"]),
@@ -2389,6 +2400,10 @@ const catalogMechanicsObject = z
      *  left first, each affected only while their health is no more than what remains of it, which
      *  they then use up; the rest are left alone. 5e's Sleep and Color Spray. `perCostStep` adds to it. */
     healthPool: catalogHealthPoolSchema.optional(),
+    /** Whom the pool passes over, using none of it and leaving them alone (Capability API 1.194):
+     *  whoever holds one of `conditions` (5e's Sleep ignores the unconscious), and with `unseeing`
+     *  whoever cannot see its maker (Color Spray ignores those that can't see). */
+    healthPoolSkips: catalogHealthPoolSkipsSchema.optional(),
     /** Affects only a target with this much health left or less (Capability API 1.191): 5e's Power
      *  Word Stun at 150, Power Word Kill at 100. */
     healthAtMost: z.number().int().min(0).max(100000).optional(),
@@ -2495,6 +2510,13 @@ function zoneIssue(mechanics: {
 const catalogMechanicsSchema = catalogMechanicsObject.superRefine((mechanics, ctx) => {
   const why = zoneIssue(mechanics);
   if (why) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["zone"], message: why });
+  if (mechanics.healthPoolSkips && !mechanics.healthPool) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["healthPoolSkips"],
+      message: '"healthPoolSkips" says whom a "healthPool" passes over, so it has one',
+    });
+  }
   if (mechanics.summons && (mechanics.kind !== "attack" || (mechanics.targets ?? "enemy") !== "enemy")) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -10079,6 +10101,10 @@ export function rulesetCatalogEntryIssues(
     });
 
     const mechanics = entry.mechanics;
+    mechanics?.healthPoolSkips?.conditions?.forEach((condition, conditionIndex) => {
+      if (!liveConditions.has(condition))
+        add([index, "mechanics", "healthPoolSkips", "conditions", conditionIndex], `Unknown condition "${condition}"`);
+    });
     // What a reaction answers is named by catalog, so it has to be one this ruleset has.
     if (mechanics?.reaction && typeof mechanics.reaction === "object") {
       const known = new Set((definition.catalogs ?? []).map((one) => one.id));

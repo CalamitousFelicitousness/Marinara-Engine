@@ -1522,6 +1522,17 @@ function carriesWardsAndSaves(value: unknown, depth = 0): boolean {
 
 const MODIFIER_TARGETS = new Set<string>(RULESET_COMBAT_MODIFIER_TARGETS);
 
+/** An entry's health pool that passes over some of its targets (1.194), in catalogs too. */
+function carriesHealthPoolSkips(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesHealthPoolSkips(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const mechanics = plainRecord(record.mechanics);
+  if (mechanics && mechanics.healthPoolSkips !== undefined) return true;
+  return Object.values(record).some((one) => carriesHealthPoolSkips(one, depth + 1));
+}
+
 /** A zone whose triggers deal another damage type than it does as it appears (1.193), in catalogs too. */
 function carriesZoneDamageType(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -3135,6 +3146,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // A health pool passing over some, 1.194.
+  if (
+    !declaresApi(194) &&
+    (carriesHealthPoolSkips(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesHealthPoolSkips(document)))
+  ) {
+    return "A ruleset with health pools that pass over some of their targets requires schemaVersion 2 and capabilityApi 1.194 or newer";
   }
   // A zone's own damage type at its triggers, 1.193.
   if (

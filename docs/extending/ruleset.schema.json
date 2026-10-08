@@ -10721,6 +10721,43 @@
                         }
                       ]
                     },
+                    "healthPoolSkips": {
+                      "type": "object",
+                      "properties": {
+                        "conditions": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 16
+                        },
+                        "unseeing": {
+                          "type": "boolean",
+                          "const": true
+                        },
+                        "$comment": {}
+                      },
+                      "additionalProperties": false,
+                      "allOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "required": [
+                                "conditions"
+                              ]
+                            },
+                            {
+                              "required": [
+                                "unseeing"
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
                     "healthAtMost": {
                       "type": "integer",
                       "minimum": 0,
@@ -20786,6 +20823,27 @@
                             },
                             "flat": {
                               "type": "integer"
+                            },
+                            "$comment": {}
+                          },
+                          "additionalProperties": false
+                        },
+                        "healthPoolSkips": {
+                          "type": "object",
+                          "properties": {
+                            "conditions": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 16
+                            },
+                            "unseeing": {
+                              "type": "boolean",
+                              "const": true
                             },
                             "$comment": {}
                           },

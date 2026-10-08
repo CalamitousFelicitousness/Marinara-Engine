@@ -1761,6 +1761,13 @@ function mechanicsAction(
   if (temporary) action.temporary = temporary;
   const healthPool = amountOf(mechanics.healthPool);
   if (healthPool) action.healthPool = healthPool;
+  const skips = mechanics.healthPoolSkips;
+  if (healthPool && skips) {
+    action.healthPoolSkips = {
+      ...(skips.conditions ? { conditions: [...skips.conditions] } : {}),
+      ...(skips.unseeing ? { unseeing: true } : {}),
+    };
+  }
   if (mechanics.healthAtMost !== undefined) action.healthAtMost = mechanics.healthAtMost;
   if (mechanics.kills) action.kills = true;
   // Leaving `toHit` unset here would send it down the no-roll path and land it automatically.

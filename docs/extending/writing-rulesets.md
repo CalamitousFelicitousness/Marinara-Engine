@@ -660,6 +660,8 @@ A damage modifier can throw a blow's own dice more times over (Capability API 1.
 
 A zone can deal another damage type at its triggers than it does as it appears (Capability API 1.193). `"zone": { "rounds": 100, "triggers": ["enter"], "atCast": true, "damageType": "slashing" }` on an entry whose own `damageType` is `"piercing"` deals piercing to whoever the wall appears around and slashing to whoever moves into it later, as 5e's Wall of Thorns does. It needs the entry's own `amount` and a trigger, a side or a ram to deal it at, and names one of `combat.damageTypes` where the ruleset declares them.
 
+A health pool can pass over some of its targets (Capability API 1.194). `"healthPoolSkips": { "conditions": ["unconscious"] }` beside a `healthPool` leaves whoever holds one of those conditions alone and spends none of the pool on them, as 5e's Sleep ignores the unconscious; `"unseeing": true` does the same for whoever cannot see the entry's maker (blinded, or with no line of sight to them), as Color Spray ignores creatures that can't see. It names `conditions`, `unseeing` or both, and needs a `healthPool`.
+
 The picker shows this block as one line. Who reads the rest depends on which block your ruleset opted in with:
 
 - With a [`combat` block](#combat-a-fight-your-own-rules-resolve), the fight reads its combat effects. `range`, `area` and `friendlyFire` apply on a battlefield with positions; `reaction` marks an entry as one that answers something rather than one taken on a turn, and names the moment it waits for (see [Windows](#windows-holding-the-fight-open)); one marked plain `true` names none and is on no menu. `check` applies to skill checks, as described above.

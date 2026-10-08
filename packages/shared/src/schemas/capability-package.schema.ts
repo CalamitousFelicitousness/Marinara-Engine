@@ -949,7 +949,9 @@ const capabilityPackageManifestBaseSchema = z
 //        duergar), and a creature's `self` action taken on its turn landing on itself.
 // 1.193: a catalog zone's `damageType`, dealt at its triggers in place of the entry's own (5e's
 //        Wall of Thorns: piercing as it appears, slashing to whoever moves into it).
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 193 } as const);
+// 1.194: catalog mechanics' `healthPoolSkips` (whom a health pool passes over: holders of its
+//        `conditions`, as Sleep the unconscious, and with `unseeing` those who can't see its maker).
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 194 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

@@ -12,7 +12,13 @@
 import type { GameInventoryJournalEntry } from "../../utils/game-inventory-ops.js";
 import { GAME_INVENTORY_MAX_QUANTITY, type GameInventoryStack } from "../../utils/game-inventory-stacks.js";
 import type { RulesetDefinition } from "../../schemas/ruleset.schema.js";
-import type { RulesetCombatAction, RulesetCombatant, RulesetCombatEvent, RulesetEncounterState } from "./types.js";
+import type {
+  RulesetCombatAction,
+  RulesetCombatant,
+  RulesetCombatMode,
+  RulesetCombatEvent,
+  RulesetEncounterState,
+} from "./types.js";
 
 /** How many one attack shoots: what its mode says, else what its ammunition says, else one. */
 function shotsPer(action: RulesetCombatAction): number {
@@ -46,6 +52,20 @@ export function rulesetModedAction(
     ...(mode.plus?.length && action.damage
       ? { damage: { ...action.damage, plus: [...(action.damage.plus ?? []), ...mode.plus] } }
       : {}),
+    // The one cure picked (1.199), in place of all of them.
+    ...(mode.cure ? cureOnly(mode.cure) : {}),
+  };
+}
+
+/** A cure that does one of its cures, narrowed to the one a mode names (1.199). */
+function cureOnly(
+  cure: NonNullable<RulesetCombatMode["cure"]>,
+): Partial<RulesetCombatAction> & { cureOneOf: undefined } {
+  return {
+    cureOneOf: undefined,
+    ends: cure.ends !== undefined ? { conditions: [cure.ends], count: 1 } : undefined,
+    tracks: cure.track ? [{ ...cure.track }] : undefined,
+    unseals: cure.unseals,
   };
 }
 

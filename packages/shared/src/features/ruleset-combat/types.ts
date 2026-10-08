@@ -474,6 +474,8 @@ export interface RulesetCombatAction {
   tracks?: Array<{ track: string; by: number }>;
   /** It gives back the health only a rest would (1.196). */
   unseals?: true;
+  /** It does one of its cures, not all (1.199): the mode picked, else the first the target needs. */
+  cureOneOf?: true;
   /** It brings back a target that died no more than `withinRounds` rounds ago, at `amount` (1.171). */
   revives?: { withinRounds: number; amount: RulesetCombatAmount };
   save?: RulesetCombatSaveRider;
@@ -651,6 +653,8 @@ export interface RulesetCombatMode {
   line?: RulesetCombatModeLine;
   /** The item's charges one attack in this mode spends (1.185), at this place in `sheet.items`. */
   charges?: { cost: number; max: number; item: number };
+  /** The one cure a cure that does one of them does in this mode (1.199). */
+  cure?: { ends?: string; track?: { track: string; by: number }; unseals?: true };
 }
 
 /** A bolt on the way to a mode's target (1.185). */

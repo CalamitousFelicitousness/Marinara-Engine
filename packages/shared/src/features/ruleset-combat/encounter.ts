@@ -1806,6 +1806,29 @@ function mechanicsAction(
   if (mechanics.stabilizes) action.stabilizes = true;
   if (mechanics.tracks) action.tracks = mechanics.tracks.map((entry) => ({ ...entry }));
   if (mechanics.unseals) action.unseals = true;
+  // One cure of several (1.199), picked like a weapon's mode: a condition, a track, or the maximum.
+  if (mechanics.cureOneOf) {
+    action.cureOneOf = true;
+    const conditionLabel = (id: string) => definition.sheet.live.conditions.find((one) => one.id === id)?.label ?? id;
+    const health = definition.combat?.health;
+    const healthLabel =
+      health && !("track" in health)
+        ? (definition.sheet.live.pools.find((one) => one.id === health.pool)?.label ?? health.pool)
+        : "";
+    action.modes = [
+      ...(mechanics.ends?.conditions ?? []).map((condition) => ({
+        id: `ends-${condition}`,
+        label: conditionLabel(condition),
+        cure: { ends: condition },
+      })),
+      ...(mechanics.tracks ?? []).map((entry) => ({
+        id: `track-${entry.track}`,
+        label: definition.sheet.live.tracks.find((one) => one.id === entry.track)?.label ?? entry.track,
+        cure: { track: { ...entry } },
+      })),
+      ...(mechanics.unseals ? [{ id: "unseals", label: healthLabel, cure: { unseals: true as const } }] : []),
+    ];
+  }
   const revival = mechanics.revives && amountOf(mechanics.revives.health);
   if (mechanics.revives && revival) action.revives = { withinRounds: mechanics.revives.withinRounds, amount: revival };
   if (mechanics.summons) {

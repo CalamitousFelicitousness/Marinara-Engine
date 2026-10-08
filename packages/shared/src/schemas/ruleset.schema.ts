@@ -2473,6 +2473,10 @@ const catalogMechanicsObject = z
     /** Gives back to whoever it lands on the health only a rest would (Capability API 1.196): what a
      *  sealing blow took off their maximum, as Greater Restoration ends a reduction of it. */
     unseals: z.literal(true).optional(),
+    /** It does ONE of its cures, not all of them (Capability API 1.199): one condition of `ends`, one
+     *  of `tracks`, or `unseals`, picked as it is used like a weapon's mode, and otherwise the first
+     *  of them, in that order, the target has something for. 5e's Greater Restoration. */
+    cureOneOf: z.literal(true).optional(),
     /** Brings back whoever died no more than `withinRounds` rounds ago, with `health` (1.171): 5e's
      *  Revivify, within 10 rounds with 1 hit point. It is pointed only at them. */
     revives: z
@@ -2646,6 +2650,15 @@ function zoneIssue(mechanics: {
 const catalogMechanicsSchema = catalogMechanicsObject.superRefine((mechanics, ctx) => {
   const why = zoneIssue(mechanics);
   if (why) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["zone"], message: why });
+  const cureParts =
+    (mechanics.ends?.conditions.length ?? 0) + (mechanics.tracks?.length ?? 0) + (mechanics.unseals ? 1 : 0);
+  if (mechanics.cureOneOf && cureParts < 2) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["cureOneOf"],
+      message: '"cureOneOf" picks one of at least two cures among "ends", "tracks" and "unseals"',
+    });
+  }
   if (mechanics.healthPoolSkips && !mechanics.healthPool) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,

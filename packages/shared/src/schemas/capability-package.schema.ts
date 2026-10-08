@@ -962,7 +962,9 @@ const capabilityPackageManifestBaseSchema = z
 // 1.198: a creature action's `reducesMax` (a failed save lowers the health maximum by the damage
 //        taken until a rest, or with `lasting` until something unseals it; at 0 the target dies:
 //        Life Drain, a clay golem's Slam), and a live pool's `lasting`.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 198 } as const);
+// 1.199: catalog mechanics' `cureOneOf` (one of its `ends` conditions, `tracks` or `unseals`, picked
+//        as a mode of the option, else the first the target needs: 5e's Greater Restoration).
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 199 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

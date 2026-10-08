@@ -9863,6 +9863,10 @@
                       "type": "boolean",
                       "const": true
                     },
+                    "cureOneOf": {
+                      "type": "boolean",
+                      "const": true
+                    },
                     "revives": {
                       "type": "object",
                       "properties": {
@@ -20836,6 +20840,10 @@
                           "maxItems": 4
                         },
                         "unseals": {
+                          "type": "boolean",
+                          "const": true
+                        },
+                        "cureOneOf": {
                           "type": "boolean",
                           "const": true
                         },

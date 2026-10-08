@@ -787,6 +787,41 @@ function moveTrack(
   }
 }
 
+/** The first of a cure's parts this target has something for (1.199), in the order its modes list
+ *  them: a condition it holds, a track above its floor (or any track it raises), sealed health. */
+function firstCure(
+  ctx: RulesetCombatContext,
+  action: RulesetCombatAction,
+  target: RulesetCombatant,
+): NonNullable<NonNullable<RulesetCombatAction["modes"]>[number]["cure"]> | undefined {
+  const holds = new Set(rulesetCombatConditions(ctx.definition, target));
+  for (const mode of action.modes ?? []) {
+    const cure = mode.cure;
+    if (!cure) continue;
+    if (cure.ends !== undefined && holds.has(cure.ends)) return cure;
+    if (cure.track) {
+      if (cure.track.by > 0) return cure;
+      const declared = ctx.definition.sheet.live.tracks.find((entry) => entry.id === cure.track!.track);
+      const floor = declared?.min ?? 0;
+      const now = target.sheet
+        ? trackValue(ctx, target, cure.track.track)
+        : (target.tracks?.[cure.track.track] ?? declared?.default ?? floor);
+      if (now > floor) return cure;
+    }
+    if (cure.unseals && sealedOf(ctx, target) > 0) return cure;
+  }
+  return undefined;
+}
+
+/** What only a rest or an unsealing gives back, as this combatant holds it (1.188). */
+function sealedOf(ctx: RulesetCombatContext, target: RulesetCombatant): number {
+  if (!target.sheet) return target.health?.sealed ?? 0;
+  const health = ctx.combat.health;
+  if ("track" in health) return 0;
+  const live = readRulesetLive(ctx.definition, target.sheet.build, target.sheet.live);
+  return live.pools.find((entry) => !entry.listId && entry.key === health.pool)?.sealed ?? 0;
+}
+
 /** Whether what only a rest or an unsealing gives back has taken the whole maximum (1.198). */
 function rulesetSealedAway(ctx: RulesetCombatContext, target: RulesetCombatant): boolean {
   if (!target.sheet) return !!target.health && (target.health.sealed ?? 0) >= target.health.max;
@@ -5403,9 +5438,18 @@ function resolveActionBody(
       clearDyingTracks(ctx, target);
       ctx.events.push({ type: "stabilized", targetId: target.id, sourceId: actor.id });
     }
-    if (action.ends) {
-      let left = action.ends.count ?? action.ends.conditions.length;
-      for (const condition of action.ends.conditions) {
+    // One cure of several (1.199): unpicked, the first this target has something for.
+    const picked = action.cureOneOf ? firstCure(ctx, action, target) : undefined;
+    const cureEnds = action.cureOneOf
+      ? picked?.ends !== undefined
+        ? { conditions: [picked.ends], count: 1 }
+        : undefined
+      : action.ends;
+    const cureTracks = action.cureOneOf ? (picked?.track ? [picked.track] : undefined) : action.tracks;
+    const cureUnseals = action.cureOneOf ? picked?.unseals : action.unseals;
+    if (cureEnds) {
+      let left = cureEnds.count ?? cureEnds.conditions.length;
+      for (const condition of cureEnds.conditions) {
         if (left <= 0) break;
         if (!target.tracked.some((entry) => entry.condition === condition)) continue;
         removeCondition(ctx, target, condition, "cured");
@@ -5436,8 +5480,8 @@ function resolveActionBody(
     }
     if (!saved) {
       // Tracks moved and sealed health given back (1.196), before the conditions it puts on.
-      for (const entry of action.tracks ?? []) moveTrack(ctx, actor, target, entry.track, entry.by);
-      if (action.unseals) unsealHealth(ctx, actor, target);
+      for (const entry of cureTracks ?? []) moveTrack(ctx, actor, target, entry.track, entry.by);
+      if (cureUnseals) unsealHealth(ctx, actor, target);
       for (const applies of action.applies ?? []) {
         // Read off whoever applies it, as it applies (1.162): Rage's bonus by barbarian level.
         if (!rulesetSheetWithin(ctx.definition, actor, applies.when)) continue;

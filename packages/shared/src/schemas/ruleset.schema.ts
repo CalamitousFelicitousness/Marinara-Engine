@@ -1479,6 +1479,7 @@ export interface RulesetZoneSections {
     damageType?: string;
     save?: string;
     onSave?: "half" | "none";
+    perCostStep?: { dice?: string; flat?: number };
   };
 }
 
@@ -1506,6 +1507,9 @@ const zoneSectionsSchema: z.ZodType<RulesetZoneSections, z.ZodTypeDef, unknown> 
         damageType: promptSafeText(40).optional(),
         save: sheetId.optional(),
         onSave: z.enum(["half", "none"]).optional(),
+        /** Added once for each step the cast was paid above its base (Capability API 1.196), as the
+         *  entry's own `perCostStep` is: 5e's Wall of Ice, 1d6 more a slot level above 6th. */
+        perCostStep: z.object(catalogAmountShape).strict().optional(),
       })
       .strict()
       .refine((broken) => broken.onSave === undefined || broken.save !== undefined, {
@@ -2269,6 +2273,81 @@ const catalogHealthPoolSkipsSchema: z.ZodType<{ conditions?: string[]; unseeing?
     message: '"healthPoolSkips" names "conditions", "unseeing" or both',
   });
 
+/** What using an entry does to a check (typed, to keep the mechanics' type small). */
+const catalogCheckSchema: z.ZodType<
+  {
+    reroll?: z.infer<typeof checkRerollSchema>;
+    dice?: number;
+    successes?: number;
+    threshold?: number;
+    explode?: number;
+    double?: number;
+  },
+  z.ZodTypeDef,
+  unknown
+> = z
+  .object({
+    /** Throw the dice at or below `upTo` again. `once` replaces each of them one time and
+     *  lets the new face stand; `until` keeps going, under the Engine's own hard ceiling. */
+    reroll: checkRerollSchema.optional(),
+    /** Dice added to the pool before it is thrown. */
+    dice: z.number().int().min(1).max(SPEND_EFFECT_MAX).optional(),
+    /** Successes added after the dice are counted. */
+    successes: z.number().int().min(1).max(SPEND_EFFECT_MAX).optional(),
+    /** The per-die target this one check counts with, inside what the ruleset allows. */
+    threshold: z.number().int().min(2).max(1000).optional(),
+    /** The face this one check explodes, or counts twice, from, inside what the ruleset lets a
+     *  check move it to. */
+    explode: z.number().int().min(2).max(1000).optional(),
+    double: z.number().int().min(2).max(1000).optional(),
+  })
+  .strict()
+  .superRefine((check, ctx) => {
+    if (
+      !check.reroll &&
+      check.dice === undefined &&
+      check.successes === undefined &&
+      check.threshold === undefined &&
+      check.explode === undefined &&
+      check.double === undefined
+    ) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "A check effect does something, or is left out" });
+    }
+  });
+
+/** Conditions a cure takes off (Capability API 1.171). Typed, to keep the mechanics' type small. */
+const catalogEndsSchema: z.ZodType<{ conditions: string[]; count?: number }, z.ZodTypeDef, unknown> = z
+  .object({
+    conditions: z
+      .array(sheetId)
+      .min(1)
+      .max(16)
+      .refine((ids) => new Set(ids).size === ids.length, { message: "A condition is named once" }),
+    count: z.number().int().min(1).max(16).optional(),
+  })
+  .strict();
+
+/** Live tracks moved by levels (Capability API 1.196). Typed, to keep the mechanics' type small. */
+const catalogTracksSchema: z.ZodType<Array<{ track: string; by: number }>, z.ZodTypeDef, unknown> = z
+  .array(
+    z
+      .object({
+        track: sheetId,
+        by: z
+          .number()
+          .int()
+          .min(-20)
+          .max(20)
+          .refine((by) => by !== 0, { message: "A track is moved by at least one level" }),
+      })
+      .strict(),
+  )
+  .min(1)
+  .max(4)
+  .refine((tracks) => new Set(tracks.map((one) => one.track)).size === tracks.length, {
+    message: "A track is named once",
+  });
+
 const catalogMechanicsObject = z
   .object({
     kind: z.enum(["attack", "heal", "buff", "debuff", "utility", "rider"]),
@@ -2331,36 +2410,7 @@ const catalogMechanicsObject = z
     /** What using this entry does to a CHECK the character is about to make, rather than to a
      *  fight. A charm that lets a roll be re-thrown, or that simply hands out successes. Only a
      *  pool ruleset can honour any of it, and the cross-checks say so at import. */
-    check: z
-      .object({
-        /** Throw the dice at or below `upTo` again. `once` replaces each of them one time and
-         *  lets the new face stand; `until` keeps going, under the Engine's own hard ceiling. */
-        reroll: checkRerollSchema.optional(),
-        /** Dice added to the pool before it is thrown. */
-        dice: z.number().int().min(1).max(SPEND_EFFECT_MAX).optional(),
-        /** Successes added after the dice are counted. */
-        successes: z.number().int().min(1).max(SPEND_EFFECT_MAX).optional(),
-        /** The per-die target this one check counts with, inside what the ruleset allows. */
-        threshold: z.number().int().min(2).max(1000).optional(),
-        /** The face this one check explodes, or counts twice, from, inside what the ruleset lets a
-         *  check move it to. */
-        explode: z.number().int().min(2).max(1000).optional(),
-        double: z.number().int().min(2).max(1000).optional(),
-      })
-      .strict()
-      .superRefine((check, ctx) => {
-        if (
-          !check.reroll &&
-          check.dice === undefined &&
-          check.successes === undefined &&
-          check.threshold === undefined &&
-          check.explode === undefined &&
-          check.double === undefined
-        ) {
-          ctx.addIssue({ code: z.ZodIssueCode.custom, message: "A check effect does something, or is left out" });
-        }
-      })
-      .optional(),
+    check: catalogCheckSchema.optional(),
     /** What an attack leaves behind to strike on later turns (Capability API 1.117). Distances
      *  are in the catalog's unit; without a reach it touches the next cell. */
     summons: z
@@ -2386,19 +2436,17 @@ const catalogMechanicsObject = z
     /** Takes these conditions off whoever it lands on, up to `count` of them (all when left out) in
      *  the order named (Capability API 1.171): 5e's Lesser Restoration ends one of blinded, deafened,
      *  paralyzed or poisoned. */
-    ends: z
-      .object({
-        conditions: z
-          .array(sheetId)
-          .min(1)
-          .max(16)
-          .refine((ids) => new Set(ids).size === ids.length, { message: "A condition is named once" }),
-        count: z.number().int().min(1).max(16).optional(),
-      })
-      .strict()
-      .optional(),
+    ends: catalogEndsSchema.optional(),
     /** Whoever it lands on who is dying stops rolling, stable (1.171): 5e's Spare the Dying. */
     stabilizes: z.literal(true).optional(),
+    /** Moves the sheet's live tracks of whoever it lands on and does not save against by `by` levels
+     *  (Capability API 1.196), held to each track's own bounds: down for a cure, as 5e's Greater
+     *  Restoration takes a level of exhaustion off, and up for harm, as Sickening Radiance adds one.
+     *  A level that defeats, reached this way, defeats. */
+    tracks: catalogTracksSchema.optional(),
+    /** Gives back to whoever it lands on the health only a rest would (Capability API 1.196): what a
+     *  sealing blow took off their maximum, as Greater Restoration ends a reduction of it. */
+    unseals: z.literal(true).optional(),
     /** Brings back whoever died no more than `withinRounds` rounds ago, with `health` (1.171): 5e's
      *  Revivify, within 10 rounds with 1 hit point. It is pointed only at them. */
     revives: z
@@ -8660,7 +8708,12 @@ function saveExtrasIssues(
 /** What a cure names (1.171): conditions the sheet has, and a dying rule for steadying to stop. */
 function cureIssues(
   definition: RulesetDefinition,
-  mechanics: { ends?: { conditions: string[]; count?: number }; stabilizes?: true },
+  mechanics: {
+    ends?: { conditions: string[]; count?: number };
+    stabilizes?: true;
+    tracks?: Array<{ track: string; by: number }>;
+    unseals?: true;
+  },
   at: (string | number)[],
   add: (path: (string | number)[], message: string) => void,
 ): void {
@@ -8673,6 +8726,18 @@ function cureIssues(
   }
   if (mechanics.stabilizes && !definition.combat?.dying) {
     add([...at, "stabilizes"], "Steadying the dying needs a combat block with a dying rule");
+  }
+  // A plain track is moved by levels (1.196); a wound track is marked with kinds instead.
+  mechanics.tracks?.forEach((entry, index) => {
+    const track = definition.sheet.live.tracks.find((one) => one.id === entry.track);
+    if (!track) add([...at, "tracks", index, "track"], `Unknown track "${entry.track}"`);
+    else if (track.kinds) add([...at, "tracks", index, "track"], "A wound track is marked, not moved by levels");
+  });
+  if (mechanics.unseals && (!definition.combat || "track" in definition.combat.health)) {
+    add(
+      [...at, "unseals"],
+      "Only health kept in points is sealed, so giving it back needs a combat block that keeps it",
+    );
   }
 }
 

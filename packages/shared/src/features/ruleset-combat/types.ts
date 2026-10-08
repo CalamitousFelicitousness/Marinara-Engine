@@ -464,6 +464,10 @@ export interface RulesetCombatAction {
   ends?: { conditions: string[]; count?: number };
   /** It steadies a dying target: no more dying rolls (1.171). */
   stabilizes?: boolean;
+  /** Live tracks it moves on whoever it lands on and who does not save, by levels (1.196). */
+  tracks?: Array<{ track: string; by: number }>;
+  /** It gives back the health only a rest would (1.196). */
+  unseals?: true;
   /** It brings back a target that died no more than `withinRounds` rounds ago, at `amount` (1.171). */
   revives?: { withinRounds: number; amount: RulesetCombatAmount };
   save?: RulesetCombatSaveRider;
@@ -1577,6 +1581,10 @@ export type RulesetCombatEvent =
   | { type: "revived"; actorId: string; health: number }
   /** Steadied by somebody's action (1.171): no more dying rolls. */
   | { type: "stabilized"; targetId: string; sourceId: string }
+  /** A live track moved by somebody's action (1.196), from one level to another. */
+  | { type: "track"; targetId: string; sourceId: string; track: string; label: string; from: number; to: number }
+  /** What only a rest would give back, given back by somebody's action (1.196). */
+  | { type: "unsealed"; targetId: string; sourceId: string; amount: number; maxHealth: number }
   | { type: "outcome"; outcome: RulesetEncounterOutcome }
   | { type: "refused"; actorId: string; optionId?: string; reason: RulesetCombatRefusal };
 
@@ -1792,6 +1800,8 @@ export interface RulesetCombatZoneRule {
       damageType?: string;
       save?: string;
       onSave?: "half" | "none";
+      /** Added once a step the cast was paid above its base (1.196). */
+      perCostStep?: RulesetCombatAmount;
     };
   };
   /** Nobody sees into it, out of it or through it but by one of these senses, in range (1.173). */

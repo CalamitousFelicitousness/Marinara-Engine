@@ -812,6 +812,21 @@ export function rulesetCombatEventLine(
       return key("defeated", { target: names.combatant(event.actorId) });
     case "stabilized":
       return key("stabilized", { actor: names.combatant(event.sourceId), target: names.combatant(event.targetId) });
+    case "track":
+      return key(event.to < event.from ? "trackDown" : "trackUp", {
+        actor: names.combatant(event.sourceId),
+        target: names.combatant(event.targetId),
+        track: event.label,
+        from: event.from,
+        to: event.to,
+      });
+    case "unsealed":
+      return key("unsealed", {
+        actor: names.combatant(event.sourceId),
+        target: names.combatant(event.targetId),
+        amount: event.amount,
+        max: event.maxHealth,
+      });
     case "revived":
       return key("revived", { actor: names.combatant(event.actorId), health: event.health });
     case "outcome":

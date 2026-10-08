@@ -815,6 +815,9 @@ export type RulesetSheetOp =
       amount: number;
       /** On `damage`: what it takes off the pool comes back only with a rest (1.188). */
       seals?: true;
+      /** On `restore`: what only a rest gives back is given back too (1.196), and then `amount` may
+       *  be nothing. */
+      unseals?: true;
     }
   /** Marks a WOUND track. `kind` is one the track declares; `amount` is a number of marks of that
    *  one kind, and a NEGATIVE amount heals, clearing marks of that kind (the lightest first when the
@@ -1014,7 +1017,9 @@ export function applyRulesetSheetOp(
     const match = findPool(resolved.pools, op.pool);
     if ("refusal" in match) return { ok: false, reason: match.refusal };
     const pool = match.pool;
-    if (!isAmount(op.amount, op.op === "temp")) return { ok: false, reason: "bad-amount" };
+    if (!isAmount(op.amount, op.op === "temp" || (op.op === "restore" && op.unseals === true))) {
+      return { ok: false, reason: "bad-amount" };
+    }
 
     if (op.op === "temp") {
       if (!pool.allowTemp) return { ok: false, reason: "no-temp" };
@@ -1030,9 +1035,11 @@ export function applyRulesetSheetOp(
       return done(poolNow(pool, value, pool.temp));
     }
     if (op.op === "restore") {
-      // Never past what only a rest gives back (1.188), and never down for it either.
-      const value = Math.min(Math.max(pool.value, pool.max - pool.sealed), pool.value + op.amount);
-      setPool(pool, value, pool.temp);
+      // Never past what only a rest gives back (1.188), and never down for it either, unless it is
+      // given back too (1.196).
+      const sealed = op.unseals ? 0 : pool.sealed;
+      const value = Math.min(Math.max(pool.value, pool.max - sealed), pool.value + op.amount);
+      setPool(pool, value, pool.temp, sealed);
       return done(poolNow(pool, value, pool.temp));
     }
     // Damage drains the temporary buffer first and then the pool, and is never refused for being

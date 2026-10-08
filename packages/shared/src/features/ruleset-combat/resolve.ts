@@ -714,6 +714,74 @@ function dealHeal(
   if (target.down && !target.defeated && after.value > 0 && after.value > before.value) revive(ctx, target);
 }
 
+/** What only a rest gives back (1.188), given back now (1.196): the maximum whole again, and the
+ *  health they have left where it was. */
+function unsealHealth(ctx: RulesetCombatContext, actor: RulesetCombatant, target: RulesetCombatant): void {
+  let amount = 0;
+  if (target.sheet) {
+    const health = ctx.combat.health;
+    if ("track" in health) return;
+    const live = readRulesetLive(ctx.definition, target.sheet.build, target.sheet.live);
+    const pool = live.pools.find((entry) => !entry.listId && entry.key === health.pool);
+    if (!pool || pool.sealed <= 0) return;
+    amount = pool.sealed;
+    if (!writeRulesetSheet(ctx.definition, target, { op: "restore", pool: pool.key, amount: 0, unseals: true })) return;
+  } else if (target.health?.sealed) {
+    amount = target.health.sealed;
+    delete target.health.sealed;
+  }
+  if (amount <= 0) return;
+  ctx.events.push({
+    type: "unsealed",
+    targetId: target.id,
+    sourceId: actor.id,
+    amount,
+    maxHealth: healthOf(ctx, target).max,
+  });
+}
+
+/** A live track moved by levels (1.196), held to its bounds: a sheet's through the sheet's own rules,
+ *  anybody else's on the combatant. Raised past what halves their maximum, the health they hold is
+ *  held to it; raised to a level that defeats, they are slain. Nothing is put on somebody immune. */
+function moveTrack(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  target: RulesetCombatant,
+  track: string,
+  by: number,
+): void {
+  const declared = ctx.definition.sheet.live.tracks.find((entry) => entry.id === track);
+  if (!declared || declared.kinds) return;
+  if (by > 0 && rulesetImmuneToCondition(target, track, ctx.definition)) return;
+  const start = declared.default ?? declared.min;
+  const from = target.sheet ? trackValue(ctx, target, track) : (target.tracks?.[track] ?? start);
+  if (target.sheet) writeRulesetSheet(ctx.definition, target, { op: "track", track, by });
+  else {
+    const top = typeof declared.max === "number" ? declared.max : 1000;
+    (target.tracks ??= {})[track] = Math.min(top, Math.max(declared.min, from + by));
+  }
+  const to = target.sheet ? trackValue(ctx, target, track) : target.tracks![track]!;
+  if (to === from) return;
+  ctx.events.push({ type: "track", targetId: target.id, sourceId: actor.id, track, label: declared.label, from, to });
+  // Held to a maximum a level may have halved, as the fight's opening holds it (1.110).
+  const health = healthOf(ctx, target);
+  if (target.health && target.health.value > health.max) target.health.value = health.max;
+  else if (target.sheet && !("track" in ctx.combat.health)) {
+    const key = ctx.combat.health.pool;
+    const live = readRulesetLive(ctx.definition, target.sheet.build, target.sheet.live);
+    const pool = live.pools.find((entry) => !entry.listId && entry.key === key);
+    if (pool && pool.value > health.max) {
+      writeRulesetSheet(ctx.definition, target, { op: "spend", pool: key, amount: pool.value - health.max });
+    }
+  }
+  if (
+    !target.defeated &&
+    rulesetActiveConditions(ctx.definition, ctx.combat, target, ctx.state).some((entry) => entry.defeats)
+  ) {
+    slay(ctx, target, actor.id, declared.label);
+  }
+}
+
 /** Temporary points never stack: the bigger buffer is the one that stands. */
 function grantTemporary(
   ctx: RulesetCombatContext,
@@ -1890,14 +1958,20 @@ function brokenStrike(
       : false;
   if (saved && broken.onSave !== "half") return;
   const from = ctx.events.length;
+  // Its own step, once for each the cast was paid above its base (1.196), as the entry's is.
+  const steps = !broken.perCostStep
+    ? 0
+    : action.innate
+      ? Math.max(0, action.innate.level - action.innate.baseLevel)
+      : zone.payWith
+        ? rulesetCostSteps(ctx.definition, action, zone.payWith, caster)
+        : 0;
+  const extra = broken.perCostStep && steps > 0 ? { amount: broken.perCostStep, times: steps } : undefined;
   const harm = rulesetCombatIsPool(ctx.combat)
     ? (({ rolls, flat, total, pool }) => ({ rolls, flat, amount: total, pool }))(
-        throwHarm(ctx, target, broken.amount, broken.damageType, 0),
+        throwHarm(ctx, target, broken.amount, broken.damageType, 0, extra),
       )
-    : (() => {
-        const rolls = rollRulesetDice(ctx.roll, broken.amount.count, broken.amount.sides);
-        return { rolls, flat: broken.amount.flat, amount: sumOf(rolls) + broken.amount.flat };
-      })();
+    : (({ rolls, flat, total }) => ({ rolls, flat, amount: total }))(rollAmount(ctx, broken.amount, extra));
   const dealt = applyDamage(ctx, target, {
     sourceId: caster.id,
     label: zone.label,
@@ -5314,6 +5388,9 @@ function resolveActionBody(
       });
     }
     if (!saved) {
+      // Tracks moved and sealed health given back (1.196), before the conditions it puts on.
+      for (const entry of action.tracks ?? []) moveTrack(ctx, actor, target, entry.track, entry.by);
+      if (action.unseals) unsealHealth(ctx, actor, target);
       for (const applies of action.applies ?? []) {
         // Read off whoever applies it, as it applies (1.162): Rage's bonus by barbarian level.
         if (!rulesetSheetWithin(ctx.definition, actor, applies.when)) continue;

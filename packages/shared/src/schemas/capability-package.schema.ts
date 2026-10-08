@@ -954,7 +954,10 @@ const capabilityPackageManifestBaseSchema = z
 // 1.195: a wall zone's `sections` (struck at like creatures with their own defense and health, and
 //        broken apart, a broken one leaving what its `broken` says: 5e's Wall of Ice), and a
 //        choice's `wall` cell, which an attack option's `walls` offers.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 195 } as const);
+// 1.196: catalog mechanics' `tracks` (live tracks moved by levels on whoever it lands on: 5e's
+//        Greater Restoration takes exhaustion off, Sickening Radiance adds it) and `unseals` (the
+//        health only a rest gives back, given back), and a wall section's `broken.perCostStep`.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 196 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

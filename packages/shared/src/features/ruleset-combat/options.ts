@@ -7,6 +7,7 @@ import {
   applyRulesetSheetOp,
   evaluateRulesetSheetLive,
   planRulesetUse,
+  readRulesetLive,
   type RulesetLiveState,
   type RulesetSheetOp,
 } from "../rulesets/live-state.js";
@@ -1163,17 +1164,45 @@ export function rulesetCanRevive(
 /** Whether an action that does nothing but cure has something to cure on this one (1.171): a
  *  condition it ends that they hold, or a dying they can be steadied from. One that also heals or
  *  harms or puts something on is aimed as that says. */
-function rulesetCureReaches(action: RulesetCombatAction, combatant: RulesetCombatant): boolean {
+function rulesetCureReaches(
+  definition: RulesetDefinition,
+  action: RulesetCombatAction,
+  combatant: RulesetCombatant,
+): boolean {
   // A contest that treats somebody (1.188) is taken only on whoever has what it treats.
   const contest = action.contest;
   if (contest?.targetHolds && !combatant.tracked.some((entry) => entry.condition === contest.targetHolds)) return false;
   if (contest?.targetDying && !(combatant.dying && !combatant.stable && !combatant.defeated)) return false;
-  if (!action.ends && !action.stabilizes) return true;
+  // A track moved down or sealed health given back cures too (1.196); one moved up harms.
+  const lowers = action.tracks?.filter((entry) => entry.by < 0) ?? [];
+  if (!action.ends && !action.stabilizes && !lowers.length && !action.unseals) return true;
   if (action.damage || action.heal || action.temporary || action.restore || action.applies?.length) return true;
+  if (action.tracks?.some((entry) => entry.by > 0)) return true;
+  if (action.unseals && rulesetSealedHealth(definition, combatant) > 0) return true;
+  if (lowers.some((entry) => rulesetTrackAboveFloor(definition, combatant, entry.track))) return true;
   if (action.revives || action.save || action.contest || action.summons || action.zone) return true;
   if (action.stabilizes && combatant.dying && !combatant.stable && !combatant.defeated) return true;
   const ends = new Set(action.ends?.conditions ?? []);
   return combatant.tracked.some((entry) => ends.has(entry.condition));
+}
+
+/** What only a rest would give back to this one (1.188). */
+function rulesetSealedHealth(definition: RulesetDefinition, combatant: RulesetCombatant): number {
+  if (!combatant.sheet) return combatant.health?.sealed ?? 0;
+  const health = definition.combat?.health;
+  if (!health || "track" in health) return 0;
+  const live = readRulesetLive(definition, combatant.sheet.build, combatant.sheet.live);
+  return live.pools.find((entry) => !entry.listId && entry.key === health.pool)?.sealed ?? 0;
+}
+
+/** Whether this one stands above the bottom of a live track, so there is a level to take off. */
+function rulesetTrackAboveFloor(definition: RulesetDefinition, combatant: RulesetCombatant, track: string): boolean {
+  const declared = definition.sheet.live.tracks.find((entry) => entry.id === track);
+  if (!declared) return false;
+  if (!combatant.sheet) return (combatant.tracks?.[track] ?? declared.default ?? declared.min) > declared.min;
+  const live = readRulesetLive(definition, combatant.sheet.build, combatant.sheet.live);
+  const now = live.tracks.find((entry) => entry.id === track);
+  return !!now && now.value > now.min;
 }
 
 export function rulesetOptionTargets(
@@ -1212,7 +1241,7 @@ export function rulesetOptionTargets(
         if (cure?.revives) {
           if (!rulesetCanRevive(state, cure, combatant)) return false;
         } else if (combatant.defeated) return false;
-        if (cure && !rulesetCureReaches(cure, combatant)) return false;
+        if (cure && !rulesetCureReaches(definition, cure, combatant)) return false;
         if (!rulesetTargetHasSenses(definition, state, combatant, needs)) return false;
         // "A creature you can see" (1.173).
         if (cure?.seen && !rulesetCanSee(definition, state, actor, combatant)) return false;

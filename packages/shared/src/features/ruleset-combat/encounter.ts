@@ -1594,7 +1594,9 @@ function targetsOf(mechanics: RulesetCatalogMechanics): RulesetCombatAction["tar
   // A `utility` entry is only ever here because it changes what the turn may hold, and what it
   // changes is the holder's own economy: there is nobody to point it at. One that cures (1.171) is
   // pointed at whom it cures, an ally unless it says otherwise.
-  const cures = !!mechanics.ends || !!mechanics.stabilizes || !!mechanics.revives;
+  // Moving a track or giving back sealed health is one too (1.196).
+  const cures =
+    !!mechanics.ends || !!mechanics.stabilizes || !!mechanics.revives || !!mechanics.tracks || !!mechanics.unseals;
   // One that leaves an area standing (1.173: Fog Cloud, Darkness) is set down wherever its caster
   // likes, and off a board held on whoever it is cast on.
   if (mechanics.kind === "utility" && mechanics.zone && mechanics.area) {
@@ -1681,7 +1683,9 @@ function mechanicsAction(
   // something from happening at all. Calling something off IS what such an entry does.
   const cancels = moment?.cancels === true;
   // Taking a condition off, steadying the dying or bringing back the dead is something to resolve.
-  const cures = !!mechanics.ends || !!mechanics.stabilizes || !!mechanics.revives;
+  // Moving a track or giving back sealed health is one too (1.196).
+  const cures =
+    !!mechanics.ends || !!mechanics.stabilizes || !!mechanics.revives || !!mechanics.tracks || !!mechanics.unseals;
   // And so is leaving an area standing that only hides or blocks (1.173).
   const places = !!mechanics.zone && !!mechanics.area;
   if (mechanics.kind === "utility" && !mechanics.gives && !mechanics.standard && !cancels && !cures && !places) {
@@ -1800,6 +1804,8 @@ function mechanicsAction(
     };
   }
   if (mechanics.stabilizes) action.stabilizes = true;
+  if (mechanics.tracks) action.tracks = mechanics.tracks.map((entry) => ({ ...entry }));
+  if (mechanics.unseals) action.unseals = true;
   const revival = mechanics.revives && amountOf(mechanics.revives.health);
   if (mechanics.revives && revival) action.revives = { withinRounds: mechanics.revives.withinRounds, amount: revival };
   if (mechanics.summons) {
@@ -1869,6 +1875,9 @@ function mechanicsAction(
                 ...(broken.damageType ? { damageType: broken.damageType } : {}),
                 ...(broken.save ? { save: broken.save } : {}),
                 ...(broken.onSave ? { onSave: broken.onSave } : {}),
+                ...(broken.perCostStep && amountOf(broken.perCostStep)
+                  ? { perCostStep: amountOf(broken.perCostStep)! }
+                  : {}),
               },
             }
           : {}),

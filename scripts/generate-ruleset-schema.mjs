@@ -604,6 +604,9 @@ function requireMechanicsPairs(node) {
   // A health pool (1.191) names dice or a flat number.
   if (properties.healthPool) requireAnyOf(properties.healthPool, ["dice", "flat"]);
   if (properties.healthPoolSkips) requireAnyOf(properties.healthPoolSkips, ["conditions", "unseeing"]);
+  // A track is moved by at least one level (1.196).
+  const by = properties.tracks?.items?.properties?.by;
+  if (by) by.not = { const: 0 };
   node.allOf = [
     ...(node.allOf ?? []),
     { if: { properties: { kind: { const: "rider" } }, required: ["kind"] }, then: { required: ["rider"] } },

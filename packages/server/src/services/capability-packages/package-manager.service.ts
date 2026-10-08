@@ -1522,6 +1522,20 @@ function carriesWardsAndSaves(value: unknown, depth = 0): boolean {
 
 const MODIFIER_TARGETS = new Set<string>(RULESET_COMBAT_MODIFIER_TARGETS);
 
+/** Tracks an entry moves by levels, health it gives back from sealed, or a broken section's own
+ *  step (1.196), in catalogs too. A creature's `tracks` is a record, not a list of moves. */
+function carriesTrackMoves(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesTrackMoves(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.unseals !== undefined) return true;
+  if (Array.isArray(record.tracks) && record.tracks.some((one) => plainRecord(one)?.by !== undefined)) return true;
+  const sections = plainRecord(plainRecord(record.zone)?.sections);
+  if (plainRecord(sections?.broken)?.perCostStep !== undefined) return true;
+  return Object.values(record).some((one) => carriesTrackMoves(one, depth + 1));
+}
+
 /** A wall in sections that are struck and broken (1.195), in catalogs too. */
 function carriesWallSections(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -3157,6 +3171,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Tracks moved, sealed health given back, a broken section's step, 1.196.
+  if (
+    !declaresApi(196) &&
+    (carriesTrackMoves(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesTrackMoves(document)))
+  ) {
+    return "A ruleset with entries that move live tracks by levels or give back sealed health, or broken wall sections with their own cost step, requires schemaVersion 2 and capabilityApi 1.196 or newer";
   }
   // Walls in sections, 1.195.
   if (

@@ -92,7 +92,21 @@ try {
     rows: [{ list: "spells", values: { name: "Ice", level: 1, prepared: true } }],
     mechanics: iceMechanics,
   } as unknown as RulesetCatalogEntry;
-  const spells = [ice];
+  // The same paid for with a slot, its frigid air 3 more a step above it (1.196).
+  const iceUp = {
+    id: "ice-up",
+    label: "Ice Up",
+    rows: [{ list: "spells", values: { name: "Ice Up", level: 1, prepared: true } }],
+    mechanics: {
+      ...iceMechanics,
+      cost: [{ pool: "slots_1", amount: 1 }],
+      zone: {
+        ...iceZone,
+        sections: { ...iceZone.sections, broken: { ...iceZone.sections.broken, perCostStep: { flat: 3 } } },
+      },
+    },
+  } as unknown as RulesetCatalogEntry;
+  const spells = [ice, iceUp];
   // A brute with a club and a burning brand, a heal for its friends and a spit saved against.
   const brute: RulesetStatBlock = {
     health: 100,
@@ -138,7 +152,15 @@ try {
           side: "party",
           build: rulesetSheetBuildSchema.parse({
             abilities: { str: 10, dex: 10, con: 14, int: 10, wis: 16, cha: 10 },
-            fields: { level: 5, ac: 12, speed: 30, hp_max: 60, spellcasting_ability: "wis", slots_max_1: 4 },
+            fields: {
+              level: 5,
+              ac: 12,
+              speed: 30,
+              hp_max: 60,
+              spellcasting_ability: "wis",
+              slots_max_1: 4,
+              slots_max_2: 2,
+            },
             lists: { spells: spells.flatMap((entry) => rowsFromCatalogEntry("spells", entry).map((row) => row.row)) },
           }),
           live: {},
@@ -167,12 +189,18 @@ try {
   const hp = (state: RulesetEncounterState, id: string) =>
     rulesetCombatHealth(definition, definition.combat!, rulesetCombatant(state, id)!).value;
   // The wall across the mage's line at x 5: rows 6 and 7 one section, 8 and 9 the other.
-  const walled = (): RulesetEncounterState => {
+  const walled = (label = "Ice", payWith?: string): RulesetEncounterState => {
     const state = fight();
     const step = applyRulesetCombatChoice(
       definition,
       state,
-      { actorId: "mage", optionId: optionOf(state, "mage", "Ice").id, targetIds: [], at: { x: 5, y: 7 } },
+      {
+        actorId: "mage",
+        optionId: optionOf(state, "mage", label).id,
+        targetIds: [],
+        at: { x: 5, y: 7 },
+        ...(payWith ? { payWith } : {}),
+      },
       roll,
     );
     assert.equal(refused(step), undefined, JSON.stringify(step.events));
@@ -308,6 +336,25 @@ try {
       roll,
     );
     assert.equal(hp(beside.state, "a"), 100);
+  }
+
+  // ── Frigid air grows with the slot (1.196): 3 more a step above the cast's base ──
+  {
+    const walkIn = (payWith?: string) => {
+      d20 = 15;
+      const burnt = again(strike(walled("Ice Up", payWith), "Brand", { x: 5, y: 6 }).state);
+      d20 = 2;
+      const into = applyRulesetCombatChoice(
+        definition,
+        burnt,
+        { actorId: "a", optionId: RULESET_MOVE_OPTION, targetIds: [], to: { x: 5, y: 7 } },
+        roll,
+      );
+      assert.equal(refused(into), undefined, JSON.stringify(into.events));
+      return hp(into.state, "a");
+    };
+    assert.equal(walkIn("slots_2"), 93, "4 and 3 for the step");
+    assert.equal(walkIn(), 96, "at its base, only the 4");
   }
 
   // ── Import refusals ──

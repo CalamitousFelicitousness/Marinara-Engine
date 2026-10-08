@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: spells and abilities can lower or raise exhaustion and other tracks, and give back hit point maximum that only a rest would restore (Greater Restoration, Sickening Radiance); Wall of Ice's frigid air grows with the slot level (Capability API 1.196).
 - Rulesets: Wall of Ice stands in 10-foot sections that can be attacked and broken; fire does double, and a broken section stops blocking and leaves frigid air that hurts whoever moves through it (Capability API 1.195).
 - Rulesets: Sleep passes over creatures already unconscious, and Color Spray over creatures that can't see, without spending any of the hit points they roll on them (Capability API 1.194).
 - Rulesets: Wall of Thorns deals piercing damage to whoever it appears around and slashing damage to whoever moves into it (Capability API 1.193).

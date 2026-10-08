@@ -762,6 +762,19 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
       }),
     ],
     [
+      "track",
+      say({
+        type: "track",
+        targetId: "lurker",
+        sourceId: "brenna",
+        track: "exhaustion",
+        label: "Exhaustion",
+        from: 2,
+        to: 1,
+      }),
+    ],
+    ["unsealed", say({ type: "unsealed", targetId: "lurker", sourceId: "brenna", amount: 5, maxHealth: 30 })],
+    [
       "healthPool",
       say({ type: "healthPool", actorId: "brenna", label: "Sleep", rolls: [8, 7], total: 15, affected: ["lurker"] }),
     ],
@@ -957,6 +970,23 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.equal(
     struck("critical", 30, 0, true),
     "Brenna's Mace strikes the Wall of Ice for 30 and breaks that section.",
+  );
+  assert.equal(printed.get("track"), "Brenna takes Thorn Lurker's Exhaustion down from 2 to 1.");
+  assert.equal(
+    say({
+      type: "track",
+      targetId: "lurker",
+      sourceId: "brenna",
+      track: "exhaustion",
+      label: "Exhaustion",
+      from: 1,
+      to: 2,
+    }),
+    "Brenna raises Thorn Lurker's Exhaustion from 1 to 2.",
+  );
+  assert.equal(
+    printed.get("unsealed"),
+    "Brenna lifts what kept 5 of Thorn Lurker's health from healing; their maximum is 30 again.",
   );
   assert.equal(printed.get("healthPool"), "Brenna's Sleep rolls 15, enough for Thorn Lurker.");
   assert.equal(

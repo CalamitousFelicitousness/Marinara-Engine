@@ -155,15 +155,19 @@ function enumTableShape(node) {
   properties.table.maxProperties = 40;
 }
 
-// What winning a contest does is at least one thing: it applies, ends or pushes. A refinement, so the
-// editor is told here. Found by its shape: the three side by side.
+// What winning a contest does is at least one thing: it applies, ends, pushes or stabilizes (1.188). A
+// refinement, so the editor is told here. Found by its shape: the first three side by side. A contest
+// is rolled against a defender or a fixed difficulty (1.188), exactly one: found by the two side by side.
 function contestDoesSomething(node) {
   if (Array.isArray(node)) return node.forEach(contestDoesSomething);
   if (!node || typeof node !== "object") return;
   Object.values(node).forEach(contestDoesSomething);
   const properties = node.properties;
+  if (node.type === "object" && properties?.defender && properties.difficulty && properties.attacker) {
+    node.allOf = [...(node.allOf ?? []), { oneOf: [{ required: ["defender"] }, { required: ["difficulty"] }] }];
+  }
   if (node.type !== "object" || !properties?.applies || !properties.ends || !properties.push) return;
-  requireAnyOf(node, ["applies", "ends", "push"]);
+  requireAnyOf(node, ["applies", "ends", "push", ...(properties.stabilizes ? ["stabilizes"] : [])]);
 }
 
 // A rest step's `to` is a word only on a state, where it is "default" or one of the state's values;
@@ -236,13 +240,19 @@ function cancelOnlyWhenAimed(node) {
     ];
   }
   if (node.type === "object" && ["on", "for", "within"].every((key) => keys.includes(key))) {
-    node.allOf = [...(node.allOf ?? []),
-      { if: { properties: { for: { enum: ["ally", "any"] } }, required: ["for"] },
-        then: { required: ["within"], properties: { on: { enum: ["aimed", "hit"] } } } },
-      { if: { properties: { on: { const: "turn-start" } }, required: ["on"] },
-        then: { not: { anyOf: ["cancels", "blow", "against", "upTo"].map((key) => ({ required: [key] })) } } },
+    node.allOf = [
+      ...(node.allOf ?? []),
+      {
+        if: { properties: { for: { enum: ["ally", "any"] } }, required: ["for"] },
+        then: { required: ["within"], properties: { on: { enum: ["aimed", "hit"] } } },
+      },
+      {
+        if: { properties: { on: { const: "turn-start" } }, required: ["on"] },
+        then: { not: { anyOf: ["cancels", "blow", "against", "upTo"].map((key) => ({ required: [key] })) } },
+      },
     ];
-    if (keys.includes("cancelSave")) node.allOf.push({ if: { required: ["cancelSave"] }, then: { required: ["cancels"] } });
+    if (keys.includes("cancelSave"))
+      node.allOf.push({ if: { required: ["cancelSave"] }, then: { required: ["cancels"] } });
   }
   if (node.type === "object" && ["on", "at", "cancels", "against"].every((key) => keys.includes(key))) {
     // Only a moment BEFORE something resolves may call it off.
@@ -396,7 +406,10 @@ function creatureActionShape(node) {
       if: { required: ["heal"] },
       then: { not: { anyOf: ["damage", "toHit", "save", "area"].map((key) => ({ required: [key] })) } },
     },
-    { if: { required: ["targets"] }, then: { not: { anyOf: ["self", "sequence"].map((key) => ({ required: [key] })) } } },
+    {
+      if: { required: ["targets"] },
+      then: { not: { anyOf: ["self", "sequence"].map((key) => ({ required: [key] })) } },
+    },
   ];
 }
 
@@ -414,17 +427,22 @@ function oneSourceForCreature(node) {
   if (node.type !== "object" || !properties?.sheet || !properties.actions || !properties.tier) return;
   const casting = properties.spellcasting;
   casting.properties.spells.uniqueItems = true;
-  casting.allOf = [{
-    if: { required: ["coven"] },
-    then: { properties: { spells: { contains: { required: ["coven"] } } } },
-    else: { properties: { spells: { items: { not: { required: ["coven"] } } } } },
-  }];
+  casting.allOf = [
+    {
+      if: { required: ["coven"] },
+      then: { properties: { spells: { contains: { required: ["coven"] } } } },
+      else: { properties: { spells: { items: { not: { required: ["coven"] } } } } },
+    },
+  ];
   node.allOf = [
     ...(node.allOf ?? []),
     {
       if: { required: ["sheet"] },
       then: { not: { anyOf: CREATURE_SHEET_REPLACES.map((key) => ({ required: [key] })) } },
-      else: { required: CREATURE_PLAIN_NEEDS, anyOf: [{ required: ["actions"], properties: { actions: { minItems: 1 } } }, { required: ["spellcasting"] }] },
+      else: {
+        required: CREATURE_PLAIN_NEEDS,
+        anyOf: [{ required: ["actions"], properties: { actions: { minItems: 1 } } }, { required: ["spellcasting"] }],
+      },
     },
   ];
 }

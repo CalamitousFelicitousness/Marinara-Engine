@@ -213,7 +213,7 @@ try {
     refuses(
       emberText,
       (doc) => (contestOf(doc, "grab").onWin = {}),
-      /applies, ends or pushes something/,
+      /applies, ends, pushes or stabilizes something/,
       "a win that does nothing",
     );
     refuses(

@@ -11110,6 +11110,11 @@
                           "required": [
                             "push"
                           ]
+                        },
+                        {
+                          "required": [
+                            "stabilizes"
+                          ]
                         }
                       ]
                     }
@@ -21587,6 +21592,11 @@
                               "required": [
                                 "push"
                               ]
+                            },
+                            {
+                              "required": [
+                                "stabilizes"
+                              ]
                             }
                           ]
                         }
@@ -30484,6 +30494,11 @@
                         "required": [
                           "push"
                         ]
+                      },
+                      {
+                        "required": [
+                          "stabilizes"
+                        ]
                       }
                     ]
                   }
@@ -30498,7 +30513,23 @@
               "attacker",
               "onWin"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "allOf": [
+              {
+                "oneOf": [
+                  {
+                    "required": [
+                      "defender"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "difficulty"
+                    ]
+                  }
+                ]
+              }
+            ]
           },
           "maxItems": 12
         },

@@ -67,6 +67,12 @@ import {
   rulesetOpportunityAttack,
   rulesetPositionOf,
   rulesetReachableCells,
+  rulesetDistanceTo,
+  rulesetFootprint,
+  rulesetFootprintsSee,
+  rulesetGap,
+  rulesetNearestCell,
+  rulesetSpanOf,
 } from "./grid.js";
 import { coverTier, elevationAt } from "../tactical-combat/math.js";
 import { rulesetZoneMoveCells, rulesetZoneTurnCells } from "./zones.js";
@@ -314,9 +320,10 @@ export function rulesetTargetRefusal(
     ? rulesetCombatant(state, actorId)?.summons?.find((entry) => `summon:${entry.actionId}` === optionId)
     : undefined;
   if (summon) {
-    const to = rulesetPositionOf(rulesetCombatant(state, targetId));
-    if (!positioned(state) || !summon.at || !to) return null;
-    return rulesetCellDistance(summon.at, to) > (summon.move ?? 0) + (summon.reach ?? 1) ? "out-of-reach" : null;
+    const target = rulesetCombatant(state, targetId);
+    if (!positioned(state) || !summon.at || !rulesetPositionOf(target)) return null;
+    // To the nearest cell they fill (1.189).
+    return rulesetDistanceTo(summon.at, target) > (summon.move ?? 0) + (summon.reach ?? 1) ? "out-of-reach" : null;
   }
   const reach = rulesetOptionReach(state, actorId, optionId, range);
   if (!reach) return null;
@@ -334,7 +341,9 @@ export function rulesetTargetRefusal(
       ? (state.board?.rangeBonus ?? 0)
       : 0;
   if (away > reach.max + further) return "out-of-reach";
-  if (rulesetCellDistance(from, to) > 1 && !rulesetLineOfSight(grid, from, to)) return "no-line-of-sight";
+  // Any cell of one to any cell of the other (1.189).
+  const actor = rulesetCombatant(state, actorId);
+  if (rulesetGap(actor, target) > 1 && !rulesetFootprintsSee(grid, actor, target)) return "no-line-of-sight";
   return null;
 }
 
@@ -355,7 +364,9 @@ export function rulesetAimLegal(
   if (!grid || !action?.area || !from || !reach) return false;
   if (!Number.isInteger(at.x) || !Number.isInteger(at.y)) return false;
   if (at.x < 0 || at.y < 0 || at.x >= grid.width || at.y >= grid.height) return false;
-  return rulesetCellDistance(from, at) <= reach.max && rulesetLineOfSight(grid, from, at);
+  // From whichever cell the actor fills (1.189).
+  if (rulesetDistanceTo(at, actor) > reach.max) return false;
+  return rulesetFootprint(actor).some((cell) => rulesetLineOfSight(grid, cell, at));
 }
 
 /** Where an area option may be aimed, and who each aim would catch. Empty for anything that is not
@@ -399,8 +410,27 @@ export function rulesetAimCells(
           // Anybody still in the fight, on their feet or on the ground: a shape that MENDS is set
           // down on the ally who fell, and that cell has to be offered.
           .filter((combatant) => !combatant.defeated && rulesetPositionOf(combatant))
-          .map((combatant) => box(rulesetPositionOf(combatant)!, shape.size))
-      : [box(from, reach.max)];
+          // Around every cell they fill (1.189): from the top-left one, as far again as they are big.
+          .map((combatant) => {
+            const box_ = box(rulesetPositionOf(combatant)!, shape.size);
+            const more = rulesetSpanOf(combatant) - 1;
+            return {
+              ...box_,
+              bottom: Math.min(grid.height - 1, box_.bottom + more),
+              right: Math.min(grid.width - 1, box_.right + more),
+            };
+          })
+      : [
+          (() => {
+            const box_ = box(from, reach.max);
+            const more = rulesetSpanOf(rulesetCombatant(state, actorId)) - 1;
+            return {
+              ...box_,
+              bottom: Math.min(grid.height - 1, box_.bottom + more),
+              right: Math.min(grid.width - 1, box_.right + more),
+            };
+          })(),
+        ];
   // And a ceiling on the cells looked at, whatever `limit` says: the largest board a save may hold
   // is 64 by 64, so nothing legitimate is cut short, and nothing else can make this loop long.
   let looked = 0;
@@ -450,10 +480,13 @@ export function rulesetAimedCells(
   const from = rulesetPositionOf(actor);
   if (!grid || !actor || !action?.area || !from) return [];
   const area = action.area;
-  const one = (aim: RulesetCombatCell) =>
-    area.shape === "wall"
-      ? rulesetWallShape(grid, area, aim, from, lay?.toward, undefined, lay?.ring).cells
-      : rulesetAreaCells(area.shape, area.size, from, aim, grid, area.width);
+  // Laid from whichever cell the actor fills nearest the aim (1.189).
+  const one = (aim: RulesetCombatCell) => {
+    const origin = rulesetNearestCell(actor, aim) ?? from;
+    return area.shape === "wall"
+      ? rulesetWallShape(grid, area, aim, origin, lay?.toward, undefined, lay?.ring).cells
+      : rulesetAreaCells(area.shape, area.size, origin, aim, grid, area.width);
+  };
   const cells = new Map<string, RulesetCombatCell>();
   for (const aim of [at, ...(lay?.also ?? [])]) {
     for (const cell of one(aim)) cells.set(`${cell.x},${cell.y}`, cell);
@@ -517,8 +550,8 @@ export function rulesetAreaTargets(
         if (action.targets.side === "ally" && !sameSide) return false;
         if (action.targets.side === "enemy" && sameSide) return false;
       }
-      const cell = rulesetPositionOf(combatant);
-      return !!cell && covered.has(`${cell.x},${cell.y}`);
+      // Caught by any cell they fill (1.189).
+      return rulesetFootprint(combatant).some((cell) => covered.has(`${cell.x},${cell.y}`));
     })
     .map((combatant) => combatant.id);
 }
@@ -536,6 +569,8 @@ export function rulesetCoverBonus(
   target: RulesetCombatant,
   from: RulesetCombatCell | null,
   against: "attack" | "save" = "attack",
+  /** Who it comes from, whose own cells never screen it (1.189). */
+  attackerId?: string,
 ): number {
   const cover = combat.cover;
   const grid = state.board?.grid;
@@ -545,16 +580,33 @@ export function rulesetCoverBonus(
   const screens = cover.creatures
     ? new Set(
         state.combatants
-          .filter((one) => one.id !== target.id && rulesetCombatStanding(one))
-          .flatMap((one) => {
-            const cell = rulesetPositionOf(one);
-            return cell ? [`${cell.x},${cell.y}`] : [];
-          }),
+          .filter((one) => one.id !== target.id && one.id !== attackerId && rulesetCombatStanding(one))
+          // Every cell they fill (1.189).
+          .flatMap((one) => rulesetFootprint(one).map((cell) => `${cell.x},${cell.y}`)),
       )
     : undefined;
-  const tier = from ? coverTier(grid, from, at, screens) : "none";
+  // Somebody bigger than one cell is as covered as the least covered cell they fill (1.189), from
+  // whichever cell of the attacker's is nearest it.
+  const order = ["none", "half", "three-quarters", "total"] as const;
+  let tier: (typeof order)[number] = "none";
+  let ground = false;
+  if (from) {
+    let best = -1;
+    for (const cell of rulesetFootprint(target)) {
+      const origin = attackerId ? (rulesetNearestCell(rulesetCombatant(state, attackerId), cell) ?? from) : from;
+      const here = order.indexOf(coverTier(grid, origin, cell, screens) as (typeof order)[number]);
+      const groundHere = rulesetCellCover(grid, cell) > 0;
+      if (best < 0 || here < best || (here === best && ground && !groundHere)) {
+        best = here;
+        ground = groundHere;
+      }
+    }
+    tier = order[Math.max(0, best)]!;
+  } else {
+    ground = rulesetCellCover(grid, at) > 0;
+  }
   if (tier === "three-quarters" || tier === "total") return cover.threeQuarters ?? cover.bonus;
-  return tier === "half" || (against === "attack" && rulesetCellCover(grid, at) > 0) ? cover.bonus : 0;
+  return tier === "half" || (against === "attack" && ground) ? cover.bonus : 0;
 }
 
 /** Whether one combatant stands on higher ground than another (combat C6b). Never without a board. */
@@ -598,7 +650,9 @@ export function rulesetDefenseAgainst(
   );
   const defense = target.defense + guards.reduce((total, guard) => total + guard.value, 0);
   const ignored = rulesetAgainstHere(definition, action, target, attacker).some((entry) => entry.ignoresCover);
-  const cover = ignored ? 0 : rulesetCoverBonus(combat, state, target, rulesetPositionOf(attacker));
+  const cover = ignored
+    ? 0
+    : rulesetCoverBonus(combat, state, target, rulesetPositionOf(attacker), "attack", attacker?.id);
   const highGround = combat.elevation?.highGround;
   const above = typeof highGround === "object" && rulesetAbove(state, attacker, target) ? highGround.bonus : 0;
   return { defense: defense + cover - above, cover, guards };
@@ -1288,7 +1342,7 @@ export function rulesetActionAvailable(
         return false;
       if (!state.board) return true;
       const to = rulesetPositionOf(member);
-      return !!from && !!to && rulesetCellDistance(from, to) <= coven.within;
+      return !!from && !!to && rulesetGap(actor, member) <= coven.within;
     });
     if (members.length < coven.size) return false;
   }
@@ -1846,12 +1900,12 @@ export function rulesetAttackMode(
 
 /** Whether the actor is next to somebody on the other side, which is what a ruleset that says
  *  shooting beside a foe is harder measures. */
-function foeAdjacent(state: RulesetEncounterState, actor: RulesetCombatant, at: RulesetCombatCell): boolean {
+function foeAdjacent(state: RulesetEncounterState, actor: RulesetCombatant): boolean {
   return state.combatants.some((combatant) => {
     if (combatant.side === actor.side || !rulesetCombatStanding(combatant)) return false;
     const cell = rulesetPositionOf(combatant);
-    if (!cell || rulesetCellDistance(at, cell) > 1) return false;
-    // A foe beside the cell and far below (or above) is not beside them (1.109).
+    if (!cell) return false;
+    // Beside any cell either fills (1.189); a foe far below (or above) is not beside them (1.109).
     return rulesetCombatantDistance(state, actor, combatant) <= 1;
   });
 }
@@ -1880,7 +1934,7 @@ function distanceModes(
   // A thrown weapon used in hand is a swing, so neither ranged rule reads it there.
   const thrown = !!reach?.shot && away > (reach?.swing ?? 0);
   const tooFar = !farIsFine && !!ranged && ranged.long === "disadvantage" && thrown && away > reach!.normal;
-  const crowded = !!ranged && ranged.adjacentFoe === "disadvantage" && thrown && foeAdjacent(state, actor, from);
+  const crowded = !!ranged && ranged.adjacentFoe === "disadvantage" && thrown && foeAdjacent(state, actor);
   return {
     advantage: adjacent && theirs.has("attacks-against-adjacent-advantage"),
     disadvantage: tooFar || crowded || (!adjacent && theirs.has("attacks-against-far-disadvantage")),

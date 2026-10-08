@@ -891,6 +891,9 @@ export interface RulesetCombatant {
   /** The level a flier is at, by the board's own levels, while it is up above the ground beneath it
    *  (1.109). Absent on the ground. */
   altitude?: number;
+  /** How many cells a side it fills on the board, its own `x`/`y` the top-left one (1.189): its
+   *  size's `cells`. Absent for one cell. */
+  span?: number;
   /** Where a combatant without a sheet stands on the sheet's live tracks, by track id (1.110): the
    *  levels of `combat.levels` read these as a sheet's are read off its live state. */
   tracks?: Record<string, number>;

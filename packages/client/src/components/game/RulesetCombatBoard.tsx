@@ -219,7 +219,7 @@ export function RulesetCombatBoard({
   const creaturePack = useCreaturePack();
   const facings = useCreatureFacings(
     cells.flatMap((cell) =>
-      cell.occupant ? [{ id: cell.occupant.id, x: cell.x, y: cell.y, side: cell.occupant.side }] : [],
+      cell.occupant && cell.anchor ? [{ id: cell.occupant.id, x: cell.x, y: cell.y, side: cell.occupant.side }] : [],
     ),
     // A ruleset fight has no id of its own on screen: its fighters, as it began, tell one from the next.
     view.order.join(","),
@@ -431,7 +431,9 @@ export function RulesetCombatBoard({
               board has exactly one focusable thing per square and the arrow keys mean one thing. */}
           {cells.map((cell) => {
             const combatant = cell.occupant;
-            if (!combatant) return null;
+            // Drawn once, from its top-left cell, across every cell it fills (1.189).
+            if (!combatant || !cell.anchor) return null;
+            const span = Math.max(1, combatant.span ?? 1);
             const key = rulesetCellKey(cell);
             const onTurn = combatant.id === view.actorId;
             const ring = ringColorFor(combatant.id, combatant.side === "party" ? "party" : "enemy");
@@ -459,9 +461,9 @@ export function RulesetCombatBoard({
                   !combatant.defeated && combatant.down && "opacity-70 grayscale",
                 )}
                 style={{
-                  left: `${((cell.x + 0.5) / grid.width) * 100}%`,
-                  top: `${((cell.y + 0.5) / grid.height) * 100}%`,
-                  width: `${(100 / grid.width) * 0.84}%`,
+                  left: `${((cell.x + span / 2) / grid.width) * 100}%`,
+                  top: `${((cell.y + span / 2) / grid.height) * 100}%`,
+                  width: `${(100 / grid.width) * 0.84 * span}%`,
                 }}
               >
                 <div

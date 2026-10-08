@@ -12,11 +12,12 @@
 import type { RulesetDefinition } from "../../schemas/ruleset.schema.js";
 import { rulesetActiveConditions, rulesetCombatConditions } from "./encounter.js";
 import {
-  rulesetCellDistance,
   rulesetInCells,
   rulesetLineOfSight,
   rulesetPositionOf,
   rulesetZoneCells,
+  rulesetFootprint,
+  rulesetGap,
 } from "./grid.js";
 import type { RulesetCombatant, RulesetCombatCell, RulesetEncounterState } from "./types.js";
 
@@ -105,7 +106,8 @@ export function rulesetCanSee(
   const from = rulesetPositionOf(viewer);
   const to = rulesetPositionOf(seen);
   const positioned = !!grid && !!from && !!to;
-  const away = positioned ? rulesetCellDistance(from, to) : 0;
+  // Nearest cell to nearest cell (1.189).
+  const away = positioned ? rulesetGap(viewer, seen) : 0;
   // A sense that sees past `pierced` reaches this far; a sightless viewer has only its blind ones.
   const pierces = (pierced: readonly string[] | undefined) =>
     (pierced ?? []).some(
@@ -125,9 +127,14 @@ export function rulesetCanSee(
     if (!outlined && entry.unseen && theirs.has(entry.condition) && !pierces(entry.unseen.pierced)) return false;
   }
   if (!positioned) return true;
-  if (!rulesetLineOfSight(grid, from, to)) return false;
   const fogs = obscured(state);
-  if (fogs.length === 0) return true;
-  const line = cellsBetween(from, to).map((cell) => `${cell.x},${cell.y}`);
-  return fogs.every((fog) => !line.some((key) => fog.cells.has(key)) || pierces(fog.pierced));
+  // Any cell the viewer fills to any cell the seen one does (1.189): one clear line is enough.
+  const clear = (a: RulesetCombatCell, b: RulesetCombatCell) => {
+    if (!rulesetLineOfSight(grid, a, b)) return false;
+    if (fogs.length === 0) return true;
+    const line = cellsBetween(a, b).map((cell) => `${cell.x},${cell.y}`);
+    return fogs.every((fog) => !line.some((key) => fog.cells.has(key)) || pierces(fog.pierced));
+  };
+  const theirCells = rulesetFootprint(seen);
+  return rulesetFootprint(viewer).some((a) => theirCells.some((b) => clear(a, b)));
 }

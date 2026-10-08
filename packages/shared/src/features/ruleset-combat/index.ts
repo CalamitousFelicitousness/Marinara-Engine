@@ -159,6 +159,17 @@ export {
   rulesetPushPath,
   rulesetSees,
   rulesetWalkingDistances,
+  rulesetDistanceTo,
+  rulesetFills,
+  rulesetFootprint,
+  rulesetFootprintAt,
+  rulesetFootprintsSee,
+  rulesetGap,
+  rulesetGapFrom,
+  rulesetNearestCell,
+  rulesetSpanOf,
+  rulesetStepLeavesReach,
+  rulesetThreateningEnemies,
 } from "./grid.js";
 export {
   planRulesetCombatCost,

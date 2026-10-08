@@ -6,7 +6,13 @@
  * the resolver decides when a zone catches somebody and does it.
  */
 import { rulesetCombatant } from "./encounter.js";
-import { rulesetCellDistance, rulesetPositionOf, rulesetZoneCatches, rulesetZoneCells } from "./grid.js";
+import {
+  rulesetCellDistance,
+  rulesetFootprint,
+  rulesetPositionOf,
+  rulesetZoneCatches,
+  rulesetZoneCells,
+} from "./grid.js";
 import type {
   RulesetCombatAction,
   RulesetCombatant,
@@ -36,6 +42,11 @@ export function rulesetZoneHolds(cells: readonly RulesetCombatCell[], cell: Rule
   return !!cell && cells.some((one) => one.x === cell.x && one.y === cell.y);
 }
 
+/** Whether a zone's cells hold any cell somebody fills (1.189). */
+export function rulesetZoneHoldsOne(cells: readonly RulesetCombatCell[], combatant: RulesetCombatant): boolean {
+  return rulesetFootprint(combatant).some((cell) => rulesetZoneHolds(cells, cell));
+}
+
 /** Who a zone has inside it now, among those it may catch. */
 export function rulesetZoneOccupants(
   state: RulesetEncounterState,
@@ -45,7 +56,7 @@ export function rulesetZoneOccupants(
 ): string[] {
   const cells = rulesetZoneCells(state, caster, zone);
   return state.combatants
-    .filter((one) => rulesetZoneCatches(caster, zone, action, one) && rulesetZoneHolds(cells, rulesetPositionOf(one)))
+    .filter((one) => rulesetZoneCatches(caster, zone, action, one) && rulesetZoneHoldsOne(cells, one))
     .map((one) => one.id);
 }
 
@@ -59,7 +70,7 @@ export function rulesetZoneSideOccupants(
   const cells = zone.sideCells ?? [];
   if (cells.length === 0) return [];
   return state.combatants
-    .filter((one) => rulesetZoneCatches(caster, zone, action, one) && rulesetZoneHolds(cells, rulesetPositionOf(one)))
+    .filter((one) => rulesetZoneCatches(caster, zone, action, one) && rulesetZoneHoldsOne(cells, one))
     .map((one) => one.id);
 }
 

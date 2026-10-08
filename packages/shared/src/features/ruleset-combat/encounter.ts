@@ -62,7 +62,15 @@ import {
   rulesetReactionAnswers,
 } from "./creatures.js";
 import { parseRulesetCombatDice, rollRulesetDice, rulesetCombatRoller, sumOf } from "./dice.js";
-import { rulesetInCells, rulesetLineOfSight, rulesetPositionOf, rulesetZoneCells } from "./grid.js";
+import {
+  rulesetCellBlocked,
+  rulesetFills,
+  rulesetFootprintAt,
+  rulesetFootprintsSee,
+  rulesetInCells,
+  rulesetPositionOf,
+  rulesetZoneCells,
+} from "./grid.js";
 import { rulesetCombatAdvantage, rulesetCombatIsPool, rulesetPoolDie, throwRulesetCombatPool } from "./pool.js";
 import { rulesetPaidLevel, rulesetReactionsAt } from "./options.js";
 import { RULESET_MOVE_MODES } from "./types.js";
@@ -290,10 +298,9 @@ function sourceInSight(
   const grid = state?.board?.grid;
   if (!sourceId || !state || !grid) return true;
   const source = rulesetCombatant(state, sourceId);
-  const from = rulesetPositionOf(combatant);
-  const to = rulesetPositionOf(source);
-  if (!source || !from || !to) return true;
-  return rulesetLineOfSight(grid, from, to);
+  if (!source || !rulesetPositionOf(combatant) || !rulesetPositionOf(source)) return true;
+  // Any cell of one to any cell of the other (1.189).
+  return rulesetFootprintsSee(grid, combatant, source);
 }
 
 /**
@@ -376,9 +383,10 @@ function zonesStoodIn(
     (caster.zones ?? []).flatMap((zone) => {
       const rule = caster.actions.find((entry) => entry.id === zone.actionId)?.zone;
       if (!rule || (!rule.inside && !rule.forbids && !rule.wards)) return [];
+      // Any cell they fill (1.189).
       const inIt =
         grid && at
-          ? rulesetZoneCells(state, caster, zone).some((cell) => cell.x === at.x && cell.y === at.y)
+          ? rulesetZoneCells(state, caster, zone).some((cell) => rulesetFills(combatant, cell))
           : !!zone.held?.includes(combatant.id);
       return inIt ? [{ key: `${caster.id}/${zone.actionId}`, label: zone.label, rule, caster, zone }] : [];
     }),
@@ -3067,6 +3075,39 @@ export function rulesetPoolInitiative(
   return { roll: thrown.rolls, modifier: dice, total: thrown.successes + (combat.initiative.plus ?? 0) };
 }
 
+/** How many cells a side this combatant's size fills (1.189), one when nothing says more. */
+export function rulesetSizeSpan(combat: RulesetCombat, combatant: RulesetCombatant): number {
+  if (combatant.size === undefined) return 1;
+  return combat.sizes?.order.find((size) => size.id === combatant.size)?.cells ?? 1;
+}
+
+/** The nearest top-left cell to `at` where `span` cells a side fit (1.189): inside the board, on
+ *  nothing solid and on nobody in `taken`. Null when nowhere on the board will do. */
+export function rulesetFitCell(
+  grid: TacticalGrid,
+  at: { x: number; y: number },
+  span: number,
+  taken: ReadonlySet<string>,
+): { x: number; y: number } | null {
+  const fits = (x: number, y: number) =>
+    x >= 0 &&
+    y >= 0 &&
+    x + span <= grid.width &&
+    y + span <= grid.height &&
+    rulesetFootprintAt({ x, y }, span).every(
+      (cell) => !taken.has(`${cell.x},${cell.y}`) && !rulesetCellBlocked(grid, cell.x, cell.y),
+    );
+  for (let ring = 0; ring <= Math.max(grid.width, grid.height); ring++) {
+    for (let y = at.y - ring; y <= at.y + ring; y++) {
+      for (let x = at.x - ring; x <= at.x + ring; x++) {
+        if (Math.max(Math.abs(x - at.x), Math.abs(y - at.y)) !== ring) continue;
+        if (fits(x, y)) return { x, y };
+      }
+    }
+  }
+  return null;
+}
+
 /**
  * Everybody onto the board, or nobody at all.
  *
@@ -3098,6 +3139,25 @@ function placeRulesetCombatants(
       return;
     }
     placed.push({ combatant, at });
+  }
+  // Somebody bigger than one cell fills as many a side as their size says (1.189), set down where
+  // all of them fit: on the board, on open ground and clear of whoever was set down first, the
+  // nearest such place to where they were asked to stand.
+  // The big are set down first, and anybody of one cell asked to stand inside one of them steps
+  // aside to the nearest open cell; nobody else moves from where they were asked to stand.
+  const taken = new Set<string>();
+  const big = new Set<string>();
+  const spans = new Map(placed.map((entry) => [entry, rulesetSizeSpan(combat, entry.combatant)]));
+  for (const entry of [...placed].sort((a, b) => spans.get(b)! - spans.get(a)!)) {
+    const span = spans.get(entry)!;
+    if (span > 1) {
+      entry.combatant.span = span;
+      entry.at = rulesetFitCell(grid, entry.at, span, taken) ?? entry.at;
+      for (const cell of rulesetFootprintAt(entry.at, span)) big.add(`${cell.x},${cell.y}`);
+    } else if (big.has(`${entry.at.x},${entry.at.y}`)) {
+      entry.at = rulesetFitCell(grid, entry.at, 1, taken) ?? entry.at;
+    }
+    for (const cell of rulesetFootprintAt(entry.at, span)) taken.add(`${cell.x},${cell.y}`);
   }
   for (const { combatant, at } of placed) {
     combatant.x = at.x;

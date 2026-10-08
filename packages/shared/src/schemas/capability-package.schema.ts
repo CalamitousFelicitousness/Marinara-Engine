@@ -939,7 +939,9 @@ const capabilityPackageManifestBaseSchema = z
 //        `targetHolds`, `targetDying` and `onWin.stabilizes` (5e's Medicine checks), and an item
 //        attack's and a condition's `harms.healedOnlyByRest` (a sword of wounding: hit points they
 //        take come back only by rest).
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 188 } as const);
+// 1.189: a size's `cells` in `combat.sizes.order`: a creature of that size fills that many cells a
+//        side on a board, for placement, movement, reach, areas, cover and sight.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 189 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

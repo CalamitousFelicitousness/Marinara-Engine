@@ -89,6 +89,13 @@ import {
   rulesetSlowedCells,
   rulesetSlowedStep,
   rulesetWallShape,
+  rulesetDistanceTo,
+  rulesetFills,
+  rulesetFootprint,
+  rulesetFootprintAt,
+  rulesetGap,
+  rulesetNearestCell,
+  rulesetSpanOf,
 } from "./grid.js";
 import {
   rulesetDamageModifiers,
@@ -185,6 +192,7 @@ import {
   rulesetZoneCatches,
   rulesetZoneCells,
   rulesetZoneHolds,
+  rulesetZoneHoldsOne,
   rulesetZoneDriftCell,
   rulesetZoneOccupants,
   rulesetZoneSideOccupants,
@@ -482,8 +490,9 @@ function applyDamage(
   const before = healthOf(ctx, target);
   const type = input.damageType?.trim().toLowerCase();
   // Fire reaching somebody standing in a web sets it alight (1.178).
-  const standing = rulesetPositionOf(target);
-  if (type && standing) igniteZones(ctx, [type], [standing]);
+  // Any cell they fill (1.189).
+  const standing = rulesetFootprint(target);
+  if (type && standing.length > 0) igniteZones(ctx, [type], standing);
   let dealt = Math.max(0, Math.floor(input.amount));
   let adjust: "none" | "resist" | "vulnerable" | "immune" = "none";
   // A creature's own hide, and what the target's items keep off.
@@ -1486,10 +1495,12 @@ function summonCell(
   const grid = state.board?.grid;
   if (!at || !grid) return at ?? undefined;
   const cells: RulesetCombatCell[] = [];
-  for (let y = at.y - 1; y <= at.y + 1; y++) {
-    for (let x = at.x - 1; x <= at.x + 1; x++) {
-      if ((x === at.x && y === at.y) || rulesetCellBlocked(grid, x, y)) continue;
-      if (state.combatants.some((one) => !one.defeated && one.x === x && one.y === y)) continue;
+  // Around every cell they fill (1.189).
+  const span = rulesetSpanOf(target);
+  for (let y = at.y - 1; y <= at.y + span; y++) {
+    for (let x = at.x - 1; x <= at.x + span; x++) {
+      if (rulesetFills(target, { x, y }) || rulesetCellBlocked(grid, x, y)) continue;
+      if (state.combatants.some((one) => !one.defeated && rulesetFills(one, { x, y }))) continue;
       cells.push({ x, y });
     }
   }
@@ -1601,7 +1612,7 @@ function burnAtTurn(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
     }
     if (!burns.amount || !rulesetCombatStanding(actor)) continue;
     const inside = ctx.state.board?.grid
-      ? rulesetZoneHolds(rulesetZoneCells(ctx.state, caster, zone), rulesetPositionOf(actor))
+      ? rulesetZoneHoldsOne(rulesetZoneCells(ctx.state, caster, zone), actor)
       : (zone.held ?? []).includes(actor.id);
     if (!inside) continue;
     const amount = burns.amount;
@@ -1637,7 +1648,8 @@ function placeZone(
   endZones(ctx, actor, action.id);
   const grid = ctx.state.board?.grid;
   const at = resume.at;
-  const from = rulesetPositionOf(actor);
+  // From the cell its maker fills nearest where it was aimed (1.189).
+  const from = rulesetNearestCell(actor, at ?? null);
   // A wall (1.172): its cells run the way it was aimed, and its side is the one chosen.
   const wall =
     grid && at && from && action.area?.shape === "wall"
@@ -1704,7 +1716,9 @@ function shoveOffWall(
   const preferred = new Set(side.map((cell) => `${cell.x},${cell.y}`));
   for (const one of ctx.state.combatants) {
     const at = rulesetPositionOf(one);
-    if (one.defeated || !at || !wall.has(`${at.x},${at.y}`)) continue;
+    // Any cell they fill (1.189), and wherever they go, all of them clear of it.
+    const span = rulesetSpanOf(one);
+    if (one.defeated || !at || !rulesetFootprint(one).some((cell) => wall.has(`${cell.x},${cell.y}`))) continue;
     let best: RulesetCombatCell | null = null;
     for (let reach = 1; reach <= Math.max(grid.width, grid.height) && !best; reach++) {
       let fallback: RulesetCombatCell | null = null;
@@ -1712,8 +1726,13 @@ function shoveOffWall(
         for (let x = at.x - reach; x <= at.x + reach; x++) {
           if (Math.max(Math.abs(x - at.x), Math.abs(y - at.y)) !== reach) continue;
           const key = `${x},${y}`;
-          if (wall.has(key) || rulesetCellBlocked(grid, x, y)) continue;
-          if (ctx.state.combatants.some((other) => !other.defeated && other.x === x && other.y === y)) continue;
+          const clear = rulesetFootprintAt({ x, y }, span).every(
+            (cell) =>
+              !wall.has(`${cell.x},${cell.y}`) &&
+              !rulesetCellBlocked(grid, cell.x, cell.y) &&
+              !ctx.state.combatants.some((other) => other !== one && !other.defeated && rulesetFills(other, cell)),
+          );
+          if (!clear) continue;
           if (preferred.size === 0 || preferred.has(key)) {
             best = { x, y };
             break;
@@ -1862,10 +1881,10 @@ function zoneDealt(
 function zonesAtTurn(ctx: RulesetCombatContext, actor: RulesetCombatant, trigger: "turn-start" | "turn-end"): void {
   for (const { caster, zone } of rulesetStandingZones(ctx.state)) {
     const inside = ctx.state.board?.grid
-      ? rulesetZoneHolds(rulesetZoneCells(ctx.state, caster, zone), rulesetPositionOf(actor))
+      ? rulesetZoneHoldsOne(rulesetZoneCells(ctx.state, caster, zone), actor)
       : (zone.held ?? []).includes(actor.id);
     if (inside) zoneStrike(ctx, caster, zone, actor, trigger);
-    else if (rulesetZoneHolds(zone.sideCells ?? [], rulesetPositionOf(actor))) {
+    else if (rulesetZoneHoldsOne(zone.sideCells ?? [], actor)) {
       zoneStrike(ctx, caster, zone, actor, trigger, "side");
     }
   }
@@ -1961,7 +1980,9 @@ function zoneGround(ctx: RulesetCombatContext, mover: RulesetCombatant, cell: Ru
     const ground = action.zone?.perDistance;
     if (!ground || !rulesetCombatStanding(mover) || !rulesetZoneCatches(caster, zone, action, mover)) continue;
     const from = ctx.events.length;
-    if (!rulesetZoneHolds(rulesetZoneCells(ctx.state, caster, zone), cell)) continue;
+    // Any cell the mover fills from there (1.189).
+    const cells = rulesetZoneCells(ctx.state, caster, zone);
+    if (!rulesetFootprintAt(cell, rulesetSpanOf(mover)).some((one) => rulesetZoneHolds(cells, one))) continue;
     const walked = (zone.walked?.[mover.id] ?? 0) + 1;
     const times = Math.floor(walked / ground.every);
     zone.walked = { ...zone.walked, [mover.id]: walked - times * ground.every };
@@ -2601,14 +2622,15 @@ function boltAlong(
   line: RulesetCombatModeLine,
   label: string,
 ): void {
-  const from = rulesetPositionOf(actor);
-  const to = rulesetPositionOf(target);
+  // Nearest cell to nearest cell (1.189).
+  const from = rulesetNearestCell(actor, rulesetPositionOf(target));
+  const to = rulesetNearestCell(target, from);
   if (!from || !to || !ctx.state.board?.grid) return;
   const cells = new Set(rulesetPathCells(from, to).map((cell) => `${cell.x},${cell.y}`));
   const caught = ctx.state.combatants.filter((one) => {
-    const at = rulesetPositionOf(one);
     // Neither end of the run is on it: the wielder and the target stand on its ends.
-    return !one.defeated && !!at && cells.has(`${at.x},${at.y}`);
+    if (one.id === actor.id || one.id === target.id) return false;
+    return !one.defeated && rulesetFootprint(one).some((at) => cells.has(`${at.x},${at.y}`));
   });
   for (const one of caught) {
     const saved = rollSave(ctx, one, line.save.save, line.save.difficulty, actor.id, from);
@@ -3458,8 +3480,7 @@ function zonesEntered(
     const was = before.get(zone);
     if (!was) continue;
     // Stepping onto a bead (1.178): its save, or it goes off.
-    const cell = rulesetPositionOf(mover);
-    if (action.zone?.detonates?.touched && zone.at && cell && cell.x === zone.at.x && cell.y === zone.at.y) {
+    if (action.zone?.detonates?.touched && zone.at && rulesetFills(mover, zone.at)) {
       if (!caster.zones?.includes(zone)) continue;
       const save = action.save;
       if (!save || !rollSave(ctx, mover, save.save, save.difficulty, caster.id, null, save.against)) {
@@ -4034,8 +4055,8 @@ function allyAdjacent(ctx: RulesetCombatContext, actor: RulesetCombatant, target
     if (!rulesetCombatStanding(combatant)) return false;
     if (rulesetCombatEffects(ctx.definition, ctx.combat, combatant, ctx.state).has("cannot-act")) return false;
     if (!positioned) return true;
-    const cell = rulesetPositionOf(combatant);
-    return !!cell && rulesetCellDistance(cell, at!) <= 1;
+    // Beside any cell the target fills (1.189).
+    return !!rulesetPositionOf(combatant) && rulesetGap(combatant, target) <= 1;
   });
 }
 
@@ -4336,10 +4357,11 @@ function resolveActionBody(
   // Copies set down at once (1.173): each target takes cover from the nearest of them.
   const aims = ctx.aimedAt ? [ctx.aimedAt, ...(ctx.aimedAlso ?? [])] : [];
   const saveFromFor = (target: RulesetCombatant) => {
-    if (!setDown || aims.length === 0) return rulesetPositionOf(actor);
+    // From the actor's cell nearest them (1.189).
+    if (!setDown || aims.length === 0) return rulesetNearestCell(actor, rulesetPositionOf(target));
     const cell = rulesetPositionOf(target);
     if (!cell || aims.length === 1) return aims[0]!;
-    return aims.reduce((best, aim) => (rulesetCellDistance(aim, cell) < rulesetCellDistance(best, cell) ? aim : best));
+    return aims.reduce((best, aim) => (rulesetDistanceTo(aim, target) < rulesetDistanceTo(best, target) ? aim : best));
   };
 
   // An ability that asks for no attack roll (an area everyone saves against, darts that simply hit)

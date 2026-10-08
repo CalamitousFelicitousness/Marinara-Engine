@@ -5191,14 +5191,24 @@ const combatContestSchema: z.ZodType<RulesetCombatContestDeclaration, z.ZodTypeD
  *  reads a number off itself, 1 for the first, which is rounded and held to the list; whoever nothing
  *  says is `default`, or no size at all. */
 export interface RulesetCombatSizes {
-  order: Array<{ id: string; label: string }>;
+  order: Array<{ id: string; label: string; cells?: number }>;
   sheet?: RulesetValueRef;
   default?: string;
 }
 const combatSizesSchema: z.ZodType<RulesetCombatSizes, z.ZodTypeDef, unknown> = z
   .object({
     order: z
-      .array(z.object({ id: sheetId, label }).strict())
+      .array(
+        z
+          .object({
+            id: sheetId,
+            label,
+            /** How many cells a side a creature of this size fills on a board (Capability API 1.189):
+             *  5e's Large is 2, Huge 3 and Gargantuan 4. One when left out. */
+            cells: z.number().int().min(1).max(6).optional(),
+          })
+          .strict(),
+      )
       .min(2)
       .max(10),
     sheet: rulesetValueRefSchema.optional(),

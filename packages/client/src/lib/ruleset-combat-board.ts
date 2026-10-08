@@ -33,8 +33,10 @@ export interface RulesetBoardCell {
   solid: boolean;
   /** How high the cell stands (combat C6b), 0 on level ground. */
   height: number;
-  /** Who is standing here, defeated or not. */
+  /** Who is standing here, defeated or not: on every cell they fill (1.189). */
   occupant?: DirectedRulesetCombatant;
+  /** The cell their token is drawn from, the top-left one they fill (1.189). */
+  anchor?: true;
   /** Set while a walk is being chosen: what ending here costs of the allowance, in cells, and the
    *  ids of the standing enemies the path would be struck at by. */
   reach?: { cost: number; provokes: string[] };
@@ -139,7 +141,13 @@ export function rulesetBoardCells(view: DirectedRulesetView, step: RulesetMenuSt
   const standing = new Map<string, DirectedRulesetCombatant>();
   for (const combatant of view.combatants) {
     if (typeof combatant.x !== "number" || typeof combatant.y !== "number") continue;
-    standing.set(rulesetCellKey({ x: combatant.x, y: combatant.y }), combatant);
+    // Every cell they fill (1.189).
+    const span = Math.max(1, combatant.span ?? 1);
+    for (let dy = 0; dy < span; dy++) {
+      for (let dx = 0; dx < span; dx++) {
+        standing.set(rulesetCellKey({ x: combatant.x + dx, y: combatant.y + dy }), combatant);
+      }
+    }
   }
   const reach = new Map<string, { cost: number; provokes: string[] }>();
   if (step?.stage === "move") {
@@ -183,6 +191,7 @@ export function rulesetBoardCells(view: DirectedRulesetView, step: RulesetMenuSt
         solid: TERRAIN_DATA[terrain]?.impassable === true || ((grid.walls?.[key] ?? 0) & 1) === 1,
         height: grid.elevation?.[y]?.[x] ?? 0,
         ...(occupant ? { occupant } : {}),
+        ...(occupant && occupant.x === x && occupant.y === y ? { anchor: true as const } : {}),
         ...(reach.has(key) ? { reach: reach.get(key)! } : {}),
         ...(occupant && targets.has(occupant.id) ? { targetable: true } : {}),
         ...(aim ? { aim } : {}),

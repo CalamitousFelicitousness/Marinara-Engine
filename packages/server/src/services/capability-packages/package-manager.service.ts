@@ -1522,6 +1522,13 @@ function carriesWardsAndSaves(value: unknown, depth = 0): boolean {
 
 const MODIFIER_TARGETS = new Set<string>(RULESET_COMBAT_MODIFIER_TARGETS);
 
+/** Sizes that fill more than one cell on a board (1.189). */
+function carriesFootprints(value: unknown): boolean {
+  const combat = plainRecord(plainRecord(value)?.combat);
+  const order = plainRecord(combat?.sizes)?.order;
+  return Array.isArray(order) && order.some((size) => plainRecord(size)?.cells !== undefined);
+}
+
 /** A contest rolled against a fixed number, offered on allies, the wounded or the dying, or one that
  *  stabilizes, and a weapon whose damage only a rest restores (1.188), in catalog files too. */
 function carriesTreatmentsAndSeals(value: unknown, depth = 0): boolean {
@@ -3084,6 +3091,10 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Creatures that fill more than one cell, 1.189.
+  if (!declaresApi(189) && carriesFootprints(ruleset)) {
+    return "A ruleset with sizes that fill more than one cell requires schemaVersion 2 and capabilityApi 1.189 or newer";
   }
   // Contests against a fixed number, on allies, the wounded or the dying, and rest-only wounds, 1.188.
   if (

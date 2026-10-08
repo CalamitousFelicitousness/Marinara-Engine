@@ -36,7 +36,6 @@ import {
   readRulesetLive,
   rulesetAimCells,
   rulesetAnswerDeflects,
-  rulesetCellDistance,
   rulesetCombatant,
   rulesetCreatureKind,
   rulesetActiveConditions,
@@ -62,6 +61,10 @@ import {
   rulesetFallTargets,
   rulesetPositionOf,
   rulesetWalkingDistances,
+  rulesetFootprint,
+  rulesetFootprintAt,
+  rulesetSpanOf,
+  rulesetGapFrom,
   rulesetSheetBuildsByName,
   readProposedRulesetSheet,
   restrictRulesetSheetEntries,
@@ -615,6 +618,7 @@ function projectCombatant(
       ? { movement: combatant.movement, movementLeft: combatant.movementLeft ?? 0 }
       : {}),
     ...(combatant.altitude !== undefined ? { altitude: combatant.altitude } : {}),
+    ...(combatant.span !== undefined ? { span: combatant.span } : {}),
   };
 }
 
@@ -800,7 +804,7 @@ function rulesetCandidates(
  * Nearest an opponent first, because that is where the cells worth scoring are: a creature that can
  * cover eight cells has hundreds to choose from, and the ones next to it are the ones it least wants.
  */
-function rulesetWalkableCells(
+export function rulesetWalkableCells(
   definition: RulesetDefinition,
   encounter: RulesetEncounterState,
   actorId: string,
@@ -809,12 +813,13 @@ function rulesetWalkableCells(
   const walk = rulesetCombatOptions(definition, encounter, actorId).find((option) => option.id === RULESET_MOVE_OPTION);
   const cells = walk?.cells ?? [];
   if (!actor || cells.length === 0) return [];
-  const foes = encounter.combatants
-    .filter((combatant) => combatant.side !== actor.side && rulesetCombatStanding(combatant))
-    .map((combatant) => rulesetPositionOf(combatant))
-    .filter((cell): cell is { x: number; y: number } => !!cell);
+  const foes = encounter.combatants.filter(
+    (combatant) => combatant.side !== actor.side && rulesetCombatStanding(combatant) && rulesetPositionOf(combatant),
+  );
+  // Footprint to footprint (1.189).
+  const span = rulesetSpanOf(actor);
   const away = (cell: { x: number; y: number }) =>
-    foes.reduce((closest, foe) => Math.min(closest, rulesetCellDistance(cell, foe)), Infinity);
+    foes.reduce((closest, foe) => Math.min(closest, rulesetGapFrom(cell, span, foe)), Infinity);
   // A stable sort over an already deterministic list, so the same fight always picks the same cell.
   return [...cells].sort((left, right) => away(left) - away(right) || left.cost - right.cost);
 }
@@ -1382,7 +1387,9 @@ function zoneMoveCandidate(
     let total = 0;
     for (const one of encounter.combatants) {
       if (typeof one.x !== "number" || typeof one.y !== "number" || one.down) continue;
-      if (!cells.has(`${one.x},${one.y}`) || !rulesetZoneCatches(actor, zone, action, one)) continue;
+      // Caught by any cell they fill (1.189).
+      const inside = rulesetFootprint(one).some((cell) => cells.has(`${cell.x},${cell.y}`));
+      if (!inside || !rulesetZoneCatches(actor, zone, action, one)) continue;
       total += one.side === actor.side ? -1 : 1;
     }
     return total;
@@ -1423,7 +1430,9 @@ function zoneTurnCandidate(
     let total = 0;
     for (const one of encounter.combatants) {
       if (typeof one.x !== "number" || typeof one.y !== "number" || one.down) continue;
-      if (!cells.has(`${one.x},${one.y}`) || !rulesetZoneCatches(actor, zone, action, one)) continue;
+      // Caught by any cell they fill (1.189).
+      const inside = rulesetFootprint(one).some((cell) => cells.has(`${cell.x},${cell.y}`));
+      if (!inside || !rulesetZoneCatches(actor, zone, action, one)) continue;
       total += one.side === actor.side ? -1 : 1;
     }
     return total;
@@ -1453,7 +1462,7 @@ function zoneTurnCandidate(
  * at each other for the rest of the fight. Null when nothing is worth walking to, which is what
  * keeps a cornered creature from shuffling on the spot for the rest of the fight.
  */
-function rulesetClosingMove(
+export function rulesetClosingMove(
   definition: RulesetDefinition,
   encounter: RulesetEncounterState,
   actorId: string,
@@ -1463,11 +1472,14 @@ function rulesetClosingMove(
   if (!actor || !from || !encounter.board?.grid) return null;
   const foes = encounter.combatants
     .filter((combatant) => combatant.side !== actor.side && rulesetCombatStanding(combatant))
-    .map((combatant) => rulesetPositionOf(combatant))
-    .filter((cell): cell is { x: number; y: number } => !!cell);
+    // Every cell an opponent fills (1.189).
+    .flatMap((combatant) => rulesetFootprint(combatant));
   if (foes.length === 0) return null;
   const walking = rulesetWalkingDistances(encounter.board.grid, foes, actor);
-  const nearest = (cell: { x: number; y: number }) => walking.get(`${cell.x},${cell.y}`) ?? Infinity;
+  // Somebody bigger than one cell is as near as the nearest cell they would fill (1.189).
+  const span = rulesetSpanOf(actor);
+  const nearest = (cell: { x: number; y: number }) =>
+    Math.min(...rulesetFootprintAt(cell, span).map((one) => walking.get(`${one.x},${one.y}`) ?? Infinity));
   const already = nearest(from);
   let best: { cell: { x: number; y: number; cost: number; provokes: string[] }; away: number } | null = null;
   // Every cell it may walk to, not a sample of them: closing the distance is one comparison a cell.

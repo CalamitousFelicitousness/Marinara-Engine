@@ -1522,6 +1522,39 @@ function carriesWardsAndSaves(value: unknown, depth = 0): boolean {
 
 const MODIFIER_TARGETS = new Set<string>(RULESET_COMBAT_MODIFIER_TARGETS);
 
+/** Conditions that harm each turn, stack or keep to one holder per source, weapons that mark a
+ *  sworn enemy, and stat-block actions that name their ability (1.184), in catalog files too. */
+function carriesMarksAndWounds(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesMarksAndWounds(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (typeof record.condition === "string") {
+    if (record.harms !== undefined || record.stacks !== undefined || record.onePerSource !== undefined) return true;
+  }
+  const attack = plainRecord(record.attack);
+  if (attack) {
+    const against = Array.isArray(attack.against) ? attack.against.map(plainRecord) : [];
+    if (
+      against.some(
+        (entry) =>
+          entry &&
+          (entry.marked !== undefined ||
+            entry.mode !== undefined ||
+            entry.ignoresCover !== undefined ||
+            entry.ignoresLongRange !== undefined),
+      )
+    )
+      return true;
+    const plus = Array.isArray(attack.plus) ? attack.plus.map(plainRecord) : [];
+    if (plus.some((clause) => clause && clause.marked !== undefined)) return true;
+  }
+  if (Array.isArray(record.actions) && (record.health !== undefined || record.defense !== undefined)) {
+    if (record.actions.some((action) => plainRecord(action)?.ability !== undefined)) return true;
+  }
+  return Object.values(record).some((one) => carriesMarksAndWounds(one, depth + 1));
+}
+
 /** More than 80 conditions on the sheet, in a rest's list or in the fight, attacks narrowed by the
  *  ability they're made with, or checks narrowed by ability (1.183), in catalog files too. */
 function carriesWideConditionsAndAbilityNarrowing(value: unknown, depth = 0): boolean {
@@ -2975,6 +3008,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Wounds that stack and harm, sworn enemies, and creature actions by ability, 1.184.
+  if (
+    !declaresApi(184) &&
+    (carriesMarksAndWounds(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesMarksAndWounds(document)))
+  ) {
+    return "A ruleset with conditions that harm each turn, stack or keep to one holder per source, weapons that mark a sworn enemy, or creature actions that name their ability requires schemaVersion 2 and capabilityApi 1.184 or newer";
   }
   // More conditions, attacks and checks narrowed by ability, 1.183.
   if (

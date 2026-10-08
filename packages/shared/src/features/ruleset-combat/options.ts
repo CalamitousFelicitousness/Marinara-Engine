@@ -71,6 +71,7 @@ import { coverTier, elevationAt } from "../tactical-combat/math.js";
 import { rulesetZoneMoveCells, rulesetZoneTurnCells } from "./zones.js";
 import { rulesetCanSee } from "./sight.js";
 import type {
+  RulesetCombatAgainst,
   RulesetConditionBonus,
   RulesetCombatAction,
   RulesetCombatCell,
@@ -576,6 +577,8 @@ export function rulesetDefenseAgainst(
   state: RulesetEncounterState,
   target: RulesetCombatant,
   attacker: RulesetCombatant | undefined,
+  /** The blow itself, where one weapon ignores cover against this target (1.184). */
+  action?: RulesetCombatAction,
 ): { defense: number; cover: number; guards: RulesetConditionBonus[] } {
   // What the target's own conditions add. Defense is never rolled, so each is its flat number.
   const guards = rulesetConditionModifiers(definition, combat, target, "defense", state).map(
@@ -588,7 +591,8 @@ export function rulesetDefenseAgainst(
     }),
   );
   const defense = target.defense + guards.reduce((total, guard) => total + guard.value, 0);
-  const cover = rulesetCoverBonus(combat, state, target, rulesetPositionOf(attacker));
+  const ignored = rulesetAgainstHere(definition, action, target, attacker).some((entry) => entry.ignoresCover);
+  const cover = ignored ? 0 : rulesetCoverBonus(combat, state, target, rulesetPositionOf(attacker));
   const highGround = combat.elevation?.highGround;
   const above = typeof highGround === "object" && rulesetAbove(state, attacker, target) ? highGround.bonus : 0;
   return { defense: defense + cover - above, cover, guards };
@@ -1366,13 +1370,13 @@ function forecastFor(
   if (action.toHit !== undefined && target) {
     // The same number the roll will be made against: the target's own defense plus whatever the
     // ground they stand on is worth, and the same roll mode the distance between them asks for.
-    const defense = rulesetDefenseAgainst(definition, combat, state, target, actor).defense;
+    const defense = rulesetDefenseAgainst(definition, combat, state, target, actor, action).defense;
     const mode = rulesetAttackMode(definition, combat, actor, target, { state, optionId: action.id });
     const bonus = rulesetBonusDice(
       rulesetConditionModifiers(definition, combat, actor, "attacks", state, undefined, undefined, action.ability),
     );
     // What the weapon adds against what the target is (1.182), as the roll will.
-    const toHit = action.toHit + rulesetToHitAgainst(definition, action, target);
+    const toHit = action.toHit + rulesetToHitAgainst(definition, action, target, actor);
     const chance = rulesetCombatIsPool(combat)
       ? rulesetPoolChance(
           definition,
@@ -1467,11 +1471,29 @@ export function rulesetToHitAgainst(
   definition: RulesetDefinition,
   action: RulesetCombatAction,
   target: RulesetCombatant,
+  actor?: RulesetCombatant,
 ): number {
-  return (action.against ?? []).reduce(
-    (sum, entry) => sum + (rulesetTargetIs(definition, target, entry.is) ? entry.toHit : 0),
-    0,
+  return rulesetAgainstHere(definition, action, target, actor).reduce((sum, entry) => sum + (entry.toHit ?? 0), 0);
+}
+
+/** The entries of a weapon's `against` this target meets: what it is (1.182), and a condition the
+ *  wielder put on it (1.184), an oathbow's sworn enemy. Both, where an entry names both. */
+export function rulesetAgainstHere(
+  definition: RulesetDefinition,
+  action: RulesetCombatAction | undefined,
+  target: RulesetCombatant,
+  actor: RulesetCombatant | undefined,
+): RulesetCombatAgainst[] {
+  return (action?.against ?? []).filter(
+    (entry) =>
+      (!entry.is || rulesetTargetIs(definition, target, entry.is)) &&
+      (entry.marked === undefined || (!!actor && rulesetMarkedBy(target, entry.marked, actor.id))),
   );
+}
+
+/** Whether this combatant carries this condition, put on by this source (1.184). */
+export function rulesetMarkedBy(combatant: RulesetCombatant, condition: string, sourceId: string): boolean {
+  return combatant.tracked.some((entry) => entry.condition === condition && entry.source === sourceId);
 }
 
 /** What one blow's harm is worth on average. A sum is its dice and flat part; in a pool fight each
@@ -1492,8 +1514,11 @@ function averageHarm(
     not?: RulesetTargetIs;
     onCritical?: true;
     whileOn?: number;
+    marked?: string;
   }) =>
     !clause.onCritical &&
+    // One dealt only to a target the maker marked (1.184) counts against one they did.
+    (clause.marked === undefined || (!!target && !!actor && rulesetMarkedBy(target, clause.marked, actor.id))) &&
     (clause.whileOn === undefined || (!!actor && rulesetItemOn(actor, clause.whileOn))) &&
     (!clause.targetIs || (!!target && rulesetTargetIs(definition, target, clause.targetIs))) &&
     (!clause.not || (!!target && !rulesetTargetIs(definition, target, clause.not)));
@@ -1732,7 +1757,10 @@ export function rulesetAttackMode(
   if (!rulesetCombatAdvantage(combat)) return "normal";
   const own = rulesetCombatEffects(definition, combat, actor, where?.state);
   const theirs = rulesetCombatEffects(definition, combat, target, where?.state);
-  const distance = where ? distanceModes(combat, where.state, where.optionId, actor, target, theirs) : null;
+  // What the weapon does differently against this target (1.184): an oathbow at its sworn enemy.
+  const against = rulesetAgainstHere(definition, where ? actionOf(actor, where.optionId) : undefined, target, actor);
+  const farIsFine = against.some((entry) => entry.ignoresLongRange);
+  const distance = where ? distanceModes(combat, where.state, where.optionId, actor, target, theirs, farIsFine) : null;
   // Not seeing (1.173): striking at somebody you cannot see is harder, at somebody who cannot see
   // you easier.
   const unseen = combat.sight?.unseenAttacks && where;
@@ -1775,6 +1803,7 @@ export function rulesetAttackMode(
       leans.add(modifier.mode);
     }
   }
+  for (const entry of against) if (entry.mode) leans.add(entry.mode);
   const up = advantage || leans.has("advantage");
   const down = disadvantage || leans.has("disadvantage");
   if (up === down) return "normal";
@@ -1802,6 +1831,8 @@ function distanceModes(
   actor: RulesetCombatant,
   target: RulesetCombatant,
   theirs: ReadonlySet<string>,
+  /** Long range costs nothing (1.184). */
+  farIsFine = false,
 ): { advantage: boolean; disadvantage: boolean } | null {
   const from = rulesetPositionOf(actor);
   const to = rulesetPositionOf(target);
@@ -1812,7 +1843,7 @@ function distanceModes(
   const ranged = combat.ranged;
   // A thrown weapon used in hand is a swing, so neither ranged rule reads it there.
   const thrown = !!reach?.shot && away > (reach?.swing ?? 0);
-  const tooFar = !!ranged && ranged.long === "disadvantage" && thrown && away > reach!.normal;
+  const tooFar = !farIsFine && !!ranged && ranged.long === "disadvantage" && thrown && away > reach!.normal;
   const crowded = !!ranged && ranged.adjacentFoe === "disadvantage" && thrown && foeAdjacent(state, actor, from);
   return {
     advantage: adjacent && theirs.has("attacks-against-adjacent-advantage"),
@@ -2176,7 +2207,8 @@ export function rulesetAnswerDeflects(
   if (gain === 0) return null;
   if (held.roll.natural) return false;
   const attacker = window.resume?.kind === "action" ? rulesetCombatant(state, window.resume.actorId) : undefined;
-  return held.roll.total < rulesetDefenseAgainst(definition, combat, state, target, attacker).defense + gain;
+  const blow = attacker && window.resume?.kind === "action" ? actionOf(attacker, window.resume.optionId) : undefined;
+  return held.roll.total < rulesetDefenseAgainst(definition, combat, state, target, attacker, blow).defense + gain;
 }
 
 /** Which moment a window is, for the reactions that wait for one. A walk and the turn between two

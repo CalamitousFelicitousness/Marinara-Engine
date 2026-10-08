@@ -1411,6 +1411,7 @@ function itemAttackActions(
           ...(clause.not ? { not: clause.not } : {}),
           ...(clause.blow ? { blow: clause.blow } : {}),
           ...(clause.tempHp ? { tempHp: true as const } : {}),
+          ...(clause.marked ? { marked: clause.marked } : {}),
         },
       ];
     });
@@ -2172,6 +2173,7 @@ function blockActions(block: RulesetStatBlockLike, perCell: number | undefined):
           },
         }
       : {}),
+    ...(action.ability ? { ability: action.ability } : {}),
     ...(perCell !== undefined && action.push !== undefined ? { push: rulesetInCells(action.push, perCell) } : {}),
     // A run is measured on a board (1.181), so a fight with none never charges.
     ...(perCell !== undefined && action.charge

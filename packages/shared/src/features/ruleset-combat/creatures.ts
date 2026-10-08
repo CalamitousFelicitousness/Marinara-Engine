@@ -216,6 +216,8 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
     ...(action.reach !== undefined ? { reach: action.reach } : {}),
     // In the ruleset's distance, as reach is: the encounter turns both into cells (1.179).
     ...(action.push !== undefined ? { push: action.push } : {}),
+    // What its attack is made with (1.184), so changes narrowed to an ability reach it.
+    ...(action.ability ? { ability: action.ability } : {}),
     ...(action.range !== undefined ? { range: action.range } : {}),
     ...(action.area ? { area: { ...action.area } } : {}),
     ...(action.uses ? { uses: { ...action.uses } } : {}),

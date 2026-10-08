@@ -117,6 +117,7 @@ import {
   rulesetCoverBonus,
   rulesetDefenseAgainst,
   rulesetToHitAgainst,
+  rulesetMarkedBy,
   rulesetFreeStrike,
   rulesetGrantedStandard,
   rulesetOptionTargets,
@@ -1150,6 +1151,17 @@ function applyConditionId(
   const sourced = typeof applies.duration === "object" && applies.duration.of === "source" && !!extra.sourceId;
   const source = sourced ? rulesetCombatant(ctx.state, extra.sourceId!) : undefined;
   const startsNext = !!source && !clock && rulesetOnOwnTurn(ctx.state, source) && ctx.ticking !== source.id;
+  const rule = ctx.combat.conditions?.find((one) => one.condition === condition);
+  // One holder at a time from one source (1.184): an oathbow's sworn enemy leaves the last one.
+  if (rule?.onePerSource && extra.sourceId) {
+    for (const other of ctx.state.combatants) {
+      if (other.id === target.id || !rulesetMarkedBy(other, condition, extra.sourceId)) continue;
+      removeCondition(ctx, other, condition, "moved");
+    }
+  }
+  // Put on again while it holds, one that stacks counts one more (1.184), up to its most.
+  const before = target.tracked.find((entry) => entry.condition === condition);
+  const stacks = rule?.stacks && before ? Math.min(rule.stacks, (before.stacks ?? 1) + 1) : undefined;
   target.tracked = target.tracked.filter((entry) => entry.condition !== condition);
   target.tracked.push({
     condition,
@@ -1182,8 +1194,13 @@ function applyConditionId(
     (typeof applies.escapeDc === "number" || (applies.escapeDc === "save" && extra.difficulty !== undefined))
       ? { escapeChecks: [...applies.escapeChecks] }
       : {}),
+    ...(stacks !== undefined ? { stacks } : {}),
   });
-  ctx.events.push({ type: "condition", targetId: target.id, condition, active: true, reason: "applied" });
+  ctx.events.push(
+    stacks !== undefined
+      ? { type: "condition", targetId: target.id, condition, active: true, reason: "stacked", stacks }
+      : { type: "condition", targetId: target.id, condition, active: true, reason: "applied" },
+  );
   endImmuneConditions(ctx, target);
   groundFlier(ctx, target);
   // Put on during its holder's own turn, a condition that takes budgets away takes them from this
@@ -1254,7 +1271,8 @@ function removeCondition(
     | "harmed"
     | "shaken"
     | "immune"
-    | "cured",
+    | "cured"
+    | "moved",
 ): void {
   target.tracked = target.tracked.filter((entry) => entry.condition !== condition);
   if (target.sheet) writeRulesetSheet(ctx.definition, target, { op: "condition", condition, active: false });
@@ -1367,6 +1385,12 @@ function tickConditionsNow(ctx: RulesetCombatContext, actor: RulesetCombatant, a
     }
   }
   for (const entry of [...actor.tracked]) {
+    // What it harms its holder with now (1.184), once for each time it is on, before the save that
+    // may end it: a sword of wounding's wounds.
+    harmFromCondition(ctx, actor, entry, at);
+    // Killed by it, nothing more is rolled; ended by it (a hurt that breaks a spell), it is gone.
+    if (actor.defeated) return;
+    if (!actor.tracked.includes(entry)) continue;
     // A save with nothing to be rolled against is not rolled: the condition runs on its clock.
     if (entry.saveEnds?.at === at && entry.difficulty !== undefined) {
       const ended = rollSave(ctx, actor, entry.saveEnds.save, entry.difficulty, entry.source, undefined, {
@@ -1382,6 +1406,41 @@ function tickConditionsNow(ctx: RulesetCombatContext, actor: RulesetCombatant, a
     entry.rounds -= 1;
     if (entry.rounds <= 0) removeCondition(ctx, actor, entry.condition, "expired");
   }
+}
+
+/** A condition's own harm as a turn starts or ends (1.184), from whoever put it on. */
+function harmFromCondition(
+  ctx: RulesetCombatContext,
+  holder: RulesetCombatant,
+  entry: RulesetTrackedCondition,
+  at: "turn-start" | "turn-end",
+): void {
+  const harms = ctx.combat.conditions?.find((one) => one.condition === entry.condition)?.harms;
+  if (!harms || harms.at !== at || holder.defeated) return;
+  const times = entry.stacks ?? 1;
+  const dice = harms.dice ? parseRulesetCombatDice(harms.dice) : null;
+  const amount = {
+    count: (dice?.count ?? 0) * times,
+    sides: dice?.sides ?? 0,
+    flat: ((dice?.flat ?? 0) + (harms.flat ?? 0)) * times,
+  };
+  const harm = rulesetCombatIsPool(ctx.combat)
+    ? (({ rolls, flat, total, pool }) => ({ rolls, flat, amount: total, pool }))(
+        throwHarm(ctx, holder, amount, harms.type, 0),
+      )
+    : (() => {
+        const rolls = rollRulesetDice(ctx.roll, amount.count, amount.sides);
+        return { rolls, flat: amount.flat, amount: sumOf(rolls) + amount.flat };
+      })();
+  const label =
+    ctx.definition.sheet.live.conditions.find((one) => one.id === entry.condition)?.label ?? entry.condition;
+  const dealt = applyDamage(ctx, holder, {
+    ...(entry.source ? { sourceId: entry.source } : {}),
+    label,
+    ...(harms.type ? { damageType: harms.type } : {}),
+    ...harm,
+  });
+  afterBlow(ctx, holder, dealt, false);
 }
 
 /** A free cell beside the target, preferring the one nearest the weapon's previous cell. */
@@ -3995,6 +4054,8 @@ function clauseReaches(
 ): boolean {
   if (!rulesetTargetIs(ctx.definition, target, clause.targetIs)) return false;
   if (clause.not && rulesetTargetIs(ctx.definition, target, clause.not)) return false;
+  // Only on a target the maker marked (1.184): an oathbow's sworn enemy.
+  if (clause.marked !== undefined && !rulesetMarkedBy(target, clause.marked, actor.id)) return false;
   return !clause.blow || rulesetBlowKind(ctx.state, actor, target, action) === clause.blow;
 }
 
@@ -4225,7 +4286,7 @@ function resolveActionBody(
       // against their defense as it stands now, which is what an answer at this moment changes. A
       // natural face decided it whatever the defense.
       const roll = held.roll;
-      const guarded = rulesetDefenseAgainst(ctx.definition, ctx.combat, ctx.state, target, actor);
+      const guarded = rulesetDefenseAgainst(ctx.definition, ctx.combat, ctx.state, target, actor, action);
       const landsAt = roll.critical ? "critical" : "hit";
       // A pool's successes meet what the defense now asks, never fewer than one.
       const needed = pooled ? Math.max(1, guarded.defense) : guarded.defense;
@@ -4259,9 +4320,9 @@ function resolveActionBody(
         optionId: action.id,
       });
       // What the weapon adds against what the target is (1.182).
-      const toHit = action.toHit + rulesetToHitAgainst(ctx.definition, action, target);
+      const toHit = action.toHit + rulesetToHitAgainst(ctx.definition, action, target, actor);
       // What the ground the target stands on is worth, said out loud before the roll it changed.
-      const guarded = rulesetDefenseAgainst(ctx.definition, ctx.combat, ctx.state, target, actor);
+      const guarded = rulesetDefenseAgainst(ctx.definition, ctx.combat, ctx.state, target, actor, action);
       if (guarded.cover > 0) {
         ctx.events.push({ type: "cover", targetId: target.id, bonus: guarded.cover, defense: guarded.defense });
       }

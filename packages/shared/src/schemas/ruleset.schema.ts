@@ -2727,6 +2727,9 @@ const creatureActionSchema = z
      *  distance (Capability API 1.179); with a save, only on a failed one: a bronze dragon's
      *  Repulsion Breath, a dragon turtle's Tail. */
     push: z.number().finite().gt(0).max(10000).optional(),
+    /** The ability its attack is made with (Capability API 1.184), so a change to attacks or damage
+     *  narrowed to an ability reaches it: a gold dragon's Weakening Breath on an ogre's club. */
+    ability: sheetId.optional(),
     /** What a save that ENDS one of `applies` is rolled against, when the action has no save of its
      *  own to borrow the number from. */
     saveDifficulty: z.number().int().min(0).max(1000).optional(),
@@ -3675,9 +3678,42 @@ export const rulesetItemAttackSchema = z
       .max(4)
       .optional(),
     /** More to hit against a target that is this (Capability API 1.182): a mace of smiting's +2 more
-     *  against constructs. Its damage is a `plus` clause with the same `targetIs`. */
+     *  against constructs. Its damage is a `plus` clause with the same `targetIs`. Since Capability
+     *  API 1.184 the target may instead be one carrying a condition the wielder put on it
+     *  (`marked`), and the attack may roll twice (`mode`), ignore cover short of total
+     *  (`ignoresCover`) and long range (`ignoresLongRange`): an oathbow's sworn enemy. */
     against: z
-      .array(z.object({ is: targetIsSchema, toHit: z.number().int().min(-20).max(20) }).strict())
+      .array(
+        z
+          .object({
+            is: targetIsSchema.optional(),
+            marked: sheetId.optional(),
+            toHit: z.number().int().min(-20).max(20).optional(),
+            mode: z.enum(["advantage", "disadvantage"]).optional(),
+            ignoresCover: z.literal(true).optional(),
+            ignoresLongRange: z.literal(true).optional(),
+          })
+          .strict()
+          .superRefine((entry, ctx) => {
+            if (entry.is === undefined && entry.marked === undefined) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: 'An "against" names who it is against: "is", "marked" or both',
+              });
+            }
+            if (
+              entry.toHit === undefined &&
+              entry.mode === undefined &&
+              !entry.ignoresCover &&
+              !entry.ignoresLongRange
+            ) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: 'An "against" changes something: toHit, mode, ignoresCover or ignoresLongRange',
+              });
+            }
+          }),
+      )
       .min(1)
       .max(4)
       .optional(),
@@ -3736,6 +3772,9 @@ export const rulesetItemAttackSchema = z
             /** Its holder gains temporary points equal to what this clause dealt (Capability API
              *  1.182): a sword of life stealing. */
             tempHp: z.literal(true).optional(),
+            /** Only on a target carrying this condition from the wielder (Capability API 1.184): an
+             *  oathbow's 3d6 against its sworn enemy. */
+            marked: sheetId.optional(),
           })
           .strict()
           .superRefine((clause, ctx) => {
@@ -4778,6 +4817,27 @@ const combatConditionSchema = z
       .optional(),
     exclusive: z.tuple([sheetId, sheetId]).optional(),
     attacksPerTurn: z.number().int().min(0).max(10).optional(),
+    /** Damage its holder takes as each of their turns starts or ends (Capability API 1.184), from
+     *  whoever put it on: a sword of wounding's 1d4 necrotic, before the save that ends it. */
+    harms: z
+      .object({
+        at: z.enum(["turn-start", "turn-end"]),
+        dice: catalogDice.optional(),
+        flat: z.number().int().min(0).max(1000).optional(),
+        type: promptSafeText(40).optional(),
+      })
+      .strict()
+      .refine((harm) => harm.dice !== undefined || harm.flat !== undefined, {
+        message: "What it harms with names dice, a flat amount, or both",
+      })
+      .optional(),
+    /** Put on again while it holds, it stacks up to this many times rather than starting over
+     *  (Capability API 1.184), and its `harms` is dealt once for each: a sword of wounding's wounds.
+     *  Ending it ends them all. */
+    stacks: z.number().int().min(2).max(20).optional(),
+    /** One holder at a time from any one source (Capability API 1.184): put on somebody else, it
+     *  leaves whoever had it from the same source. An oathbow's sworn enemy. */
+    onePerSource: z.literal(true).optional(),
     /** What it leaves behind is on a clock of its holder's turns: nothing rolls a save against it (it
      *  has no difficulty) and an instant one would never come off. */
     onEnd: z
@@ -4808,6 +4868,13 @@ const combatConditionSchema = z
     }
     if (entry.exclusive && entry.exclusive[0] === entry.exclusive[1]) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["exclusive"], message: "Two different budgets" });
+    }
+    if (entry.stacks !== undefined && !entry.harms) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["stacks"],
+        message: "Stacks multiply what a condition harms with, so it names harms",
+      });
     }
   });
 
@@ -7442,6 +7509,12 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       mapped.add(entry.condition);
       effectNameIssues(entry, skills, saves, abilityIds, def, path, issue);
       hideIssues(def, entry, path, issue);
+      // What it harms with is one of the ruleset's damage types (1.184).
+      const harmType = entry.harms?.type;
+      const damageTypes = combat.damageTypes?.map((type) => type.trim().toLowerCase());
+      if (harmType && damageTypes && !damageTypes.includes(harmType.trim().toLowerCase())) {
+        issue([...path, "harms", "type"], `Unknown damage type "${harmType}"`);
+      }
       if (entry.unseen) sightIssues(def, entry.unseen.pierced, [...path, "unseen"], issue);
       senseRangeIssues(def, entry.senses, path, issue);
       componentIssues(def, entry.forbids?.components, [...path, "forbids", "components"], issue);
@@ -8545,6 +8618,9 @@ function creatureIssues(
   creature.actions.forEach((action, index) => {
     const path = [...at, "actions", index];
     if (!budgets.has(action.budget)) add([...path, "budget"], `Unknown budget "${action.budget}"`);
+    if (action.ability !== undefined && !definition.sheet.abilities.some((one) => one.id === action.ability)) {
+      add([...path, "ability"], `Unknown ability "${action.ability}"`);
+    }
     componentIssues(definition, action.components, [...path, "components"], add);
     if (action.damage?.type && damageTypes && !damageTypes.has(action.damage.type.trim().toLowerCase())) {
       add([...path, "damage", "type"], `Unknown damage type "${action.damage.type}"`);
@@ -9313,7 +9389,14 @@ function attackIssues(
     }
     targetIsIssues(definition, entry.targetIs, [...at, "onHit", index, "targetIs"], add);
   });
-  attack.against?.forEach((entry, index) => targetIsIssues(definition, entry.is, [...at, "against", index, "is"], add));
+  attack.against?.forEach((entry, index) => {
+    targetIsIssues(definition, entry.is, [...at, "against", index, "is"], add);
+    if (entry.marked !== undefined && !conditions.has(entry.marked))
+      add([...at, "against", index, "marked"], `Unknown condition "${entry.marked}"`);
+    if (entry.mode && !(combat.attackRoll?.advantage ?? combat.pool?.advantage)) {
+      add([...at, "against", index, "mode"], "A fight that never rolls twice has no mode to change");
+    }
+  });
   attack.slay?.forEach((entry, index) => {
     const where = [...at, "slay", index];
     targetIsIssues(definition, entry.is, [...where, "is"], add);
@@ -9337,6 +9420,8 @@ function attackIssues(
       add([...where, "save", "save"], `Unknown save "${clause.save.save}"`);
     targetIsIssues(definition, clause.targetIs, [...where, "targetIs"], add);
     targetIsIssues(definition, clause.not, [...where, "not"], add);
+    if (clause.marked !== undefined && !conditions.has(clause.marked))
+      add([...where, "marked"], `Unknown condition "${clause.marked}"`);
   });
 }
 

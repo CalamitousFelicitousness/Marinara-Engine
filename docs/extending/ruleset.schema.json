@@ -11875,6 +11875,11 @@
                             "exclusiveMinimum": 0,
                             "maximum": 10000
                           },
+                          "ability": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
                           "saveDifficulty": {
                             "type": "integer",
                             "minimum": 0,
@@ -18247,17 +18252,33 @@
                                 },
                                 "additionalProperties": false
                               },
+                              "marked": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
                               "toHit": {
                                 "type": "integer",
                                 "minimum": -20,
                                 "maximum": 20
                               },
+                              "mode": {
+                                "type": "string",
+                                "enum": [
+                                  "advantage",
+                                  "disadvantage"
+                                ]
+                              },
+                              "ignoresCover": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "ignoresLongRange": {
+                                "type": "boolean",
+                                "const": true
+                              },
                               "$comment": {}
                             },
-                            "required": [
-                              "is",
-                              "toHit"
-                            ],
                             "additionalProperties": false
                           },
                           "minItems": 1,
@@ -18498,6 +18519,11 @@
                               "tempHp": {
                                 "type": "boolean",
                                 "const": true
+                              },
+                              "marked": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
                               },
                               "$comment": {}
                             },
@@ -28048,6 +28074,47 @@
                 "type": "integer",
                 "minimum": 0,
                 "maximum": 10
+              },
+              "harms": {
+                "type": "object",
+                "properties": {
+                  "at": {
+                    "type": "string",
+                    "enum": [
+                      "turn-start",
+                      "turn-end"
+                    ]
+                  },
+                  "dice": {
+                    "type": "string",
+                    "maxLength": 40,
+                    "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                  },
+                  "flat": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000
+                  },
+                  "type": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "$comment": {}
+                },
+                "required": [
+                  "at"
+                ],
+                "additionalProperties": false
+              },
+              "stacks": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 20
+              },
+              "onePerSource": {
+                "type": "boolean",
+                "const": true
               },
               "onEnd": {
                 "type": "object",

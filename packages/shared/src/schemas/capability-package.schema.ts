@@ -922,7 +922,11 @@ const capabilityPackageManifestBaseSchema = z
 // its `onHit` conditions may need a target that is something and land once a turn.
 // 1.183: a sheet, a rest and a fight may name up to 160 conditions, an attacks modifier may take
 // `ability`, and a checks modifier may take `abilities`.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 183 } as const);
+// 1.184: a condition may harm its holder each turn (`harms`), stack (`stacks`) and keep to one holder
+// per source (`onePerSource`); an item attack's `against` may name a `marked` target, a `mode`, and
+// ignore cover and long range, and its `plus` clauses may be `marked`; a creature action may name
+// the `ability` its attack is made with.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 184 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

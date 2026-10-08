@@ -55,6 +55,8 @@ export interface RulesetCombatDamageClause extends RulesetCombatAmount {
   blow?: RulesetBlowKind;
   /** Its maker gains temporary points equal to what it dealt (1.182). */
   tempHp?: true;
+  /** Dealt only to a target carrying this condition from its maker (1.184). */
+  marked?: string;
 }
 
 /** An amount of damage, and what kind it is. The type is matched without case against a stat
@@ -254,6 +256,8 @@ export interface RulesetStatBlockAction {
   /** Pushed this far straight away from the creature, in the ruleset's own distance, on a failed save
    *  when it has one (1.179). */
   push?: number;
+  /** The ability its attack is made with (1.184), so changes narrowed to an ability reach it. */
+  ability?: string;
   /** What it adds after a straight run at its target this turn (1.181). */
   charge?: RulesetCombatCharge;
   /** What a save that ENDS one of `applies` is rolled against, when the action has no save of its
@@ -568,8 +572,9 @@ export interface RulesetCombatAction {
     /** At most once in any one turn (1.182). */
     oncePerTurn?: true;
   }>;
-  /** More to hit against a target that is this (1.182). */
-  against?: Array<{ is: RulesetTargetIs; toHit: number }>;
+  /** More to hit against a target that is this (1.182), or that carries a condition its maker put on
+   *  it (`marked`, 1.184), and how else an attack on it is made (1.184). */
+  against?: RulesetCombatAgainst[];
   /** A hit that leaves its target low enough kills it outright (1.182); `charges` is what it spends of
    *  the item at this place in `sheet.items` when it does, out of `max`. */
   slay?: Array<{
@@ -665,6 +670,16 @@ export interface RulesetReachableCell extends RulesetCombatCell {
 
 /** A condition the fight is keeping time on. The condition itself lives on the sheet for a party
  *  member, so it outlives the battle; this is the bookkeeping beside it. */
+/** What a weapon does differently against some targets (1.182, 1.184). */
+export interface RulesetCombatAgainst {
+  is?: RulesetTargetIs;
+  marked?: string;
+  toHit?: number;
+  mode?: RulesetCombatRollMode;
+  ignoresCover?: true;
+  ignoresLongRange?: true;
+}
+
 export interface RulesetTrackedCondition {
   /** Removed once the action that opened its window finishes (1.126). */
   thisAction?: true;
@@ -689,6 +704,8 @@ export interface RulesetTrackedCondition {
   escapeDc?: number;
   /** The contest checks that may break it (1.170). */
   escapeChecks?: string[];
+  /** How many times it is on, where the condition stacks (1.184). */
+  stacks?: number;
 }
 
 export interface RulesetCombatant {
@@ -1238,7 +1255,12 @@ export type RulesetCombatEvent =
         | "recovered"
         | "harmed"
         | "shaken"
-        | "cured";
+        | "cured"
+        /** Put on again, one more of it (1.184): `stacks` is how many there are now. */
+        | "stacked"
+        /** Gone because its source put it on somebody else (1.184). */
+        | "moved";
+      stacks?: number;
     }
   /** A number that attacks move: what came off it or went on it, why, and what it is now. A style
    *  that takes carries the damage dice that decided it, as a damage event does. */

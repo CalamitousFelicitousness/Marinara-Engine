@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: a sword of wounding's wounds stack and hurt every turn until a save ends them, an oathbow's sworn enemy is struck with advantage, through cover and at long range, and Weakening Breath and Ray of Enfeeblement weaken monsters' Strength attacks too
 - Rulesets: a ruleset can declare up to 160 conditions, a gold dragon's Weakening Breath weakens only Strength attacks, and Rage gives advantage only on Strength checks, contests included
 - Rulesets: magic weapons hit harder against what they are made for, maces of disruption and smiting, nine lives stealers and vorpal swords can kill outright, swords of life stealing grant temporary hit points, a dwarven thrower adds its extra only when thrown, and a giant slayer's knockdown and a sword of wounding's wound land on the right targets
 - Rulesets: a metallic dragon's second breath weapon is a real action that recharges together with its first, and a minotaur's Charge adds its gore damage, push and knockdown after a straight run at its target

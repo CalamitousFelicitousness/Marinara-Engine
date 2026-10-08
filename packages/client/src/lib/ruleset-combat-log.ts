@@ -394,6 +394,7 @@ export function rulesetCombatEventLine(
       return key(`condition${event.reason[0]!.toUpperCase()}${event.reason.slice(1)}`, {
         target: names.combatant(event.targetId),
         condition: names.condition(event.condition),
+        ...(event.stacks !== undefined ? { stacks: event.stacks } : {}),
       });
     case "contest": {
       // Both sides as a roll, with the check each one added, so the line reads the way the table

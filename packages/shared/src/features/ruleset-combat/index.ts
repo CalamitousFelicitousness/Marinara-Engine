@@ -171,6 +171,8 @@ export {
   rulesetAreaTargets,
   rulesetAttackMode,
   rulesetToHitAgainst,
+  rulesetAgainstHere,
+  rulesetMarkedBy,
   rulesetBonusDice,
   rulesetCombatOptions,
   rulesetContestChance,

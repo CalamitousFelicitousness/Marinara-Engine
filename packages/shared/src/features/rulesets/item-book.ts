@@ -150,7 +150,7 @@ export interface RulesetItemFacts {
  *  its temporary points, how far it reaches, and what using it spends of it. */
 export interface RulesetItemUseFact {
   budget?: string;
-  kind: "attack" | "heal" | "buff" | "debuff";
+  kind: "attack" | "heal" | "buff" | "debuff" | "utility";
   amount?: string;
   type?: string;
   toHit?: string;

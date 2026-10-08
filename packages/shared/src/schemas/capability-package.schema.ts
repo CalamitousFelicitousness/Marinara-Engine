@@ -897,7 +897,14 @@ const capabilityPackageManifestBaseSchema = z
 //        scroll), a condition or a worn or carried item may give senses with a range (`senses`:
 //        Darkvision, True Seeing, goggles of night), and a condition may give away its holder
 //        whatever hides them (`cancelsUnseen`: Faerie Fire). No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 175 } as const);
+// 1.176: a zone's `wards` may compare a spell's base level (`by: "base"`) and keep out more for each
+//        step its own cast was paid up (`maxLevelPerCostStep`: Globe of Invulnerability). A save may
+//        say what else it is against (`save.against`: poison) and who succeeds outright
+//        (`save.succeeds`: immune to poison, or a creature that does not breathe: Stinking Cloud).
+//        A creature's spellcasting may say the components its spells need (`components`, `[]` for
+//        none), and an item's use may be `utility`, leaving only an area (a scroll of Fog Cloud). No
+//        permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 176 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

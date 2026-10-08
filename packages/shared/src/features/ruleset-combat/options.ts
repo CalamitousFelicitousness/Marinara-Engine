@@ -1162,10 +1162,23 @@ export function rulesetWarded(
   const wards = rulesetWardsOn(state, target);
   if (wards.length === 0) return false;
   const own = new Set(rulesetWardsOn(state, actor).map((ward) => ward.key));
-  const level = rulesetPaidLevel(definition, actor, action, payWith);
-  return wards.some(
-    (ward) => !own.has(ward.key) && ward.wards.catalogs.includes(catalog) && level <= ward.wards.maxLevel,
-  );
+  const paid = rulesetPaidLevel(definition, actor, action, payWith);
+  // Its own base level, however it was paid (1.176): Globe of Invulnerability.
+  const base = action.innate ? action.innate.baseLevel : rulesetPaidLevel(definition, actor, action);
+  return wards.some(({ key, wards: ward, caster, zone }) => {
+    if (own.has(key) || !ward.catalogs.includes(catalog)) return false;
+    // Raised for each step the ward's own cast was paid above its base (1.176).
+    const cast = caster.actions.find((entry) => entry.id === zone.actionId);
+    const steps =
+      !ward.maxLevelPerCostStep || !cast
+        ? 0
+        : cast.innate
+          ? Math.max(0, cast.innate.level - cast.innate.baseLevel)
+          : zone.payWith
+            ? rulesetCostSteps(definition, cast, zone.payWith, caster)
+            : 0;
+    return (ward.by === "base" ? base : paid) <= ward.maxLevel + steps * (ward.maxLevelPerCostStep ?? 0);
+  });
 }
 
 /** Uses left on this holder, or shared by its coven for this spell (1.118). */

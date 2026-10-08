@@ -152,6 +152,11 @@ export interface RulesetCombatSaveRider {
   onSuccess: "none" | "half" | "negates";
   /** Cover does not help the target with this save (combat C6a-2). */
   ignoresCover?: true;
+  /** What else it counts as being against, for a save modifier's `against` (1.176). */
+  against?: { conditions?: string[]; damage?: string[] };
+  /** Who succeeds without rolling (1.176): immune to one of these damage types or conditions, or
+   *  one that is this. */
+  succeeds?: { immune?: string[]; conditionImmune?: string[]; is?: RulesetTargetIs };
 }
 
 /** How often something can be done at all, and over what stretch. `day` outlives one fight, so the
@@ -1589,7 +1594,7 @@ export interface RulesetCombatZoneRule {
   /** Components nothing used from inside it may need (1.174). */
   forbids?: { components: string[] };
   /** Off these catalogs, at this level or lower, nothing from outside reaches inside (1.174). */
-  wards?: { catalogs: string[]; maxLevel: number };
+  wards?: { catalogs: string[]; maxLevel: number; by?: "base" | "paid"; maxLevelPerCostStep?: number };
 }
 
 /** One lasting area standing on the board (1.167). A zone held at a point keeps the cells it was

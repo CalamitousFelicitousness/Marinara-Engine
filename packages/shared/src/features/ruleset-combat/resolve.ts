@@ -267,6 +267,27 @@ function matches(
   );
 }
 
+/** Whether a target passes this save without rolling (1.176): immune to one of the damage types or
+ *  conditions it names, or what it says it is. */
+function savesOutright(
+  ctx: RulesetCombatContext,
+  target: RulesetCombatant,
+  save: NonNullable<RulesetCombatAction["save"]>,
+): boolean {
+  const succeeds = save.succeeds;
+  if (!succeeds) return false;
+  if (succeeds.is && rulesetTargetIs(ctx.definition, target, succeeds.is)) return true;
+  if (
+    succeeds.conditionImmune?.some((condition) =>
+      rulesetImmuneToCondition(target, condition, ctx.definition, ctx.state),
+    )
+  )
+    return true;
+  if (!succeeds.immune?.length) return false;
+  const immune = rulesetCombatHide(ctx.definition, target, ctx.state).immune;
+  return succeeds.immune.some((type) => matches(immune, type.trim().toLowerCase()));
+}
+
 // ── Health ──
 
 function healthOf(ctx: RulesetCombatContext, combatant: RulesetCombatant) {
@@ -4029,14 +4050,32 @@ function resolveActionBody(
     }
 
     const against: RulesetSaveAgainst = {
-      conditions: action.applies?.map((one) => one.condition),
-      damage: [action.damage?.type, ...(action.damage?.plus ?? []).map((one) => one.type)].filter(
-        (type): type is string => type !== undefined,
-      ),
+      conditions: [...(action.applies?.map((one) => one.condition) ?? []), ...(action.save?.against?.conditions ?? [])],
+      damage: [
+        action.damage?.type,
+        ...(action.damage?.plus ?? []).map((one) => one.type),
+        ...(action.save?.against?.damage ?? []),
+      ].filter((type): type is string => type !== undefined),
       magic: (action.qualities ?? action.damage?.qualities)?.includes("magical") === true,
     };
     let saved = false;
-    if (action.save) {
+    if (action.save && savesOutright(ctx, target, action.save)) {
+      // Nothing to roll (1.176): immune to what it is, or not the kind of creature it works on.
+      ctx.events.push({
+        type: "save",
+        actorId: target.id,
+        sourceId: actor.id,
+        save: action.save.save,
+        rolls: [],
+        kept: 0,
+        modifier: target.saves[action.save.save] ?? 0,
+        total: 0,
+        difficulty: action.save.difficulty,
+        success: true,
+        automatic: true,
+      });
+      saved = true;
+    } else if (action.save) {
       saved = rollSave(
         ctx,
         target,

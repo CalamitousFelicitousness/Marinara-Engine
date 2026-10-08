@@ -309,7 +309,10 @@ export function rulesetCombatEventLine(
     }
     case "save":
       if (event.automatic) {
-        return key("saveAutomatic", { actor: names.combatant(event.actorId), save: names.save(event.save) });
+        return key(event.success ? "saveAutomaticSuccess" : "saveAutomatic", {
+          actor: names.combatant(event.actorId),
+          save: names.save(event.save),
+        });
       }
       if (event.pool) {
         return key(event.success ? "savePoolSuccess" : "savePoolFailure", {

@@ -1494,6 +1494,31 @@ function carriesSightExtras(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesSightExtras(one, depth + 1));
 }
 
+/** Wards by base level or raised by their cast's steps, saves that say what else they are against or
+ *  who passes them outright, a creature's spell components said in place of the entries', and an
+ *  item's utility use (1.176), in catalog files too. */
+function carriesWardsAndSaves(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesWardsAndSaves(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  for (const mechanics of [plainRecord(record.mechanics), plainRecord(record.use), record]) {
+    if (!mechanics) continue;
+    const wards = plainRecord(plainRecord(mechanics.zone)?.wards);
+    if (wards && (wards.by !== undefined || wards.maxLevelPerCostStep !== undefined)) return true;
+    const save = plainRecord(mechanics.save);
+    if (save && (save.against !== undefined || save.succeeds !== undefined)) return true;
+  }
+  if (plainRecord(record.use)?.kind === "utility") return true;
+  const casting = plainRecord(record.spellcasting);
+  if (casting) {
+    if (casting.components !== undefined) return true;
+    const spells = Array.isArray(casting.spells) ? casting.spells : [];
+    if (spells.some((spell) => plainRecord(spell)?.components !== undefined)) return true;
+  }
+  return Object.values(record).some((one) => carriesWardsAndSaves(one, depth + 1));
+}
+
 /** Senses and seeing (1.173): the combat block's senses or sight, a condition that hides, a zone
  *  that obscures, an area set down several times, "a creature you can see", or a creature's senses,
  *  in catalog files too. */
@@ -2814,6 +2839,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesSightExtras(document)))
   ) {
     return "A ruleset with conditions that end when their holder attacks or casts, senses given by conditions or items, conditions that give away the unseen, or item uses that cast, requires schemaVersion 2 and capabilityApi 1.175 or newer";
+  }
+  // Wards by base level or raised per step, save extras, creature spell components, utility uses, 1.176.
+  if (
+    !declaresApi(176) &&
+    (carriesWardsAndSaves(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesWardsAndSaves(document)))
+  ) {
+    return "A ruleset with wards by base level or raised by their cast, saves that say what else they are against or who passes them outright, creature spell components, or utility item uses, requires schemaVersion 2 and capabilityApi 1.176 or newer";
   }
   if (carriesCreatureSpellcasting) {
     // The references can only be checked once the catalog files are beside their headers.

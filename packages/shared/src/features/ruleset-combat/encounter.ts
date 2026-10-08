@@ -81,6 +81,7 @@ import type {
   RulesetCombatRider,
   RulesetCombatRoller,
   RulesetCombatSoak,
+  RulesetCombatZone,
   RulesetEncounterState,
   RulesetStatBlockAction,
   RulesetStatBlock,
@@ -361,7 +362,13 @@ export function rulesetActiveConditions(
 function zonesStoodIn(
   state: RulesetEncounterState,
   combatant: RulesetCombatant,
-): Array<{ key: string; label: string; rule: NonNullable<RulesetCombatAction["zone"]> }> {
+): Array<{
+  key: string;
+  label: string;
+  rule: NonNullable<RulesetCombatAction["zone"]>;
+  caster: RulesetCombatant;
+  zone: RulesetCombatZone;
+}> {
   const at = rulesetPositionOf(combatant);
   const grid = state.board?.grid;
   return state.combatants.flatMap((caster) =>
@@ -372,7 +379,7 @@ function zonesStoodIn(
         grid && at
           ? rulesetZoneCells(state, caster, zone).some((cell) => cell.x === at.x && cell.y === at.y)
           : !!zone.held?.includes(combatant.id);
-      return inIt ? [{ key: `${caster.id}/${zone.actionId}`, label: zone.label, rule }] : [];
+      return inIt ? [{ key: `${caster.id}/${zone.actionId}`, label: zone.label, rule, caster, zone }] : [];
     }),
   );
 }
@@ -387,8 +394,15 @@ export function rulesetZoneConditions(state: RulesetEncounterState, combatant: R
 export function rulesetWardsOn(
   state: RulesetEncounterState,
   combatant: RulesetCombatant,
-): Array<{ key: string; wards: NonNullable<NonNullable<RulesetCombatAction["zone"]>["wards"]> }> {
-  return zonesStoodIn(state, combatant).flatMap(({ key, rule }) => (rule.wards ? [{ key, wards: rule.wards }] : []));
+): Array<{
+  key: string;
+  wards: NonNullable<NonNullable<RulesetCombatAction["zone"]>["wards"]>;
+  caster: RulesetCombatant;
+  zone: RulesetCombatZone;
+}> {
+  return zonesStoodIn(state, combatant).flatMap(({ key, rule, caster, zone }) =>
+    rule.wards ? [{ key, wards: rule.wards, caster, zone }] : [],
+  );
 }
 
 /** A condition can take away a sense an effect needs (1.122), so its holder is left out entirely. */
@@ -1589,6 +1603,8 @@ function mechanicsAction(
       onSuccess: mechanics.save.onSuccess,
       difficulty: sourceDifficulty,
       ...(mechanics.save.ignoresCover ? { ignoresCover: true as const } : {}),
+      ...(mechanics.save.against ? { against: structuredClone(mechanics.save.against) } : {}),
+      ...(mechanics.save.succeeds ? { succeeds: structuredClone(mechanics.save.succeeds) } : {}),
     };
   }
   if (from.saveDifficulty !== undefined) action.saveDifficulty = sourceDifficulty;
@@ -1653,7 +1669,14 @@ function mechanicsAction(
     }
     if (mechanics.zone.forbids) action.zone.forbids = { components: [...mechanics.zone.forbids.components] };
     if (mechanics.zone.wards) {
-      action.zone.wards = { catalogs: [...mechanics.zone.wards.catalogs], maxLevel: mechanics.zone.wards.maxLevel };
+      action.zone.wards = {
+        catalogs: [...mechanics.zone.wards.catalogs],
+        maxLevel: mechanics.zone.wards.maxLevel,
+        ...(mechanics.zone.wards.by ? { by: mechanics.zone.wards.by } : {}),
+        ...(mechanics.zone.wards.maxLevelPerCostStep
+          ? { maxLevelPerCostStep: mechanics.zone.wards.maxLevelPerCostStep }
+          : {}),
+      };
     }
     const held = mechanics.zone.whileHeld;
     const heldAmount = held && amountOf(held.amount);
@@ -1920,6 +1943,10 @@ function innateActions(
         : {}),
     };
     if (spell.uses) action.uses = { ...spell.uses };
+    // What casting it this way needs, said by the spell or its trait, in place of the entry's (1.176).
+    const components = spell.components ?? casting.components;
+    if (components?.length) action.components = [...components];
+    else if (components) delete action.components;
     return [action];
   });
 }

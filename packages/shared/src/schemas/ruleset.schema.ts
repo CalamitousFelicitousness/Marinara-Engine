@@ -1418,9 +1418,21 @@ const forbidsSchema: z.ZodType<RulesetForbids, z.ZodTypeDef, unknown> = z.object
 export interface RulesetZoneWards {
   catalogs: string[];
   maxLevel: number;
+  by?: "base" | "paid";
+  maxLevelPerCostStep?: number;
 }
 const zoneWardsSchema: z.ZodType<RulesetZoneWards, z.ZodTypeDef, unknown> = z
-  .object({ catalogs: uniqueIds(8), maxLevel: z.number().int().min(0).max(20) })
+  .object({
+    catalogs: uniqueIds(8),
+    maxLevel: z.number().int().min(0).max(20),
+    /** Which level of what is cast it compares (Capability API 1.176): the level it was paid at
+     *  (the default), or its own base level however it was paid, as 5e's Globe of Invulnerability
+     *  keeps out a spell of 5th level or lower "even if cast using a higher level spell slot". */
+    by: z.enum(["base", "paid"]).optional(),
+    /** It keeps out this many levels more for each step its own cast was paid above its base
+     *  (Capability API 1.176): Globe, one higher for each slot level above 6th. */
+    maxLevelPerCostStep: z.number().int().min(1).max(10).optional(),
+  })
   .strict();
 
 export interface RulesetCatalogZone {
@@ -1834,6 +1846,38 @@ const holderEndingSchema: z.ZodType<RulesetHolderEnding, z.ZodTypeDef, unknown> 
   .strict()
   .refine((ends) => ends.attacks || ends.casts, { message: "Say what ends it: attacking, casting, or both" });
 
+/** Who passes a save without rolling, and what else it counts as being against (1.176). */
+export interface RulesetSaveExtras {
+  against?: { conditions?: string[]; damage?: string[] };
+  succeeds?: { immune?: string[]; conditionImmune?: string[]; is?: RulesetTargetIs };
+}
+const saveExtrasShape = {
+  /** What else the save counts as being against (Capability API 1.176), for a save modifier's
+   *  `against`: 5e's Stinking Cloud is a save against poison, which a dwarf has advantage on. */
+  against: z
+    .object({
+      conditions: z.array(sheetId).min(1).max(8).optional(),
+      damage: z.array(promptSafeText(40)).min(1).max(8).optional(),
+    })
+    .strict()
+    .refine((against) => against.conditions || against.damage, { message: "Against names conditions or damage" })
+    .optional(),
+  /** Who succeeds on it without rolling (Capability API 1.176): a target immune to one of these
+   *  damage types or conditions, or one that is this. 5e's Stinking Cloud: immune to poison, or a
+   *  creature that does not breathe. */
+  succeeds: z
+    .object({
+      immune: z.array(promptSafeText(40)).min(1).max(8).optional(),
+      conditionImmune: z.array(sheetId).min(1).max(8).optional(),
+      is: targetIsSchema.optional(),
+    })
+    .strict()
+    .refine((succeeds) => succeeds.immune || succeeds.conditionImmune || succeeds.is, {
+      message: "Say who succeeds: immune to damage, to a condition, or what they are",
+    })
+    .optional(),
+};
+
 /** One condition a catalog entry puts on what it touches. Typed by hand: written out, its inferred type is too long for the
  *  definition schema around it to emit. */
 export interface RulesetCatalogApplies {
@@ -2073,6 +2117,7 @@ const catalogMechanicsObject = z
         save: sheetId,
         onSuccess: z.enum(["none", "half", "negates"]),
         ignoresCover: z.literal(true).optional(),
+        ...saveExtrasShape,
       })
       .strict()
       .optional(),
@@ -2459,6 +2504,7 @@ const creatureSaveSchema = z
     onSuccess: z.enum(["none", "half", "negates"]),
     /** The target gains nothing from cover on this save (Capability API 1.69). */
     ignoresCover: z.literal(true).optional(),
+    ...saveExtrasShape,
   })
   .strict();
 
@@ -2489,6 +2535,12 @@ const creatureUsesSchema = z
   .object({ per: z.enum(["encounter", "day"]), count: z.number().int().min(1).max(20) })
   .strict();
 
+/** Components said in place of an entry's own, none at all included (1.176). */
+const componentOverrideSchema = z
+  .array(sheetId)
+  .max(8)
+  .refine((ids) => new Set(ids).size === ids.length, { message: "A component is named once" });
+
 const creatureSpellcastingSchema = z
   .object({
     saveDifficulty: z.number().int().min(1).max(60).optional(),
@@ -2501,11 +2553,17 @@ const creatureSpellcastingSchema = z
             uses: creatureUsesSchema.optional(),
             level: z.number().int().min(0).max(20).optional(),
             coven: z.literal(true).optional(),
+            /** What casting it this way needs, in place of the entry's own (Capability API 1.176):
+             *  `[]` for innate spellcasting that needs no components. */
+            components: componentOverrideSchema.optional(),
           })
           .strict(),
       )
       .min(1)
       .max(60),
+    /** What every spell of the trait needs, in place of each entry's own, unless a spell says
+     *  (Capability API 1.176): 5e's "requiring no material components" is `["verbal", "somatic"]`. */
+    components: componentOverrideSchema.optional(),
     coven: z
       .object({ id: sheetId, size: z.number().int().min(2).max(6), within: z.number().finite().positive() })
       .strict()
@@ -3526,7 +3584,9 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     rider: true,
   })
   .extend({
-    kind: z.enum(["attack", "heal", "buff", "debuff"]),
+    /** `utility` (Capability API 1.176) is a use that only leaves an area standing: a scroll of Fog
+     *  Cloud, Darkness or Silence. */
+    kind: z.enum(["attack", "heal", "buff", "debuff", "utility"]),
     // Line widths belong to catalog entries and creature actions (1.123); a wall's thickness and a
     // ring are a wand's or a scroll's too (1.172).
     area: z
@@ -3595,6 +3655,9 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     // Giving back is help: a use aimed to harm restores nobody's pool.
     if (use.restore && use.kind !== "heal" && use.kind !== "buff") {
       issue("restore", "A restore is on a use that helps, a heal or a buff");
+    }
+    if (use.kind === "utility" && (!use.zone || !use.area)) {
+      issue("kind", "A utility use leaves an area standing, so it has an area and a zone");
     }
     // An area that stays, as a scroll of the spell leaves one (1.169).
     const zone = zoneIssue(use);
@@ -7902,10 +7965,12 @@ function targetTestIssues(
     plus?: ReadonlyArray<{ targetIs?: RulesetTargetIs }>;
     applies?: ReadonlyArray<{ targetIs?: RulesetTargetIs }>;
     targetTypes?: { is?: RulesetTargetIs; not?: RulesetTargetIs };
+    save?: RulesetSaveExtras;
   },
   at: (string | number)[],
   add: (path: (string | number)[], message: string) => void,
 ): void {
+  saveExtrasIssues(definition, carrier.save, [...at, "save"], add);
   carrier.plus?.forEach((clause, index) =>
     targetIsIssues(definition, clause.targetIs, [...at, "plus", index, "targetIs"], add),
   );
@@ -7914,6 +7979,33 @@ function targetTestIssues(
   );
   targetIsIssues(definition, carrier.targetTypes?.is, [...at, "targetTypes", "is"], add);
   targetIsIssues(definition, carrier.targetTypes?.not, [...at, "targetTypes", "not"], add);
+}
+
+/** What a save says it is against, and who passes it outright (1.176), are the ruleset's own:
+ *  its conditions, its damage types where it declares them, and its creature types. */
+function saveExtrasIssues(
+  definition: RulesetDefinition,
+  save: RulesetSaveExtras | undefined,
+  at: (string | number)[],
+  add: (path: (string | number)[], message: string) => void,
+): void {
+  if (!save) return;
+  const conditions = new Set(definition.sheet.live.conditions.map((condition) => condition.id));
+  const declared = definition.combat?.damageTypes;
+  const types = declared ? new Set(declared.map((type) => type.trim().toLowerCase())) : null;
+  const condition = (list: string[] | undefined, path: (string | number)[]) =>
+    list?.forEach((id, index) => {
+      if (!conditions.has(id)) add([...path, index], `Unknown condition "${id}"`);
+    });
+  const damage = (list: string[] | undefined, path: (string | number)[]) =>
+    list?.forEach((type, index) => {
+      if (types && !types.has(type.trim().toLowerCase())) add([...path, index], `Unknown damage type "${type}"`);
+    });
+  condition(save.against?.conditions, [...at, "against", "conditions"]);
+  damage(save.against?.damage, [...at, "against", "damage"]);
+  condition(save.succeeds?.conditionImmune, [...at, "succeeds", "conditionImmune"]);
+  damage(save.succeeds?.immune, [...at, "succeeds", "immune"]);
+  targetIsIssues(definition, save.succeeds?.is, [...at, "succeeds", "is"], add);
 }
 
 /** What a cure names (1.171): conditions the sheet has, and a dying rule for steadying to stop. */
@@ -8229,7 +8321,7 @@ function creatureIssues(
       add([...path, "save", "save"], `Unknown save "${action.save.save}"`);
     }
     targetTestIssues(definition, { plus: action.damage?.plus }, [...path, "damage"], add);
-    targetTestIssues(definition, { applies: action.applies }, path, add);
+    targetTestIssues(definition, { applies: action.applies, save: action.save }, path, add);
     action.applies?.forEach((applies, appliesIndex) => {
       const where = [...path, "applies", appliesIndex];
       if (!conditions.has(applies.condition)) add([...where, "condition"], `Unknown condition "${applies.condition}"`);
@@ -9107,7 +9199,15 @@ export function rulesetCatalogEntryIssues(
     if (entry.creature?.spellcasting) {
       const creature = entry.creature;
       const casting = creature.spellcasting!;
+      // Components said in place of the entries' own (1.176) are the fight's own.
+      componentIssues(definition, casting.components, [index, "creature", "spellcasting", "components"], add);
       casting.spells.forEach((spell, spellIndex) => {
+        componentIssues(
+          definition,
+          spell.components,
+          [index, "creature", "spellcasting", "spells", spellIndex, "components"],
+          add,
+        );
         const path = [index, "creature", "spellcasting", "spells", spellIndex, "entry"];
         const [catalogId, entryId] = spell.entry.split("/");
         const header = definition.catalogs?.find((other) => other.id === catalogId);

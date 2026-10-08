@@ -631,6 +631,9 @@ export function rulesetConditionModifiers(
    *  narrowed to it counts (a contest names none, and reads only what is narrowed to nothing). */
   save?: string,
   against?: RulesetSaveAgainst,
+  /** The ability an attack or a check is made with (1.183), so what is narrowed to it counts; with
+   *  none, a change narrowed to an ability reads nothing. */
+  ability?: string,
 ): RulesetConditionModifier[] {
   // A ruleset with no items and no condition or level that changes a number has nothing to read. One
   // with items reads them once, below, with everything else that is on the combatant.
@@ -648,6 +651,7 @@ export function rulesetConditionModifiers(
         if (modifier.flat === undefined && modifier.dice === undefined && modifier.times === undefined) return false;
         const skills = modifier.skills ?? entry.skills;
         if (to === "checks" && skills && !(save !== undefined && skills.includes(save))) return false;
+        if (!rulesetAbilityNarrowing(modifier, to, ability)) return false;
         const saves = modifier.saves ?? entry.saves;
         return !(to === "saves" && save !== undefined && saves && !saves.includes(save));
       })
@@ -724,6 +728,39 @@ export function rulesetSaveMode(
   return advantage ? "advantage" : "disadvantage";
 }
 
+/** Whether a change narrowed to an ability reaches a roll made with this one (1.183): attacks by
+ *  `ability`, checks by `abilities`. A roll that names no ability reaches only what is not narrowed. */
+export function rulesetAbilityNarrowing(
+  modifier: { to: string; ability?: string; abilities?: string[] },
+  to: string,
+  ability: string | undefined,
+): boolean {
+  if (to === "attacks" && modifier.ability !== undefined) return modifier.ability === ability;
+  if (to === "checks" && modifier.abilities) return ability !== undefined && modifier.abilities.includes(ability);
+  return true;
+}
+
+/** The ability a check is made with (1.183): an ability by its own id, a skill's ability, or the one
+ *  a fight's check reads its number off. Nothing when none of them says. */
+export function rulesetCheckAbility(definition: RulesetDefinition, check: string | undefined): string | undefined {
+  if (!check) return undefined;
+  const { sheet } = definition;
+  if (sheet.abilities.some((ability) => ability.id === check)) return check;
+  const skill = sheet.skills.find((entry) => entry.id === check);
+  if (skill) return skill.ability;
+  const value = definition.combat?.checks?.find((entry) => entry.id === check)?.value as
+    { abilityMod?: string; skillMod?: string } | undefined;
+  if (value?.abilityMod) return value.abilityMod;
+  return value?.skillMod ? sheet.skills.find((entry) => entry.id === value.skillMod)?.ability : undefined;
+}
+
+/** The ability an item's gate is rolled with (1.183): a raw ability check's own, or a skill's as it is
+ *  rolled. A value off the sheet names none. */
+function gateAbility(target: RulesetCheckTarget | null | undefined): string | undefined {
+  if (target?.type === "ability") return target.id;
+  return target?.type === "skill" ? (target.withAbility ?? target.ability) : undefined;
+}
+
 /** How this combatant's own side of a contest is thrown: the check effects of their conditions and
  *  their changes to checks that roll twice, cancelling each other out as they do on an attack. What is
  *  narrowed to some skills stays out, since a contest rolls the fight's own checks. A ruleset that never
@@ -735,6 +772,8 @@ export function rulesetCheckMode(
   state?: RulesetEncounterState,
   /** The skill rolled, where a check names one (an item's gate), so what is narrowed to it counts. */
   skill?: string,
+  /** The ability the check is made with (1.183), so what is narrowed to it counts. */
+  ability?: string,
 ): "normal" | "advantage" | "disadvantage" {
   if (!rulesetCombatAdvantage(combat)) return "normal";
   let advantage = false;
@@ -744,6 +783,7 @@ export function rulesetCheckMode(
   for (const entry of rulesetActiveConditions(definition, combat, combatant, state)) {
     for (const modifier of entry.modifiers ?? []) {
       if (modifier.to !== "checks" || !modifier.mode || narrowedAway(modifier.skills ?? entry.skills)) continue;
+      if (!rulesetAbilityNarrowing(modifier, "checks", ability)) continue;
       if (modifier.mode === "advantage") advantage = true;
       else disadvantage = true;
     }
@@ -1110,6 +1150,7 @@ function itemUseActions(
             gate: {
               check: rulesetItemGateLabel(definition, use.gate!),
               ...(gate.target?.type === "skill" ? { skill: gate.target.id } : {}),
+              ...(gateAbility(gate.target) ? { ability: gateAbility(gate.target) } : {}),
               modifier: gate.modifier,
               difficulty: gate.difficulty,
             },

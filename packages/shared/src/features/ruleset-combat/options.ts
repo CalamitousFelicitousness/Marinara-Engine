@@ -41,6 +41,8 @@ import {
   rulesetCombatDamageKind,
   rulesetCombatEffects,
   rulesetCombatStanding,
+  rulesetAbilityNarrowing,
+  rulesetCheckAbility,
   rulesetCheckMode,
   rulesetConditionModifiers,
   rulesetDamageInEffect,
@@ -888,20 +890,31 @@ function contestTotals(
   definition: RulesetDefinition,
   combat: RulesetCombat,
   combatant: RulesetCombatant,
-  check: { modifier: number },
+  check: { check?: string; modifier: number },
   state: RulesetEncounterState | undefined,
 ): Array<[number, number]> | null {
+  // What is narrowed to the ability the check is made with counts (1.183).
+  const ability = rulesetCheckAbility(definition, check.check);
+  const modifiers = rulesetConditionModifiers(
+    definition,
+    combat,
+    combatant,
+    "checks",
+    state,
+    undefined,
+    undefined,
+    ability,
+  );
+  const mode = rulesetCheckMode(definition, combat, combatant, state, undefined, ability);
   if (rulesetCombatIsPool(combat)) {
     // A side's pool is its check, what its conditions add as dice, and its wound penalty.
-    const bonus = rulesetBonusDice(rulesetConditionModifiers(definition, combat, combatant, "checks", state));
+    const bonus = rulesetBonusDice(modifiers);
     const dice = check.modifier + bonus.flat + rulesetCombatPenalty(definition, combatant);
-    return rulesetPoolDistribution(definition, dice, rulesetCheckMode(definition, combat, combatant, state));
+    return rulesetPoolDistribution(definition, dice, mode);
   }
   const { count, sides } = combat.attackRoll!.dice;
-  const thrown = keptDistribution(count, sides, rulesetCheckMode(definition, combat, combatant, state));
-  const bonus = bonusDistribution(
-    rulesetBonusDice(rulesetConditionModifiers(definition, combat, combatant, "checks", state)),
-  );
+  const thrown = keptDistribution(count, sides, mode);
+  const bonus = bonusDistribution(rulesetBonusDice(modifiers));
   if (!thrown || !bonus) return null;
   const totals = new Map<number, number>();
   for (let sum = 0; sum < thrown.length; sum++) {
@@ -1355,7 +1368,9 @@ function forecastFor(
     // ground they stand on is worth, and the same roll mode the distance between them asks for.
     const defense = rulesetDefenseAgainst(definition, combat, state, target, actor).defense;
     const mode = rulesetAttackMode(definition, combat, actor, target, { state, optionId: action.id });
-    const bonus = rulesetBonusDice(rulesetConditionModifiers(definition, combat, actor, "attacks", state));
+    const bonus = rulesetBonusDice(
+      rulesetConditionModifiers(definition, combat, actor, "attacks", state, undefined, undefined, action.ability),
+    );
     // What the weapon adds against what the target is (1.182), as the roll will.
     const toHit = action.toHit + rulesetToHitAgainst(definition, action, target);
     const chance = rulesetCombatIsPool(combat)
@@ -1739,9 +1754,12 @@ export function rulesetAttackMode(
   // Changes that roll attacks twice (1.180): the attacker's own, some only against whoever put them
   // on (Chill Touch), and the target's against attackers of some kind (Protection from Evil and Good).
   const leans = new Set<string>();
+  // Narrowed to an ability (1.183), only an attack made with it: what it is made with is the action's.
+  const ability = where ? actionOf(actor, where.optionId)?.ability : undefined;
   for (const entry of rulesetActiveConditions(definition, combat, actor, where?.state)) {
     for (const modifier of entry.modifiers ?? []) {
       if (modifier.to !== "attacks" || !modifier.mode) continue;
+      if (!rulesetAbilityNarrowing(modifier, "attacks", ability)) continue;
       if (
         modifier.atSource &&
         !actor.tracked.some((one) => one.condition === entry.condition && one.source === target.id)

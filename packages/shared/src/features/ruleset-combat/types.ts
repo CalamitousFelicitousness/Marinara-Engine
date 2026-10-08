@@ -594,7 +594,8 @@ export interface RulesetCombatAction {
     /** Its `gate`, read off the user's sheet as the fight began: what is rolled (a skill's id when it
      *  is one, so what is narrowed to it counts), the sheet's number for it, and the difficulty. No
      *  gate here when the user's sheet was high enough to skip it. */
-    gate?: { check: string; skill?: string; modifier: number; difficulty: number };
+    /** `ability` is the one the check is made with (1.183), so a change narrowed to it counts. */
+    gate?: { check: string; skill?: string; ability?: string; modifier: number; difficulty: number };
   };
 }
 

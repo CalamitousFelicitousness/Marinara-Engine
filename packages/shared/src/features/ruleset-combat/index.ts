@@ -107,6 +107,8 @@ export {
   rulesetActiveConditions,
   rulesetWardsOn,
   rulesetZoneConditions,
+  rulesetAbilityNarrowing,
+  rulesetCheckAbility,
   rulesetCheckMode,
   rulesetCombatant,
   rulesetCombatConditions,

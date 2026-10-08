@@ -227,6 +227,10 @@ const stepTableSchema = z
 
 const roundingSchema = z.enum(["down", "up", "nearest"]);
 
+/** How many conditions a sheet declares, a rest clears and a fight describes: 80 until Capability API
+ *  1.183, which 5e's own list outgrew. */
+export const RULESET_CONDITIONS_MAX = 160;
+
 const hideWhenValue = z.union([z.string().max(80), z.number().finite(), z.boolean()]);
 const HIDE_WHEN_COMPARISONS = ["equals", "notEquals", "in"] as const;
 /** Off the sheet while a field holds one value, holds anything but one value, or holds one of a
@@ -835,7 +839,7 @@ const liveSchema = z
       .default([]),
     conditions: z
       .array(z.object({ id: sheetId, label }).strict())
-      .max(80)
+      .max(RULESET_CONDITIONS_MAX)
       .default([]),
     states: z.array(liveStateSchema).max(RULESET_LIVE_STATES_MAX).default([]),
   })
@@ -1238,7 +1242,7 @@ const restSchema = z
     clear: z
       .object({
         text: z.array(sheetId).max(12).default([]),
-        conditions: z.union([z.literal("all"), z.array(sheetId).max(80)]).default([]),
+        conditions: z.union([z.literal("all"), z.array(sheetId).max(RULESET_CONDITIONS_MAX)]).default([]),
       })
       .strict()
       .default({}),
@@ -4430,7 +4434,12 @@ const combatModifierSchema = z
      *  reach or ability, typed on its own, and, on the target, only from the applying source. */
     attacks: z.enum(["weapon", "spell", "any"]).optional(),
     blow: z.enum(["melee", "ranged"]).optional(),
+    /** Damage or, since Capability API 1.183, attacks made with this ability: 5e's Strength-based
+     *  attacks under a gold dragon's Weakening Breath. */
     ability: sheetId.optional(),
+    /** Narrows a change to checks to ability checks made with one of these, contests included
+     *  (Capability API 1.183): a barbarian's Rage, advantage on Strength checks. */
+    abilities: z.array(sheetId).min(1).max(12).optional(),
     damageType: z.string().trim().min(1).max(80).optional(),
     fromSource: z.literal(true).optional(),
     flat: z.number().int().min(-100).max(100).optional(),
@@ -4498,8 +4507,14 @@ const combatModifierSchema = z
     if (modifier.atSource && modifier.to !== "attacks")
       add("atSource", '"atSource" narrows the holder\'s own attacks only');
     const damage = modifier.to === "damage" || modifier.to === "damage-taken";
-    for (const key of ["attacks", "blow", "ability", "damageType", "fromSource"] as const) {
+    for (const key of ["attacks", "blow", "damageType", "fromSource"] as const) {
       if (modifier[key] !== undefined && !damage) add(key, `"${key}" narrows damage only`);
+    }
+    if (modifier.ability !== undefined && !damage && modifier.to !== "attacks") {
+      add("ability", '"ability" narrows damage or attacks only');
+    }
+    if (modifier.abilities !== undefined && modifier.to !== "checks") {
+      add("abilities", '"abilities" narrows a change to checks');
     }
     if (modifier.fromSource && modifier.to !== "damage-taken") {
       add("fromSource", '"fromSource" narrows damage-taken only');
@@ -5275,7 +5290,7 @@ const combatSchema = z
       })
       .strict()
       .optional(),
-    conditions: z.array(combatConditionSchema).max(80).optional(),
+    conditions: z.array(combatConditionSchema).max(RULESET_CONDITIONS_MAX).optional(),
     /** Levels of live tracks that count as conditions while the track is high enough. */
     levels: z.array(combatLevelSchema).max(20).optional(),
     /** Every row adds comma-separated harm or condition words from this column (Capability API
@@ -8696,6 +8711,7 @@ function effectNameIssues(
       skills?: string[];
       saves?: string[];
       ability?: string;
+      abilities?: string[];
       against?: { conditions?: string[]; damage?: string[]; from?: RulesetTargetIs };
       from?: RulesetTargetIs;
     }>;
@@ -8719,6 +8735,7 @@ function effectNameIssues(
       add([...at, "modifiers", index, "ability"], `Unknown ability "${modifier.ability}"`);
     }
     each(modifier.skills, skills, [...at, "modifiers", index, "skills"], "skill");
+    each(modifier.abilities, abilities, [...at, "modifiers", index, "abilities"], "ability");
     each(modifier.saves, saves, [...at, "modifiers", index, "saves"], "save");
     targetIsIssues(definition, modifier.from, [...at, "modifiers", index, "from"], add);
     targetIsIssues(definition, modifier.against?.from, [...at, "modifiers", index, "against", "from"], add);

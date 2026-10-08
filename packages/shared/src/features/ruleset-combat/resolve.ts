@@ -62,6 +62,7 @@ import {
   rulesetSaveMode,
   rulesetCreatureKind,
   rulesetCombatHide,
+  rulesetCheckAbility,
   rulesetActionAsUsed,
   rulesetImmuneToCondition,
   writeRulesetSheet,
@@ -998,8 +999,18 @@ function passesGate(
   action: RulesetCombatAction,
   gate: NonNullable<NonNullable<RulesetCombatAction["itemUse"]>["gate"]>,
 ): boolean {
-  const mode = rulesetCheckMode(ctx.definition, ctx.combat, actor, ctx.state, gate.skill);
-  const modifiers = rulesetConditionModifiers(ctx.definition, ctx.combat, actor, "checks", ctx.state, gate.skill);
+  const ability = gate.ability;
+  const mode = rulesetCheckMode(ctx.definition, ctx.combat, actor, ctx.state, gate.skill, ability);
+  const modifiers = rulesetConditionModifiers(
+    ctx.definition,
+    ctx.combat,
+    actor,
+    "checks",
+    ctx.state,
+    gate.skill,
+    undefined,
+    ability,
+  );
   const said = {
     type: "gate" as const,
     actorId: actor.id,
@@ -2552,9 +2563,13 @@ function resolveContest(
   // after the dice. A side nothing leans or adds to is written exactly as it always was. In a pool
   // fight each side throws its check as a pool and the one with more net successes wins.
   const thrown = (who: RulesetCombatant, check: string, modifier: number): RulesetContestSide => {
-    const mode = rulesetCheckMode(ctx.definition, ctx.combat, who, ctx.state);
+    // What is narrowed to the ability the check is made with counts (1.183): Rage's Strength.
+    const ability = rulesetCheckAbility(ctx.definition, check);
+    const mode = rulesetCheckMode(ctx.definition, ctx.combat, who, ctx.state, undefined, ability);
+    const checkModifiers = () =>
+      rulesetConditionModifiers(ctx.definition, ctx.combat, who, "checks", ctx.state, undefined, undefined, ability);
     if (rulesetCombatIsPool(ctx.combat)) {
-      const bonuses = rollBonuses(ctx, rulesetConditionModifiers(ctx.definition, ctx.combat, who, "checks", ctx.state));
+      const bonuses = rollBonuses(ctx, checkModifiers());
       const pool = throwPool(ctx, who, modifier + bonusTotal(bonuses), mode);
       return {
         check,
@@ -2574,7 +2589,7 @@ function resolveContest(
         ? Math.max(sumOf(first), sumOf(second))
         : Math.min(sumOf(first), sumOf(second))
       : sumOf(first);
-    const bonuses = rollBonuses(ctx, rulesetConditionModifiers(ctx.definition, ctx.combat, who, "checks", ctx.state));
+    const bonuses = rollBonuses(ctx, checkModifiers());
     return {
       check,
       rolls: second ? [...first, ...second] : first,
@@ -4256,7 +4271,16 @@ function resolveActionBody(
         // counted, and there are no criticals: what a strong hit is worth is its extra successes.
         const bonuses = rollBonuses(
           ctx,
-          rulesetConditionModifiers(ctx.definition, ctx.combat, actor, "attacks", ctx.state),
+          rulesetConditionModifiers(
+            ctx.definition,
+            ctx.combat,
+            actor,
+            "attacks",
+            ctx.state,
+            undefined,
+            undefined,
+            action.ability,
+          ),
         );
         const thrown = throwPool(ctx, actor, toHit + bonusTotal(bonuses), mode, action.target);
         const needed = Math.max(1, guarded.defense);
@@ -4317,7 +4341,16 @@ function resolveActionBody(
         // What the attacker's conditions add, rolled after the attack's own dice.
         const bonuses = rollBonuses(
           ctx,
-          rulesetConditionModifiers(ctx.definition, ctx.combat, actor, "attacks", ctx.state),
+          rulesetConditionModifiers(
+            ctx.definition,
+            ctx.combat,
+            actor,
+            "attacks",
+            ctx.state,
+            undefined,
+            undefined,
+            action.ability,
+          ),
         );
         const total = kept + toHit + bonusTotal(bonuses);
         let outcome: "hit" | "miss" | "critical" = total >= guarded.defense ? "hit" : "miss";

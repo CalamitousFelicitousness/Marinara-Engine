@@ -218,6 +218,13 @@ export function rulesetCheckEffects(
   };
   const save = target?.type === "save" ? target.id : undefined;
   const skill = target?.type === "skill" ? target.id : undefined;
+  // The ability a check is made with (1.183): a raw ability check's own, or a skill's as it is rolled.
+  const ability =
+    target?.type === "ability"
+      ? target.id
+      : target?.type === "skill"
+        ? (target.withAbility ?? target.ability)
+        : undefined;
   const about = (narrowed: readonly string[] | undefined, id: string | undefined) =>
     !narrowed || (id !== undefined && narrowed.includes(id));
   for (const source of sources) {
@@ -236,7 +243,9 @@ export function rulesetCheckEffects(
       const applies =
         save !== undefined
           ? modifier.to === "saves" && about(modifier.saves ?? source.saves, save)
-          : modifier.to === "checks" && about(modifier.skills ?? source.skills, skill);
+          : modifier.to === "checks" &&
+            about(modifier.skills ?? source.skills, skill) &&
+            about(modifier.abilities, ability);
       if (!applies || !rulesetSaveAgainstMatches(modifier.against)) continue;
       if (modifier.mode) lean(modifier.mode, source.name);
       if (modifier.flat !== undefined || modifier.dice !== undefined) {

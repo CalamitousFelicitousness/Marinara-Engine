@@ -1522,6 +1522,21 @@ function carriesWardsAndSaves(value: unknown, depth = 0): boolean {
 
 const MODIFIER_TARGETS = new Set<string>(RULESET_COMBAT_MODIFIER_TARGETS);
 
+/** More than 80 conditions on the sheet, in a rest's list or in the fight, attacks narrowed by the
+ *  ability they're made with, or checks narrowed by ability (1.183), in catalog files too. */
+function carriesWideConditionsAndAbilityNarrowing(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesWideConditionsAndAbilityNarrowing(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (Array.isArray(record.conditions) && record.conditions.length > 80) return true;
+  if (typeof record.to === "string" && MODIFIER_TARGETS.has(record.to)) {
+    if (record.abilities !== undefined) return true;
+    if (record.to === "attacks" && record.ability !== undefined) return true;
+  }
+  return Object.values(record).some((one) => carriesWideConditionsAndAbilityNarrowing(one, depth + 1));
+}
+
 /** A weapon that hits harder by what it hits, slays, drains, adds only when thrown, or wounds once a
  *  turn or only some targets (1.182), in catalog files too: an item's `attack` is where they live. */
 function carriesWeaponKinds(value: unknown, depth = 0): boolean {
@@ -2960,6 +2975,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // More conditions, attacks and checks narrowed by ability, 1.183.
+  if (
+    !declaresApi(183) &&
+    (carriesWideConditionsAndAbilityNarrowing(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesWideConditionsAndAbilityNarrowing(document)))
+  ) {
+    return "A ruleset with more than 80 conditions, attacks narrowed by the ability they're made with, or checks narrowed by ability requires schemaVersion 2 and capabilityApi 1.183 or newer";
   }
   // Weapons by what they hit, slaying, draining, thrown extras and once-a-turn wounds, 1.182.
   if (

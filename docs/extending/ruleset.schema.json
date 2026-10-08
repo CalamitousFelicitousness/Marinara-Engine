@@ -6404,7 +6404,7 @@
                 ],
                 "additionalProperties": false
               },
-              "maxItems": 80,
+              "maxItems": 160,
               "default": []
             },
             "states": {
@@ -7724,7 +7724,7 @@
                       "maxLength": 40,
                       "pattern": "^[a-z][a-z0-9_]*$"
                     },
-                    "maxItems": 80
+                    "maxItems": 160
                   }
                 ],
                 "default": []
@@ -14333,6 +14333,16 @@
                                 "maxLength": 40,
                                 "pattern": "^[a-z][a-z0-9_]*$"
                               },
+                              "abilities": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "minItems": 1,
+                                "maxItems": 12
+                              },
                               "damageType": {
                                 "type": "string",
                                 "minLength": 1,
@@ -15139,6 +15149,16 @@
                                 "type": "string",
                                 "maxLength": 40,
                                 "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "abilities": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "minItems": 1,
+                                "maxItems": 12
                               },
                               "damageType": {
                                 "type": "string",
@@ -16100,6 +16120,16 @@
                                       "type": "string",
                                       "maxLength": 40,
                                       "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "abilities": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "minItems": 1,
+                                      "maxItems": 12
                                     },
                                     "damageType": {
                                       "type": "string",
@@ -27329,6 +27359,16 @@
                       "maxLength": 40,
                       "pattern": "^[a-z][a-z0-9_]*$"
                     },
+                    "abilities": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "minItems": 1,
+                      "maxItems": 12
+                    },
                     "damageType": {
                       "type": "string",
                       "minLength": 1,
@@ -28452,7 +28492,7 @@
               }
             ]
           },
-          "maxItems": 80
+          "maxItems": 160
         },
         "levels": {
           "type": "array",
@@ -28637,6 +28677,16 @@
                       "type": "string",
                       "maxLength": 40,
                       "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "abilities": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "minItems": 1,
+                      "maxItems": 12
                     },
                     "damageType": {
                       "type": "string",

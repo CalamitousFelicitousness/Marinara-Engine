@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: Enlarge/Reduce and anything like it make a creature bigger or smaller in the middle of a fight, growing on the battle board only as far as there is room (Capability API 1.190).
 - Rulesets: Large, Huge and Gargantuan creatures fill 2x2, 3x3 and 4x4 squares on the battle board, for where they stand, who they reach, what areas catch them, how they move and are pushed, and what they see and hide behind (Capability API 1.189).
 - Rulesets: a Wisdom (Medicine) check can close a sword of wounding's wounds or stabilize the dying, contests can be rolled against a fixed number and taken on allies, and hit points a sword of wounding takes come back only with a rest (Capability API 1.188).
 - Rulesets: a vorpal sword cuts through resistance to slashing, a mace of disruption frightens the fiend or undead it fails to destroy, an oathbow hinders its wielder's other weapons while the sworn enemy stands, and without a board a breath or a fireball can catch its maker's allies too

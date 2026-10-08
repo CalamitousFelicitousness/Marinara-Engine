@@ -463,6 +463,8 @@ export function rulesetCombatEventLine(
         target: names.combatant(event.targetId),
         label: event.label,
       });
+    case "resized":
+      return key("resized", { target: names.combatant(event.targetId), size: event.label });
     case "pushed":
       return key("pushed", {
         actor: names.combatant(event.actorId),

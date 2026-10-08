@@ -816,6 +816,9 @@ export interface RulesetCombatant {
   /** Its size, by the id of one of `combat.sizes`, read once as the fight began (1.98). Absent when
    *  the ruleset has no sizes or nothing says this one's. */
   size?: string;
+  /** Their own size while a condition makes them bigger or smaller (1.190); `size` is the one they
+   *  are now. Absent while nothing changes it. */
+  baseSize?: string;
   /** How far they sense with each of `combat.senses`, in CELLS, read once as the fight began
    *  (1.173). A creature's comes off its block. Absent when none. */
   senses?: Record<string, number>;
@@ -1486,6 +1489,8 @@ export type RulesetCombatEvent =
       targetId: string;
       label: string;
     }
+  /** Somebody grown or shrunk by a condition (1.190), to the size named, as `label` reads it. */
+  | { type: "resized"; targetId: string; size: string; label: string }
   | {
       type: "pushed";
       actorId: string;

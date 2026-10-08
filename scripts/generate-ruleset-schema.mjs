@@ -118,6 +118,18 @@ function requireOneHideComparison(node) {
   }
 }
 
+// A condition's size change is at least one step, up or down (1.190), another refinement. Found by
+// its shape: an object of `steps` alone, from -5 to 5.
+function refuseNoSizeStep(node) {
+  if (Array.isArray(node)) return node.forEach(refuseNoSizeStep);
+  if (!node || typeof node !== "object") return;
+  Object.values(node).forEach(refuseNoSizeStep);
+  const steps = node.properties?.steps;
+  if (node.type === "object" && steps?.type === "integer" && steps.minimum === -5 && steps.maximum === 5) {
+    steps.not = { const: 0 };
+  }
+}
+
 // A sheet item's `hideWhen` compares its field exactly one way too: equals, notEquals or in. Found
 // by its shape: `field` beside all three.
 function requireOneHideWhenComparison(node) {
@@ -737,6 +749,7 @@ soakSaysSomething(schema);
 boundScaledColumns(schema);
 requireOneHideComparison(schema);
 requireOneHideWhenComparison(schema);
+refuseNoSizeStep(schema);
 readOnlyWithLiveTrack(schema);
 enumTableShape(schema);
 restStepTo(schema);

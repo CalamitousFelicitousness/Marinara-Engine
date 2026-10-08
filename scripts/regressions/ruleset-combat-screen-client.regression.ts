@@ -748,6 +748,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["slain", say({ type: "slain", actorId: "brenna", targetId: "lurker", label: "Mace of Disruption" })],
     ["charged", say({ type: "charged", actorId: "lurker", targetId: "brenna", label: "Gore" })],
     ["fell", say({ type: "fell", targetId: "lurker", levels: 2 })],
+    ["resized", say({ type: "resized", targetId: "lurker", size: "large", label: "Large" })],
     ["summon", say({ type: "summon", actorId: "corwin", label: "Spiritual Weapon", outcome: "appeared" })],
     ["flew", say({ type: "flew", actorId: "lurker", from: 0, to: 1, cost: 1, left: 5 })],
     ["delay", say({ type: "delay", actorId: "corwin", label: "Fireball", outcome: "held", roll: 14, needed: 11 })],
@@ -922,6 +923,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.equal(printed.get("slain"), "Brenna's Mace of Disruption destroys Thorn Lurker outright.");
   assert.equal(printed.get("charged"), "Thorn Lurker charges Brenna with Gore.");
   assert.equal(printed.get("pushed"), "Brenna pushes Thorn Lurker back 1, to 4, 2.");
+  assert.equal(printed.get("resized"), "Thorn Lurker is now Large.");
   // Every reason a number attacks move changes; the pool fight's own lane pins a taking blow's dice.
   assert.equal(printed.get("shift"), "Brenna gains 3 initiative, and is on 9.");
   const shifted = (reason: Extract<RulesetCombatEvent, { type: "shift" }>["reason"], amount: number) =>

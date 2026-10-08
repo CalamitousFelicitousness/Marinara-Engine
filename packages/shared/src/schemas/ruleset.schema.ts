@@ -4964,6 +4964,20 @@ const combatConditionSchema = z
     /** One holder at a time from any one source (Capability API 1.184): put on somebody else, it
      *  leaves whoever had it from the same source. An oathbow's sworn enemy. */
     onePerSource: z.literal(true).optional(),
+    /** Its holder is this many of `combat.sizes` bigger, or smaller, while it holds (Capability API
+     *  1.190), never past the first or the last: 5e's Enlarge/Reduce. On a board it fills what its
+     *  new size fills where there is room, and grows only as big as there is room for. */
+    size: z
+      .object({
+        steps: z
+          .number()
+          .int()
+          .min(-5)
+          .max(5)
+          .refine((steps) => steps !== 0, "A size change is at least one step"),
+      })
+      .strict()
+      .optional(),
     /** What it leaves behind is on a clock of its holder's turns: nothing rolls a save against it (it
      *  has no difficulty) and an instant one would never come off. */
     onEnd: z
@@ -7755,6 +7769,9 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
           issue([...path, "noDamageFrom", refIndex], `Unknown catalog "${catalogId}"`);
         }
       });
+      if (entry.size && !combat.sizes) {
+        issue([...path, "size"], "A condition that changes size needs combat.sizes");
+      }
       // Gating an effect this condition does not have says nothing, and is nearly always a typo for
       // one it does.
       if (Array.isArray(entry.whileSourceInSight)) {

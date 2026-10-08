@@ -121,6 +121,7 @@ export {
   rulesetConditionModifiers,
   rulesetDamageInEffect,
   rulesetSizeRank,
+  rulesetSyncSizes,
   rulesetCreatureKind,
   rulesetTargetIs,
   rulesetTargetTypesAllow,

@@ -1523,6 +1523,12 @@ function carriesWardsAndSaves(value: unknown, depth = 0): boolean {
 const MODIFIER_TARGETS = new Set<string>(RULESET_COMBAT_MODIFIER_TARGETS);
 
 /** Sizes that fill more than one cell on a board (1.189). */
+/** A combat condition that makes its holder bigger or smaller (1.190). */
+function carriesSizeChanges(value: unknown): boolean {
+  const conditions = plainRecord(plainRecord(value)?.combat)?.conditions;
+  return Array.isArray(conditions) && conditions.some((entry) => plainRecord(entry)?.size !== undefined);
+}
+
 function carriesFootprints(value: unknown): boolean {
   const combat = plainRecord(plainRecord(value)?.combat);
   const order = plainRecord(combat?.sizes)?.order;
@@ -3091,6 +3097,10 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Conditions that make their holder bigger or smaller, 1.190.
+  if (!declaresApi(190) && carriesSizeChanges(ruleset)) {
+    return "A ruleset with conditions that change size requires schemaVersion 2 and capabilityApi 1.190 or newer";
   }
   // Creatures that fill more than one cell, 1.189.
   if (!declaresApi(189) && carriesFootprints(ruleset)) {

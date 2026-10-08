@@ -65,10 +65,12 @@ import { parseRulesetCombatDice, rollRulesetDice, rulesetCombatRoller, sumOf } f
 import {
   rulesetCellBlocked,
   rulesetFills,
+  rulesetFootprint,
   rulesetFootprintAt,
   rulesetFootprintsSee,
   rulesetInCells,
   rulesetPositionOf,
+  rulesetSpanOf,
   rulesetZoneCells,
 } from "./grid.js";
 import { rulesetCombatAdvantage, rulesetCombatIsPool, rulesetPoolDie, throwRulesetCombatPool } from "./pool.js";
@@ -2863,6 +2865,8 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
     }
   }
 
+  // Grown or shrunk by what they held as the fight began (1.190), before anybody is set down.
+  rulesetSyncSizes(definition, state);
   placeRulesetCombatants(definition, combat, state, input.board);
   // A turn's budgets as conditions held from before the fight change them (combat C6d): the first
   // actor's turn begins now and never passes through the turn's own refill.
@@ -3089,14 +3093,7 @@ export function rulesetFitCell(
   span: number,
   taken: ReadonlySet<string>,
 ): { x: number; y: number } | null {
-  const fits = (x: number, y: number) =>
-    x >= 0 &&
-    y >= 0 &&
-    x + span <= grid.width &&
-    y + span <= grid.height &&
-    rulesetFootprintAt({ x, y }, span).every(
-      (cell) => !taken.has(`${cell.x},${cell.y}`) && !rulesetCellBlocked(grid, cell.x, cell.y),
-    );
+  const fits = (x: number, y: number) => fitsAt(grid, { x, y }, span, taken);
   for (let ring = 0; ring <= Math.max(grid.width, grid.height); ring++) {
     for (let y = at.y - ring; y <= at.y + ring; y++) {
       for (let x = at.x - ring; x <= at.x + ring; x++) {
@@ -3106,6 +3103,94 @@ export function rulesetFitCell(
     }
   }
   return null;
+}
+
+function fitsAt(grid: TacticalGrid, at: { x: number; y: number }, span: number, taken: ReadonlySet<string>): boolean {
+  return (
+    at.x >= 0 &&
+    at.y >= 0 &&
+    at.x + span <= grid.width &&
+    at.y + span <= grid.height &&
+    rulesetFootprintAt(at, span).every(
+      (cell) => !taken.has(`${cell.x},${cell.y}`) && !rulesetCellBlocked(grid, cell.x, cell.y),
+    )
+  );
+}
+
+/**
+ * Everybody's size as the conditions they hold now say (1.190): each condition's `size.steps` moves
+ * them along `combat.sizes`, never past its ends, and with none they are their own size again.
+ *
+ * On a board somebody who grows fills their new size over every cell they stood on, where it fits
+ * on open ground clear of everybody else, or the biggest size short of it that fits, as 5e's Enlarge
+ * grows only as big as there is room for; nobody else is moved to make room. Somebody who shrinks
+ * keeps their top-left cell. Returns who changed, each once.
+ */
+export function rulesetSyncSizes(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+): Array<{ targetId: string; size: string; label: string }> {
+  const combat = definition.combat;
+  const order = combat?.sizes?.order;
+  if (!combat || !order) return [];
+  const changed: Array<{ targetId: string; size: string; label: string }> = [];
+  const grid = state.board?.grid;
+  for (const combatant of state.combatants) {
+    const own = combatant.baseSize ?? combatant.size ?? combat.sizes!.default;
+    const steps = rulesetActiveConditions(definition, combat, combatant, state).reduce(
+      (sum, entry) => sum + (entry.size?.steps ?? 0),
+      0,
+    );
+    if (steps === 0 && combatant.baseSize === undefined) continue;
+    const from = order.findIndex((size) => size.id === own);
+    const now = order.findIndex((size) => size.id === (combatant.size ?? combat.sizes!.default));
+    if (from < 0 || now < 0) continue;
+    const want = Math.max(0, Math.min(order.length - 1, from + steps));
+    let to = want;
+    let at = rulesetPositionOf(combatant);
+    if (grid && at && want > now) {
+      // Growing: over every cell they fill now, the biggest that fits.
+      const span = rulesetSpanOf(combatant);
+      const taken = new Set(
+        state.combatants
+          .filter((other) => other !== combatant && !other.defeated)
+          .flatMap((other) => rulesetFootprint(other).map((cell) => `${cell.x},${cell.y}`)),
+      );
+      const start: { x: number; y: number } = at;
+      let fit: { x: number; y: number } | null = null;
+      for (to = want; to > now && !fit; to--) {
+        const grown = order[to]!.cells ?? 1;
+        if (grown <= span) {
+          fit = start;
+          break;
+        }
+        const room = grown - span;
+        for (let shift = 0; shift <= 2 * room && !fit; shift++) {
+          for (let dy = 0; dy <= Math.min(shift, room) && !fit; dy++) {
+            const dx = shift - dy;
+            if (dx > room) continue;
+            const anchor = { x: start.x - dx, y: start.y - dy };
+            if (fitsAt(grid, anchor, grown, taken)) fit = anchor;
+          }
+        }
+        if (fit) break;
+      }
+      at = fit ?? start;
+    }
+    const size = order[to]!;
+    if (size.id === (combatant.size ?? combat.sizes!.default)) continue;
+    combatant.size = size.id;
+    if (to === from) delete combatant.baseSize;
+    else combatant.baseSize = own;
+    if ((size.cells ?? 1) > 1) combatant.span = size.cells;
+    else delete combatant.span;
+    if (at && grid) {
+      combatant.x = at.x;
+      combatant.y = at.y;
+    }
+    changed.push({ targetId: combatant.id, size: size.id, label: size.label });
+  }
+  return changed;
 }
 
 /**

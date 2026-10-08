@@ -941,7 +941,9 @@ const capabilityPackageManifestBaseSchema = z
 //        take come back only by rest).
 // 1.189: a size's `cells` in `combat.sizes.order`: a creature of that size fills that many cells a
 //        side on a board, for placement, movement, reach, areas, cover and sight.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 189 } as const);
+// 1.190: a combat condition's `size.steps`: its holder is that many sizes bigger or smaller while it
+//        holds (5e's Enlarge/Reduce), filling its new size on a board where there is room.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 190 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

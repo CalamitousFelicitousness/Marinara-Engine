@@ -1290,6 +1290,7 @@
   "game.combat.ruleset.event.refused": "{{actor}} could not do that: {{reason}}",
   "game.combat.ruleset.event.reload": "{{actor}} reloads {{label}}: {{loaded}} of {{of}} loaded.",
   "game.combat.ruleset.event.reloadDrew": "{{actor}} loads {{drew}} into {{label}}: {{loaded}} of {{of}} loaded.",
+  "game.combat.ruleset.event.resized": "{{target}} is now {{size}}.",
   "game.combat.ruleset.event.restored": "{{target}} gets back {{amount}} {{pool}}, and is on {{value}} of {{max}}.",
   "game.combat.ruleset.event.revived": "{{actor}} is back up on {{health}}.",
   "game.combat.ruleset.event.rider": "{{label}} catches {{target}} as well.",

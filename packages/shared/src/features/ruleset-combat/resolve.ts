@@ -69,6 +69,7 @@ import {
   writeRulesetSheet,
   type RulesetCombatHealth,
   type RulesetConditionModifier,
+  rulesetSyncSizes,
 } from "./encounter.js";
 import {
   rulesetAreaCells,
@@ -267,6 +268,8 @@ function begin(
       if (!next.window) endActionConditions(ctx);
       // The cells standing walls close, as the zones now standing say (1.172).
       rulesetSyncZoneWalls(next);
+      // Grown or shrunk as the conditions now held say (1.190).
+      for (const change of rulesetSyncSizes(definition, next)) ctx.events.push({ type: "resized", ...change });
       next.cursor = state.cursor + rolls;
       return { state: next, events: ctx.events };
     },

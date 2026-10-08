@@ -28862,6 +28862,24 @@
                 "type": "boolean",
                 "const": true
               },
+              "size": {
+                "type": "object",
+                "properties": {
+                  "steps": {
+                    "type": "integer",
+                    "minimum": -5,
+                    "maximum": 5,
+                    "not": {
+                      "const": 0
+                    }
+                  },
+                  "$comment": {}
+                },
+                "required": [
+                  "steps"
+                ],
+                "additionalProperties": false
+              },
               "onEnd": {
                 "type": "object",
                 "properties": {

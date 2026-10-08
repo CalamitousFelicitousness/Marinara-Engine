@@ -1476,7 +1476,11 @@ function removeCondition(
   // What it leaves behind when it ends (combat C6d), as Haste's lethargy is. Putting it on again
   // replaces it without ending it, so that never comes here.
   const ending = ctx.combat.conditions?.find((entry) => entry.condition === condition)?.onEnd;
-  if (ending && !target.defeated) {
+  // Its tracks moved as it ends (1.234), by nobody else's doing: Frenzy's exhaustion.
+  if (ending?.tracks && !target.defeated) {
+    for (const moved of ending.tracks) moveTrack(ctx, target, target, moved.track, moved.by);
+  }
+  if (ending?.applies && !target.defeated) {
     // Ended in the middle of its holder's own turn (their own concentration broken, say), the clock
     // starts with the NEXT turn: "until after its next turn" is never the rest of this one. Ended as
     // a turn begins or ends, the next turn to count is already the right one.

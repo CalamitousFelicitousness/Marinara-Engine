@@ -1774,6 +1774,7 @@ function optionFrom(
   // holder's own turn: the extra action is one of its turn, never a reaction's.
   let budget = action.budget;
   let oneStrike = false;
+  let inReach = false;
   if (!free && (actor.budgets[budget] ?? 0) < 1) {
     if (atItsMoment) return null;
     const weapon =
@@ -1786,13 +1787,14 @@ function optionFrom(
       (entry) =>
         (actor.budgets[entry.budget] ?? 0) >= 1 &&
         !action.sequence &&
-        ((entry.attacks === true && weapon) ||
+        ((entry.attacks === true && weapon && (!entry.melee || !action.range || action.reach !== undefined)) ||
           (!!action.itemUse &&
             (entry.items === true || (!!entry.items && entry.items.tags.some((tag) => tags.includes(tag)))))),
     );
     if (!grant) return null;
     budget = grant.budget;
     oneStrike = grant.attacks === true && weapon;
+    inReach = oneStrike && grant.melee === true && !!action.range;
   }
   if (!rulesetActionAvailable(actor, action, state, definition)) return null;
   // Its own price, or, with that pool empty, a higher one that pays for it: a 1st-level spell is
@@ -1806,6 +1808,8 @@ function optionFrom(
     label: action.label,
     ...(free ? {} : { budget }),
     ...(oneStrike ? { oneStrike: true as const } : {}),
+    // A melee grant's thrown weapon is swung (1.234): its reach is all it has.
+    ...(inReach ? { range: { normal: 0 } } : {}),
     targets: action.targets,
     ...(action.reaction?.cancelSave
       ? {

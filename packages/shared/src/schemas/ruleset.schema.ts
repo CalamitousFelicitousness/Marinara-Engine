@@ -2658,6 +2658,9 @@ const catalogMechanicsObject = z
     /** An amount that grows with the sheet: the table gives the EXTRA dice at each step of the
      *  value it reads, so a trick that grows with a level needs no second entry. */
     scales: z.object({ from: rulesetValueRefSchema, table: stepTableSchema }).strict().optional(),
+    /** Spends the uses of the row with this name instead of its own (Capability API 1.234): a
+     *  Berserker's Frenzied Rage spends a use of Rage, its counter row. */
+    usesOf: promptSafeText(80).optional(),
     /** Which budget of the action economy a use spends, instead of the list's own default. */
     budget: sheetId.optional(),
     /** Costs no budget at all: a turn may hold as many of these as their own price allows. */
@@ -5326,8 +5329,15 @@ const combatConditionSchema = z
         /** Any item's use, or only the use of an item with one of these tags (5e's Use an Object is a
          *  mundane item's, never a magic item's activation). */
         items: z.union([z.literal(true), z.object({ tags: z.array(sheetId).min(1).max(8) }).strict()]).optional(),
+        /** With `attacks`, only a weapon that strikes in reach, and only within it (Capability API
+         *  1.234): 5e's Frenzy, a melee weapon attack as a bonus action. A thrown weapon is swung. */
+        melee: z.literal(true).optional(),
       })
       .strict()
+      .refine((grants) => !grants.melee || grants.attacks, {
+        message: '"melee" narrows "attacks", so the grant gives attacks',
+        path: ["melee"],
+      })
       .optional(),
     exclusive: z.tuple([sheetId, sheetId]).optional(),
     attacksPerTurn: z.number().int().min(0).max(10).optional(),
@@ -5368,9 +5378,14 @@ const combatConditionSchema = z
           )
           .min(1)
           .max(4)
-          .superRefine(linkedApplies),
+          .superRefine(linkedApplies)
+          .optional(),
+        /** Its holder's live tracks moved by levels as it ends (Capability API 1.234): 5e's Frenzy
+         *  leaves a level of exhaustion when the rage is over. */
+        tracks: catalogTracksSchema.optional(),
       })
       .strict()
+      .refine((ending) => ending.applies || ending.tracks, { message: '"onEnd" names "applies", "tracks" or both' })
       .optional(),
   })
   .strict()
@@ -8120,7 +8135,14 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         }
       }
       entry.exclusive?.forEach((budget, budgetIndex) => checkBudget(budget, [...path, "exclusive", budgetIndex]));
-      entry.onEnd?.applies.forEach((applied, appliedIndex) => {
+      entry.onEnd?.tracks?.forEach((moved, movedIndex) => {
+        const track = def.sheet.live.tracks.find((one) => one.id === moved.track);
+        if (!track) issue([...path, "onEnd", "tracks", movedIndex, "track"], `Unknown track "${moved.track}"`);
+        else if (track.kinds) {
+          issue([...path, "onEnd", "tracks", movedIndex, "track"], "A wound track is marked, not moved by levels");
+        }
+      });
+      entry.onEnd?.applies?.forEach((applied, appliedIndex) => {
         if (!conditions.has(applied.condition)) {
           issue([...path, "onEnd", "applies", appliedIndex, "condition"], `Unknown condition "${applied.condition}"`);
         }

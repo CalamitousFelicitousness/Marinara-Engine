@@ -979,7 +979,10 @@ const capabilityPackageManifestBaseSchema = z
 //        mechanics' `ignoresSurpriseWith` (taking that entry first shakes it off: Feral Instinct).
 // 1.233: catalog mechanics' `extraFirstTurn` (a second turn in a fight's first round at the holder's
 //        initiative plus its number, unless surprised if it says so: 5e's Thief's Reflexes).
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 233 } as const);
+// 1.234: a combat condition's `grants.melee` (its granted strike only with a weapon in reach) and
+//        `onEnd.tracks` (tracks moved as it ends): 5e's Frenzy, and its exhaustion; catalog mechanics'
+//        `usesOf` (spends another row's uses by name: Frenzied Rage spends a Rage).
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 234 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

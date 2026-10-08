@@ -1699,6 +1699,9 @@ export interface RulesetCombatOption {
   /** Paid out of a budget a condition grants for an attack of one strike (combat C6d, Haste's extra
    *  action): the strikes the attack would otherwise put in hand are not given. */
   oneStrike?: true;
+  /** Held to the weapon's reach (1.234): paid by a grant for a melee strike only, a thrown weapon is
+   *  swung, not thrown. */
+  range?: { normal: number; long?: number };
   /** Whether the amount below is health GIVEN BACK rather than taken off. Without it a menu and an
    *  opponent's own choices cannot tell a heal from a blow, because both are an amount. */
   heals?: boolean;

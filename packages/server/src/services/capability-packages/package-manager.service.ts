@@ -1522,6 +1522,26 @@ function carriesWardsAndSaves(value: unknown, depth = 0): boolean {
 
 const MODIFIER_TARGETS = new Set<string>(RULESET_COMBAT_MODIFIER_TARGETS);
 
+/** A combat condition whose grant is melee only, or that moves tracks as it ends (1.234). */
+function carriesFrenzy(ruleset: unknown): boolean {
+  const conditions = plainRecord(plainRecord(ruleset)?.combat)?.conditions;
+  if (!Array.isArray(conditions)) return false;
+  return conditions.some((entry) => {
+    const record = plainRecord(entry);
+    return plainRecord(record?.grants)?.melee !== undefined || plainRecord(record?.onEnd)?.tracks !== undefined;
+  });
+}
+
+/** A use that spends another row's uses (1.234), in catalogs too. */
+function carriesUsesOf(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesUsesOf(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.usesOf !== undefined) return true;
+  return Object.values(record).some((one) => carriesUsesOf(one, depth + 1));
+}
+
 /** A use that gives a second turn in a fight's first round (1.233), in catalogs too. */
 function carriesExtraTurn(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -3262,6 +3282,15 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // A grant held to melee strikes, tracks moved as a condition ends, 1.234.
+  if (
+    !declaresApi(234) &&
+    (carriesFrenzy(ruleset) ||
+      carriesUsesOf(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesUsesOf(document)))
+  ) {
+    return "A ruleset with conditions whose granted attacks are melee only or that move a track as they end, or uses that spend another row's, requires schemaVersion 2 and capabilityApi 1.234 or newer";
   }
   // A second turn in the first round, 1.233.
   if (

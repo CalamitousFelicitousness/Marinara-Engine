@@ -284,6 +284,16 @@ test("Illustrator manual-only interval saves and survives reopening and chat set
     await expect(chatInterval).toHaveValue("0");
     await expect(intervalControl.getByText("Using agent default", { exact: true })).toBeVisible();
     expect((await readSettings()).runInterval).toBe(0);
+
+    // An agent value saved as text (older or imported settings) is read the way the server reads it.
+    const textSettings = { ...(await readSettings()), runInterval: "3" };
+    expect((await request.patch(`/api/agents/${agent.id}`, { data: { settings: textSettings } })).ok()).toBeTruthy();
+    await page.reload();
+    const chatSettingsButton = page.getByRole("button", { name: "Chat Settings", exact: true });
+    await expect(chatSettingsButton).toBeVisible();
+    if (!(await drawer.isVisible())) await chatSettingsButton.click();
+    if ((await agents.getAttribute("aria-expanded")) !== "true") await agents.click();
+    await expect(chatInterval).toHaveValue("3");
   } finally {
     await request.delete(`/api/chats/${chat.id}`);
     await request.delete(`/api/agents/${agent.id}`);

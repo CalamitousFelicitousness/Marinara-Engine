@@ -2604,16 +2604,19 @@ function RoleplaySetupWizard({ chat, onFinish, defaultsApplied, defaultsAction }
         config,
         contextSize: normalizePositiveInteger(mergedSettings.contextSize, DEFAULT_AGENT_CONTEXT_SIZE, 200),
         maxTokens: normalizeAgentMaxTokens(mergedSettings.maxTokens),
-        runInterval: intervalMeta
-          ? normalizePositiveInteger(
-              // Illustrator's Run Interval belongs to this chat; the agent's value is only its default.
-              (agent.id === "illustrator" ? normalizeIllustratorRunInterval(metadata.illustratorRunInterval) : null) ??
+        runInterval: !intervalMeta
+          ? null
+          : agent.id === "illustrator"
+            ? // Illustrator's Run Interval belongs to this chat; the agent's value (maybe saved as text) is only its default.
+              (normalizeIllustratorRunInterval(metadata.illustratorRunInterval) ??
+              normalizeIllustratorRunInterval(mergedSettings.runInterval) ??
+              intervalMeta.defaultValue)
+            : normalizePositiveInteger(
                 mergedSettings.runInterval,
-              intervalMeta.defaultValue,
-              intervalMeta.max,
-              intervalMeta.min,
-            )
-          : null,
+                intervalMeta.defaultValue,
+                intervalMeta.max,
+                intervalMeta.min,
+              ),
         setup: buildInitialAgentAddSetupState({
           agentId: agent.id,
           settings: mergedSettings,
@@ -2693,12 +2696,7 @@ function RoleplaySetupWizard({ chat, onFinish, defaultsApplied, defaultsAction }
             includeCharacterAppearance: nextSettings.includeCharacterAppearance === true,
             useAvatarReferences: nextSettings.useAvatarReferences === true,
             runInterval: intervalMeta
-              ? normalizePositiveInteger(
-                  nextSettings.runInterval,
-                  intervalMeta.defaultValue,
-                  intervalMeta.max,
-                  intervalMeta.min,
-                )
+              ? (normalizeIllustratorRunInterval(nextSettings.runInterval) ?? intervalMeta.defaultValue)
               : undefined,
           },
         }),

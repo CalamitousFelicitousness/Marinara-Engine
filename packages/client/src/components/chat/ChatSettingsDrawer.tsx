@@ -2010,9 +2010,9 @@ export function ChatSettingsDrawer({
   );
   // This chat's Run Interval, else the Agent Editor's (which is only the default for chats).
   const illustratorChatRunInterval = normalizeIllustratorRunInterval(metadata.illustratorRunInterval);
+  // The agent's value may be saved as text ("0"); read it the way the server does.
   const illustratorRunInterval =
-    illustratorChatRunInterval ??
-    normalizePositiveInteger(illustratorDefaults.runInterval, 5, MAX_ILLUSTRATOR_RUN_INTERVAL, 0);
+    illustratorChatRunInterval ?? normalizeIllustratorRunInterval(illustratorDefaults.runInterval) ?? 5;
   const illustratorAutoBackgroundsEnabled = metadata.illustratorAutoBackgroundsEnabled === true;
   const selectedIllustratorPromptConnectionMissing =
     illustratorPromptConnectionId.length > 0 &&
@@ -4058,16 +4058,19 @@ export function ChatSettingsDrawer({
         config,
         contextSize: normalizePositiveInteger(mergedSettings.contextSize, DEFAULT_AGENT_CONTEXT_SIZE, 200),
         maxTokens: normalizeAgentMaxTokens(mergedSettings.maxTokens),
-        runInterval: intervalMeta
-          ? normalizePositiveInteger(
-              // Illustrator's Run Interval belongs to this chat; the agent's value is only its default.
-              (agent.id === "illustrator" ? normalizeIllustratorRunInterval(metadata.illustratorRunInterval) : null) ??
+        runInterval: !intervalMeta
+          ? null
+          : agent.id === "illustrator"
+            ? // Illustrator's Run Interval belongs to this chat; the agent's value (maybe saved as text) is only its default.
+              (normalizeIllustratorRunInterval(metadata.illustratorRunInterval) ??
+              normalizeIllustratorRunInterval(mergedSettings.runInterval) ??
+              intervalMeta.defaultValue)
+            : normalizePositiveInteger(
                 mergedSettings.runInterval,
-              intervalMeta.defaultValue,
-              intervalMeta.max,
-              intervalMeta.min,
-            )
-          : null,
+                intervalMeta.defaultValue,
+                intervalMeta.max,
+                intervalMeta.min,
+              ),
         setup: buildInitialAgentAddSetupState({
           agentId: agent.id,
           settings: mergedSettings,
@@ -4179,12 +4182,7 @@ export function ChatSettingsDrawer({
             includeCharacterAppearance: nextSettings.includeCharacterAppearance === true,
             useAvatarReferences: nextSettings.useAvatarReferences === true,
             runInterval: intervalMeta
-              ? normalizePositiveInteger(
-                  nextSettings.runInterval,
-                  intervalMeta.defaultValue,
-                  intervalMeta.max,
-                  intervalMeta.min,
-                )
+              ? (normalizeIllustratorRunInterval(nextSettings.runInterval) ?? intervalMeta.defaultValue)
               : undefined,
           },
         }),

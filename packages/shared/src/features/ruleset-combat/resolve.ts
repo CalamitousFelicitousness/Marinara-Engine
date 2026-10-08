@@ -2398,6 +2398,8 @@ function whyNotOffered(
   actor: RulesetCombatant,
   optionId: string,
 ): RulesetCombatRefusal {
+  // Caught unaware (1.232): the first turn is only ended.
+  if (actor.surprised) return "surprised";
   // The two a positioned fight adds. Off the menu, they are movement that cannot be paid for.
   if (optionId === RULESET_MOVE_OPTION || optionId === RULESET_STAND_OPTION) return "unreachable";
   // Turning a zone (1.177): none to turn, or nothing left to turn it with.
@@ -4492,6 +4494,8 @@ function resolveAction(
   /** The number a spending blow throws, read as it was made. */
   spend?: number,
 ): RulesetHitHold | null {
+  // What shakes surprise off, taken first (1.232): the rest of the turn is a turn like any other.
+  if (actor.surprised && actor.surpriseOut?.includes(action.id)) endSurprise(ctx, actor, action.label);
   const before = new Set(actor.tracked);
   const result = resolveActionFalling(ctx, actor, action, targets, payWith, held, styleId, spend);
   // Finished, rather than held for an answer to one of its rolls (1.175).
@@ -4574,6 +4578,14 @@ function bringBack(ctx: RulesetCombatContext, target: RulesetCombatant, reason: 
     }
   }
   ctx.events.push({ type: "returned", targetId: target.id });
+}
+
+/** No longer surprised (1.232): the first turn is over, or something shook it off. */
+function endSurprise(ctx: RulesetCombatContext, actor: RulesetCombatant, label?: string): void {
+  if (!actor.surprised) return;
+  delete actor.surprised;
+  delete actor.surpriseOut;
+  ctx.events.push({ type: "surpriseOver", actorId: actor.id, ...(label ? { label } : {}) });
 }
 
 /** A use that ends the condition that gave it (1.231): with the concentration holding it, when that
@@ -5810,6 +5822,8 @@ export function advanceRulesetTurn(
     // Ending a turn in a zone comes before the turn's own conditions run out (1.167).
     zonesAtTurn(ctx, leaving, "turn-end");
     tickConditions(ctx, leaving, "turn-end");
+    // The first turn, spent surprised, is over (1.232).
+    endSurprise(ctx, leaving);
     for (const summon of [...(leaving.summons ?? [])]) {
       if (leaving.flags.freshSummons?.includes(summon.actionId)) continue;
       summon.rounds -= 1;
@@ -5890,6 +5904,8 @@ function beginNextTurn(definition: RulesetDefinition, combat: RulesetCombat, ctx
       refreshSpendLimits(combatant, "round");
     }
     ctx.events.push({ type: "round", round });
+    // A first round in which they took no turn (down, held) still ends their surprise (1.232).
+    for (const combatant of ctx.state.combatants) endSurprise(ctx, combatant);
     // A ruleset whose initiative is thrown every round throws it again now, and the round starts at
     // whoever is first in the new order and can take a turn.
     if (combat.initiative.each === "round" || combat.initiative.resource) {

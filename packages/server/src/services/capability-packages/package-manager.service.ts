@@ -1522,6 +1522,16 @@ function carriesWardsAndSaves(value: unknown, depth = 0): boolean {
 
 const MODIFIER_TARGETS = new Set<string>(RULESET_COMBAT_MODIFIER_TARGETS);
 
+/** Never surprised, or surprise shaken off by a use (1.232), in catalogs too. */
+function carriesSurprise(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesSurprise(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.cannotBeSurprised !== undefined || record.ignoresSurpriseWith !== undefined) return true;
+  return Object.values(record).some((one) => carriesSurprise(one, depth + 1));
+}
+
 /** A use that ends the condition it came from, a cure only of what some creatures put on, or one
  *  that sends somebody out of the fight (1.231), in catalogs too. */
 function carriesDismissals(value: unknown, depth = 0): boolean {
@@ -3242,6 +3252,13 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Conditions that keep surprise off, uses that shake it off, 1.232.
+  if (
+    !declaresApi(232) &&
+    (carriesSurprise(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesSurprise(document)))
+  ) {
+    return "A ruleset with conditions that keep surprise off or uses that shake it off requires schemaVersion 2 and capabilityApi 1.232 or newer";
   }
   // Actions a condition gives, uses that end it, cures by who put it on, sending away, 1.231.
   if (

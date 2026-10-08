@@ -776,6 +776,8 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["unsealed", say({ type: "unsealed", targetId: "lurker", sourceId: "brenna", amount: 5, maxHealth: 30 })],
     ["dismissed", say({ type: "dismissed", actorId: "brenna", targetId: "lurker", label: "Dismissal" })],
     ["returned", say({ type: "returned", targetId: "lurker" })],
+    ["surprised", say({ type: "surprised", actorIds: ["brenna", "lurker"] })],
+    ["surpriseOver", say({ type: "surpriseOver", actorId: "lurker" })],
     [
       "healthPool",
       say({ type: "healthPool", actorId: "brenna", label: "Sleep", rolls: [8, 7], total: 15, affected: ["lurker"] }),
@@ -1003,6 +1005,15 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.equal(
     say({ type: "returned", targetId: "lurker", gone: true }),
     "Thorn Lurker stays where they were sent, gone for good.",
+  );
+  assert.equal(
+    say({ type: "surprised", actorIds: ["brenna", "lurker"] }),
+    "Caught unaware: Brenna, Thorn Lurker. They cannot move or act on their first turn, or react until it ends.",
+  );
+  assert.equal(say({ type: "surpriseOver", actorId: "lurker" }), "Thorn Lurker is no longer surprised.");
+  assert.equal(
+    say({ type: "surpriseOver", actorId: "brenna", label: "Rage" }),
+    "Brenna shakes off the surprise with Rage.",
   );
   assert.equal(printed.get("healthPool"), "Brenna's Sleep rolls 15, enough for Thorn Lurker.");
   assert.equal(

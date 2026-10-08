@@ -104,6 +104,8 @@ const directedCombatantFields = z.object({
   id: key,
   name: z.string().min(1).max(200),
   side: z.enum(["player", "enemy"]),
+  /** Caught unaware as the fight begins (1.232): read by a ruleset fight only. */
+  surprised: z.boolean().optional(),
   hp: num,
   maxHp: num.min(1),
   mp: num.optional(),
@@ -892,6 +894,8 @@ export async function combatDirectorRoutes(
             ...(fightItems ? { items: fightItems } : {}),
             partyCatalogs: await loadFightCatalogs(resolved.packageId, definition, (c) => partyLists.has(c.id)),
             bestiary: await loadBestiary(resolved.packageId, definition, proposedSheetLists(definition, input.enemies)),
+            // Who the scene caught unaware (1.232).
+            surprised: [...input.party, ...input.enemies].flatMap((one) => (one.surprised ? [one.id] : [])),
           });
           if (!built.ok) return reply.code(400).send({ error: built.error });
           state.rulesetFight = built.fight;

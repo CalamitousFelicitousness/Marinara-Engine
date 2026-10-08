@@ -462,6 +462,22 @@ try {
     assert.equal(await liveOf(1), null, "and the telling the player swiped away from is untouched");
   }
 
+  // ── Who the scene caught unaware starts the fight surprised (1.232) ──
+  {
+    const ambushed = await newGame({ ruleset: true });
+    const opened = await post("/combat/start", {
+      chatId: ambushed.chat.id,
+      anchor: ambushed.anchor.id,
+      style: "ruleset",
+      party: [unit("brenna", "Brenna", "player")],
+      enemies: [{ ...unit("lurker", "Thorn Lurker", "enemy"), creature: "creatures/thorn-lurker", surprised: true }],
+    });
+    assert.equal(opened.statusCode, 200, opened.body);
+    const fight = opened.json().session as DirectedCombatView;
+    const surprised = fight.ruleset!.combatants.filter((one) => one.surprised).map((one) => one.id);
+    assert.deepEqual(surprised, ["lurker"], JSON.stringify(fight.ruleset!.combatants.map((one) => one.id)));
+  }
+
   // ── A ruleset fight on a board, through the real routes ──
   {
     const boarded = await newGame({ ruleset: true });
@@ -929,6 +945,16 @@ try {
     assert.equal(keptEnemy.creature, "thorn-lurker");
     assert.equal(keptEnemy.tier, "cr_1_4");
     assert.ok(keptEnemy.proposed, "a stat block in the shared form survives");
+    // Who the scene caught unaware (1.232) survives on both sides, and a bad value only drops it.
+    const caught = encounterBlueprintSchema.safeParse({
+      party: [{ name: "Brenna", hp: 10, maxHp: 10, surprised: true }],
+      enemies: [{ name: "Goblin", hp: 7, maxHp: 7, surprised: "yes" }],
+      environment: "a road",
+    });
+    assert.ok(caught.success, JSON.stringify(caught.error?.issues));
+    assert.equal((caught.data!.party[0] as Record<string, unknown>).surprised, true);
+    assert.equal((caught.data!.enemies[0] as Record<string, unknown>).surprised, undefined);
+    assert.ok(withBrief.at(-1)!.content.includes('"surprised": true'), "the prompt asks who was caught unaware");
     // An invention may be a sheet in the ruleset's own terms, and numbers written beside it go.
     const caster = blueprint({
       tier: "cr_1_4",

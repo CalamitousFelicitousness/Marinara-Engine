@@ -974,7 +974,10 @@ const capabilityPackageManifestBaseSchema = z
 //        concentration); `ends.from` (only what a creature of those types or tags put on); and
 //        `dismisses` (out of the fight for good, or while a condition holds, back when it ends:
 //        5e's Dispel Evil and Good, Banishment).
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 231 } as const);
+// 1.232: surprise. A fight's `surprised` combatants take no move and no action on their first turn and
+//        no reaction until it ends; a combat condition's `cannotBeSurprised` (5e's Foresight); catalog
+//        mechanics' `ignoresSurpriseWith` (taking that entry first shakes it off: Feral Instinct).
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 232 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

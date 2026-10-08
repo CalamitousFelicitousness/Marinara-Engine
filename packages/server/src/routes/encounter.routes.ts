@@ -307,6 +307,8 @@ export const encounterBlueprintSchema = z
           projectile: z.boolean().optional(),
           requiresSight: z.boolean().optional(),
           aiHints: combatAiHintsSchema.optional(),
+          // Caught unaware as the fight begins (1.232); a ruleset fight reads it.
+          surprised: z.boolean().optional().catch(undefined),
           spellSlots: z.record(z.string().regex(/^[1-9]$/), z.number().int().min(0).max(100)).optional(),
           attacks: z
             .array(
@@ -328,6 +330,8 @@ export const encounterBlueprintSchema = z
           projectile: z.boolean().optional(),
           requiresSight: z.boolean().optional(),
           aiHints: combatAiHintsSchema.optional(),
+          // Caught unaware as the fight begins (1.232); a ruleset fight reads it.
+          surprised: z.boolean().optional().catch(undefined),
           spellSlots: z.record(z.string().regex(/^[1-9]$/), z.number().int().min(0).max(100)).optional(),
           boss: combatBossSchema.optional(),
           mp: z.number().min(0).max(100000).optional(),
@@ -687,6 +691,7 @@ export function buildInitPrompt(
     inst += `- Add "proposed" only for an enemy that is in no bestiary and needs its own numbers. The Engine pulls a proposal onto the tier's scale, so write what the enemy IS and let it be adjusted.\n`;
     inst += `- Inside "proposed", every id must come from this ruleset: budgets are ${ruleset.budgets.join(", ") || "none"}; saves are ${ruleset.saves.join(", ") || "none"}; damage types are ${ruleset.damageTypes.join(", ") || "untyped only"}. A name this ruleset does not have is dropped.\n`;
     inst += `- Keep the hp, attack, defense, speed and level fields as well. They are the Engine's own numbers and are used outside the fight.\n`;
+    inst += `- Surprise: give "surprised": true to every party member or enemy the scene shows was caught unaware (it did not notice the ambush or the attackers before the fight began). Leave it out for anyone who saw it coming, and for everybody when nobody was caught off guard.\n`;
     const sheet = ruleset.sheet;
     inst += `- An enemy whose power comes from this ruleset's own lists and pools (a spellcaster, say) may be proposed as a SHEET instead of numbers: "proposed": {"tier":"tier id","sheet":{"abilities":{},"skills":{},"saves":{},"fields":{},"lists":{}}}. Give no health, defense, initiativeModifier, speed, abilities or saves beside a sheet: the Engine builds it exactly as it builds a character, fills in anything left out with the ruleset's defaults, and then holds it to the tier. Every id must come from this sheet:\n`;
     inst += `  - abilities: ${sheet.abilities.join(", ") || "none"}\n`;

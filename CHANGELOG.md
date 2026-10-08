@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: a fight can begin with some caught unaware, who neither move, act nor react on their first turn; Foresight keeps its holder from being surprised, and Feral Instinct lets a surprised barbarian act by raging first (Capability API 1.232).
 - Rulesets: Dispel Evil and Good gives its caster Break Enchantment and Dismissal while it lasts, and either ends it; Break Enchantment ends only a charm or fright by a fiend, fey, undead (...); Dismissal sends a creature out of the fight for good, and Banishment sends one away until the spell ends, keeping a creature of another plane gone if it ran its whole time (Capability API 1.231).
 - Rulesets: a vampire's Bite lowers the hit point maximum and heals it, only on a creature it grapples or one incapacitated or restrained; a succubus's Draining Kiss lowers it whatever the save; Harm lowers it on a failed save and leaves at least 1 hit point (Capability API 1.230).
 - Rulesets: Greater Restoration does one of its cures, picked as it is cast: a charm or petrification, a level of exhaustion, or the lowered hit point maximum (Capability API 1.199).

@@ -2175,8 +2175,17 @@ export function rulesetCombatOptions(
   if (!rulesetCombatStanding(actor) || blocked(definition, combat, state, actor)) return [endTurn];
 
   const options: RulesetCombatOption[] = [];
-  options.push(...movementOptions(definition, combat, state, actor));
   const economy = rulesetConditionEconomy(definition, combat, actor, state);
+  // Caught unaware (1.232): this first turn is only ended, unless it is shaken off by what shakes it.
+  if (actor.surprised) {
+    for (const id of actor.surpriseOut ?? []) {
+      const action = actor.actions.find((entry) => entry.id === id);
+      const option = action && optionFrom(definition, combat, state, actor, action, false, economy);
+      if (option) options.push(option);
+    }
+    return [...options, endTurn];
+  }
+  options.push(...movementOptions(definition, combat, state, actor));
   for (const action of actor.actions) {
     const option = optionFrom(definition, combat, state, actor, action, false, economy);
     if (option) options.push(option);
@@ -2285,7 +2294,7 @@ export function rulesetSignatureOptions(
   const points = actor?.signature?.points;
   if (!combat || !actor || points === undefined) return [];
   if (currentRulesetActor(state)?.id === actorId) return [];
-  if (!rulesetCombatStanding(actor) || blocked(definition, combat, state, actor)) return [];
+  if (!rulesetCombatStanding(actor) || actor.surprised || blocked(definition, combat, state, actor)) return [];
   const options: RulesetCombatOption[] = [];
   for (const action of actor.actions) {
     if (!action.signature || action.signature.cost > points) continue;

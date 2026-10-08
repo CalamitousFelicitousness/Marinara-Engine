@@ -9858,6 +9858,11 @@
                       "maxLength": 40,
                       "pattern": "^[a-z][a-z0-9_]*$"
                     },
+                    "ignoresSurpriseWith": {
+                      "type": "string",
+                      "maxLength": 121,
+                      "pattern": "^[a-z][a-z0-9_]*\\/[a-z0-9]+(?:-[a-z0-9]+)*$"
+                    },
                     "dismisses": {
                       "anyOf": [
                         {
@@ -21025,6 +21030,11 @@
                           "maxLength": 40,
                           "pattern": "^[a-z][a-z0-9_]*$"
                         },
+                        "ignoresSurpriseWith": {
+                          "type": "string",
+                          "maxLength": 121,
+                          "pattern": "^[a-z][a-z0-9_]*\\/[a-z0-9]+(?:-[a-z0-9]+)*$"
+                        },
                         "dismisses": {
                           "anyOf": [
                             {
@@ -29650,6 +29660,10 @@
                 },
                 "minItems": 1,
                 "maxItems": 6
+              },
+              "cannotBeSurprised": {
+                "type": "boolean",
+                "const": true
               },
               "fallsSafely": {
                 "type": "boolean",

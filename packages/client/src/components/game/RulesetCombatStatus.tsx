@@ -133,7 +133,9 @@ export function RulesetCombatStatus({
                       ? t("game.combat.ruleset.status.dying")
                       : combatant.down
                         ? t("game.combat.ruleset.status.down")
-                        : "";
+                        : combatant.surprised
+                          ? t("game.combat.ruleset.status.surprised")
+                          : "";
               return (
                 <li
                   key={combatant.id}

@@ -2539,6 +2539,10 @@ const catalogMechanicsObject = z
      *  holds it when that is theirs: Dispel Evil and Good's Break Enchantment and Dismissal end the
      *  spell. */
     endsCondition: sheetId.optional(),
+    /** Held on a sheet's list, surprise is shaken off by using this entry first on the surprised
+     *  turn (Capability API 1.232), when nothing keeps its holder from acting: 5e's Feral Instinct
+     *  with Rage. The entry is otherwise passive. */
+    ignoresSurpriseWith: catalogEntryRef.optional(),
     /** Whoever it lands on and does not save against leaves the fight (Capability API 1.231), alive:
      *  `true` for good (Dispel Evil and Good's Dismissal); `{ "while": <condition> }` only while
      *  they hold that condition, which the entry puts on, back where they were (or the nearest free
@@ -5285,6 +5289,9 @@ const combatConditionSchema = z
      *  them but the budget each spends, with their own numbers as their spells': 5e's Dispel Evil and
      *  Good, whose caster may Break Enchantment or Dismiss. */
     actions: z.array(catalogEntryRef).min(1).max(6).optional(),
+    /** Its holder is never surprised (Capability API 1.232): 5e's Foresight. Read as the fight
+     *  begins. */
+    cannotBeSurprised: z.literal(true).optional(),
     /** Its holder takes no falling damage and is not left prone by a fall (Capability API 1.119):
      *  5e's Feather Fall. */
     fallsSafely: z.literal(true).optional(),
@@ -10660,6 +10667,12 @@ export function rulesetCatalogEntryIssues(
     }
     if (mechanics?.endsCondition && !liveConditions.has(mechanics.endsCondition)) {
       add([index, "mechanics", "endsCondition"], `Unknown condition "${mechanics.endsCondition}"`);
+    }
+    if (mechanics?.ignoresSurpriseWith) {
+      const catalogId = mechanics.ignoresSurpriseWith.slice(0, mechanics.ignoresSurpriseWith.indexOf("/"));
+      if (!definition.catalogs?.some((catalog) => catalog.id === catalogId)) {
+        add([index, "mechanics", "ignoresSurpriseWith"], `Unknown catalog "${catalogId}"`);
+      }
     }
     if (mechanics?.zone?.obscures) {
       sightIssues(definition, mechanics.zone.obscures.pierced, [index, "mechanics", "zone", "obscures"], add);

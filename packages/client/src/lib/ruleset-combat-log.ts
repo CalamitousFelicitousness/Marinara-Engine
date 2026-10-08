@@ -267,6 +267,13 @@ export function rulesetCombatEventLine(
       });
     case "round":
       return key("round", { round: event.round });
+    case "surprised":
+      return key("surprised", { names: event.actorIds.map((id) => names.combatant(id)).join(", ") });
+    case "surpriseOver":
+      return key(event.label ? "surpriseShaken" : "surpriseOver", {
+        actor: names.combatant(event.actorId),
+        ...(event.label ? { label: event.label } : {}),
+      });
     case "turn":
       return key("turn", { actor: names.combatant(event.actorId) });
     case "attack": {

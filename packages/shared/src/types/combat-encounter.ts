@@ -122,6 +122,8 @@ export interface CombatVisualRequest {
 
 /** A member of the player's party. */
 export interface CombatPartyMember {
+  /** Caught unaware as the fight begins (1.232); a ruleset fight reads it. */
+  surprised?: boolean;
   projectile?: boolean;
   requiresSight?: boolean;
   spellSlots?: Record<string, number>;
@@ -146,6 +148,8 @@ export interface CombatPartyMember {
  *  `unknown` on purpose, because it is a model's text until the server has validated and clamped
  *  it. Every other fight ignores all three. */
 export interface RulesetEncounterBlueprint {
+  /** Caught unaware as the fight begins (1.232); a ruleset fight reads it. */
+  surprised?: boolean;
   creature?: string;
   tier?: string;
   proposed?: unknown;

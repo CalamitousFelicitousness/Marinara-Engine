@@ -9,7 +9,7 @@
 // shapes (`lib/tactical-board-look.ts`), because it IS the same battlefield: the same generator,
 // the same terrain and the same deployment. What it does with it is the ruleset's.
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { Skull } from "lucide-react";
+import { Skull, Zap } from "lucide-react";
 import {
   creatureArtVariant,
   findCreatureArt,
@@ -516,6 +516,10 @@ export function RulesetCombatBoard({
                   )}
                   {(combatant.defeated || combatant.down) && (
                     <Skull className="absolute -top-1.5 left-1/2 h-3 w-3 -translate-x-1/2 text-[var(--destructive)] drop-shadow" />
+                  )}
+                  {/* Caught unaware (1.232): marked until their first turn is over. */}
+                  {combatant.surprised && !combatant.defeated && !combatant.down && (
+                    <Zap className="absolute -top-1.5 left-1/2 h-3 w-3 -translate-x-1/2 text-amber-400 drop-shadow" />
                   )}
                   {/* The health bar sits ON the token rather than under it: a bar below the circle
                       is taller than the square it belongs to, and on a small board it laps over the

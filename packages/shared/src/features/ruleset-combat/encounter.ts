@@ -704,6 +704,8 @@ export function rulesetCombatEffects(
   for (const entry of rulesetActiveConditions(definition, combat, combatant, state)) {
     for (const effect of entry.effects) effects.add(effect);
   }
+  // Caught unaware (1.232): no reaction until their first turn ends.
+  if (combatant.surprised) effects.add("cannot-react");
   return effects;
 }
 
@@ -2795,6 +2797,9 @@ export interface RulesetEncounterInput {
    * is never half on a grid.
    */
   board?: { grid: TacticalGrid; placements: Record<string, { x: number; y: number }>; battlefield?: unknown };
+  /** Who is caught unaware as it begins (1.232): no move or action on their first turn, and no
+   *  reaction until it ends. One whose conditions say they cannot be surprised is not. */
+  surprised?: string[];
 }
 
 /**
@@ -2993,21 +2998,49 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
     state.combatants.push(combatant);
   }
 
-  // What a condition lets its holder use (1.231), looked up in every catalog the fight was handed.
-  if (combat.conditions?.some((condition) => condition.actions?.length)) {
-    const handed: Record<string, RulesetCatalogEntry[]> = {};
+  // Every catalog the fight was handed, by entry, read only when something needs it.
+  let handedByRef: ReturnType<typeof rulesetCatalogEntriesByRef> | undefined;
+  const handed = () => {
+    if (handedByRef) return handedByRef;
+    const all: Record<string, RulesetCatalogEntry[]> = {};
     const hand = (catalogs: RulesetCatalogEntriesById | undefined) => {
       for (const [catalogId, entries] of Object.entries(catalogs ?? {})) {
-        handed[catalogId] = [...(handed[catalogId] ?? []), ...entries];
+        all[catalogId] = [...(all[catalogId] ?? []), ...entries];
       }
     };
     for (const catalog of definition.catalogs ?? []) hand({ [catalog.id]: catalog.entries ?? [] });
     hand(input.bestiary);
     for (const entry of input.combatants) hand("catalogs" in entry ? entry.catalogs : undefined);
-    const byRef = rulesetCatalogEntriesByRef(handed);
+    handedByRef = rulesetCatalogEntriesByRef(all);
+    return handedByRef;
+  };
+  // What a condition lets its holder use (1.231).
+  if (combat.conditions?.some((condition) => condition.actions?.length)) {
     for (const combatant of state.combatants) {
-      combatant.actions = [...combatant.actions, ...conditionActions(definition, combatant, byRef, perCell)];
+      combatant.actions = [...combatant.actions, ...conditionActions(definition, combatant, handed(), perCell)];
     }
+  }
+  // Caught unaware (1.232), unless what they hold says they never are: 5e's Foresight. What shakes it
+  // off is read off their own rows: Feral Instinct's rage.
+  const surprised: string[] = [];
+  for (const id of input.surprised ?? []) {
+    const combatant = rulesetCombatant(state, id);
+    if (!combatant || combatant.surprised) continue;
+    if (rulesetActiveConditions(definition, combat, combatant, state).some((entry) => entry.cannotBeSurprised)) {
+      continue;
+    }
+    combatant.surprised = true;
+    surprised.push(id);
+    const rows = Object.values(combatant.sheet?.build.lists ?? {}).flatMap((list) => (Array.isArray(list) ? list : []));
+    const out = rows.flatMap((row) => {
+      const ref =
+        row && typeof row === "object"
+          ? columnValue(row as Record<string, unknown>, RULESET_CATALOG_ROW_KEY)
+          : undefined;
+      const by = typeof ref === "string" ? handed().get(ref)?.mechanics?.ignoresSurpriseWith : undefined;
+      return by ? combatant.actions.filter((action) => action.entry === by).map((action) => action.id) : [];
+    });
+    if (out.length) combatant.surpriseOut = [...new Set(out)];
   }
 
   // Everybody's contests, last, so one that takes the place of a strike can see what strikes the
@@ -3057,6 +3090,7 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
     },
     ...leveled,
     ...crashed,
+    ...(surprised.length ? ([{ type: "surprised", actorIds: surprised }] as RulesetCombatEvent[]) : []),
     { type: "round", round: 1 },
     ...(state.order[state.turn]
       ? ([{ type: "turn", actorId: state.order[state.turn], round: 1 }] as RulesetCombatEvent[])

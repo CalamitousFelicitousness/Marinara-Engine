@@ -211,6 +211,8 @@ export interface RulesetFightSeed {
   partyCatalogs: RulesetCatalogEntriesById;
   /** Every catalog of this ruleset that holds creatures. */
   bestiary: RulesetCatalogEntriesById;
+  /** Who is caught unaware as it begins (1.232), by id, as the Game Master set the scene. */
+  surprised?: string[];
 }
 
 export type RulesetFightSeedResult = { ok: true; fight: RulesetFightState } | { ok: false; error: string };
@@ -375,6 +377,7 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
     combatants,
     bestiary: input.bestiary,
     ...(board ? { board } : {}),
+    ...(input.surprised?.length ? { surprised: input.surprised } : {}),
   });
   for (const [id, tier] of heldToTier) {
     const built = rulesetCombatant(encounter, id);
@@ -600,6 +603,7 @@ function projectCombatant(
     stable: combatant.stable,
     defeated: combatant.defeated,
     ...(combatant.away ? { away: true as const } : {}),
+    ...(combatant.surprised ? { surprised: true as const } : {}),
     ...(deathTrack ? { deathTrack } : {}),
     ...(saveModifiers.length ? { saveModifiers } : {}),
     ...(() => {
@@ -2043,6 +2047,7 @@ function rulesetRefusalMessage(reason: string): string {
     "unknown-option": "That is not on the menu.",
     "cannot-act": "They cannot act right now.",
     down: "They are down.",
+    surprised: "They are surprised: this first turn can only be ended.",
     "bad-target": "That is not a legal target for this.",
     "no-budget": "They have nothing left to spend on it this turn.",
     insufficient: "They cannot pay for it.",

@@ -867,6 +867,11 @@ export interface RulesetCombatant {
   /** Sent out of the fight by somebody (1.231), and `defeated` while away: for good, or until they
    *  no longer hold `while` (5e's Banishment), when they come back where they were. */
   away?: { by: string; label: string; while?: string; gone?: RulesetTargetIs };
+  /** Caught unaware as the fight began (1.232): no move and no action on their first turn, and no
+   *  reaction until it ends. `surpriseOut` are the actions that end it if taken first (Feral
+   *  Instinct's rage). */
+  surprised?: true;
+  surpriseOut?: string[];
   /** The round it was defeated in, which a revive's window is measured from (1.171). */
   diedRound?: number;
   /** Read from the sheet or the block once, when the fight began. */
@@ -1210,6 +1215,7 @@ export type RulesetCombatRefusal =
   | "not-your-turn"
   | "unknown-option"
   | "cannot-act"
+  | "surprised"
   | "down"
   | "bad-target"
   | "no-budget"
@@ -1552,6 +1558,10 @@ export type RulesetCombatEvent =
   | { type: "dismissed"; actorId: string; targetId: string; label: string; while?: string }
   /** Back from where it was sent (1.231), or, with `gone`, kept there for good. */
   | { type: "returned"; targetId: string; gone?: true }
+  /** Caught unaware as the fight began (1.232). */
+  | { type: "surprised"; actorIds: string[] }
+  /** No longer surprised (1.232): their first turn is over, or `label` shook it off. */
+  | { type: "surpriseOver"; actorId: string; label?: string }
   /** A blow that follows a straight run at its target, before what the charge adds lands (1.181). */
   | {
       type: "charged";

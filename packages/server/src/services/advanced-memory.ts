@@ -3996,6 +3996,15 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       `with the last user message being ${lastUser ? `#${indexes.get(lastUser.id)! + 1}` : "none"}.`;
     const recallBudget = optionalMemoryBudget - tokenSize(recallIntroduction);
     let recalledTokens = 0;
+    const excerptText = (scene: StoredRecord, messages: AdvancedMemoryMessage[]) =>
+      `\n\nExcerpt:\n${renderMemoryText(
+        indexes,
+        messages.map((message) => message.id),
+        messages.map((message) => messageText(ctx, message, indexes.get(message.id)!)).join("\n"),
+        hasSceneTimelineCorrection(scene) ? scene.timeline : (sourceTimeline(messages) ?? scene.timeline),
+        false,
+        hasSceneTimelineCorrection(scene),
+      )}`;
     // Reserve all selected scene summaries before spending any room on excerpts.
     for (const sceneId of sceneOrder) {
       if (selectedScenes.size >= ctx.settings.retrieveMaxScenes) break;
@@ -4047,44 +4056,41 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     let messageScores: Map<string, number> | null = null;
     const judgedPlans = excerptPlans.filter((plan) => plan.sceneSource.length);
     if (decisionThreshold !== null && ctx.settings.retrieveMaxMessages > 0 && judgedPlans.length) {
-      try {
-        const signal = decisionSignal();
-        const backend = await memoryDecisionBackend(ctx, { ...input, signal });
-        // The scene pass may have taught the backend that this model reasons, which defers it now.
-        if (backend && !backend.deferPreGeneration)
-          messageScores = await rankDecisionMemories(
-            backend,
-            conversation,
-            responders,
-            judgedPlans.flatMap(({ sceneSource, textMatches }) => {
-              const shortlisted = new Set(
-                textMatches.slice(0, MEMORY_DECISION_MESSAGES_PER_SCENE).map(({ index }) => index),
-              );
-              return sceneSource
-                .filter((_, index) => shortlisted.has(index))
-                .map((message) => ({ id: message.id, text: messageText(ctx, message, indexes.get(message.id)!) }));
-            }),
-            signal,
-            recallDiagnostics,
-          );
-      } catch (error) {
-        abortIfNeeded(input.signal);
-        logger.warn(error, "[advanced-memory] Decision excerpt selection failed; using text matching");
+      // An excerpt always keeps its centre, one of its scene's shortlisted messages. A scene where not one
+      // of them fits on its own in the room the summaries left can get no excerpt, so the model does not
+      // judge its messages, and is not asked at all when no scene is left (#7269).
+      const judged = judgedPlans.flatMap(({ scene, sceneSource, textMatches }) => {
+        const shortlisted = new Set(textMatches.slice(0, MEMORY_DECISION_MESSAGES_PER_SCENE).map(({ index }) => index));
+        const text = `${sceneHeading(scene)}\n${renderMemoryRecord(scene, indexes, renderedRecaps.get(scene.sceneId))}`;
+        const fits = (message: AdvancedMemoryMessage) =>
+          recalledTokens + tokenSize(text + excerptText(scene, [message])) - tokenSize(text) <= recallBudget;
+        const messages = sceneSource.filter((_, index) => shortlisted.has(index));
+        return messages.some(fits) ? messages : [];
+      });
+      if (judged.length) {
+        try {
+          const signal = decisionSignal();
+          const backend = await memoryDecisionBackend(ctx, { ...input, signal });
+          // The scene pass may have taught the backend that this model reasons, which defers it now.
+          if (backend && !backend.deferPreGeneration)
+            messageScores = await rankDecisionMemories(
+              backend,
+              conversation,
+              responders,
+              judged.map((message) => ({ id: message.id, text: messageText(ctx, message, indexes.get(message.id)!) })),
+              signal,
+              recallDiagnostics,
+            );
+        } catch (error) {
+          abortIfNeeded(input.signal);
+          logger.warn(error, "[advanced-memory] Decision excerpt selection failed; using text matching");
+        }
+        if (!messageScores) receipt.reasons.push("decision-excerpt-fallback");
       }
-      if (!messageScores) receipt.reasons.push("decision-excerpt-fallback");
     }
     const scores = messageScores;
     const threshold = decisionThreshold;
     const { retrieveMinMessages: minMessages, retrieveMaxMessages: maxMessages } = ctx.settings;
-    const excerptText = (scene: StoredRecord, messages: AdvancedMemoryMessage[]) =>
-      `\n\nExcerpt:\n${renderMemoryText(
-        indexes,
-        messages.map((message) => message.id),
-        messages.map((message) => messageText(ctx, message, indexes.get(message.id)!)).join("\n"),
-        hasSceneTimelineCorrection(scene) ? scene.timeline : (sourceTimeline(messages) ?? scene.timeline),
-        false,
-        hasSceneTimelineCorrection(scene),
-      )}`;
     const excerptFits = excerptPlans.map((plan) => {
       const { scene, sceneSource, textMatches } = plan;
       const text = `${sceneHeading(scene)}\n${renderMemoryRecord(scene, indexes, renderedRecaps.get(scene.sceneId))}`;

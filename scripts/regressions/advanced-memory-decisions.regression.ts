@@ -335,6 +335,63 @@ try {
   assert(full.receipt.reasons.includes("excerpt-no-room"), "the receipt says why the excerpts are missing");
   assert.deepEqual(full.receipt.decisionRecall?.notes, ["excerpt-no-room"]);
 
+  // When not one shortlisted message fits the room the summaries leave, no excerpt can be recalled,
+  // so the Decision model is not asked to pick messages (#7269).
+  const crowded = await chats.create({
+    name: "Decision excerpts without room",
+    mode: "roleplay",
+    characterIds: ["reader"],
+    connectionId: helper.id,
+  });
+  assert(crowded);
+  await chats.patchMetadata(crowded.id, { summaryMaxTokens: 512 });
+  await memory.updateSettings(crowded.id, {
+    enabled: true,
+    decisionEnabled: true,
+    decisionConnectionId: decision.id,
+    knowledgeStarts: { reader: null },
+    knowledgeConfirmed: true,
+    retrieveMinMessages: 1,
+    retrieveMaxMessages: 2,
+  });
+  await chats.createMessagesBatch(crowded.id, [
+    ...["dock", "bridge"].flatMap((place) => [
+      { role: "user" as const, content: `SCENE_CHANGE TARGET_SCENE Cobalt refuge is sworn at the ${place}.${padding}` },
+      {
+        role: "assistant" as const,
+        characterId: "reader",
+        content: `Cobalt refuge, I repeat at the ${place}.${padding}`,
+      },
+    ]),
+    { role: "user", content: "SCENE_CHANGE You remember, don't you?", extra: { isConversationStart: true } },
+  ]);
+  await memory.initialize(crowded.id);
+  await memory.updateSettings(crowded.id, { summaryBudgetTokens: 64 });
+  for (const record of (await memory.status(crowded.id)).records.filter(
+    (item) => item.kind === "scene" && item.status === "closed",
+  ))
+    await memory.updateRecord(crowded.id, record.id, {
+      content: `TARGET_SCENE: The old oath concerned Cobalt refuge.${padding}`,
+    });
+  const crowdedSource = await chats.listMessages(crowded.id);
+  const crowdedIds = new Set(crowdedSource.map(({ id }) => id));
+  const beforeCrowded = requests.length;
+  const noRoom = await memory.prepare({
+    chatId: crowded.id,
+    messages: crowdedSource,
+    audienceCharacterIds: ["reader"],
+    budgetTokens: 50000,
+  });
+  assert.equal(noRoom.receipt.recalledSceneIds.length, 2, "the model still picks the scenes");
+  assert.deepEqual(noRoom.receipt.recalledMessageIds, []);
+  assert.deepEqual(noRoom.receipt.decisionRecall?.notes, ["excerpt-no-room"]);
+  assert(
+    !requests
+      .slice(beforeCrowded)
+      .some((request) => request.body.state.memories?.some((item: { id: string }) => crowdedIds.has(item.id))),
+    "the Decision model is not asked about messages that cannot fit",
+  );
+
   await chats.createMessage({
     chatId: chat.id,
     role: "assistant",

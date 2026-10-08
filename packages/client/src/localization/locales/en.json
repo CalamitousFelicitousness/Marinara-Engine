@@ -5672,6 +5672,7 @@
   "ui.chat.customtrackerpanel.noFieldsTrackedAddOneAbove": "No fields tracked — add one above",
   "ui.chat.customtrackerwidget.customTracker": "Custom",
   "ui.chat.customtrackerwidget.loadingCustomTracker": "Loading custom tracker…",
+  "ui.chat.cyoachoices.addToMessage": "Add to message",
   "ui.chat.cyoachoices.cancelEditingChoices": "Cancel editing choices",
   "ui.chat.cyoachoices.choiceValue1": "Choice {{value1}}",
   "ui.chat.cyoachoices.describeTheActionOrDialogueSentWhenThisChoice": "Describe the action or dialogue sent when this choice is clicked.",

@@ -30,3 +30,9 @@ export function buildCyoaChoiceSubmissionPayload(input: {
       : {}),
   };
 }
+
+/** Appends a choice to the composer draft, separated from existing text by a blank line. */
+export function appendCyoaChoiceToDraft(draft: string, text: string) {
+  const existing = draft.trimEnd();
+  return existing ? `${existing}\n\n${text}` : text;
+}

@@ -2,7 +2,7 @@
 // CYOA Choices — interactive choice buttons after assistant messages
 // ──────────────────────────────────────────────
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, Dices, Loader2, Pencil, Sparkles, X } from "lucide-react";
+import { Check, Dices, Loader2, MessageSquarePlus, Pencil, Sparkles, X } from "lucide-react";
 import { useUpdateMessageExtra } from "../../hooks/use-chats";
 import { useAgentStore } from "../../stores/agent.store";
 import { useGenerate } from "../../hooks/use-generate";
@@ -11,7 +11,7 @@ import { useUIStore } from "../../stores/ui.store";
 import { cn } from "../../lib/utils";
 import type { Message } from "@marinara-engine/shared";
 import { useTranslation as useUiTranslation } from "react-i18next";
-import { buildCyoaChoiceSubmissionPayload } from "./cyoa-choice-submission";
+import { appendCyoaChoiceToDraft, buildCyoaChoiceSubmissionPayload } from "./cyoa-choice-submission";
 
 type CyoaChoice = {
   label: string;
@@ -204,6 +204,25 @@ export function CyoaChoices({ messages }: Props) {
     ],
   );
 
+  const handleAddToMessage = useCallback(
+    (text: string) => {
+      if (!activeChatId) return;
+      const state = useChatStore.getState();
+      const composer = document.querySelector<HTMLTextAreaElement>("textarea[data-chat-composer]");
+      if (composer?.dataset.chatId !== activeChatId) {
+        state.setInputDraft(activeChatId, appendCyoaChoiceToDraft(state.inputDrafts.get(activeChatId) ?? "", text));
+        return;
+      }
+      composer.value = appendCyoaChoiceToDraft(composer.value, text);
+      // Same as ChatArea's guidance draft update: reuse the composer's own input handling.
+      composer.dispatchEvent(new Event("input", { bubbles: true }));
+      state.setInputDraft(activeChatId, composer.value);
+      composer.focus();
+      composer.setSelectionRange(composer.value.length, composer.value.length);
+    },
+    [activeChatId],
+  );
+
   const handleReroll = useCallback(async () => {
     if (!activeChatId || isStreaming || isEditing || isRerolling) return;
     setIsRerolling(true);
@@ -375,20 +394,31 @@ export function CyoaChoices({ messages }: Props) {
       ) : (
         <div className="flex flex-wrap justify-center gap-2" style={{ maxWidth: TRACKER_SAFE_MAX_WIDTH }}>
           {choices.map((choice, i) => (
-            <button
-              key={i}
-              type="button"
-              onClick={() => handleChoice(choice.text)}
-              disabled={isStreaming || isRerolling}
-              className="group relative rounded-xl border border-[var(--border)] bg-[var(--card)]/80 px-4 py-2.5 text-left backdrop-blur-md transition-all hover:border-[var(--marinara-chat-chrome-button-border-hover)] hover:bg-[var(--marinara-chat-chrome-highlight-bg)] hover:shadow-lg active:scale-[0.98] disabled:opacity-50 dark:border-white/10 dark:bg-black/50"
-            >
-              <span className="mari-chrome-accent-text mari-accent-animated block text-[0.6875rem] font-semibold group-hover:text-[var(--marinara-chat-chrome-button-text-hover)]">
-                {choice.label}
-              </span>
-              <span className="mt-0.5 block text-[0.625rem] leading-relaxed text-[var(--foreground)]/60 group-hover:text-[var(--foreground)]/80 dark:text-white/50 dark:group-hover:text-white/70">
-                {choice.text}
-              </span>
-            </button>
+            <div key={i} className="relative">
+              <button
+                type="button"
+                onClick={() => handleChoice(choice.text)}
+                disabled={isStreaming || isRerolling}
+                className="group relative h-full rounded-xl border border-[var(--border)] bg-[var(--card)]/80 py-2.5 pl-4 pr-9 text-left backdrop-blur-md transition-all hover:border-[var(--marinara-chat-chrome-button-border-hover)] hover:bg-[var(--marinara-chat-chrome-highlight-bg)] hover:shadow-lg active:scale-[0.98] disabled:opacity-50 dark:border-white/10 dark:bg-black/50"
+              >
+                <span className="mari-chrome-accent-text mari-accent-animated block text-[0.6875rem] font-semibold group-hover:text-[var(--marinara-chat-chrome-button-text-hover)]">
+                  {choice.label}
+                </span>
+                <span className="mt-0.5 block text-[0.625rem] leading-relaxed text-[var(--foreground)]/60 group-hover:text-[var(--foreground)]/80 dark:text-white/50 dark:group-hover:text-white/70">
+                  {choice.text}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleAddToMessage(choice.text)}
+                disabled={isStreaming || isRerolling}
+                aria-label={localizeUi("ui.chat.cyoachoices.addToMessage")}
+                title={localizeUi("ui.chat.cyoachoices.addToMessage")}
+                className="absolute right-1.5 top-1.5 inline-flex items-center rounded-md border border-[var(--border)] bg-[var(--muted)]/20 p-1 text-[var(--foreground)]/60 transition-all hover:border-[var(--border)] hover:bg-[var(--muted)]/40 hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:bg-black/35 dark:text-white/50 dark:hover:bg-white/10 dark:hover:text-white/80"
+              >
+                <MessageSquarePlus size="0.75rem" />
+              </button>
+            </div>
           ))}
         </div>
       )}

@@ -458,6 +458,8 @@ interface RulesetDamageInput {
   drains?: true;
   /** The weapon's floor, when it raised `amount` to it. */
   floor?: number;
+  /** A resistance to it counts for nothing (1.187): a vorpal sword's slashing. */
+  ignoresResistance?: true;
 }
 
 /**
@@ -496,8 +498,9 @@ function applyDamage(
     adjust = "immune";
   } else {
     const resistant =
-      !!(type && hide && matches(hide.resist, type, input.qualities)) ||
-      rulesetCombatEffects(ctx.definition, ctx.combat, target, ctx.state).has("resist-all");
+      !input.ignoresResistance &&
+      (!!(type && hide && matches(hide.resist, type, input.qualities)) ||
+        rulesetCombatEffects(ctx.definition, ctx.combat, target, ctx.state).has("resist-all"));
     const vulnerable = !!(type && hide && matches(hide.vulnerable, type));
     if (type && hide && matches(hide.immune, type, input.qualities)) {
       dealt = 0;
@@ -4176,7 +4179,17 @@ function slayOnHit(
     ? (actor.charges?.[charges.item] ?? actor.sheet?.items?.[charges.item]?.charges ?? charges.max)
     : 0;
   if (charges && left < charges.cost) return;
-  if (entry.save && rollSave(ctx, target, entry.save.save, entry.save.difficulty, actor.id)) return;
+  if (entry.save && rollSave(ctx, target, entry.save.save, entry.save.difficulty, actor.id)) {
+    // Spared, it takes what a made save leaves instead (1.187): a mace of disruption's fright.
+    for (const applies of entry.saved ?? []) {
+      applyConditionId(ctx, target, applies.condition, applies, {
+        sourceId: actor.id,
+        difficulty: entry.save.difficulty,
+        action: [action.id, action.label],
+      });
+    }
+    return;
+  }
   slay(ctx, target, actor.id, action.label);
   if (charges) {
     const now = Math.max(0, Math.min(charges.max, left) - charges.cost);
@@ -4658,10 +4671,21 @@ function resolveActionBody(
       before ??= healthOf(ctx, target);
       // Every part of the blow carries what the weapon does past a resistance.
       const qualities = action.damage?.qualities;
+      // A weapon that ignores resistance to its own kind of harm (1.187) does so for every part of
+      // the blow of that kind.
+      const ignores =
+        !!action.ignoresResistance &&
+        !!part.damageType &&
+        part.damageType.trim().toLowerCase() === action.damage?.type?.trim().toLowerCase();
       const partDealt = applyDamage(
         ctx,
         target,
-        { ...part, ...(qualities ? { qualities } : {}), ...(action.entry ? { entry: action.entry } : {}) },
+        {
+          ...part,
+          ...(qualities ? { qualities } : {}),
+          ...(action.entry ? { entry: action.entry } : {}),
+          ...(ignores ? { ignoresResistance: true as const } : {}),
+        },
         !!woundTrack,
         damageSaves,
       );

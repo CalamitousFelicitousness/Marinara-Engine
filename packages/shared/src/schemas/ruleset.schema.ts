@@ -3841,11 +3841,29 @@ export const rulesetItemAttackSchema = z
               .strict()
               .optional(),
             charges: z.number().int().min(1).max(100).optional(),
+            /** What a target that makes the save takes instead (Capability API 1.187): a mace of
+             *  disruption's fiend or undead, frightened of the wielder until the end of the
+             *  wielder's next turn. Needs a `save`. */
+            saved: z.array(catalogAppliesSchema).min(1).max(2).optional(),
           })
-          .strict(),
+          .strict()
+          .refine((entry) => entry.saved === undefined || entry.save !== undefined, {
+            message: 'A slay that leaves "saved" conditions needs a "save" to make',
+            path: ["saved"],
+          }),
       )
       .min(1)
       .max(3)
+      .optional(),
+    /** Its damage ignores the target's resistance to its own damage type (Capability API 1.187),
+     *  resistance to every kind of harm included: a vorpal sword's slashing. */
+    ignoresResistance: z.literal(true).optional(),
+    /** While a creature the wielder put this condition on still stands, the wielder's attacks with
+     *  every OTHER weapon roll with `mode`, or only the ranged ones with `ranged` (Capability API
+     *  1.187): an oathbow's disadvantage while its sworn enemy lives. */
+    othersWhileMarked: z
+      .object({ condition: sheetId, mode: z.enum(["advantage", "disadvantage"]), ranged: z.literal(true).optional() })
+      .strict()
       .optional(),
     /** More damage on the same blow, each rolled and typed on its own (Capability API 1.164): a
      *  javelin of lightning's lightning, a dragon slayer's dice against dragons (`targetIs`), a
@@ -9541,7 +9559,22 @@ function attackIssues(
     if (entry.charges !== undefined && !item.charges) {
       add([...where, "charges"], "A slay that spends charges is on an item that holds some");
     }
+    // What a made save leaves instead (1.187) is the ruleset's own conditions.
+    entry.saved?.forEach((applies, appliesIndex) => {
+      if (!conditions.has(applies.condition))
+        add([...where, "saved", appliesIndex, "condition"], `Unknown condition "${applies.condition}"`);
+      escapeDcIssues(definition, applies, [...where, "saved", appliesIndex], add);
+    });
   });
+  // An oathbow's other weapons (1.187): a condition the ruleset has, in a fight that rolls twice.
+  if (attack.othersWhileMarked) {
+    const rule = attack.othersWhileMarked;
+    if (!conditions.has(rule.condition))
+      add([...at, "othersWhileMarked", "condition"], `Unknown condition "${rule.condition}"`);
+    if (!(combat.attackRoll?.advantage ?? combat.pool?.advantage)) {
+      add([...at, "othersWhileMarked", "mode"], "A fight that never rolls twice has no mode to change");
+    }
+  }
   attack.plus?.forEach((clause, index) => plusClauseIssues(definition, clause, [...at, "plus", index], add));
 }
 

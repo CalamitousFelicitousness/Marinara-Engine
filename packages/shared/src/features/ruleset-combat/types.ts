@@ -586,7 +586,15 @@ export interface RulesetCombatAction {
     healthAtMost?: number;
     save?: { save: string; difficulty: number };
     charges?: { cost: number; max: number; item: number };
+    /** What a made save leaves instead (1.187). */
+    saved?: RulesetCombatApplies[];
   }>;
+  /** Its damage ignores resistance to its own type (1.187): a vorpal sword. */
+  ignoresResistance?: true;
+  /** While a creature its wielder marked with `condition` stands, their attacks with every other
+   *  weapon (the ranged ones with `ranged`) roll with `mode` (1.187). `item` is this weapon's place
+   *  in `sheet.items`. */
+  othersWhileMarked?: { condition: string; mode: "advantage" | "disadvantage"; ranged?: true; item: number };
   /** Using an item: which of the holder's items it is (its place in `sheet.items`), and what using
    *  it spends of it: one off the stack, or some of its charges. */
   itemUse?: {

@@ -932,7 +932,10 @@ const capabilityPackageManifestBaseSchema = z
 //        `conditionImmunitiesFrom` keeps conditions off only when a creature that is `from` puts them
 //        on; `targetTypes.abilityAtLeast` floors a target's ability scores; and a saves modifier's
 //        `against.actions` narrows it to named actions, AND whatever else it names.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 186 } as const);
+// 1.187: an item attack's `ignoresResistance` (a vorpal sword), a slay's `saved` conditions on a made
+//        save (a mace of disruption), and `othersWhileMarked` (an oathbow's other weapons). Off a
+//        board, an area names either side unless it spares its own (no key: a behavior change).
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 187 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

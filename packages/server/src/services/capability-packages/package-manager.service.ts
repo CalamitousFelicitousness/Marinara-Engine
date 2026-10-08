@@ -1522,6 +1522,22 @@ function carriesWardsAndSaves(value: unknown, depth = 0): boolean {
 
 const MODIFIER_TARGETS = new Set<string>(RULESET_COMBAT_MODIFIER_TARGETS);
 
+/** A weapon that ignores resistance, a slay that leaves conditions on a made save, or a weapon that
+ *  hinders its wielder's others while a mark stands (1.187), in catalog files too. */
+function carriesWeaponRiders(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesWeaponRiders(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const attack = plainRecord(record.attack);
+  if (attack) {
+    if (attack.ignoresResistance !== undefined || attack.othersWhileMarked !== undefined) return true;
+    const slay = Array.isArray(attack.slay) ? attack.slay.map(plainRecord) : [];
+    if (slay.some((entry) => entry?.saved !== undefined)) return true;
+  }
+  return Object.values(record).some((one) => carriesWeaponRiders(one, depth + 1));
+}
+
 /** A condition that keeps heals off or keeps conditions off by who puts them on, a target floor on
  *  ability scores, or a save narrowed to named actions (1.186), in catalog files too. */
 function carriesHealWardsAndActionSaves(value: unknown, depth = 0): boolean {
@@ -3041,6 +3057,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Weapons through resistance, slays that frighten instead, an oathbow's other weapons, 1.187.
+  if (
+    !declaresApi(187) &&
+    (carriesWeaponRiders(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesWeaponRiders(document)))
+  ) {
+    return "A ruleset with weapons that ignore resistance, slays that frighten on a made save, or weapons that hinder their wielder's others while a mark stands requires schemaVersion 2 and capabilityApi 1.187 or newer";
   }
   // Heals kept off, conditions kept off by source, ability floors and saves against actions, 1.186.
   if (

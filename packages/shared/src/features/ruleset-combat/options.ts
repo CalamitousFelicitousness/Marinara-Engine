@@ -1144,6 +1144,8 @@ export function rulesetOptionTargets(
         if (option.targets.side === "self") return combatant.id === actor.id;
         if (option.targets.side === "ally") return combatant.side === actor.side;
         if (option.targets.side === "enemy") return combatant.side !== actor.side;
+        // An area named off a board (1.187) catches either side, but never the one who made it.
+        if (cure?.area && combatant.id === actor.id) return false;
         return true;
       })
       // And then how far away they are, which is nothing at all in a fight without a board.
@@ -1819,6 +1821,19 @@ export function rulesetAttackMode(
     }
   }
   for (const entry of against) if (entry.mode) leans.add(entry.mode);
+  // Another weapon's mark still standing (1.187): an oathbow's disadvantage with every other weapon
+  // while its sworn enemy lives.
+  if (blow?.kind === "attack" && where) {
+    for (const other of actor.actions) {
+      const rule = other.othersWhileMarked;
+      if (!rule || blow.id === `item:${rule.item}` || blow.offHandOf === rule.item) continue;
+      if (rule.ranged && !blow.range) continue;
+      const marked = where.state.combatants.some(
+        (one) => !one.defeated && rulesetMarkedBy(one, rule.condition, actor.id),
+      );
+      if (marked) leans.add(rule.mode);
+    }
+  }
   const up = advantage || leans.has("advantage");
   const down = disadvantage || leans.has("disadvantage");
   if (up === down) return "normal";

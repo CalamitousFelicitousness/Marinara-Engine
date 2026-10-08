@@ -1510,6 +1510,8 @@ function itemAttackActions(
         : {}),
       ...(attack.against?.length ? { against: structuredClone(attack.against) } : {}),
       ...(slay.length ? { slay } : {}),
+      ...(attack.ignoresResistance ? { ignoresResistance: true as const } : {}),
+      ...(attack.othersWhileMarked ? { othersWhileMarked: { ...attack.othersWhileMarked, item: index } } : {}),
     };
     actions.push(offHand ? { ...weapon, pairs: index } : weapon);
     if (offHand) {
@@ -1585,7 +1587,15 @@ function targetsOf(mechanics: RulesetCatalogMechanics): RulesetCombatAction["tar
   if (mechanics.kind === "utility") {
     return { side: mechanics.targets ?? "ally", count: Math.max(1, mechanics.targetCount ?? 1) };
   }
-  const side = mechanics.targets ?? (mechanics.kind === "heal" || mechanics.kind === "buff" ? "ally" : "enemy");
+  // An area catches each creature in it (1.187), so off a board, where it is pointed at people by
+  // name, it may be pointed at either side unless it spares its caster's own.
+  const side =
+    mechanics.targets ??
+    (mechanics.kind === "heal" || mechanics.kind === "buff"
+      ? "ally"
+      : mechanics.area && mechanics.friendlyFire !== false
+        ? "any"
+        : "enemy");
   return { side, count: Math.max(1, mechanics.targetCount ?? 1) };
 }
 
@@ -2162,7 +2172,9 @@ function blockActions(block: RulesetStatBlockLike, perCell: number | undefined):
     targets: action.self
       ? { side: "self" as const, count: 0 }
       : {
-          side: action.targets ?? ("enemy" as const),
+          // An area catches each creature in it, the creature's allies too (1.187): off a board it may
+          // be pointed at either side, unless it spares its own.
+          side: action.targets ?? (action.area && action.area.friendlyFire !== false ? "any" : ("enemy" as const)),
           count: action.sequence
             ? Math.max(
                 1,

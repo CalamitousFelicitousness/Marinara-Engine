@@ -959,7 +959,10 @@ const capabilityPackageManifestBaseSchema = z
 //        health only a rest gives back, given back), and a wall section's `broken.perCostStep`.
 // 1.197: an applied condition's `endsWith` (it ends whenever another condition put on with it by
 //        the same use ends: 5e's Hypnotic Pattern's incapacitation goes with its charm).
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 197 } as const);
+// 1.198: a creature action's `reducesMax` (a failed save lowers the health maximum by the damage
+//        taken until a rest, or with `lasting` until something unseals it; at 0 the target dies:
+//        Life Drain, a clay golem's Slam), and a live pool's `lasting`.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 198 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

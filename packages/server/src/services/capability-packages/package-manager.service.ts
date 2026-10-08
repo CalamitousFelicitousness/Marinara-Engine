@@ -1522,6 +1522,16 @@ function carriesWardsAndSaves(value: unknown, depth = 0): boolean {
 
 const MODIFIER_TARGETS = new Set<string>(RULESET_COMBAT_MODIFIER_TARGETS);
 
+/** A creature's blow that lowers the health maximum on a failed save (1.198), in catalogs too. */
+function carriesReducesMax(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesReducesMax(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.reducesMax !== undefined) return true;
+  return Object.values(record).some((one) => carriesReducesMax(one, depth + 1));
+}
+
 /** A condition put on to end with another one put on with it (1.197), in catalogs too. */
 function carriesLinkedConditions(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -3181,6 +3191,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Blows that lower the health maximum, 1.198.
+  if (
+    !declaresApi(198) &&
+    (carriesReducesMax(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesReducesMax(document)))
+  ) {
+    return "A ruleset with creature actions that lower the health maximum on a failed save requires schemaVersion 2 and capabilityApi 1.198 or newer";
   }
   // Conditions that end with another put on with them, 1.197.
   if (

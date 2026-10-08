@@ -475,6 +475,8 @@ interface RulesetDamageInput {
   ignoresResistance?: true;
   /** What it takes off health comes back only with a rest (1.188): a sword of wounding's. */
   seals?: true;
+  /** Not even with a rest, only something that unseals (1.198): a clay golem's Slam. */
+  lasting?: true;
 }
 
 /**
@@ -532,7 +534,7 @@ function applyDamage(
   const toTemp = Math.min(before.temp, dealt);
   if (dealt > 0) {
     if (target.sheet) {
-      if (!deferWound) writeHealthLoss(ctx, target, dealt, input.damageType, input.seals);
+      if (!deferWound) writeHealthLoss(ctx, target, dealt, input.damageType, input.seals, input.lasting);
     } else if (target.health) {
       target.health.temp = before.temp - toTemp;
       const value = Math.max(0, before.value - (dealt - toTemp));
@@ -624,6 +626,8 @@ function writeHealthLoss(
   damageType: string | undefined,
   /** What it takes comes back only with a rest (1.188). A wound track has no such points. */
   seals?: true,
+  /** Not even with a rest (1.198). */
+  lasting?: true,
 ): void {
   const health = ctx.combat.health;
   if (!("track" in health)) {
@@ -632,6 +636,7 @@ function writeHealthLoss(
       pool: health.pool,
       amount: dealt,
       ...(seals ? { seals } : {}),
+      ...(seals && lasting ? { lasting } : {}),
     });
     return;
   }
@@ -780,6 +785,16 @@ function moveTrack(
   ) {
     slay(ctx, target, actor.id, declared.label);
   }
+}
+
+/** Whether what only a rest or an unsealing gives back has taken the whole maximum (1.198). */
+function rulesetSealedAway(ctx: RulesetCombatContext, target: RulesetCombatant): boolean {
+  if (!target.sheet) return !!target.health && (target.health.sealed ?? 0) >= target.health.max;
+  const health = ctx.combat.health;
+  if ("track" in health) return false;
+  const live = readRulesetLive(ctx.definition, target.sheet.build, target.sheet.live);
+  const pool = live.pools.find((entry) => !entry.listId && entry.key === health.pool);
+  return !!pool && pool.max > 0 && pool.sealed >= pool.max;
 }
 
 /** Temporary points never stack: the bigger buffer is the one that stands. */
@@ -5052,6 +5067,9 @@ function resolveActionBody(
     const parts: RulesetDamageInput[] = [];
     // What the blow's draining clauses dealt, which its maker gains as temporary points (1.182).
     let drained = 0;
+    // Whether the target failed its save against the blow lowering its maximum (1.198), rolled as
+    // the first part lands, so what it takes is what the maximum loses.
+    let sapped: boolean | undefined;
     const landNow = (part: RulesetDamageInput) => {
       if (takes) {
         const amount = Math.max(0, Math.floor(part.amount));
@@ -5066,6 +5084,10 @@ function resolveActionBody(
         return;
       }
       before ??= healthOf(ctx, target);
+      const sap = action.reducesMax;
+      if (sap && sapped === undefined && !("track" in ctx.combat.health)) {
+        sapped = !rollSave(ctx, target, sap.save, sap.difficulty, actor.id, undefined, against);
+      }
       // Every part of the blow carries what the weapon does past a resistance.
       const qualities = action.damage?.qualities;
       // A weapon that ignores resistance to its own kind of harm (1.187) does so for every part of
@@ -5082,7 +5104,8 @@ function resolveActionBody(
           ...(qualities ? { qualities } : {}),
           ...(action.entry ? { entry: action.entry } : {}),
           ...(ignores ? { ignoresResistance: true as const } : {}),
-          ...(action.healedOnlyByRest ? { seals: true as const } : {}),
+          ...(action.healedOnlyByRest || sapped ? { seals: true as const } : {}),
+          ...(sapped && sap?.lasting ? { lasting: true as const } : {}),
         },
         !!woundTrack,
         damageSaves,
@@ -5310,6 +5333,10 @@ function resolveActionBody(
       }
     }
     if (before) afterBlow(ctx, target, dealt, critical);
+    // Its maximum lowered to nothing (1.198), it dies.
+    if (sapped && dealt > 0 && !target.defeated && rulesetSealedAway(ctx, target)) {
+      slay(ctx, target, actor.id, action.label);
+    }
     if (drained > 0) grantTemporary(ctx, actor, { sourceId: actor.id, rolls: [], flat: drained, amount: drained });
     // A blow that slays (1.182) kills somebody it left low enough, after what it dealt.
     if (dealt > 0) for (const entry of action.slay ?? []) slayOnHit(ctx, actor, action, target, entry, critical);

@@ -260,6 +260,8 @@ export interface RulesetStatBlockAction {
   push?: number;
   /** The ability its attack is made with (1.184), so changes narrowed to an ability reach it. */
   ability?: string;
+  /** A failed save against it lowers the health maximum by the damage taken (1.198). */
+  reducesMax?: { save: string; difficulty: number; lasting?: true };
   /** What it adds after a straight run at its target this turn (1.181). */
   charge?: RulesetCombatCharge;
   /** What a save that ENDS one of `applies` is rolled against, when the action has no save of its
@@ -424,6 +426,8 @@ export interface RulesetCombatAction {
   /** The ability actually used for the attack roll (Capability API 1.128). A plain stat-block
    *  action has none; a weapon offering several keeps the first best one, as its roll does. */
   ability?: string;
+  /** A failed save against it lowers the health maximum by the damage taken (1.198). */
+  reducesMax?: { save: string; difficulty: number; lasting?: true };
   toHit?: number;
   /** The per-die target a pool fight throws this attack against, where the ruleset lets it move: a
    *  weapon's own. Without one the attack is thrown against the pool's usual target. */

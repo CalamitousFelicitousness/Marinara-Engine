@@ -12177,6 +12177,31 @@
                             "maxLength": 40,
                             "pattern": "^[a-z][a-z0-9_]*$"
                           },
+                          "reducesMax": {
+                            "type": "object",
+                            "properties": {
+                              "save": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "difficulty": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 1000
+                              },
+                              "lasting": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "$comment": {}
+                            },
+                            "required": [
+                              "save",
+                              "difficulty"
+                            ],
+                            "additionalProperties": false
+                          },
                           "saveDifficulty": {
                             "type": "integer",
                             "minimum": 0,

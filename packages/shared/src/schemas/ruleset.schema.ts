@@ -2925,6 +2925,16 @@ const creatureSpellcastingSchema = z
       });
   });
 
+/** A save against a blow lowering the health maximum (1.198). Typed, to keep the block's type small. */
+const creatureReducesMaxSchema: z.ZodType<{ save: string; difficulty: number; lasting?: true }, z.ZodTypeDef, unknown> =
+  z
+    .object({
+      save: sheetId,
+      difficulty: z.number().int().min(0).max(1000),
+      lasting: z.literal(true).optional(),
+    })
+    .strict();
+
 const creatureActionSchema = z
   .object({
     id: sheetId,
@@ -2955,6 +2965,10 @@ const creatureActionSchema = z
     /** The ability its attack is made with (Capability API 1.184), so a change to attacks or damage
      *  narrowed to an ability reaches it: a gold dragon's Weakening Breath on an ogre's club. */
     ability: sheetId.optional(),
+    /** A target that fails this save has its health maximum lowered by the damage it took
+     *  (Capability API 1.198), until a rest, or with `lasting` until something gives it back
+     *  (`unseals`); brought to 0 that way, it dies. 5e's wraith's Life Drain, a clay golem's Slam. */
+    reducesMax: creatureReducesMaxSchema.optional(),
     /** What a save that ENDS one of `applies` is rolled against, when the action has no save of its
      *  own to borrow the number from. */
     saveDifficulty: z.number().int().min(0).max(1000).optional(),
@@ -9089,6 +9103,16 @@ function creatureIssues(
     });
     if (action.save && !saves.has(action.save.save)) {
       add([...path, "save", "save"], `Unknown save "${action.save.save}"`);
+    }
+    // A lowered maximum (1.198) is a save against a blow, and only health in points has one to lower.
+    if (action.reducesMax) {
+      if (!saves.has(action.reducesMax.save)) {
+        add([...path, "reducesMax", "save"], `Unknown save "${action.reducesMax.save}"`);
+      }
+      if (!action.damage) add([...path, "reducesMax"], "A maximum is lowered by the damage taken, so it has damage");
+      if ("track" in combat.health) {
+        add([...path, "reducesMax"], "Only health kept in points has a maximum to lower");
+      }
     }
     targetTestIssues(definition, { plus: action.damage?.plus }, [...path, "damage"], add);
     targetTestIssues(definition, { applies: action.applies, save: action.save }, path, add);

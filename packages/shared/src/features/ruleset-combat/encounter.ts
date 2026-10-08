@@ -2298,6 +2298,7 @@ function blockActions(block: RulesetStatBlockLike, perCell: number | undefined):
         }
       : {}),
     ...(action.ability ? { ability: action.ability } : {}),
+    ...(action.reducesMax ? { reducesMax: { ...action.reducesMax } } : {}),
     ...(perCell !== undefined && action.push !== undefined ? { push: rulesetInCells(action.push, perCell) } : {}),
     // A run is measured on a board (1.181), so a fight with none never charges.
     ...(perCell !== undefined && action.charge

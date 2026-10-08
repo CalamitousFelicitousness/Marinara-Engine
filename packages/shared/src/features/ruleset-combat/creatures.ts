@@ -218,6 +218,7 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
     ...(action.push !== undefined ? { push: action.push } : {}),
     // What its attack is made with (1.184), so changes narrowed to an ability reach it.
     ...(action.ability ? { ability: action.ability } : {}),
+    ...(action.reducesMax ? { reducesMax: { ...action.reducesMax } } : {}),
     ...(action.range !== undefined ? { range: action.range } : {}),
     ...(action.area ? { area: { ...action.area } } : {}),
     ...(action.uses ? { uses: { ...action.uses } } : {}),

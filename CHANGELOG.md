@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: Life Drain and a clay golem's Slam lower the hit point maximum on a failed save, until a long rest or (for the golem) until Greater Restoration, and kill at 0 (Capability API 1.198).
 - Rulesets: a condition can end together with another one the same spell put on, as Hypnotic Pattern's incapacitation ends with its charm (Capability API 1.197).
 - Rulesets: spells and abilities can lower or raise exhaustion and other tracks, and give back hit point maximum that only a rest would restore (Greater Restoration, Sickening Radiance); Wall of Ice's frigid air grows with the slot level (Capability API 1.196).
 - Rulesets: Wall of Ice stands in 10-foot sections that can be attacked and broken; fire does double, and a broken section stops blocking and leaves frigid air that hurts whoever moves through it (Capability API 1.195).

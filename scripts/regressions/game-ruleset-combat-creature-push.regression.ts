@@ -20,6 +20,7 @@ import {
   rulesetCombatConditions,
   rulesetCombatHealth,
   rulesetCombatOptions,
+  rulesetCreatureBlock,
   supportedCapabilityApi,
   type RulesetCombatCell,
   type RulesetDefinition,
@@ -83,13 +84,16 @@ try {
     height: 15,
     tiles: Array.from({ length: 15 }, () => Array(20).fill("plains")),
   });
-  const fight = (hero: Partial<RulesetStatBlock> = {}): RulesetEncounterState => {
+  const fight = (
+    hero: Partial<RulesetStatBlock> = {},
+    dragon: RulesetStatBlock = block({ actions: [repulsion as never, tail as never] }),
+  ): RulesetEncounterState => {
     const state = createRulesetEncounter({
       definition,
       seed: 1,
       roller: () => 10,
       combatants: [
-        { id: "dragon", name: "Dragon", side: "enemy", block: block({ actions: [repulsion as never, tail as never] }) },
+        { id: "dragon", name: "Dragon", side: "enemy", block: dragon },
         { id: "hero", name: "Hero", side: "enemy", block: block(hero) },
       ],
       board: { grid: grid(), placements: { dragon: { x: 5, y: 7 }, hero: { x: 6, y: 7 } } },
@@ -142,6 +146,18 @@ try {
     assert.deepEqual(at(stood.state, "hero"), { x: 6, y: 7 });
     assert.ok(!rulesetCombatConditions(definition, who(stood.state, "hero")).includes("prone"));
     assert.equal(health(stood.state), 93, "the blow still lands");
+  }
+
+  // ── A dragon out of the bestiary pushes just as far ──
+  {
+    const beast = rulesetCreatureBlock(definition, {
+      id: "turtle",
+      label: "Turtle",
+      creature: { ...block({ actions: [tail as never] }), tier: "cr_0" },
+    } as never);
+    assert.ok(beast);
+    const swept = use(fight({}, beast), "Tail", { targetIds: ["hero"] });
+    assert.deepEqual(at(swept.state, "hero"), { x: 8, y: 7 }, "two cells, as the one written out");
   }
 
   // ── A scroll's wide line ──

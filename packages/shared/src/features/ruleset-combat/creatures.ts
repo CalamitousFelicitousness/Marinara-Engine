@@ -191,6 +191,8 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
     ...(action.applies?.length ? { applies: action.applies.map((entry) => ({ ...entry })) } : {}),
     ...(action.targetCount !== undefined ? { targetCount: action.targetCount } : {}),
     ...(action.reach !== undefined ? { reach: action.reach } : {}),
+    // In the ruleset's distance, as reach is: the encounter turns both into cells (1.179).
+    ...(action.push !== undefined ? { push: action.push } : {}),
     ...(action.range !== undefined ? { range: action.range } : {}),
     ...(action.area ? { area: { ...action.area } } : {}),
     ...(action.uses ? { uses: { ...action.uses } } : {}),

@@ -536,6 +536,27 @@ try {
   );
   assert.deepEqual((await extraOf(longLine.id)).hiddenFromAICharacterIds, [ids.pantalone]);
 
+  // A message over the 1000-token cap keeps its real end, even when the transcript is shortened again.
+  const overCapChat = await createChat({ decisionEnabled: true, decisionConnectionId: smallJev.id });
+  const exitLine = "At last Pantalone walks out toward the harbour.";
+  await say(
+    overCapChat,
+    "assistant",
+    `OVER_CAP Maukie and Pantalone share a drink.${rain} ${exitLine}`,
+    ids.maukie,
+    decided,
+  );
+  await say(overCapChat, "user", `AFTER_EXIT P raises a toast.${rain}`);
+  decisionRequests.length = 0;
+  await memory.settleMessageVisibility(overCapChat);
+  assert.equal(decisionRequests.length, 1);
+  const overCapState = decisionRequests[0]!.state;
+  assert(estimateChatSummaryTokens(JSON.stringify(overCapState)) <= 2000, "the Decision state limit holds");
+  const overCapTranscript = overCapState.presence.transcript as Array<{ content: string }>;
+  assert(overCapTranscript[0]!.content.startsWith("OVER_CAP"), "the long message keeps its start");
+  assert(overCapTranscript[0]!.content.endsWith(exitLine), "and its real last line, where Pantalone leaves");
+  assert.equal(overCapTranscript[0]!.content.split("omitted]").length, 2, "shortening twice leaves one gap");
+
   // The generation guard decides earlier messages before each character's context is built.
   const routeChat = await createChat();
   await memory.initialize(routeChat);

@@ -1240,7 +1240,8 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
         messageId: ctx.messages[index]!.id,
         messageNumber: index + 1,
         speaker: speakerName(ctx, ctx.messages[index]!),
-        content: sliceTextToTokenBudget(ctx.messages[index]!.content, VISIBILITY_MESSAGE_TOKENS),
+        // Start and end of the original, so a later shortening still has the real ending to keep.
+        content: messageEnds(ctx.messages[index]!.content, VISIBILITY_MESSAGE_TOKENS),
       })),
       recentlyActive: recentlyActive.map((id) => ctx.names.get(id) ?? id),
     };

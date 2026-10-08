@@ -993,14 +993,16 @@ export async function connectionsRoutes(app: FastifyInstance) {
     }
     try {
       // Claude (Subscription) has no remote /models endpoint. Use the catalog
-      // Claude Code caches for the signed-in account, then the curated list.
+      // Claude Code caches for the signed-in account; it already leaves out
+      // models the account or the Claude Code in use can't run, so the curated
+      // list is only the fallback before a catalog exists.
       if (conn.provider === "claude_subscription") {
         const { MODEL_LISTS } = await import("@marinara-engine/shared");
         const install = await resolveClaudeCodeInstall();
         const catalog = await readClaudeCodeModelCatalog(install?.version ?? BUNDLED_CLAUDE_CODE_VERSION);
-        const seen = new Set(catalog.map((m) => m.id));
-        const curated = MODEL_LISTS.claude_subscription.filter((m) => !seen.has(m.id));
-        const models = [...catalog, ...curated.map((m) => ({ id: m.id, name: m.name }))];
+        const models = catalog.length
+          ? catalog
+          : MODEL_LISTS.claude_subscription.map((m) => ({ id: m.id, name: m.name }));
         return { models, builtIn: true };
       }
 

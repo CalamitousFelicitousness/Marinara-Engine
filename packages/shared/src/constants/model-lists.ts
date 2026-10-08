@@ -322,8 +322,8 @@ export const ANTHROPIC_MODELS: KnownModel[] = [
 // Models reachable through the local `claude` CLI auth (Pro / Max). Anthropic
 // gates which model IDs are available per plan tier; the SDK surfaces a clear
 // error if the signed-in plan can't run the requested model. The model picker
-// lists Claude Code's cached catalog first; this curated list is the fallback
-// before Claude Code has cached one. We keep it to the current tool-eligible
+// shows Claude Code's cached catalog for the account; this curated list is the
+// fallback before Claude Code has cached one. We keep it to the current tool-eligible
 // families to avoid offering retired aliases the subscription path rejects.
 export const CLAUDE_SUBSCRIPTION_MODELS: KnownModel[] = [
   { id: "claude-opus-5-5", name: "Claude Opus 5.5", context: 1000000, maxOutput: 128000 },

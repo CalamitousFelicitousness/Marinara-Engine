@@ -999,10 +999,11 @@ export async function connectionsRoutes(app: FastifyInstance) {
       // API key bills that key, so the subscription catalog does not apply.
       if (conn.provider === "claude_subscription") {
         const { MODEL_LISTS } = await import("@marinara-engine/shared");
-        const install = conn.apiKey ? null : await resolveClaudeCodeInstall();
-        const catalog = conn.apiKey
-          ? []
-          : await readClaudeCodeModelCatalog(install?.version ?? BUNDLED_CLAUDE_CODE_VERSION);
+        // Without a known Claude Code version, models can't be checked against it.
+        const cliVersion = conn.apiKey
+          ? null
+          : ((await resolveClaudeCodeInstall())?.version ?? BUNDLED_CLAUDE_CODE_VERSION);
+        const catalog = cliVersion ? await readClaudeCodeModelCatalog(cliVersion) : [];
         const models = catalog.length
           ? catalog
           : MODEL_LISTS.claude_subscription.map((m) => ({ id: m.id, name: m.name }));

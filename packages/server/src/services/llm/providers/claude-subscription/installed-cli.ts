@@ -66,7 +66,7 @@ function candidatePaths(env: NodeJS.ProcessEnv, home: string): string[] {
 async function probeVersion(path: string): Promise<string | null> {
   try {
     await access(path);
-    const { stdout } = await promisify(execFile)(path, ["--version"], { timeout: 10_000, maxBuffer: 64 * 1024 });
+    const { stdout } = await promisify(execFile)(path, ["--version"], { timeout: 5_000, maxBuffer: 64 * 1024 });
     return parseVersion(stdout) ? stdout.trim().split(/\s+/u)[0]! : null;
   } catch {
     return null;

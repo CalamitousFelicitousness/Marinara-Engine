@@ -42,6 +42,7 @@ test("Trackers Control replaces Manual Trackers in Roleplay Agents", async ({ pa
         json: [
           agent("world-state", "World State", "tracker"),
           agent("quest", "Quest Tracker", "tracker"),
+          agent("inventory", "Inventory", "tracker"),
           agent("echo-chamber", "Echo Chamber", "misc"),
         ],
       }),
@@ -131,9 +132,10 @@ test("Trackers Control replaces Manual Trackers in Roleplay Agents", async ({ pa
     await expect
       .poll(saved)
       // The uninstalled id may be a tracker, so it stays manual; Echo Chamber is known not to be one.
+      // Inventory is installed but not added yet: the old switch covered it, so it stays manual too.
       .toEqual({
         manualTrackers: false,
-        manualTrackerAgentTypes: { "world-state": false, quest: true, "uninstalled-tracker": true },
+        manualTrackerAgentTypes: { "world-state": false, quest: true, inventory: true, "uninstalled-tracker": true },
       });
     await expect(worldState).not.toBeChecked();
     await expect(quest).toBeChecked();

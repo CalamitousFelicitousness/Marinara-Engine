@@ -951,6 +951,8 @@ export function ChatSettingsDrawer({
   const updateTranslationMeta = useUpdateChatMetadata({ serialize: true });
   // Generation waits for queued saves, so the next reply uses the narration mode shown here (#6959).
   const updateGroupChatModeMeta = useUpdateChatMetadata({ serialize: true });
+  // Each tracker schedule switch saves the whole map, so quick clicks must reach the server in order.
+  const updateTrackerScheduleMeta = useUpdateChatMetadata({ serialize: true });
   const updateMetaMutateAsyncRef = useRef(updateMeta.mutateAsync);
   const pendingCustomAgentImageSettingsRef = useRef<{
     chatId: string;
@@ -1818,16 +1820,18 @@ export function ChatSettingsDrawer({
         // The removed Manual Trackers switch made every tracker manual. Keep the others manual and drop it,
         // so from now on only the individual choices count.
         // Also pin active trackers this list cannot show right now (uninstalled or turned off), and unknown ids,
-        // which may be trackers. Entries for non-trackers are ignored by the HUD and the server.
+        // which may be trackers, plus every installed tracker not added yet, which the old switch also covered.
+        // Entries for non-trackers are ignored by the HUD and the server.
         const next: Record<string, boolean> = { ...manualTrackerAgentTypes };
         for (const id of Array.isArray(metadata.activeAgentIds) ? metadata.activeAgentIds : []) {
           if (typeof id !== "string") continue;
           const category = BUILT_IN_AGENTS.find((agent) => agent.id === id)?.category;
           if (category === undefined || category === "tracker") next[id] = true;
         }
+        for (const agent of BUILT_IN_AGENTS) if (agent.category === "tracker") next[agent.id] = true;
         for (const agent of activeTrackerAgents) next[agent.id] = true;
         next[agentId] = false;
-        updateMeta.mutate({ id: chat.id, manualTrackerAgentTypes: next, manualTrackers: false });
+        updateTrackerScheduleMeta.mutate({ id: chat.id, manualTrackerAgentTypes: next, manualTrackers: false });
         return;
       }
       const next = { ...manualTrackerAgentTypes };
@@ -1836,7 +1840,7 @@ export function ChatSettingsDrawer({
       } else {
         next[agentId] = true;
       }
-      updateMeta.mutate({ id: chat.id, manualTrackerAgentTypes: next });
+      updateTrackerScheduleMeta.mutate({ id: chat.id, manualTrackerAgentTypes: next });
     },
     [
       activeTrackerAgents,
@@ -1844,7 +1848,7 @@ export function ChatSettingsDrawer({
       manualTrackerAgentTypes,
       metadata.activeAgentIds,
       metadata.manualTrackers,
-      updateMeta,
+      updateTrackerScheduleMeta,
     ],
   );
   const agentSuiteAgents = useMemo(

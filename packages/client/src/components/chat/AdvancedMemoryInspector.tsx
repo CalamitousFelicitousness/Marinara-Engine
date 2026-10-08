@@ -27,7 +27,6 @@ export const reasonKeys: Record<string, string> = {
   "decision-recall-preview": "chat.advancedMemory.reason.decisionRecallPreview",
   "decision-excerpt-fallback": "chat.advancedMemory.reason.decisionExcerptFallback",
   "excerpt-no-room": "chat.advancedMemory.reason.excerptNoRoom",
-  "excerpt-private-scene": "chat.advancedMemory.reason.excerptPrivateScene",
   "excerpt-no-source": "chat.advancedMemory.reason.excerptNoSource",
   "preparation-needed": "chat.advancedMemory.reason.preparationNeeded",
   "unverified-summary-omitted": "chat.advancedMemory.reason.unverifiedSummaryOmitted",

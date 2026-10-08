@@ -1776,6 +1776,20 @@ try {
     /COMBINED_WALK/u,
     "a sentence that was already shared does not block the combination",
   );
+  // Nor does one the shared text writes with curly quote marks and apostrophes.
+  const curlyRecap = recap(
+    "curly-recap",
+    0,
+    `${forBoth}“They returned to Maukie’s inn.” ${"SHARED_WALK ".repeat(300)}{{#if char == "Maukie"}}MAUKIE_SECRET hid the key. They returned to Maukie's inn.{{/if}}{{/if}}`,
+  );
+  summaryReply = () => `They returned to Maukie's inn. COMBINED_CURLY. ${maukieSecret}`;
+  await chats.patchMetadata(combineChat.id, { summaryEntries: [curlyRecap] });
+  await memory.checkScenesAfterGeneration(combineChat.id, { blocking: false });
+  assert.match(
+    (await combineEntries()).find((entry) => entry.enabled)!.content,
+    /COMBINED_CURLY/u,
+    "a shared sentence with other quote marks and apostrophes does not block the combination",
+  );
 
   // A summary edited by hand keeps its text; only the plain summary is shortened.
   summaryReply = undefined;
@@ -1802,6 +1816,176 @@ try {
   assert.equal(mergedCombined.filter((entry) => entry.enabled).length, 1);
   assert(mergedCombined.find((entry) => entry.enabled)!.content.includes(maukieSecret));
   summaryResponse = undefined;
+
+  // A private sentence in Chinese or Japanese, which have no spaces, is caught when copied into shared text too.
+  const cjkRecap = recap(
+    "cjk-recap",
+    0,
+    `${forBoth}${"SHARED_WALK ".repeat(300)}{{#if char == "Maukie"}}毛奇把钥匙藏在了钟楼里。{{/if}}{{/if}}`,
+  );
+  summaryReply = (prompt) =>
+    prompt.includes("钟楼")
+      ? 'COMBINED_WALK. 毛奇把钥匙藏在了钟楼里。 {{#if char == "Maukie"}}毛奇保持沉默。{{/if}}'
+      : "PLAIN_COMPACTED";
+  await chats.patchMetadata(combineChat.id, { groupChatMode: "individual", summaryEntries: [cjkRecap, sharedRecap] });
+  await memory.checkScenesAfterGeneration(combineChat.id, { blocking: false });
+  assert.deepEqual((await combineEntries())[0], cjkRecap, "a copied private sentence without spaces is not saved");
+  assert.doesNotMatch(await recallFor(privateB.id), /钟楼/u);
+  // So is one whose full stops split it into pieces under four words: a decimal or an abbreviation.
+  for (const [index, secret] of ["Meet at 3.5 now.", "Mr. Fox hid it."].entries()) {
+    const pieceRecap = recap(
+      `piece-recap-${index}`,
+      0,
+      `${forBoth}${"SHARED_WALK ".repeat(300)}{{#if char == "Maukie"}}${secret}{{/if}}{{/if}}`,
+    );
+    summaryReply = (prompt) =>
+      prompt.includes(secret)
+        ? `COMBINED_WALK. ${secret} {{#if char == "Maukie"}}Maukie kept quiet.{{/if}}`
+        : "PLAIN_COMPACTED";
+    await chats.patchMetadata(combineChat.id, { summaryEntries: [pieceRecap, sharedRecap] });
+    await memory.checkScenesAfterGeneration(combineChat.id, { blocking: false });
+    assert.deepEqual((await combineEntries())[0], pieceRecap, `copied "${secret}" is not saved`);
+    assert(!(await recallFor(privateB.id)).includes(secret));
+  }
+  // So is one copied without its quote marks, from a list without full stops, with a plain apostrophe or
+  // with a part for Maukie in the middle. A long run of "!" in a private section is still checked quickly.
+  for (const [index, [secret, copy, found]] of [
+    ['"Maukie hid the key in the attic."', "Maukie hid the key in the attic.", "hid the key"],
+    ["- Maukie hid the key in the attic\n- Maukie fears the butler", "Maukie fears the butler.", "butler"],
+    ["Maukie’s key is in the attic.", "Maukie's key is in the attic.", "key is in"],
+    [
+      "Maukie hid the key in the attic.",
+      'Maukie {{#if char == "Maukie"}}quietly {{/if}}hid the key in the attic.',
+      "hid the key",
+    ],
+    [`Maukie hid the key in the attic${"!".repeat(1000)}`, "Maukie hid the key in the attic.", "hid the key"],
+  ].entries()) {
+    const copyRecap = recap(
+      `copy-recap-${index}`,
+      0,
+      `${forBoth}${"SHARED_WALK ".repeat(300)}{{#if char == "Maukie"}}${secret}{{/if}}{{/if}}`,
+    );
+    summaryReply = (prompt) =>
+      prompt.includes("SHARED_WALK")
+        ? `COMBINED_WALK. ${copy} {{#if char == "Maukie"}}Maukie kept quiet.{{/if}}`
+        : "PLAIN_COMPACTED";
+    await chats.patchMetadata(combineChat.id, { summaryEntries: [copyRecap, sharedRecap] });
+    const started = Date.now();
+    await memory.checkScenesAfterGeneration(combineChat.id, { blocking: false });
+    assert(Date.now() - started < 5000, `checking "${copy}" takes under five seconds`);
+    assert.deepEqual((await combineEntries())[0], copyRecap, `copied "${copy}" is not saved`);
+    assert(!(await recallFor(privateB.id)).includes(found));
+  }
+  // Shared text that only reuses words from those sentences is still saved.
+  const piecesRecap = recap(
+    "pieces-recap",
+    0,
+    `${forBoth}${"SHARED_WALK ".repeat(300)}{{#if char == "Maukie"}}Meet at 3.5 now. Mr. Fox hid it.{{/if}}{{/if}}`,
+  );
+  summaryReply = (prompt) =>
+    prompt.includes("Mr. Fox hid it.")
+      ? 'COMBINED_WALK. Mr. Fox met them at 3.5 now. {{#if char == "Maukie"}}Meet at 3.5 now. Mr. Fox hid it.{{/if}}'
+      : "PLAIN_COMPACTED";
+  await chats.patchMetadata(combineChat.id, { summaryEntries: [piecesRecap, sharedRecap] });
+  await memory.checkScenesAfterGeneration(combineChat.id, { blocking: false });
+  assert.deepEqual(
+    (await combineEntries()).filter((entry) => !entry.enabled).map((entry) => entry.id),
+    [piecesRecap.id, sharedRecap.id],
+    "a harmless shared sentence is saved",
+  );
+  const piecesRecall = await recallFor(privateB.id);
+  assert.match(piecesRecall, /Mr\. Fox met them at 3\.5 now\./u);
+  assert.doesNotMatch(piecesRecall, /Meet at 3\.5 now|hid it/u);
+  // Text next to another macro counts as read by everyone.
+  summaryReply = (prompt) =>
+    prompt.includes("MAUKIE_SECRET")
+      ? 'COMBINED_WALK. {{#if char == "Maukie"}}Maukie kept quiet.{{/if}} {{foo}} MAUKIE_SECRET hid the key.'
+      : "PLAIN_COMPACTED";
+  await chats.patchMetadata(combineChat.id, {
+    summaryEntries: [privateRecap, recap("macro-recap", 1, `${forBoth}${"SHARED_TWO ".repeat(300)}{{foo}}{{/if}}`)],
+  });
+  await memory.checkScenesAfterGeneration(combineChat.id, { blocking: false });
+  assert.deepEqual((await combineEntries())[0], privateRecap, "a private sentence next to another macro is not saved");
+  assert.doesNotMatch(await recallFor(privateB.id), /MAUKIE_SECRET/u);
+
+  // A summary keeps one message range for all its readers, shown with that range's story dates, so in a
+  // merged chat a summary only Maukie reads is not combined with one Pantalone also reads.
+  const rangeChat = await chats.create({
+    name: "Merged private range",
+    mode: "roleplay",
+    characterIds: [privateA.id, privateB.id],
+    connectionId: connection.id,
+  });
+  assert(rangeChat);
+  chatIds.push(rangeChat.id);
+  await chats.createMessage({
+    chatId: rangeChat.id,
+    role: "user",
+    content: "Date: NIGHT_OF_THE_HEIST\nMaukie slips away alone.",
+    extra: { hiddenFromAICharacterIds: [privateB.id] },
+  });
+  await chats.createMessage({ chatId: rangeChat.id, role: "user", content: "Date: MORNING_AFTER\nA shared walk." });
+  await chats.createMessage({
+    chatId: rangeChat.id,
+    role: "user",
+    content: "The next shared scene.",
+    extra: { isConversationStart: true },
+  });
+  const rangeSource = await chats.listMessages(rangeChat.id);
+  const rangeRecap = (id: string, index: number, content: string) =>
+    createChatSummaryEntry({
+      id,
+      origin: "automated",
+      title: `Messages #${index + 1}–#${index + 1}`,
+      sourceMode: "range",
+      content,
+      enabled: true,
+      messageIds: [rangeSource[index]!.id],
+      messageCount: 1,
+      rangeStartIndex: index + 1,
+      rangeEndIndex: index + 1,
+    });
+  await chats.patchMetadata(rangeChat.id, {
+    groupChatMode: "shared",
+    advancedMemory: {
+      ...DEFAULT_ADVANCED_MEMORY_SETTINGS,
+      enabled: true,
+      summaryBudgetTokens: 1000,
+      sceneCheckInterval: 100,
+      knowledgeStarts: { [privateA.id]: null, [privateB.id]: null },
+    },
+    summaryEntries: [
+      rangeRecap("maukie-only", 0, `{{#if char == "Maukie"}}${"MAUKIE_ALONE ".repeat(300)}{{/if}}`),
+      rangeRecap("both-read", 1, `${forBoth}${"SHARED_TWO ".repeat(300)}{{/if}}`),
+    ],
+  });
+  summaryReply = (prompt) =>
+    `${prompt.includes("SHARED_TWO") ? "SHARED_SHORT. " : ""}${
+      prompt.includes("MAUKIE_ALONE") ? '{{#if char == "Maukie"}}MAUKIE_SHORT.{{/if}}' : ""
+    }`;
+  calls.length = 0;
+  await memory.checkScenesAfterGeneration(rangeChat.id, { blocking: false });
+  assert.equal(calls.length, 2, "each group of readers is shortened on its own");
+  const rangeFor = async (id: string) =>
+    (
+      await memory.prepare({
+        chatId: rangeChat.id,
+        messages: rangeSource,
+        audienceCharacterIds: [id],
+        budgetTokens: 50_000,
+        readOnly: true,
+      })
+    ).chatSummary ?? "";
+  const maukieRange = await rangeFor(privateA.id);
+  for (const text of ["NIGHT_OF_THE_HEIST", "MAUKIE_SHORT", "SHARED_SHORT"]) assert(maukieRange.includes(text), text);
+  const pantaloneRange = await rangeFor(privateB.id);
+  assert.match(pantaloneRange, /SHARED_SHORT/u);
+  assert.doesNotMatch(
+    pantaloneRange,
+    /NIGHT_OF_THE_HEIST|Messages #1/u,
+    "Pantalone never gets the range or story date of a message hidden from him",
+  );
+  summaryReply = undefined;
 } finally {
   finishStream?.();
   for (const chatId of chatIds) await memory.cancel(chatId);

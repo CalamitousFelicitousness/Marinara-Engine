@@ -3323,35 +3323,67 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       return;
     }
     const names = ctx.characterIds.map((id) => ctx.names.get(id) ?? "Character");
-    // The text of each group of readers in these texts, lowercased; "{{" stands for any other macro.
+    // The text of each group of readers in these texts; "{{" stands for any other macro. It is lowercased,
+    // with plain quote marks and one space or line break between words, also where a condition splits a
+    // sentence, so spacing, a condition or a curly apostrophe can't hide a copied sentence.
     const sections = (texts: string[]) => {
       const found = new Map<string, string>();
       for (const text of texts)
         scopeCharacterSummary(text, names, 0, (part, readers) => {
           const key = part.includes("{{") ? "{{" : JSON.stringify([...readers].sort());
-          if (part.trim()) found.set(key, `${found.get(key) ?? ""} ${part.toLowerCase().replace(/\s+/gu, " ")}`);
+          if (part.trim()) found.set(key, `${found.get(key) ?? ""} ${part}`);
           return part;
         });
+      for (const [key, text] of found)
+        found.set(
+          key,
+          text
+            .normalize("NFKC")
+            .toLowerCase()
+            .replace(/[‘’]/gu, "'")
+            .replace(/[“”]/gu, '"')
+            .replace(/\s*\n\s*/gu, "\n")
+            .replace(/[^\S\n]+/gu, " "),
+        );
       return found;
     };
-    // A private sentence of four or more words newly found in a section someone else can also read.
+    // A private sentence of four or more words newly found in a section someone else can also read; one that
+    // section's readers could already read in the inputs is no leak. Both sides are normalized sections and
+    // are searched for the same sentence spans. Text with other macros counts as read by everyone.
+    // Segmenting counts words in languages without spaces too.
+    // A line break ends a sentence too, as in a list. A piece up to a sentence end with under four words is
+    // checked with the pieces after it, so a decimal or an abbreviation, as in "meet at 3.5 now." or "mr. fox
+    // hid it.", cannot hide a sentence; a piece without words, such as "!", joins the one before it. Sentence
+    // segmenting can't do this: on this lowercase text it joins every sentence, and it splits "Mr. Fox".
+    // Quote marks, brackets and list marks around a sentence are left out, so a copy without them is found.
+    const words = new Intl.Segmenter(undefined, { granularity: "word" });
+    const count = (text: string) => [...words.segment(text)].filter((word) => word.isWordLike).length;
+    const sentences = (text: string) => {
+      const pieces: string[] = [];
+      for (const piece of text.split(/(?<=[\p{Sentence_Terminal}\n])/u))
+        if (pieces.length && !count(piece)) pieces[pieces.length - 1] += piece;
+        else pieces.push(piece);
+      // ponytail: joining at most 8 pieces keeps this fast on a run like "1.2.3.4.5.6.7.8.9", one word however
+      // long, so a short sentence starting with one may go unchecked. Upgrade by counting each piece's words
+      // once and summing them.
+      return pieces.flatMap((_, start) => {
+        let sentence = "";
+        for (const piece of pieces.slice(start, start + 8)) {
+          sentence += piece;
+          if (count(sentence) >= 4) return [sentence.replace(/^[^\p{L}\p{N}\p{M}]+|[^\p{L}\p{N}\p{M}]+$/gu, "")];
+        }
+        return [];
+      });
+    };
     const leaks = (before: Map<string, string>, after: Map<string, string>) =>
       [...before].some(
         ([key, text]) =>
           key !== "{{" &&
           [...after].some(
             ([wider, output]) =>
-              wider !== "{{" &&
-              (JSON.parse(wider) as string[]).some((name) => !(JSON.parse(key) as string[]).includes(name)) &&
-              text
-                .split(/[.!?]/u)
-                .map((sentence) => sentence.trim())
-                .some(
-                  (sentence) =>
-                    sentence.split(" ").length >= 4 &&
-                    output.includes(sentence) &&
-                    !before.get(wider)?.includes(sentence),
-                ),
+              (wider === "{{" ||
+                (JSON.parse(wider) as string[]).some((name) => !(JSON.parse(key) as string[]).includes(name))) &&
+              sentences(text).some((sentence) => output.includes(sentence) && !before.get(wider)?.includes(sentence)),
           ),
       );
     // Combine the summaries the same characters read. One whose text differs by character joins
@@ -3370,7 +3402,8 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       // reader; replacing only one character's section would lose the others.
       if (!(ctx.individual ? audience : [""]).every((id) => outsideLive(entry, id))) continue;
       const readers = ctx.individual ? audience : ctx.characterIds;
-      if (new Set(readers.map((id) => renderEntry(ctx, entry.content, [id]))).size > 1) {
+      const texts = readers.map((id) => renderEntry(ctx, entry.content, [id]));
+      if (new Set(texts).size > 1) {
         // ponytail: Chat Summaries record no edits, so any updatedAt change counts as one, even
         // turning a summary off and on. Stamp hand edits on the entry to combine those too.
         if (entry.origin !== "automated" || entry.createdAt !== entry.updatedAt || sections([entry.content]).has("{{"))
@@ -3378,7 +3411,9 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
         conditional.add(entry.id);
       }
       const ranged = coverage(entry).length > 0;
-      const key = JSON.stringify([audience, ranged]);
+      // Every reader of a summary gets its whole message range and that range's story dates, so merged
+      // chats also combine only summaries the same characters read.
+      const key = JSON.stringify([readers.filter((_, index) => texts[index]!.trim()), ranged]);
       const group = groups.get(key) ?? { audience, ranged, entries: [], combine: false };
       group.entries.push(entry);
       group.combine ||= conditional.has(entry.id);

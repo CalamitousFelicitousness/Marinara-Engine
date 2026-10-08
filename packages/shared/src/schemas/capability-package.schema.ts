@@ -926,7 +926,9 @@ const capabilityPackageManifestBaseSchema = z
 // per source (`onePerSource`); an item attack's `against` may name a `marked` target, a `mode`, and
 // ignore cover and long range, and its `plus` clauses may be `marked`; a creature action may name
 // the `ability` its attack is made with.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 184 } as const);
+// 1.185: an item attack's mode may carry its own `range`, `plus` clauses, a `line` that everybody
+// between the wielder and the target saves against, and `charges` it spends of the item.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 185 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

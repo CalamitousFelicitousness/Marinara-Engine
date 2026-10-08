@@ -77,6 +77,7 @@ import type {
   RulesetCombatDamage,
   RulesetCombatDamageAlternative,
   RulesetCombatDamageClause,
+  RulesetCombatMode,
   RulesetCombatEvent,
   RulesetCombatRider,
   RulesetCombatRoller,
@@ -1388,33 +1389,35 @@ function itemAttackActions(
     });
     // More damage on the same blow (1.164), each clause its own dice, type, save and target test. A
     // pool fight throws a clause's count of its own dice, as it throws the weapon's.
-    const plus = (attack.plus ?? []).flatMap((clause): RulesetCombatDamageClause[] => {
-      const parsedClause = clause.dice ? parseRulesetCombatDice(clause.dice) : null;
-      if (clause.dice && !parsedClause) return [];
-      const amount = parsedClause
-        ? pooled
-          ? {
-              count: parsedClause.count,
-              sides: rulesetPoolDie(definition),
-              flat: parsedClause.flat + (clause.flat ?? 0),
-            }
-          : { ...parsedClause, flat: parsedClause.flat + (clause.flat ?? 0) }
-        : { count: 0, sides: pooled ? rulesetPoolDie(definition) : 0, flat: clause.flat ?? 0 };
-      return [
-        {
-          ...amount,
-          ...(clause.type ? { type: clause.type } : {}),
-          ...(clause.save ? { save: { ...clause.save } } : {}),
-          ...(clause.targetIs ? { targetIs: clause.targetIs } : {}),
-          ...(clause.when === "critical" ? { onCritical: true as const } : {}),
-          ...(clause.when === "toggled" ? { whileOn: index } : {}),
-          ...(clause.not ? { not: clause.not } : {}),
-          ...(clause.blow ? { blow: clause.blow } : {}),
-          ...(clause.tempHp ? { tempHp: true as const } : {}),
-          ...(clause.marked ? { marked: clause.marked } : {}),
-        },
-      ];
-    });
+    const clausesOf = (clauses: typeof attack.plus) =>
+      (clauses ?? []).flatMap((clause): RulesetCombatDamageClause[] => {
+        const parsedClause = clause.dice ? parseRulesetCombatDice(clause.dice) : null;
+        if (clause.dice && !parsedClause) return [];
+        const amount = parsedClause
+          ? pooled
+            ? {
+                count: parsedClause.count,
+                sides: rulesetPoolDie(definition),
+                flat: parsedClause.flat + (clause.flat ?? 0),
+              }
+            : { ...parsedClause, flat: parsedClause.flat + (clause.flat ?? 0) }
+          : { count: 0, sides: pooled ? rulesetPoolDie(definition) : 0, flat: clause.flat ?? 0 };
+        return [
+          {
+            ...amount,
+            ...(clause.type ? { type: clause.type } : {}),
+            ...(clause.save ? { save: { ...clause.save } } : {}),
+            ...(clause.targetIs ? { targetIs: clause.targetIs } : {}),
+            ...(clause.when === "critical" ? { onCritical: true as const } : {}),
+            ...(clause.when === "toggled" ? { whileOn: index } : {}),
+            ...(clause.not ? { not: clause.not } : {}),
+            ...(clause.blow ? { blow: clause.blow } : {}),
+            ...(clause.tempHp ? { tempHp: true as const } : {}),
+            ...(clause.marked ? { marked: clause.marked } : {}),
+          },
+        ];
+      });
+    const plus = clausesOf(attack.plus);
     // The item's own charges, which a slay spends (1.182): a stat holds its own range, held to the
     // most a written count may be. One that reads nothing never slays.
     const counted = item.charges ? read(item.charges.max) : undefined;
@@ -1432,6 +1435,42 @@ function itemAttackActions(
         },
       ];
     });
+    // A mode's own reach, clauses, bolt and charges (1.185). One that spends charges the item cannot
+    // count is never offered; a reach or a bolt needs a board's cells.
+    const modeOf = (mode: NonNullable<typeof attack.modes>[number]): RulesetCombatMode[] => {
+      if (mode.charges !== undefined && !(chargesMax !== undefined && chargesMax >= 1)) return [];
+      const { range, plus: modePlus, line, charges, ...rest } = mode;
+      const modeNormal = range ? cells(range.normal) : undefined;
+      const modeLong = range?.long !== undefined ? cells(range.long) : undefined;
+      const lineDice = line?.dice ? parseRulesetCombatDice(line.dice) : null;
+      const moded: RulesetCombatMode = {
+        ...rest,
+        ...(modeNormal !== undefined
+          ? {
+              range: {
+                normal: modeNormal,
+                ...(modeLong !== undefined && modeLong > modeNormal ? { long: modeLong } : {}),
+              },
+            }
+          : {}),
+        ...(modePlus?.length ? { plus: clausesOf(modePlus) } : {}),
+        ...(line && perCell !== undefined
+          ? {
+              line: {
+                amount: {
+                  count: lineDice?.count ?? 0,
+                  sides: pooled ? rulesetPoolDie(definition) : (lineDice?.sides ?? 0),
+                  flat: (lineDice?.flat ?? 0) + (line.flat ?? 0),
+                },
+                ...(line.type ? { type: line.type } : {}),
+                save: { ...line.save },
+              },
+            }
+          : {}),
+        ...(charges !== undefined ? { charges: { cost: charges, max: chargesMax!, item: index } } : {}),
+      };
+      return [moded];
+    };
     const offHand = attack.offHand && combat.offHand ? combat.offHand : undefined;
     const weapon: RulesetCombatAction = {
       id: `item:${index}`,
@@ -1448,7 +1487,7 @@ function itemAttackActions(
       damage: damageOf(damageAbility),
       ...(ammo ? { ammo } : {}),
       ...(clip ? { clip } : {}),
-      ...(attack.modes?.length ? { modes: attack.modes.map((mode) => ({ ...mode })) } : {}),
+      ...(attack.modes?.length ? { modes: attack.modes.flatMap((mode) => modeOf(mode)) } : {}),
       ...(attack.onHit?.length
         ? {
             onHit: attack.onHit.map((entry) => ({

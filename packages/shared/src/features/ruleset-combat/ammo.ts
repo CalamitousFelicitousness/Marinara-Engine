@@ -41,7 +41,21 @@ export function rulesetModedAction(
     ...(mode.target !== undefined && base !== undefined ? { target: base + mode.target } : {}),
     ...(mode.targets !== undefined ? { targets: { ...action.targets, count: mode.targets } } : {}),
     ...(mode.ammo !== undefined ? { shots: mode.ammo } : {}),
+    // Its own reach and clauses (1.185): a javelin of lightning's bolt, 4d6 more on a hit.
+    ...(mode.range ? { range: { ...mode.range } } : {}),
+    ...(mode.plus?.length && action.damage
+      ? { damage: { ...action.damage, plus: [...(action.damage.plus ?? []), ...mode.plus] } }
+      : {}),
   };
+}
+
+/** What is left of an item's charges a weapon spends (1.182, 1.185): as this fight left them, else
+ *  as its stack kept them, else full. */
+export function rulesetItemChargesLeft(actor: RulesetCombatant, charges: { max: number; item: number }): number {
+  return Math.min(
+    charges.max,
+    actor.charges?.[charges.item] ?? actor.sheet?.items?.[charges.item]?.charges ?? charges.max,
+  );
 }
 
 /** Whether one of the fighter's items is switched on (1.165): as this fight left it, else as its stack

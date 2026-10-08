@@ -276,6 +276,20 @@ export function rulesetAreaCells(
     : coneCells(reach, origin, dx, dy, grid);
 }
 
+/** The cells strictly between two cells, one per step of the straight run from one to the other
+ *  (1.185): a javelin of lightning's bolt on its way to its target. */
+export function rulesetPathCells(from: RulesetCombatCell, to: RulesetCombatCell): RulesetCombatCell[] {
+  const steps = Math.max(Math.abs(to.x - from.x), Math.abs(to.y - from.y));
+  const cells: RulesetCombatCell[] = [];
+  for (let step = 1; step < steps; step++) {
+    cells.push({
+      x: Math.round(from.x + ((to.x - from.x) * step) / steps),
+      y: Math.round(from.y + ((to.y - from.y) * step) / steps),
+    });
+  }
+  return cells;
+}
+
 /** The part of the board within `reach` of a cell. Every shape is scanned over THIS, never over its
  *  own size: a ruleset may declare an area ten thousand units across, and a loop that long would be
  *  a way to stall a server with one catalog entry. */

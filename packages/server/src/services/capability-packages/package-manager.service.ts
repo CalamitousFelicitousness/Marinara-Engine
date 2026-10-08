@@ -1522,6 +1522,25 @@ function carriesWardsAndSaves(value: unknown, depth = 0): boolean {
 
 const MODIFIER_TARGETS = new Set<string>(RULESET_COMBAT_MODIFIER_TARGETS);
 
+/** A weapon mode with its own reach, clauses, bolt or charges (1.185), in catalog files too. */
+function carriesModeExtras(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesModeExtras(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const attack = plainRecord(record.attack);
+  const modes = attack && Array.isArray(attack.modes) ? attack.modes.map(plainRecord) : [];
+  if (
+    modes.some(
+      (mode) =>
+        mode &&
+        (mode.range !== undefined || mode.plus !== undefined || mode.line !== undefined || mode.charges !== undefined),
+    )
+  )
+    return true;
+  return Object.values(record).some((one) => carriesModeExtras(one, depth + 1));
+}
+
 /** Conditions that harm each turn, stack or keep to one holder per source, weapons that mark a
  *  sworn enemy, and stat-block actions that name their ability (1.184), in catalog files too. */
 function carriesMarksAndWounds(value: unknown, depth = 0): boolean {
@@ -3008,6 +3027,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Weapon modes with their own reach, clauses, bolt or charges, 1.185.
+  if (
+    !declaresApi(185) &&
+    (carriesModeExtras(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesModeExtras(document)))
+  ) {
+    return "A ruleset with weapon modes that reach their own distance, add damage, send a bolt along the way, or spend charges requires schemaVersion 2 and capabilityApi 1.185 or newer";
   }
   // Wounds that stack and harm, sworn enemies, and creature actions by ability, 1.184.
   if (

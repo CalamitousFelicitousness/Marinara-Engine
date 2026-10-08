@@ -3570,6 +3570,121 @@ const itemAttackDamageBaseSchema = z
     rerollUpTo: itemToHitValueRefSchema.optional(),
   })
   .strict();
+/** One more amount on an item's blow (Capability API 1.164; named for 1.185, which gives a weapon's
+ *  mode its own). */
+const itemPlusClauseSchema: z.ZodType<RulesetItemPlusClause, z.ZodTypeDef, unknown> = z
+  .object({
+    dice: catalogDice.optional(),
+    flat: z.number().int().min(-1000).max(10000).optional(),
+    type: promptSafeText(40).optional(),
+    save: z
+      .object({
+        save: sheetId,
+        difficulty: z.number().int().min(0).max(1000),
+        onSuccess: z.enum(["none", "half"]),
+      })
+      .strict()
+      .optional(),
+    targetIs: targetIsSchema.optional(),
+    /** Not dealt to a target that is this (Capability API 1.182): a sword of life stealing's
+     *  necrotic, which constructs and undead do not feed. */
+    not: targetIsSchema.optional(),
+    when: z.enum(["always", "critical", "toggled"]).optional(),
+    /** Only on a blow struck in reach, or thrown or shot (Capability API 1.182): a dwarven
+     *  thrower's extra when it is hurled. */
+    blow: z.enum(["melee", "ranged"]).optional(),
+    /** Its holder gains temporary points equal to what this clause dealt (Capability API
+     *  1.182): a sword of life stealing. */
+    tempHp: z.literal(true).optional(),
+    /** Only on a target carrying this condition from the wielder (Capability API 1.184): an
+     *  oathbow's 3d6 against its sworn enemy. */
+    marked: sheetId.optional(),
+  })
+  .strict()
+  .superRefine((clause, ctx) => {
+    if (clause.dice === undefined && clause.flat === undefined) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "A clause names dice, a flat amount, or both" });
+    }
+  });
+
+/** One clause of an item's blow (1.164), named so the schemas that carry it stay short enough for
+ *  the compiler to write. */
+export interface RulesetItemPlusClause {
+  dice?: string;
+  flat?: number;
+  type?: string;
+  save?: { save: string; difficulty: number; onSuccess: "none" | "half" };
+  targetIs?: RulesetTargetIs;
+  not?: RulesetTargetIs;
+  when?: "always" | "critical" | "toggled";
+  blow?: "melee" | "ranged";
+  tempHp?: true;
+  marked?: string;
+}
+
+/** Another way to make an item's attack, named for the same reason. */
+export interface RulesetItemAttackMode {
+  id: string;
+  label: string;
+  ammo?: number;
+  toHit?: number;
+  target?: number;
+  targets?: number;
+  range?: { normal: number; long?: number };
+  plus?: RulesetItemPlusClause[];
+  line?: {
+    dice?: string;
+    flat?: number;
+    type?: string;
+    save: { save: string; difficulty: number; onSuccess: "none" | "half" };
+  };
+  charges?: number;
+}
+const itemAttackModeSchema: z.ZodType<RulesetItemAttackMode, z.ZodTypeDef, unknown> = z
+  .object({
+    id: sheetId,
+    label: promptSafeText(40),
+    ammo: z.number().int().min(1).max(100).optional(),
+    toHit: z.number().int().min(-20).max(20).optional(),
+    target: z.number().int().min(-10).max(10).optional(),
+    targets: z.number().int().min(1).max(20).optional(),
+    /** How far it reaches in this mode, in the ruleset's own distance (Capability API 1.185):
+     *  a javelin of lightning hurled as a bolt to 120 feet. */
+    range: z
+      .object({
+        normal: z.number().finite().gt(0).max(10000),
+        long: z.number().finite().gt(0).max(10000).optional(),
+      })
+      .strict()
+      .optional(),
+    /** More on a hit in this mode (Capability API 1.185): the javelin's 4d6 lightning. */
+    plus: z.array(itemPlusClauseSchema).min(1).max(RULESET_DAMAGE_MAX_PLUS).optional(),
+    /** A bolt on the way (Capability API 1.185): everybody on the cells between the wielder
+     *  and the target, neither of them, saves or takes this, before the attack is rolled. */
+    line: z
+      .object({
+        dice: catalogDice.optional(),
+        flat: z.number().int().min(0).max(10000).optional(),
+        type: promptSafeText(40).optional(),
+        save: z
+          .object({
+            save: sheetId,
+            difficulty: z.number().int().min(0).max(1000),
+            onSuccess: z.enum(["none", "half"]),
+          })
+          .strict(),
+      })
+      .strict()
+      .refine((line) => line.dice !== undefined || line.flat !== undefined, {
+        message: "A line deals dice, a flat amount, or both",
+      })
+      .optional(),
+    /** The item's own charges one attack in this mode spends (Capability API 1.185); with
+     *  fewer left the mode is not offered. */
+    charges: z.number().int().min(1).max(100).optional(),
+  })
+  .strict();
+
 /** A value written on the item, or read from one of its own stats. */
 type OrItemStat<T> = T | { stat: string };
 export interface RulesetItemAttackDamage {
@@ -3618,22 +3733,7 @@ export const rulesetItemAttackSchema = z
     /** Other ways to make this attack, offered beside it: how many one shoots (`ammo`), what it adds
      *  to hit (dice in a pool fight), a pool fight's per-die `target` moved by this much, and how
      *  many it may be aimed at. */
-    modes: z
-      .array(
-        z
-          .object({
-            id: sheetId,
-            label: promptSafeText(40),
-            ammo: z.number().int().min(1).max(100).optional(),
-            toHit: z.number().int().min(-20).max(20).optional(),
-            target: z.number().int().min(-10).max(10).optional(),
-            targets: z.number().int().min(1).max(20).optional(),
-          })
-          .strict(),
-      )
-      .min(1)
-      .max(6)
-      .optional(),
+    modes: z.array(itemAttackModeSchema).min(1).max(6).optional(),
     /** Held beside another weapon marked so, it may strike again on the ruleset's off-hand budget
      *  once its holder has attacked with the other this turn. */
     offHand: z.literal(true).optional(),
@@ -3746,46 +3846,7 @@ export const rulesetItemAttackSchema = z
      *  javelin of lightning's lightning, a dragon slayer's dice against dragons (`targetIs`), a
      *  sword of sharpness's extra on a critical hit only (`when: "critical"`). A clause's save names
      *  its own difficulty: an item's blow has no save of its own to borrow one from. */
-    plus: z
-      .array(
-        z
-          .object({
-            dice: catalogDice.optional(),
-            flat: z.number().int().min(-1000).max(10000).optional(),
-            type: promptSafeText(40).optional(),
-            save: z
-              .object({
-                save: sheetId,
-                difficulty: z.number().int().min(0).max(1000),
-                onSuccess: z.enum(["none", "half"]),
-              })
-              .strict()
-              .optional(),
-            targetIs: targetIsSchema.optional(),
-            /** Not dealt to a target that is this (Capability API 1.182): a sword of life stealing's
-             *  necrotic, which constructs and undead do not feed. */
-            not: targetIsSchema.optional(),
-            when: z.enum(["always", "critical", "toggled"]).optional(),
-            /** Only on a blow struck in reach, or thrown or shot (Capability API 1.182): a dwarven
-             *  thrower's extra when it is hurled. */
-            blow: z.enum(["melee", "ranged"]).optional(),
-            /** Its holder gains temporary points equal to what this clause dealt (Capability API
-             *  1.182): a sword of life stealing. */
-            tempHp: z.literal(true).optional(),
-            /** Only on a target carrying this condition from the wielder (Capability API 1.184): an
-             *  oathbow's 3d6 against its sworn enemy. */
-            marked: sheetId.optional(),
-          })
-          .strict()
-          .superRefine((clause, ctx) => {
-            if (clause.dice === undefined && clause.flat === undefined) {
-              ctx.addIssue({ code: z.ZodIssueCode.custom, message: "A clause names dice, a flat amount, or both" });
-            }
-          }),
-      )
-      .min(1)
-      .max(RULESET_DAMAGE_MAX_PLUS)
-      .optional(),
+    plus: z.array(itemPlusClauseSchema).min(1).max(RULESET_DAMAGE_MAX_PLUS).optional(),
   })
   .strict();
 export type RulesetItemAttack = z.infer<typeof rulesetItemAttackSchema>;
@@ -8969,10 +9030,15 @@ function itemIssues(
   if (item.charges) {
     itemValueChecker(definition, add)(item.charges.max, "number", [...at, "charges", "max"]);
     // Or by its weapon slaying (1.182): a nine lives stealer's.
-    if (item.use?.charges === undefined && !item.attack?.slay?.some((entry) => entry.charges !== undefined)) {
+    // Or by one of its weapon's modes (1.185): a javelin of lightning's bolt.
+    if (
+      item.use?.charges === undefined &&
+      !item.attack?.slay?.some((entry) => entry.charges !== undefined) &&
+      !item.attack?.modes?.some((mode) => mode.charges !== undefined)
+    ) {
       add(
         [...at, "charges"],
-        "An item's charges are spent by its use or its weapon's slay, so one of them spends some",
+        "An item's charges are spent by its use, its weapon's slay or one of its weapon's modes, so one of them spends some",
       );
     }
     // Charges are one item's, so a stack of several would hold none of its own.
@@ -9368,6 +9434,28 @@ function attackIssues(
         add([...where, "target"], "A mode's target moves a pool fight's own, so the pool's target can move");
       }
     }
+    // Its own reach, bolt and charges (1.185).
+    if (mode.range && !combat.distance) {
+      add([...where, "range"], '"range" is measured in cells, so the combat block declares "distance" too');
+    }
+    if (mode.range?.long !== undefined && mode.range.long < mode.range.normal) {
+      add([...where, "range", "long"], "The long distance is at least the ordinary one");
+    }
+    if (mode.line) {
+      if (!combat.distance)
+        add([...where, "line"], 'A line runs across the board, so the combat block declares "distance" too');
+      if (!definition.sheet.saves.some((save) => save.id === mode.line!.save.save)) {
+        add([...where, "line", "save", "save"], `Unknown save "${mode.line.save.save}"`);
+      }
+      const types = combat.damageTypes?.map((type) => type.trim().toLowerCase());
+      if (mode.line.type && types && !types.includes(mode.line.type.trim().toLowerCase())) {
+        add([...where, "line", "type"], `Unknown damage type "${mode.line.type}"`);
+      }
+    }
+    mode.plus?.forEach((clause, index) => plusClauseIssues(definition, clause, [...where, "plus", index], add));
+    if (mode.charges !== undefined && !item.charges) {
+      add([...where, "charges"], "A mode that spends charges is on an item that holds some");
+    }
   });
   if (attack.offHand && !combat.offHand) {
     add([...at, "offHand"], "An off-hand attack spends combat.offHand's budget, so the combat block declares one");
@@ -9411,18 +9499,28 @@ function attackIssues(
       add([...where, "charges"], "A slay that spends charges is on an item that holds some");
     }
   });
-  attack.plus?.forEach((clause, index) => {
-    const where = [...at, "plus", index];
-    if (clause.type && damageTypes && !damageTypes.includes(clause.type.trim().toLowerCase())) {
-      add([...where, "type"], `Unknown damage type "${clause.type}"`);
-    }
-    if (clause.save && !saves.has(clause.save.save))
-      add([...where, "save", "save"], `Unknown save "${clause.save.save}"`);
-    targetIsIssues(definition, clause.targetIs, [...where, "targetIs"], add);
-    targetIsIssues(definition, clause.not, [...where, "not"], add);
-    if (clause.marked !== undefined && !conditions.has(clause.marked))
-      add([...where, "marked"], `Unknown condition "${clause.marked}"`);
-  });
+  attack.plus?.forEach((clause, index) => plusClauseIssues(definition, clause, [...at, "plus", index], add));
+}
+
+/** One clause of an item's blow, or of one of its modes (1.185), against the ruleset's names. */
+function plusClauseIssues(
+  definition: RulesetDefinition,
+  clause: z.infer<typeof itemPlusClauseSchema>,
+  where: (string | number)[],
+  add: (path: (string | number)[], message: string) => void,
+): void {
+  const conditions = new Set(definition.sheet.live.conditions.map((condition) => condition.id));
+  const saves = new Set(definition.sheet.saves.map((save) => save.id));
+  const damageTypes = definition.combat?.damageTypes?.map((type) => type.trim().toLowerCase());
+  if (clause.type && damageTypes && !damageTypes.includes(clause.type.trim().toLowerCase())) {
+    add([...where, "type"], `Unknown damage type "${clause.type}"`);
+  }
+  if (clause.save && !saves.has(clause.save.save))
+    add([...where, "save", "save"], `Unknown save "${clause.save.save}"`);
+  targetIsIssues(definition, clause.targetIs, [...where, "targetIs"], add);
+  targetIsIssues(definition, clause.not, [...where, "not"], add);
+  if (clause.marked !== undefined && !conditions.has(clause.marked))
+    add([...where, "marked"], `Unknown condition "${clause.marked}"`);
 }
 
 /** What is wrong with one item against the ruleset's `items` block, as plain lines. An item the Game

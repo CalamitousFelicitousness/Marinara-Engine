@@ -613,6 +613,21 @@ export interface RulesetCombatMode {
   toHit?: number;
   target?: number;
   targets?: number;
+  /** Its own reach in cells (1.185): a javelin of lightning's bolt. */
+  range?: { normal: number; long?: number };
+  /** More on a hit in this mode (1.185). */
+  plus?: RulesetCombatDamageClause[];
+  /** What everybody between the wielder and the target saves against first (1.185). */
+  line?: RulesetCombatModeLine;
+  /** The item's charges one attack in this mode spends (1.185), at this place in `sheet.items`. */
+  charges?: { cost: number; max: number; item: number };
+}
+
+/** A bolt on the way to a mode's target (1.185). */
+export interface RulesetCombatModeLine {
+  amount: RulesetCombatAmount;
+  type?: string;
+  save: { save: string; difficulty: number; onSuccess: "none" | "half" };
 }
 
 /** A contest as the fight resolves it: the check each side adds, who takes a tie, and what winning

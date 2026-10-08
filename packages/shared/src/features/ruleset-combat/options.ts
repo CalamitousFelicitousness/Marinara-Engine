@@ -17,6 +17,7 @@ import {
   rulesetLoaded,
   rulesetModedAction,
   rulesetShotsAvailable,
+  rulesetItemChargesLeft,
 } from "./ammo.js";
 import { resolveRulesetValueRef } from "../rulesets/sheet-math.js";
 import { parseRulesetCombatDice, rulesetAverageDamage } from "./dice.js";
@@ -260,11 +261,14 @@ export function rulesetOptionReach(
   state: RulesetEncounterState,
   actorId: string,
   optionId: string,
+  /** A weapon mode's own reach (1.185), in place of the weapon's. */
+  range?: { normal: number; long?: number },
 ): RulesetOptionReach | null {
   if (!positioned(state)) return null;
   const actor = rulesetCombatant(state, actorId);
   if (!actor) return null;
-  const action = actionOf(actor, optionId);
+  const found = actionOf(actor, optionId);
+  const action = found && range ? { ...found, range } : found;
   if (!action) return { max: 1, normal: 1, shot: false, swing: 1 };
   // Breaking free of a hold that names its escape DC is a struggle against the hold itself, which
   // its holder throws nothing for, so it is not limited by how far away they stand (1.170).
@@ -303,6 +307,8 @@ export function rulesetTargetRefusal(
   actorId: string,
   optionId: string,
   targetId: string,
+  /** A weapon mode's own reach (1.185). */
+  range?: { normal: number; long?: number },
 ): "out-of-reach" | "no-line-of-sight" | null {
   const summon = optionId.startsWith("summon:")
     ? rulesetCombatant(state, actorId)?.summons?.find((entry) => `summon:${entry.actionId}` === optionId)
@@ -312,7 +318,7 @@ export function rulesetTargetRefusal(
     if (!positioned(state) || !summon.at || !to) return null;
     return rulesetCellDistance(summon.at, to) > (summon.move ?? 0) + (summon.reach ?? 1) ? "out-of-reach" : null;
   }
-  const reach = rulesetOptionReach(state, actorId, optionId);
+  const reach = rulesetOptionReach(state, actorId, optionId, range);
   if (!reach) return null;
   const from = rulesetPositionOf(rulesetCombatant(state, actorId));
   const to = rulesetPositionOf(rulesetCombatant(state, targetId));
@@ -1084,7 +1090,8 @@ export function rulesetOptionTargets(
   definition: RulesetDefinition,
   state: RulesetEncounterState,
   actorId: string,
-  option: { id: string; targets: RulesetCombatAction["targets"] },
+  /** `range` is a weapon mode's own (1.185). */
+  option: { id: string; targets: RulesetCombatAction["targets"]; range?: { normal: number; long?: number } },
   ignoreRange = false,
 ): string[] {
   const actor = rulesetCombatant(state, actorId);
@@ -1140,7 +1147,10 @@ export function rulesetOptionTargets(
         return true;
       })
       // And then how far away they are, which is nothing at all in a fight without a board.
-      .filter((combatant) => ignoreRange || rulesetTargetRefusal(state, actor.id, option.id, combatant.id) === null)
+      .filter(
+        (combatant) =>
+          ignoreRange || rulesetTargetRefusal(state, actor.id, option.id, combatant.id, option.range) === null,
+      )
       .map((combatant) => combatant.id)
   );
 }
@@ -1371,7 +1381,7 @@ function forecastFor(
     // The same number the roll will be made against: the target's own defense plus whatever the
     // ground they stand on is worth, and the same roll mode the distance between them asks for.
     const defense = rulesetDefenseAgainst(definition, combat, state, target, actor, action).defense;
-    const mode = rulesetAttackMode(definition, combat, actor, target, { state, optionId: action.id });
+    const mode = rulesetAttackMode(definition, combat, actor, target, { state, optionId: action.id, action });
     const bonus = rulesetBonusDice(
       rulesetConditionModifiers(definition, combat, actor, "attacks", state, undefined, undefined, action.ability),
     );
@@ -1688,6 +1698,8 @@ function optionFrom(
     const modes = action.modes.flatMap((mode) => {
       const moded = rulesetModedAction(definition, action, mode.id);
       if (!moded || !rulesetShotsAvailable(actor, moded)) return [];
+      // One that spends the item's charges only while it has them (1.185).
+      if (mode.charges && rulesetItemChargesLeft(actor, mode.charges) < mode.charges.cost) return [];
       const expected = forecastFor(definition, combat, state, actor, moded);
       return [
         { id: mode.id, label: mode.label, targets: moded.targets.count, ...(expected ? { forecast: expected } : {}) },
@@ -1752,15 +1764,18 @@ export function rulesetAttackMode(
   target: RulesetCombatant,
   /** Where the two of them stand, which is what the distance rules read. Left out by a fight with
    *  no board, and then none of them says anything. */
-  where?: { state: RulesetEncounterState; optionId: string },
+  where?: { state: RulesetEncounterState; optionId: string; action?: RulesetCombatAction },
 ): RulesetCombatRollMode {
   if (!rulesetCombatAdvantage(combat)) return "normal";
   const own = rulesetCombatEffects(definition, combat, actor, where?.state);
   const theirs = rulesetCombatEffects(definition, combat, target, where?.state);
   // What the weapon does differently against this target (1.184): an oathbow at its sworn enemy.
-  const against = rulesetAgainstHere(definition, where ? actionOf(actor, where.optionId) : undefined, target, actor);
+  const blow = where ? (where.action ?? actionOf(actor, where.optionId)) : undefined;
+  const against = rulesetAgainstHere(definition, blow, target, actor);
   const farIsFine = against.some((entry) => entry.ignoresLongRange);
-  const distance = where ? distanceModes(combat, where.state, where.optionId, actor, target, theirs, farIsFine) : null;
+  const distance = where
+    ? distanceModes(combat, where.state, where.optionId, actor, target, theirs, farIsFine, blow?.range)
+    : null;
   // Not seeing (1.173): striking at somebody you cannot see is harder, at somebody who cannot see
   // you easier.
   const unseen = combat.sight?.unseenAttacks && where;
@@ -1783,7 +1798,7 @@ export function rulesetAttackMode(
   // on (Chill Touch), and the target's against attackers of some kind (Protection from Evil and Good).
   const leans = new Set<string>();
   // Narrowed to an ability (1.183), only an attack made with it: what it is made with is the action's.
-  const ability = where ? actionOf(actor, where.optionId)?.ability : undefined;
+  const ability = blow?.ability;
   for (const entry of rulesetActiveConditions(definition, combat, actor, where?.state)) {
     for (const modifier of entry.modifiers ?? []) {
       if (modifier.to !== "attacks" || !modifier.mode) continue;
@@ -1833,13 +1848,15 @@ function distanceModes(
   theirs: ReadonlySet<string>,
   /** Long range costs nothing (1.184). */
   farIsFine = false,
+  /** The reach the blow is made at, a weapon mode's own (1.185). */
+  range?: { normal: number; long?: number },
 ): { advantage: boolean; disadvantage: boolean } | null {
   const from = rulesetPositionOf(actor);
   const to = rulesetPositionOf(target);
   if (!positioned(state) || !from || !to) return null;
   const away = rulesetCombatantDistance(state, actor, target);
   const adjacent = away <= 1;
-  const reach = rulesetOptionReach(state, actor.id, optionId);
+  const reach = rulesetOptionReach(state, actor.id, optionId, range);
   const ranged = combat.ranged;
   // A thrown weapon used in hand is a swing, so neither ranged rule reads it there.
   const thrown = !!reach?.shot && away > (reach?.swing ?? 0);

@@ -20,6 +20,7 @@ import {
   reloadRulesetClip,
   rulesetItemOn,
   rulesetModedAction,
+  rulesetItemChargesLeft,
   spendRulesetShots,
 } from "./ammo.js";
 import { parseRulesetCombatDice, rollRulesetDice, sumOf } from "./dice.js";
@@ -78,6 +79,7 @@ import {
   rulesetMoveStep,
   rulesetOpportunityAttack,
   rulesetPositionOf,
+  rulesetPathCells,
   rulesetPushPath,
   rulesetStepLeavesReach,
   rulesetThreateningEnemies,
@@ -148,6 +150,7 @@ import type {
   RulesetCombatAction,
   RulesetCombatCharge,
   RulesetCombatDamageClause,
+  RulesetCombatModeLine,
   RulesetCombatAmount,
   RulesetCombatApplies,
   RulesetCombatCell,
@@ -2052,11 +2055,21 @@ function refusal(
 /** Who a choice may be pointed at, checked against the very list `rulesetOptionTargets` offers, so
  *  the menu and the resolution can never disagree. `null` is a refusal: one target too many, one of
  *  the wrong side, or one the fight is over for. */
+/** A weapon mode's own reach (1.185), where it has one. */
+function modeRange(
+  actor: RulesetCombatant,
+  optionId: string,
+  modeId: string,
+): { range?: { normal: number; long?: number } } {
+  const range = actor.actions.find((entry) => entry.id === optionId)?.modes?.find((one) => one.id === modeId)?.range;
+  return range ? { range } : {};
+}
+
 function pickTargets(
   definition: RulesetDefinition,
   state: RulesetEncounterState,
   actor: RulesetCombatant,
-  option: { id: string; targets: RulesetCombatAction["targets"] },
+  option: { id: string; targets: RulesetCombatAction["targets"]; range?: { normal: number; long?: number } },
   targetIds: readonly string[],
 ): RulesetCombatant[] | RulesetCombatRefusal {
   if (option.targets.count <= 0) return [];
@@ -2067,7 +2080,7 @@ function pickTargets(
   for (const id of ids) {
     // A target the rules would allow if only it were closer is told exactly that, rather than being
     // lumped in with one of the wrong side or one the fight is over for.
-    if (!legal.has(id)) return rulesetTargetRefusal(state, actor.id, option.id, id) ?? "bad-target";
+    if (!legal.has(id)) return rulesetTargetRefusal(state, actor.id, option.id, id, option.range) ?? "bad-target";
     targets.push(rulesetCombatant(state, id)!);
   }
   return targets;
@@ -2323,7 +2336,12 @@ export function applyRulesetCombatChoice(
         state,
         actor,
         mode
-          ? { id: option.id, targets: { ...option.targets, count: mode.targets } }
+          ? {
+              id: option.id,
+              targets: { ...option.targets, count: mode.targets },
+              // A mode's own reach (1.185): a javelin of lightning's bolt.
+              ...modeRange(actor, option.id, mode.id),
+            }
           : paidCount !== undefined
             ? { id: option.id, targets: { ...option.targets, count: paidCount } }
             : option,
@@ -2489,6 +2507,21 @@ export function applyRulesetCombatChoice(
       return finish();
     }
   }
+  // A weapon's mode spends the item's charges, and its bolt goes off on the way (1.185).
+  const modeRule = mode ? own.modes?.find((entry) => entry.id === mode.id) : undefined;
+  if (modeRule?.charges) {
+    const left = Math.max(0, rulesetItemChargesLeft(working, modeRule.charges) - modeRule.charges.cost);
+    (working.charges ??= {})[modeRule.charges.item] = left;
+    ctx.events.push({
+      type: "uses",
+      actorId: working.id,
+      optionId: action.id,
+      label: action.label,
+      left,
+      of: modeRule.charges.max,
+    });
+  }
+  if (modeRule?.line && workingTargets[0]) boltAlong(ctx, working, workingTargets[0], modeRule.line, action.label);
   // An attack with an off-hand weapon lets another one strike on the off-hand budget this turn.
   if (action.pairs !== undefined) working.flags.offHand = action.pairs;
   // A contest is settled between the two of them on the spot. A fall it causes can be held.
@@ -2527,6 +2560,46 @@ export function applyRulesetCombatChoice(
   reopenAction(ctx, working, action, resume);
   noteOutcome(ctx);
   return finish();
+}
+
+/** A bolt from the wielder to the target (1.185): everybody standing on the cells between them saves
+ *  against it, and takes all, half or none of it. Off a board nobody stands between. */
+function boltAlong(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  target: RulesetCombatant,
+  line: RulesetCombatModeLine,
+  label: string,
+): void {
+  const from = rulesetPositionOf(actor);
+  const to = rulesetPositionOf(target);
+  if (!from || !to || !ctx.state.board?.grid) return;
+  const cells = new Set(rulesetPathCells(from, to).map((cell) => `${cell.x},${cell.y}`));
+  const caught = ctx.state.combatants.filter((one) => {
+    const at = rulesetPositionOf(one);
+    // Neither end of the run is on it: the wielder and the target stand on its ends.
+    return !one.defeated && !!at && cells.has(`${at.x},${at.y}`);
+  });
+  for (const one of caught) {
+    const saved = rollSave(ctx, one, line.save.save, line.save.difficulty, actor.id, from);
+    if (saved && line.save.onSuccess === "none") continue;
+    const harm = rulesetCombatIsPool(ctx.combat)
+      ? (({ rolls, flat, total, pool }) => ({ rolls, flat, amount: total, pool }))(
+          throwHarm(ctx, one, line.amount, line.type, 0),
+        )
+      : (() => {
+          const rolls = rollRulesetDice(ctx.roll, line.amount.count, line.amount.sides);
+          return { rolls, flat: line.amount.flat, amount: sumOf(rolls) + line.amount.flat };
+        })();
+    const dealt = applyDamage(ctx, one, {
+      sourceId: actor.id,
+      label,
+      ...(line.type ? { damageType: line.type } : {}),
+      ...harm,
+      ...(saved ? { amount: Math.floor(harm.amount / 2) } : {}),
+    });
+    afterBlow(ctx, one, dealt, false);
+  }
 }
 
 /** Whether a condition on this actor holds what they just used over to their next turn (1.115): an
@@ -4318,6 +4391,7 @@ function resolveActionBody(
       mode = rulesetAttackMode(ctx.definition, ctx.combat, actor, target, {
         state: ctx.state,
         optionId: action.id,
+        action,
       });
       // What the weapon adds against what the target is (1.182).
       const toHit = action.toHit + rulesetToHitAgainst(ctx.definition, action, target, actor);

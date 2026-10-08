@@ -143,6 +143,13 @@ function recordManualEdits(
   }
 }
 
+/** The edits in `overrides` that `row` still holds. A changed value retires its edit for good. */
+function retainManualEdits(overrides: Record<string, string> | null | undefined, row: ManualEditSource) {
+  return Object.fromEntries(
+    Object.entries(overrides ?? {}).filter(([key, value]) => manualEditValue(row, key) === value),
+  );
+}
+
 function emptyGameStateRow(chatId: string): GameStateRow {
   return {
     id: "",
@@ -500,21 +507,23 @@ export function createGameStateStorage(db: DB) {
           );
       }
       const id = newId();
-      await db.insert(gameStateSnapshots).values({
-        id,
-        chatId: state.chatId,
-        messageId: state.messageId,
-        swipeIndex: state.swipeIndex,
+      const trackerValues = {
         ...coerceSnapshotTextFields(state),
         worldCustomFields: JSON.stringify(normalizeWorldCustomFields(state.worldCustomFields)),
         presentCharacters: JSON.stringify(state.presentCharacters),
         recentEvents: JSON.stringify(state.recentEvents),
         playerStats: playerStats ? JSON.stringify(playerStats) : null,
         personaStats: state.personaStats ? JSON.stringify(state.personaStats) : null,
-        // A tracker run that rewrites a row it does not move keeps that row's edit record, which
-        // still counts only while the row holds the edited values (see applyManualEdits).
+      };
+      await db.insert(gameStateSnapshots).values({
+        id,
+        chatId: state.chatId,
+        messageId: state.messageId,
+        swipeIndex: state.swipeIndex,
+        ...trackerValues,
+        // A tracker run that rewrites a row it does not move keeps that row's edits it did not change.
         manualOverrides: serializeManualOverrides(
-          manualOverrides ?? parseStoredManualOverrides(replaced?.manualOverrides),
+          retainManualEdits(manualOverrides ?? parseStoredManualOverrides(replaced?.manualOverrides), trackerValues),
         ),
         fieldLocks: serializeFieldLocks(state.fieldLocks),
         hiddenTrackerFields: serializeHiddenTrackerFields(state.hiddenTrackerFields),
@@ -705,11 +714,12 @@ export function createGameStateStorage(db: DB) {
         updates.hiddenTrackerFields = serializeHiddenTrackerFields(fields.hiddenTrackerFields);
       if (fields.rulesetLive !== undefined) updates.rulesetLive = serializeRulesetLive(fields.rulesetLive);
 
-      if (manual) {
+      if (manual || (row.manualOverrides && Object.keys(updates).length > 0)) {
         const storedOverrides = parseStoredManualOverrides(row.manualOverrides) ?? {};
+        const updated = { ...row, ...updates };
         // A cleared field is an edit too: the next generation starts from it empty.
-        recordManualEdits(storedOverrides, row, { ...row, ...updates });
-        updates.manualOverrides = serializeManualOverrides(storedOverrides);
+        if (manual) recordManualEdits(storedOverrides, row, updated);
+        updates.manualOverrides = serializeManualOverrides(retainManualEdits(storedOverrides, updated));
       }
 
       if (fields.fieldLocks !== undefined) {

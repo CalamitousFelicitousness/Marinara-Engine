@@ -339,6 +339,10 @@ try {
       ["Right place", "Rerun place", "Wrong place"],
       "regeneration after a re-run",
     );
+    // A tracker that later writes the edited value again does not bring the retired edit back.
+    trackerOutputs = { ...NO_CHANGES, "world-state": { location: "Right place" } };
+    await chatApi.rerunTrackers(a2.id);
+    assertShows(await chatApi.peekRegeneration(a2.id), ["Old town"], ["Right place"], "a retired edit");
     trackerOutputs = NO_CHANGES;
     const regen = await capture(() => chatApi.regenerate(a2.id));
     assertShows(regen.trackers, ["mood-right", "clue-right"], ["mood-wrong", "clue-wrong"], "untouched edits");

@@ -9,22 +9,27 @@ import {
   ChevronRight,
   Loader2,
   MapPin,
+  MoreHorizontal,
   PenLine,
+  Plus,
   Sparkles,
   Trash2,
   X,
 } from "lucide-react";
+import { findMatchingAuthorNotePresetSet, type AuthorNotePresetSet } from "@marinara-engine/shared";
 import { useUpdateChatMetadata } from "../../hooks/use-chats";
 import {
   useAuthorNotePresets,
+  useAuthorNotePresetSets,
   useCreateAuthorNotePreset,
   useDeleteAuthorNotePreset,
+  useSaveAuthorNotePresetSets,
   useUpdateAuthorNotePreset,
 } from "../../hooks/use-author-note-presets";
 import { type BudgetSkippedLorebookEntry, useActiveLorebookEntries } from "../../hooks/use-lorebooks";
 import { toast } from "sonner";
 import { showChoiceDialog, showPromptDialog } from "../../lib/app-dialogs";
-import { cn } from "../../lib/utils";
+import { cn, generateClientId } from "../../lib/utils";
 import { useUIStore } from "../../stores/ui.store";
 import {
   NEUTRAL_PANEL_CLOSE_BUTTON,
@@ -494,6 +499,10 @@ export function AuthorNotesPanel({
   const createPreset = useCreateAuthorNotePreset();
   const updatePreset = useUpdateAuthorNotePreset();
   const deletePreset = useDeleteAuthorNotePreset();
+  const { data: presetSets = [] } = useAuthorNotePresetSets();
+  const saveSets = useSaveAuthorNotePresetSets();
+  // One-shot: a chip click opens the manage dialog instead of applying.
+  const [managingSets, setManagingSets] = useState(false);
 
   // Mounted with key={chatId} at both call sites, so switching chats remounts
   // and re-reads the parked draft. Nothing here handles chatId changing in place.
@@ -504,6 +513,9 @@ export function AuthorNotesPanel({
 
   const activeIds = readActivePresetIds(chatMeta);
   const activeIdSet = new Set(activeIds);
+  const libraryIds = presets.map((preset) => preset.id);
+  const libraryIdSet = new Set(libraryIds);
+  const matchingSet = findMatchingAuthorNotePresetSet(presetSets, activeIds, libraryIds);
 
   const patchDraft = (patch: Partial<AuthorNoteDraft>) => setDraft((current) => ({ ...current, ...patch }));
 
@@ -640,6 +652,58 @@ export function AuthorNotesPanel({
     );
   };
 
+  // Ids of deleted presets are dropped on every write, so neither the chat
+  // nor a set picks up new stale ids from here.
+  const applySet = (set: AuthorNotePresetSet) => {
+    updateMeta.mutate({ id: chatId, activeAuthorNotePresetIds: set.presetIds.filter((id) => libraryIdSet.has(id)) });
+  };
+
+  const writeSets = (next: AuthorNotePresetSet[]) => {
+    saveSets.mutate(next, { onError: () => toast.error(localizeUi("ui.chat.authornotespanel.setsSaveFailed")) });
+  };
+
+  const currentPresetIds = () => activeIds.filter((id) => libraryIdSet.has(id));
+
+  const handleSaveCurrentAsSet = async () => {
+    const entered = await showPromptDialog({
+      title: localizeUi("ui.chat.authornotespanel.nameSetTitle"),
+      message: localizeUi("ui.chat.authornotespanel.nameSetPrompt"),
+      placeholder: localizeUi("ui.chat.authornotespanel.setName"),
+      confirmLabel: localizeUi("ui.chat.authornotespanel.saveSet"),
+    });
+    const name = entered?.trim();
+    if (!name) return;
+    writeSets([...presetSets, { id: generateClientId(), name, presetIds: currentPresetIds() }]);
+  };
+
+  const handleManageSet = async (set: AuthorNotePresetSet) => {
+    setManagingSets(false);
+    const choice = await showChoiceDialog({
+      title: set.name,
+      message: localizeUi("ui.chat.authornotespanel.manageSetPrompt"),
+      choices: [
+        { key: "update", label: localizeUi("ui.chat.authornotespanel.updateSetFromCurrent") },
+        { key: "rename", label: localizeUi("ui.chat.authornotespanel.renameSet") },
+        { key: "delete", label: localizeUi("ui.chat.authornotespanel.deleteSet"), tone: "destructive" },
+      ],
+    });
+    if (choice === "update") {
+      writeSets(presetSets.map((s) => (s.id === set.id ? { ...s, presetIds: currentPresetIds() } : s)));
+    } else if (choice === "rename") {
+      const entered = await showPromptDialog({
+        title: localizeUi("ui.chat.authornotespanel.renameSetTitle"),
+        message: localizeUi("ui.chat.authornotespanel.renameSetPrompt"),
+        defaultValue: set.name,
+        placeholder: localizeUi("ui.chat.authornotespanel.setName"),
+        confirmLabel: localizeUi("ui.chat.authornotespanel.renameSet"),
+      });
+      const name = entered?.trim();
+      if (name && name !== set.name) writeSets(presetSets.map((s) => (s.id === set.id ? { ...s, name } : s)));
+    } else if (choice === "delete") {
+      writeSets(presetSets.filter((s) => s.id !== set.id));
+    }
+  };
+
   const handleDeletePreset = (presetId: string) => {
     // Deleting the open preset drops its edits with it — the delete is explicit.
     if (target.kind === "preset" && target.id === presetId) setDraft(chatNoteDraft(chatMeta));
@@ -745,6 +809,74 @@ export function AuthorNotesPanel({
         >
           {localizeUi("ui.chat.authornotespanel.saveAsPreset")}
         </button>
+      )}
+
+      {presets.length > 0 && (
+        <div className="mt-3 border-t border-[var(--border)] pt-2">
+          <div className="flex flex-wrap items-center gap-1">
+            <span className={cn(NEUTRAL_PANEL_SUBTITLE, "mt-0 mr-0.5")}>
+              {localizeUi("ui.chat.authornotespanel.sets")}
+            </span>
+            {presetSets.map((set) => {
+              const isMatch = matchingSet?.id === set.id;
+              const label = localizeUi(
+                managingSets ? "ui.chat.authornotespanel.manageSet" : "ui.chat.authornotespanel.applySet",
+                { name: set.name },
+              );
+              return (
+                <button
+                  key={set.id}
+                  type="button"
+                  onClick={() => (managingSets ? void handleManageSet(set) : applySet(set))}
+                  aria-pressed={managingSets ? undefined : isMatch}
+                  aria-label={label}
+                  title={label}
+                  className={cn(
+                    "max-w-[10rem] truncate rounded-full border px-2 py-0.5 text-[0.625rem] transition-colors",
+                    managingSets
+                      ? "border-dashed border-[var(--ring)] text-[var(--foreground)]"
+                      : isMatch
+                        ? "border-emerald-400/40 bg-emerald-400/20 text-emerald-300"
+                        : "border-[var(--border)] bg-[var(--secondary)] text-[var(--foreground)] hover:border-[var(--ring)]",
+                  )}
+                >
+                  {set.name}
+                </button>
+              );
+            })}
+            <button
+              type="button"
+              onClick={() => void handleSaveCurrentAsSet()}
+              aria-label={localizeUi("ui.chat.authornotespanel.saveCurrentAsSet")}
+              title={localizeUi("ui.chat.authornotespanel.saveCurrentAsSet")}
+              className="rounded-full border border-dashed border-[var(--border)] p-1 text-[var(--muted-foreground)] transition-colors hover:border-[var(--ring)] hover:text-[var(--foreground)]"
+            >
+              <Plus size="0.625rem" />
+            </button>
+            {presetSets.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setManagingSets((current) => !current)}
+                aria-pressed={managingSets}
+                aria-label={localizeUi("ui.chat.authornotespanel.manageSets")}
+                title={localizeUi("ui.chat.authornotespanel.manageSets")}
+                className={cn(
+                  "rounded-full border p-1 transition-colors",
+                  managingSets
+                    ? "border-[var(--ring)] bg-[var(--accent)] text-[var(--foreground)]"
+                    : "border-[var(--border)] text-[var(--muted-foreground)] hover:text-[var(--foreground)]",
+                )}
+              >
+                <MoreHorizontal size="0.625rem" />
+              </button>
+            )}
+          </div>
+          {managingSets && (
+            <p className="mt-1 text-[0.5625rem] text-[var(--muted-foreground)]/60">
+              {localizeUi("ui.chat.authornotespanel.pickSetToManage")}
+            </p>
+          )}
+        </div>
       )}
 
       <div className="mt-3 border-t border-[var(--border)] pt-2">

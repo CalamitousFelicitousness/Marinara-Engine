@@ -521,6 +521,26 @@ Those three generation routes each re-derived the note and re-hardcoded the defa
 the default lives in `packages/shared` as `DEFAULT_AUTHOR_NOTE_DEPTH`. Covered by
 `scripts/regressions/author-note-presets.regression.ts`, which runs in `pnpm regression:prompt`.
 
+Named preset sets switch several presets at once. A set is a name plus a list of preset ids,
+stored as one JSON array in `app_settings` under `author-note-preset-sets` and served by
+`GET`/`PUT /api/author-note-presets/sets`; the `PUT` replaces the whole list. The panel shows
+sets as a chip row above the preset list. Clicking a chip replaces the chat's
+`activeAuthorNotePresetIds` with the set's, `+` saves the presets enabled now as a new set, and
+the `⋯` toggle turns the next chip click into update, rename, or delete. Sets are snapshots: a
+chat never records which set it came from, so editing a set changes no chat. The chip whose
+presets equal the chat's enabled ones is highlighted by `findMatchingAuthorNotePresetSet` in
+`packages/shared`. Ids of deleted presets are ignored on both sides; a set emptied by deletions
+matches nothing, while one saved empty matches a chat with nothing on.
+
+Sets live in `app_settings` because a new table would need registering in both
+`FILE_BACKED_TABLES` and the launcher's `SHARDED_TABLES` copy. Chat settings profiles still carry
+`activeAuthorNotePresetIds`, so applying a profile from the settings drawer also replaces a
+chat's enabled presets.
+
+Upstream files patched for sets: `ChatRoleplayPanels.tsx` (the chip row), `en.json` (17
+`ui.chat.authornotespanel.*` keys), and `e2e/author-notes.e2e.ts` (a third test). Matching and
+list validation are covered in `author-note-presets.regression.ts`.
+
 ### Peek Prompt shows where each sampling parameter came from
 
 A sampling parameter passes through the preset (roleplay-style chats only), connection defaults,

@@ -24,3 +24,14 @@ export interface AuthorNotePreset {
   createdAt: string;
   updatedAt: string;
 }
+
+/**
+ * Named snapshot of which presets are on. Applying one replaces a chat's
+ * `activeAuthorNotePresetIds`; chats never link back to the set.
+ */
+export interface AuthorNotePresetSet {
+  id: string;
+  name: string;
+  /** May hold ids of deleted presets, same as chat rows. */
+  presetIds: string[];
+}

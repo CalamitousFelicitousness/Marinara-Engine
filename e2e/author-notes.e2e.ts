@@ -65,6 +65,14 @@ async function readNotes(request: APIRequestContext, id: string) {
   return metadata.authorNotes ?? "";
 }
 
+async function readActivePresetIds(request: APIRequestContext, id: string): Promise<string[]> {
+  const response = await request.get(`/api/chats/${id}`);
+  expect(response.ok()).toBeTruthy();
+  const chat = await response.json();
+  const metadata = typeof chat.metadata === "string" ? JSON.parse(chat.metadata) : chat.metadata;
+  return [...(metadata.activeAuthorNotePresetIds ?? [])].sort();
+}
+
 async function prepare(page: Page, chatId: string) {
   await page.route("**/api/app-settings/ui", (route) => route.fulfill({ json: { value: "" } }));
   await seedUIState(page, {
@@ -218,5 +226,68 @@ test("Author's Notes preserves a newer draft when an earlier save fails", async 
     release.resolve();
     await page.unrouteAll({ behavior: "wait" });
     await request.delete(`/api/chats/${chatId}`);
+  }
+});
+
+test("Author's Notes preset sets replace a chat's presets and stay per chat", async ({ page, request }, testInfo) => {
+  test.setTimeout(90000);
+  const a = await seedChat(request, "Sets A", "fixture-connection");
+  const b = await seedChat(request, "Sets B", "fixture-connection");
+  const presetIds: string[] = [];
+  const toggle = async (name: string) => {
+    await page.getByRole("switch", { name: `Activate ${name}`, exact: true }).click();
+    await expect(page.getByRole("switch", { name: `Deactivate ${name}`, exact: true })).toBeVisible();
+  };
+  const closeNotes = () => page.getByRole("button", { name: "Close author's notes", exact: true }).click();
+  try {
+    for (const name of ["Sets Terse", "Sets Pacing", "Sets Banter"]) {
+      const response = await request.post("/api/author-note-presets", {
+        data: { name, content: `${name} note`, depth: 4 },
+      });
+      expect(response.ok()).toBeTruthy();
+      presetIds.push(((await response.json()) as { id: string }).id);
+    }
+    const combatIds = [presetIds[0]!, presetIds[1]!].sort();
+    await prepare(page, a);
+    await openNotes(page);
+    await toggle("Sets Terse");
+    await toggle("Sets Pacing");
+    await expect.poll(() => readActivePresetIds(request, a)).toEqual(combatIds);
+
+    await page.getByRole("button", { name: "Save enabled presets as a set", exact: true }).click();
+    await page.getByPlaceholder("Set name").fill("Sets Combat");
+    await page.getByRole("button", { name: "Save set", exact: true }).click();
+    const combat = page.getByRole("button", { name: "Enable only the presets in Sets Combat", exact: true });
+    await expect(combat, "The set just saved matches the chat").toHaveAttribute("aria-pressed", "true");
+
+    await toggle("Sets Banter");
+    await expect(combat, "An extra preset breaks the match").toHaveAttribute("aria-pressed", "false");
+    await combat.click();
+    await expect(combat).toHaveAttribute("aria-pressed", "true");
+    await expect.poll(() => readActivePresetIds(request, a), "Applying replaces, not adds").toEqual(combatIds);
+    await page.screenshot({ path: testInfo.outputPath("notes-set-applied.png"), animations: "disabled" });
+
+    await closeNotes();
+    await switchChat(page, b);
+    await openNotes(page);
+    await expect(combat).toHaveAttribute("aria-pressed", "false");
+    expect(await readActivePresetIds(request, b), "Another chat keeps its own presets").toEqual([]);
+    await closeNotes();
+    await switchChat(page, a);
+    await openNotes(page);
+    await expect(combat, "Coming back finds the chat as it was left").toHaveAttribute("aria-pressed", "true");
+
+    await page.getByRole("button", { name: "Manage sets", exact: true }).click();
+    await page.getByRole("button", { name: "Change Sets Combat", exact: true }).click();
+    await page.getByRole("button", { name: "Delete set", exact: true }).click();
+    await expect(combat).toHaveCount(0);
+    await expect.poll(async () => (await (await request.get("/api/author-note-presets/sets")).json()).length).toBe(0);
+    expect(await readActivePresetIds(request, a), "Deleting a set leaves the chat's presets on").toEqual(combatIds);
+  } finally {
+    await page.unrouteAll({ behavior: "wait" });
+    await request.put("/api/author-note-presets/sets", { data: [] });
+    for (const id of presetIds) await request.delete(`/api/author-note-presets/${id}`);
+    await request.delete(`/api/chats/${a}`);
+    await request.delete(`/api/chats/${b}`);
   }
 });

@@ -3,6 +3,7 @@
 // ──────────────────────────────────────────────
 import type { FastifyInstance } from "fastify";
 import {
+  authorNotePresetSetListSchema,
   createAuthorNotePresetSchema,
   reorderAuthorNotePresetsSchema,
   updateAuthorNotePresetSchema,
@@ -19,6 +20,15 @@ export async function authorNotePresetsRoutes(app: FastifyInstance) {
   app.put("/reorder", async (req) => {
     const input = reorderAuthorNotePresetsSchema.parse(req.body);
     return storage.reorder(input.presetIds);
+  });
+
+  app.get("/sets", async () => {
+    return storage.listSets();
+  });
+
+  // Replaces the whole list; the client owns set ids.
+  app.put("/sets", async (req) => {
+    return storage.replaceSets(authorNotePresetSetListSchema.parse(req.body));
   });
 
   app.get<{ Params: { id: string } }>("/:id", async (req, reply) => {

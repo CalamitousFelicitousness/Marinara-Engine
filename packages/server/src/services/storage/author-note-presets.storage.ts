@@ -5,9 +5,19 @@ import { eq, asc } from "../../db/file-query.js";
 import type { DB } from "../../db/connection.js";
 import { authorNotePresets } from "../../db/schema/index.js";
 import { newId, now } from "../../utils/id-generator.js";
-import type { CreateAuthorNotePresetInput, UpdateAuthorNotePresetInput } from "@marinara-engine/shared";
+import {
+  AUTHOR_NOTE_PRESET_SETS_SETTINGS_KEY,
+  authorNotePresetSetListSchema,
+  type AuthorNotePresetSet,
+  type CreateAuthorNotePresetInput,
+  type UpdateAuthorNotePresetInput,
+} from "@marinara-engine/shared";
+import { logger } from "../../lib/logger.js";
+import { createAppSettingsStorage } from "./app-settings.storage.js";
 
 export function createAuthorNotePresetsStorage(db: DB) {
+  const appSettings = createAppSettingsStorage(db);
+
   async function getNextOrder(): Promise<number> {
     const rows = await db.select({ order: authorNotePresets.order }).from(authorNotePresets);
     return rows.reduce((maxOrder, row) => Math.max(maxOrder, row.order), -1) + 1;
@@ -81,9 +91,25 @@ export function createAuthorNotePresetsStorage(db: DB) {
     },
 
     async remove(id: string) {
-      // No cross-table cleanup: chats keep the stale id and prompt assembly
-      // drops ids that no longer resolve.
+      // No cross-table cleanup: chats and sets keep the stale id, and readers
+      // drop ids that no longer resolve.
       await db.delete(authorNotePresets).where(eq(authorNotePresets.id, id));
+    },
+
+    async listSets(): Promise<AuthorNotePresetSet[]> {
+      const raw = await appSettings.get(AUTHOR_NOTE_PRESET_SETS_SETTINGS_KEY);
+      if (!raw) return [];
+      try {
+        return authorNotePresetSetListSchema.parse(JSON.parse(raw));
+      } catch (error) {
+        logger.warn(error, "Ignoring invalid stored author's note preset sets");
+        return [];
+      }
+    },
+
+    async replaceSets(sets: AuthorNotePresetSet[]) {
+      await appSettings.set(AUTHOR_NOTE_PRESET_SETS_SETTINGS_KEY, JSON.stringify(sets));
+      return sets;
     },
   };
 }

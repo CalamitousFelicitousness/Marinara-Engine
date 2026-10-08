@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
-import type { AuthorNotePreset } from "../../packages/shared/dist/index.js";
-import { normalizeAuthorNoteDepth } from "../../packages/shared/dist/index.js";
+import type { AuthorNotePreset, AuthorNotePresetSet } from "../../packages/shared/dist/index.js";
+import {
+  authorNotePresetSetListSchema,
+  findMatchingAuthorNotePresetSet,
+  normalizeAuthorNoteDepth,
+} from "../../packages/shared/dist/index.js";
 import {
   collectAuthorNoteEntries,
   toAuthorNoteDepthEntries,
@@ -220,5 +224,43 @@ for (const entry of combined) {
   assert.ok(contextText!.includes(entry.content), `agent context missing: ${entry.content}`);
 }
 assert.equal(contextText!.split("\n\n").length, combined.length);
+
+// ── Preset sets: which chip the panel highlights ──
+const set = (id: string, presetIds: string[]): AuthorNotePresetSet => ({ id, name: `set-${id}`, presetIds });
+const live = ["a", "b", "c"];
+const matchId = (sets: AuthorNotePresetSet[], active: string[]) =>
+  findMatchingAuthorNotePresetSet(sets, active, live)?.id ?? null;
+
+// Membership, not order.
+assert.equal(matchId([set("x", ["a", "b"])], ["b", "a"]), "x");
+// Subset and superset are not matches.
+assert.equal(matchId([set("x", ["a", "b"])], ["a"]), null);
+assert.equal(matchId([set("x", ["a"])], ["a", "b"]), null);
+// Deleted ids are ignored on both sides, so applying a set with one still matches it.
+assert.equal(matchId([set("x", ["a", "gone"])], ["a"]), "x");
+assert.equal(matchId([set("x", ["a"])], ["a", "gone"]), "x");
+// Saved empty = "all off"; emptied by deletions = matches nothing.
+assert.equal(matchId([set("off", [])], []), "off");
+assert.equal(matchId([set("off", [])], ["gone"]), "off");
+assert.equal(matchId([set("emptied", ["gone"])], []), null);
+// Identical sets: first in list order wins.
+assert.equal(matchId([set("first", ["c"]), set("second", ["c"])], ["c"]), "first");
+
+// ── Set list validation: what PUT /author-note-presets/sets accepts ──
+assert.deepEqual(authorNotePresetSetListSchema.parse([{ id: "s1", name: "  Combat ", presetIds: ["a", "b", "a"] }]), [
+  { id: "s1", name: "Combat", presetIds: ["a", "b"] },
+]);
+assert.equal(authorNotePresetSetListSchema.safeParse([{ id: "s1", name: "   ", presetIds: [] }]).success, false);
+assert.equal(
+  authorNotePresetSetListSchema.safeParse([
+    { id: "s1", name: "A", presetIds: [] },
+    { id: "s1", name: "B", presetIds: [] },
+  ]).success,
+  false,
+);
+assert.equal(
+  authorNotePresetSetListSchema.safeParse([{ id: "s1", name: "A", presetIds: [], extra: 1 }]).success,
+  false,
+);
 
 console.log("author-note-presets regression passed.");

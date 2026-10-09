@@ -1889,6 +1889,7 @@ function mechanicsAction(
             at: moment.at ?? "source",
             ...(moment.cancels ? { cancels: true as const } : {}),
             ...rulesetReactionAnswers(moment, perCell),
+            ...(moment.oneOf ? { oneOf: moment.oneOf } : {}),
             ...(moment.cancelSave ? { cancelSave: { ...moment.cancelSave } } : {}),
             ...(moment.upTo ? { upTo: moment.upTo } : {}),
             ...(moment.above

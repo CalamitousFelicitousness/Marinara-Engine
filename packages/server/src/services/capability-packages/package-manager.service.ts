@@ -1535,6 +1535,18 @@ function carriesFrenzy(ruleset: unknown): boolean {
 /** Attack rows changed by what a sheet holds, strikes it grants, entries only after the attack action,
  *  or a condition's granted attacks narrowed by name or to after the attack action (1.237), in
  *  catalogs too. */
+/** A hit answered only when a strike paid for from a budget made it, or one of a group of answers to
+ *  its holder's own hit (1.243), in catalogs too. */
+function carriesOpenHand(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesOpenHand(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.oneOf !== undefined) return true;
+  if (record.on === "hit" && record.budget !== undefined) return true;
+  return Object.values(record).some((one) => carriesOpenHand(one, depth + 1));
+}
+
 /** A use offered only before its holder's first attack, a change to attacks narrowed to a kind of
  *  blow, or more dice on a critical (1.242), in catalogs too. */
 function carriesReckless(value: unknown, depth = 0): boolean {
@@ -3379,6 +3391,13 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // A hit answered for a strike from one budget, one answer of a group per hit, 1.243.
+  if (
+    !declaresApi(243) &&
+    (carriesOpenHand(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesOpenHand(document)))
+  ) {
+    return "A ruleset with answers to a hit by a strike from one budget, or one answer of a group per hit, requires schemaVersion 2 and capabilityApi 1.243 or newer";
   }
   // Before the first attack, attacks narrowed to a kind of blow, more dice on a critical, 1.242.
   if (

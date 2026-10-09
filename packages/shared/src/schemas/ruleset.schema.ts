@@ -1767,9 +1767,21 @@ const rulesetMomentNarrowing = {
   /** Only a hit by an attack named so (Capability API 1.240): 5e's Quivering Palm, on an unarmed
    *  strike. */
   names: attackNamesSchema.optional(),
+  /** Only a hit by a strike paid for from this budget (Capability API 1.243): 5e's Open Hand
+   *  Technique, on the strikes Flurry of Blows grants. */
+  budget: sheetId.optional(),
 };
 const blowOnlyOnHit = (
-  moment: { on: string; blow?: string; by?: string; weapon?: true; names?: string[]; for?: string; within?: number },
+  moment: {
+    on: string;
+    blow?: string;
+    by?: string;
+    weapon?: true;
+    names?: string[];
+    budget?: string;
+    for?: string;
+    within?: number;
+  },
   ctx: z.RefinementCtx,
   path: (string | number)[],
 ) => {
@@ -1780,7 +1792,7 @@ const blowOnlyOnHit = (
       message: '"blow" says what kind of hit opens the moment, so it is on a "hit" moment',
     });
   }
-  for (const key of ["by", "weapon", "names"] as const) {
+  for (const key of ["by", "weapon", "names", "budget"] as const) {
     if (moment[key] !== undefined && moment.on !== "hit") {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -1831,6 +1843,9 @@ const rulesetReactionMomentBase = z
     /** It stops only what was paid for no higher up its pool family than it was itself (Capability
      *  API 1.111): 5e's Counterspell, which stops a spell of its own slot's level or lower. */
     upTo: z.literal("paid").optional(),
+    /** Only one of its holder's answers sharing this name is taken at each of their own hits
+     *  (Capability API 1.243): Open Hand Technique's three riders, one per hit. */
+    oneOf: z.string().trim().min(1).max(60).optional(),
     /** Above that, a check against `dc` plus the level of what it answers stops it all the same:
      *  5e's spellcasting ability check against 10 + the spell's level. */
     above: z
@@ -1901,6 +1916,13 @@ const rulesetReactionMomentBase = z
         code: z.ZodIssueCode.custom,
         path: ["also"],
         message: 'A reaction that cancels answers one moment: "also" is for one that changes the numbers',
+      });
+    }
+    if (reaction.oneOf && (reaction.on !== "hit" || reaction.by !== "self" || reaction.also)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["oneOf"],
+        message: '"oneOf" picks among answers to its holder\'s own hit: on "hit", by "self", with no "also"',
       });
     }
     if (reaction.above && !reaction.upTo) {
@@ -11022,6 +11044,18 @@ export function rulesetCatalogEntryIssues(
       add([index, "mechanics", "summons", "budget"], `Unknown budget "${mechanics.summons.budget}"`);
     }
     // A strike bought with a budget the fight declares, rows changed by abilities the sheet has (1.237).
+    // A hit answered only when a strike from a budget the fight declares made it (1.243).
+    const reaction = mechanics?.reaction && mechanics.reaction !== true ? mechanics.reaction : undefined;
+    if (reaction && budgets) {
+      [reaction, ...(reaction.also ?? [])].forEach((moment, at) => {
+        if (moment.budget !== undefined && !budgets.has(moment.budget)) {
+          add(
+            [index, "mechanics", "reaction", ...(at === 0 ? [] : ["also", at - 1]), "budget"],
+            `Unknown budget "${moment.budget}"`,
+          );
+        }
+      });
+    }
     if (mechanics?.grantsStrike && budgets && !budgets.has(mechanics.grantsStrike.budget)) {
       add([index, "mechanics", "grantsStrike", "budget"], `Unknown budget "${mechanics.grantsStrike.budget}"`);
     }

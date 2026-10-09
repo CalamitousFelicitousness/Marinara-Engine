@@ -233,6 +233,8 @@ interface RulesetCombatContext {
   ticking?: string;
   /** A strike made inside a window that may still be held where it hits (1.238). */
   nestHit?: true;
+  /** The budget the action being resolved was paid for from, for an answer to its hit (1.243). */
+  strikeBudget?: string;
 }
 
 /** A working copy, plus a roller that counts its dice so the state's cursor stays exact. */
@@ -2865,6 +2867,7 @@ export function applyRulesetCombatChoice(
     ...(styleId ? { style: styleId } : {}),
     ...(mode ? { mode: mode.id } : {}),
     ...(spend !== undefined ? { spend } : {}),
+    ...(budget ? { budget } : {}),
   };
   // A condition that slows what its holder uses (1.115) may hold it over to their next turn.
   if (budget && delayRoll(ctx, working, action, budget)) {
@@ -3507,6 +3510,7 @@ function takeReaction(
     ...(trigger.kind === "hit" ? { blow: trigger.blow } : {}),
     ...(trigger.kind === "hit" && trigger.weapon ? { weapon: true } : {}),
     ...(trigger.kind === "hit" && !trigger.catalog ? { attack: trigger.label } : {}),
+    ...(trigger.kind === "hit" && trigger.budget ? { budget: trigger.budget } : {}),
   });
   const source = rulesetCombatant(state, declared.reaction?.at === "target" ? (about ?? actor.id) : trigger.sourceId);
   let targets: RulesetCombatant[] | RulesetCombatRefusal;
@@ -3590,6 +3594,12 @@ function takeReaction(
     const open = ctx.state.window;
     if (trigger.kind === "hit" && trigger.sourceId === taking.id && open?.waiting[0] === taking.id) {
       (open.taken ??= []).push(action.id);
+      // The rest of its answers sharing a name with this one are spent with it (1.243).
+      const group = action.reaction?.oneOf;
+      if (group) {
+        for (const other of taking.actions)
+          if (other.reaction?.oneOf === group && !open.taken.includes(other.id)) open.taken.push(other.id);
+      }
       if (
         rulesetEncounterOutcome(ctx.state) === "ongoing" &&
         rulesetWindowOptions(definition, ctx.state, taking.id).length > 0
@@ -4219,6 +4229,7 @@ function hitAnswers(
           blow: rulesetBlowKind(ctx.state, actor, target, action),
           ...(rulesetWeaponBlow(action) ? { weapon: true } : {}),
           ...(!action.catalog ? { attack: action.label } : {}),
+          ...(ctx.strikeBudget ? { budget: ctx.strikeBudget } : {}),
         }).length > 0,
     )
     .map((one) => one.id);
@@ -4246,6 +4257,10 @@ function harmedBy(
   resolve: () => RulesetHitHold | null,
 ): void {
   const before = ctx.events.length;
+  // What its strike was paid for from, read by every answer to its hits (1.243).
+  const paidFrom = ctx.strikeBudget;
+  if (resume.budget) ctx.strikeBudget = resume.budget;
+  else delete ctx.strikeBudget;
   const hold = resolve();
   const hurt = new Set([
     ...(resume.held?.hurt ?? []),
@@ -4256,8 +4271,12 @@ function harmedBy(
   ]);
   if (hold) {
     openHitWindow(ctx, actor, action, resume, hold, [...hurt]);
+    if (paidFrom) ctx.strikeBudget = paidFrom;
+    else delete ctx.strikeBudget;
     return;
   }
+  if (paidFrom) ctx.strikeBudget = paidFrom;
+  else delete ctx.strikeBudget;
   endActionConditions(ctx);
   // A strike made in passing asks nobody about being hurt, held or not (1.238).
   const waiting =
@@ -4305,6 +4324,7 @@ function openHitWindow(
       ...(blow ? { blow } : {}),
       // A weapon's blow, for an answer that adds to one (1.236).
       ...(rulesetWeaponBlow(striking) ? { weapon: true as const } : {}),
+      ...(resume.budget ? { budget: resume.budget } : {}),
       total: held.roll.total,
       defense: held.roll.defense,
     },

@@ -2459,6 +2459,7 @@ export function rulesetWindowOptions(
     ...(trigger.kind === "hit" && trigger.blow ? { blow: trigger.blow } : {}),
     ...(trigger.kind === "hit" && trigger.weapon ? { weapon: true } : {}),
     ...(trigger.kind === "hit" && !trigger.catalog ? { attack: trigger.label } : {}),
+    ...(trigger.kind === "hit" && trigger.budget ? { budget: trigger.budget } : {}),
   };
   // A hit's maker answers it once with each thing they hold (1.236).
   const taken = trigger.kind === "hit" && actorId === source ? (window.taken ?? []) : [];
@@ -2548,6 +2549,8 @@ function momentAnswers(
   if (moment.on === "hit" && (moment.by === "self") !== (sourceId === holder.id)) return false;
   if (moment.weapon && !cause.weapon) return false;
   if (moment.names && !(cause.attack !== undefined && rulesetAttackNamed(cause.attack, moment.names))) return false;
+  // Only a strike paid for from its budget (1.243): Open Hand Technique, on Flurry of Blows.
+  if (moment.budget && cause.budget !== moment.budget) return false;
   if (moment.blow && cause.blow !== moment.blow) return false;
   if (moment.seesSource && !rulesetSees(state, holder, rulesetCombatant(state, sourceId))) return false;
   return true;

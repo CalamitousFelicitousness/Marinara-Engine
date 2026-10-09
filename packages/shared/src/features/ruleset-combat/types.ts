@@ -581,6 +581,10 @@ export interface RulesetCombatAction {
     weapon?: true;
     /** Only a hit by an attack named so (1.240). */
     names?: string[];
+    /** Only a hit by a strike paid for from this budget (1.243). */
+    budget?: string;
+    /** Only one of its holder's answers sharing this name is taken at each of their hits (1.243). */
+    oneOf?: string;
     /** It stops only what was paid for no higher up its pool family than this was (1.111). */
     upTo?: "paid";
     /** Above that, a check, read once as the fight began, against `dc` plus the level of what it
@@ -1097,6 +1101,8 @@ export type RulesetWindowTrigger =
       blow?: RulesetBlowKind;
       /** Whether it was a weapon's blow (1.236). */
       weapon?: true;
+      /** The budget the strike was paid for from (1.243). */
+      budget?: string;
       total: number;
       defense: number;
     }
@@ -1131,6 +1137,8 @@ export interface RulesetReactionAlso {
   weapon?: true;
   /** Only a hit by an attack named so (1.240). */
   names?: string[];
+  /** Only a hit by a strike paid for from this budget (1.243). */
+  budget?: string;
 }
 
 /** What caused a moment, as far as a reaction narrows what it answers: the catalog and entry behind
@@ -1145,6 +1153,8 @@ export interface RulesetMomentCause {
   weapon?: boolean;
   /** The name of the attack that hit, when it was no catalog entry's (1.240). */
   attack?: string;
+  /** The budget the strike that hit was paid for from (1.243). */
+  budget?: string;
 }
 
 /** What opens a moment for one reaction: an action from an entry of one of `catalogs`, or one of
@@ -1201,6 +1211,8 @@ export interface RulesetActionResume {
   /** A strike made in another window, at somebody walking away (1.238): that window, with the
    *  striker already answered, is asked on once this one has landed. */
   outer?: RulesetCombatWindow;
+  /** The budget it was paid for from, for an answer to its hit narrowed to one (1.243). */
+  budget?: string;
 }
 
 /** Once the attack action has been taken this turn, with anything or with one of `names` (1.237). */

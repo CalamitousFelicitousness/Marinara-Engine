@@ -10988,6 +10988,11 @@
                               "minItems": 1,
                               "maxItems": 30
                             },
+                            "budget": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
                             "cancels": {
                               "type": "boolean",
                               "const": true
@@ -11144,6 +11149,11 @@
                                     "minItems": 1,
                                     "maxItems": 30
                                   },
+                                  "budget": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
                                   "$comment": {}
                                 },
                                 "required": [
@@ -11263,6 +11273,11 @@
                             "upTo": {
                               "type": "string",
                               "const": "paid"
+                            },
+                            "oneOf": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 60
                             },
                             "above": {
                               "type": "object",
@@ -14400,6 +14415,11 @@
                                 "minItems": 1,
                                 "maxItems": 30
                               },
+                              "budget": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
                               "cancels": {
                                 "type": "boolean",
                                 "const": true
@@ -14556,6 +14576,11 @@
                                       "minItems": 1,
                                       "maxItems": 30
                                     },
+                                    "budget": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
                                     "$comment": {}
                                   },
                                   "required": [
@@ -14675,6 +14700,11 @@
                               "upTo": {
                                 "type": "string",
                                 "const": "paid"
+                              },
+                              "oneOf": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 60
                               },
                               "above": {
                                 "type": "object",

@@ -65,6 +65,7 @@ export function rulesetReactionAnswers(
     ...(moment.by ? { by: moment.by } : {}),
     ...(moment.weapon ? { weapon: true as const } : {}),
     ...(moment.names ? { names: [...moment.names] } : {}),
+    ...(moment.budget ? { budget: moment.budget } : {}),
   });
   return {
     ...narrowing(reaction),

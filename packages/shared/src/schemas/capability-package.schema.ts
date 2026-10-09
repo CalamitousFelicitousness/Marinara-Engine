@@ -1008,7 +1008,9 @@ const capabilityPackageManifestBaseSchema = z
 // 1.242: catalog mechanics' `beforeAttack` (only before the holder's first attack of their turn:
 //        Reckless Attack); `attacks` and `blow` narrow a change to attacks too; a damage change's
 //        `criticalDice` (more of the blow's own dice on a critical only: Brutal Critical).
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 242 } as const);
+// 1.243: a hit moment's `budget` (only a strike paid for from it) and a reaction's `oneOf` (one of
+//        its holder's answers sharing the name per hit): Open Hand Technique on Flurry of Blows.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 243 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

@@ -1,4 +1,4 @@
-import { useRef, useState, type FocusEvent, type KeyboardEvent } from "react";
+import { useRef, useState, type FocusEvent, type KeyboardEvent, type ReactNode } from "react";
 import {
   BarChart3,
   ExternalLink,
@@ -26,6 +26,9 @@ const TRACKER_PANEL_SIZE_LABELS: Record<TrackerPanelSizeProfile, string> = {
   standard: "Standard",
   expanded: "Expanded",
 };
+/** Package buttons in the header look like its own icon buttons, and stay lit while their window is open. */
+export const TRACKER_HEADER_PACKAGE_BUTTON_CLASS =
+  "flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-[var(--muted-foreground)] ring-1 ring-transparent transition-all hover:bg-[var(--accent)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-[var(--primary)] active:scale-90 aria-pressed:bg-[var(--foreground)]/12 aria-pressed:text-[var(--foreground)] aria-pressed:ring-[var(--foreground)]/24";
 const TRACKER_TOOLBAR_ITEM_ORDER = ["detach", "side", "size", "statDisplay", "hide", "lock", "add", "delete"] as const;
 type TrackerToolbarItem = (typeof TRACKER_TOOLBAR_ITEM_ORDER)[number];
 
@@ -44,6 +47,7 @@ export function TrackerSidebarHeader({
   onSetStatDisplayMode,
   onToggleDetached,
   onClose,
+  launchers,
 }: {
   trackerPanelSide: TrackerPanelSide;
   sizeProfile: TrackerPanelSizeProfile;
@@ -56,6 +60,8 @@ export function TrackerSidebarHeader({
   onSetStatDisplayMode: (mode: TrackerStatDisplayMode) => void;
   onToggleDetached?: () => void;
   onClose: () => void;
+  /** Package buttons, such as the one that opens Quartermaster's dock. */
+  launchers?: ReactNode;
 }) {
   const { t: localizeUi } = useUiTranslation();
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -402,7 +408,11 @@ export function TrackerSidebarHeader({
     <div className="mari-tracker-panel-header sticky top-0 z-30 flex-shrink-0 [background:inherit] shadow-[0_1px_0_color-mix(in_srgb,var(--border)_36%,transparent),0_8px_14px_color-mix(in_srgb,var(--background)_22%,transparent)]">
       <div className="relative flex h-7 items-center justify-between gap-1 px-1">
         {trackerPanelSide === "left" ? settingsControl : closePanelButton}
-        <div className="min-w-0 flex-1" />
+        {/* Loading and failure tiles take the header's button size. A narrow panel clips the package
+            buttons rather than pushing its own controls out. */}
+        <div className="flex min-w-0 flex-1 items-center justify-center gap-0.5 self-stretch overflow-hidden [&_[data-capability-client-state]]:h-6 [&_[data-capability-client-state]]:w-6">
+          {launchers}
+        </div>
         {trackerPanelSide === "left" ? closePanelButton : settingsControl}
       </div>
       <div

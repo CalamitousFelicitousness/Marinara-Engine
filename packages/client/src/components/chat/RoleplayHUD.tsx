@@ -367,12 +367,15 @@ export function RoleplayTrackerCapability({
   packageId,
   chatId,
   compact = false,
+  buttonClassName,
   onRerunSingleTracker,
   isTrackerRetryBusy,
 }: {
   packageId: string;
   chatId: string;
   compact?: boolean;
+  /** Replaces the chat toolbar button look, for hosts with their own button style (the Tracker Panel header). */
+  buttonClassName?: string;
   onRerunSingleTracker?: (agentType: string) => void;
   isTrackerRetryBusy?: boolean;
 }) {
@@ -390,10 +393,12 @@ export function RoleplayTrackerCapability({
           trackerRetryBusy: isTrackerRetryBusy,
           lockMode,
           onToggleLockMode: onSetLockMode ? () => onSetLockMode(!lockMode) : undefined,
-          toolbarButtonClass: getChatToolbarButtonClass({
-            compact,
-            className: compact ? CHAT_TOOLBAR_MOBILE_OVERFLOW_HEIGHT_CLASS : undefined,
-          }),
+          toolbarButtonClass:
+            buttonClassName ??
+            getChatToolbarButtonClass({
+              compact,
+              className: compact ? CHAT_TOOLBAR_MOBILE_OVERFLOW_HEIGHT_CLASS : undefined,
+            }),
         }}
         className="contents"
       />

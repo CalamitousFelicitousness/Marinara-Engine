@@ -3699,7 +3699,8 @@ async function applyRetryResultEffects(args: {
                 : null,
               imgConnFull.imagePromptInstructions,
             ];
-            const writerStyle = removeCopiedPromptGuidance(style, writerGuidance);
+            // A style that was only the copied Style text is dropped; the prompt keeps the subject.
+            const writerStyle = removeCopiedPromptGuidance(style, writerGuidance, { allowEmpty: true });
             let fullPrompt = buildIllustratorImagePrompt({
               gameArtStylePrompt,
               style: writerStyle,

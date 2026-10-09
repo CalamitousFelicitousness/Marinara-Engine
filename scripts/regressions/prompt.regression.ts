@@ -4836,6 +4836,8 @@ const cases: RegressionCase[] = [
       );
       // A writer that returned nothing but the guidance keeps its text, so the image still has a subject.
       assert.equal(removeCopiedPromptGuidance(echoedStyle, [danbooruStyle]), echoedStyle);
+      // A JSON "style" that was only the copied Style text is dropped; the prompt keeps the subject.
+      assert.equal(removeCopiedPromptGuidance(echoedStyle, [danbooruStyle], { allowEmpty: true }), "");
       // A sentence the user wrapped over two lines is still one sentence.
       assert.equal(
         removeCopiedPromptGuidance("1girl, Use moody lighting and show long shadows in rain., solo", [

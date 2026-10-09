@@ -60,11 +60,16 @@ export function resolveImageStyleGuidanceText(
  * configured text such as positive tags or appearance notes is added. Only guidance written as
  * a sentence counts: it ends with . ! or ? and has at least four words between commas, so tag
  * lists and tag phrases such as "masterpiece, best quality" are never removed. If the writer's
- * text was nothing but copied guidance, it comes back unchanged rather than leaving no subject.
+ * text was nothing but copied guidance, it comes back unchanged rather than leaving no subject;
+ * pass `allowEmpty` for an optional field such as the JSON "style", which may come back empty.
  * ponytail: shorter or unpunctuated instructions are kept even when copied; telling them from
  * tags would need a grammar check.
  */
-export function removeCopiedPromptGuidance(text: string, guidance: ReadonlyArray<string | null | undefined>): string {
+export function removeCopiedPromptGuidance(
+  text: string,
+  guidance: ReadonlyArray<string | null | undefined>,
+  { allowEmpty = false }: { allowEmpty?: boolean } = {},
+): string {
   const tokens = Array.from(text.matchAll(/[\p{L}\p{N}]+/gu), (match) => ({
     word: match[0].toLowerCase(),
     start: match.index,
@@ -109,7 +114,7 @@ export function removeCopiedPromptGuidance(text: string, guidance: ReadonlyArray
     .join("\n")
     .replace(/\n{3,}/gu, "\n\n")
     .trim();
-  return tidy || text;
+  return tidy || (allowEmpty ? "" : text);
 }
 
 /**

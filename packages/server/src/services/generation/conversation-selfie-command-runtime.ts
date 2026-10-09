@@ -225,7 +225,12 @@ async function generateSelfie(
     : `Generate a casual selfie of ${args.charName} based on the current conversation context.`;
   const debugOverrideEnabled = args.debugMode === true || isDebugAgentsEnabled();
   if (debugOverrideEnabled || logger.isLevelEnabled("debug")) {
-    logDebugOverride(debugOverrideEnabled, "[debug/commands/selfie] prompt-builder system:\n%s", selfieSystemPrompt);
+    // Log the system prompt as sent, with the image connection's instructions (#7357).
+    logDebugOverride(
+      debugOverrideEnabled,
+      "[debug/commands/selfie] prompt-builder system:\n%s",
+      selfieSystemPromptWithImageInstructions,
+    );
     logDebugOverride(debugOverrideEnabled, "[debug/commands/selfie] prompt-builder user:\n%s", userPrompt);
   }
   const promptResult = await promptRuntime.provider.chatComplete(
@@ -337,6 +342,11 @@ async function generateSelfie(
     omitProfileStyleText: true,
     omitProfileSubjectTags: true,
   });
+  logDebugOverride(
+    debugOverrideEnabled,
+    "[debug/commands/selfie] final image prompt:\n%s",
+    compiledSelfiePrompt.prompt,
+  );
   const imageResults = await generateIllustratorImageVariants({
     count: args.chatMeta.illustratorImagesPerGeneration,
     generate: () =>

@@ -1,8 +1,9 @@
 /**
  * #7325: with every lorebook budget turned off, an entry whose text is blank, or that macros
  * resolve to nothing, was reported as "skipped by token budget" (blocked by the chat budget,
- * "3 / 0"). Such an entry has nothing to add, so no budget skipped it. Real budget skips are
- * still reported, each naming the budget that blocked it.
+ * "3 / 0"). Such an entry has nothing to add, so no budget skipped it, and its macros
+ * ({{setvar}}) still apply. Real budget skips are still reported, each naming the budget that
+ * blocked it.
  */
 import assert from "node:assert/strict";
 
@@ -11,6 +12,8 @@ const { processLorebooks, resolveAndBudgetActivatedLorebookEntriesWithDiagnostic
   await import("../../packages/server/src/services/lorebook/index.js");
 const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
 const { createLorebooksStorage } = await import("../../packages/server/src/services/storage/lorebooks.storage.js");
+const { resolveMacrosWithVariableSnapshot } =
+  await import("../../packages/server/src/services/prompt/macro-context.js");
 
 type Entry = ReturnType<typeof createLorebookEntrySchema.parse> & { id: string };
 const image = { path: "lorebook-images/coat.png", caption: "Blue coat" };
@@ -52,6 +55,27 @@ const ids = (rows: Array<{ entry: { id: string } }>) => rows.map((row) => row.en
   );
   assert.deepEqual(ids(result.selected), ["facts", "picture"]);
   assert.deepEqual(result.budgetSkippedEntries, [], "nothing is skipped by a budget when every budget is off");
+}
+
+// A {{setvar}}-only entry adds no text, but its variable still applies, so an entry that reads it keeps its text.
+{
+  const macroContext = { user: "User", char: "Char", characters: ["Char"], variables: {} as Record<string, string> };
+  const result = resolveAndBudgetActivatedLorebookEntriesWithDiagnostics(
+    [
+      activation("setter", "{{setvar::met_vibrance::yes}}", { order: 1 }),
+      activation("trust", '{{#if {{getvar::met_vibrance}} == "yes"}}Vibrance trusts you.{{/if}}', { order: 2 }),
+    ] as never,
+    budgets(0) as never,
+    0,
+    0,
+    (value: string) => resolveMacrosWithVariableSnapshot(value, macroContext as never),
+  );
+  assert.deepEqual(
+    result.selected.map((row) => [row.entry.id, row.entry.content]),
+    [["trust", "Vibrance trusts you."]],
+  );
+  assert.equal(macroContext.variables.met_vibrance, "yes", "the {{setvar}} entry's variable is kept");
+  assert.deepEqual(result.budgetSkippedEntries, []);
 }
 
 // Real skips still report the budget that blocked them.

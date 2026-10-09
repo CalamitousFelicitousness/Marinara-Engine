@@ -646,6 +646,20 @@ function sameActivatedEntrySet(a: ActivatedEntry[], b: ActivatedEntry[]): boolea
   return a.every((entry) => bIds.has(entry.entry.id));
 }
 
+/**
+ * The selected entries plus the ones macros turned into nothing. Those add no text, but their
+ * macros ({{setvar}}) still apply, so entries that read those variables keep their text (#7325).
+ * ponytail: they are not activated, so their sticky/cooldown/ephemeral counters do not tick; return
+ * them from the batch to processLorebooks if a {{setvar}}-only entry ever needs a cooldown.
+ */
+function keptLorebookPassEntries(pass: LorebookResolutionPass, selected: ActivatedEntry[]): ActivatedEntry[] {
+  const selectedIds = new Set(selected.map((entry) => entry.entry.id));
+  const emptied = pass.entries.filter(
+    (entry) => !selectedIds.has(entry.entry.id) && !entry.entry.content.trim() && !entry.entry.images?.length,
+  );
+  return [...selected, ...emptied];
+}
+
 function getBudgetSkipReason(exceedsLorebookBudget: boolean, exceedsGlobalBudget: boolean): LorebookBudgetSkipReason {
   if (exceedsLorebookBudget && exceedsGlobalBudget) return "both";
   if (exceedsLorebookBudget) return "lorebook";
@@ -936,8 +950,9 @@ function selectBudgetedLorebookEntryBatch(
     }
 
     selectedFromCandidates.sort(lorebookInjectionOrder);
+    const kept = keptLorebookPassEntries(pass, selectedFromCandidates);
 
-    if (sameActivatedEntrySet(pool, selectedFromCandidates)) {
+    if (sameActivatedEntrySet(pool, kept)) {
       commitLorebookResolutionPass(pass);
       return {
         selectedFromCandidates: includeOptionalImages
@@ -950,7 +965,7 @@ function selectBudgetedLorebookEntryBatch(
 
     rollbackLorebookResolutionPass(pass);
     lastSkippedBudgetEntries = skippedFromCandidates;
-    pool = selectedFromCandidates;
+    pool = kept;
   }
 
   const pass = resolveLorebookResolutionPass(pool, resolveContent);
@@ -986,7 +1001,7 @@ function selectBudgetedLorebookEntryBatch(
   }
 
   selectedFromCandidates.sort(lorebookInjectionOrder);
-  if (sameActivatedEntrySet(pool, selectedFromCandidates)) {
+  if (sameActivatedEntrySet(pool, keptLorebookPassEntries(pass, selectedFromCandidates))) {
     commitLorebookResolutionPass(pass);
     return {
       selectedFromCandidates: includeOptionalImages

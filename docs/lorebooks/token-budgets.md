@@ -58,7 +58,7 @@ Each skipped entry names the lorebook it came from and why it was blocked. The r
 - **lorebook and chat budgets**: both caps were already full.
 - **current-location context cap**: the entry is lore attached to the current location, which has its own limit of 2,048 tokens. No setting changes it, but the entry can still come in through its own keywords.
 
-An entry whose text is blank, or that macros turn into nothing, is not listed. It has nothing to add, so no budget skipped it. With both token budgets at **0**, only the current-location limit can list skipped entries here.
+An entry whose text is blank, or that macros turn into nothing, is not listed. It has nothing to add, so no budget skipped it. Its macros still run, so a `{{setvar}}` in it still sets the variable. With both token budgets at **0**, only the current-location limit can list skipped entries here.
 
 Expand a skipped entry to see more detail. It shows the matched keywords, the estimated token size, and how much of the budget was already used. If large lorebooks keep getting skipped, **Active Context** suggests the **Knowledge Retrieval** or **Knowledge Router** agents. These often fit big lorebooks better than raising your caps.
 

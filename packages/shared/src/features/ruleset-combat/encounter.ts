@@ -1918,6 +1918,10 @@ function mechanicsAction(
           use: {
             // Another entry's uses, by their row's name (1.234): Frenzy spends a rage.
             name: mechanics.usesOf ?? from.label,
+            // Paying for it is this entry's own price plus that one counter, not the other entry's.
+            ...(mechanics.usesOf
+              ? { usesOf: { cost: (mechanics.cost ?? []).map((term) => ({ pool: term.pool, amount: term.amount })) } }
+              : {}),
             ...(cost ? { pool: cost.pool } : {}),
             // A cost names a live pool, and then the family is that pool's, or it names the family
             // itself. Left out entirely when there is no family: the state is written as JSON, and a

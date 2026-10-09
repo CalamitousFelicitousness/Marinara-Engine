@@ -1340,6 +1340,10 @@ export function planRulesetUse(
   /** A pool the use gives back to, which it never spends (1.247): Font of Magic turning a slot into
    *  the Sorcery Points its own row counts. */
   keeps?: string,
+  /** Spending another entry's counter by name (1.234 `usesOf`): the price is these terms, the using
+   *  entry's own, and of the named entry only the counter the name is, never its cost or its other
+   *  rows (Flurry of Blows' ki is not a Martial Arts use). */
+  borrowed?: { cost: ReadonlyArray<{ pool: string; amount: number }> },
 ): RulesetUsePlan {
   const wanted = op.name.trim();
   if (!wanted) return { ok: false, reason: "unknown-entry" };
@@ -1366,7 +1370,7 @@ export function planRulesetUse(
     const family = pool.group ? definition.sheet.live.pools.filter((one) => one.group === pool.group) : [];
     return family.indexOf(pool) + 1;
   };
-  const terms = entry.mechanics?.cost ?? [];
+  const terms = borrowed ? borrowed.cost : (entry.mechanics?.cost ?? []);
   let costs: Array<{ pool: string; amount: number }> = [...terms];
   if (op.pool !== undefined) {
     // An upcast: one price, paid out of another pool of the same family. Anything else is refused
@@ -1423,7 +1427,24 @@ export function planRulesetUse(
   }
 
   // Plus one from every list-row pool this same entry wrote: the counter that tracks a feature's
-  // uses is one of the entry's own rows, found by the same mark.
+  // uses is one of the entry's own rows, found by the same mark. A borrowed name spends only the row
+  // it names, when a row has that name; one naming the entry itself still means all of its rows.
+  const rowName = (list: RulesetList, cells: Record<string, unknown>): string | undefined => {
+    const name = own(cells, list.pools?.nameColumn ?? "");
+    return typeof name === "string" ? name : undefined;
+  };
+  const onlyNamed =
+    !!borrowed &&
+    definition.sheet.lists.some((list) => {
+      const rows = build.lists?.[list.id];
+      if (!list.pools || !Array.isArray(rows)) return false;
+      return rows.some((row) => {
+        if (!row || typeof row !== "object") return false;
+        const cells = row as Record<string, unknown>;
+        const name = rowName(list, cells);
+        return own(cells, RULESET_CATALOG_ROW_KEY) === ref && !!name && sameName(name, wanted);
+      });
+    });
   for (const list of definition.sheet.lists) {
     const pools = list.pools;
     const rows = build.lists?.[list.id];
@@ -1434,6 +1455,7 @@ export function planRulesetUse(
       if (own(cells, RULESET_CATALOG_ROW_KEY) !== ref) continue;
       const name = own(cells, pools.nameColumn);
       if (typeof name !== "string") continue;
+      if (onlyNamed && !sameName(name, wanted)) continue;
       const key = `${list.id}${LIST_POOL_SEPARATOR}${name.trim().toLowerCase()}`;
       const pool = resolved.pools.find((candidate) => candidate.key === key);
       // A counter whose maximum is 0 is not a pool at all (a scaled trick on a Heart of 0), so

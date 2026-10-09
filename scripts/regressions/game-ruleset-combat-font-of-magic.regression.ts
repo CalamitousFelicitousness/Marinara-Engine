@@ -6,6 +6,8 @@
  *   - `overMax`: a slot made from points goes past the slots' maximum, is spent like any other, and
  *     goes at a long rest. A slot of a level the sorcerer has none of is not on the menu.
  *   - Import refusals and the install gate.
+ *   - Spending another entry's counter (`usesOf`) pays this entry's own price and that counter only,
+ *     never the other entry's cost or its other rows.
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -49,6 +51,8 @@ try {
     rows: [
       { list: "features", values: { name: "Font of Magic" } },
       { list: "counters", values: { name: "Sorcery Points", max: 5, recharge: "long" } },
+      // A second counter of the same entry, which spending its points by name must leave alone.
+      { list: "counters", values: { name: "Font Charges", max: 2, recharge: "long" } },
     ],
     mechanics: {
       kind: "buff",
@@ -109,13 +113,13 @@ try {
     },
     lists: { features: rows("features"), counters: rows("counters") },
   });
-  const fight = (live: RulesetLiveState = {}): RulesetEncounterState => {
+  const fight = (live: RulesetLiveState = {}, catalog = features): RulesetEncounterState => {
     const state = createRulesetEncounter({
       definition,
       seed: 1,
       roller: roll,
       combatants: [
-        { id: "sorc", name: "Sorcerer", side: "party", build, live, catalogs: { sorcery: features } },
+        { id: "sorc", name: "Sorcerer", side: "party", build, live, catalogs: { sorcery: catalog } },
         {
           id: "foe",
           name: "Foe",
@@ -186,6 +190,18 @@ try {
     const step = take(state, "Font of Magic 2");
     assert.equal(points(step.state), 2, "a 2nd-level slot costs three points");
     assert.equal(slots(step.state, 2), 4, "and goes past the three the sorcerer has");
+    assert.equal(slots(step.state, 1), 4, "the points' own entry is not paid for too: no 1st-level slot goes");
+    assert.deepEqual(
+      of(step.events, "spend").map((one) => one.label),
+      ["Sorcery Points"],
+      "only the counter it names is spent",
+    );
+    const priced = structuredClone(features) as Array<Record<string, any>>;
+    priced[1]!.mechanics.cost = [{ pool: "slots_3", amount: 1 }];
+    const own = take(fight({}, priced as unknown as RulesetCatalogEntry[]), "Font of Magic 2");
+    assert.equal(slots(own.state, 3), 1, "a price of its own is paid");
+    assert.equal(slots(own.state, 1), 4, "and still not the other entry's");
+    assert.equal(points(own.state), 2);
     const restored = of(step.events, "restored");
     assert.equal(restored[0]!.value, 4);
     assert.equal(restored[0]!.max, 3);

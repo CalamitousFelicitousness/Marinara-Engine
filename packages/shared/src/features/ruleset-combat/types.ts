@@ -557,6 +557,9 @@ export interface RulesetCombatAction {
     stepsMax?: number;
     /** How many of the row's uses one use spends (1.240). */
     count?: number;
+    /** `name` is another entry's counter (1.234 `usesOf`): only that counter is spent, and the price
+     *  is this entry's own cost, never the other entry's. */
+    usesOf?: { cost: Array<{ pool: string; amount: number }> };
   };
   uses?: RulesetCombatUses;
   recharge?: RulesetCombatRecharge;

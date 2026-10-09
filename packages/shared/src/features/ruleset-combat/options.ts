@@ -793,6 +793,7 @@ export function planRulesetCombatCost(
     { op: "use", name: action.use.name, ...(payWith ? { pool: payWith } : {}) },
     count ?? action.use.count,
     action.restore?.pool,
+    action.use.usesOf,
   );
   if (!plan.ok) return null;
   let live = combatant.sheet.live;

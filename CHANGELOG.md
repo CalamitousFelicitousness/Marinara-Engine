@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: an ability that spends another feature's uses (such as Flurry of Blows spending ki) now pays its own price and that one counter only, not the other feature's cost or its other counters.
 - Rulesets: sorcerers' Metamagic (Careful, Distant, Empowered, Extended, Heightened, Quickened, Subtle and Twinned Spell) is chosen as a spell is cast and paid for with Sorcery Points (Capability API 1.248).
 - Rulesets: sorcerers' Font of Magic turns spell slots into Sorcery Points and points into slots, which may go past the usual number until a long rest (Capability API 1.247).
 - Rulesets: paladins choose how many Lay on Hands points to spend, healing one hit point for each, or spend just enough to heal the target fully (Capability API 1.246).

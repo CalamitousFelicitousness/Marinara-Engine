@@ -3858,6 +3858,13 @@ export function rulesetAuraReaches(
     if (!rulesetTargetHasSenses(definition, state, target, aura.needs)) return false;
     if (zoneTakesSenses(definition, state, holder, aura.needs)) return false;
   }
+  // Only who is this (1.263): a sea hag's humanoids.
+  if (!rulesetTargetTypesAllow(definition, target, aura.targetTypes)) return false;
+  // Only who has put one of these on its holder (1.263): whoever grapples a barbed devil.
+  if (aura.sourcesOf?.length) {
+    const named = aura.sourcesOf;
+    if (!holder.tracked.some((entry) => entry.source === target.id && named.includes(entry.condition))) return false;
+  }
   return true;
 }
 

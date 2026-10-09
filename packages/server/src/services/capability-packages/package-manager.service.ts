@@ -1549,6 +1549,22 @@ function carriesMetamagic(value: unknown, depth = 0): boolean {
 
 /** An aura that needs senses, harms at its holder's turn or asks for a save, or a save change
  *  narrowed to what is cast from a catalog (1.260). */
+/** Auras by what their target is or whoever put a condition on the holder, saves with a fail margin
+ *  or averted eyes, and a save ending a condition leaning while its source is in sight (1.263). */
+function carriesGazes(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesGazes(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (typeof record.distance === "number" && typeof record.side === "string") {
+    const save = plainRecord(record.save);
+    if (record.targetTypes !== undefined || record.sourcesOf !== undefined) return true;
+    if (save && (save.failedBy !== undefined || save.avert !== undefined)) return true;
+  }
+  if (plainRecord(record.saveEnds)?.seenLean !== undefined) return true;
+  return Object.values(record).some((one) => carriesGazes(one, depth + 1));
+}
+
 /** Senses any one of which serves, targets kept near each other, an area that grows with its cost, more
  *  uses on an item, and what a stat block holds (1.262), in catalogs too. */
 function carriesTargetingMore(value: unknown, depth = 0): boolean {
@@ -3632,6 +3648,14 @@ export function getCapabilityPackageInstallIssue(
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
   }
   // Dropping, keeping out, a turn freed when stuck, saves out of sight, destroying by tier, 1.261.
+  // Auras by target kind or on whoever holds its holder, gaze margins and averting, saves leaning in
+  // sight, 1.263.
+  if (
+    !declaresApi(263) &&
+    (carriesGazes(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesGazes(document)))
+  ) {
+    return "A ruleset with auras reaching only some kinds of creature or whoever holds its holder, an aura save worse when failed by enough or one whose holder's eyes can be averted, or a save rolled leaning while its source is in sight, requires schemaVersion 2 and capabilityApi 1.263 or newer";
+  }
   // Senses any one of which serves, targets near each other, areas growing with cost, more item
   // uses, and a stat block's held things, 1.262.
   if (

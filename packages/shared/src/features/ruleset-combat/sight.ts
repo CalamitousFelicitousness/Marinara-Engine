@@ -100,8 +100,10 @@ export function rulesetCanSee(
   const own = new Set(rulesetCombatConditions(definition, viewer));
   const entries = combat.conditions ?? [];
   const eyes = combat.sight?.eyes;
+  // Eyes kept from a gaze's holder (1.263) see nothing of them; a blind sense still does.
   const sightless =
-    eyes !== undefined && entries.some((entry) => own.has(entry.condition) && entry.lacks?.includes(eyes));
+    !!viewer.averted?.includes(seen.id) ||
+    (eyes !== undefined && entries.some((entry) => own.has(entry.condition) && entry.lacks?.includes(eyes)));
   const grid = state.board?.grid;
   const from = rulesetPositionOf(viewer);
   const to = rulesetPositionOf(seen);

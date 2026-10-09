@@ -548,6 +548,11 @@ export function rulesetCombatEventLine(
       });
     case "pickedUp":
       return key("pickedUp", { actor: names.combatant(event.actorId), item: event.label });
+    case "averted":
+      return key(event.back ? "lookedBack" : "averted", {
+        actor: names.combatant(event.actorId),
+        target: names.combatant(event.holderId),
+      });
     case "resized":
       return key("resized", { target: names.combatant(event.targetId), size: event.label });
     case "section":

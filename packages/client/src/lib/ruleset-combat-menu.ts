@@ -141,6 +141,11 @@ export function rulesetOptionLabel(option: DirectedRulesetOption, t: TFunction):
     });
   // Picking up what was dropped (1.261) is the Engine's own move too.
   if (option.pickUp) return t("game.combat.ruleset.menu.pickUp", { item: option.label });
+  // Averting the eyes from a gaze (1.263), and looking again.
+  if (option.avert)
+    return t(option.avert.back ? "game.combat.ruleset.menu.lookBack" : "game.combat.ruleset.menu.avert", {
+      target: option.label,
+    });
   if (option.kind !== "standard") return option.label;
   return t(`game.combat.ruleset.standard.${option.label}`, { defaultValue: option.label });
 }

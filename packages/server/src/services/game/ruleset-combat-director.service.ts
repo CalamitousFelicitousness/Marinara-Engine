@@ -1110,6 +1110,8 @@ function rulesetCandidatesFrom(
     // Walking is not a candidate of its own: it is what a candidate does before it acts, and a turn
     // with nothing to act on closes the distance instead (see `rulesetClosingMove`).
     if (option.kind === "move") continue;
+    // Averting the eyes is settled as the turn starts (see `playRulesetTurn`).
+    if (option.avert) continue;
     // From another cell, only what the actor would do THERE is worth enumerating: everything it
     // could do without moving is already on the list.
     if (standing && option.targets.count <= 0 && !option.area) continue;
@@ -1699,6 +1701,17 @@ function playRulesetTurn(
     (option) => option.pickUp && !option.budget,
   );
   if (pickUp) applyChoice(definition, state, fight, { actorId, optionId: pickUp.id, targetIds: [] });
+  // A gaze it may keep its eyes from (1.263): kept from while anybody else is left to fight, looked
+  // at again once its holder is all that is left.
+  for (const option of rulesetCombatOptions(definition, fight.encounter, actorId)) {
+    if (!option.avert) continue;
+    const self = rulesetCombatant(fight.encounter, actorId);
+    const others = fight.encounter.combatants.some(
+      (one) => !one.defeated && one.side !== self?.side && one.id !== option.avert!.holderId,
+    );
+    if (option.avert.back ? !others : others)
+      applyChoice(definition, state, fight, { actorId, optionId: option.id, targetIds: [] });
+  }
   // Driven away or toward somebody (1.259), the walk comes first, sprinting where it may.
   const actor = rulesetCombatant(fight.encounter, actorId);
   if (actor && rulesetDrivenFrom(definition, fight.encounter, actor))

@@ -96,6 +96,8 @@ export interface RulesetCombatSaveEnds {
   failures?: { count: number; becomes: string };
   /** Rolled only while its holder cannot see whoever put it on (1.261). */
   unseen?: true;
+  /** Rolled with this lean while its holder can see whoever put it on (1.263). */
+  seenLean?: "advantage" | "disadvantage";
 }
 
 /** One thing a combatant let fall (1.261). */
@@ -1001,6 +1003,8 @@ export interface RulesetCombatant {
   /** Auras whose save they made and are now proof against for the fight (1.260), as
    *  `<holder>/<condition>`. */
   auraSafe?: string[];
+  /** Whose gaze they keep their eyes from (1.263): they skip its save and cannot see them. */
+  averted?: string[];
   /** What they let fall (1.261), each lying where it fell until they pick it up: a held item by
    *  `item:<its place in sheet.items>`, a stat block action by its id. */
   dropped?: RulesetDroppedThing[];
@@ -1452,6 +1456,7 @@ export type RulesetCombatEvent =
   /** What a condition made its holder let fall (1.261), and picking one thing back up. */
   | { type: "letFall"; actorId: string; condition: string; labels: string[] }
   | { type: "pickedUp"; actorId: string; label: string }
+  | { type: "averted"; actorId: string; holderId: string; back?: true }
   /** What a condition's table made of a turn as it began (1.259): the roll, and what it does. */
   | {
       type: "compelled";
@@ -2015,6 +2020,8 @@ export interface RulesetCombatOption {
   on?: boolean;
   /** Picking up what its holder dropped (1.261), named by `label`. */
   pickUp?: true;
+  /** Averting the eyes from a gaze's holder, named by `label`, or looking at them again (1.263). */
+  avert?: { holderId: string; back?: true };
   /** Paid out of a budget a condition grants for an attack of one strike (combat C6d, Haste's extra
    *  action): the strikes the attack would otherwise put in hand are not given. */
   oneStrike?: true;

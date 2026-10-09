@@ -52,6 +52,7 @@ export * from "./zones.js";
 export * from "./sight.js";
 export {
   RULESET_PICK_UP_OPTION_PREFIX,
+  RULESET_AVERT_OPTION_PREFIX,
   applyRulesetFightItemChanges,
   rulesetActionDropped,
   rulesetActionItemIndex,

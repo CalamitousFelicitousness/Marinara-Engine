@@ -17,6 +17,7 @@ import {
 import { readRulesetLive, type RulesetSheetOp } from "../rulesets/live-state.js";
 import {
   RULESET_PICK_UP_OPTION_PREFIX,
+  RULESET_AVERT_OPTION_PREFIX,
   breakRulesetItem,
   recoverRulesetAmmo,
   rulesetActionDropped,
@@ -1914,10 +1915,16 @@ function endConditionsOnHarm(
       saveOutOfSight(ctx, target, tracked)
     ) {
       if (onDamage) damageSaves?.add(tracked);
-      const saved = rollSave(ctx, target, tracked.saveEnds.save, tracked.difficulty, tracked.source, undefined, {
-        conditions: [condition],
-        ...(tracked.action ? { action: tracked.action } : {}),
-      });
+      const saved = rollSave(
+        ctx,
+        target,
+        tracked.saveEnds.save,
+        tracked.difficulty,
+        tracked.source,
+        undefined,
+        { conditions: [condition], ...(tracked.action ? { action: tracked.action } : {}) },
+        leanInSight(ctx, target, tracked),
+      );
       if (savedAgainst(ctx, target, tracked, saved)) continue;
     }
     if (!(dealt > 0 || harmful) || !rule?.endsWhen?.includes("harmed-by-source-side") || !tracked || !actor) continue;
@@ -1992,11 +1999,17 @@ function tickConditionsNow(ctx: RulesetCombatContext, actor: RulesetCombatant, a
     if (!actor.tracked.includes(entry)) continue;
     // A save with nothing to be rolled against is not rolled: the condition runs on its clock.
     if (entry.saveEnds?.at === at && entry.difficulty !== undefined && saveOutOfSight(ctx, actor, entry)) {
-      const saved = rollSave(ctx, actor, entry.saveEnds.save, entry.difficulty, entry.source, undefined, {
-        conditions: [entry.condition],
+      const saved = rollSave(
+        ctx,
+        actor,
+        entry.saveEnds.save,
+        entry.difficulty,
+        entry.source,
+        undefined,
         // Still a save against the action that put it on (1.186).
-        ...(entry.action ? { action: entry.action } : {}),
-      });
+        { conditions: [entry.condition], ...(entry.action ? { action: entry.action } : {}) },
+        leanInSight(ctx, actor, entry),
+      );
       if (savedAgainst(ctx, actor, entry, saved)) continue;
     }
     // A clock counts the holder's turns down as each one ends, or, where it says so, as each begins.
@@ -2013,6 +2026,20 @@ function saveOutOfSight(ctx: RulesetCombatContext, holder: RulesetCombatant, ent
   const source = entry.source ? rulesetCombatant(ctx.state, entry.source) : undefined;
   if (!source || !rulesetCombatStanding(source)) return true;
   return !rulesetCanSee(ctx.definition, ctx.state, holder, source);
+}
+
+/** The lean a save that ends a condition is rolled with while its holder can see whoever put it on
+ *  (1.263): a sea hag's Horrific Appearance, with disadvantage while she is in sight. */
+function leanInSight(
+  ctx: RulesetCombatContext,
+  holder: RulesetCombatant,
+  entry: RulesetTrackedCondition,
+): "advantage" | "disadvantage" | undefined {
+  const lean = entry.saveEnds?.seenLean;
+  if (!lean) return undefined;
+  const source = entry.source ? rulesetCombatant(ctx.state, entry.source) : undefined;
+  if (!source || !rulesetCombatStanding(source)) return undefined;
+  return rulesetCanSee(ctx.definition, ctx.state, holder, source) ? lean : undefined;
 }
 
 /**
@@ -3153,6 +3180,20 @@ function applyChoice(
     return finish();
   }
 
+  // Averting the eyes from a gaze, or looking again (1.263): free.
+  if (option.avert && option.id.startsWith(RULESET_AVERT_OPTION_PREFIX)) {
+    const { ctx, finish } = begin(definition, combat, state, roller);
+    const working = rulesetCombatant(ctx.state, actor.id)!;
+    const { holderId, back } = option.avert;
+    const kept = (working.averted ?? []).filter((id) => id !== holderId);
+    if (!back) kept.push(holderId);
+    if (kept.length) working.averted = kept;
+    else delete working.averted;
+    ctx.events.push({ type: "averted", actorId: working.id, holderId, ...(back ? { back: true as const } : {}) });
+    noteOutcome(ctx);
+    return finish();
+  }
+
   // Picking up what was dropped (1.261): for the budget it named, else the turn's free pick-up.
   if (option.pickUp && option.id.startsWith(RULESET_PICK_UP_OPTION_PREFIX)) {
     const { ctx, finish } = begin(definition, combat, state, roller);
@@ -3306,10 +3347,16 @@ function applyChoice(
   if (option.resave) {
     const entry = working.tracked.find((one) => one.condition === option.resave!.condition);
     if (entry?.saveEnds && entry.difficulty !== undefined && saveOutOfSight(ctx, working, entry)) {
-      const saved = rollSave(ctx, working, entry.saveEnds.save, entry.difficulty, entry.source, undefined, {
-        conditions: [entry.condition],
-        ...(entry.action ? { action: entry.action } : {}),
-      });
+      const saved = rollSave(
+        ctx,
+        working,
+        entry.saveEnds.save,
+        entry.difficulty,
+        entry.source,
+        undefined,
+        { conditions: [entry.condition], ...(entry.action ? { action: entry.action } : {}) },
+        leanInSight(ctx, working, entry),
+      );
       savedAgainst(ctx, working, entry, saved);
     }
     noteOutcome(ctx);
@@ -7273,7 +7320,11 @@ function aurasAtTurn(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
       if (save.immuneOnSuccess) actor.auraSafe = [...(actor.auraSafe ?? []), key];
       continue;
     }
-    for (const applied of save.applies) {
+    // Failed by enough, something worse goes on instead (1.263): a medusa's petrifying.
+    const rolled = [...ctx.events].reverse().find((event) => event.type === "save" && event.actorId === actor.id);
+    const missedBy = rolled?.type === "save" ? rolled.difficulty - rolled.total : 0;
+    const applies = save.failedBy && missedBy >= save.failedBy.atLeast ? save.failedBy.applies : save.applies;
+    for (const applied of applies) {
       applyConditionId(ctx, actor, applied.condition, applied as RulesetCombatApplies, {
         sourceId: holder.id,
         difficulty: save.difficulty,

@@ -2264,6 +2264,7 @@ export interface RulesetCatalogSaveEnds {
   successes?: number;
   failures?: { count: number; becomes: string };
   unseen?: true;
+  seenLean?: "advantage" | "disadvantage";
 }
 
 export interface RulesetCatalogApplies {
@@ -2312,6 +2313,9 @@ const catalogAppliesSchema: z.ZodType<RulesetCatalogApplies, z.ZodTypeDef, unkno
         /** Rolled only while its holder cannot see whoever put it on (Capability API 1.261): 5e's
          *  Fear, saved against at the end of a turn out of the caster's line of sight. */
         unseen: z.literal(true).optional(),
+        /** Rolled with this lean while its holder can see whoever put it on (Capability API 1.263):
+         *  a sea hag's Horrific Appearance, saved against with disadvantage while she is in sight. */
+        seenLean: z.enum(["advantage", "disadvantage"]).optional(),
       })
       .strict()
       .optional(),
@@ -6015,6 +6019,14 @@ export interface RulesetConditionAura {
   conditions?: string[];
   when?: { value: RulesetValueRef; atLeast?: number; atMost?: number };
   needs?: string[];
+  targetTypes?: {
+    is?: RulesetTargetIs;
+    not?: RulesetTargetIs;
+    abilityAtMost?: Record<string, number>;
+    abilityAtLeast?: Record<string, number>;
+    notImmuneTo?: string[];
+  };
+  sourcesOf?: string[];
   harms?: { dice?: string; flat?: number; type?: string };
   save?: {
     save: string;
@@ -6022,6 +6034,8 @@ export interface RulesetConditionAura {
     applies: RulesetCatalogApplies[];
     seen?: true;
     immuneOnSuccess?: true;
+    failedBy?: { atLeast: number; applies: RulesetCatalogApplies[] };
+    avert?: true;
   };
 }
 const conditionAuraSchema: z.ZodType<RulesetConditionAura, z.ZodTypeDef, unknown> = z
@@ -6040,6 +6054,12 @@ const conditionAuraSchema: z.ZodType<RulesetConditionAura, z.ZodTypeDef, unknown
     /** Only to whoever has these senses (Capability API 1.260), with neither of them standing where
      *  a zone takes them away: Countercharm's "can hear you", which Silence stops. */
     needs: combatSensesSchema.optional(),
+    /** Only to whoever is this (Capability API 1.263), as an entry's `targetTypes` reads: a sea
+     *  hag's Horrific Appearance, humanoids only. */
+    targetTypes: catalogTargetTypesSchema.optional(),
+    /** Only to whoever has put one of these conditions on its holder (Capability API 1.263): a
+     *  barbed devil's Barbed Hide, harming whoever grapples it. */
+    sourcesOf: uniqueIds(4).optional(),
     /** Dealt by the holder to everybody it reaches as each of the holder's own turns starts
      *  (Capability API 1.260): a balor's Fire Aura, 3d6 fire. */
     harms: z
@@ -6065,8 +6085,24 @@ const conditionAuraSchema: z.ZodType<RulesetConditionAura, z.ZodTypeDef, unknown
         applies: z.array(catalogAppliesSchema).min(1).max(4),
         seen: z.literal(true).optional(),
         immuneOnSuccess: z.literal(true).optional(),
+        /** A failure by at least `atLeast` puts these on instead (Capability API 1.263): a
+         *  medusa's gaze, petrified outright on a failure by 5 or more. */
+        failedBy: z
+          .object({
+            atLeast: z.number().int().min(1).max(50),
+            applies: z.array(catalogAppliesSchema).min(1).max(4),
+          })
+          .strict()
+          .optional(),
+        /** Whoever it reaches may avert their eyes from its holder on their turn (Capability API
+         *  1.263): until they look again they skip this save and cannot see the holder (a
+         *  basilisk's gaze). Only with `seen`. */
+        avert: z.literal(true).optional(),
       })
       .strict()
+      .refine((save) => !save.avert || save.seen, {
+        message: 'Averting the eyes goes with a "seen" save',
+      })
       .optional(),
   })
   .strict()
@@ -9156,7 +9192,19 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
             if (!conditions.has(applied.condition))
               issue([...at, "save", "applies", appliedIndex, "condition"], `Unknown condition "${applied.condition}"`);
           });
+          aura.save.failedBy?.applies.forEach((applied, appliedIndex) => {
+            if (!conditions.has(applied.condition))
+              issue(
+                [...at, "save", "failedBy", "applies", appliedIndex, "condition"],
+                `Unknown condition "${applied.condition}"`,
+              );
+          });
         }
+        aura.sourcesOf?.forEach((held, heldIndex) => {
+          if (!conditions.has(held)) issue([...at, "sourcesOf", heldIndex], `Unknown condition "${held}"`);
+        });
+        targetIsIssues(def, aura.targetTypes?.is, [...at, "targetTypes", "is"], issue);
+        targetIsIssues(def, aura.targetTypes?.not, [...at, "targetTypes", "not"], issue);
         if (aura.when) {
           const names = rulesetSheetNames(def.sheet, def.items);
           for (const found of rulesetValueRefIssues(aura.when.value, names, names.derived)) {

@@ -784,6 +784,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["compelled", say({ type: "compelled", actorId: "lurker", condition: "incapacitated", roll: 2, does: "nothing" })],
     ["letFall", say({ type: "letFall", actorId: "brenna", condition: "incapacitated", labels: ["Mace", "Shield"] })],
     ["pickedUp", say({ type: "pickedUp", actorId: "brenna", label: "Mace" })],
+    ["averted", say({ type: "averted", actorId: "brenna", holderId: "lurker" })],
     [
       "section",
       say({
@@ -1068,6 +1069,11 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   );
   assert.equal(printed.get("letFall"), "Brenna drops Mace, Shield (Incapacitated).");
   assert.equal(printed.get("pickedUp"), "Brenna picks up Mace.");
+  assert.equal(printed.get("averted"), "Brenna averts their eyes from Thorn Lurker.");
+  assert.equal(
+    say({ type: "averted", actorId: "brenna", holderId: "lurker", back: true }),
+    "Brenna looks at Thorn Lurker again.",
+  );
   assert.equal(printed.get("charged"), "Thorn Lurker charges Brenna with Gore.");
   assert.equal(printed.get("pushed"), "Brenna pushes Thorn Lurker back 1, to 4, 2.");
   assert.equal(printed.get("resized"), "Thorn Lurker is now Large.");

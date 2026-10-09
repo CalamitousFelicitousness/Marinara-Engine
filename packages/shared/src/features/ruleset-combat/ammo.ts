@@ -358,6 +358,8 @@ export function applyRulesetFightItemChanges(
 
 /** The option that picks something dropped back up (1.261), followed by what it picks up. */
 export const RULESET_PICK_UP_OPTION_PREFIX = "pickup:";
+/** Averting the eyes from a gaze's holder, or looking again (1.263): `avert:<holder id>`. */
+export const RULESET_AVERT_OPTION_PREFIX = "avert:";
 
 const ITEM_ACTION = /^(?:item|offhand|use|switch|reload):(\d+)(?::\d+)?$/;
 

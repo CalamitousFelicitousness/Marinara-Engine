@@ -13,6 +13,7 @@ import {
 } from "../rulesets/live-state.js";
 import {
   RULESET_PICK_UP_OPTION_PREFIX,
+  RULESET_AVERT_OPTION_PREFIX,
   rulesetActionDropped,
   rulesetAmmoLeft,
   rulesetDroppedItems,
@@ -42,6 +43,7 @@ import {
   rulesetTargetHasSenses,
   rulesetTargetIs,
   rulesetTargetTypesAllow,
+  rulesetAuraSpreaders,
   rulesetCombatant,
   rulesetCombatConditions,
   rulesetCombatDamageKind,
@@ -2557,6 +2559,43 @@ function pickUpOptions(actor: RulesetCombatant): RulesetCombatOption[] {
   return out;
 }
 
+/** Averting the eyes from each holder of a gaze that may be averted (1.263), and looking at whoever
+ *  they keep them from again. Free, and as often as they like. */
+function avertOptions(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  actor: RulesetCombatant,
+): RulesetCombatOption[] {
+  const out: RulesetCombatOption[] = [];
+  const away = new Set(actor.averted ?? []);
+  for (const holderId of away) {
+    const holder = rulesetCombatant(state, holderId);
+    if (!holder || holder.defeated) continue;
+    out.push({
+      id: `${RULESET_AVERT_OPTION_PREFIX}${holderId}`,
+      kind: "standard",
+      label: holder.name,
+      targets: { side: "self", count: 0 },
+      avert: { holderId, back: true },
+    });
+  }
+  const offered = new Set<string>();
+  for (const { holder, aura } of rulesetAuraSpreaders(definition, state)) {
+    if (!aura.save?.avert || holder.id === actor.id || holder.defeated) continue;
+    if (away.has(holder.id) || offered.has(holder.id)) continue;
+    if (aura.side === (holder.side === actor.side ? "enemies" : "allies")) continue;
+    offered.add(holder.id);
+    out.push({
+      id: `${RULESET_AVERT_OPTION_PREFIX}${holder.id}`,
+      kind: "standard",
+      label: holder.name,
+      targets: { side: "self", count: 0 },
+      avert: { holderId: holder.id },
+    });
+  }
+  return out;
+}
+
 /** The menu as it would be with no condition deciding the turn (1.259). */
 export function rulesetUncompelledOptions(
   definition: RulesetDefinition,
@@ -2612,6 +2651,7 @@ export function rulesetUncompelledOptions(
     if (rulesetOptionTargets(definition, state, actor.id, option).length > 0) options.push(option);
   }
   options.push(...pickUpOptions(actor));
+  options.push(...avertOptions(definition, state, actor));
   // Moving a lasting area its caster holds at a point (1.168): picked on the board as a walk is.
   for (const zone of actor.zones ?? []) {
     const move = actor.actions.find((entry) => entry.id === zone.actionId)?.zone?.move;

@@ -517,7 +517,7 @@ export interface RulesetCombatAction {
   /** Taken as its holder's own attack hits, its damage joins that blow (1.236): Divine Smite. */
   addsToBlow?: true;
   /** Taken as somebody else's attack hits, these dice come off the roll (1.245): Cutting Words. */
-  lowersRoll?: { count: number; sides: number; flat: number };
+  lowersRoll?: { count: number; sides: number; flat: number; also?: Array<"checks" | "damage"> };
   /** Its user chooses how many uses one use spends, and it heals that many times over (1.246). */
   usesChosen?: true;
   /** Changes how another action is used, chosen with it and paid for with this one's uses (1.248):
@@ -1720,6 +1720,8 @@ export type RulesetCombatEvent =
       label: string;
       /** The attack it was taken off. */
       to: string;
+      /** Off an ability check or a damage roll instead of an attack roll (1.252). */
+      roll?: "checks" | "damage";
       rolls: number[];
       by: number;
       total: number;
@@ -1854,6 +1856,10 @@ export interface RulesetCombatRescue {
   by: "reroll" | "success" | "twenty" | "die";
   /** The die it adds, for `die`, as its holder's sheet sized it. */
   amount?: RulesetCombatAmount;
+  /** Only these saves (1.252): a ring of evasion's Dexterity saves. */
+  saves?: string[];
+  /** The budget spending it takes (1.252): a ring of evasion's reaction. */
+  budget?: string;
 }
 
 /** An alteration an option may be used with (1.248), and what it costs at the option's own level. */

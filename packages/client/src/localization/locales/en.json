@@ -1300,6 +1300,8 @@
   "game.combat.ruleset.event.healthPoolNone": "{{actor}}'s {{label}} rolls {{total}}, not enough for anybody.",
   "game.combat.ruleset.event.initiative": "Initiative: {{order}}.",
   "game.combat.ruleset.event.lowered": "{{actor}}'s {{label}} takes {{by}} off {{target}}'s {{to}}, to {{total}}.",
+  "game.combat.ruleset.event.loweredCheck": "{{actor}}'s {{label}} takes {{by}} off {{target}}'s check for {{to}}, to {{total}}.",
+  "game.combat.ruleset.event.loweredDamage": "{{actor}}'s {{label}} takes {{by}} off {{target}}'s {{to}} damage, to {{total}}.",
   "game.combat.ruleset.event.move": "{{actor}} moves to {{x}}, {{y}} for {{cost}} and has {{left}} left.",
   "game.combat.ruleset.event.moveStood": "{{actor}} gets back up, which costs {{cost}}.",
   "game.combat.ruleset.event.moveStopped": "{{actor}} is stopped at {{x}}, {{y}}.",

@@ -1547,6 +1547,23 @@ function carriesMetamagic(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesMetamagic(one, depth + 1));
 }
 
+/** Dice off an ability check or a damage roll, a rescue narrowed to some saves or spending a
+ *  budget, or an item's use dealing half on a miss (1.252), in catalogs too. */
+function carriesRollAnswers(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesRollAnswers(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const use = plainRecord(record.use);
+  if (use && use.halfOnMiss !== undefined) return true;
+  const mechanics = plainRecord(record.mechanics);
+  const lowers = mechanics && plainRecord(mechanics.lowersRoll);
+  if (lowers && lowers.also !== undefined) return true;
+  const rescue = mechanics && plainRecord(mechanics.rescue);
+  if (rescue && (rescue.saves !== undefined || rescue.budget !== undefined)) return true;
+  return Object.values(record).some((one) => carriesRollAnswers(one, depth + 1));
+}
+
 /** A d20 counted as a 20 or a die of the holder's own on a failed roll, an entry never on its own
  *  user, or conditions one of a kind at a time (1.251), in catalogs too. */
 function carriesOwnRescues(value: unknown, depth = 0): boolean {
@@ -3474,6 +3491,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Dice off checks and damage, narrowed or budgeted rescues, an item's half on a miss, 1.252.
+  if (
+    !declaresApi(252) &&
+    (carriesRollAnswers(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesRollAnswers(document)))
+  ) {
+    return "A ruleset with answers taking dice off checks or damage, rescues narrowed to some saves or spending a budget, or item uses dealing half on a miss, requires schemaVersion 2 and capabilityApi 1.252 or newer";
   }
   // Rescues of a holder's own, entries never on their user, conditions one at a time, 1.251.
   if (

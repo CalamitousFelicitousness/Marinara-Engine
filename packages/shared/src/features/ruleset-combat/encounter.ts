@@ -2007,7 +2007,15 @@ function mechanicsAction(
     const dice = lowers.dice
       ? parseRulesetCombatDice(lowers.dice)
       : { count: 1, sides: Math.trunc(lookupStepTable(lowers.die!.table, resolve(lowers.die!.from))), flat: 0 };
-    if (dice && dice.sides >= 1) action.lowersRoll = { count: dice.count, sides: dice.sides, flat: dice.flat };
+    if (dice && dice.sides >= 1) {
+      action.lowersRoll = {
+        count: dice.count,
+        sides: dice.sides,
+        flat: dice.flat,
+        // Off ability checks and damage rolls too (1.252).
+        ...(lowers.also ? { also: [...lowers.also] } : {}),
+      };
+    }
   }
   // A failed save drops its target to 0 instead (1.240): Quivering Palm.
   if (mechanics.dropsOnFailedSave) action.dropsOnFailedSave = true;
@@ -2027,6 +2035,8 @@ function mechanicsAction(
     action.rescue = {
       roll: rescue.roll,
       by: rescue.by,
+      ...(rescue.saves ? { saves: [...rescue.saves] } : {}),
+      ...(rescue.budget ? { budget: rescue.budget } : {}),
       ...(rescue.by === "die" && dice && dice.sides >= 1
         ? { amount: { count: dice.count, sides: dice.sides, flat: dice.flat } }
         : {}),

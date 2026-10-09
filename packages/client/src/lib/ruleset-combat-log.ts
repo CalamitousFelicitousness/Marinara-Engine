@@ -490,7 +490,8 @@ export function rulesetCombatEventLine(
         alters: event.alters.join(", "),
       });
     case "lowered":
-      return key("lowered", {
+      // Off a check or a damage roll (1.252), or else an attack roll.
+      return key(event.roll === "checks" ? "loweredCheck" : event.roll === "damage" ? "loweredDamage" : "lowered", {
         actor: names.combatant(event.actorId),
         label: event.label,
         by: event.by,

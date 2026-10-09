@@ -9302,6 +9302,18 @@
                           ],
                           "additionalProperties": false
                         },
+                        "also": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": [
+                              "checks",
+                              "damage"
+                            ]
+                          },
+                          "minItems": 1,
+                          "maxItems": 2
+                        },
                         "$comment": {}
                       },
                       "additionalProperties": false
@@ -12619,6 +12631,21 @@
                             "table"
                           ],
                           "additionalProperties": false
+                        },
+                        "saves": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 12
+                        },
+                        "budget": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
                         },
                         "$comment": {}
                       },
@@ -22492,6 +22519,18 @@
                               ],
                               "additionalProperties": false
                             },
+                            "also": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "enum": [
+                                  "checks",
+                                  "damage"
+                                ]
+                              },
+                              "minItems": 1,
+                              "maxItems": 2
+                            },
                             "$comment": {}
                           },
                           "additionalProperties": false
@@ -24802,6 +24841,21 @@
                                 "table"
                               ],
                               "additionalProperties": false
+                            },
+                            "saves": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 12
+                            },
+                            "budget": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
                             },
                             "$comment": {}
                           },

@@ -2213,6 +2213,8 @@ export interface RulesetCatalogRescue {
   by: "reroll" | "success" | "twenty" | "die";
   dice?: string;
   die?: { from: RulesetValueRef; table: Array<[number, number]> };
+  saves?: string[];
+  budget?: string;
 }
 const catalogRescueSchema: z.ZodType<RulesetCatalogRescue, z.ZodTypeDef, unknown> = z
   .object({
@@ -2226,8 +2228,20 @@ const catalogRescueSchema: z.ZodType<RulesetCatalogRescue, z.ZodTypeDef, unknown
       })
       .strict()
       .optional(),
+    /** Only these saves (Capability API 1.252): a ring of evasion's Dexterity saves. */
+    saves: z
+      .array(sheetId)
+      .min(1)
+      .max(12)
+      .refine((saves) => new Set(saves).size === saves.length, { message: "Saves must be unique" })
+      .optional(),
+    /** The budget spending it takes (Capability API 1.252): a ring of evasion's reaction. */
+    budget: sheetId.optional(),
   })
   .strict()
+  .refine((rescue) => rescue.saves === undefined || rescue.roll === "saves", {
+    message: '"saves" narrows a rescue of "saves"',
+  })
   .refine((rescue) => rescue.by !== "reroll" || rescue.roll === "saves", {
     message: 'Only a failed save is rolled again: "reroll" goes with "saves"',
   })
@@ -2802,6 +2816,15 @@ const catalogMechanicsObject = z
             table: stepTableSchema,
           })
           .strict()
+          .optional(),
+        /** Also off somebody else's ability check or damage roll (Capability API 1.252), spent
+         *  as it is made where it could turn it: a check that would win, or damage that would take
+         *  one of its user's side down. */
+        also: z
+          .array(z.enum(["checks", "damage"]))
+          .min(1)
+          .max(2)
+          .refine((also) => new Set(also).size === also.length, { message: "Rolls must be unique" })
           .optional(),
       })
       .strict()
@@ -4823,6 +4846,10 @@ export const rulesetItemUseSchema = catalogMechanicsObject
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
     if (use.plus && !use.amount) issue("plus", "A clause needs an amount beside it");
     if (use.plus && use.kind === "heal") issue("plus", "A heal carries no damage clauses");
+    // A scroll of Acid Arrow (1.252), as the spell's own entry does (1.250).
+    if (use.halfOnMiss && (!use.attackRoll || !use.amount || use.kind === "heal")) {
+      issue("halfOnMiss", '"halfOnMiss" is on a use that rolls to hit ("attackRoll") and deals an "amount"');
+    }
     if (use.free && use.budget !== undefined) issue("free", "Something free spends no budget, so it names none");
     if (use.consumes && use.charges !== undefined) {
       issue("charges", "A use that uses the item up spends no charges of it");
@@ -11294,6 +11321,9 @@ export function rulesetCatalogEntryIssues(
     }
     if (mechanics?.budget !== undefined && budgets && !budgets.has(mechanics.budget)) {
       add([index, "mechanics", "budget"], `Unknown budget "${mechanics.budget}"`);
+    }
+    if (mechanics?.rescue?.budget !== undefined && budgets && !budgets.has(mechanics.rescue.budget)) {
+      add([index, "mechanics", "rescue", "budget"], `Unknown budget "${mechanics.rescue.budget}"`);
     }
     if (mechanics) cureIssues(definition, mechanics, [index, "mechanics"], add);
     targetIsIssues(definition, mechanics?.ends?.from, [index, "mechanics", "ends", "from"], add);

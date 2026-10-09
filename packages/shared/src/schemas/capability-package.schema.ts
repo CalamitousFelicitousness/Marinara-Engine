@@ -1030,7 +1030,10 @@ const capabilityPackageManifestBaseSchema = z
 // 1.251: catalog mechanics' `rescue` by `twenty` (Stroke of Luck on a check) and by `die` with
 //        `dice` or `die` (a holder's own die: Peerless Skill, Dark One's Own Luck), `notSelf`, and a
 //        combat condition's `oneAtATime`; the condition event's `already`.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 251 } as const);
+// 1.252: `lowersRoll.also` (Cutting Words off ability checks and damage rolls), a rescue's `saves`
+//        and `budget` (a ring of evasion), `halfOnMiss` on an item's use, and the lowered event's
+//        `roll`.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 252 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

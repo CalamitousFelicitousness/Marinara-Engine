@@ -557,6 +557,32 @@ function applyDamage(
       adjust = "vulnerable";
     }
   }
+  // Its roll, as it is made, has dice taken off by the other side where that keeps one of them
+  // standing who it would take down (1.252): Cutting Words.
+  const source = input.sourceId ? rulesetCombatant(ctx.state, input.sourceId) : undefined;
+  if (
+    source &&
+    input.rolls.length > 0 &&
+    dealt > 0 &&
+    input.leavesAtLeast === undefined &&
+    !target.down &&
+    rulesetCombatStanding(target)
+  ) {
+    const scaled = (amount: number) => {
+      const at = Math.max(0, Math.floor(amount));
+      return adjust === "immune" ? 0 : adjust === "resist" ? Math.floor(at / 2) : adjust === "vulnerable" ? at * 2 : at;
+    };
+    const left = before.value + before.temp;
+    const by = lowerRoll(
+      ctx,
+      source,
+      "damage",
+      input.label ?? "",
+      Math.max(0, Math.floor(input.amount)),
+      (most, holder) => holder.side === target.side && left - dealt <= 0 && left - scaled(input.amount - most) > 0,
+    );
+    if (by > 0) dealt = scaled(input.amount - by);
+  }
   // Never below the floor it leaves (1.230), what the buffer soaks counted.
   if (input.leavesAtLeast !== undefined) {
     dealt = Math.max(0, Math.min(dealt, before.value + before.temp - input.leavesAtLeast));
@@ -1197,6 +1223,7 @@ function rollSave(
         true,
       ),
       difficulty - (kept + modifier + bonusTotal(bonuses)),
+      save,
     ),
   );
   const total = kept + modifier + bonusTotal(bonuses);
@@ -1218,7 +1245,7 @@ function rollSave(
   spendConditions(ctx, combatant, "own-save");
   // Failed, what its holder spends to roll again or succeed all the same (1.244): Indomitable.
   if (!success && !rerolled) {
-    const rescue = rescueEntry(ctx, combatant, "saves");
+    const rescue = rescueEntry(ctx, combatant, "saves", undefined, undefined, save);
     if (rescue?.rescue?.by === "reroll")
       return rollSave(ctx, combatant, save, difficulty, sourceId, from, against, lean, true);
     if (rescue) return true;
@@ -1305,7 +1332,11 @@ function passesGate(
       gate.difficulty - (kept + gate.modifier + bonusTotal(bonuses)),
     ),
   );
-  const total = kept + gate.modifier + bonusTotal(bonuses);
+  let total = kept + gate.modifier + bonusTotal(bonuses);
+  // Made, dice off it from the other side where that could fail it (1.252): Cutting Words.
+  if (total >= gate.difficulty) {
+    total -= lowerRoll(ctx, actor, "checks", action.label, total, (most) => total - most < gate.difficulty);
+  }
   // Failed, what its holder spends to succeed all the same (1.244): Stroke of Luck.
   const success =
     total >= gate.difficulty ||
@@ -1384,16 +1415,25 @@ function rescueBonuses(
   roll: "attacks" | "saves" | "checks",
   rescues: RulesetConditionModifier[],
   short: number,
+  /** The save it is, for an entry narrowed to some (1.252). */
+  save?: string,
 ): RulesetConditionBonus[] {
   if (short <= 0) return [];
   const rescue = rescues.find(({ modifier }) => rescueMost(modifier) >= short);
   if (!rescue) {
     // None given them, a die of their own from one of their entries (1.251): Peerless Skill, Dark
     // One's Own Luck. Only one whose most could make up the difference is spent.
-    const own = rescueEntry(ctx, combatant, roll, "die", (action) => {
-      const amount = action.rescue?.amount;
-      return !!amount && amount.count * amount.sides + amount.flat >= short;
-    });
+    const own = rescueEntry(
+      ctx,
+      combatant,
+      roll,
+      "die",
+      (action) => {
+        const amount = action.rescue?.amount;
+        return !!amount && amount.count * amount.sides + amount.flat >= short;
+      },
+      save,
+    );
     const amount = own?.rescue?.amount;
     if (!own || !amount) return [];
     const rolls = rollRulesetDice(ctx.roll, amount.count, amount.sides);
@@ -1434,6 +1474,8 @@ function rescueEntry(
   by?: RulesetCombatRescue["by"],
   /** Only one this would be worth spending (1.251). */
   worth?: (action: RulesetCombatAction) => boolean,
+  /** The save it is, for an entry narrowed to some (1.252). */
+  save?: string,
 ): RulesetCombatAction | undefined {
   const found = holder.actions.find(
     (action) =>
@@ -1441,18 +1483,16 @@ function rescueEntry(
       // Asked for no kind, it is one that settles the roll by itself: a die only adds (1.251), and a
       // d20 counted as 20 only where it would do (1.251).
       (by === undefined ? action.rescue.by === "reroll" || action.rescue.by === "success" : action.rescue.by === by) &&
+      // Only the saves it names (1.252): a ring of evasion's Dexterity saves.
+      (!action.rescue.saves || (save !== undefined && action.rescue.saves.includes(save))) &&
+      // With the budget it takes still to be had (1.252): a ring of evasion's reaction.
+      (!action.rescue.budget || canSpendAnswer(ctx, holder, action.rescue.budget)) &&
       (!worth || worth(action)) &&
       rulesetActionAvailable(holder, action, ctx.state, ctx.definition) &&
       !!planRulesetCombatCost(ctx.definition, holder, action),
   );
   if (!found) return undefined;
-  const paid = planRulesetCombatCost(ctx.definition, holder, found)!;
-  if (paid.live && holder.sheet) holder.sheet.live = paid.live;
-  countRulesetSpend(holder, paid.cost);
-  for (const entry of paid.cost) {
-    ctx.events.push({ type: "spend", actorId: holder.id, pool: entry.pool, label: entry.label, amount: entry.amount });
-  }
-  spendAvailability(ctx, holder, found);
+  payAnswer(ctx, holder, found, found.rescue!.budget);
   ctx.events.push({
     type: "rescued",
     actorId: holder.id,
@@ -1461,6 +1501,82 @@ function rescueEntry(
     by: found.rescue!.by,
   });
   return found;
+}
+
+/** Whether a holder may spend `budget` on something they answer with off their turn (1.252): one
+ *  left, and nothing holding them from acting or answering. */
+function canSpendAnswer(ctx: RulesetCombatContext, holder: RulesetCombatant, budget: string): boolean {
+  if ((holder.budgets[budget] ?? 0) < 1) return false;
+  const effects = rulesetCombatEffects(ctx.definition, ctx.combat, holder, ctx.state);
+  return !effects.has("cannot-act") && !effects.has("cannot-react");
+}
+
+/** What an entry spent as an answer costs: its price, its uses, and its budget where it takes one. */
+function payAnswer(
+  ctx: RulesetCombatContext,
+  holder: RulesetCombatant,
+  action: RulesetCombatAction,
+  budget?: string,
+): void {
+  const paid = planRulesetCombatCost(ctx.definition, holder, action)!;
+  if (paid.live && holder.sheet) holder.sheet.live = paid.live;
+  countRulesetSpend(holder, paid.cost);
+  for (const entry of paid.cost) {
+    ctx.events.push({ type: "spend", actorId: holder.id, pool: entry.pool, label: entry.label, amount: entry.amount });
+  }
+  if (budget !== undefined) spendBudget(ctx, holder, budget);
+  spendAvailability(ctx, holder, action);
+}
+
+/**
+ * Dice off an ability check or a damage roll somebody else has just made (1.252): Cutting Words.
+ * Spent by the first on the other side holding an answer that takes them and reaches the roller,
+ * with its budget, uses and price to be had, where `worth` says its most could turn the roll: a
+ * check that would succeed, or damage that would take one of its user's side down. How much it took
+ * off, or nothing.
+ */
+function lowerRoll(
+  ctx: RulesetCombatContext,
+  roller: RulesetCombatant,
+  roll: "checks" | "damage",
+  to: string,
+  total: number,
+  worth: (most: number, holder: RulesetCombatant) => boolean,
+): number {
+  // A pool has no single number to take dice off.
+  if (rulesetCombatIsPool(ctx.combat)) return 0;
+  for (const holder of ctx.state.combatants) {
+    if (holder.side === roller.side || !rulesetCombatStanding(holder)) continue;
+    const action = holder.actions.find((one) => {
+      const lowers = one.lowersRoll;
+      return (
+        !!lowers?.also?.includes(roll) &&
+        worth(lowers.count * lowers.sides + lowers.flat, holder) &&
+        (one.free || canSpendAnswer(ctx, holder, one.budget)) &&
+        rulesetActionAvailable(holder, one, ctx.state, ctx.definition) &&
+        !!planRulesetCombatCost(ctx.definition, holder, one) &&
+        rulesetOptionTargets(ctx.definition, ctx.state, holder.id, one).includes(roller.id)
+      );
+    });
+    if (!action) continue;
+    payAnswer(ctx, holder, action, action.free ? undefined : action.budget);
+    const lowers = action.lowersRoll!;
+    const rolls = rollRulesetDice(ctx.roll, lowers.count, lowers.sides);
+    const by = sumOf(rolls) + lowers.flat;
+    ctx.events.push({
+      type: "lowered",
+      actorId: holder.id,
+      targetId: roller.id,
+      label: action.label,
+      to,
+      roll,
+      rolls,
+      by,
+      total: total - by,
+    });
+    return by;
+  }
+  return 0;
 }
 
 function bonusTotal(bonuses: readonly RulesetConditionBonus[]): number {
@@ -3590,9 +3706,19 @@ function resolveContest(
   };
   rescue(actor, attacker, defender.total - attacker.total + (actorTies ? 0 : 1));
   if (theirs) rescue(target, defender, attacker.total - defender.total + (actorTies ? 1 : 0));
-  const margin = attacker.total - defender.total;
-  let winner: "actor" | "target" =
-    margin > 0 || (margin === 0 && (escapeDc !== undefined || contest.ties === "attacker")) ? "actor" : "target";
+  const actorWins = () => attacker.total > defender.total || (attacker.total === defender.total && actorTies);
+  // The winning side's check, as it is made, has dice taken off by the other side where that could
+  // turn it (1.252): Cutting Words. A fixed number is nobody's roll.
+  const lowered = (who: RulesetCombatant, side: RulesetContestSide, still: (total: number) => boolean) => {
+    if (side.pool || side.rolls.length === 0) return;
+    const by = lowerRoll(ctx, who, "checks", action.label, side.total, (most) => !still(side.total - most));
+    side.total -= by;
+  };
+  if (actorWins())
+    lowered(actor, attacker, (total) => total > defender.total || (total === defender.total && actorTies));
+  else if (theirs)
+    lowered(target, defender, (total) => total > attacker.total || (total === attacker.total && !actorTies));
+  let winner: "actor" | "target" = actorWins() ? "actor" : "target";
   // The side that lost spends what turns a failed check into a success (1.244): Stroke of Luck.
   if (winner === "target" && rescueEntry(ctx, actor, "checks", "success")) winner = "actor";
   else if (winner === "actor" && theirs && rescueEntry(ctx, target, "checks", "success")) winner = "target";
@@ -4165,7 +4291,11 @@ function reachesHeld(
       difficulty - (kept + above.modifier + bonusTotal(bonuses)),
     ),
   );
-  const total = kept + above.modifier + bonusTotal(bonuses);
+  let total = kept + above.modifier + bonusTotal(bonuses);
+  // Made, dice off it from the caster's side where that could fail it (1.252): Cutting Words.
+  if (total >= difficulty) {
+    total -= lowerRoll(ctx, answering, "checks", action.label, total, (most) => total - most < difficulty);
+  }
   const success =
     total >= difficulty ||
     !!rescueEntry(ctx, answering, "checks", "success") ||

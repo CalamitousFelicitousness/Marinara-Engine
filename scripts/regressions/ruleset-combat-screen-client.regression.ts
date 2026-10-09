@@ -992,6 +992,24 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.equal(printed.get("dropped"), "Brenna's Quivering Palm drops Thorn Lurker to 0.");
   assert.equal(printed.get("rescued"), "Brenna uses Indomitable and rolls again.");
   assert.equal(printed.get("lowered"), "Brenna's Cutting Words takes 4 off Thorn Lurker's Bite, to 12.");
+  const lowered = {
+    type: "lowered",
+    actorId: "brenna",
+    targetId: "lurker",
+    label: "Cutting Words",
+    to: "Grapple",
+    rolls: [4],
+    by: 4,
+    total: 12,
+  };
+  assert.equal(
+    say({ ...lowered, type: "lowered", roll: "checks" }),
+    "Brenna's Cutting Words takes 4 off Thorn Lurker's check for Grapple, to 12.",
+  );
+  assert.equal(
+    say({ ...lowered, type: "lowered", to: "Bite", roll: "damage" }),
+    "Brenna's Cutting Words takes 4 off Thorn Lurker's Bite damage, to 12.",
+  );
   assert.equal(printed.get("evaded"), "Brenna evades Fire Breath entirely.");
   assert.equal(printed.get("altered"), "Brenna uses Fireball with Careful Spell, Empowered Spell.");
   assert.equal(

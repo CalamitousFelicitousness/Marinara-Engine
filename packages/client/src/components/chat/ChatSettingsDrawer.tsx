@@ -21,6 +21,7 @@ import { ChatBranchesPanel } from "./ChatBranchesPanel";
 import { ChatMessageSearch } from "./ChatMessageSearch";
 import { ChatWindowFavoriteButton } from "./ChatWindowFavoriteButton";
 import { AgentActivitySection } from "../agents/AgentActivitySection";
+import { withAgentActivityStatus } from "../agents/AgentActivityIcon";
 import { useKeepFocusedFieldAboveKeyboard } from "../../hooks/use-keep-focused-field-above-keyboard";
 import {
   X,
@@ -7730,7 +7731,7 @@ export function ChatSettingsDrawer({
                 id={`${chatMode}-agent-activity`}
                 style={{ order: CHAT_SETTINGS_ORDER.agentActivity }}
                 label={localizeUi("chat.settings.agentActivity")}
-                icon={<Activity size="0.875rem" />}
+                icon={withAgentActivityStatus(chat.id, <Activity size="0.875rem" />)}
                 help={localizeUi("chat.settings.agentActivityHelp")}
               >
                 <AgentActivitySection
@@ -10015,6 +10016,7 @@ export function ChatSettingsDrawer({
               connectionId={chat.connectionId ?? null}
               connections={chatGenerationConnectionsList}
               contextMessageLimit={metadata.contextMessageLimit as number | null | undefined}
+              advancedMemoryManagesHistory={advancedMemoryEnabled}
               excludePastReasoning={metadata.excludePastReasoning as boolean | undefined}
               imageCaptioningEnabled={metadata.imageCaptioningEnabled as boolean | undefined}
               imageCaptioningConnectionId={

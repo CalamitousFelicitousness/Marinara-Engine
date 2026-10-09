@@ -116,14 +116,12 @@ function compileImagePromptPass(
   const profileSubjectTags = input.omitProfileSubjectTags
     ? ""
     : reconcileProfileSubjectTags(profile.subjectTags[input.kind] ?? "", sourceCues);
+  // Auto style text tells a prompt writer to infer a style; it is never image-model prompt text
+  // (same rule as resolveImageStyleGuidanceText).
   const profileStyleText =
-    input.omitProfileStyleText || compactPrompt || (profile.styleText && generatedStyle)
+    input.omitProfileStyleText || compactPrompt || generatedStyle || profile.baseStyle === "auto"
       ? ""
-      : profile.styleText && profile.baseStyle !== "auto"
-        ? profile.styleText
-        : generatedStyle
-          ? ""
-          : profile.styleText;
+      : profile.styleText;
 
   const positiveParts = compactPrompt
     ? [

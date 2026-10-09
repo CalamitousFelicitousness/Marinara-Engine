@@ -1547,6 +1547,18 @@ function carriesMetamagic(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesMetamagic(one, depth + 1));
 }
 
+/** Qualities on a stat block's action (1.257), in catalogs too: a name and a budget, where a
+ *  catalog entry has a label. */
+function carriesActionQualities(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesActionQualities(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (typeof record.name === "string" && typeof record.budget === "string" && record.qualities !== undefined)
+    return true;
+  return Object.values(record).some((one) => carriesActionQualities(one, depth + 1));
+}
+
 /** What damage brings on, an onset that turns into another, a cure only some level ends, a
  *  restoredWhenCured rest loss, a heal block for nonmagical heals, or ends on a stat block's action
  *  (1.256), in catalogs too. */
@@ -3547,6 +3559,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Qualities on a stat block's action, 1.257.
+  if (
+    !declaresApi(257) &&
+    (carriesActionQualities(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesActionQualities(document)))
+  ) {
+    return "A ruleset with qualities on a creature's action requires schemaVersion 2 and capabilityApi 1.257 or newer";
   }
   // Disease stages: onDamaged, expires, curedOnlyBy, restoredWhenCured, nonmagical heal block,
   // ends on a stat block's action, 1.256.

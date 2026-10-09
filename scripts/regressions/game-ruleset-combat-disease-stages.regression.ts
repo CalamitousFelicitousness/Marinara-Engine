@@ -1,5 +1,5 @@
 /**
- * Disease stages (Capability API 1.256).
+ * Disease stages (Capability API 1.256), and qualities on a stat block's action (1.257).
  *
  *   - `onDamaged`: Slimy Doom stuns its holder each time they take damage.
  *   - `cannot-heal-nonmagical`: a diseased giant rat's bite keeps off every heal but a magical one,
@@ -31,6 +31,7 @@ import {
   rulesetStatBlockFromCreature,
   supportedCapabilityApi,
   type RulesetCatalogEntry,
+  type RulesetCatalogItem,
   type RulesetCombatChoice,
   type RulesetCombatEvent,
   type RulesetDefinition,
@@ -195,6 +196,12 @@ try {
   }
 
   // ── Only magic heals a diseased giant rat's bite ──
+  const flask = (tags?: string[]) =>
+    ({
+      category: "gear",
+      ...(tags ? { tags } : {}),
+      use: { kind: "heal", budget: "action", amount: { flat: 4 }, consumes: true },
+    }) as unknown as RulesetCatalogItem;
   {
     const hurt = { pools: { hp: { value: 10 } }, conditions: ["rat_fever"] };
     const state = createRulesetEncounter({
@@ -203,7 +210,18 @@ try {
       seed: 1,
       roller: roll,
       combatants: [
-        { id: "corwin", name: "Corwin", side: "party", build, live: hurt, catalogs: { spells: entries } },
+        {
+          id: "corwin",
+          name: "Corwin",
+          side: "party",
+          build,
+          live: hurt,
+          catalogs: { spells: entries },
+          items: [
+            { name: "Potion", quantity: 1, item: flask(["magical"]) },
+            { name: "Tonic", quantity: 1, item: flask() },
+          ],
+        },
         { id: "foe", name: "Foe", side: "enemy", block: block() },
       ],
     });
@@ -214,6 +232,18 @@ try {
     assert.deepEqual([blocked.amount, blocked.blocked], [0, true]);
     const magic = of(cast(plain.state, "Mend", ["corwin"]).events, "heal")[0]!;
     assert.deepEqual([magic.amount, magic.blocked], [5, undefined]);
+    // An item tagged magical is a magical heal in a fight too; one that is not is kept off.
+    const quaff = (from: RulesetEncounterState, label: string) => {
+      from.turn = 0;
+      who(from, "corwin").budgets.action = 1;
+      const option = rulesetCombatOptions(definition, from, "corwin").find((one) => one.label.startsWith(label));
+      assert.ok(option, `no ${label}: ${rulesetCombatOptions(definition, from, "corwin").map((one) => one.label)}`);
+      return act(from, { actorId: "corwin", optionId: option.id, targetIds: ["corwin"] });
+    };
+    const tonic = of(quaff(plain.state, "Tonic").events, "heal")[0]!;
+    assert.deepEqual([tonic.amount, tonic.blocked], [0, true]);
+    const drunk = of(quaff(plain.state, "Potion").events, "heal")[0]!;
+    assert.deepEqual([drunk.amount, drunk.blocked], [4, undefined]);
     // On the sheet: refused unless magical, and a rest gives nothing back.
     const pool = (live: unknown) => readRulesetLive(definition, build, live).pools.find((one) => one.key === "hp")!;
     const refusedHeal = applyRulesetSheetOp(definition, build, hurt, { op: "restore", pool: "hp", amount: 5 });
@@ -308,8 +338,19 @@ try {
           budget: "action",
           heal: { count: 2, sides: 8, flat: 2 },
           ends: { conditions: ["disease"] },
+          qualities: ["magical"],
           targets: "ally",
         },
+        // Heals only: magical or not decides it on a holder of the rat's fever (1.257).
+        {
+          id: "mend",
+          name: "Mending Touch",
+          budget: "action",
+          heal: { flat: 6 },
+          qualities: ["magical"],
+          targets: "ally",
+        },
+        { id: "rub", name: "Rubbing Touch", budget: "action", heal: { flat: 6 }, targets: "ally" },
       ],
     } as Partial<RulesetStatBlock>);
     const state = fight({}, [{ id: "unicorn", name: "Unicorn", side: "enemy", block: unicorn }]);
@@ -317,17 +358,32 @@ try {
     state.turn = 2;
     const option = rulesetCombatOptions(definition, state, "unicorn").find((one) => one.label === "Healing Touch")!;
     assert.ok(option);
+    who(state).health!.value = 20;
     const touched = act(state, { actorId: "unicorn", optionId: option.id, targetIds: ["foe"] });
+    // It cures before it heals.
+    const healed = of(touched.events, "heal")[0]!;
+    assert.deepEqual([healed.amount, healed.blocked], [8, undefined], JSON.stringify(touched.events));
     assert.equal(has(touched.state, "rat_fever"), false);
     assert.equal(has(touched.state, "slimy_doom"), false);
+    const touch = (label: string) => {
+      const fevered = fight({}, [{ id: "unicorn", name: "Unicorn", side: "enemy", block: unicorn }]);
+      who(fevered).tracked.push({ condition: "rat_fever", rounds: null });
+      who(fevered).health!.value = 20;
+      fevered.turn = 2;
+      const picked = rulesetCombatOptions(definition, fevered, "unicorn").find((one) => one.label === label)!;
+      return of(act(fevered, { actorId: "unicorn", optionId: picked.id, targetIds: ["foe"] }).events, "heal")[0]!;
+    };
+    assert.deepEqual([touch("Mending Touch").amount, touch("Rubbing Touch").amount], [6, 0]);
     // A catalog creature carries it onto its block.
     const written = parsed(
       document((doc) => {
         const creature = doc.catalogs.find((one: { id: string }) => one.id === "creatures").entries[0];
         creature.creature.actions[0].ends = { conditions: ["disease"], count: 1 };
+        creature.creature.actions[0].qualities = ["magical"];
       }),
     );
     const creature = written.catalogs!.find((one) => one.id === "creatures")!.entries![0]!.creature!;
+    assert.deepEqual(rulesetStatBlockFromCreature(written, creature)!.actions[0]!.qualities, ["magical"]);
     assert.deepEqual(rulesetStatBlockFromCreature(written, creature)!.actions[0]!.ends, {
       conditions: ["disease"],
       count: 1,
@@ -374,6 +430,13 @@ try {
       }),
       /Unknown condition "plague"/,
     );
+    refused(
+      document((doc) => {
+        const creature = doc.catalogs.find((one: { id: string }) => one.id === "creatures").entries[0];
+        creature.creature.actions[0].qualities = ["holy"];
+      }),
+      /Unknown item tag "holy"/,
+    );
   }
 
   // ── The install gate: 1.256 ──
@@ -418,10 +481,20 @@ try {
       issue(255, without, new Map([["c.json", { entries: [{ condition: "x", expires: { becomes: "y" } }] }]])),
       gate,
     );
+    const qualityGate =
+      "A ruleset with qualities on a creature's action requires schemaVersion 2 and capabilityApi 1.257 or newer";
+    const blessed = structuredClone(without);
+    blessed.extra = { entry: { name: "Healing Touch", budget: "action", qualities: ["magical"] } };
+    assert.equal(issue(256, blessed), qualityGate);
+    assert.notEqual(issue(257, blessed), qualityGate);
+    const catalogQualities = structuredClone(without);
+    catalogQualities.extra = { entry: { label: "Bolt", mechanics: { budget: "action", qualities: ["magical"] } } };
+    assert.notEqual(issue(256, catalogQualities), qualityGate, "a catalog entry's are older");
+    assert.equal(issue(256, without, new Map([["c.json", { entries: [blessed.extra.entry] }]])), qualityGate);
   }
 
   console.log(
-    "Ruleset disease stages: damage brings Slimy Doom's stun, only magic heals a rat's fever, an onset turns into its later stage that only a 6th-level cure ends, a cure gives Mummy Rot's loss back, and Healing Touch cures; gated at 1.256.",
+    "Ruleset disease stages: damage brings Slimy Doom's stun, only magic (a spell, a magical potion, a magical Healing Touch) heals a rat's fever, an onset turns into its later stage that only a 6th-level cure ends, a cure gives Mummy Rot's loss back, and Healing Touch cures; gated at 1.256 and 1.257.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

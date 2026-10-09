@@ -1400,6 +1400,8 @@ function itemUseMechanics(
     perCell,
   });
   if (!action) return null;
+  // What the item is, its use is too (1.256): a potion tagged magical heals as magic.
+  if (item.tags?.length) action.qualities = [...new Set([...(action.qualities ?? []), ...item.tags])];
   if (aim.target !== undefined) action.target = aim.target;
   if (use.casts) action.casts = use.casts;
   const restored = amountOf(use.restore?.amount);
@@ -2621,6 +2623,7 @@ function blockActions(
         }
       : {}),
     ...(action.heal ? { heal: { ...action.heal } } : {}),
+    ...(action.qualities ? { qualities: [...action.qualities] } : {}),
     // A kind is every condition of it (1.253), as a catalog entry's cure reads it.
     ...(action.ends
       ? {

@@ -213,6 +213,7 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
       : {}),
     ...(heal ? { heal } : {}),
     ...(action.ends ? { ends: structuredClone(action.ends) } : {}),
+    ...(action.qualities ? { qualities: [...action.qualities] } : {}),
     ...(action.targets ? { targets: action.targets } : {}),
     ...(action.save ? { save: { ...action.save } } : {}),
     ...(action.saveDifficulty !== undefined ? { saveDifficulty: action.saveDifficulty } : {}),

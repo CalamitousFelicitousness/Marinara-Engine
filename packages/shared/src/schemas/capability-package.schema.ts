@@ -1042,7 +1042,8 @@ const capabilityPackageManifestBaseSchema = z
 // 1.256: a combat condition's `onDamaged`, `expires.becomes` and `curedOnlyBy`; `onRest.restoredWhenCured`;
 //        the `cannot-heal-nonmagical` effect and a restore op's `magical`; `ends` on a stat block's
 //        action.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 256 } as const);
+// 1.257: `qualities` on a stat block's action (a magical Healing Touch).
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 257 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

@@ -268,6 +268,8 @@ export interface RulesetStatBlockAction {
   components?: string[];
   damage?: RulesetCombatDamage;
   heal?: RulesetCombatAmount;
+  /** What it is (1.257): `["magical"]`, a deva's Healing Touch. */
+  qualities?: string[];
   /** The conditions it ends on each target (1.256): Healing Touch. */
   ends?: { conditions: string[]; count?: number; from?: RulesetTargetIs };
   targets?: "ally" | "any";

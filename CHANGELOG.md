@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: a magical potion now heals through a diseased giant rat's bite in a fight too, and a deva's or unicorn's Healing Touch can be magical (Capability API 1.257).
 - Rulesets: Slimy Doom stuns whoever takes damage, a diseased giant rat's bite keeps off all but magical healing, an aboleth's disease worsens after its minute and only a 6th-level cure ends it, a unicorn's or deva's Healing Touch cures, and curing Mummy Rot or an otyugh's disease gives the lost hit point maximum back (Capability API 1.256).
 - Rulesets: Mummy Rot now lowers its victim's hit point maximum on each long rest, an otyugh's or death dog's disease asks for a save each long rest first, and Contagion's saves are rolled out when a fight ends so the disease is either shaken off or set in (Capability API 1.255).
 - Rulesets: a worn ring of evasion now saves its wearer from a failed Dexterity save for a reaction and one of the ring's own charges (Capability API 1.254).

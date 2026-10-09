@@ -3615,6 +3615,9 @@ const creatureActionSchema = z
     damage: creatureDamageSchema.optional(),
     /** Hit points given back to each target, capped at its maximum (Capability API 1.116). */
     heal: z.object(catalogAmountShape).strict().optional(),
+    /** What it is, as a catalog entry's `qualities` are (Capability API 1.257): `["magical"]` makes
+     *  its heal a magical one and a save against it a save against magic. */
+    qualities: z.array(promptSafeText(40)).min(1).max(8).optional(),
     /** The conditions it ends on each target (Capability API 1.256), as a catalog entry's `ends`
      *  does, a kind for any of it: a deva's and a unicorn's Healing Touch. */
     ends: catalogEndsSchema.optional(),
@@ -10046,6 +10049,14 @@ function creatureIssues(
         add(
           [...path, "damage", "qualities", tagIndex],
           itemTags.size ? `Unknown item tag "${tag}"` : "This ruleset declares no item tags for a blow to carry",
+        );
+      }
+    });
+    action.qualities?.forEach((tag, tagIndex) => {
+      if (!itemTags.has(tag)) {
+        add(
+          [...path, "qualities", tagIndex],
+          itemTags.size ? `Unknown item tag "${tag}"` : "This ruleset declares no item tags for an action to carry",
         );
       }
     });

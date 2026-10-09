@@ -1965,6 +1965,67 @@ function sheetBoundsSchema(key: string, never: string) {
 
 const catalogUsableWhenSchema = sheetBoundsSchema("usableWhen", "usable");
 
+/** Attacks named the way their rows name them, matched without case (Capability API 1.237): 5e's
+ *  Unarmed Strike and the monk weapons. */
+const attackNamesSchema = z.array(promptSafeText(80)).min(1).max(30);
+
+/** Only once its holder has taken the attack action this turn: any attack made with an attack's
+ *  own budget, or one of `names` (Capability API 1.237). 5e's Martial Arts bonus strike and Flurry of
+ *  Blows. */
+export type RulesetAfterAttackDeclaration = true | { names: string[] };
+const afterAttackSchema: z.ZodType<RulesetAfterAttackDeclaration, z.ZodTypeDef, unknown> = z.union([
+  z.literal(true),
+  z.object({ names: attackNamesSchema }).strict(),
+]);
+
+/** A strike its holder may buy with `budget` once an attack's own budget is spent (Capability API
+ *  1.237), as a condition's `grants.attacks` gives one: only with the attacks `names` names, in reach
+ *  with `melee`, and `afterAttack` only once the attack action has been taken this turn. */
+export interface RulesetStrikeGrantDeclaration {
+  budget: string;
+  names?: string[];
+  melee?: true;
+  afterAttack?: RulesetAfterAttackDeclaration;
+}
+const catalogStrikeGrantSchema: z.ZodType<RulesetStrikeGrantDeclaration, z.ZodTypeDef, unknown> = z
+  .object({
+    budget: sheetId,
+    names: attackNamesSchema.optional(),
+    melee: z.literal(true).optional(),
+    afterAttack: afterAttackSchema.optional(),
+  })
+  .strict();
+
+/** What holding the entry does to the attacks its sheet's rows make (Capability API 1.237), while
+ *  `when` holds: the best of the row's own ability and `abilities` to hit and to damage, a die of
+ *  `die` sides (read off the sheet by step) in place of the row's dice where it is the better, and
+ *  `qualities` its blows carry past a resistance. 5e's Martial Arts and Ki-Empowered Strikes. */
+export interface RulesetAttackRowsDeclaration {
+  names: string[];
+  abilities?: string[];
+  die?: { from: RulesetValueRef; table: Array<[number, number]> };
+  qualities?: string[];
+  when?: { value: RulesetValueRef; atLeast?: number; atMost?: number };
+}
+const catalogAttackRowsSchema: z.ZodType<RulesetAttackRowsDeclaration, z.ZodTypeDef, unknown> = z
+  .object({
+    names: attackNamesSchema,
+    abilities: z.array(sheetId).min(1).max(6).optional(),
+    die: z
+      .object({
+        from: rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>,
+        table: stepTableSchema,
+      })
+      .strict()
+      .optional(),
+    qualities: z.array(sheetId).min(1).max(8).optional(),
+    when: sheetBoundsSchema("when", "held").optional(),
+  })
+  .strict()
+  .refine((rule) => rule.abilities || rule.die || rule.qualities, {
+    message: '"attackRows" changes something: "abilities", "die" or "qualities"',
+  });
+
 /** The generic actions the kind implements, named once so a ruleset opts into the ones it has. Up
  *  here rather than beside the combat block because a catalog entry names them too: an ability that
  *  lets its holder buy one of them with another budget says which ones. */
@@ -2573,6 +2634,12 @@ const catalogMechanicsObject = z
      *  turn (Capability API 1.232), when nothing keeps its holder from acting: 5e's Feral Instinct
      *  with Rage. The entry is otherwise passive. */
     ignoresSurpriseWith: catalogEntryRef.optional(),
+    /** Held on a sheet's list, what it does to the attacks of its holder's rows (Capability API 1.237). */
+    attackRows: z.array(catalogAttackRowsSchema).min(1).max(4).optional(),
+    /** Held on a sheet's list, a strike it lets its holder buy with another budget (Capability API 1.237). */
+    grantsStrike: catalogStrikeGrantSchema.optional(),
+    /** Offered only once its holder has taken the attack action this turn (Capability API 1.237). */
+    afterAttack: afterAttackSchema.optional(),
     /** Held on a sheet's list, its holder's initiative dice are thrown twice (Capability API 1.235),
      *  the better (`advantage`) or the worse kept: 5e's Feral Instinct. */
     initiativeMode: z.enum(["advantage", "disadvantage"]).optional(),
@@ -5393,11 +5460,19 @@ const combatConditionSchema = z
         /** With `attacks`, only a weapon that strikes in reach, and only within it (Capability API
          *  1.234): 5e's Frenzy, a melee weapon attack as a bonus action. A thrown weapon is swung. */
         melee: z.literal(true).optional(),
+        /** With `attacks`, only the attacks named so (Capability API 1.237). */
+        names: attackNamesSchema.optional(),
+        /** With `attacks`, only once the attack action has been taken this turn (Capability API 1.237). */
+        afterAttack: afterAttackSchema.optional(),
       })
       .strict()
       .refine((grants) => !grants.melee || grants.attacks, {
         message: '"melee" narrows "attacks", so the grant gives attacks',
         path: ["melee"],
+      })
+      .refine((grants) => (!grants.names && !grants.afterAttack) || grants.attacks, {
+        message: '"names" and "afterAttack" narrow "attacks", so the grant gives attacks',
+        path: ["names"],
       })
       .optional(),
     exclusive: z.tuple([sheetId, sheetId]).optional(),
@@ -10502,6 +10577,17 @@ export function rulesetCatalogEntryIssues(
         add([index, "mechanics", "usableWhen", "value", issue.key], issue.message);
       }
     }
+    entry.mechanics?.attackRows?.forEach((rule, ruleIndex) => {
+      for (const [key, ref] of [
+        ["die", rule.die?.from],
+        ["when", rule.when?.value],
+      ] as const) {
+        if (!ref) continue;
+        for (const issue of rulesetValueRefIssues(ref, names, names.derived)) {
+          add([index, "mechanics", "attackRows", ruleIndex, key, issue.key], issue.message);
+        }
+      }
+    });
     if (entry.offeredWhen) {
       for (const issue of rulesetValueRefIssues(entry.offeredWhen, names, names.derived, false)) {
         add([index, "offeredWhen", issue.key], issue.message);
@@ -10797,6 +10883,17 @@ export function rulesetCatalogEntryIssues(
     if (mechanics?.summons && !budgets?.has(mechanics.summons.budget)) {
       add([index, "mechanics", "summons", "budget"], `Unknown budget "${mechanics.summons.budget}"`);
     }
+    // A strike bought with a budget the fight declares, rows changed by abilities the sheet has (1.237).
+    if (mechanics?.grantsStrike && budgets && !budgets.has(mechanics.grantsStrike.budget)) {
+      add([index, "mechanics", "grantsStrike", "budget"], `Unknown budget "${mechanics.grantsStrike.budget}"`);
+    }
+    mechanics?.attackRows?.forEach((rule, ruleIndex) => {
+      rule.abilities?.forEach((ability, abilityIndex) => {
+        if (!definition.sheet.abilities.some((one) => one.id === ability)) {
+          add([index, "mechanics", "attackRows", ruleIndex, "abilities", abilityIndex], `Unknown ability "${ability}"`);
+        }
+      });
+    });
     // What a use hands back, and what it lets its holder buy with another budget. Both name the
     // combat block's own words, so both are checked against the block that declares them.
     mechanics?.gives?.forEach((gift, giftIndex) => {

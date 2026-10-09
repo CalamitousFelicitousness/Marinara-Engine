@@ -61,7 +61,7 @@ import {
   rulesetCreatureBlock,
   rulesetReactionAnswers,
 } from "./creatures.js";
-import { parseRulesetCombatDice, rollRulesetDice, rulesetCombatRoller, sumOf } from "./dice.js";
+import { parseRulesetCombatDice, rollRulesetDice, rulesetAverageDamage, rulesetCombatRoller, sumOf } from "./dice.js";
 import {
   rulesetCellBlocked,
   rulesetFills,
@@ -964,6 +964,78 @@ function abilityAndSkill(
   return rulesetCheckModifier(evaluated, target) + fightAdjust(definition, build, evaluated, target);
 }
 
+/** What the entries a sheet holds do to its attack rows (1.237). */
+type RulesetAttackRowRule = NonNullable<RulesetCatalogMechanics["attackRows"]>[number];
+
+/** Whether an attack is one of these, by the name its row gives it (1.237). */
+export function rulesetAttackNamed(label: string, names: readonly string[]): boolean {
+  const own = label.trim().toLowerCase();
+  return names.some((name) => name.trim().toLowerCase() === own);
+}
+
+/**
+ * One attack row as the entries its sheet holds change it (1.237), while each one's `when` holds:
+ * the best of its own ability and theirs, to hit and, where the row's damage adds the same ability,
+ * to damage; their die in place of the row's dice where it is the better; and their qualities.
+ */
+function applyAttackRowRules(
+  definition: RulesetDefinition,
+  build: RulesetSheetBuild,
+  evaluated: EvaluatedRulesetSheet,
+  source: RulesetCombatAttackSource,
+  row: Record<string, unknown>,
+  dice: RulesetCombatAmount,
+  action: RulesetCombatAction,
+  rules: readonly RulesetAttackRowRule[],
+  pooled: boolean,
+): void {
+  for (const rule of rules) {
+    if (!rulesetAttackNamed(action.label, rule.names)) continue;
+    if (rule.when) {
+      const value = resolveRulesetValueRef(definition, build, rule.when.value, evaluated);
+      if (rule.when.atLeast !== undefined && !(value >= rule.when.atLeast)) continue;
+      if (rule.when.atMost !== undefined && !(value <= rule.when.atMost)) continue;
+    }
+    const damage = action.damage!;
+    if (rule.abilities) {
+      const mod = (ability: string | undefined) =>
+        ability !== undefined ? (evaluated.abilityMods[ability] ?? ABILITY_COLUMN_MISS) : ABILITY_COLUMN_MISS;
+      const best = rule.abilities
+        .filter((ability) => ability in evaluated.abilityMods)
+        .reduce<string | undefined>(
+          (top, ability) => (top === undefined || mod(ability) > mod(top) ? ability : top),
+          undefined,
+        );
+      const delta = best !== undefined ? mod(best) - mod(action.ability) : 0;
+      if (best !== undefined && delta > 0) {
+        action.toHit = (action.toHit ?? 0) + delta;
+        const dealtWith = columnValue(row, source.damage.ability?.column);
+        if (
+          dealtWith === action.ability ||
+          (action.ability === undefined && dealtWith === undefined && source.damage.ability)
+        ) {
+          if (pooled) damage.count = Math.max(0, damage.count + delta);
+          else damage.flat += delta;
+        }
+        action.ability = best;
+      }
+    }
+    if (rule.die && !pooled) {
+      const sides = Math.trunc(
+        lookupStepTable(rule.die.table, resolveRulesetValueRef(definition, build, rule.die.from, evaluated)),
+      );
+      const own = rulesetAverageDamage({ count: dice.count, sides: dice.sides, flat: dice.flat });
+      if (sides >= 2 && (sides + 1) / 2 > own) {
+        damage.flat -= dice.flat;
+        damage.count = 1;
+        damage.sides = sides;
+        dice = { count: 1, sides, flat: 0 };
+      }
+    }
+    if (rule.qualities) damage.qualities = [...new Set([...(damage.qualities ?? []), ...rule.qualities])];
+  }
+}
+
 function attackActions(
   definition: RulesetDefinition,
   combat: RulesetCombat,
@@ -972,6 +1044,8 @@ function attackActions(
   build: RulesetSheetBuild,
   evaluated: EvaluatedRulesetSheet,
   perCell: number | undefined,
+  /** What the entries the sheet holds do to its rows (1.237). */
+  rules: readonly RulesetAttackRowRule[] = [],
 ): RulesetCombatAction[] {
   const rows = build.lists?.[source.list];
   if (!Array.isArray(rows)) return [];
@@ -1000,7 +1074,7 @@ function attackActions(
     const reach = distanceInCells(source.reach, row, perCell);
     const normal = distanceInCells(source.range?.normal, row, perCell);
     const long = distanceInCells(source.range?.long, row, perCell);
-    actions.push({
+    const action: RulesetCombatAction = {
       id: `attack:${index}:${rowIndex}`,
       ...(ability ? { ability } : {}),
       kind: "attack",
@@ -1040,7 +1114,9 @@ function attackActions(
               ? { type: textFromColumn(row, source.damage.type?.column) }
               : {}),
           },
-    });
+    };
+    if (rules.length) applyAttackRowRules(definition, build, evaluated, source, row, dice, action, rules, pooled);
+    actions.push(action);
   });
   return actions;
 }
@@ -1781,6 +1857,8 @@ function mechanicsAction(
   if (mechanics.kills) action.kills = true;
   // Its damage joins its holder's own blow that just hit (1.236).
   if (mechanics.addsToBlow && moment) action.addsToBlow = true;
+  // Only once the attack action has been taken this turn (1.237): Flurry of Blows.
+  if (mechanics.afterAttack) action.afterAttack = structuredClone(mechanics.afterAttack);
   // Leaving `toHit` unset here would send it down the no-roll path and land it automatically.
   if (mechanics.attackRoll) action.toHit = from.toHit;
   if (mechanics.autoHit) action.autoHit = true;
@@ -2489,9 +2567,35 @@ function sheetCombatant(
   const abilities = (combat.abilities ?? []).map((source, index) =>
     abilityActions(definition, combat, source, index, build, catalogs, evaluated, perCell, input.items),
   );
+  // The entries the sheet's rows came from (1.237): what they do to its attacks, and the strikes they
+  // let it buy with another budget.
+  const byRef = rulesetCatalogEntriesByRef({
+    ...Object.fromEntries((definition.catalogs ?? []).map((catalog) => [catalog.id, catalog.entries ?? []])),
+    ...input.catalogs,
+  });
+  const held = [
+    ...new Set(
+      Object.values(build.lists ?? {}).flatMap((list) =>
+        (Array.isArray(list) ? list : []).flatMap((row) => {
+          const ref =
+            row && typeof row === "object"
+              ? columnValue(row as Record<string, unknown>, RULESET_CATALOG_ROW_KEY)
+              : undefined;
+          return typeof ref === "string" ? [ref] : [];
+        }),
+      ),
+    ),
+  ].flatMap((ref) => {
+    const entry = byRef.get(ref);
+    return entry?.mechanics ? [entry.mechanics] : [];
+  });
+  const rowRules = held.flatMap((mechanics) => mechanics.attackRows ?? []);
+  const strikeGrants = held.flatMap((mechanics) =>
+    mechanics.grantsStrike ? [structuredClone(mechanics.grantsStrike)] : [],
+  );
   const actions = [
     ...(combat.attacks ?? []).flatMap((source, index) =>
-      attackActions(definition, combat, source, index, build, evaluated, perCell),
+      attackActions(definition, combat, source, index, build, evaluated, perCell, rowRules),
     ),
     ...itemAttackActions(definition, combat, input.items, build, evaluated, perCell),
     ...itemSwitchActions(input.items),
@@ -2526,6 +2630,7 @@ function sheetCombatant(
     initiative: initiative.total,
     budgets: fullBudgets(combat),
     actions,
+    ...(strikeGrants.length ? { strikeGrants } : {}),
     uses: startingUses(actions),
     spent: [],
     ...(riders.length > 0 ? { riders } : {}),
@@ -2678,6 +2783,8 @@ export function rulesetConditionEconomy(
       economy.attacksPerTurn = Math.min(economy.attacksPerTurn ?? entry.attacksPerTurn, entry.attacksPerTurn);
     }
   }
+  // What the entries their rows came from let them strike with (1.237).
+  for (const grant of combatant.strikeGrants ?? []) economy.grants.push({ ...grant, attacks: true });
   return economy;
 }
 

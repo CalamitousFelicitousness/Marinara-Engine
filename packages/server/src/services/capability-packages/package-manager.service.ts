@@ -1532,6 +1532,22 @@ function carriesFrenzy(ruleset: unknown): boolean {
   });
 }
 
+/** Attack rows changed by what a sheet holds, strikes it grants, entries only after the attack action,
+ *  or a condition's granted attacks narrowed by name or to after the attack action (1.237), in
+ *  catalogs too. */
+function carriesMartialArts(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesMartialArts(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.attackRows !== undefined || record.grantsStrike !== undefined || record.afterAttack !== undefined) {
+    return true;
+  }
+  const grants = plainRecord(record.grants);
+  if (grants && (grants.names !== undefined || grants.afterAttack !== undefined)) return true;
+  return Object.values(record).some((one) => carriesMartialArts(one, depth + 1));
+}
+
 /** A reaction to its holder's own hit or to a weapon's, a use added to that blow, or a cap on the
  *  steps a higher cost adds (1.236), in catalogs too. */
 function carriesOwnHit(value: unknown, depth = 0): boolean {
@@ -3308,6 +3324,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Attack rows, granted strikes and the attack action, 1.237.
+  if (
+    !declaresApi(237) &&
+    (carriesMartialArts(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesMartialArts(document)))
+  ) {
+    return "A ruleset with entries that change attack rows, grant strikes or come only after the attack action, or granted attacks narrowed by name or to after it, requires schemaVersion 2 and capabilityApi 1.237 or newer";
   }
   // Answers to one's own hit, added to it, and capped higher costs, 1.236.
   if (

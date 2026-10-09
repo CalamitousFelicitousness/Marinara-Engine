@@ -988,7 +988,12 @@ const capabilityPackageManifestBaseSchema = z
 // 1.236: a "hit" reaction's `by: "self"` (its holder's own attack hitting, aimed at whoever it hit)
 //        and `weapon` (a weapon's blow only); catalog mechanics' `addsToBlow` (its amount joins that
 //        blow, doubled by its critical: Divine Smite) and `perCostStepsMax` (to 5d8 at most).
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 236 } as const);
+// 1.237: catalog mechanics' `attackRows` (held, it changes the attack rows it names: the better of
+//        their ability and its own, a die in place of theirs where better, qualities: 5e's Martial
+//        Arts and Ki-Empowered Strikes), `grantsStrike` (held, a strike bought with another budget)
+//        and `afterAttack` (only once the attack action was taken this turn: Flurry of Blows); a
+//        condition grant's `names` and `afterAttack`.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 237 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

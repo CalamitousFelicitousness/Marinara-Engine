@@ -53,6 +53,7 @@ import {
   rulesetConditionEconomy,
   rulesetIsAttack,
   rulesetOnOwnTurn,
+  rulesetAttackNamed,
 } from "./encounter.js";
 import {
   rulesetAirborne,
@@ -79,6 +80,7 @@ import { coverTier, elevationAt } from "../tactical-combat/math.js";
 import { rulesetStandingSections, rulesetZoneMoveCells, rulesetZoneTurnCells } from "./zones.js";
 import { rulesetCanSee } from "./sight.js";
 import type {
+  RulesetAfterAttack,
   RulesetCombatAmount,
   RulesetCombatAgainst,
   RulesetConditionBonus,
@@ -112,6 +114,13 @@ export function rulesetStandardName(optionId: string): string {
 }
 
 /** Whether this action would be taken out of strikes already in hand rather than out of a budget. */
+/** Whether its holder has taken the attack action this turn: with anything, or with one of `names`
+ *  (1.237). */
+export function rulesetTookAttackAction(actor: RulesetCombatant, after: RulesetAfterAttack): boolean {
+  const made = actor.flags.attackAction ?? [];
+  return after === true ? made.length > 0 : made.some((label) => rulesetAttackNamed(label, after.names));
+}
+
 export function rulesetFreeStrike(actor: RulesetCombatant, action: RulesetCombatAction): boolean {
   return action.strikes !== undefined && (actor.strikesLeft ?? 0) > 0;
 }
@@ -1767,6 +1776,8 @@ function optionFrom(
   // Breaking free is only there while something holds on.
   if (action.contest?.from && !rulesetContestHolder(state, actor, action.contest)) return null;
   if (!actionDoesSomething(action)) return null;
+  // Only once the attack action has been taken this turn (1.237): Flurry of Blows.
+  if (action.afterAttack && !rulesetTookAttackAction(actor, action.afterAttack)) return null;
   // A cap on attacks a turn (combat C6d, as Slow's): one that has made them all makes no more, however
   // many strikes an action would give. It is a cap on the holder's own turn, as Slow's is.
   if (
@@ -1799,7 +1810,12 @@ function optionFrom(
       (entry) =>
         (actor.budgets[entry.budget] ?? 0) >= 1 &&
         !action.sequence &&
-        ((entry.attacks === true && weapon && (!entry.melee || !action.range || action.reach !== undefined)) ||
+        ((entry.attacks === true &&
+          weapon &&
+          (!entry.melee || !action.range || action.reach !== undefined) &&
+          // Only the attacks it names, and only after the attack action (1.237): Martial Arts.
+          (!entry.names || rulesetAttackNamed(action.label, entry.names)) &&
+          (!entry.afterAttack || rulesetTookAttackAction(actor, entry.afterAttack))) ||
           (!!action.itemUse &&
             (entry.items === true || (!!entry.items && entry.items.tags.some((tag) => tags.includes(tag)))))),
     );

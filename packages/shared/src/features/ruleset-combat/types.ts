@@ -509,6 +509,8 @@ export interface RulesetCombatAction {
   cureOneOf?: true;
   /** Taken as its holder's own attack hits, its damage joins that blow (1.236): Divine Smite. */
   addsToBlow?: true;
+  /** Offered only once the attack action has been taken this turn (1.237): Flurry of Blows. */
+  afterAttack?: RulesetAfterAttack;
   /** Its damage never takes a target below this much health (1.230). */
   leavesAtLeast?: number;
   /** It brings back a target that died no more than `withinRounds` rounds ago, at `amount` (1.171). */
@@ -842,6 +844,8 @@ export interface RulesetCombatant {
   /** Strikes in hand: what is left of a spend that bought several. Absent when there are none, and
    *  cleared at the end of the turn they were bought on, so nothing carries into the next one. */
   strikesLeft?: number;
+  /** Strikes the entries their rows came from let them buy with another budget (1.237). */
+  strikeGrants?: RulesetStrikeGrant[];
   /** What this combatant adds to a qualifying hit without anybody choosing it. */
   riders?: RulesetCombatRider[];
   /** The riders that have already fired in their period. A "turn" rider is fresh at the start of
@@ -863,6 +867,8 @@ export interface RulesetCombatant {
     offHand?: number;
     /** Attacks made this turn, which a condition's cap on attacks a turn counts (combat C6d). */
     attacks?: number;
+    /** What the attack action was taken with this turn, by name (1.237). */
+    attackAction?: string[];
     /** Summons made this turn do not spend a round at its end. */
     freshSummons?: string[];
     /** Zones placed this turn do not spend a round at its end (1.167). */
@@ -1178,6 +1184,18 @@ export interface RulesetActionResume {
   resolved?: true;
   /** Held after one of its attack rolls hit, rather than before anything happened. */
   held?: RulesetHeldAttack;
+}
+
+/** Once the attack action has been taken this turn, with anything or with one of `names` (1.237). */
+export type RulesetAfterAttack = true | { names: string[] };
+
+/** A strike a held entry lets its holder buy with `budget` (1.237), read as a condition's grant of
+ *  attacks is. */
+export interface RulesetStrikeGrant {
+  budget: string;
+  names?: string[];
+  melee?: true;
+  afterAttack?: RulesetAfterAttack;
 }
 
 /** Damage added to a held blow by its maker's answer (1.236), with what a higher payment adds. */

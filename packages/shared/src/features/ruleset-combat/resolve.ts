@@ -2729,6 +2729,15 @@ export function applyRulesetCombatChoice(
   // hand and says nothing: a ruleset whose list declares one strike a spend reads as it always did.
   // An attack a condition's grant paid for is one strike (combat C6d), and puts none in hand.
   if (striking && !striking.sequence && rulesetIsAttack(striking)) countAttack(ctx, working);
+  // The attack action, taken with a weapon's own budget or a strike it already bought (1.237): what
+  // a grant or an entry that comes only after it reads.
+  if (
+    striking?.kind === "attack" &&
+    !striking.catalog &&
+    (option.budget === undefined || option.budget === striking.budget)
+  ) {
+    working.flags.attackAction = [...(working.flags.attackAction ?? []), striking.label];
+  }
   if (striking?.strikes !== undefined && !option.oneStrike && (inHand > 0 || striking.strikes > 1)) {
     const left = inHand > 0 ? inHand - 1 : striking.strikes - 1;
     if (left > 0) working.strikesLeft = left;

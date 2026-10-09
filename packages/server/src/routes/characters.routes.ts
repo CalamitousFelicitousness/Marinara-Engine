@@ -2049,27 +2049,32 @@ export async function charactersRoutes(app: FastifyInstance) {
     const dir = await ensureCharacterGalleryDir(id);
     const results: Array<{ url: string; file?: string; error?: string }> = [];
     for (const url of new Set(urls)) {
+      let image: Awaited<ReturnType<typeof downloadGreetingImage>>;
       try {
-        const image = await downloadGreetingImage(url);
-        // App-generated name; nothing from the URL reaches the file system.
-        const file = `${newId()}.${image.ext}`;
+        image = await downloadGreetingImage(url);
+      } catch (error) {
+        logger.warn(error, "Could not download a greeting image from %s for character %s", URL.parse(url)?.host, id);
+        results.push({ url, error: error instanceof Error ? error.message : "Download failed" });
+        continue;
+      }
+      // App-generated name; nothing from the URL reaches the file system.
+      const file = `${newId()}.${image.ext}`;
+      let written = false;
+      try {
         await writeFile(join(dir, file), image.buffer, { flag: "wx" });
-        try {
-          await characterGallery.create({
-            characterId: id,
-            filePath: `characters/${id}/${file}`,
-            width: image.width,
-            height: image.height,
-          });
-        } catch (error) {
-          await unlink(join(dir, file)).catch(() => undefined);
-          throw error;
-        }
+        written = true;
+        await characterGallery.create({
+          characterId: id,
+          filePath: `characters/${id}/${file}`,
+          width: image.width,
+          height: image.height,
+        });
         results.push({ url, file });
       } catch (error) {
-        // Host only: signed image links can carry access tokens in the query.
-        logger.warn(error, "Could not save a greeting image from %s for character %s", URL.parse(url)?.host, id);
-        results.push({ url, error: error instanceof Error ? error.message : "Download failed" });
+        if (written) await unlink(join(dir, file)).catch(() => undefined);
+        // Storage errors can name server paths, so the client gets a plain message.
+        logger.error(error, "Could not store a greeting image for character %s", id);
+        results.push({ url, error: "The image could not be stored" });
       }
     }
     return { results };

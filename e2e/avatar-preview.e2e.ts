@@ -159,7 +159,7 @@ test("avatar crop handles stay whole and draggable on a square image", async ({ 
       const handle = page.locator(`[data-avatar-crop-handle="${pos}"]`);
       const visible = await handle.evaluate((element) => {
         const bounds = element.getBoundingClientRect();
-        const corners = [
+        const corners: [number, number][] = [
           [bounds.left + 1, bounds.top + 1],
           [bounds.right - 1, bounds.top + 1],
           [bounds.left + 1, bounds.bottom - 1],

@@ -305,7 +305,7 @@ try {
     };
     const frenzy = (doc: Record<string, any>) => doc.combat.conditions.at(-1);
     refused((doc) => (frenzy(doc).onEnd.tracks[0].track = "sanity"), /Unknown track "sanity"/);
-    refused((doc) => (frenzy(doc).onEnd = {}), /"onEnd" names "applies", "tracks" or both/);
+    refused((doc) => (frenzy(doc).onEnd = {}), /"onEnd" names "applies", "tracks" or "harm"/);
     refused((doc) => (frenzy(doc).grants = { budget: "bonus", melee: true }), /"melee" narrows "attacks"/);
     refused((doc) => (frenzy(doc).onEnd.tracks[0].by = 0), /at least one level/);
   }

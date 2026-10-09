@@ -1388,6 +1388,25 @@ const conditionHarmsSchema: z.ZodType<RulesetConditionHarms, z.ZodTypeDef, unkno
     message: "What it harms with names dice, a flat amount, or both",
   });
 
+/** Damage a condition deals as it ends (1.240), unless its holder is what `unless` names. */
+export interface RulesetConditionEndHarm {
+  dice?: string;
+  flat?: number;
+  type?: string;
+  unless?: RulesetTargetIs;
+}
+const conditionEndHarmSchema: z.ZodType<RulesetConditionEndHarm, z.ZodTypeDef, unknown> = z
+  .object({
+    dice: catalogDice.optional(),
+    flat: z.number().int().min(0).max(1000).optional(),
+    type: promptSafeText(40).optional(),
+    unless: z.lazy(() => targetIsSchema).optional(),
+  })
+  .strict()
+  .refine((harm) => harm.dice !== undefined || harm.flat !== undefined, {
+    message: "What it harms with names dice, a flat amount, or both",
+  });
+
 /** The senses that see through an obscuring zone or past a condition that hides (1.173). */
 export interface RulesetSeenThrough {
   pierced?: string[];
@@ -1730,6 +1749,10 @@ const rulesetReactionAgainstSchema = z
     },
   );
 
+/** Attacks named the way their rows name them, matched without case (Capability API 1.237): 5e's
+ *  Unarmed Strike and the monk weapons. */
+const attackNamesSchema = z.array(promptSafeText(80)).min(1).max(30);
+
 /** What else narrows a moment (Capability API 1.113): `blow` answers only a hit struck in reach
  *  (`melee`) or from afar (`ranged`), and `seesSource` only while its holder sees whoever caused it.
  *  5e's Parry is both. `by: "self"` (Capability API 1.236) answers its holder's OWN attack hitting,
@@ -1741,9 +1764,12 @@ const rulesetMomentNarrowing = {
   seesSource: z.literal(true).optional(),
   by: z.literal("self").optional(),
   weapon: z.literal(true).optional(),
+  /** Only a hit by an attack named so (Capability API 1.240): 5e's Quivering Palm, on an unarmed
+   *  strike. */
+  names: attackNamesSchema.optional(),
 };
 const blowOnlyOnHit = (
-  moment: { on: string; blow?: string; by?: string; weapon?: true; for?: string; within?: number },
+  moment: { on: string; blow?: string; by?: string; weapon?: true; names?: string[]; for?: string; within?: number },
   ctx: z.RefinementCtx,
   path: (string | number)[],
 ) => {
@@ -1754,7 +1780,7 @@ const blowOnlyOnHit = (
       message: '"blow" says what kind of hit opens the moment, so it is on a "hit" moment',
     });
   }
-  for (const key of ["by", "weapon"] as const) {
+  for (const key of ["by", "weapon", "names"] as const) {
     if (moment[key] !== undefined && moment.on !== "hit") {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -1964,10 +1990,6 @@ function sheetBoundsSchema(key: string, never: string) {
 }
 
 const catalogUsableWhenSchema = sheetBoundsSchema("usableWhen", "usable");
-
-/** Attacks named the way their rows name them, matched without case (Capability API 1.237): 5e's
- *  Unarmed Strike and the monk weapons. */
-const attackNamesSchema = z.array(promptSafeText(80)).min(1).max(30);
 
 /** Only once its holder has taken the attack action this turn: any attack made with an attack's
  *  own budget, or one of `names` (Capability API 1.237). 5e's Martial Arts bonus strike and Flurry of
@@ -2806,6 +2828,12 @@ const catalogMechanicsObject = z
     /** Spends the uses of the row with this name instead of its own (Capability API 1.234): a
      *  Berserker's Frenzied Rage spends a use of Rage, its counter row. */
     usesOf: promptSafeText(80).optional(),
+    /** How many of those uses one use spends (Capability API 1.240): Quivering Palm's 3 ki. */
+    usesSpent: z.number().int().min(2).max(20).optional(),
+    /** A target that fails the save drops to 0 health instead of taking the amount (Capability API
+     *  1.240), as if the blow had taken every point it had: 5e's Quivering Palm, whose made save
+     *  still takes 10d10 necrotic. */
+    dropsOnFailedSave: z.literal(true).optional(),
     /** Which budget of the action economy a use spends, instead of the list's own default. */
     budget: sheetId.optional(),
     /** Costs no budget at all: a turn may hold as many of these as their own price allows. */
@@ -2938,6 +2966,13 @@ const catalogMechanicsSchema: z.ZodType<
       code: z.ZodIssueCode.custom,
       path: ["dismisses", "while"],
       message: `Away while it holds "${away.while}", so the entry puts it on`,
+    });
+  }
+  if (mechanics.dropsOnFailedSave && !mechanics.save) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["dropsOnFailedSave"],
+      message: '"dropsOnFailedSave" follows the entry\'s own save, so it has one',
     });
   }
   if (mechanics.reducesMax?.onFailedSave && !mechanics.save) {
@@ -5572,9 +5607,15 @@ const combatConditionSchema = z
         /** Its holder's live tracks moved by levels as it ends (Capability API 1.234): 5e's Frenzy
          *  leaves a level of exhaustion when the rage is over. */
         tracks: catalogTracksSchema.optional(),
+        /** Damage its holder takes as it ends (Capability API 1.240), from whoever put it on, unless
+         *  the holder is what `unless` names: Hurl Through Hell's 10d10 psychic, which a fiend
+         *  never takes. */
+        harm: conditionEndHarmSchema.optional(),
       })
       .strict()
-      .refine((ending) => ending.applies || ending.tracks, { message: '"onEnd" names "applies", "tracks" or both' })
+      .refine((ending) => ending.applies || ending.tracks || ending.harm, {
+        message: '"onEnd" names "applies", "tracks" or "harm"',
+      })
       .optional(),
   })
   .strict()
@@ -8308,6 +8349,12 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       if (harmType && damageTypes && !damageTypes.includes(harmType.trim().toLowerCase())) {
         issue([...path, "harms", "type"], `Unknown damage type "${harmType}"`);
       }
+      // What it deals as it ends (1.240): a damage type of the ruleset's, spared what it names.
+      const endType = entry.onEnd?.harm?.type;
+      if (endType && damageTypes && !damageTypes.includes(endType.trim().toLowerCase())) {
+        issue([...path, "onEnd", "harm", "type"], `Unknown damage type "${endType}"`);
+      }
+      targetIsIssues(def, entry.onEnd?.harm?.unless, [...path, "onEnd", "harm", "unless"], issue);
       if (entry.unseen) sightIssues(def, entry.unseen.pierced, [...path, "unseen"], issue);
       senseRangeIssues(def, entry.senses, path, issue);
       componentIssues(def, entry.forbids?.components, [...path, "forbids", "components"], issue);

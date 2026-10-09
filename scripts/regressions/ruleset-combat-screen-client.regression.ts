@@ -746,6 +746,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
       }),
     ],
     ["slain", say({ type: "slain", actorId: "brenna", targetId: "lurker", label: "Mace of Disruption" })],
+    ["dropped", say({ type: "dropped", actorId: "brenna", targetId: "lurker", label: "Quivering Palm" })],
     ["charged", say({ type: "charged", actorId: "lurker", targetId: "brenna", label: "Gore" })],
     ["fell", say({ type: "fell", targetId: "lurker", levels: 2 })],
     ["resized", say({ type: "resized", targetId: "lurker", size: "large", label: "Large" })],
@@ -957,6 +958,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     "Brenna tries Grapple on Thorn Lurker: 14 + 7 = 21 with Athletics against 9 + 2 = 11 with Acrobatics, and wins.",
   );
   assert.equal(printed.get("slain"), "Brenna's Mace of Disruption destroys Thorn Lurker outright.");
+  assert.equal(printed.get("dropped"), "Brenna's Quivering Palm drops Thorn Lurker to 0.");
   assert.equal(printed.get("charged"), "Thorn Lurker charges Brenna with Gore.");
   assert.equal(printed.get("pushed"), "Brenna pushes Thorn Lurker back 1, to 4, 2.");
   assert.equal(printed.get("resized"), "Thorn Lurker is now Large.");

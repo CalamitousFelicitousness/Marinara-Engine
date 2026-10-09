@@ -768,11 +768,14 @@ export function planRulesetCombatCost(
   if (action.innate || !combatant.sheet) return payWith ? null : free;
   const { build, catalogs } = combatant.sheet;
   if (!action.use) return payWith ? null : free;
-  const plan = planRulesetUse(definition, build, combatant.sheet.live, catalogs, {
-    op: "use",
-    name: action.use.name,
-    ...(payWith ? { pool: payWith } : {}),
-  });
+  const plan = planRulesetUse(
+    definition,
+    build,
+    combatant.sheet.live,
+    catalogs,
+    { op: "use", name: action.use.name, ...(payWith ? { pool: payWith } : {}) },
+    action.use.count,
+  );
   if (!plan.ok) return null;
   let live = combatant.sheet.live;
   const cost: RulesetCombatCost["cost"] = [];
@@ -2412,6 +2415,7 @@ export function rulesetWindowOptions(
     ...("entry" in trigger && trigger.entry ? { entry: trigger.entry } : {}),
     ...(trigger.kind === "hit" && trigger.blow ? { blow: trigger.blow } : {}),
     ...(trigger.kind === "hit" && trigger.weapon ? { weapon: true } : {}),
+    ...(trigger.kind === "hit" && !trigger.catalog ? { attack: trigger.label } : {}),
   };
   // A hit's maker answers it once with each thing they hold (1.236).
   const taken = trigger.kind === "hit" && actorId === source ? (window.taken ?? []) : [];
@@ -2500,6 +2504,7 @@ function momentAnswers(
   // Its holder's own hit, or somebody else's (1.236): never both.
   if (moment.on === "hit" && (moment.by === "self") !== (sourceId === holder.id)) return false;
   if (moment.weapon && !cause.weapon) return false;
+  if (moment.names && !(cause.attack !== undefined && rulesetAttackNamed(cause.attack, moment.names))) return false;
   if (moment.blow && cause.blow !== moment.blow) return false;
   if (moment.seesSource && !rulesetSees(state, holder, rulesetCombatant(state, sourceId))) return false;
   return true;

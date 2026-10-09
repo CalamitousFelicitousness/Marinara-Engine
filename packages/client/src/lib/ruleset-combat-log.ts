@@ -477,6 +477,12 @@ export function rulesetCombatEventLine(
         target: names.combatant(event.targetId),
         label: event.label,
       });
+    case "dropped":
+      return key("dropped", {
+        actor: names.combatant(event.actorId),
+        target: names.combatant(event.targetId),
+        label: event.label,
+      });
     case "dismissed":
       return key(event.while ? "dismissedWhile" : "dismissed", {
         actor: names.combatant(event.actorId),

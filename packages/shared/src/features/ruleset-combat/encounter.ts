@@ -1911,6 +1911,8 @@ function mechanicsAction(
             ...(mechanics.targetsPerCostStep ? { targetsPerStep: mechanics.targetsPerCostStep } : {}),
             // No more steps count than this (1.236): Divine Smite stops at 5d8.
             ...(mechanics.perCostStepsMax ? { stepsMax: mechanics.perCostStepsMax } : {}),
+            // More than one of them at once (1.240): Quivering Palm's 3 ki.
+            ...(mechanics.usesSpent ? { count: mechanics.usesSpent } : {}),
           },
         }
       : {}),
@@ -1940,6 +1942,8 @@ function mechanicsAction(
   if (mechanics.kills) action.kills = true;
   // Its damage joins its holder's own blow that just hit (1.236).
   if (mechanics.addsToBlow && moment) action.addsToBlow = true;
+  // A failed save drops its target to 0 instead (1.240): Quivering Palm.
+  if (mechanics.dropsOnFailedSave) action.dropsOnFailedSave = true;
   // Only once the attack action has been taken this turn (1.237): Flurry of Blows.
   if (mechanics.afterAttack) action.afterAttack = structuredClone(mechanics.afterAttack);
   // Leaving `toHit` unset here would send it down the no-roll path and land it automatically.

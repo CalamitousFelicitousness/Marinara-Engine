@@ -509,6 +509,8 @@ export interface RulesetCombatAction {
   cureOneOf?: true;
   /** Taken as its holder's own attack hits, its damage joins that blow (1.236): Divine Smite. */
   addsToBlow?: true;
+  /** A failed save drops its target to 0 health instead of the amount (1.240). */
+  dropsOnFailedSave?: true;
   /** Offered only once the attack action has been taken this turn (1.237): Flurry of Blows. */
   afterAttack?: RulesetAfterAttack;
   /** Its damage never takes a target below this much health (1.230). */
@@ -531,6 +533,8 @@ export interface RulesetCombatAction {
     targetsPerStep?: number;
     /** The most steps of a higher cost that count (1.236). */
     stepsMax?: number;
+    /** How many of the row's uses one use spends (1.240). */
+    count?: number;
   };
   uses?: RulesetCombatUses;
   recharge?: RulesetCombatRecharge;
@@ -571,6 +575,8 @@ export interface RulesetCombatAction {
     by?: "self";
     /** Only a weapon's blow opens it (1.236). */
     weapon?: true;
+    /** Only a hit by an attack named so (1.240). */
+    names?: string[];
     /** It stops only what was paid for no higher up its pool family than this was (1.111). */
     upTo?: "paid";
     /** Above that, a check, read once as the fight began, against `dc` plus the level of what it
@@ -1119,6 +1125,8 @@ export interface RulesetReactionAlso {
   by?: "self";
   /** Only a weapon's blow opens it (1.236). */
   weapon?: true;
+  /** Only a hit by an attack named so (1.240). */
+  names?: string[];
 }
 
 /** What caused a moment, as far as a reaction narrows what it answers: the catalog and entry behind
@@ -1131,6 +1139,8 @@ export interface RulesetMomentCause {
   blow?: RulesetBlowKind;
   /** The blow was a weapon's (1.236). */
   weapon?: boolean;
+  /** The name of the attack that hit, when it was no catalog entry's (1.240). */
+  attack?: string;
 }
 
 /** What opens a moment for one reaction: an action from an entry of one of `catalogs`, or one of
@@ -1619,6 +1629,8 @@ export type RulesetCombatEvent =
   | { type: "fell"; targetId: string; levels: number }
   /** Killed outright by a blow that slays (1.182). */
   | { type: "slain"; actorId: string; targetId: string; label: string }
+  /** Dropped to 0 health at once by a failed save (1.240): Quivering Palm. */
+  | { type: "dropped"; actorId: string; targetId: string; label: string }
   /** Sent out of the fight (1.231): for good, or for as long as `while` holds. */
   | { type: "dismissed"; actorId: string; targetId: string; label: string; while?: string }
   /** Back from where it was sent (1.231), or, with `gone`, kept there for good. */

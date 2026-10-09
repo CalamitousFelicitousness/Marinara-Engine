@@ -1262,6 +1262,7 @@
   "game.combat.ruleset.event.dismissedWhile": "{{actor}}'s {{label}} sends {{target}} away for as long as they are {{condition}}.",
   "game.combat.ruleset.event.down": "{{actor}} goes down.",
   "game.combat.ruleset.event.downDying": "{{actor}} goes down and is fighting to hold on.",
+  "game.combat.ruleset.event.dropped": "{{actor}}'s {{label}} drops {{target}} to 0.",
   "game.combat.ruleset.event.dyingDead": "{{actor}} does not get up again.",
   "game.combat.ruleset.event.dyingFailure": "{{actor}} slips: {{roll}} against {{difficulty}}. Held {{successes}}, slipped {{failures}}.",
   "game.combat.ruleset.event.dyingRevived": "{{actor}} is back on their feet.",

@@ -1485,6 +1485,14 @@ function removeCondition(
   if (ending?.tracks && !target.defeated) {
     for (const moved of ending.tracks) moveTrack(ctx, target, target, moved.track, moved.by);
   }
+  // What it deals as it ends (1.240), from whoever put it on, to a holder it does not spare.
+  if (
+    ending?.harm &&
+    !target.defeated &&
+    !(ending.harm.unless && rulesetTargetIs(ctx.definition, target, ending.harm.unless))
+  ) {
+    conditionHarm(ctx, target, condition, removed?.source, ending.harm, 1);
+  }
   if (ending?.applies && !target.defeated) {
     // Ended in the middle of its holder's own turn (their own concentration broken, say), the clock
     // starts with the NEXT turn: "until after its next turn" is never the rest of this one. Ended as
@@ -1625,7 +1633,19 @@ function harmFromCondition(
 ): void {
   const harms = ctx.combat.conditions?.find((one) => one.condition === entry.condition)?.harms;
   if (!harms || harms.at !== at || holder.defeated) return;
-  const times = entry.stacks ?? 1;
+  conditionHarm(ctx, holder, entry.condition, entry.source, harms, entry.stacks ?? 1);
+}
+
+/** What a condition deals its holder, from whoever put it on: as a turn starts or ends (1.184), or
+ *  as it ends (1.240). */
+function conditionHarm(
+  ctx: RulesetCombatContext,
+  holder: RulesetCombatant,
+  condition: string,
+  source: string | undefined,
+  harms: { dice?: string; flat?: number; type?: string; healedOnlyByRest?: true },
+  times: number,
+): void {
   const dice = harms.dice ? parseRulesetCombatDice(harms.dice) : null;
   const amount = {
     count: (dice?.count ?? 0) * times,
@@ -1640,10 +1660,9 @@ function harmFromCondition(
         const rolls = rollRulesetDice(ctx.roll, amount.count, amount.sides);
         return { rolls, flat: amount.flat, amount: sumOf(rolls) + amount.flat };
       })();
-  const label =
-    ctx.definition.sheet.live.conditions.find((one) => one.id === entry.condition)?.label ?? entry.condition;
+  const label = ctx.definition.sheet.live.conditions.find((one) => one.id === condition)?.label ?? condition;
   const dealt = applyDamage(ctx, holder, {
-    ...(entry.source ? { sourceId: entry.source } : {}),
+    ...(source ? { sourceId: source } : {}),
     label,
     ...(harms.type ? { damageType: harms.type } : {}),
     ...harm,
@@ -3486,6 +3505,7 @@ function takeReaction(
       : {}),
     ...(trigger.kind === "hit" ? { blow: trigger.blow } : {}),
     ...(trigger.kind === "hit" && trigger.weapon ? { weapon: true } : {}),
+    ...(trigger.kind === "hit" && !trigger.catalog ? { attack: trigger.label } : {}),
   });
   const source = rulesetCombatant(state, declared.reaction?.at === "target" ? (about ?? actor.id) : trigger.sourceId);
   let targets: RulesetCombatant[] | RulesetCombatRefusal;
@@ -4197,6 +4217,7 @@ function hitAnswers(
           ...(action.entry ? { entry: action.entry } : {}),
           blow: rulesetBlowKind(ctx.state, actor, target, action),
           ...(rulesetWeaponBlow(action) ? { weapon: true } : {}),
+          ...(!action.catalog ? { attack: action.label } : {}),
         }).length > 0,
     )
     .map((one) => one.id);
@@ -4871,7 +4892,8 @@ function sparedByHealth(
 }
 
 /** Killed outright (1.182): no health left, and dead rather than dying, whichever side they are on. */
-function slay(ctx: RulesetCombatContext, target: RulesetCombatant, sourceId: string, label: string): void {
+/** Every point of health, temporary ones too, gone at once. */
+function emptyHealth(ctx: RulesetCombatContext, target: RulesetCombatant): void {
   const before = healthOf(ctx, target);
   if (target.sheet) {
     if (!("track" in ctx.combat.health) && before.value + before.temp > 0) {
@@ -4881,6 +4903,19 @@ function slay(ctx: RulesetCombatContext, target: RulesetCombatant, sourceId: str
     target.health.temp = 0;
     target.health.value = 0;
   }
+}
+
+/** Down to 0 health at once (1.240), to fall as a blow that took it all would leave them: a creature
+ *  is out, a character dying where the ruleset has a dying rule. */
+function dropToNothing(ctx: RulesetCombatContext, target: RulesetCombatant, sourceId: string, label: string): void {
+  if (target.defeated) return;
+  emptyHealth(ctx, target);
+  ctx.events.push({ type: "dropped", actorId: sourceId, targetId: target.id, label });
+  if (!target.down) dropToZero(ctx, target);
+}
+
+function slay(ctx: RulesetCombatContext, target: RulesetCombatant, sourceId: string, label: string): void {
+  emptyHealth(ctx, target);
   ctx.events.push({ type: "slain", actorId: sourceId, targetId: target.id, label });
   if (!target.down) dropToZero(ctx, target);
   if (target.defeated) return;
@@ -5293,6 +5328,12 @@ function resolveActionBody(
         saveLean(ctx, target, action.save.modes),
       );
       if (saved && action.save.onSuccess === "negates") {
+        spendUsed();
+        continue;
+      }
+      // Failed, it takes every point instead (1.240): Quivering Palm.
+      if (!saved && action.dropsOnFailedSave) {
+        dropToNothing(ctx, target, actor.id, action.label);
         spendUsed();
         continue;
       }

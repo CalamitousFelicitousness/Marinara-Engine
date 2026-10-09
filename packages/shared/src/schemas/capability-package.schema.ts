@@ -999,7 +999,11 @@ const capabilityPackageManifestBaseSchema = z
 //        `items` (held weapons by tags, or by name with `names`, which a rule may now leave out) and
 //        `wielding.only` (kept only while every weapon held is one of these); `grantsStrike`'s `when`
 //        and `wielding`.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 239 } as const);
+// 1.240: catalog mechanics' `usesSpent` (several uses at once: Quivering Palm's 3 ki) and
+//        `dropsOnFailedSave` (a failed save drops to 0 health); a "hit" reaction's `names` (only a hit by
+//        those attacks); a condition's `onEnd.harm` (damage as it ends from whoever put it on, `unless`
+//        its holder is that: Hurl Through Hell).
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 240 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

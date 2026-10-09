@@ -1535,6 +1535,21 @@ function carriesFrenzy(ruleset: unknown): boolean {
 /** Attack rows changed by what a sheet holds, strikes it grants, entries only after the attack action,
  *  or a condition's granted attacks narrowed by name or to after the attack action (1.237), in
  *  catalogs too. */
+/** A use spending several uses or dropping a failed save to 0, a reaction to a hit by named attacks,
+ *  or a condition harming as it ends (1.240), in catalogs too. */
+function carriesQuiveringPalm(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesQuiveringPalm(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.usesSpent !== undefined || record.dropsOnFailedSave !== undefined) return true;
+  if (plainRecord(record.onEnd)?.harm !== undefined) return true;
+  const reaction = plainRecord(record.reaction);
+  if (reaction?.names !== undefined) return true;
+  if (Array.isArray(reaction?.also) && reaction.also.some((one) => plainRecord(one)?.names !== undefined)) return true;
+  return Object.values(record).some((one) => carriesQuiveringPalm(one, depth + 1));
+}
+
 /** An entry's attack rule matching held weapons or kept only while wielding some, or a granted strike
  *  kept within bounds (1.239), in catalogs too. */
 function carriesWeaponMatch(value: unknown, depth = 0): boolean {
@@ -3341,6 +3356,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Several uses at once, a failed save to 0, hits by named attacks, harm as a condition ends, 1.240.
+  if (
+    !declaresApi(240) &&
+    (carriesQuiveringPalm(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesQuiveringPalm(document)))
+  ) {
+    return "A ruleset with uses that spend several uses at once or drop a target that fails its save to 0, reactions to hits by named attacks, or conditions that harm as they end, requires schemaVersion 2 and capabilityApi 1.240 or newer";
   }
   // Held weapons matched by name or tags, what is wielded, rows every sheet has, 1.239.
   if (

@@ -10910,6 +10910,16 @@
                               "type": "boolean",
                               "const": true
                             },
+                            "names": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 80
+                              },
+                              "minItems": 1,
+                              "maxItems": 30
+                            },
                             "cancels": {
                               "type": "boolean",
                               "const": true
@@ -11055,6 +11065,16 @@
                                   "weapon": {
                                     "type": "boolean",
                                     "const": true
+                                  },
+                                  "names": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 80
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 30
                                   },
                                   "$comment": {}
                                 },
@@ -12106,6 +12126,15 @@
                       "type": "string",
                       "minLength": 1,
                       "maxLength": 80
+                    },
+                    "usesSpent": {
+                      "type": "integer",
+                      "minimum": 2,
+                      "maximum": 20
+                    },
+                    "dropsOnFailedSave": {
+                      "type": "boolean",
+                      "const": true
                     },
                     "budget": {
                       "type": "string",
@@ -14289,6 +14318,16 @@
                                 "type": "boolean",
                                 "const": true
                               },
+                              "names": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 80
+                                },
+                                "minItems": 1,
+                                "maxItems": 30
+                              },
                               "cancels": {
                                 "type": "boolean",
                                 "const": true
@@ -14434,6 +14473,16 @@
                                     "weapon": {
                                       "type": "boolean",
                                       "const": true
+                                    },
+                                    "names": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 80
+                                      },
+                                      "minItems": 1,
+                                      "maxItems": 30
                                     },
                                     "$comment": {}
                                   },
@@ -23261,6 +23310,15 @@
                           "minLength": 1,
                           "maxLength": 80
                         },
+                        "usesSpent": {
+                          "type": "integer",
+                          "minimum": 2,
+                          "maximum": 20
+                        },
+                        "dropsOnFailedSave": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "budget": {
                           "type": "string",
                           "maxLength": 40,
@@ -31919,6 +31977,55 @@
                     },
                     "minItems": 1,
                     "maxItems": 4
+                  },
+                  "harm": {
+                    "type": "object",
+                    "properties": {
+                      "dice": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                      },
+                      "flat": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 1000
+                      },
+                      "type": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 40
+                      },
+                      "unless": {
+                        "type": "object",
+                        "properties": {
+                          "types": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "minItems": 1,
+                            "maxItems": 20
+                          },
+                          "tags": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "minItems": 1,
+                            "maxItems": 20
+                          },
+                          "$comment": {}
+                        },
+                        "additionalProperties": false
+                      },
+                      "$comment": {}
+                    },
+                    "additionalProperties": false
                   },
                   "$comment": {}
                 },

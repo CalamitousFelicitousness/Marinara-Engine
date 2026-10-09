@@ -1318,6 +1318,8 @@ export function planRulesetUse(
   stored: unknown,
   catalogs: RulesetCatalogEntriesById,
   op: Extract<RulesetSheetOp, { op: "use" }>,
+  /** How many of its rows' uses one use spends (1.240): Quivering Palm's 3 ki. */
+  uses = 1,
 ): RulesetUsePlan {
   const wanted = op.name.trim();
   if (!wanted) return { ok: false, reason: "unknown-entry" };
@@ -1419,7 +1421,7 @@ export function planRulesetUse(
       if (!pool && name.trim() && !isRulesetItemHidden(list, build, definition)) {
         return { ok: false, reason: "insufficient" };
       }
-      if (pool && !running.has(pool.key)) spend(pool, 1);
+      if (pool && !running.has(pool.key)) spend(pool, uses);
     }
   }
   return { ok: true, label: entry.label, steps };

@@ -64,6 +64,7 @@ export function rulesetReactionAnswers(
     ...(moment.seesSource ? { seesSource: true as const } : {}),
     ...(moment.by ? { by: moment.by } : {}),
     ...(moment.weapon ? { weapon: true as const } : {}),
+    ...(moment.names ? { names: [...moment.names] } : {}),
   });
   return {
     ...narrowing(reaction),

@@ -448,8 +448,11 @@ try {
     side: "enemy",
     block: { health: 30, defense: 6, initiativeModifier: -5, actions: [] },
   };
+  // Less the tags each carries for what follows the attack action (1.241), checked once below.
   const weaponsOf = (state: RulesetEncounterState, id = "juno"): RulesetCombatAction[] =>
-    rulesetCombatant(state, id)!.actions.filter((action) => action.id.startsWith("item:"));
+    rulesetCombatant(state, id)!
+      .actions.filter((action) => action.id.startsWith("item:"))
+      .map(({ itemTags: _itemTags, ...action }) => action);
   const emberFight = (
     items: RulesetSheetItem[],
     abilities: Record<string, number> = { brawn: 2, wits: 1 },
@@ -467,6 +470,7 @@ try {
     });
   {
     const both = emberFight([held(axe, "Hand axe"), held(spear, "Boar spear"), held(bow, "Hunting bow", false)]);
+    assert.deepEqual(rulesetCombatant(both, "juno")!.actions.find((one) => one.id === "item:0")?.itemTags, ["thrown"]);
     assert.deepEqual(weaponsOf(both), [
       {
         id: "item:0",

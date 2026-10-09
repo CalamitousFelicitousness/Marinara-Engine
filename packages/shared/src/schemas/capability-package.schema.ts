@@ -1003,7 +1003,9 @@ const capabilityPackageManifestBaseSchema = z
 //        `dropsOnFailedSave` (a failed save drops to 0 health); a "hit" reaction's `names` (only a hit by
 //        those attacks); a condition's `onEnd.harm` (damage as it ends from whoever put it on, `unless`
 //        its holder is that: Hurl Through Hell).
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 240 } as const);
+// 1.241: `afterAttack`'s `items` (the attack action taken with a held weapon matched by tags, as an
+//        `attackRows` rule's `items` matches it: a dagger +1 is a monk weapon).
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 241 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

@@ -54,6 +54,7 @@ import {
   rulesetIsAttack,
   rulesetOnOwnTurn,
   rulesetAttackNamed,
+  rulesetItemMatches,
 } from "./encounter.js";
 import {
   rulesetAirborne,
@@ -118,7 +119,19 @@ export function rulesetStandardName(optionId: string): string {
  *  (1.237). */
 export function rulesetTookAttackAction(actor: RulesetCombatant, after: RulesetAfterAttack): boolean {
   const made = actor.flags.attackAction ?? [];
-  return after === true ? made.length > 0 : made.some((label) => rulesetAttackNamed(label, after.names));
+  if (after === true) return made.length > 0;
+  return made.some(
+    (label) =>
+      (after.names !== undefined && rulesetAttackNamed(label, after.names)) ||
+      // Or a held weapon that is these (1.241), read off the attack made with it.
+      (after.items !== undefined &&
+        actor.actions.some(
+          (action) =>
+            action.label === label &&
+            (action.id.startsWith("item:") || action.id.startsWith("offhand:")) &&
+            rulesetItemMatches({ tags: action.itemTags ?? [] }, label, after.items!),
+        )),
+  );
 }
 
 export function rulesetFreeStrike(actor: RulesetCombatant, action: RulesetCombatAction): boolean {

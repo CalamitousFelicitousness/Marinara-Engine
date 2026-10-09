@@ -7,6 +7,8 @@
  *     weapon), and `names` matches a held weapon by the name its attack goes by.
  *   - `wielding.only`: a rule, or a granted strike, holds only while every weapon held is one of
  *     these, or none is. `grantsStrike.when` keeps a granted strike within the sheet's bounds.
+ *   - `afterAttack`'s `items` (1.241): the attack action taken with a club +1 is taken with a monk
+ *     weapon, and Martial Arts' bonus strike follows it.
  *   - Import refusals and the install gate.
  */
 import assert from "node:assert/strict";
@@ -15,10 +17,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  applyRulesetCombatChoice,
   createRulesetEncounter,
   parseRulesetDefinition,
   rowsFromCatalogEntry,
   rulesetCombatant,
+  rulesetCombatOptions,
   rulesetSheetBuildSchema,
   supportedCapabilityApi,
   type RulesetCatalogEntry,
@@ -36,7 +40,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 239);
+  assert.ok(supportedCapabilityApi.minor >= 241);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -66,7 +70,7 @@ try {
       grantsStrike: {
         budget: "bonus",
         names: ["Unarmed Strike"],
-        afterAttack: true,
+        afterAttack: { names: ["Unarmed Strike", "Shortsword"], items: monkWeapon },
         // Standing in for "no armor and no shield": a sheet value the fight reads.
         when: { value: { field: "hp_max" }, atMost: 100 },
         wielding: { only: monkWeapon },
@@ -177,7 +181,13 @@ try {
   {
     const state = fight();
     assert.deepEqual(shape(attack(state, "Unarmed Strike")), ["dex", 3 + 3, 1, 6, 3]);
-    assert.deepEqual(who(state).strikeGrants, [{ budget: "bonus", names: ["Unarmed Strike"], afterAttack: true }]);
+    assert.deepEqual(who(state).strikeGrants, [
+      {
+        budget: "bonus",
+        names: ["Unarmed Strike"],
+        afterAttack: { names: ["Unarmed Strike", "Shortsword"], items: monkWeapon },
+      },
+    ]);
   }
 
   // ── A held club +1 is a monk weapon by its tags: Dexterity, and the d6 over its d4 ──
@@ -205,6 +215,32 @@ try {
     const state = fight({ items: [weapon("Shortsword", "1d6", ["martial", "melee", "finesse"])] });
     assert.equal(attack(state, "Shortsword").ability, "dex");
     assert.equal(attack(state, "Unarmed Strike").ability, "dex", "wielding only monk weapons");
+  }
+
+  // ── The attack action with a club +1 is with a monk weapon: the bonus unarmed strike follows ──
+  {
+    const strike = (state: RulesetEncounterState, label: string) => {
+      const option = rulesetCombatOptions(definition, state, "hero").find((one) => one.label === label)!;
+      assert.ok(option, label);
+      return applyRulesetCombatChoice(
+        definition,
+        state,
+        { actorId: "hero", optionId: option.id, targetIds: ["foe"] },
+        roll,
+      ).state;
+    };
+    const bonus = (state: RulesetEncounterState) =>
+      rulesetCombatOptions(definition, state, "hero").some(
+        (one) => one.label === "Unarmed Strike" && one.budget === "bonus",
+      );
+    const start = () => {
+      const state = fight({ items: [club()], rows: [{ ...unarmed, name: "Greatsword", damage: "2d6" }] });
+      state.order = ["hero", "foe"];
+      state.turn = 0;
+      return state;
+    };
+    assert.ok(bonus(strike(start(), "Club +1")), "after a club +1");
+    assert.ok(!bonus(strike(start(), "Greatsword")), "not after a greatsword");
   }
 
   // ── Outside its `when`, no bonus strike; the rows still change ──
@@ -235,6 +271,7 @@ try {
     refused((doc) => (entry(doc).attackRows[0].items = {}), /item match/);
     refused((doc) => (entry(doc).grantsStrike.when.value = { field: "nope" }), /nope/);
     refused((doc) => (entry(doc).grantsStrike.wielding = { only: {} }), /item match/);
+    refused((doc) => (entry(doc).grantsStrike.afterAttack = {}), /"afterAttack" names "names", "items" or both/);
   }
 
   // ── The install gate ──
@@ -273,11 +310,27 @@ try {
     assert.equal(issue(238, always), gate);
     assert.notEqual(issue(239, always), gate);
     assert.notEqual(issue(238, without), gate);
-    assert.equal(issue(238, without, new Map([["monk.json", { entries: [martialArts] }]])), gate);
+    const later =
+      "A ruleset with entries or grants that come after the attack action taken with weapons matched by tags requires schemaVersion 2 and capabilityApi 1.241 or newer";
+    const older = structuredClone(martialArts);
+    older.mechanics.grantsStrike.afterAttack = { names: ["Unarmed Strike", "Shortsword"] } as never;
+    assert.equal(issue(238, without, new Map([["monk.json", { entries: [older] }]])), gate);
+    assert.equal(issue(240, without, new Map([["monk.json", { entries: [martialArts] }]])), later);
+
+    for (const mechanics of [
+      { afterAttack: { items: { tags: ["simple"] } } },
+      { grantsStrike: { budget: "bonus", afterAttack: { names: ["Club"], items: { tags: ["simple"] } } } },
+    ]) {
+      const document = structuredClone(without);
+      document.extra = { entry: { mechanics } };
+      assert.equal(issue(240, document), later, JSON.stringify(mechanics));
+      assert.notEqual(issue(241, document), later);
+    }
+    assert.notEqual(issue(240, without), later);
   }
 
   console.log(
-    "Ruleset weapon match: every sheet strikes unarmed, Martial Arts reaches held monk weapons by tag and holds only while wielding monk weapons, and its bonus strike keeps to its bounds; gated at 1.239.",
+    "Ruleset weapon match: every sheet strikes unarmed, Martial Arts reaches held monk weapons by tag and holds only while wielding monk weapons, and its bonus strike keeps to its bounds and follows an attack with a magic monk weapon; gated at 1.239 and 1.241.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -1676,6 +1676,8 @@ function itemAttackActions(
       ...(attack.ignoresResistance ? { ignoresResistance: true as const } : {}),
       ...(attack.healedOnlyByRest ? { healedOnlyByRest: true as const } : {}),
       ...(attack.othersWhileMarked ? { othersWhileMarked: { ...attack.othersWhileMarked, item: index } } : {}),
+      // What comes after the attack action reads the weapon's tags (1.241).
+      ...(item.tags?.length ? { itemTags: [...item.tags] } : {}),
     };
     // What the sheet's entries do to it (1.239), as they do to a row: a monk's quarterstaff.
     const ruled = (action: RulesetCombatAction, full: boolean) => {

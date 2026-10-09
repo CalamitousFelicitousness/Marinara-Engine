@@ -510,6 +510,8 @@ export interface RulesetCombatAction {
   /** Taken as its holder's own attack hits, its damage joins that blow (1.236): Divine Smite. */
   addsToBlow?: true;
   /** A failed save drops its target to 0 health instead of the amount (1.240). */
+  /** The tags of the held weapon it is made with (1.241), for what comes after the attack action. */
+  itemTags?: string[];
   dropsOnFailedSave?: true;
   /** Offered only once the attack action has been taken this turn (1.237): Flurry of Blows. */
   afterAttack?: RulesetAfterAttack;
@@ -1200,7 +1202,8 @@ export interface RulesetActionResume {
 }
 
 /** Once the attack action has been taken this turn, with anything or with one of `names` (1.237). */
-export type RulesetAfterAttack = true | { names: string[] };
+export type RulesetAfterAttack =
+  true | { names?: string[]; items?: { names?: string[]; tags?: string[]; notTags?: string[] } };
 
 /** A strike a held entry lets its holder buy with `budget` (1.237), read as a condition's grant of
  *  attacks is. */

@@ -1991,15 +1991,6 @@ function sheetBoundsSchema(key: string, never: string) {
 
 const catalogUsableWhenSchema = sheetBoundsSchema("usableWhen", "usable");
 
-/** Only once its holder has taken the attack action this turn: any attack made with an attack's
- *  own budget, or one of `names` (Capability API 1.237). 5e's Martial Arts bonus strike and Flurry of
- *  Blows. */
-export type RulesetAfterAttackDeclaration = true | { names: string[] };
-const afterAttackSchema: z.ZodType<RulesetAfterAttackDeclaration, z.ZodTypeDef, unknown> = z.union([
-  z.literal(true),
-  z.object({ names: attackNamesSchema }).strict(),
-]);
-
 /** Held weapons that are these (Capability API 1.239): one of `names`, the name its attack goes by,
  *  or carrying every one of `tags` and none of `notTags`. 5e's monk weapons are the shortsword and
  *  the simple melee weapons that are neither two-handed nor heavy, magic ones included. */
@@ -2018,6 +2009,22 @@ const itemMatchSchema: z.ZodType<RulesetItemMatchDeclaration, z.ZodTypeDef, unkn
   .refine((match) => match.names || match.tags || match.notTags, {
     message: 'An item match names "names", "tags" or "notTags"',
   });
+
+/** Only once its holder has taken the attack action this turn: any attack made with an attack's
+ *  own budget, or one of `names` (Capability API 1.237). 5e's Martial Arts bonus strike and Flurry of
+ *  Blows. */
+export type RulesetAfterAttackDeclaration = true | { names?: string[]; items?: RulesetItemMatchDeclaration };
+const afterAttackSchema: z.ZodType<RulesetAfterAttackDeclaration, z.ZodTypeDef, unknown> = z.union([
+  z.literal(true),
+  z
+    .object({
+      names: attackNamesSchema.optional(),
+      /** Or with a held weapon that is these (Capability API 1.241): a dagger +1 is a monk weapon. */
+      items: itemMatchSchema.optional(),
+    })
+    .strict()
+    .refine((after) => after.names || after.items, { message: '"afterAttack" names "names", "items" or both' }),
+]);
 
 /** Only while every weapon its holder holds is one of `only` (Capability API 1.239), or none is held:
  *  5e's "unarmed or wielding only monk weapons". */

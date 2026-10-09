@@ -63,6 +63,15 @@ function readBubbleSize(size: BubbleSize) {
   return typeof size === "number" ? { width: size, height: size } : size;
 }
 
+/**
+ * Where a banner sits when its place was picked automatically, for a square button: it grows left from that
+ * slot, so it stays in its row (rows fill from the right) instead of dropping below it. A place the user chose
+ * stays its left edge.
+ */
+export function getBannerPoint(point: WindowPoint, size: { width: number; height: number }): WindowPoint {
+  return point.automatic ? { ...point, x: point.x + size.height - size.width } : point;
+}
+
 /** Keeps a bubble inside `bounds`, so it can never be lost off-screen. */
 export function clampWindowBubble(
   point: WindowPoint,

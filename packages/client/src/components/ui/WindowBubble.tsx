@@ -28,6 +28,7 @@ import {
   WINDOW_KEYBOARD_STEP_PX,
   clampWindowBubble,
   dropWindowBubble,
+  getBannerPoint,
   placeWindowBubbles,
   type BubbleSize,
   type FloatingWindowId,
@@ -146,8 +147,9 @@ export function WindowBubble({
   const hasBanner = Boolean(banner);
   // A banner's text (what it shows, for screen readers) describes the button; its name stays "Open …".
   const bannerId = `mari-window-bubble-banner-${useId().replace(/:/gu, "")}`;
+  const origin = hasBanner ? getBannerPoint(point, renderedSize) : point;
   const placements = useSyncExternalStore(subscribeBubblePlacements, readBubblePlacements, readBubblePlacements);
-  const placed = clampWindowBubble(live?.point ?? placements.get(id) ?? point, bounds, renderedSize);
+  const placed = clampWindowBubble(live?.point ?? placements.get(id) ?? origin, bounds, renderedSize);
 
   useLayoutEffect(() => {
     onPositionChange?.({ x: placed.x, y: placed.y });
@@ -156,15 +158,15 @@ export function WindowBubble({
   useLayoutEffect(() => {
     mountedBubbles.set(id, {
       // A banner grows with its summary, so it is the one to give way when it grows into a neighbour.
-      point: { x: point.x, y: point.y, automatic: hasBanner || point.automatic ? true : undefined },
+      point: { x: origin.x, y: origin.y, automatic: hasBanner || point.automatic ? true : undefined },
       bounds: { left: bounds.left, top: bounds.top, right: bounds.right, bottom: bounds.bottom },
       size: { width: renderedWidth, height: renderedHeight },
     });
     updateBubblePlacements();
   }, [
     id,
-    point.x,
-    point.y,
+    origin.x,
+    origin.y,
     point.automatic,
     hasBanner,
     bounds.left,

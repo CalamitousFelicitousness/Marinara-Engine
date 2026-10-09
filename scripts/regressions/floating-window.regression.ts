@@ -22,6 +22,7 @@ import {
   clampWindowBubble,
   dropWindowBubble,
   placeWindowBubbles,
+  getBannerPoint,
   getBubbleRowSlot,
   getTopRightBubblePoint,
   getPhoneBubbleSlot,
@@ -531,6 +532,38 @@ const grownBanner = placeWindowBubbles(
 );
 assert.deepEqual(grownBanner.get("square"), { x: 900, y: 64 }, "the bubble a banner grew into keeps its place");
 assert.ok(bannerClear(grownBanner.get("banner")!, { x: 900, y: 64, width: 32, height: 32 }), "the banner moves aside");
+// On a phone the banner's automatic place is a square slot in the top row. It grows left from that slot, so it
+// stays in the row beside the other buttons instead of dropping below them onto the chat. A chosen place stays put.
+const bannerPhoneBounds = { left: 8, top: 59, right: 382, bottom: 780 };
+const phoneBanner = { width: 141, height: PHONE_BUBBLE_SIZE_PX };
+const worldSlot = { ...getPhoneBubbleSlot(bannerPhoneBounds, 1), automatic: true as const };
+const phoneRow = placeWindowBubbles(
+  new Map([
+    [
+      "chat-settings",
+      {
+        point: getTopRightBubblePoint(bannerPhoneBounds, PHONE_BUBBLE_SIZE_PX),
+        bounds: bannerPhoneBounds,
+        size: PHONE_BUBBLE_SIZE_PX,
+      },
+    ],
+    [
+      "player",
+      {
+        point: { ...getPhoneBubbleSlot(bannerPhoneBounds, 0), automatic: true as const },
+        bounds: bannerPhoneBounds,
+        size: PHONE_BUBBLE_SIZE_PX,
+      },
+    ],
+    ["world", { point: getBannerPoint(worldSlot, phoneBanner), bounds: bannerPhoneBounds, size: phoneBanner }],
+  ]),
+);
+assert.deepEqual(
+  phoneRow.get("world"),
+  { x: worldSlot.x + PHONE_BUBBLE_SIZE_PX - phoneBanner.width, y: bannerPhoneBounds.top },
+  "a phone banner stays in the top row, growing left from its slot",
+);
+assert.deepEqual(getBannerPoint({ x: 40, y: 240 }, phoneBanner), { x: 40, y: 240 }, "a chosen place stays put");
 
 // Sidebars squeeze a row of saved buttons into distinct visible places without changing the saved row.
 const savedButtons = new Map(
@@ -887,6 +920,7 @@ assert.match(windowBubbleSource, /className="mari-window-bubble fixed"/u);
 assert.match(windowBubbleSource, /data-minimized="true"/u);
 // A banner registers as movable, so placement moves it rather than a neighbour it grew into.
 assert.match(windowBubbleSource, /automatic: hasBanner \|\| point\.automatic \? true : undefined/u);
+assert.match(windowBubbleSource, /const origin = hasBanner \? getBannerPoint\(point, renderedSize\) : point;/u);
 // World State's popped-out window (computer) and its button (phone) show the banner once there is world state.
 assert.match(
   read("packages/client/src/components/chat/RoleplayTrackerWindow.tsx"),

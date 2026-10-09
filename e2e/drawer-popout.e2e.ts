@@ -486,7 +486,10 @@ test.describe("Pop-out drawers on desktop", () => {
     }
   });
 
-  test("a minimized World State window stays in view as a movable banner (#7320)", async ({ page, request }) => {
+  test("a minimized World State window stays in view as a movable banner (#7320)", async ({
+    page,
+    request,
+  }, testInfo) => {
     const chat = await createChat(request, { enableAgents: true, activeAgentIds: ["world-state"] });
     try {
       const state = await request.patch(`/api/chats/${chat.id}/game-state`, {
@@ -531,6 +534,7 @@ test.describe("Pop-out drawers on desktop", () => {
 
       // It moves like any other button, and the chat remembers where.
       await drag(page, centre(shown), { x: 640, y: 160 });
+      await page.screenshot({ path: testInfo.outputPath("world-state-banner.png"), animations: "disabled" });
       const moved = await box(banner);
       expect(Math.abs(moved.x + moved.width / 2 - 640)).toBeLessThanOrEqual(12);
       await expect

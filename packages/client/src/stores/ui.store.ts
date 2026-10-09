@@ -1063,6 +1063,8 @@ interface UIState {
   activeImpersonatePromptTemplateId: string | null;
   /** When true, CYOA choices generate impersonate requests instead of normal user messages. Persisted. */
   impersonateCyoaChoices: boolean;
+  /** When true, clicking a CYOA choice adds its text to the message box instead of sending it. Persisted. */
+  addCyoaChoicesToMessage: boolean;
   /** Override preset used when impersonating (null = use chat default). Persisted. */
   impersonatePresetId: string | null;
   /** Override connection used when impersonating (null = use chat default). Persisted. */
@@ -1335,6 +1337,7 @@ interface UIState {
   selectImpersonatePromptTemplate: (template: { id: string; prompt: string } | null) => void;
   clearActiveImpersonatePromptTemplate: () => void;
   setImpersonateCyoaChoices: (v: boolean) => void;
+  setAddCyoaChoicesToMessage: (v: boolean) => void;
   setImpersonatePresetId: (id: string | null) => void;
   setImpersonateConnectionId: (id: string | null) => void;
   setImpersonateBlockAgents: (v: boolean) => void;
@@ -1585,6 +1588,7 @@ export function pickSyncedSettings(state: UIState) {
     scheduleGenerationPreferences: state.scheduleGenerationPreferences,
     conversationTimeZone: state.conversationTimeZone,
     impersonateCyoaChoices: state.impersonateCyoaChoices,
+    addCyoaChoicesToMessage: state.addCyoaChoicesToMessage,
     impersonatePresetId: state.impersonatePresetId,
     impersonateConnectionId: state.impersonateConnectionId,
     impersonateBlockAgents: state.impersonateBlockAgents,
@@ -1818,6 +1822,7 @@ export function pickPersistedUIState(state: UIState) {
     impersonatePromptTemplate: state.impersonatePromptTemplate,
     activeImpersonatePromptTemplateId: state.activeImpersonatePromptTemplateId,
     impersonateCyoaChoices: state.impersonateCyoaChoices,
+    addCyoaChoicesToMessage: state.addCyoaChoicesToMessage,
     impersonatePresetId: state.impersonatePresetId,
     impersonateConnectionId: state.impersonateConnectionId,
     impersonateBlockAgents: state.impersonateBlockAgents,
@@ -2095,6 +2100,7 @@ export const useUIStore = create<UIState>()(
         impersonatePromptTemplate: "",
         activeImpersonatePromptTemplateId: null,
         impersonateCyoaChoices: false,
+        addCyoaChoicesToMessage: false,
         impersonatePresetId: null,
         impersonateConnectionId: null,
         impersonateBlockAgents: false,
@@ -3089,6 +3095,7 @@ export const useUIStore = create<UIState>()(
           }),
         clearActiveImpersonatePromptTemplate: () => set({ activeImpersonatePromptTemplateId: null }),
         setImpersonateCyoaChoices: (v) => set({ impersonateCyoaChoices: v }),
+        setAddCyoaChoicesToMessage: (v) => set({ addCyoaChoicesToMessage: v }),
         setImpersonatePresetId: (id) => set({ impersonatePresetId: id }),
         setImpersonateConnectionId: (id) => set({ impersonateConnectionId: id }),
         setImpersonateBlockAgents: (v) => set({ impersonateBlockAgents: v }),

@@ -6901,6 +6901,58 @@ test("goto keeps stale CYOA choices out of the chat tail", async ({ page, reques
   }
 });
 
+test("CYOA choices go to the message box when the add-to-message setting is on", async ({ page, request }) => {
+  const firstChoice = `Take the bridge ${Date.now()}`;
+  const secondChoice = `Wave at the guard ${Date.now()}`;
+  const transcript = [
+    JSON.stringify({ user_name: "You", character_name: "Guide", chat_metadata: {} }),
+    JSON.stringify({
+      name: "Guide",
+      is_user: false,
+      mes: "The road splits at the river.",
+      extra: {
+        cyoaChoices: [
+          { label: "Bridge", text: firstChoice },
+          { label: "Guard", text: secondChoice },
+        ],
+      },
+    }),
+  ].join("\n");
+  const importResponse = await request.post("/api/import/st-chat", {
+    multipart: {
+      file: { name: `cyoa-add-${Date.now()}.jsonl`, mimeType: "application/jsonl", buffer: Buffer.from(transcript) },
+      mode: "roleplay",
+    },
+  });
+  expect(importResponse.ok(), await importResponse.text()).toBeTruthy();
+  const imported = (await importResponse.json()) as { chatId: string };
+
+  try {
+    await seedUIState(page, {
+      hasCompletedOnboarding: true,
+      sidebarOpen: false,
+      rightPanelOpen: false,
+      addCyoaChoicesToMessage: true,
+    });
+    await page.addInitScript((chatId) => {
+      localStorage.setItem("marinara-active-chat-id", chatId);
+    }, imported.chatId);
+    await page.goto("/");
+
+    const composer = page.locator("textarea.mari-chat-input-textarea");
+    await page.getByText(firstChoice, { exact: true }).click();
+    await page.getByText(secondChoice, { exact: true }).click();
+
+    await expect(composer).toHaveValue(`${firstChoice}\n\n${secondChoice}`);
+    await expect(composer).toBeFocused();
+    await expect(page.getByText(firstChoice, { exact: true })).toBeVisible();
+    const messages = await (await request.get(`/api/chats/${imported.chatId}/messages`)).json();
+    expect(Array.isArray(messages) ? messages : messages.messages).toHaveLength(1);
+  } finally {
+    await request.delete(`/api/chats/${imported.chatId}?force=true`).catch(() => undefined);
+  }
+});
+
 test("typographic quotes do not pull the Roleplay caret behind later text", async ({ page }, testInfo) => {
   test.skip(!testInfo.project.name.includes("desktop"), "Roleplay quote caret behavior is covered on desktop.");
 

@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: sorcerers' Font of Magic turns spell slots into Sorcery Points and points into slots, which may go past the usual number until a long rest (Capability API 1.247).
 - Rulesets: paladins choose how many Lay on Hands points to spend, healing one hit point for each, or spend just enough to heal the target fully (Capability API 1.246).
 - Rulesets: bards' Cutting Words takes an inspiration die off an enemy's attack roll after it hits, and Evasion takes no damage from a made Dexterity half save and half from a failed one (Capability API 1.245).
 - Rulesets: Bardic Inspiration, Guidance and Resistance dice are added after the roll and only when they can turn it, and Indomitable, Diamond Soul and Stroke of Luck are spent on a failed save, check or missed attack (Capability API 1.244).

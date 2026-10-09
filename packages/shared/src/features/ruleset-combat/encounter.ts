@@ -1962,6 +1962,15 @@ function mechanicsAction(
   // Dice off somebody else's roll that hit (1.245): Cutting Words, its die sized by a level.
   // As many uses as its user chooses, healing that many times over (1.246): Lay on Hands.
   if (mechanics.usesChosen) action.usesChosen = true;
+  // Gives back to a pool (1.247): Font of Magic's Sorcery Points, or a slot past its maximum.
+  const restored = amountOf(mechanics.restore?.amount);
+  if (mechanics.restore && restored) {
+    action.restore = {
+      pool: mechanics.restore.pool,
+      amount: restored,
+      ...(mechanics.restore.overMax ? { overMax: true as const } : {}),
+    };
+  }
   if (mechanics.lowersRoll && moment) {
     const lowers = mechanics.lowersRoll;
     const dice = lowers.dice

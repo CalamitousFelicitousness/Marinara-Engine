@@ -489,7 +489,8 @@ export interface RulesetCombatAction {
   /** Kills outright whoever it affects (1.191). */
   kills?: true;
   /** A pool of each target's sheet this gives back some of: an item's `restore`. */
-  restore?: { pool: string; amount: RulesetCombatAmount };
+  /** `overMax` (1.247): it may go past the pool's maximum, as Font of Magic's slots do. */
+  restore?: { pool: string; amount: RulesetCombatAmount; overMax?: true };
   /** Conditions it takes off its target, in the order named, at most `count` of them (1.171); with
    *  `from`, only what a creature that is that put on (1.231). */
   ends?: { conditions: string[]; count?: number; from?: RulesetTargetIs };

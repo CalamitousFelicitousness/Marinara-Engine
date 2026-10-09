@@ -2896,6 +2896,18 @@ const catalogMechanicsObject = z
      *  that many times its amount (Capability API 1.246): 5e's Lay on Hands, a point of its pool for
      *  each hit point. */
     usesChosen: z.literal(true).optional(),
+    /** Gives back to a pool of whoever it lands on (Capability API 1.247): a live pool by id, or a
+     *  pool a list row holds by its name. `perCostStep` adds to it for each step of a higher cost,
+     *  and `overMax` lets it go past the maximum until a rest sets the pool back to it. 5e's Font of
+     *  Magic: a spell slot paid for Sorcery Points equal to its level, and a slot made from them. */
+    restore: z
+      .object({
+        pool: z.string().trim().min(1).max(60),
+        amount: z.object(catalogAmountShape).strict(),
+        overMax: z.literal(true).optional(),
+      })
+      .strict()
+      .optional(),
     /** A target that fails the save drops to 0 health instead of taking the amount (Capability API
      *  1.240), as if the blow had taken every point it had: 5e's Quivering Palm, whose made save
      *  still takes 10d10 necrotic. */
@@ -3054,6 +3066,23 @@ const catalogMechanicsSchema: z.ZodType<
       path: [mechanics.reducesMax ? "reducesMax" : "leavesAtLeast"],
       message: "It works on the entry's damage, so it has an amount",
     });
+  }
+  if (mechanics.restore) {
+    const amount = mechanics.restore.amount;
+    if (amount.dice === undefined && amount.flat === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["restore", "amount"],
+        message: "A restore says how much it gives back",
+      });
+    }
+    if (mechanics.kind !== "heal" && mechanics.kind !== "buff") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["restore"],
+        message: "A restore is on an entry that helps, a heal or a buff",
+      });
+    }
   }
   if (mechanics.usesChosen && (mechanics.kind !== "heal" || mechanics.usesSpent !== undefined)) {
     ctx.addIssue({
@@ -10978,6 +11007,14 @@ export function rulesetCatalogEntryIssues(
         wrongDie(clause.dice, [index, "mechanics", "plus", clauseIndex, "dice"]),
       );
       wrongDie(mechanics.rider?.amount.dice, [index, "mechanics", "rider", "amount", "dice"]);
+    }
+    if (mechanics?.restore) {
+      // A live pool by id is checked here; any other name is a list row's, which only a sheet holds.
+      const pool = definition.sheet.live.pools.find((entry) => entry.id === mechanics.restore!.pool);
+      const health = definition.combat?.health ?? definition.battle?.health;
+      if (pool && health && "pool" in health && health.pool === pool.id) {
+        add([index, "mechanics", "restore", "pool"], "Health comes back with a heal, not a restore");
+      }
     }
     mechanics?.cost?.forEach((cost, costIndex) => {
       if (!costTargets.has(cost.pool)) {

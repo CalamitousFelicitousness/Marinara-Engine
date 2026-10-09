@@ -891,13 +891,21 @@ function restorePool(
   target: RulesetCombatant,
   pool: string,
   input: { sourceId?: string; rolls: number[]; flat: number; amount: number },
+  /** Past the pool's maximum (1.247). */
+  overMax?: true,
 ): void {
   if (!target.sheet) return;
   const amount = Math.max(0, Math.floor(input.amount));
-  if (amount > 0) writeRulesetSheet(ctx.definition, target, { op: "restore", pool, amount });
-  const now = readRulesetLive(ctx.definition, target.sheet.build, target.sheet.live).pools.find(
-    (entry) => entry.key === pool,
-  );
+  if (amount > 0) {
+    writeRulesetSheet(ctx.definition, target, { op: "restore", pool, amount, ...(overMax ? { overMax } : {}) });
+  }
+  // A list row's pool is named by its row (1.247), as the sheet's own command finds it.
+  const pools = readRulesetLive(ctx.definition, target.sheet.build, target.sheet.live).pools;
+  const wanted = pool.trim().toLowerCase();
+  const now =
+    pools.find((entry) => entry.key === pool) ??
+    pools.find((entry) => !entry.listId && entry.label.toLowerCase() === wanted) ??
+    pools.find((entry) => entry.listId && entry.label.toLowerCase() === wanted);
   if (!now) return;
   ctx.events.push({
     type: "restored",
@@ -6083,12 +6091,13 @@ function resolveActionBody(
     }
     if (restore && action.restore) {
       const rolled = restore();
-      restorePool(ctx, target, action.restore.pool, {
-        sourceId: actor.id,
-        rolls: rolled.rolls,
-        flat: rolled.flat,
-        amount: rolled.total,
-      });
+      restorePool(
+        ctx,
+        target,
+        action.restore.pool,
+        { sourceId: actor.id, rolls: rolled.rolls, flat: rolled.flat, amount: rolled.total },
+        action.restore.overMax,
+      );
     }
     if (!saved) {
       // Tracks moved and sealed health given back (1.196), before the conditions it puts on.

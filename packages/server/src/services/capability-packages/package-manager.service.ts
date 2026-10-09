@@ -1535,6 +1535,19 @@ function carriesFrenzy(ruleset: unknown): boolean {
 /** Attack rows changed by what a sheet holds, strikes it grants, entries only after the attack action,
  *  or a condition's granted attacks narrowed by name or to after the attack action (1.237), in
  *  catalogs too. */
+/** An entry giving back to a pool, past its maximum or not (1.247), in catalogs too. An item's
+ *  `use.restore` is older and is not this. */
+function carriesFontOfMagic(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesFontOfMagic(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.overMax !== undefined) return true;
+  const mechanics = plainRecord(record.mechanics);
+  if (mechanics && mechanics.restore !== undefined) return true;
+  return Object.values(record).some((one) => carriesFontOfMagic(one, depth + 1));
+}
+
 /** A heal its user chooses how many uses of to spend (1.246), in catalogs too. */
 function carriesUsesChosen(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -3422,6 +3435,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // An entry giving back to a pool, a slot past its maximum, 1.247.
+  if (
+    !declaresApi(247) &&
+    (carriesFontOfMagic(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesFontOfMagic(document)))
+  ) {
+    return "A ruleset with entries that give back to a pool, or past its maximum, requires schemaVersion 2 and capabilityApi 1.247 or newer";
   }
   // A heal spending as many uses as its user chooses, 1.246.
   if (

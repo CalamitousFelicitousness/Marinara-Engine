@@ -1017,7 +1017,9 @@ const capabilityPackageManifestBaseSchema = z
 //        Words) and a condition's or level's `evasion` (nothing on a made half save: Evasion).
 // 1.246: catalog mechanics' `usesChosen` (a heal its user spends as many uses of as they choose,
 //        the option's `amount` and the choice's `amount`: Lay on Hands).
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 246 } as const);
+// 1.247: catalog mechanics' `restore` (gives back to a pool, more for each step of a higher cost,
+//        `overMax` past its maximum until a rest) and a live pool's stored `above`: Font of Magic.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 247 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

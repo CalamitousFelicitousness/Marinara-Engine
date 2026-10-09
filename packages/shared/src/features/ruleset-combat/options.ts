@@ -790,6 +790,7 @@ export function planRulesetCombatCost(
     catalogs,
     { op: "use", name: action.use.name, ...(payWith ? { pool: payWith } : {}) },
     count ?? action.use.count,
+    action.restore?.pool,
   );
   if (!plan.ok) return null;
   let live = combatant.sheet.live;
@@ -1461,6 +1462,13 @@ export function rulesetActionAvailable(
   definition?: RulesetDefinition,
 ): boolean {
   if (!rulesetActionUsable(definition, actor, action)) return false;
+  // Giving its own user back a pool they do not have is nothing (1.247): a 4th-level slot made by a
+  // sorcerer with no 4th-level slots at all.
+  if (action.restore && action.targets.side === "self" && actor.sheet && definition) {
+    const wanted = action.restore.pool.trim().toLowerCase();
+    const pools = readRulesetLive(definition, actor.sheet.build, actor.sheet.live).pools;
+    if (!pools.some((pool) => pool.key === action.restore!.pool || pool.label.toLowerCase() === wanted)) return false;
+  }
   // Given by a condition, only while its user holds it (1.231).
   if (action.whileHolds) {
     const held = definition

@@ -46,6 +46,9 @@ export interface RulesetLivePoolValue {
   /** The part of `sealed` no rest gives back (Capability API 1.198), only something that unseals:
    *  a clay golem's Slam. */
   lasting?: number;
+  /** How many it holds past its maximum (Capability API 1.247): Font of Magic's spell slots. A rest
+   *  that sets the pool back to its maximum takes them away. */
+  above?: number;
 }
 
 /** What one WOUND TRACK carries in play. The definition holds `kinds`; this holds MARKS, which are
@@ -101,6 +104,9 @@ export const rulesetLivePoolValueSchema = z
     temp: liveNumber.min(0).optional(),
     sealed: liveNumber.min(0).optional(),
     lasting: liveNumber.min(0).optional(),
+    /** How many it holds past its maximum (1.247): spell slots Font of Magic made, which go when a
+     *  rest sets the pool back to its maximum. */
+    above: liveNumber.min(0).optional(),
   })
   .strict();
 
@@ -710,7 +716,8 @@ function resolveLive(
       const fallback = spec.start === "full" ? spec.max : 0;
       return {
         ...spec,
-        value: clamp(entry?.value ?? fallback, 0, spec.max),
+        // What it holds past its maximum (1.247) counts on top, wherever the stored value stands.
+        value: Math.min(MAX_LIVE_NUMBER, clamp(entry?.value ?? fallback, 0, spec.max) + Math.max(0, entry?.above ?? 0)),
         // A pool that carries no buffer can never show one, however the blob got written.
         temp: spec.allowTemp ? Math.max(0, entry?.temp ?? 0) : 0,
         sealed: clamp(entry?.sealed ?? 0, 0, spec.max),
@@ -829,6 +836,9 @@ export type RulesetSheetOp =
       /** On `restore`: what only a rest gives back is given back too (1.196), and then `amount` may
        *  be nothing. */
       unseals?: true;
+      /** On `restore`: it may go past the maximum (1.247), and what is past it goes when a rest sets
+       *  the pool back to its maximum: Font of Magic's spell slots. */
+      overMax?: true;
     }
   /** Marks a WOUND track. `kind` is one the track declares; `amount` is a number of marks of that
    *  one kind, and a NEGATIVE amount heals, clearing marks of that kind (the lightest first when the
@@ -947,10 +957,15 @@ export function applyRulesetSheetOp(
     const pools = next.pools ?? {};
     // Back at its default, with no buffer, the entry goes away again: that is what lets an
     // untouched pool follow its maximum when a level-up raises it.
-    if (value === (spec.start === "full" ? spec.max : 0) && temp === 0 && sealed === 0) delete pools[spec.key];
-    else
+    // Past the maximum is held apart (1.247), so the stored value never reads as more than it may.
+    const above = Math.max(0, value - spec.max);
+    if (above > 0) value = spec.max;
+    if (value === (spec.start === "full" ? spec.max : 0) && temp === 0 && sealed === 0 && above === 0) {
+      delete pools[spec.key];
+    } else
       pools[spec.key] = {
         value,
+        ...(above > 0 ? { above } : {}),
         ...(temp > 0 ? { temp } : {}),
         ...(sealed > 0 ? { sealed } : {}),
         ...(lasting > 0 ? { lasting: Math.min(lasting, sealed) } : {}),
@@ -1057,7 +1072,9 @@ export function applyRulesetSheetOp(
       // Never past what only a rest gives back (1.188), and never down for it either, unless it is
       // given back too (1.196).
       const sealed = op.unseals ? 0 : pool.sealed;
-      const value = Math.min(Math.max(pool.value, pool.max - sealed), pool.value + op.amount);
+      const value = op.overMax
+        ? Math.min(MAX_LIVE_NUMBER, pool.value + op.amount)
+        : Math.min(Math.max(pool.value, pool.max - sealed), pool.value + op.amount);
       setPool(pool, value, pool.temp, sealed, op.unseals ? 0 : pool.lasting);
       return done(poolNow(pool, value, pool.temp));
     }
@@ -1207,7 +1224,7 @@ export function applyRulesetSheetOp(
     for (const target of targets) {
       let value: number;
       if (share !== null) {
-        const taken = Math.min(share, target.pool.max - target.value);
+        const taken = Math.max(0, Math.min(share, target.pool.max - target.value));
         share -= taken;
         value = target.value + taken;
       } else {
@@ -1320,6 +1337,9 @@ export function planRulesetUse(
   op: Extract<RulesetSheetOp, { op: "use" }>,
   /** How many of its rows' uses one use spends (1.240): Quivering Palm's 3 ki. */
   uses = 1,
+  /** A pool the use gives back to, which it never spends (1.247): Font of Magic turning a slot into
+   *  the Sorcery Points its own row counts. */
+  keeps?: string,
 ): RulesetUsePlan {
   const wanted = op.name.trim();
   if (!wanted) return { ok: false, reason: "unknown-entry" };
@@ -1421,6 +1441,7 @@ export function planRulesetUse(
       if (!pool && name.trim() && !isRulesetItemHidden(list, build, definition)) {
         return { ok: false, reason: "insufficient" };
       }
+      if (keeps && pool && (sameName(pool.key, keeps) || sameName(pool.label, keeps))) continue;
       if (pool && !running.has(pool.key)) spend(pool, uses);
     }
   }

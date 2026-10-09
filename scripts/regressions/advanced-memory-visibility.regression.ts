@@ -681,6 +681,15 @@ try {
   const impersonatedLine = (await chats.listMessages(sendChat)).at(-1)!;
   assert.equal(impersonatedLine.role, "user", impersonated.body);
   assert.deepEqual((await extraOf(impersonatedLine.id)).hiddenFromAICharacterIds, [ids.pantalone]);
+  assert(
+    events(impersonated.body).some(
+      (event) =>
+        event.type === "message_saved" &&
+        event.data.id === impersonatedLine.id &&
+        JSON.parse(event.data.extra).hiddenFromAICharacterIds?.includes(ids.pantalone),
+    ),
+    "the crossed-eye marker reaches the written message without waiting for a refresh",
+  );
 } finally {
   await app.close();
   provider.close();

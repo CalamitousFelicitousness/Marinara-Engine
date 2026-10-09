@@ -14089,8 +14089,14 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 .catch((error) => logger.error(error, "[advanced-memory] Background scene check failed"));
             } else if (input.impersonate && decidesMessageVisibility && !generationSignal.aborted) {
               // A message written for you is decided once, when it is posted, like one you send (#7349).
+              const impersonatedId = typeof lastSavedMsg?.id === "string" ? lastSavedMsg.id : null;
               pendingAdvancedMemory = advancedMemory
                 .settleMessageVisibility(input.chatId, { debugMode: requestDebug, signal: agentSignal })
+                .then(async () => {
+                  // Show the decision now, not when this request's other background work ends.
+                  const decided = impersonatedId ? await chats.getMessage(impersonatedId) : null;
+                  if (decided) sendSseEvent(reply, { type: "message_saved", data: decided });
+                })
                 .catch((error) => logger.error(error, "[advanced-memory] Message visibility failed"));
             }
           } else if (memoryRecallVectorizerAvailable) {

@@ -2495,6 +2495,7 @@ export interface RulesetCatalogArea {
   width?: number;
   ring?: number;
   copies?: number;
+  sizePerCostStep?: number;
 }
 const catalogAreaSchema: z.ZodType<RulesetCatalogArea, z.ZodTypeDef, unknown> = z
   .object({
@@ -2508,8 +2509,15 @@ const catalogAreaSchema: z.ZodType<RulesetCatalogArea, z.ZodTypeDef, unknown> = 
     /** How many of it its maker sets down at once (1.173), each touching another: 5e's Fire Storm,
      *  ten 10-ft cubes. Only a burst or a box. */
     copies: z.number().int().min(2).max(10).optional(),
+    /** It grows by this much for each step of a higher cost it is paid with (Capability API 1.262):
+     *  5e's Confusion, 5 feet more radius a slot level above 4th. Not a wall. */
+    sizePerCostStep: z.number().finite().gt(0).optional(),
   })
   .strict()
+  .refine((area) => area.sizePerCostStep === undefined || area.shape !== "wall", {
+    message: "A wall does not grow with its cost",
+    path: ["sizePerCostStep"],
+  })
   .refine((area) => area.width === undefined || area.shape === "line" || area.shape === "wall", {
     message: "Only a line or a wall may carry width",
     path: ["width"],
@@ -2786,6 +2794,11 @@ const catalogMechanicsObject = z
     kind: z.enum(["attack", "heal", "buff", "debuff", "utility", "rider"]),
     /** Senses a target must have for this to affect it (Capability API 1.122). */
     needs: combatSensesSchema.optional(),
+    /** Any one of `needs` is enough (Capability API 1.262): Turn Undead's "can see or hear you". */
+    needsAny: z.literal(true).optional(),
+    /** The creatures it is aimed at must all stand within this distance of each other (Capability
+     *  API 1.262): 5e's Command, "within 30 feet of each other when you target them". */
+    targetsWithin: z.number().finite().gt(0).optional(),
     /** Only a creature its maker can see may be picked (Capability API 1.173): 5e's "a creature you
      *  can see within range". Who sees whom is the fight's `sight`, obscuring zones and senses. */
     seen: z.literal(true).optional(),
@@ -3628,6 +3641,8 @@ const creatureActionSchema = z
     name: promptSafeText(80),
     /** Senses a target must have for this to affect it (Capability API 1.122). */
     needs: combatSensesSchema.optional(),
+    /** Any one of `needs` is enough (Capability API 1.262): Turn Undead's "can see or hear you". */
+    needsAny: z.literal(true).optional(),
     /** Only a creature its maker can see may be picked (Capability API 1.173): 5e's "a creature you
      *  can see within range". Who sees whom is the fight's `sight`, obscuring zones and senses. */
     seen: z.literal(true).optional(),
@@ -3977,6 +3992,21 @@ const creatureFields = {
   /** Conditions it has on through every fight (Capability API 1.258), as a sheet's `keepsOn` entry
    *  gives them: an aura it spreads. */
   keepsOn: uniqueIds(4).optional(),
+  /** What it holds that is no action of its own (Capability API 1.262): a printed shield. A condition
+   *  whose `drops` names one of its `tags` lets it fall, and its `defense` goes with it. */
+  held: z
+    .array(
+      z
+        .object({
+          label: promptSafeText(40),
+          tags: uniqueIds(4),
+          defense: z.number().int().min(-20).max(20).optional(),
+        })
+        .strict(),
+    )
+    .min(1)
+    .max(4)
+    .optional(),
   /** How far it senses with each of `combat.senses`, in the ruleset's distance (Capability API
    *  1.173): a 5e goblin's `{ "darkvision": 60 }`. */
   senses: z.record(sheetId, z.number().finite().gt(0).max(10000)).optional(),
@@ -4827,6 +4857,7 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     kind: true,
     // Sense needs belong to catalog entries and creature actions (1.122).
     needs: true,
+    needsAny: true,
     // A sheet value added to an amount is a catalog entry's (1.78): an item's use reads its own stats.
     amountAdd: true,
     cost: true,
@@ -4925,6 +4956,15 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     if (zone) issue("zone", zone);
   });
 export type RulesetItemUse = z.infer<typeof rulesetItemUseSchema>;
+/** One more thing an item does when used (1.262), named for the menu. Typed by hand, as written out
+ *  its inferred type is too long for the item schema around it to emit. */
+export interface RulesetItemMoreUse {
+  label: string;
+  use: RulesetItemUse;
+}
+const itemMoreUseSchema: z.ZodType<RulesetItemMoreUse, z.ZodTypeDef, unknown> = z
+  .object({ label: promptSafeText(40), use: rulesetItemUseSchema })
+  .strict();
 
 const catalogItemSchema = z
   .object({
@@ -4970,6 +5010,10 @@ const catalogItemSchema = z
     attack: rulesetItemAttackSchema.optional(),
     /** What it does when it is used: from the bag, or while worn where it takes a slot or binds. */
     use: rulesetItemUseSchema.optional(),
+    /** Other things it does when used, each its own choice on the menu named by `label` and paid
+     *  from the same charges (Capability API 1.262): a wand of fear's Command beside its cone, a
+     *  staff's spells. Only beside a `use`. */
+    moreUses: z.array(itemMoreUseSchema).min(1).max(8).optional(),
     /** How many charges it holds, which its use spends. The count is kept on its stack. */
     charges: z
       .object({
@@ -10214,6 +10258,12 @@ function creatureIssues(
     if (!definition.sheet.live.conditions.some((condition) => condition.id === kept))
       add([...at, "keepsOn", keptIndex], `Unknown condition "${kept}"`);
   });
+  const heldTags = new Set((definition.items?.tags ?? []).map((tag) => tag.id));
+  creature.held?.forEach((thing, thingIndex) => {
+    thing.tags.forEach((tag, tagIndex) => {
+      if (!heldTags.has(tag)) add([...at, "held", thingIndex, "tags", tagIndex], `Unknown item tag "${tag}"`);
+    });
+  });
   if (creature.loot !== undefined && !definition.items?.lootTables?.some((table) => table.id === creature.loot)) {
     add([...at, "loot"], `Unknown loot table "${creature.loot}"`);
   }
@@ -10708,6 +10758,10 @@ function itemIssues(
     }
   });
   if (item.use) useIssues(definition, item, item.use, [...at, "use"], add);
+  item.moreUses?.forEach((more, index) =>
+    useIssues(definition, item, more.use, [...at, "moreUses", index, "use"], add),
+  );
+  if (item.moreUses && !item.use) add([...at, "moreUses"], 'More uses go beside a "use"');
   if (item.charges) {
     itemValueChecker(definition, add)(item.charges.max, "number", [...at, "charges", "max"]);
     // Or by its weapon slaying (1.182): a nine lives stealer's.

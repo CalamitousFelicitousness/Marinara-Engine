@@ -425,12 +425,15 @@ export function rulesetTargetHasSenses(
   state: RulesetEncounterState,
   target: RulesetCombatant,
   needs: readonly string[] | undefined,
+  /** Any one of them is enough (1.262): "can see or hear you". */
+  any?: boolean,
 ): boolean {
   const combat = definition.combat;
   if (!combat || !needs?.length) return true;
-  return !rulesetActiveConditions(definition, combat, target, state).some((entry) =>
-    entry.lacks?.some((sense) => needs.includes(sense)),
+  const lacked = new Set(
+    rulesetActiveConditions(definition, combat, target, state).flatMap((entry) => entry.lacks ?? []),
   );
+  return any ? needs.some((sense) => !lacked.has(sense)) : !needs.some((sense) => lacked.has(sense));
 }
 
 /** What a combatant is (1.163): a creature's own type and tags, or else a character's type read off
@@ -1282,8 +1285,21 @@ function itemUseActions(
   const actions: RulesetCombatAction[] = [];
   items.forEach((held, index) => {
     const { item } = held;
-    const use = item.use;
-    if (!use) return;
+    if (!item.use) return;
+    // Its first use, then any more it has (1.262), each its own choice paid from the same charges.
+    useOf(held, index, `use:${index}`, item.use);
+    item.moreUses?.forEach((more, n) => useOf(held, index, `use:${index}:${n + 1}`, more.use, more.label));
+  });
+  return actions;
+
+  function useOf(
+    held: RulesetSheetItem,
+    index: number,
+    id: string,
+    use: NonNullable<RulesetCatalogItem["use"]>,
+    named?: string,
+  ): void {
+    const { item } = held;
     const wearable = Object.values(item.slots ?? {}).some((count) => count > 0) || !!item.binds;
     if (wearable && !held.worn) return;
     const read = (value: unknown) => itemAttackValue(item, value);
@@ -1293,20 +1309,12 @@ function itemUseActions(
     const counted = item.charges ? whole(read(item.charges.max)) : undefined;
     const max = counted === undefined ? undefined : Math.min(RULESET_ITEM_CHARGES_MAX, counted);
     if (use.charges !== undefined && !(max !== undefined && max >= 1)) return;
-    const label =
+    const name =
       held.name ??
       definition.items?.categories.find((category) => category.id === item.category)?.label ??
       item.category;
-    const action = itemUseMechanics(
-      definition,
-      item,
-      use,
-      { id: `use:${index}`, label },
-      build,
-      evaluated,
-      perCell,
-      pooled,
-    );
+    const label = named ? `${name}: ${named}` : name;
+    const action = itemUseMechanics(definition, item, use, { id, label }, build, evaluated, perCell, pooled);
     if (!action) return;
     // A fake (1.74) is offered as what it passes for, aimed, timed and spent as that is, so nothing on
     // the menu tells them apart; what it does is what it truly does. One whose true item does nothing a
@@ -1345,8 +1353,7 @@ function itemUseActions(
         : {}),
     };
     actions.push(action);
-  });
-  return actions;
+  }
 }
 
 /** What one use does, as an action holds it: the parts a fake takes from what it truly is (1.74). */
@@ -2058,6 +2065,10 @@ function mechanicsAction(
   // Half its damage on a miss (1.250): Acid Arrow.
   if (mechanics.halfOnMiss && mechanics.attackRoll) action.halfOnMiss = true;
   if (mechanics.needs) action.needs = [...mechanics.needs];
+  if (mechanics.needs && mechanics.needsAny) action.needsAny = true;
+  if (mechanics.targetsWithin !== undefined && perCell !== undefined) {
+    action.targetsWithin = rulesetInCells(mechanics.targetsWithin, perCell);
+  }
   if (mechanics.seen) action.seen = true;
   if (mechanics.components) action.components = [...mechanics.components];
   if (mechanics.targetTypes) action.targetTypes = mechanics.targetTypes;
@@ -2265,6 +2276,9 @@ function mechanicsAction(
         ...(mechanics.area.width !== undefined ? { width: rulesetInCells(mechanics.area.width, perCell) } : {}),
         ...(mechanics.area.ring !== undefined ? { ring: rulesetInCells(mechanics.area.ring, perCell) } : {}),
         ...(mechanics.area.copies !== undefined ? { copies: mechanics.area.copies } : {}),
+        ...(mechanics.area.sizePerCostStep !== undefined
+          ? { sizePerCostStep: rulesetInCells(mechanics.area.sizePerCostStep, perCell) }
+          : {}),
         ...(mechanics.friendlyFire === false ? { friendlyFire: false } : {}),
       };
     }
@@ -2618,6 +2632,7 @@ function blockActions(
     ...(action.toHit !== undefined ? { toHit: action.toHit } : {}),
     ...(action.autoHit ? { autoHit: true } : {}),
     ...(action.needs ? { needs: [...action.needs] } : {}),
+    ...(action.needs && action.needsAny ? { needsAny: true as const } : {}),
     ...(action.seen ? { seen: true as const } : {}),
     ...(action.components ? { components: [...action.components] } : {}),
     ...(action.damage

@@ -359,7 +359,7 @@ export function applyRulesetFightItemChanges(
 /** The option that picks something dropped back up (1.261), followed by what it picks up. */
 export const RULESET_PICK_UP_OPTION_PREFIX = "pickup:";
 
-const ITEM_ACTION = /^(?:item|offhand|use|switch|reload):(\d+)$/;
+const ITEM_ACTION = /^(?:item|offhand|use|switch|reload):(\d+)(?::\d+)?$/;
 
 /** The place in its holder's items of the item an action is made with, when it is one: a weapon's
  *  blow, its off-hand blow, a use, a switch or a reload. */
@@ -385,6 +385,17 @@ export function rulesetDroppedItems(actor: RulesetCombatant): Set<number> {
     if (thing.key.startsWith("item:")) out.add(Number(thing.key.slice("item:".length)));
   }
   return out;
+}
+
+/** What a stat block's held things it has let fall (1.262) gave its defense. */
+export function rulesetDroppedHeldDefense(actor: RulesetCombatant): number {
+  if (!actor.block?.held || !actor.dropped?.length) return 0;
+  let lost = 0;
+  for (const thing of actor.dropped) {
+    if (!thing.key.startsWith("held:")) continue;
+    lost += actor.block.held[Number(thing.key.slice("held:".length))]?.defense ?? 0;
+  }
+  return lost;
 }
 
 /** What a fighter would let fall now (1.261): each worn item taking one of `slots` or carrying one of
@@ -415,5 +426,9 @@ export function rulesetThingsToDrop(
   for (const action of actor.actions) {
     if (drops.tags?.some((tag) => action.qualities?.includes(tag))) add(action.id, action.label);
   }
+  // What it holds that is no action (1.262): a printed shield.
+  actor.block?.held?.forEach((thing, index) => {
+    if (drops.tags?.some((tag) => thing.tags.includes(tag))) add(`held:${index}`, thing.label);
+  });
   return out;
 }

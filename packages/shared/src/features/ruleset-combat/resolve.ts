@@ -2858,6 +2858,11 @@ function pickTargets(
     if (!legal.has(id)) return rulesetTargetRefusal(state, actor.id, option.id, id, option.range) ?? "bad-target";
     targets.push(rulesetCombatant(state, id)!);
   }
+  // All within so far of each other (1.262): Command's extra creatures.
+  const within = actor.actions.find((entry) => entry.id === option.id)?.targetsWithin;
+  if (within !== undefined && targets.some((one) => targets.some((other) => rulesetGap(one, other) > within))) {
+    return "targets-apart";
+  }
   return targets;
 }
 
@@ -3252,11 +3257,13 @@ function applyChoice(
   // Targets, checked against the side and the count the option itself declared, or the count the
   // pool it is paid with lets it take (1.166).
   const paidCount = choice.payWith !== undefined ? option.targetsWith?.[choice.payWith] : undefined;
+  const grow = areaGrowth(definition, actor, option.id, choice.payWith);
   const targets = area
     ? rulesetAreaTargets(state, actor.id, option.id, choice.at!, {
         toward: choice.toward,
         ring: choice.ring,
         also,
+        ...(grow ? { grow } : {}),
       }).map((id) => rulesetCombatant(state, id)!)
     : pickTargets(
         definition,
@@ -3408,7 +3415,12 @@ function applyChoice(
       optionId: option.id,
       label: option.label,
       at: { ...choice.at },
-      cells: areaCellsFor(ctx.state, working, option.id, choice.at, { toward: choice.toward, ring: choice.ring, also }),
+      cells: areaCellsFor(ctx.state, working, option.id, choice.at, {
+        toward: choice.toward,
+        ring: choice.ring,
+        also,
+        ...(grow ? { grow } : {}),
+      }),
     });
   }
 
@@ -4665,6 +4677,19 @@ function positionedArea(state: RulesetEncounterState, actor: RulesetCombatant, o
   return !!state.board?.grid && !!actor.actions.find((entry) => entry.id === option.id)?.area;
 }
 
+/** How many cells an area grows by for the higher cost it was paid with (1.262): Confusion. */
+function areaGrowth(
+  definition: RulesetDefinition,
+  actor: RulesetCombatant,
+  optionId: string,
+  payWith: string | undefined,
+): number {
+  const action = actor.actions.find((entry) => entry.id === optionId);
+  const per = action?.area?.sizePerCostStep;
+  if (!action || !per || payWith === undefined) return 0;
+  return per * rulesetCostSteps(definition, action, payWith, actor);
+}
+
 /** The cells the shape covered, read off the same menu rule that offered it. */
 function areaCellsFor(
   state: RulesetEncounterState,
@@ -5043,7 +5068,10 @@ function resumeAction(ctx: RulesetCombatContext, resume: RulesetActionResume): v
     igniteZones(
       ctx,
       [action.damage.type, ...(action.damage.plus ?? []).map((clause) => clause.type)],
-      areaCellsFor(ctx.state, actor, action.id, at, resume.also ? { also: resume.also } : undefined),
+      areaCellsFor(ctx.state, actor, action.id, at, {
+        ...(resume.also ? { also: resume.also } : {}),
+        grow: areaGrowth(ctx.definition, actor, action.id, resume.payWith),
+      }),
     );
   }
 }
@@ -6018,7 +6046,7 @@ function resolveActionBody(
   // decides, once every target has been tried, whether the number resets or a miss costs some of it.
   const spends = style?.spends ? { number: spend ?? actor.initiative, landed: false } : null;
   const reaches = (target: RulesetCombatant) =>
-    rulesetTargetHasSenses(ctx.definition, ctx.state, target, action.needs) &&
+    rulesetTargetHasSenses(ctx.definition, ctx.state, target, action.needs, action.needsAny) &&
     // Behind a ward this does not get through (1.174), at the level it was paid at.
     !rulesetWarded(ctx.definition, ctx.state, actor, action, target, payWith) &&
     // An area or a list catches only who the action may take, by what they are (1.163).

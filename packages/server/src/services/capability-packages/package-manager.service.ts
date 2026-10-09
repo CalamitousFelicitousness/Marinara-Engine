@@ -1549,6 +1549,18 @@ function carriesMetamagic(value: unknown, depth = 0): boolean {
 
 /** An aura that needs senses, harms at its holder's turn or asks for a save, or a save change
  *  narrowed to what is cast from a catalog (1.260). */
+/** Senses any one of which serves, targets kept near each other, an area that grows with its cost, more
+ *  uses on an item, and what a stat block holds (1.262), in catalogs too. */
+function carriesTargetingMore(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesTargetingMore(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.needsAny !== undefined || typeof record.targetsWithin === "number") return true;
+  if (record.sizePerCostStep !== undefined || Array.isArray(record.moreUses) || Array.isArray(record.held)) return true;
+  return Object.values(record).some((one) => carriesTargetingMore(one, depth + 1));
+}
+
 /** A behavior that drops, keeps out or is freed when stuck; a save only out of sight; destroying by
  *  threat tier (1.261), in catalogs too. */
 function carriesBehaviorMore(value: unknown, depth = 0): boolean {
@@ -3620,6 +3632,15 @@ export function getCapabilityPackageInstallIssue(
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
   }
   // Dropping, keeping out, a turn freed when stuck, saves out of sight, destroying by tier, 1.261.
+  // Senses any one of which serves, targets near each other, areas growing with cost, more item
+  // uses, and a stat block's held things, 1.262.
+  if (
+    !declaresApi(262) &&
+    (carriesTargetingMore(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesTargetingMore(document)))
+  ) {
+    return "A ruleset with senses any one of which serves, targets kept near each other, an area that grows with its cost, more uses on an item, or things a stat block holds, requires schemaVersion 2 and capabilityApi 1.262 or newer";
+  }
   if (
     !declaresApi(261) &&
     (carriesBehaviorMore(ruleset) ||

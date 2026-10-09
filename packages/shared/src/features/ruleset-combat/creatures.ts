@@ -198,6 +198,7 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
     ...(action.toHit !== undefined ? { toHit: action.toHit } : {}),
     ...(action.autoHit ? { autoHit: true } : {}),
     ...(action.needs ? { needs: [...action.needs] } : {}),
+    ...(action.needs && action.needsAny ? { needsAny: true as const } : {}),
     ...(action.seen ? { seen: true as const } : {}),
     ...(action.components ? { components: [...action.components] } : {}),
     ...(damage
@@ -405,6 +406,7 @@ function blockFromCreature(creature: RulesetCreature, budgets: ReadonlySet<strin
     ...(creature.immune ? { immune: [...creature.immune] } : {}),
     ...(creature.conditionImmunities ? { conditionImmunities: [...creature.conditionImmunities] } : {}),
     ...(creature.keepsOn ? { keepsOn: [...creature.keepsOn] } : {}),
+    ...(creature.held ? { held: creature.held.map((thing) => ({ ...thing, tags: [...thing.tags] })) } : {}),
     ...(creature.senses ? { senses: { ...creature.senses } } : {}),
     ...(creature.hardness !== undefined ? { hardness: creature.hardness } : {}),
     ...(creature.shield ? { shield: true as const } : {}),
@@ -646,6 +648,23 @@ export function clampRulesetStatBlock(
   if (block.keepsOn) {
     delete block.keepsOn;
     adjusted.push("Conditions kept on through the fight were dropped: the threat scale cannot bound an aura.");
+  }
+  // A held thing lets fall only by tags the ruleset has (1.262); a shield's worth is bounded like any defense.
+  if (block.held) {
+    const tags = new Set((definition.items?.tags ?? []).map((tag) => tag.id));
+    const kept = block.held
+      .filter((thing) => thing.tags.some((tag) => tags.has(tag)))
+      .slice(0, 4)
+      .map((thing) => ({
+        label: thing.label,
+        tags: thing.tags.filter((tag) => tags.has(tag)),
+        ...(Number.isFinite(thing.defense) && thing.defense
+          ? { defense: Math.max(-20, Math.min(20, Math.round(thing.defense!))) }
+          : {}),
+      }));
+    if (kept.length < block.held.length) adjusted.push("A held thing with no item tag this ruleset has was dropped.");
+    if (kept.length) block.held = kept;
+    else delete block.held;
   }
   // Senses are the fight's own (1.173); one it does not have is nothing to see by.
   if (block.senses) {

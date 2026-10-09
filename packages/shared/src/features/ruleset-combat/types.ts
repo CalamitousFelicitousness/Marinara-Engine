@@ -276,6 +276,8 @@ export interface RulesetStatBlockAction {
   autoHit?: boolean;
   /** Senses a target must have for this to affect it (Capability API 1.122). */
   needs?: string[];
+  /** Any one of `needs` is enough (1.262). */
+  needsAny?: true;
   /** Only a creature its maker can see may be picked (1.173). */
   seen?: true;
   /** What using it needs, by the ids of `combat.components` (1.174). */
@@ -395,6 +397,8 @@ export interface RulesetStatBlock {
   conditionImmunities?: string[];
   /** Conditions it has on through every fight (1.258): an aura it spreads. */
   keepsOn?: string[];
+  /** What it holds that is no action of its own (1.262): a printed shield, let fall by its tags. */
+  held?: { label: string; tags: string[]; defense?: number }[];
   /** How far it senses with each of `combat.senses`, in the ruleset's distance (1.173). */
   senses?: Record<string, number>;
   /** Where its live tracks stand as the fight begins (1.110). */
@@ -492,6 +496,10 @@ export interface RulesetCombatAction {
   autoHit?: boolean;
   /** Senses a target must have for this to affect it (Capability API 1.122). */
   needs?: string[];
+  /** Any one of `needs` is enough (1.262). */
+  needsAny?: true;
+  /** Cells its targets must all stand within of each other (1.262): Command. */
+  targetsWithin?: number;
   /** Only a creature its maker can see may be picked (1.173). */
   seen?: true;
   /** What using it needs, by the ids of `combat.components` (1.174). */
@@ -828,6 +836,8 @@ export interface RulesetCombatArea {
   ring?: number;
   /** How many of it may be set down at once, each touching another (1.173): Fire Storm's cubes. */
   copies?: number;
+  /** Cells it grows by for each step of a higher cost it is paid with (1.262): Confusion. */
+  sizePerCostStep?: number;
   friendlyFire?: boolean;
 }
 
@@ -1429,7 +1439,9 @@ export type RulesetCombatRefusal =
   /** Something a condition that decides this turn does not let it hold (1.259). */
   | "compelled"
   /** What it is made with lies where it was dropped (1.261). */
-  | "dropped";
+  | "dropped"
+  /** The creatures picked stand too far from each other (1.262). */
+  | "targets-apart";
 
 export type RulesetCombatAttackOutcome = "hit" | "miss" | "critical";
 export type RulesetCombatRollMode = "normal" | "advantage" | "disadvantage";

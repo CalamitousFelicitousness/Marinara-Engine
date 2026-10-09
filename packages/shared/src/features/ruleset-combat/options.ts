@@ -16,6 +16,7 @@ import {
   rulesetActionDropped,
   rulesetAmmoLeft,
   rulesetDroppedItems,
+  rulesetDroppedHeldDefense,
   rulesetItemOn,
   rulesetItemUseLeft,
   rulesetLoaded,
@@ -526,6 +527,8 @@ export interface RulesetAreaLay {
   toward?: RulesetCombatCell;
   ring?: boolean;
   also?: readonly RulesetCombatCell[];
+  /** Cells more of size, for a higher cost it was paid with (1.262). */
+  grow?: number;
 }
 
 /** The cells an area aimed at `at` covers, every copy of it included, each cell once. */
@@ -547,7 +550,7 @@ export function rulesetAimedCells(
     const origin = rulesetNearestCell(actor, aim) ?? from;
     return area.shape === "wall"
       ? rulesetWallShape(grid, area, aim, origin, lay?.toward, undefined, lay?.ring).cells
-      : rulesetAreaCells(area.shape, area.size, origin, aim, grid, area.width);
+      : rulesetAreaCells(area.shape, area.size + (lay?.grow ?? 0), origin, aim, grid, area.width);
   };
   const cells = new Map<string, RulesetCombatCell>();
   for (const aim of [at, ...(lay?.also ?? [])]) {
@@ -715,6 +718,7 @@ export function rulesetDefenseAgainst(
   if (target.heldDefense && target.dropped?.length) {
     for (const index of rulesetDroppedItems(target)) lost += target.heldDefense[index] ?? 0;
   }
+  lost += rulesetDroppedHeldDefense(target);
   const defense = target.defense - lost + guards.reduce((total, guard) => total + guard.value, 0);
   const ignored = rulesetAgainstHere(definition, action, target, attacker).some((entry) => entry.ignoresCover);
   const cover = ignored
@@ -1335,7 +1339,8 @@ export function rulesetOptionTargets(
           if (!rulesetCanRevive(state, cure, combatant)) return false;
         } else if (combatant.defeated) return false;
         if (cure && !rulesetCureReaches(definition, cure, combatant, state)) return false;
-        if (!rulesetTargetHasSenses(definition, state, combatant, needs)) return false;
+        if (!rulesetTargetHasSenses(definition, state, combatant, needs, actionOf(actor, option.id)?.needsAny))
+          return false;
         // "A creature you can see" (1.173).
         if (cure?.seen && !rulesetCanSee(definition, state, actor, combatant)) return false;
         // Only on somebody holding what it names (1.230): grappled by its maker, or restrained.

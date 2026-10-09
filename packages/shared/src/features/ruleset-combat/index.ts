@@ -57,6 +57,7 @@ export {
   rulesetActionItemIndex,
   rulesetAmmoLeft,
   rulesetDroppedItems,
+  rulesetDroppedHeldDefense,
   rulesetThingsToDrop,
   rulesetFightItemChanges,
   rulesetLoaded,

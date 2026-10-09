@@ -334,8 +334,15 @@ export const SPEECH_TO_TEXT_DEFAULT_MODEL = "whisper-1";
 export const speechToTextConfigSchema = z.object({
   enabled: z.boolean().default(false),
   baseUrl: z.string().trim().max(2_000).default(""),
-  /** Encrypted at rest. Responses carry TTS_API_KEY_MASK instead; sending the mask back keeps the saved key. */
-  apiKey: z.string().max(4_000).default(""),
+  /**
+   * Encrypted at rest. Responses carry TTS_API_KEY_MASK instead; sending the mask back keeps the saved key.
+   * A line break or NUL is refused: fetch would reject that header with the whole key in its error.
+   */
+  apiKey: z
+    .string()
+    .max(4_000)
+    .regex(/^[^\0\r\n]*$/u)
+    .default(""),
   model: z.string().trim().max(200).default(""),
   /** Optional language code such as "pl"; blank lets the server detect the language. */
   language: z

@@ -62,6 +62,7 @@ try {
     await import("../../packages/server/src/services/storage/app-settings.storage.js");
   const { speechToTextRoutes } = await import("../../packages/server/src/routes/speech-to-text.routes.js");
   const { errorHandler } = await import("../../packages/server/src/middleware/error-handler.js");
+  const { adminRoutes } = await import("../../packages/server/src/routes/admin.routes.js");
   const { createCapabilityIntegrationHost } =
     await import("../../packages/server/src/services/capability-packages/capability-integrations.service.js");
   const { createSilentTestClip, loadSpeechToTextConfig, transcribeWithSpeechToTextServer } =
@@ -73,6 +74,7 @@ try {
   app.decorate("db", db);
   app.setErrorHandler(errorHandler);
   await app.register(speechToTextRoutes, { prefix: "/api/speech-to-text" });
+  await app.register(adminRoutes, { prefix: "/api/admin" });
   const getConfig = () => app!.inject({ method: "GET", url: "/api/speech-to-text/config" });
   const putConfig = (payload: Record<string, unknown>) =>
     app!.inject({ method: "PUT", url: "/api/speech-to-text/config", payload });
@@ -113,6 +115,9 @@ try {
   assert.equal((await loadSpeechToTextConfig(db)).apiKey, SECRET, "the masked key keeps the saved one");
   assert.equal((await putConfig({ enabled: true, baseUrl: base, language: "pl_PL;" })).statusCode, 400);
   assert.equal((await loadSpeechToTextConfig(db)).model, "Systran/faster-whisper-small", "a bad save changes nothing");
+  // fetch would refuse a key with a line break and print the whole key in its error, so the save refuses it.
+  assert.equal((await putConfig({ enabled: true, baseUrl: base, apiKey: "sk-a\nb" })).statusCode, 400);
+  assert.equal((await loadSpeechToTextConfig(db)).apiKey, SECRET, "a refused key keeps the saved one");
 
   // The Test button sends a short clip as an OpenAI-style multipart upload.
   const tested = await test();
@@ -173,6 +178,20 @@ try {
   );
   assert.equal(requests.length, beforePrivate);
 
+  // A user name or password in the URL is refused before fetch can put it in an error or the log.
+  for (const baseUrl of [`http://user:hunter2@127.0.0.1:${address.port}/v1`, `${base}/v1?token=x`, `${base}/v1#x`]) {
+    await assert.rejects(
+      transcribeWithSpeechToTextServer({ ...config, baseUrl }, clip),
+      (error: unknown) =>
+        error instanceof Error && /Remove the user name/u.test(error.message) && !error.message.includes("hunter2"),
+    );
+  }
+  await assert.rejects(
+    transcribeWithSpeechToTextServer({ ...config, baseUrl: "not a url" }, clip),
+    /not a valid web address/u,
+  );
+  assert.equal(requests.length, beforePrivate);
+
   // Time and size limits.
   await assert.rejects(
     transcribeWithSpeechToTextServer({ ...config, baseUrl: `${base}/slow/v1` }, clip, { timeoutMs: 300 }),
@@ -187,6 +206,15 @@ try {
   const beforeLarge = requests.length;
   await assert.rejects(transcribeWithSpeechToTextServer(config, new Uint8Array(25 * 1024 * 1024 + 1)), /too large/u);
   assert.equal(requests.length, beforeLarge, "an oversized recording is refused before upload");
+
+  // Clearing Connections data also removes the saved server and its key, like Text to Speech.
+  const expunged = await app.inject({
+    method: "POST",
+    url: "/api/admin/expunge",
+    payload: { confirm: true, scopes: ["connections"] },
+  });
+  assert.equal(expunged.statusCode, 200, expunged.body);
+  assert.equal(await settings.get(SPEECH_TO_TEXT_SETTINGS_KEY), null, "clearing Connections removes the saved key");
 } finally {
   for (const timer of slowTimers) clearTimeout(timer);
   await app?.close();

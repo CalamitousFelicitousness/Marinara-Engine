@@ -67,13 +67,24 @@ export async function loadSpeechToTextConfig(db: DB): Promise<SpeechToTextConfig
   return { ...config, apiKey: decryptApiKey(config.apiKey) };
 }
 
-function transcriptionUrl(baseUrl: string): string {
+function transcriptionUrl(baseUrl: string): URL {
   // Server guides often show the full endpoint, so accept that as well as the API root.
   const root = baseUrl
     .trim()
     .replace(/\/+$/u, "")
     .replace(/\/audio\/transcriptions$/iu, "");
-  return `${root}/audio/transcriptions`;
+  let url: URL;
+  try {
+    url = new URL(`${root}/audio/transcriptions`);
+  } catch {
+    throw new Error("The speech-to-text server URL is not a valid web address.");
+  }
+  // Like Decision connections: fetch refuses a user name or password and would log it in its error,
+  // and a ? or # would swallow the /audio/transcriptions path.
+  if (url.username || url.password || url.search || url.hash) {
+    throw new Error("Remove the user name, password, ? or # from the speech-to-text server URL.");
+  }
+  return url;
 }
 
 function readErrorDetail(body: string): string {
@@ -110,6 +121,7 @@ export async function transcribeWithSpeechToTextServer(
   if (audio.byteLength > SPEECH_TO_TEXT_MAX_AUDIO_BYTES) {
     throw new Error("The recording is too large for the speech-to-text server.");
   }
+  const endpoint = transcriptionUrl(config.baseUrl);
   const filename = options.filename && SAFE_FILENAME.test(options.filename) ? options.filename : "audio.wav";
   const mimeType = options.mimeType && SAFE_AUDIO_TYPE.test(options.mimeType) ? options.mimeType : "audio/wav";
   const form = new FormData();
@@ -127,7 +139,7 @@ export async function transcribeWithSpeechToTextServer(
   const timeout = AbortSignal.timeout(options.timeoutMs ?? SPEECH_TO_TEXT_TIMEOUT_MS);
   let response: Response;
   try {
-    response = await safeFetch(transcriptionUrl(config.baseUrl), {
+    response = await safeFetch(endpoint, {
       method: "POST",
       headers,
       body: uploadBody,
@@ -168,7 +180,9 @@ export async function transcribeWithSavedSpeechToTextServer(
 ): Promise<string | null> {
   const config = await loadSpeechToTextConfig(db);
   if (!config.enabled || !config.baseUrl) return null;
-  return transcribeWithSpeechToTextServer(config, audio, options);
+  // Pass on only the documented options, so a package cannot lift the host's time limit.
+  const { filename, mimeType, signal } = options ?? {};
+  return transcribeWithSpeechToTextServer(config, audio, { filename, mimeType, signal });
 }
 
 /** One second of 16 kHz mono silence: enough for a server to accept the upload and answer. */

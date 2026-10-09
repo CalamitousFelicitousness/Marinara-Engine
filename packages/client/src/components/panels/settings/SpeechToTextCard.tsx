@@ -10,6 +10,7 @@ import {
   useUpdateSpeechToTextConfig,
 } from "../../../hooks/use-speech-to-text";
 import { cn } from "../../../lib/utils";
+import { translate } from "../../../localization/i18n";
 import { SettingsSwitch } from "./SettingControls";
 
 const INPUT_CLS = "mari-chrome-field w-full px-3 py-2.5 text-sm placeholder:text-[var(--muted-foreground)]";
@@ -80,10 +81,11 @@ export function SpeechToTextCard() {
         () => {
           if (pendingSaveRef.current === pending) pendingSaveRef.current = null;
         },
-        () => toast.error(t("connections.speechToText.saveFailed")),
+        // The global translator, so a language change does not rerun this cleanup and send the edit twice.
+        () => toast.error(translate("connections.speechToText.saveFailed")),
       );
     },
-    [putConfig, t],
+    [putConfig],
   );
 
   if (!callsInstalled || !draft) return null;

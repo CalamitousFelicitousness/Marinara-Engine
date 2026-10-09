@@ -20,7 +20,7 @@ reviews:
     - path: "packages/client/src/**"
       instructions: |
         Client rules (packages/client/.instructions.md is the full reference):
-        - Colours come only from theme tokens and CSS variables (var(--primary), text-[var(--foreground)], mari-* classes). Flag hard-coded palette colours in new or changed UI: Tailwind palette utilities such as text-red-500 or bg-amber-100, hex, rgb() or hsl() literals. Black or white overlays with opacity, as neighbouring code uses, are fine.
+        - Colours come only from theme tokens and CSS variables (var(--primary), text-[var(--foreground)], mari-* classes). Values inside CSS custom-property definitions that define those tokens are fine. Flag hard-coded palette colours in new or changed UI: Tailwind palette utilities such as text-red-500 or bg-amber-100, hex, rgb() or hsl() literals. Black or white overlays with opacity, as neighbouring code uses, are fine.
         - Warning and error states use the theme accent held steady. Flag warning colours that pulse with Accent Pulse; --destructive maps to --primary, which Accent Pulse animates.
         - New or changed user-facing text (labels, tooltips, placeholders, toasts, confirmations, aria labels) must use semantic localization keys added to src/localization/locales/en.json. Flag hard-coded English in JSX. Model prompts and user-authored content are exempt.
         - UI copy is one short, plain sentence a newcomer understands. Flag jargon and internals in user-facing text (inject, pipeline, payload, durable, diegetic, post-process, by ID).
@@ -38,7 +38,7 @@ reviews:
         - Routes that change data keep the same admin-secret and remote-access protection as neighbouring routes.
         - Any fetch of a user- or card-supplied URL needs SSRF protection: http/https only, private, loopback and link-local addresses blocked, every redirect re-checked, size and time limits.
         - A change to the on-disk storage layout must bump STORAGE_VERSION in packages/server/src/db/file-backed-store.ts and the root storage-format.json together.
-    - path: "packages/server/src/{services/prompt,routes/generate}/**"
+    - path: "packages/server/src/{services/prompt/**,routes/generate/**,routes/generate.routes.ts}"
       instructions: |
         Prompt assembly is core. Ask for a regression in scripts/regressions/ for behaviour changes, and check every chat mode (Conversation, Roleplay, Game) and group mode (merged and individual responders). {{char}} inside earlier history messages intentionally resolves to that message's author.
     - path: "scripts/regressions/**"
@@ -72,12 +72,13 @@ reviews:
         instructions: |
           Pass if the PR changes no client UI files (packages/client/src/**/*.tsx, *.ts, *.css).
           Fail if added or changed client UI code uses hard-coded palette colours: Tailwind colour utilities with a named palette (for example text-red-500, bg-amber-100, border-emerald-400, from-yellow-300), hex colours, or rgb()/hsl() literals. Black or white with opacity (bg-black/50, border-white/10) is allowed.
+          Values inside CSS custom-property definitions (for example --primary: #e11d48; in a theme or globals stylesheet) define the tokens themselves and are allowed.
           Otherwise pass: colours come from theme CSS variables or token classes such as var(--primary), text-[var(--foreground)] or mari-* classes.
       - name: "Localized UI text"
         mode: "warning"
         instructions: |
           Pass if the PR adds or changes no user-facing client text.
-          Fail if new user-facing text in packages/client/src (labels, tooltips, placeholders, toasts, confirmations, aria labels) is hard-coded instead of using a localization key, or if a new key used in code is missing from packages/client/src/localization/locales/en.json, or if the PR copies English values into non-English locale files.
+          Fail if new or changed user-facing text in packages/client/src (labels, tooltips, placeholders, toasts, confirmations, aria labels) is hard-coded instead of using a localization key, or if a new key used in code is missing from packages/client/src/localization/locales/en.json, or if the PR copies English values into non-English locale files.
           Model prompts and user-authored content are exempt.
       - name: "Server logs via Pino"
         mode: "warning"

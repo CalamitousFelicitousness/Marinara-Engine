@@ -221,6 +221,8 @@ const command = z.discriminatedUnion("type", [
     wall: coord.optional(),
     /** How many uses it spends (1.246), checked against the menu by the resolver. */
     amount: z.number().int().min(1).max(1000).optional(),
+    /** The alterations it is used with (1.248), checked against the action by the resolver. */
+    alters: z.array(z.string().min(1).max(200)).max(8).optional(),
   }),
   z.object({ type: z.literal("choose"), candidateId: key }),
   z.object({ type: z.literal("continue") }),

@@ -2422,6 +2422,49 @@ const catalogAreaSchema: z.ZodType<RulesetCatalogArea, z.ZodTypeDef, unknown> = 
 /** What an entry DOES. The Engine does not act on it in this slice: it validates it and the client
  *  shows one compact line. A later combat bridge turns it into the Engine's own `CombatSkill`, so
  *  the vocabulary is closed and strict, and a typo is refused now rather than ignored then. */
+/** How an entry changes another as it is used (Capability API 1.248): 5e's Metamagic. Typed by hand,
+ *  as written out its inferred type is too long for the schema around it to emit. */
+export interface RulesetCatalogAlters {
+  catalogs: string[];
+  spares?: RulesetValueRef;
+  range?: { times: number; touch?: number };
+  rerolls?: RulesetValueRef;
+  lasts?: number;
+  heightens?: true;
+  budget?: { from: string; to: string };
+  drops?: string[];
+  twins?: true;
+  joins?: true;
+}
+
+const catalogAltersSchema: z.ZodType<RulesetCatalogAlters, z.ZodTypeDef, unknown> = z
+  .object({
+    /** The catalogs whose entries it changes: 5e's spells. */
+    catalogs: z.array(sheetId).min(1).max(8),
+    /** Up to this many of its user and their allies caught by it make its save outright: Careful. */
+    spares: rulesetValueRefSchema.optional(),
+    /** Its range this many times over, and a touch this far (in the catalog's distance): Distant. */
+    range: z
+      .object({ times: z.number().int().min(2).max(10), touch: z.number().positive().max(10000).optional() })
+      .strict()
+      .optional(),
+    /** Up to this many of its damage dice that rolled low are thrown again: Empowered. */
+    rerolls: rulesetValueRefSchema.optional(),
+    /** What it puts on lasts this many times as long, never past a day: Extended. */
+    lasts: z.number().int().min(2).max(10).optional(),
+    /** Its first target rolls its first save against it with disadvantage: Heightened. */
+    heightens: z.literal(true).optional(),
+    /** Used with this budget instead of that one: Quickened, an action's casting as a bonus action. */
+    budget: z.object({ from: sheetId, to: sheetId }).strict().optional(),
+    /** Needs none of these components, and nobody can answer it being used: Subtle. */
+    drops: componentIdsSchema.optional(),
+    /** One more target, for one that has one and is not its user's alone: Twinned. */
+    twins: z.literal(true).optional(),
+    /** May be chosen beside another one: Empowered. */
+    joins: z.literal(true).optional(),
+  })
+  .strict();
+
 /** Who an entry may be pointed at or catch, by what they are (Capability API 1.163). Typed by hand:
  *  written out, its inferred type is too long for the definition schema around it to emit. */
 const catalogTargetTypesSchema: z.ZodType<
@@ -2896,6 +2939,13 @@ const catalogMechanicsObject = z
      *  that many times its amount (Capability API 1.246): 5e's Lay on Hands, a point of its pool for
      *  each hit point. */
     usesChosen: z.literal(true).optional(),
+    /** Changes how another entry is used, chosen as it is used and paid for with this entry's own
+     *  uses (Capability API 1.248): 5e's Metamagic. Never on a menu of its own. One per use, unless
+     *  it `joins` another. */
+    alters: catalogAltersSchema.optional(),
+    /** Its price in uses is the level the altered entry is paid at, at least one (Capability API
+     *  1.248): Twinned Spell. */
+    usesSpentByLevel: z.literal(true).optional(),
     /** Gives back to a pool of whoever it lands on (Capability API 1.247): a live pool by id, or a
      *  pool a list row holds by its name. `perCostStep` adds to it for each step of a higher cost,
      *  and `overMax` lets it go past the maximum until a rest sets the pool back to it. 5e's Font of
@@ -3065,6 +3115,35 @@ const catalogMechanicsSchema: z.ZodType<
       code: z.ZodIssueCode.custom,
       path: [mechanics.reducesMax ? "reducesMax" : "leavesAtLeast"],
       message: "It works on the entry's damage, so it has an amount",
+    });
+  }
+  if (mechanics.alters) {
+    const alters = mechanics.alters;
+    if (
+      alters.spares === undefined &&
+      !alters.range &&
+      alters.rerolls === undefined &&
+      alters.lasts === undefined &&
+      !alters.heightens &&
+      !alters.budget &&
+      !alters.drops?.length &&
+      !alters.twins
+    ) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["alters"], message: '"alters" changes something' });
+    }
+    if (mechanics.kind !== "utility" || mechanics.reaction !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["alters"],
+        message: '"alters" is on a "utility" entry that is no reaction: it is chosen with what it changes',
+      });
+    }
+  }
+  if (mechanics.usesSpentByLevel && (!mechanics.alters || mechanics.usesSpent !== undefined)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["usesSpentByLevel"],
+      message: '"usesSpentByLevel" prices an entry that "alters" another, with no "usesSpent"',
     });
   }
   if (mechanics.restore) {
@@ -11119,6 +11198,30 @@ export function rulesetCatalogEntryIssues(
         [index, "mechanics", "temporary"],
         `Health is the wound track "${trackHealth}", which carries no buffer for temporary points`,
       );
+    }
+    if (mechanics?.alters) {
+      const alters = mechanics.alters;
+      const path = [index, "mechanics", "alters"];
+      alters.catalogs.forEach((catalogId, catalogIndex) => {
+        if (!definition.catalogs?.some((catalog) => catalog.id === catalogId)) {
+          add([...path, "catalogs", catalogIndex], `Unknown catalog "${catalogId}"`);
+        }
+      });
+      for (const key of ["spares", "rerolls"] as const) {
+        const ref = alters[key];
+        if (!ref) continue;
+        for (const refIssue of rulesetValueRefIssues(ref, names, names.derived, false)) {
+          add([...path, key, refIssue.key], refIssue.message);
+        }
+      }
+      if (alters.budget && budgets) {
+        for (const side of ["from", "to"] as const) {
+          if (!budgets.has(alters.budget[side])) {
+            add([...path, "budget", side], `Unknown budget "${alters.budget[side]}"`);
+          }
+        }
+      }
+      componentIssues(definition, alters.drops, [...path, "drops"], add);
     }
     if (mechanics?.budget !== undefined && budgets && !budgets.has(mechanics.budget)) {
       add([index, "mechanics", "budget"], `Unknown budget "${mechanics.budget}"`);

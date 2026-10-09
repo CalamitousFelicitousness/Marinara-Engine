@@ -873,10 +873,12 @@ const RULESET_PASS_LABEL = "Let the moment go by";
 
 /** The pool an answer is paid from and the initiative style it is made in, each left out entirely
  *  when it is the option's own. */
-const paying = (way: { payWith?: string; style?: string; mode?: string }) => ({
+const paying = (way: { payWith?: string; style?: string; mode?: string; option?: RulesetCombatOption }) => ({
   ...(way.payWith === undefined ? {} : { payWith: way.payWith }),
   ...(way.style === undefined ? {} : { style: way.style }),
   ...(way.mode === undefined ? {} : { mode: way.mode }),
+  // One castable now only with an alteration (1.248) is cast with it: Quickened once the action is spent.
+  ...(way.option?.alterNeeded ? { alters: [way.option.alterNeeded] } : {}),
 });
 
 /** One way of doing something off the menu: the option, the pool it is paid from and the style it
@@ -1935,6 +1937,7 @@ export function commandRulesetCombatDirector(
       ...(command.also?.length ? { also: command.also } : {}),
       ...(command.wall ? { wall: command.wall } : {}),
       ...(command.amount !== undefined ? { amount: command.amount } : {}),
+      ...(command.alters?.length ? { alters: command.alters } : {}),
     });
     if (step.refused && step.refused.type === "refused") {
       return refuse(rulesetRefusalMessage(step.refused.reason), `ruleset_combat_${step.refused.reason}`);
@@ -2055,6 +2058,7 @@ function rulesetRefusalMessage(reason: string): string {
     "bad-pool": "That is not a pool this can be paid from.",
     "unknown-style": "That attack cannot be made that way right now.",
     "unknown-mode": "That weapon cannot be used that way right now.",
+    "bad-alter": "It cannot be changed that way right now.",
     "unknown-creature": "That opponent is not in any bestiary this game can read.",
     "no-health": "That opponent's sheet gives it no health, so it was left out of the fight.",
     unreachable: "They cannot walk to that square.",

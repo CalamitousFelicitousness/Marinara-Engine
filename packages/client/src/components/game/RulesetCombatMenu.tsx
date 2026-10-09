@@ -57,6 +57,8 @@ export interface RulesetCombatMenuProps {
     mode?: string,
     /** How many uses it spends, where the option lets its user choose (1.246). */
     amount?: number,
+    /** The alterations it is used with (1.248): Metamagic. */
+    alters?: string[],
   ) => void;
   /** Walking away. The ruleset's menu never carries it, because leaving is not a thing the rules
    *  resolve: it is the director ending the session, exactly as the other two styles end it. */
@@ -100,6 +102,8 @@ export function RulesetCombatMenu({
   const [ownStep, setOwnStep] = useState<RulesetMenuStep | null>(null);
   // The number typed into the amount step (1.246), kept as text so a cleared box is not a zero.
   const [amountText, setAmountText] = useState("");
+  // The alterations ticked in the alter step (1.248).
+  const [altersPicked, setAltersPicked] = useState<string[]>([]);
   // Held by the owner only when it passes BOTH halves (`step` may be null, never left out): with one
   // of them missing the menu keeps its own, or a pick would be handed up and never come back down.
   const held = onStepChange !== undefined && heldStep !== undefined;
@@ -147,6 +151,7 @@ export function RulesetCombatMenu({
     if (
       stepStage === "style" ||
       stepStage === "mode" ||
+      stepStage === "alter" ||
       stepStage === "pay" ||
       stepStage === "amount" ||
       stepStage === "target"
@@ -179,9 +184,10 @@ export function RulesetCombatMenu({
     mode?: string,
     // A step that went through the amount carries it; one sent straight off the menu passes its own.
     amount: number | undefined = step?.amount,
+    alters: string[] | undefined = step?.alters,
   ) => {
     closeStep();
-    onChoose(option.id, targets, payWith, undefined, style, mode, amount);
+    onChoose(option.id, targets, payWith, undefined, style, mode, amount, alters);
   };
   /** Which picking step this option opens, or null for one that is simply sent. On a board, a walk
    *  and a shape are picked on the board; everything else is the list below. */
@@ -192,19 +198,36 @@ export function RulesetCombatMenu({
   };
   /** The step after the style and the mode are chosen: what pays for it, where it goes, or who it is
    *  aimed at, as many as the mode aims at. */
-  const afterMode = (option: DirectedRulesetOption, style?: string, mode?: string, amount?: number | null) => {
+  const afterMode = (
+    option: DirectedRulesetOption,
+    style?: string,
+    mode?: string,
+    amount?: number | null,
+    /** null once the alter step was passed with none ticked (1.248). */
+    alters?: string[] | null,
+  ) => {
     const how = {
       ...(style ? { style } : {}),
       ...(mode ? { mode } : {}),
       ...(typeof amount === "number" ? { amount } : {}),
+      ...(alters?.length ? { alters } : {}),
     };
+    // What it may be used with comes first (1.248): Metamagic, which may give it another target.
+    if (option.alters?.length && alters === undefined) {
+      setAltersPicked(option.alterNeeded ? [option.alterNeeded] : []);
+      setStep({ stage: "alter", option, ...how, targets: [] });
+      return;
+    }
     const chosen = mode ? option.modes?.find((entry) => entry.id === mode) : undefined;
-    const aimed = chosen ? { ...option, targets: { ...option.targets, count: chosen.targets } } : option;
+    const moded = chosen ? { ...option, targets: { ...option.targets, count: chosen.targets } } : option;
+    const twins = (alters ?? []).filter((id) => option.alters?.find((offer) => offer.id === id)?.twins).length;
+    const aimed = twins ? { ...moded, targets: { ...moded.targets, count: moded.targets.count + twins } } : moded;
     // How much of it to spend comes first where its user chooses (1.246); null is "just enough",
     // which the rules work out from the target.
     if (aimed.amount && amount === undefined) {
       setAmountText(String(aimed.amount.max));
-      setStep({ stage: "amount", option: aimed, ...how, targets: [] });
+      // The option as it came, so going on from here aims it once, not twice.
+      setStep({ stage: "amount", option, ...how, targets: [] });
       return;
     }
     if (aimed.payWith && aimed.payWith.length > 0) {
@@ -221,7 +244,7 @@ export function RulesetCombatMenu({
       });
       return;
     }
-    send(aimed, rulesetDefaultTargets(aimed), undefined, style, mode, how.amount);
+    send(aimed, rulesetDefaultTargets(aimed), undefined, style, mode, how.amount, how.alters);
   };
   /** The step after the style is chosen: the weapon's mode, where it has any. */
   const afterStyle = (option: DirectedRulesetOption, style?: string) => {
@@ -341,6 +364,77 @@ export function RulesetCombatMenu({
     );
   }
 
+  // ── Choosing what to use it with (1.248) ──
+  if (step?.stage === "alter" && step.option.alters?.length) {
+    const option = step.option;
+    const offers = option.alters!;
+    const toggle = (id: string) => {
+      if (id === option.alterNeeded) return;
+      const offer = offers.find((one) => one.id === id);
+      if (altersPicked.includes(id)) {
+        setAltersPicked(altersPicked.filter((one) => one !== id));
+        return;
+      }
+      // Only one that does not join another (Empowered joins one).
+      const kept = offer?.joins
+        ? altersPicked
+        : altersPicked.filter((one) => offers.find((entry) => entry.id === one)?.joins || one === option.alterNeeded);
+      setAltersPicked(
+        offer?.joins || !kept.some((one) => !offers.find((entry) => entry.id === one)?.joins) ? [...kept, id] : kept,
+      );
+    };
+    return (
+      <div className="flex flex-col gap-2 p-3">
+        <p className="text-xs text-white/60" id="ruleset-alter-prompt">
+          {t("game.combat.ruleset.alter.prompt", { label: rulesetOptionLabel(option, t) })}
+        </p>
+        <div className="flex flex-wrap gap-2" role="group" aria-labelledby="ruleset-alter-prompt">
+          {offers.map((offer, index) => {
+            const picked = altersPicked.includes(offer.id);
+            return (
+              <button
+                ref={index === 0 ? first : undefined}
+                key={offer.id}
+                type="button"
+                disabled={busy || offer.id === option.alterNeeded}
+                aria-pressed={picked}
+                onClick={() => toggle(offer.id)}
+                className={cn(
+                  buttonClass,
+                  picked
+                    ? "border-[var(--primary)]/60 bg-[var(--primary)]/25 text-white"
+                    : "border-white/15 bg-white/5 text-white/85 hover:bg-white/10",
+                )}
+              >
+                <span className="block font-semibold">{offer.label}</span>
+                <span className="block text-[0.65rem] text-white/55">
+                  {t(offer.perLevel ? "game.combat.ruleset.alter.costPerLevel" : "game.combat.ruleset.alter.cost", {
+                    count: offer.cost,
+                  })}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() =>
+              afterMode(option, step.style, step.mode, undefined, altersPicked.length ? altersPicked : null)
+            }
+            className={cn(buttonClass, "border-white/15 bg-white/5 text-white/85 hover:bg-white/10")}
+          >
+            {altersPicked.length
+              ? t("game.combat.ruleset.alter.use", { count: altersPicked.length })
+              : t("game.combat.ruleset.alter.none")}
+          </button>
+        </div>
+        <BackButton onClick={closeStep} label={t("game.combat.ruleset.target.back")} />
+      </div>
+    );
+  }
+
   // ── Choosing how much of it to spend (1.246) ──
   if (step?.stage === "amount" && step.option.amount) {
     const option = step.option;
@@ -348,7 +442,7 @@ export function RulesetCombatMenu({
     const typed = Number(amountText);
     const valid = Number.isInteger(typed) && typed >= 1 && typed <= max;
     const chooseAmount = (amount: number | null) => {
-      afterMode(option, step.style, step.mode, amount);
+      afterMode(option, step.style, step.mode, amount, step.alters ?? null);
     };
     return (
       <div className="flex flex-col gap-2 p-3">

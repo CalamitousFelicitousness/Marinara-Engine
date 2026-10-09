@@ -1019,7 +1019,10 @@ const capabilityPackageManifestBaseSchema = z
 //        the option's `amount` and the choice's `amount`: Lay on Hands).
 // 1.247: catalog mechanics' `restore` (gives back to a pool, more for each step of a higher cost,
 //        `overMax` past its maximum until a rest) and a live pool's stored `above`: Font of Magic.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 247 } as const);
+// 1.248: catalog mechanics' `alters` and `usesSpentByLevel` (an entry chosen with another one, which
+//        changes how it is used: Metamagic), the option's `alters` and `alterNeeded`, the choice's
+//        `alters`, and the `altered` event.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 248 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

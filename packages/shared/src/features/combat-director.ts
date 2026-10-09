@@ -65,6 +65,8 @@ export type DirectedCommand =
       wall?: { x: number; y: number };
       /** How many uses it spends, where the option offers an `amount` (1.246): Lay on Hands. */
       amount?: number;
+      /** The alterations it is used with (1.248), from the option's `alters`: Metamagic. */
+      alters?: string[];
     }
   | { type: "choose"; candidateId: string }
   | { type: "continue" }

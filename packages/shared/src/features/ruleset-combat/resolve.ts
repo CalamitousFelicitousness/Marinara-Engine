@@ -114,6 +114,9 @@ import {
   RULESET_FLY_UP_OPTION,
   planRulesetCombatCost,
   rulesetChosenUsesMax,
+  rulesetAlterFits,
+  rulesetAlteredAction,
+  planRulesetAlterCost,
   rulesetActionAvailable,
   rulesetSheetWithin,
   rulesetAimLegal,
@@ -339,12 +342,25 @@ function rollAmount(
   extra?: { amount: RulesetCombatAmount; times: number },
   /** The amount's own dice at or below this are thrown again once, the new face standing (1.93). */
   rerollUpTo?: number,
+  /** Up to this many of its dice below their average thrown again, the lowest first (1.248):
+   *  Empowered Spell. */
+  rerollLowest?: number,
 ): { rolls: number[]; flat: number; total: number } {
   const rolls = rerollLow(ctx, rollRulesetDice(ctx.roll, amount.count, amount.sides), amount.sides, rerollUpTo);
+  const own = rolls.length;
   let flat = amount.flat;
   if (extra && extra.times > 0) {
     rolls.push(...rollRulesetDice(ctx.roll, extra.amount.count * extra.times, extra.amount.sides));
     flat += extra.amount.flat * extra.times;
+  }
+  if (rerollLowest && rerollLowest > 0) {
+    const sidesOf = (index: number) => (index < own ? amount.sides : extra!.amount.sides);
+    const low = rolls
+      .map((_, index) => index)
+      .filter((index) => rolls[index]! < (sidesOf(index) + 1) / 2)
+      .sort((a, b) => rolls[a]! - rolls[b]! || a - b)
+      .slice(0, rerollLowest);
+    for (const index of low) rolls[index] = rollRulesetDice(ctx.roll, 1, sidesOf(index))[0]!;
   }
   return { rolls, flat, total: sumOf(rolls) + flat };
 }
@@ -374,6 +390,14 @@ function saveLean(
     (modes ?? []).filter((entry) => rulesetTargetIs(ctx.definition, target, entry.is)).map((entry) => entry.mode),
   );
   return leans.size === 1 ? [...leans][0] : undefined;
+}
+
+/** Two leans on one roll: either alone, or none where they meet (1.248). */
+function leanWith(
+  lean: "advantage" | "disadvantage" | undefined,
+  more: "advantage" | "disadvantage",
+): "advantage" | "disadvantage" | undefined {
+  return lean === undefined || lean === more ? more : undefined;
 }
 
 /** Faces at or below `upTo` thrown again once, each new face standing whatever it is: 5e's Great Weapon
@@ -2632,6 +2656,81 @@ export function applyRulesetCombatChoice(
   choice: RulesetCombatChoice,
   roller: RulesetCombatRoller,
 ): RulesetCombatStep {
+  if (choice.alters === undefined || (Array.isArray(choice.alters) && choice.alters.length === 0)) {
+    const { alters: _none, ...plain } = choice;
+    return applyChoice(definition, state, plain, roller);
+  }
+  // Used with alterations (1.248): the choice is checked and resolved against the action as they
+  // change it, set in its user's hands for this step only, and the action is given back after.
+  const actor = rulesetCombatant(state, choice.actorId);
+  const own = actor?.actions.find((entry) => entry.id === choice.optionId);
+  const ids = Array.isArray(choice.alters) ? choice.alters : [];
+  if (!actor || !own || choice.window !== undefined || ids.length === 0 || new Set(ids).size !== ids.length) {
+    return refusal(state, choice.actorId, "bad-alter", choice.optionId);
+  }
+  const alters = ids.map((id) => actor.actions.find((entry) => entry.id === id));
+  if (
+    alters.some(
+      (alter) =>
+        !alter?.alters ||
+        !rulesetAlterFits(alter.alters, own) ||
+        !rulesetActionAvailable(actor, alter, state, definition),
+    ) ||
+    alters.filter((alter) => !alter!.alters!.joins).length > 1
+  ) {
+    return refusal(state, choice.actorId, "bad-alter", choice.optionId);
+  }
+  const chosen = alters as RulesetCombatAction[];
+  const view = withRulesetAction(state, actor.id, rulesetAlteredAction(own, chosen));
+  const { alters: _ids, ...plain } = choice;
+  const step = applyChoice(definition, view, plain, roller, chosen);
+  // Refused, nothing moved: the fight as it was handed in.
+  if (step.state === view) return { ...step, state };
+  return { ...step, state: withRulesetAction(step.state, actor.id, own) };
+}
+
+/** The fight with one of a combatant's actions in place of the one of its id (1.248). */
+function withRulesetAction(
+  state: RulesetEncounterState,
+  actorId: string,
+  action: RulesetCombatAction,
+): RulesetEncounterState {
+  return {
+    ...state,
+    combatants: state.combatants.map((combatant) =>
+      combatant.id === actorId
+        ? {
+            ...combatant,
+            actions: combatant.actions.map((entry) => (entry.id === action.id ? action : entry)),
+          }
+        : combatant,
+    ),
+  };
+}
+
+/** An action as it was used, with the alterations it was used with (1.248). */
+function rulesetResumedAction(
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  alters: string[] | undefined,
+): RulesetCombatAction {
+  // Already set on it, as it is while the step that used it runs.
+  if (!alters?.length || action.alteredWith) return action;
+  const found = alters.flatMap((id) => {
+    const alter = actor.actions.find((entry) => entry.id === id);
+    return alter?.alters ? [alter] : [];
+  });
+  return rulesetAlteredAction(action, found);
+}
+
+function applyChoice(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  choice: RulesetCombatChoice,
+  roller: RulesetCombatRoller,
+  /** The alterations it is used with, already set on the action (1.248), to pay for now. */
+  alters?: RulesetCombatAction[],
+): RulesetCombatStep {
   const combat = definition.combat;
   if (!combat) return refusal(state, choice.actorId, "encounter-over", choice.optionId);
   if (rulesetEncounterOutcome(state) !== "ongoing") {
@@ -2663,6 +2762,10 @@ export function applyRulesetCombatChoice(
       return refusal(state, choice.actorId, "cannot-act", choice.optionId);
     }
     return refusal(state, choice.actorId, whyNotOffered(definition, combat, actor, choice.optionId), choice.optionId);
+  }
+  // Offered only with an alteration that makes it usable now (1.248).
+  if (option.alterNeeded && !alters?.some((alter) => alter.id === option.alterNeeded)) {
+    return refusal(state, choice.actorId, "bad-alter", choice.optionId);
   }
 
   // Turning a line or cone its caster carries (1.177): to face a cell the menu offered.
@@ -2947,6 +3050,32 @@ export function applyRulesetCombatChoice(
   for (const entry of paid.cost) {
     ctx.events.push({ type: "spend", actorId: working.id, pool: entry.pool, label: entry.label, amount: entry.amount });
   }
+  // And what it was altered with (1.248), each at the level it was paid at.
+  for (const alter of alters ?? []) {
+    const price = planRulesetAlterCost(definition, working, alter, action, choice.payWith);
+    if (!price) return refusal(state, choice.actorId, "insufficient", option.id);
+    if (price.live && working.sheet) working.sheet.live = price.live;
+    countRulesetSpend(working, price.cost);
+    for (const entry of price.cost) {
+      ctx.events.push({
+        type: "spend",
+        actorId: working.id,
+        pool: entry.pool,
+        label: entry.label,
+        amount: entry.amount,
+      });
+    }
+    spendAvailability(ctx, working, alter);
+  }
+  if (alters?.length) {
+    ctx.events.push({
+      type: "altered",
+      actorId: working.id,
+      optionId: action.id,
+      label: action.label,
+      alters: alters.map((alter) => alter.label),
+    });
+  }
   spendAvailability(ctx, working, action);
   // An item's gate is rolled once the item is spent: failed, it is used up for nothing, and nobody is
   // asked about a use that never happened.
@@ -3014,6 +3143,7 @@ export function applyRulesetCombatChoice(
     ...(spend !== undefined ? { spend } : {}),
     ...(budget ? { budget } : {}),
     ...(amount !== undefined ? { amount } : {}),
+    ...(alters?.length ? { alters: alters.map((alter) => alter.id) } : {}),
   };
   // A condition that slows what its holder uses (1.115) may hold it over to their next turn.
   if (budget && delayRoll(ctx, working, action, budget)) {
@@ -3227,7 +3357,8 @@ function completeDelayed(ctx: RulesetCombatContext, actor: RulesetCombatant): vo
   if (!delayed) return;
   delete actor.delayed;
   const { label, budget, ...resume } = delayed;
-  const action = actor.actions.find((entry) => entry.id === resume.optionId);
+  const found = actor.actions.find((entry) => entry.id === resume.optionId);
+  const action = found && rulesetResumedAction(actor, found, resume.alters);
   const effects = rulesetCombatEffects(ctx.definition, ctx.combat, actor, ctx.state);
   if (!action || !rulesetCombatStanding(actor) || effects.has("cannot-act") || (actor.budgets[budget] ?? 0) < 1) {
     ctx.events.push({ type: "delay", actorId: actor.id, label, outcome: "lost" });
@@ -3245,20 +3376,23 @@ function reopenAction(
   action: RulesetCombatAction,
   resume: RulesetActionResume,
 ): void {
+  // Used subtly (1.248), nobody sees it being used to answer it.
   const held =
-    openMoment(
-      ctx,
-      {
-        kind: "used",
-        sourceId: actor.id,
-        optionId: action.id,
-        label: action.label,
-        ...(action.catalog ? { catalog: action.catalog } : {}),
-        ...(action.entry ? { entry: action.entry } : {}),
-      },
-      ctx.state.combatants,
-      resume,
-    ) || openAimed(ctx, resume, action.label, action.catalog, action.entry);
+    (!action.altered?.subtle &&
+      openMoment(
+        ctx,
+        {
+          kind: "used",
+          sourceId: actor.id,
+          optionId: action.id,
+          label: action.label,
+          ...(action.catalog ? { catalog: action.catalog } : {}),
+          ...(action.entry ? { entry: action.entry } : {}),
+        },
+        ctx.state.combatants,
+        resume,
+      )) ||
+    openAimed(ctx, resume, action.label, action.catalog, action.entry);
   if (!held) resumeAction(ctx, resume);
 }
 
@@ -4375,8 +4509,9 @@ function resumeAction(ctx: RulesetCombatContext, resume: RulesetActionResume): v
   const found = actor?.actions.find((entry) => entry.id === resume.optionId);
   // A fake does what it truly does (1.74).
   const own = found && rulesetActionAsUsed(found);
-  // Picked up in the mode it was made in.
-  let action = own && resume.mode ? (rulesetModedAction(ctx.definition, own, resume.mode) ?? own) : own;
+  // Picked up in the mode it was made in, and with what it was altered with (1.248).
+  const moded = own && resume.mode ? (rulesetModedAction(ctx.definition, own, resume.mode) ?? own) : own;
+  let action = actor && moded ? rulesetResumedAction(actor, moded, resume.alters) : moded;
   if (!actor || !action) return;
   if (resume.cancelled || !rulesetCombatStanding(actor)) {
     // A spell called off was cast all the same (1.175).
@@ -5285,14 +5420,26 @@ function resolveActionBody(
   // rolled until a target actually needs it, so a use that misses everything costs no dice at all.
   type Rolled = { rolls: number[]; flat: number; total: number };
   const perTarget = action.toHit !== undefined && !action.autoHit;
-  const once = (amount: RulesetCombatAmount | undefined, rerollUpTo?: number) => {
+  const once = (amount: RulesetCombatAmount | undefined, rerollUpTo?: number, rerollLowest?: number) => {
     let rolled: Rolled | null = null;
     if (!amount) return null;
     return perTarget
-      ? () => rollAmount(ctx, amount, extra, rerollUpTo)
-      : () => (rolled ??= rollAmount(ctx, amount, extra, rerollUpTo));
+      ? () => rollAmount(ctx, amount, extra, rerollUpTo, rerollLowest)
+      : () => (rolled ??= rollAmount(ctx, amount, extra, rerollUpTo, rerollLowest));
   };
-  const damage = once(action.damage, action.damage?.reroll);
+  // Empowered (1.248): its own damage dice that rolled low thrown again.
+  const damage = once(action.damage, action.damage?.reroll, action.altered?.rerolls);
+  // Careful (1.248): up to so many of its user and their allies it catches make its save outright,
+  // in the order it caught them. Heightened: its first target rolls its first save at disadvantage.
+  const careful = new Set(
+    action.altered?.spares
+      ? targets
+          .filter((target) => target.side === actor.side)
+          .slice(0, action.altered.spares)
+          .map((target) => target.id)
+      : [],
+  );
+  const heightened = action.altered?.heightens ? targets[0]?.id : undefined;
   // One roller per clause, read the same way: an ability that lands on several targets without
   // rolling to hit rolls every clause once and everybody takes those numbers.
   const clauses = (action.damage?.plus ?? []).map((clause) => once(clause)!);
@@ -5591,7 +5738,7 @@ function resolveActionBody(
       action: [action.id, action.label, ...(action.recharge?.group ? [action.recharge.group] : [])],
     };
     let saved = false;
-    if (action.save && savesOutright(ctx, target, action.save)) {
+    if (action.save && (careful.has(target.id) || savesOutright(ctx, target, action.save))) {
       // Nothing to roll (1.176): immune to what it is, or not the kind of creature it works on.
       ctx.events.push({
         type: "save",
@@ -5616,7 +5763,9 @@ function resolveActionBody(
         actor.id,
         action.save.ignoresCover ? null : saveFromFor(target),
         against,
-        saveLean(ctx, target, action.save.modes),
+        target.id === heightened
+          ? leanWith(saveLean(ctx, target, action.save.modes), "disadvantage")
+          : saveLean(ctx, target, action.save.modes),
       );
       if (saved && action.save.onSuccess === "negates") {
         spendUsed();

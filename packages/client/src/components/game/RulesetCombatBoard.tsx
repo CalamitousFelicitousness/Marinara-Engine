@@ -69,6 +69,7 @@ export interface RulesetCombatBoardProps {
     style?: string,
     mode?: string,
     amount?: number,
+    alters?: string[],
   ) => void;
   onFlee: () => void;
   /** The per-member manual and automatic toggles, built by the caller so this file stays about the
@@ -182,7 +183,7 @@ export function RulesetCombatBoard({
       const targets = rulesetPickTarget(step.option, step.targets, cell.occupant.id);
       if (rulesetSendsOnPick(step.option) && targets.length === 1) {
         setStep(null);
-        onChoose(step.option.id, targets, step.payWith, undefined, step.style, step.mode, step.amount);
+        onChoose(step.option.id, targets, step.payWith, undefined, step.style, step.mode, step.amount, step.alters);
         return;
       }
       setStep({ ...step, targets });

@@ -483,6 +483,12 @@ export function rulesetCombatEventLine(
         target: names.combatant(event.targetId),
         label: event.label,
       });
+    case "altered":
+      return key("altered", {
+        actor: names.combatant(event.actorId),
+        label: event.label,
+        alters: event.alters.join(", "),
+      });
     case "lowered":
       return key("lowered", {
         actor: names.combatant(event.actorId),

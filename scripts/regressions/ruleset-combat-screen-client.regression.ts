@@ -762,6 +762,16 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ],
     ["evaded", say({ type: "evaded", targetId: "brenna", label: "Fire Breath" })],
     [
+      "altered",
+      say({
+        type: "altered",
+        actorId: "brenna",
+        optionId: "ability:0:1",
+        label: "Fireball",
+        alters: ["Careful Spell", "Empowered Spell"],
+      }),
+    ],
+    [
       "rescued",
       say({ type: "rescued", actorId: "brenna", optionId: "ability:0:1", label: "Indomitable", by: "reroll" }),
     ],
@@ -980,6 +990,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.equal(printed.get("rescued"), "Brenna uses Indomitable and rolls again.");
   assert.equal(printed.get("lowered"), "Brenna's Cutting Words takes 4 off Thorn Lurker's Bite, to 12.");
   assert.equal(printed.get("evaded"), "Brenna evades Fire Breath entirely.");
+  assert.equal(printed.get("altered"), "Brenna uses Fireball with Careful Spell, Empowered Spell.");
   assert.equal(
     say({ type: "rescued", actorId: "brenna", optionId: "ability:0:2", label: "Stroke of Luck", by: "success" }),
     "Brenna uses Stroke of Luck and succeeds instead.",

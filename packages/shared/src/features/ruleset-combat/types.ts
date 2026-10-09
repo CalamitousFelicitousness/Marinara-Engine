@@ -516,6 +516,15 @@ export interface RulesetCombatAction {
   lowersRoll?: { count: number; sides: number; flat: number };
   /** Its user chooses how many uses one use spends, and it heals that many times over (1.246). */
   usesChosen?: true;
+  /** Changes how another action is used, chosen with it and paid for with this one's uses (1.248):
+   *  5e's Metamagic. Never on a menu of its own. */
+  alters?: RulesetCombatAlter;
+  /** Its price in uses is the level the action it alters is paid at, at least one (1.248). */
+  usesSpentByLevel?: true;
+  /** What the alterations it was used with left on it to do as it resolves (1.248). */
+  altered?: { spares?: number; rerolls?: number; heightens?: true; subtle?: true };
+  /** The alterations already set on it (1.248), so they are never set twice. */
+  alteredWith?: string[];
   /** A failed save drops its target to 0 health instead of the amount (1.240). */
   /** The tags of the held weapon it is made with (1.241), for what comes after the attack action. */
   itemTags?: string[];
@@ -1224,6 +1233,8 @@ export interface RulesetActionResume {
   budget?: string;
   /** How many uses its user chose to spend on it (1.246). */
   amount?: number;
+  /** The alterations it was used with (1.248). */
+  alters?: string[];
 }
 
 /** Once the attack action has been taken this turn, with anything or with one of `names` (1.237). */
@@ -1334,7 +1345,9 @@ export type RulesetCombatRefusal =
   /** An initiative style this attack is not offered in. */
   | "unknown-style"
   /** A way of using a weapon that the option does not offer, or cannot now. */
-  | "unknown-mode";
+  | "unknown-mode"
+  /** Alterations it cannot be used with, or used without one it needs (1.248). */
+  | "bad-alter";
 
 export type RulesetCombatAttackOutcome = "hit" | "miss" | "critical";
 export type RulesetCombatRollMode = "normal" | "advantage" | "disadvantage";
@@ -1663,6 +1676,14 @@ export type RulesetCombatEvent =
   | { type: "dropped"; actorId: string; targetId: string; label: string }
   /** A save made against something that deals half, taken as nothing at all (1.245): Evasion. */
   | { type: "evaded"; targetId: string; label: string }
+  /** Used with alterations (1.248): Metamagic. */
+  | {
+      type: "altered";
+      actorId: string;
+      optionId: string;
+      label: string;
+      alters: string[];
+    }
   /** Dice an answer took off somebody's attack roll after it hit (1.245): Cutting Words. */
   | {
       type: "lowered";
@@ -1783,6 +1804,34 @@ export type RulesetEncounterOutcome = "ongoing" | "victory" | "defeat";
 
 /** One legal thing the actor whose turn it is may do right now. Everything a player, an opponent's
  *  own choices and a forecast go through is on this menu: nothing else computes legality. */
+/** How an altering action changes another (1.248), its sheet values read as it was built. */
+export interface RulesetCombatAlter {
+  catalogs: string[];
+  spares?: number;
+  /** `touch` in cells. */
+  range?: { times: number; touch?: number };
+  rerolls?: number;
+  lasts?: number;
+  heightens?: true;
+  budget?: { from: string; to: string };
+  drops?: string[];
+  twins?: true;
+  joins?: true;
+}
+
+/** An alteration an option may be used with (1.248), and what it costs at the option's own level. */
+export interface RulesetCombatAlterOffer {
+  id: string;
+  label: string;
+  cost: number;
+  /** Its cost is the level it is paid at, so a higher payment costs more. */
+  perLevel?: true;
+  twins?: true;
+  joins?: true;
+  /** The budget it is used with instead. */
+  budget?: string;
+}
+
 export interface RulesetCombatOption {
   /** The holder must pass this save to cancel (1.126). */
   cancelSave?: { save: string; dc: number; label: string };
@@ -1804,6 +1853,11 @@ export interface RulesetCombatOption {
   payWith?: string[];
   /** How many uses may be chosen for it, one up to `max` (1.246): Lay on Hands' points. */
   amount?: { max: number };
+  /** What it may be used with (1.248): Metamagic. */
+  alters?: RulesetCombatAlterOffer[];
+  /** Offered only because this alteration makes it usable now (1.248): Quickened with the action
+   *  spent, Subtle under Silence. The choice has to carry it. */
+  alterNeeded?: string;
   /** Its own pool cannot pay right now, so it is taken only with one of `payWith` (1.166). */
   upcastOnly?: true;
   /** How many targets it takes when paid with each of `payWith`, where that grows (1.166). */
@@ -1914,6 +1968,8 @@ export interface RulesetCombatChoice {
   /** How many uses it spends, where the option offers an `amount` (1.246). Left out, as many as
    *  heal the first target fully, and never more than are left. */
   amount?: number;
+  /** The ids of the altering actions it is used with (1.248), from the option's `alters`. */
+  alters?: string[];
 }
 
 export interface RulesetCombatStep {

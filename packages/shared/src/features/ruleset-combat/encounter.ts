@@ -1864,7 +1864,8 @@ function mechanicsAction(
     !cancels &&
     !cures &&
     !places &&
-    !mechanics.rescue
+    !mechanics.rescue &&
+    !mechanics.alters
   ) {
     return null;
   }
@@ -1962,6 +1963,32 @@ function mechanicsAction(
   // Dice off somebody else's roll that hit (1.245): Cutting Words, its die sized by a level.
   // As many uses as its user chooses, healing that many times over (1.246): Lay on Hands.
   if (mechanics.usesChosen) action.usesChosen = true;
+  // Changes how another action is used (1.248): Metamagic, its sheet values read now.
+  if (mechanics.alters) {
+    const alters = mechanics.alters;
+    action.alters = {
+      catalogs: [...alters.catalogs],
+      ...(alters.spares ? { spares: Math.max(0, Math.trunc(resolve(alters.spares))) } : {}),
+      ...(alters.range
+        ? {
+            range: {
+              times: alters.range.times,
+              ...(alters.range.touch !== undefined && perCell !== undefined
+                ? { touch: rulesetInCells(alters.range.touch, perCell) }
+                : {}),
+            },
+          }
+        : {}),
+      ...(alters.rerolls ? { rerolls: Math.max(0, Math.trunc(resolve(alters.rerolls))) } : {}),
+      ...(alters.lasts ? { lasts: alters.lasts } : {}),
+      ...(alters.heightens ? { heightens: true as const } : {}),
+      ...(alters.budget ? { budget: { ...alters.budget } } : {}),
+      ...(alters.drops?.length ? { drops: [...alters.drops] } : {}),
+      ...(alters.twins ? { twins: true as const } : {}),
+      ...(alters.joins ? { joins: true as const } : {}),
+    };
+  }
+  if (mechanics.usesSpentByLevel) action.usesSpentByLevel = true;
   // Gives back to a pool (1.247): Font of Magic's Sorcery Points, or a slot past its maximum.
   const restored = amountOf(mechanics.restore?.amount);
   if (mechanics.restore && restored) {

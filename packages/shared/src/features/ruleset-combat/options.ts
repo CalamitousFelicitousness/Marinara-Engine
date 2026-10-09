@@ -86,6 +86,8 @@ import type {
   RulesetCombatAgainst,
   RulesetConditionBonus,
   RulesetCombatAction,
+  RulesetCombatAlter,
+  RulesetCombatAlterOffer,
   RulesetCombatCell,
   RulesetCombatOption,
   RulesetCombatRollMode,
@@ -1838,6 +1840,8 @@ function optionFrom(
   if (action.reaction && !atItsMoment) return null;
   // Spent when its holder's roll fails, never chosen (1.244).
   if (action.rescue) return null;
+  // Chosen with what it changes, never on its own (1.248): Metamagic.
+  if (action.alters) return null;
   // A sequence whose parts are all gone, or all spent, would spend a budget and do nothing.
   if (!rulesetSequenceCanHappen(actor, action)) return null;
   // Breaking free is only there while something holds on.
@@ -2009,7 +2013,181 @@ function optionFrom(
       return { id: style.id, label: style.label, forecast: worth };
     });
   }
+  // What it may be used with (1.248): Metamagic its user can pay for now.
+  if (!atItsMoment) {
+    const alters = rulesetAlterOffers(definition, state, actor, action);
+    if (alters.length > 0) option.alters = alters;
+  }
   return option;
+}
+
+/** An action its user cannot take as it is but can with one alteration (1.248): a spell Quickened
+ *  once the action is spent, or Subtle under Silence. */
+function alterNeededOption(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  state: RulesetEncounterState,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  economy: ReturnType<typeof rulesetConditionEconomy>,
+): RulesetCombatOption | null {
+  if (!action.catalog || action.alters) return null;
+  for (const one of actor.actions) {
+    const alter = one.alters;
+    if (!alter || (!alter.budget && !alter.drops) || !rulesetAlterFits(alter, action)) continue;
+    if (
+      !rulesetActionAvailable(actor, one, state, definition) ||
+      !planRulesetAlterCost(definition, actor, one, action)
+    ) {
+      continue;
+    }
+    const option = optionFrom(definition, combat, state, actor, rulesetAlteredAction(action, [one]), false, economy);
+    if (!option) continue;
+    option.alterNeeded = one.id;
+    const offers = option.alters ?? [];
+    if (!offers.some((offer) => offer.id === one.id)) {
+      const level = rulesetPaidLevel(definition, actor, action);
+      offers.unshift({
+        id: one.id,
+        label: one.label,
+        cost: one.usesSpentByLevel ? Math.max(1, level) : (one.use?.count ?? 1),
+        ...(alter.budget ? { budget: alter.budget.to } : {}),
+      });
+    }
+    option.alters = offers;
+    return option;
+  }
+  return null;
+}
+
+/** A day, the longest an alteration stretches anything (1.248). */
+const ALTER_LASTS_MOST = 14400;
+
+/** Whether an altering action may change this one (1.248): every change it makes has something
+ *  to change. */
+export function rulesetAlterFits(alter: RulesetCombatAlter, action: RulesetCombatAction): boolean {
+  if (!action.catalog || !alter.catalogs.includes(action.catalog) || action.alters || action.reaction) return false;
+  const own = action.targets.side === "self" && !action.area;
+  if (alter.spares !== undefined && !(alter.spares > 0 && action.save)) return false;
+  if (alter.range && !(action.range || (alter.range.touch !== undefined && action.reach !== undefined && !own))) {
+    return false;
+  }
+  if (alter.rerolls !== undefined && !(alter.rerolls > 0 && (action.damage?.count ?? 0) > 0)) return false;
+  if (
+    alter.lasts !== undefined &&
+    !(
+      action.applies?.some((entry) => typeof entry.duration === "object" && entry.duration.rounds >= 10) ||
+      (action.summons?.rounds ?? 0) >= 10
+    )
+  ) {
+    return false;
+  }
+  if (alter.heightens && !action.save) return false;
+  if (alter.budget && action.budget !== alter.budget.from) return false;
+  if (alter.drops && !action.components?.some((component) => alter.drops!.includes(component))) return false;
+  if (
+    alter.twins &&
+    !(
+      action.targets.count === 1 &&
+      !own &&
+      action.targets.side !== "self" &&
+      !action.area &&
+      !action.use?.targetsPerStep
+    )
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/** The action as its alterations change it (1.248). What they leave for it to do as it resolves is
+ *  its `altered`. */
+export function rulesetAlteredAction(action: RulesetCombatAction, alters: RulesetCombatAction[]): RulesetCombatAction {
+  let out: RulesetCombatAction = { ...action };
+  const altered: NonNullable<RulesetCombatAction["altered"]> = { ...(action.altered ?? {}) };
+  for (const one of alters) {
+    const alter = one.alters;
+    if (!alter) continue;
+    if (alter.range) {
+      if (out.range) {
+        out.range = {
+          normal: out.range.normal * alter.range.times,
+          ...(out.range.long !== undefined ? { long: out.range.long * alter.range.times } : {}),
+        };
+      } else if (alter.range.touch !== undefined) out.range = { normal: alter.range.touch };
+    }
+    if (alter.lasts !== undefined) {
+      const times = alter.lasts;
+      out.applies = out.applies?.map((entry) =>
+        typeof entry.duration === "object"
+          ? {
+              ...entry,
+              duration: { ...entry.duration, rounds: Math.min(ALTER_LASTS_MOST, entry.duration.rounds * times) },
+            }
+          : entry,
+      );
+      if (out.summons) out.summons = { ...out.summons, rounds: Math.min(ALTER_LASTS_MOST, out.summons.rounds * times) };
+    }
+    if (alter.budget) out.budget = alter.budget.to;
+    if (alter.drops) {
+      out.components = (out.components ?? []).filter((component) => !alter.drops!.includes(component));
+      altered.subtle = true;
+    }
+    if (alter.twins) out.targets = { ...out.targets, count: out.targets.count + 1 };
+    if (alter.spares) altered.spares = Math.max(altered.spares ?? 0, alter.spares);
+    if (alter.rerolls) altered.rerolls = Math.max(altered.rerolls ?? 0, alter.rerolls);
+    if (alter.heightens) altered.heightens = true;
+  }
+  if (Object.keys(altered).length > 0) out = { ...out, altered };
+  out.alteredWith = [...(action.alteredWith ?? []), ...alters.map((one) => one.id)];
+  return out;
+}
+
+/** What an altering action costs on this action paid this way (1.248), or null when it cannot be
+ *  paid. */
+export function planRulesetAlterCost(
+  definition: RulesetDefinition,
+  actor: RulesetCombatant,
+  alter: RulesetCombatAction,
+  action: RulesetCombatAction,
+  payWith?: string,
+): RulesetCombatCost | null {
+  const level = rulesetPaidLevel(definition, actor, action, payWith);
+  return planRulesetCombatCost(
+    definition,
+    actor,
+    alter,
+    undefined,
+    alter.usesSpentByLevel ? Math.max(1, level) : undefined,
+  );
+}
+
+/** The alterations this action may be used with now (1.248): ones that fit it and can be paid for
+ *  at its own level. */
+export function rulesetAlterOffers(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+): RulesetCombatAlterOffer[] {
+  if (!action.catalog) return [];
+  const level = rulesetPaidLevel(definition, actor, action);
+  return actor.actions.flatMap((one) => {
+    const alter = one.alters;
+    if (!alter || !rulesetAlterFits(alter, action) || !rulesetActionAvailable(actor, one, state, definition)) return [];
+    if (!planRulesetAlterCost(definition, actor, one, action)) return [];
+    return [
+      {
+        id: one.id,
+        label: one.label,
+        cost: one.usesSpentByLevel ? Math.max(1, level) : (one.use?.count ?? 1),
+        ...(one.usesSpentByLevel ? { perLevel: true as const } : {}),
+        ...(alter.twins ? { twins: true as const } : {}),
+        ...(alter.joins ? { joins: true as const } : {}),
+        ...(alter.budget ? { budget: alter.budget.to } : {}),
+      },
+    ];
+  });
 }
 
 /** One of the ways an attack may be made where initiative is a number attacks move. */
@@ -2291,7 +2469,9 @@ export function rulesetCombatOptions(
   }
   options.push(...movementOptions(definition, combat, state, actor));
   for (const action of actor.actions) {
-    const option = optionFrom(definition, combat, state, actor, action, false, economy);
+    const option =
+      optionFrom(definition, combat, state, actor, action, false, economy) ??
+      alterNeededOption(definition, combat, state, actor, action, economy);
     if (option) options.push(option);
   }
   for (const summon of actor.summons ?? []) {

@@ -1184,6 +1184,9 @@ export interface RulesetActionResume {
   resolved?: true;
   /** Held after one of its attack rolls hit, rather than before anything happened. */
   held?: RulesetHeldAttack;
+  /** A strike made in another window, at somebody walking away (1.238): that window, with the
+   *  striker already answered, is asked on once this one has landed. */
+  outer?: RulesetCombatWindow;
 }
 
 /** Once the attack action has been taken this turn, with anything or with one of `names` (1.237). */

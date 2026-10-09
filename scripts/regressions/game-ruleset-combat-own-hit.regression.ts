@@ -1,5 +1,5 @@
 /**
- * Answers to one's own hit (Capability API 1.236).
+ * Answers to one's own hit (Capability API 1.236), opportunity attacks' included (1.238).
  *
  *   - A `"hit"` reaction with `"by": "self"` is offered to the attacker once their roll has hit,
  *     after the one it hit has answered, aimed at whoever it hit; `"weapon": true` narrows it to a
@@ -28,12 +28,14 @@ import {
   rulesetCombatOptions,
   rulesetSheetBuildSchema,
   rulesetWindowOptions,
+  RULESET_MOVE_OPTION,
   supportedCapabilityApi,
   type RulesetCatalogEntry,
   type RulesetCombatEvent,
   type RulesetDefinition,
   type RulesetEncounterState,
   type RulesetStatBlock,
+  type TacticalGrid,
 } from "../../packages/shared/src/index.js";
 
 const dataDir = mkdtempSync(join(tmpdir(), "marinara-own-hit-"));
@@ -43,7 +45,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 236);
+  assert.ok(supportedCapabilityApi.minor >= 238);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -137,10 +139,15 @@ try {
     features.flatMap((entry) =>
       rowsFromCatalogEntry("paladin", entry).flatMap((one) => (one.list === list ? [one.row] : [])),
     );
-  const fight = (foe: Partial<RulesetStatBlock> = {}, attacks?: unknown[]): RulesetEncounterState => {
+  const fight = (
+    foe: Partial<RulesetStatBlock> = {},
+    attacks?: unknown[],
+    board?: { grid: TacticalGrid; placements: Record<string, { x: number; y: number }> },
+  ): RulesetEncounterState => {
     const state = createRulesetEncounter({
       definition,
       seed: 1,
+      ...(board ? { board } : {}),
       roller: roll,
       combatants: [
         {
@@ -323,6 +330,120 @@ try {
         .map((one) => one.value),
       [1],
     );
+  }
+
+  // ── An opportunity attack's hit is held too (1.238): smite and stun it, then the walk goes on ──
+  {
+    //    0 1 2 3 4 5 6
+    //  0 Q . . . . . .     The squire is out of everybody's reach.
+    //  1 . P F . . . .     The foe walks from 2,1 to 5,1, out of the paladin's reach.
+    //  2 . . . . . . .
+    const grid: TacticalGrid = {
+      width: 7,
+      height: 3,
+      tiles: Array.from({ length: 3 }, () => Array.from({ length: 7 }, () => "plains" as const)),
+    };
+    const walking = () => {
+      const state = fight({}, undefined, {
+        grid,
+        placements: { pal: { x: 1, y: 1 }, foe: { x: 2, y: 1 }, squire: { x: 0, y: 0 } },
+      });
+      state.turn = 1;
+      const step = applyRulesetCombatChoice(
+        definition,
+        state,
+        { actorId: "foe", optionId: RULESET_MOVE_OPTION, targetIds: [], to: { x: 5, y: 1 } },
+        roll,
+      );
+      assert.equal(of(step.events, "refused").length, 0, JSON.stringify(of(step.events, "refused")));
+      assert.equal(step.state.window?.trigger.kind, "leaves-reach");
+      assert.deepEqual(step.state.window?.waiting, ["pal"]);
+      return step.state;
+    };
+    const opportunity = (state: RulesetEncounterState) => {
+      const [only] = answers(state);
+      assert.equal(only?.label, "Longsword");
+      return choose(state, only.id);
+    };
+    const at = (state: RulesetEncounterState) => {
+      const foe = who(state, "foe");
+      return { x: foe.x, y: foe.y };
+    };
+
+    d20 = 15;
+    const held = opportunity(walking());
+    assert.equal(of(held.events, "opportunity").length, 1);
+    assert.equal(held.state.window?.trigger.kind, "hit", "the strike is held where it hit");
+    assert.deepEqual(held.state.window?.waiting, ["pal"]);
+    assert.equal(of(held.events, "damage").length, 0);
+    assert.deepEqual(at(held.state), { x: 2, y: 1 }, "the walk waits behind it");
+    assert.deepEqual(
+      answers(held.state).map((one) => one.label),
+      ["Divine Smite", "Stunning Strike"],
+    );
+
+    // Smitten only: the blow lands with the smite and the walk finishes where it was going.
+    const smitten = pass(answer(held.state, "Divine Smite").state);
+    assert.equal(80 - hp(smitten.state), 7 + 6);
+    assert.equal(smitten.state.window, undefined);
+    assert.deepEqual(at(smitten.state), { x: 5, y: 1 });
+    assert.equal(of(smitten.events, "move").length, 1);
+    assert.equal(who(smitten.state, "pal").budgets.reaction, 0, "the strike cost the reaction");
+
+    // Smitten and stunned: the walk stops where it was struck.
+    const stunned = answer(answer(held.state, "Divine Smite").state, "Stunning Strike");
+    assert.equal(stunned.state.window, undefined);
+    assert.ok(rulesetCombatConditions(definition, who(stunned.state, "foe")).includes("stunned"));
+    assert.deepEqual(at(stunned.state), { x: 2, y: 1 }, "a stunned walker goes no further");
+    assert.equal(of(stunned.events, "move")[0]?.stopped, true);
+
+    // Passed: the plain blow, and the walk goes on.
+    const plain = pass(held.state);
+    assert.equal(80 - hp(plain.state), 7);
+    assert.deepEqual(at(plain.state), { x: 5, y: 1 });
+
+    // The walk's window waits behind the hit's, its striker already answered: the squire, whose
+    // reach the same step leaves, is asked next, and nobody passes for the paladin.
+    {
+      const state = fight({}, undefined, {
+        grid,
+        placements: { pal: { x: 1, y: 1 }, foe: { x: 2, y: 1 }, squire: { x: 1, y: 2 } },
+      });
+      state.turn = 1;
+      const walk = applyRulesetCombatChoice(
+        definition,
+        state,
+        { actorId: "foe", optionId: RULESET_MOVE_OPTION, targetIds: [], to: { x: 5, y: 1 } },
+        roll,
+      );
+      const outer = walk.state.window!;
+      assert.deepEqual(outer.waiting, ["pal", "squire"]);
+      const landed = pass(answer(opportunity(walk.state).state, "Divine Smite").state);
+      assert.equal(landed.state.window?.id, outer.id, "the walk's own window again");
+      assert.deepEqual(landed.state.window?.waiting, ["squire"]);
+      assert.equal(
+        of(landed.events, "pass").filter((one) => one.window === outer.id).length,
+        0,
+        "the paladin answered it with the strike",
+      );
+      assert.deepEqual(at(landed.state), { x: 2, y: 1 });
+      const squired = applyRulesetCombatChoice(
+        definition,
+        landed.state,
+        { actorId: "squire", optionId: RULESET_PASS_OPTION, targetIds: [] },
+        roll,
+      );
+      assert.equal(squired.state.window, undefined);
+      assert.deepEqual(at(squired.state), { x: 5, y: 1 });
+    }
+
+    // A miss holds nothing: the walk simply goes on.
+    d20 = 1;
+    const missed = opportunity(walking());
+    assert.equal(missed.state.window, undefined);
+    assert.equal(hp(missed.state), 80);
+    assert.deepEqual(at(missed.state), { x: 5, y: 1 });
+    d20 = 15;
   }
 
   // ── A bow is no melee blow, a touch no weapon, and a miss holds nothing ──

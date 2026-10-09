@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: an opportunity attack's hit can be smitten or stunned like any other hit, and a creature stunned or grappled mid-walk stops where it stands (Capability API 1.238).
 - Rulesets: monks fight with Martial Arts (Dexterity and the martial arts die for unarmed strikes and monk weapons, a bonus unarmed strike after attacking), Flurry of Blows and Ki-Empowered Strikes (Capability API 1.237).
 - Rulesets: Divine Smite and Stunning Strike are chosen after a weapon attack hits; a smite's dice join the blow and double on a critical (Capability API 1.236).
 - Rulesets: Feral Instinct, Foresight and Cat's Grace give advantage on initiative, rolled twice with the better kept (Capability API 1.235).

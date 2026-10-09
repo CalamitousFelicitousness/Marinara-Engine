@@ -230,6 +230,8 @@ interface RulesetCombatContext {
   /** Whose turn's own start or end is being counted down right now, so a condition left behind in
    *  the middle of a turn can be told from one left behind as the turn begins or ends. */
   ticking?: string;
+  /** A strike made inside a window that may still be held where it hits (1.238). */
+  nestHit?: true;
 }
 
 /** A working copy, plus a roller that counts its dice so the state's cursor stays exact. */
@@ -3433,8 +3435,7 @@ function applyInWindow(
     const { ctx, finish } = begin(definition, combat, state, roller);
     const striker = rulesetCombatant(ctx.state, actor.id)!;
     const mover = rulesetCombatant(ctx.state, trigger.moverId);
-    if (mover) opportunityStrike(ctx, striker, mover, combat.opportunity!.budget);
-    goOn(definition, combat, ctx);
+    if (!mover || !opportunityStrike(ctx, striker, mover, combat.opportunity!.budget)) goOn(definition, combat, ctx);
     noteOutcome(ctx);
     return finish();
   }
@@ -3685,10 +3686,16 @@ function reachesHeld(
  * When the last of them has answered the window closes and the fight picks up exactly where it was
  * held: the rest of the walk, or the turn that had not yet begun.
  */
-function goOn(definition: RulesetDefinition, combat: RulesetCombat, ctx: RulesetCombatContext): void {
+function goOn(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  ctx: RulesetCombatContext,
+  /** False for a window taken back up with its answer already let go (1.238). */
+  shift = true,
+): void {
   const window = ctx.state.window;
   if (!window) return;
-  window.waiting.shift();
+  if (shift) window.waiting.shift();
   while (window.waiting.length > 0 && rulesetWindowOptions(definition, ctx.state, window.waiting[0]!).length === 0) {
     ctx.events.push({ type: "pass", actorId: window.waiting[0]!, window: window.id });
     window.waiting.shift();
@@ -3716,18 +3723,20 @@ function goOn(definition: RulesetDefinition, combat: RulesetCombat, ctx: Ruleset
     return;
   }
   if (resume?.kind === "action") {
-    if (over && !resume.resolved) {
-      endActionConditions(ctx);
-      return;
-    }
+    if (over && !resume.resolved) endActionConditions(ctx);
     // A use nobody stopped is aimed next: the ones it is aimed at get their own say before it lands.
-    if (
+    else if (
       trigger.kind === "used" &&
       !resume.cancelled &&
       openAimed(ctx, resume, trigger.label, trigger.catalog, trigger.entry)
     )
       return;
-    resumeAction(ctx, resume);
+    else resumeAction(ctx, resume);
+    // A strike made in passing has landed: the walk's window is asked on from where it was (1.238).
+    if (resume.outer && !ctx.state.window) {
+      ctx.state.window = resume.outer;
+      goOn(definition, combat, ctx, false);
+    }
     return;
   }
   if (!over && trigger.kind === "between-turns") beginNextTurn(definition, combat, ctx);
@@ -3955,7 +3964,11 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
   let at = walked.length > 0 ? walked[walked.length - 1]! : resume.from;
   const rest = [...resume.path];
   while (rest.length > 0) {
-    if (!rulesetCombatStanding(actor)) {
+    // Nor does one an answer held still, stunned or grappled on the way (1.238).
+    if (
+      !rulesetCombatStanding(actor) ||
+      rulesetCombatEffects(ctx.definition, ctx.combat, actor, ctx.state).has("speed-zero")
+    ) {
       stopped = true;
       break;
     }
@@ -4220,32 +4233,13 @@ function harmedBy(
       .map((event) => (event as Extract<RulesetCombatEvent, { type: "damage" }>).targetId),
   ]);
   if (hold) {
-    const { label, optionId, catalog, entry, blow, ...held } = hold;
-    const { held: _previous, ...base } = resume;
-    const striking = actor.actions.find((one) => one.id === optionId) ?? action;
-    openWindow(ctx, {
-      kind: "reaction",
-      trigger: {
-        kind: "hit",
-        targetIds: [held.targetId],
-        sourceId: actor.id,
-        optionId,
-        label,
-        ...(catalog ? { catalog } : {}),
-        ...(entry ? { entry } : {}),
-        ...(blow ? { blow } : {}),
-        // A weapon's blow, for an answer that adds to one (1.236).
-        ...(rulesetWeaponBlow(striking) ? { weapon: true as const } : {}),
-        total: held.roll.total,
-        defense: held.roll.defense,
-      },
-      waiting: hitAnswers(ctx, actor, rulesetCombatant(ctx.state, held.targetId)!, striking),
-      resume: { ...base, held: { ...held, hurt: [...hurt] } },
-    });
+    openHitWindow(ctx, actor, action, resume, hold, [...hurt]);
     return;
   }
   endActionConditions(ctx);
+  // A strike made in passing asks nobody about being hurt, held or not (1.238).
   const waiting =
+    !resume.outer &&
     rulesetEncounterOutcome(ctx.state) === "ongoing" &&
     hurt.size > 0 &&
     openMoment(
@@ -4261,6 +4255,40 @@ function harmedBy(
       action.summons || action.zone ? { ...resume, resolved: true } : undefined,
     );
   if (!waiting) finishSummon(ctx, actor, action, resume);
+}
+
+/** The window for an attack held where one of its rolls hit, picked up from that roll once everybody
+ *  it asks has answered. */
+function openHitWindow(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  resume: RulesetActionResume,
+  hold: RulesetHitHold,
+  hurt: string[],
+): void {
+  const { label, optionId, catalog, entry, blow, ...held } = hold;
+  const { held: _previous, ...base } = resume;
+  const striking = actor.actions.find((one) => one.id === optionId) ?? action;
+  openWindow(ctx, {
+    kind: "reaction",
+    trigger: {
+      kind: "hit",
+      targetIds: [held.targetId],
+      sourceId: actor.id,
+      optionId,
+      label,
+      ...(catalog ? { catalog } : {}),
+      ...(entry ? { entry } : {}),
+      ...(blow ? { blow } : {}),
+      // A weapon's blow, for an answer that adds to one (1.236).
+      ...(rulesetWeaponBlow(striking) ? { weapon: true as const } : {}),
+      total: held.roll.total,
+      defense: held.roll.defense,
+    },
+    waiting: hitAnswers(ctx, actor, rulesetCombatant(ctx.state, held.targetId)!, striking),
+    resume: { ...base, held: { ...held, hurt } },
+  });
 }
 
 /** A walk held open by an Engine from before a resume said what kind it was. The walk was the only
@@ -4339,21 +4367,39 @@ function threatsLeaving(
 }
 
 /** One strike at somebody walking away. It spends the declared budget and then resolves exactly as
- *  the same attack would on the striker's own turn, dice and all. */
+ *  the same attack would on the striker's own turn, dice and all. True when it was held where it
+ *  hit, with the walk's window, its striker answered, waiting behind the hit's. */
 function opportunityStrike(
   ctx: RulesetCombatContext,
   striker: RulesetCombatant,
   mover: RulesetCombatant,
   budget: string,
-): void {
+): boolean {
   const strike = rulesetOpportunityAttack(striker);
-  if (!strike) return;
+  if (!strike) return false;
   ctx.events.push({ type: "opportunity", actorId: striker.id, targetId: mover.id, label: strike.label, budget });
   spendBudget(ctx, striker, budget);
   countAttack(ctx, striker);
   // A strike made in passing keeps the same books as one made on a turn: a use is a use.
   spendAvailability(ctx, striker, strike);
-  resolveAction(ctx, striker, strike, [mover]);
+  // Held where it hits, like any other attack, for what its maker adds to it or anybody's answer to
+  // it (1.238): the walk's window waits behind that one.
+  ctx.nestHit = true;
+  const hold = resolveAction(ctx, striker, strike, [mover]);
+  delete ctx.nestHit;
+  if (!hold) return false;
+  const outer = ctx.state.window!;
+  outer.waiting.shift();
+  ctx.state.window = undefined;
+  const resume: RulesetActionResume = {
+    kind: "action",
+    actorId: striker.id,
+    optionId: strike.id,
+    targetIds: [mover.id],
+    outer,
+  };
+  openHitWindow(ctx, striker, strike, resume, hold, []);
+  return true;
 }
 
 function resolveStandard(
@@ -5093,7 +5139,7 @@ function resolveActionBody(
         if (landed) extraDice = thrown.successes - needed;
         if (
           landed &&
-          !ctx.state.window &&
+          (!ctx.state.window || ctx.nestHit) &&
           !hasFallingAnswer(ctx) &&
           rulesetEncounterOutcome(ctx.state) === "ongoing" &&
           hitAnswers(ctx, actor, target, action).length > 0
@@ -5177,7 +5223,7 @@ function resolveActionBody(
         // opened inside a window opens another, so an attack made inside one is never held.
         if (
           landed &&
-          !ctx.state.window &&
+          (!ctx.state.window || ctx.nestHit) &&
           !hasFallingAnswer(ctx) &&
           rulesetEncounterOutcome(ctx.state) === "ongoing" &&
           hitAnswers(ctx, actor, target, action).length > 0

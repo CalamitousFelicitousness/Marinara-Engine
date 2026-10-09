@@ -654,6 +654,9 @@ export function rulesetOpportunityAttack(combatant: RulesetCombatant): RulesetCo
     if (!rulesetShotsAvailable(combatant, action) || action.offHandOf !== undefined) continue;
     // Nor is using an item: that is its holder's own choice on their own turn.
     if (action.itemUse) continue;
+    // Nor is an answer to a moment, or what is added to another blow (1.238): Divine Smite is no
+    // strike of its own.
+    if (action.reaction || action.addsToBlow) continue;
     const average = action.damage.count * ((action.damage.sides + 1) / 2) + action.damage.flat;
     if (average > most) {
       most = average;

@@ -993,7 +993,9 @@ const capabilityPackageManifestBaseSchema = z
 //        Arts and Ki-Empowered Strikes), `grantsStrike` (held, a strike bought with another budget)
 //        and `afterAttack` (only once the attack action was taken this turn: Flurry of Blows); a
 //        condition grant's `names` and `afterAttack`.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 237 } as const);
+// 1.238: an opportunity attack's hit is held for answers as any other hit is (smite or stun it), the
+//        walk's window asked on once it lands; a walker held still on the way goes no further.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 238 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

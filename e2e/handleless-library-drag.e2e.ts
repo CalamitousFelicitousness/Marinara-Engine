@@ -181,11 +181,19 @@ test("background reordering preserves folder membership in the All view", async 
       expect(folderResponse.ok()).toBeTruthy();
       folderIds.push((await folderResponse.json()).id);
       const upload = await request.post("/api/backgrounds/upload", {
-        multipart: { file: { name: `${prefix}-${label}.gif`, mimeType: "image/gif", buffer: Buffer.from("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7", "base64") } },
+        multipart: {
+          file: {
+            name: `${prefix}-${label}.gif`,
+            mimeType: "image/gif",
+            buffer: Buffer.from("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7", "base64"),
+          },
+        },
       });
       expect(upload.ok()).toBeTruthy();
       filenames.push((await upload.json()).filename);
-      const moved = await request.patch("/api/backgrounds/organization", { data: { backgroundId: `user:${filenames.at(-1)}`, folderId: folderIds.at(-1) } });
+      const moved = await request.patch("/api/backgrounds/organization", {
+        data: { backgroundId: `user:${filenames.at(-1)}`, folderId: folderIds.at(-1) },
+      });
       expect(moved.ok()).toBeTruthy();
     }
     await page.route("**/api/app-settings/ui", (route) => route.fulfill({ json: { value: null } }));
@@ -222,10 +230,15 @@ test("background reordering preserves folder membership in the All view", async 
     await expect(target).toHaveAttribute("data-drag-insert", "before");
     if (mobile) await sendTouch(thumbnail, "touchend", dropX, dropY);
     else await page.mouse.up();
-    await expect(library.locator('[data-drag-kind="background"]').first()).toHaveAttribute("data-background-id", `user:${filenames[1]}`);
+    await expect(library.locator('[data-drag-kind="background"]').first()).toHaveAttribute(
+      "data-background-id",
+      `user:${filenames[1]}`,
+    );
     const backgrounds = await (await request.get("/api/backgrounds")).json();
     for (let index = 0; index < filenames.length; index++) {
-      expect(backgrounds.find((item: { id: string }) => item.id === `user:${filenames[index]}`).folderId).toBe(folderIds[index]);
+      expect(backgrounds.find((item: { id: string }) => item.id === `user:${filenames[index]}`).folderId).toBe(
+        folderIds[index],
+      );
     }
   } finally {
     await page.mouse.up();

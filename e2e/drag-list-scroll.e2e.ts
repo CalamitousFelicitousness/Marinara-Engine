@@ -438,8 +438,11 @@ test("reordering accepts a drop in the opened insertion gap", async ({ page, req
       await page.setViewportSize({ width: 1440, height: 900 });
     }
     await page.reload();
-    if (mobile) await clickTopbarPanel(page, "characters");
-    else await expect(panel).toBeVisible();
+    if (mobile) {
+      await expect(page.locator("[data-topbar-more]")).toBeVisible();
+      if (!(await panel.isVisible())) await clickTopbarPanel(page, "characters");
+    }
+    await expect(panel).toBeVisible();
     await expect
       .poll(async () =>
         page
@@ -459,7 +462,9 @@ test("connection folder row dragging saves the server order and sort mode", asyn
   const ids: string[] = [];
   try {
     for (const label of ["A", "B", "C"]) {
-      const response = await request.post("/api/connection-folders", { data: { name: `Folder ${label} ${Date.now()}` } });
+      const response = await request.post("/api/connection-folders", {
+        data: { name: `Folder ${label} ${Date.now()}` },
+      });
       expect(response.ok()).toBeTruthy();
       ids.push((await response.json()).id);
     }
@@ -491,10 +496,15 @@ test("connection folder row dragging saves the server order and sort mode", asyn
     if (mobile) await touch(source, "touchend", [], [finger]);
     else await page.mouse.up();
     await expect(panel.getByRole("combobox").last()).toHaveValue("custom");
-    await expect.poll(async () => {
-      const folders = await (await request.get("/api/connection-folders")).json();
-      return folders.filter((folder: { id: string }) => ids.includes(folder.id)).sort((a: { sortOrder: number }, b: { sortOrder: number }) => a.sortOrder - b.sortOrder).map((folder: { id: string }) => folder.id);
-    }).toEqual([ids[0], ids[2], ids[1]]);
+    await expect
+      .poll(async () => {
+        const folders = await (await request.get("/api/connection-folders")).json();
+        return folders
+          .filter((folder: { id: string }) => ids.includes(folder.id))
+          .sort((a: { sortOrder: number }, b: { sortOrder: number }) => a.sortOrder - b.sortOrder)
+          .map((folder: { id: string }) => folder.id);
+      })
+      .toEqual([ids[0], ids[2], ids[1]]);
   } finally {
     await page.mouse.up();
     for (const id of ids) await request.delete(`/api/connection-folders/${id}`);

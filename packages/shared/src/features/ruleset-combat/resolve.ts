@@ -728,7 +728,13 @@ function writeHealthGain(
   if (!("track" in health)) {
     const room = before ? Math.max(0, before.max - before.value) : amount;
     if (Math.min(amount, room) > 0) {
-      writeRulesetSheet(ctx.definition, target, { op: "restore", pool: health.pool, amount: Math.min(amount, room) });
+      // The fight has already said whether this heal lands (1.256).
+      writeRulesetSheet(ctx.definition, target, {
+        op: "restore",
+        pool: health.pool,
+        amount: Math.min(amount, room),
+        magical: true,
+      });
     }
     return;
   }
@@ -740,14 +746,21 @@ function writeHealthGain(
   });
 }
 
+/** Whether an action is magic (1.129), for a save against magic or a heal only magic gives (1.256). */
+function magicalAction(action: RulesetCombatAction): boolean {
+  return (action.qualities ?? action.damage?.qualities)?.includes("magical") === true;
+}
+
 function dealHeal(
   ctx: RulesetCombatContext,
   target: RulesetCombatant,
-  input: { sourceId?: string; rolls: number[]; flat: number; amount: number },
+  input: { sourceId?: string; rolls: number[]; flat: number; amount: number; magical?: boolean },
 ): void {
   const before = healthOf(ctx, target);
-  // A condition that keeps every heal off (1.186) leaves the roll in the log and gives back nothing.
-  const blocked = rulesetCombatEffects(ctx.definition, ctx.combat, target, ctx.state).has("cannot-heal");
+  // A condition that keeps every heal off (1.186), or every heal but a magical one (1.256), leaves
+  // the roll in the log and gives back nothing.
+  const effects = rulesetCombatEffects(ctx.definition, ctx.combat, target, ctx.state);
+  const blocked = effects.has("cannot-heal") || (!input.magical && effects.has("cannot-heal-nonmagical"));
   const amount = blocked ? 0 : Math.max(0, Math.floor(input.amount));
   if (amount > 0) {
     // Never past the maximum as it stands, which a level may have halved (1.110).
@@ -1788,6 +1801,17 @@ function removeCondition(
     if (entry.endsWith !== condition || !sameUse(entry)) continue;
     if (target.tracked.includes(entry)) removeCondition(ctx, target, entry.condition, "linked");
   }
+  // Run out on its clock, it turns into what it `expires` into (1.256): an onset run its course.
+  const expires = ctx.combat.conditions?.find((entry) => entry.condition === condition)?.expires;
+  if (reason === "expired" && expires && !target.defeated) {
+    applyConditionId(
+      ctx,
+      target,
+      expires.becomes,
+      { condition: expires.becomes, duration: "instant" },
+      removed?.source ? { sourceId: removed.source } : {},
+    );
+  }
   // What it leaves behind when it ends (combat C6d), as Haste's lethargy is. Putting it on again
   // replaces it without ending it, so that never comes here.
   const ending = ctx.combat.conditions?.find((entry) => entry.condition === condition)?.onEnd;
@@ -1828,9 +1852,19 @@ function endConditionsOnHarm(
 ): () => void {
   const endings: RulesetTrackedCondition[] = [];
   const actor = rulesetCombatant(ctx.state, sourceId ?? "");
+  const brought: Array<{ applied: RulesetCombatApplies; source?: string }> = [];
   for (const condition of rulesetCombatConditions(ctx.definition, target)) {
     const rule = ctx.combat.conditions?.find((entry) => entry.condition === condition);
     const tracked = target.tracked.find((entry) => entry.condition === condition);
+    // What taking damage brings on while it holds (1.256): Slimy Doom's stun.
+    if (dealt > 0 && rule?.onDamaged) {
+      for (const applied of rule.onDamaged.applies) {
+        brought.push({
+          applied: applied as RulesetCombatApplies,
+          ...(tracked?.source ? { source: tracked.source } : {}),
+        });
+      }
+    }
     if (dealt > 0 && rule?.endsWhen?.includes("damaged")) {
       removeCondition(ctx, target, condition, "damage");
       continue;
@@ -1853,6 +1887,15 @@ function endConditionsOnHarm(
     if (!(dealt > 0 || harmful) || !rule?.endsWhen?.includes("harmed-by-source-side") || !tracked || !actor) continue;
     const source = rulesetCombatant(ctx.state, tracked.source ?? "");
     if (source && source.side === actor.side) endings.push(tracked);
+  }
+  if (brought.length > 0) {
+    // Taken in the middle of their own turn, "until the end of its next turn" is the next one.
+    const midTurn = rulesetOnOwnTurn(ctx.state, target) && ctx.ticking !== target.id;
+    for (const { applied, source } of brought) {
+      applyConditionId(ctx, target, applied.condition, applied, source ? { sourceId: source } : {});
+      const left = target.tracked.find((entry) => entry.condition === applied.condition);
+      if (midTurn && left && left.rounds !== null && !left.clock) left.rounds += 1;
+    }
   }
   return () => {
     for (const entry of endings) {
@@ -4030,6 +4073,32 @@ export function liftRulesetFightEffects(
       if (!combatant.tracked.includes(entry)) continue;
       if (entry.rounds !== null || entry.endsAfter || entry.endsWhenHolder || entry.concentration) {
         lift(combatant, entry.condition, "expired");
+        // A clock the fight's end lets run out turns into what it `expires` into (1.256).
+        const becomes =
+          entry.rounds !== null
+            ? definition.combat?.conditions?.find((one) => one.condition === entry.condition)?.expires?.becomes
+            : undefined;
+        if (
+          becomes &&
+          !combatant.defeated &&
+          !rulesetImmuneToCondition(combatant, becomes, definition, state) &&
+          !combatant.tracked.some((one) => one.condition === becomes)
+        ) {
+          combatant.tracked.push({
+            condition: becomes,
+            rounds: null,
+            ...(entry.source ? { source: entry.source } : {}),
+          });
+          if (combatant.sheet)
+            writeRulesetSheet(definition, combatant, { op: "condition", condition: becomes, active: true });
+          events.push({
+            type: "condition",
+            targetId: combatant.id,
+            condition: becomes,
+            active: true,
+            reason: "applied",
+          });
+        }
       }
     }
     if (combatant.concentrating) {
@@ -5602,10 +5671,15 @@ function endConditionsOf(
   action: RulesetCombatAction,
   target: RulesetCombatant,
   ends: { conditions: string[]; count?: number },
+  /** The level it was paid at, for a condition only a cure of some level ends (1.256). */
+  level: number,
 ): void {
   let left = ends.count ?? ends.conditions.length;
   for (const condition of ends.conditions) {
     if (left <= 0) break;
+    // Only a cure of its catalogs, at its level or higher, ends it (1.256).
+    const only = ctx.combat.conditions?.find((entry) => entry.condition === condition)?.curedOnlyBy;
+    if (only && (level < only.minLevel || (only.catalogs && !only.catalogs.includes(action.catalog ?? "")))) continue;
     // Only what a creature that is `from` put on (1.231); the same held from another stays on.
     const by = (entry: RulesetTrackedCondition) =>
       entry.condition === condition && rulesetPutOnBy(ctx.definition, ctx.state, entry, action.ends?.from);
@@ -6142,7 +6216,7 @@ function resolveActionBody(
         ...(action.damage?.plus ?? []).map((one) => one.type),
         ...(action.save?.against?.damage ?? []),
       ].filter((type): type is string => type !== undefined),
-      magic: (action.qualities ?? action.damage?.qualities)?.includes("magical") === true,
+      magic: magicalAction(action),
       action: [action.id, action.label, ...(action.recharge?.group ? [action.recharge.group] : [])],
     };
     let saved = false;
@@ -6183,7 +6257,8 @@ function resolveActionBody(
       if (!saved && action.dropsOnFailedSave) {
         dropToNothing(ctx, target, actor.id, action.label);
         // What it ends, it ends all the same: the vibrations are spent on a dying character too.
-        if (action.ends) endConditionsOf(ctx, action, target, action.ends);
+        if (action.ends)
+          endConditionsOf(ctx, action, target, action.ends, rulesetPaidLevel(ctx.definition, actor, action, payWith));
         spendUsed();
         continue;
       }
@@ -6618,6 +6693,7 @@ function resolveActionBody(
         rolls: rolled.rolls,
         flat: rolled.flat,
         amount: Math.max(1, rolled.total),
+        magical: magicalAction(action),
       });
     }
     if (action.stabilizes && target.dying && !target.stable && !target.defeated) {
@@ -6634,10 +6710,17 @@ function resolveActionBody(
       : action.ends;
     const cureTracks = action.cureOneOf ? (picked?.track ? [picked.track] : undefined) : action.tracks;
     const cureUnseals = action.cureOneOf ? picked?.unseals : action.unseals;
-    if (cureEnds) endConditionsOf(ctx, action, target, cureEnds);
+    if (cureEnds)
+      endConditionsOf(ctx, action, target, cureEnds, rulesetPaidLevel(ctx.definition, actor, action, payWith));
     if (heal) {
       const rolled = heal();
-      dealHeal(ctx, target, { sourceId: actor.id, rolls: rolled.rolls, flat: rolled.flat, amount: rolled.total });
+      dealHeal(ctx, target, {
+        sourceId: actor.id,
+        rolls: rolled.rolls,
+        flat: rolled.flat,
+        amount: rolled.total,
+        magical: magicalAction(action),
+      });
     }
     if (temporary) {
       const rolled = temporary();

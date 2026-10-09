@@ -1547,6 +1547,27 @@ function carriesMetamagic(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesMetamagic(one, depth + 1));
 }
 
+/** What damage brings on, an onset that turns into another, a cure only some level ends, a
+ *  restoredWhenCured rest loss, a heal block for nonmagical heals, or ends on a stat block's action
+ *  (1.256), in catalogs too. */
+function carriesDiseaseStages(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (typeof value === "string") return value === "cannot-heal-nonmagical";
+  if (Array.isArray(value)) return value.some((one) => carriesDiseaseStages(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (
+    typeof record.condition === "string" &&
+    (record.onDamaged !== undefined || record.expires !== undefined || record.curedOnlyBy !== undefined)
+  )
+    return true;
+  const onRest = plainRecord(record.onRest);
+  if (onRest && onRest.restoredWhenCured !== undefined) return true;
+  // A stat block's action: a name and a budget, where a catalog entry has a label.
+  if (typeof record.name === "string" && typeof record.budget === "string" && record.ends !== undefined) return true;
+  return Object.values(record).some((one) => carriesDiseaseStages(one, depth + 1));
+}
+
 /** A combat condition that grows worse on a rest (1.255), in catalogs too. */
 function carriesConditionRests(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -3526,6 +3547,15 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Disease stages: onDamaged, expires, curedOnlyBy, restoredWhenCured, nonmagical heal block,
+  // ends on a stat block's action, 1.256.
+  if (
+    !declaresApi(256) &&
+    (carriesDiseaseStages(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesDiseaseStages(document)))
+  ) {
+    return "A ruleset with conditions brought on by damage, onsets that turn into another, cures only some level ends, rest losses a cure gives back, heals only magic gets through, or cures on a creature's action requires schemaVersion 2 and capabilityApi 1.256 or newer";
   }
   // A condition that lowers a maximum on a rest, 1.255.
   if (

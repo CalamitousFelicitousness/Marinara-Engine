@@ -212,6 +212,7 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
         }
       : {}),
     ...(heal ? { heal } : {}),
+    ...(action.ends ? { ends: structuredClone(action.ends) } : {}),
     ...(action.targets ? { targets: action.targets } : {}),
     ...(action.save ? { save: { ...action.save } } : {}),
     ...(action.saveDifficulty !== undefined ? { saveDifficulty: action.saveDifficulty } : {}),
@@ -584,9 +585,11 @@ export function clampRulesetStatBlock(
   }
   // A threat tier bounds harm, not healing or what an action does to its own side.
   for (const action of block.actions) {
-    if (action.heal !== undefined || action.targets !== undefined) {
+    if (action.heal !== undefined || action.targets !== undefined || action.ends !== undefined) {
       delete action.heal;
       delete action.targets;
+      delete action.ends;
+      // A cure (1.256) is healing too.
       adjusted.push(`"${action.name}" carried healing or targets the threat scale cannot bound, so they were dropped.`);
     }
   }

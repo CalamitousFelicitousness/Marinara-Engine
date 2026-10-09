@@ -268,6 +268,8 @@ export interface RulesetStatBlockAction {
   components?: string[];
   damage?: RulesetCombatDamage;
   heal?: RulesetCombatAmount;
+  /** The conditions it ends on each target (1.256): Healing Touch. */
+  ends?: { conditions: string[]; count?: number; from?: RulesetTargetIs };
   targets?: "ally" | "any";
   save?: RulesetCombatSaveRider;
   /** Pushed this far straight away from the creature, in the ruleset's own distance, on a failed save

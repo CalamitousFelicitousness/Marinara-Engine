@@ -2564,7 +2564,11 @@ function narrowCatalogs(build: RulesetSheetBuild, catalogs: RulesetCatalogEntrie
   return narrowed;
 }
 
-function blockActions(block: RulesetStatBlockLike, perCell: number | undefined): RulesetCombatAction[] {
+function blockActions(
+  definition: RulesetDefinition,
+  block: RulesetStatBlockLike,
+  perCell: number | undefined,
+): RulesetCombatAction[] {
   const idOf = (index: number) => block.actions[index]?.id ?? `block:${index}`;
   const indexById = new Map(block.actions.map((action, index) => [action.id ?? `block:${index}`, index]));
   /** A block writes its distances in the ruleset's own unit, and a plain number is the ordinary
@@ -2617,6 +2621,16 @@ function blockActions(block: RulesetStatBlockLike, perCell: number | undefined):
         }
       : {}),
     ...(action.heal ? { heal: { ...action.heal } } : {}),
+    // A kind is every condition of it (1.253), as a catalog entry's cure reads it.
+    ...(action.ends
+      ? {
+          ends: {
+            conditions: rulesetKindConditions(definition, action.ends.conditions),
+            ...(action.ends.count !== undefined ? { count: action.ends.count } : {}),
+            ...(action.ends.from ? { from: structuredClone(action.ends.from) } : {}),
+          },
+        }
+      : {}),
     ...(action.save ? { save: { ...action.save } } : {}),
     ...(action.saveDifficulty !== undefined ? { saveDifficulty: action.saveDifficulty } : {}),
     ...(action.applies?.length ? { applies: action.applies.map((entry) => ({ ...entry })) } : {}),
@@ -3175,7 +3189,7 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
         });
         combatant.actions = [
           ...combatant.actions,
-          ...blockActions(block, perCell),
+          ...blockActions(definition, block, perCell),
           ...innateActions(definition, block, input.bestiary ?? {}, perCell),
         ];
         combatant.uses = startingUses(combatant.actions);
@@ -3222,7 +3236,7 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
         : block.health;
       const max = Math.max(1, health);
       const actions = [
-        ...blockActions(block, perCell),
+        ...blockActions(definition, block, perCell),
         ...innateActions(definition, block, input.bestiary ?? {}, perCell),
       ];
       state.combatants.push({

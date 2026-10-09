@@ -1039,7 +1039,10 @@ const capabilityPackageManifestBaseSchema = z
 // 1.255: a combat condition's `onRest` lowering a maximum on a rest (Mummy Rot), after a save if it
 //        has one (an otyugh's disease, cured on a success), and counted saves
 //        rolled out when a fight ends.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 255 } as const);
+// 1.256: a combat condition's `onDamaged`, `expires.becomes` and `curedOnlyBy`; `onRest.restoredWhenCured`;
+//        the `cannot-heal-nonmagical` effect and a restore op's `magical`; `ends` on a stat block's
+//        action.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 256 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

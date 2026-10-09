@@ -72,6 +72,9 @@ export interface RulesetLiveState {
   conditions?: string[];
   /** Live states away from their default, keyed by state id: the value they are at. */
   states?: Record<string, string>;
+  /** What each condition's rests took off health's maximum for good (1.256), keyed by condition
+   *  id, for one that gives it back when it is cured (`restoredWhenCured`). */
+  lowered?: Record<string, number>;
 }
 
 /** Live state of every card in one game, keyed by normalizeCharacterLookupName(card name). */
@@ -146,6 +149,7 @@ export const rulesetLiveStateSchema = z
     text: boundedRecord(z.string().max(MAX_LIVE_TEXT_LENGTH), MAX_LIVE_TEXTS, "text fields").optional(),
     conditions: z.array(z.string().max(MAX_LIVE_CONDITION_LENGTH)).max(MAX_LIVE_CONDITIONS).optional(),
     states: boundedRecord(z.string().max(MAX_LIVE_STATE_VALUE_LENGTH), MAX_LIVE_STATES, "states").optional(),
+    lowered: boundedRecord(liveNumber, MAX_LIVE_CONDITIONS, "lowered maximums").optional(),
   })
   .strip();
 
@@ -682,6 +686,8 @@ function readStoredLiveStateAsIs(stored: unknown): RulesetLiveState {
   }
   const states = keepValid(source.states, z.string().max(MAX_LIVE_STATE_VALUE_LENGTH), MAX_LIVE_STATES);
   if (states) state.states = states;
+  const lowered = keepValid(source.lowered, liveNumber, MAX_LIVE_CONDITIONS);
+  if (lowered) state.lowered = lowered;
   return state;
 }
 
@@ -694,6 +700,7 @@ function normalizeLiveState(state: RulesetLiveState): RulesetLiveState {
   if (state.text && Object.keys(state.text).length > 0) normalized.text = state.text;
   if (state.conditions && state.conditions.length > 0) normalized.conditions = state.conditions;
   if (state.states && Object.keys(state.states).length > 0) normalized.states = state.states;
+  if (state.lowered && Object.keys(state.lowered).length > 0) normalized.lowered = state.lowered;
   return normalized;
 }
 
@@ -841,6 +848,9 @@ export type RulesetSheetOp =
       /** On `restore`: it may go past the maximum (1.247), and what is past it goes when a rest sets
        *  the pool back to its maximum: Font of Magic's spell slots. */
       overMax?: true;
+      /** On `restore` of health: a magical heal (1.256), which a condition keeping off only other
+       *  heals lets through. */
+      magical?: true;
     }
   /** Marks a WOUND track. `kind` is one the track declares; `amount` is a number of marks of that
    *  one kind, and a NEGATIVE amount heals, clearing marks of that kind (the lightest first when the
@@ -881,6 +891,8 @@ export type RulesetSheetRefusal =
   | "unknown-entry"
   | "ambiguous-entry"
   | "bad-pool"
+  /** A heal its holder's conditions keep off (1.256): a diseased giant rat's bite. */
+  | "cannot-heal"
   | "malformed";
 
 export type RulesetSheetOpResult =
@@ -935,6 +947,18 @@ function isAmount(amount: number, allowZero = false): boolean {
 /** Apply one command to one character's live state. Pure: the input blob is never touched, and the
  *  result is a new sparse state. A refusal changes nothing, which is what lets the Game Master's
  *  fiction be corrected rather than silently accepted. */
+/** The condition held on this sheet that keeps a heal off health (1.256), by its label: any heal
+ *  for "cannot-heal", one that is not magical for "cannot-heal-nonmagical". */
+function healKeptOffBy(definition: RulesetDefinition, conditions: readonly string[], magical: boolean): string | null {
+  for (const entry of definition.combat?.conditions ?? []) {
+    if (!conditions.includes(entry.condition)) continue;
+    const effects: readonly string[] = entry.effects;
+    if (effects.includes("cannot-heal") || (!magical && effects.includes("cannot-heal-nonmagical")))
+      return definition.sheet.live.conditions.find((one) => one.id === entry.condition)?.label ?? entry.condition;
+  }
+  return null;
+}
+
 export function applyRulesetSheetOp(
   definition: RulesetDefinition,
   build: RulesetSheetBuild,
@@ -1005,6 +1029,27 @@ export function applyRulesetSheetOp(
     else delete text[id];
     next.text = text;
   };
+  /** What a cured condition's rests took off health's maximum for good, given back (1.256). */
+  const giveBackLowered = (conditionId: string): string => {
+    const amount = own(next.lowered, conditionId) ?? 0;
+    if (!next.lowered || amount <= 0) return "";
+    delete next.lowered[conditionId];
+    const rule = definition.combat?.health;
+    const pool = rule && "pool" in rule ? resolved.pools.find((entry) => entry.key === rule.pool) : undefined;
+    if (!pool) return "";
+    const stored = own(next.pools, pool.key);
+    const sealed = stored?.sealed ?? 0;
+    const back = Math.min(amount, sealed);
+    if (back <= 0) return "";
+    setPool(
+      pool,
+      stored?.value ?? pool.value,
+      stored?.temp ?? pool.temp,
+      sealed - back,
+      Math.max(0, (stored?.lasting ?? 0) - back),
+    );
+    return `, ${pool.label}'s maximum back up by ${back}`;
+  };
   const done = (now: string): RulesetSheetOpResult => ({
     ok: true,
     live: normalizeLiveState(next),
@@ -1074,6 +1119,16 @@ export function applyRulesetSheetOp(
       return done(poolNow(pool, value, pool.temp));
     }
     if (op.op === "restore") {
+      const health = definition.combat?.health;
+      if (
+        op.amount > 0 &&
+        health &&
+        "pool" in health &&
+        pool.key === health.pool &&
+        healKeptOffBy(definition, next.conditions ?? [], op.magical === true)
+      ) {
+        return { ok: false, reason: "cannot-heal" };
+      }
       // Never past what only a rest gives back (1.188), and never down for it either, unless it is
       // given back too (1.196).
       const sealed = op.unseals ? 0 : pool.sealed;
@@ -1117,10 +1172,12 @@ export function applyRulesetSheetOp(
     );
     if (!condition) return { ok: false, reason: "unknown-condition" };
     const active = new Set(next.conditions ?? []);
+    const was = active.has(condition.id);
     if (op.active) active.add(condition.id);
     else active.delete(condition.id);
     next.conditions = [...active].slice(0, MAX_LIVE_CONDITIONS);
-    return done(`${condition.label} ${op.active ? "on" : "off"}`);
+    const restored = !op.active && was ? giveBackLowered(condition.id) : "";
+    return done(`${condition.label} ${op.active ? "on" : "off"}${restored}`);
   }
 
   if (op.op === "state") {
@@ -1154,6 +1211,8 @@ export function applyRulesetSheetOp(
   const trackValues = new Map(resolved.tracks.map((track) => [track.id, { track, value: track.value }]));
   const changes: string[] = [];
 
+  const restHealthRule = definition.combat?.health;
+  const restHealth = restHealthRule && "pool" in restHealthRule ? restHealthRule.pool : undefined;
   for (const step of rest.restore) {
     const moved = (current: number, max: number, min: number): number => {
       // A string other than these two is a state's value, which a state step below handles.
@@ -1237,6 +1296,14 @@ export function applyRulesetSheetOp(
       }
       // Never past what no rest gives back (1.198), and never down for it either.
       value = Math.min(value, Math.max(target.value, target.pool.max - target.pool.lasting));
+      // A rest is no magical heal (1.256).
+      if (value > target.value && target.pool.key === restHealth) {
+        const by = healKeptOffBy(definition, next.conditions ?? [], false);
+        if (by) {
+          changes.push(`${by} keeps ${target.pool.label} from healing`);
+          continue;
+        }
+      }
       if (value !== target.value) changes.push(`${target.pool.label} ${value}/${target.pool.max}`);
       target.value = value;
       setPool(target.pool, value, target.temp);
@@ -1279,7 +1346,11 @@ export function applyRulesetSheetOp(
         `${label}: ${save?.label ?? onRest.save.save} ${total} against ${onRest.save.difficulty}, ${made ? (onRest.save.cures ? "cured" : "made") : "failed"}`,
       );
       if (made) {
-        if (onRest.save.cures) next.conditions = (next.conditions ?? []).filter((id) => id !== entry.condition);
+        if (onRest.save.cures) {
+          next.conditions = (next.conditions ?? []).filter((id) => id !== entry.condition);
+          const back = giveBackLowered(entry.condition);
+          if (back) changes.push(back.slice(2));
+        }
         continue;
       }
     }
@@ -1301,13 +1372,27 @@ export function applyRulesetSheetOp(
     const value = Math.min(now?.value ?? healthPool.value, healthPool.max - sealed);
     if (now) now.value = value;
     setPool(healthPool, value, now?.temp ?? healthPool.temp, sealed, lasting);
+    // Kept apart for a cure that gives it back (1.256).
+    if (onRest.lasting && onRest.restoredWhenCured && sealed > sealedBefore) {
+      next.lowered = {
+        ...next.lowered,
+        [entry.condition]: (own(next.lowered, entry.condition) ?? 0) + sealed - sealedBefore,
+      };
+    }
     changes.push(`${label} lowers ${healthPool.label}'s maximum by ${sealed - sealedBefore}`);
   }
   for (const id of rest.clear.text) setText(id, "");
+  const before = next.conditions ?? [];
   if (rest.clear.conditions === "all") next.conditions = [];
   else if (rest.clear.conditions.length > 0) {
     const cleared = new Set<string>(rest.clear.conditions);
     next.conditions = (next.conditions ?? []).filter((id) => !cleared.has(id));
+  }
+  // Whatever came off by this rest, a cure by it, gives back what it took for good (1.256).
+  for (const id of before) {
+    if ((next.conditions ?? []).includes(id)) continue;
+    const back = giveBackLowered(id);
+    if (back) changes.push(back.slice(2));
   }
 
   return done(changes.length > 0 ? `${rest.label}: ${changes.join(", ")}` : rest.label);

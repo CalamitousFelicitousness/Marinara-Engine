@@ -3615,6 +3615,9 @@ const creatureActionSchema = z
     damage: creatureDamageSchema.optional(),
     /** Hit points given back to each target, capped at its maximum (Capability API 1.116). */
     heal: z.object(catalogAmountShape).strict().optional(),
+    /** The conditions it ends on each target (Capability API 1.256), as a catalog entry's `ends`
+     *  does, a kind for any of it: a deva's and a unicorn's Healing Touch. */
+    ends: catalogEndsSchema.optional(),
     /** Who it may be pointed at, relative to the creature (Capability API 1.116). Without it, the
      *  other side, as before. */
     targets: z.enum(["ally", "any"]).optional(),
@@ -5425,6 +5428,10 @@ const combatConditionEffectSchema = z.enum([
   /** Its holder regains nothing from any heal while it holds (Capability API 1.186): 5e's Chill
    *  Touch. */
   "cannot-heal",
+  /** Its holder regains nothing from a heal that is not magical while it holds (Capability API
+   *  1.256), in a fight or out of it, a rest included: a diseased giant rat's bite. A heal is
+   *  magical when its action's qualities say "magical" (a spell, a potion tagged so). */
+  "cannot-heal-nonmagical",
 ]);
 export const RULESET_COMBAT_CONDITION_EFFECTS = combatConditionEffectSchema.options;
 
@@ -5770,6 +5777,67 @@ const combatSightSchema: z.ZodType<RulesetCombatSight, z.ZodTypeDef, unknown> = 
   .object({ unseenAttacks: z.literal(true).optional(), eyes: sheetId.optional() })
   .strict();
 
+/** What a condition does on the rests it names (1.255). */
+export interface RulesetConditionOnRest {
+  rests: string[];
+  lowersMax: { dice?: string; flat?: number };
+  lasting?: true;
+  restoredWhenCured?: true;
+  save?: { save: string; difficulty: number; cures?: true };
+}
+const conditionOnRestSchema: z.ZodType<RulesetConditionOnRest, z.ZodTypeDef, unknown> = z
+  .object({
+    rests: z
+      .array(sheetId)
+      .min(1)
+      .max(8)
+      .refine((rests) => new Set(rests).size === rests.length, { message: "Rests must be unique" }),
+    lowersMax: z
+      .object({ dice: catalogDice.optional(), flat: z.number().int().min(1).max(1000).optional() })
+      .strict()
+      .refine((amount) => amount.dice !== undefined || amount.flat !== undefined, {
+        message: '"lowersMax" rolls "dice", a "flat" amount, or both',
+      }),
+    lasting: z.literal(true).optional(),
+    /** With `lasting`, what its rests took comes back when it is cured (Capability API 1.256),
+     *  however it comes off: Mummy Rot lifted by Remove Curse. */
+    restoredWhenCured: z.literal(true).optional(),
+    /** A save its holder makes at each such rest first (the otyugh's, the death dog's): only a
+     *  failure lowers the maximum, and with `cures` a success ends the condition. Rolled as the
+     *  ruleset's checks are, with the sheet's own modifier for that save. */
+    save: z
+      .object({
+        save: sheetId,
+        difficulty: z.number().int().min(1).max(100),
+        cures: z.literal(true).optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict()
+  .refine((onRest) => !onRest.restoredWhenCured || onRest.lasting, {
+    message: '"restoredWhenCured" gives back a lasting loss, so it goes with "lasting"',
+    path: ["restoredWhenCured"],
+  });
+
+/** What a condition puts on its holder each time they take damage (1.256). */
+export interface RulesetConditionOnDamaged {
+  applies: RulesetCatalogApplies[];
+}
+const conditionOnDamagedSchema: z.ZodType<RulesetConditionOnDamaged, z.ZodTypeDef, unknown> = z
+  .object({
+    applies: z
+      .array(
+        catalogAppliesSchema.refine((applied) => typeof applied.duration === "object", {
+          message: "What damage puts on lasts some rounds",
+          path: ["duration"],
+        }),
+      )
+      .min(1)
+      .max(4),
+  })
+  .strict();
+
 const combatConditionSchema = z
   .object({
     /** Harm and conditions kept off while this applies (Capability API 1.127), as on a creature. */
@@ -5933,34 +6001,7 @@ const combatConditionSchema = z
      *  (Capability API 1.255): health's maximum lowered by this much, rolled where the rest is
      *  taken, as a sealed loss that the next rest gives back, or with `lasting` none does, only
      *  something that unseals. 5e's Mummy Rot, 3d6 a day, lasting. Only health kept in points. */
-    onRest: z
-      .object({
-        rests: z
-          .array(sheetId)
-          .min(1)
-          .max(8)
-          .refine((rests) => new Set(rests).size === rests.length, { message: "Rests must be unique" }),
-        lowersMax: z
-          .object({ dice: catalogDice.optional(), flat: z.number().int().min(1).max(1000).optional() })
-          .strict()
-          .refine((amount) => amount.dice !== undefined || amount.flat !== undefined, {
-            message: '"lowersMax" rolls "dice", a "flat" amount, or both',
-          }),
-        lasting: z.literal(true).optional(),
-        /** A save its holder makes at each such rest first (the otyugh's, the death dog's): only a
-         *  failure lowers the maximum, and with `cures` a success ends the condition. Rolled as the
-         *  ruleset's checks are, with the sheet's own modifier for that save. */
-        save: z
-          .object({
-            save: sheetId,
-            difficulty: z.number().int().min(1).max(100),
-            cures: z.literal(true).optional(),
-          })
-          .strict()
-          .optional(),
-      })
-      .strict()
-      .optional(),
+    onRest: conditionOnRestSchema.optional(),
     /** Its holder is this many of `combat.sizes` bigger, or smaller, while it holds (Capability API
      *  1.190), never past the first or the last: 5e's Enlarge/Reduce. On a board it fills what its
      *  new size fills where there is room, and grows only as big as there is room for. */
@@ -5973,6 +6014,20 @@ const combatConditionSchema = z
           .max(5)
           .refine((steps) => steps !== 0, "A size change is at least one step"),
       })
+      .strict()
+      .optional(),
+    /** What it puts on its holder each time they take damage while it holds (Capability API
+     *  1.256), on a clock of their turns as `onEnd`'s is: 5e's Slimy Doom, stunned until the end of
+     *  the holder's next turn. */
+    onDamaged: conditionOnDamagedSchema.optional(),
+    /** Run out on its clock, it turns into this condition, with no clock of its own (Capability API
+     *  1.256): an aboleth's Tentacle disease after its minute. Ended any other way, it does not. A
+     *  fight that ends first lets the clock run out. */
+    expires: z.object({ becomes: sheetId }).strict().optional(),
+    /** Only a cure from one of these catalogs, at this level or higher as it is paid, ends it
+     *  (Capability API 1.256): the aboleth's later disease, only by a 6th-level spell. */
+    curedOnlyBy: z
+      .object({ catalogs: z.array(sheetId).min(1).max(8).optional(), minLevel: z.number().int().min(1).max(20) })
       .strict()
       .optional(),
     /** What it leaves behind is on a clock of its holder's turns: nothing rolls a save against it (it
@@ -8802,6 +8857,23 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
           issue([...path, "onEnd", "tracks", movedIndex, "track"], "A wound track is marked, not moved by levels");
         }
       });
+      if (entry.expires) {
+        if (!conditions.has(entry.expires.becomes))
+          issue([...path, "expires", "becomes"], `Unknown condition "${entry.expires.becomes}"`);
+        else if (entry.expires.becomes === entry.condition)
+          issue([...path, "expires", "becomes"], "A condition does not turn into itself");
+      }
+      entry.curedOnlyBy?.catalogs?.forEach((catalogId, catalogIndex) => {
+        if (!def.catalogs?.some((catalog) => catalog.id === catalogId))
+          issue([...path, "curedOnlyBy", "catalogs", catalogIndex], `Unknown catalog "${catalogId}"`);
+      });
+      entry.onDamaged?.applies.forEach((applied, appliedIndex) => {
+        const at = [...path, "onDamaged", "applies", appliedIndex];
+        if (!conditions.has(applied.condition)) issue([...at, "condition"], `Unknown condition "${applied.condition}"`);
+        else if (applied.condition === entry.condition)
+          issue([...at, "condition"], "A condition does not put itself on");
+        if (applied.when) issue([...at, "when"], 'What damage puts on has no sheet to read "when" off');
+      });
       entry.onEnd?.applies?.forEach((applied, appliedIndex) => {
         if (!conditions.has(applied.condition)) {
           issue([...path, "onEnd", "applies", appliedIndex, "condition"], `Unknown condition "${applied.condition}"`);
@@ -10011,6 +10083,8 @@ function creatureIssues(
     targetHoldsIssues(definition, action.targetHolds, [...path, "targetHolds"], add);
     targetTestIssues(definition, { plus: action.damage?.plus }, [...path, "damage"], add);
     targetTestIssues(definition, { applies: action.applies, save: action.save }, path, add);
+    // What it ends is held to the names a catalog entry's cures are (1.256).
+    if (action.ends) cureIssues(definition, { ends: action.ends }, path, add);
     action.applies?.forEach((applies, appliesIndex) => {
       const where = [...path, "applies", appliesIndex];
       if (!conditions.has(applies.condition)) add([...where, "condition"], `Unknown condition "${applies.condition}"`);

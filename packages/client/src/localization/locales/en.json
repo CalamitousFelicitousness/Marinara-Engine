@@ -1868,6 +1868,7 @@
   "game.ruleset.sheet.refusal.ambiguousPool": "more than one resource goes by that name",
   "game.ruleset.sheet.refusal.badAmount": "the amount made no sense",
   "game.ruleset.sheet.refusal.badPool": "that resource cannot pay for it",
+  "game.ruleset.sheet.refusal.cannotHeal": "a condition keeps them from healing that way",
   "game.ruleset.sheet.refusal.entry": "{{who}}: {{reason}}.",
   "game.ruleset.sheet.refusal.insufficient": "not enough left",
   "game.ruleset.sheet.refusal.malformed": "the command was incomplete",

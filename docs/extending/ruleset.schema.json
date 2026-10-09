@@ -12214,6 +12214,32 @@
                       "type": "boolean",
                       "const": true
                     },
+                    "rescue": {
+                      "type": "object",
+                      "properties": {
+                        "roll": {
+                          "type": "string",
+                          "enum": [
+                            "attacks",
+                            "saves",
+                            "checks"
+                          ]
+                        },
+                        "by": {
+                          "type": "string",
+                          "enum": [
+                            "reroll",
+                            "success"
+                          ]
+                        },
+                        "$comment": {}
+                      },
+                      "required": [
+                        "roll",
+                        "by"
+                      ],
+                      "additionalProperties": false
+                    },
                     "usesSpent": {
                       "type": "integer",
                       "minimum": 2,
@@ -16044,6 +16070,10 @@
                                 "type": "boolean",
                                 "const": true
                               },
+                              "rescue": {
+                                "type": "boolean",
+                                "const": true
+                              },
                               "$comment": {}
                             },
                             "required": [
@@ -16884,6 +16914,10 @@
                                 "additionalProperties": false
                               },
                               "atSource": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "rescue": {
                                 "type": "boolean",
                                 "const": true
                               },
@@ -17881,6 +17915,10 @@
                                       "additionalProperties": false
                                     },
                                     "atSource": {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
+                                    "rescue": {
                                       "type": "boolean",
                                       "const": true
                                     },
@@ -23498,6 +23536,32 @@
                         "beforeAttack": {
                           "type": "boolean",
                           "const": true
+                        },
+                        "rescue": {
+                          "type": "object",
+                          "properties": {
+                            "roll": {
+                              "type": "string",
+                              "enum": [
+                                "attacks",
+                                "saves",
+                                "checks"
+                              ]
+                            },
+                            "by": {
+                              "type": "string",
+                              "enum": [
+                                "reroll",
+                                "success"
+                              ]
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "roll",
+                            "by"
+                          ],
+                          "additionalProperties": false
                         },
                         "usesSpent": {
                           "type": "integer",
@@ -31163,6 +31227,10 @@
                       "type": "boolean",
                       "const": true
                     },
+                    "rescue": {
+                      "type": "boolean",
+                      "const": true
+                    },
                     "$comment": {}
                   },
                   "required": [
@@ -32736,6 +32804,10 @@
                       "additionalProperties": false
                     },
                     "atSource": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "rescue": {
                       "type": "boolean",
                       "const": true
                     },

@@ -1814,6 +1814,8 @@ function optionFrom(
   // A reaction waits for its moment, which is never a turn. `rulesetWindowOptions` is where the
   // moment offers it.
   if (action.reaction && !atItsMoment) return null;
+  // Spent when its holder's roll fails, never chosen (1.244).
+  if (action.rescue) return null;
   // A sequence whose parts are all gone, or all spent, would spend a budget and do nothing.
   if (!rulesetSequenceCanHappen(actor, action)) return null;
   // Breaking free is only there while something holds on.

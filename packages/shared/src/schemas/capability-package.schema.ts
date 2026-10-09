@@ -1010,7 +1010,10 @@ const capabilityPackageManifestBaseSchema = z
 //        `criticalDice` (more of the blow's own dice on a critical only: Brutal Critical).
 // 1.243: a hit moment's `budget` (only a strike paid for from it) and a reaction's `oneOf` (one of
 //        its holder's answers sharing the name per hit): Open Hand Technique on Flurry of Blows.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 243 } as const);
+// 1.244: a change's `rescue` (held back until the holder's own attack, save or check falls short:
+//        Bardic Inspiration, Guidance, Resistance) and catalog mechanics' `rescue` (spent on a
+//        failed roll to roll a save again or succeed: Indomitable, Diamond Soul, Stroke of Luck).
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 244 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

@@ -656,6 +656,8 @@ export function rulesetConditionModifiers(
   /** The ability an attack or a check is made with (1.183), so what is narrowed to it counts; with
    *  none, a change narrowed to an ability reads nothing. */
   ability?: string,
+  /** Only the changes held back until a roll falls short (1.244), rather than only the others. */
+  rescue = false,
 ): RulesetConditionModifier[] {
   // A ruleset with no items and no condition or level that changes a number has nothing to read. One
   // with items reads them once, below, with everything else that is on the combatant.
@@ -670,6 +672,7 @@ export function rulesetConditionModifiers(
     return (entry.modifiers ?? [])
       .filter((modifier) => {
         if (modifier.to !== to || !rulesetSaveAgainstMatches(modifier.against, against)) return false;
+        if (!!modifier.rescue !== rescue) return false;
         if (
           modifier.flat === undefined &&
           modifier.dice === undefined &&
@@ -1852,7 +1855,16 @@ function mechanicsAction(
     !!mechanics.ends || !!mechanics.stabilizes || !!mechanics.revives || !!mechanics.tracks || !!mechanics.unseals;
   // And so is leaving an area standing that only hides or blocks (1.173).
   const places = !!mechanics.zone && !!mechanics.area;
-  if (mechanics.kind === "utility" && !mechanics.gives && !mechanics.standard && !cancels && !cures && !places) {
+  // Spent when its holder's roll fails is something to resolve too (1.244): Indomitable.
+  if (
+    mechanics.kind === "utility" &&
+    !mechanics.gives &&
+    !mechanics.standard &&
+    !cancels &&
+    !cures &&
+    !places &&
+    !mechanics.rescue
+  ) {
     return null;
   }
   const { build, evaluated, perCell } = from;
@@ -1952,6 +1964,8 @@ function mechanicsAction(
   if (mechanics.afterAttack) action.afterAttack = structuredClone(mechanics.afterAttack);
   // Only before the holder's first attack of their turn (1.242): Reckless Attack.
   if (mechanics.beforeAttack) action.beforeAttack = true;
+  // Spent when its holder's own roll has failed, never chosen from a menu (1.244): Indomitable.
+  if (mechanics.rescue) action.rescue = { ...mechanics.rescue };
   // Leaving `toHit` unset here would send it down the no-roll path and land it automatically.
   if (mechanics.attackRoll) action.toHit = from.toHit;
   if (mechanics.autoHit) action.autoHit = true;

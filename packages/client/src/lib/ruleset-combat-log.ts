@@ -483,6 +483,11 @@ export function rulesetCombatEventLine(
         target: names.combatant(event.targetId),
         label: event.label,
       });
+    case "rescued":
+      return key(event.by === "reroll" ? "rescuedReroll" : "rescuedSuccess", {
+        actor: names.combatant(event.actorId),
+        label: event.label,
+      });
     case "dismissed":
       return key(event.while ? "dismissedWhile" : "dismissed", {
         actor: names.combatant(event.actorId),

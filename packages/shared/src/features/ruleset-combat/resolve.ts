@@ -1079,6 +1079,8 @@ function rollSave(
   against?: RulesetSaveAgainst,
   /** The save's own word on who rolls it twice (1.180). */
   lean?: "advantage" | "disadvantage",
+  /** Already rolled again once (1.244): the new roll stands. */
+  rerolled = false,
 ): boolean {
   const own = combatant.saves[save] ?? 0;
   // Whatever it is against, it is against what its source is (1.180): Dragon Scale Mail's dragons.
@@ -1154,6 +1156,25 @@ function rollSave(
     ctx,
     rulesetConditionModifiers(ctx.definition, ctx.combat, combatant, "saves", ctx.state, save, against),
   );
+  // Short of it, what is held back until then (1.244): Bardic Inspiration, Resistance.
+  bonuses.push(
+    ...rescueBonuses(
+      ctx,
+      combatant,
+      rulesetConditionModifiers(
+        ctx.definition,
+        ctx.combat,
+        combatant,
+        "saves",
+        ctx.state,
+        save,
+        against,
+        undefined,
+        true,
+      ),
+      difficulty - (kept + modifier + bonusTotal(bonuses)),
+    ),
+  );
   const total = kept + modifier + bonusTotal(bonuses);
   const success = total >= difficulty;
   ctx.events.push({
@@ -1171,6 +1192,13 @@ function rollSave(
     success,
   });
   spendConditions(ctx, combatant, "own-save");
+  // Failed, what its holder spends to roll again or succeed all the same (1.244): Indomitable.
+  if (!success && !rerolled) {
+    const rescue = rescueEntry(ctx, combatant, "saves");
+    if (rescue?.rescue?.by === "reroll")
+      return rollSave(ctx, combatant, save, difficulty, sourceId, from, against, lean, true);
+    if (rescue) return true;
+  }
   return success;
 }
 
@@ -1234,8 +1262,27 @@ function passesGate(
       : Math.min(sumOf(first), sumOf(second))
     : sumOf(first);
   const bonuses = rollBonuses(ctx, modifiers);
+  bonuses.push(
+    ...rescueBonuses(
+      ctx,
+      actor,
+      rulesetConditionModifiers(
+        ctx.definition,
+        ctx.combat,
+        actor,
+        "checks",
+        ctx.state,
+        gate.skill,
+        undefined,
+        ability,
+        true,
+      ),
+      gate.difficulty - (kept + gate.modifier + bonusTotal(bonuses)),
+    ),
+  );
   const total = kept + gate.modifier + bonusTotal(bonuses);
-  const success = total >= gate.difficulty;
+  // Failed, what its holder spends to succeed all the same (1.244): Stroke of Luck.
+  const success = total >= gate.difficulty || !!rescueEntry(ctx, actor, "checks", "success");
   ctx.events.push({
     ...said,
     rolls: second ? [...first, ...second] : first,
@@ -1290,6 +1337,67 @@ function rollBonuses(ctx: RulesetCombatContext, modifiers: RulesetConditionModif
       ...(rolls ? { rolls } : {}),
     };
   });
+}
+
+/** The most a change could add: its flat part and every die at its highest. */
+function rescueMost(modifier: RulesetConditionModifier["modifier"]): number {
+  const dice = modifier.dice ? parseRulesetCombatDice(modifier.dice) : null;
+  return (modifier.flat ?? 0) + (dice ? dice.count * dice.sides + dice.flat : 0);
+}
+
+/** A change held back until a roll fell `short` (1.244): the first whose most could make up the
+ *  difference, rolled and added, and the condition it came from spent. Nothing when none could:
+ *  nobody spends an inspiration die that cannot turn the roll. */
+function rescueBonuses(
+  ctx: RulesetCombatContext,
+  combatant: RulesetCombatant,
+  rescues: RulesetConditionModifier[],
+  short: number,
+): RulesetConditionBonus[] {
+  if (short <= 0) return [];
+  const rescue = rescues.find(({ modifier }) => rescueMost(modifier) >= short);
+  if (!rescue) return [];
+  const bonuses = rollBonuses(ctx, [rescue]).map((bonus) => ({ ...bonus, rescue: true as const }));
+  // A level's or an item's stays: only a condition put on the holder is spent.
+  if (rescue.level === undefined && !rescue.item && !rescue.derived) {
+    if (combatant.tracked.some((entry) => entry.condition === rescue.condition)) {
+      removeCondition(ctx, combatant, rescue.condition, "spent");
+    }
+  }
+  return bonuses;
+}
+
+/** What its holder spends when their own roll of this kind has failed (1.244): the first such entry
+ *  still to be had and paid for, paid for now. None when they hold none left. */
+function rescueEntry(
+  ctx: RulesetCombatContext,
+  holder: RulesetCombatant,
+  roll: "attacks" | "saves" | "checks",
+  by?: "reroll" | "success",
+): RulesetCombatAction | undefined {
+  const found = holder.actions.find(
+    (action) =>
+      action.rescue?.roll === roll &&
+      (by === undefined || action.rescue.by === by) &&
+      rulesetActionAvailable(holder, action, ctx.state, ctx.definition) &&
+      !!planRulesetCombatCost(ctx.definition, holder, action),
+  );
+  if (!found) return undefined;
+  const paid = planRulesetCombatCost(ctx.definition, holder, found)!;
+  if (paid.live && holder.sheet) holder.sheet.live = paid.live;
+  countRulesetSpend(holder, paid.cost);
+  for (const entry of paid.cost) {
+    ctx.events.push({ type: "spend", actorId: holder.id, pool: entry.pool, label: entry.label, amount: entry.amount });
+  }
+  spendAvailability(ctx, holder, found);
+  ctx.events.push({
+    type: "rescued",
+    actorId: holder.id,
+    optionId: found.id,
+    label: found.label,
+    by: found.rescue!.by,
+  });
+  return found;
 }
 
 function bonusTotal(bonuses: readonly RulesetConditionBonus[]): number {
@@ -3184,9 +3292,39 @@ function resolveContest(
   const defender = theirs
     ? thrown(target, theirs.check, theirs.modifier)
     : { check: "", rolls: [], modifier: escapeDc!, total: escapeDc! };
+  // The side falling short adds what it holds back until then (1.244), on the fight's own dice only.
+  const actorTies = escapeDc !== undefined || contest.ties === "attacker";
+  const rescue = (who: RulesetCombatant, side: RulesetContestSide, short: number) => {
+    if (side.pool || side.rolls.length === 0 || short <= 0) return;
+    const ability = rulesetCheckAbility(ctx.definition, side.check);
+    const added = rescueBonuses(
+      ctx,
+      who,
+      rulesetConditionModifiers(
+        ctx.definition,
+        ctx.combat,
+        who,
+        "checks",
+        ctx.state,
+        undefined,
+        undefined,
+        ability,
+        true,
+      ),
+      short,
+    );
+    if (added.length === 0) return;
+    side.bonuses = [...(side.bonuses ?? []), ...added];
+    side.total += bonusTotal(added);
+  };
+  rescue(actor, attacker, defender.total - attacker.total + (actorTies ? 0 : 1));
+  if (theirs) rescue(target, defender, attacker.total - defender.total + (actorTies ? 1 : 0));
   const margin = attacker.total - defender.total;
-  const winner =
+  let winner: "actor" | "target" =
     margin > 0 || (margin === 0 && (escapeDc !== undefined || contest.ties === "attacker")) ? "actor" : "target";
+  // The side that lost spends what turns a failed check into a success (1.244): Stroke of Luck.
+  if (winner === "target" && rescueEntry(ctx, actor, "checks", "success")) winner = "actor";
+  else if (winner === "actor" && theirs && rescueEntry(ctx, target, "checks", "success")) winner = "target";
   ctx.events.push({
     type: "contest",
     actorId: actor.id,
@@ -3692,9 +3830,27 @@ function reachesHeld(
     ctx,
     rulesetConditionModifiers(ctx.definition, ctx.combat, answering, "checks", ctx.state),
   );
-  const total = kept + above.modifier + bonusTotal(bonuses);
   const difficulty = above.dc + level;
-  const success = total >= difficulty;
+  bonuses.push(
+    ...rescueBonuses(
+      ctx,
+      answering,
+      rulesetConditionModifiers(
+        ctx.definition,
+        ctx.combat,
+        answering,
+        "checks",
+        ctx.state,
+        undefined,
+        undefined,
+        undefined,
+        true,
+      ),
+      difficulty - (kept + above.modifier + bonusTotal(bonuses)),
+    ),
+  );
+  const total = kept + above.modifier + bonusTotal(bonuses);
+  const success = total >= difficulty || !!rescueEntry(ctx, answering, "checks", "success");
   ctx.events.push({
     ...said,
     ...(mode === "normal" ? {} : { mode }),
@@ -5259,6 +5415,27 @@ function resolveActionBody(
             action.ability,
           ).filter(({ modifier }) => rulesetAttackModifierReaches(modifier, ctx.state, actor, target, action)),
         );
+        // Short of it, what is held back until then (1.244), never for a natural miss.
+        if (!(single && kept === 1 && naturals.min === "miss")) {
+          bonuses.push(
+            ...rescueBonuses(
+              ctx,
+              actor,
+              rulesetConditionModifiers(
+                ctx.definition,
+                ctx.combat,
+                actor,
+                "attacks",
+                ctx.state,
+                undefined,
+                undefined,
+                action.ability,
+                true,
+              ).filter(({ modifier }) => rulesetAttackModifierReaches(modifier, ctx.state, actor, target, action)),
+              guarded.defense - (kept + toHit + bonusTotal(bonuses)),
+            ),
+          );
+        }
         const total = kept + toHit + bonusTotal(bonuses);
         let outcome: "hit" | "miss" | "critical" = total >= guarded.defense ? "hit" : "miss";
         // A critical range the attacker's sheet reads (1.76) widens a critical face down to it.
@@ -5274,6 +5451,8 @@ function resolveActionBody(
         if (outcome === "hit" && rulesetCriticalFromAdjacent(ctx.definition, ctx.combat, ctx.state, actor, target)) {
           outcome = "critical";
         }
+        // Missed, what its maker spends to hit all the same (1.244): Stroke of Luck.
+        if (outcome === "miss" && rescueEntry(ctx, actor, "attacks", "success")) outcome = "hit";
         ctx.events.push({
           type: "attack",
           actorId: actor.id,

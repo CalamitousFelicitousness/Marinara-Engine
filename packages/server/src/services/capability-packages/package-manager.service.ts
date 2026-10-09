@@ -1535,6 +1535,17 @@ function carriesFrenzy(ruleset: unknown): boolean {
 /** Attack rows changed by what a sheet holds, strikes it grants, entries only after the attack action,
  *  or a condition's granted attacks narrowed by name or to after the attack action (1.237), in
  *  catalogs too. */
+/** A change held back until a roll falls short, or an entry spent on a failed roll (1.244), in
+ *  catalogs too. */
+function carriesRescue(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesRescue(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.rescue !== undefined) return true;
+  return Object.values(record).some((one) => carriesRescue(one, depth + 1));
+}
+
 /** A hit answered only when a strike paid for from a budget made it, or one of a group of answers to
  *  its holder's own hit (1.243), in catalogs too. */
 function carriesOpenHand(value: unknown, depth = 0): boolean {
@@ -3391,6 +3402,13 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // A die added once a roll falls short, a failed roll rolled again or turned, 1.244.
+  if (
+    !declaresApi(244) &&
+    (carriesRescue(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesRescue(document)))
+  ) {
+    return "A ruleset with changes held back until a roll falls short, or entries spent on a failed roll, requires schemaVersion 2 and capabilityApi 1.244 or newer";
   }
   // A hit answered for a strike from one budget, one answer of a group per hit, 1.243.
   if (

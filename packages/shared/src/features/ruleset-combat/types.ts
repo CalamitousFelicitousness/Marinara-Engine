@@ -154,6 +154,8 @@ export interface RulesetConditionBonus {
   item?: true;
   value: number;
   rolls?: number[];
+  /** Added after the roll fell short (1.244). */
+  rescue?: true;
 }
 
 export interface RulesetCombatSaveRider {
@@ -517,6 +519,8 @@ export interface RulesetCombatAction {
   afterAttack?: RulesetAfterAttack;
   /** Offered only on its holder's own turn before they have attacked in it (1.242): Reckless Attack. */
   beforeAttack?: true;
+  /** Spent when its holder's own roll of this kind has failed (1.244): Indomitable, Stroke of Luck. */
+  rescue?: { roll: "attacks" | "saves" | "checks"; by: "reroll" | "success" };
   /** Its damage never takes a target below this much health (1.230). */
   leavesAtLeast?: number;
   /** It brings back a target that died no more than `withinRounds` rounds ago, at `amount` (1.171). */
@@ -1648,6 +1652,8 @@ export type RulesetCombatEvent =
   | { type: "slain"; actorId: string; targetId: string; label: string }
   /** Dropped to 0 health at once by a failed save (1.240): Quivering Palm. */
   | { type: "dropped"; actorId: string; targetId: string; label: string }
+  /** A failed roll rolled again or turned into a success by what its maker spent (1.244). */
+  | { type: "rescued"; actorId: string; optionId: string; label: string; by: "reroll" | "success" }
   /** Sent out of the fight (1.231): for good, or for as long as `while` holds. */
   | { type: "dismissed"; actorId: string; targetId: string; label: string; while?: string }
   /** Back from where it was sent (1.231), or, with `gone`, kept there for good. */

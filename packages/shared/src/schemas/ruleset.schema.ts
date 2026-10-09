@@ -2860,6 +2860,17 @@ const catalogMechanicsObject = z
     /** Offered only on its holder's own turn before they have made an attack in it (Capability API
      *  1.242): 5e's Reckless Attack, decided as the first attack is made. */
     beforeAttack: z.literal(true).optional(),
+    /** Never on the menu: spent, with whatever it costs, when its holder's own roll of this kind has
+     *  failed (Capability API 1.244). A failed save is rolled again (`reroll`), or a failed save,
+     *  check or missed attack turned into a success (`success`): 5e's Indomitable and Diamond Soul,
+     *  and Stroke of Luck. */
+    rescue: z
+      .object({ roll: z.enum(["attacks", "saves", "checks"]), by: z.enum(["reroll", "success"]) })
+      .strict()
+      .refine((rescue) => rescue.by !== "reroll" || rescue.roll === "saves", {
+        message: 'Only a failed save is rolled again: "reroll" goes with "saves"',
+      })
+      .optional(),
     /** How many of those uses one use spends (Capability API 1.240): Quivering Palm's 3 ki. */
     usesSpent: z.number().int().min(2).max(20).optional(),
     /** A target that fails the save drops to 0 health instead of taking the amount (Capability API
@@ -5247,6 +5258,10 @@ const combatModifierSchema = z
     /** Narrows a change to the holder's own attacks to those against whoever put this on them
      *  (Capability API 1.180): 5e's Chill Touch, an undead's attacks against the caster. */
     atSource: z.literal(true).optional(),
+    /** Held back until the holder's own attack, save or check falls short, then added only where
+     *  its most could make up the difference, and the condition it came from is spent (Capability
+     *  API 1.244): 5e's Bardic Inspiration, Guidance and Resistance, added after seeing the roll. */
+    rescue: z.literal(true).optional(),
   })
   .strict()
   .superRefine((modifier, ctx) => {
@@ -5317,6 +5332,19 @@ const combatModifierSchema = z
     }
     if (modifier.criticalDice !== undefined && modifier.to !== "damage") {
       add("criticalDice", '"criticalDice" changes the damage a blow deals only');
+    }
+    if (
+      modifier.rescue &&
+      ((modifier.to !== "attacks" && modifier.to !== "saves" && modifier.to !== "checks") ||
+        (modifier.flat === undefined && modifier.dice === undefined) ||
+        (modifier.flat !== undefined && modifier.flat < 0) ||
+        modifier.minus ||
+        modifier.mode !== undefined)
+    ) {
+      add(
+        "rescue",
+        '"rescue" adds dice or a positive flat number to the holder\'s own attack, save or check, and nothing else',
+      );
     }
     if (modifier.to === "health-max" && (modifier.times !== 0.5 || modifier.flat !== undefined)) {
       add("times", 'The health maximum is only halved: "times": 0.5 and nothing else');

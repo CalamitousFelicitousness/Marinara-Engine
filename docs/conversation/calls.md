@@ -77,7 +77,7 @@ Uninstalling Calls also deletes every downloaded Whisper model and its saved sel
 
 ### Use your own speech-to-text server
 
-If Local Whisper struggles with your language or your accent, you can send your recorded voice to another speech-to-text model instead. This works with any server that offers the OpenAI-style `/audio/transcriptions` endpoint. That includes self-hosted servers such as Speaches, faster-whisper servers, whisper.cpp server and LocalAI, and providers such as OpenAI or Groq.
+If Local Whisper struggles with your language or your accent, you can send your recorded voice to another speech-to-text model instead. This works with any server that offers the OpenAI-style `/audio/transcriptions` endpoint. That includes self-hosted servers such as Speaches, faster-whisper servers, LocalAI and whisper.cpp server (started with `--inference-path /v1/audio/transcriptions`), and providers such as OpenAI or Groq.
 
 1. Install Calls, then open **Connections** and find the **Speech to Text** card. The card is hidden while Calls is not installed.
 2. Expand the card and enter the **Server URL**, for example `http://localhost:8000/v1` for a server on your own machine.

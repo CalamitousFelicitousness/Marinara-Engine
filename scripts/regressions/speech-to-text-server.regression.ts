@@ -118,6 +118,20 @@ try {
   // fetch would refuse a key with a line break and print the whole key in its error, so the save refuses it.
   assert.equal((await putConfig({ enabled: true, baseUrl: base, apiKey: "sk-a\nb" })).statusCode, 400);
   assert.equal((await loadSpeechToTextConfig(db)).apiKey, SECRET, "a refused key keeps the saved one");
+  // A long key, such as a 2,500-character token, is accepted; once encrypted it is longer than that limit
+  // and must still load, or every setting would quietly reset to off.
+  const longKey = `eyJ${"a".repeat(2_500)}`;
+  const savedSettings = {
+    enabled: true,
+    baseUrl: `${base}/v1/`,
+    model: "Systran/faster-whisper-small",
+    language: "pl",
+  };
+  assert.equal((await putConfig({ ...savedSettings, apiKey: longKey })).statusCode, 204);
+  const withLongKey = await loadSpeechToTextConfig(db);
+  assert.equal(withLongKey.apiKey, longKey, "a long key survives encryption");
+  assert.equal(withLongKey.enabled, true, "a long key keeps the server turned on");
+  assert.equal((await putConfig({ ...savedSettings, apiKey: SECRET })).statusCode, 204);
 
   // The Test button sends a short clip as an OpenAI-style multipart upload.
   const tested = await test();

@@ -70,11 +70,20 @@ export function SpeechToTextCard() {
   useEffect(
     () => () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-      // Leaving Connections before the autosave fires still keeps the last edit.
+      // Leaving Connections before the autosave fires still keeps the last edit. On desktop the card
+      // stays mounted, so clear the edit once saved, or each later visit would send it again.
       const pending = pendingSaveRef.current;
-      if (pending) void saveQueueRef.current.then(() => putConfig(pending)).catch(() => undefined);
+      if (!pending) return;
+      const run = saveQueueRef.current.then(() => putConfig(pending));
+      saveQueueRef.current = run.catch(() => undefined);
+      run.then(
+        () => {
+          if (pendingSaveRef.current === pending) pendingSaveRef.current = null;
+        },
+        () => toast.error(t("connections.speechToText.saveFailed")),
+      );
     },
-    [putConfig],
+    [putConfig, t],
   );
 
   if (!callsInstalled || !draft) return null;
@@ -127,7 +136,7 @@ export function SpeechToTextCard() {
   const testing = testServer.isPending;
 
   return (
-    <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-3">
+    <div data-component="SpeechToTextCard" className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-3">
       <div className="flex items-center gap-2.5">
         <div className="mari-chrome-accent-tile mari-accent-animated flex h-9 w-9 shrink-0 items-center justify-center rounded-xl">
           <Mic size="1rem" />

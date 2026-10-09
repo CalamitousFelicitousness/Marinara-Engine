@@ -10,6 +10,7 @@ import {
   type CapabilitySpeechTranscribeOptions,
   type SpeechToTextConfig,
 } from "@marinara-engine/shared";
+import { z } from "zod";
 import type { DB } from "../db/connection.js";
 import { isSttLocalUrlsEnabled } from "../config/runtime-config.js";
 import { logger } from "../lib/logger.js";
@@ -24,11 +25,13 @@ const SPEECH_TO_TEXT_TIMEOUT_MS = 120_000;
 const SPEECH_TO_TEXT_MAX_RESPONSE_BYTES = 1024 * 1024;
 const SAFE_FILENAME = /^[\w.-]{1,80}$/u;
 const SAFE_AUDIO_TYPE = /^audio\/[\w.+-]{1,40}$/u;
+// The saved key is encrypted, which more than doubles its length, so the browser's key limit does not apply.
+const storedConfigSchema = speechToTextConfigSchema.extend({ apiKey: z.string().default("") });
 
 function parseStoredConfig(raw: string | null): SpeechToTextConfig {
   if (raw) {
     try {
-      const parsed = speechToTextConfigSchema.safeParse(JSON.parse(raw));
+      const parsed = storedConfigSchema.safeParse(JSON.parse(raw));
       if (parsed.success) return parsed.data;
     } catch {
       // Unreadable settings count as off, which keeps Local Whisper.

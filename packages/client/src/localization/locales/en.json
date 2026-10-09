@@ -1056,7 +1056,7 @@
   "connections.speechToText.languageHelp": "Optional language code, like pl or de, for more accurate results.",
   "connections.speechToText.languagePlaceholder": "Auto",
   "connections.speechToText.model": "Model",
-  "connections.speechToText.modelHelp": "The model name your server uses. Leave it empty for whisper-1.",
+  "connections.speechToText.modelHelp": "The model name your server uses; leave it empty for whisper-1.",
   "connections.speechToText.saveFailed": "Could not save Speech to Text settings.",
   "connections.speechToText.serverUrl": "Server URL",
   "connections.speechToText.serverUrlHelp": "The address of an OpenAI-compatible speech-to-text server.",

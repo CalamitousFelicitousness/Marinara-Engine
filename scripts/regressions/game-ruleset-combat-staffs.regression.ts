@@ -5,6 +5,8 @@
  *     rolled with their spell attack bonus (`toHit.sheetBonus`, already there).
  *   - `chargeStep`: more charges spent for more, each a step of a higher cost: a Fireball's die a
  *     charge, a Hold's target a charge, offered only as far as the staff still holds.
+ *   - (The same minor raises the condition cap to 320 and adds an aura save's `immuneWhenEnds`;
+ *     both are proven in the ability-narrowing and gazes regressions, and gated here.)
  *   - Import refusals and the install gate.
  */
 import assert from "node:assert/strict";
@@ -265,7 +267,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with an item use whose save difficulty is read off its holder's sheet, or one that spends more charges for more, requires schemaVersion 2 and capabilityApi 1.264 or newer";
+      "A ruleset with more than 160 conditions, an aura save whose holder's aura stays off once what it put on ends, an item use whose save difficulty is read off its holder's sheet, or one that spends more charges for more, requires schemaVersion 2 and capabilityApi 1.264 or newer";
     const issue = (minor: number, doc: unknown, files?: unknown) =>
       getCapabilityPackageInstallIssue(manifest(minor) as never, doc, files as never);
     const gear = (use: Record<string, unknown>) =>
@@ -292,6 +294,39 @@ try {
       issue(263, gear({ ...bare, saveDifficulty: 14 }), new Map([["extra.json", { use: { chargeStep: { max: 1 } } }]])),
       gate,
     );
+    // More than 160 conditions (320 now), and an aura save immune once what it put on ends.
+    const many = (count: number) =>
+      document((doc) => {
+        for (let index = doc.sheet.live.conditions.length; index < count; index++) {
+          doc.sheet.live.conditions.push({ id: `extra_${index}`, label: `Extra ${index}` });
+        }
+      });
+    assert.notEqual(issue(263, many(160)), gate, "160 fit before");
+    parsed(many(161));
+    assert.equal(issue(263, many(161)), gate, "161 conditions");
+    assert.notEqual(issue(264, many(161)), gate);
+    const immune = document((doc) => {
+      doc.sheet.live.conditions.push({ id: "horrific", label: "Horrific Appearance" });
+      doc.combat.conditions.push({
+        condition: "horrific",
+        effects: [],
+        auras: [
+          {
+            distance: 30,
+            side: "enemies",
+            save: {
+              save: "wis_save",
+              difficulty: 11,
+              immuneWhenEnds: true,
+              applies: [{ condition: "frightened", duration: { rounds: 10 } }],
+            },
+          },
+        ],
+      });
+    });
+    parsed(immune);
+    assert.equal(issue(263, immune), gate, "immuneWhenEnds");
+    assert.notEqual(issue(264, immune), gate);
   }
 
   console.log(

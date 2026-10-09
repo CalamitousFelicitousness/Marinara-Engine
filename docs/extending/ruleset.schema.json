@@ -6404,7 +6404,7 @@
                 ],
                 "additionalProperties": false
               },
-              "maxItems": 160,
+              "maxItems": 320,
               "default": []
             },
             "states": {
@@ -7724,7 +7724,7 @@
                       "maxLength": 40,
                       "pattern": "^[a-z][a-z0-9_]*$"
                     },
-                    "maxItems": 160
+                    "maxItems": 320
                   }
                 ],
                 "default": []
@@ -41679,6 +41679,10 @@
                           "type": "boolean",
                           "const": true
                         },
+                        "immuneWhenEnds": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "failedBy": {
                           "type": "object",
                           "properties": {
@@ -43242,7 +43246,7 @@
               }
             ]
           },
-          "maxItems": 160
+          "maxItems": 320
         },
         "levels": {
           "type": "array",

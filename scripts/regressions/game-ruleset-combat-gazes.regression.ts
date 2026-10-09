@@ -92,6 +92,7 @@ try {
               difficulty: 11,
               seen: true,
               immuneOnSuccess: true,
+              immuneWhenEnds: true,
               applies: [
                 {
                   condition: "frightened",
@@ -304,6 +305,21 @@ try {
     const resave = savesOf(ended.events, "hero")[0]!;
     assert.equal(resave.rolls.length, 2, "rolled twice");
     assert.equal(resave.kept, 2, "the lower kept");
+    // Saved off at last, the fright ended: her aura stays off the hero for the fight (1.264).
+    const shaken = structuredClone(hero.state);
+    faces = { 20: [20, 20] };
+    const freed = endTurn(shaken, "hero");
+    assert.ok(!has(freed.state, "hero", "frightened"));
+    assert.deepEqual(who(freed.state, "hero").auraSafe, ["hag/horrific"]);
+    faces = { 20: [1, 1] };
+    const round = intoHero(endTurn(freed.state, "wolf").state);
+    assert.equal(savesOf(round.events, "hero").length, 0, "immune once the effect ended");
+    // Without immuneWhenEnds, she asks again.
+    const plain = structuredClone(hero.state);
+    delete who(plain, "hero").tracked.find((one) => one.condition === "frightened")!.auraSafeOnEnd;
+    faces = { 20: [20, 20] };
+    const again = intoHero(endTurn(endTurn(plain, "hero").state, "wolf").state);
+    assert.equal(savesOf(again.events, "hero").length, 1, "asked again");
     // Out of her sight, once.
     const hidden = fight({ hag: { x: 3, block: block(["horrific"]) } }, { hero: { x: 0 } }, [2]);
     who(hidden, "hero").tracked.push(
@@ -377,6 +393,7 @@ try {
         delete conditionOf(doc, "horrific").auras[0].targetTypes;
         delete conditionOf(doc, "horrific").auras[0].save.applies[0].saveEnds.seenLean;
         delete conditionOf(doc, "barbed").auras[0].sourcesOf;
+        delete conditionOf(doc, "horrific").auras[0].save.immuneWhenEnds;
         keep(doc);
       });
     assert.notEqual(

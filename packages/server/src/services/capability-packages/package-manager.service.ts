@@ -1549,14 +1549,17 @@ function carriesMetamagic(value: unknown, depth = 0): boolean {
 
 /** An aura that needs senses, harms at its holder's turn or asks for a save, or a save change
  *  narrowed to what is cast from a catalog (1.260). */
-/** An item's use whose save difficulty is read off its holder's sheet, or that spends more charges
- *  for more (1.264), in catalogs too. */
+/** More than 160 conditions, an aura save that keeps its aura off once what it put on ends, and an
+ *  item's use whose save difficulty is read off its holder's sheet or that spends more charges for
+ *  more (1.264), in catalogs too. */
 function carriesStaffUses(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesStaffUses(one, depth + 1));
   const record = plainRecord(value);
   if (!record) return false;
   if (record.sheetDifficulty !== undefined || record.chargeStep !== undefined) return true;
+  if (Array.isArray(record.conditions) && record.conditions.length > 160) return true;
+  if (plainRecord(record.save)?.immuneWhenEnds !== undefined) return true;
   return Object.values(record).some((one) => carriesStaffUses(one, depth + 1));
 }
 
@@ -3665,7 +3668,7 @@ export function getCapabilityPackageInstallIssue(
     (carriesStaffUses(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesStaffUses(document)))
   ) {
-    return "A ruleset with an item use whose save difficulty is read off its holder's sheet, or one that spends more charges for more, requires schemaVersion 2 and capabilityApi 1.264 or newer";
+    return "A ruleset with more than 160 conditions, an aura save whose holder's aura stays off once what it put on ends, an item use whose save difficulty is read off its holder's sheet, or one that spends more charges for more, requires schemaVersion 2 and capabilityApi 1.264 or newer";
   }
   // Auras by target kind or on whoever holds its holder, gaze margins and averting, saves leaning in
   // sight, 1.263.

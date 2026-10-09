@@ -1,7 +1,7 @@
 /**
  * More conditions, and changes narrowed to an ability (Capability API 1.183).
  *
- *   - A sheet's conditions, a rest's cleared ones and the fight's own hold up to 160 (80 before).
+ *   - A sheet's conditions, a rest's cleared ones and the fight's own hold up to 320 (160 before 1.264, 80 before that).
  *   - A change to attacks may name `ability`: a gold dragon's Weakening Breath takes from Strength
  *     attacks and not from a bow, in the roll, its mode and the forecast.
  *   - A change to checks may name `abilities`: Rage's advantage on Strength checks reaches a grapple
@@ -163,7 +163,7 @@ try {
     return event;
   };
 
-  // ── Up to 160 conditions, on the sheet, in a rest and in the fight ──
+  // ── Up to 320 conditions, on the sheet, in a rest and in the fight ──
   {
     const many = (count: number) =>
       document((doc) => {
@@ -174,15 +174,15 @@ try {
         }
         doc.rests[0].clear = { conditions: doc.sheet.live.conditions.map((one: { id: string }) => one.id) };
       });
-    const wide = parse(many(160));
-    assert.equal(wide.sheet.live.conditions.length, 160);
-    assert.equal(wide.combat!.conditions!.length, 159, "5e's 14, the six above, and one for each added");
+    const wide = parse(many(320));
+    assert.equal(wide.sheet.live.conditions.length, 320);
+    assert.equal(wide.combat!.conditions!.length, 319, "5e's 14, the six above, and one for each added");
     const clear = wide.rests[0]!.clear.conditions;
-    assert.ok(Array.isArray(clear) && clear.length === 160);
-    refused(many(161), /live\.conditions/);
+    assert.ok(Array.isArray(clear) && clear.length === 320);
+    refused(many(321), /live\.conditions/);
     refused(
       document((doc) => {
-        for (let index = 0; index < 161 - doc.combat.conditions.length; index++) {
+        for (let index = 0; index < 321 - doc.combat.conditions.length; index++) {
           doc.combat.conditions.push({ condition: "poisoned", effects: [] });
         }
       }),
@@ -192,8 +192,8 @@ try {
     const all = wide.sheet.live.conditions.map((one) => one.id);
     const sources = rulesetCheckSources(wide, build, { conditions: all });
     assert.ok(
-      sources.some((source) => source.name === all[159]),
-      "the 160th condition is still held",
+      sources.some((source) => source.name === all[319]),
+      "the 320th condition is still held",
     );
   }
 
@@ -354,7 +354,7 @@ try {
   }
 
   console.log(
-    "Ruleset ability narrowing: 160 conditions fit, Weakening Breath weakens Strength attacks only, and Rage leans Strength checks, grapples and gates, in and out of a fight.",
+    "Ruleset ability narrowing: 320 conditions fit, Weakening Breath weakens Strength attacks only, and Rage leans Strength checks, grapples and gates, in and out of a fight.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

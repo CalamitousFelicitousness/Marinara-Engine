@@ -1825,6 +1825,10 @@ function removeCondition(
   // told twice.
   if (!removed && !rulesetCombatConditions(ctx.definition, target).includes(condition)) return;
   target.tracked = target.tracked.filter((entry) => entry.condition !== condition);
+  // What an aura put on, ended, keeps that aura off them where it says so (1.264).
+  if (removed?.auraSafeOnEnd && !target.auraSafe?.includes(removed.auraSafeOnEnd)) {
+    target.auraSafe = [...(target.auraSafe ?? []), removed.auraSafeOnEnd];
+  }
   if (target.sheet) writeRulesetSheet(ctx.definition, target, { op: "condition", condition, active: false });
   ctx.events.push({ type: "condition", targetId: target.id, condition, active: false, reason });
   // Away only while it held this (1.231), it comes back, or stays gone.
@@ -5856,6 +5860,11 @@ function endConditionsOf(
       entry.condition === condition && rulesetPutOnBy(ctx.definition, ctx.state, entry, action.ends?.from);
     if (!target.tracked.some(by)) continue;
     if (target.tracked.some((entry) => entry.condition === condition && !by(entry))) {
+      for (const entry of target.tracked.filter(by)) {
+        // Cured, what an aura put on keeps that aura off them where it says so (1.264).
+        if (entry.auraSafeOnEnd && !target.auraSafe?.includes(entry.auraSafeOnEnd))
+          target.auraSafe = [...(target.auraSafe ?? []), entry.auraSafeOnEnd];
+      }
       target.tracked = target.tracked.filter((entry) => !by(entry));
     } else removeCondition(ctx, target, condition, "cured");
     left--;
@@ -7337,6 +7346,9 @@ function aurasAtTurn(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
         sourceId: holder.id,
         difficulty: save.difficulty,
       });
+      // Once it ends, however it ends, that aura stays off them (1.264): a sea hag's.
+      const on = actor.tracked.find((entry) => entry.condition === applied.condition && entry.source === holder.id);
+      if (save.immuneWhenEnds && on) on.auraSafeOnEnd = key;
     }
   }
 }

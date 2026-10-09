@@ -901,6 +901,8 @@ export interface RulesetTrackedCondition {
   source?: string;
   /** Spread by this combatant's aura (1.258): on while they are near, off as they part. */
   aura?: string;
+  /** The aura (`<holder id>/<condition>`) its holder is kept clear of once this ends (1.264). */
+  auraSafeOnEnd?: string;
   /** Kept on through the fight by what its holder has (1.258), never written to a sheet. */
   kept?: true;
   /** What the action that put it on is known by (1.186), which a repeated save is against too. */

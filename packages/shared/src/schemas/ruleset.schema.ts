@@ -228,8 +228,8 @@ const stepTableSchema = z
 const roundingSchema = z.enum(["down", "up", "nearest"]);
 
 /** How many conditions a sheet declares, a rest clears and a fight describes: 80 until Capability API
- *  1.183, which 5e's own list outgrew. */
-export const RULESET_CONDITIONS_MAX = 160;
+ *  1.183, which 5e's own list outgrew, and 160 until 1.264, which its monsters' traits outgrew. */
+export const RULESET_CONDITIONS_MAX = 320;
 
 const hideWhenValue = z.union([z.string().max(80), z.number().finite(), z.boolean()]);
 const HIDE_WHEN_COMPARISONS = ["equals", "notEquals", "in"] as const;
@@ -6057,6 +6057,7 @@ export interface RulesetConditionAura {
     applies: RulesetCatalogApplies[];
     seen?: true;
     immuneOnSuccess?: true;
+    immuneWhenEnds?: true;
     failedBy?: { atLeast: number; applies: RulesetCatalogApplies[] };
     avert?: true;
   };
@@ -6108,6 +6109,10 @@ const conditionAuraSchema: z.ZodType<RulesetConditionAura, z.ZodTypeDef, unknown
         applies: z.array(catalogAppliesSchema).min(1).max(4),
         seen: z.literal(true).optional(),
         immuneOnSuccess: z.literal(true).optional(),
+        /** Once what a failure put on ends, however it ends (a save, its clock, a cure), that holder's
+         *  aura stays off them for the rest of the fight too (Capability API 1.264): a sea hag's
+         *  "or the effect ends for it". */
+        immuneWhenEnds: z.literal(true).optional(),
         /** A failure by at least `atLeast` puts these on instead (Capability API 1.263): a
          *  medusa's gaze, petrified outright on a failure by 5 or more. */
         failedBy: z

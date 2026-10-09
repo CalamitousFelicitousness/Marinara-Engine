@@ -177,6 +177,7 @@ import type {
   RulesetCombatOption,
   RulesetCombatPoolRoll,
   RulesetCombatRefusal,
+  RulesetCombatRescue,
   RulesetCombatRider,
   RulesetCombatSaveRider,
   RulesetCombatRollMode,
@@ -1183,6 +1184,7 @@ function rollSave(
     ...rescueBonuses(
       ctx,
       combatant,
+      "saves",
       rulesetConditionModifiers(
         ctx.definition,
         ctx.combat,
@@ -1288,6 +1290,7 @@ function passesGate(
     ...rescueBonuses(
       ctx,
       actor,
+      "checks",
       rulesetConditionModifiers(
         ctx.definition,
         ctx.combat,
@@ -1304,7 +1307,12 @@ function passesGate(
   );
   const total = kept + gate.modifier + bonusTotal(bonuses);
   // Failed, what its holder spends to succeed all the same (1.244): Stroke of Luck.
-  const success = total >= gate.difficulty || !!rescueEntry(ctx, actor, "checks", "success");
+  const success =
+    total >= gate.difficulty ||
+    !!rescueEntry(ctx, actor, "checks", "success") ||
+    // Its d20 counted as a 20 where that makes it (1.251): Stroke of Luck.
+    (!rulesetCombatIsPool(ctx.combat) &&
+      !!rescueEntry(ctx, actor, "checks", "twenty", () => total - kept + 20 >= gate.difficulty));
   ctx.events.push({
     ...said,
     rolls: second ? [...first, ...second] : first,
@@ -1373,12 +1381,24 @@ function rescueMost(modifier: RulesetConditionModifier["modifier"]): number {
 function rescueBonuses(
   ctx: RulesetCombatContext,
   combatant: RulesetCombatant,
+  roll: "attacks" | "saves" | "checks",
   rescues: RulesetConditionModifier[],
   short: number,
 ): RulesetConditionBonus[] {
   if (short <= 0) return [];
   const rescue = rescues.find(({ modifier }) => rescueMost(modifier) >= short);
-  if (!rescue) return [];
+  if (!rescue) {
+    // None given them, a die of their own from one of their entries (1.251): Peerless Skill, Dark
+    // One's Own Luck. Only one whose most could make up the difference is spent.
+    const own = rescueEntry(ctx, combatant, roll, "die", (action) => {
+      const amount = action.rescue?.amount;
+      return !!amount && amount.count * amount.sides + amount.flat >= short;
+    });
+    const amount = own?.rescue?.amount;
+    if (!own || !amount) return [];
+    const rolls = rollRulesetDice(ctx.roll, amount.count, amount.sides);
+    return [{ condition: own.label, entry: true, value: sumOf(rolls) + amount.flat, rolls, rescue: true }];
+  }
   const bonuses = rollBonuses(ctx, [rescue]).map((bonus) => ({ ...bonus, rescue: true as const }));
   // A level's or an item's stays: only a condition put on the holder is spent.
   if (rescue.level === undefined && !rescue.item && !rescue.derived) {
@@ -1411,12 +1431,17 @@ function rescueEntry(
   ctx: RulesetCombatContext,
   holder: RulesetCombatant,
   roll: "attacks" | "saves" | "checks",
-  by?: "reroll" | "success",
+  by?: RulesetCombatRescue["by"],
+  /** Only one this would be worth spending (1.251). */
+  worth?: (action: RulesetCombatAction) => boolean,
 ): RulesetCombatAction | undefined {
   const found = holder.actions.find(
     (action) =>
       action.rescue?.roll === roll &&
-      (by === undefined || action.rescue.by === by) &&
+      // Asked for no kind, it is one that settles the roll by itself: a die only adds (1.251), and a
+      // d20 counted as 20 only where it would do (1.251).
+      (by === undefined ? action.rescue.by === "reroll" || action.rescue.by === "success" : action.rescue.by === by) &&
+      (!worth || worth(action)) &&
       rulesetActionAvailable(holder, action, ctx.state, ctx.definition) &&
       !!planRulesetCombatCost(ctx.definition, holder, action),
   );
@@ -1478,6 +1503,17 @@ function applyConditionId(
   const putter = extra.sourceId ? rulesetCombatant(ctx.state, extra.sourceId) : undefined;
   if (rulesetImmuneToCondition(target, condition, ctx.definition, ctx.state, putter)) {
     ctx.events.push({ type: "condition", targetId: target.id, condition, active: false, reason: "immune" });
+    return;
+  }
+  // One of its kind at a time (1.251): a second Bardic Inspiration die does not go on.
+  const group = ctx.combat.conditions?.find((one) => one.condition === condition)?.oneAtATime;
+  if (
+    group !== undefined &&
+    target.tracked.some(
+      (entry) => ctx.combat.conditions?.find((one) => one.condition === entry.condition)?.oneAtATime === group,
+    )
+  ) {
+    ctx.events.push({ type: "condition", targetId: target.id, condition, active: false, reason: "already" });
     return;
   }
   if (target.sheet) writeRulesetSheet(ctx.definition, target, { op: "condition", condition, active: true });
@@ -3534,6 +3570,7 @@ function resolveContest(
     const added = rescueBonuses(
       ctx,
       who,
+      "checks",
       rulesetConditionModifiers(
         ctx.definition,
         ctx.combat,
@@ -3559,6 +3596,27 @@ function resolveContest(
   // The side that lost spends what turns a failed check into a success (1.244): Stroke of Luck.
   if (winner === "target" && rescueEntry(ctx, actor, "checks", "success")) winner = "actor";
   else if (winner === "actor" && theirs && rescueEntry(ctx, target, "checks", "success")) winner = "target";
+  // Or counts its d20 as a 20, where that wins it (1.251): Stroke of Luck. A pool has no d20.
+  const asTwenty = (who: RulesetCombatant, side: RulesetContestSide, wins: (total: number) => boolean) => {
+    if (side.pool || side.rolls.length === 0 || rulesetCombatIsPool(ctx.combat)) return false;
+    const kept = side.total - side.modifier - bonusTotal(side.bonuses ?? []);
+    const total = side.total - kept + 20;
+    if (!rescueEntry(ctx, who, "checks", "twenty", () => wins(total))) return false;
+    side.total = total;
+    return true;
+  };
+  if (
+    winner === "target" &&
+    asTwenty(actor, attacker, (total) => total > defender.total || (total === defender.total && actorTies))
+  ) {
+    winner = "actor";
+  } else if (
+    winner === "actor" &&
+    theirs &&
+    asTwenty(target, defender, (total) => total > attacker.total || (total === attacker.total && !actorTies))
+  ) {
+    winner = "target";
+  }
   ctx.events.push({
     type: "contest",
     actorId: actor.id,
@@ -4092,6 +4150,7 @@ function reachesHeld(
     ...rescueBonuses(
       ctx,
       answering,
+      "checks",
       rulesetConditionModifiers(
         ctx.definition,
         ctx.combat,
@@ -4107,7 +4166,11 @@ function reachesHeld(
     ),
   );
   const total = kept + above.modifier + bonusTotal(bonuses);
-  const success = total >= difficulty || !!rescueEntry(ctx, answering, "checks", "success");
+  const success =
+    total >= difficulty ||
+    !!rescueEntry(ctx, answering, "checks", "success") ||
+    (!rulesetCombatIsPool(ctx.combat) &&
+      !!rescueEntry(ctx, answering, "checks", "twenty", () => total - kept + 20 >= difficulty));
   ctx.events.push({
     ...said,
     ...(mode === "normal" ? {} : { mode }),
@@ -5753,6 +5816,7 @@ function resolveActionBody(
             ...rescueBonuses(
               ctx,
               actor,
+              "attacks",
               rulesetConditionModifiers(
                 ctx.definition,
                 ctx.combat,

@@ -158,6 +158,8 @@ export interface RulesetConditionBonus {
   rolls?: number[];
   /** Added after the roll fell short (1.244). */
   rescue?: true;
+  /** Added by one of its holder's own entries (1.251), whose `condition` is then that entry's name. */
+  entry?: true;
 }
 
 export interface RulesetCombatSaveRider {
@@ -546,7 +548,9 @@ export interface RulesetCombatAction {
   /** Offered only on its holder's own turn before they have attacked in it (1.242): Reckless Attack. */
   beforeAttack?: true;
   /** Spent when its holder's own roll of this kind has failed (1.244): Indomitable, Stroke of Luck. */
-  rescue?: { roll: "attacks" | "saves" | "checks"; by: "reroll" | "success" };
+  rescue?: RulesetCombatRescue;
+  /** Never pointed at its own user (1.251): Bardic Inspiration's "one creature other than you". */
+  notSelf?: true;
   /** Its damage never takes a target below this much health (1.230). */
   leavesAtLeast?: number;
   /** It brings back a target that died no more than `withinRounds` rounds ago, at `amount` (1.171). */
@@ -1515,7 +1519,9 @@ export type RulesetCombatEvent =
         /** Gone because its source put it on somebody else (1.184). */
         | "moved"
         /** Gone because the condition it was put on with ended (1.197). */
-        | "linked";
+        | "linked"
+        /** Not put on: its holder has one of its kind already (1.251). */
+        | "already";
       stacks?: number;
     }
   /** A number that attacks move: what came off it or went on it, why, and what it is now. A style
@@ -1719,7 +1725,7 @@ export type RulesetCombatEvent =
       total: number;
     }
   /** A failed roll rolled again or turned into a success by what its maker spent (1.244). */
-  | { type: "rescued"; actorId: string; optionId: string; label: string; by: "reroll" | "success" }
+  | { type: "rescued"; actorId: string; optionId: string; label: string; by: RulesetCombatRescue["by"] }
   /** Sent out of the fight (1.231): for good, or for as long as `while` holds. */
   | { type: "dismissed"; actorId: string; targetId: string; label: string; while?: string }
   /** Back from where it was sent (1.231), or, with `gone`, kept there for good. */
@@ -1839,6 +1845,15 @@ export interface RulesetCombatAlter {
   drops?: string[];
   twins?: true;
   joins?: true;
+}
+
+/** What an entry spends itself on once its holder's own roll has failed (1.244): rolled again, a
+ *  success, its d20 counted as a 20 (1.251), or a die of its own added (1.251). */
+export interface RulesetCombatRescue {
+  roll: "attacks" | "saves" | "checks";
+  by: "reroll" | "success" | "twenty" | "die";
+  /** The die it adds, for `die`, as its holder's sheet sized it. */
+  amount?: RulesetCombatAmount;
 }
 
 /** An alteration an option may be used with (1.248), and what it costs at the option's own level. */

@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: Stroke of Luck can turn a failed ability check's roll into a 20, Peerless Skill and Dark One's Own Luck add the character's own die where it can still save the roll, and Bardic Inspiration can no longer be given to the bard or stacked on a creature that already has a die (Capability API 1.251).
 - Rulesets: Heightened Spell lets the caster pick which target rolls at a disadvantage, and Acid Arrow splashes for half damage on a miss, with its later acid growing with the slot level (Capability API 1.250).
 - Rulesets: Empowered Spell rerolls the lowest of all the spell's damage dice, extra damage and critical dice included, and Careful Spell lets the caster pick which allies are spared; Metamagic picks are also kept when an area spell is aimed on the board (Capability API 1.249).
 - Rulesets: an ability that spends another feature's uses (such as Flurry of Blows spending ki) now pays its own price and that one counter only, not the other feature's cost or its other counters.

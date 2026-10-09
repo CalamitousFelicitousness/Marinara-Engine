@@ -998,6 +998,18 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     say({ type: "rescued", actorId: "brenna", optionId: "ability:0:2", label: "Stroke of Luck", by: "success" }),
     "Brenna uses Stroke of Luck and succeeds instead.",
   );
+  assert.equal(
+    say({ type: "rescued", actorId: "brenna", optionId: "ability:0:2", label: "Stroke of Luck", by: "twenty" }),
+    "Brenna uses Stroke of Luck: the d20 counts as a 20.",
+  );
+  assert.equal(
+    say({ type: "rescued", actorId: "brenna", optionId: "ability:0:3", label: "Peerless Skill", by: "die" }),
+    "Brenna uses Peerless Skill and adds a die.",
+  );
+  assert.equal(
+    say({ type: "condition", targetId: "lurker", condition: "incapacitated", active: false, reason: "already" }),
+    "Thorn Lurker already has one like Incapacitated, so it does not go on.",
+  );
   assert.equal(printed.get("charged"), "Thorn Lurker charges Brenna with Gore.");
   assert.equal(printed.get("pushed"), "Brenna pushes Thorn Lurker back 1, to 4, 2.");
   assert.equal(printed.get("resized"), "Thorn Lurker is now Large.");

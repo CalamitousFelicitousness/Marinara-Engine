@@ -1342,6 +1342,8 @@ export function rulesetOptionTargets(
         // Read the NAME rather than the id: the same standard action is also offered bought with
         // another budget, as `standard:help@bonus`, and nobody helps themselves whichever they took.
         if (rulesetStandardName(option.id) === "help" && combatant.id === actor.id) return false;
+        // "One creature other than you" (1.251).
+        if (cure?.notSelf && combatant.id === actor.id) return false;
         if (option.targets.side === "self") return combatant.id === actor.id;
         if (option.targets.side === "ally") return combatant.side === actor.side;
         if (option.targets.side === "enemy") return combatant.side !== actor.side;

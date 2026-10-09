@@ -2016,7 +2016,24 @@ function mechanicsAction(
   // Only before the holder's first attack of their turn (1.242): Reckless Attack.
   if (mechanics.beforeAttack) action.beforeAttack = true;
   // Spent when its holder's own roll has failed, never chosen from a menu (1.244): Indomitable.
-  if (mechanics.rescue) action.rescue = { ...mechanics.rescue };
+  if (mechanics.rescue) {
+    const rescue = mechanics.rescue;
+    // A die of its own (1.251), sized off its holder's sheet as Martial Arts' is: Peerless Skill.
+    const dice = rescue.dice
+      ? parseRulesetCombatDice(rescue.dice)
+      : rescue.die
+        ? { count: 1, sides: Math.trunc(lookupStepTable(rescue.die.table, resolve(rescue.die.from))), flat: 0 }
+        : null;
+    action.rescue = {
+      roll: rescue.roll,
+      by: rescue.by,
+      ...(rescue.by === "die" && dice && dice.sides >= 1
+        ? { amount: { count: dice.count, sides: dice.sides, flat: dice.flat } }
+        : {}),
+    };
+  }
+  // Never on its own user (1.251).
+  if (mechanics.notSelf) action.notSelf = true;
   // Leaving `toHit` unset here would send it down the no-roll path and land it automatically.
   if (mechanics.attackRoll) action.toHit = from.toHit;
   if (mechanics.autoHit) action.autoHit = true;

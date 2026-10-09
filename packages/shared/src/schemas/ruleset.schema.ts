@@ -2205,6 +2205,42 @@ const saveExtrasShape = {
     .optional(),
 };
 
+/** What an entry spends itself on once its holder's own roll has failed (Capability API 1.244,
+ *  1.251). Typed by hand: written out, its inferred type is too long for the definition schema around
+ *  it to emit. */
+export interface RulesetCatalogRescue {
+  roll: "attacks" | "saves" | "checks";
+  by: "reroll" | "success" | "twenty" | "die";
+  dice?: string;
+  die?: { from: RulesetValueRef; table: Array<[number, number]> };
+}
+const catalogRescueSchema: z.ZodType<RulesetCatalogRescue, z.ZodTypeDef, unknown> = z
+  .object({
+    roll: z.enum(["attacks", "saves", "checks"]),
+    by: z.enum(["reroll", "success", "twenty", "die"]),
+    dice: catalogDice.optional(),
+    die: z
+      .object({
+        from: rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>,
+        table: stepTableSchema,
+      })
+      .strict()
+      .optional(),
+  })
+  .strict()
+  .refine((rescue) => rescue.by !== "reroll" || rescue.roll === "saves", {
+    message: 'Only a failed save is rolled again: "reroll" goes with "saves"',
+  })
+  .refine((rescue) => rescue.by !== "twenty" || rescue.roll === "checks", {
+    message: 'Only a check counts its d20 as a 20: "twenty" goes with "checks"',
+  })
+  .refine((rescue) => (rescue.by === "die") === (rescue.dice !== undefined || rescue.die !== undefined), {
+    message: '"die" adds "dice" or one "die" sized by a value, and only "die" does',
+  })
+  .refine((rescue) => rescue.dice === undefined || rescue.die === undefined, {
+    message: '"die" adds "dice" or one "die" sized by a value: one of them',
+  });
+
 /** One condition a catalog entry puts on what it touches. Typed by hand: written out, its inferred type is too long for the
  *  definition schema around it to emit. */
 export interface RulesetCatalogApplies {
@@ -2940,13 +2976,14 @@ const catalogMechanicsObject = z
      *  failed (Capability API 1.244). A failed save is rolled again (`reroll`), or a failed save,
      *  check or missed attack turned into a success (`success`): 5e's Indomitable and Diamond Soul,
      *  and Stroke of Luck. */
-    rescue: z
-      .object({ roll: z.enum(["attacks", "saves", "checks"]), by: z.enum(["reroll", "success"]) })
-      .strict()
-      .refine((rescue) => rescue.by !== "reroll" || rescue.roll === "saves", {
-        message: 'Only a failed save is rolled again: "reroll" goes with "saves"',
-      })
-      .optional(),
+    /** `twenty` counts a failed check's d20 as a 20 where that makes it (Capability API 1.251):
+     *  Stroke of Luck. `die` adds a die of the holder's own where it could make up the difference:
+     *  `dice`, or one `die` sized by a value as Martial Arts' is (1.251): Peerless Skill spending a
+     *  bardic inspiration die, Dark One's Own Luck's d10. */
+    rescue: catalogRescueSchema.optional(),
+    /** Never pointed at its own user (Capability API 1.251): Bardic Inspiration's "one creature
+     *  other than you". Only on an entry that may be pointed at its user's side. */
+    notSelf: z.literal(true).optional(),
     /** How many of those uses one use spends (Capability API 1.240): Quivering Palm's 3 ki. */
     usesSpent: z.number().int().min(2).max(20).optional(),
     /** Its user chooses how many of those uses one use spends, one up to what is left, and it heals
@@ -3152,6 +3189,13 @@ const catalogMechanicsSchema: z.ZodType<
         message: '"alters" is on a "utility" entry that is no reaction: it is chosen with what it changes',
       });
     }
+  }
+  if (mechanics.notSelf && mechanics.targets !== "ally" && mechanics.targets !== "any") {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["notSelf"],
+      message: '"notSelf" is on an entry pointed at an "ally" or "any" creature',
+    });
   }
   if (mechanics.halfOnMiss && (!mechanics.attackRoll || !mechanics.amount || mechanics.kind === "heal")) {
     ctx.addIssue({
@@ -5824,6 +5868,10 @@ const combatConditionSchema = z
     /** One holder at a time from any one source (Capability API 1.184): put on somebody else, it
      *  leaves whoever had it from the same source. An oathbow's sworn enemy. */
     onePerSource: z.literal(true).optional(),
+    /** One of the conditions sharing this name at a time (Capability API 1.251): put on while its
+     *  holder has another of them, it does not go on. 5e's Bardic Inspiration dice, one at a time
+     *  whatever their size. */
+    oneAtATime: sheetId.optional(),
     /** Its holder is this many of `combat.sizes` bigger, or smaller, while it holds (Capability API
      *  1.190), never past the first or the last: 5e's Enlarge/Reduce. On a board it fills what its
      *  new size fills where there is room, and grows only as big as there is room for. */

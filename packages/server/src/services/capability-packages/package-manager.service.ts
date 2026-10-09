@@ -1547,6 +1547,21 @@ function carriesMetamagic(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesMetamagic(one, depth + 1));
 }
 
+/** A d20 counted as a 20 or a die of the holder's own on a failed roll, an entry never on its own
+ *  user, or conditions one of a kind at a time (1.251), in catalogs too. */
+function carriesOwnRescues(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesOwnRescues(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.oneAtATime !== undefined) return true;
+  const mechanics = plainRecord(record.mechanics);
+  if (mechanics && mechanics.notSelf !== undefined) return true;
+  const rescue = mechanics && plainRecord(mechanics.rescue);
+  if (rescue && (rescue.by === "twenty" || rescue.by === "die")) return true;
+  return Object.values(record).some((one) => carriesOwnRescues(one, depth + 1));
+}
+
 /** A miss dealing half (1.250), or a condition put on harming more at a higher cost, in catalogs too. */
 function carriesAcidArrow(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -3459,6 +3474,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Rescues of a holder's own, entries never on their user, conditions one at a time, 1.251.
+  if (
+    !declaresApi(251) &&
+    (carriesOwnRescues(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesOwnRescues(document)))
+  ) {
+    return "A ruleset with rescues counting a d20 as 20 or adding a holder's own die, entries never on their user, or conditions one of a kind at a time, requires schemaVersion 2 and capabilityApi 1.251 or newer";
   }
   // A miss dealing half, or a condition harming more at a higher cost, 1.250.
   if (

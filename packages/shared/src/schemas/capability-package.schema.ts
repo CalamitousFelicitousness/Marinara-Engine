@@ -1027,7 +1027,10 @@ const capabilityPackageManifestBaseSchema = z
 // 1.250: catalog mechanics' `halfOnMiss` (a miss deals half: Acid Arrow), an applied condition's
 //        `harmsPerCostStep` (its harm grows with the cost it was put on at), and the alter offer's
 //        `heightens` with the choice's `heightens` (who Heightened Spell picks).
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 250 } as const);
+// 1.251: catalog mechanics' `rescue` by `twenty` (Stroke of Luck on a check) and by `die` with
+//        `dice` or `die` (a holder's own die: Peerless Skill, Dark One's Own Luck), `notSelf`, and a
+//        combat condition's `oneAtATime`; the condition event's `already`.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 251 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

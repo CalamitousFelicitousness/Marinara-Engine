@@ -2546,6 +2546,9 @@ const catalogMechanicsObject = z
     /** Held on a sheet's list, its holder takes a second turn in a fight's first round (Capability
      *  API 1.233), at their own initiative plus `initiative` (a negative number is later):
      *  5e's Thief's Reflexes at -10. `unlessSurprised`: not when they begin the fight surprised. */
+    /** Held on a sheet's list, its holder's initiative dice are thrown twice (Capability API 1.235),
+     *  the better (`advantage`) or the worse kept: 5e's Feral Instinct. */
+    initiativeMode: z.enum(["advantage", "disadvantage"]).optional(),
     extraFirstTurn: z
       .object({ initiative: z.number().int().min(-100).max(100), unlessSurprised: z.literal(true).optional() })
       .strict()
@@ -5753,6 +5756,10 @@ const combatSchema = z
         /** `round` throws everybody's initiative again as each new round begins, and the order
          *  follows it. Once for the whole fight when left out. */
         each: z.enum(["fight", "round"]).optional(),
+        /** Initiative is a check made with this ability (Capability API 1.235): what rolls such a
+         *  check twice rolls `dice` twice, the better or the worse kept. 5e's Dexterity: Foresight's
+         *  advantage on checks, Enhance Ability's Cat's Grace. Thrown dice only. */
+        checkAbility: sheetId.optional(),
         /** The number is kept and moved by attacks rather than thrown again, and the order follows it
          *  as each round begins. `dice-pool` fights only. */
         resource: combatInitiativeResourceSchema.optional(),
@@ -7671,6 +7678,15 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         issue(at("initiative", "modifier"), "A modifier is added to initiative dice, and there are none");
     }
     if (initiative.pool) checkRef(initiative.pool, at("initiative", "pool"), derivedIds);
+    // A check made with one of the sheet's abilities (1.235), and a check thrown twice is dice.
+    if (initiative.checkAbility !== undefined) {
+      if (!def.sheet.abilities.some((ability) => ability.id === initiative.checkAbility)) {
+        issue(at("initiative", "checkAbility"), `Unknown ability "${initiative.checkAbility}"`);
+      }
+      if (!initiative.dice) {
+        issue(at("initiative", "checkAbility"), "Initiative thrown twice is thrown dice, and there are none");
+      }
+    }
     if (initiative.plus !== undefined && !initiative.pool) {
       issue(at("initiative", "plus"), "plus is added to a pool's successes, and initiative is not a pool");
     }

@@ -1532,6 +1532,16 @@ function carriesFrenzy(ruleset: unknown): boolean {
   });
 }
 
+/** A use that throws its holder's initiative twice (1.235), in catalogs too. */
+function carriesInitiativeMode(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesInitiativeMode(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.initiativeMode !== undefined) return true;
+  return Object.values(record).some((one) => carriesInitiativeMode(one, depth + 1));
+}
+
 /** A use that spends another row's uses (1.234), in catalogs too. */
 function carriesUsesOf(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -3282,6 +3292,15 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Initiative thrown twice, 1.235.
+  if (
+    !declaresApi(235) &&
+    (plainRecord(plainRecord(plainRecord(ruleset)?.combat)?.initiative)?.checkAbility !== undefined ||
+      carriesInitiativeMode(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesInitiativeMode(document)))
+  ) {
+    return "A ruleset whose initiative is a check made with an ability, or with uses that throw initiative twice, requires schemaVersion 2 and capabilityApi 1.235 or newer";
   }
   // A grant held to melee strikes, tracks moved as a condition ends, 1.234.
   if (

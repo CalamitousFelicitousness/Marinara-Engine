@@ -811,6 +811,11 @@ export interface RulesetCombatant {
   initiative: number;
   initiativeRoll: number[];
   initiativeModifier: number;
+  /** The throw an initiative thrown twice did not keep (1.235), and which way it was thrown. */
+  initiativeDropped?: number[];
+  initiativeMode?: "advantage" | "disadvantage";
+  /** What their own sheet says of how initiative is thrown (1.235): Feral Instinct. */
+  initiativeLean?: "advantage" | "disadvantage";
   /** What is left of each budget, keyed by budget id. */
   budgets: Record<string, number>;
   actions: RulesetCombatAction[];
@@ -1248,7 +1253,18 @@ export type RulesetCombatRollMode = "normal" | "advantage" | "disadvantage";
 /** Everything a step did, with the numbers it did it with, so a log can print "17 + 5 = 22 against
  *  15: hit" without doing any arithmetic of its own. */
 export type RulesetCombatEvent =
-  | { type: "initiative"; entries: Array<{ actorId: string; roll: number[]; modifier: number; total: number }> }
+  | {
+      type: "initiative";
+      entries: Array<{
+        actorId: string;
+        roll: number[];
+        modifier: number;
+        total: number;
+        /** Thrown twice (1.235): which was kept, and the throw that was not. */
+        mode?: "advantage" | "disadvantage";
+        dropped?: number[];
+      }>;
+    }
   | { type: "round"; round: number }
   | { type: "turn"; actorId: string; round: number }
   | {

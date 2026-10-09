@@ -3071,6 +3071,14 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
     if (economy.budgets.size) refreshRulesetBudgets(combat, combatant.budgets, "turn", economy.budgets);
   }
 
+  // Initiative thrown twice (1.235), by what the sheet holds or the conditions say of the check it
+  // is: Feral Instinct, Foresight. Thrown once more here, after everything they hold is known.
+  for (const combatant of state.combatants) {
+    const lean = heldEntries(combatant).find((entry) => entry.mechanics?.initiativeMode)?.mechanics?.initiativeMode;
+    if (lean) combatant.initiativeLean = lean;
+    rulesetThrowInitiativeAgain(definition, combat, combatant, roll, state);
+  }
+
   const leveled = openLevels(definition, combat, state);
   state.order = rulesetInitiativeOrder(state.combatants);
   // A second turn this first round (1.233), placed at its own number among everybody's: 5e's
@@ -3114,6 +3122,7 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
                 roll: combatant.initiativeRoll,
                 modifier: combatant.initiativeModifier,
                 total: combatant.initiative,
+                ...rulesetInitiativeTwice(combatant),
               },
             ]
           : [];
@@ -3281,6 +3290,57 @@ export function rulesetInitiativeModifierNow(
 }
 
 /** The initiative dice of a ruleset that adds them up, thrown; none for one that throws a pool. */
+/** How a combatant's initiative is thrown now (1.235): their sheet's lean, and what their conditions
+ *  say of the check it is, cancelling each other out as everywhere else. */
+export function rulesetInitiativeMode(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  combatant: RulesetCombatant,
+  state?: RulesetEncounterState,
+): "normal" | "advantage" | "disadvantage" {
+  if (!combat.initiative.dice || combat.initiative.pool || !rulesetCombatAdvantage(combat)) return "normal";
+  const checks = combat.initiative.checkAbility
+    ? rulesetCheckMode(definition, combat, combatant, state, undefined, combat.initiative.checkAbility)
+    : "normal";
+  const advantage = checks === "advantage" || combatant.initiativeLean === "advantage";
+  const disadvantage = checks === "disadvantage" || combatant.initiativeLean === "disadvantage";
+  if (advantage === disadvantage) return "normal";
+  return advantage ? "advantage" : "disadvantage";
+}
+
+/** The initiative dice thrown once more and the better or the worse kept (1.235), when the
+ *  combatant's initiative is thrown twice; their number follows. Nothing is thrown otherwise. */
+export function rulesetThrowInitiativeAgain(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  combatant: RulesetCombatant,
+  roll: RulesetCombatRoller,
+  state?: RulesetEncounterState,
+): void {
+  delete combatant.initiativeDropped;
+  delete combatant.initiativeMode;
+  const mode = rulesetInitiativeMode(definition, combat, combatant, state);
+  if (mode === "normal") return;
+  const again = throwInitiativeDice(combat, roll);
+  const better = sumOf(again) > sumOf(combatant.initiativeRoll);
+  const keepAgain = mode === "advantage" ? better : sumOf(again) < sumOf(combatant.initiativeRoll);
+  const [kept, dropped] = keepAgain ? [again, combatant.initiativeRoll] : [combatant.initiativeRoll, again];
+  combatant.initiativeRoll = kept;
+  combatant.initiativeDropped = dropped;
+  combatant.initiativeMode = mode;
+  combatant.initiative = sumOf(kept) + combatant.initiativeModifier;
+}
+
+/** What an initiative entry says of a throw made twice (1.235). */
+export function rulesetInitiativeTwice(combatant: RulesetCombatant): {
+  mode?: "advantage" | "disadvantage";
+  dropped?: number[];
+} {
+  return combatant.initiativeMode && combatant.initiativeDropped
+    ? { mode: combatant.initiativeMode, dropped: combatant.initiativeDropped }
+    : {};
+}
+
 export function throwInitiativeDice(combat: RulesetCombat, roll: RulesetCombatRoller): number[] {
   const dice = combat.initiative.dice;
   return dice ? rollRulesetDice(roll, dice.count, dice.sides) : [];

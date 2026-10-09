@@ -58,6 +58,8 @@ import {
   rulesetInitiativeOrder,
   rulesetPoolInitiative,
   throwInitiativeDice,
+  rulesetInitiativeTwice,
+  rulesetThrowInitiativeAgain,
   rulesetConditionModifiers,
   grantRulesetMovement,
   spendRulesetMovement,
@@ -6005,6 +6007,7 @@ function pushInitiativeOrder(ctx: RulesetCombatContext): void {
               roll: combatant.initiativeRoll,
               modifier: combatant.initiativeModifier,
               total: combatant.initiative,
+              ...rulesetInitiativeTwice(combatant),
             },
           ]
         : [];
@@ -6028,6 +6031,8 @@ function rethrowInitiative(definition: RulesetDefinition, combat: RulesetCombat,
     combatant.initiativeRoll = thrown.roll;
     combatant.initiativeModifier = thrown.modifier;
     combatant.initiative = thrown.total;
+    // Thrown twice where the sheet or the conditions held now say so (1.235).
+    rulesetThrowInitiativeAgain(definition, combat, combatant, ctx.roll, ctx.state);
   }
   ctx.state.order = rulesetInitiativeOrder(ctx.state.combatants);
   pushInitiativeOrder(ctx);

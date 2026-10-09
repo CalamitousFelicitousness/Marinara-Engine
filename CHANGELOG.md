@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: Feral Instinct, Foresight and Cat's Grace give advantage on initiative, rolled twice with the better kept (Capability API 1.235).
 - Rulesets: a berserker's Frenzy gives a melee weapon attack as a bonus action while the rage lasts, and leaves a level of exhaustion when it ends; going into a frenzy spends one of the barbarian's rages (Capability API 1.234).
 - Rulesets: Thief's Reflexes gives a rogue a second turn in a fight's first round, at their initiative minus 10, unless they were surprised (Capability API 1.233).
 - Rulesets: a fight can begin with some caught unaware, who neither move, act nor react on their first turn; Foresight keeps its holder from being surprised, and Feral Instinct lets a surprised barbarian act by raging first (Capability API 1.232).

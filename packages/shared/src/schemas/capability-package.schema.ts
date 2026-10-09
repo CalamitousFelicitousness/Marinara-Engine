@@ -982,7 +982,10 @@ const capabilityPackageManifestBaseSchema = z
 // 1.234: a combat condition's `grants.melee` (its granted strike only with a weapon in reach) and
 //        `onEnd.tracks` (tracks moved as it ends): 5e's Frenzy, and its exhaustion; catalog mechanics'
 //        `usesOf` (spends another row's uses by name: Frenzied Rage spends a Rage).
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 234 } as const);
+// 1.235: initiative thrown twice: `combat.initiative.checkAbility` (initiative is a check with that
+//        ability, so what rolls such checks twice rolls it twice: Foresight, Cat's Grace) and catalog
+//        mechanics' `initiativeMode` (Feral Instinct).
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 235 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

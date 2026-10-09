@@ -113,6 +113,7 @@ export {
   rulesetCombatant,
   rulesetCombatConditions,
   rulesetCombatEffects,
+  rulesetInitiativeMode,
   rulesetCombatDamageKind,
   rulesetCombatFailsSave,
   rulesetCombatHealth,

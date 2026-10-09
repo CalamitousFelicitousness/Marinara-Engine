@@ -2260,7 +2260,7 @@ const catalogRescueSchema: z.ZodType<RulesetCatalogRescue, z.ZodTypeDef, unknown
 /** A save that ends a condition, and what counting them decides (1.253). */
 export interface RulesetCatalogSaveEnds {
   save: string;
-  at: "turn-end" | "turn-start" | "damaged";
+  at: "turn-end" | "turn-start" | "damaged" | "action";
   successes?: number;
   failures?: { count: number; becomes: string };
 }
@@ -2288,7 +2288,9 @@ const catalogAppliesSchema: z.ZodType<RulesetCatalogApplies, z.ZodTypeDef, unkno
     saveEnds: z
       .object({
         save: sheetId,
-        at: z.enum(["turn-end", "turn-start", "damaged"]),
+        /** `action` (Capability API 1.259): rolled when its holder spends their action on it, as 5e's
+         *  Irresistible Dance allows. */
+        at: z.enum(["turn-end", "turn-start", "damaged", "action"]),
         /** It takes this many successes, counted over the turns, to end it (Capability API 1.253):
          *  5e's Contagion, three. */
         successes: z.number().int().min(2).max(10).optional(),
@@ -5819,6 +5821,78 @@ const conditionOnEndSchema: z.ZodType<RulesetConditionOnEnd, z.ZodTypeDef, unkno
     message: '"onEnd" names "applies", "tracks" or "harm"',
   });
 
+/** What a condition makes its holder do with their turn (Capability API 1.259): 5e's Turn Undead,
+ *  Command, Confusion. */
+export interface RulesetConditionBehavior {
+  only?: string[];
+  onlyWhenStuck?: string[];
+  moves?: "away" | "toward";
+  table?: { dice: string; rows: Array<{ atMost: number; does: "wander" | "nothing" | "strike" | "normal" }> };
+}
+/** What a turn may hold besides walking: breaking free, and the standard actions. */
+export const RULESET_BEHAVIOR_ONLY = ["move", "escape", ...RULESET_COMBAT_STANDARD_ACTIONS] as const;
+const conditionBehaviorSchema: z.ZodType<RulesetConditionBehavior, z.ZodTypeDef, unknown> = z
+  .object({
+    /** All its holder's turn may hold, besides ending it: walking (`move`, getting up included),
+     *  breaking free of what holds them (`escape`), and the standard actions named. Empty, nothing:
+     *  Command's "halt". */
+    only: z
+      .array(z.enum(RULESET_BEHAVIOR_ONLY))
+      .max(8)
+      .refine((only) => new Set(only).size === only.length, { message: "Name each once" })
+      .optional(),
+    /** Standard actions it may take only while there is nowhere it may walk to: Turn Undead's Dodge. */
+    onlyWhenStuck: z
+      .array(z.enum(RULESET_COMBAT_STANDARD_ACTIONS))
+      .min(1)
+      .max(6)
+      .refine((only) => new Set(only).size === only.length, { message: "Name each once" })
+      .optional(),
+    /** It walks only away from whoever put it on, never a step nearer, and stops only further off
+     *  than it began; or only toward them, never a step further, stopping nearer (Command's
+     *  "approach" and "flee", Turn Undead, Antipathy and Sympathy). */
+    moves: z.enum(["away", "toward"]).optional(),
+    /** Rolled as each of its holder's turns starts, the first row the roll is at most deciding the
+     *  turn: `wander` walks every bit of their speed one way the dice pick and ends the turn,
+     *  `nothing` ends it, `strike` allows only a melee attack at a creature in reach the dice pick
+     *  (nothing, with nobody in reach), `normal` leaves it alone, as does a roll above every row.
+     *  5e's Confusion and Mindfire. */
+    table: z
+      .object({
+        dice: catalogDice,
+        rows: z
+          .array(
+            z
+              .object({
+                atMost: z.number().int().min(1).max(100),
+                does: z.enum(["wander", "nothing", "strike", "normal"]),
+              })
+              .strict(),
+          )
+          .min(1)
+          .max(10)
+          .superRefine((rows, ctx) => {
+            for (let index = 1; index < rows.length; index++) {
+              if (rows[index]!.atMost <= rows[index - 1]!.atMost) {
+                ctx.addIssue({
+                  code: z.ZodIssueCode.custom,
+                  path: [index, "atMost"],
+                  message: "Rows run strictly up",
+                });
+              }
+            }
+          }),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict()
+  .refine((behavior) => Object.keys(behavior).length > 0, "A behavior says at least one thing")
+  .refine((behavior) => !behavior.onlyWhenStuck || behavior.only?.includes("move"), {
+    message: '"onlyWhenStuck" goes with "only" naming "move"',
+    path: ["onlyWhenStuck"],
+  });
+
 /** Conditions a condition's holder spreads around them (1.258): 5e's Aura of Protection. */
 export interface RulesetConditionAura {
   distance: number;
@@ -6092,6 +6166,9 @@ const combatConditionSchema = z
      *  `harms` them as their turn starts, from the holder), Countercharm. What it puts on is
      *  nobody's to cure or save against: it comes off only as they leave, or the aura goes. */
     auras: z.array(conditionAuraSchema).min(1).max(4).optional(),
+    /** What it makes its holder do with their turn (Capability API 1.259): what the turn may hold,
+     *  which way they walk from whoever put it on, or a table rolled as the turn starts. */
+    behavior: conditionBehaviorSchema.optional(),
     /** Run out on its clock, it turns into this condition, with no clock of its own (Capability API
      *  1.256): an aboleth's Tentacle disease after its minute. Ended any other way, it does not. A
      *  fight that ends first lets the clock run out. */
@@ -8922,6 +8999,13 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
           }
         }
       });
+      for (const key of ["only", "onlyWhenStuck"] as const) {
+        entry.behavior?.[key]?.forEach((named, namedIndex) => {
+          if (named === "move" || named === "escape") return;
+          if (!combat.standard?.includes(named as never))
+            issue([...path, "behavior", key, namedIndex], `This ruleset has no standard action "${named}"`);
+        });
+      }
       if (entry.expires) {
         if (!conditions.has(entry.expires.becomes))
           issue([...path, "expires", "becomes"], `Unknown condition "${entry.expires.becomes}"`);

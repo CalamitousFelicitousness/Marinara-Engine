@@ -1045,7 +1045,10 @@ const capabilityPackageManifestBaseSchema = z
 // 1.257: `qualities` on a stat block's action (a magical Healing Touch).
 // 1.258: a combat condition's `auras` (Aura of Protection, Holy Nimbus), and `keepsOn` on a catalog
 //        entry's mechanics and on a stat block: conditions held for the whole fight.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 258 } as const);
+// 1.259: a combat condition's `behavior` (`only`, `onlyWhenStuck`, `moves`, `table`): Turn Undead,
+//        Command, Confusion; `saveEnds.at: "action"` (Irresistible Dance); the `compelled` event
+//        and refusal.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 259 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

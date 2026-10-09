@@ -100,6 +100,7 @@ import {
   rulesetFootprintAt,
   rulesetGap,
   rulesetNearestCell,
+  rulesetReachableCells,
   rulesetSpanOf,
 } from "./grid.js";
 import {
@@ -128,6 +129,7 @@ import {
   rulesetAreaTargets,
   rulesetAttackMode,
   rulesetCombatOptions,
+  rulesetUncompelledOptions,
   rulesetContestCheck,
   rulesetEscapeDc,
   rulesetCostSteps,
@@ -3080,6 +3082,10 @@ function applyChoice(
     if (rulesetCombatEffects(definition, combat, actor, state).has("cannot-act")) {
       return refusal(state, choice.actorId, "cannot-act", choice.optionId);
     }
+    // Something a condition decides this turn may not hold (1.259).
+    if (rulesetUncompelledOptions(definition, state, actor.id).some((entry) => entry.id === choice.optionId)) {
+      return refusal(state, choice.actorId, "compelled", choice.optionId);
+    }
     return refusal(state, choice.actorId, whyNotOffered(definition, combat, actor, choice.optionId), choice.optionId);
   }
   // Offered only with an alteration that makes it usable now (1.248).
@@ -3233,6 +3239,20 @@ function applyChoice(
   // The budget goes first: what a turn may hold is not a matter of how the dice fall.
   const budget = option.budget;
   if (budget) spendBudget(ctx, working, budget);
+
+  // A save spent an action on (1.259): Irresistible Dance.
+  if (option.resave) {
+    const entry = working.tracked.find((one) => one.condition === option.resave!.condition);
+    if (entry?.saveEnds && entry.difficulty !== undefined) {
+      const saved = rollSave(ctx, working, entry.saveEnds.save, entry.difficulty, entry.source, undefined, {
+        conditions: [entry.condition],
+        ...(entry.action ? { action: entry.action } : {}),
+      });
+      savedAgainst(ctx, working, entry, saved);
+    }
+    noteOutcome(ctx);
+    return finish();
+  }
 
   if (option.shakeOff) {
     const holder = rulesetCombatant(ctx.state, option.shakeOff.holderId)!;
@@ -7099,12 +7119,98 @@ function beginNextTurn(definition: RulesetDefinition, combat: RulesetCombat, ctx
       rulesetConditionEconomy(definition, combat, actor, ctx.state).budgets,
     );
     if (actor.dying && !actor.stable && !actor.defeated) deathSave(ctx, actor);
+    // What a condition's table makes of this turn (1.259), once nothing else is left to change it.
+    compelTurn(ctx, actor);
     // What a delay held over is completed before anything else is done this turn.
     openMoment(ctx, { kind: "turn-start", sourceId: actor.id, label: actor.name }, ctx.state.combatants);
     if (!ctx.state.window) completeDelayed(ctx, actor);
   }
   const after = rulesetEncounterOutcome(ctx.state);
   if (after !== "ongoing") pushOutcome(ctx, after);
+}
+
+/** The ways a turn's wander may go, as a d8 picks them: north, then round clockwise. */
+const WANDER_WAYS: ReadonlyArray<readonly [number, number]> = [
+  [0, -1],
+  [1, -1],
+  [1, 0],
+  [1, 1],
+  [0, 1],
+  [-1, 1],
+  [-1, 0],
+  [-1, -1],
+];
+
+/**
+ * A condition's table rolled as its holder's turn starts (1.259): 5e's Confusion. The first table
+ * among what they hold decides the turn. `wander` walks as far as their speed goes one way a d8
+ * picks, straight on until something stops them, and the turn is then only ended; `strike` picks a
+ * creature in the reach of one of their melee attacks, friend or foe, and nobody else may be struck
+ * this turn, or makes it `nothing` with nobody there.
+ */
+function compelTurn(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
+  if (!rulesetCombatStanding(actor) || actor.defeated) return;
+  if (rulesetCombatEffects(ctx.definition, ctx.combat, actor, ctx.state).has("cannot-act")) return;
+  const rule = rulesetActiveConditions(ctx.definition, ctx.combat, actor, ctx.state).find(
+    (entry) => entry.behavior?.table,
+  );
+  const table = rule?.behavior?.table;
+  if (!rule || !table) return;
+  const dice = parseRulesetCombatDice(table.dice);
+  if (!dice) return;
+  const roll = rollAmount(ctx, dice).total;
+  let does = table.rows.find((row) => roll <= row.atMost)?.does ?? "normal";
+  let targetId: string | undefined;
+  if (does === "strike") {
+    actor.flags.compelled = "strike";
+    const reach = new Set<string>();
+    for (const option of rulesetUncompelledOptions(ctx.definition, ctx.state, actor.id)) {
+      if (option.kind !== "attack" && option.kind !== "block") continue;
+      const action = actor.actions.find((entry) => entry.id === option.id);
+      if (!action || !rulesetIsAttack(action) || (action.range && action.reach === undefined)) continue;
+      for (const id of rulesetOptionTargets(ctx.definition, ctx.state, actor.id, option)) {
+        if (id !== actor.id && rulesetBlowKind(ctx.state, actor, rulesetCombatant(ctx.state, id)!, action) === "melee")
+          reach.add(id);
+      }
+    }
+    const within = [...reach].sort();
+    if (within.length) targetId = within[rollRulesetDice(ctx.roll, 1, within.length)[0]! - 1];
+    if (targetId) actor.flags.compelledTarget = targetId;
+    else {
+      does = "nothing";
+      delete actor.flags.compelled;
+    }
+  }
+  ctx.events.push({
+    type: "compelled",
+    actorId: actor.id,
+    condition: rule.condition,
+    roll,
+    does,
+    ...(targetId ? { targetId } : {}),
+  });
+  if (does === "nothing") actor.flags.compelled = "nothing";
+  if (does !== "wander") return;
+  actor.flags.compelled = "wander";
+  const from = rulesetPositionOf(actor);
+  if (from) {
+    const [dx, dy] = WANDER_WAYS[rollRulesetDice(ctx.roll, 1, 8)[0]! - 1]!;
+    const cells = new Map(
+      rulesetReachableCells(ctx.definition, ctx.state, actor.id).map((cell) => [`${cell.x},${cell.y}`, cell]),
+    );
+    let last: (typeof cells extends Map<string, infer C> ? C : never) | undefined;
+    for (let step = 1; ; step++) {
+      const cell = cells.get(`${from.x + dx * step},${from.y + dy * step}`);
+      if (!cell) {
+        // Somebody standing in the way is walked past, as a walk does, when there is room beyond.
+        if (!cells.has(`${from.x + dx * (step + 1)},${from.y + dy * (step + 1)}`)) break;
+        continue;
+      }
+      last = cell;
+    }
+    if (last) resolveMove(ctx, actor, last);
+  }
+  actor.flags.compelled = "wandered";
 }
 
 /** What a combatant may spend of a limited pool starts again with the period the limit is counted in. */

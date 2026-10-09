@@ -1187,6 +1187,10 @@ export function rulesetForbiddenTargets(
     const source = actor.tracked.find((tracked) => tracked.condition === entry.condition)?.source;
     if (source) forbidden.add(source);
   }
+  // A turn the dice made a strike at one creature (1.259): nobody else.
+  if (actor.flags.compelled === "strike" && actor.flags.compelledTarget) {
+    for (const one of state.combatants) if (one.id !== actor.flags.compelledTarget) forbidden.add(one.id);
+  }
   return forbidden;
 }
 
@@ -1345,6 +1349,9 @@ export function rulesetOptionTargets(
         // "One creature other than you" (1.251).
         if (cure?.notSelf && combatant.id === actor.id) return false;
         if (option.targets.side === "self") return combatant.id === actor.id;
+        // A strike the dice aimed (1.259) is at whoever they picked, friend or foe.
+        if (actor.flags.compelled === "strike" && option.targets.side === "enemy" && combatant.id !== actor.id)
+          return true;
         if (option.targets.side === "ally") return combatant.side === actor.side;
         if (option.targets.side === "enemy") return combatant.side !== actor.side;
         // An area named off a board (1.187) catches either side, but never the one who made it.
@@ -2458,6 +2465,66 @@ export function rulesetCombatOptions(
   state: RulesetEncounterState,
   actorId: string,
 ): RulesetCombatOption[] {
+  const options = rulesetUncompelledOptions(definition, state, actorId);
+  const actor = rulesetCombatant(state, actorId);
+  return actor && definition.combat ? compelled(definition, definition.combat, state, actor, options) : options;
+}
+
+/**
+ * What a condition that decides its holder's turn leaves of the menu (1.259): a turn the table
+ * said does nothing, or was walked away, is only ended; one that must strike keeps the melee
+ * attacks at the creature the dice picked; `only` keeps walking, breaking free and the standard
+ * actions named, and `onlyWhenStuck` those it names while there is nowhere to walk. Which way they
+ * may walk is the cells' own business (`rulesetReachableCells`).
+ */
+function compelled(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  state: RulesetEncounterState,
+  actor: RulesetCombatant,
+  options: RulesetCombatOption[],
+): RulesetCombatOption[] {
+  const turn = actor.flags.compelled;
+  if (turn === "nothing" || turn === "wandered") return options.filter((option) => option.kind === "end-turn");
+  let kept = options;
+  if (turn === "strike") {
+    kept = kept.filter((option) => {
+      if (option.kind === "end-turn") return true;
+      if (option.kind !== "attack" && option.kind !== "block") return false;
+      const action = actor.actions.find((entry) => entry.id === option.id);
+      if (!action || !rulesetIsAttack(action) || (action.range && action.reach === undefined)) return false;
+      return rulesetOptionTargets(definition, state, actor.id, option).includes(actor.flags.compelledTarget ?? "");
+    });
+  }
+  const rules = rulesetActiveConditions(definition, combat, actor, state).flatMap((entry) =>
+    entry.behavior?.only ? [entry.behavior] : [],
+  );
+  if (!rules.length) return kept;
+  const walks = kept.some((option) => option.id === RULESET_MOVE_OPTION && (option.cells?.length ?? 0) > 0);
+  const allowed = (name: string) =>
+    rules.every(
+      (rule) => rule.only!.includes(name as never) || (!walks && !!rule.onlyWhenStuck?.includes(name as never)),
+    );
+  return kept.filter((option) => {
+    if (option.kind === "end-turn") return true;
+    if (option.kind === "move") return option.id.startsWith("move:") && allowed("move");
+    if (option.kind === "standard" && option.id.startsWith("standard:")) {
+      return allowed(rulesetStandardName(option.id));
+    }
+    if (option.kind === "contest") {
+      const action = actor.actions.find((entry) => entry.id === option.id);
+      return !!action?.contest?.from && allowed("escape");
+    }
+    return false;
+  });
+}
+
+/** The menu as it would be with no condition deciding the turn (1.259). */
+export function rulesetUncompelledOptions(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  actorId: string,
+): RulesetCombatOption[] {
   const combat = definition.combat;
   const actor = rulesetCombatant(state, actorId);
   if (!combat || !actor || currentRulesetActor(state)?.id !== actorId) return [];
@@ -2557,6 +2624,19 @@ export function rulesetCombatOptions(
     }
   }
   const budget = rulesetStandardBudget(combat);
+  // A save its holder spends their action on (1.259): 5e's Irresistible Dance.
+  for (const entry of actor.tracked) {
+    if (entry.saveEnds?.at !== "action" || entry.difficulty === undefined || (actor.budgets[budget] ?? 0) < 1) continue;
+    const label = definition.sheet.live.conditions.find((one) => one.id === entry.condition)?.label ?? entry.condition;
+    options.push({
+      id: `resave:${entry.condition}`,
+      kind: "standard",
+      label: `Try to end ${label}`,
+      budget,
+      targets: { side: "self", count: 0 },
+      resave: { condition: entry.condition, label },
+    });
+  }
   for (const action of combat.standard ?? []) {
     if ((actor.budgets[budget] ?? 0) < 1) break;
     options.push({

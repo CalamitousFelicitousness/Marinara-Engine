@@ -781,6 +781,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["charged", say({ type: "charged", actorId: "lurker", targetId: "brenna", label: "Gore" })],
     ["fell", say({ type: "fell", targetId: "lurker", levels: 2 })],
     ["resized", say({ type: "resized", targetId: "lurker", size: "large", label: "Large" })],
+    ["compelled", say({ type: "compelled", actorId: "lurker", condition: "incapacitated", roll: 2, does: "nothing" })],
     [
       "section",
       say({
@@ -1039,6 +1040,29 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.equal(
     say({ type: "condition", targetId: "lurker", condition: "incapacitated", active: false, reason: "parted" }),
     "Thorn Lurker is no longer Incapacitated: out of the aura.",
+  );
+  assert.equal(
+    say({ type: "compelled", actorId: "lurker", condition: "incapacitated", roll: 1, does: "wander" }),
+    "Thorn Lurker rolls 1 for Incapacitated and wanders off.",
+  );
+  assert.equal(
+    say({
+      type: "compelled",
+      actorId: "lurker",
+      condition: "incapacitated",
+      roll: 7,
+      does: "strike",
+      targetId: "brenna",
+    }),
+    "Thorn Lurker rolls 7 for Incapacitated and lashes out at Brenna.",
+  );
+  assert.equal(
+    say({ type: "compelled", actorId: "lurker", condition: "incapacitated", roll: 4, does: "nothing" }),
+    "Thorn Lurker rolls 4 for Incapacitated and does nothing this turn.",
+  );
+  assert.equal(
+    say({ type: "compelled", actorId: "lurker", condition: "incapacitated", roll: 9, does: "normal" }),
+    "Thorn Lurker rolls 9 for Incapacitated and acts normally.",
   );
   assert.equal(printed.get("charged"), "Thorn Lurker charges Brenna with Gore.");
   assert.equal(printed.get("pushed"), "Brenna pushes Thorn Lurker back 1, to 4, 2.");

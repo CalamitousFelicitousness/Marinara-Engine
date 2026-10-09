@@ -90,7 +90,8 @@ export interface RulesetCombatDamageAlternative extends RulesetCombatAmount {
  *  only after `successes` of them, and after `failures.count` failures `becomes` another condition. */
 export interface RulesetCombatSaveEnds {
   save: string;
-  at: "turn-end" | "turn-start" | "damaged";
+  /** `action` (1.259): rolled when its holder spends their action on it. */
+  at: "turn-end" | "turn-start" | "damaged" | "action";
   successes?: number;
   failures?: { count: number; becomes: string };
 }
@@ -949,6 +950,9 @@ export interface RulesetCombatant {
     freshSummons?: string[];
     /** Zones placed this turn do not spend a round at its end (1.167). */
     freshZones?: string[];
+    /** What a condition's table made of this turn (1.259), and whom a `strike` is at. */
+    compelled?: "wander" | "wandered" | "nothing" | "strike";
+    compelledTarget?: string;
   };
   /** At zero and out of the fight. `dying` is a party member a ruleset with a dying rule still
    *  rolls for; `stable` is one that has stopped rolling; `defeated` is one the fight is over for. */
@@ -1395,7 +1399,9 @@ export type RulesetCombatRefusal =
   /** A way of using a weapon that the option does not offer, or cannot now. */
   | "unknown-mode"
   /** Alterations it cannot be used with, or used without one it needs (1.248). */
-  | "bad-alter";
+  | "bad-alter"
+  /** Something a condition that decides this turn does not let it hold (1.259). */
+  | "compelled";
 
 export type RulesetCombatAttackOutcome = "hit" | "miss" | "critical";
 export type RulesetCombatRollMode = "normal" | "advantage" | "disadvantage";
@@ -1403,6 +1409,15 @@ export type RulesetCombatRollMode = "normal" | "advantage" | "disadvantage";
 /** Everything a step did, with the numbers it did it with, so a log can print "17 + 5 = 22 against
  *  15: hit" without doing any arithmetic of its own. */
 export type RulesetCombatEvent =
+  /** What a condition's table made of a turn as it began (1.259): the roll, and what it does. */
+  | {
+      type: "compelled";
+      actorId: string;
+      condition: string;
+      roll: number;
+      does: "wander" | "nothing" | "strike" | "normal";
+      targetId?: string;
+    }
   | {
       type: "initiative";
       entries: Array<{
@@ -1913,6 +1928,8 @@ export interface RulesetCombatOption {
   cancelSave?: { save: string; dc: number; label: string };
   /** The holder and condition named by an ally's shake-off option (1.120). */
   shakeOff?: { holderId: string; condition: string; name: string; label: string };
+  /** The condition its holder spends this on a save against (1.259). */
+  resave?: { condition: string; label: string };
   id: string;
   /** `move` is the one a positioned fight adds: walking, and getting back up. `reload` fills a
    *  weapon's clip. */

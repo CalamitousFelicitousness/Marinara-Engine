@@ -769,6 +769,18 @@ export function rulesetReachableCells(
     const source = sourceId ? rulesetCombatant(state, sourceId) : undefined;
     if (rulesetPositionOf(source)) held.push({ source: source!, away: rulesetGap(actor, source) });
   }
+  // Walking only away from, or toward, whoever put a condition on (1.259): never a step the wrong
+  // way, and somewhere to stop only further off, or nearer, than they began.
+  const driven: Array<{ source: RulesetCombatant; start: number; moves: "away" | "toward" }> = [];
+  for (const entry of rulesetActiveConditions(definition, combat, actor, state)) {
+    const moves = entry.behavior?.moves;
+    if (!moves) continue;
+    const sourceId = actor.tracked.find((tracked) => tracked.condition === entry.condition)?.source;
+    const source = sourceId ? rulesetCombatant(state, sourceId) : undefined;
+    if (source && source.id !== actor.id && rulesetPositionOf(source) && rulesetCombatStanding(source)) {
+      driven.push({ source, start: rulesetGap(actor, source), moves });
+    }
+  }
 
   const threats = rulesetThreateningEnemies(definition, combat, state, actor);
   const slowed = rulesetSlowedCells(state, actor);
@@ -804,6 +816,13 @@ export function rulesetReachableCells(
       // the place it would have ended, and a cell far enough away is still offered whenever there
       // is a way round.
       if (held.some((one) => rulesetGapFrom({ x, y }, span, one.source) < one.away)) continue;
+      if (
+        driven.some((one) => {
+          const gap = rulesetGapFrom({ x, y }, span, one.source);
+          return one.moves === "away" ? gap < one.start : gap > one.start;
+        })
+      )
+        continue;
       // No squeezing between two solid corners: a step corner-wise needs one of its two sides open.
       if (
         dx !== 0 &&
@@ -825,6 +844,13 @@ export function rulesetReachableCells(
       // A friend can be walked past and not stood on, so their cell is searched through and never
       // offered as somewhere to stop.
       if (occupied.has(next) || (span > 1 && !fits(x, y, occupied))) continue;
+      if (
+        driven.some((one) => {
+          const gap = rulesetGapFrom({ x, y }, span, one.source);
+          return one.moves === "away" ? gap <= one.start : gap >= one.start;
+        })
+      )
+        continue;
       const path = pathTo(cameFrom, from, { x, y });
       cells.set(next, { x, y, cost, path, provokes: provokedBy(threats, from, path) });
     }

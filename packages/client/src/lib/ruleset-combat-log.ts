@@ -530,6 +530,16 @@ export function rulesetCombatEventLine(
             names: event.affected.map((id) => names.combatant(id)).join(", "),
           })
         : key("healthPoolNone", { actor: names.combatant(event.actorId), label: event.label, total: event.total });
+    case "compelled": {
+      const values = {
+        actor: names.combatant(event.actorId),
+        condition: names.condition(event.condition),
+        roll: event.roll,
+      };
+      if (event.does === "strike")
+        return key("compelledStrike", { ...values, target: names.combatant(event.targetId ?? "") });
+      return key(`compelled${event.does[0]!.toUpperCase()}${event.does.slice(1)}`, values);
+    }
     case "resized":
       return key("resized", { target: names.combatant(event.targetId), size: event.label });
     case "section":

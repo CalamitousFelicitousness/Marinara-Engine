@@ -1547,6 +1547,17 @@ function carriesMetamagic(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesMetamagic(one, depth + 1));
 }
 
+/** A condition's behavior (1.259), or a save its holder spends their action on. */
+function carriesBehavior(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesBehavior(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (typeof record.condition === "string" && plainRecord(record.behavior)) return true;
+  if (plainRecord(record.saveEnds)?.at === "action") return true;
+  return Object.values(record).some((one) => carriesBehavior(one, depth + 1));
+}
+
 /** Auras on a combat condition, or conditions kept on through a fight by a catalog entry or a stat
  *  block (1.258). */
 function carriesAuras(value: unknown, depth = 0): boolean {
@@ -3571,6 +3582,13 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // What a condition makes its holder do with their turn, and saves spent an action on, 1.259.
+  if (
+    !declaresApi(259) &&
+    (carriesBehavior(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesBehavior(document)))
+  ) {
+    return "A ruleset with a condition that decides its holder's turn, or a save spent an action on, requires schemaVersion 2 and capabilityApi 1.259 or newer";
   }
   // Auras, and conditions kept on through a fight, 1.258.
   if (

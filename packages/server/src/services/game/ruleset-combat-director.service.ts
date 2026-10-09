@@ -1477,6 +1477,22 @@ export function rulesetClosingMove(
   const actor = rulesetCombatant(encounter, actorId);
   const from = rulesetPositionOf(actor);
   if (!actor || !from || !encounter.board?.grid) return null;
+  // Driven away from, or toward, whoever put a condition on (1.259): as far off, or as near, as the
+  // walk goes. The cells offered already only go that way.
+  const driven = rulesetDrivenFrom(definition, encounter, actor);
+  if (driven) {
+    let best: { cell: { x: number; y: number }; gap: number } | null = null;
+    for (const cell of rulesetWalkableCells(definition, encounter, actorId)) {
+      const gap = rulesetGapFrom(cell, rulesetSpanOf(actor), driven.source);
+      if (!best || (driven.moves === "away" ? gap > best.gap : gap < best.gap)) best = { cell, gap };
+    }
+    if (!best) return null;
+    return {
+      choice: { actorId, optionId: RULESET_MOVE_OPTION, targetIds: [], to: { x: best.cell.x, y: best.cell.y } },
+      option: { id: RULESET_MOVE_OPTION, kind: "move", label: "Move", targets: { side: "self", count: 0 } },
+      to: { x: best.cell.x, y: best.cell.y },
+    };
+  }
   const foes = encounter.combatants
     .filter((combatant) => combatant.side !== actor.side && rulesetCombatStanding(combatant))
     // Every cell an opponent fills (1.189).
@@ -1507,6 +1523,25 @@ export function rulesetClosingMove(
     option: { id: RULESET_MOVE_OPTION, kind: "move", label: "Move", targets: { side: "self", count: 0 } },
     to: { x: best.cell.x, y: best.cell.y },
   };
+}
+
+/** Whoever a condition on this actor drives them away from or toward (1.259), standing on the board. */
+function rulesetDrivenFrom(
+  definition: RulesetDefinition,
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+): { source: RulesetCombatant; moves: "away" | "toward" } | null {
+  if (!definition.combat) return null;
+  for (const entry of rulesetActiveConditions(definition, definition.combat, actor, encounter)) {
+    const moves = entry.behavior?.moves;
+    if (!moves) continue;
+    const sourceId = actor.tracked.find((tracked) => tracked.condition === entry.condition)?.source;
+    const source = sourceId ? rulesetCombatant(encounter, sourceId) : undefined;
+    if (source && source.id !== actor.id && rulesetPositionOf(source) && rulesetCombatStanding(source)) {
+      return { source, moves };
+    }
+  }
+  return null;
 }
 
 /** The choice the picker would make, or null when the actor has nothing at all to pick from. */
@@ -1659,6 +1694,10 @@ function playRulesetTurn(
     (option) => option.id === RULESET_STAND_OPTION,
   );
   if (stand) applyChoice(definition, state, fight, { actorId, optionId: stand.id, targetIds: [] });
+  // Driven away or toward somebody (1.259), the walk comes first, sprinting where it may.
+  const actor = rulesetCombatant(fight.encounter, actorId);
+  if (actor && rulesetDrivenFrom(definition, fight.encounter, actor))
+    walkTowardsTrouble(definition, state, fight, actorId);
   for (let action = 0; action < RULESET_TURN_ACTION_LIMIT; action++) {
     if (rulesetEncounterOutcome(fight.encounter) !== "ongoing") break;
     const picked = pickRulesetChoice(definition, state, fight.encounter, actorId);
@@ -2061,6 +2100,7 @@ function rulesetRefusalMessage(reason: string): string {
     "unknown-style": "That attack cannot be made that way right now.",
     "unknown-mode": "That weapon cannot be used that way right now.",
     "bad-alter": "It cannot be changed that way right now.",
+    compelled: "Something on them decides what this turn may hold.",
     "unknown-creature": "That opponent is not in any bestiary this game can read.",
     "no-health": "That opponent's sheet gives it no health, so it was left out of the fight.",
     unreachable: "They cannot walk to that square.",

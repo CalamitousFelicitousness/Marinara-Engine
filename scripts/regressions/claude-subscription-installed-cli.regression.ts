@@ -25,6 +25,7 @@ try {
   assert.equal(await findClaudeCodeInstall("2.1.282", { env, home, probe }), null, "never downgrade the bundled build");
   versions.set(onPath, "2.1.300");
   assert.deepEqual(await findClaudeCodeInstall("2.1.282", { env, home, probe }), { path: onPath, version: "2.1.300" });
+  assert.equal(await findClaudeCodeInstall(null, { env, home, probe }), null, "unknown bundled version keeps it");
   versions.clear();
   assert.equal(await findClaudeCodeInstall("2.1.282", { env, home, probe }), null);
 

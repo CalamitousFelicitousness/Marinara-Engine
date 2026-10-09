@@ -14,6 +14,7 @@ import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { promisify } from "node:util";
+import { logger } from "../../../../lib/logger.js";
 
 export interface ClaudeCodeInstall {
   path: string;
@@ -66,8 +67,12 @@ function candidatePaths(env: NodeJS.ProcessEnv, home: string): string[] {
 async function probeVersion(path: string): Promise<string | null> {
   try {
     await access(path);
-    const { stdout } = await promisify(execFile)(path, ["--version"], { timeout: 5_000, maxBuffer: 64 * 1024 });
-    return parseVersion(stdout) ? stdout.trim().split(/\s+/u)[0]! : null;
+    const { stdout } = await promisify(execFile)(path, ["--version"], {
+      timeout: 5_000,
+      killSignal: "SIGKILL",
+      maxBuffer: 64 * 1024,
+    });
+    return parseVersion(stdout)?.join(".") ?? null;
   } catch {
     return null;
   }
@@ -77,11 +82,13 @@ export async function findClaudeCodeInstall(
   bundledVersion: string | null = BUNDLED_CLAUDE_CODE_VERSION,
   { env = process.env, home = homedir(), probe = probeVersion } = {},
 ): Promise<ClaudeCodeInstall | null> {
+  // Without the bundled version there is no safe floor, so keep the bundled build.
+  if (!bundledVersion) return null;
   for (const path of candidatePaths(env, home)) {
     const version = await probe(path);
     if (!version) continue;
     // An older host install could lack options this SDK sends; keep looking, then use the bundled build.
-    if (bundledVersion && !(compareVersions(version, bundledVersion) >= 0)) continue;
+    if (!(compareVersions(version, bundledVersion) >= 0)) continue;
     return { path, version };
   }
   return null;
@@ -100,6 +107,10 @@ export function resolveClaudeCodeInstall(): Promise<ClaudeCodeInstall | null> {
 /** SDK option pointing at the host install, or nothing to keep the bundled build. */
 export async function claudeCodeExecutableOption(): Promise<{ pathToClaudeCodeExecutable?: string }> {
   const install = await resolveClaudeCodeInstall();
+  logger.debug(
+    "[claude-subscription] Claude Code executable: %s",
+    install ? `${install.path} (${install.version})` : `bundled (${BUNDLED_CLAUDE_CODE_VERSION ?? "unknown"})`,
+  );
   return install ? { pathToClaudeCodeExecutable: install.path } : {};
 }
 

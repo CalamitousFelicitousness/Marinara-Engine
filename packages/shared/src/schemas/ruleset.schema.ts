@@ -5929,6 +5929,38 @@ const combatConditionSchema = z
       .max(4)
       .refine((kinds) => new Set(kinds).size === kinds.length, { message: "Kinds must be unique" })
       .optional(),
+    /** What it does to its holder each time they take one of these rests while it is on them
+     *  (Capability API 1.255): health's maximum lowered by this much, rolled where the rest is
+     *  taken, as a sealed loss that the next rest gives back, or with `lasting` none does, only
+     *  something that unseals. 5e's Mummy Rot, 3d6 a day, lasting. Only health kept in points. */
+    onRest: z
+      .object({
+        rests: z
+          .array(sheetId)
+          .min(1)
+          .max(8)
+          .refine((rests) => new Set(rests).size === rests.length, { message: "Rests must be unique" }),
+        lowersMax: z
+          .object({ dice: catalogDice.optional(), flat: z.number().int().min(1).max(1000).optional() })
+          .strict()
+          .refine((amount) => amount.dice !== undefined || amount.flat !== undefined, {
+            message: '"lowersMax" rolls "dice", a "flat" amount, or both',
+          }),
+        lasting: z.literal(true).optional(),
+        /** A save its holder makes at each such rest first (the otyugh's, the death dog's): only a
+         *  failure lowers the maximum, and with `cures` a success ends the condition. Rolled as the
+         *  ruleset's checks are, with the sheet's own modifier for that save. */
+        save: z
+          .object({
+            save: sheetId,
+            difficulty: z.number().int().min(1).max(100),
+            cures: z.literal(true).optional(),
+          })
+          .strict()
+          .optional(),
+      })
+      .strict()
+      .optional(),
     /** Its holder is this many of `combat.sizes` bigger, or smaller, while it holds (Capability API
      *  1.190), never past the first or the last: 5e's Enlarge/Reduce. On a board it fills what its
      *  new size fills where there is room, and grows only as big as there is room for. */
@@ -8689,6 +8721,18 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       entry.kinds?.forEach((kind, kindIndex) => {
         if (conditions.has(kind)) issue([...path, "kinds", kindIndex], `"${kind}" is a condition, so it is no kind`);
       });
+      // A rest it names is one the ruleset has, and the maximum it lowers is health's in points (1.255).
+      entry.onRest?.rests.forEach((rest, restIndex) => {
+        if (!def.rests.some((one) => one.id === rest))
+          issue([...path, "onRest", "rests", restIndex], `Unknown rest "${rest}"`);
+      });
+      if (entry.onRest?.save && !def.sheet.saves.some((one) => one.id === entry.onRest!.save!.save))
+        issue([...path, "onRest", "save", "save"], `Unknown save "${entry.onRest.save.save}"`);
+      if (entry.onRest?.save && def.resolution.kind !== "dice-sum")
+        issue([...path, "onRest", "save"], "A save on a rest is rolled only where checks are a dice sum");
+      if (entry.onRest && "track" in combat.health) {
+        issue([...path, "onRest"], "Only health kept in points has a maximum to lower");
+      }
       effectNameIssues(entry, skills, saves, abilityIds, def, path, issue);
       hideIssues(def, entry, path, issue);
       // Kept off by who puts them on (1.186): the ruleset's own conditions, from creatures it names.

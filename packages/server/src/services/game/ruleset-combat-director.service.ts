@@ -27,7 +27,7 @@ import {
   foothillElevation,
   holdRulesetCombatant,
   holdRulesetSheetHealth,
-  liftRulesetFightEffects,
+  settleRulesetFledFight,
   normalizeCharacterLookupName,
   normalizeGameDifficulty,
   normalizeTacticalEnvironment,
@@ -1890,7 +1890,7 @@ export function commandRulesetCombatDirector(
 
   if (command.type === "flee") {
     state.outcome = "flee";
-    liftRulesetFightEffects(definition, fight.encounter);
+    fight.encounter = settleRulesetFledFight(definition, fight.encounter, rollerFor(fight)).state;
     return settled(state);
   }
 

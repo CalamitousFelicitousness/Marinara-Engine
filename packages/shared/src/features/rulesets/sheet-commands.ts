@@ -38,6 +38,9 @@ export interface SheetCommandContext {
   /** The entries of the catalogs the party's rows point at, which the `use` command needs to know
    *  what an ability costs. Absent, every `use` is refused as naming nothing the Engine knows. */
   catalogs?: RulesetCatalogEntriesById;
+  /** What a rest rolls for a condition that lowers health's maximum (1.255). Absent, its dice count
+   *  their average. */
+  roll?: (sides: number) => number;
 }
 
 export interface SheetCommandOutcome {
@@ -143,7 +146,7 @@ export function applySheetCommandTags(
     const key = normalizeCharacterLookupName(card.name);
     try {
       if (op.op === "use") return useOn(card, key, op);
-      const result = applyRulesetSheetOp(ctx.definition, card.build, live[key], op);
+      const result = applyRulesetSheetOp(ctx.definition, card.build, live[key], op, ctx.roll);
       if (result.ok) store(key, result.live);
       if (result.ok && op.op === "rest") rests.push({ who: card.name, rest: op.rest });
       return result;

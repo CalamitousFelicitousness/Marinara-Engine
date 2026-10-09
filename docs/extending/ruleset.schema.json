@@ -33731,6 +33731,73 @@
                 "minItems": 1,
                 "maxItems": 4
               },
+              "onRest": {
+                "type": "object",
+                "properties": {
+                  "rests": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "minItems": 1,
+                    "maxItems": 8
+                  },
+                  "lowersMax": {
+                    "type": "object",
+                    "properties": {
+                      "dice": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                      },
+                      "flat": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 1000
+                      },
+                      "$comment": {}
+                    },
+                    "additionalProperties": false
+                  },
+                  "lasting": {
+                    "type": "boolean",
+                    "const": true
+                  },
+                  "save": {
+                    "type": "object",
+                    "properties": {
+                      "save": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "difficulty": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 100
+                      },
+                      "cures": {
+                        "type": "boolean",
+                        "const": true
+                      },
+                      "$comment": {}
+                    },
+                    "required": [
+                      "save",
+                      "difficulty"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "$comment": {}
+                },
+                "required": [
+                  "rests",
+                  "lowersMax"
+                ],
+                "additionalProperties": false
+              },
               "size": {
                 "type": "object",
                 "properties": {

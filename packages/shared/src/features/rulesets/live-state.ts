@@ -27,12 +27,14 @@ import {
   type RulesetTrackLevel,
 } from "../../schemas/ruleset.schema.js";
 import { rulesetCatalogEntriesByRef } from "./scaled-rows.js";
+import { parseRulesetCombatDice } from "../ruleset-combat/dice.js";
 import {
   evaluateRulesetSheet,
   isRulesetItemHidden,
   lookupStepTable,
   resolveRulesetValueRef,
   roundRulesetNumber,
+  rulesetCheckModifier,
   rulesetSheetMigrationSteps,
   type RulesetSheetItem,
 } from "./sheet-math.js";
@@ -938,6 +940,9 @@ export function applyRulesetSheetOp(
   build: RulesetSheetBuild,
   stored: unknown,
   op: RulesetSheetOp,
+  /** What a rest rolls for a condition that lowers health's maximum (1.255). Without one, each die
+   *  counts its average, rounded down over them all. */
+  roll?: (sides: number) => number,
 ): RulesetSheetOpResult {
   // `use` is turned into plain spends by `planRulesetUse` before it gets here: it needs the
   // ruleset's catalogs, which this function deliberately does not take.
@@ -1243,6 +1248,60 @@ export function applyRulesetSheetOp(
     if (pool.sealed === pool.lasting) continue;
     const now = values.get(pool.key);
     setPool(pool, now?.value ?? pool.value, now?.temp ?? pool.temp, pool.lasting, pool.lasting);
+  }
+  // What a condition on them does with each such rest (1.255): Mummy Rot's lower maximum, a day at
+  // a time. Sealed after the rest has given back what it gives back, so this rest keeps it.
+  const health = definition.combat?.health;
+  const healthPool = health && "pool" in health ? resolved.pools.find((pool) => pool.key === health.pool) : undefined;
+  const held = new Set(next.conditions ?? []);
+  for (const entry of definition.combat?.conditions ?? []) {
+    const onRest = entry.onRest;
+    if (!onRest || !healthPool || !held.has(entry.condition) || !onRest.rests.includes(rest.id)) continue;
+    const label = definition.sheet.live.conditions.find((one) => one.id === entry.condition)?.label ?? entry.condition;
+    // Its save first, if it has one: made, nothing is lowered, and with `cures` it is over.
+    if (onRest.save) {
+      const save = definition.sheet.saves.find((one) => one.id === onRest.save!.save);
+      const { dice } = definition.resolution as { dice: { count: number; sides: number } };
+      const evaluated = evaluateRulesetSheet(definition, build);
+      const modifier = save
+        ? rulesetCheckModifier(evaluated, {
+            type: "save",
+            id: save.id,
+            label: save.label,
+            ...(save.ability ? { ability: save.ability } : {}),
+          })
+        : 0;
+      let total = modifier;
+      if (roll) for (let index = 0; index < dice.count; index += 1) total += roll(dice.sides);
+      else total += Math.floor((dice.count * (dice.sides + 1)) / 2);
+      const made = total >= onRest.save.difficulty;
+      changes.push(
+        `${label}: ${save?.label ?? onRest.save.save} ${total} against ${onRest.save.difficulty}, ${made ? (onRest.save.cures ? "cured" : "made") : "failed"}`,
+      );
+      if (made) {
+        if (onRest.save.cures) next.conditions = (next.conditions ?? []).filter((id) => id !== entry.condition);
+        continue;
+      }
+    }
+    const dice = onRest.lowersMax.dice ? parseRulesetCombatDice(onRest.lowersMax.dice) : null;
+    let amount = onRest.lowersMax.flat ?? 0;
+    if (dice) {
+      if (roll) for (let index = 0; index < dice.count; index += 1) amount += roll(dice.sides);
+      else amount += Math.floor((dice.count * (dice.sides + 1)) / 2);
+      amount += dice.flat;
+    }
+    if (amount <= 0) continue;
+    const stored = own(next.pools, healthPool.key);
+    const sealedBefore = stored?.sealed ?? 0;
+    const sealed = Math.min(healthPool.max, sealedBefore + amount);
+    const lasting = onRest.lasting
+      ? Math.min(sealed, (stored?.lasting ?? 0) + (sealed - sealedBefore))
+      : Math.min(sealed, stored?.lasting ?? 0);
+    const now = values.get(healthPool.key);
+    const value = Math.min(now?.value ?? healthPool.value, healthPool.max - sealed);
+    if (now) now.value = value;
+    setPool(healthPool, value, now?.temp ?? healthPool.temp, sealed, lasting);
+    changes.push(`${label} lowers ${healthPool.label}'s maximum by ${sealed - sealedBefore}`);
   }
   for (const id of rest.clear.text) setText(id, "");
   if (rest.clear.conditions === "all") next.conditions = [];

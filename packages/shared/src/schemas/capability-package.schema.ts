@@ -1036,7 +1036,10 @@ const capabilityPackageManifestBaseSchema = z
 // 1.253: a combat condition's `kinds`, which a cure's `ends` and an immunity may name, and
 //        `saveEnds.successes` and `saveEnds.failures` (Contagion); the condition event's `worsened`.
 // 1.254: `rescue` on an item's use (a ring of evasion), spending the item's own charges.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 254 } as const);
+// 1.255: a combat condition's `onRest` lowering a maximum on a rest (Mummy Rot), after a save if it
+//        has one (an otyugh's disease, cured on a success), and counted saves
+//        rolled out when a fight ends.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 255 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

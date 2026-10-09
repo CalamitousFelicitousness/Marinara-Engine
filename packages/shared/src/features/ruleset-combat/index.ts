@@ -238,6 +238,7 @@ export {
   advanceRulesetTurn,
   applyRulesetCombatChoice,
   liftRulesetFightEffects,
+  settleRulesetFledFight,
   rulesetEncounterOutcome,
   rulesetEncounterSummary,
 } from "./resolve.js";

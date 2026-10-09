@@ -1547,6 +1547,16 @@ function carriesMetamagic(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesMetamagic(one, depth + 1));
 }
 
+/** A combat condition that grows worse on a rest (1.255), in catalogs too. */
+function carriesConditionRests(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesConditionRests(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (typeof record.condition === "string" && record.onRest !== undefined) return true;
+  return Object.values(record).some((one) => carriesConditionRests(one, depth + 1));
+}
+
 /** A rescue on an item's use (1.254), in catalogs too. */
 function carriesItemRescues(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -3516,6 +3526,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // A condition that lowers a maximum on a rest, 1.255.
+  if (
+    !declaresApi(255) &&
+    (carriesConditionRests(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesConditionRests(document)))
+  ) {
+    return "A ruleset with conditions that lower a maximum on a rest requires schemaVersion 2 and capabilityApi 1.255 or newer";
   }
   // A rescue on an item's use, 1.254.
   if (

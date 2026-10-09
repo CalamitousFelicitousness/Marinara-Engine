@@ -1959,6 +1959,33 @@ function savedAgainst(
   return true;
 }
 
+/** The most turns a counted save is rolled out over once a fight is over: one that ends only on
+ *  successes, from somebody who keeps failing, would otherwise never stop. */
+const COUNTED_SAVES_AFTER_FIGHT_MAX = 50;
+
+/**
+ * Counted saves still to make as the fight ends (1.255). The holder's turns go on after it, so
+ * what they count to is settled now, one turn's save at a time, as it would have been: Contagion
+ * shaken off, or its disease set in. A save made only on damage waits for damage.
+ */
+function rollOutCountedSaves(ctx: RulesetCombatContext): void {
+  for (const holder of ctx.state.combatants) {
+    if (holder.defeated) continue;
+    for (const entry of [...holder.tracked]) {
+      const ends = entry.saveEnds;
+      if (!ends || ends.at === "damaged" || entry.difficulty === undefined) continue;
+      if (ends.successes === undefined && ends.failures === undefined) continue;
+      for (let turn = 0; turn < COUNTED_SAVES_AFTER_FIGHT_MAX && holder.tracked.includes(entry); turn += 1) {
+        const saved = rollSave(ctx, holder, ends.save, entry.difficulty, entry.source, undefined, {
+          conditions: [entry.condition],
+          ...(entry.action ? { action: entry.action } : {}),
+        });
+        if (savedAgainst(ctx, holder, entry, saved)) break;
+      }
+    }
+  }
+}
+
 /** A condition's growth per step of a higher cost, over so many steps (1.250). */
 function harmsPerSteps(per: { dice?: string; flat?: number }, steps: number): RulesetCombatAmount {
   const dice = per.dice ? parseRulesetCombatDice(per.dice) : null;
@@ -3942,10 +3969,29 @@ function noteOutcome(ctx: RulesetCombatContext): void {
 /** The fight is over: whatever it lifts as it ends, then the outcome. Every way a fight ends says so
  *  through here, so none of them leaves anybody crashed. */
 function pushOutcome(ctx: RulesetCombatContext, outcome: Exclude<RulesetEncounterOutcome, "ongoing">): void {
+  rollOutCountedSaves(ctx);
   ctx.events.push(...liftRulesetFightEffects(ctx.definition, ctx.state));
   // Only a party that won holds the field long enough to pick up what it shot.
   if (outcome === "victory") ctx.events.push(...recoverRulesetAmmo(ctx.state));
   ctx.events.push({ type: "outcome", outcome });
+}
+
+/**
+ * A fight the party walked away from (1.255): counted saves still to make are rolled out, as
+ * `pushOutcome` does for every other ending, then what only meant something inside it comes off.
+ * Returns the state it leaves, with its cursor past the dice it rolled.
+ */
+export function settleRulesetFledFight(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  roller: RulesetCombatRoller,
+): RulesetCombatStep {
+  const combat = definition.combat;
+  if (!combat) return { state, events: liftRulesetFightEffects(definition, state) };
+  const { ctx, finish } = begin(definition, combat, state, roller);
+  rollOutCountedSaves(ctx);
+  ctx.events.push(...liftRulesetFightEffects(definition, ctx.state));
+  return finish();
 }
 
 /**

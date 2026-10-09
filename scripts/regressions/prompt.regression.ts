@@ -4764,6 +4764,25 @@ const cases: RegressionCase[] = [
       // A real style profile's Style text is still applied when no prompt writer handled it.
       const anime = compileImagePrompt({ kind: "illustration", prompt, styleProfiles, styleProfileId: "anime" });
       assert.match(anime.prompt, /Anime illustration with clean character design/u, anime.prompt);
+
+      // Style text the user wrote into a clone of Auto (Clone keeps the auto base style) still applies.
+      const autoProfile = styleProfiles.profiles.find((profile) => profile.id === "auto")!;
+      const autoClone = {
+        ...autoProfile,
+        id: "auto-custom",
+        builtIn: false,
+        styleText: "watercolor, soft pastel palette",
+      };
+      const cloneProfiles = { ...styleProfiles, profiles: [...styleProfiles.profiles, autoClone] };
+      for (const kind of ["avatar", "illustration"] as const) {
+        const custom = compileImagePrompt({
+          kind,
+          prompt,
+          styleProfiles: cloneProfiles,
+          styleProfileId: "auto-custom",
+        });
+        assert.match(custom.prompt, /watercolor, soft pastel palette/u, `${kind}: ${custom.prompt}`);
+      }
     },
   },
   {

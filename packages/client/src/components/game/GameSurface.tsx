@@ -3022,8 +3022,10 @@ function GameSurfaceComponent({
             if (!cardChoices?.length) return;
             // Several characters share this name (#7324). The player picks a card or keeps the game's
             // own character, which is also what closing the window does, so the party is never stuck.
-            const choice = partyCardChoiceQueueRef.current.then(async () => {
-              const characterId = await showChoiceDialog({
+            // Only the windows wait for each other. The next one opens as soon as this one is answered,
+            // not after this pick's party card is written, while the player is still looking at this chat.
+            const choice = partyCardChoiceQueueRef.current.then(() =>
+              showChoiceDialog({
                 title: localizeUi("game.partyCardChoice.title", { name: displayName }),
                 message: localizeUi("game.partyCardChoice.message", { name: displayName }),
                 cancelLabel: localizeUi("game.partyCardChoice.keepGameCharacter", { name: displayName }),
@@ -3033,11 +3035,10 @@ function GameSurfaceComponent({
                   description: card.title,
                   avatar: { url: card.avatarPath, crop: normalizeAvatarCrop(card.avatarCrop) },
                 })),
-              });
-              await recruitPartyMember.mutateAsync({ ...variables, characterId });
-            });
+              }),
+            );
             partyCardChoiceQueueRef.current = choice.catch(() => {});
-            return choice;
+            return choice.then((characterId) => recruitPartyMember.mutateAsync({ ...variables, characterId }));
           })
           .catch(forgetCommand);
       }

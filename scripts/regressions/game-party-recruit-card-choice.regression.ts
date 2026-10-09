@@ -38,6 +38,7 @@ try {
   const bramCard = await card("Bram");
   const firstLena = await card("Lena");
   const secondLena = await card("Lena", undefined, "Pirate captain");
+  const miraCard = await card("Mira");
 
   const created = await app.inject({
     method: "POST",
@@ -59,7 +60,17 @@ try {
   assert.equal(created.statusCode, 200, created.body);
   const chatId = created.json().sessionChat.id as string;
   const npc = (name: string) => ({ id: `npc-${name}`, name, description: `${name}, an NPC of this game.`, notes: [] });
-  await chats.patchMetadata(chatId, { gameNpcs: [npc("Emma"), npc("Sam")] });
+  await chats.patchMetadata(chatId, {
+    gameNpcs: [npc("Emma"), npc("Sam"), npc("Danielle")],
+    // Mira was met this session: only the journal knows her so far.
+    gameJournal: {
+      entries: [],
+      quests: [],
+      locations: [],
+      npcLog: [{ npcName: "Mira", interactions: ["Encountered"] }],
+      inventoryLog: [],
+    },
+  });
 
   const recruit = (payload: Record<string, unknown>) =>
     app.inject({ method: "POST", url: "/api/game/party/recruit", payload: { chatId, ...payload } });
@@ -75,6 +86,21 @@ try {
   assert.equal(sam.json().cardChoices, undefined);
   assert.ok((await party()).includes("npc:sam"));
   assert.equal((await party()).includes(samanthaCard), false, "a similarly named card is never imported");
+
+  // Nor a similarly named NPC: Dan is not the game's Danielle.
+  const dan = await recruit({ characterName: "Dan" });
+  assert.equal(dan.statusCode, 200, dan.body);
+  assert.ok((await party()).includes("npc:dan"));
+  assert.equal((await party()).includes("npc:danielle"), false, "a similarly named NPC never joins instead");
+
+  // An NPC the game met this session counts too: her one same-name card is asked about, not imported.
+  const mira = await recruit({ characterName: "Mira" });
+  assert.equal(mira.statusCode, 200, mira.body);
+  assert.deepEqual(
+    (mira.json().cardChoices as Array<{ id: string }>).map((choice) => choice.id),
+    [miraCard],
+  );
+  assert.equal((await party()).includes(miraCard), false);
 
   // The NPC and a library card share the name: the player is asked, and nothing changes yet.
   const before = await party();
@@ -118,6 +144,11 @@ try {
   assert.equal(pickedLena.json().added, true);
   assert.ok((await party()).includes(secondLena));
   assert.equal((await party()).includes(firstLena), false);
+  // A late answer to an old window never adds a second Lena.
+  const staleLena = await recruit({ characterName: "lena", characterId: null });
+  assert.equal(staleLena.statusCode, 200, staleLena.body);
+  assert.equal(staleLena.json().added, false);
+  assert.equal((await party()).includes("npc:lena"), false);
 
   // One card and no NPC of that name: the card joins, as before.
   const bram = await recruit({ characterName: "Bram" });

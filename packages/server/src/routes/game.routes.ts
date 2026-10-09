@@ -2445,11 +2445,9 @@ export function removeMemberFromGameMetadata(input: RemoveMemberInput): RemoveMe
 function findGameNpcByName(npcs: GameNpc[], requestedName: string): GameNpc | null {
   const requestedLookup = normalizeCharacterLookupName(requestedName);
   let matches = npcs.filter((npc) => normalizeCharacterLookupName(npc.name) === requestedLookup);
-  if (matches.length === 0 && requestedLookup.length >= 3) {
-    matches = npcs.filter((npc) => {
-      const lookup = normalizeCharacterLookupName(npc.name);
-      return lookup.includes(requestedLookup) || (lookup.length >= 3 && requestedLookup.includes(lookup));
-    });
+  if (matches.length === 0) {
+    // Whole words only: an NPC named Sam is not the game's Samantha (#7324).
+    matches = npcs.filter((npc) => characterNamesLikelyMatch(npc.name, requestedName));
   }
   return matches.length === 1 ? matches[0]! : null;
 }
@@ -9113,46 +9111,54 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const currentPartyIds = getStoredPartyCharacterIds(meta, setupConfig, chatCharacterIds);
     const gameNpcs = (meta.gameNpcs as GameNpc[]) ?? [];
     const trackedNpc = findGameNpcByName(gameNpcs, requestedName);
+    // An NPC met this session may not be tracked yet, but the journal's NPC log already has them.
+    const journalNpcLog = (meta.gameJournal as Journal | null)?.npcLog;
+    const gameHasOwnCharacter =
+      trackedNpc !== null ||
+      (Array.isArray(journalNpcLog) &&
+        journalNpcLog.some(
+          (entry) =>
+            typeof entry?.npcName === "string" && normalizeCharacterLookupName(entry.npcName) === requestedLookup,
+        ));
 
     // A library card is matched by its exact name only. A partial match imported unrelated cards,
     // like a "Samantha" card for an NPC named Sam (#7324).
     const sameNameCards = parsedCharacters.filter((candidate) => candidate.lookup === requestedLookup);
+    const partyCards = parsedCharacters.filter((candidate) => currentPartyIds.includes(candidate.row.id));
+    const cardInParty = partyCards.find((candidate) => candidate.lookup === requestedLookup);
     let matches: typeof sameNameCards;
-    if (input.characterId !== undefined) {
+    // Someone of this name already in the party stays the only one, even when a stale choice is answered.
+    if (cardInParty) {
+      matches = [cardInParty];
+    } else if (trackedNpc && currentPartyIds.includes(buildPartyNpcId(trackedNpc.name))) {
+      matches = [];
+    } else if (input.characterId !== undefined) {
       // The player's answer to the card choice below; null keeps the game's own character.
       matches = sameNameCards.filter((candidate) => candidate.row.id === input.characterId);
       if (input.characterId !== null && matches.length === 0) {
         throw new Error(`No character card named "${requestedName}" matches that choice.`);
       }
+    } else if (sameNameCards.length > 1 || (sameNameCards.length === 1 && gameHasOwnCharacter)) {
+      // More than one character has this name, so the player picks. Nothing changes until they do.
+      return {
+        sessionChat: chat,
+        added: false,
+        characterName: trackedNpc?.name ?? requestedName,
+        cardCreated: false,
+        cardChoices: sameNameCards.map(({ row, data, name }) => ({
+          id: row.id,
+          name,
+          title: row.comment?.trim() || null,
+          avatarPath: row.avatarPath ?? null,
+          avatarCrop: data.extensions?.avatarCrop ?? null,
+        })),
+      };
+    } else if (sameNameCards.length > 0 || trackedNpc) {
+      matches = sameNameCards;
     } else {
-      const partyCards = parsedCharacters.filter((candidate) => currentPartyIds.includes(candidate.row.id));
-      const cardInParty = partyCards.find((candidate) => candidate.lookup === requestedLookup);
-      if (cardInParty) {
-        matches = [cardInParty];
-      } else if (trackedNpc && currentPartyIds.includes(buildPartyNpcId(trackedNpc.name))) {
-        matches = [];
-      } else if (sameNameCards.length > 1 || (sameNameCards.length === 1 && trackedNpc)) {
-        // More than one character has this name, so the player picks. Nothing changes until they do.
-        return {
-          sessionChat: chat,
-          added: false,
-          characterName: trackedNpc?.name ?? requestedName,
-          cardCreated: false,
-          cardChoices: sameNameCards.map(({ row, data, name }) => ({
-            id: row.id,
-            name,
-            title: row.comment?.trim() || null,
-            avatarPath: row.avatarPath ?? null,
-            avatarCrop: data.extensions?.avatarCrop ?? null,
-          })),
-        };
-      } else if (sameNameCards.length > 0 || trackedNpc) {
-        matches = sameNameCards;
-      } else {
-        // A shortened name for someone already in the party ("Kael" for "Kael Stormborn") is that member.
-        const partyMembers = partyCards.filter((candidate) => characterNamesLikelyMatch(candidate.name, requestedName));
-        matches = partyMembers.length === 1 ? partyMembers : [];
-      }
+      // A shortened name for someone already in the party ("Kael" for "Kael Stormborn") is that member.
+      const partyMembers = partyCards.filter((candidate) => characterNamesLikelyMatch(candidate.name, requestedName));
+      matches = partyMembers.length === 1 ? partyMembers : [];
     }
 
     let npcRecruit = matches.length === 0 ? trackedNpc : null;

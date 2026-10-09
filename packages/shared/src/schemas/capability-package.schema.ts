@@ -1015,7 +1015,9 @@ const capabilityPackageManifestBaseSchema = z
 //        failed roll to roll a save again or succeed: Indomitable, Diamond Soul, Stroke of Luck).
 // 1.245: catalog mechanics' `lowersRoll` (dice off somebody else's attack roll that hit: Cutting
 //        Words) and a condition's or level's `evasion` (nothing on a made half save: Evasion).
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 245 } as const);
+// 1.246: catalog mechanics' `usesChosen` (a heal its user spends as many uses of as they choose,
+//        the option's `amount` and the choice's `amount`: Lay on Hands).
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 246 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

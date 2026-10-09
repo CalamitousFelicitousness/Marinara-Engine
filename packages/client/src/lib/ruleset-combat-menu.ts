@@ -49,13 +49,15 @@ const MOVE_OPTION_WORDS: Record<string, "walk" | "stand" | "flyUp" | "flyDown"> 
 };
 
 export interface RulesetMenuStep {
-  stage: "style" | "mode" | "pay" | "move" | "target" | "aim";
+  stage: "style" | "mode" | "pay" | "amount" | "move" | "target" | "aim";
   option: DirectedRulesetOption;
   /** The initiative style an attack is made in, where initiative is a number attacks move. */
   style?: string;
   /** The weapon's mode it is made in. */
   mode?: string;
   payWith?: string;
+  /** How many uses it spends, where its user chooses (1.246): Lay on Hands' points. */
+  amount?: number;
   targets: string[];
   /** How a shape is being laid while it is aimed (1.172, 1.173). */
   lay?: RulesetAimLay;

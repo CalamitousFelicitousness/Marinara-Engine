@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: paladins choose how many Lay on Hands points to spend, healing one hit point for each, or spend just enough to heal the target fully (Capability API 1.246).
 - Rulesets: bards' Cutting Words takes an inspiration die off an enemy's attack roll after it hits, and Evasion takes no damage from a made Dexterity half save and half from a failed one (Capability API 1.245).
 - Rulesets: Bardic Inspiration, Guidance and Resistance dice are added after the roll and only when they can turn it, and Indomitable, Diamond Soul and Stroke of Luck are spent on a failed save, check or missed attack (Capability API 1.244).
 - Rulesets: monks' Open Hand Technique rides each Flurry of Blows hit with one of its three effects (knocked prone, pushed 15 feet, or no reactions), answers narrowed to strikes from one budget, with one answer of a group per hit (Capability API 1.243).

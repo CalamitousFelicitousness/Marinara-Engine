@@ -219,6 +219,8 @@ const command = z.discriminatedUnion("type", [
     also: z.array(coord).max(9).optional(),
     /** A wall's section struck at instead of a creature (1.195), checked by the resolver. */
     wall: coord.optional(),
+    /** How many uses it spends (1.246), checked against the menu by the resolver. */
+    amount: z.number().int().min(1).max(1000).optional(),
   }),
   z.object({ type: z.literal("choose"), candidateId: key }),
   z.object({ type: z.literal("continue") }),

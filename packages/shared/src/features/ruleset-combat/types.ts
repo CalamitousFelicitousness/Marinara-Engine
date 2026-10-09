@@ -513,6 +513,8 @@ export interface RulesetCombatAction {
   addsToBlow?: true;
   /** Taken as somebody else's attack hits, these dice come off the roll (1.245): Cutting Words. */
   lowersRoll?: { count: number; sides: number; flat: number };
+  /** Its user chooses how many uses one use spends, and it heals that many times over (1.246). */
+  usesChosen?: true;
   /** A failed save drops its target to 0 health instead of the amount (1.240). */
   /** The tags of the held weapon it is made with (1.241), for what comes after the attack action. */
   itemTags?: string[];
@@ -1219,6 +1221,8 @@ export interface RulesetActionResume {
   outer?: RulesetCombatWindow;
   /** The budget it was paid for from, for an answer to its hit narrowed to one (1.243). */
   budget?: string;
+  /** How many uses its user chose to spend on it (1.246). */
+  amount?: number;
 }
 
 /** Once the attack action has been taken this turn, with anything or with one of `names` (1.237). */
@@ -1797,6 +1801,8 @@ export interface RulesetCombatOption {
   cost?: Array<{ pool: string; label: string; amount: number }>;
   /** Other pools of the same family this could be paid from instead, in declaration order. */
   payWith?: string[];
+  /** How many uses may be chosen for it, one up to `max` (1.246): Lay on Hands' points. */
+  amount?: { max: number };
   /** Its own pool cannot pay right now, so it is taken only with one of `payWith` (1.166). */
   upcastOnly?: true;
   /** How many targets it takes when paid with each of `payWith`, where that grows (1.166). */
@@ -1904,6 +1910,9 @@ export interface RulesetCombatChoice {
   /** Which of a weapon's modes it is used in. The attack as it is when left out; one the option does
    *  not offer is refused. */
   mode?: string;
+  /** How many uses it spends, where the option offers an `amount` (1.246). Left out, as many as
+   *  heal the first target fully, and never more than are left. */
+  amount?: number;
 }
 
 export interface RulesetCombatStep {

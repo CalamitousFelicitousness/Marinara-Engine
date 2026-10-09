@@ -1960,6 +1960,8 @@ function mechanicsAction(
   // Its damage joins its holder's own blow that just hit (1.236).
   if (mechanics.addsToBlow && moment) action.addsToBlow = true;
   // Dice off somebody else's roll that hit (1.245): Cutting Words, its die sized by a level.
+  // As many uses as its user chooses, healing that many times over (1.246): Lay on Hands.
+  if (mechanics.usesChosen) action.usesChosen = true;
   if (mechanics.lowersRoll && moment) {
     const lowers = mechanics.lowersRoll;
     const dice = lowers.dice

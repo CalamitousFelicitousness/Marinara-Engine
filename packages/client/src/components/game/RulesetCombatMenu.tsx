@@ -55,6 +55,8 @@ export interface RulesetCombatMenuProps {
     style?: string,
     /** The weapon's mode an attack is made in. */
     mode?: string,
+    /** How many uses it spends, where the option lets its user choose (1.246). */
+    amount?: number,
   ) => void;
   /** Walking away. The ruleset's menu never carries it, because leaving is not a thing the rules
    *  resolve: it is the director ending the session, exactly as the other two styles end it. */
@@ -96,6 +98,8 @@ export function RulesetCombatMenu({
 }: RulesetCombatMenuProps) {
   const { t } = useTranslation();
   const [ownStep, setOwnStep] = useState<RulesetMenuStep | null>(null);
+  // The number typed into the amount step (1.246), kept as text so a cleared box is not a zero.
+  const [amountText, setAmountText] = useState("");
   // Held by the owner only when it passes BOTH halves (`step` may be null, never left out): with one
   // of them missing the menu keeps its own, or a pick would be handed up and never come back down.
   const held = onStepChange !== undefined && heldStep !== undefined;
@@ -140,7 +144,13 @@ export function RulesetCombatMenu({
   useEffect(() => {
     // A step the BOARD draws has its keyboard on the board, so the menu must not take it back the
     // moment the stage opens.
-    if (stepStage === "style" || stepStage === "mode" || stepStage === "pay" || stepStage === "target") {
+    if (
+      stepStage === "style" ||
+      stepStage === "mode" ||
+      stepStage === "pay" ||
+      stepStage === "amount" ||
+      stepStage === "target"
+    ) {
       first.current?.focus();
     }
     // Going BACK unmounts the step, and the browser would drop focus on the body, leaving a keyboard
@@ -161,9 +171,17 @@ export function RulesetCombatMenu({
     );
   }
 
-  const send = (option: DirectedRulesetOption, targets: string[], payWith?: string, style?: string, mode?: string) => {
+  const send = (
+    option: DirectedRulesetOption,
+    targets: string[],
+    payWith?: string,
+    style?: string,
+    mode?: string,
+    // A step that went through the amount carries it; one sent straight off the menu passes its own.
+    amount: number | undefined = step?.amount,
+  ) => {
     closeStep();
-    onChoose(option.id, targets, payWith, undefined, style, mode);
+    onChoose(option.id, targets, payWith, undefined, style, mode, amount);
   };
   /** Which picking step this option opens, or null for one that is simply sent. On a board, a walk
    *  and a shape are picked on the board; everything else is the list below. */
@@ -174,10 +192,21 @@ export function RulesetCombatMenu({
   };
   /** The step after the style and the mode are chosen: what pays for it, where it goes, or who it is
    *  aimed at, as many as the mode aims at. */
-  const afterMode = (option: DirectedRulesetOption, style?: string, mode?: string) => {
-    const how = { ...(style ? { style } : {}), ...(mode ? { mode } : {}) };
+  const afterMode = (option: DirectedRulesetOption, style?: string, mode?: string, amount?: number | null) => {
+    const how = {
+      ...(style ? { style } : {}),
+      ...(mode ? { mode } : {}),
+      ...(typeof amount === "number" ? { amount } : {}),
+    };
     const chosen = mode ? option.modes?.find((entry) => entry.id === mode) : undefined;
     const aimed = chosen ? { ...option, targets: { ...option.targets, count: chosen.targets } } : option;
+    // How much of it to spend comes first where its user chooses (1.246); null is "just enough",
+    // which the rules work out from the target.
+    if (aimed.amount && amount === undefined) {
+      setAmountText(String(aimed.amount.max));
+      setStep({ stage: "amount", option: aimed, ...how, targets: [] });
+      return;
+    }
     if (aimed.payWith && aimed.payWith.length > 0) {
       setStep({ stage: "pay", option: aimed, ...how, targets: [] });
       return;
@@ -192,7 +221,7 @@ export function RulesetCombatMenu({
       });
       return;
     }
-    send(aimed, rulesetDefaultTargets(aimed), undefined, style, mode);
+    send(aimed, rulesetDefaultTargets(aimed), undefined, style, mode, how.amount);
   };
   /** The step after the style is chosen: the weapon's mode, where it has any. */
   const afterStyle = (option: DirectedRulesetOption, style?: string) => {
@@ -306,6 +335,59 @@ export function RulesetCombatMenu({
               </button>
             );
           })}
+        </div>
+        <BackButton onClick={closeStep} label={t("game.combat.ruleset.target.back")} />
+      </div>
+    );
+  }
+
+  // ── Choosing how much of it to spend (1.246) ──
+  if (step?.stage === "amount" && step.option.amount) {
+    const option = step.option;
+    const max = option.amount!.max;
+    const typed = Number(amountText);
+    const valid = Number.isInteger(typed) && typed >= 1 && typed <= max;
+    const chooseAmount = (amount: number | null) => {
+      afterMode(option, step.style, step.mode, amount);
+    };
+    return (
+      <div className="flex flex-col gap-2 p-3">
+        <label className="text-xs text-white/60" htmlFor="ruleset-amount-input">
+          {t("game.combat.ruleset.amount.prompt", { label: rulesetOptionLabel(option, t), max })}
+        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            id="ruleset-amount-input"
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={max}
+            step={1}
+            value={amountText}
+            disabled={busy}
+            onChange={(event) => setAmountText(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && valid) chooseAmount(typed);
+            }}
+            className="min-h-11 w-20 rounded-lg border border-white/15 bg-white/5 px-2 text-xs tabular-nums text-white/90"
+          />
+          <button
+            ref={first}
+            type="button"
+            disabled={busy || !valid}
+            onClick={() => chooseAmount(typed)}
+            className={cn(buttonClass, "border-white/15 bg-white/5 text-white/85 hover:bg-white/10")}
+          >
+            {t("game.combat.ruleset.amount.spend", { count: valid ? typed : 0 })}
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => chooseAmount(null)}
+            className={cn(buttonClass, "border-white/15 bg-white/5 text-white/85 hover:bg-white/10")}
+          >
+            {t("game.combat.ruleset.amount.fill")}
+          </button>
         </div>
         <BackButton onClick={closeStep} label={t("game.combat.ruleset.target.back")} />
       </div>

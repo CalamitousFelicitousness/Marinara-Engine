@@ -63,6 +63,8 @@ export type DirectedCommand =
       also?: Array<{ x: number; y: number }>;
       /** A wall's section struck at instead of a creature (1.195): one of the option's `walls`. */
       wall?: { x: number; y: number };
+      /** How many uses it spends, where the option offers an `amount` (1.246): Lay on Hands. */
+      amount?: number;
     }
   | { type: "choose"; candidateId: string }
   | { type: "continue" }

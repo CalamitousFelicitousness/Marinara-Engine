@@ -775,6 +775,8 @@ export function planRulesetCombatCost(
   combatant: RulesetCombatant,
   action: RulesetCombatAction,
   payWith?: string,
+  /** How many uses, where its user chooses (1.246). */
+  count?: number,
 ): RulesetCombatCost | null {
   const free: RulesetCombatCost = { steps: [], live: null, cost: [] };
   // An opponent's actions cost nothing off a sheet: their block is the only bookkeeping there is.
@@ -787,7 +789,7 @@ export function planRulesetCombatCost(
     combatant.sheet.live,
     catalogs,
     { op: "use", name: action.use.name, ...(payWith ? { pool: payWith } : {}) },
-    action.use.count,
+    count ?? action.use.count,
   );
   if (!plan.ok) return null;
   let live = combatant.sheet.live;
@@ -802,6 +804,18 @@ export function planRulesetCombatCost(
   // much is in it.
   if (!rulesetWithinSpendLimits(combatant, cost)) return null;
   return { steps: plan.steps, live, cost };
+}
+
+/** The most uses its user may choose to spend on it right now (1.246): Lay on Hands' points left.
+ *  Zero when it cannot be paid at all. */
+export function rulesetChosenUsesMax(
+  definition: RulesetDefinition,
+  combatant: RulesetCombatant,
+  action: RulesetCombatAction,
+): number {
+  let most = 0;
+  while (most < 1000 && planRulesetCombatCost(definition, combatant, action, undefined, most + 1)) most += 1;
+  return most;
 }
 
 /** Whether paying this would stay inside every limit on what the combatant may spend this turn or
@@ -1902,6 +1916,8 @@ function optionFrom(
     ...(action.restore ? { restores: action.restore.pool } : {}),
   };
   if (paid && paid.cost.length > 0) option.cost = paid.cost;
+  // As many uses as its user chooses (1.246).
+  if (action.usesChosen) option.amount = { max: rulesetChosenUsesMax(definition, actor, action) };
   if (!paid) {
     option.upcastOnly = true;
     // What the cheapest of the ways it can still be paid costs, so the menu has a price to show.

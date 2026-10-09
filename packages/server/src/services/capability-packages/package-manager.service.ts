@@ -1535,6 +1535,16 @@ function carriesFrenzy(ruleset: unknown): boolean {
 /** Attack rows changed by what a sheet holds, strikes it grants, entries only after the attack action,
  *  or a condition's granted attacks narrowed by name or to after the attack action (1.237), in
  *  catalogs too. */
+/** A heal its user chooses how many uses of to spend (1.246), in catalogs too. */
+function carriesUsesChosen(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesUsesChosen(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.usesChosen !== undefined) return true;
+  return Object.values(record).some((one) => carriesUsesChosen(one, depth + 1));
+}
+
 /** Dice off somebody else's roll that hit, or saves evaded (1.245), in catalogs too. */
 function carriesCuttingWords(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -3412,6 +3422,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // A heal spending as many uses as its user chooses, 1.246.
+  if (
+    !declaresApi(246) &&
+    (carriesUsesChosen(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesUsesChosen(document)))
+  ) {
+    return "A ruleset with heals that spend as many uses as their user chooses requires schemaVersion 2 and capabilityApi 1.246 or newer";
   }
   // Dice off a roll that hit, a half save evaded, 1.245.
   if (

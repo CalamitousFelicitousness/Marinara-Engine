@@ -2892,6 +2892,10 @@ const catalogMechanicsObject = z
       .optional(),
     /** How many of those uses one use spends (Capability API 1.240): Quivering Palm's 3 ki. */
     usesSpent: z.number().int().min(2).max(20).optional(),
+    /** Its user chooses how many of those uses one use spends, one up to what is left, and it heals
+     *  that many times its amount (Capability API 1.246): 5e's Lay on Hands, a point of its pool for
+     *  each hit point. */
+    usesChosen: z.literal(true).optional(),
     /** A target that fails the save drops to 0 health instead of taking the amount (Capability API
      *  1.240), as if the blow had taken every point it had: 5e's Quivering Palm, whose made save
      *  still takes 10d10 necrotic. */
@@ -3049,6 +3053,13 @@ const catalogMechanicsSchema: z.ZodType<
       code: z.ZodIssueCode.custom,
       path: [mechanics.reducesMax ? "reducesMax" : "leavesAtLeast"],
       message: "It works on the entry's damage, so it has an amount",
+    });
+  }
+  if (mechanics.usesChosen && (mechanics.kind !== "heal" || mechanics.usesSpent !== undefined)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["usesChosen"],
+      message: '"usesChosen" heals as many times over as the uses chosen: a "heal" with no "usesSpent"',
     });
   }
   if (mechanics.lowersRoll) {

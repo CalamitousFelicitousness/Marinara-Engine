@@ -113,6 +113,7 @@ import {
   RULESET_FLY_DOWN_OPTION,
   RULESET_FLY_UP_OPTION,
   planRulesetCombatCost,
+  rulesetChosenUsesMax,
   rulesetActionAvailable,
   rulesetSheetWithin,
   rulesetAimLegal,
@@ -235,6 +236,8 @@ interface RulesetCombatContext {
   nestHit?: true;
   /** The budget the action being resolved was paid for from, for an answer to its hit (1.243). */
   strikeBudget?: string;
+  /** How many uses its user chose to spend on the action being resolved (1.246). */
+  chosenAmount?: number;
 }
 
 /** A working copy, plus a roller that counts its dice so the state's cursor stays exact. */
@@ -1365,6 +1368,22 @@ function rescueBonuses(
     }
   }
   return bonuses;
+}
+
+/** How many uses heal this target fully, at what one use heals on average, never more than `most`
+ *  and never fewer than one (1.246). */
+function chosenUsesToFill(
+  ctx: RulesetCombatContext,
+  action: RulesetCombatAction,
+  target: RulesetCombatant | undefined,
+  most: number,
+): number {
+  const heal = action.heal;
+  if (!heal || !target) return Math.min(1, most);
+  const health = healthOf(ctx, target);
+  const missing = Math.max(0, health.max - health.value);
+  const each = Math.max(1, (heal.count * (heal.sides + 1)) / 2 + heal.flat);
+  return Math.max(1, Math.min(most, Math.ceil(missing / each)));
 }
 
 /** What its holder spends when their own roll of this kind has failed (1.244): the first such entry
@@ -2900,7 +2919,17 @@ export function applyRulesetCombatChoice(
   const styleId = chosenStyle?.id;
   // A spending blow throws the number its maker has as they make it, whatever a window does to it.
   const spend = chosenStyle?.spends ? working.initiative : undefined;
-  const paid = planRulesetCombatCost(definition, working, action, choice.payWith);
+  // As many uses as its user chose (1.246), one up to what is left; left out, what heals the first
+  // target fully.
+  let amount: number | undefined;
+  if (action.usesChosen) {
+    const most = rulesetChosenUsesMax(definition, working, action);
+    amount = choice.amount ?? chosenUsesToFill(ctx, action, workingTargets[0], most);
+    if (!Number.isInteger(amount) || amount < 1 || amount > most) {
+      return refusal(state, choice.actorId, "insufficient", option.id);
+    }
+  }
+  const paid = planRulesetCombatCost(definition, working, action, choice.payWith, amount);
   if (!paid) {
     // The menu said it was affordable, so only a `payWith` the sheet refuses can land here.
     return refusal(state, choice.actorId, "insufficient", option.id);
@@ -2976,6 +3005,7 @@ export function applyRulesetCombatChoice(
     ...(mode ? { mode: mode.id } : {}),
     ...(spend !== undefined ? { spend } : {}),
     ...(budget ? { budget } : {}),
+    ...(amount !== undefined ? { amount } : {}),
   };
   // A condition that slows what its holder uses (1.115) may hold it over to their next turn.
   if (budget && delayRoll(ctx, working, action, budget)) {
@@ -4440,6 +4470,9 @@ function harmedBy(
   const paidFrom = ctx.strikeBudget;
   if (resume.budget) ctx.strikeBudget = resume.budget;
   else delete ctx.strikeBudget;
+  // The uses its user chose, read as it heals (1.246).
+  if (resume.amount) ctx.chosenAmount = resume.amount;
+  else delete ctx.chosenAmount;
   const hold = resolve();
   const hurt = new Set([
     ...(resume.held?.hurt ?? []),
@@ -5255,7 +5288,13 @@ function resolveActionBody(
   // One roller per clause, read the same way: an ability that lands on several targets without
   // rolling to hit rolls every clause once and everybody takes those numbers.
   const clauses = (action.damage?.plus ?? []).map((clause) => once(clause)!);
-  const heal = once(action.heal);
+  // As many times over as the uses its user chose (1.246): Lay on Hands.
+  const times = action.usesChosen ? (ctx.chosenAmount ?? 1) : 1;
+  const heal = once(
+    action.heal && times > 1
+      ? { ...action.heal, count: action.heal.count * times, flat: action.heal.flat * times }
+      : action.heal,
+  );
   const temporary = once(action.temporary);
   const restore = once(action.restore?.amount);
 

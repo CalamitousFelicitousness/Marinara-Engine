@@ -67,6 +67,8 @@ export type DirectedCommand =
       amount?: number;
       /** The alterations it is used with (1.248), from the option's `alters`: Metamagic. */
       alters?: string[];
+      /** Who of its user's side an alteration that spares some spares (1.249): Careful Spell. */
+      spares?: string[];
     }
   | { type: "choose"; candidateId: string }
   | { type: "continue" }

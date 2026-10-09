@@ -223,6 +223,8 @@ const command = z.discriminatedUnion("type", [
     amount: z.number().int().min(1).max(1000).optional(),
     /** The alterations it is used with (1.248), checked against the action by the resolver. */
     alters: z.array(z.string().min(1).max(200)).max(8).optional(),
+    /** Who of its user's side it spares (1.249), checked against the alterations by the resolver. */
+    spares: z.array(z.string().min(1).max(200)).max(20).optional(),
   }),
   z.object({ type: z.literal("choose"), candidateId: key }),
   z.object({ type: z.literal("continue") }),

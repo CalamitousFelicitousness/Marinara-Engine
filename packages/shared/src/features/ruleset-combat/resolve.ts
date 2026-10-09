@@ -342,25 +342,12 @@ function rollAmount(
   extra?: { amount: RulesetCombatAmount; times: number },
   /** The amount's own dice at or below this are thrown again once, the new face standing (1.93). */
   rerollUpTo?: number,
-  /** Up to this many of its dice below their average thrown again, the lowest first (1.248):
-   *  Empowered Spell. */
-  rerollLowest?: number,
 ): { rolls: number[]; flat: number; total: number } {
   const rolls = rerollLow(ctx, rollRulesetDice(ctx.roll, amount.count, amount.sides), amount.sides, rerollUpTo);
-  const own = rolls.length;
   let flat = amount.flat;
   if (extra && extra.times > 0) {
     rolls.push(...rollRulesetDice(ctx.roll, extra.amount.count * extra.times, extra.amount.sides));
     flat += extra.amount.flat * extra.times;
-  }
-  if (rerollLowest && rerollLowest > 0) {
-    const sidesOf = (index: number) => (index < own ? amount.sides : extra!.amount.sides);
-    const low = rolls
-      .map((_, index) => index)
-      .filter((index) => rolls[index]! < (sidesOf(index) + 1) / 2)
-      .sort((a, b) => rolls[a]! - rolls[b]! || a - b)
-      .slice(0, rerollLowest);
-    for (const index of low) rolls[index] = rollRulesetDice(ctx.roll, 1, sidesOf(index))[0]!;
   }
   return { rolls, flat, total: sumOf(rolls) + flat };
 }
@@ -2657,6 +2644,8 @@ export function applyRulesetCombatChoice(
   roller: RulesetCombatRoller,
 ): RulesetCombatStep {
   if (choice.alters === undefined || (Array.isArray(choice.alters) && choice.alters.length === 0)) {
+    // Who it spares is for an alteration that spares some (1.249), which it is not used with.
+    if (choice.spares !== undefined) return refusal(state, choice.actorId, "bad-alter", choice.optionId);
     const { alters: _none, ...plain } = choice;
     return applyChoice(definition, state, plain, roller);
   }
@@ -2681,9 +2670,25 @@ export function applyRulesetCombatChoice(
     return refusal(state, choice.actorId, "bad-alter", choice.optionId);
   }
   const chosen = alters as RulesetCombatAction[];
-  const view = withRulesetAction(state, actor.id, rulesetAlteredAction(own, chosen));
-  const { alters: _ids, ...plain } = choice;
-  const step = applyChoice(definition, view, plain, roller, chosen);
+  // Who it spares (1.249): only with an alteration that spares some, no more than it spares, each
+  // once and each of its user's side.
+  const spares = choice.spares;
+  if (spares !== undefined) {
+    const most = Math.max(0, ...chosen.map((alter) => alter.alters!.spares ?? 0));
+    // None at all is a choice too: it spares nobody.
+    const ids = Array.isArray(spares) ? spares : [null];
+    if (
+      most === 0 ||
+      ids.length > most ||
+      new Set(ids).size !== ids.length ||
+      ids.some((id) => typeof id !== "string" || rulesetCombatant(state, id)?.side !== actor.side)
+    ) {
+      return refusal(state, choice.actorId, "bad-alter", choice.optionId);
+    }
+  }
+  const view = withRulesetAction(state, actor.id, rulesetAlteredAction(own, chosen, spares));
+  const { alters: _ids, spares: _spared, ...plain } = choice;
+  const step = applyChoice(definition, view, plain, roller, chosen, spares);
   // Refused, nothing moved: the fight as it was handed in.
   if (step.state === view) return { ...step, state };
   return { ...step, state: withRulesetAction(step.state, actor.id, own) };
@@ -2713,6 +2718,7 @@ function rulesetResumedAction(
   actor: RulesetCombatant,
   action: RulesetCombatAction,
   alters: string[] | undefined,
+  spares?: string[],
 ): RulesetCombatAction {
   // Already set on it, as it is while the step that used it runs.
   if (!alters?.length || action.alteredWith) return action;
@@ -2720,7 +2726,7 @@ function rulesetResumedAction(
     const alter = actor.actions.find((entry) => entry.id === id);
     return alter?.alters ? [alter] : [];
   });
-  return rulesetAlteredAction(action, found);
+  return rulesetAlteredAction(action, found, spares);
 }
 
 function applyChoice(
@@ -2730,6 +2736,8 @@ function applyChoice(
   roller: RulesetCombatRoller,
   /** The alterations it is used with, already set on the action (1.248), to pay for now. */
   alters?: RulesetCombatAction[],
+  /** Who of its user's side they spare (1.249), already set on the action. */
+  spares?: string[],
 ): RulesetCombatStep {
   const combat = definition.combat;
   if (!combat) return refusal(state, choice.actorId, "encounter-over", choice.optionId);
@@ -3144,6 +3152,7 @@ function applyChoice(
     ...(budget ? { budget } : {}),
     ...(amount !== undefined ? { amount } : {}),
     ...(alters?.length ? { alters: alters.map((alter) => alter.id) } : {}),
+    ...(alters?.length && spares ? { spares: [...spares] } : {}),
   };
   // A condition that slows what its holder uses (1.115) may hold it over to their next turn.
   if (budget && delayRoll(ctx, working, action, budget)) {
@@ -3358,7 +3367,7 @@ function completeDelayed(ctx: RulesetCombatContext, actor: RulesetCombatant): vo
   delete actor.delayed;
   const { label, budget, ...resume } = delayed;
   const found = actor.actions.find((entry) => entry.id === resume.optionId);
-  const action = found && rulesetResumedAction(actor, found, resume.alters);
+  const action = found && rulesetResumedAction(actor, found, resume.alters, resume.spares);
   const effects = rulesetCombatEffects(ctx.definition, ctx.combat, actor, ctx.state);
   if (!action || !rulesetCombatStanding(actor) || effects.has("cannot-act") || (actor.budgets[budget] ?? 0) < 1) {
     ctx.events.push({ type: "delay", actorId: actor.id, label, outcome: "lost" });
@@ -4511,7 +4520,7 @@ function resumeAction(ctx: RulesetCombatContext, resume: RulesetActionResume): v
   const own = found && rulesetActionAsUsed(found);
   // Picked up in the mode it was made in, and with what it was altered with (1.248).
   const moded = own && resume.mode ? (rulesetModedAction(ctx.definition, own, resume.mode) ?? own) : own;
-  let action = actor && moded ? rulesetResumedAction(actor, moded, resume.alters) : moded;
+  let action = actor && moded ? rulesetResumedAction(actor, moded, resume.alters, resume.spares) : moded;
   if (!actor || !action) return;
   if (resume.cancelled || !rulesetCombatStanding(actor)) {
     // A spell called off was cast all the same (1.175).
@@ -5420,21 +5429,68 @@ function resolveActionBody(
   // rolled until a target actually needs it, so a use that misses everything costs no dice at all.
   type Rolled = { rolls: number[]; flat: number; total: number };
   const perTarget = action.toHit !== undefined && !action.autoHit;
-  const once = (amount: RulesetCombatAmount | undefined, rerollUpTo?: number, rerollLowest?: number) => {
+  const once = (amount: RulesetCombatAmount | undefined, rerollUpTo?: number) => {
     let rolled: Rolled | null = null;
     if (!amount) return null;
     return perTarget
-      ? () => rollAmount(ctx, amount, extra, rerollUpTo, rerollLowest)
-      : () => (rolled ??= rollAmount(ctx, amount, extra, rerollUpTo, rerollLowest));
+      ? () => rollAmount(ctx, amount, extra, rerollUpTo)
+      : () => (rolled ??= rollAmount(ctx, amount, extra, rerollUpTo));
   };
-  // Empowered (1.248): its own damage dice that rolled low thrown again.
-  const damage = once(action.damage, action.damage?.reroll, action.altered?.rerolls);
+  // Empowered (1.248): up to so many of its damage dice that rolled low thrown again, the lowest of
+  // ALL its dice first (1.249): the blow's own, every clause's, and on a critical hit the extra ones.
+  // Its dice are therefore rolled together, once per hit for an attack and once for everybody else.
+  const empowered = action.altered?.rerolls ?? 0;
+  /** One hit's dice, the blow's own first and then each clause's: null for one not rolled. */
+  type Hit = { sets: Array<Rolled | null>; left: number };
+  let hitNow: Hit | null = null;
+  let hitShared: Hit | null = null;
+  const sidesOf = (amount: RulesetCombatAmount, index: number) =>
+    index < amount.count ? amount.sides : (extra?.amount.sides ?? amount.sides);
+  const rollHit = (withBlow: boolean): Hit => {
+    const amounts = [withBlow ? action.damage : undefined, ...(action.damage?.plus ?? [])];
+    const sets = amounts.map((amount, index) =>
+      amount ? rollAmount(ctx, amount, extra, index === 0 ? action.damage?.reroll : undefined) : null,
+    );
+    const low = sets
+      .flatMap((set, at) =>
+        set ? set.rolls.map((face, index) => ({ at, index, face, sides: sidesOf(amounts[at]!, index) })) : [],
+      )
+      .filter((die) => die.face < (die.sides + 1) / 2)
+      .sort((a, b) => a.face - b.face || a.at - b.at || a.index - b.index)
+      .slice(0, empowered);
+    for (const die of low) {
+      const set = sets[die.at]!;
+      set.rolls[die.index] = rollRulesetDice(ctx.roll, 1, die.sides)[0]!;
+      set.total = sumOf(set.rolls) + set.flat;
+    }
+    return { sets, left: empowered - low.length };
+  };
+  const hitFor = (withBlow: boolean): Hit =>
+    perTarget ? (withBlow || !hitNow ? (hitNow = rollHit(withBlow)) : hitNow) : (hitShared ??= rollHit(true));
+  /** A critical hit's extra dice thrown again with what Empowered has left on this hit. */
+  const empowerCritical = (bonus: { rolls: number[]; flat: number }, amount: RulesetCombatAmount) => {
+    const hit = empowered > 0 ? (perTarget ? hitNow : hitShared) : null;
+    if (!hit || hit.left <= 0 || bonus.rolls.length === 0) return bonus;
+    const low = bonus.rolls
+      .map((face, index) => ({ index, face, sides: sidesOf(amount, index) }))
+      .filter((die) => die.face < (die.sides + 1) / 2)
+      .sort((a, b) => a.face - b.face || a.index - b.index)
+      .slice(0, hit.left);
+    hit.left -= low.length;
+    const rolls = [...bonus.rolls];
+    for (const die of low) rolls[die.index] = rollRulesetDice(ctx.roll, 1, die.sides)[0]!;
+    return { ...bonus, rolls };
+  };
+  const damage =
+    empowered > 0 && action.damage ? () => hitFor(true).sets[0]! : once(action.damage, action.damage?.reroll);
   // Careful (1.248): up to so many of its user and their allies it catches make its save outright,
-  // in the order it caught them. Heightened: its first target rolls its first save at disadvantage.
+  // the ones its user picked (1.249), else in the order it caught them. Heightened: its first target
+  // rolls its first save at disadvantage.
+  const picked = action.altered?.spared;
   const careful = new Set(
     action.altered?.spares
       ? targets
-          .filter((target) => target.side === actor.side)
+          .filter((target) => target.side === actor.side && (!picked || picked.includes(target.id)))
           .slice(0, action.altered.spares)
           .map((target) => target.id)
       : [],
@@ -5442,7 +5498,9 @@ function resolveActionBody(
   const heightened = action.altered?.heightens ? targets[0]?.id : undefined;
   // One roller per clause, read the same way: an ability that lands on several targets without
   // rolling to hit rolls every clause once and everybody takes those numbers.
-  const clauses = (action.damage?.plus ?? []).map((clause) => once(clause)!);
+  const clauses = (action.damage?.plus ?? []).map((clause, index) =>
+    empowered > 0 ? () => hitFor(false).sets[index + 1]! : once(clause)!,
+  );
   // As many times over as the uses its user chose (1.246): Lay on Hands.
   const times = action.usesChosen ? (ctx.chosenAmount ?? 1) : 1;
   const heal = once(
@@ -5466,6 +5524,8 @@ function resolveActionBody(
   const spared = sparedByHealth(ctx, actor, action, targets.filter(reaches), extra);
   for (const target of targets) {
     if (!reaches(target) || spared.has(target.id)) continue;
+    // Each target an attack rolls for is a hit of its own, its dice not yet rolled.
+    hitNow = null;
     // Killed outright (1.191): nothing else it does matters to the dead.
     if (action.kills) {
       slay(ctx, target, actor.id, action.label);
@@ -5975,7 +6035,9 @@ function resolveActionBody(
         action.maxAgainst && rulesetTargetIs(ctx.definition, target, action.maxAgainst)
           ? maxAmount(action.damage, extra)
           : damage();
-      const bonus = critical ? criticalExtra(ctx, action.damage, extra, action.damage.reroll) : { rolls: [], flat: 0 };
+      const bonus = critical
+        ? empowerCritical(criticalExtra(ctx, action.damage, extra, action.damage.reroll), action.damage)
+        : { rolls: [], flat: 0 };
       const thrown = rolled.total + sumOf(bonus.rolls) + bonus.flat;
       // Never less than the weapon's floor.
       const total = Math.max(thrown, action.damage.floor ?? 0);
@@ -6004,7 +6066,7 @@ function resolveActionBody(
         // Halved by its own save when it has one, and by the action's save-for-half when it does not.
         const clauseHalved = clause.save ? own : halved;
         const rolledClause = clauses[index]!();
-        const clauseBonus = critical ? criticalExtra(ctx, clause) : { rolls: [], flat: 0 };
+        const clauseBonus = critical ? empowerCritical(criticalExtra(ctx, clause), clause) : { rolls: [], flat: 0 };
         const clauseTotal = rolledClause.total + sumOf(clauseBonus.rolls) + clauseBonus.flat;
         land({
           sourceId: actor.id,

@@ -23,6 +23,7 @@ import {
 } from "../../lib/ruleset-combat-board";
 import {
   rulesetDefaultTargets,
+  rulesetSparePick,
   rulesetMenuGroups,
   rulesetOptionCostText,
   rulesetModeText,
@@ -59,6 +60,8 @@ export interface RulesetCombatMenuProps {
     amount?: number,
     /** The alterations it is used with (1.248): Metamagic. */
     alters?: string[],
+    /** Who of its user's side they spare (1.249): Careful Spell. */
+    spares?: string[],
   ) => void;
   /** Walking away. The ruleset's menu never carries it, because leaving is not a thing the rules
    *  resolve: it is the director ending the session, exactly as the other two styles end it. */
@@ -104,6 +107,8 @@ export function RulesetCombatMenu({
   const [amountText, setAmountText] = useState("");
   // The alterations ticked in the alter step (1.248).
   const [altersPicked, setAltersPicked] = useState<string[]>([]);
+  // Who of its user's side is ticked to be spared in the spare step (1.249).
+  const [sparesPicked, setSparesPicked] = useState<string[]>([]);
   // Held by the owner only when it passes BOTH halves (`step` may be null, never left out): with one
   // of them missing the menu keeps its own, or a pick would be handed up and never come back down.
   const held = onStepChange !== undefined && heldStep !== undefined;
@@ -152,6 +157,7 @@ export function RulesetCombatMenu({
       stepStage === "style" ||
       stepStage === "mode" ||
       stepStage === "alter" ||
+      stepStage === "spare" ||
       stepStage === "pay" ||
       stepStage === "amount" ||
       stepStage === "target"
@@ -186,8 +192,20 @@ export function RulesetCombatMenu({
     amount: number | undefined = step?.amount,
     alters: string[] | undefined = step?.alters,
   ) => {
+    if (spareFirst({ option, targets, payWith, style, mode, amount, alters })) return;
     closeStep();
     onChoose(option.id, targets, payWith, undefined, style, mode, amount, alters);
+  };
+  /** Who it spares is picked before it is sent, where its alterations spare more of its user's side
+   *  than they can (1.249). True when that step was opened. */
+  const spareFirst = (
+    held: Pick<RulesetMenuStep, "option" | "targets" | "payWith" | "style" | "mode" | "amount" | "alters" | "cell">,
+  ): boolean => {
+    const spare = rulesetSparePick(view, held, held.targets, held.cell);
+    if (!spare) return false;
+    setSparesPicked(spare.ids.slice(0, spare.most));
+    setStep({ ...held, stage: "spare", spare });
+    return true;
   };
   /** Which picking step this option opens, or null for one that is simply sent. On a board, a walk
    *  and a shape are picked on the board; everything else is the list below. */
@@ -435,6 +453,76 @@ export function RulesetCombatMenu({
     );
   }
 
+  // ── Who of its user's side it spares (1.249): Careful Spell ──
+  if (step?.stage === "spare" && step.spare) {
+    const { ids, most } = step.spare;
+    const toggle = (id: string) =>
+      setSparesPicked(
+        sparesPicked.includes(id)
+          ? sparesPicked.filter((one) => one !== id)
+          : sparesPicked.length < most
+            ? [...sparesPicked, id]
+            : sparesPicked,
+      );
+    return (
+      <div className="flex flex-col gap-2 p-3">
+        <p className="text-xs text-white/60" id="ruleset-spare-prompt">
+          {t("game.combat.ruleset.spare.prompt", { label: rulesetOptionLabel(step.option, t), count: most })}
+        </p>
+        <div className="flex flex-wrap gap-2" role="group" aria-labelledby="ruleset-spare-prompt">
+          {ids.map((id, index) => {
+            const picked = sparesPicked.includes(id);
+            const combatant = view.combatants.find((one) => one.id === id);
+            return (
+              <button
+                ref={index === 0 ? first : undefined}
+                key={id}
+                type="button"
+                disabled={busy || (!picked && sparesPicked.length >= most)}
+                aria-pressed={picked}
+                onClick={() => toggle(id)}
+                className={cn(
+                  buttonClass,
+                  picked
+                    ? "border-[var(--primary)]/60 bg-[var(--primary)]/25 text-white"
+                    : "border-blue-400/30 bg-blue-500/10 text-white/85 hover:bg-blue-500/20",
+                )}
+              >
+                <span className="block font-semibold">{combatant?.name ?? id}</span>
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              closeStep();
+              onChoose(
+                step.option.id,
+                step.targets,
+                step.payWith,
+                step.cell,
+                step.style,
+                step.mode,
+                step.amount,
+                step.alters,
+                sparesPicked,
+              );
+            }}
+            className={cn(buttonClass, "border-[var(--primary)]/50 bg-[var(--primary)]/20 text-white")}
+          >
+            {sparesPicked.length
+              ? t("game.combat.ruleset.spare.confirm", { count: sparesPicked.length })
+              : t("game.combat.ruleset.spare.none")}
+          </button>
+        </div>
+        <BackButton onClick={closeStep} label={t("game.combat.ruleset.target.back")} />
+      </div>
+    );
+  }
+
   // ── Choosing how much of it to spend (1.246) ──
   if (step?.stage === "amount" && step.option.amount) {
     const option = step.option;
@@ -543,8 +631,9 @@ export function RulesetCombatMenu({
     const sendLaid = () => {
       const laid = rulesetAimSoFar(lay);
       if (!laid) return;
+      if (spareFirst({ ...step, targets: [], cell: laid })) return;
       closeStep();
-      onChoose(option.id, [], step.payWith, laid, step.style, step.mode);
+      onChoose(option.id, [], step.payWith, laid, step.style, step.mode, step.amount, step.alters);
     };
     const prompt =
       step.stage === "move"
@@ -676,6 +765,8 @@ export function RulesetCombatMenu({
                   { wall: { x: section.cell.x, y: section.cell.y } },
                   step.style,
                   step.mode,
+                  step.amount,
+                  step.alters,
                 );
               }}
               className={cn(buttonClass, "border-sky-300/30 bg-sky-500/10 text-white/85 hover:bg-sky-500/20")}

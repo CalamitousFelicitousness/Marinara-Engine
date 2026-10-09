@@ -80,6 +80,7 @@ import {
   rulesetOptionNeedsTargets,
   rulesetPickTarget,
   rulesetSendsOnPick,
+  rulesetSparePick,
   type RulesetMenuStep,
 } from "../../packages/client/src/lib/ruleset-combat-menu.js";
 import {
@@ -1280,6 +1281,55 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.ok(!rulesetOptionNeedsTargets(dodge), "aiming at yourself is not a choice");
   assert.deepEqual(rulesetDefaultTargets(dodge), dodge.targetIds.slice(0, dodge.targets.count));
   assert.deepEqual(rulesetDefaultTargets(sword), [], "something that IS a choice sends nothing until it is made");
+}
+
+// ── Who Careful Spell spares is picked when it catches more of its user's side than it spares (1.249) ──
+{
+  const view = {
+    actorId: "sorc",
+    combatants: [
+      { id: "sorc", side: "party" },
+      { id: "ally", side: "party" },
+      { id: "p1", side: "party" },
+      { id: "foe", side: "enemy" },
+    ],
+  } as unknown as DirectedRulesetView;
+  const option = {
+    alters: [
+      { id: "careful", label: "Careful Spell", cost: 1, spares: 1 },
+      { id: "empowered", label: "Empowered Spell", cost: 1, joins: true },
+    ],
+    aim: [
+      { x: 5, y: 5, targetIds: ["ally", "p1", "foe"] },
+      { x: 9, y: 9, targetIds: ["ally", "foe"] },
+    ],
+  } as unknown as DirectedRulesetOption;
+  assert.deepEqual(rulesetSparePick(view, { option, alters: ["careful"] }, [], { at: { x: 5, y: 5 } }), {
+    ids: ["ally", "p1"],
+    most: 1,
+  });
+  assert.equal(
+    rulesetSparePick(view, { option, alters: ["careful"] }, [], { at: { x: 9, y: 9 } }),
+    null,
+    "one caught, and it spares one: nothing to pick",
+  );
+  assert.equal(rulesetSparePick(view, { option, alters: ["empowered"] }, [], { at: { x: 5, y: 5 } }), null);
+  assert.deepEqual(
+    rulesetSparePick(view, { option, alters: ["careful"] }, ["ally", "p1", "foe"])?.ids,
+    ["ally", "p1"],
+    "a list of targets is who it catches",
+  );
+  assert.deepEqual(
+    rulesetSparePick(view, { option, alters: ["careful"] }, [], { at: { x: 1, y: 1 }, toward: { x: 2, y: 1 } })?.ids,
+    ["sorc", "ally", "p1"],
+    "a wall could catch any of them",
+  );
+  // Asked in somebody else's window, its user is the one asked.
+  const asked = { ...view, actorId: "foe", window: { actorId: "sorc" } } as unknown as DirectedRulesetView;
+  assert.deepEqual(rulesetSparePick(asked, { option, alters: ["careful"] }, [], { at: { x: 5, y: 5 } })?.ids, [
+    "ally",
+    "p1",
+  ]);
 }
 
 // ── When a fight is the ruleset's own ──

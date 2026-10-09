@@ -4,7 +4,7 @@
 // each one lists exactly who it may be pointed at. Nothing here decides legality or does any
 // arithmetic; it groups what arrived, spells what an option spends out of the words the option
 // carries, and keeps a player's picking inside the option's own list and count.
-import type { DirectedRulesetOption } from "@marinara-engine/shared";
+import type { DirectedRulesetOption, DirectedRulesetView } from "@marinara-engine/shared";
 import {
   RULESET_FLY_DOWN_OPTION,
   RULESET_FLY_UP_OPTION,
@@ -14,7 +14,7 @@ import {
   RULESET_STAND_OPTION,
 } from "@marinara-engine/shared";
 import type { TFunction } from "i18next";
-import { rulesetDistanceText, type RulesetBoardDistance } from "./ruleset-combat-board";
+import { rulesetDistanceText, type RulesetBoardDistance, type RulesetCellChoice } from "./ruleset-combat-board";
 
 /** The order a menu reads in: where you go, what you swing, what you cast, what a stat block can
  *  do, the contests it may start, the moves the kind implements, and finally ending the turn.
@@ -49,7 +49,7 @@ const MOVE_OPTION_WORDS: Record<string, "walk" | "stand" | "flyUp" | "flyDown"> 
 };
 
 export interface RulesetMenuStep {
-  stage: "style" | "mode" | "alter" | "pay" | "amount" | "move" | "target" | "aim";
+  stage: "style" | "mode" | "alter" | "pay" | "amount" | "move" | "target" | "aim" | "spare";
   option: DirectedRulesetOption;
   /** The initiative style an attack is made in, where initiative is a number attacks move. */
   style?: string;
@@ -63,6 +63,10 @@ export interface RulesetMenuStep {
   targets: string[];
   /** How a shape is being laid while it is aimed (1.172, 1.173). */
   lay?: RulesetAimLay;
+  /** Where it was aimed, held while who it spares is picked (1.249). */
+  cell?: RulesetCellChoice;
+  /** Who of its user's side it could spare and how many at most, while that is picked (1.249). */
+  spare?: { ids: string[]; most: number };
 }
 
 /** A shape half laid on the board: the cell it was first set down on, further copies of it, and for
@@ -253,6 +257,40 @@ export function rulesetPickTarget(option: DirectedRulesetOption, picked: string[
   if (picked.includes(id)) return picked.filter((entry) => entry !== id);
   if (picked.length >= option.targets.count) return picked;
   return [...picked, id];
+}
+
+/**
+ * Who of its user's side an alteration it is used with could spare (1.249): Careful Spell. Null when
+ * there is nothing to pick, because no alteration spares anybody or it catches no more of them than
+ * it spares. An aimed shape catches who its aim says; a wall, whose aim the board does not hold,
+ * could catch any of them.
+ */
+export function rulesetSparePick(
+  view: DirectedRulesetView,
+  step: Pick<RulesetMenuStep, "option" | "alters">,
+  targets: string[],
+  cell?: RulesetCellChoice,
+): { ids: string[]; most: number } | null {
+  const most = Math.max(
+    0,
+    ...(step.alters ?? []).map((id) => step.option.alters?.find((offer) => offer.id === id)?.spares ?? 0),
+  );
+  if (most === 0) return null;
+  const user = view.combatants.find((combatant) => combatant.id === (view.window?.actorId ?? view.actorId));
+  if (!user) return null;
+  const aims = cell?.at ? [cell.at, ...(cell.also ?? [])] : [];
+  const aimed = aims.map((at) => step.option.aim?.find((one) => one.x === at.x && one.y === at.y));
+  const caught = new Set(
+    aims.length === 0
+      ? targets
+      : aimed.every((one) => one)
+        ? aimed.flatMap((one) => one!.targetIds)
+        : view.combatants.map((combatant) => combatant.id),
+  );
+  const ids = view.combatants
+    .filter((combatant) => combatant.side === user.side && caught.has(combatant.id))
+    .map((combatant) => combatant.id);
+  return ids.length > most ? { ids, most } : null;
 }
 
 /** What is sent for an option that takes no picking: whoever it is already pointed at. */

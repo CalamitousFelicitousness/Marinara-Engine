@@ -2103,7 +2103,12 @@ export function rulesetAlterFits(alter: RulesetCombatAlter, action: RulesetComba
 
 /** The action as its alterations change it (1.248). What they leave for it to do as it resolves is
  *  its `altered`. */
-export function rulesetAlteredAction(action: RulesetCombatAction, alters: RulesetCombatAction[]): RulesetCombatAction {
+export function rulesetAlteredAction(
+  action: RulesetCombatAction,
+  alters: RulesetCombatAction[],
+  /** Who of its user's side it spares, where they were picked (1.249). */
+  spared?: string[],
+): RulesetCombatAction {
   let out: RulesetCombatAction = { ...action };
   const altered: NonNullable<RulesetCombatAction["altered"]> = { ...(action.altered ?? {}) };
   for (const one of alters) {
@@ -2139,6 +2144,7 @@ export function rulesetAlteredAction(action: RulesetCombatAction, alters: Rulese
     if (alter.rerolls) altered.rerolls = Math.max(altered.rerolls ?? 0, alter.rerolls);
     if (alter.heightens) altered.heightens = true;
   }
+  if (spared && altered.spares) altered.spared = spared.slice(0, altered.spares);
   if (Object.keys(altered).length > 0) out = { ...out, altered };
   out.alteredWith = [...(action.alteredWith ?? []), ...alters.map((one) => one.id)];
   return out;
@@ -2186,6 +2192,7 @@ export function rulesetAlterOffers(
         ...(alter.twins ? { twins: true as const } : {}),
         ...(alter.joins ? { joins: true as const } : {}),
         ...(alter.budget ? { budget: alter.budget.to } : {}),
+        ...(alter.spares ? { spares: alter.spares } : {}),
       },
     ];
   });

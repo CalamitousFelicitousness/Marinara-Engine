@@ -1022,7 +1022,9 @@ const capabilityPackageManifestBaseSchema = z
 // 1.248: catalog mechanics' `alters` and `usesSpentByLevel` (an entry chosen with another one, which
 //        changes how it is used: Metamagic), the option's `alters` and `alterNeeded`, the choice's
 //        `alters`, and the `altered` event.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 248 } as const);
+// 1.249: Empowered rerolls the lowest of all a blow's damage dice (its clauses' and a critical's
+//        too); the alter offer's `spares` and the choice's `spares` (who Careful Spell spares).
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 249 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

@@ -522,12 +522,12 @@ export interface RulesetCombatAction {
   /** Its price in uses is the level the action it alters is paid at, at least one (1.248). */
   usesSpentByLevel?: true;
   /** What the alterations it was used with left on it to do as it resolves (1.248). */
-  altered?: { spares?: number; rerolls?: number; heightens?: true; subtle?: true };
+  altered?: { spares?: number; spared?: string[]; rerolls?: number; heightens?: true; subtle?: true };
   /** The alterations already set on it (1.248), so they are never set twice. */
   alteredWith?: string[];
-  /** A failed save drops its target to 0 health instead of the amount (1.240). */
   /** The tags of the held weapon it is made with (1.241), for what comes after the attack action. */
   itemTags?: string[];
+  /** A failed save drops its target to 0 health instead of the amount (1.240). */
   dropsOnFailedSave?: true;
   /** Offered only once the attack action has been taken this turn (1.237): Flurry of Blows. */
   afterAttack?: RulesetAfterAttack;
@@ -1238,6 +1238,8 @@ export interface RulesetActionResume {
   amount?: number;
   /** The alterations it was used with (1.248). */
   alters?: string[];
+  /** Who of its user's side it spares, as they were picked (1.249). */
+  spares?: string[];
 }
 
 /** Once the attack action has been taken this turn, with anything or with one of `names` (1.237). */
@@ -1833,6 +1835,8 @@ export interface RulesetCombatAlterOffer {
   joins?: true;
   /** The budget it is used with instead. */
   budget?: string;
+  /** How many of its user's side it catches it may spare (Careful), each picked by `spares` (1.249). */
+  spares?: number;
 }
 
 export interface RulesetCombatOption {
@@ -1973,6 +1977,9 @@ export interface RulesetCombatChoice {
   amount?: number;
   /** The ids of the altering actions it is used with (1.248), from the option's `alters`. */
   alters?: string[];
+  /** Who of its user's side an alteration that spares some (Careful) spares (1.249): no more than
+   *  its offer's `spares`, each one it catches. Left out, the first it catches. */
+  spares?: string[];
 }
 
 export interface RulesetCombatStep {

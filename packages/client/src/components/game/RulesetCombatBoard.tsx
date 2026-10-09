@@ -45,7 +45,12 @@ import {
   rulesetPathTo,
   type RulesetBoardCell,
 } from "../../lib/ruleset-combat-board";
-import { rulesetPickTarget, rulesetSendsOnPick, type RulesetMenuStep } from "../../lib/ruleset-combat-menu";
+import {
+  rulesetPickTarget,
+  rulesetSendsOnPick,
+  rulesetSparePick,
+  type RulesetMenuStep,
+} from "../../lib/ruleset-combat-menu";
 import { RulesetCombatMenu } from "./RulesetCombatMenu";
 import { CreatureArtFigure, useCreatureFacings, useCreaturePack } from "./CreatureArt";
 import { cn } from "../../lib/utils";
@@ -70,6 +75,7 @@ export interface RulesetCombatBoardProps {
     mode?: string,
     amount?: number,
     alters?: string[],
+    spares?: string[],
   ) => void;
   onFlee: () => void;
   /** The per-member manual and automatic toggles, built by the caller so this file stays about the
@@ -167,14 +173,29 @@ export function RulesetCombatBoard({
         setStep({ ...step, lay: taken.lay });
         return;
       }
+      // Who of its user's side it spares is picked in the menu first, where there is a pick (1.249).
+      const spare = rulesetSparePick(view, step, [], taken.send);
+      if (spare) {
+        setStep({ ...step, stage: "spare", targets: [], cell: taken.send, spare });
+        return;
+      }
       setStep(null);
-      onChoose(step.option.id, [], step.payWith, taken.send, step.style, step.mode);
+      onChoose(step.option.id, [], step.payWith, taken.send, step.style, step.mode, step.amount, step.alters);
       return;
     }
     // A wall's section the attack may strike (1.195): sent at once, as one target is.
     if (step.stage === "target" && cell.strikable) {
       setStep(null);
-      onChoose(step.option.id, [], step.payWith, { wall: { x: cell.x, y: cell.y } }, step.style, step.mode);
+      onChoose(
+        step.option.id,
+        [],
+        step.payWith,
+        { wall: { x: cell.x, y: cell.y } },
+        step.style,
+        step.mode,
+        step.amount,
+        step.alters,
+      );
       return;
     }
     // The same two rules the list in the menu picks by, so clicking a token and clicking its name

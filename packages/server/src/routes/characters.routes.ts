@@ -53,6 +53,7 @@ import { resolveImagePromptReviewSize } from "../services/image/image-prompt-rev
 import { resolveImageConnectionFallback } from "../services/generation/media-connection-fallback.js";
 import { buildAvatarPortraitLeadPrompt } from "../services/image/avatar-generation-prompt.js";
 import { downloadGreetingImage } from "../services/image/greeting-image-bake.js";
+import { GREETING_IMAGE_BAKE_RATE_LIMIT } from "../middleware/rate-limit.js";
 import {
   ConversationCallVideoClipAvatarMismatchError,
   ConversationCallVideoClipNotFoundError,
@@ -2040,45 +2041,50 @@ export async function charactersRoutes(app: FastifyInstance) {
 
   // Saves web images from the greetings into the gallery, only when the user
   // asks (#7221). The editor then points the greetings at the saved copies.
-  app.post<{ Params: { id: string } }>("/:id/gallery/bake", async (req, reply) => {
-    const { id } = req.params;
-    const { urls } = bakeGreetingImagesSchema.parse(req.body ?? {});
-    const char = await storage.getById(id);
-    if (!char) return reply.status(404).send({ error: "Character not found" });
+  app.post<{ Params: { id: string } }>(
+    "/:id/gallery/bake",
+    { config: { rateLimit: GREETING_IMAGE_BAKE_RATE_LIMIT } },
+    async (req, reply) => {
+      const { urls } = bakeGreetingImagesSchema.parse(req.body ?? {});
+      const char = await storage.getById(req.params.id);
+      if (!char) return reply.status(404).send({ error: "Character not found" });
+      // Paths use the stored id, never the raw route parameter.
+      const id = char.id;
 
-    const dir = await ensureCharacterGalleryDir(id);
-    const results: Array<{ url: string; file?: string; error?: string }> = [];
-    for (const url of new Set(urls)) {
-      let image: Awaited<ReturnType<typeof downloadGreetingImage>>;
-      try {
-        image = await downloadGreetingImage(url);
-      } catch (error) {
-        logger.warn(error, "Could not download a greeting image from %s for character %s", URL.parse(url)?.host, id);
-        results.push({ url, error: error instanceof Error ? error.message : "Download failed" });
-        continue;
+      const dir = await ensureCharacterGalleryDir(id);
+      const results: Array<{ url: string; file?: string; error?: string }> = [];
+      for (const url of new Set(urls)) {
+        let image: Awaited<ReturnType<typeof downloadGreetingImage>>;
+        try {
+          image = await downloadGreetingImage(url);
+        } catch (error) {
+          logger.warn(error, "Could not download a greeting image from %s for character %s", URL.parse(url)?.host, id);
+          results.push({ url, error: error instanceof Error ? error.message : "Download failed" });
+          continue;
+        }
+        // App-generated name; nothing from the URL reaches the file system.
+        const file = `${newId()}.${image.ext}`;
+        let written = false;
+        try {
+          await writeFile(join(dir, file), image.buffer, { flag: "wx" });
+          written = true;
+          await characterGallery.create({
+            characterId: id,
+            filePath: `characters/${id}/${file}`,
+            width: image.width,
+            height: image.height,
+          });
+          results.push({ url, file });
+        } catch (error) {
+          if (written) await unlink(join(dir, file)).catch(() => undefined);
+          // Storage errors can name server paths, so the client gets a plain message.
+          logger.error(error, "Could not store a greeting image for character %s", id);
+          results.push({ url, error: "The image could not be stored" });
+        }
       }
-      // App-generated name; nothing from the URL reaches the file system.
-      const file = `${newId()}.${image.ext}`;
-      let written = false;
-      try {
-        await writeFile(join(dir, file), image.buffer, { flag: "wx" });
-        written = true;
-        await characterGallery.create({
-          characterId: id,
-          filePath: `characters/${id}/${file}`,
-          width: image.width,
-          height: image.height,
-        });
-        results.push({ url, file });
-      } catch (error) {
-        if (written) await unlink(join(dir, file)).catch(() => undefined);
-        // Storage errors can name server paths, so the client gets a plain message.
-        logger.error(error, "Could not store a greeting image for character %s", id);
-        results.push({ url, error: "The image could not be stored" });
-      }
-    }
-    return { results };
-  });
+      return { results };
+    },
+  );
 
   app.get<{ Params: { id: string; filename: string } }>("/:id/gallery/file/:filename", async (req, reply) => {
     const { id, filename } = req.params;

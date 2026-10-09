@@ -109,9 +109,12 @@ export function resolveClaudeCodeInstall(): Promise<ClaudeCodeInstall | null> {
 /** SDK option pointing at the host install, or nothing to keep the bundled build. */
 export async function claudeCodeExecutableOption(): Promise<{ pathToClaudeCodeExecutable?: string }> {
   const install = await resolveClaudeCodeInstall();
+  // Shorten the home directory so debug logs don't carry the username.
   logger.debug(
     "[claude-subscription] Claude Code executable: %s",
-    install ? `${install.path} (${install.version})` : `bundled (${BUNDLED_CLAUDE_CODE_VERSION ?? "unknown"})`,
+    install
+      ? `${install.path.replace(homedir(), "~")} (${install.version})`
+      : `bundled (${BUNDLED_CLAUDE_CODE_VERSION ?? "unknown"})`,
   );
   return install ? { pathToClaudeCodeExecutable: install.path } : {};
 }

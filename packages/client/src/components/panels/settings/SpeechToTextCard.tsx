@@ -18,11 +18,13 @@ const SERVER_URL_EXAMPLE = "http://localhost:8000/v1";
 
 function Field({ label, help, children }: { label: string; help: string; children: ReactNode }) {
   return (
-    <label className="block space-y-1.5">
-      <span className="block text-xs font-medium text-[var(--foreground)]">{label}</span>
-      {children}
-      <span className="block text-[0.625rem] leading-relaxed text-[var(--muted-foreground)]">{help}</span>
-    </label>
+    <div className="space-y-1.5">
+      <label className="block space-y-1.5">
+        <span className="block text-xs font-medium text-[var(--foreground)]">{label}</span>
+        {children}
+      </label>
+      <p className="text-[0.625rem] leading-relaxed text-[var(--muted-foreground)]">{help}</p>
+    </div>
   );
 }
 
@@ -54,6 +56,8 @@ export function SpeechToTextCard() {
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingSaveRef = useRef<SpeechToTextConfig | null>(null);
+  const { mutate: saveInBackground } = updateConfig;
 
   // Seed once: refetches after each save must not overwrite what the user is still typing.
   useEffect(() => {
@@ -63,8 +67,10 @@ export function SpeechToTextCard() {
   useEffect(
     () => () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      // Leaving Connections before the autosave fires still keeps the last edit.
+      if (pendingSaveRef.current) saveInBackground(pendingSaveRef.current);
     },
-    [],
+    [saveInBackground],
   );
 
   if (!callsInstalled || !draft) return null;
@@ -74,6 +80,7 @@ export function SpeechToTextCard() {
       clearTimeout(saveTimerRef.current);
       saveTimerRef.current = null;
     }
+    pendingSaveRef.current = null;
     setSaveStatus("saving");
     try {
       await updateConfig.mutateAsync(config);
@@ -89,6 +96,7 @@ export function SpeechToTextCard() {
     setDraft(next);
     setTestResult(null);
     setSaveStatus("idle");
+    pendingSaveRef.current = next;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
       saveNow(next).catch(() => toast.error(t("connections.speechToText.saveFailed")));

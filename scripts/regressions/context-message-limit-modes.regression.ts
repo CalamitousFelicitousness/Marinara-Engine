@@ -96,6 +96,9 @@ try {
   );
 
   // Chat Settings tells the user that, next to the limit.
+  // ponytail: a source check like floating-window.regression.ts uses for the drawer; it breaks if the
+  // prop is renamed or wrapped. Upgrade path: render AdvancedParametersSection once a client
+  // component harness (QueryClient + i18n) exists for regressions.
   const repositoryRoot = join(import.meta.dirname, "../..");
   const drawer = readFileSync(
     join(repositoryRoot, "packages/client/src/components/chat/ChatSettingsDrawer.tsx"),

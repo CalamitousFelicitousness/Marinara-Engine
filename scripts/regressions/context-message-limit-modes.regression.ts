@@ -97,7 +97,7 @@ try {
 
   // Chat Settings tells the user that, next to the limit.
   // ponytail: a source check like floating-window.regression.ts uses for the drawer; it breaks if the
-  // prop is renamed or wrapped. Upgrade path: render AdvancedParametersSection once a client
+  // prop or the note's markup is renamed or wrapped. Upgrade path: render AdvancedParametersSection once a client
   // component harness (QueryClient + i18n) exists for regressions.
   const repositoryRoot = join(import.meta.dirname, "../..");
   const drawer = readFileSync(
@@ -107,6 +107,15 @@ try {
   assert.ok(
     drawer.includes("advancedMemoryManagesHistory={advancedMemoryEnabled}"),
     "the drawer tells Advanced Parameters when Advanced Memory sizes the history",
+  );
+  const section = readFileSync(
+    join(repositoryRoot, "packages/client/src/features/chat-settings/sections/AdvancedParametersSection.tsx"),
+    "utf8",
+  );
+  assert.match(
+    section,
+    /\{contextMessageLimit && advancedMemoryManagesHistory && \(\s*<p[^>]*>\s*\{localizeUi\("ui\.chatSettings\.advancedparameterssection\.contextMessageLimitAdvancedMemory"\)\}/u,
+    "the note shows only while both the limit and Advanced Memory are on",
   );
   const english = JSON.parse(
     readFileSync(join(repositoryRoot, "packages/client/src/localization/locales/en.json"), "utf8"),

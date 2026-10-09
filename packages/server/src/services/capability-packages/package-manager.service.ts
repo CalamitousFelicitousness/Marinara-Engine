@@ -1547,6 +1547,17 @@ function carriesMetamagic(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesMetamagic(one, depth + 1));
 }
 
+/** A rescue on an item's use (1.254), in catalogs too. */
+function carriesItemRescues(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesItemRescues(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const use = plainRecord(record.use);
+  if (use && use.rescue !== undefined) return true;
+  return Object.values(record).some((one) => carriesItemRescues(one, depth + 1));
+}
+
 /** A combat condition's kinds, or a save that ends a condition counted to an end or to what it
  *  becomes (1.253), in catalogs too. */
 function carriesDiseases(value: unknown, depth = 0): boolean {
@@ -3505,6 +3516,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // A rescue on an item's use, 1.254.
+  if (
+    !declaresApi(254) &&
+    (carriesItemRescues(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesItemRescues(document)))
+  ) {
+    return "A ruleset with rescues on an item's use requires schemaVersion 2 and capabilityApi 1.254 or newer";
   }
   // Condition kinds and counted saves, 1.253.
   if (

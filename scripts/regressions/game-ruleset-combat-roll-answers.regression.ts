@@ -499,7 +499,7 @@ try {
           targets: "enemy",
           range: 90,
           attackRoll: true,
-          toHit: { flat: 5 },
+          toHit: { bonus: 5 },
           halfOnMiss: true,
           amount: { dice: "4d4" },
           damageType: "acid",
@@ -536,7 +536,7 @@ try {
         doc.catalogs.push({
           id: "scrolls",
           label: "Scrolls",
-          feeds: ["inventory"],
+          holds: "items",
           entries: [
             {
               id: "acid",
@@ -549,8 +549,9 @@ try {
           ],
         });
       });
+    parsed(scrollDoc({ attackRoll: true, toHit: { bonus: 5 }, amount: { dice: "4d4" } }));
     refused(scrollDoc({ amount: { dice: "4d4" } }), /"halfOnMiss" is on a use that rolls to hit/);
-    refused(scrollDoc({ attackRoll: true, toHit: { flat: 5 } }), /"halfOnMiss" is on a use that rolls to hit/);
+    refused(scrollDoc({ attackRoll: true, toHit: { bonus: 5 } }), /"halfOnMiss" is on a use that rolls to hit/);
   }
 
   // ── The install gate: 1.252 ──

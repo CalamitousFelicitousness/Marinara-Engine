@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: a worn ring of evasion now saves its wearer from a failed Dexterity save for a reaction and one of the ring's own charges (Capability API 1.254).
 - Rulesets: diseases. Conditions can be grouped into kinds such as disease, so Lesser Restoration ends one disease and Divine Health keeps them all off, and Contagion's saves count up to three, ending it after three successes or setting the disease in after three failures (Capability API 1.253).
 - Rulesets: Cutting Words can now also lower an enemy's ability check or damage roll when that could change the result, and skips creatures that can't hear or are immune to being charmed; a ring of evasion turns a failed Dexterity save into a success for a reaction and a charge; and a scroll of Acid Arrow splashes on a miss like the spell (Capability API 1.252).
 - Rulesets: Stroke of Luck can turn a failed ability check's roll into a 20, Peerless Skill and Dark One's Own Luck add the character's own die where it can still save the roll, and Bardic Inspiration can no longer be given to the bard or stacked on a creature that already has a die (Capability API 1.251).

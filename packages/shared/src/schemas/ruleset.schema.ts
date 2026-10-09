@@ -10507,6 +10507,11 @@ function useIssues(
   if (use.budget !== undefined && !combat.economy.budgets.some((budget) => budget.id === use.budget)) {
     add([...at, "budget"], `Unknown budget "${use.budget}"`);
   }
+  // A worn item's rescue (1.254) takes a budget of the fight's own, as an entry's does.
+  const rescueBudget = use.rescue?.budget;
+  if (rescueBudget !== undefined && !combat.economy.budgets.some((budget) => budget.id === rescueBudget)) {
+    add([...at, "rescue", "budget"], `Unknown budget "${rescueBudget}"`);
+  }
   if (use.toHit) toHitIssues(definition, use.toHit, [...at, "toHit"], add, "An item's");
   // A pool fight throws harm with the ruleset's own die; healing is an amount and keeps its dice.
   const poolDie = combat.kind === "dice-pool" ? poolDieSides(definition) : undefined;

@@ -1035,7 +1035,8 @@ const capabilityPackageManifestBaseSchema = z
 //        `roll`.
 // 1.253: a combat condition's `kinds`, which a cure's `ends` and an immunity may name, and
 //        `saveEnds.successes` and `saveEnds.failures` (Contagion); the condition event's `worsened`.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 253 } as const);
+// 1.254: `rescue` on an item's use (a ring of evasion), spending the item's own charges.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 254 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

@@ -8,6 +8,7 @@ import {
   MAX_PINNED_MODELS,
   parsePinnedModels,
   type ModelParameterCapabilities,
+  type PlanUsage,
 } from "@marinara-engine/shared";
 import type { RemoteConnectionModel } from "../lib/connection-model-selection";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -435,18 +436,7 @@ export type NanoGptSubscriptionUsage = {
   provider: string;
 };
 
-/**
- * The Claude plan's rate-limit windows that the connection has switched on.
- * The plan reports percentages only, so each window's counters are null.
- */
-export type ClaudePlanUsage = {
-  provider: "claude_subscription";
-  /** The plan name Claude reports ("pro", "max", ...), or null. */
-  plan: string | null;
-  windows: Array<NanoGptQuotaWindow & { id: "five_hour" | "seven_day" }>;
-};
-
-export type SubscriptionUsage = NanoGptSubscriptionUsage | ClaudePlanUsage;
+export type SubscriptionUsage = NanoGptSubscriptionUsage | PlanUsage;
 
 /** Read a connection's subscription usage for the usage widget. */
 export function useSubscriptionUsage(connectionId: string | null, enabled: boolean) {
@@ -454,8 +444,8 @@ export function useSubscriptionUsage(connectionId: string | null, enabled: boole
     queryKey: [...connectionKeys.detail(connectionId ?? ""), "subscription-usage"],
     queryFn: () => api.get<SubscriptionUsage>(`/connections/${connectionId}/subscription-usage`),
     enabled: enabled && !!connectionId,
-    // Quotas move slowly, NanoGPT may rate limit reads, and a Claude reading
-    // starts a Claude Code process on the host; keep it calm.
+    // Quotas move slowly, NanoGPT and ChatGPT may rate limit reads, and a Claude
+    // reading starts a Claude Code process on the host; keep it calm.
     staleTime: 60_000,
     retry: false,
   });

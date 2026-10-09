@@ -1,9 +1,9 @@
 // ──────────────────────────────────────────────
-// Subscription Usage Widget (NanoGPT, Claude plan)
+// Subscription Usage Widget (NanoGPT, Claude and ChatGPT plans)
 // ──────────────────────────────────────────────
 //
-// A Claude plan reports only a percentage and a reset time per window, for the
-// whole account, so its bars carry no token counts.
+// A Claude or ChatGPT plan reports only a percentage and a reset time per
+// window, for the whole account, so its bars carry no token counts.
 //
 // Quota semantics that this widget must respect (see NanoGPT's management API docs):
 //   * `percentUsed` is a FRACTION (0.25 = 25%), and it MAY EXCEED 1.
@@ -247,6 +247,7 @@ export function SubscriptionUsageWidget({
   );
 
   if ("windows" in data) {
+    const isClaude = data.provider === "claude_subscription";
     return (
       <div className={frame}>
         <div className="flex items-center justify-between gap-2">
@@ -257,7 +258,11 @@ export function SubscriptionUsageWidget({
                 : "text-xs font-semibold text-[var(--foreground)]"
             }
           >
-            {localizeUi("ui.connections.connectioneditor.claudePlanUsage")}
+            {localizeUi(
+              isClaude
+                ? "ui.connections.connectioneditor.claudePlanUsage"
+                : "ui.connections.connectioneditor.chatgptPlanUsage",
+            )}
           </span>
           <div className="flex items-center gap-1.5">
             {!compact && data.plan && (
@@ -274,8 +279,8 @@ export function SubscriptionUsageWidget({
             key={planWindow.id}
             label={localizeUi(
               planWindow.id === "five_hour"
-                ? "ui.connections.connectioneditor.claudeFiveHourWindow"
-                : "ui.connections.connectioneditor.claudeWeeklyWindow",
+                ? "ui.connections.connectioneditor.planFiveHourWindow"
+                : "ui.connections.connectioneditor.planWeeklyWindow",
             )}
             window={planWindow}
             limit={null}
@@ -286,13 +291,17 @@ export function SubscriptionUsageWidget({
 
         {data.windows.length === 0 && (
           <p className="text-[0.625rem] text-[var(--muted-foreground)]">
-            {localizeUi("ui.connections.connectioneditor.claudePlanUsageNoWindows")}
+            {localizeUi("ui.connections.connectioneditor.planUsageNoWindows")}
           </p>
         )}
 
         {!compact && (
           <p className="text-[0.5625rem] text-[var(--muted-foreground)]">
-            {localizeUi("ui.connections.connectioneditor.claudePlanUsageAccountWide")}
+            {localizeUi(
+              isClaude
+                ? "ui.connections.connectioneditor.claudePlanUsageAccountWide"
+                : "ui.connections.connectioneditor.chatgptPlanUsageAccountWide",
+            )}
           </p>
         )}
       </div>

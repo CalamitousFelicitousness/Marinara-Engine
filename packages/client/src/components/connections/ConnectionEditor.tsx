@@ -111,6 +111,7 @@ import {
   resolveOpenAIImageQuality,
   inferVideoSource,
   isLocalAuthProvider as isLocalAuthConnectionProvider,
+  hasPlanUsageWindows,
   supportsSubscriptionUsageWidget,
   IMAGE_DEFAULTS_STORAGE_KEY,
   VIDEO_DEFAULTS_STORAGE_KEY,
@@ -1503,8 +1504,9 @@ export function ConnectionEditor() {
   const isNanoGptProvider = localProvider === "nanogpt";
   const isLocalAuthProvider = isLocalAuthConnectionProvider(localProvider);
   const supportsDirectEmbeddingConfig = providerSupportsDirectEmbeddingConfig(localProvider);
-  // The usage switch, its Claude plan window switches and the meter, shared by
-  // the NanoGPT and Claude (Subscription) blocks below.
+  // The usage switch, the plan window switches and the meter, shared by the
+  // NanoGPT, Claude (Subscription) and OpenAI (ChatGPT) blocks below.
+  const showsPlanUsageWindows = hasPlanUsageWindows(localProvider);
   const usageWidgetControls = (
     <>
       <div className="rounded-xl bg-[var(--secondary)] px-3 py-2.5 ring-1 ring-[var(--border)]">
@@ -1526,12 +1528,14 @@ export function ConnectionEditor() {
               {localizeUi(
                 isClaudeSubscriptionProvider
                   ? "ui.connections.connectioneditor.showClaudePlanUsageHelp"
-                  : "ui.connections.connectioneditor.showSubscriptionUsageHelp",
+                  : isOpenAIChatGPTProvider
+                    ? "ui.connections.connectioneditor.showChatgptPlanUsageHelp"
+                    : "ui.connections.connectioneditor.showSubscriptionUsageHelp",
               )}
             </span>
           </span>
         </label>
-        {isClaudeSubscriptionProvider && localShowUsageWidget && (
+        {showsPlanUsageWindows && localShowUsageWidget && (
           <div className="mt-2 ml-[1.625rem] flex flex-wrap gap-x-5 gap-y-1.5">
             <label className="flex cursor-pointer items-center gap-2 text-xs">
               <input
@@ -1543,7 +1547,7 @@ export function ConnectionEditor() {
                 }}
                 className="h-3.5 w-3.5 shrink-0 accent-[var(--primary)]"
               />
-              {localizeUi("ui.connections.connectioneditor.claudeFiveHourWindow")}
+              {localizeUi("ui.connections.connectioneditor.planFiveHourWindow")}
             </label>
             <label className="flex cursor-pointer items-center gap-2 text-xs">
               <input
@@ -1555,7 +1559,7 @@ export function ConnectionEditor() {
                 }}
                 className="h-3.5 w-3.5 shrink-0 accent-[var(--primary)]"
               />
-              {localizeUi("ui.connections.connectioneditor.claudeWeeklyWindow")}
+              {localizeUi("ui.connections.connectioneditor.planWeeklyWindow")}
             </label>
           </div>
         )}
@@ -1864,6 +1868,9 @@ export function ConnectionEditor() {
               </p>
             </div>
           )}
+
+          {/* ── OpenAI (ChatGPT) — plan usage ── */}
+          {isOpenAIChatGPTProvider && <div className="space-y-3">{usageWidgetControls}</div>}
 
           {/* ── Grok CLI (Subscription) — prerequisites notice ── */}
           {isGrokSubscriptionProvider && (

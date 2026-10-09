@@ -168,9 +168,9 @@ export interface APIConnection {
   treatAsLocalEndpoint: boolean;
   /** Folder this connection belongs to (null = root/unfiled). */
   folderId: string | null;
-  /** NanoGPT and Claude (Subscription): whether the subscription usage widget is shown. */
+  /** NanoGPT, Claude (Subscription) and OpenAI (ChatGPT): whether the subscription usage widget is shown. */
   showUsageWidget: boolean;
-  /** Claude (Subscription) only: which plan windows the usage widget shows. */
+  /** Claude (Subscription) and OpenAI (ChatGPT): which plan windows the usage widget shows. */
   showUsageFiveHour: boolean;
   showUsageWeekly: boolean;
   /** Manual sort order within a folder (lower = higher). 0 = use default sort. */
@@ -233,3 +233,29 @@ export interface ConnectionTestResult {
  * those connections fall back to the built-in local embedder as before.
  */
 export const DEFAULT_EMBEDDING_CONNECTION_SETTINGS_KEY = "default-embedding-connection";
+
+export type PlanUsageWindowId = "five_hour" | "seven_day";
+
+/**
+ * One rate-limit window of a subscription plan, in the shape the NanoGPT quota
+ * windows use so the usage widget draws both with one bar. Plans report
+ * percentages only, so `used` and `remaining` are always null.
+ */
+export interface PlanUsageWindow {
+  id: PlanUsageWindowId;
+  used: null;
+  remaining: null;
+  /** A fraction, not a percentage. Null means the plan did not report it. */
+  percentUsed: number | null;
+  /** UNIX epoch milliseconds. */
+  resetAt: number | null;
+  degraded: false;
+}
+
+/** The rate-limit windows of the plan behind a Claude (Subscription) or OpenAI (ChatGPT) connection. */
+export interface PlanUsage {
+  provider: "claude_subscription" | "openai_chatgpt";
+  /** The plan name the provider reports ("pro", "plus", ...), or null. */
+  plan: string | null;
+  windows: PlanUsageWindow[];
+}

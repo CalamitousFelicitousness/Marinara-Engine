@@ -34,11 +34,13 @@ import {
   type ModelParameterCapabilities,
   inferImageSource,
   inferVideoSource,
+  hasPlanUsageWindows,
   isLocalAuthProvider,
   isMistralAdjustableReasoningModel,
   isMistralGlm53Model,
   isOpenAIGpt6Model,
   localAuthProviderBaseUrl,
+  supportsSubscriptionUsageWidget,
   normalizeVideoGenerationProfile,
   type AtlasCloudVideoModelSchemaResponse,
 } from "@marinara-engine/shared";
@@ -90,6 +92,7 @@ import {
   readNanoGptModelSubscriptionMetadata,
 } from "../services/nanogpt/subscription-usage.js";
 import { fetchClaudePlanUsage } from "../services/llm/providers/claude-subscription/plan-usage.js";
+import { fetchOpenAIChatGPTPlanUsage } from "../services/llm/openai-chatgpt-usage.js";
 import {
   buildAtlasCloudModelSchemaUrl,
   buildAtlasCloudTestReferenceImage,
@@ -960,37 +963,40 @@ export async function connectionsRoutes(app: FastifyInstance) {
    *
    * NanoGPT: prefers the connection's management token (`usage:read`, cannot
    * spend balance) and falls back to the inference API key.
-   * Claude (Subscription): the plan's 5-hour and weekly windows, limited to the
-   * ones the connection has switched on.
+   * Claude (Subscription) and OpenAI (ChatGPT): the plan's 5-hour and weekly
+   * windows, limited to the ones the connection has switched on.
    */
   app.get<{ Params: { id: string } }>("/:id/subscription-usage", async (req, reply) => {
     const conn = await storage.getById(req.params.id);
     if (!conn) return reply.status(404).send({ error: "Connection not found" });
-    if (conn.provider !== "nanogpt" && conn.provider !== "claude_subscription") {
-      return reply
-        .status(400)
-        .send({ error: "Subscription usage is only available for NanoGPT and Claude (Subscription) connections" });
+    if (!supportsSubscriptionUsageWidget(conn.provider)) {
+      return reply.status(400).send({
+        error:
+          "Subscription usage is only available for NanoGPT, Claude (Subscription) and OpenAI (ChatGPT) connections",
+      });
     }
     if (conn.profileImportReviewRequired === "true") {
       return reply.status(409).send({ error: "Review and save this imported connection before reading its usage" });
     }
 
-    if (conn.provider === "claude_subscription") {
-      // An API key moves the connection to API billing, which has no plan windows.
-      if (decryptApiKey(conn.apiKeyEncrypted ?? "")) {
+    if (hasPlanUsageWindows(conn.provider)) {
+      // An API key moves a Claude (Subscription) connection to API billing, which has no plan windows.
+      if (conn.provider === "claude_subscription" && decryptApiKey(conn.apiKeyEncrypted ?? "")) {
         return reply
           .status(400)
           .send({ error: "This connection bills through its API key, so Claude plan limits do not apply to it" });
       }
       try {
-        const usage = await fetchClaudePlanUsage();
+        const usage = await (conn.provider === "claude_subscription"
+          ? fetchClaudePlanUsage()
+          : fetchOpenAIChatGPTPlanUsage());
         const hidden = new Set([
           ...(conn.showUsageFiveHour === "false" ? ["five_hour"] : []),
           ...(conn.showUsageWeekly === "false" ? ["seven_day"] : []),
         ]);
         return { ...usage, windows: usage.windows.filter((window) => !hidden.has(window.id)) };
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Failed to read Claude plan usage";
+        const message = error instanceof Error ? error.message : "Failed to read plan usage";
         return reply.status(502).send({ error: message });
       }
     }

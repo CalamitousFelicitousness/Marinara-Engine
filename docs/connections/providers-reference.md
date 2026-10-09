@@ -176,6 +176,17 @@ Things to know:
 
 Install and login steps are in [Claude, ChatGPT, and Grok Subscription Connections](subscription-clis.md).
 
+### Plan usage
+
+This connection can show how much of your ChatGPT plan's Codex limits is used. It works like the Claude (Subscription) one above: turn on **Show subscription usage**, keep or uncheck **5-hour window** and **Weekly window**, and save. The bars appear in the connection editor, in a chat's connection picker and in the chat's **Connection** settings.
+
+Things to know:
+
+- The bars count all Codex use on your ChatGPT plan, such as the Codex CLI, not only Marinara. Chats on chatgpt.com have their own limits and are not part of these bars.
+- ChatGPT reports a percentage for each window and no token counts, so none are shown.
+- A reading asks ChatGPT for the same data the Codex CLI shows as its limits, using the Codex login on the Marinara host. It sends no message to a model and uses none of your plan.
+- A plan with only one of the two windows shows one bar.
+
 ## Grok CLI (Subscription)
 
 - API key: none. You sign in to a local tool instead.

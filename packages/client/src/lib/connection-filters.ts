@@ -1,4 +1,9 @@
-import { LOCAL_SIDECAR_CONNECTION_ID, isChatProvider, supportsSubscriptionUsageWidget } from "@marinara-engine/shared";
+import {
+  LOCAL_SIDECAR_CONNECTION_ID,
+  hasPlanUsageWindows,
+  isChatProvider,
+  supportsSubscriptionUsageWidget,
+} from "@marinara-engine/shared";
 
 export type ConnectionProviderLike = {
   id?: string | null;
@@ -46,9 +51,9 @@ export function resolveUsageConnection<
   if (!connectionId || connectionId === "random") return null;
   const connection = (connections ?? []).find((candidate) => candidate.id === connectionId);
   if (!connection || !supportsSubscriptionUsageWidget(connection.provider)) return null;
-  // A Claude plan meter with both of its windows switched off has nothing to draw.
+  // A plan meter with both of its windows switched off has nothing to draw.
   if (
-    connection.provider === "claude_subscription" &&
+    hasPlanUsageWindows(connection.provider) &&
     isConnectionFlagFalse(connection.showUsageFiveHour) &&
     isConnectionFlagFalse(connection.showUsageWeekly)
   ) {

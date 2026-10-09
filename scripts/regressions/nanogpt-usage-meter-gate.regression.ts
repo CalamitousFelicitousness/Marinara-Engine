@@ -74,7 +74,18 @@ assert.equal(
   "both windows off leaves nothing to draw",
 );
 assert.equal(resolveUsageConnection(claude({ showUsageWidget: "false" }), "claude"), null);
-// The window switches belong to Claude plans; they never hide a NanoGPT meter.
+// An OpenAI (ChatGPT) connection has the same two plan windows and the same rule.
+const chatgpt = (flags: Record<string, unknown>) => [
+  { id: "gpt", provider: "openai_chatgpt", showUsageWidget: "true", ...flags },
+];
+assert.equal(resolveUsageConnection(chatgpt({}), "gpt")?.id, "gpt");
+assert.equal(resolveUsageConnection(chatgpt({ showUsageFiveHour: false, showUsageWeekly: false }), "gpt"), null);
+// A subscription provider without a meter never shows one, even with the flag set.
+assert.equal(
+  resolveUsageConnection([{ id: "grok", provider: "grok_subscription", showUsageWidget: "true" }], "grok"),
+  null,
+);
+// The window switches belong to plan meters; they never hide a NanoGPT meter.
 assert.equal(
   resolveUsageConnection(
     [{ id: "n", provider: "nanogpt", showUsageWidget: "true", showUsageFiveHour: "false", showUsageWeekly: "false" }],

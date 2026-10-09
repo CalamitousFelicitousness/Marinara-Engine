@@ -16,42 +16,18 @@
 // It is kept to this one file, so an SDK bump that renames it fails `pnpm check`
 // here. Upgrade path: switch to the stable name once the SDK has one.
 
+import type { PlanUsage, PlanUsageWindow, PlanUsageWindowId } from "@marinara-engine/shared";
 import { logger } from "../../../../lib/logger.js";
 import { loadSdk } from "../claude-subscription.provider.js";
 
 /** Usage reads are informational, so they fail fast rather than hold a handler open. */
 const CLAUDE_PLAN_USAGE_TIMEOUT_MS = 15_000;
 
-export type ClaudePlanWindowId = "five_hour" | "seven_day";
-
-/**
- * One plan window, in the same shape the NanoGPT quota windows use so the
- * widget draws both with one bar. The plan reports no counts, so `used` and
- * `remaining` are always null.
- */
-export interface ClaudePlanWindow {
-  id: ClaudePlanWindowId;
-  used: null;
-  remaining: null;
-  /** A fraction, not a percentage. Null means the plan did not report it. */
-  percentUsed: number | null;
-  /** UNIX epoch milliseconds. */
-  resetAt: number | null;
-  degraded: false;
-}
-
-export interface ClaudePlanUsage {
-  provider: "claude_subscription";
-  /** The plan name Claude reports ("pro", "max", ...), or null. */
-  plan: string | null;
-  windows: ClaudePlanWindow[];
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
-function normalizeWindow(id: ClaudePlanWindowId, value: unknown): ClaudePlanWindow | null {
+function normalizeWindow(id: PlanUsageWindowId, value: unknown): PlanUsageWindow | null {
   if (!isRecord(value)) return null;
   const utilization =
     typeof value.utilization === "number" && Number.isFinite(value.utilization) ? value.utilization : null;
@@ -71,12 +47,12 @@ function normalizeWindow(id: ClaudePlanWindowId, value: unknown): ClaudePlanWind
  * Normalize the SDK's usage answer. Returns null when plan limits do not apply
  * to the session (API-key billing, or a login without a plan).
  */
-export function normalizeClaudePlanUsage(raw: unknown): ClaudePlanUsage | null {
+export function normalizeClaudePlanUsage(raw: unknown): PlanUsage | null {
   if (!isRecord(raw) || raw.rate_limits_available !== true || !isRecord(raw.rate_limits)) return null;
   const windows = [
     normalizeWindow("five_hour", raw.rate_limits.five_hour),
     normalizeWindow("seven_day", raw.rate_limits.seven_day),
-  ].filter((window): window is ClaudePlanWindow => window !== null);
+  ].filter((window): window is PlanUsageWindow => window !== null);
   return {
     provider: "claude_subscription",
     plan: typeof raw.subscription_type === "string" ? raw.subscription_type : null,
@@ -84,7 +60,7 @@ export function normalizeClaudePlanUsage(raw: unknown): ClaudePlanUsage | null {
   };
 }
 
-async function readClaudePlanUsage(): Promise<ClaudePlanUsage> {
+async function readClaudePlanUsage(): Promise<PlanUsage> {
   const { query } = await loadSdk();
   const abortController = new AbortController();
   const timeout = setTimeout(() => abortController.abort(), CLAUDE_PLAN_USAGE_TIMEOUT_MS);
@@ -124,13 +100,13 @@ async function readClaudePlanUsage(): Promise<ClaudePlanUsage> {
   }
 }
 
-let inFlight: Promise<ClaudePlanUsage> | null = null;
+let inFlight: Promise<PlanUsage> | null = null;
 
 /**
  * Read the plan windows. Every Claude (Subscription) connection shares the one
  * host login, so concurrent reads share one Claude Code process.
  */
-export function fetchClaudePlanUsage(): Promise<ClaudePlanUsage> {
+export function fetchClaudePlanUsage(): Promise<PlanUsage> {
   inFlight ??= readClaudePlanUsage().finally(() => {
     inFlight = null;
   });

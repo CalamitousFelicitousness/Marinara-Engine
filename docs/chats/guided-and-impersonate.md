@@ -92,7 +92,6 @@ The section has these controls:
 - **Connection**: route impersonate replies to a specific connection, such as a cheaper or faster model. A connection is a saved link to an AI provider. See [Connecting to an AI Provider](../connections/connecting-to-a-provider.md). The default is **Use chat default**. You can also choose **Random**.
 - **Skip agents**: when on, Marinara skips the agent pipeline (trackers, lorebook routers, and similar helpers) during impersonate. This keeps impersonate fast and stops it from changing world state. It is off by default. See [Agents](../agents/agents-overview.md).
 - **Use CYOA as direction**: when on, clicking a CYOA option uses it as the impersonate direction instead of posting it as a normal message. CYOA means choose your own adventure, a set of clickable choices some chats show after a reply. This setting is off by default.
-- **Add CYOA choices to message**: when on, clicking a CYOA option adds its text to your message box instead of sending it, and the choices stay on screen so you can combine several into one message and edit it first. It takes priority over **Use CYOA as direction**. This setting is off by default.
 
 ### Setting a custom impersonate prompt
 

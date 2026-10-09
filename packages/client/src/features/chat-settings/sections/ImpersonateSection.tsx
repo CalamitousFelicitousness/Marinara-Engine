@@ -15,8 +15,6 @@ export function ImpersonateSection({ presets, connections }: ImpersonateSectionP
   const { t: localizeUi } = useUiTranslation();
   const cyoaChoices = useUIStore((state) => state.impersonateCyoaChoices);
   const setCyoaChoices = useUIStore((state) => state.setImpersonateCyoaChoices);
-  const addCyoaToMessage = useUIStore((state) => state.addCyoaChoicesToMessage);
-  const setAddCyoaToMessage = useUIStore((state) => state.setAddCyoaChoicesToMessage);
   const presetId = useUIStore((state) => state.impersonatePresetId);
   const setPresetId = useUIStore((state) => state.setImpersonatePresetId);
   const connectionId = useUIStore((state) => state.impersonateConnectionId);
@@ -116,18 +114,6 @@ export function ImpersonateSection({ presets, connections }: ImpersonateSectionP
               helpPosition="label"
               checked={cyoaChoices}
               onChange={setCyoaChoices}
-              labelPosition="start"
-              className="justify-between rounded-md px-2 py-1.5 text-left"
-              labelClassName="text-xs font-semibold"
-            />
-
-            <SettingsSwitch
-              label={localizeUi("ui.chatSettings.impersonatesection.addCyoaToMessage")}
-              help={localizeUi("ui.chatSettings.impersonatesection.addCyoaToMessageHelp")}
-              description={localizeUi("ui.chatSettings.impersonatesection.addCyoaToMessageDescription")}
-              helpPosition="label"
-              checked={addCyoaToMessage}
-              onChange={setAddCyoaToMessage}
               labelPosition="start"
               className="justify-between rounded-md px-2 py-1.5 text-left"
               labelClassName="text-xs font-semibold"

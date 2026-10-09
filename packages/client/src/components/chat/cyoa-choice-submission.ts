@@ -36,3 +36,11 @@ export function appendCyoaChoiceToDraft(draft: string, text: string) {
   const existing = draft.trimEnd();
   return existing ? `${existing}\n\n${text}` : text;
 }
+
+export type CyoaChoiceAction = "add" | "impersonate" | "send";
+
+/** Which path a clicked CYOA choice takes. Adding to the message box takes priority over impersonating. */
+export function resolveCyoaChoiceAction(settings: { addToMessage: boolean; impersonate: boolean }): CyoaChoiceAction {
+  if (settings.addToMessage) return "add";
+  return settings.impersonate ? "impersonate" : "send";
+}

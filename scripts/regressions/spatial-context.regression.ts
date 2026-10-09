@@ -54,6 +54,7 @@ import {
 import {
   appendCyoaChoiceToDraft,
   buildCyoaChoiceSubmissionPayload,
+  resolveCyoaChoiceAction,
 } from "../../packages/client/src/components/chat/cyoa-choice-submission.js";
 import {
   shouldKeepPendingSpatialTransition,
@@ -195,6 +196,10 @@ assert.equal(
   appendCyoaChoiceToDraft(appendCyoaChoiceToDraft("I hesitate.\n", "Take the bridge"), "Wave"),
   "I hesitate.\n\nTake the bridge\n\nWave",
 );
+assert.equal(resolveCyoaChoiceAction({ addToMessage: false, impersonate: false }), "send");
+assert.equal(resolveCyoaChoiceAction({ addToMessage: false, impersonate: true }), "impersonate");
+assert.equal(resolveCyoaChoiceAction({ addToMessage: true, impersonate: false }), "add");
+assert.equal(resolveCyoaChoiceAction({ addToMessage: true, impersonate: true }), "add");
 assert.deepEqual(
   resolveVisibleGameStateAnchor([
     { id: "assistant-anchor", role: "assistant", activeSwipeIndex: 2 },

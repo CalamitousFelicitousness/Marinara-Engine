@@ -53,6 +53,8 @@ export * from "./sight.js";
 export {
   RULESET_PICK_UP_OPTION_PREFIX,
   RULESET_AVERT_OPTION_PREFIX,
+  RULESET_CHARGE_STEP_PREFIX,
+  rulesetChargeSteps,
   applyRulesetFightItemChanges,
   rulesetActionDropped,
   rulesetActionItemIndex,

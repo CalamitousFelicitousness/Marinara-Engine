@@ -4905,6 +4905,20 @@ export const rulesetItemUseSchema = catalogMechanicsObject
       .optional(),
     toHit: itemToHitSchema.optional(),
     saveDifficulty: orItemStat(z.number().int().min(0).max(100)).optional(),
+    /** The save difficulty read off its holder's own sheet instead (Capability API 1.264): a staff
+     *  cast "using your spell save DC". */
+    sheetDifficulty: itemToHitValueRefSchema.optional(),
+    /** More charges its user may spend on it (Capability API 1.264), up to `max` beyond `charges`:
+     *  each adds `amount` and `targets`, and counts as one step of a higher cost (a Staff of Power's
+     *  spell cast at a higher level, a Staff of Striking's 1d6 force a charge). */
+    chargeStep: z
+      .object({
+        max: z.number().int().min(1).max(20),
+        amount: z.object(catalogAmountShape).strict().optional(),
+        targets: z.number().int().min(1).max(10).optional(),
+      })
+      .strict()
+      .optional(),
     consumes: z.literal(true).optional(),
     /** Using it casts an entry of this catalog (Capability API 1.175), as a scroll or a wand does: a
      *  condition that ends when its holder casts from that catalog ends when they use it. */
@@ -4944,6 +4958,15 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     if (use.free && use.budget !== undefined) issue("free", "Something free spends no budget, so it names none");
     if (use.consumes && use.charges !== undefined) {
       issue("charges", "A use that uses the item up spends no charges of it");
+    }
+    if (use.sheetDifficulty && use.saveDifficulty !== undefined) {
+      issue("sheetDifficulty", "A save difficulty is the item's own or read off the sheet, not both");
+    }
+    if (use.chargeStep && use.charges === undefined) {
+      issue("chargeStep", 'More charges go beside the "charges" a use spends');
+    }
+    if (use.chargeStep && !use.chargeStep.targets && !use.chargeStep.amount?.dice && !use.chargeStep.amount?.flat) {
+      issue("chargeStep", "A charge more adds an amount, targets, or both");
     }
     if (use.restore && use.restore.amount.dice === undefined && use.restore.amount.flat === undefined) {
       issue("restore", "A restore says how much it gives back");
@@ -10950,6 +10973,12 @@ function useIssues(
   const types = declared ? new Set(declared.map((type) => type.trim().toLowerCase())) : null;
   const value = itemValueChecker(definition, add);
   if (use.save && !saves.has(use.save.save)) add([...at, "save", "save"], `Unknown save "${use.save.save}"`);
+  if (use.sheetDifficulty) {
+    const names = rulesetSheetNames(definition.sheet, definition.items);
+    for (const issue of rulesetValueRefIssues(use.sheetDifficulty, names, names.derived, true)) {
+      add([...at, "sheetDifficulty", issue.key], issue.message);
+    }
+  }
   if (use.damageType && types && !types.has(use.damageType.trim().toLowerCase())) {
     add([...at, "damageType"], `Unknown damage type "${use.damageType}"`);
   }
@@ -10988,7 +11017,7 @@ function useIssues(
     !!use.save ||
     !!use.applies?.some((applies) => applies.saveEnds) ||
     !!use.plus?.some((clause) => clause.save && clause.save.difficulty === undefined);
-  if (asksForSave && use.saveDifficulty === undefined) {
+  if (asksForSave && use.saveDifficulty === undefined && !use.sheetDifficulty) {
     add([...at, "saveDifficulty"], "A use that asks for a save says the number it is saved against");
   }
   value(use.saveDifficulty, "number", [...at, "saveDifficulty"]);

@@ -14,6 +14,8 @@ import {
 import {
   RULESET_PICK_UP_OPTION_PREFIX,
   RULESET_AVERT_OPTION_PREFIX,
+  RULESET_CHARGE_STEP_PREFIX,
+  rulesetChargeSteps,
   rulesetActionDropped,
   rulesetAmmoLeft,
   rulesetDroppedItems,
@@ -796,6 +798,8 @@ export function planRulesetCombatCost(
   count?: number,
 ): RulesetCombatCost | null {
   const free: RulesetCombatCost = { steps: [], live: null, cost: [] };
+  // More of an item's charges is the item's to spend (1.264), never a pool's.
+  if (rulesetChargeSteps(action, payWith) !== null) payWith = undefined;
   // An opponent's actions cost nothing off a sheet: their block is the only bookkeeping there is.
   if (action.innate || !combatant.sheet) return payWith ? null : free;
   const { build, catalogs } = combatant.sheet;
@@ -905,6 +909,9 @@ export function rulesetCostSteps(
   payWith: string,
   combatant?: Pick<RulesetCombatant, "sheet">,
 ): number {
+  // More of an item's charges (1.264): a step each.
+  const charged = rulesetChargeSteps(action, payWith);
+  if (charged !== null) return charged;
   const family = rulesetPoolFamily(definition, action.use?.group);
   const from = family.indexOf(action.use?.pool ?? "");
   const to = family.indexOf(payWith);
@@ -920,6 +927,18 @@ export function rulesetCostSteps(
     );
   }
   return from >= 0 && to > from ? Math.min(most, to - from) : 0;
+}
+
+/** The more charges an item's use may be paid with now (1.264): one to as many as its step allows
+ *  and the item still holds beyond the use's own. */
+function chargePayments(actor: RulesetCombatant, action: RulesetCombatAction): string[] {
+  const charges = action.itemUse?.charges;
+  if (!charges?.step) return [];
+  const spare = rulesetItemUseLeft(actor, action.itemUse!) - charges.cost;
+  return Array.from(
+    { length: Math.max(0, Math.min(charges.step.max, spare)) },
+    (_, index) => `${RULESET_CHARGE_STEP_PREFIX}${index + 1}`,
+  );
 }
 
 /** Whether a pool of another group may pay for this group's costs (1.166). */
@@ -960,7 +979,7 @@ export function rulesetPaidTargetCount(
   action: RulesetCombatAction,
   payWith: string | undefined,
 ): number {
-  const per = action.use?.targetsPerStep;
+  const per = action.use?.targetsPerStep ?? action.itemUse?.charges?.step?.targets;
   if (!per || payWith === undefined || action.targets.count <= 0) return action.targets.count;
   return Math.min(20, action.targets.count + per * rulesetCostSteps(definition, action, payWith, combatant));
 }
@@ -1929,7 +1948,7 @@ function optionFrom(
   // Its own price, or, with that pool empty, a higher one that pays for it: a 1st-level spell is
   // still cast with a 2nd-level slot, or a warlock's pact slot (1.166).
   const paid = planRulesetCombatCost(definition, actor, action);
-  const payments = rulesetPaymentPools(definition, actor, action);
+  const payments = [...rulesetPaymentPools(definition, actor, action), ...chargePayments(actor, action)];
   if (!paid && payments.length === 0) return null;
   const option: RulesetCombatOption = {
     id: action.id,
@@ -1992,7 +2011,7 @@ function optionFrom(
   if (payments.length > 0) {
     option.payWith = payments;
     // A use that takes more targets the more it is paid says how many each way takes (1.166).
-    if (action.use?.targetsPerStep && action.targets.count > 0) {
+    if ((action.use?.targetsPerStep || action.itemUse?.charges?.step?.targets) && action.targets.count > 0) {
       option.targetsWith = Object.fromEntries(
         payments.map((pool) => [pool, rulesetPaidTargetCount(definition, actor, action, pool)]),
       );

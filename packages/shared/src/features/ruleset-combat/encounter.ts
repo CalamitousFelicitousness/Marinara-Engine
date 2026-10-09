@@ -1337,6 +1337,15 @@ function itemUseActions(
               cost: use.charges,
               max,
               ...(item.charges?.breaksOn ? { breaksOn: { ...item.charges.breaksOn } } : {}),
+              ...(use.chargeStep
+                ? {
+                    step: {
+                      max: use.chargeStep.max,
+                      ...(amountOf(use.chargeStep.amount) ? { amount: amountOf(use.chargeStep.amount)! } : {}),
+                      ...(use.chargeStep.targets ? { targets: use.chargeStep.targets } : {}),
+                    },
+                  }
+                : {}),
             },
           }
         : {}),
@@ -1397,9 +1406,12 @@ function itemUseMechanics(
   perCell: number | undefined,
   pooled: boolean,
 ): RulesetCombatAction | null {
-  const read = itemAttackValue(item, use.saveDifficulty);
+  // Its own number, or its holder's read off their sheet (1.264): "using your spell save DC".
+  const read = use.sheetDifficulty
+    ? resolveRulesetValueRef(definition, build, use.sheetDifficulty, evaluated)
+    : itemAttackValue(item, use.saveDifficulty);
   const difficulty = typeof read === "number" && Number.isFinite(read) ? Math.trunc(read) : undefined;
-  if (use.saveDifficulty !== undefined && difficulty === undefined) return null;
+  if ((use.saveDifficulty !== undefined || use.sheetDifficulty) && difficulty === undefined) return null;
   const aim = use.toHit ? itemToHit(definition, build, evaluated, item, use.toHit, pooled) : { toHit: 0 };
   const action = mechanicsAction(definition, use, {
     ...from,

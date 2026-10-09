@@ -18,6 +18,7 @@ import { readRulesetLive, type RulesetSheetOp } from "../rulesets/live-state.js"
 import {
   RULESET_PICK_UP_OPTION_PREFIX,
   RULESET_AVERT_OPTION_PREFIX,
+  rulesetChargeSteps,
   breakRulesetItem,
   recoverRulesetAmmo,
   rulesetActionDropped,
@@ -253,6 +254,8 @@ interface RulesetCombatContext {
   strikeBudget?: string;
   /** How many uses its user chose to spend on the action being resolved (1.246). */
   chosenAmount?: number;
+  /** How many more of an item's charges its user spends on the action being resolved (1.264). */
+  moreCharges?: number;
 }
 
 /** A working copy, plus a roller that counts its dice so the state's cursor stays exact. */
@@ -2896,7 +2899,7 @@ function pickTargets(
 /** What using an action costs the actor in its own bookkeeping: one of its uses, and, for an action
  *  that recharges, its availability until the dice bring it back. */
 function spendAvailability(ctx: RulesetCombatContext, actor: RulesetCombatant, action: RulesetCombatAction): void {
-  const shot = spendRulesetShots(actor, action);
+  const shot = spendRulesetShots(actor, action, action.itemUse ? (ctx.moreCharges ?? 0) : 0);
   if (shot) ctx.events.push(shot);
   // The last charge spent: an item that may break rolls for it now.
   const broke = shot?.type === "uses" ? breakRulesetItem(actor, action, ctx.roll) : null;
@@ -3494,6 +3497,9 @@ function applyChoice(
     }
   }
   const paid = planRulesetCombatCost(definition, working, action, choice.payWith, amount);
+  // More of an item's charges (1.264), spent with its own.
+  const moreCharges = rulesetChargeSteps(action, choice.payWith);
+  if (moreCharges) ctx.moreCharges = moreCharges;
   if (!paid) {
     // The menu said it was affordable, so only a `payWith` the sheet refuses can land here.
     return refusal(state, choice.actorId, "insufficient", option.id);
@@ -5984,7 +5990,9 @@ function resolveActionBody(
     : payWith
       ? rulesetCostSteps(ctx.definition, action, payWith, actor)
       : 0;
-  const extra = action.use?.perCostStep && steps > 0 ? { amount: action.use.perCostStep, times: steps } : undefined;
+  // A higher cost's more, or more charges' (1.264).
+  const per = action.use?.perCostStep ?? action.itemUse?.charges?.step?.amount;
+  const extra = per && steps > 0 ? { amount: per, times: steps } : undefined;
   // Where the action's own saves take cover from: a burst from where it landed, anything else (a cone,
   // a line, a spell aimed at somebody) from its maker.
   // Set down somewhere rather than coming off its maker: a burst, a box or a wall (1.172).

@@ -10,7 +10,7 @@
 // than listed here, so the half-made choice is HELD by the board and handed back down: one step,
 // two ways of finishing it, and the same pure rules behind both.
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
-import { RULESET_PASS_OPTION } from "@marinara-engine/shared";
+import { RULESET_CHARGE_STEP_PREFIX, RULESET_PASS_OPTION } from "@marinara-engine/shared";
 import type { DirectedRulesetOption, DirectedRulesetView } from "@marinara-engine/shared";
 import { useTranslation } from "react-i18next";
 import {
@@ -652,7 +652,12 @@ export function RulesetCombatMenu({
               onClick={() => paid(pool)}
               className={cn(buttonClass, "border-blue-400/25 bg-blue-500/10 text-white/85 hover:bg-blue-500/20")}
             >
-              {t("game.combat.ruleset.upcast.pool", { pool })}
+              {/* More of the item's own charges (1.264). */}
+              {pool.startsWith(RULESET_CHARGE_STEP_PREFIX)
+                ? t("game.combat.ruleset.upcast.charges", {
+                    count: Number(pool.slice(RULESET_CHARGE_STEP_PREFIX.length)),
+                  })
+                : t("game.combat.ruleset.upcast.pool", { pool })}
             </button>
           ))}
         </div>

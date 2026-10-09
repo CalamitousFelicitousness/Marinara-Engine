@@ -760,7 +760,13 @@ export interface RulesetCombatAction {
      *  use is spent for nothing. The fight says what it really was once it is spent. */
     fake?: { name: string; dud?: true; does?: Partial<RulesetCombatAction> };
     consumes?: true;
-    charges?: { cost: number; max: number; breaksOn?: { die: number; atMost: number } };
+    charges?: {
+      cost: number;
+      max: number;
+      breaksOn?: { die: number; atMost: number };
+      /** More charges its user may spend, each a step of a higher cost (1.264). */
+      step?: { max: number; amount?: RulesetCombatAmount; targets?: number };
+    };
     /** Its `gate`, read off the user's sheet as the fight began: what is rolled (a skill's id when it
      *  is one, so what is narrowed to it counts), the sheet's number for it, and the difficulty. No
      *  gate here when the user's sheet was high enough to skip it. */

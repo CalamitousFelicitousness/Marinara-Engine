@@ -1549,6 +1549,17 @@ function carriesMetamagic(value: unknown, depth = 0): boolean {
 
 /** An aura that needs senses, harms at its holder's turn or asks for a save, or a save change
  *  narrowed to what is cast from a catalog (1.260). */
+/** An item's use whose save difficulty is read off its holder's sheet, or that spends more charges
+ *  for more (1.264), in catalogs too. */
+function carriesStaffUses(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesStaffUses(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.sheetDifficulty !== undefined || record.chargeStep !== undefined) return true;
+  return Object.values(record).some((one) => carriesStaffUses(one, depth + 1));
+}
+
 /** Auras by what their target is or whoever put a condition on the holder, saves with a fail margin
  *  or averted eyes, and a save ending a condition leaning while its source is in sight (1.263). */
 function carriesGazes(value: unknown, depth = 0): boolean {
@@ -3648,6 +3659,14 @@ export function getCapabilityPackageInstallIssue(
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
   }
   // Dropping, keeping out, a turn freed when stuck, saves out of sight, destroying by tier, 1.261.
+  // Item uses read off the holder's sheet, and more charges spent for more, 1.264.
+  if (
+    !declaresApi(264) &&
+    (carriesStaffUses(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesStaffUses(document)))
+  ) {
+    return "A ruleset with an item use whose save difficulty is read off its holder's sheet, or one that spends more charges for more, requires schemaVersion 2 and capabilityApi 1.264 or newer";
+  }
   // Auras by target kind or on whoever holds its holder, gaze margins and averting, saves leaning in
   // sight, 1.263.
   if (

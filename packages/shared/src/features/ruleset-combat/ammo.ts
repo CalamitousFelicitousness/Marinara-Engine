@@ -150,7 +150,12 @@ function draw(actor: RulesetCombatant, tag: string, count: number, recover?: num
 
 /** One attack's shots, spent: out of the clip where the weapon has one, and otherwise out of the
  *  bag. Null for an action that shoots nothing. */
-export function spendRulesetShots(actor: RulesetCombatant, action: RulesetCombatAction): RulesetCombatEvent | null {
+export function spendRulesetShots(
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  /** More charges spent on it beyond its own (1.264). */
+  more = 0,
+): RulesetCombatEvent | null {
   if (action.kind === "reload") return null;
   const use = action.itemUse;
   if (use && (use.consumes || use.charges)) {
@@ -160,7 +165,7 @@ export function spendRulesetShots(actor: RulesetCombatant, action: RulesetCombat
       (actor.itemsUsed ??= {})[use.item] = (actor.itemsUsed?.[use.item] ?? 0) + 1;
       return { ...said, left: rulesetItemUseLeft(actor, use), of: quantity };
     }
-    const left = Math.max(0, rulesetItemUseLeft(actor, use) - use.charges!.cost);
+    const left = Math.max(0, rulesetItemUseLeft(actor, use) - use.charges!.cost - more);
     (actor.charges ??= {})[use.item] = left;
     return { ...said, left, of: use.charges!.max };
   }
@@ -358,6 +363,19 @@ export function applyRulesetFightItemChanges(
 
 /** The option that picks something dropped back up (1.261), followed by what it picks up. */
 export const RULESET_PICK_UP_OPTION_PREFIX = "pickup:";
+/** Spending more of an item's charges on a use (1.264): `charges:<how many more>`, paid with as a
+ *  higher pool is, a step of a higher cost each. */
+export const RULESET_CHARGE_STEP_PREFIX = "charges:";
+
+/** How many more charges a payment spends on this action (1.264), or null for a payment of another
+ *  kind. Never past what its use allows. */
+export function rulesetChargeSteps(action: RulesetCombatAction, payWith: string | undefined): number | null {
+  const step = action.itemUse?.charges?.step;
+  if (!step || !payWith?.startsWith(RULESET_CHARGE_STEP_PREFIX)) return null;
+  const more = Number(payWith.slice(RULESET_CHARGE_STEP_PREFIX.length));
+  return Number.isInteger(more) && more > 0 ? Math.min(more, step.max) : 0;
+}
+
 /** Averting the eyes from a gaze's holder, or looking again (1.263): `avert:<holder id>`. */
 export const RULESET_AVERT_OPTION_PREFIX = "avert:";
 

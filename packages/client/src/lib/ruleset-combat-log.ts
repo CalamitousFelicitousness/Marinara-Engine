@@ -540,6 +540,14 @@ export function rulesetCombatEventLine(
         return key("compelledStrike", { ...values, target: names.combatant(event.targetId ?? "") });
       return key(`compelled${event.does[0]!.toUpperCase()}${event.does.slice(1)}`, values);
     }
+    case "letFall":
+      return key("letFall", {
+        actor: names.combatant(event.actorId),
+        condition: names.condition(event.condition),
+        items: event.labels.join(", "),
+      });
+    case "pickedUp":
+      return key("pickedUp", { actor: names.combatant(event.actorId), item: event.label });
     case "resized":
       return key("resized", { target: names.combatant(event.targetId), size: event.label });
     case "section":

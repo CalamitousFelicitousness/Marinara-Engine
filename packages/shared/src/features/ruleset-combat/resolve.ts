@@ -9,14 +9,18 @@
 import type { RulesetSaveAgainst } from "../rulesets/check-effects.js";
 import {
   rulesetPoolMaxSuccesses,
+  type RulesetBehaviorDrops,
   type RulesetCombat,
   type RulesetCreatureHideEntry,
   type RulesetDefinition,
 } from "../../schemas/ruleset.schema.js";
 import { readRulesetLive, type RulesetSheetOp } from "../rulesets/live-state.js";
 import {
+  RULESET_PICK_UP_OPTION_PREFIX,
   breakRulesetItem,
   recoverRulesetAmmo,
+  rulesetActionDropped,
+  rulesetThingsToDrop,
   reloadRulesetClip,
   rulesetItemOn,
   rulesetModedAction,
@@ -85,6 +89,7 @@ import {
   rulesetCellEnterCost,
   rulesetMoveStep,
   rulesetOpportunityAttack,
+  rulesetGapFrom,
   rulesetPositionOf,
   rulesetPathCells,
   rulesetPushPath,
@@ -1723,6 +1728,8 @@ function applyConditionId(
   );
   endImmuneConditions(ctx, target);
   groundFlier(ctx, target);
+  // What it makes its holder let fall at once (1.261): Fear.
+  if (rule?.behavior?.drops?.at === "applied") letFall(ctx, target, condition, rule.behavior.drops);
   // Put on during its holder's own turn, a condition that takes budgets away takes them from this
   // turn too (1.174): 5e's Stinking Cloud, failed as the turn begins or walked into later. The turn
   // after is read afresh from the conditions as they stand then.
@@ -1733,6 +1740,19 @@ function applyConditionId(
       target.budgets[change.budget] = Math.max(0, target.budgets[change.budget]! + change.flat);
     }
   }
+}
+
+/** What a condition makes its holder let fall (1.261): it lies where they stand. */
+function letFall(
+  ctx: RulesetCombatContext,
+  holder: RulesetCombatant,
+  condition: string,
+  drops: RulesetBehaviorDrops,
+): void {
+  const things = rulesetThingsToDrop(holder, drops);
+  if (!things.length) return;
+  holder.dropped = [...(holder.dropped ?? []), ...things];
+  ctx.events.push({ type: "letFall", actorId: holder.id, condition, labels: things.map((thing) => thing.label) });
 }
 
 /** A newly gained immunity ends a condition already on its holder (Capability API 1.127). */
@@ -1890,7 +1910,8 @@ function endConditionsOnHarm(
       (onDamage || rule?.saveWhenDamaged) &&
       tracked?.saveEnds &&
       tracked.difficulty !== undefined &&
-      !(onDamage && damageSaves?.has(tracked))
+      !(onDamage && damageSaves?.has(tracked)) &&
+      saveOutOfSight(ctx, target, tracked)
     ) {
       if (onDamage) damageSaves?.add(tracked);
       const saved = rollSave(ctx, target, tracked.saveEnds.save, tracked.difficulty, tracked.source, undefined, {
@@ -1970,7 +1991,7 @@ function tickConditionsNow(ctx: RulesetCombatContext, actor: RulesetCombatant, a
     if (actor.defeated) return;
     if (!actor.tracked.includes(entry)) continue;
     // A save with nothing to be rolled against is not rolled: the condition runs on its clock.
-    if (entry.saveEnds?.at === at && entry.difficulty !== undefined) {
+    if (entry.saveEnds?.at === at && entry.difficulty !== undefined && saveOutOfSight(ctx, actor, entry)) {
       const saved = rollSave(ctx, actor, entry.saveEnds.save, entry.difficulty, entry.source, undefined, {
         conditions: [entry.condition],
         // Still a save against the action that put it on (1.186).
@@ -1983,6 +2004,15 @@ function tickConditionsNow(ctx: RulesetCombatContext, actor: RulesetCombatant, a
     entry.rounds -= 1;
     if (entry.rounds <= 0) removeCondition(ctx, actor, entry.condition, "expired");
   }
+}
+
+/** Whether a save that ends a condition may be rolled now: one rolled only out of its putter's
+ *  sight waits while its holder can see them (1.261), Fear's. */
+function saveOutOfSight(ctx: RulesetCombatContext, holder: RulesetCombatant, entry: RulesetTrackedCondition): boolean {
+  if (!entry.saveEnds?.unseen) return true;
+  const source = entry.source ? rulesetCombatant(ctx.state, entry.source) : undefined;
+  if (!source || !rulesetCombatStanding(source)) return true;
+  return !rulesetCanSee(ctx.definition, ctx.state, holder, source);
 }
 
 /**
@@ -2891,8 +2921,17 @@ function whyNotOffered(
     }
     return "unreachable";
   }
+  // Picking up (1.261): out of reach, or nothing left to pick it up with.
+  if (optionId.startsWith(RULESET_PICK_UP_OPTION_PREFIX)) {
+    const thing = actor.dropped?.find((one) => one.key === optionId.slice(RULESET_PICK_UP_OPTION_PREFIX.length));
+    if (!thing) return "unknown-option";
+    if (thing.at && rulesetPositionOf(actor) && rulesetGapFrom(thing.at, 1, actor) > 1) return "unreachable";
+    return "no-budget";
+  }
   const action = actor.actions.find((entry) => entry.id === optionId);
   if (action) {
+    // What it is made with lies where it was dropped (1.261).
+    if (rulesetActionDropped(actor, action)) return "dropped";
     // Something free, or a strike out of what a spend already bought, never fell short of a budget.
     if (action.free || rulesetFreeStrike(actor, action)) return "insufficient";
     if ((actor.budgets[action.budget] ?? 0) < 1) return "no-budget";
@@ -3109,6 +3148,20 @@ function applyChoice(
     return finish();
   }
 
+  // Picking up what was dropped (1.261): for the budget it named, else the turn's free pick-up.
+  if (option.pickUp && option.id.startsWith(RULESET_PICK_UP_OPTION_PREFIX)) {
+    const { ctx, finish } = begin(definition, combat, state, roller);
+    const working = rulesetCombatant(ctx.state, actor.id)!;
+    if (option.budget) spendBudget(ctx, working, option.budget);
+    else working.flags.pickedUp = true;
+    const key = option.id.slice(RULESET_PICK_UP_OPTION_PREFIX.length);
+    working.dropped = (working.dropped ?? []).filter((thing) => thing.key !== key);
+    if (!working.dropped.length) delete working.dropped;
+    ctx.events.push({ type: "pickedUp", actorId: working.id, label: option.label });
+    noteOutcome(ctx);
+    return finish();
+  }
+
   // Moving a zone its caster holds (1.168): to a cell the menu offered, for the budget it named.
   if (option.id.startsWith(RULESET_ZONE_OPTION_PREFIX)) {
     const cell = destinationOf(option, choice.to);
@@ -3245,7 +3298,7 @@ function applyChoice(
   // A save spent an action on (1.259): Irresistible Dance.
   if (option.resave) {
     const entry = working.tracked.find((one) => one.condition === option.resave!.condition);
-    if (entry?.saveEnds && entry.difficulty !== undefined) {
+    if (entry?.saveEnds && entry.difficulty !== undefined && saveOutOfSight(ctx, working, entry)) {
       const saved = rollSave(ctx, working, entry.saveEnds.save, entry.difficulty, entry.source, undefined, {
         conditions: [entry.condition],
         ...(entry.action ? { action: entry.action } : {}),
@@ -5750,6 +5803,24 @@ function dropToNothing(ctx: RulesetCombatContext, target: RulesetCombatant, sour
   if (!target.down) dropToZero(ctx, target);
 }
 
+/** Whether a creature's threat tier is at or below the highest of `destroysUpTo` its applier's
+ *  sheet reaches (1.261). A character, or a creature with no tier, never is. */
+function destroyedByTier(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  target: RulesetCombatant,
+  applies: RulesetCombatApplies,
+): boolean {
+  const tiers = ctx.combat.threat?.tiers;
+  if (!applies.destroysUpTo || !tiers || target.sheet || !target.block?.tier) return false;
+  const at = tiers.findIndex((tier) => tier.id === target.block!.tier);
+  if (at < 0) return false;
+  const reached = applies.destroysUpTo
+    .filter((row) => rulesetSheetWithin(ctx.definition, actor, row.when))
+    .map((row) => tiers.findIndex((tier) => tier.id === row.tier));
+  return reached.length > 0 && at <= Math.max(...reached);
+}
+
 function slay(ctx: RulesetCombatContext, target: RulesetCombatant, sourceId: string, label: string): void {
   emptyHealth(ctx, target);
   ctx.events.push({ type: "slain", actorId: sourceId, targetId: target.id, label });
@@ -6787,6 +6858,11 @@ function resolveActionBody(
         // Read off whoever applies it, as it applies (1.162): Rage's bonus by barbarian level.
         if (!rulesetSheetWithin(ctx.definition, actor, applies.when)) continue;
         if (!rulesetTargetIs(ctx.definition, target, applies.targetIs)) continue;
+        // Destroyed in its place, at or below the tier its applier reaches (1.261): Destroy Undead.
+        if (destroyedByTier(ctx, actor, target, applies)) {
+          slay(ctx, target, actor.id, action.label);
+          break;
+        }
         applyConditionId(ctx, target, applies.condition, applies, {
           // What it harms with grows with the higher cost it was put on with (1.250): Acid Arrow.
           ...(applies.harmsPerCostStep && steps > 0
@@ -7200,9 +7276,16 @@ const WANDER_WAYS: ReadonlyArray<readonly [number, number]> = [
 function compelTurn(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
   if (!rulesetCombatStanding(actor) || actor.defeated) return;
   if (rulesetCombatEffects(ctx.definition, ctx.combat, actor, ctx.state).has("cannot-act")) return;
-  const rule = rulesetActiveConditions(ctx.definition, ctx.combat, actor, ctx.state).find(
-    (entry) => entry.behavior?.table,
-  );
+  const active = rulesetActiveConditions(ctx.definition, ctx.combat, actor, ctx.state);
+  // What it lets fall as its turn starts (1.261): Command's "drop".
+  for (const entry of active) {
+    if (entry.behavior?.drops?.at === "turn-start") letFall(ctx, actor, entry.condition, entry.behavior.drops);
+  }
+  // A turn that starts with nowhere to walk is its own where a condition says so (1.261): Fear.
+  if (active.some((entry) => entry.behavior?.onlyWhenStuck === "any")) {
+    actor.flags.stuck = rulesetReachableCells(ctx.definition, ctx.state, actor.id).length === 0;
+  }
+  const rule = active.find((entry) => entry.behavior?.table);
   const table = rule?.behavior?.table;
   if (!rule || !table) return;
   const dice = parseRulesetCombatDice(table.dice);

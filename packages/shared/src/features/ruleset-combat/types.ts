@@ -94,6 +94,17 @@ export interface RulesetCombatSaveEnds {
   at: "turn-end" | "turn-start" | "damaged" | "action";
   successes?: number;
   failures?: { count: number; becomes: string };
+  /** Rolled only while its holder cannot see whoever put it on (1.261). */
+  unseen?: true;
+}
+
+/** One thing a combatant let fall (1.261). */
+export interface RulesetDroppedThing {
+  key: string;
+  label: string;
+  at?: RulesetCombatCell;
+  /** The budget picking it up costs; without one, the turn's one free pick-up. */
+  pickUp?: string;
 }
 
 /** A condition a hit or a failed save puts on its target. */
@@ -117,6 +128,8 @@ export interface RulesetCombatApplies {
   endsWith?: string;
   /** More of what the condition harms with for each step of a higher cost it was put on with (1.250). */
   harmsPerCostStep?: { dice?: string; flat?: number };
+  /** A creature of one of these threat tiers or below is destroyed in its place (1.261). */
+  destroysUpTo?: Array<{ tier: string; when?: RulesetSheetBounds }>;
 }
 
 /** A value read off a sheet and the bounds it must stand within: one bound or both. */
@@ -953,6 +966,10 @@ export interface RulesetCombatant {
     /** What a condition's table made of this turn (1.259), and whom a `strike` is at. */
     compelled?: "wander" | "wandered" | "nothing" | "strike";
     compelledTarget?: string;
+    /** The turn began with nowhere a condition let them walk (1.261). */
+    stuck?: boolean;
+    /** Something dropped was picked up this turn for nothing (1.261). */
+    pickedUp?: boolean;
   };
   /** At zero and out of the fight. `dying` is a party member a ruleset with a dying rule still
    *  rolls for; `stable` is one that has stopped rolling; `defeated` is one the fight is over for. */
@@ -974,6 +991,12 @@ export interface RulesetCombatant {
   /** Auras whose save they made and are now proof against for the fight (1.260), as
    *  `<holder>/<condition>`. */
   auraSafe?: string[];
+  /** What they let fall (1.261), each lying where it fell until they pick it up: a held item by
+   *  `item:<its place in sheet.items>`, a stat block action by its id. */
+  dropped?: RulesetDroppedThing[];
+  /** What each held item adds to their defense, by its place in `sheet.items` (1.261), read as the
+   *  fight begins for a ruleset whose conditions make things fall: a dropped shield's share. */
+  heldDefense?: Record<string, number>;
   /** The round it was defeated in, which a revive's window is measured from (1.171). */
   diedRound?: number;
   /** Read from the sheet or the block once, when the fight began. */
@@ -1404,7 +1427,9 @@ export type RulesetCombatRefusal =
   /** Alterations it cannot be used with, or used without one it needs (1.248). */
   | "bad-alter"
   /** Something a condition that decides this turn does not let it hold (1.259). */
-  | "compelled";
+  | "compelled"
+  /** What it is made with lies where it was dropped (1.261). */
+  | "dropped";
 
 export type RulesetCombatAttackOutcome = "hit" | "miss" | "critical";
 export type RulesetCombatRollMode = "normal" | "advantage" | "disadvantage";
@@ -1412,6 +1437,9 @@ export type RulesetCombatRollMode = "normal" | "advantage" | "disadvantage";
 /** Everything a step did, with the numbers it did it with, so a log can print "17 + 5 = 22 against
  *  15: hit" without doing any arithmetic of its own. */
 export type RulesetCombatEvent =
+  /** What a condition made its holder let fall (1.261), and picking one thing back up. */
+  | { type: "letFall"; actorId: string; condition: string; labels: string[] }
+  | { type: "pickedUp"; actorId: string; label: string }
   /** What a condition's table made of a turn as it began (1.259): the roll, and what it does. */
   | {
       type: "compelled";
@@ -1973,6 +2001,8 @@ export interface RulesetCombatOption {
   offHand?: true;
   /** Whether the item a switch turns is on now (1.165). */
   on?: boolean;
+  /** Picking up what its holder dropped (1.261), named by `label`. */
+  pickUp?: true;
   /** Paid out of a budget a condition grants for an attack of one strike (combat C6d, Haste's extra
    *  action): the strikes the attack would otherwise put in hand are not given. */
   oneStrike?: true;

@@ -76,6 +76,7 @@ import {
   rulesetZoneCells,
 } from "./grid.js";
 import { rulesetCombatAdvantage, rulesetCombatIsPool, rulesetPoolDie, throwRulesetCombatPool } from "./pool.js";
+import { rulesetDroppedItems } from "./ammo.js";
 import { rulesetPaidLevel, rulesetReactionsAt, rulesetSheetWithin } from "./options.js";
 import { RULESET_MOVE_MODES } from "./types.js";
 import type {
@@ -518,12 +519,15 @@ export function rulesetAbilityScore(
 function heldSources(definition: RulesetDefinition, combatant: RulesetCombatant): RulesetCheckSource[] {
   const sheet = combatant.sheet;
   if (!sheet?.items?.length) return [];
+  // What lies where it was dropped (1.261) does nothing for them.
+  const dropped = rulesetDroppedItems(combatant);
+  const items = dropped.size ? sheet.items.filter((_, index) => !dropped.has(index)) : sheet.items;
   let evaluated: EvaluatedRulesetSheet | undefined;
   return rulesetItemSources(
     definition,
     sheet.build,
-    sheet.items,
-    () => (evaluated ??= evaluateRulesetSheetLive(definition, sheet.build, sheet.live, sheet.items)),
+    items,
+    () => (evaluated ??= evaluateRulesetSheetLive(definition, sheet.build, sheet.live, items)),
   );
 }
 
@@ -2854,6 +2858,33 @@ function sheetCombatant(
     stable: false,
     defeated: false,
     defense: Math.round(resolveRulesetValueRef(definition, build, combat.defense, evaluated)),
+    // What each item that may be dropped adds to their defense (1.261), read once without it.
+    ...(() => {
+      const falls = (combat.conditions ?? []).flatMap((entry) => (entry.behavior?.drops ? [entry.behavior.drops] : []));
+      if (!falls.length || !input.items?.length) return {};
+      const whole = Math.round(resolveRulesetValueRef(definition, build, combat.defense, evaluated));
+      const heldDefense: Record<string, number> = {};
+      input.items.forEach((held, index) => {
+        if (!held.worn) return;
+        const may = falls.some(
+          (drops) =>
+            drops.slots?.some((slot) => (held.item.slots?.[slot] ?? 0) > 0) ||
+            drops.tags?.some((tag) => held.item.tags?.includes(tag)),
+        );
+        if (!may) return;
+        const without = input.items!.filter((_, other) => other !== index);
+        const less = Math.round(
+          resolveRulesetValueRef(
+            definition,
+            build,
+            combat.defense,
+            evaluateRulesetSheetLive(definition, build, input.live, without),
+          ),
+        );
+        if (Number.isFinite(less) && whole - less !== 0) heldDefense[index] = whole - less;
+      });
+      return Object.keys(heldDefense).length ? { heldDefense } : {};
+    })(),
     // A sheet that reads under 2 (a field left at 0 for whoever has no range) is no range at all.
     ...(() => {
       const ref = combat.attackRoll?.criticalFrom;

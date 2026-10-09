@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: Fear and Command's "drop" make creatures drop what they hold until they pick it up again (a dropped shield no longer protects), turned creatures stay out of 30 feet when they can, Fear's save is rolled only out of the caster's sight and a cornered frightened creature acts freely, and Destroy Undead destroys undead of a low enough challenge rating (Capability API 1.261).
 - Rulesets: a balor's Fire Aura burns everyone near it at the start of its turn, a pit fiend's Fear Aura and a basilisk's gaze ask for saves as creatures start their turns nearby, Countercharm reaches only those who can hear it, and Holy Nimbus's advantage now applies only against spells cast by fiends or undead (Capability API 1.260).
 - Rulesets: Turn Undead, Command, Confusion and Irresistible Dance now play out in a fight. Turned creatures flee and can only dash, commanded ones approach, flee or halt, confused ones roll each turn to wander, freeze or lash out at someone nearby, and dancers spend their action to break free (Capability API 1.259).
 - Rulesets: a paladin's Aura of Protection and similar auras now reach allies nearby in a fight, follow them as they move, and stop while the paladin is down; Holy Nimbus harms foes near the paladin (Capability API 1.258).

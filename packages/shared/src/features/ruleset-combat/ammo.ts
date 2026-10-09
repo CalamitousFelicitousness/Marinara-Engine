@@ -16,6 +16,7 @@ import type {
   RulesetCombatAction,
   RulesetCombatant,
   RulesetCombatMode,
+  RulesetDroppedThing,
   RulesetCombatEvent,
   RulesetEncounterState,
 } from "./types.js";
@@ -353,4 +354,66 @@ export function applyRulesetFightItemChanges(
     };
   }
   return { stacks: next, journal };
+}
+
+/** The option that picks something dropped back up (1.261), followed by what it picks up. */
+export const RULESET_PICK_UP_OPTION_PREFIX = "pickup:";
+
+const ITEM_ACTION = /^(?:item|offhand|use|switch|reload):(\d+)$/;
+
+/** The place in its holder's items of the item an action is made with, when it is one: a weapon's
+ *  blow, its off-hand blow, a use, a switch or a reload. */
+export function rulesetActionItemIndex(action: RulesetCombatAction): number | undefined {
+  const match = ITEM_ACTION.exec(action.id);
+  return match ? Number(match[1]) : undefined;
+}
+
+/** Whether what an action is made with lies where its holder dropped it (1.261): a held item's
+ *  every action, or a stat block's own. */
+export function rulesetActionDropped(actor: RulesetCombatant, action: RulesetCombatAction): boolean {
+  if (!actor.dropped?.length) return false;
+  const index = actor.sheet ? rulesetActionItemIndex(action) : undefined;
+  const key = index !== undefined ? `item:${index}` : action.id;
+  return actor.dropped.some((thing) => thing.key === key);
+}
+
+/** The items a fighter holds that do nothing for them now, dropped (1.261), by their place. */
+export function rulesetDroppedItems(actor: RulesetCombatant): Set<number> {
+  const out = new Set<number>();
+  if (!actor.sheet) return out;
+  for (const thing of actor.dropped ?? []) {
+    if (thing.key.startsWith("item:")) out.add(Number(thing.key.slice("item:".length)));
+  }
+  return out;
+}
+
+/** What a fighter would let fall now (1.261): each worn item taking one of `slots` or carrying one of
+ *  `tags`, and each of a stat block's actions carrying one of `tags`, that is not down already. */
+export function rulesetThingsToDrop(
+  actor: RulesetCombatant,
+  drops: { slots?: string[]; tags?: string[]; pickUp?: string },
+): RulesetDroppedThing[] {
+  const down = new Set((actor.dropped ?? []).map((thing) => thing.key));
+  const at = typeof actor.x === "number" && typeof actor.y === "number" ? { x: actor.x, y: actor.y } : undefined;
+  const out: RulesetDroppedThing[] = [];
+  const add = (key: string, label: string) => {
+    if (down.has(key)) return;
+    down.add(key);
+    out.push({ key, label, ...(at ? { at } : {}), ...(drops.pickUp ? { pickUp: drops.pickUp } : {}) });
+  };
+  if (actor.sheet) {
+    (actor.sheet.items ?? []).forEach((held, index) => {
+      if (!held.worn) return;
+      const slotted = drops.slots?.some((slot) => (held.item.slots?.[slot] ?? 0) > 0);
+      const tagged = drops.tags?.some((tag) => held.item.tags?.includes(tag));
+      if (!slotted && !tagged) return;
+      const named = actor.actions.find((action) => rulesetActionItemIndex(action) === index)?.label;
+      add(`item:${index}`, held.name ?? named ?? held.item.category);
+    });
+    return out;
+  }
+  for (const action of actor.actions) {
+    if (drops.tags?.some((tag) => action.qualities?.includes(tag))) add(action.id, action.label);
+  }
+  return out;
 }

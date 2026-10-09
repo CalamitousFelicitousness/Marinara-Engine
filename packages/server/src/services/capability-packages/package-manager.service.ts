@@ -1549,6 +1549,25 @@ function carriesMetamagic(value: unknown, depth = 0): boolean {
 
 /** An aura that needs senses, harms at its holder's turn or asks for a save, or a save change
  *  narrowed to what is cast from a catalog (1.260). */
+/** A behavior that drops, keeps out or is freed when stuck; a save only out of sight; destroying by
+ *  threat tier (1.261), in catalogs too. */
+function carriesBehaviorMore(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesBehaviorMore(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const behavior = plainRecord(record.behavior);
+  if (
+    typeof record.condition === "string" &&
+    behavior &&
+    (behavior.drops !== undefined || behavior.keepsOut !== undefined || behavior.onlyWhenStuck === "any")
+  )
+    return true;
+  if (plainRecord(record.saveEnds)?.unseen !== undefined) return true;
+  if (typeof record.condition === "string" && record.destroysUpTo !== undefined) return true;
+  return Object.values(record).some((one) => carriesBehaviorMore(one, depth + 1));
+}
+
 function carriesAuraTurns(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesAuraTurns(one, depth + 1));
@@ -3599,6 +3618,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Dropping, keeping out, a turn freed when stuck, saves out of sight, destroying by tier, 1.261.
+  if (
+    !declaresApi(261) &&
+    (carriesBehaviorMore(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesBehaviorMore(document)))
+  ) {
+    return "A ruleset with a condition that drops what its holder holds, keeps them out of a ring, frees a turn begun stuck, a save rolled only out of sight, or a condition that destroys by threat tier, requires schemaVersion 2 and capabilityApi 1.261 or newer";
   }
   // Auras heard, harming or asking saves; save changes against what a catalog casts, 1.260.
   if (

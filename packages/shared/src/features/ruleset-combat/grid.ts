@@ -11,7 +11,7 @@
 import { TERRAIN_DATA, type TacticalGrid } from "../tactical-combat/types.js";
 import { blocksSight, climbCost, elevationAt, hasLineOfSight } from "../tactical-combat/math.js";
 import type { RulesetCombat, RulesetDefinition } from "../../schemas/ruleset.schema.js";
-import { rulesetShotsAvailable } from "./ammo.js";
+import { rulesetActionDropped, rulesetShotsAvailable } from "./ammo.js";
 import { rulesetActiveConditions, rulesetCombatant, rulesetCombatEffects, rulesetCombatStanding } from "./encounter.js";
 import type {
   RulesetBlowKind,
@@ -654,6 +654,8 @@ export function rulesetOpportunityAttack(combatant: RulesetCombatant): RulesetCo
     if (!rulesetShotsAvailable(combatant, action) || action.offHandOf !== undefined) continue;
     // Nor is using an item: that is its holder's own choice on their own turn.
     if (action.itemUse) continue;
+    // Nor a weapon lying where it was dropped (1.261).
+    if (rulesetActionDropped(combatant, action)) continue;
     // Nor is an answer to a moment, or what is added to another blow (1.238): Divine Smite is no
     // strike of its own.
     if (action.reaction || action.addsToBlow) continue;
@@ -781,6 +783,18 @@ export function rulesetReachableCells(
       driven.push({ source, start: rulesetGap(actor, source), moves });
     }
   }
+  // Kept out of a ring around whoever put a condition on (1.261): inside it, only steps further off;
+  // and somewhere to stop only outside it while there is anywhere outside it to stop.
+  const kept: Array<{ source: RulesetCombatant; ring: number }> = [];
+  for (const entry of rulesetActiveConditions(definition, combat, actor, state)) {
+    const keepsOut = entry.behavior?.keepsOut;
+    if (keepsOut === undefined || !combat.distance) continue;
+    const sourceId = actor.tracked.find((tracked) => tracked.condition === entry.condition)?.source;
+    const source = sourceId ? rulesetCombatant(state, sourceId) : undefined;
+    if (source && source.id !== actor.id && rulesetPositionOf(source) && rulesetCombatStanding(source)) {
+      kept.push({ source, ring: Math.floor(keepsOut / combat.distance.perCell) });
+    }
+  }
 
   const threats = rulesetThreateningEnemies(definition, combat, state, actor);
   const slowed = rulesetSlowedCells(state, actor);
@@ -823,6 +837,13 @@ export function rulesetReachableCells(
         })
       )
         continue;
+      if (
+        kept.some((one) => {
+          const gap = rulesetGapFrom({ x, y }, span, one.source);
+          return gap <= one.ring && gap <= rulesetGapFrom(at!, span, one.source);
+        })
+      )
+        continue;
       // No squeezing between two solid corners: a step corner-wise needs one of its two sides open.
       if (
         dx !== 0 &&
@@ -855,7 +876,12 @@ export function rulesetReachableCells(
       cells.set(next, { x, y, cost, path, provokes: provokedBy(threats, from, path) });
     }
   }
-  return [...cells.values()].sort((a, b) => a.cost - b.cost || a.y - b.y || a.x - b.x);
+  let stops = [...cells.values()];
+  if (kept.length) {
+    const outside = stops.filter((cell) => kept.every((one) => rulesetGapFrom(cell, span, one.source) > one.ring));
+    if (outside.length) stops = outside;
+  }
+  return stops.sort((a, b) => a.cost - b.cost || a.y - b.y || a.x - b.x);
 }
 
 /**

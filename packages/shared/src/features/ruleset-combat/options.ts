@@ -12,7 +12,10 @@ import {
   type RulesetSheetOp,
 } from "../rulesets/live-state.js";
 import {
+  RULESET_PICK_UP_OPTION_PREFIX,
+  rulesetActionDropped,
   rulesetAmmoLeft,
+  rulesetDroppedItems,
   rulesetItemOn,
   rulesetItemUseLeft,
   rulesetLoaded,
@@ -68,6 +71,7 @@ import {
   rulesetLineOfSight,
   rulesetSees,
   rulesetOpportunityAttack,
+  rulesetGapFrom,
   rulesetPositionOf,
   rulesetReachableCells,
   rulesetDistanceTo,
@@ -706,7 +710,12 @@ export function rulesetDefenseAgainst(
       value: modifier.flat ?? 0,
     }),
   );
-  const defense = target.defense + guards.reduce((total, guard) => total + guard.value, 0);
+  // What a dropped item gave it is gone with it (1.261): a shield let fall.
+  let lost = 0;
+  if (target.heldDefense && target.dropped?.length) {
+    for (const index of rulesetDroppedItems(target)) lost += target.heldDefense[index] ?? 0;
+  }
+  const defense = target.defense - lost + guards.reduce((total, guard) => total + guard.value, 0);
   const ignored = rulesetAgainstHere(definition, action, target, attacker).some((entry) => entry.ignoresCover);
   const cover = ignored
     ? 0
@@ -1474,6 +1483,8 @@ export function rulesetActionAvailable(
   definition?: RulesetDefinition,
 ): boolean {
   if (!rulesetActionUsable(definition, actor, action)) return false;
+  // What it is made with lies where it was dropped (1.261).
+  if (rulesetActionDropped(actor, action)) return false;
   // Giving its own user back a pool they do not have is nothing (1.247): a 4th-level slot made by a
   // sorcerer with no 4th-level slots at all.
   if (action.restore && action.targets.side === "self" && actor.sheet && definition) {
@@ -2496,14 +2507,17 @@ function compelled(
       return rulesetOptionTargets(definition, state, actor.id, option).includes(actor.flags.compelledTarget ?? "");
     });
   }
+  // One that frees a turn begun with nowhere to walk (1.261) holds nothing of it then.
   const rules = rulesetActiveConditions(definition, combat, actor, state).flatMap((entry) =>
-    entry.behavior?.only ? [entry.behavior] : [],
+    entry.behavior?.only && !(entry.behavior.onlyWhenStuck === "any" && actor.flags.stuck) ? [entry.behavior] : [],
   );
   if (!rules.length) return kept;
   const walks = kept.some((option) => option.id === RULESET_MOVE_OPTION && (option.cells?.length ?? 0) > 0);
   const allowed = (name: string) =>
     rules.every(
-      (rule) => rule.only!.includes(name as never) || (!walks && !!rule.onlyWhenStuck?.includes(name as never)),
+      (rule) =>
+        rule.only!.includes(name as never) ||
+        (!walks && Array.isArray(rule.onlyWhenStuck) && rule.onlyWhenStuck.includes(name as never)),
     );
   return kept.filter((option) => {
     if (option.kind === "end-turn") return true;
@@ -2517,6 +2531,25 @@ function compelled(
     }
     return false;
   });
+}
+
+/** Picking up what they dropped (1.261), from where it fell or beside it: once a turn for nothing,
+ *  or for the budget the condition that dropped it named. */
+function pickUpOptions(actor: RulesetCombatant): RulesetCombatOption[] {
+  const out: RulesetCombatOption[] = [];
+  for (const thing of actor.dropped ?? []) {
+    if (thing.at && rulesetPositionOf(actor) && rulesetGapFrom(thing.at, 1, actor) > 1) continue;
+    if (thing.pickUp ? (actor.budgets[thing.pickUp] ?? 0) < 1 : actor.flags.pickedUp) continue;
+    out.push({
+      id: `${RULESET_PICK_UP_OPTION_PREFIX}${thing.key}`,
+      kind: "item",
+      label: thing.label,
+      ...(thing.pickUp ? { budget: thing.pickUp } : {}),
+      targets: { side: "self", count: 0 },
+      pickUp: true,
+    });
+  }
+  return out;
 }
 
 /** The menu as it would be with no condition deciding the turn (1.259). */
@@ -2573,6 +2606,7 @@ export function rulesetUncompelledOptions(
     };
     if (rulesetOptionTargets(definition, state, actor.id, option).length > 0) options.push(option);
   }
+  options.push(...pickUpOptions(actor));
   // Moving a lasting area its caster holds at a point (1.168): picked on the board as a walk is.
   for (const zone of actor.zones ?? []) {
     const move = actor.actions.find((entry) => entry.id === zone.actionId)?.zone?.move;

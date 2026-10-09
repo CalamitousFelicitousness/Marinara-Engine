@@ -1694,6 +1694,11 @@ function playRulesetTurn(
     (option) => option.id === RULESET_STAND_OPTION,
   );
   if (stand) applyChoice(definition, state, fight, { actorId, optionId: stand.id, targetIds: [] });
+  // And picks up what it dropped (1.261), with the turn's free pick-up.
+  const pickUp = rulesetCombatOptions(definition, fight.encounter, actorId).find(
+    (option) => option.pickUp && !option.budget,
+  );
+  if (pickUp) applyChoice(definition, state, fight, { actorId, optionId: pickUp.id, targetIds: [] });
   // Driven away or toward somebody (1.259), the walk comes first, sprinting where it may.
   const actor = rulesetCombatant(fight.encounter, actorId);
   if (actor && rulesetDrivenFrom(definition, fight.encounter, actor))
@@ -2101,6 +2106,7 @@ function rulesetRefusalMessage(reason: string): string {
     "unknown-mode": "That weapon cannot be used that way right now.",
     "bad-alter": "It cannot be changed that way right now.",
     compelled: "Something on them decides what this turn may hold.",
+    dropped: "What it is made with lies where it was dropped.",
     "unknown-creature": "That opponent is not in any bestiary this game can read.",
     "no-health": "That opponent's sheet gives it no health, so it was left out of the fight.",
     unreachable: "They cannot walk to that square.",

@@ -139,6 +139,8 @@ export function rulesetOptionLabel(option: DirectedRulesetOption, t: TFunction):
     return t(option.on ? "game.combat.ruleset.menu.switchOff" : "game.combat.ruleset.menu.switchOn", {
       item: option.label,
     });
+  // Picking up what was dropped (1.261) is the Engine's own move too.
+  if (option.pickUp) return t("game.combat.ruleset.menu.pickUp", { item: option.label });
   if (option.kind !== "standard") return option.label;
   return t(`game.combat.ruleset.standard.${option.label}`, { defaultValue: option.label });
 }

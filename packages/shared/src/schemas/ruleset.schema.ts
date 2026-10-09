@@ -2263,6 +2263,7 @@ export interface RulesetCatalogSaveEnds {
   at: "turn-end" | "turn-start" | "damaged" | "action";
   successes?: number;
   failures?: { count: number; becomes: string };
+  unseen?: true;
 }
 
 export interface RulesetCatalogApplies {
@@ -2277,6 +2278,13 @@ export interface RulesetCatalogApplies {
   targetIs?: RulesetTargetIs;
   endsWith?: string;
   harmsPerCostStep?: { dice?: string; flat?: number };
+  destroysUpTo?: RulesetDestroysUpTo[];
+}
+
+/** How strong a creature a failed save destroys outright, by its threat tier (1.261). */
+export interface RulesetDestroysUpTo {
+  tier: string;
+  when?: { value: RulesetValueRef; atLeast?: number; atMost?: number };
 }
 
 const catalogAppliesSchema: z.ZodType<RulesetCatalogApplies, z.ZodTypeDef, unknown> = z
@@ -2301,6 +2309,9 @@ const catalogAppliesSchema: z.ZodType<RulesetCatalogApplies, z.ZodTypeDef, unkno
           .object({ count: z.number().int().min(1).max(10), becomes: sheetId })
           .strict()
           .optional(),
+        /** Rolled only while its holder cannot see whoever put it on (Capability API 1.261): 5e's
+         *  Fear, saved against at the end of a turn out of the caster's line of sight. */
+        unseen: z.literal(true).optional(),
       })
       .strict()
       .optional(),
@@ -2344,6 +2355,15 @@ const catalogAppliesSchema: z.ZodType<RulesetCatalogApplies, z.ZodTypeDef, unkno
       .refine((amount) => amount.dice !== undefined || (amount.flat ?? 0) > 0, {
         message: '"harmsPerCostStep" names dice, a flat amount, or both',
       })
+      .optional(),
+    /** A creature whose threat tier is at or below one of these is destroyed outright in place of
+     *  taking the condition (Capability API 1.261): the highest tier whose `when`, read off the sheet
+     *  of whoever applies it, holds. 5e's Destroy Undead after a failed Turn Undead save, CR 1/2 at
+     *  cleric 5th up to CR 4 at 17th. A character, or a creature with no tier, is never destroyed. */
+    destroysUpTo: z
+      .array(z.object({ tier: sheetId, when: sheetBoundsSchema("when", "met").optional() }).strict())
+      .min(1)
+      .max(10)
       .optional(),
   })
   .strict()
@@ -5840,9 +5860,18 @@ const conditionOnEndSchema: z.ZodType<RulesetConditionOnEnd, z.ZodTypeDef, unkno
  *  Command, Confusion. */
 export interface RulesetConditionBehavior {
   only?: string[];
-  onlyWhenStuck?: string[];
+  onlyWhenStuck?: string[] | "any";
   moves?: "away" | "toward";
+  keepsOut?: number;
+  drops?: RulesetBehaviorDrops;
   table?: { dice: string; rows: Array<{ atMost: number; does: "wander" | "nothing" | "strike" | "normal" }> };
+}
+/** What its holder lets fall from their hands (1.261): Command's "drop", Fear. */
+export interface RulesetBehaviorDrops {
+  slots?: string[];
+  tags?: string[];
+  at: "applied" | "turn-start";
+  pickUp?: string;
 }
 /** What a turn may hold besides walking: breaking free, and the standard actions. */
 export const RULESET_BEHAVIOR_ONLY = ["move", "escape", ...RULESET_COMBAT_STANDARD_ACTIONS] as const;
@@ -5856,17 +5885,43 @@ const conditionBehaviorSchema: z.ZodType<RulesetConditionBehavior, z.ZodTypeDef,
       .max(8)
       .refine((only) => new Set(only).size === only.length, { message: "Name each once" })
       .optional(),
-    /** Standard actions it may take only while there is nowhere it may walk to: Turn Undead's Dodge. */
+    /** Standard actions it may take only while there is nowhere it may walk to: Turn Undead's Dodge.
+     *  `"any"` (Capability API 1.261): a turn that starts with nowhere to walk is its holder's own,
+     *  whatever `only` says: Fear's "unless there is nowhere to move". */
     onlyWhenStuck: z
-      .array(z.enum(RULESET_COMBAT_STANDARD_ACTIONS))
-      .min(1)
-      .max(6)
-      .refine((only) => new Set(only).size === only.length, { message: "Name each once" })
+      .union([
+        z
+          .array(z.enum(RULESET_COMBAT_STANDARD_ACTIONS))
+          .min(1)
+          .max(6)
+          .refine((only) => new Set(only).size === only.length, { message: "Name each once" }),
+        z.literal("any"),
+      ])
       .optional(),
     /** It walks only away from whoever put it on, never a step nearer, and stops only further off
      *  than it began; or only toward them, never a step further, stopping nearer (Command's
      *  "approach" and "flee", Turn Undead, Antipathy and Sympathy). */
     moves: z.enum(["away", "toward"]).optional(),
+    /** It never walks to a place within this distance of whoever put it on unless it is getting
+     *  further off, and stops only outside it while there is anywhere outside it to stop (Capability
+     *  API 1.261): Turn Undead's "can't willingly move to a space within 30 feet of you". */
+    keepsOut: z.number().int().min(1).max(1000).optional(),
+    /** It lets fall what it holds (Capability API 1.261): each worn item taking one of `slots`
+     *  (a hand), each item and each stat block action carrying one of `tags`, as the condition goes
+     *  on or as each of its holder's turns starts. What falls lies where they stood: it does nothing
+     *  for them, and none of its actions are theirs, until they pick it up from that place or beside
+     *  it, once a turn for nothing or for `pickUp`'s budget. Command's "drop", Fear's "drops
+     *  whatever it is holding". */
+    drops: z
+      .object({
+        slots: z.array(sheetId).min(1).max(4).optional(),
+        tags: z.array(sheetId).min(1).max(8).optional(),
+        at: z.enum(["applied", "turn-start"]),
+        pickUp: sheetId.optional(),
+      })
+      .strict()
+      .refine((drops) => drops.slots || drops.tags, { message: '"drops" names "slots", "tags" or both' })
+      .optional(),
     /** Rolled as each of its holder's turns starts, the first row the roll is at most deciding the
      *  turn: `wander` walks every bit of their speed one way the dice pick and ends the turn,
      *  `nothing` ends it, `strike` allows only a melee attack at a creature in reach the dice pick
@@ -9066,11 +9121,26 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         }
       });
       for (const key of ["only", "onlyWhenStuck"] as const) {
-        entry.behavior?.[key]?.forEach((named, namedIndex) => {
+        const named = entry.behavior?.[key];
+        (Array.isArray(named) ? named : []).forEach((named, namedIndex) => {
           if (named === "move" || named === "escape") return;
           if (!combat.standard?.includes(named as never))
             issue([...path, "behavior", key, namedIndex], `This ruleset has no standard action "${named}"`);
         });
+      }
+      const drops = entry.behavior?.drops;
+      if (drops) {
+        const at = [...path, "behavior", "drops"];
+        const slots = new Set((def.items?.slots ?? []).map((slot) => slot.id));
+        const tags = new Set((def.items?.tags ?? []).map((tag) => tag.id));
+        drops.slots?.forEach((slot, slotIndex) => {
+          if (!slots.has(slot)) issue([...at, "slots", slotIndex], `Unknown slot "${slot}"`);
+        });
+        drops.tags?.forEach((tag, tagIndex) => {
+          if (!tags.has(tag)) issue([...at, "tags", tagIndex], `Unknown item tag "${tag}"`);
+        });
+        if (drops.pickUp !== undefined && !combat.economy.budgets.some((budget) => budget.id === drops.pickUp))
+          issue([...at, "pickUp"], `Unknown budget "${drops.pickUp}"`);
       }
       if (entry.expires) {
         if (!conditions.has(entry.expires.becomes))
@@ -9816,7 +9886,7 @@ function targetTestIssues(
   definition: RulesetDefinition,
   carrier: {
     plus?: ReadonlyArray<{ targetIs?: RulesetTargetIs }>;
-    applies?: ReadonlyArray<{ targetIs?: RulesetTargetIs }>;
+    applies?: ReadonlyArray<{ targetIs?: RulesetTargetIs; destroysUpTo?: RulesetDestroysUpTo[] }>;
     targetTypes?: {
       is?: RulesetTargetIs;
       not?: RulesetTargetIs;
@@ -9836,6 +9906,22 @@ function targetTestIssues(
   );
   carrier.applies?.forEach((entry, index) =>
     targetIsIssues(definition, entry.targetIs, [...at, "applies", index, "targetIs"], add),
+  );
+  // Destroyed by tier (1.261): the tiers are the threat scale's, and the bounds read off a sheet.
+  carrier.applies?.forEach((entry, index) =>
+    entry.destroysUpTo?.forEach((row, rowIndex) => {
+      const where = [...at, "applies", index, "destroysUpTo", rowIndex];
+      const tiers = definition.combat?.threat?.tiers;
+      if (!tiers) add([...where, "tier"], "This ruleset has no threat tiers to destroy by");
+      else if (!tiers.some((tier) => tier.id === row.tier))
+        add([...where, "tier"], `Unknown threat tier "${row.tier}"`);
+      if (row.when) {
+        const names = rulesetSheetNames(definition.sheet, definition.items);
+        for (const found of rulesetValueRefIssues(row.when.value, names, names.derived)) {
+          add([...where, "when", "value", found.key], found.message);
+        }
+      }
+    }),
   );
   targetIsIssues(definition, carrier.targetTypes?.is, [...at, "targetTypes", "is"], add);
   targetIsIssues(definition, carrier.targetTypes?.not, [...at, "targetTypes", "not"], add);

@@ -1547,6 +1547,23 @@ function carriesMetamagic(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesMetamagic(one, depth + 1));
 }
 
+/** An aura that needs senses, harms at its holder's turn or asks for a save, or a save change
+ *  narrowed to what is cast from a catalog (1.260). */
+function carriesAuraTurns(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesAuraTurns(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (
+    typeof record.distance === "number" &&
+    typeof record.side === "string" &&
+    (record.needs !== undefined || record.harms !== undefined || record.save !== undefined)
+  )
+    return true;
+  if (plainRecord(record.against)?.casts !== undefined) return true;
+  return Object.values(record).some((one) => carriesAuraTurns(one, depth + 1));
+}
+
 /** A condition's behavior (1.259), or a save its holder spends their action on. */
 function carriesBehavior(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -3582,6 +3599,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Auras heard, harming or asking saves; save changes against what a catalog casts, 1.260.
+  if (
+    !declaresApi(260) &&
+    (carriesAuraTurns(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesAuraTurns(document)))
+  ) {
+    return "A ruleset with auras that need senses, harm as their holder's turn starts or ask for a save, or saves changed against what a catalog casts, requires schemaVersion 2 and capabilityApi 1.260 or newer";
   }
   // What a condition makes its holder do with their turn, and saves spent an action on, 1.259.
   if (

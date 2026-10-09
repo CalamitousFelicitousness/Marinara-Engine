@@ -122,6 +122,8 @@ export {
   rulesetConditionModifiers,
   rulesetDamageInEffect,
   rulesetSizeRank,
+  rulesetAuraReaches,
+  rulesetAuraSpreaders,
   rulesetSyncAuras,
   rulesetSyncSizes,
   rulesetCreatureKind,

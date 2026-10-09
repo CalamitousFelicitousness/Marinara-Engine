@@ -36,6 +36,8 @@ export interface RulesetSaveAgainst {
   /** What the action the save is against is known by (1.186): its id, its name and its shared
    *  recharge group. */
   action?: readonly string[];
+  /** The catalog the entry it is against came from, or the one an item's use casts from (1.260). */
+  catalog?: string;
 }
 
 /** Any one match is enough; the save's own name is checked separately. */
@@ -49,7 +51,11 @@ export function rulesetSaveAgainstMatches(
   if (against.actions) {
     const known = (source.action ?? []).map((name) => name.trim().toLowerCase());
     if (!against.actions.some((name) => known.includes(name.trim().toLowerCase()))) return false;
-    if (!against.conditions && !against.damage && !against.magic && !against.from) return true;
+  }
+  // As do the catalogs it is cast from (1.260): a spell, and then whoever cast it.
+  if (against.casts && !(source.catalog !== undefined && against.casts.includes(source.catalog))) return false;
+  if ((against.actions || against.casts) && !against.conditions && !against.damage && !against.magic && !against.from) {
+    return true;
   }
   return !!(
     against.conditions?.some((condition) => source.conditions?.includes(condition)) ||

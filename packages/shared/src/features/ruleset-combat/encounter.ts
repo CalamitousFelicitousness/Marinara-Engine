@@ -20,6 +20,7 @@ import {
   type RulesetCombatAbilitySource,
   type RulesetCombatAttackSource,
   type RulesetCombatCondition,
+  type RulesetConditionAura,
   type RulesetCombatDistanceSource,
   type RulesetCreatureHideEntry,
   type RulesetDefinition,
@@ -3764,6 +3765,71 @@ function fitsAt(grid: TacticalGrid, at: { x: number; y: number }, span: number, 
  * or waking says what it should without anybody telling it. A condition an aura spread carries no
  * aura of its own, so nothing here chains. Returns what went on and came off, for a log.
  */
+/** Who spreads what right now (1.258): a holder down, out or unable to act spreads nothing. */
+export function rulesetAuraSpreaders(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+): Array<{ holder: RulesetCombatant; aura: RulesetConditionAura; condition: string }> {
+  const combat = definition.combat;
+  if (!combat?.conditions?.some((entry) => entry.auras)) return [];
+  return state.combatants.flatMap((holder) => {
+    if (holder.defeated || holder.down) return [];
+    if (rulesetCombatEffects(definition, combat, holder, state).has("cannot-act")) return [];
+    const held = new Set(holder.tracked.filter((entry) => !entry.aura).map((entry) => entry.condition));
+    for (const id of rulesetCombatConditions(definition, holder)) {
+      if (!holder.tracked.some((entry) => entry.condition === id && entry.aura)) held.add(id);
+    }
+    return (combat.conditions ?? []).flatMap((rule) =>
+      held.has(rule.condition)
+        ? (rule.auras ?? [])
+            .filter((aura) => rulesetSheetWithin(definition, holder, aura.when))
+            .map((aura) => ({ holder, aura, condition: rule.condition }))
+        : [],
+    );
+  });
+}
+
+/**
+ * Whether one holder's aura reaches this combatant now (1.258): the side it names (the holder only
+ * with `self`), within its distance on a board, and with the senses it `needs` (1.260), neither of
+ * them standing in a zone that takes those away (Silence). Without a board it reaches its side.
+ */
+export function rulesetAuraReaches(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  holder: RulesetCombatant,
+  aura: RulesetConditionAura,
+  target: RulesetCombatant,
+): boolean {
+  if (target.defeated) return false;
+  const same = holder.side === target.side;
+  if (holder.id === target.id ? !aura.self : aura.side === (same ? "enemies" : "allies")) return false;
+  const perCell = definition.combat?.distance?.perCell;
+  if (state.board?.grid && perCell !== undefined && holder.id !== target.id) {
+    if (rulesetGap(holder, target) > rulesetInCells(aura.distance, perCell)) return false;
+  }
+  if (aura.needs?.length) {
+    if (!rulesetTargetHasSenses(definition, state, target, aura.needs)) return false;
+    if (zoneTakesSenses(definition, state, holder, aura.needs)) return false;
+  }
+  return true;
+}
+
+/** Whether a zone this combatant stands in puts on a condition that takes one of these senses away. */
+function zoneTakesSenses(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  combatant: RulesetCombatant,
+  senses: readonly string[],
+): boolean {
+  const rules = definition.combat?.conditions ?? [];
+  return zonesStoodIn(state, combatant).some(({ rule }) =>
+    (rule.inside?.conditions ?? []).some((condition) =>
+      rules.some((one) => one.condition === condition && one.lacks?.some((sense) => senses.includes(sense))),
+    ),
+  );
+}
+
 export function rulesetSyncAuras(
   definition: RulesetDefinition,
   state: RulesetEncounterState,
@@ -3777,34 +3843,13 @@ export function rulesetSyncAuras(
     }
     return changes;
   }
-  const perCell = combat.distance?.perCell;
-  const board = !!state.board?.grid;
-  // Who spreads what, read once: a holder down, out or unable to act spreads nothing.
-  const spreading = state.combatants.flatMap((holder) => {
-    if (holder.defeated || holder.down) return [];
-    if (rulesetCombatEffects(definition, combat, holder, state).has("cannot-act")) return [];
-    const held = new Set(holder.tracked.filter((entry) => !entry.aura).map((entry) => entry.condition));
-    for (const id of rulesetCombatConditions(definition, holder)) {
-      if (!holder.tracked.some((entry) => entry.condition === id && entry.aura)) held.add(id);
-    }
-    return (combat.conditions ?? []).flatMap((rule) =>
-      held.has(rule.condition)
-        ? (rule.auras ?? [])
-            .filter((aura) => rulesetSheetWithin(definition, holder, aura.when))
-            .map((aura) => ({ holder, aura }))
-        : [],
-    );
-  });
+  const spreading = rulesetAuraSpreaders(definition, state);
   for (const target of state.combatants) {
     const want = new Map<string, string>();
     if (!target.defeated) {
       for (const { holder, aura } of spreading) {
-        const same = holder.side === target.side;
-        if (holder.id === target.id ? !aura.self : aura.side === (same ? "enemies" : "allies")) continue;
-        if (board && perCell !== undefined && holder.id !== target.id) {
-          if (rulesetGap(holder, target) > rulesetInCells(aura.distance, perCell)) continue;
-        }
-        for (const condition of aura.conditions) if (!want.has(condition)) want.set(condition, holder.id);
+        if (!rulesetAuraReaches(definition, state, holder, aura, target)) continue;
+        for (const condition of aura.conditions ?? []) if (!want.has(condition)) want.set(condition, holder.id);
       }
     }
     for (const entry of [...target.tracked]) {

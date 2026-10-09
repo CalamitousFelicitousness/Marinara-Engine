@@ -1048,7 +1048,9 @@ const capabilityPackageManifestBaseSchema = z
 // 1.259: a combat condition's `behavior` (`only`, `onlyWhenStuck`, `moves`, `table`): Turn Undead,
 //        Command, Confusion; `saveEnds.at: "action"` (Irresistible Dance); the `compelled` event
 //        and refusal.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 259 } as const);
+// 1.260: an aura's `needs`, `harms` and `save` (Countercharm, a balor's Fire Aura, a pit fiend's Fear
+//        Aura); a save modifier's `against.casts` (Holy Nimbus).
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 260 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

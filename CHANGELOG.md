@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: a balor's Fire Aura burns everyone near it at the start of its turn, a pit fiend's Fear Aura and a basilisk's gaze ask for saves as creatures start their turns nearby, Countercharm reaches only those who can hear it, and Holy Nimbus's advantage now applies only against spells cast by fiends or undead (Capability API 1.260).
 - Rulesets: Turn Undead, Command, Confusion and Irresistible Dance now play out in a fight. Turned creatures flee and can only dash, commanded ones approach, flee or halt, confused ones roll each turn to wander, freeze or lash out at someone nearby, and dancers spend their action to break free (Capability API 1.259).
 - Rulesets: a paladin's Aura of Protection and similar auras now reach allies nearby in a fight, follow them as they move, and stop while the paladin is down; Holy Nimbus harms foes near the paladin (Capability API 1.258).
 - Rulesets: a magical potion now heals through a diseased giant rat's bite in a fight too, and a deva's or unicorn's Healing Touch can be magical (Capability API 1.257).

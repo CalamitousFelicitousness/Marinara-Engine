@@ -5480,6 +5480,36 @@ export const RULESET_ROLLED_MODIFIER_TARGETS: readonly string[] = [
 /** Whether a roll is thrown twice with the better or the worse kept. */
 export const RULESET_ROLL_MODES = ["advantage", "disadvantage"] as const;
 
+/** What a save a modifier changes is against (Capability API 1.129). Typed by hand: inferred, the
+ *  combat schema around it grows too long for the compiler to emit. */
+export interface RulesetModifierAgainst {
+  conditions?: string[];
+  damage?: string[];
+  magic?: true;
+  from?: RulesetTargetIs;
+  actions?: string[];
+  casts?: string[];
+}
+const modifierAgainstSchema: z.ZodType<RulesetModifierAgainst, z.ZodTypeDef, unknown> = z
+  .object({
+    conditions: z.array(sheetId).min(1).max(24).optional(),
+    damage: z.array(promptSafeText(40)).min(1).max(24).optional(),
+    magic: z.literal(true).optional(),
+    /** A save against something a creature that is this does (Capability API 1.180): 5e's
+     *  Dragon Scale Mail, against a dragon's breath and its Frightful Presence. */
+    from: targetIsSchema.optional(),
+    /** Only a save against one of these actions (Capability API 1.186), by id, name or shared
+     *  recharge group, case-insensitively, AND whatever else it names: Dragon Scale Mail's
+     *  dragons' breath and Frightful Presence, never their Wing Attack. */
+    actions: z.array(promptSafeText(80)).min(1).max(12).optional(),
+    /** Only a save against an entry of one of these catalogs, or an item's use that casts from
+     *  one (Capability API 1.260), AND whatever else it names: Holy Nimbus, against spells cast
+     *  by fiends or undead. */
+    casts: z.array(sheetId).min(1).max(8).optional(),
+  })
+  .strict()
+  .refine((against) => Object.keys(against).length > 0, "Against names conditions, damage, magic, from or actions");
+
 /** One number a condition changes, and by how much: a flat number (with its own sign), dice rolled
  *  each time the number is used (`minus` takes them away instead), or `times` half or double on speed
  *  and damage (the health maximum only halves), applied after additions. A change to checks may name
@@ -5516,22 +5546,7 @@ const combatModifierSchema = z
     saves: z.array(sheetId).min(1).max(12).optional(),
     /** What this save is against (Capability API 1.129): any named condition, damage type or
      *  magic qualifies; `saves` still narrows which save. Nothing matches a save with no source. */
-    against: z
-      .object({
-        conditions: z.array(sheetId).min(1).max(24).optional(),
-        damage: z.array(promptSafeText(40)).min(1).max(24).optional(),
-        magic: z.literal(true).optional(),
-        /** A save against something a creature that is this does (Capability API 1.180): 5e's
-         *  Dragon Scale Mail, against a dragon's breath and its Frightful Presence. */
-        from: targetIsSchema.optional(),
-        /** Only a save against one of these actions (Capability API 1.186), by id, name or shared
-         *  recharge group, case-insensitively, AND whatever else it names: Dragon Scale Mail's
-         *  dragons' breath and Frightful Presence, never their Wing Attack. */
-        actions: z.array(promptSafeText(80)).min(1).max(12).optional(),
-      })
-      .strict()
-      .refine((against) => Object.keys(against).length > 0, "Against names conditions, damage, magic, from or actions")
-      .optional(),
+    against: modifierAgainstSchema.optional(),
     mode: z.enum(RULESET_ROLL_MODES).optional(),
     /** Narrows a change to attacks-taken to attackers that are this (Capability API 1.180). */
     from: targetIsSchema.optional(),
@@ -5898,8 +5913,17 @@ export interface RulesetConditionAura {
   distance: number;
   side: "allies" | "enemies" | "all";
   self?: true;
-  conditions: string[];
+  conditions?: string[];
   when?: { value: RulesetValueRef; atLeast?: number; atMost?: number };
+  needs?: string[];
+  harms?: { dice?: string; flat?: number; type?: string };
+  save?: {
+    save: string;
+    difficulty: number;
+    applies: RulesetCatalogApplies[];
+    seen?: true;
+    immuneOnSuccess?: true;
+  };
 }
 const conditionAuraSchema: z.ZodType<RulesetConditionAura, z.ZodTypeDef, unknown> = z
   .object({
@@ -5910,12 +5934,46 @@ const conditionAuraSchema: z.ZodType<RulesetConditionAura, z.ZodTypeDef, unknown
     side: z.enum(["allies", "enemies", "all"]),
     /** The holder too, where `side` names their own side. */
     self: z.literal(true).optional(),
-    conditions: uniqueIds(8),
+    conditions: uniqueIds(8).optional(),
     /** Only while this value off the holder's own sheet stands within the bounds: a paladin's
      *  Charisma modifier for Aura of Protection's bonus, their level for its 30 feet. */
     when: sheetBoundsSchema("when", "spread").optional(),
+    /** Only to whoever has these senses (Capability API 1.260), with neither of them standing where
+     *  a zone takes them away: Countercharm's "can hear you", which Silence stops. */
+    needs: combatSensesSchema.optional(),
+    /** Dealt by the holder to everybody it reaches as each of the holder's own turns starts
+     *  (Capability API 1.260): a balor's Fire Aura, 3d6 fire. */
+    harms: z
+      .object({
+        dice: catalogDice.optional(),
+        flat: z.number().int().min(0).max(1000).optional(),
+        type: promptSafeText(40).optional(),
+      })
+      .strict()
+      .refine((harm) => harm.dice !== undefined || harm.flat !== undefined, {
+        message: "What it harms with names dice, a flat amount, or both",
+      })
+      .optional(),
+    /** A save everybody it reaches makes as their own turn starts (Capability API 1.260), against
+     *  `difficulty`, with `applies` put on by the holder on a failure: a pit fiend's Fear Aura, a
+     *  gibbering mouther's Gibbering. `seen`: only while the two can see each other (a basilisk's
+     *  gaze). `immuneOnSuccess`: a success keeps that holder's aura off them for the rest of the
+     *  fight. */
+    save: z
+      .object({
+        save: sheetId,
+        difficulty: z.number().int().min(1).max(100),
+        applies: z.array(catalogAppliesSchema).min(1).max(4),
+        seen: z.literal(true).optional(),
+        immuneOnSuccess: z.literal(true).optional(),
+      })
+      .strict()
+      .optional(),
   })
-  .strict();
+  .strict()
+  .refine((aura) => !!aura.conditions || !!aura.harms || !!aura.save, {
+    message: "An aura spreads conditions, harms, or asks for a save",
+  });
 
 /** What a condition does on the rests it names (1.255). */
 export interface RulesetConditionOnRest {
@@ -8983,7 +9041,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       });
       entry.auras?.forEach((aura, auraIndex) => {
         const at = [...path, "auras", auraIndex];
-        aura.conditions.forEach((spread, spreadIndex) => {
+        aura.conditions?.forEach((spread, spreadIndex) => {
           if (!conditions.has(spread)) issue([...at, "conditions", spreadIndex], `Unknown condition "${spread}"`);
           else if (spread === entry.condition)
             issue([...at, "conditions", spreadIndex], "A condition does not spread itself");
@@ -8992,6 +9050,14 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         });
         if (aura.self && aura.side === "enemies")
           issue([...at, "self"], 'Its holder is no enemy of their own: "self" goes with "allies" or "all"');
+        if (aura.save) {
+          if (!def.sheet.saves.some((one) => one.id === aura.save!.save))
+            issue([...at, "save", "save"], `Unknown save "${aura.save.save}"`);
+          aura.save.applies.forEach((applied, appliedIndex) => {
+            if (!conditions.has(applied.condition))
+              issue([...at, "save", "applies", appliedIndex, "condition"], `Unknown condition "${applied.condition}"`);
+          });
+        }
         if (aura.when) {
           const names = rulesetSheetNames(def.sheet, def.items);
           for (const found of rulesetValueRefIssues(aura.when.value, names, names.derived)) {

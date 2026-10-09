@@ -971,6 +971,9 @@ export interface RulesetCombatant {
    *  Instinct's rage). */
   surprised?: true;
   surpriseOut?: string[];
+  /** Auras whose save they made and are now proof against for the fight (1.260), as
+   *  `<holder>/<condition>`. */
+  auraSafe?: string[];
   /** The round it was defeated in, which a revive's window is measured from (1.171). */
   diedRound?: number;
   /** Read from the sheet or the block once, when the fight began. */

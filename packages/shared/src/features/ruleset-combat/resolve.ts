@@ -72,6 +72,8 @@ import {
   writeRulesetSheet,
   type RulesetCombatHealth,
   type RulesetConditionModifier,
+  rulesetAuraReaches,
+  rulesetAuraSpreaders,
   rulesetSyncAuras,
   rulesetSyncSizes,
 } from "./encounter.js";
@@ -6253,6 +6255,7 @@ function resolveActionBody(
       ].filter((type): type is string => type !== undefined),
       magic: magicalAction(action),
       action: [action.id, action.label, ...(action.recharge?.group ? [action.recharge.group] : [])],
+      ...((action.casts ?? action.catalog) ? { catalog: action.casts ?? action.catalog } : {}),
     };
     let saved = false;
     if (action.save && (careful.has(target.id) || savesOutright(ctx, target, action.save))) {
@@ -7108,6 +7111,8 @@ function beginNextTurn(definition: RulesetDefinition, combat: RulesetCombat, ctx
     burnAtTurn(ctx, actor);
     zonesAtTurn(ctx, actor, "turn-start");
     tickConditions(ctx, actor, "turn-start");
+    // After the clocks, so what an aura's save puts on "until the start of its next turn" lasts it.
+    if (!actor.defeated) aurasAtTurn(ctx, actor);
     // A condition that ended as the turn began no longer holds this turn's walk: nothing has been
     // spent yet, so the allowance is simply read again.
     refreshRulesetMovement(definition, combat, actor, ctx.state);
@@ -7127,6 +7132,50 @@ function beginNextTurn(definition: RulesetDefinition, combat: RulesetCombat, ctx
   }
   const after = rulesetEncounterOutcome(ctx.state);
   if (after !== "ongoing") pushOutcome(ctx, after);
+}
+
+/**
+ * Auras as a turn starts (1.260): what the actor's own auras harm everybody they reach with (a
+ * balor's Fire Aura), and then the save each aura reaching the actor asks of them (a pit fiend's
+ * Fear Aura), a failure putting on what it applies from its holder, a success with
+ * `immuneOnSuccess` keeping that holder's aura off them for the rest of the fight.
+ */
+function aurasAtTurn(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
+  const spreading = rulesetAuraSpreaders(ctx.definition, ctx.state);
+  for (const { holder, aura, condition } of spreading) {
+    if (holder.id !== actor.id || !aura.harms) continue;
+    for (const target of [...ctx.state.combatants]) {
+      if (target.defeated || !rulesetAuraReaches(ctx.definition, ctx.state, holder, aura, target)) continue;
+      conditionHarm(ctx, target, condition, holder.id, aura.harms, 1);
+    }
+  }
+  for (const { holder, aura, condition } of spreading) {
+    const save = aura.save;
+    if (!save || actor.defeated) continue;
+    const key = `${holder.id}/${condition}`;
+    if (actor.auraSafe?.includes(key) || !rulesetAuraReaches(ctx.definition, ctx.state, holder, aura, actor)) continue;
+    if (
+      save.seen &&
+      !(
+        rulesetCanSee(ctx.definition, ctx.state, holder, actor) &&
+        rulesetCanSee(ctx.definition, ctx.state, actor, holder)
+      )
+    )
+      continue;
+    const saved = rollSave(ctx, actor, save.save, save.difficulty, holder.id, undefined, {
+      conditions: save.applies.map((applied) => applied.condition),
+    });
+    if (saved) {
+      if (save.immuneOnSuccess) actor.auraSafe = [...(actor.auraSafe ?? []), key];
+      continue;
+    }
+    for (const applied of save.applies) {
+      applyConditionId(ctx, actor, applied.condition, applied as RulesetCombatApplies, {
+        sourceId: holder.id,
+        difficulty: save.difficulty,
+      });
+    }
+  }
 }
 
 /** The ways a turn's wander may go, as a d8 picks them: north, then round clockwise. */

@@ -55,6 +55,8 @@ export function rulesetModedAction(
       : {}),
     // The one cure picked (1.199), in place of all of them.
     ...(mode.cure ? cureOnly(mode.cure) : {}),
+    // The creature type picked (1.265), remembered by what it puts on: Antipathy/Sympathy.
+    ...(mode.kind && action.applies ? { applies: action.applies.map((one) => ({ ...one, kind: mode.kind })) } : {}),
   };
 }
 

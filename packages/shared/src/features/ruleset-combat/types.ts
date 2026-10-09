@@ -98,6 +98,9 @@ export interface RulesetCombatSaveEnds {
   unseen?: true;
   /** Rolled with this lean while its holder can see whoever put it on (1.263). */
   seenLean?: "advantage" | "disadvantage";
+  /** Rolled only while its holder stands farther than this from whoever put it on (1.265), in the
+   *  ruleset's distance. */
+  beyond?: number;
 }
 
 /** One thing a combatant let fall (1.261). */
@@ -112,6 +115,8 @@ export interface RulesetDroppedThing {
 /** A condition a hit or a failed save puts on its target. */
 export interface RulesetCombatApplies {
   condition: string;
+  /** The creature type its user named as they used it (1.265), remembered by what it puts on. */
+  kind?: string;
   duration: "instant" | "until-save" | "this-action" | { rounds: number; at?: "turn-start"; of?: "source" };
   saveEnds?: RulesetCombatSaveEnds;
   endsAfter?: RulesetConditionEnding;
@@ -553,6 +558,8 @@ export interface RulesetCombatAction {
   unseals?: true;
   /** It does one of its cures, not all (1.199): the mode picked, else the first the target needs. */
   cureOneOf?: true;
+  /** Its user names a creature type as they use it (1.265), one of `modes`. */
+  kindChoice?: true;
   /** Taken as its holder's own attack hits, its damage joins that blow (1.236): Divine Smite. */
   addsToBlow?: true;
   /** Taken as somebody else's attack hits, these dice come off the roll (1.245): Cutting Words. */
@@ -794,6 +801,8 @@ export interface RulesetCombatMode {
   charges?: { cost: number; max: number; item: number };
   /** The one cure a cure that does one of them does in this mode (1.199). */
   cure?: { ends?: string; track?: { track: string; by: number }; unseals?: true };
+  /** The creature type named in this mode (1.265), remembered by what it puts on. */
+  kind?: string;
 }
 
 /** A bolt on the way to a mode's target (1.185). */
@@ -903,6 +912,8 @@ export interface RulesetTrackedCondition {
   aura?: string;
   /** The aura (`<holder id>/<condition>`) its holder is kept clear of once this ends (1.264). */
   auraSafeOnEnd?: string;
+  /** The creature type named as it was put on (1.265): an aura with `chosenKind` reaches only it. */
+  kind?: string;
   /** Kept on through the fight by what its holder has (1.258), never written to a sheet. */
   kept?: true;
   /** What the action that put it on is known by (1.186), which a repeated save is against too. */

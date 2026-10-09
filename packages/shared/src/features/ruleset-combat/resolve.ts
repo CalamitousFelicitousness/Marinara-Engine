@@ -108,6 +108,7 @@ import {
   rulesetFootprint,
   rulesetFootprintAt,
   rulesetGap,
+  rulesetInCells,
   rulesetNearestCell,
   rulesetReachableCells,
   rulesetSpanOf,
@@ -1705,6 +1706,7 @@ function applyConditionId(
         }
       : {}),
     ...(applies.saveEnds ? { saveEnds: applies.saveEnds } : {}),
+    ...(applies.kind ? { kind: applies.kind } : {}),
     ...(extra.difficulty !== undefined ? { difficulty: extra.difficulty } : {}),
     ...(extra.sourceId ? { source: extra.sourceId } : {}),
     ...(extra.action ? { action: [...extra.action] } : {}),
@@ -2029,10 +2031,17 @@ function tickConditionsNow(ctx: RulesetCombatContext, actor: RulesetCombatant, a
 /** Whether a save that ends a condition may be rolled now: one rolled only out of its putter's
  *  sight waits while its holder can see them (1.261), Fear's. */
 function saveOutOfSight(ctx: RulesetCombatContext, holder: RulesetCombatant, entry: RulesetTrackedCondition): boolean {
-  if (!entry.saveEnds?.unseen) return true;
+  const ends = entry.saveEnds;
+  if (!ends?.unseen && ends?.beyond === undefined) return true;
   const source = entry.source ? rulesetCombatant(ctx.state, entry.source) : undefined;
   if (!source || !rulesetCombatStanding(source)) return true;
-  return !rulesetCanSee(ctx.definition, ctx.state, holder, source);
+  if (ends.unseen && rulesetCanSee(ctx.definition, ctx.state, holder, source)) return false;
+  // Only farther off than it says (1.265): Antipathy's "more than 60 feet away".
+  const perCell = ctx.definition.combat?.distance?.perCell;
+  if (ends.beyond !== undefined && ctx.state.board?.grid && perCell !== undefined) {
+    if (rulesetGap(holder, source) <= rulesetInCells(ends.beyond, perCell)) return false;
+  }
+  return true;
 }
 
 /** The lean a save that ends a condition is rolled with while its holder can see whoever put it on
@@ -3297,6 +3306,10 @@ function applyChoice(
   // A weapon's mode is one the option offers now, and aims at as many as the mode says.
   const mode = choice.mode === undefined ? undefined : option.modes?.find((entry) => entry.id === choice.mode);
   if (choice.mode !== undefined && !mode) return refusal(state, choice.actorId, "unknown-mode", option.id);
+  // A creature type is picked as it is used (1.265): no kind, no Antipathy.
+  if (!mode && actor.actions.find((entry) => entry.id === option.id)?.kindChoice) {
+    return refusal(state, choice.actorId, "unknown-mode", option.id);
+  }
   if (choice.payWith !== undefined && !(option.payWith ?? []).includes(choice.payWith)) {
     return refusal(state, choice.actorId, "bad-pool", option.id);
   }
@@ -7313,7 +7326,7 @@ function aurasAtTurn(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
   for (const { holder, aura, condition } of spreading) {
     if (holder.id !== actor.id || !aura.harms) continue;
     for (const target of [...ctx.state.combatants]) {
-      if (target.defeated || !rulesetAuraReaches(ctx.definition, ctx.state, holder, aura, target)) continue;
+      if (target.defeated || !rulesetAuraReaches(ctx.definition, ctx.state, holder, aura, target, condition)) continue;
       conditionHarm(ctx, target, condition, holder.id, aura.harms, 1);
     }
   }
@@ -7321,7 +7334,8 @@ function aurasAtTurn(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
     const save = aura.save;
     if (!save || actor.defeated) continue;
     const key = `${holder.id}/${condition}`;
-    if (actor.auraSafe?.includes(key) || !rulesetAuraReaches(ctx.definition, ctx.state, holder, aura, actor)) continue;
+    if (actor.auraSafe?.includes(key) || !rulesetAuraReaches(ctx.definition, ctx.state, holder, aura, actor, condition))
+      continue;
     if (
       save.seen &&
       !(

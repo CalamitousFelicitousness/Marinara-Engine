@@ -2265,6 +2265,7 @@ export interface RulesetCatalogSaveEnds {
   failures?: { count: number; becomes: string };
   unseen?: true;
   seenLean?: "advantage" | "disadvantage";
+  beyond?: number;
 }
 
 export interface RulesetCatalogApplies {
@@ -2316,6 +2317,9 @@ const catalogAppliesSchema: z.ZodType<RulesetCatalogApplies, z.ZodTypeDef, unkno
         /** Rolled with this lean while its holder can see whoever put it on (Capability API 1.263):
          *  a sea hag's Horrific Appearance, saved against with disadvantage while she is in sight. */
         seenLean: z.enum(["advantage", "disadvantage"]).optional(),
+        /** Rolled only while its holder stands farther than this from whoever put it on, in the
+         *  ruleset's distance (Capability API 1.265): Antipathy's "more than 60 feet away". */
+        beyond: z.number().finite().gt(0).max(10000).optional(),
       })
       .strict()
       .optional(),
@@ -2974,6 +2978,10 @@ const catalogMechanicsObject = z
      *  of `tracks`, or `unseals`, picked as it is used like a weapon's mode, and otherwise the first
      *  of them, in that order, the target has something for. 5e's Greater Restoration. */
     cureOneOf: z.literal(true).optional(),
+    /** Its user names a creature type of `combat.creatureTypes` as they use it (Capability API
+     *  1.265), picked like a weapon's mode: what it puts on remembers it, for an aura with
+     *  `chosenKind` to reach only that kind (5e's Antipathy/Sympathy). */
+    kindChoice: z.literal(true).optional(),
     /** Its damage lowers the health maximum as a creature's can (Capability API 1.230), with no save
      *  of its own: on every target, or with `onFailedSave` only on one that failed the entry's save
      *  (5e's Harm). Health only in points. */
@@ -3209,6 +3217,13 @@ const catalogMechanicsSchema: z.ZodType<
   if (why) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["zone"], message: why });
   const cureParts =
     (mechanics.ends?.conditions.length ?? 0) + (mechanics.tracks?.length ?? 0) + (mechanics.unseals ? 1 : 0);
+  if (mechanics.kindChoice && !mechanics.applies?.length) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["kindChoice"],
+      message: 'The kind chosen is remembered by what it puts on, so "kindChoice" goes with "applies"',
+    });
+  }
   if (mechanics.cureOneOf && cureParts < 2) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -4861,6 +4876,8 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     kind: true,
     // Sense needs belong to catalog entries and creature actions (1.122).
     needs: true,
+    // A kind is named as a spell is cast (1.265), not as an item is used.
+    kindChoice: true,
     needsAny: true,
     // A sheet value added to an amount is a catalog entry's (1.78): an item's use reads its own stats.
     amountAdd: true,
@@ -6050,6 +6067,8 @@ export interface RulesetConditionAura {
     notImmuneTo?: string[];
   };
   sourcesOf?: string[];
+  chosenKind?: true;
+  orSeen?: true;
   harms?: { dice?: string; flat?: number; type?: string };
   save?: {
     save: string;
@@ -6084,6 +6103,12 @@ const conditionAuraSchema: z.ZodType<RulesetConditionAura, z.ZodTypeDef, unknown
     /** Only to whoever has put one of these conditions on its holder (Capability API 1.263): a
      *  barbed devil's Barbed Hide, harming whoever grapples it. */
     sourcesOf: uniqueIds(4).optional(),
+    /** Only to the creature type named as what put it on its holder was used (`kindChoice`,
+     *  Capability API 1.265): Antipathy/Sympathy's chosen kind. */
+    chosenKind: z.literal(true).optional(),
+    /** Also to whoever can see its holder, however far off (Capability API 1.265): Antipathy's
+     *  "can see the target or comes within 60 feet". */
+    orSeen: z.literal(true).optional(),
     /** Dealt by the holder to everybody it reaches as each of the holder's own turns starts
      *  (Capability API 1.260): a balor's Fire Aura, 3d6 fire. */
     harms: z
@@ -9228,6 +9253,8 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
               );
           });
         }
+        if (aura.chosenKind && !combat.creatureTypes)
+          issue([...at, "chosenKind"], "This ruleset has no creature types to choose from");
         aura.sourcesOf?.forEach((held, heldIndex) => {
           if (!conditions.has(held)) issue([...at, "sourcesOf", heldIndex], `Unknown condition "${held}"`);
         });
@@ -11954,6 +11981,8 @@ export function rulesetCatalogEntryIssues(
     if (mechanics?.dismisses && mechanics.dismisses !== true) {
       targetIsIssues(definition, mechanics.dismisses.gone, [index, "mechanics", "dismisses", "gone"], add);
     }
+    if (mechanics?.kindChoice && !definition.combat?.creatureTypes)
+      add([index, "mechanics", "kindChoice"], "This ruleset has no creature types to choose from");
     mechanics?.keepsOn?.forEach((kept, keptIndex) => {
       if (!liveConditions.has(kept)) add([index, "mechanics", "keepsOn", keptIndex], `Unknown condition "${kept}"`);
     });

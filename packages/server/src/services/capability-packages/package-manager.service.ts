@@ -1549,6 +1549,21 @@ function carriesMetamagic(value: unknown, depth = 0): boolean {
 
 /** An aura that needs senses, harms at its holder's turn or asks for a save, or a save change
  *  narrowed to what is cast from a catalog (1.260). */
+/** A creature type chosen as a catalog entry is used, auras reaching only that kind or whoever sees
+ *  their holder, and a save ending a condition only from far enough away (1.265), in catalogs too. */
+function carriesKindChoice(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesKindChoice(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.mechanics)?.kindChoice !== undefined) return true;
+  if (typeof record.distance === "number" && typeof record.side === "string") {
+    if (record.chosenKind !== undefined || record.orSeen !== undefined) return true;
+  }
+  if (plainRecord(record.saveEnds)?.beyond !== undefined) return true;
+  return Object.values(record).some((one) => carriesKindChoice(one, depth + 1));
+}
+
 /** More than 160 conditions, an aura save that keeps its aura off once what it put on ends, and an
  *  item's use whose save difficulty is read off its holder's sheet or that spends more charges for
  *  more (1.264), in catalogs too. */
@@ -3660,6 +3675,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // A creature type chosen as it is used, auras by that kind or by sight, saves from far away, 1.265.
+  if (
+    !declaresApi(265) &&
+    (carriesKindChoice(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesKindChoice(document)))
+  ) {
+    return "A ruleset with a catalog entry whose creature type is chosen as it is used, an aura reaching only that kind or whoever sees its holder, or a save that ends a condition only from far enough away, requires schemaVersion 2 and capabilityApi 1.265 or newer";
   }
   // Dropping, keeping out, a turn freed when stuck, saves out of sight, destroying by tier, 1.261.
   // Item uses read off the holder's sheet, and more charges spent for more, 1.264.

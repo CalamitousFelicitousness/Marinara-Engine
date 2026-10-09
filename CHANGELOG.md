@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: Antipathy/Sympathy can name a creature type as they are cast, their aura reaches only that kind within range or in sight, and the repeat save is rolled only from far enough away and out of sight (Capability API 1.265).
 - Rulesets: a staff's spells can use the wielder's own spell save DC and attack bonus, a staff can spend more charges to cast a spell at a higher level or strike harder, a sea hag's Horrific Appearance stops once its fright has ended, and a ruleset may declare up to 320 conditions (Capability API 1.264).
 - Rulesets: creatures can avert their eyes from a basilisk or medusa's gaze, a medusa's gaze petrifies outright on a bad failure, a sea hag's Horrific Appearance reaches only humanoids and its repeat save has disadvantage while she is in sight, and a barbed devil's spikes hurt whoever grapples it (Capability API 1.263).
 - Rulesets: Turn Undead reaches undead that can see or hear the caster, Command's extra targets must stand near each other, Confusion's area grows with the slot, a wand's several spells each get a menu entry, and a creature's printed shield can be dropped and picked up (Capability API 1.262).

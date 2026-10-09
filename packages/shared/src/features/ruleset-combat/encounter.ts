@@ -78,6 +78,7 @@ import {
 import { rulesetCombatAdvantage, rulesetCombatIsPool, rulesetPoolDie, throwRulesetCombatPool } from "./pool.js";
 import { rulesetDroppedItems } from "./ammo.js";
 import { rulesetPaidLevel, rulesetReactionsAt, rulesetSheetWithin } from "./options.js";
+import { rulesetCanSee } from "./sight.js";
 import { RULESET_MOVE_MODES } from "./types.js";
 import type {
   RulesetMoveMode,
@@ -2142,6 +2143,16 @@ function mechanicsAction(
       ...(mechanics.unseals ? [{ id: "unseals", label: healthLabel, cure: { unseals: true as const } }] : []),
     ];
   }
+  // A creature type named as it is used (1.265), picked like a weapon's mode: Antipathy/Sympathy.
+  const creatureTypes = definition.combat?.creatureTypes;
+  if (mechanics.kindChoice && creatureTypes) {
+    action.kindChoice = true;
+    action.modes = [...creatureTypes.types, ...(creatureTypes.tags ?? [])].map((kind) => ({
+      id: `kind-${kind.id}`,
+      label: kind.label,
+      kind: kind.id,
+    }));
+  }
   const revival = mechanics.revives && amountOf(mechanics.revives.health);
   if (mechanics.revives && revival) action.revives = { withinRounds: mechanics.revives.withinRounds, amount: revival };
   if (mechanics.summons) {
@@ -3858,13 +3869,26 @@ export function rulesetAuraReaches(
   holder: RulesetCombatant,
   aura: RulesetConditionAura,
   target: RulesetCombatant,
+  /** The condition on the holder that spreads it, which a chosen kind is remembered by (1.265). */
+  condition?: string,
 ): boolean {
   if (target.defeated) return false;
   const same = holder.side === target.side;
   if (holder.id === target.id ? !aura.self : aura.side === (same ? "enemies" : "allies")) return false;
   const perCell = definition.combat?.distance?.perCell;
   if (state.board?.grid && perCell !== undefined && holder.id !== target.id) {
-    if (rulesetGap(holder, target) > rulesetInCells(aura.distance, perCell)) return false;
+    // Past its distance, it still reaches whoever can see its holder where it says so (1.265).
+    if (
+      rulesetGap(holder, target) > rulesetInCells(aura.distance, perCell) &&
+      !(aura.orSeen && rulesetCanSee(definition, state, target, holder))
+    )
+      return false;
+  }
+  // Only the kind named as it was put on (1.265): Antipathy/Sympathy's.
+  if (aura.chosenKind) {
+    const kind = holder.tracked.find((entry) => entry.condition === condition && entry.kind)?.kind;
+    const what = rulesetCreatureKind(definition, target);
+    if (!kind || (what.type !== kind && !what.tags.includes(kind))) return false;
   }
   if (aura.needs?.length) {
     if (!rulesetTargetHasSenses(definition, state, target, aura.needs)) return false;
@@ -3912,8 +3936,8 @@ export function rulesetSyncAuras(
   for (const target of state.combatants) {
     const want = new Map<string, string>();
     if (!target.defeated) {
-      for (const { holder, aura } of spreading) {
-        if (!rulesetAuraReaches(definition, state, holder, aura, target)) continue;
+      for (const { holder, aura, condition: spreads } of spreading) {
+        if (!rulesetAuraReaches(definition, state, holder, aura, target, spreads)) continue;
         for (const condition of aura.conditions ?? []) if (!want.has(condition)) want.set(condition, holder.id);
       }
     }

@@ -11039,6 +11039,10 @@
                       "type": "boolean",
                       "const": true
                     },
+                    "kindChoice": {
+                      "type": "boolean",
+                      "const": true
+                    },
                     "reducesMax": {
                       "type": "object",
                       "properties": {
@@ -11921,6 +11925,11 @@
                                   "advantage",
                                   "disadvantage"
                                 ]
+                              },
+                              "beyond": {
+                                "type": "number",
+                                "exclusiveMinimum": 0,
+                                "maximum": 10000
                               },
                               "$comment": {}
                             },
@@ -14654,6 +14663,11 @@
                                         "disadvantage"
                                       ]
                                     },
+                                    "beyond": {
+                                      "type": "number",
+                                      "exclusiveMinimum": 0,
+                                      "maximum": 10000
+                                    },
                                     "$comment": {}
                                   },
                                   "required": [
@@ -15517,6 +15531,11 @@
                                             "advantage",
                                             "disadvantage"
                                           ]
+                                        },
+                                        "beyond": {
+                                          "type": "number",
+                                          "exclusiveMinimum": 0,
+                                          "maximum": 10000
                                         },
                                         "$comment": {}
                                       },
@@ -22062,6 +22081,11 @@
                                             "disadvantage"
                                           ]
                                         },
+                                        "beyond": {
+                                          "type": "number",
+                                          "exclusiveMinimum": 0,
+                                          "maximum": 10000
+                                        },
                                         "$comment": {}
                                       },
                                       "required": [
@@ -25396,6 +25420,11 @@
                                       "advantage",
                                       "disadvantage"
                                     ]
+                                  },
+                                  "beyond": {
+                                    "type": "number",
+                                    "exclusiveMinimum": 0,
+                                    "maximum": 10000
                                   },
                                   "$comment": {}
                                 },
@@ -30336,6 +30365,11 @@
                                             "advantage",
                                             "disadvantage"
                                           ]
+                                        },
+                                        "beyond": {
+                                          "type": "number",
+                                          "exclusiveMinimum": 0,
+                                          "maximum": 10000
                                         },
                                         "$comment": {}
                                       },
@@ -40240,6 +40274,11 @@
                                 "disadvantage"
                               ]
                             },
+                            "beyond": {
+                              "type": "number",
+                              "exclusiveMinimum": 0,
+                              "maximum": 10000
+                            },
                             "$comment": {}
                           },
                           "required": [
@@ -41040,6 +41079,14 @@
                       "minItems": 1,
                       "maxItems": 4
                     },
+                    "chosenKind": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "orSeen": {
+                      "type": "boolean",
+                      "const": true
+                    },
                     "harms": {
                       "type": "object",
                       "properties": {
@@ -41193,6 +41240,11 @@
                                       "advantage",
                                       "disadvantage"
                                     ]
+                                  },
+                                  "beyond": {
+                                    "type": "number",
+                                    "exclusiveMinimum": 0,
+                                    "maximum": 10000
                                   },
                                   "$comment": {}
                                 },
@@ -41793,6 +41845,11 @@
                                           "advantage",
                                           "disadvantage"
                                         ]
+                                      },
+                                      "beyond": {
+                                        "type": "number",
+                                        "exclusiveMinimum": 0,
+                                        "maximum": 10000
                                       },
                                       "$comment": {}
                                     },
@@ -42596,6 +42653,11 @@
                                 "advantage",
                                 "disadvantage"
                               ]
+                            },
+                            "beyond": {
+                              "type": "number",
+                              "exclusiveMinimum": 0,
+                              "maximum": 10000
                             },
                             "$comment": {}
                           },

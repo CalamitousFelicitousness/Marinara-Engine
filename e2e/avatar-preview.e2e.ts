@@ -174,6 +174,18 @@ test("avatar crop handles stay whole and draggable on a square image", async ({ 
       expect(visible.cornersOnTop, `${pos} handle must be whole and on top`).toEqual([true, true, true, true]);
     }
 
+    // The handles' touch targets reach past the image; on a phone they must not make the editor scroll sideways.
+    const sidewaysScroller = await frame.evaluate((element) => {
+      for (let node = element.parentElement; node; node = node.parentElement) {
+        const scrolls = /auto|scroll/.test(getComputedStyle(node).overflowX);
+        if (scrolls && node.scrollWidth > node.clientWidth) {
+          return `${node.className} ${node.scrollWidth}>${node.clientWidth}`;
+        }
+      }
+      return null;
+    });
+    expect(sidewaysScroller, "the crop widget must not make the editor scroll sideways").toBeNull();
+
     // Grab the outer edge of the bottom-right handle, the part that used to be clipped, and shrink the crop.
     const before = await frame.boundingBox();
     const grip = await page.locator('[data-avatar-crop-handle="br"]').boundingBox();

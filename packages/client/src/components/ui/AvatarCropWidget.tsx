@@ -270,8 +270,10 @@ export function AvatarCropWidget({ src, alt, crop, onChange, onRemove, removing 
         {/* Crop stage — a gutter around the image so the frame and corner
             handles are never clipped at the image edge (#7323). Only the image
             and its dimming are clipped; the inner box is sized to the displayed
-            image exactly, so overlay coords are also image coords. */}
-        <div className="select-none" style={{ padding: STAGE_GUTTER_PX }}>
+            image exactly, so overlay coords are also image coords. On phones the
+            stage fills the editor's width, so it trims the touch targets sideways
+            at the gutter instead of letting them scroll the editor sideways. */}
+        <div className="select-none max-md:overflow-x-clip" style={{ padding: STAGE_GUTTER_PX }}>
           <div
             className="relative"
             style={{
@@ -400,7 +402,8 @@ function CornerHandle({
   // (the standard mobile minimum) that reaches mostly *outward* from the crop
   // corner: it intrudes only `HANDLE_VISUAL_PX / 2` into the crop box, so the
   // four corners cannot swallow the pan area even at `MIN_CROP_PX`. The crop
-  // stage does not clip it, so it stays whole at the image edge too.
+  // stage does not clip it, so it stays whole at the image edge too (on phones
+  // the stage trims its sideways reach to the gutter; the drawn square fits).
   const inset = HANDLE_TOUCH_PX - HANDLE_VISUAL_PX / 2;
   const cursorByPos = { tl: "nwse-resize", tr: "nesw-resize", bl: "nesw-resize", br: "nwse-resize" } as const;
   const targetByPos: Record<typeof pos, React.CSSProperties> = {

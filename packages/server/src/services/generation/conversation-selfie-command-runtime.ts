@@ -328,6 +328,7 @@ async function generateSelfie(
     styleProfileId,
     imageDefaults,
     omitProfileStyleText: true,
+    promptWriterGuidance: [imgConnFull.imagePromptInstructions, characterImageInstructions],
     omitProfileSubjectTags: true,
   });
   const imageResults = await generateIllustratorImageVariants({

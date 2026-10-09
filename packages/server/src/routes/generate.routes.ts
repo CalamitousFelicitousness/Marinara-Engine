@@ -13371,6 +13371,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                         imageDefaults,
                         generatedStyle: style,
                         omitProfileStyleText: typeof agentContext.memory._illustratorImageStyleInstruction === "string",
+                        promptWriterGuidance: [imgConnFull.imagePromptInstructions],
                         omitProfileSubjectTags: illustratorPromptTemplateOwnsComposition(
                           imagePromptAgent?.promptTemplate ?? "",
                         ),
@@ -13392,6 +13393,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                             generatedStyle: style,
                             omitProfileStyleText:
                               typeof agentContext.memory._illustratorImageStyleInstruction === "string",
+                            promptWriterGuidance: [imgConnFull.imagePromptInstructions],
                             omitProfileSubjectTags: illustratorPromptTemplateOwnsComposition(
                               imagePromptAgent?.promptTemplate ?? "",
                             ),

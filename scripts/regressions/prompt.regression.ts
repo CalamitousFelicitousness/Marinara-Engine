@@ -19,6 +19,8 @@ import {
   compileImagePrompt,
   createRegexScriptSchema,
   createDefaultImageStyleProfileSettings,
+  removeCopiedPromptGuidance,
+  resolveImageStyleGuidanceText,
   characterTrackerCustomFieldDefaultsToRecord,
   getDefaultBuiltInAgentSettings,
   mergeBuiltInAgentSettings,
@@ -4783,6 +4785,95 @@ const cases: RegressionCase[] = [
         });
         assert.match(custom.prompt, /watercolor, soft pastel palette/u, `${kind}: ${custom.prompt}`);
       }
+    },
+  },
+  {
+    name: "Image prompt writers follow Style text and Image Prompting Instructions without pasting them (#7357)",
+    run() {
+      const styleProfiles = createDefaultImageStyleProfileSettings();
+      const danbooruStyle = styleProfiles.profiles.find((profile) => profile.id === "danbooru")!.styleText;
+      const instructions = "Write everything in capital letters. Use comma-separated Danbooru tags only.";
+      const quotedStyle = /Danbooru-tagged anime generation/iu;
+      const quotedInstructions = /capital letters|comma-separated Danbooru tags only/iu;
+
+      // An Illustrator writer told to carry the style into its JSON "style" field echoes the Style
+      // text there and in its prompt. The writer got it as guidance, so none of it reaches the image model.
+      const echoedStyle = danbooruStyle.replace(/\.$/u, "");
+      const written = compileImagePrompt({
+        kind: "illustration",
+        prompt: `${echoedStyle}, 1GIRL, SOLO, SILVER HAIR, RAIN\n${instructions}`,
+        generatedStyle: echoedStyle,
+        styleProfiles,
+        styleProfileId: "danbooru",
+        omitProfileStyleText: true,
+        promptWriterGuidance: [instructions],
+      });
+      assert.doesNotMatch(written.prompt, quotedStyle, written.prompt);
+      assert.doesNotMatch(written.prompt, quotedInstructions, written.prompt);
+      assert.match(written.prompt, /1GIRL, SOLO, SILVER HAIR, RAIN/u, written.prompt);
+      assert.match(written.prompt, /^masterpiece, best quality/u, "literal profile tags stay: " + written.prompt);
+
+      // Tag lists are words for the image model, so a writer that uses them keeps them.
+      const tagGuidance = "masterpiece, best quality, absurdres";
+      assert.equal(removeCopiedPromptGuidance(`${tagGuidance}, 1girl`, [tagGuidance]), `${tagGuidance}, 1girl`);
+      assert.equal(
+        removeCopiedPromptGuidance(
+          "1girl, solo\n\nWrite everything in capital letters.\n\nMira's Appearance: red hair",
+          ["write everything in capital letters"],
+        ),
+        "1girl, solo\n\nMira's Appearance: red hair",
+      );
+
+      // Without a prompt writer, the profile's Style text still applies as written (#7318).
+      const unwritten = compileImagePrompt({
+        kind: "illustration",
+        prompt: "1girl, solo",
+        styleProfiles,
+        styleProfileId: "danbooru",
+      });
+      assert.match(unwritten.prompt, quotedStyle, unwritten.prompt);
+
+      // Style text a user writes into Auto or a copy of it is guidance for selfie writers too,
+      // instead of being dropped; the built-in Auto sentence is not.
+      const autoProfile = styleProfiles.profiles.find((profile) => profile.id === "auto")!;
+      const cloneProfiles = {
+        ...styleProfiles,
+        profiles: [
+          ...styleProfiles.profiles,
+          { ...autoProfile, id: "auto-custom", builtIn: false, styleText: "watercolor" },
+        ],
+      };
+      assert.equal(resolveImageStyleGuidanceText(cloneProfiles, "auto-custom"), "watercolor");
+      assert.equal(resolveImageStyleGuidanceText(cloneProfiles, "auto"), "");
+
+      // The manual Illustration writer gets the instructions next to its request, as the automatic
+      // Illustrator does, not above the character cards and chat history.
+      const manualMessages = buildManualIllustratorPromptMessages({
+        context: {
+          chatId: "manual-instructions",
+          chatMode: "roleplay",
+          recentMessages: [{ role: "assistant", content: "Mira steps into the rain." }],
+          mainResponse: "Mira steps into the rain.",
+          gameState: null,
+          characters: [],
+          persona: null,
+          memory: {},
+          writableLorebookIds: null,
+          chatSummary: null,
+        },
+        contextSize: 1,
+        styleInstruction: danbooruStyle,
+        imagePromptInstructions: instructions,
+      });
+      const manualRequest = manualMessages.at(-1)!;
+      assert.equal(manualRequest.role, "user");
+      assert.match(manualRequest.content, /<image_prompting_instructions>[\s\S]*capital letters/u);
+      assert.doesNotMatch(manualMessages[0]!.content, /capital letters/u);
+
+      // The scene background writer gets them too.
+      const backgroundSystemPrompt = buildIllustratorBackgroundPlanSystemPrompt(danbooruStyle, instructions);
+      assert.match(backgroundSystemPrompt, /<image_prompting_instructions>[\s\S]*capital letters/u);
+      assert.match(backgroundSystemPrompt, /Visual style instruction for the image prompt you write/u);
     },
   },
   {

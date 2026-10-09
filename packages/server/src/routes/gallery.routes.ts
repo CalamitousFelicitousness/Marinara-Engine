@@ -1426,6 +1426,7 @@ export async function galleryRoutes(app: FastifyInstance) {
       styleProfileId,
       imageDefaults,
       omitProfileStyleText: true,
+      promptWriterGuidance: [imageConn.imagePromptInstructions, characterImageInstructions],
       omitProfileSubjectTags: true,
     });
     const imageModel = imageConn.model || "";

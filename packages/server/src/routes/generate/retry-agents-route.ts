@@ -3879,6 +3879,7 @@ async function applyRetryResultEffects(args: {
               omitProfileStyleText:
                 illData._styleProfileInstructionApplied === true ||
                 typeof agentContext.memory._illustratorImageStyleInstruction === "string",
+              promptWriterGuidance: [imgConnFull.imagePromptInstructions],
               omitProfileSubjectTags: illustratorPromptTemplateOwnsComposition(
                 imagePromptAgent?.resolved.promptTemplate ?? "",
               ),
@@ -3906,6 +3907,7 @@ async function applyRetryResultEffects(args: {
                   omitProfileStyleText:
                     illData._styleProfileInstructionApplied === true ||
                     typeof agentContext.memory._illustratorImageStyleInstruction === "string",
+                  promptWriterGuidance: [imgConnFull.imagePromptInstructions],
                   omitProfileSubjectTags: illustratorPromptTemplateOwnsComposition(
                     imagePromptAgent?.resolved.promptTemplate ?? "",
                   ),

@@ -1013,7 +1013,9 @@ const capabilityPackageManifestBaseSchema = z
 // 1.244: a change's `rescue` (held back until the holder's own attack, save or check falls short:
 //        Bardic Inspiration, Guidance, Resistance) and catalog mechanics' `rescue` (spent on a
 //        failed roll to roll a save again or succeed: Indomitable, Diamond Soul, Stroke of Luck).
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 244 } as const);
+// 1.245: catalog mechanics' `lowersRoll` (dice off somebody else's attack roll that hit: Cutting
+//        Words) and a condition's or level's `evasion` (nothing on a made half save: Evasion).
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 245 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

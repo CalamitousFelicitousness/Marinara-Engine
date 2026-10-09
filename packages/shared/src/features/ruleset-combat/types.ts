@@ -511,6 +511,8 @@ export interface RulesetCombatAction {
   cureOneOf?: true;
   /** Taken as its holder's own attack hits, its damage joins that blow (1.236): Divine Smite. */
   addsToBlow?: true;
+  /** Taken as somebody else's attack hits, these dice come off the roll (1.245): Cutting Words. */
+  lowersRoll?: { count: number; sides: number; flat: number };
   /** A failed save drops its target to 0 health instead of the amount (1.240). */
   /** The tags of the held weapon it is made with (1.241), for what comes after the attack action. */
   itemTags?: string[];
@@ -1256,6 +1258,8 @@ export interface RulesetHeldAttack {
     critical: boolean;
     /** A natural face decided it, so no change to the defense can turn it. */
     natural: boolean;
+    /** What answers took off it after it hit (1.245): Cutting Words. */
+    lowered?: number;
   };
   /** The attacker's one-use conditions the roll used, spent once the blow is over. */
   mine: string[];
@@ -1652,6 +1656,20 @@ export type RulesetCombatEvent =
   | { type: "slain"; actorId: string; targetId: string; label: string }
   /** Dropped to 0 health at once by a failed save (1.240): Quivering Palm. */
   | { type: "dropped"; actorId: string; targetId: string; label: string }
+  /** A save made against something that deals half, taken as nothing at all (1.245): Evasion. */
+  | { type: "evaded"; targetId: string; label: string }
+  /** Dice an answer took off somebody's attack roll after it hit (1.245): Cutting Words. */
+  | {
+      type: "lowered";
+      actorId: string;
+      targetId: string;
+      label: string;
+      /** The attack it was taken off. */
+      to: string;
+      rolls: number[];
+      by: number;
+      total: number;
+    }
   /** A failed roll rolled again or turned into a success by what its maker spent (1.244). */
   | { type: "rescued"; actorId: string; optionId: string; label: string; by: "reroll" | "success" }
   /** Sent out of the fight (1.231): for good, or for as long as `while` holds. */

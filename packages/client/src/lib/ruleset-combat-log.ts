@@ -483,6 +483,17 @@ export function rulesetCombatEventLine(
         target: names.combatant(event.targetId),
         label: event.label,
       });
+    case "lowered":
+      return key("lowered", {
+        actor: names.combatant(event.actorId),
+        label: event.label,
+        by: event.by,
+        target: names.combatant(event.targetId),
+        to: event.to,
+        total: event.total,
+      });
+    case "evaded":
+      return key("evaded", { target: names.combatant(event.targetId), label: event.label });
     case "rescued":
       return key(event.by === "reroll" ? "rescuedReroll" : "rescuedSuccess", {
         actor: names.combatant(event.actorId),

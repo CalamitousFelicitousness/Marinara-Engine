@@ -3746,8 +3746,31 @@ function takeReaction(
     }
     goOn(definition, combat, ctx);
   };
-  // Added to its holder's own blow, held where it hit (1.236): rolled as that blow lands.
   const holding = ctx.state.window?.resume;
+  // Taken off somebody else's roll that hit, before it is checked again (1.245): Cutting Words.
+  if (action.lowersRoll && trigger.kind === "hit" && holding?.kind === "action" && holding.held) {
+    const lowers = action.lowersRoll;
+    const rolls = rollRulesetDice(ctx.roll, lowers.count, lowers.sides);
+    const by = sumOf(rolls) + lowers.flat;
+    const roll = holding.held.roll;
+    roll.total -= by;
+    roll.lowered = (roll.lowered ?? 0) + by;
+    ctx.events.push({
+      type: "lowered",
+      actorId: taking.id,
+      targetId: trigger.sourceId,
+      label: action.label,
+      to: trigger.label,
+      rolls,
+      by,
+      total: roll.total,
+    });
+    holderActed(ctx, taking, action);
+    answered();
+    noteOutcome(ctx);
+    return finish();
+  }
+  // Added to its holder's own blow, held where it hit (1.236): rolled as that blow lands.
   if (
     action.addsToBlow &&
     action.damage &&
@@ -5293,7 +5316,7 @@ function resolveActionBody(
       const needed = pooled ? Math.max(1, guarded.defense) : guarded.defense;
       const outcome = roll.natural || roll.total >= needed ? landsAt : "miss";
       if (pooled && outcome !== "miss") extraDice = roll.total - needed;
-      if (needed !== roll.defense) {
+      if (needed !== roll.defense || roll.lowered) {
         ctx.events.push({
           type: "recheck",
           actorId: actor.id,
@@ -5561,7 +5584,18 @@ function resolveActionBody(
         continue;
       }
     }
-    const halved = saved && action.save?.onSuccess === "half";
+    // A save its holder evades with (1.245): nothing on a success, half on a failure.
+    const evades =
+      action.save?.onSuccess === "half" &&
+      rulesetActiveConditions(ctx.definition, ctx.combat, target, ctx.state).some((entry) =>
+        entry.evasion?.includes(action.save!.save),
+      );
+    if (evades && saved) {
+      ctx.events.push({ type: "evaded", targetId: target.id, label: action.label });
+      spendUsed();
+      continue;
+    }
+    const halved = (saved || evades) && action.save?.onSuccess === "half";
 
     // Everything this blow is made of: the first amount, and every clause beside it. Rolled and
     // typed one at a time, taken off one at a time, and finished ONCE at the end: the health the

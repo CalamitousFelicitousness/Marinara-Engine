@@ -748,6 +748,20 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["slain", say({ type: "slain", actorId: "brenna", targetId: "lurker", label: "Mace of Disruption" })],
     ["dropped", say({ type: "dropped", actorId: "brenna", targetId: "lurker", label: "Quivering Palm" })],
     [
+      "lowered",
+      say({
+        type: "lowered",
+        actorId: "brenna",
+        targetId: "lurker",
+        label: "Cutting Words",
+        to: "Bite",
+        rolls: [4],
+        by: 4,
+        total: 12,
+      }),
+    ],
+    ["evaded", say({ type: "evaded", targetId: "brenna", label: "Fire Breath" })],
+    [
       "rescued",
       say({ type: "rescued", actorId: "brenna", optionId: "ability:0:1", label: "Indomitable", by: "reroll" }),
     ],
@@ -964,6 +978,8 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.equal(printed.get("slain"), "Brenna's Mace of Disruption destroys Thorn Lurker outright.");
   assert.equal(printed.get("dropped"), "Brenna's Quivering Palm drops Thorn Lurker to 0.");
   assert.equal(printed.get("rescued"), "Brenna uses Indomitable and rolls again.");
+  assert.equal(printed.get("lowered"), "Brenna's Cutting Words takes 4 off Thorn Lurker's Bite, to 12.");
+  assert.equal(printed.get("evaded"), "Brenna evades Fire Breath entirely.");
   assert.equal(
     say({ type: "rescued", actorId: "brenna", optionId: "ability:0:2", label: "Stroke of Luck", by: "success" }),
     "Brenna uses Stroke of Luck and succeeds instead.",

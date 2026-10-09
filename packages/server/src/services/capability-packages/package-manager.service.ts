@@ -1535,6 +1535,16 @@ function carriesFrenzy(ruleset: unknown): boolean {
 /** Attack rows changed by what a sheet holds, strikes it grants, entries only after the attack action,
  *  or a condition's granted attacks narrowed by name or to after the attack action (1.237), in
  *  catalogs too. */
+/** Dice off somebody else's roll that hit, or saves evaded (1.245), in catalogs too. */
+function carriesCuttingWords(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCuttingWords(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.lowersRoll !== undefined || record.evasion !== undefined) return true;
+  return Object.values(record).some((one) => carriesCuttingWords(one, depth + 1));
+}
+
 /** A change held back until a roll falls short, or an entry spent on a failed roll (1.244), in
  *  catalogs too. */
 function carriesRescue(value: unknown, depth = 0): boolean {
@@ -3402,6 +3412,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Dice off a roll that hit, a half save evaded, 1.245.
+  if (
+    !declaresApi(245) &&
+    (carriesCuttingWords(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesCuttingWords(document)))
+  ) {
+    return "A ruleset with answers that take dice off a roll that hit, or saves evaded, requires schemaVersion 2 and capabilityApi 1.245 or newer";
   }
   // A die added once a roll falls short, a failed roll rolled again or turned, 1.244.
   if (

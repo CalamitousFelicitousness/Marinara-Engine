@@ -2697,6 +2697,25 @@ const catalogMechanicsObject = z
      *  added to that blow instead of dealt on its own (Capability API 1.236): rolled with it, doubled
      *  by its critical, and taken as part of it. 5e's Divine Smite. */
     addsToBlow: z.literal(true).optional(),
+    /** Taken as somebody else's attack hits (a `"hit"` reaction without `"by"`), this many dice come
+     *  off the roll before it is checked again (Capability API 1.245): 5e's Cutting Words, a bardic
+     *  inspiration die, sized by the bard's level with `die` as Martial Arts' is. */
+    lowersRoll: z
+      .object({
+        dice: catalogDice.optional(),
+        die: z
+          .object({
+            from: rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>,
+            table: stepTableSchema,
+          })
+          .strict()
+          .optional(),
+      })
+      .strict()
+      .refine((lowers) => (lowers.dice === undefined) !== (lowers.die === undefined), {
+        message: '"lowersRoll" rolls "dice" or one "die" sized by a value: one of them',
+      })
+      .optional(),
     /** How many more targets one step of a higher cost lets a use take (Capability API 1.166), up
      *  to 20 in all: 5e's Hold Person, one more creature for each slot level above 2nd. */
     targetsPerCostStep: z.number().int().min(1).max(10).optional(),
@@ -3031,6 +3050,16 @@ const catalogMechanicsSchema: z.ZodType<
       path: [mechanics.reducesMax ? "reducesMax" : "leavesAtLeast"],
       message: "It works on the entry's damage, so it has an amount",
     });
+  }
+  if (mechanics.lowersRoll) {
+    const moment = typeof mechanics.reaction === "object" ? mechanics.reaction : undefined;
+    if (moment?.on !== "hit" || moment.by !== undefined || moment.also) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["lowersRoll"],
+        message: '"lowersRoll" is taken as somebody else\'s attack hits: reaction "hit" without "by" or "also"',
+      });
+    }
   }
   if (mechanics.addsToBlow) {
     const moment = typeof mechanics.reaction === "object" ? mechanics.reaction : undefined;
@@ -5421,6 +5450,9 @@ const combatLevelSchema = z
     failsSaves: z.array(sheetId).min(1).max(12).optional(),
     saves: z.array(sheetId).min(1).max(12).optional(),
     skills: z.array(sheetId).min(1).max(24).optional(),
+    /** Saves among these, against something that deals half on a success, take nothing on a
+     *  success and half on a failure (Capability API 1.245): 5e's Evasion, on Dexterity saves. */
+    evasion: z.array(sheetId).min(1).max(12).optional(),
     /** Reaching it takes the holder out of the fight for good (Capability API 1.110): 5e's sixth
      *  level of exhaustion. */
     defeats: z.literal(true).optional(),
@@ -5447,6 +5479,7 @@ const combatLevelSchema = z
       entry.effects.length === 0 &&
       !entry.modifiers &&
       !entry.failsSaves &&
+      !entry.evasion &&
       !entry.defeats &&
       !entry.resist &&
       !entry.vulnerable &&
@@ -5527,6 +5560,9 @@ const combatConditionSchema = z
       .max(10)
       .optional(),
     condition: sheetId,
+    /** Saves among these, against something that deals half on a success, take nothing on a
+     *  success and half on a failure (Capability API 1.245): 5e's Evasion, on Dexterity saves. */
+    evasion: z.array(sheetId).min(1).max(12).optional(),
     /** Senses its holder does not have while it lasts (Capability API 1.122). */
     lacks: combatSensesSchema.optional(),
     /** Nobody sees its holder while it lasts (Capability API 1.173) but with one of the senses
@@ -9794,6 +9830,7 @@ function effectNameIssues(
     skills?: string[];
     saves?: string[];
     failsSaves?: string[];
+    evasion?: string[];
     modifiers?: Array<{
       skills?: string[];
       saves?: string[];
@@ -9817,6 +9854,7 @@ function effectNameIssues(
   each(entry.skills, skills, [...at, "skills"], "skill");
   each(entry.saves, saves, [...at, "saves"], "save");
   each(entry.failsSaves, saves, [...at, "failsSaves"], "save");
+  each(entry.evasion, saves, [...at, "evasion"], "save");
   entry.modifiers?.forEach((modifier, index) => {
     if (modifier.ability !== undefined && !abilities.has(modifier.ability)) {
       add([...at, "modifiers", index, "ability"], `Unknown ability "${modifier.ability}"`);

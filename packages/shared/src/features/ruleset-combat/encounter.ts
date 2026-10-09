@@ -621,6 +621,7 @@ function activeLevels(
         ...(level.failsSaves ? { failsSaves: level.failsSaves } : {}),
         ...(level.saves ? { saves: level.saves } : {}),
         ...(level.skills ? { skills: level.skills } : {}),
+        ...(level.evasion ? { evasion: level.evasion } : {}),
         ...(level.defeats ? { defeats: true as const } : {}),
       },
     ];
@@ -1958,6 +1959,14 @@ function mechanicsAction(
   if (mechanics.kills) action.kills = true;
   // Its damage joins its holder's own blow that just hit (1.236).
   if (mechanics.addsToBlow && moment) action.addsToBlow = true;
+  // Dice off somebody else's roll that hit (1.245): Cutting Words, its die sized by a level.
+  if (mechanics.lowersRoll && moment) {
+    const lowers = mechanics.lowersRoll;
+    const dice = lowers.dice
+      ? parseRulesetCombatDice(lowers.dice)
+      : { count: 1, sides: Math.trunc(lookupStepTable(lowers.die!.table, resolve(lowers.die!.from))), flat: 0 };
+    if (dice && dice.sides >= 1) action.lowersRoll = { count: dice.count, sides: dice.sides, flat: dice.flat };
+  }
   // A failed save drops its target to 0 instead (1.240): Quivering Palm.
   if (mechanics.dropsOnFailedSave) action.dropsOnFailedSave = true;
   // Only once the attack action has been taken this turn (1.237): Flurry of Blows.

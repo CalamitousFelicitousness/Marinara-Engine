@@ -3032,7 +3032,7 @@ function GameSurfaceComponent({
                 choices: cardChoices.map((card) => ({
                   key: card.id,
                   label: card.name,
-                  description: card.title,
+                  description: card.title ?? card.summary,
                   avatar: { url: card.avatarPath, crop: normalizeAvatarCrop(card.avatarCrop) },
                 })),
               }),

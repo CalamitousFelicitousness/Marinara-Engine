@@ -27,8 +27,8 @@ await app.register(gameRoutes, { prefix: "/api/game" });
 try {
   const characters = createCharactersStorage(db);
   const chats = createChatsStorage(db);
-  const card = async (name: string, avatarPath?: string, title?: string) => {
-    const row = await characters.create({ name, extensions: {} } as never, avatarPath, null, title);
+  const card = async (name: string, avatarPath?: string, title?: string, description?: string) => {
+    const row = await characters.create({ name, description, extensions: {} } as never, avatarPath, null, title);
     assert.ok(row?.id);
     return row.id;
   };
@@ -36,7 +36,7 @@ try {
   const samanthaCard = await card("Samantha");
   const kaelCard = await card("Kael Stormborn");
   const bramCard = await card("Bram");
-  const firstLena = await card("Lena");
+  const firstLena = await card("Lena", undefined, undefined, "  A quiet\n  lighthouse keeper.  ");
   const secondLena = await card("Lena", undefined, "Pirate captain");
   const miraCard = await card("Mira");
 
@@ -114,6 +114,7 @@ try {
       title: "The baker's daughter",
       avatarPath: "/api/avatars/file/emma.png",
       avatarCrop: null,
+      summary: null,
     },
   ]);
   assert.deepEqual(await party(), before, "asking changes nothing");
@@ -140,6 +141,12 @@ try {
     (lena.json().cardChoices as Array<{ id: string; title: string | null }>).map((choice) => choice.id).sort(),
     [firstLena, secondLena].sort(),
   );
+  // A card without a title still shows what tells it apart: its library preview text.
+  const untitledLena = (
+    lena.json().cardChoices as Array<{ id: string; title: string | null; summary: string | null }>
+  ).find((choice) => choice.id === firstLena);
+  assert.equal(untitledLena?.title, null);
+  assert.equal(untitledLena?.summary, "A quiet lighthouse keeper.");
   const pickedLena = await recruit({ characterName: "lena", characterId: secondLena });
   assert.equal(pickedLena.json().added, true);
   assert.ok((await party()).includes(secondLena));

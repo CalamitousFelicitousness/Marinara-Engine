@@ -108,6 +108,8 @@ export interface PartyCardChoice {
   title: string | null;
   avatarPath: string | null;
   avatarCrop: unknown;
+  /** The card's library preview text, shown when it has no title. */
+  summary: string | null;
 }
 
 interface RecruitPartyMemberResponse {

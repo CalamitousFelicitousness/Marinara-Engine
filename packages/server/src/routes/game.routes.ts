@@ -9151,6 +9151,12 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
           title: row.comment?.trim() || null,
           avatarPath: row.avatarPath ?? null,
           avatarCrop: data.extensions?.avatarCrop ?? null,
+          // The character library's preview text, so cards without a title or avatar can still be told apart.
+          summary:
+            [data.summary, data.creator_notes, data.description, data.personality]
+              .map((value) => (typeof value === "string" ? value.replace(/\s+/g, " ").trim() : ""))
+              .find(Boolean)
+              ?.slice(0, 200) ?? null,
         })),
       };
     } else if (sameNameCards.length > 0 || trackedNpc) {

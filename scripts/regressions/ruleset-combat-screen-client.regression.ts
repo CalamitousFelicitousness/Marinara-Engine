@@ -1028,6 +1028,10 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     say({ type: "condition", targetId: "lurker", condition: "incapacitated", active: false, reason: "already" }),
     "Thorn Lurker already has one like Incapacitated, so it does not go on.",
   );
+  assert.equal(
+    say({ type: "condition", targetId: "lurker", condition: "incapacitated", active: false, reason: "worsened" }),
+    "Incapacitated on Thorn Lurker worsens: too many saves failed.",
+  );
   assert.equal(printed.get("charged"), "Thorn Lurker charges Brenna with Gore.");
   assert.equal(printed.get("pushed"), "Brenna pushes Thorn Lurker back 1, to 4, 2.");
   assert.equal(printed.get("resized"), "Thorn Lurker is now Large.");

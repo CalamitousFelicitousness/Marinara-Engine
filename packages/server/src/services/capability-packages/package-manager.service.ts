@@ -1547,6 +1547,20 @@ function carriesMetamagic(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesMetamagic(one, depth + 1));
 }
 
+/** A combat condition's kinds, or a save that ends a condition counted to an end or to what it
+ *  becomes (1.253), in catalogs too. */
+function carriesDiseases(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesDiseases(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  // A combat condition's: a wound track has kinds of its own, and no `condition`.
+  if (typeof record.condition === "string" && record.kinds !== undefined) return true;
+  const saveEnds = plainRecord(record.saveEnds);
+  if (saveEnds && (saveEnds.successes !== undefined || saveEnds.failures !== undefined)) return true;
+  return Object.values(record).some((one) => carriesDiseases(one, depth + 1));
+}
+
 /** Dice off an ability check or a damage roll, a rescue narrowed to some saves or spending a
  *  budget, or an item's use dealing half on a miss (1.252), in catalogs too. */
 function carriesRollAnswers(value: unknown, depth = 0): boolean {
@@ -3491,6 +3505,13 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Condition kinds and counted saves, 1.253.
+  if (
+    !declaresApi(253) &&
+    (carriesDiseases(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesDiseases(document)))
+  ) {
+    return "A ruleset with condition kinds, or saves counted to end a condition or to worsen it, requires schemaVersion 2 and capabilityApi 1.253 or newer";
   }
   // Dice off checks and damage, narrowed or budgeted rescues, an item's half on a miss, 1.252.
   if (

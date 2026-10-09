@@ -1033,7 +1033,9 @@ const capabilityPackageManifestBaseSchema = z
 // 1.252: `lowersRoll.also` (Cutting Words off ability checks and damage rolls), a rescue's `saves`
 //        and `budget` (a ring of evasion), `halfOnMiss` on an item's use, and the lowered event's
 //        `roll`.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 252 } as const);
+// 1.253: a combat condition's `kinds`, which a cure's `ends` and an immunity may name, and
+//        `saveEnds.successes` and `saveEnds.failures` (Contagion); the condition event's `worsened`.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 253 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

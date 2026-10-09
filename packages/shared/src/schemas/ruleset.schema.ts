@@ -2257,10 +2257,18 @@ const catalogRescueSchema: z.ZodType<RulesetCatalogRescue, z.ZodTypeDef, unknown
 
 /** One condition a catalog entry puts on what it touches. Typed by hand: written out, its inferred type is too long for the
  *  definition schema around it to emit. */
+/** A save that ends a condition, and what counting them decides (1.253). */
+export interface RulesetCatalogSaveEnds {
+  save: string;
+  at: "turn-end" | "turn-start" | "damaged";
+  successes?: number;
+  failures?: { count: number; becomes: string };
+}
+
 export interface RulesetCatalogApplies {
   condition: string;
   duration: z.infer<typeof catalogDurationSchema>;
-  saveEnds?: { save: string; at: "turn-end" | "turn-start" | "damaged" };
+  saveEnds?: RulesetCatalogSaveEnds;
   endsAfter?: "own-attack" | "attacked" | "own-save";
   endsWhenHolder?: RulesetHolderEnding;
   escapeDc?: number | "save";
@@ -2278,7 +2286,20 @@ const catalogAppliesSchema: z.ZodType<RulesetCatalogApplies, z.ZodTypeDef, unkno
     /** `at: "damaged"` rolls only on damage above zero, never on a turn (Capability API 1.124):
      *  5e's Dominate Person. */
     saveEnds: z
-      .object({ save: sheetId, at: z.enum(["turn-end", "turn-start", "damaged"]) })
+      .object({
+        save: sheetId,
+        at: z.enum(["turn-end", "turn-start", "damaged"]),
+        /** It takes this many successes, counted over the turns, to end it (Capability API 1.253):
+         *  5e's Contagion, three. */
+        successes: z.number().int().min(2).max(10).optional(),
+        /** After this many failures it `becomes` another condition, put on in its place with no
+         *  clock, and no more saves are made (Capability API 1.253): Contagion's disease setting in
+         *  after three, Flesh to Stone's petrification. */
+        failures: z
+          .object({ count: z.number().int().min(1).max(10), becomes: sheetId })
+          .strict()
+          .optional(),
+      })
       .strict()
       .optional(),
     /** It comes off after the first of these that happens to its holder: their own next attack roll,
@@ -5899,6 +5920,15 @@ const combatConditionSchema = z
      *  holder has another of them, it does not go on. 5e's Bardic Inspiration dice, one at a time
      *  whatever their size. */
     oneAtATime: sheetId.optional(),
+    /** The kinds it is (Capability API 1.253), which a cure's `ends` and an immunity may name in
+     *  place of the conditions themselves: 5e's diseases, "one disease" ended by Lesser Restoration
+     *  and kept off by Divine Health. A kind is never a condition's own id. */
+    kinds: z
+      .array(sheetId)
+      .min(1)
+      .max(4)
+      .refine((kinds) => new Set(kinds).size === kinds.length, { message: "Kinds must be unique" })
+      .optional(),
     /** Its holder is this many of `combat.sizes` bigger, or smaller, while it holds (Capability API
      *  1.190), never past the first or the last: 5e's Enlarge/Reduce. On a board it fills what its
      *  new size fills where there is room, and grows only as big as there is room for. */
@@ -8656,6 +8686,9 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       if (!conditions.has(entry.condition)) issue([...path, "condition"], `Unknown condition "${entry.condition}"`);
       if (mapped.has(entry.condition)) issue([...path, "condition"], `Duplicate condition "${entry.condition}"`);
       mapped.add(entry.condition);
+      entry.kinds?.forEach((kind, kindIndex) => {
+        if (conditions.has(kind)) issue([...path, "kinds", kindIndex], `"${kind}" is a condition, so it is no kind`);
+      });
       effectNameIssues(entry, skills, saves, abilityIds, def, path, issue);
       hideIssues(def, entry, path, issue);
       // Kept off by who puts them on (1.186): the ruleset's own conditions, from creatures it names.
@@ -9551,7 +9584,13 @@ function targetHoldsIssues(
   }
 }
 
-/** What a cure names (1.171): conditions the sheet has, and a dying rule for steadying to stop. */
+/** The kinds the fight's conditions are (1.253), which a cure or an immunity may name. */
+export function rulesetConditionKindIds(definition: RulesetDefinition): Set<string> {
+  return new Set((definition.combat?.conditions ?? []).flatMap((entry) => entry.kinds ?? []));
+}
+
+/** What a cure names (1.171): conditions the sheet has, or their kinds (1.253), and a dying rule for
+ *  steadying to stop. */
 function cureIssues(
   definition: RulesetDefinition,
   mechanics: {
@@ -9564,10 +9603,17 @@ function cureIssues(
   add: (path: (string | number)[], message: string) => void,
 ): void {
   const conditions = new Set(definition.sheet.live.conditions.map((condition) => condition.id));
+  const kinds = rulesetConditionKindIds(definition);
   mechanics.ends?.conditions.forEach((condition, index) => {
-    if (!conditions.has(condition)) add([...at, "ends", "conditions", index], `Unknown condition "${condition}"`);
+    if (!conditions.has(condition) && !kinds.has(condition))
+      add([...at, "ends", "conditions", index], `Unknown condition "${condition}"`);
   });
-  if (mechanics.ends?.count !== undefined && mechanics.ends.count > mechanics.ends.conditions.length) {
+  if (
+    mechanics.ends?.count !== undefined &&
+    mechanics.ends.count > mechanics.ends.conditions.length &&
+    // A kind may be any number of conditions (1.253).
+    !mechanics.ends.conditions.some((condition) => kinds.has(condition))
+  ) {
     add([...at, "ends", "count"], "A cure ends at most as many conditions as it names");
   }
   if (mechanics.stabilizes && !definition.combat?.dying) {
@@ -9823,8 +9869,9 @@ function creatureIssues(
       );
     }
   });
+  const kinds = rulesetConditionKindIds(definition);
   creature.conditionImmunities?.forEach((condition, index) => {
-    if (!conditions.has(condition) && !leveled.has(condition)) {
+    if (!conditions.has(condition) && !leveled.has(condition) && !kinds.has(condition)) {
       add([...at, "conditionImmunities", index], `Unknown condition "${condition}"`);
     }
   });
@@ -10314,8 +10361,9 @@ function hideIssues(
   }
   const conditions = new Set(definition.sheet.live.conditions.map((condition) => condition.id));
   const leveled = new Set((definition.combat?.levels ?? []).flatMap((level) => (level.track ? [level.track] : [])));
+  const kinds = rulesetConditionKindIds(definition);
   effect.conditionImmunities?.forEach((condition, index) => {
-    if (!conditions.has(condition) && !leveled.has(condition)) {
+    if (!conditions.has(condition) && !leveled.has(condition) && !kinds.has(condition)) {
       add([...at, "conditionImmunities", index], `Unknown condition "${condition}"`);
     }
   });
@@ -11207,6 +11255,10 @@ export function rulesetCatalogEntryIssues(
       escapeDcIssues(definition, applies, path, add);
       if (applies.saveEnds && !saves.has(applies.saveEnds.save)) {
         add([...path, "saveEnds", "save"], `Unknown save "${applies.saveEnds.save}"`);
+      }
+      const becomes = applies.saveEnds?.failures?.becomes;
+      if (becomes !== undefined && !liveConditions.has(becomes)) {
+        add([...path, "saveEnds", "failures", "becomes"], `Unknown condition "${becomes}"`);
       }
       if (applies.when) {
         for (const issue of rulesetValueRefIssues(applies.when.value, names, names.derived)) {

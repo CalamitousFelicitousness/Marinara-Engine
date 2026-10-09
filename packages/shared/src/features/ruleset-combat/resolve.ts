@@ -1765,7 +1765,8 @@ function removeCondition(
     | "immune"
     | "cured"
     | "moved"
-    | "linked",
+    | "linked"
+    | "worsened",
 ): void {
   const removed = target.tracked.find((entry) => entry.condition === condition);
   // Already gone, with what it was put on with (1.197): a loop over a list read before that is not
@@ -1843,15 +1844,11 @@ function endConditionsOnHarm(
       !(onDamage && damageSaves?.has(tracked))
     ) {
       if (onDamage) damageSaves?.add(tracked);
-      if (
-        rollSave(ctx, target, tracked.saveEnds.save, tracked.difficulty, tracked.source, undefined, {
-          conditions: [condition],
-          ...(tracked.action ? { action: tracked.action } : {}),
-        })
-      ) {
-        removeCondition(ctx, target, condition, "save");
-        continue;
-      }
+      const saved = rollSave(ctx, target, tracked.saveEnds.save, tracked.difficulty, tracked.source, undefined, {
+        conditions: [condition],
+        ...(tracked.action ? { action: tracked.action } : {}),
+      });
+      if (savedAgainst(ctx, target, tracked, saved)) continue;
     }
     if (!(dealt > 0 || harmful) || !rule?.endsWhen?.includes("harmed-by-source-side") || !tracked || !actor) continue;
     const source = rulesetCombatant(ctx.state, tracked.source ?? "");
@@ -1916,21 +1913,50 @@ function tickConditionsNow(ctx: RulesetCombatContext, actor: RulesetCombatant, a
     if (!actor.tracked.includes(entry)) continue;
     // A save with nothing to be rolled against is not rolled: the condition runs on its clock.
     if (entry.saveEnds?.at === at && entry.difficulty !== undefined) {
-      const ended = rollSave(ctx, actor, entry.saveEnds.save, entry.difficulty, entry.source, undefined, {
+      const saved = rollSave(ctx, actor, entry.saveEnds.save, entry.difficulty, entry.source, undefined, {
         conditions: [entry.condition],
         // Still a save against the action that put it on (1.186).
         ...(entry.action ? { action: entry.action } : {}),
       });
-      if (ended) {
-        removeCondition(ctx, actor, entry.condition, "save");
-        continue;
-      }
+      if (savedAgainst(ctx, actor, entry, saved)) continue;
     }
     // A clock counts the holder's turns down as each one ends, or, where it says so, as each begins.
     if (entry.rounds === null || at !== (entry.clock ?? "turn-end") || ticksOnSource(ctx, actor, entry)) continue;
     entry.rounds -= 1;
     if (entry.rounds <= 0) removeCondition(ctx, actor, entry.condition, "expired");
   }
+}
+
+/**
+ * One save made against a condition that a save ends. A success ends it, or counts towards the
+ * `successes` it takes (1.253); a failure counts towards `failures`, which puts on what it `becomes`
+ * in its place, with no clock, once there are enough (Contagion's disease). Whether it is gone.
+ */
+function savedAgainst(
+  ctx: RulesetCombatContext,
+  holder: RulesetCombatant,
+  entry: RulesetTrackedCondition,
+  success: boolean,
+): boolean {
+  const ends = entry.saveEnds!;
+  if (success) {
+    entry.passes = (entry.passes ?? 0) + 1;
+    if (ends.successes !== undefined && entry.passes < ends.successes) return false;
+    removeCondition(ctx, holder, entry.condition, "save");
+    return true;
+  }
+  if (!ends.failures) return false;
+  entry.fails = (entry.fails ?? 0) + 1;
+  if (entry.fails < ends.failures.count) return false;
+  removeCondition(ctx, holder, entry.condition, "worsened");
+  applyConditionId(
+    ctx,
+    holder,
+    ends.failures.becomes,
+    { condition: ends.failures.becomes, duration: "instant" },
+    entry.source ? { sourceId: entry.source } : {},
+  );
+  return true;
 }
 
 /** A condition's growth per step of a higher cost, over so many steps (1.250). */

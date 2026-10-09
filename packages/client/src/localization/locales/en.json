@@ -1243,6 +1243,7 @@
   "game.combat.ruleset.event.conditionShaken": "An ally shakes {{target}} out of {{condition}}.",
   "game.combat.ruleset.event.conditionSpent": "{{condition}} is used up and ends on {{target}}.",
   "game.combat.ruleset.event.conditionStacked": "{{target}} is {{condition}} once more ({{stacks}} in all).",
+  "game.combat.ruleset.event.conditionWorsened": "{{condition}} on {{target}} worsens: too many saves failed.",
   "game.combat.ruleset.event.contestDifficultyLost": "{{actor}} tries {{label}} on {{target}}: {{roll}} with {{check}} against DC {{dc}}, and fails.",
   "game.combat.ruleset.event.contestDifficultyWon": "{{actor}} tries {{label}} on {{target}}: {{roll}} with {{check}} against DC {{dc}}, and succeeds.",
   "game.combat.ruleset.event.contestEscapeLost": "{{actor}} tries {{label}} against {{target}}'s hold: {{roll}} with {{check}} against escape DC {{dc}}, and fails.",

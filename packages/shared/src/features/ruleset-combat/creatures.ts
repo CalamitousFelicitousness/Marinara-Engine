@@ -626,7 +626,11 @@ export function clampRulesetStatBlock(
   // A track some level reads may be shrugged off as a condition is (1.110).
   const leveled = new Set((combat.levels ?? []).flatMap((level) => (level.track ? [level.track] : [])));
   if (block.conditionImmunities) {
-    const kept = block.conditionImmunities.filter((condition) => conditions.has(condition) || leveled.has(condition));
+    // Or a kind of them (1.253): immune to disease.
+    const kinds = new Set((combat.conditions ?? []).flatMap((entry) => entry.kinds ?? []));
+    const kept = block.conditionImmunities.filter(
+      (condition) => conditions.has(condition) || leveled.has(condition) || kinds.has(condition),
+    );
     if (kept.length < block.conditionImmunities.length) {
       adjusted.push("A condition this ruleset does not have was dropped from the immunities.");
     }

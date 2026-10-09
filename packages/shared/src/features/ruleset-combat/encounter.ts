@@ -2071,7 +2071,8 @@ function mechanicsAction(
   if (mechanics.concentration) action.concentration = true;
   if (mechanics.ends) {
     action.ends = {
-      conditions: [...mechanics.ends.conditions],
+      // A kind named in place of conditions is every condition of that kind (1.253): one disease.
+      conditions: rulesetKindConditions(definition, mechanics.ends.conditions),
       ...(mechanics.ends.count !== undefined ? { count: mechanics.ends.count } : {}),
       ...(mechanics.ends.from ? { from: structuredClone(mechanics.ends.from) } : {}),
     };
@@ -2097,7 +2098,7 @@ function mechanicsAction(
         ? (definition.sheet.live.pools.find((one) => one.id === health.pool)?.label ?? health.pool)
         : "";
     action.modes = [
-      ...(mechanics.ends?.conditions ?? []).map((condition) => ({
+      ...rulesetKindConditions(definition, mechanics.ends?.conditions ?? []).map((condition) => ({
         id: `ends-${condition}`,
         label: conditionLabel(condition),
         cure: { ends: condition },
@@ -3468,6 +3469,17 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
   return state;
 }
 
+/** Conditions named outright, or by a kind they are (1.253), each once and in the order named. */
+export function rulesetKindConditions(definition: RulesetDefinition, names: readonly string[]): string[] {
+  const kinds = definition.combat?.conditions ?? [];
+  const out: string[] = [];
+  for (const name of names) {
+    const ofKind = kinds.filter((entry) => entry.kinds?.includes(name)).map((entry) => entry.condition);
+    for (const condition of ofKind.length > 0 ? ofKind : [name]) if (!out.includes(condition)) out.push(condition);
+  }
+  return out;
+}
+
 /** Whether a creature shrugs this condition off, read the same way wherever one is put on. */
 export function rulesetImmuneToCondition(
   combatant: RulesetCombatant,
@@ -3484,6 +3496,10 @@ export function rulesetImmuneToCondition(
     ? rulesetCombatHide(definition, combatant, state, true).conditionImmunities
     : (combatant.block?.conditionImmunities ?? []);
   if (immunities.some((entry) => entry.trim().toLowerCase() === wanted)) return true;
+  // Or to a kind it is (1.253): Divine Health, to every disease.
+  const kinds = definition?.combat?.conditions?.find((entry) => entry.condition.trim().toLowerCase() === wanted)?.kinds;
+  if (kinds?.some((kind) => immunities.some((entry) => entry.trim().toLowerCase() === kind.trim().toLowerCase())))
+    return true;
   if (!source || !definition?.combat) return false;
   return rulesetActiveConditions(definition, definition.combat, combatant, state, true).some((entry) =>
     entry.conditionImmunitiesFrom?.some(

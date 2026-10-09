@@ -86,11 +86,20 @@ export interface RulesetCombatDamageAlternative extends RulesetCombatAmount {
   when: "twoHanded" | { selfHealthAtMost: number };
 }
 
+/** A save that ends a condition: at a turn's start or end, or on damage. Counted (1.253), it ends
+ *  only after `successes` of them, and after `failures.count` failures `becomes` another condition. */
+export interface RulesetCombatSaveEnds {
+  save: string;
+  at: "turn-end" | "turn-start" | "damaged";
+  successes?: number;
+  failures?: { count: number; becomes: string };
+}
+
 /** A condition a hit or a failed save puts on its target. */
 export interface RulesetCombatApplies {
   condition: string;
   duration: "instant" | "until-save" | "this-action" | { rounds: number; at?: "turn-start"; of?: "source" };
-  saveEnds?: { save: string; at: "turn-end" | "turn-start" | "damaged" };
+  saveEnds?: RulesetCombatSaveEnds;
   endsAfter?: RulesetConditionEnding;
   /** It comes off once its holder attacks, or casts from one of these catalogs (1.175). */
   endsWhenHolder?: { attacks?: true; casts?: string[] };
@@ -836,7 +845,7 @@ export interface RulesetTrackedCondition {
   condition: string;
   /** Turns of the affected combatant left, or null for a condition with no clock of its own. */
   rounds: number | null;
-  saveEnds?: { save: string; at: "turn-end" | "turn-start" | "damaged" };
+  saveEnds?: RulesetCombatSaveEnds;
   /** When its rounds count down: as each of the holder's turns begins, rather than as each ends. */
   clock?: "turn-start";
   /** Whose turns its rounds count (1.114): whoever put it on, while they are in the fight. */
@@ -847,6 +856,9 @@ export interface RulesetTrackedCondition {
   endsWhenHolder?: { attacks?: true; casts?: string[] };
   /** The difficulty the repeated save is rolled against: the one that applied it. */
   difficulty?: number;
+  /** The saves that ended it made and failed so far, where they are counted (1.253). */
+  passes?: number;
+  fails?: number;
   /** Who applied it, and whether their concentration is what holds it. */
   source?: string;
   /** What the action that put it on is known by (1.186), which a repeated save is against too. */
@@ -1521,7 +1533,9 @@ export type RulesetCombatEvent =
         /** Gone because the condition it was put on with ended (1.197). */
         | "linked"
         /** Not put on: its holder has one of its kind already (1.251). */
-        | "already";
+        | "already"
+        /** Gone for what it becomes after its saves failed often enough (1.253). */
+        | "worsened";
       stacks?: number;
     }
   /** A number that attacks move: what came off it or went on it, why, and what it is now. A style

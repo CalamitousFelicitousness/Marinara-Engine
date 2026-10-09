@@ -419,7 +419,7 @@ test("reordering accepts a drop in the opened insertion gap", async ({ page, req
     else await page.mouse.move(finger.clientX, finger.clientY);
     await expect(target).toHaveAttribute("data-drag-insert", "before");
     await expect(target).toHaveCSS("margin-block-start", "24px");
-    await page.screenshot({ path: `.tmp/drag-pr-proof/${testInfo.project.name}-expanded-insertion-gap.png` });
+    await page.screenshot({ path: testInfo.outputPath("expanded-insertion-gap.png") });
     if (mobile) await touch(source, "touchend", [], [finger]);
     else await page.mouse.up();
     await expect
@@ -434,7 +434,7 @@ test("reordering accepts a drop in the opened insertion gap", async ({ page, req
       .toEqual([ids[0], ids[2], ids[1]]);
     if (!mobile) {
       await page.setViewportSize({ width: 768, height: 900 });
-      await page.screenshot({ path: ".tmp/drag-pr-proof/reordered-tablet.png" });
+      await page.screenshot({ path: testInfo.outputPath("reordered-tablet.png") });
       await page.setViewportSize({ width: 1440, height: 900 });
     }
     await page.reload();

@@ -1304,12 +1304,14 @@ export function PresetsPanel() {
         <div className="flex flex-col gap-0.5">
           {folderDrag.orderItems(sortPanelFolders(presetFolders, sort)).map((folder) => {
             const isEditing = editingFolderId === folder.id;
-            const folderItems = orderLibraryItems(sortBasicPanelItems(
-              folder.itemIds.map((id) => presetById.get(id)).filter((item): item is PresetRow => Boolean(item)),
-              sort,
-              (preset) => preset.name,
-              (preset) => preset.createdAt || preset.updatedAt,
-            ));
+            const folderItems = orderLibraryItems(
+              sortBasicPanelItems(
+                folder.itemIds.map((id) => presetById.get(id)).filter((item): item is PresetRow => Boolean(item)),
+                sort,
+                (preset) => preset.name,
+                (preset) => preset.createdAt || preset.updatedAt,
+              ),
+            );
             if (presetSearchActive && folderItems.length === 0) return null;
             const isExpanded = (presetSearchActive && folderItems.length > 0) || expandedFolderId === folder.id;
             return (

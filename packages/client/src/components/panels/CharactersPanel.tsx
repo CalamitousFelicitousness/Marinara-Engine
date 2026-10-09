@@ -453,7 +453,10 @@ export function CharactersPanel() {
         return list;
     }
   }, [filteredCharacters, sort, includedTags]);
-  const sortedCharacters = useMemo(() => orderLibraryItems(sortedCharactersBySort), [orderLibraryItems, sortedCharactersBySort]);
+  const sortedCharacters = useMemo(
+    () => orderLibraryItems(sortedCharactersBySort),
+    [orderLibraryItems, sortedCharactersBySort],
+  );
 
   const parsedGroups = useMemo<ParsedGroupRow[]>(() => {
     if (!groups) return [];

@@ -2835,6 +2835,9 @@ const catalogMechanicsObject = z
     /** Spends the uses of the row with this name instead of its own (Capability API 1.234): a
      *  Berserker's Frenzied Rage spends a use of Rage, its counter row. */
     usesOf: promptSafeText(80).optional(),
+    /** Offered only on its holder's own turn before they have made an attack in it (Capability API
+     *  1.242): 5e's Reckless Attack, decided as the first attack is made. */
+    beforeAttack: z.literal(true).optional(),
     /** How many of those uses one use spends (Capability API 1.240): Quivering Palm's 3 ki. */
     usesSpent: z.number().int().min(2).max(20).optional(),
     /** A target that fails the save drops to 0 health instead of taking the amount (Capability API
@@ -5173,7 +5176,9 @@ const combatModifierSchema = z
   .object({
     to: z.enum(RULESET_COMBAT_MODIFIER_TARGETS),
     /** Damage dealt or taken on an attack hit (Capability API 1.128): narrowed to its kind,
-     *  reach or ability, typed on its own, and, on the target, only from the applying source. */
+     *  reach or ability, typed on its own, and, on the target, only from the applying source. Since
+     *  Capability API 1.242 `attacks` and `blow` narrow a change to attacks too: 5e's Reckless
+     *  Attack, advantage on melee weapon attacks with Strength. */
     attacks: z.enum(["weapon", "spell", "any"]).optional(),
     blow: z.enum(["melee", "ranged"]).optional(),
     /** Damage or, since Capability API 1.183, attacks made with this ability: 5e's Strength-based
@@ -5191,6 +5196,9 @@ const combatModifierSchema = z
     /** The blow's own damage dice this many times over, its flat part as it was (Capability API
      *  1.192): an enlarged duergar's war pick, 1d8 + 2 as 2d8 + 2. Damage dealt only. */
     diceTimes: z.number().int().min(2).max(4).optional(),
+    /** On a critical hit only, this many more of the blow's own damage dice, not doubled
+     *  (Capability API 1.242): 5e's Brutal Critical and Savage Attacks. Damage dealt only. */
+    criticalDice: z.number().int().min(1).max(6).optional(),
     skills: z.array(sheetId).min(1).max(24).optional(),
     saves: z.array(sheetId).min(1).max(12).optional(),
     /** What this save is against (Capability API 1.129): any named condition, damage type or
@@ -5226,6 +5234,7 @@ const combatModifierSchema = z
       modifier.dice === undefined &&
       modifier.times === undefined &&
       modifier.diceTimes === undefined &&
+      modifier.criticalDice === undefined &&
       modifier.mode === undefined
     ) {
       add(
@@ -5257,8 +5266,12 @@ const combatModifierSchema = z
     if (modifier.atSource && modifier.to !== "attacks")
       add("atSource", '"atSource" narrows the holder\'s own attacks only');
     const damage = modifier.to === "damage" || modifier.to === "damage-taken";
-    for (const key of ["attacks", "blow", "damageType", "fromSource"] as const) {
+    for (const key of ["damageType", "fromSource"] as const) {
       if (modifier[key] !== undefined && !damage) add(key, `"${key}" narrows damage only`);
+    }
+    for (const key of ["attacks", "blow"] as const) {
+      if (modifier[key] !== undefined && !damage && modifier.to !== "attacks")
+        add(key, `"${key}" narrows damage or attacks only`);
     }
     if (modifier.ability !== undefined && !damage && modifier.to !== "attacks") {
       add("ability", '"ability" narrows damage or attacks only');
@@ -5279,6 +5292,9 @@ const combatModifierSchema = z
     }
     if (modifier.diceTimes !== undefined && modifier.to !== "damage") {
       add("diceTimes", '"diceTimes" changes the damage a blow deals only');
+    }
+    if (modifier.criticalDice !== undefined && modifier.to !== "damage") {
+      add("criticalDice", '"criticalDice" changes the damage a blow deals only');
     }
     if (modifier.to === "health-max" && (modifier.times !== 0.5 || modifier.flat !== undefined)) {
       add("times", 'The health maximum is only halved: "times": 0.5 and nothing else');

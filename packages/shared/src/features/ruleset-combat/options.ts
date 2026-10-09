@@ -1576,7 +1576,16 @@ function forecastFor(
     const defense = rulesetDefenseAgainst(definition, combat, state, target, actor, action).defense;
     const mode = rulesetAttackMode(definition, combat, actor, target, { state, optionId: action.id, action });
     const bonus = rulesetBonusDice(
-      rulesetConditionModifiers(definition, combat, actor, "attacks", state, undefined, undefined, action.ability),
+      rulesetConditionModifiers(
+        definition,
+        combat,
+        actor,
+        "attacks",
+        state,
+        undefined,
+        undefined,
+        action.ability,
+      ).filter(({ modifier }) => rulesetAttackModifierReaches(modifier, state, actor, target, action)),
     );
     // What the weapon adds against what the target is (1.182), as the roll will.
     const toHit = action.toHit + rulesetToHitAgainst(definition, action, target, actor);
@@ -1636,6 +1645,24 @@ export function rulesetWeaponBlow(action: RulesetCombatAction): boolean {
     !action.catalog &&
     !action.itemUse
   );
+}
+
+/** Whether a change to attacks narrowed to a kind of blow (1.242) reaches this one: a weapon's or a
+ *  spell's, struck in reach or from afar. Nothing narrowed reaches a roll it cannot read. */
+export function rulesetAttackModifierReaches(
+  modifier: { attacks?: "weapon" | "spell" | "any"; blow?: "melee" | "ranged" },
+  state: RulesetEncounterState | undefined,
+  actor: RulesetCombatant,
+  target: RulesetCombatant | undefined,
+  action: RulesetCombatAction | undefined,
+): boolean {
+  if (modifier.attacks && modifier.attacks !== "any") {
+    if (!action || modifier.attacks !== (rulesetWeaponBlow(action) ? "weapon" : "spell")) return false;
+  }
+  if (modifier.blow) {
+    if (!action || !state || modifier.blow !== rulesetBlowKind(state, actor, target ?? actor, action)) return false;
+  }
+  return true;
 }
 
 export function rulesetDamageModifiers(
@@ -1794,6 +1821,8 @@ function optionFrom(
   if (!actionDoesSomething(action)) return null;
   // Only once the attack action has been taken this turn (1.237): Flurry of Blows.
   if (action.afterAttack && !rulesetTookAttackAction(actor, action.afterAttack)) return null;
+  // Only on its holder's own turn before they have attacked in it (1.242): Reckless Attack.
+  if (action.beforeAttack && (!rulesetOnOwnTurn(state, actor) || (actor.flags.attacks ?? 0) > 0)) return null;
   // A cap on attacks a turn (combat C6d, as Slow's): one that has made them all makes no more, however
   // many strikes an action would give. It is a cap on the holder's own turn, as Slow's is.
   if (
@@ -2031,6 +2060,7 @@ export function rulesetAttackMode(
     for (const modifier of entry.modifiers ?? []) {
       if (modifier.to !== "attacks" || !modifier.mode) continue;
       if (!rulesetAbilityNarrowing(modifier, "attacks", ability)) continue;
+      if (!rulesetAttackModifierReaches(modifier, where?.state, actor, target, blow)) continue;
       if (
         modifier.atSource &&
         !actor.tracked.some((one) => one.condition === entry.condition && one.source === target.id)

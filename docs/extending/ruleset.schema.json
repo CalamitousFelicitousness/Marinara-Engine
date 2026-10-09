@@ -12195,6 +12195,10 @@
                       "minLength": 1,
                       "maxLength": 80
                     },
+                    "beforeAttack": {
+                      "type": "boolean",
+                      "const": true
+                    },
                     "usesSpent": {
                       "type": "integer",
                       "minimum": 2,
@@ -15858,6 +15862,11 @@
                                 "minimum": 2,
                                 "maximum": 4
                               },
+                              "criticalDice": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 6
+                              },
                               "skills": {
                                 "type": "array",
                                 "items": {
@@ -16695,6 +16704,11 @@
                                 "type": "integer",
                                 "minimum": 2,
                                 "maximum": 4
+                              },
+                              "criticalDice": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 6
                               },
                               "skills": {
                                 "type": "array",
@@ -17687,6 +17701,11 @@
                                       "type": "integer",
                                       "minimum": 2,
                                       "maximum": 4
+                                    },
+                                    "criticalDice": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 6
                                     },
                                     "skills": {
                                       "type": "array",
@@ -23445,6 +23464,10 @@
                           "type": "string",
                           "minLength": 1,
                           "maxLength": 80
+                        },
+                        "beforeAttack": {
+                          "type": "boolean",
+                          "const": true
                         },
                         "usesSpent": {
                           "type": "integer",
@@ -30958,6 +30981,11 @@
                       "minimum": 2,
                       "maximum": 4
                     },
+                    "criticalDice": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 6
+                    },
                     "skills": {
                       "type": "array",
                       "items": {
@@ -32528,6 +32556,11 @@
                       "type": "integer",
                       "minimum": 2,
                       "maximum": 4
+                    },
+                    "criticalDice": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 6
                     },
                     "skills": {
                       "type": "array",

@@ -1535,6 +1535,18 @@ function carriesFrenzy(ruleset: unknown): boolean {
 /** Attack rows changed by what a sheet holds, strikes it grants, entries only after the attack action,
  *  or a condition's granted attacks narrowed by name or to after the attack action (1.237), in
  *  catalogs too. */
+/** A use offered only before its holder's first attack, a change to attacks narrowed to a kind of
+ *  blow, or more dice on a critical (1.242), in catalogs too. */
+function carriesReckless(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesReckless(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.beforeAttack !== undefined || record.criticalDice !== undefined) return true;
+  if (record.to === "attacks" && (record.attacks !== undefined || record.blow !== undefined)) return true;
+  return Object.values(record).some((one) => carriesReckless(one, depth + 1));
+}
+
 /** What comes after the attack action, taken with held weapons matched by tags (1.241). */
 function carriesAfterAttackItems(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -3367,6 +3379,13 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Before the first attack, attacks narrowed to a kind of blow, more dice on a critical, 1.242.
+  if (
+    !declaresApi(242) &&
+    (carriesReckless(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesReckless(document)))
+  ) {
+    return "A ruleset with uses offered only before the holder's first attack, changes to attacks narrowed to a kind of blow, or more dice on a critical requires schemaVersion 2 and capabilityApi 1.242 or newer";
   }
   // The attack action taken with a held weapon matched by tags, 1.241.
   if (

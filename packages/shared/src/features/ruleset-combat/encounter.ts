@@ -674,7 +674,8 @@ export function rulesetConditionModifiers(
           modifier.flat === undefined &&
           modifier.dice === undefined &&
           modifier.times === undefined &&
-          modifier.diceTimes === undefined
+          modifier.diceTimes === undefined &&
+          modifier.criticalDice === undefined
         )
           return false;
         const skills = modifier.skills ?? entry.skills;
@@ -1948,6 +1949,8 @@ function mechanicsAction(
   if (mechanics.dropsOnFailedSave) action.dropsOnFailedSave = true;
   // Only once the attack action has been taken this turn (1.237): Flurry of Blows.
   if (mechanics.afterAttack) action.afterAttack = structuredClone(mechanics.afterAttack);
+  // Only before the holder's first attack of their turn (1.242): Reckless Attack.
+  if (mechanics.beforeAttack) action.beforeAttack = true;
   // Leaving `toHit` unset here would send it down the no-roll path and land it automatically.
   if (mechanics.attackRoll) action.toHit = from.toHit;
   if (mechanics.autoHit) action.autoHit = true;

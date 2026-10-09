@@ -515,6 +515,8 @@ export interface RulesetCombatAction {
   dropsOnFailedSave?: true;
   /** Offered only once the attack action has been taken this turn (1.237): Flurry of Blows. */
   afterAttack?: RulesetAfterAttack;
+  /** Offered only on its holder's own turn before they have attacked in it (1.242): Reckless Attack. */
+  beforeAttack?: true;
   /** Its damage never takes a target below this much health (1.230). */
   leavesAtLeast?: number;
   /** It brings back a target that died no more than `withinRounds` rounds ago, at `amount` (1.171). */

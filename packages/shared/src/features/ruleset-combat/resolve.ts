@@ -102,6 +102,7 @@ import {
   rulesetSpanOf,
 } from "./grid.js";
 import {
+  rulesetAttackModifierReaches,
   rulesetDamageModifiers,
   rulesetWeaponBlow,
   RULESET_MOVE_OPTION,
@@ -5166,7 +5167,7 @@ function resolveActionBody(
             undefined,
             undefined,
             action.ability,
-          ),
+          ).filter(({ modifier }) => rulesetAttackModifierReaches(modifier, ctx.state, actor, target, action)),
         );
         const thrown = throwPool(ctx, actor, toHit + bonusTotal(bonuses), mode, action.target);
         const needed = Math.max(1, guarded.defense);
@@ -5236,7 +5237,7 @@ function resolveActionBody(
             undefined,
             undefined,
             action.ability,
-          ),
+          ).filter(({ modifier }) => rulesetAttackModifierReaches(modifier, ctx.state, actor, target, action)),
         );
         const total = kept + toHit + bonusTotal(bonuses);
         let outcome: "hit" | "miss" | "critical" = total >= guarded.defense ? "hit" : "miss";
@@ -5653,8 +5654,12 @@ function resolveActionBody(
       for (const { modifier } of modifiers) {
         // The blow's own dice again, as many more times as it says (1.192), its flat part left be.
         const own = action.damage;
-        const dice =
-          modifier.diceTimes && own && own.count > 0
+        // On a critical only, more of the blow's own dice, not doubled (1.242): Brutal Critical.
+        const onCritical = modifier.criticalDice !== undefined;
+        if (onCritical && (!critical || !own || own.count <= 0)) continue;
+        const dice = onCritical
+          ? { count: modifier.criticalDice!, sides: own!.sides, flat: 0 }
+          : modifier.diceTimes && own && own.count > 0
             ? { count: own.count * (modifier.diceTimes - 1), sides: own.sides, flat: 0 }
             : modifier.dice
               ? parseRulesetCombatDice(modifier.dice)
@@ -5662,7 +5667,7 @@ function resolveActionBody(
         if (!dice && modifier.flat === undefined) continue;
         const amount = dice ?? { count: 0, sides: 0, flat: 0 };
         const rolled = rollAmount(ctx, amount);
-        const bonus = critical ? criticalExtra(ctx, amount) : { rolls: [], flat: 0 };
+        const bonus = critical && !onCritical ? criticalExtra(ctx, amount) : { rolls: [], flat: 0 };
         const sign = modifier.minus ? -1 : 1;
         const flat = (modifier.flat ?? 0) + sign * (rolled.flat + bonus.flat);
         const addition = (modifier.flat ?? 0) + sign * (rolled.total + sumOf(bonus.rolls) + bonus.flat);

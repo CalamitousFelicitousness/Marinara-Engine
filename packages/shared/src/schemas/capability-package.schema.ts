@@ -1005,7 +1005,10 @@ const capabilityPackageManifestBaseSchema = z
 //        its holder is that: Hurl Through Hell).
 // 1.241: `afterAttack`'s `items` (the attack action taken with a held weapon matched by tags, as an
 //        `attackRows` rule's `items` matches it: a dagger +1 is a monk weapon).
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 241 } as const);
+// 1.242: catalog mechanics' `beforeAttack` (only before the holder's first attack of their turn:
+//        Reckless Attack); `attacks` and `blow` narrow a change to attacks too; a damage change's
+//        `criticalDice` (more of the blow's own dice on a critical only: Brutal Critical).
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 242 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

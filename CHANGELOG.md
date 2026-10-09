@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: barbarians attack recklessly (advantage on Strength melee weapon attacks this turn, and attacks against them have advantage until their next turn) and roll Brutal Critical's extra weapon dice on critical hits (Capability API 1.242).
 - Rulesets: Martial Arts' bonus unarmed strike follows an attack with a magic monk weapon, such as a dagger +1 (Capability API 1.241).
 - Rulesets: Quivering Palm (3 ki on an unarmed strike's hit, then a save that drops the target to 0 or deals 10d10 necrotic) and Hurl Through Hell (gone until the end of the warlock's next turn, then 10d10 psychic unless a fiend) (Capability API 1.240).
 - Rulesets: everybody has an unarmed strike, and Martial Arts reaches a monk's held weapons by their tags (magic ones too), holds only while wielding monk weapons, and its bonus strike is lost in armor (Capability API 1.239).

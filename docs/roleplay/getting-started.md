@@ -135,7 +135,7 @@ Open the reply's command information and choose **Restore original message** to 
 
 ## CYOA choices
 
-**CYOA** stands for Choose Your Own Adventure. The **CYOA Choices** agent is off by default. When on, it adds clickable choice buttons after a reply. Clicking a choice sends it as your next message. To combine choices or edit one before sending, use the **Add to message** button in a choice's corner instead: it adds the text to your message box without sending. It works only in Roleplay Mode.
+**CYOA** stands for Choose Your Own Adventure. The **CYOA Choices** agent is off by default. When on, it adds clickable choice buttons after a reply. Clicking a choice sends it as your next message. To combine choices or edit one before sending, turn on **Add CYOA choices to message** in **Chat Settings → Impersonate**: clicking a choice then adds its text to your message box without sending. It works only in Roleplay Mode.
 
 ## Combat encounters
 

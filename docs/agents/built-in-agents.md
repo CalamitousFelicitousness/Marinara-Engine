@@ -316,7 +316,7 @@ Adds clickable "What will you do?" choice buttons after each reply, for a choose
 
 - **Phase**: Post-Processing.
 - **Where it works**: Roleplay.
-- **Key settings**: **Edit** to rewrite the choices, **Re-roll** to generate new ones, and **Add to message** on each choice to put its text in your message box without sending.
+- **Key settings**: **Edit** to rewrite the choices and **Re-roll** to generate new ones. Turn on **Add CYOA choices to message** in **Chat Settings → Impersonate** to have clicked choices go into your message box instead of being sent.
 
 ### Storyboard
 

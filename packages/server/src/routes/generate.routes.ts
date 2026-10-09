@@ -1736,11 +1736,15 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         advancedMemorySettings.autoMessageVisibility &&
         groupGenerationMode === "individual" &&
         parseJsonField<string[]>(chat.characterIds, []).length > 1;
-      if (decidesMessageVisibility)
+      if (decidesMessageVisibility) {
         await advancedMemory.settleMessageVisibility(input.chatId, {
           signal: generationSignal,
           debugMode: requestDebug,
         });
+        // Show the decision on your new message now, not after every character has replied (#7349).
+        const decided = currentTurnUserMessageId ? await chats.getMessage(currentTurnUserMessageId) : null;
+        if (decided) sendSseEvent(reply, { type: "message_saved", data: decided });
+      }
       const allChatMessages = (await chats.listMessages(input.chatId)).map((message) =>
         chatMode === "roleplay" && message.role === "user"
           ? { ...message, content: parseRoleplayUserCommands(message.content).content }
@@ -14083,6 +14087,11 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                     sendSseEvent(reply, { type: "advanced_memory_status", data: { chatId: input.chatId, job } }),
                 })
                 .catch((error) => logger.error(error, "[advanced-memory] Background scene check failed"));
+            } else if (input.impersonate && decidesMessageVisibility && !generationSignal.aborted) {
+              // A message written for you is decided once, when it is posted, like one you send (#7349).
+              pendingAdvancedMemory = advancedMemory
+                .settleMessageVisibility(input.chatId, { debugMode: requestDebug, signal: agentSignal })
+                .catch((error) => logger.error(error, "[advanced-memory] Message visibility failed"));
             }
           } else if (memoryRecallVectorizerAvailable) {
             chunkAndEmbedMessages(

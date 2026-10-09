@@ -4801,12 +4801,12 @@ const cases: RegressionCase[] = [
       // prompt that happens to repeat an instruction stays as the user wrote it.
       const writerGuidance = [danbooruStyle, instructions];
       const echoedStyle = danbooruStyle.replace(/\.$/u, "");
-      const writerStyle = removeCopiedPromptGuidance(echoedStyle, writerGuidance);
+      const writerStyle = removeCopiedPromptGuidance(`${echoedStyle}, cel shading`, writerGuidance);
       const writerPrompt = removeCopiedPromptGuidance(
         `${echoedStyle}, 1GIRL, SOLO, SILVER HAIR, RAIN\n${instructions}`,
         writerGuidance,
       );
-      assert.equal(writerStyle, "");
+      assert.equal(writerStyle, "cel shading");
       const configuredPositive = "Write everything in capital letters";
       const written = compileImagePrompt({
         kind: "illustration",
@@ -4822,16 +4822,20 @@ const cases: RegressionCase[] = [
       assert.match(written.prompt, /Write everything in capital letters$/u, "configured text stays: " + written.prompt);
       assert.match(written.prompt, /^masterpiece, best quality/u, "literal profile tags stay: " + written.prompt);
 
-      // Tag lists are words for the image model, so a writer that uses them keeps them.
+      // Tag lists and tag phrases are words for the image model, so a writer that uses them keeps them.
       const tagGuidance = "masterpiece, best quality, absurdres";
       assert.equal(removeCopiedPromptGuidance(`${tagGuidance}, 1girl`, [tagGuidance]), `${tagGuidance}, 1girl`);
+      const tagPhrase = "cold lighting with deep shadows, film grain";
+      assert.equal(removeCopiedPromptGuidance(`1girl, ${tagPhrase}`, [tagPhrase]), `1girl, ${tagPhrase}`);
       assert.equal(
         removeCopiedPromptGuidance(
-          "1girl, solo\n\nWrite everything in capital letters.\n\nMira's Appearance: red hair",
-          ["write everything in capital letters"],
+          "1girl, solo\n\nWRITE EVERYTHING IN CAPITAL LETTERS\n\nMira's Appearance: red hair",
+          ["Write everything in capital letters."],
         ),
         "1girl, solo\n\nMira's Appearance: red hair",
       );
+      // A writer that returned nothing but the guidance keeps its text, so the image still has a subject.
+      assert.equal(removeCopiedPromptGuidance(echoedStyle, [danbooruStyle]), echoedStyle);
 
       // Without a prompt writer, the profile's Style text still applies as written (#7318).
       const unwritten = compileImagePrompt({

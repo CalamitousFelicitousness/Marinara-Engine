@@ -129,6 +129,11 @@ const ROUTE_RULES: Array<{ pattern: RegExp; rule: RateLimitRule }> = [
     rule: { key: "image-test", limit: 20, windowMs: 60_000 },
   },
   { pattern: /^\/api\/import\/st-bulk(?:\/|$)/, rule: { key: "bulk-import", limit: 20, windowMs: 60_000 } },
+  // Each greeting-image bake downloads up to ten web images on the server.
+  {
+    pattern: /^\/api\/characters\/[^/]+\/gallery\/bake(?:\?|$)/,
+    rule: { key: "greeting-image-bake", limit: 20, windowMs: 60_000 },
+  },
   {
     pattern: /^\/api\/backup(?:\/|$)/,
     rule: { key: "backup", limit: BACKUP_RATE_LIMIT.max, windowMs: BACKUP_RATE_LIMIT.timeWindow },

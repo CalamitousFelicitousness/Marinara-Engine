@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import { generateClientId } from "../lib/utils";
 import type {
   Combatant,
   CombatItemEffect,
@@ -65,7 +66,7 @@ export function useDirectedCombat(input: {
           id: current.id,
           instanceId: current.instanceId,
           revision: current.revision,
-          requestId: crypto.randomUUID(),
+          requestId: generateClientId(),
           command,
           debugMode: useUIStore.getState().debugMode,
         },

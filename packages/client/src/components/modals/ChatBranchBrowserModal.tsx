@@ -62,14 +62,14 @@ export function ChatBranchBrowserModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={localizeUi("ui.chat.chatbranchselector.chatBranches")}
+      title={localizeUi("chat.settings.branches")}
       width="max-w-5xl"
       mobileFullscreen
       panelClassName="sm:h-[min(88dvh,52rem)]"
     >
       <div className="flex h-full min-h-0 gap-4">
         <nav
-          aria-label={localizeUi("ui.chat.chatbranchselector.chatBranches")}
+          aria-label={localizeUi("chat.settings.branches")}
           className={cn(
             "flex min-h-0 w-full flex-col gap-1 overflow-y-auto sm:w-72 sm:shrink-0 sm:border-r sm:border-[var(--border)] sm:pr-3",
             mobilePane === "transcript" && "max-sm:hidden",

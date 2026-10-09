@@ -14,6 +14,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from
 import { createPortal } from "react-dom";
 import { Check, ChevronDown, Search, UserRound, Volume2 } from "lucide-react";
 import { useTranslation as useUiTranslation } from "react-i18next";
+import type { TTSSource, TTSVoicesResponse } from "@marinara-engine/shared";
 import { cn } from "../../../lib/utils";
 
 export const INPUT_CLS = "mari-chrome-field w-full px-3 py-2.5 text-sm placeholder:text-[var(--muted-foreground)]";
@@ -48,6 +49,19 @@ export function addSavedVoiceOption(options: VoiceOption[], voiceId: string): Vo
   const id = voiceId.trim();
   if (!id || options.some((option) => option.id === id)) return options;
   return [...options, { id, name: id, category: "saved" }];
+}
+
+/** Fetched voices, or the source's built-in defaults when none came back, plus any saved voice the list lacks. */
+export function buildTTSVoiceOptions(
+  voicesData: TTSVoicesResponse | undefined,
+  source: TTSSource,
+  savedVoices: readonly string[],
+): VoiceOption[] {
+  const fetched = voicesData?.voiceOptions ?? (voicesData?.voices ?? []).map((id) => ({ id, name: id }));
+  let options: VoiceOption[] =
+    fetched.length > 0 ? fetched : source === "elevenlabs" ? ELEVENLABS_DEFAULT_VOICE_OPTIONS : [];
+  for (const savedVoice of savedVoices) options = addSavedVoiceOption(options, savedVoice);
+  return options;
 }
 
 export function formatVoiceOptionLabel(option: VoiceOption): string {
@@ -419,8 +433,12 @@ export function TtsSearchableSelect({
                     size="0.75rem"
                     className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--primary)]"
                   />
+                  {/* A combobox for the open list, so Escape here closes only the picker, not its panel. */}
                   <input
                     autoFocus
+                    role="combobox"
+                    aria-expanded
+                    aria-controls={listboxId}
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
                     placeholder={searchPlaceholder}

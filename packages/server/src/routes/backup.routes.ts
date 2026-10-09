@@ -44,6 +44,7 @@ import { createPromptsStorage } from "../services/storage/prompts.storage.js";
 import { createAgentsStorage } from "../services/storage/agents.storage.js";
 import { createThemesStorage } from "../services/storage/themes.storage.js";
 import { createAppSettingsStorage } from "../services/storage/app-settings.storage.js";
+import { loadFeatureSettings } from "../services/features/feature-settings.js";
 import {
   canReparentFolder,
   isStockMarinaraUniversalPreset,
@@ -51,8 +52,10 @@ import {
   normalizePersonalExtensionCapabilities,
   type ExportEnvelope,
   parseLorebookDecisionActivation,
+  restoreBakedGreetingImages,
 } from "@marinara-engine/shared";
 import { getDataDir } from "../utils/data-dir.js";
+import { uniqueExportName } from "../utils/export-stream.js";
 import { getFileStorageDir } from "../config/runtime-config.js";
 import { normalizeTimestampOverrides } from "../services/import/import-timestamps.js";
 import { flushDB, type DB } from "../db/connection.js";
@@ -188,6 +191,11 @@ type AutomaticBackupSettings = {
   lastBackupAt: string | null;
   lastError: string | null;
   lastOmittedEntries: string[];
+};
+
+/** Optional private boundary of the active Long-Term Memory package's runtime service. */
+type LongTermMemoryVaultRuntime = {
+  withVaultMutation?: <T>(operation: () => Promise<T>) => Promise<T>;
 };
 
 export function buildPreparedBackupDownloadUrl(jobId: string, token: string): string {
@@ -525,15 +533,23 @@ async function buildCompatibleProfileZip(app: FastifyInstance) {
   });
   const data = envelope.data as Record<string, any>;
   const zip = new AdmZip();
+  // Folder prefixes differ, so one set keeps every name in the archive unique.
+  const usedNames = new Set<string>();
   const exportBudget = { remainingBytes: LOREBOOK_EXPORT_IMAGE_MAX_BYTES };
 
   for (const [index, character] of (Array.isArray(data.characters) ? data.characters : []).entries()) {
-    const charData = await embedCharacterBookImages(
+    const embedded = await embedCharacterBookImages(
       typeof character.data === "string" ? JSON.parse(character.data) : character.data,
       exportBudget,
     );
+    // Compatible cards carry no gallery, so baked greeting images go back to their web links (#7221).
+    const charData = embedded ? restoreBakedGreetingImages(embedded) : embedded;
     zip.addFile(
-      `characters/${toSafeExportName(String(charData?.name ?? "character"), `character-${index + 1}`)}.json`,
+      uniqueExportName(
+        usedNames,
+        `characters/${toSafeExportName(String(charData?.name ?? "character"), `character-${index + 1}`)}`,
+        "json",
+      ),
       Buffer.from(JSON.stringify({ spec: "chara_card_v2", spec_version: "2.0", data: charData }, null, 2), "utf8"),
     );
   }
@@ -549,14 +565,22 @@ async function buildCompatibleProfileZip(app: FastifyInstance) {
       ...personaData
     } = persona as Record<string, unknown>;
     zip.addFile(
-      `personas/${toSafeExportName(String(personaData.name ?? "persona"), `persona-${index + 1}`)}.json`,
+      uniqueExportName(
+        usedNames,
+        `personas/${toSafeExportName(String(personaData.name ?? "persona"), `persona-${index + 1}`)}`,
+        "json",
+      ),
       Buffer.from(JSON.stringify(personaData, null, 2), "utf8"),
     );
   }
 
   for (const [index, lorebook] of (Array.isArray(data.lorebooks) ? data.lorebooks : []).entries()) {
     zip.addFile(
-      `lorebooks/${toSafeExportName(String(lorebook.name ?? "lorebook"), `lorebook-${index + 1}`)}.json`,
+      uniqueExportName(
+        usedNames,
+        `lorebooks/${toSafeExportName(String(lorebook.name ?? "lorebook"), `lorebook-${index + 1}`)}`,
+        "json",
+      ),
       Buffer.from(
         JSON.stringify(
           buildCompatibleLorebookExport({
@@ -671,7 +695,9 @@ export function sanitizeProfileTableRows(tableName: string, rows: Array<Record<s
     });
   }
   if (tableName === "api_connections") {
-    return rows.map((row) => ({ ...row, apiKeyEncrypted: "", managementTokenEncrypted: "" }));
+    // The saved model list is a cache the provider can rebuild, like Noodle fan activity above, so
+    // it stays out of portable profiles. Pinned models are settings and travel with the row.
+    return rows.map((row) => ({ ...row, apiKeyEncrypted: "", managementTokenEncrypted: "", savedModels: null }));
   }
   if (tableName === "agent_configs") {
     return rows.map((row) => redactAgentSecrets(row));
@@ -788,6 +814,8 @@ export function quarantineProfileApiConnectionRow(
     ...row,
     apiKeyEncrypted: trustedIdentity ? existingCredential : "",
     managementTokenEncrypted: trustedIdentity ? existingManagementToken : "",
+    // Like the key: the local saved model list still applies only to the same endpoint.
+    savedModels: trustedIdentity ? (existing?.savedModels ?? null) : null,
     profileImportReviewRequired: trustedIdentity ? "false" : "true",
   };
   if (trustedIdentity) return { row: secured, trustedIdentity };
@@ -1251,6 +1279,11 @@ function buildProfileImportAssetInputs(
   });
 }
 
+/** True when the profile's declared asset inputs touch the active Long-Term Memory vault. */
+function profileImportTouchesLongTermMemory(assets: ReadonlyArray<{ path: string }>): boolean {
+  return assets.some((asset) => asset.path.startsWith("long-term-memory/"));
+}
+
 async function importProfileStorageSnapshot(
   app: FastifyInstance,
   snapshot: ProfileStorageSnapshot,
@@ -1259,12 +1292,25 @@ async function importProfileStorageSnapshot(
   readAsset?: ProfileAssetReader,
 ) {
   validateProfileStorageTableInputs(snapshot);
+  const assetInputs = buildProfileImportAssetInputs(snapshot, readAsset, warnings);
+
+  // An active package must coordinate vault publication through its own lock and cache reset.
+  // An inactive package has nothing to invalidate, so a disk-only restore is safe. Decide this
+  // from the declared inputs before staging, so a refused restore never stages vault bytes and
+  // cannot strand them if staging cleanup later fails.
+  const longTermMemoryRuntime = profileImportTouchesLongTermMemory(assetInputs)
+    ? getCapabilityService<LongTermMemoryVaultRuntime>("long-term-memory:runtime")
+    : null;
+  const longTermMemoryVaultMutation = longTermMemoryRuntime?.withVaultMutation;
+  if (longTermMemoryRuntime && !longTermMemoryVaultMutation) {
+    throw new ProfileImportRequestError(
+      "This profile includes long-term memory, but the active Long-Term Memory package is too old to coordinate a safe restore. Update the package or disable it before importing.",
+    );
+  }
+
   let stagedAssets: StagedProfileImportAssets;
   try {
-    stagedAssets = await stageProfileImportAssets(
-      getDataDir(),
-      buildProfileImportAssetInputs(snapshot, readAsset, warnings),
-    );
+    stagedAssets = await stageProfileImportAssets(getDataDir(), assetInputs);
   } catch (error) {
     if (error instanceof ProfileImportAssetValidationError) {
       throw new ProfileImportRequestError(error.message);
@@ -1289,7 +1335,7 @@ async function importProfileStorageSnapshot(
     });
   };
 
-  return withProfileImportLifecycleLock(async () => {
+  const runProfileImport = async () => {
     let files = 0;
     let committed = false;
     let rollbackFailed = false;
@@ -1365,6 +1411,12 @@ async function importProfileStorageSnapshot(
       if ((tableCounts.installed_extensions ?? 0) > 0) {
         await personalServerExtensionRuntime.reloadAll();
       }
+      if ((tableCounts.app_settings ?? 0) > 0) {
+        // Rows were written raw, so the cached feature switches still hold the pre-import values.
+        await loadFeatureSettings(createAppSettingsStorage(app.db)).catch((error: unknown) =>
+          logger.warn(error, "[backup] Could not reload feature switches after profile import"),
+        );
+      }
       return buildProfileImportStats(tableCounts, files);
     } catch (error) {
       try {
@@ -1388,7 +1440,10 @@ async function importProfileStorageSnapshot(
         }
       }
     }
-  });
+  };
+  return withProfileImportLifecycleLock(() =>
+    longTermMemoryVaultMutation ? longTermMemoryVaultMutation(runProfileImport) : runProfileImport(),
+  );
 }
 
 async function buildProfileExportEnvelope(
@@ -3519,7 +3574,10 @@ export async function backupRoutes(app: FastifyInstance) {
       for (const dirName of BACKUP_DIRS) {
         const src = resolveBackupDir(dataDir, dirName);
         if (existsSync(src)) {
-          await cp(src, join(backupDir, dirName), { recursive: true });
+          // The writer lease is per-process runtime state (owner.json, plus a live socket on Docker and
+          // Termux that cp cannot copy); a restored copy blocks startup on another host (#6083).
+          const leasePath = dirName === "storage" ? join(src, STORAGE_WRITER_LEASE_FILENAME) : null;
+          await cp(src, join(backupDir, dirName), { recursive: true, filter: (source) => source !== leasePath });
         }
       }
 
@@ -4179,6 +4237,7 @@ export async function backupRoutes(app: FastifyInstance) {
                           injectionDepth: s.injectionDepth ?? 0,
                           injectionOrder: s.injectionOrder ?? 100,
                           forbidOverrides: s.forbidOverrides === "true" || s.forbidOverrides === true,
+                          skipWrap: s.skipWrap === "true" || s.skipWrap === true,
                         });
                       } catch {
                         /* skip individual section */

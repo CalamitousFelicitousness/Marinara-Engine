@@ -414,6 +414,29 @@ function entry(trace: AgentParameterTrace | undefined, key: string) {
   assert.equal(entry(traces[3], "reasoningEffort")?.setBy, "agent rule");
   assert.deepEqual(entry(traces[3], "reasoningEffort")?.sendSwitch, { enabled: true, setBy: "agent rule" });
 
+  // Parameters the agent's connection saved are the connection's, and thinking room is a rule.
+  const connectionTraces: AgentParameterTrace[] = [];
+  await completeAgentCall(
+    { agentTrace: (trace: AgentParameterTrace) => connectionTraces.push(trace) } as unknown as AgentContext,
+    [
+      agentConfig({
+        connectionId: "conn-agents",
+        settings: { maxTokens: 2000 },
+        generation: { topP: 0.8, reasoning: { reasoningEffort: "high", enableThinking: true }, thinkingHeadroom: true },
+      }),
+    ],
+    stubProvider("complete"),
+    [],
+    { model: "agent-model", maxTokens: 6000, topP: 0.8, reasoningEffort: "high", enableThinking: true },
+  );
+  assert.equal(entry(connectionTraces[0], "topP")?.setBy, "connection");
+  assert.equal(entry(connectionTraces[0], "reasoningEffort")?.setBy, "connection");
+  assert.equal(
+    entry(connectionTraces[0], "maxTokens")?.setBy,
+    "agent rule",
+    "thinking room is not the configured budget",
+  );
+
   await assert.rejects(
     completeAgentCall(context, [agentConfig({ id: "agent-4" })], stubProvider("throw"), [], { model: "agent-model" }),
     /provider failed/,

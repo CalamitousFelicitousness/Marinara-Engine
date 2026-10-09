@@ -72,6 +72,7 @@ import {
   isRetiredBuiltInAgentId,
   mergeBuiltInAgentSettings,
   normalizeAgentPhaseForType,
+  normalizeIllustratorRunInterval,
   type AgentPhase,
   type Chat,
   type ChatMode,
@@ -784,7 +785,8 @@ function PersonaPicker({
                     {expanded &&
                       visibleMembers.map((character) => {
                         const isSelected = selectedCharacterId === character.id;
-                        const name = parseCharacterDisplayData(character).name;
+                        const characterData = parseCharacterDisplayData(character);
+                        const name = characterData.name;
                         return (
                           <button
                             key={`character-${character.id}`}
@@ -797,11 +799,11 @@ function PersonaPicker({
                             )}
                           >
                             {character.avatarPath ? (
-                              <img
+                              <CroppedAvatarImage
                                 src={character.avatarPath}
                                 alt=""
-                                className="h-7 w-7 shrink-0 rounded-full object-cover"
-                                style={getAvatarCropStyle(parseCharacterDisplayData(character).avatarCrop)}
+                                className="h-7 w-7 rounded-full"
+                                crop={characterData.avatarCrop ?? null}
                               />
                             ) : (
                               <PersonaAvatar persona={null} />
@@ -809,7 +811,8 @@ function PersonaPicker({
                             <div className="min-w-0 flex-1">
                               <span className="block truncate text-xs font-medium">{name}</span>
                               <span className="block truncate text-[0.625rem] text-[var(--muted-foreground)]">
-                                {localizeUi("ui.chat.personapicker.characterSource")}
+                                {getCharacterTitle(characterData) ||
+                                  localizeUi("ui.chat.personapicker.characterSource")}
                               </span>
                             </div>
                             {isSelected && <Check size="0.75rem" className="shrink-0 text-[var(--primary)]" />}
@@ -1207,8 +1210,13 @@ function ConversationQuickSetup({ chat, onFinish, defaultsApplied, defaultsActio
     [connectionOptions, selectedConnectionId],
   );
   const parameterDefaults = useMemo(
-    () => getEditableGenerationParameters(CHAT_PARAMETER_DEFAULTS, selectedConnection?.defaultParameters),
-    [selectedConnection?.defaultParameters],
+    () =>
+      getEditableGenerationParameters(
+        CHAT_PARAMETER_DEFAULTS,
+        selectedConnection?.defaultParameters,
+        selectedConnection?.provider,
+      ),
+    [selectedConnection?.defaultParameters, selectedConnection?.provider],
   );
   const [customizeParameters, setCustomizeParameters] = useState(() =>
     hasChatParameterChoices(metadata.chatParameters, metadata.chatParameterOverrides),
@@ -2210,8 +2218,13 @@ function RoleplaySetupWizard({ chat, onFinish, defaultsApplied, defaultsAction }
     [connectionOptions, chat.connectionId],
   );
   const parameterDefaults = useMemo(
-    () => getEditableGenerationParameters(ROLEPLAY_PARAMETER_DEFAULTS, selectedConnection?.defaultParameters),
-    [selectedConnection?.defaultParameters],
+    () =>
+      getEditableGenerationParameters(
+        ROLEPLAY_PARAMETER_DEFAULTS,
+        selectedConnection?.defaultParameters,
+        selectedConnection?.provider,
+      ),
+    [selectedConnection?.defaultParameters, selectedConnection?.provider],
   );
 
   const metadata = useMemo(() => {
@@ -2683,14 +2696,19 @@ function RoleplaySetupWizard({ chat, onFinish, defaultsApplied, defaultsAction }
         config,
         contextSize: normalizePositiveInteger(mergedSettings.contextSize, DEFAULT_AGENT_CONTEXT_SIZE, 200),
         maxTokens: normalizeAgentMaxTokens(mergedSettings.maxTokens),
-        runInterval: intervalMeta
-          ? normalizePositiveInteger(
-              mergedSettings.runInterval,
-              intervalMeta.defaultValue,
-              intervalMeta.max,
-              intervalMeta.min,
-            )
-          : null,
+        runInterval: !intervalMeta
+          ? null
+          : agent.id === "illustrator"
+            ? // Illustrator's Run Interval belongs to this chat; the agent's value (maybe saved as text) is only its default.
+              (normalizeIllustratorRunInterval(metadata.illustratorRunInterval) ??
+              normalizeIllustratorRunInterval(mergedSettings.runInterval) ??
+              intervalMeta.defaultValue)
+            : normalizePositiveInteger(
+                mergedSettings.runInterval,
+                intervalMeta.defaultValue,
+                intervalMeta.max,
+                intervalMeta.min,
+              ),
         setup: buildInitialAgentAddSetupState({
           agentId: agent.id,
           settings: mergedSettings,
@@ -2726,7 +2744,8 @@ function RoleplaySetupWizard({ chat, onFinish, defaultsApplied, defaultsAction }
       maxTokens: normalizeAgentMaxTokens(maxTokens),
     };
     const intervalMeta = getAgentRunIntervalMeta(agent.id, !!builtInMeta);
-    if (intervalMeta && runInterval != null) nextSettings.runInterval = runInterval;
+    // Illustrator saves its Run Interval to this chat, so the agent's value stays the default for other chats.
+    if (intervalMeta && runInterval != null && agent.id !== "illustrator") nextSettings.runInterval = runInterval;
     nextSettings = applyAgentAddSetupToAgentSettings(agent.id, setup, nextSettings, {
       allowSecretPlot: supportsNarrativeDirectorSecretPlot,
     });
@@ -2764,9 +2783,13 @@ function RoleplaySetupWizard({ chat, onFinish, defaultsApplied, defaultsAction }
         ...buildAgentAddMetadataPatch(agent.id, setup, metadata, {
           allowSecretPlot: supportsNarrativeDirectorSecretPlot,
           defaultPromptTemplateId: resolveDefaultAgentPromptTemplateId(nextSettings),
+          runInterval,
           illustratorDefaults: {
             includeCharacterAppearance: nextSettings.includeCharacterAppearance === true,
             useAvatarReferences: nextSettings.useAvatarReferences === true,
+            runInterval: intervalMeta
+              ? (normalizeIllustratorRunInterval(nextSettings.runInterval) ?? intervalMeta.defaultValue)
+              : undefined,
           },
         }),
       });
@@ -3427,13 +3450,10 @@ function RoleplaySetupWizard({ chat, onFinish, defaultsApplied, defaultsAction }
                       className={WIZARD_NUMBER_INPUT_CLASS}
                     />
                     <span className="block text-[0.5625rem] text-[var(--muted-foreground)]">
-                      {agentAddIntervalMeta.help}
+                      {agentAddPreview.agent.id === "illustrator"
+                        ? localizeUi("agents.illustrator.chatRunIntervalHelp")
+                        : agentAddIntervalMeta.help}
                     </span>
-                    {agentAddPreview.agent.id === "illustrator" && (
-                      <span className="block text-[0.5625rem] text-[var(--muted-foreground)]">
-                        {localizeUi("agents.illustrator.manualOnlyIntervalHelp")}
-                      </span>
-                    )}
                   </label>
                 )}
 

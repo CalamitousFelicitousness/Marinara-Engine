@@ -272,7 +272,7 @@ export function ConversationMessageGrouped({
               <div
                 key={i}
                 {...cardCssProps}
-                className="pl-14 py-0.5 text-[0.875rem] leading-relaxed break-words whitespace-pre-wrap text-[var(--muted-foreground)] italic animate-[fadeSlideIn_0.4s_ease-out]"
+                className="mari-chat-style-text pl-14 py-0.5 text-[0.875rem] leading-relaxed break-words whitespace-pre-wrap text-[var(--muted-foreground)] italic animate-[fadeSlideIn_0.4s_ease-out]"
                 style={messageTextStyle}
               >
                 <MessageContent
@@ -325,7 +325,7 @@ export function ConversationMessageGrouped({
                         {segAddButton}
                       </div>
                       <div
-                        className="mari-message-bubble texting-bubble texting-bubble-other rounded-2xl px-3.5 py-2 text-[0.9375rem] leading-relaxed break-words whitespace-pre-wrap shadow-sm"
+                        className="mari-message-bubble mari-chat-style-conversation texting-bubble texting-bubble-other rounded-2xl px-3.5 py-2 text-[0.9375rem] leading-relaxed break-words whitespace-pre-wrap shadow-sm"
                         style={messageTextStyle}
                       >
                         <MessageContent
@@ -403,7 +403,7 @@ export function ConversationMessageGrouped({
                       {segAddButton}
                     </div>
                     <div
-                      className="text-[0.9375rem] leading-relaxed break-words whitespace-pre-wrap"
+                      className="mari-chat-style-text text-[0.9375rem] leading-relaxed break-words whitespace-pre-wrap"
                       style={messageTextStyle}
                     >
                       <MessageContent
@@ -421,7 +421,7 @@ export function ConversationMessageGrouped({
                 {paragraphs.slice(1).map((para, pi) => (
                   <div
                     key={pi}
-                    className="pl-14 mt-0.5 text-[0.9375rem] leading-relaxed break-words whitespace-pre-wrap"
+                    className="mari-chat-style-text pl-14 mt-0.5 text-[0.9375rem] leading-relaxed break-words whitespace-pre-wrap"
                     style={messageTextStyle}
                   >
                     <MessageContent

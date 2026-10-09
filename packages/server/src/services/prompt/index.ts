@@ -23,6 +23,7 @@ export {
   buildChatMacroContext,
   buildChatMacroContextForPreset,
   buildPromptMacroContext,
+  loadLorebookIncludesFor,
   cloneMacroContextForPreview,
   decodeDeferredPresetConditionals,
   resolveMacrosForPreview,

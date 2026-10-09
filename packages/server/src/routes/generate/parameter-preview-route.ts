@@ -18,7 +18,7 @@ import {
   resolveGenerationParameterRuntime,
   usesPresetAssembly,
 } from "../../services/generation/provider-generation-runtime.js";
-import { storedParameterSources } from "../../services/generation/generation-parameters.js";
+import { keepsCodexDefaultEffort, storedParameterSources } from "../../services/generation/generation-parameters.js";
 import {
   resolveModelAccessPolicy,
   mergeModelContextLimit,
@@ -157,6 +157,7 @@ export async function registerParameterPreviewRoute(app: FastifyInstance) {
       inheritedParameters: {
         ...presetParams,
         ...runtime.connectionParams,
+        ...(keepsCodexDefaultEffort(connection.provider, runtime.connectionParams) ? { reasoningEffort: null } : {}),
         enabledParameters: {
           ...Object.fromEntries(GENERATION_PARAMETER_SEND_KEYS.map((key) => [key, true])),
           ...presetParams.enabledParameters,

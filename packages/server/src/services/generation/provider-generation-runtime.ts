@@ -28,6 +28,7 @@ import {
 } from "../../routes/generate/generate-route-utils.js";
 import { mergeModelContextLimit, resolveStoredModelContextLimit } from "./model-access-policy.js";
 import {
+  keepsCodexDefaultEffort,
   normalizeChatTopP,
   storedParameterSources,
   supportsAssistantReasoningPrefill,
@@ -65,7 +66,8 @@ export type GenerationParameterInitial = {
   frequencyPenalty: number;
   presencePenalty: number;
   showThoughts: boolean;
-  reasoningEffort: "low" | "medium" | "high" | "xhigh" | "maximum" | null;
+  /** `undefined` means nothing chose one yet: no level is sent and thinking stays off. */
+  reasoningEffort: "low" | "medium" | "high" | "xhigh" | "maximum" | null | undefined;
   verbosity: "low" | "medium" | "high" | null;
   serviceTier: "flex" | "priority" | null;
   assistantPrefill: string;
@@ -124,7 +126,8 @@ export type GenerationParameterRuntime = GenerationParameterInitial & {
   sendSwitchSources: SendSwitchSources;
 };
 
-export type GenerationProviderRuntime = GenerationParameterRuntime & {
+export type GenerationProviderRuntime = Omit<GenerationParameterRuntime, "reasoningEffort"> & {
+  reasoningEffort: Exclude<GenerationParameterRuntime["reasoningEffort"], undefined>;
   supportsAssistantReasoningPrefill: boolean;
   primaryProvider: BaseLLMProvider;
   provider: BaseLLMProvider;
@@ -276,6 +279,15 @@ export function resolveGenerationParameterRuntime(args: GenerationParameterRunti
 
   const modelLower = (args.connection.model ?? "").toLowerCase();
   const providerLower = (args.connection.provider ?? "").toLowerCase();
+  const isCodex = providerLower === "openai_chatgpt";
+  // chatParams carries no sampling values; a chat's chosen level arrives through chatOverrideParams.
+  if (
+    runtime.reasoningEffort !== null &&
+    keepsCodexDefaultEffort(providerLower, connectionParams, gameSetupParams, chatOverrideParams)
+  ) {
+    runtime.reasoningEffort = null;
+    labelLayer("default", ["reasoningEffort"]);
+  }
   const resolvedEffort = resolveProviderReasoningEffort({
     provider: providerLower,
     model: modelLower,
@@ -291,7 +303,9 @@ export function resolveGenerationParameterRuntime(args: GenerationParameterRunti
     runtime.enabledParameters?.reasoningEffort === false
       ? undefined
       : runtime.reasoningEffort === null
-        ? "none"
+        ? isCodex
+          ? undefined
+          : "none"
         : (resolvedEffort ?? undefined);
   const isClaudeNoSampling = isClaudeAdaptiveOnlyNoSamplingModel(modelLower);
   if (isClaudeNoSampling) {
@@ -371,6 +385,8 @@ export function resolveGenerationProviderRuntime(args: GenerationProviderRuntime
 
   return {
     ...parameters,
+    // The main chat always starts from a chosen level or Off, so this never turns undefined into null.
+    reasoningEffort: parameters.reasoningEffort ?? null,
     supportsAssistantReasoningPrefill:
       primarySupportsAssistantReasoningPrefill || fallbackSupportsAssistantReasoningPrefill,
     primaryProvider,

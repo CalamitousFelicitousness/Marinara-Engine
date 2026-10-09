@@ -32,11 +32,12 @@ import {
 } from "../../lib/roleplay-vn-tts";
 import {
   normalizeCardAssetImageSyntax,
+  resolveCardAssetImageSources,
   resolveCardAssetUrl,
   resolveSelfCardAssets,
   type ChatGalleryIndex,
 } from "../../lib/card-asset-links";
-import { useChatGalleryFilenameIndex } from "../../hooks/use-characters";
+import { useCharacterSummaries, useChatGalleryFilenameIndex } from "../../hooks/use-characters";
 import { useReducedAmbientEffects } from "../../hooks/use-reduced-ambient-effects";
 import { PendingTypingDots } from "./PendingTypingDots";
 import { ChatImagePreview } from "./ChatImagePreview";
@@ -108,7 +109,11 @@ import { applyTextareaQuoteFormat } from "../../lib/textarea-quotes";
 import { ttsService } from "../../lib/tts-service";
 import { resolveTTSSynthesisPolicy } from "../../lib/tts-synthesis-policy";
 import { useEffectiveTTSConfig } from "../../hooks/use-tts";
-import { buildTTSVoiceRequests, normalizeTTSCharacterName, withTTSVoiceRequestCacheKeys } from "../../lib/tts-dialogue";
+import {
+  buildTTSVoiceRequests,
+  findTTSCharacterIdBySpeakerName,
+  withTTSVoiceRequestCacheKeys,
+} from "../../lib/tts-dialogue";
 import { DIALOGUE_QUOTE_PATTERN_SOURCE, HTML_SAFE_DIALOGUE_QUOTE_PATTERN_SOURCE } from "../../lib/dialogue-quotes";
 import { resolveMessageRewriteVersions } from "../../lib/message-rewrite-versions";
 import { convertChatHtmlNewlines } from "../../lib/chat-html-newlines";
@@ -121,6 +126,7 @@ import {
   sanitizeChatHtml,
 } from "../../lib/chat-html";
 import { resolveMessageReasoningDisplay } from "../../lib/message-reasoning";
+import { CHARACTER_COLOR_CLASS, FALLBACK_DIALOGUE_CLASS } from "../../lib/chat-widget-colors";
 import type { CharacterMap, ExpressionAvatarResolver, MessageSelectionToggle, PersonaInfo } from "./chat-area.types";
 import {
   MESSAGE_SELECTION_CHECKBOX_CLASS,
@@ -515,7 +521,7 @@ function HideFromAIAction({
             role="menu"
             aria-label={localizeUi("ui.chat.hidefromaiaction.chooseWhichCharactersCannotSeeThisMessage")}
             className={cn(
-              "marinara-chat-popover fixed z-[9999] flex max-h-36 w-max max-w-[min(22rem,calc(100vw-1rem))] flex-wrap items-center gap-1.5 overflow-x-hidden overflow-y-auto rounded-xl border border-[var(--marinara-chat-chrome-panel-border)] bg-[var(--marinara-chat-chrome-panel-bg)] p-2 shadow-xl",
+              "marinara-chat-popover mari-chat-style-surface mari-chat-action-panel fixed z-[9999] flex max-h-36 w-max max-w-[min(22rem,calc(100vw-1rem))] flex-wrap items-center gap-1.5 overflow-x-hidden overflow-y-auto rounded-xl border border-[var(--marinara-chat-chrome-panel-border)] bg-[var(--marinara-chat-chrome-panel-bg)] p-2 shadow-xl",
             )}
           >
             <button
@@ -630,7 +636,7 @@ function ConversationStartAction({
             role="menu"
             aria-label={localizeUi("ui.chat.conversationstartaction.chooseWhoStartsHere")}
             className={cn(
-              "marinara-chat-popover fixed z-[9999] flex max-h-36 w-max max-w-[min(22rem,calc(100vw-1rem))] flex-wrap items-center gap-1.5 overflow-x-hidden overflow-y-auto rounded-xl border border-[var(--marinara-chat-chrome-panel-border)] bg-[var(--marinara-chat-chrome-panel-bg)] p-2 shadow-xl",
+              "marinara-chat-popover mari-chat-style-surface mari-chat-action-panel fixed z-[9999] flex max-h-36 w-max max-w-[min(22rem,calc(100vw-1rem))] flex-wrap items-center gap-1.5 overflow-x-hidden overflow-y-auto rounded-xl border border-[var(--marinara-chat-chrome-panel-border)] bg-[var(--marinara-chat-chrome-panel-bg)] p-2 shadow-xl",
             )}
           >
             <button
@@ -900,6 +906,29 @@ const EditTextarea = memo(function EditTextarea({
     }
   }, [autoResize]);
 
+  // An iPhone keyboard shrinks the transcript but not 60dvh. Keep the editor
+  // and its Save row within the part between the top controls and the
+  // composer, so scrolling inside it can always bring its last line into view.
+  useLayoutEffect(() => {
+    const el = ref.current;
+    const transcript = el?.closest<HTMLElement>("[data-chat-scroll]");
+    if (!el || !transcript) return;
+    const fit = () => {
+      const style = getComputedStyle(transcript);
+      const covered =
+        (Number.parseFloat(style.scrollPaddingTop) || 0) +
+        (Number.parseFloat(style.getPropertyValue("--mari-roleplay-content-padding-bottom")) || 0) +
+        (el.nextElementSibling?.getBoundingClientRect().height ?? 0);
+      el.style.setProperty("--mari-message-editor-fit-height", `${Math.max(96, transcript.clientHeight - covered)}px`);
+    };
+    fit();
+    // ponytail: re-measures only when the transcript resizes, so a composer that
+    // grows mid-edit keeps the older limit until then. Observe the composer too if that matters.
+    const observer = new ResizeObserver(fit);
+    observer.observe(transcript);
+    return () => observer.disconnect();
+  }, []);
+
   const handleSave = useCallback(() => {
     if (ref.current) void onSave(formatTextQuotes(ref.current.value, quoteFormat));
   }, [onSave, quoteFormat]);
@@ -923,7 +952,7 @@ const EditTextarea = memo(function EditTextarea({
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSave();
           if (e.key === "Escape") onCancel();
         }}
-        className="relative z-0 w-full resize-none overflow-y-auto overscroll-contain rounded-lg bg-black/30 px-3 py-2 text-white outline-none ring-1 ring-white/20 focus:ring-blue-400/50 max-md:max-h-[min(60dvh,32rem)]"
+        className="relative z-0 w-full resize-none overflow-y-auto overscroll-contain rounded-lg bg-black/30 px-3 py-2 text-white outline-none ring-1 ring-white/20 focus:ring-blue-400/50 max-md:max-h-[min(60dvh,32rem,var(--mari-message-editor-fit-height,100dvh))]"
         style={{ fontSize, lineHeight: 1.5 }}
       />
       <div className="pointer-events-auto relative z-30 flex items-center justify-end gap-1.5">
@@ -1116,9 +1145,11 @@ function renderWithSpeakerTags(
   defaultDialogueColor: string | undefined,
   speakerColorMap: Map<string, string> | undefined,
   boldDialogue = true,
+  ownDialogueColor = false,
 ): ReactNode[] {
   const text = rawText;
-  const renderLine = (line: string, color = defaultDialogueColor) => highlightDialogue(line, color, boldDialogue);
+  const renderLine = (line: string, color = defaultDialogueColor, own = ownDialogueColor) =>
+    highlightDialogue(line, color, boldDialogue, own);
 
   if (!hasSpeakerTag(text)) {
     return renderLine(text, defaultDialogueColor);
@@ -1137,9 +1168,11 @@ function renderWithSpeakerTags(
     }
     const speakerName = speakerNameFromMatch(match);
     const dialogue = speakerBodyFromMatch(match);
-    const speakerColor = speakerColorMap?.get(speakerName) ?? defaultDialogueColor;
+    const speakerColor = speakerColorMap?.get(speakerName);
     // Render the dialogue content (without the tags) using the speaker's color
-    nodes.push(<span key={`s${key++}`}>{renderLine(dialogue, speakerColor)}</span>);
+    nodes.push(
+      <span key={`s${key++}`}>{speakerColor ? renderLine(dialogue, speakerColor, true) : renderLine(dialogue)}</span>,
+    );
     lastIndex = match.index + match[0].length;
   }
 
@@ -1176,8 +1209,16 @@ function collectInlineMarkdownRanges(text: string): Array<[number, number]> {
  *
  * Code spans (`…`), images (![…](…)), and links ([…](…)) are treated as
  * protected zones — quotes inside them are not matched as dialogue.
+ *
+ * `ownDialogueColor` marks a character's or persona's own color, which keeps
+ * winning over Apply preset colors (see chat-widget-surfaces.css).
  */
-function highlightDialogue(text: string, dialogueColor?: string, boldDialogue = true): ReactNode[] {
+function highlightDialogue(
+  text: string,
+  dialogueColor?: string,
+  boldDialogue = true,
+  ownDialogueColor = false,
+): ReactNode[] {
   // Step 1: Find protected zones where quotes should NOT trigger dialogue detection.
   // Code spans, images, and links may legitimately contain quotation marks.
   const protectedRanges: Array<[number, number]> = [];
@@ -1230,7 +1271,7 @@ function highlightDialogue(text: string, dialogueColor?: string, boldDialogue = 
       <DialogueTag
         key={`d${key++}`}
         style={dialogueColor ? { color: dialogueColor } : undefined}
-        className={!dialogueColor ? "text-black dark:text-white" : undefined}
+        className={!dialogueColor ? "text-black dark:text-white" : ownDialogueColor ? CHARACTER_COLOR_CLASS : undefined}
       >
         {openQuote}
         {innerNodes}
@@ -1634,6 +1675,7 @@ function renderContent(
   galleryIndex?: ChatGalleryIndex | null,
   nameColorMap?: Map<string, string> | null,
   textShadow?: string,
+  ownDialogueColor = false,
 ): ReactNode {
   // Portable card://self/gallery refs resolve to the speaking character before
   // any rendering, covering both the markdown branch and the embedded-HTML
@@ -1656,7 +1698,7 @@ function renderContent(
   // interfere with paragraph splitting or trigger the HTML path.
   if (!isHtmlPath) {
     const markdownResult = renderMarkdownBlocks(normalized, (seg, _kp) =>
-      renderWithSpeakerTags(seg, dialogueColor, speakerColorMap, boldDialogue),
+      renderWithSpeakerTags(seg, dialogueColor, speakerColorMap, boldDialogue, ownDialogueColor),
     );
     if (nameColorMap && nameColorMap.size > 0) {
       return colorNamesInNodes(markdownResult, nameColorMap, textShadow);
@@ -1680,13 +1722,12 @@ function renderContent(
   // Convert markdown images to <img> before sanitization so DOMPurify validates them.
   // Keep tags minimal (no class, only loading/decoding attrs) — styling is via .mari-message-content img in CSS
   // to avoid the dialogue-bolding regex mangling attribute quotes.
-  const withImages = normalizeCardAssetImageSyntax(withBreaks).replace(
-    MD_IMAGE_HTML_RE,
-    (_m, alt: string, url: string) => {
+  const withImages = resolveCardAssetImageSources(
+    normalizeCardAssetImageSyntax(withBreaks).replace(MD_IMAGE_HTML_RE, (_m, alt: string, url: string) => {
       const src = escapeHtmlAttr(resolveCardAssetUrl(url));
       const safeAlt = escapeHtmlAttr(alt || "image");
       return `<img src="${src}" alt="${safeAlt}" loading="lazy" decoding="async">`;
-    },
+    }),
   );
 
   const clean = sanitizeChatHtml(withImages, { allowStyle: true });
@@ -1710,7 +1751,7 @@ function renderContent(
         const speakerQuoteRe = new RegExp(`(?<![=\\w])(?:${HTML_SAFE_DIALOGUE_QUOTE_PATTERN_SOURCE})`, "g");
         return content.replace(speakerQuoteRe, (match: string, offset: number) => {
           if (insideTag(content, offset)) return match;
-          return `<${dialogueTag} style="color:${validColor}">${match}</${dialogueTag}>`;
+          return `<${dialogueTag} class="${CHARACTER_COLOR_CLASS}" style="color:${validColor}">${match}</${dialogueTag}>`;
         });
       },
     );
@@ -1727,7 +1768,8 @@ function renderContent(
         if (lastFontClose < lastFontOpen) return match;
       }
       const highlightColor = safeColor(dialogueColor ?? "white");
-      return `<${dialogueTag} style="color:${highlightColor}">${match}</${dialogueTag}>`;
+      const colorClass = ownDialogueColor ? CHARACTER_COLOR_CLASS : FALLBACK_DIALOGUE_CLASS;
+      return `<${dialogueTag} class="${colorClass}" style="color:${highlightColor}">${match}</${dialogueTag}>`;
     });
   })();
 
@@ -1739,7 +1781,7 @@ function renderContent(
 
   return (
     <div
-      className={cn("relative !overflow-hidden !contain-paint", htmlScopeClass)}
+      className={cn("mari-html-content relative !overflow-hidden !contain-paint", htmlScopeClass)}
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );
@@ -1792,10 +1834,12 @@ export function RoleplayMessagePreview({
         htmlScopeClass,
         quoteFormat,
         selfCharacterId,
+        undefined, // galleryIndex
         undefined, // nameColorMap
         undefined, // textShadowStr
+        !!dialogueColor,
       ),
-    [boldDialogue, content, htmlScopeClass, quoteFormat, resolvedDialogueColor, selfCharacterId],
+    [boldDialogue, content, dialogueColor, htmlScopeClass, quoteFormat, resolvedDialogueColor, selfCharacterId],
   );
 
   return (
@@ -1955,7 +1999,7 @@ export const ChatMessage = memo(function ChatMessage({
     () => ({
       fontSize: chatFontSize,
       lineHeight: 1.5,
-      ...(chatFontColor ? { color: chatFontColor } : {}),
+      ...(chatFontColor ? { color: `var(--mari-chat-resolved-text, ${chatFontColor})` } : {}),
       ...textStrokeStyle,
     }),
     [chatFontSize, chatFontColor, textStrokeStyle],
@@ -2075,15 +2119,9 @@ export const ChatMessage = memo(function ChatMessage({
       : message.characterId
         ? characterMap?.get(message.characterId)?.name
         : undefined;
+  // Same lookup as autoplay in ChatArea, so replaying a message uses the voice it autoplayed with.
   const resolveTTSCharacterId = useCallback(
-    (speaker?: string | null) => {
-      const normalizedSpeaker = normalizeTTSCharacterName(speaker);
-      if (!normalizedSpeaker || !characterMap) return null;
-      for (const [characterId, character] of characterMap) {
-        if (normalizeTTSCharacterName(character.name) === normalizedSpeaker) return characterId;
-      }
-      return null;
-    },
+    (speaker?: string | null) => (characterMap ? findTTSCharacterIdBySpeakerName(speaker, characterMap) : null),
     [characterMap],
   );
   const ttsVoiceRequests = useMemo(() => {
@@ -2524,8 +2562,11 @@ export const ChatMessage = memo(function ChatMessage({
         if (editor) {
           editor.scrollTop = 0;
           // The action row can be far below a long message's first line.
-          // Align only the transcript, never scroll the mobile app shell.
-          el.scrollTop += editor.getBoundingClientRect().top - el.getBoundingClientRect().top - 8;
+          // Align only the transcript, never scroll the mobile app shell, and
+          // start below the floating top controls (its scroll padding) so the
+          // first line is not under them.
+          const topInset = Number.parseFloat(getComputedStyle(el).scrollPaddingTop) || 8;
+          el.scrollTop += editor.getBoundingClientRect().top - el.getBoundingClientRect().top - topInset;
         }
       }
       scrollRestoreRef.current = null;
@@ -2800,6 +2841,8 @@ export const ChatMessage = memo(function ChatMessage({
     : resolvedCharacterInfo;
   const fallbackDialogueColor = defaultDialogueColor || getDefaultChatTextColor(theme);
   const dialogueColor = isMergedGroup ? fallbackDialogueColor : msgColors?.dialogueColor || fallbackDialogueColor;
+  // Only a character's or persona's own color outranks Apply preset colors; the fallback follows the preset.
+  const ownDialogueColor = !isMergedGroup && !!msgColors?.dialogueColor;
   const boxBgColor = msgColors?.boxColor;
   const msgNameColor = msgColors?.nameColor;
   const roleplayBubbleBg = boxBgColor ? boxBgColor : isUser ? userBubbleBg : assistantBubbleBg;
@@ -2839,9 +2882,21 @@ export const ChatMessage = memo(function ChatMessage({
   }, [personaInfo?.dialogueColor, personaInfo?.name, scopedCharacterMap]);
 
   // Merged group chat: cycling avatars + cycling name color
+  // References affect only this reply's avatars, never the group roster or speakers.
+  const referencedAvatarIds = useMemo(() => {
+    if (!isRoleplay || !isMergedGroup || !Array.isArray(extra.referencedCharacterIds)) return [];
+    return Array.from(
+      new Set<string>(
+        (extra.referencedCharacterIds as unknown[]).filter(
+          (id): id is string => typeof id === "string" && /^[A-Za-z0-9_-]{21}$/.test(id),
+        ),
+      ),
+    ).filter((id) => !chatCharacterIds?.includes(id));
+  }, [isRoleplay, isMergedGroup, extra.referencedCharacterIds, chatCharacterIds]);
+  const { data: referencedAvatarCharacters } = useCharacterSummaries(referencedAvatarIds);
   const mergedCharacterIds = useMemo(
-    () => mergedGroupCharacterIds ?? chatCharacterIds ?? [],
-    [chatCharacterIds, mergedGroupCharacterIds],
+    () => [...(mergedGroupCharacterIds ?? chatCharacterIds ?? []), ...referencedAvatarIds],
+    [chatCharacterIds, mergedGroupCharacterIds, referencedAvatarIds],
   );
   const mergedCycleKey = JSON.stringify(mergedCharacterIds);
   const reduceAmbientEffects = useReducedAmbientEffects();
@@ -2859,13 +2914,16 @@ export const ChatMessage = memo(function ChatMessage({
     return mergedCharacterIds
       .map((id, index) => {
         const info = characterMap.get(id);
+        // Query placeholder data may belong to the previous swipe; only the
+        // current mergedCharacterIds may contribute an avatar.
+        const reference = referencedAvatarCharacters?.find((character) => character.id === id);
         const expressionUrl = expressionAvatarResolver?.(message, id) ?? null;
-        const url = expressionUrl ?? info?.avatarUrl;
+        const url = expressionUrl ?? info?.avatarUrl ?? reference?.avatarUrl;
         if (!url) return null;
         return {
           id,
           url,
-          crop: expressionUrl ? null : info?.avatarCrop,
+          crop: expressionUrl ? null : (info?.avatarCrop ?? normalizeAvatarCrop(reference?.avatarCrop)),
           nameColor: info?.nameColor || fallbackPalette[index % fallbackPalette.length]!,
         };
       })
@@ -2875,7 +2933,7 @@ export const ChatMessage = memo(function ChatMessage({
       crop?: AvatarCrop | null;
       nameColor: string;
     }[];
-  }, [isMergedGroup, characterMap, mergedCharacterIds, expressionAvatarResolver, message]);
+  }, [isMergedGroup, characterMap, mergedCharacterIds, expressionAvatarResolver, message, referencedAvatarCharacters]);
   const mergedNameColors = useMemo(() => mergedAvatars.map((avatar) => avatar.nameColor), [mergedAvatars]);
   // Cycle index for merged group avatars/names — driven by a ref + 2s setInterval to avoid re-renders
   const cycleIndexRef = useRef(0);
@@ -3004,7 +3062,8 @@ export const ChatMessage = memo(function ChatMessage({
     (command: (typeof inlineRoleplayCommands)[number]) =>
       command.kind === "whisper" ? (
         <RoleplayWhisper
-          key={`whisper-${message.id}-${message.activeSwipeIndex}-${command.index}-${personaInfo?.id}`}
+          // The original command text identifies the whisper, so an open editor never saves over a replacement.
+          key={`whisper-${message.id}-${message.activeSwipeIndex}-${command.index}-${personaInfo?.id}-${command.activity.raw}`}
           chatId={message.chatId}
           messageId={message.id}
           swipeIndex={message.activeSwipeIndex}
@@ -3049,6 +3108,7 @@ export const ChatMessage = memo(function ChatMessage({
         galleryIndex,
         nameColorMap,
         textShadowStr,
+        ownDialogueColor,
       );
     let markerPrefix = "\uE000";
     while (text.includes(markerPrefix)) markerPrefix = "\uE000" + markerPrefix;
@@ -3084,6 +3144,7 @@ export const ChatMessage = memo(function ChatMessage({
     galleryIndex,
     nameColorMap,
     textShadowStr,
+    ownDialogueColor,
   ]);
   const renderStreamingText = useCallback(
     (streamText: string) =>
@@ -3098,6 +3159,7 @@ export const ChatMessage = memo(function ChatMessage({
         galleryIndex,
         nameColorMap,
         textShadowStr,
+        ownDialogueColor,
       ),
     [
       formatDisplayContent,
@@ -3110,6 +3172,7 @@ export const ChatMessage = memo(function ChatMessage({
       speakerColorMap,
       nameColorMap,
       textShadowStr,
+      ownDialogueColor,
     ],
   );
 
@@ -3142,6 +3205,7 @@ export const ChatMessage = memo(function ChatMessage({
             galleryIndex,
             nameColorMap,
             textShadowStr,
+            ownDialogueColor,
           )
         : null,
     [
@@ -3155,6 +3219,7 @@ export const ChatMessage = memo(function ChatMessage({
       galleryIndex,
       nameColorMap,
       textShadowStr,
+      ownDialogueColor,
     ],
   );
   const translationDisplayOnly = useMemo(
@@ -3700,7 +3765,7 @@ export const ChatMessage = memo(function ChatMessage({
                   </button>
                 </div>
               )}
-              <div className="mari-message-bubble relative flex-1 rounded-xl border border-amber-500/10 bg-black/40 px-5 py-4">
+              <div className="mari-message-bubble mari-chat-style-surface relative flex-1 rounded-xl border border-amber-500/10 bg-black/40 px-5 py-4">
                 {/* Delete button */}
                 {!multiSelectMode && onDelete && (
                   <button
@@ -4099,7 +4164,7 @@ export const ChatMessage = memo(function ChatMessage({
             <div
               data-roleplay-bubble-transparent={roleplayBubbleBg === "transparent" ? "true" : undefined}
               className={cn(
-                "mari-message-bubble mari-rp-bubble relative overflow-hidden rounded-2xl shadow-lg shadow-black/20",
+                "mari-message-bubble mari-rp-bubble mari-chat-style-surface relative overflow-hidden rounded-2xl shadow-lg shadow-black/20",
                 roleplayAvatarsScrollable && showRoleplayAvatarPanel && "mari-rp-bubble--scrollable-avatar-panel",
                 isUser
                   ? "rounded-tr-sm text-neutral-100 ring-1 ring-white/10"
@@ -4838,7 +4903,7 @@ function MessageAudioMenu({
             role="dialog"
             aria-label={label}
             className={cn(
-              "marinara-chat-popover fixed z-[9999] flex max-w-[calc(100vw-1.5rem)] flex-row flex-wrap items-center gap-1 rounded-lg border p-1.5 shadow-xl",
+              "marinara-chat-popover mari-chat-style-surface mari-chat-action-panel fixed z-[9999] flex max-w-[calc(100vw-1.5rem)] flex-row flex-wrap items-center gap-1 rounded-lg border p-1.5 shadow-xl",
               dark
                 ? "border-[var(--marinara-chat-chrome-panel-border)] bg-[var(--marinara-chat-chrome-panel-bg)] text-[var(--marinara-chat-chrome-panel-title)] shadow-black/30"
                 : "border-[var(--border)] bg-[var(--popover)] text-[var(--popover-foreground)] shadow-black/20",

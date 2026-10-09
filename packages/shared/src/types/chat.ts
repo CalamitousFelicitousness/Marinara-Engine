@@ -274,6 +274,14 @@ export interface ChatMetadata {
   };
   /** Roleplay presentation only; omitted chats use the Appearance default. */
   roleplayDisplayStyle?: "classic" | "visual-novel";
+  /**
+   * This chat's window layout on a computer (window places and sizes, pinned and locked state,
+   * popped-out drawers), owned and validated by the client. Absent migrates an older chat's toolbar;
+   * null selects the current defaults, including after Reset View.
+   */
+  windowLayout?: unknown;
+  /** Hide Chat Settings' introductory tips for this chat; included in settings profiles. */
+  chatSettingsHintDismissed?: boolean;
   /** Chat-local tracker icon overrides keyed by persona id, unique character id, or tracker character slot. */
   trackerStatIconOverrides?: Record<string, import("../constants/stat-icons.js").TrackerStatIconAssignment[]>;
   /** Compiled enabled rolling summary text for context injection. Derived from summaryEntries when present. */
@@ -360,6 +368,11 @@ export interface ChatMetadata {
   illustratorImageConnectionId?: string | null;
   /** Number of image variants generated for each Illustrator request. */
   illustratorImagesPerGeneration?: number;
+  /**
+   * Messages between automatic Illustrator runs in this chat: a whole number from 0 to 100, where 0 means
+   * it only runs when the user asks (Gallery or slash command). Missing/null = the agent's Run Interval.
+   */
+  illustratorRunInterval?: number | null;
   /** Whether Roleplay Illustrator may generate and activate a reusable background after a scene-location change. */
   illustratorAutoBackgroundsEnabled?: boolean;
   /** Whether Conversation selfie commands should send the matching character avatar as a reference image. */
@@ -925,6 +938,8 @@ export interface MessageExtra {
   mariDeferredMutations?: boolean | null;
   /** Per-swipe sprite expressions from the Expression Engine agent */
   spriteExpressions?: Record<string, string> | null;
+  /** Presentation-only ID-macro card references for merged Roleplay narrator avatars; never chat members. */
+  referencedCharacterIds?: string[];
   /** All sprite owners in the completed expression result, including the persona. Empty means none. */
   expressionSpriteIds?: string[];
   /** Per-swipe CYOA choices from the CYOA Choices agent */
@@ -962,6 +977,10 @@ export interface MessageExtra {
   privateNote?: string | null;
   /** Character IDs whose generation context excludes this message. Global hiddenFromAI takes precedence. */
   hiddenFromAICharacterIds?: string[];
+  /** Advanced Memory hid this message from these characters automatically; decided once per message. */
+  autoVisibility?: { decidedAt: string; hiddenCharacterIds: string[] } | null;
+  /** The user changed this message's character visibility, so automatic visibility never touches it. */
+  visibilityManual?: boolean;
   /** When true, Roleplay renders this generated assistant turn as a fresh bubble instead of grouping with the previous assistant turn. */
   startsNewAssistantBubble?: boolean;
   /** Structured dice roll payload rendered by the chat UI. */

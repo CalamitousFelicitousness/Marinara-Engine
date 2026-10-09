@@ -48,7 +48,6 @@ import type { GameSegmentEdit } from "../../lib/game-segment-edits";
 import { hasVisibleGameNarrationText, parseGmTags, stripGmTagsKeepReadables } from "../../lib/game-tag-parser";
 import { audioManager } from "../../lib/game-audio";
 import { normalizeSpriteExpressionKey, resolveSpriteExpression } from "../../lib/sprite-expression-match";
-import { DIALOGUE_QUOTE_CAPTURE_GROUP_PATTERN_SOURCE, stripSurroundingDialogueQuotes } from "../../lib/dialogue-quotes";
 import type { SpriteInfo } from "../../hooks/use-characters";
 import { useTranslate } from "../../hooks/use-translate";
 import { useEffectiveTTSConfig } from "../../hooks/use-tts";
@@ -66,6 +65,7 @@ import { useGameModeStore } from "../../stores/game-mode.store";
 import { getDefaultChatTextColor, useUIStore } from "../../stores/ui.store";
 import { useChatStore } from "../../stores/chat.store";
 import { parseChatMetadata } from "../../lib/chat-display";
+import { CHARACTER_COLOR_CLASS } from "../../lib/chat-widget-colors";
 import { parseMessageExtraRecord } from "../../lib/chat-message-extra";
 import { isVisibleGameMessage } from "../../lib/chat-message-visibility";
 import { readDiceRollResults } from "../../lib/dice-roll-result";
@@ -81,8 +81,11 @@ import {
   splitTTSChunks,
 } from "../../lib/tts-dialogue";
 import {
+  buildGameTranslationSource,
+  formatGameTranslationSegment,
   formatTextQuotes,
   normalizeTextForMatch,
+  parseGameNarrationSegments,
   type PartyDialogueLine,
   type Message,
   type TTSConfig,
@@ -622,52 +625,37 @@ function hasGameSegmentOverrides(
   return false;
 }
 
+/** Older sources a saved translation of an unedited turn may still carry: the raw reply, and the
+ *  tag-stripped reply the server saved before #7010. */
+function getGameTranslationSourceAliases(
+  message: NarrationMessage,
+  segmentEdits?: Map<string, GameSegmentEdit>,
+  segmentDeletes?: Set<string>,
+): string[] {
+  return hasGameSegmentOverrides(message.id, segmentEdits, segmentDeletes)
+    ? []
+    : [message.content, stripGmTagsKeepReadables(message.content)];
+}
+
 function getGameTranslationSource(
   message: NarrationMessage,
   segmentEdits?: Map<string, GameSegmentEdit>,
   segmentDeletes?: Set<string>,
   speakerColors?: Map<string, string>,
 ): string {
-  const plainSource = () =>
-    (message.role === "assistant" || message.role === "narrator" || message.role === "system"
-      ? stripGmTagsKeepReadables(message.content)
-      : message.content.replace(/^\[(?:To the party|To the GM)]\s*/i, "")
-    ).trim();
-
-  // GM messages are always rebuilt through the segment path so the translator never sees
-  // AI-side tags like [main]/[patient]; only plain (user) messages keep the raw path.
-  const isGmMessage = message.role === "assistant" || message.role === "narrator" || message.role === "system";
-  if (!isGmMessage && !hasGameSegmentOverrides(message.id, segmentEdits, segmentDeletes)) return plainSource();
-
+  // The server's automatic translation saves buildGameTranslationSource() as the source, so an
+  // unedited turn must build exactly the same text or its saved translation stays hidden.
+  if (!hasGameSegmentOverrides(message.id, segmentEdits, segmentDeletes)) return buildGameTranslationSource(message);
   const colors = speakerColors ?? new Map<string, string>();
-  const parsed = parseNarrationSegments(message, colors);
-  const rebuilt = parsed.map((seg, index) => {
-    // Deleted segments stay as a bare placeholder so parsed indexes keep matching the
-    // renderer, which skips them separately via isDeletedSegment().
-    if (isDeletedSegment(segmentDeletes, message.id, index)) return "...";
-    const edit = segmentEdits?.get(`${message.id}:${index}`);
-    const withEdit = edit ? applySegmentEditOverlay(seg, edit, colors) : seg;
-    if (withEdit.type === "readable") {
-      const body = (withEdit.readableContent ?? withEdit.content).trim();
-      return `[${withEdit.readableType === "book" ? "Book" : "Note"}: ${body}]`;
-    }
-    if (withEdit.type === "dialogue" && withEdit.speaker) {
-      // Keep single-line dialogue: a newline inside the body would split this line into
-      // an extra segment when parseNarrationSegments reads the rebuilt text back.
-      const body = withEdit.content.replace(/\s*\n\s*/g, " ").trim();
-      const dialogueBody = `"${stripSurroundingDialogueQuotes(body)}"`;
-      // Use strictly single-bracket format `[Speaker]: "text"` so external translators
-      // cannot translate internal tags (e.g. `[main] [patient]` -> `[главный] [пациент]`),
-      // which would otherwise break reverse parsing and desync segment indices.
-      return `[${withEdit.speaker}]: ${dialogueBody}`;
-    }
-    // A blank line inside a narration segment splits it in two on the way back through
-    // the parser and shifts every later segment index, so keep single newlines only.
-    return withEdit.content.replace(/\r?\n(?:[ \t]*\r?\n)+/g, "\n");
-  });
-
-  const joined = rebuilt.join("\n\n").trim();
-  return joined || plainSource();
+  return buildGameTranslationSource(message, (segments) =>
+    segments.map((seg, index) => {
+      // Deleted segments stay as a bare placeholder so parsed indexes keep matching the
+      // renderer, which skips them separately via isDeletedSegment().
+      if (isDeletedSegment(segmentDeletes, message.id, index)) return "...";
+      const edit = segmentEdits?.get(`${message.id}:${index}`);
+      return formatGameTranslationSegment(edit ? applySegmentEditOverlay(seg, edit, colors) : seg);
+    }),
+  );
 }
 
 function getGameTranslatedSegmentText(
@@ -1189,6 +1177,11 @@ export function GameNarration({
   const fallbackDialogueColor = defaultDialogueColor || getDefaultChatTextColor(theme);
   const personaDialogueColor =
     personaInfo?.dialogueColor || fallbackDialogueColor || personaInfo?.nameColor || "#a5b4fc";
+  // Speaker colors are a card's own dialogue color or the fallback. Only an own color outranks
+  // Apply preset colors (chat-widget-surfaces.css); the fallback follows the preset text.
+  // ponytail: an own color identical to the fallback follows the preset too; track own colors per speaker if that matters.
+  const dialogueColorClass = (color?: string) =>
+    color && color !== fallbackDialogueColor ? CHARACTER_COLOR_CLASS : undefined;
   const useStackedLogDisplay = gameDialogueDisplayMode === "stacked";
   const showLogsButton = !useStackedLogDisplay;
   const [editingContent, setEditingContent] = useState<string | null>(null);
@@ -1345,6 +1338,9 @@ export function GameNarration({
     }
     return byName;
   }, [activeCharacterEntries, personaInfo, speakerAvatarMap]);
+  // Name colors fall back to the line's dialogue color; only a speaker's own color outranks Apply preset colors.
+  const nameColorClass = (speaker?: string | null) =>
+    speaker && findNamedMapValue(speakerNameColors, speaker) ? CHARACTER_COLOR_CLASS : undefined;
 
   const gameNpcs = useGameModeStore((s) => s.npcs);
   const sourceMessagesById = useMemo(() => new Map(messages.map((message) => [message.id, message])), [messages]);
@@ -1512,7 +1508,7 @@ export function GameNarration({
     (message: NarrationMessage, source: string | undefined) =>
       source !== undefined &&
       (source === gameTranslationSources.get(message.id) ||
-        (!hasGameSegmentOverrides(message.id, segmentEdits, segmentDeletes) && source === message.content)),
+        getGameTranslationSourceAliases(message, segmentEdits, segmentDeletes).includes(source)),
     [gameTranslationSources, segmentEdits, segmentDeletes],
   );
 
@@ -1566,7 +1562,7 @@ export function GameNarration({
       latestAssistant.id,
       source,
       latestAssistant.chatId,
-      hasGameSegmentOverrides(latestAssistant.id, segmentEdits, segmentDeletes) ? [] : [latestAssistant.content],
+      getGameTranslationSourceAliases(latestAssistant, segmentEdits, segmentDeletes),
     );
   }, [
     parsedActiveChatMetadata.autoTranslate,
@@ -3181,7 +3177,10 @@ export function GameNarration({
   const gameAvatarScale = useUIStore((s) => s.gameAvatarScale);
   const narrationFontStyle = useMemo<CSSProperties>(() => ({ fontSize: `${chatFontSize}px` }), [chatFontSize]);
   const narrationStyle = useMemo<CSSProperties>(
-    () => (chatFontColor ? { ...narrationFontStyle, color: chatFontColor } : narrationFontStyle),
+    () =>
+      chatFontColor
+        ? { ...narrationFontStyle, color: `var(--mari-chat-resolved-text, ${chatFontColor})` }
+        : narrationFontStyle,
     [chatFontColor, narrationFontStyle],
   );
   const gameAvatarScaleStyle = useMemo<CSSProperties>(
@@ -3885,15 +3884,15 @@ export function GameNarration({
   }, [gameNarrationCollapsed, requestsCollapsedNarration, setGameNarrationCollapsed]);
 
   const NARRATION_ACTION_BTN =
-    "flex items-center gap-1.5 rounded-lg bg-[var(--muted)]/30 px-3 py-1.5 text-xs text-[var(--foreground)]/70 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--foreground)] dark:bg-white/10 dark:text-white/70 dark:hover:bg-white/20 dark:hover:text-white";
+    "mari-chat-style-control mari-game-action flex items-center gap-1.5 rounded-lg bg-[var(--muted)]/30 px-3 py-1.5 text-xs text-[var(--foreground)]/70 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--foreground)] dark:bg-white/10 dark:text-white/70 dark:hover:bg-white/20 dark:hover:text-white";
   const NARRATION_META_BTN =
-    "flex min-h-7 items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--muted)]/20 px-2.5 py-1 text-xs text-[var(--foreground)]/75 transition-colors hover:bg-[var(--muted)]/40 dark:border-white/10 dark:bg-white/5 dark:text-white/75 dark:hover:bg-white/10";
+    "mari-chat-style-control mari-game-meta flex min-h-7 items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--muted)]/20 px-2.5 py-1 text-xs text-[var(--foreground)]/75 transition-colors hover:bg-[var(--muted)]/40 dark:border-white/10 dark:bg-white/5 dark:text-white/75 dark:hover:bg-white/10";
   const NARRATION_COUNT_BADGE =
     "absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--foreground)] px-0.5 text-[0.55rem] font-bold text-[var(--background)] ring-1 ring-[var(--background)]/20 dark:bg-white/90 dark:text-black dark:ring-black/20";
   const ACTIVE_SEGMENT_ACTION_BTN =
-    "inline-flex items-center justify-center rounded p-1 text-[var(--muted-foreground)]/40 transition-colors hover:bg-[var(--muted)]/30 hover:text-[var(--muted-foreground)] dark:text-white/20 dark:hover:bg-white/10 dark:hover:text-white/60";
+    "mari-chat-style-control mari-game-active-action inline-flex items-center justify-center rounded p-1 text-[var(--muted-foreground)]/40 transition-colors hover:bg-[var(--muted)]/30 hover:text-[var(--muted-foreground)] dark:text-white/20 dark:hover:bg-white/10 dark:hover:text-white/60";
   const LOG_SEGMENT_ACTION_BTN =
-    "rounded p-1 text-[var(--foreground)]/45 opacity-100 transition-all hover:bg-[var(--muted)]/35 hover:text-[var(--foreground)]/70 md:opacity-0 md:group-hover/logseg:opacity-100 dark:text-white/45 dark:hover:bg-white/10 dark:hover:text-white/70";
+    "mari-chat-style-control mari-game-log-action rounded p-1 text-[var(--foreground)]/45 opacity-100 transition-all hover:bg-[var(--muted)]/35 hover:text-[var(--foreground)]/70 md:opacity-0 md:group-hover/logseg:opacity-100 dark:text-white/45 dark:hover:bg-white/10 dark:hover:text-white/70";
   const LOG_DELETE_ACTION_BTN =
     "text-[var(--marinara-chat-message-action-text)] hover:bg-[var(--marinara-chat-message-action-bg-hover)] hover:text-[var(--marinara-chat-message-action-text-hover)] dark:text-[var(--marinara-chat-message-action-text)] dark:hover:bg-[var(--marinara-chat-message-action-bg-hover)] dark:hover:text-[var(--marinara-chat-message-action-text-hover)]";
   const combatMetaButton = onRequestCombatStart ? (
@@ -4146,7 +4145,7 @@ export function GameNarration({
         {showInterruptControls && !interruptCommitted && (
           <button
             onClick={handleInterrupt}
-            className="flex h-full w-8 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--muted)]/20 text-[var(--foreground)]/75 transition-colors hover:bg-[var(--muted)]/40 hover:text-[var(--foreground)] dark:border-white/10 dark:bg-white/5 dark:text-white/75 dark:hover:bg-white/10 dark:hover:text-white"
+            className="mari-chat-style-control mari-game-nav flex h-full w-8 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--muted)]/20 text-[var(--foreground)]/75 transition-colors hover:bg-[var(--muted)]/40 hover:text-[var(--foreground)] dark:border-white/10 dark:bg-white/5 dark:text-white/75 dark:hover:bg-white/10 dark:hover:text-white"
             title={localizeUi("ui.game.gamenarration.pauseTheGmSoYouCanWriteBackNothing")}
             aria-label={localizeUi("ui.game.gamenarration.interrupt")}
           >
@@ -4156,7 +4155,7 @@ export function GameNarration({
         {showInterruptControls && interruptCommitted && (
           <button
             onClick={handleResume}
-            className="flex items-center gap-1 self-stretch rounded-lg border border-amber-400/40 bg-amber-400/15 px-2 text-xs font-semibold text-amber-100 transition-colors hover:bg-amber-400/25 hover:text-amber-50 sm:px-2.5 dark:border-amber-400/40 dark:bg-amber-400/15 dark:text-amber-100 dark:hover:bg-amber-400/25"
+            className="mari-chat-style-control mari-game-amber-control flex items-center gap-1 self-stretch rounded-lg border border-amber-400/40 bg-amber-400/15 px-2 text-xs font-semibold text-amber-100 transition-colors hover:bg-amber-400/25 hover:text-amber-50 sm:px-2.5 dark:border-amber-400/40 dark:bg-amber-400/15 dark:text-amber-100 dark:hover:bg-amber-400/25"
             title={localizeUi("ui.game.gamenarration.resumeNarrationYourInterruptHasNotBeenCommitted")}
             aria-label={localizeUi("ui.game.gamenarration.resume")}
           >
@@ -4169,8 +4168,9 @@ export function GameNarration({
             {!reviewingPast && (
               <button
                 onClick={() => setAutoPlay((v) => !v)}
+                aria-pressed={autoPlay}
                 className={cn(
-                  "flex items-center justify-center self-stretch rounded-lg border px-2 text-xs transition-colors",
+                  "mari-chat-style-control mari-game-nav mari-game-autoplay-control flex items-center justify-center self-stretch rounded-lg border px-2 text-xs transition-colors",
                   autoPlay
                     ? "border-[var(--primary)]/40 bg-[var(--primary)]/20 text-[var(--primary)]"
                     : "border-[var(--border)] bg-[var(--muted)]/20 text-[var(--foreground)]/70 hover:bg-[var(--muted)]/40 dark:border-white/10 dark:bg-white/5 dark:text-white/70 dark:hover:bg-white/10",
@@ -4187,7 +4187,7 @@ export function GameNarration({
             {reviewingPast && onJumpToLatest && (
               <button
                 onClick={onJumpToLatest}
-                className="flex items-center gap-1 self-stretch rounded-lg border border-amber-400/40 bg-amber-400/15 px-2 text-xs font-semibold text-amber-100 transition-colors hover:bg-amber-400/25 hover:text-amber-50 sm:px-2.5 dark:border-amber-400/40 dark:bg-amber-400/15 dark:text-amber-100 dark:hover:bg-amber-400/25"
+                className="mari-chat-style-control mari-game-amber-control flex items-center gap-1 self-stretch rounded-lg border border-amber-400/40 bg-amber-400/15 px-2 text-xs font-semibold text-amber-100 transition-colors hover:bg-amber-400/25 hover:text-amber-50 sm:px-2.5 dark:border-amber-400/40 dark:bg-amber-400/15 dark:text-amber-100 dark:hover:bg-amber-400/25"
                 title={localizeUi("ui.game.gamenarration.jumpBackToThePresent")}
                 aria-label={localizeUi("ui.game.gamenarration.returnToPresent")}
               >
@@ -4197,7 +4197,7 @@ export function GameNarration({
             )}
             <button
               onClick={nextSegment}
-              className="flex items-center justify-center self-stretch rounded-lg border border-[var(--border)] bg-[var(--muted)]/20 px-3 text-xs font-semibold text-[var(--foreground)]/75 transition-colors hover:bg-[var(--muted)]/40 dark:border-white/10 dark:bg-white/5 dark:text-white/75 dark:hover:bg-white/10"
+              className="mari-chat-style-control mari-game-nav flex items-center justify-center self-stretch rounded-lg border border-[var(--border)] bg-[var(--muted)]/20 px-3 text-xs font-semibold text-[var(--foreground)]/75 transition-colors hover:bg-[var(--muted)]/40 dark:border-white/10 dark:bg-white/5 dark:text-white/75 dark:hover:bg-white/10"
             >
               {!doneTyping ? localizeUi("ui.game.gamenarration.reveal") : localizeUi("onboarding.actions.next")}
             </button>
@@ -4217,7 +4217,7 @@ export function GameNarration({
       data-game-skip-bg-nav="true"
       data-component="GameNarration.CollapsedHandle"
       aria-expanded={false}
-      className="flex w-full shrink-0 items-center justify-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--card)]/70 px-3 py-1.5 text-[0.625rem] font-semibold uppercase tracking-wide text-[var(--foreground)]/70 shadow-[0_10px_24px_rgba(0,0,0,0.35)] backdrop-blur-md transition-colors hover:bg-[var(--card)]/90 hover:text-[var(--foreground)] dark:border-white/15 dark:bg-black/40 dark:text-white/70 dark:hover:bg-black/60 dark:hover:text-white"
+      className="mari-chat-style-control mari-game-collapsed-handle flex w-full shrink-0 items-center justify-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--card)]/70 px-3 py-1.5 text-[0.625rem] font-semibold uppercase tracking-wide text-[var(--foreground)]/70 shadow-[0_10px_24px_rgba(0,0,0,0.35)] backdrop-blur-md transition-colors hover:bg-[var(--card)]/90 hover:text-[var(--foreground)] dark:border-white/15 dark:bg-black/40 dark:text-white/70 dark:hover:bg-black/60 dark:hover:text-white"
       title={localizeUi("ui.game.gamenarration.expandNarration")}
       aria-label={
         narrationNeedsAttention
@@ -4293,9 +4293,7 @@ export function GameNarration({
             activeSourceMessage.id,
             gameTranslationSources.get(activeSourceMessage.id) ?? "",
             activeSourceMessage.chatId,
-            hasGameSegmentOverrides(activeSourceMessage.id, segmentEdits, segmentDeletes)
-              ? []
-              : [activeSourceMessage.content],
+            getGameTranslationSourceAliases(activeSourceMessage, segmentEdits, segmentDeletes),
           )
         }
         disabled={activeIsTranslating}
@@ -4469,7 +4467,12 @@ export function GameNarration({
           onClick={(event) => {
             event.preventDefault();
             event.stopPropagation();
-            void translate(sourceMessageId, gameTranslationSources.get(sourceMessage.id) ?? "", sourceMessage.chatId);
+            void translate(
+              sourceMessageId,
+              gameTranslationSources.get(sourceMessage.id) ?? "",
+              sourceMessage.chatId,
+              getGameTranslationSourceAliases(sourceMessage, segmentEdits, segmentDeletes),
+            );
           }}
           disabled={isTranslating}
           className={stackedActionButtonClass}
@@ -4792,7 +4795,7 @@ export function GameNarration({
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 flex-wrap items-center">
               <span
-                className="min-w-0 truncate text-[0.6875rem] font-bold"
+                className={cn("min-w-0 truncate text-[0.6875rem] font-bold", nameColorClass(seg.speaker))}
                 style={
                   nameColorStyle(findNamedMapValue(speakerNameColors, seg.speaker ?? "") ?? seg.color) ?? {
                     color: "rgb(186 230 253)",
@@ -4814,6 +4817,7 @@ export function GameNarration({
                 className={cn(
                   "mt-0.5 text-xs leading-relaxed text-[var(--foreground)]/80 dark:text-white/80",
                   seg.partyType === "thought" ? "italic opacity-80" : "font-semibold",
+                  dialogueColorClass(seg.color),
                 )}
                 style={seg.color ? { ...narrationFontStyle, color: seg.color } : narrationFontStyle}
                 dangerouslySetInnerHTML={{
@@ -4934,7 +4938,7 @@ export function GameNarration({
             (stackedLogEntries.length > 0 || stackedLogHeldHeight !== null) && (
               <div
                 ref={stackedLogShellRef}
-                className="mb-2 rounded-2xl border border-[var(--border)] bg-[var(--card)]/70 p-2 shadow-[0_16px_38px_rgba(0,0,0,0.35)] backdrop-blur-md [overflow-anchor:none] dark:border-white/10 dark:bg-black/40"
+                className="mari-chat-style-surface mari-game-narration-surface mari-game-stacked-log mb-2 rounded-2xl border border-[var(--border)] bg-[var(--card)]/70 p-2 shadow-[0_16px_38px_rgba(0,0,0,0.35)] backdrop-blur-md [overflow-anchor:none] dark:border-white/10 dark:bg-black/40"
                 style={stackedLogHeldHeight !== null ? { minHeight: `${stackedLogHeldHeight}px` } : undefined}
                 data-game-skip-bg-nav="true"
               >
@@ -5064,6 +5068,7 @@ export function GameNarration({
                       line={displayedLine}
                       avatar={charAvatar}
                       color={charColor}
+                      colorClassName={dialogueColorClass(charColor)}
                       nameColor={charNameColor}
                       voiceControl={voiceControl}
                       translation={translationPanel}
@@ -5108,7 +5113,7 @@ export function GameNarration({
             ref={activePanelRef}
             data-game-skip-bg-nav="true"
             data-component="GameNarration.ActivePanel"
-            className="shrink-0 rounded-2xl border border-[var(--border)] bg-[var(--card)]/90 p-3 shadow-[0_16px_38px_rgba(0,0,0,0.45)] backdrop-blur-md dark:border-white/15 dark:bg-black/50"
+            className="mari-chat-style-surface mari-game-narration-surface shrink-0 rounded-2xl border border-[var(--border)] bg-[var(--card)]/90 p-3 shadow-[0_16px_38px_rgba(0,0,0,0.45)] backdrop-blur-md dark:border-white/15 dark:bg-black/50"
           >
             {/* Scene preparation gate: wait for effects before showing narration */}
             {scenePreparing && (
@@ -5165,7 +5170,7 @@ export function GameNarration({
                 <span className="text-sm text-red-300/80">{localizeUi("ui.game.gamenarration.generationFailed")}</span>
                 <button
                   onClick={onRetryGeneration}
-                  className="flex items-center gap-1.5 rounded-lg bg-[var(--muted)]/30 px-3 py-1.5 text-xs text-[var(--foreground)]/70 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--foreground)] dark:bg-white/10 dark:text-white/70 dark:hover:bg-white/20 dark:hover:text-white"
+                  className="mari-chat-style-control mari-game-action flex items-center gap-1.5 rounded-lg bg-[var(--muted)]/30 px-3 py-1.5 text-xs text-[var(--foreground)]/70 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--foreground)] dark:bg-white/10 dark:text-white/70 dark:hover:bg-white/20 dark:hover:text-white"
                 >
                   <RefreshCw size={12} />
                   {localizeUi("ui.game.gamesurfacecomponent.retry")}
@@ -5274,7 +5279,10 @@ export function GameNarration({
                             {/* Inert theming hook. The inner span lets a skewed name plate counter-skew its
                               text; unstyled it collapses to plain inline text. */}
                             <span
-                              className="experience-dialogue-speaker text-sm font-bold"
+                              className={cn(
+                                "experience-dialogue-speaker text-sm font-bold",
+                                nameColorClass(active.speaker),
+                              )}
                               style={
                                 nameColorStyle(
                                   findNamedMapValue(speakerNameColors, active.speaker ?? "") ?? active.color,
@@ -5336,6 +5344,7 @@ export function GameNarration({
                                 className={cn(
                                   "text-sm leading-relaxed",
                                   active.partyType === "thought" ? "italic opacity-80" : "font-semibold",
+                                  dialogueColorClass(active.color),
                                   doneTyping
                                     ? ""
                                     : "after:ml-0.5 after:inline-block after:h-4 after:w-[1px] after:animate-pulse after:bg-[var(--foreground)]/60 after:align-middle dark:after:bg-white/60",
@@ -5859,6 +5868,7 @@ export function GameNarration({
                                 sourceMessageId,
                                 gameTranslationSources.get(segmentSourceMessage.id) ?? "",
                                 segmentSourceMessage.chatId,
+                                getGameTranslationSourceAliases(segmentSourceMessage, segmentEdits, segmentDeletes),
                               );
                             }}
                             disabled={isTranslating}
@@ -6208,7 +6218,7 @@ export function GameNarration({
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center">
                                 <span
-                                  className="text-[0.6875rem] font-bold"
+                                  className={cn("text-[0.6875rem] font-bold", nameColorClass(seg.speaker))}
                                   style={
                                     nameColorStyle(
                                       findNamedMapValue(speakerNameColors, seg.speaker ?? "") ?? seg.color,
@@ -6230,6 +6240,7 @@ export function GameNarration({
                                   className={cn(
                                     "mt-0.5 text-xs leading-relaxed text-[var(--foreground)]/80 dark:text-white/80",
                                     seg.partyType === "thought" ? "italic opacity-80" : "font-semibold",
+                                    dialogueColorClass(seg.color),
                                   )}
                                   style={seg.color ? { ...narrationFontStyle, color: seg.color } : narrationFontStyle}
                                   dangerouslySetInnerHTML={{
@@ -6383,26 +6394,6 @@ export function GameNarration({
   );
 }
 
-/** Split PascalCase/camelCase identifiers into space-separated words.
- *  "FatuiAgent" → "Fatui Agent", "darkKnight" → "dark Knight"
- *  Already-spaced names pass through unchanged. */
-function humanizeName(name: string): string {
-  if (name.includes(" ") || name.includes("_")) return name;
-  return name.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2");
-}
-
-function normalizeInlineVnDialogueLines(source: string): string {
-  return source
-    .replace(
-      /([^\n])\s+(\[[^\]]+\]\s*\[(?:main|side|extra|action|thought|whisper(?::[^\]]+)?)\]\s*(?:\[[^\]]+\])?\s*:)/gi,
-      "$1\n$2",
-    )
-    .replace(
-      /(\[[^\]]+\]\s*\[(?:main|side|extra|whisper(?::[^\]]+)?)\]\s*(?:\[[^\]]+\])?\s*:\s*(?:"[^"]*"|“[^”]*”|«[^»]*»))\s+(?=\S)/gi,
-      "$1\n",
-    );
-}
-
 type TruncationLine = {
   text: string;
   originalStart: number;
@@ -6527,212 +6518,9 @@ export function parseNarrationSegments(
   speakerColors: Map<string, string>,
   extractInlineDialogue = true,
 ): NarrationSegment[] {
-  // Use stripGmTagsKeepReadables so [Note:] and [Book:] stay inline for position-aware display.
-  // Extract them first as placeholders so multi-line readables don't break line-based parsing.
-  const withReadables = stripGmTagsKeepReadables(message.content || "");
-  const readableContents: Array<{ type: "note" | "book"; content: string }> = [];
-  let source = withReadables;
-  // Replace [Note: ...] and [Book: ...] with placeholders (balanced bracket aware)
-  for (const tag of ["[Note:", "[Book:"] as const) {
-    const rType = tag === "[Note:" ? "note" : "book";
-    let searchFrom = 0;
-    while (true) {
-      const idx = source.toLowerCase().indexOf(tag.toLowerCase(), searchFrom);
-      if (idx === -1) break;
-      let depth = 0;
-      let end = -1;
-      for (let i = idx; i < source.length; i++) {
-        if (source[i] === "[") depth++;
-        else if (source[i] === "]") {
-          depth--;
-          if (depth === 0) {
-            end = i;
-            break;
-          }
-        }
-      }
-      if (end === -1) {
-        searchFrom = idx + 1;
-        continue;
-      }
-      const inner = source.slice(idx + tag.length, end).trim();
-      const placeholderIdx = readableContents.length;
-      readableContents.push({ type: rType, content: inner });
-      const placeholder = `\n__READABLE_${placeholderIdx}__\n`;
-      source = source.slice(0, idx) + placeholder + source.slice(end + 1);
-      searchFrom = idx + placeholder.length;
-    }
-  }
-
-  const lines = normalizeInlineVnDialogueLines(source).split(/\r?\n/);
-  const parsed: NarrationSegment[] = [];
-  // Readable placeholder regex
-  const readablePlaceholderRe = /^__READABLE_(\d+)__$/;
-  // Legacy format (backward compat): Narration: text
-  const narrationRegex = /^\s*Narration\s*:\s*(.+)$/i;
-  // Legacy format (backward compat): Dialogue [Name] [expression]: "text"
-  const legacyDialogueRegex = /^\s*Dialogue\s*\[([^\]]+)\]\s*(?:\[([^\]]+)\])?\s*:\s*(.+)$/i;
-  // New compact format: [Name]: "text", [Name] [expression]: "text", plus any extra
-  // bracket groups a translator may add (e.g. [Name] [main] [patient]: "text").
-  // Group 1 = speaker, group 2 = sprite/expression (last bracket), group 3 = dialogue text.
-  const compactDialogueRegex = /^\s*\[([^\]]+)\](?:\s*\[[^\]]+\])*?\s*(?:\[([^\]]+)\])?\s*:\s*(.+)$/;
-  // Party dialogue lines — parsed inline as VN segments
-  const partyLineRegex =
-    /^\s*\[([^\]]+)\]\s*\[(main|side|extra|action|thought|whisper(?::([^\]]+))?)\]\s*(?:\[([^\]]+)\])?\s*:\s*(.+)$/i;
-
-  let fallbackText = "";
-
-  for (const rawLine of lines) {
-    const line = rawLine.trim();
-    if (!line) {
-      if (fallbackText.trim()) {
-        parsed.push({
-          id: `${message.id}-fallback-${parsed.length}`,
-          type: "narration",
-          content: fallbackText.trim(),
-        });
-        fallbackText = "";
-      }
-      continue;
-    }
-
-    // Detect readable placeholders ([Note:] / [Book:] inline markers)
-    const readableMatch = line.match(readablePlaceholderRe);
-    if (readableMatch) {
-      if (fallbackText.trim()) {
-        parsed.push({
-          id: `${message.id}-fallback-${parsed.length}`,
-          type: "narration",
-          content: fallbackText.trim(),
-        });
-        fallbackText = "";
-      }
-      const rIdx = parseInt(readableMatch[1]!, 10);
-      const readable = readableContents[rIdx];
-      if (readable) {
-        parsed.push({
-          id: `${message.id}-readable-${parsed.length}`,
-          type: "readable",
-          content: readable.type === "book" ? "You find a book..." : "You find a note...",
-          readableType: readable.type,
-          readableContent: readable.content,
-        });
-      }
-      continue;
-    }
-
-    // Parse party dialogue lines inline as VN segments
-    const partyMatch = line.match(partyLineRegex);
-    if (partyMatch) {
-      if (fallbackText.trim()) {
-        parsed.push({
-          id: `${message.id}-fallback-${parsed.length}`,
-          type: "narration",
-          content: fallbackText.trim(),
-        });
-        fallbackText = "";
-      }
-      const character = humanizeName(partyMatch[1]!.trim());
-      let rawType = partyMatch[2]!.toLowerCase().replace(/:.*$/, "") as NarrationSegment["partyType"];
-      const whisperTarget = partyMatch[3]?.trim() ? humanizeName(partyMatch[3].trim()) : undefined;
-      const expression = partyMatch[4]?.trim() || undefined;
-      let content = partyMatch[5]!.trim();
-
-      // Normalize legacy `extra` → `side` so historical messages render with the single popup style.
-      if (rawType === "extra") rawType = "side";
-
-      // Strip surrounding dialogue quotes for spoken dialogue types
-      if ((rawType === "main" || rawType === "side" || rawType === "whisper") && content.length >= 2) {
-        content = stripSurroundingDialogueQuotes(content);
-      }
-
-      const color = findNamedMapValue(speakerColors, character);
-      // Remap action → plain narration (no special styling)
-      if (rawType === "action") {
-        parsed.push({
-          id: `${message.id}-party-action-${character}-${parsed.length}`,
-          type: "narration",
-          content,
-        });
-        continue;
-      }
-      const isSpoken = rawType === "main" || rawType === "whisper" || rawType === "thought" || rawType === "side";
-      parsed.push({
-        id: `${message.id}-party-${rawType}-${character}-${parsed.length}`,
-        type: isSpoken ? "dialogue" : "narration",
-        speaker: character,
-        sprite: expression,
-        content,
-        color,
-        partyType: rawType,
-        whisperTarget,
-      });
-      continue;
-    }
-
-    const narrationMatch = line.match(narrationRegex);
-    if (narrationMatch) {
-      if (fallbackText.trim()) {
-        parsed.push({
-          id: `${message.id}-fallback-${parsed.length}`,
-          type: "narration",
-          content: fallbackText.trim(),
-        });
-        fallbackText = "";
-      }
-      parsed.push({
-        id: `${message.id}-n-${parsed.length}`,
-        type: "narration",
-        content: narrationMatch[1]!.trim(),
-      });
-      continue;
-    }
-
-    const dialogueMatch = line.match(legacyDialogueRegex) || line.match(compactDialogueRegex);
-    if (dialogueMatch) {
-      if (fallbackText.trim()) {
-        parsed.push({
-          id: `${message.id}-fallback-${parsed.length}`,
-          type: "narration",
-          content: fallbackText.trim(),
-        });
-        fallbackText = "";
-      }
-      const speaker = humanizeName(dialogueMatch[1]!.trim());
-      let content = dialogueMatch[3]!.trim();
-      content = stripSurroundingDialogueQuotes(content);
-      parsed.push({
-        id: `${message.id}-d-${parsed.length}`,
-        type: "dialogue",
-        speaker,
-        sprite: dialogueMatch[2]?.trim() || undefined,
-        content,
-        color: findNamedMapValue(speakerColors, speaker),
-      });
-      continue;
-    }
-
-    fallbackText += `${fallbackText ? "\n" : ""}${line}`;
-  }
-
-  if (fallbackText.trim()) {
-    parsed.push({
-      id: `${message.id}-fallback-${parsed.length}`,
-      type: "narration",
-      content: fallbackText.trim(),
-    });
-  }
-
-  // If all segments are plain fallback narration (GM didn't use structured format),
-  // try to extract inline dialogue like: "Hello," she said. / «Hmm,» he muttered.
-  if (extractInlineDialogue && parsed.length > 0 && parsed.every((s) => s.type === "narration")) {
-    const expanded = splitInlineDialogue(parsed, message.id, speakerColors);
-    if (expanded.some((s) => s.type === "dialogue")) {
-      return expanded;
-    }
-  }
-
-  return parsed;
+  return parseGameNarrationSegments(message, extractInlineDialogue).map((segment) =>
+    segment.speaker ? { ...segment, color: findNamedMapValue(speakerColors, segment.speaker) } : segment,
+  );
 }
 
 /**
@@ -6795,75 +6583,4 @@ function truncateMessageContentAtSegment(rawContent: string, segmentIndexInclusi
 
   if (lastIncludedLineIdx < 0) return rawContent;
   return rawContent.slice(0, lines[lastIncludedLineIdx]!.originalEnd);
-}
-
-/**
- * Fallback: split narration segments that contain inline quoted speech into
- * separate narration + dialogue segments. Handles patterns like:
- *   "Hello there," she said warmly.
- *   «Watch out!» Alaric warned.
- *   「小心！」 Alaric warned.
- */
-function splitInlineDialogue(
-  segments: NarrationSegment[],
-  msgId: string,
-  speakerColors: Map<string, string>,
-): NarrationSegment[] {
-  const result: NarrationSegment[] = [];
-  // Match common dialogue quote pairs followed by optional comma/period and a speaker name.
-  const inlineDialogueRe = new RegExp(
-    `(?:^|(?<=\\s))(?:${DIALOGUE_QUOTE_CAPTURE_GROUP_PATTERN_SOURCE}|'([^']+)')[,.]?\\s+([A-Z][a-z]+(?:\\s[A-Z][a-z]+)?)\\s+(?:said|says|whispered|whispers|muttered|mutters|replied|replies|called|calls|shouted|shouts|asked|asks|warned|warns|growled|growls|hissed|hisses|exclaimed|exclaims|murmured|murmurs|sighed|sighs|snapped|snaps|barked|barks|declared|declares|continued|continues|added|adds|spoke|speaks|began|begins|remarked|remarks|chuckled|chuckles|laughed|laughs|cried|cries)\\b`,
-    "gi",
-  );
-
-  for (const seg of segments) {
-    if (seg.type !== "narration") {
-      result.push(seg);
-      continue;
-    }
-
-    const text = seg.content;
-    let lastIndex = 0;
-    let match: RegExpExecArray | null;
-    let didSplit = false;
-    inlineDialogueRe.lastIndex = 0;
-
-    while ((match = inlineDialogueRe.exec(text)) !== null) {
-      didSplit = true;
-      const before = text.slice(lastIndex, match.index).trim();
-      if (before) {
-        result.push({
-          id: `${msgId}-fallback-split-${result.length}`,
-          type: "narration",
-          content: before,
-        });
-      }
-
-      const speech = match[1] ?? match[2] ?? match[3] ?? match[4] ?? match[5] ?? match[6] ?? "";
-      const speaker = match[7]!;
-      result.push({
-        id: `${msgId}-inline-d-${result.length}`,
-        type: "dialogue",
-        speaker,
-        content: `"${speech}"`,
-        color: findNamedMapValue(speakerColors, speaker),
-      });
-      lastIndex = match.index + match[0].length;
-    }
-
-    if (didSplit) {
-      const after = text.slice(lastIndex).trim();
-      if (after) {
-        result.push({
-          id: `${msgId}-fallback-split-${result.length}`,
-          type: "narration",
-          content: after,
-        });
-      }
-    } else {
-      result.push(seg);
-    }
-  }
-
-  return result;
 }

@@ -37,7 +37,13 @@ test("Roleplay agents can omit chat summaries without changing other modes", asy
       trackerPanelEnabled: false,
       chibiProfessorMariEnabled: false,
       appAccentPulseMode: false,
-      chatSettingsExpandedSections: { "roleplay-agents": true, "game-agents": true, "conversation-agents": true },
+      chatSettingsExpandedSections: {
+        "roleplay-agents": true,
+        "game-agents": true,
+        "conversation-agents": true,
+        // Attach chat summaries sits in Roleplay's Trackers Control card.
+        [`${chat.id}:trackers-control`]: true,
+      },
       gameInstantTextReveal: true,
       theme: info.project.name === "desktop-chromium" ? "light" : "dark",
     });
@@ -89,7 +95,7 @@ test("Roleplay agents can omit chat summaries without changing other modes", asy
     const helpButton = cost.getByRole("button", { name: "Show help", exact: true });
     const toggleHelp = () => (info.project.name === "desktop-chromium" ? helpButton.click() : helpButton.tap());
     await toggleHelp();
-    const help = page.getByText(/^Approximate\. Each call also carries chat context/u);
+    const help = page.getByText(/^A rough estimate\. Each request also includes the chat itself/u);
     await expect(help).toBeVisible();
     await expect(help).toContainText("Smaller models may slow down or fail past");
     await expect(helpButton).toHaveAttribute("aria-expanded", "true");

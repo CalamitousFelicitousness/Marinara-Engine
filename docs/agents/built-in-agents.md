@@ -8,15 +8,58 @@ An agent is a small AI helper that runs automatically alongside your main chat r
 
 Each agent below shows three quick facts.
 
-- **Phase or integration**: when a normal pipeline agent runs. **Pre-Generation** runs before the reply and can add text to the prompt. **Parallel** runs at the same time as the reply and does not see the finished text. **Post-Processing** runs after the reply is complete and can read it (some can also rewrite it). Feature packages such as Maps, Calls, and Conversation games integrate directly into their chat surface instead.
+- **Phase or integration**: when a normal pipeline agent runs. **Pre-Generation** runs before the reply and can add text to the prompt. **Parallel** runs at the same time as the reply and does not see the finished text. **Post-Processing** runs after the reply is complete and can read it (some can also rewrite it). Feature packages such as Maps, Calls, and Conversation games integrate directly into their chat surface instead. Apps open in their own Home tab.
 - **Where it works**: the chat modes that let you add the agent. Most agents work in **Roleplay** chats. A few work in other modes, and each entry says which.
 - **Key settings**: the settings you are most likely to change. You set these when you add the agent, or later in the agent's setup card in **Chat Settings**.
 
-Marinara groups its agents in the **Agents** panel into **Apps**, **Writer Agents**, **Tracker Agents**, and **Misc Agents**. Apps are packages with their own Home tab, like Noodle and Slurp. This reference describes Noodle in the Misc agents section.
+Marinara groups its agents in the **Agents** panel into **Apps**, **Writer Agents**, **Tracker Agents**, and **Misc Agents**. Apps are packages with their own Home tab, like Noodle and Slurp. This reference lists them first, in the Apps section.
 
 A run interval means the agent runs once every few user and assistant messages instead of after every message. You can change a run interval in the agent's setup, up to 100.
 
-Illustrator also accepts **0** for manual-only generation: it stays available for Gallery actions but never runs automatically. Other agents keep their existing positive intervals.
+In Roleplay, Illustrator's run interval is set per chat, in its card in **Chat Settings**. The value in its setup is the default for chats that don't set their own. Illustrator also accepts **0** for manual-only generation: it stays available for Gallery actions but never runs automatically. Other agents keep their existing positive intervals.
+
+## Apps
+
+Apps are packages with their own tab in **Home**. You open and use them on their own instead of adding them to a chat. Each one asks you to restart Marinara Engine after you install it.
+
+### Noodle
+
+Adds the optional local Noodle public timeline. It opens in a dedicated Home tab instead of running in the normal chat-agent pipeline.
+
+- **Integration**: Feature package; it contributes the Home tab, local routes, generation and media flows, and background schedulers.
+- **Where it works**: Home, with optional context carried in from Conversation, Roleplay, and Game chats.
+- **Key settings**: install it from **Agents → Download Agents** and restart Marinara Engine when prompted. Inside Noodle, you can configure invited accounts, text and image connections, timeline refreshes, random users, and chat carryover.
+- **Data lifecycle**: uninstalling removes the Home tab and stops package routes and schedulers after restart while preserving existing Noodle data for a later reinstall.
+- **Full guide**: [Noodle: The In-App Social Timeline](../noodle/overview.md).
+
+### Slurp
+
+A private social app for your characters. Turn characters and personas into Creators, post public or locked photos, and watch a simulated audience follow, subscribe, unlock, comment, and message them. By default, it is tuned for adult content. It is all pretend: prices are fictional and involve no real payments.
+
+- **Integration**: App; it opens in its own **Slurp** tab in **Home**.
+- **Where it works**: Home.
+- **Key settings**: install it from **Agents → Download Agents**, restart Marinara Engine when prompted, then open **Home → Slurp**. To let a chat's characters remember their recent Slurp posts and messages, turn on **Include Slurp activity** in that chat's **Chat Settings**, under **Connected Chats**. Carryover must also be on for that chat mode in Slurp's settings. **Slurp Settings → Autopurge** removes old Slurp media to save space; it is off by default.
+- **Older names**: older catalogs list it as **Slurp Remastered**, next to the retired **Slurp Legacy** package. Slurp Legacy gets no more updates.
+- **Full guide**: [Slurp package guide](https://github.com/Pasta-Devs/Marinara-Agents/blob/main/packages/slurp2/README.md).
+
+### Gacha Forge
+
+A complete gacha game. Describe a world and Gacha Forge builds the rest: banners to pull on, a cast the model writes and paints for you, story chapters told by a visual-novel narrator, and the battles, gear, and events that grow around them. Your lorebooks can feed the world, but a hand-written scenario is enough.
+
+- **Integration**: App; it opens in its own **Gacha Forge** tab in **Home**.
+- **Where it works**: Home.
+- **Key settings**: install it from **Agents → Download Agents**, restart Marinara Engine when prompted, then open **Home → Gacha Forge**. Uninstalling removes the tab after a restart.
+- **Full guide**: [Gacha Forge package guide](https://github.com/Pasta-Devs/Marinara-Agents/blob/main/packages/gacha-forge/README.md).
+
+### Modern Life Sim
+
+A life simulation. You live in a small town on a clock, with a job to find and keep, bills to pay, and energy and hunger to look after. The people around you come from your own character cards, and your relationships with them grow scene by scene. A visual-novel narrator tells the scenes that matter.
+
+- **Integration**: App; it opens in its own **Life Sim** tab in **Home**.
+- **Where it works**: Home.
+- **Availability**: **Staging only**, requiring Engine **2.4.4+** (below 4.0.0). It is an alpha. If an update changes something an older save depends on, Life Sim tells you when you open that save, and you can start a new life or continue at your own risk.
+- **Key settings**: install it from **Agents → Download Agents**, restart Marinara Engine when prompted, then open **Home → Life Sim**. It needs a text connection. An image connection is optional: without one, places show illustrated cards instead of generated backgrounds. Optional extras called modules stay off unless you switch them on for a life; the **Adult** module asks you to confirm that you are an adult.
+- **Full guide**: [Modern Life Sim package guide](https://github.com/Pasta-Devs/Marinara-Agents/blob/staging/packages/modern-life-sim/README.md).
 
 ## Writer agents
 
@@ -162,9 +205,9 @@ Manages the active persona's inventory, equipment slots, item quantities and sto
 
 - **Phase**: Post-Processing, with inventory context supplied to later replies.
 - **Where it works**: Roleplay; tracks the active persona, not party members or NPCs.
-- **Availability**: **Staging only**, requiring Engine **2.4.6+**. Stable publication is planned with the next Engine main release.
+- **Availability**: requires Engine **2.4.6+**.
 - **Install and activate**: install **Quartermaster** from **Agents → Download Agents** and restart when prompted. In each Roleplay chat, enable agents in **Chat Settings → Agents**, add Quartermaster under **Tracker Agents**, and choose its model connection. Open the dock from the launcher above the Tracker Panel.
-- **Key controls**: equip and store items, save outfits, restore inventory or revert recent tracker changes, and export/import a chat's setup. Image generation uses a separately configured image connection. The appearance macro and replacing the persona's avatar are optional; see the [Quartermaster package guide](https://github.com/Pasta-Devs/Marinara-Agents/blob/staging/packages/quartermaster/README.md) before enabling them.
+- **Key controls**: equip and store items, save outfits, restore inventory or revert recent tracker changes, and export/import a chat's setup. Image generation uses a separately configured image connection. The appearance macro and replacing the persona's avatar are optional; see the [Quartermaster package guide](https://github.com/Pasta-Devs/Marinara-Agents/blob/main/packages/quartermaster/README.md) before enabling them.
 
 ### Relationship Tracker
 
@@ -172,9 +215,9 @@ Maintains an editable relationship web for the character cards assigned to a Rol
 
 - **Phase**: Post-Processing, with relationship context supplied to later replies.
 - **Where it works**: Roleplay group chats.
-- **Availability**: **Staging only**, requiring Engine **2.4.4+** with the staging preview catalog. Stable publication is planned with the next Engine main release.
+- **Availability**: requires Engine **2.4.4+** (below 4.0.0).
 - **Install and activate**: install **Relationship Tracker** from **Agents → Download Agents** and restart when prompted. In each Roleplay chat, enable agents in **Chat Settings → Agents**, add it under **Tracker Agents**, and choose its model connection. The web appears in the Tracker Panel. Select **All relationships** or **Scene-only relationships** there once to initialize the chat before editing or updating relationships.
-- **Key controls**: **All relationships** or **Scene-only relationships** for prompt context, **Update from History** for a bounded recent-message scan, and manual editing, locking, and **Resume automatic updates**. **Context Size** (default 5 messages), **Presence lookback** (default 15), and the history scan's message count are separate controls. Hover or keyboard-focus a line to read it; on touch or pen, press the line. See the [Relationship Tracker package guide](https://github.com/Pasta-Devs/Marinara-Agents/blob/staging/packages/relationship-tracker/README.md).
+- **Key controls**: **All relationships** or **Scene-only relationships** for prompt context, **Update from History** for a bounded recent-message scan, and manual editing, locking, and **Resume automatic updates**. **Context Size** (default 5 messages), **Presence lookback** (default 15), and the history scan's message count are separate controls. Hover or keyboard-focus a line to read it; on touch or pen, press the line. See the [Relationship Tracker package guide](https://github.com/Pasta-Devs/Marinara-Agents/blob/main/packages/relationship-tracker/README.md).
 
 ### Memory Nag
 
@@ -209,16 +252,6 @@ Simulates a live audience reacting to your scene, shown as a floating **Echo** w
 - **Where it works**: Roleplay.
 - **Key settings**: you pick a style from its named options, such as **AO3 / Wattpad**, **Twitter / Reddit**, **4chan**, **Constructive**, **Hype Squad**, and **Harbingers**. Controls in the widget include **Re-run Echo Chamber** and **Clear messages**.
 
-### Noodle
-
-Adds the optional local Noodle public timeline. It opens in a dedicated Home tab instead of running in the normal chat-agent pipeline.
-
-- **Integration**: Feature package; it contributes the Home tab, local routes, generation and media flows, and background schedulers.
-- **Where it works**: Home, with optional context carried in from Conversation, Roleplay, and Game chats.
-- **Key settings**: install it from **Agents → Download Agents** and restart Marinara Engine when prompted. Inside Noodle, you can configure invited accounts, text and image connections, timeline refreshes, random users, and chat carryover.
-- **Data lifecycle**: uninstalling removes the Home tab and stops package routes and schedulers after restart while preserving existing Noodle data for a later reinstall.
-- **Full guide**: [Noodle: The In-App Social Timeline](../noodle/overview.md).
-
 ### Long-Term Memory
 
 Extracts durable memories from chat summaries, character records, and lorebooks into a package-owned vault, then recalls relevant context before the main reply. It supports scoped vault browsing, source imports, pending-draft review, and preset-marker placement for recalled context.
@@ -235,7 +268,7 @@ Responsible for image and video generations. It writes visual prompts for import
 
 - **Phase**: Post-Processing.
 - **Where it works**: Roleplay.
-- **Key settings**: it runs once every 5 user and assistant messages by default. Settings include **Prompt Model**, **Image Style**, **Attach Card Appearance**, and **Send Avatar References**. For the full setup, see [Illustrator agent](../media/illustrator-agent.md).
+- **Key settings**: it runs once every 5 user and assistant messages by default, and each Roleplay chat can change that with **Run Interval** on its card. Settings include **Prompt Model**, **Image Style**, **Attach Card Appearance**, and **Send Avatar References**. For the full setup, see [Illustrator agent](../media/illustrator-agent.md).
 
 ### Lorebook Keeper
 
@@ -283,7 +316,7 @@ Adds clickable "What will you do?" choice buttons after each reply, for a choose
 
 - **Phase**: Post-Processing.
 - **Where it works**: Roleplay.
-- **Key settings**: **Edit** to rewrite the choices and **Re-roll** to generate new ones.
+- **Key settings**: **Edit** to rewrite the choices and **Re-roll** to generate new ones. Turn on **Add CYOA choices to the message box instead of sending them** in **Settings** > **General** > **Input & Editing** to have clicked choices go into your message box.
 
 ### Storyboard
 

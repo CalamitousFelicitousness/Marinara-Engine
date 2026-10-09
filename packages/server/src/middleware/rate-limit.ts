@@ -72,6 +72,12 @@ export const BEHOLDER_STATE_RATE_LIMIT = {
   timeWindow: 60_000,
 } as const satisfies MarinaraRouteRateLimit;
 
+/** Each greeting-image bake downloads up to ten web images on the server. */
+export const GREETING_IMAGE_BAKE_RATE_LIMIT = {
+  max: 20,
+  timeWindow: 60_000,
+} as const satisfies MarinaraRouteRateLimit;
+
 export const BACKUP_RATE_LIMIT = {
   max: 60,
   timeWindow: 60_000,
@@ -100,7 +106,20 @@ export const DECISION_SIDECAR_RATE_LIMIT = {
   timeWindow: 60_000,
 } as const satisfies MarinaraRouteRateLimit;
 
+/**
+ * The health probe. Launchers, Docker, the Android bootstrap and the open app poll it, so it keeps the
+ * default allowance in a bucket of its own; it now also decides whether to include local model details.
+ */
+export const HEALTH_RATE_LIMIT = {
+  max: 600,
+  timeWindow: 60_000,
+} as const satisfies MarinaraRouteRateLimit;
+
 const ROUTE_RULES: Array<{ pattern: RegExp; rule: RateLimitRule }> = [
+  {
+    pattern: /^\/api\/health(?:\?|$)/,
+    rule: { key: "health", limit: HEALTH_RATE_LIMIT.max, windowMs: HEALTH_RATE_LIMIT.timeWindow },
+  },
   {
     pattern: /^\/api\/multiplayer\/guest-view(?:\?|$)/,
     rule: {
@@ -120,6 +139,14 @@ const ROUTE_RULES: Array<{ pattern: RegExp; rule: RateLimitRule }> = [
     rule: { key: "image-test", limit: 20, windowMs: 60_000 },
   },
   { pattern: /^\/api\/import\/st-bulk(?:\/|$)/, rule: { key: "bulk-import", limit: 20, windowMs: 60_000 } },
+  {
+    pattern: /^\/api\/characters\/[^/]+\/gallery\/bake(?:\?|$)/,
+    rule: {
+      key: "greeting-image-bake",
+      limit: GREETING_IMAGE_BAKE_RATE_LIMIT.max,
+      windowMs: GREETING_IMAGE_BAKE_RATE_LIMIT.timeWindow,
+    },
+  },
   {
     pattern: /^\/api\/backup(?:\/|$)/,
     rule: { key: "backup", limit: BACKUP_RATE_LIMIT.max, windowMs: BACKUP_RATE_LIMIT.timeWindow },

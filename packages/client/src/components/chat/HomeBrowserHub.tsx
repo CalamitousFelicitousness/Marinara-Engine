@@ -50,6 +50,7 @@ import {
   type AchievementEvent,
   type HomeCustomWidget,
   type HomeCustomWidgetCatalog,
+  type SceneFullPlan,
   homeAgentWidgetsSchema,
 } from "@marinara-engine/shared";
 import { useTranslation } from "react-i18next";
@@ -81,6 +82,7 @@ import {
 } from "../../lib/professor-mari-navigation";
 import { cn, getAvatarCropStyle } from "../../lib/utils";
 import { useUIStore } from "../../stores/ui.store";
+import { startSceneWithPromptPreferences } from "../../lib/scene-generation";
 import { useChatStore } from "../../stores/chat.store";
 import { CapabilityElement } from "../capabilities/CapabilityElement";
 import { Modal } from "../ui/Modal";
@@ -1767,6 +1769,8 @@ export function HomeBrowserHub({
   const debugMode = useUIStore((state) => state.debugMode);
   const reviewImagePromptsBeforeSend = useUIStore((state) => state.reviewImagePromptsBeforeSend);
   const conversationTimeZone = useUIStore((state) => state.conversationTimeZone);
+  const sceneOriginFocus = useUIStore((state) => state.sceneOriginFocus);
+  const setSceneOriginFocus = useUIStore((state) => state.setSceneOriginFocus);
   const achievementsEnabled = useUIStore((state) => state.achievementsEnabled);
   const professorMariNavigationEnabled = useUIStore((state) => state.professorMariNavigationEnabled);
   const hasCompletedOnboarding = useUIStore((state) => state.hasCompletedOnboarding);
@@ -2050,6 +2054,13 @@ export function HomeBrowserHub({
     if (!browserPackages.some((item) => item.id === activeTab)) setActiveTab("home");
   }, [activeTab, browserPackages]);
 
+  // A scene that ended, or its Back button, asks for the package thread it started in.
+  useEffect(() => {
+    if (sceneOriginFocus && browserPackages.some((item) => item.id === sceneOriginFocus.packageId)) {
+      setActiveTab(sceneOriginFocus.packageId);
+    }
+  }, [browserPackages, sceneOriginFocus]);
+
   useEffect(() => {
     if (activeTab !== "noodle" || !latestNoodleRefreshMarker) return;
     setSeenNoodleRefreshMarker((current) => {
@@ -2125,6 +2136,7 @@ export function HomeBrowserHub({
   const selectTab = (tab: string) => {
     setMobileBookmarksOpen(false);
     setFocusedPackagePost((current) => (current?.packageId === tab ? current : null));
+    if (sceneOriginFocus && sceneOriginFocus.packageId !== tab) setSceneOriginFocus(null);
     const professorSelected = tab === "professor";
     if (professorSelected) {
       pendingProfessorExitTabRef.current = null;
@@ -2945,6 +2957,35 @@ export function HomeBrowserHub({
                 focusPostId: focusedPackagePost?.packageId === activeTab ? focusedPackagePost.postId : null,
                 onFocusPostHandled: () =>
                   setFocusedPackagePost((current) => (current === focusedPackagePost ? null : current)),
+                // Capability API 1.66: a package with the `scenes` permission starts scenes from its own
+                // threads and is shown the thread a scene came back to. The host binds the package id.
+                focusSceneOriginId: sceneOriginFocus?.packageId === activeTab ? sceneOriginFocus.originId : null,
+                onFocusSceneOriginHandled: () => {
+                  if (useUIStore.getState().sceneOriginFocus === sceneOriginFocus) setSceneOriginFocus(null);
+                },
+                startScene: (options: {
+                  originId: string;
+                  prompt?: string;
+                  planHint?: string | null;
+                  plan?: SceneFullPlan | null;
+                  data?: Record<string, unknown> | null;
+                  initiatorCharacterId?: string | null;
+                  initiatorName?: string | null;
+                }) =>
+                  startSceneWithPromptPreferences({
+                    packageOrigin: { packageId: activeTab, originId: String(options?.originId ?? "") },
+                    prompt: typeof options?.prompt === "string" ? options.prompt : "",
+                    planHint: typeof options?.planHint === "string" ? options.planHint : null,
+                    plan: options?.plan && typeof options.plan === "object" ? options.plan : null,
+                    packageData: options?.data && typeof options.data === "object" ? options.data : null,
+                    initiatorCharId:
+                      typeof options?.initiatorCharacterId === "string" ? options.initiatorCharacterId : null,
+                    initiatorCharName: typeof options?.initiatorName === "string" ? options.initiatorName : null,
+                  }).then((response) => (response ? { chatId: response.chatId } : null)),
+                // Go to a chat, such as the scene a package thread is waiting on.
+                openChat: (chatId: string) => {
+                  if (typeof chatId === "string" && chatId) useChatStore.getState().setActiveChatId(chatId);
+                },
               }}
             />
           ) : activeTab === "professor" ? (
@@ -3047,11 +3088,14 @@ export function HomeBrowserHub({
                   >
                     <HomeWidgetFrame {...widgetFrameProps("professor")}>
                       <section
-                        className="mari-chrome-accent-frame mari-chrome-accent-panel mari-accent-animated mari-home-professor-widget relative grid h-full min-h-0 min-w-0 grid-cols-[minmax(0,1fr)_minmax(5.5rem,40%)] overflow-hidden rounded-2xl border p-3 sm:p-[clamp(0.85rem,1vw,1.2rem)]"
+                        className="mari-chrome-accent-frame mari-chrome-accent-panel mari-accent-animated mari-home-professor-widget relative grid h-full min-h-0 min-w-0 grid-cols-[minmax(0,1fr)_minmax(5.5rem,40%)] rounded-2xl border p-(--mari-home-professor-pad) [--mari-home-professor-pad:0.75rem] sm:[--mari-home-professor-pad:clamp(0.85rem,1vw,1.2rem)]"
                         data-component="HomeBrowserHub.ProfessorWidget"
                       >
+                        {/* The card no longer clips, so Mari can rise past its top border (#7032). The text column
+                            clips instead, reaching into the card's vertical padding so a large UI font is cut at
+                            the card's padding edge, as before, rather than further in. */}
                         <div
-                          className="relative z-[2] flex min-h-0 min-w-0 flex-col items-start justify-center"
+                          className="relative z-[2] -my-(--mari-home-professor-pad) flex min-h-0 min-w-0 flex-col items-start justify-center overflow-y-clip py-(--mari-home-professor-pad)"
                           data-home-professor-content
                         >
                           <p className="mari-chrome-accent-icon mari-accent-animated text-[0.625rem] font-extrabold uppercase tracking-[0.16em]">
@@ -3077,11 +3121,11 @@ export function HomeBrowserHub({
                           </button>
                         </div>
                         <div
-                          className="pointer-events-none relative z-[1] h-full min-h-0 w-full self-end overflow-hidden"
+                          className="pointer-events-none relative z-[1] h-full min-h-0 w-full self-end"
                           data-home-professor-art
                           aria-hidden="true"
                         >
-                          <div className="absolute bottom-0 right-0 w-[clamp(7rem,38cqw,11rem)] max-w-full">
+                          <div className="absolute bottom-0 right-0" data-home-professor-scene>
                             <ProfessorMariPixelScene active={false} />
                           </div>
                         </div>
@@ -3300,15 +3344,20 @@ export function HomeBrowserHub({
                             </div>
                           </div>
                         ) : (
-                          <div className="flex min-h-32 flex-col justify-end">
-                            <LibraryBig className="mb-2 text-[var(--home-module-accent)]" size="1.1rem" />
+                          // Reaches up into the header's mb-3 gap so a large UI font still fits. mt-auto, not
+                          // justify-end, bottom-aligns it: when nothing fits, it overflows below the title, never over it.
+                          <div className="-mt-3 flex h-[calc(100%+0.75rem)] min-h-0 flex-col">
+                            <LibraryBig
+                              className="mb-2 mt-auto min-h-0 text-[var(--home-module-accent)]"
+                              size="1.1rem"
+                            />
                             <p className="text-sm font-bold text-[var(--foreground)]">
                               {t("home.characterOfDay.emptyTitle")}
                             </p>
                             <button
                               type="button"
                               onClick={() => useUIStore.getState().openCharacterLibrary()}
-                              className="mt-2 self-start text-xs font-bold text-[var(--home-module-accent)] hover:underline"
+                              className="mt-1 self-start text-xs font-bold text-[var(--home-module-accent)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--home-module-accent)]"
                             >
                               {t("home.characterOfDay.emptyAction")}
                             </button>

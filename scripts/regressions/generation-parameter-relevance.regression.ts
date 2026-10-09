@@ -258,7 +258,15 @@ try {
     {
       provider: "mistral",
       baseUrl: `${base}/v1`,
-      models: ["mistral-large-latest", "magistral-medium-latest", "unknown-mistral"],
+      models: [
+        "mistral-large-latest",
+        "magistral-medium-latest",
+        "unknown-mistral",
+        "mistral-large-4-0",
+        "mistral-medium-3-5",
+        "mistral-small-latest",
+        "zai-glm-5-3",
+      ],
       make: registry("mistral", `${base}/v1`),
     },
     {
@@ -315,7 +323,7 @@ try {
     {
       provider: "openai_chatgpt",
       baseUrl: `${base}/v1`,
-      models: ["gpt-5.6-sol", "gpt-5.6-luna", "gpt-6-astra", "gpt-5.5"],
+      models: ["gpt-6.1-sol", "gpt-5.6-sol", "gpt-5.6-luna", "gpt-6-astra", "gpt-5.5", "gpt-4o", "some-future-model"],
       make: () => new OpenAIChatGPTProvider(`${base}/v1`, "test"),
     },
     {
@@ -458,6 +466,28 @@ try {
   assert.deepEqual(
     reasoningEffortChoices({ provider: "openai", model: "gpt-5.6-sol" }).map((choice) => choice.label),
     [null, "low", "medium", "high", "xhigh", "max"],
+  );
+  assert.deepEqual(
+    reasoningEffortChoices({ provider: "mistral", model: "mistral-large-4-0", selected: "xhigh" }).map((choice) => [
+      choice.value,
+      choice.label,
+    ]),
+    [
+      [null, null],
+      ["xhigh", "high"],
+    ],
+    "Mistral reasoning models offer Off and high only",
+  );
+  assert.deepEqual(
+    reasoningEffortChoices({ provider: "mistral", model: "zai-glm-5-3" }).map((choice) => choice.label),
+    [null, "low", "high", "max"],
+    "GLM 5.3 on Mistral offers its low, high and max levels",
+  );
+  assert.ok(
+    !relevantGenerationParameters({ provider: "mistral", model: "mistral-large-4-0", reasoningEffort: "high" }).has(
+      "assistantReasoningPrefill",
+    ),
+    "Mistral has no reasoning prefill field",
   );
   const chatGptChoices = reasoningEffortChoices({
     provider: "openai_chatgpt",

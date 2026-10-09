@@ -26,6 +26,7 @@ import {
   TRACKER_PANEL_WIDTH_MIN,
 } from "../../packages/client/src/lib/tracker-panel-size.js";
 import {
+  resolveTrackerPanelColumnRoom,
   resolveTrackerPanelDesktopWidth,
   resolveTrackerPanelGutterWidth,
 } from "../../packages/client/src/lib/tracker-panel-layout.js";
@@ -180,6 +181,18 @@ assert.equal(
   0,
   "a collapsed gutter clamps to zero rather than inverting",
 );
+// The gutter alone ignores the docked floor; the panel width does not.
+assert.equal(resolveTrackerPanelDesktopWidth({ preferredWidth: 340, ...gutterArgs, chatColumnRight: 1900 }), 12);
+assert.equal(
+  resolveTrackerPanelDesktopWidth({ preferredWidth: 340, ...gutterArgs, chatColumnRight: 1900, minWidth: 96 }),
+  96,
+);
+
+// ── Column room ──
+// Dock reserves the width below which it would float, so the column gives way before the panel does.
+assert.equal(resolveTrackerPanelColumnRoom("dock", 8, 96), TRACKER_PANEL_MIN_DOCK_WIDTH + 8);
+assert.equal(resolveTrackerPanelColumnRoom("float", 8, 96), 0, "a floating panel narrows nothing");
+assert.equal(resolveTrackerPanelColumnRoom("scale", 8, 96), 104);
 
 // ── The shared resize clamp ──
 assert.equal(clampPanelWidth(300, 240, 640), 300);

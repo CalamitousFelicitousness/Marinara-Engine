@@ -11,7 +11,12 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CalendarClock, ChevronDown, RefreshCw, Settings2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import type { ConversationPresenceStatus, ConversationStatusOverride, WeekSchedule } from "@marinara-engine/shared";
+import {
+  getActiveStatusOverride,
+  type ConversationPresenceStatus,
+  type ConversationStatusOverride,
+  type WeekSchedule,
+} from "@marinara-engine/shared";
 import type { Message } from "@marinara-engine/shared";
 import { chatKeys, useUpdateChatMetadata } from "../../hooks/use-chats";
 import { characterKeys, useUpdateCharacter } from "../../hooks/use-characters";
@@ -328,7 +333,8 @@ export function ConversationPresenceCard({
             status,
             activity,
             schedule: statusEntry?.schedule ?? schedules[id],
-            override: overrides[id],
+            // A timed status (from a character's command) stops counting once it ends.
+            override: getActiveStatusOverride(overrides[id]) ?? undefined,
           };
         })
         .filter((value): value is NonNullable<typeof value> => value !== null),
@@ -646,7 +652,7 @@ export function ConversationPresenceCard({
           <div
             ref={popoverRef}
             data-chat-floating-panel
-            className={cn(NEUTRAL_PANEL_SHELL, "fixed z-[9999] overflow-hidden")}
+            className={cn(NEUTRAL_PANEL_SHELL, "mari-chat-style-surface fixed z-[9999] overflow-hidden")}
             style={{
               top: position.top,
               left: `max(calc(var(--mari-chat-ui-inset-left, 0px) + 0.75rem), min(${position.left}px, calc(100vw - var(--mari-chat-ui-inset-right, 0px) - ${position.width}px - 0.75rem)))`,

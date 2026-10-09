@@ -2542,14 +2542,25 @@ function flattenAgentConditionalMacrosInner(input: string, decodeTextEntities: b
   return result;
 }
 
-/** Keep generated summaries inside their readers' scope without nesting duplicate character guards. */
-export function scopeCharacterSummary(input: string, characterNames: readonly string[], depth = 0): string {
+/**
+ * Keep generated summaries inside their readers' scope without nesting duplicate character guards.
+ * With `mark`, each part goes to `mark(text, itsReaders, depth)` instead of a character guard, and parts no
+ * reader knows are dropped, e.g. to note who knows what when one prompt serves several characters.
+ * `depth` counts the character conditions around the part; 0 is the top level.
+ */
+export function scopeCharacterSummary(
+  input: string,
+  characterNames: readonly string[],
+  depth = 0,
+  mark?: (text: string, readers: readonly string[], depth: number) => string,
+): string {
   const names = [...new Set(characterNames)];
   if (!names.length) return "";
-  if (names.some((name) => name.includes("{{") || name.includes("}}")))
+  if (!mark && names.some((name) => name.includes("{{") || name.includes("}}")))
     throw new Error("Cannot scope a summary: character names must not contain macro delimiters ({{ or }}).");
   const wrap = (text: string) => {
     if (!text.trim()) return text;
+    if (mark) return mark(text, names, depth);
     const condition = names
       .map((name) => `"${name.replace(/\\/gu, "\\\\").replace(/["\u201c\u201d\u201e\u201f]/gu, "\\$&")}"`)
       .join(" || ");
@@ -2588,13 +2599,37 @@ export function scopeCharacterSummary(input: string, characterNames: readonly st
             branch.condition === null ||
             evaluateCondition(branch.condition, { user: "", char: name, characters: [name], variables: {} }),
         );
-        result += scopeCharacterSummary(input.slice(branch.contentStart, branch.contentEnd), readers, depth + 1);
+        result += scopeCharacterSummary(input.slice(branch.contentStart, branch.contentEnd), readers, depth + 1, mark);
         remaining = remaining.filter((name) => !readers.includes(name));
       }
     }
     cursor = block.endEnd;
   }
   return result;
+}
+
+/**
+ * Render text once per reader of a shared prompt and mark each version not everyone gets,
+ * e.g. `[Known only to Maukie: …]` (#7237). `everyone` is how many readers the prompt has.
+ */
+export function markReaderVersions(
+  readers: readonly string[],
+  everyone: number,
+  render: (reader: string) => string,
+): string {
+  const readersByText = new Map<string, string[]>();
+  for (const reader of readers) {
+    const output = render(reader);
+    readersByText.set(output, [...(readersByText.get(output) ?? []), reader]);
+  }
+  return [...readersByText]
+    .map(([output, who]) => {
+      if (who.length === everyone || !output.trim()) return output;
+      const start = output.length - output.trimStart().length;
+      const end = output.trimEnd().length;
+      return `${output.slice(0, start)}[Known only to ${who.join(", ")}: ${output.slice(start, end)}]${output.slice(end)}`;
+    })
+    .join("");
 }
 
 function splitTopLevelDoubleColon(input: string): string[] {

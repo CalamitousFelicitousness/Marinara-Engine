@@ -1,5 +1,6 @@
 import { createServer } from "node:https";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { isIPv4, isIPv6, type Socket } from "node:net";
 import type { Duplex } from "node:stream";
 import {
   MULTIPLAYER_LIMITS,
@@ -14,6 +15,9 @@ import {
 
 export const MULTIPLAYER_PEER_SERVER_LIMITS = {
   sockets: 64,
+  // A quarter of all sockets: each guest Engine holds about two (its poll and an
+  // action), so several guests behind one router fit while one address cannot fill it.
+  socketsPerAddress: 16,
   inFlight: 24,
   requestsPerAddress: 120,
   requestsGlobal: 300,
@@ -34,12 +38,27 @@ interface PeerServerOptions {
 
 type Bucket = { count: number; until: number };
 
+/** Groups a socket by IPv4 address or IPv6 /64, the block one household or host usually holds. */
+export function multiplayerPeerSocketKey(address = "") {
+  const ip = address.split("%", 1)[0]!.toLowerCase();
+  if (ip.startsWith("::ffff:") && isIPv4(ip.slice(7))) return ip.slice(7);
+  if (!isIPv6(ip)) return ip;
+  const [head = "", tail] = ip.split("::");
+  const left = head ? head.split(":") : [];
+  const right = tail ? tail.split(":") : [];
+  // An embedded dotted IPv4 tail fills two groups.
+  const zeros = tail === undefined ? 0 : 8 - left.length - right.length - (tail.includes(".") ? 1 : 0);
+  const groups = [...left, ...Array<string>(zeros).fill("0"), ...right].slice(0, 4);
+  return `${groups.map((group) => Number.parseInt(group, 16).toString(16)).join(":")}::/64`;
+}
+
 /** A room-only TLS listener. It never mounts Engine routes or forwards HTTP requests. */
 export async function startMultiplayerPeerServer(options: PeerServerOptions) {
   if (!options.enabled()) throw new Error("Multiplayer is disabled");
   if (!options.tls.cert.length || !options.tls.key.length) throw new Error("Multiplayer requires TLS");
   const sockets = new Set<Duplex>();
-  const active = new Set<AbortController>();
+  const socketsByAddress = new Map<string, number>();
+  const active = new Map<AbortController, ServerResponse>();
   const addressBuckets = new Map<string, Bucket>();
   let globalBucket: Bucket = { count: 0, until: 0 };
   let closed = false;
@@ -53,8 +72,6 @@ export async function startMultiplayerPeerServer(options: PeerServerOptions) {
   }
   function allowedRate(address: string) {
     const now = Date.now();
-    if (globalBucket.until <= now) globalBucket = { count: 0, until: now + MULTIPLAYER_PEER_SERVER_LIMITS.windowMs };
-    if (++globalBucket.count > MULTIPLAYER_PEER_SERVER_LIMITS.requestsGlobal) return false;
     let bucket = addressBuckets.get(address);
     if (!bucket || bucket.until <= now) {
       if (!bucket && addressBuckets.size >= MULTIPLAYER_PEER_SERVER_LIMITS.addressBuckets) {
@@ -63,7 +80,11 @@ export async function startMultiplayerPeerServer(options: PeerServerOptions) {
       bucket = { count: 0, until: now + MULTIPLAYER_PEER_SERVER_LIMITS.windowMs };
       addressBuckets.set(address, bucket);
     }
-    return ++bucket.count <= MULTIPLAYER_PEER_SERVER_LIMITS.requestsPerAddress;
+    // Check the caller's own budget first: requests it already refuses must not spend
+    // the shared budget, or one flooding address could lock out every admitted guest.
+    if (++bucket.count > MULTIPLAYER_PEER_SERVER_LIMITS.requestsPerAddress) return false;
+    if (globalBucket.until <= now) globalBucket = { count: 0, until: now + MULTIPLAYER_PEER_SERVER_LIMITS.windowMs };
+    return ++globalBucket.count <= MULTIPLAYER_PEER_SERVER_LIMITS.requestsGlobal;
   }
   function error(reply: ServerResponse, code: MultiplayerErrorCode, status = 200) {
     if (reply.destroyed || reply.writableEnded) return;
@@ -101,6 +122,10 @@ export async function startMultiplayerPeerServer(options: PeerServerOptions) {
       headersTimeout: 5_000,
       requestTimeout: 10_000,
       keepAliveTimeout: 1_000,
+      // Enforce the header and request deadlines every second (Node checks every 30 s by
+      // default), so a socket that connects and sends nothing is closed in about 6 s.
+      // A long poll is unaffected: its request is complete and the handler bounds it.
+      connectionsCheckingInterval: 1_000,
     },
     (request, reply) => {
       const address = request.socket.remoteAddress ?? "unknown";
@@ -123,7 +148,7 @@ export async function startMultiplayerPeerServer(options: PeerServerOptions) {
       }
       if (active.size >= MULTIPLAYER_PEER_SERVER_LIMITS.inFlight) return error(reply, "busy");
       const abort = new AbortController();
-      active.add(abort);
+      active.set(abort, reply);
       const cancel = () => abort.abort();
       const onClose = () => {
         if (!reply.writableFinished) cancel();
@@ -161,7 +186,8 @@ export async function startMultiplayerPeerServer(options: PeerServerOptions) {
           error(reply, available() ? "invalid-message" : "disabled");
         } finally {
           clearTimeout(timer);
-          if (abort.signal.aborted) request.destroy();
+          // While closing, close() lets the final answer flush before it ends the socket.
+          if (abort.signal.aborted && !closed) request.destroy();
           active.delete(abort);
           request.off("aborted", cancel);
           reply.off("close", onClose);
@@ -172,12 +198,24 @@ export async function startMultiplayerPeerServer(options: PeerServerOptions) {
   server.maxConnections = MULTIPLAYER_PEER_SERVER_LIMITS.sockets;
   server.maxHeadersCount = 32;
   server.on("connection", (socket) => {
+    // Without a per-address share, one address holding idle sockets could lock out every guest.
+    const key = multiplayerPeerSocketKey((socket as Socket).remoteAddress);
+    const count = (socketsByAddress.get(key) ?? 0) + 1;
+    if (count > MULTIPLAYER_PEER_SERVER_LIMITS.socketsPerAddress) return socket.destroy();
+    socketsByAddress.set(key, count);
     sockets.add(socket);
-    socket.once("close", () => sockets.delete(socket));
+    socket.once("close", () => {
+      sockets.delete(socket);
+      const left = (socketsByAddress.get(key) ?? 1) - 1;
+      if (left > 0) socketsByAddress.set(key, left);
+      else socketsByAddress.delete(key);
+    });
   });
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
-    server.listen(options.port, options.host ?? "0.0.0.0", () => {
+    // No host binds "::" (IPv4 and IPv6) where IPv6 exists and falls back to "0.0.0.0", so
+    // an IPv6 room address is reachable as well as an IPv4 one.
+    server.listen({ port: options.port, host: options.host }, () => {
       server.off("error", reject);
       resolve();
     });
@@ -194,10 +232,32 @@ export async function startMultiplayerPeerServer(options: PeerServerOptions) {
     async close() {
       if (closed) return;
       closed = true;
-      for (const controller of active) controller.abort();
+      const stopped = new Promise<void>((resolve, reject) =>
+        server.close((cause) => (cause ? reject(cause) : resolve())),
+      );
+      // Answer every waiting poll or action before the sockets go, so admitted guests
+      // learn the room closed instead of retrying a dead address as a network blip.
+      const answered = [...active].map(([controller, reply]) => {
+        error(reply, "disabled");
+        controller.abort();
+        return reply.writableFinished || reply.destroyed
+          ? undefined
+          : new Promise<void>((resolve) => {
+              reply.once("finish", resolve);
+              reply.once("close", resolve);
+            });
+      });
+      let flushTimer: NodeJS.Timeout | undefined;
+      await Promise.race([
+        Promise.all(answered),
+        new Promise<void>((resolve) => {
+          flushTimer = setTimeout(resolve, 500);
+        }),
+      ]);
+      clearTimeout(flushTimer);
       for (const socket of sockets) socket.destroy();
       addressBuckets.clear();
-      await new Promise<void>((resolve, reject) => server.close((cause) => (cause ? reject(cause) : resolve())));
+      await stopped;
     },
   };
 }

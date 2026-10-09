@@ -5,6 +5,7 @@ import { VitePWA } from "vite-plugin-pwa";
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "path";
+import { delegateDirectAndroidBuild } from "./scripts/build-heap.mjs";
 
 // Mirror the server's PORT resolution (config/runtime-config.ts reads the
 // repo-root .env) so a standalone `pnpm dev:client` proxies /api to the port the
@@ -129,6 +130,11 @@ function bundleBudget(): Plugin {
   };
 }
 
+/** Hands a direct Android `vite build` that lacks heap to scripts/build.mjs (see build-heap.mjs). */
+function androidBuildHeap(): Plugin {
+  return { name: "android-build-heap", apply: "build", config: () => delegateDirectAndroidBuild() };
+}
+
 /** Stub for virtual:pwa-register when the real PWA plugin is skipped (e.g. Termux). */
 function pwaStub(): Plugin {
   const id = "virtual:pwa-register";
@@ -149,6 +155,7 @@ export default defineConfig({
     __MARINARA_BUILD_COMMIT__: JSON.stringify(BUILD_COMMIT),
   },
   plugins: [
+    androidBuildHeap(),
     react({
       babel: {
         // Keep Babel from auto-compacting large components and printing a noisy

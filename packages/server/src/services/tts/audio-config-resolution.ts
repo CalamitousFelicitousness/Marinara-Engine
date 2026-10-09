@@ -73,13 +73,18 @@ function gameAudioEnabledFor(cfg: TTSConfig, purpose: AudioPurpose): boolean | n
   return purpose === "sfx" ? cfg.elevenLabsGameSoundEffects === true : cfg.elevenLabsGameMusic === true;
 }
 
-export function parseStoredConfig(raw: string | null) {
+/** The stored config, or null when one is stored that this version cannot read. */
+export function readStoredConfig(raw: string | null): TTSConfig | null {
   if (!raw) return ttsConfigSchema.parse({});
   try {
     return ttsConfigSchema.parse(JSON.parse(raw));
   } catch {
-    return ttsConfigSchema.parse({});
+    return null;
   }
+}
+
+export function parseStoredConfig(raw: string | null) {
+  return readStoredConfig(raw) ?? ttsConfigSchema.parse({});
 }
 
 export function withActiveSourceProfile(config: TTSConfig): TTSConfig {

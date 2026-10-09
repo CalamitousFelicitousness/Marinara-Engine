@@ -116,6 +116,8 @@ Open **Voice casting** on the connection. Casting lives here rather than app-wid
 
 **Random NPC voices** gives spare voices to minor game characters. It works only in Game Mode, and only for NPCs that Game Mode tracks. Turn it on and tick the voices each pool may draw from. A tracked NPC without a personal voice gets a stable pick from the matching pool and keeps it for the session. If the app cannot detect labeled male or female voices, each pool uses the full voice list.
 
+You can also pick a character's voice in the **Character Editor**, on its **Voice** tab. It edits the cast of the connection that speaks for the app, so both places always show the same voice.
+
 ## Synthesis defaults
 
 Open **Synthesis defaults** on the connection for speed, audio format, and the request budget.
@@ -235,13 +237,13 @@ The same TTS setup serves every mode, with a few per-mode extras:
 
 - Roleplay uses the **Roleplay messages** auto-play toggle and the per-message **Speak** controls. See [Roleplay Mode: Getting Started](../roleplay/getting-started.md).
 - Conversation Mode uses the **Conversation messages** toggle and the same **Speak** controls. Spoken audio calls are a larger feature covered in [Conversation Audio and Video Calls](../conversation/calls.md).
-- Game Mode uses the **Game narration** toggle. Game Mode also has its own audio mixer with a **TTS** channel next to **Master**, **Music**, **Sound Effects**, and **Ambient**. That channel sets the overall volume of spoken game audio and starts at 100 percent. See [Game Mode: Getting Started](../game/getting-started.md).
+- Game Mode uses the **Game narration** toggle. Game Mode also has its own audio mixer with a **TTS** channel next to **Master**, **Music**, **Sound Effects**, and **Ambient**. That channel sets the overall volume of spoken game audio and starts at 100 percent. See [The Game's controls](../game/getting-started.md#the-games-controls).
 
 A game can pin its own connection for each of the three purposes. The setup wizard asks when you create the game, and the **Game Audio** card in the chat settings drawer changes them afterwards, along with whether the game generates sound effects and music at all. A lane you leave unpinned follows the app-level default for that purpose.
 
 ## Phonetic name (pronunciation in calls)
 
-If a character or persona name is spelled in a way the voice mispronounces, you can add a **Phonetic name**. In the **Character Editor**, the field sits next to the character's **Name** field. In the **Persona Editor**, it sits with the other basic info fields. Type how the name should sound.
+If a character or persona name is spelled in a way the voice mispronounces, you can add a **Phonetic name**. In the **Character Editor**, the field is on the **Voice** tab. In the **Persona Editor**, it sits with the other basic info fields. Type how the name should sound.
 
 This override is used only during Conversation audio and video calls. The regular per-message **Speak** button, chat auto-play, and Game Mode narration do not read this field.
 

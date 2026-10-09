@@ -43,6 +43,13 @@ as two merges split at the release point (see **Split a large sync** below), 36
 conflicts then 47, with `pnpm check` and the regression suite between them.
 Three of the collisions were features both lineages had built separately.
 
+On 2026-10-09: 1016 commits in seven days, v2.4.6 to v2.5.0, 113 overlapping
+files, 45 conflicts, one merge. The split was weighed and rejected: the
+release-point half held 34 conflicts including all three duplicated features,
+so a second merge would only have re-conflicted the hot files. Five read-only
+subagents, one per collision area, previewed the merge from the simulated tree
+before anything was touched; their reports named every silent loss later fixed.
+
 ## Merge, never rebase
 
 The remote layout assumes a merge. `staging` tracks `upstream/staging` for
@@ -303,6 +310,23 @@ Then look for the two stacking. Upstream moved NanoGPT's `detailed=true` into
 `modelsEndpoint`; the fork's own query suffix would have requested it twice,
 and nothing would have failed.
 
+The duplicate is not always a conflict. On 2026-10-09 upstream's Character
+Editor Voice section arrived in new files and its routes merged cleanly, but
+they wrote the app-level TTS settings that the fork's per-connection casting
+overrides: a save returned 204, showed as saved, and was never spoken, while
+upstream's own lane passed. For each new upstream feature, ask which record it
+writes and whether the fork resolves that record the way upstream does.
+
+### Upstream reuses a key or helper the fork deleted
+
+When the fork prunes something upstream still has (stale localization keys, a
+gutted component's helpers), the merge keeps the deletion. A new upstream
+consumer of that name then fails in `pnpm localization:check` or `tsc`, not as a
+conflict. On 2026-10-09 four `ui.panels.ttsconfigcard.*` keys and
+`buildTTSVoiceOptions` came back this way. Restore the key from upstream's
+catalog, or point the consumer at the fork's equivalent; do not rewrite
+upstream's consumer around the gap.
+
 ### Upstream lanes seed upstream's data model
 
 A new upstream regression that fails on an assertion about a value, not a
@@ -310,6 +334,12 @@ crash, may be seeding data the fork reads differently. Several seed
 `chatParameters: { temperature: ... }`, which the fork ignores at runtime in
 favour of `chatParameterOverrides`. Re-seed the fixture in the fork's shape and
 keep the assertions; the behavior under test is the same.
+
+The same goes for defaults. The fork turns provider, TTS and STT LAN reach on
+by default; an upstream lane that deletes `PROVIDER_LOCAL_URLS_ENABLED` and
+asserts a refusal then times out on the fetch instead. Set the flag to `false`
+in the lane. Upstream e2e specs seed `trackerPanelSizeProfile`, which the fork's
+store replaced with `trackerPanelWidth`; `tsc` in `check:e2e-types` catches it.
 
 ## Checks that no conflict marker will warn you about
 
@@ -339,6 +369,11 @@ Anything new on the upstream side has to be mirrored into
 both security bumps. Note that upstream has started writing
 `patchedDependencies` and `auditConfig` into `pnpm-workspace.yaml` directly;
 those merge cleanly and need no mirroring. Only `overrides` is split.
+
+On 2026-10-09 upstream deleted the `overrides` block from its
+`pnpm-workspace.yaml` as one pnpm 10 ignores (#7146). That block is the only
+one the fork reads, so the delete conflicts with the fork's list: keep the
+fork's block and add upstream's new `package.json#pnpm` pins to it.
 
 **An upstream fix aimed at code this fork relocated.** Where the fork has gutted
 a file and moved its parts elsewhere, an upstream fix to the moved part arrives
@@ -474,6 +509,11 @@ git worktree remove --force /tmp/upwt; git worktree prune; rm -rf /tmp/upwt
 
 `pnpm check` is the real test of whether the merge reverted a fork patch. It
 runs `dev-ports:check`, which exists for exactly that.
+`pnpm lint` does not typecheck the client app: its `tsc` covers only the
+regression lanes, and the app's own `tsc -b` runs inside `pnpm build`, last.
+Run `packages/client/node_modules/.bin/tsc -b` from `packages/client` straight
+after resolving to see every client type error at once instead of one per
+`pnpm check` round.
 Then run the fork's own regressions, since those are what a silent revert
 breaks. `.claude/skills/marinara-validation/SKILL.md` covers the rest,
 including which failures are already known.

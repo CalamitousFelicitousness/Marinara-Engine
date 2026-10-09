@@ -235,12 +235,14 @@ const BOOLEAN_FLAGS = new Set([
   "no-global",
   "no-match-whole-words",
   "no-selective",
+  "no-skip-wrap",
   "no-use-regex",
   "parsed",
   "patch",
   "raw",
   "resume",
   "selective",
+  "skip-wrap",
   "staged",
   "strict",
   "tail",
@@ -883,6 +885,18 @@ function hasFlag(flags: Map<string, string | boolean>, name: string): boolean {
   return flags.has(name) && flags.get(name) !== false;
 }
 
+// An on/off flag: bare means on, `--flag=true|false` sets it, anything else is refused. Before, any
+// value counted as on, so `--skip-wrap=false` turned the switch on.
+function switchFlag(flags: Map<string, string | boolean>, name: string): boolean | undefined {
+  const value = flags.get(name);
+  if (value === undefined || value === false) return undefined;
+  if (value === true) return true;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "true") return true;
+  if (normalized === "false") return false;
+  throw new Error(`--${name} takes no value, or =true / =false; got "${value}"`);
+}
+
 // #4812: map `mari presets` CLI flags to the data object the preset.* app_data actions accept, so
 // the CLI delegates to executePresetAction instead of reimplementing every child edit. Extra keys
 // are harmless — each action's field list keeps only what it uses.
@@ -915,11 +929,17 @@ function presetDataFromFlags(flags: Map<string, string | boolean>): Row {
   setStr("display-mode", "displayMode");
   setStr("option-sort", "optionSort");
   setNum("sort-order", "sortOrder");
-  if (hasFlag(flags, "enable")) data.enabled = true;
-  if (hasFlag(flags, "disable")) data.enabled = false;
-  if (hasFlag(flags, "marker")) data.isMarker = true;
-  if (hasFlag(flags, "multi-select")) data.multiSelect = true;
-  if (hasFlag(flags, "random-pick")) data.randomPick = true;
+  const setSwitch = (flag: string, key: string, onMeans: boolean) => {
+    const value = switchFlag(flags, flag);
+    if (value !== undefined) data[key] = value === onMeans;
+  };
+  setSwitch("enable", "enabled", true);
+  setSwitch("disable", "enabled", false);
+  setSwitch("marker", "isMarker", true);
+  setSwitch("skip-wrap", "skipWrap", true);
+  setSwitch("no-skip-wrap", "skipWrap", false);
+  setSwitch("multi-select", "multiSelect", true);
+  setSwitch("random-pick", "randomPick", true);
   const options = flagString(flags, "options");
   if (options !== undefined) {
     let parsed: unknown;
@@ -1305,6 +1325,14 @@ export function buildPersonaCreateRow(data: Row, id: string, timestamp: string):
     scenario: firstString(data, ["scenario"]) ?? "",
     backstory: firstString(data, ["backstory"]) ?? "",
     appearance: firstString(data, ["appearance"]) ?? "",
+    imageAppearanceEnabled:
+      data.imageAppearanceEnabled === true ||
+      data.imageAppearanceEnabled === "true" ||
+      data.image_appearance_enabled === true ||
+      data.image_appearance_enabled === "true"
+        ? "true"
+        : "false",
+    imageAppearance: firstString(data, ["imageAppearance", "image_appearance"]) ?? "",
     useCharacterSheetAsReference: "false",
     isActive: "false",
     nameColor: "",
@@ -1598,6 +1626,10 @@ function normalizePromptPresetChildInserts(payload: Row, presetId: string): Arra
         wrapInXml: "false",
         xmlTagName: "",
         forbidOverrides: boolText(firstBoolean(rawSection, ["forbidOverrides"]) ?? false),
+        // Markers always keep their wrapper (#7014), so a marker never stores skipWrap on.
+        skipWrap: boolText(
+          firstBoolean(rawSection, ["skipWrap"]) === true && firstBoolean(rawSection, ["isMarker", "marker"]) !== true,
+        ),
       },
     });
   }
@@ -1674,6 +1706,10 @@ function buildPromptSectionPatch(data: Row): Row {
   if (injectionDepth !== undefined) patch.injectionDepth = injectionDepth;
   const injectionOrder = firstNumber(data, ["injectionOrder", "order", "sortOrder"]);
   if (injectionOrder !== undefined) patch.injectionOrder = injectionOrder;
+  const forbidOverrides = firstBoolean(data, ["forbidOverrides"]);
+  if (forbidOverrides !== undefined) patch.forbidOverrides = boolText(forbidOverrides);
+  const skipWrap = firstBoolean(data, ["skipWrap"]);
+  if (skipWrap !== undefined) patch.skipWrap = boolText(skipWrap);
   return patch;
 }
 
@@ -1764,6 +1800,7 @@ function buildPromptSectionInsertRow(
     wrapInXml: "false",
     xmlTagName: "",
     forbidOverrides: boolText(firstBoolean(data, ["forbidOverrides"]) ?? false),
+    skipWrap: boolText(firstBoolean(data, ["skipWrap"]) ?? false),
   };
 }
 
@@ -2307,6 +2344,7 @@ function summarizePromptSectionRow(row: Row): Row {
     injectionPosition: parsed.injectionPosition,
     injectionDepth: parsed.injectionDepth,
     injectionOrder: parsed.injectionOrder,
+    skipWrap: parsed.skipWrap,
     content: typeof parsed.content === "string" ? truncateStr(parsed.content, 200) : "",
   };
 }
@@ -2961,6 +2999,10 @@ export class MariDbService {
             "scenario",
             "backstory",
             "appearance",
+            "imageAppearance",
+            "image_appearance",
+            "imageAppearanceEnabled",
+            "image_appearance_enabled",
             "comment",
             "creator",
             "creatorNotes",
@@ -3006,6 +3048,10 @@ export class MariDbService {
             "scenario",
             "backstory",
             "appearance",
+            "imageAppearance",
+            "image_appearance",
+            "imageAppearanceEnabled",
+            "image_appearance_enabled",
             "comment",
             "creator",
             "creatorNotes",
@@ -3028,6 +3074,11 @@ export class MariDbService {
         assignStringField(patch, data, ["scenario"], "scenario");
         assignStringField(patch, data, ["backstory"], "backstory");
         assignStringField(patch, data, ["appearance"], "appearance");
+        assignStringField(patch, data, ["imageAppearance", "image_appearance"], "imageAppearance");
+        if (data.imageAppearanceEnabled !== undefined || data.image_appearance_enabled !== undefined) {
+          const flag = data.imageAppearanceEnabled ?? data.image_appearance_enabled;
+          patch.imageAppearanceEnabled = flag === true || flag === "true" ? "true" : "false";
+        }
         assignStringField(patch, data, ["comment"], "comment");
         assignStringField(patch, data, ["creator"], "creator");
         assignStringField(patch, data, ["creatorNotes", "creator_notes", "creator-notes"], "creatorNotes");
@@ -3051,7 +3102,7 @@ export class MariDbService {
         assignListField(patch, data, ["tags"], "tags");
         if (Object.keys(patch).length <= 1) {
           throw new Error(
-            "persona.update needs a patch field such as name, description, personality, scenario, backstory, appearance, tags, comment, creator, or creatorNotes",
+            "persona.update needs a patch field such as name, description, personality, scenario, backstory, appearance, imageAppearance, imageAppearanceEnabled, tags, comment, creator, or creatorNotes",
           );
         }
         return this.executeMutation(
@@ -4679,18 +4730,31 @@ export class MariDbService {
             "injectionPosition",
             "injectionDepth",
             "injectionOrder",
+            "forbidOverrides",
+            "skipWrap",
           ],
         );
         const patch = buildPromptSectionPatch(data);
         if (Object.keys(patch).length === 0) {
           throw new Error(
-            "preset.updateSection needs sectionId plus a field such as content, name, role, enabled, groupId, or injectionOrder",
+            "preset.updateSection needs sectionId plus a field such as content, name, role, enabled, groupId, injectionOrder, or skipWrap",
           );
         }
         if (String(existing.isMarker) === "true" && typeof patch.content === "string") {
           throw new Error(
             `Section ${sectionId} is a marker; its content is generated from markerConfig at assembly, so a content edit has no effect. Edit markerConfig instead.`,
           );
+        }
+        // #7014: the assembler ignores skipWrap on markers, so turning it on would report a no-op as success.
+        const resultIsMarker = String(patch.isMarker ?? existing.isMarker) === "true";
+        if (patch.skipWrap === "true" && resultIsMarker) {
+          throw new Error(
+            `Section ${sectionId} is a marker; markers always keep their wrapper, so skipWrap has no effect.`,
+          );
+        }
+        // A block that becomes a marker drops the flag, so a stored marker never claims to be sent bare.
+        if (resultIsMarker && patch.skipWrap === undefined && String(existing.skipWrap) === "true") {
+          patch.skipWrap = "false";
         }
         // #4812: a section may only join a group in its OWN preset, or it drops out of its preset's
         // group tree. validateTouchedRows only checks the group row exists, not its presetId.
@@ -4840,9 +4904,14 @@ export class MariDbService {
             "injectionPosition",
             "injectionDepth",
             "injectionOrder",
+            "forbidOverrides",
+            "skipWrap",
           ],
         );
         requiredString(data, ["name", "title", "label"], "section name");
+        if (firstBoolean(data, ["isMarker", "marker"]) === true && firstBoolean(data, ["skipWrap"]) === true) {
+          throw new Error("Markers always keep their wrapper, so skipWrap has no effect on a marker.");
+        }
         // #4812: a section may only be filed under a group in its OWN preset (same reason as
         // updateSection) — validateTouchedRows only checks the group row exists, not its presetId.
         if (typeof data.groupId === "string" && data.groupId) {
@@ -6712,7 +6781,7 @@ export class MariDbService {
         return run("addsection", {
           presetId: need(
             0,
-            "Usage: mari presets add-section <preset-id> --name <name> [--content <text>] [--role <system|user|assistant>] [--group-id <id>] [--apply]",
+            "Usage: mari presets add-section <preset-id> --name <name> [--content <text>] [--role <system|user|assistant>] [--group-id <id>] [--skip-wrap] [--apply]",
           ),
           data: presetDataFromFlags(flags),
           apply,
@@ -6722,7 +6791,7 @@ export class MariDbService {
         return run("updatesection", {
           sectionId: need(
             0,
-            "Usage: mari presets update-section <section-id> [--content <text>] [--name <name>] [--enable|--disable] [--group-id <id>] [--injection-order <n>] [--apply]",
+            "Usage: mari presets update-section <section-id> [--content <text>] [--name <name>] [--enable|--disable] [--group-id <id>] [--injection-order <n>] [--skip-wrap|--no-skip-wrap] [--apply]",
           ),
           data: presetDataFromFlags(flags),
           apply,
@@ -6820,7 +6889,7 @@ export class MariDbService {
     return [
       "Usage: mari presets <command>",
       "Reads:    list [--search <q>] [--limit <n>] | get <preset-id> | sections <preset-id> [--section-id <id>] | get-section <section-id> | groups <preset-id> | get-group <group-id> | choice-blocks <preset-id> | get-choice-block <id>",
-      "Sections: add-section <preset-id> --name <n> [--content <t>] [--role <system|user|assistant>] [--group-id <id>] | update-section <section-id> [--content <t>] [--name <n>] [--enable|--disable] [--injection-order <n>] | delete-section <section-id>",
+      "Sections: add-section <preset-id> --name <n> [--content <t>] [--role <system|user|assistant>] [--group-id <id>] [--skip-wrap] | update-section <section-id> [--content <t>] [--name <n>] [--enable|--disable] [--injection-order <n>] [--skip-wrap|--no-skip-wrap] | delete-section <section-id>",
       "Groups:   add-group <preset-id> --name <n> [--parent-group-id <id>] | update-group <group-id> [--name <n>] [--enable|--disable] [--order <n>] | delete-group <group-id>",
       "Choices:  add-choice-block <preset-id> --variable-name <n> --question <t> --options <a,b,c> [--multi-select] | update-choice-block <id> [--question <t>] [--options <a,b,c>] | delete-choice-block <id>",
       "Whole:    create --json '<preset-json>' | update <preset-id> --json '<partial-json>'",
@@ -6936,20 +7005,23 @@ export class MariDbService {
     args: Row,
     context: { command: string; sessionId: string; cwd?: string },
   ): Promise<MariDbCommandResult> {
+    // #7289: nanoid ids start with "--" about 1 in 4096, so values must never read as flags:
+    // flag values ride `--flag=value` and positionals go after the `--` end-of-options marker.
     const argv = [sub];
+    const positionals: string[] = [];
     const fieldRead = Boolean(firstString(args, ["field"]));
     const addFlag = (flag: string, value: unknown) => {
       if (value === undefined || value === null || value === "") return;
-      argv.push(`--${flag}`, String(value));
+      argv.push(`--${flag}=${String(value)}`);
     };
 
     if (sub === "list") {
       addFlag("limit", firstNumber(args, ["limit"]));
       addFlag("character", firstString(args, ["characterId", "character_id"]));
     } else if (sub === "get") {
-      argv.push(requiredString(args, ["chatId", "chat_id", "id"], "chat id"));
+      positionals.push(requiredString(args, ["chatId", "chat_id", "id"], "chat id"));
     } else if (sub === "messages") {
-      argv.push(requiredString(args, ["chatId", "chat_id", "id"], "chat id"));
+      positionals.push(requiredString(args, ["chatId", "chat_id", "id"], "chat id"));
       addFlag("last", firstNumber(args, ["last"]));
       addFlag("after-post", firstNumber(args, ["afterPost", "after_post"]));
       const tail = firstBoolean(args, ["tail"]) === true;
@@ -6961,11 +7033,11 @@ export class MariDbService {
       }
       if (tail) argv.push("--tail");
     } else if (sub === "search") {
-      argv.push(requiredString(args, ["query"], "chat search query"));
+      positionals.push(requiredString(args, ["query"], "chat search query"));
       addFlag("limit", firstNumber(args, ["limit"]));
     }
 
-    const result = await this.executeChatsCommand(argv, context);
+    const result = await this.executeChatsCommand([...argv, "--", ...positionals], context);
     if (sub !== "messages" || !result.ok || !Array.isArray(result.output)) return result;
     return {
       ...result,

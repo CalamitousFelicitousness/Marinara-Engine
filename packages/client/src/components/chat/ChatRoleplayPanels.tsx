@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import type { TFunction } from "i18next";
 import {
   AlertTriangle,
-  BookOpen,
   Check,
   ChevronDown,
   ChevronLeft,
@@ -10,11 +9,9 @@ import {
   Loader2,
   MapPin,
   MoreHorizontal,
-  PenLine,
   Plus,
   Sparkles,
   Trash2,
-  X,
 } from "lucide-react";
 import { findMatchingAuthorNotePresetSet, type AuthorNotePresetSet } from "@marinara-engine/shared";
 import { useUpdateChatMetadata } from "../../hooks/use-chats";
@@ -31,12 +28,7 @@ import { toast } from "sonner";
 import { showChoiceDialog, showPromptDialog } from "../../lib/app-dialogs";
 import { cn, generateClientId } from "../../lib/utils";
 import { useUIStore } from "../../stores/ui.store";
-import {
-  NEUTRAL_PANEL_CLOSE_BUTTON,
-  NEUTRAL_PANEL_CLOSE_ICON_SIZE,
-  NEUTRAL_PANEL_SUBTITLE,
-  NEUTRAL_PANEL_TITLE,
-} from "../ui/neutral-surface-styles";
+import { NEUTRAL_PANEL_SUBTITLE } from "../ui/neutral-surface-styles";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { MacroTextarea } from "../ui/MacroTextarea";
 
@@ -233,12 +225,12 @@ function BudgetSkippedEntryRow({ entry }: { entry: BudgetSkippedLorebookEntry })
   return (
     <button
       type="button"
-      className="w-full rounded-lg border border-amber-500/20 bg-amber-500/10 p-2 text-left text-xs transition-colors hover:bg-amber-500/15"
+      className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)]/60 p-2 text-left text-xs transition-colors hover:bg-[var(--accent)]"
       onClick={() => setExpanded((prev) => !prev)}
     >
       <div className="flex items-center gap-1.5">
         {expanded ? <ChevronDown size="0.75rem" /> : <ChevronRight size="0.75rem" />}
-        <span className="min-w-0 flex-1 truncate font-medium text-amber-200">{entry.name}</span>
+        <span className="min-w-0 flex-1 truncate font-medium">{entry.name}</span>
         {isSemanticMatch && (
           <span className="inline-flex shrink-0 items-center gap-0.5 rounded px-1 py-0.5 text-[0.5rem] font-semibold text-cyan-100 ring-1 ring-cyan-300/25">
             <Sparkles size="0.55rem" />
@@ -247,18 +239,20 @@ function BudgetSkippedEntryRow({ entry }: { entry: BudgetSkippedLorebookEntry })
               : localizeUi("ui.chat.activelorebookentryrow.vector")}
           </span>
         )}
-        <span className="shrink-0 text-[0.625rem] text-amber-200/70">~{entry.estimatedTokens.toLocaleString()}</span>
+        <span className="shrink-0 text-[0.625rem] text-[var(--muted-foreground)]">
+          ~{entry.estimatedTokens.toLocaleString()}
+        </span>
       </div>
-      <p className="mt-0.5 truncate pl-5 text-[0.625rem] text-amber-100/70">
+      <p className="mt-0.5 truncate pl-5 text-[0.625rem] text-[var(--muted-foreground)]">
         {entry.lorebookName} {localizeUi("ui.chat.budgetskippedentryrow.blockedBy")}{" "}
         {formatBudgetName(entry.blockedBy, localizeUi)}
       </p>
-      <p className="mt-0.5 truncate pl-5 text-[0.625rem] text-amber-100/60">
+      <p className="mt-0.5 truncate pl-5 text-[0.625rem] text-[var(--muted-foreground)]">
         {localizeUi("ui.chat.budgetskippedentryrow.sources")}{" "}
         {entry.activationSources.map((source) => formatActivationSource(source, localizeUi)).join(", ")}
       </p>
       {expanded && (
-        <div className="mt-1.5 space-y-1 border-t border-amber-500/20 pt-1.5 pl-5 text-[0.625rem] leading-relaxed text-amber-50/75">
+        <div className="mt-1.5 space-y-1 border-t border-[var(--border)] pt-1.5 pl-5 text-[0.625rem] leading-relaxed text-[var(--muted-foreground)]">
           <p>
             {localizeUi("ui.chat.activelorebookentryrow.matched")}{" "}
             {entry.matchedKeys.length > 0
@@ -284,24 +278,51 @@ function BudgetSkippedEntryRow({ entry }: { entry: BudgetSkippedLorebookEntry })
   );
 }
 
+/** One plain line per budget that skipped entries, naming where to change it (#7325). */
+function budgetSkipHints(entries: BudgetSkippedLorebookEntry[], t: TFunction): string[] {
+  const hints: string[] = [];
+  if (entries.some((entry) => entry.blockedBy === "chat" || entry.blockedBy === "both")) {
+    hints.push(t("chat.activeContext.budgetHint.chat"));
+  }
+  const lorebooks = new Set(
+    entries
+      .filter((entry) => entry.blockedBy === "lorebook" || entry.blockedBy === "both")
+      .map((entry) => entry.lorebookName),
+  );
+  if (lorebooks.size > 0) {
+    hints.push(t("chat.activeContext.budgetHint.lorebook", { lorebooks: [...lorebooks].join(", ") }));
+  }
+  const location = entries.find((entry) => entry.blockedBy === "location");
+  if (location) {
+    hints.push(t("chat.activeContext.budgetHint.location", { tokens: location.chatBudget.toLocaleString() }));
+  }
+  return hints;
+}
+
 function BudgetSkippedEntriesNotice({ entries }: { entries: BudgetSkippedLorebookEntry[] }) {
   const { t: localizeUi } = useUiTranslation();
   const [expanded, setExpanded] = useState(false);
   if (entries.length === 0) return null;
 
   return (
-    <div className="mb-2 rounded-lg border border-amber-500/25 bg-amber-500/10 p-2 text-xs text-amber-50/85">
+    // The theme's accent held steady marks the warning; it never pulses with Accent Pulse.
+    <div className="mb-2 rounded-lg border border-[var(--marinara-app-accent-static)] bg-[var(--secondary)] p-2 text-xs text-[var(--foreground)]">
       <button
         type="button"
         className="flex w-full items-start gap-2 text-left"
         onClick={() => setExpanded((prev) => !prev)}
       >
-        <AlertTriangle size="0.875rem" className="mt-0.5 shrink-0 text-amber-300" />
+        <AlertTriangle size="0.875rem" className="mt-0.5 shrink-0 text-[var(--marinara-app-accent-static)]" />
         <span className="min-w-0 flex-1">
-          <span className="block font-medium text-amber-100">
+          <span className="block font-medium">
             {localizeUi("chat.activeContext.skippedEntries", { count: entries.length })}
           </span>
-          <span className="mt-0.5 block text-[0.625rem] leading-relaxed text-amber-50/65">
+          {budgetSkipHints(entries, localizeUi).map((hint) => (
+            <span key={hint} className="mt-0.5 block text-[0.625rem] leading-relaxed">
+              {hint}
+            </span>
+          ))}
+          <span className="mt-0.5 block text-[0.625rem] leading-relaxed text-[var(--muted-foreground)]">
             {localizeUi("ui.chat.budgetskippedentriesnotice.expandForBudgetDetailsKnowledgeRetrievalOrKnowledgeRouter")}
           </span>
         </span>
@@ -388,27 +409,6 @@ export function ActiveLorebookEntriesContent({ chatId }: { chatId: string }) {
   );
 }
 
-export function ActiveLorebookEntriesPanel({ chatId, onClose }: { chatId: string; onClose: () => void }) {
-  const { t: localizeUi } = useUiTranslation();
-  return (
-    <>
-      <h3 className={cn(NEUTRAL_PANEL_TITLE, "mb-2")}>
-        <BookOpen size="0.75rem" />
-        {localizeUi("ui.chat.activelorebookentriespanel.activeContext")}
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label={localizeUi("ui.chat.activelorebookentriespanel.closeActiveContext")}
-          className={cn(NEUTRAL_PANEL_CLOSE_BUTTON, "ml-auto -my-1")}
-        >
-          <X size={NEUTRAL_PANEL_CLOSE_ICON_SIZE} />
-        </button>
-      </h3>
-      <ActiveLorebookEntriesContent chatId={chatId} />
-    </>
-  );
-}
-
 type AuthorNoteEditTarget = { kind: "chat" } | { kind: "preset"; id: string };
 
 /** Editor contents as last written to the server. `name` is unused for the chat note. */
@@ -425,10 +425,10 @@ type AuthorNoteDraft = {
 
 const AUTHOR_NOTE_DEFAULT_DEPTH = 4;
 
-// Unsaved editor state, parked by chat id across popover unmount.
-// The popover unmounts on outside click, Escape, and toolbar toggle. Autosave
-// made that lossless; explicit save does not, so the draft is held here rather
-// than written. Never reaches the server: a reload drops it, like any unsaved edit.
+// Unsaved editor state, parked by chat id across drawer unmount.
+// The drawer unmounts when it collapses or Chat Settings closes. Autosave made
+// that lossless; explicit save does not, so the draft is held here rather than
+// written. Never reaches the server: a reload drops it, like any unsaved edit.
 const authorNoteDrafts = new Map<string, AuthorNoteDraft>();
 
 function readActivePresetIds(chatMeta: Record<string, any>): string[] {
@@ -484,15 +484,8 @@ function derivePresetName(content: string, fallback: string): string {
   return firstLine.length > 60 ? `${firstLine.slice(0, 57)}…` : firstLine;
 }
 
-export function AuthorNotesPanel({
-  chatId,
-  chatMeta,
-  onClose,
-}: {
-  chatId: string;
-  chatMeta: Record<string, any>;
-  onClose: () => void;
-}) {
+/** Author's Notes for one chat (a Chat Settings drawer). */
+export function AuthorNotesPanel({ chatId, chatMeta }: { chatId: string; chatMeta: Record<string, any> }) {
   const { t: localizeUi } = useUiTranslation();
   const updateMeta = useUpdateChatMetadata({ serialize: true });
   const { data: presets = [] } = useAuthorNotePresets();
@@ -715,18 +708,6 @@ export function AuthorNotesPanel({
 
   return (
     <>
-      <h3 className={cn(NEUTRAL_PANEL_TITLE, "mb-2")}>
-        <PenLine size="0.75rem" />
-        {localizeUi("ui.chat.authornotespanel.authorSNotes")}
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label={localizeUi("ui.chat.authornotespanel.closeAuthorSNotes")}
-          className={cn(NEUTRAL_PANEL_CLOSE_BUTTON, "ml-auto -my-1")}
-        >
-          <X size={NEUTRAL_PANEL_CLOSE_ICON_SIZE} />
-        </button>
-      </h3>
       <p className={cn(NEUTRAL_PANEL_SUBTITLE, "mb-2")}>
         {localizeUi("ui.chat.authornotespanel.textHereIsInjectedIntoThePromptAtThe")}
       </p>

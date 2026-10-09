@@ -30,8 +30,8 @@ export function FeaturedCharacterNameplate({
   thoughtButtonRef: RefObject<HTMLButtonElement | null>;
   thoughtControlSide: TrackerProfileSide;
   onToggleThoughts?: () => void;
-  onToggleFeatured: () => void;
-  onToggleCollapsed: () => void;
+  onToggleFeatured?: () => void;
+  onToggleCollapsed?: () => void;
   characterIndex: number;
 }) {
   const { t: localizeUi } = useUiTranslation();
@@ -80,26 +80,30 @@ export function FeaturedCharacterNameplate({
   const headerControls = (
     <>
       {emojiControl}
-      <button
-        type="button"
-        onClick={onToggleCollapsed}
-        title={localizeUi("ui.trackerPanel.charactertrackercard.collapseCharacterCard")}
-        aria-label={localizeUi("ui.trackerPanel.charactertrackercard.collapseCharacterCard")}
-        aria-expanded
-        className={TRACKER_PROFILE_NAMEPLATE_HEADER_BUTTON_CLASS}
-      >
-        <ChevronDown size="0.6875rem" />
-      </button>
-      <button
-        type="button"
-        onClick={onToggleFeatured}
-        title={localizeUi("ui.trackerPanel.featuredcharacternameplate.useCompactCharacterCard")}
-        aria-label={localizeUi("ui.trackerPanel.featuredcharacternameplate.useCompactCharacterCard")}
-        aria-pressed
-        className={TRACKER_PROFILE_NAMEPLATE_HEADER_BUTTON_CLASS}
-      >
-        <Minimize2 size="0.6875rem" />
-      </button>
+      {onToggleCollapsed && (
+        <button
+          type="button"
+          onClick={onToggleCollapsed}
+          title={localizeUi("ui.trackerPanel.charactertrackercard.collapseCharacterCard")}
+          aria-label={localizeUi("ui.trackerPanel.charactertrackercard.collapseCharacterCard")}
+          aria-expanded
+          className={TRACKER_PROFILE_NAMEPLATE_HEADER_BUTTON_CLASS}
+        >
+          <ChevronDown size="0.6875rem" />
+        </button>
+      )}
+      {onToggleFeatured && (
+        <button
+          type="button"
+          onClick={onToggleFeatured}
+          title={localizeUi("ui.trackerPanel.featuredcharacternameplate.useCompactCharacterCard")}
+          aria-label={localizeUi("ui.trackerPanel.featuredcharacternameplate.useCompactCharacterCard")}
+          aria-pressed
+          className={TRACKER_PROFILE_NAMEPLATE_HEADER_BUTTON_CLASS}
+        >
+          <Minimize2 size="0.6875rem" />
+        </button>
+      )}
     </>
   );
 

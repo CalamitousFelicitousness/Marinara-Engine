@@ -149,8 +149,6 @@ test("Game finishes a rolled turn in one request, and leaves the shipped two-req
     const savedExtra = (row: { extra: unknown }) =>
       (typeof row.extra === "string" ? JSON.parse(row.extra) : (row.extra ?? {})) as Record<string, unknown>;
     const openTools = async () => {
-      if (testInfo.project.name.includes("mobile"))
-        await page.getByRole("button", { name: "Game actions", exact: true }).click();
       await page.getByRole("button", { name: "Chat Settings", exact: true }).filter({ visible: true }).click();
       const section = page.locator('[data-chat-settings-section="function-calling"]');
       const header = section.locator('[role="button"][aria-expanded]');
@@ -164,14 +162,6 @@ test("Game finishes a rolled turn in one request, and leaves the shipped two-req
     const closeTools = async () => {
       await page.locator(".mari-chat-settings-drawer").getByRole("button", { name: "Close Chat Settings" }).click();
       await expect(page.locator(".mari-chat-settings-drawer")).toHaveCount(0);
-      // Mobile reaches the drawer through the game actions menu, and that menu stays open
-      // behind it. Close it the way a player would: left open, its button column hangs down
-      // the right edge over the narration stack, which is where a dice card's dismiss
-      // control sits.
-      if (testInfo.project.name.includes("mobile")) {
-        await page.getByRole("button", { name: "Game actions", exact: true }).click();
-        await expect(page.locator("[data-chat-toolbar-overflow-menu]")).toHaveCount(0);
-      }
     };
     const dismissCards = async () => {
       const dismiss = page.getByRole("button", { name: "Dismiss dice roll result" });
@@ -194,7 +184,9 @@ test("Game finishes a rolled turn in one request, and leaves the shipped two-req
     const oneRequest = () => section.getByLabel("Finish rolled turns in one request", { exact: true });
     const narrateOutcomes = () => section.getByLabel("Narrate dice outcomes immediately", { exact: true });
     await expect(oneRequest()).not.toBeChecked();
-    await expect(section).toContainText("The Game Master never sees a number before it decides what happens");
+    await expect(section).toContainText(
+      "the Game Master can't steer the result because it never sees the number first",
+    );
     await expect(narrateOutcomes()).toBeEnabled();
     await expect(narrateOutcomes()).toBeChecked();
     await expect(section).not.toContainText("Not used while one-request dice is on");
@@ -466,8 +458,6 @@ test("Game spends the sighted pool in order and leaves an overflowed check for t
         extra: unknown;
       }>;
     const openTools = async () => {
-      if (testInfo.project.name.includes("mobile"))
-        await page.getByRole("button", { name: "Game actions", exact: true }).click();
       await page.getByRole("button", { name: "Chat Settings", exact: true }).filter({ visible: true }).click();
       const section = page.locator('[data-chat-settings-section="function-calling"]');
       const header = section.locator('[role="button"][aria-expanded]');
@@ -479,14 +469,6 @@ test("Game spends the sighted pool in order and leaves an overflowed check for t
     const closeTools = async () => {
       await page.locator(".mari-chat-settings-drawer").getByRole("button", { name: "Close Chat Settings" }).click();
       await expect(page.locator(".mari-chat-settings-drawer")).toHaveCount(0);
-      // Mobile reaches the drawer through the game actions menu, and that menu stays open
-      // behind it. Close it the way a player would: left open, its button column hangs down
-      // the right edge over the narration stack, which is where a dice card's dismiss
-      // control sits.
-      if (testInfo.project.name.includes("mobile")) {
-        await page.getByRole("button", { name: "Game actions", exact: true }).click();
-        await expect(page.locator("[data-chat-toolbar-overflow-menu]")).toHaveCount(0);
-      }
     };
 
     await page.goto("/");
@@ -497,7 +479,7 @@ test("Game spends the sighted pool in order and leaves an overflowed check for t
     let section = await openTools();
     const dicePool = () => section.getByLabel("Let the Game Master see one die of each size", { exact: true });
     await expect(dicePool()).not.toBeChecked();
-    await expect(section).toContainText("it can steer outcomes in a way the blind forms do not allow");
+    await expect(section).toContainText("it can steer the outcome more than the other options allow");
     await section
       .locator("label")
       .filter({ has: page.getByLabel("Let the Game Master see one die of each size", { exact: true }) })

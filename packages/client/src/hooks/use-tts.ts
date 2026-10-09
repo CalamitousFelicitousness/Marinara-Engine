@@ -1,13 +1,15 @@
 // ──────────────────────────────────────────────
 // Hook: TTS Config & Voices
 // ──────────────────────────────────────────────
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api-client";
 import type {
   AudioPurpose,
   TTSConfig,
   TTSEffectiveConfigResponse,
   TTSModelsResponse,
+  TTSVoiceAssignmentInput,
+  TTSVoiceModeInput,
   TTSVoicesResponse,
   TTSSource,
 } from "@marinara-engine/shared";
@@ -132,6 +134,31 @@ export function useUpdateTTSConfig() {
       // Playback settings feed the merged view, so it goes stale with them.
       qc.invalidateQueries({ queryKey: ttsKeys.all });
     },
+  });
+}
+
+/** Cast edits land on the speaking connection, so its row goes stale with the merged view. */
+function invalidateSpeakingCast(qc: QueryClient) {
+  qc.invalidateQueries({ queryKey: ttsKeys.all });
+  // connectionKeys.all; importing it would cycle with use-connections.
+  qc.invalidateQueries({ queryKey: ["connections"] });
+}
+
+/** Sets or clears one character's voice in the speaking cast, leaving every other TTS setting as stored. */
+export function useUpdateTTSVoiceAssignment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: TTSVoiceAssignmentInput) => api.put<void>("/tts/config/voice-assignment", input),
+    onSuccess: () => invalidateSpeakingCast(qc),
+  });
+}
+
+/** Switches the speaking cast between one shared voice and a voice per character, leaving every other TTS setting as stored. */
+export function useUpdateTTSVoiceMode() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: TTSVoiceModeInput) => api.put<void>("/tts/config/voice-mode", input),
+    onSuccess: () => invalidateSpeakingCast(qc),
   });
 }
 

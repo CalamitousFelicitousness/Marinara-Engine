@@ -15,6 +15,29 @@ const lock = readFileSync(join(repositoryRoot, "pnpm-lock.yaml"), "utf8");
 const serverLock = lock.split("\n  packages/server:\n")[1]?.split("\n  packages/shared:\n")[0];
 const sharpVersion = serverLock?.match(/\n      sharp:\n        specifier: [^\n]+\n        version: ([^\n]+)/u)?.[1];
 assert(sharpVersion);
+// #7173: pnpm keeps a package it once skipped in node_modules/.modules.yaml. An in-place
+// frozen update (start-termux.sh) reaches @emnapi/runtime first through an always-skipped
+// parent (@huggingface/transformers -> sharp -> @img/sharp-freebsd-wasm32) and never
+// un-skips it, so the WASM fallback starts without it. A direct server dependency is
+// reached from an installable parent, which installs it on fresh and in-place updates.
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+const emnapiVersion = lock
+  .split("\nsnapshots:\n")[1]
+  ?.match(
+    new RegExp(
+      `\\n  '@img/sharp-wasm32@${escapeRegExp(wasmVersion)}':\\n    dependencies:\\n      '@emnapi/runtime': (\\S+)`,
+      "u",
+    ),
+  )?.[1];
+assert(emnapiVersion, "the WASM fallback's @emnapi/runtime snapshot must be readable");
+const serverRuntimeDependencies = serverLock?.split("    dependencies:\n")[1]?.split(/\n    [A-Za-z]+:\n/u)[0] ?? "";
+assert.ok(
+  new RegExp(
+    `\\n      '@emnapi/runtime':\\n        specifier: \\S+\\n        version: ${escapeRegExp(emnapiVersion)}(?:\\n|$)`,
+    "u",
+  ).test(`\n${serverRuntimeDependencies}`),
+  `the server must depend on @emnapi/runtime ${emnapiVersion} directly so in-place updates install it`,
+);
 const runner = resolvePnpmRunner();
 const pnpm = (args, cwd) => {
   const result = spawnSync(runner.command, [...runner.args, ...args], {
@@ -74,6 +97,8 @@ ${lock.slice(lock.indexOf("\npackages:\n"))}`,
         "--input-type=module",
         "-e",
         `
+      // sharp's WASM loader finishes starting in an un-awaited async run(); its failures surface only here.
+      process.on("unhandledRejection", (reason) => { console.error(reason); process.exit(3); });
       import assert from "node:assert/strict";
       import { createRequire } from "node:module";
       const require = createRequire(process.cwd() + "/package.json");

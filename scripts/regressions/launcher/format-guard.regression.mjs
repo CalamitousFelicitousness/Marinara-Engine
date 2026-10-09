@@ -111,33 +111,37 @@ assert.equal(probeHeapHelpers("resolve_default_node_heap_mb 1153434 8388608"), "
 assert.equal(probeHeapHelpers("resolve_default_node_heap_mb 1153434 4194304"), "1024");
 assert.equal(probeHeapHelpers("resolve_default_node_heap_mb 1153434 3145728"), "1024");
 assert.equal(probeHeapHelpers("resolve_default_node_heap_mb 1153434 0"), "1536");
-// A client build needs more headroom, without changing the server's heap or
-// overriding a caller's explicit limit. Execute the actual subshell helper.
-const probeBuildHeap = (runtimeHeap, deviceMemory, expectedBuildHeap) => {
-  const output = probeHeapHelpers(
+// The client build sets its own heap (termux-client-build.regression.mjs pins it).
+// The launcher only marks a heap the user chose, which the build keeps, and the
+// build helper never changes the server's limit. Execute the real setup block.
+const heapSetupBlockStart = termuxLauncherSource.indexOf("if ! has_explicit_node_heap_limit; then");
+const heapSetupBlockEnd = termuxLauncherSource.indexOf("\n# Resident chat cap", heapSetupBlockStart);
+assert.ok(heapSetupBlockStart >= 0 && heapSetupBlockEnd >= 0, "the Termux heap setup block must be present");
+const probeHeapSetup = (nodeOptions) =>
+  probeHeapHelpers(
     `
-    MARINARA_TERMUX_HEAP_MB=${runtimeHeap}
-    MARINARA_TERMUX_DEVICE_MEMORY_KIB=${deviceMemory}
-    run_pnpm() { node -p 'require("node:v8").getHeapStatistics().heap_size_limit'; }
+    DATA_DIR=/nonexistent-marinara-heap-probe
+    ${termuxLauncherSource.slice(heapSetupBlockStart, heapSetupBlockEnd)}
+    run_pnpm() { :; }
     build_termux_client
-    printf '\\n%s' "$NODE_OPTIONS"
+    printf '\\n%s|' "$NODE_OPTIONS"
+    node -p 'process.env.MARINARA_EXPLICIT_NODE_HEAP ?? ""'
   `,
-    "--max-old-space-size=1024 --trace-warnings",
-  );
-  const lines = output.trim().split("\n").filter(Boolean);
-  const expected = spawnSync(
-    process.execPath,
-    [`--max-old-space-size=${expectedBuildHeap}`, "-p", 'require("node:v8").getHeapStatistics().heap_size_limit'],
-    { encoding: "utf8" },
-  );
-  assert.equal(lines.at(-2), expected.stdout.trim());
-  assert.equal(lines.at(-1), "--max-old-space-size=1024 --trace-warnings", "build allowance must not leak to server");
-};
-probeBuildHeap("1024", "8388608", 1536);
-probeBuildHeap("1024", "3145728", 1536);
-probeBuildHeap("1024", "2097152", 1024);
-probeBuildHeap("1024", "0", 1536);
-probeBuildHeap("", "8388608", 1024); // Explicit caller limit: no automatic grant.
+    nodeOptions,
+  )
+    .trim()
+    .split("\n")
+    .at(-1);
+assert.equal(
+  probeHeapSetup("--trace-warnings"),
+  "--trace-warnings --max-old-space-size=1024|",
+  "an automatic heap must not be marked as the user's, and the client build must not leak into the server",
+);
+assert.equal(
+  probeHeapSetup("--max-old-space-size=1280 --trace-warnings"),
+  "--max-old-space-size=1280 --trace-warnings|1",
+  "the launcher must keep and mark an explicit heap so the client build keeps it too",
+);
 const wakeLockTrapIndex = termuxLauncherSource.search(/^[ \t]*trap release_termux_wake_lock EXIT[ \t]*$/mu);
 const wakeLockAcquireIndex = termuxLauncherSource.search(/^[ \t]*if[ \t]+termux-wake-lock\b[^\n]*;[ \t]*then[ \t]*$/mu);
 const serverStartIndex = termuxLauncherSource.lastIndexOf("node ../../scripts/run-server.mjs dist/index.js");

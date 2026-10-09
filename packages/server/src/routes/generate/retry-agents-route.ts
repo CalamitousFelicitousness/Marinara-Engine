@@ -36,7 +36,15 @@ import {
   type GameMap,
   type WrapFormat,
   type GenerationParameterSendMap,
+  type ManagedGenerationParameterDefinition,
+  CUSTOM_GENERATION_PARAMETERS_SETTINGS_KEY,
+  parseManagedGenerationParameterDefinitions,
+  removeCopiedPromptGuidance,
 } from "@marinara-engine/shared";
+import {
+  resolveAgentConnectionParameters,
+  type AgentGenerationParameters,
+} from "../../services/generation/agent-generation-parameters.js";
 import { and, eq } from "../../db/file-query.js";
 import { listCharacterSprites } from "../../services/game/sprite.service.js";
 import { DATA_DIR } from "../../utils/data-dir.js";
@@ -75,6 +83,7 @@ import { buildUtilitySidecarEntry } from "../../services/utility-sidecar/utility
 import {
   DECISION_PROMPT_QUESTION_LIMIT_SETTINGS_KEY,
   parseDecisionPromptQuestionLimit,
+  readImageAppearanceOverride,
   UTILITY_SIDECAR_CONNECTION_ID,
 } from "@marinara-engine/shared";
 import { buildSpotifyDjConstraints } from "../../services/spotify/spotify-dj-constraints.js";
@@ -135,7 +144,10 @@ import { generateIllustratorImageVariants } from "../../services/image/illustrat
 import {
   buildCharacterAppearanceReferenceBlock,
   buildUncaptionedCharacterAppearanceBlock,
+  IMAGE_APPEARANCE_OVERRIDES_MEMORY_KEY,
+  personaEntityId,
   readCharacterPrompts,
+  readIllustratorImageAppearanceOverride,
   resolveNovelAiCharacterPromptLimit,
   supportsNovelAiCharacterPrompts,
 } from "../../services/image/character-prompts.js";
@@ -168,7 +180,6 @@ import {
   collectLatestTrackerCharacterHistory,
   isMessageHiddenFromAI,
   parseExtra,
-  parseStoredGenerationParameters,
   parseGameStateRow,
   parseSnapshotPlayerStats,
   preserveTrackerCharacterUiFields,
@@ -243,6 +254,7 @@ import {
   isBuiltInTextRewriteAgentType,
   mergePairedBuiltInRewriteAgents,
   normalizeProseGuardianPromptTemplate,
+  sharesBuiltInRewriteRequest,
 } from "../../services/generation/prose-guardian-settings.js";
 import {
   forceImageGenerationScopeError,
@@ -297,6 +309,8 @@ type PersonaContext = {
   personaName: string;
   personaDescription: string;
   personaFields: { personality?: string; scenario?: string; backstory?: string; appearance?: string };
+  /** Image-prompt appearance override (#7053); empty when the user has none. */
+  imageAppearanceOverride: string;
   personaAvatarPath?: string | null;
   personaStats: any;
   rpgStats: any;
@@ -638,9 +652,27 @@ async function executeManualIllustratorPromptRequest(args: {
         ? [
             characterPromptInstruction,
             buildCharacterAppearanceReferenceBlock([
-              ...args.agentContext.characters.map((char) => ({ name: char.name, appearance: char.appearance ?? "" })),
+              ...args.agentContext.characters.map((char) => ({
+                name: char.name,
+                // #7053: the image override replaces the card appearance for the
+                // manual illustrator prompt only.
+                appearance:
+                  readIllustratorImageAppearanceOverride(args.agentContext.memory, char.id) ?? char.appearance ?? "",
+              })),
               ...(args.agentContext.persona
-                ? [{ name: args.agentContext.persona.name, appearance: args.agentContext.persona.appearance ?? "" }]
+                ? [
+                    {
+                      name: args.agentContext.persona.name,
+                      // Personas are keyed by their own id, like characters (#7053).
+                      appearance:
+                        readIllustratorImageAppearanceOverride(
+                          args.agentContext.memory,
+                          personaEntityId(args.agentContext.memory),
+                        ) ??
+                        args.agentContext.persona.appearance ??
+                        "",
+                    },
+                  ]
                 : []),
             ]),
           ]
@@ -697,6 +729,7 @@ async function resolvePersonaContext(
   let personaFields: PersonaContext["personaFields"] = {};
   let personaStats: any = null;
   let rpgStats: any = null;
+  let imageAppearanceOverride = "";
 
   const chatMode = ((chat as { mode?: ChatMode }).mode ?? "conversation") as ChatMode;
   const persona = await resolveChatUserIdentity(chars, {
@@ -715,6 +748,7 @@ async function resolvePersonaContext(
       personaFields,
       personaStats,
       rpgStats,
+      imageAppearanceOverride,
     };
   }
 
@@ -724,6 +758,7 @@ async function resolvePersonaContext(
   personaName = persona.name;
   personaDescription = cardPromptText(persona.description);
   const personaAvatarPath = typeof persona.avatarPath === "string" ? persona.avatarPath : null;
+  imageAppearanceOverride = persona.imageAppearanceOverride ?? "";
   personaFields = {
     personality: cardPromptText(persona.personality),
     scenario: cardPromptText(persona.scenario),
@@ -751,6 +786,7 @@ async function resolvePersonaContext(
     personaAvatarPath,
     personaStats,
     rpgStats,
+    imageAppearanceOverride,
   };
 }
 
@@ -944,7 +980,9 @@ async function buildRetryAgentContext(args: {
     idleDuration: resolvePromptIdleDuration(recentMessages),
     macroSources: [
       ...recentMessages.map((message: any) => (typeof message.content === "string" ? message.content : "")),
-      ...resolvedAgents.map((agent) => JSON.stringify(agent.settings)),
+      // Agent prompts and the author's note too, so `{{include::...}}` in them has lorebooks to read (#7212).
+      ...resolvedAgents.flatMap((agent) => [agent.promptTemplate, JSON.stringify(agent.settings)]),
+      typeof chatMeta.authorNotes === "string" ? chatMeta.authorNotes : "",
     ],
   });
   const historyMacroProfilesById = (await resolveCharacterMacroData(db, allCharacterIds)).profilesById;
@@ -1192,6 +1230,7 @@ async function buildRetryAgentContext(args: {
     streaming,
     memory: {},
     lorebookEntryCounts: promptMacroContext.lorebookEntryCounts,
+    lorebookIncludes: promptMacroContext.lorebookIncludes,
   };
 
   const previousBeholderState = await loadPriorBeholderState({
@@ -1227,6 +1266,10 @@ async function buildRetryAgentContext(args: {
   }
   if (personaContext.personaId) {
     agentContext.memory._personaId = personaContext.personaId;
+    // #7053: set unconditionally (mirrors the generate route). The reader treats
+    // this key as authoritative, so leaving it unset when the override is empty
+    // would let a stale value survive on a reused memory object.
+    agentContext.memory._personaImageAppearanceOverride = personaContext.imageAppearanceOverride ?? "";
   }
   if (personaContext.identityId) {
     agentContext.memory._userIdentityId = personaContext.identityId;
@@ -1570,7 +1613,8 @@ function resolveRetryAgentConnectionRequest(args: {
   });
 }
 
-async function resolveRetryAgents(args: {
+/** Exported for the agent-connection-parameters regression. */
+export async function resolveRetryAgents(args: {
   agentTypes: string[];
   manualIllustration?: boolean;
   chat: any;
@@ -1579,6 +1623,7 @@ async function resolveRetryAgents(args: {
   agentPromptTemplateIds?: unknown;
   activeMusicPlayerSource?: "spotify" | "youtube" | "custom" | null;
   allowExternalAgentImports: boolean;
+  managedParameterDefinitions?: ManagedGenerationParameterDefinition[];
   onFallback?: GenerationFallbackNotifier;
 }): Promise<ResolvedRetryAgents> {
   const { agentTypes, chat, conns, agentsStore, agentPromptTemplateIds, activeMusicPlayerSource, onFallback } = args;
@@ -1673,6 +1718,7 @@ async function resolveRetryAgents(args: {
       enableCaching: boolean;
       anthropicExtendedCacheTtl: boolean;
       cachingAtDepth: number;
+      generation?: AgentGenerationParameters;
     } | null;
     unavailableReason?: string;
     connectionName?: string;
@@ -1697,7 +1743,16 @@ async function resolveRetryAgents(args: {
     }
 
     const knownModel = findKnownModel(storedConn.provider as APIProvider, model);
-    const storedParameters = parseStoredGenerationParameters(storedConn.defaultParameters);
+    // The connection's saved values and Send switches, resolved like a first run's (#7131). A retry has no chat reply
+    // to resolve, so an agent on the chat's connection does not take the chat's temperature or Send switches here.
+    const connectionParameters = resolveAgentConnectionParameters({
+      provider: storedConn.provider,
+      model,
+      maxContext: storedConn.maxContext,
+      maxTokensOverride: storedConn.maxTokensOverride,
+      defaultParameters: storedConn.defaultParameters,
+      managedParameterDefinitions: args.managedParameterDefinitions,
+    });
     connForPromptDefaults ??= storedConn;
     const primaryProvider = createLLMProvider(
       storedConn.provider,
@@ -1715,9 +1770,10 @@ async function resolveRetryAgents(args: {
         connectionId,
         provider: wrapRetryAgentProvider(primaryProvider, connectionId ?? storedConn.id),
         model,
-        customParameters: storedParameters?.customParameters ?? {},
-        temperature: storedParameters?.temperature,
-        enabledParameters: storedParameters?.enabledParameters,
+        customParameters: connectionParameters.customParameters,
+        temperature: connectionParameters.temperature,
+        enabledParameters: connectionParameters.enabledParameters,
+        generation: connectionParameters.generation,
         suppressModelParameters: shouldSuppressUnknownModelParameters(storedConn.provider, model),
         maxOutputTokens: knownModel?.maxOutput && knownModel.maxOutput > 0 ? Math.floor(knownModel.maxOutput) : null,
         maxParallelJobs: Number(storedConn.maxParallelJobs) || 1,
@@ -1953,6 +2009,7 @@ async function resolveRetryAgents(args: {
         enableCaching: agentConnection.entry.enableCaching,
         anthropicExtendedCacheTtl: agentConnection.entry.anthropicExtendedCacheTtl,
         cachingAtDepth: agentConnection.entry.cachingAtDepth,
+        generation: agentConnection.entry.generation,
         provider: agentConnection.entry.provider,
         model: agentConnection.entry.model,
         maxParallelJobs: agentConnection.entry.maxParallelJobs,
@@ -2043,6 +2100,7 @@ async function resolveRetryAgents(args: {
         enableCaching: builtInConnection.entry.enableCaching,
         anthropicExtendedCacheTtl: builtInConnection.entry.anthropicExtendedCacheTtl,
         cachingAtDepth: builtInConnection.entry.cachingAtDepth,
+        generation: builtInConnection.entry.generation,
         provider: builtInConnection.entry.provider,
         model: builtInConnection.entry.model,
         maxParallelJobs: builtInConnection.entry.maxParallelJobs,
@@ -2426,6 +2484,23 @@ async function resolveRetryImagePromptContext(args: {
   return { ...args.context, memory };
 }
 
+/** What a retried text rewrite does to `currentText`. The rewrite chain and the apply step must agree. */
+function readRetryTextRewrite(result: AgentResult, currentText: string | null | undefined) {
+  const rewriteData = result.data as Record<string, unknown>;
+  const editedText = typeof rewriteData.editedText === "string" ? rewriteData.editedText : "";
+  const changes = Array.isArray(rewriteData.changes)
+    ? (rewriteData.changes as Array<{ description: string }>)
+    : [{ description: "Rewrote the assistant response." }];
+  const editNeededValue = rewriteData.editNeeded;
+  const strictEditNeeded = isBuiltInTextRewriteAgentType(result.agentType);
+  const rewriteAllowed =
+    editNeededValue === false ? false : strictEditNeeded ? explicitlyRequestsTextRewrite(editNeededValue) : true;
+  const droppedProtectedMarkup = strictEditNeeded && textRewriteDropsProtectedMarkup(currentText, editedText);
+  const changedMessage =
+    rewriteAllowed && !droppedProtectedMarkup && editedText.trim().length > 0 && editedText !== currentText;
+  return { editedText, changes, strictEditNeeded, droppedProtectedMarkup, changedMessage };
+}
+
 async function executeRetryBatches(
   agentContext: AgentContext,
   resolvedAgents: ResolvedRetryAgent[],
@@ -2444,6 +2519,7 @@ async function executeRetryBatches(
     string,
     { agents: ResolvedRetryAgent[]; provider: any; model: string; context: AgentContext; maxParallelJobs: number }
   >();
+  const connectionLimits = new Map<string, number>();
 
   for (const entry of retryAgents) {
     const phaseContext =
@@ -2465,28 +2541,36 @@ async function executeRetryBatches(
       effectiveChatMode === "roleplay" && isTracker
         ? appendTrackerLorebookBatchContextKey(baseContextKind, attachLorebooksToTrackers)
         : baseContextKind;
-    const key = `${retryProviderKey(entry.agentProvider)}::${entry.agentModel}::${contextKind}::${getAgentBatchLane(entry.resolved)}`;
+    const connectionKey = retryProviderKey(entry.agentProvider);
+    const maxParallelJobs = normalizeAgentMaxParallelJobs(entry.resolved.maxParallelJobs);
+    connectionLimits.set(
+      connectionKey,
+      Math.min(connectionLimits.get(connectionKey) ?? maxParallelJobs, maxParallelJobs),
+    );
+    const lane = getAgentBatchLane(entry.resolved);
+    // Rewrite agents all edit the same reply, so they form one chain whatever their connection.
+    const key =
+      lane === "rewrite" ? `rewrite::${contextKind}` : `${connectionKey}::${entry.agentModel}::${contextKind}::${lane}`;
     if (!providerModelGroups.has(key)) {
       providerModelGroups.set(key, {
         agents: [],
         provider: entry.agentProvider,
         model: entry.agentModel,
         context,
-        maxParallelJobs: normalizeAgentMaxParallelJobs(entry.resolved.maxParallelJobs),
+        maxParallelJobs,
       });
     } else {
       const group = providerModelGroups.get(key)!;
-      group.maxParallelJobs = Math.max(
-        group.maxParallelJobs,
-        normalizeAgentMaxParallelJobs(entry.resolved.maxParallelJobs),
-      );
+      group.maxParallelJobs = Math.max(group.maxParallelJobs, maxParallelJobs);
     }
     providerModelGroups.get(key)!.agents.push(entry);
   }
 
+  const isRewriteChain = (group: { agents: ResolvedRetryAgent[] }) =>
+    getAgentBatchLane(group.agents[0]!.resolved) === "rewrite";
   const jobGroups = [...providerModelGroups.values()].flatMap((group) => {
     const jobCount = Math.min(normalizeAgentMaxParallelJobs(group.maxParallelJobs), group.agents.length);
-    if (jobCount <= 1) return [group];
+    if (jobCount <= 1 || isRewriteChain(group)) return [group];
     const chunks = Array.from({ length: jobCount }, () => [] as ResolvedRetryAgent[]);
     for (let index = 0; index < group.agents.length; index++) {
       chunks[index % jobCount]!.push(group.agents[index]!);
@@ -2508,11 +2592,42 @@ async function executeRetryBatches(
   }
 
   const results: AgentResult[] = [];
-  const runProviderJob = agentContext.sequentialExecution ? createAgentConcurrencyLimiter(1) : undefined;
+  // Like a fresh reply, each connection runs at most its Max Parallel Agent Jobs requests at once.
+  const connectionLimiters = new Map(
+    [...connectionLimits].map(([key, limit]) => [
+      key,
+      createAgentConcurrencyLimiter(agentContext.sequentialExecution ? 1 : limit),
+    ]),
+  );
   const groupSettled = await settleAgentJobsWithConcurrencyLimit(
     jobGroups,
     agentContext.sequentialExecution ? 1 : AGENT_PHASE_MAX_CONCURRENT_GROUPS,
-    async (group) => {
+    async function runGroup(group: (typeof jobGroups)[number]): Promise<AgentResult[]> {
+      if (isRewriteChain(group) && group.agents.length > 1) {
+        // As after a fresh reply, each rewrite agent edits the text the one before it left.
+        // Run side by side, they all started from the same text and the last one erased the others.
+        const chainResults: AgentResult[] = [];
+        let mainResponse = group.context.mainResponse;
+        for (const entry of group.agents) {
+          const entryResults = await runGroup({
+            ...group,
+            agents: [entry],
+            provider: entry.agentProvider,
+            model: entry.agentModel,
+            context: { ...group.context, mainResponse },
+          });
+          for (const result of entryResults) {
+            if (result.success && result.type === "text_rewrite" && result.data && typeof result.data === "object") {
+              const rewrite = readRetryTextRewrite(result, mainResponse);
+              if (rewrite.changedMessage) mainResponse = rewrite.editedText;
+            }
+          }
+          chainResults.push(...entryResults);
+        }
+        return chainResults;
+      }
+
+      const runProviderJob = connectionLimiters.get(retryProviderKey(group.provider))!;
       const groupAgents = group.agents.map((agent) => agent.resolved);
       const preparedGroupContext = await prepareCapabilityAgentContexts(groupAgents, group.context);
       for (const agent of groupAgents) preparedCapabilityContexts.set(agent.id, preparedGroupContext);
@@ -2554,12 +2669,8 @@ async function executeRetryBatches(
           chatMeta,
         });
         groupResults.push(
-          await executeAgent(
-            entry.resolved,
-            imagePromptContext,
-            group.provider,
-            group.model,
-            entry.resolved.toolContext,
+          await runProviderJob(() =>
+            executeAgent(entry.resolved, imagePromptContext, group.provider, group.model, entry.resolved.toolContext),
           ),
         );
       }
@@ -2568,12 +2679,8 @@ async function executeRetryBatches(
         const toolContext = isImagePromptRetryAgent(entry)
           ? await resolveRetryImagePromptContext({ entry, context: preparedGroupContext, conns, chatMode, chatMeta })
           : preparedGroupContext;
-        const result = await executeAgent(
-          entry.resolved,
-          toolContext,
-          group.provider,
-          group.model,
-          entry.resolved.toolContext,
+        const result = await runProviderJob(() =>
+          executeAgent(entry.resolved, toolContext, group.provider, group.model, entry.resolved.toolContext),
         );
         groupResults.push(await validateSpotifyRetryPlayback(entry, result, preparedGroupContext));
       }
@@ -2594,7 +2701,7 @@ async function executeRetryBatches(
 }
 
 function mergeRetryPairedBuiltInRewriteAgents(entries: ResolvedRetryAgent[]): ResolvedRetryAgent[] {
-  const builtInRewriteEntries = entries.filter((entry) => isBuiltInTextRewriteAgentType(entry.resolved.type));
+  const builtInRewriteEntries = entries.filter((entry) => sharesBuiltInRewriteRequest(entry.resolved));
   if (builtInRewriteEntries.length <= 1) return entries;
 
   const firstMergeIndex = Math.min(...builtInRewriteEntries.map((entry) => entries.indexOf(entry)));
@@ -2609,7 +2716,7 @@ function mergeRetryPairedBuiltInRewriteAgents(entries: ResolvedRetryAgent[]): Re
   for (let index = 0; index < entries.length; index++) {
     const entry = entries[index]!;
     if (index === firstMergeIndex) merged.push(mergedEntry);
-    if (isBuiltInTextRewriteAgentType(entry.resolved.type)) continue;
+    if (sharesBuiltInRewriteRequest(entry.resolved)) continue;
     merged.push(entry);
   }
   return merged;
@@ -2950,17 +3057,10 @@ async function applyRetryResultEffects(args: {
     if (signal.aborted) return;
     if (result.success && result.type === "text_rewrite" && result.data && typeof result.data === "object") {
       try {
-        const rewriteData = result.data as Record<string, unknown>;
-        const editedText = typeof rewriteData.editedText === "string" ? rewriteData.editedText : "";
-        const changes = Array.isArray(rewriteData.changes)
-          ? (rewriteData.changes as Array<{ description: string }>)
-          : [{ description: "Rewrote the assistant response." }];
-        const editNeededValue = rewriteData.editNeeded;
-        const strictEditNeeded = isBuiltInTextRewriteAgentType(result.agentType);
-        const rewriteAllowed =
-          editNeededValue === false ? false : strictEditNeeded ? explicitlyRequestsTextRewrite(editNeededValue) : true;
-        const droppedProtectedMarkup =
-          strictEditNeeded && textRewriteDropsProtectedMarkup(currentResponseForRewrite, editedText);
+        const { editedText, changes, strictEditNeeded, droppedProtectedMarkup, changedMessage } = readRetryTextRewrite(
+          result,
+          currentResponseForRewrite,
+        );
         if (droppedProtectedMarkup) {
           logger.warn(
             "[retry-agents] Skipping %s rewrite because it dropped protected markup from message %s",
@@ -2968,11 +3068,6 @@ async function applyRetryResultEffects(args: {
             retryMessageId,
           );
         }
-        const changedMessage =
-          rewriteAllowed &&
-          !droppedProtectedMarkup &&
-          editedText.trim().length > 0 &&
-          editedText !== currentResponseForRewrite;
         if (retryMessageId && changedMessage) {
           const currentMessage = await chats.getMessage(retryMessageId);
           assertRetryActive();
@@ -3149,7 +3244,12 @@ async function applyRetryResultEffects(args: {
           !isTrackerRowsUpdate(ctData.presentCharacters) &&
           (!Array.isArray(ctData.presentCharacters) || ctData.presentCharacters.length === 0)
         ) {
-          logger.debug("[retry-agents] character-tracker emitted no presentCharacters; keeping existing snapshot");
+          const resultKeys = Object.keys(ctData);
+          // `{}` and an empty list are the prompt's no-change replies; any other shape is lost output (#7208).
+          logger[resultKeys.length === 0 || Array.isArray(ctData.presentCharacters) ? "debug" : "warn"](
+            "[retry-agents] character-tracker emitted no presentCharacters (result keys: %s); keeping existing snapshot",
+            resultKeys.join(", ") || "none",
+          );
           continue;
         }
         const previousSnapshot = await loadRetryTargetGameStateSnapshot();
@@ -3599,10 +3699,20 @@ async function applyRetryResultEffects(args: {
               typeof agentContext.memory._gameImageStylePrompt === "string"
                 ? agentContext.memory._gameImageStylePrompt
                 : "";
+            // The writer follows the Style text and the connection's instructions; a sentence of
+            // them it copied word for word is not image-model text (#7357).
+            const writerGuidance = [
+              typeof agentContext.memory._illustratorImageStyleInstruction === "string"
+                ? agentContext.memory._illustratorImageStyleInstruction
+                : null,
+              imgConnFull.imagePromptInstructions,
+            ];
+            // A style that was only the copied Style text is dropped; the prompt keeps the subject.
+            const writerStyle = removeCopiedPromptGuidance(style, writerGuidance, { allowEmpty: true });
             let fullPrompt = buildIllustratorImagePrompt({
               gameArtStylePrompt,
-              style,
-              imagePrompt,
+              style: writerStyle,
+              imagePrompt: removeCopiedPromptGuidance(imagePrompt, writerGuidance),
               imagePositivePrompt,
             });
             const requestedNegativePrompt = [negativePrompt, savedNegativePrompt].filter(Boolean).join(", ");
@@ -3640,6 +3750,14 @@ async function applyRetryResultEffects(args: {
             const retryPersonaId = retryIdentitySource === "persona" ? retryIdentityId : null;
             const retryPersonaReference = retryPersonaId ? await chars.getPersona(retryPersonaId) : null;
             assertRetryActive();
+            // #7053: a character-backed user identity ("Add persona as character")
+            // carries its override on the identity, not on `_personaId`, which is
+            // reserved for persona-store rows. Read whichever id this identity
+            // actually uses, so both flavours reach the appearance block.
+            const retryIdentityOverride =
+              retryIdentitySource === "character"
+                ? readIllustratorImageAppearanceOverride(agentContext.memory, retryIdentityId)
+                : null;
             const retryCharacterIdentity =
               retryIdentitySource === "character" && retryIdentityId && agentContext.persona
                 ? {
@@ -3650,6 +3768,7 @@ async function applyRetryResultEffects(args: {
                         ? agentContext.memory._personaAvatarPath
                         : null,
                     appearance: agentContext.persona.appearance,
+                    appearanceOverride: retryIdentityOverride,
                   }
                 : null;
             const referenceResolution = await resolveIllustratorCharacterReferences({
@@ -3661,6 +3780,7 @@ async function applyRetryResultEffects(args: {
                   id: character.id,
                   name: character.name,
                   appearance: character.appearance,
+                  appearanceOverride: readIllustratorImageAppearanceOverride(agentContext.memory, character.id),
                 })),
                 ...(retryCharacterIdentity &&
                 !agentContext.characters.some((character) => character.id === retryCharacterIdentity.id)
@@ -3679,6 +3799,14 @@ async function applyRetryResultEffects(args: {
                             ? agentContext.memory._personaAvatarPath
                             : null,
                       appearance: agentContext.persona.appearance,
+                      // #7053: same override-wins rule as the caption path, so the
+                      // engine-appended appearance block matches the agent's own
+                      // `<character_appearance_reference>` instead of sending prose.
+                      appearanceOverride:
+                        typeof agentContext.memory._personaImageAppearanceOverride === "string" &&
+                        agentContext.memory._personaImageAppearanceOverride.trim()
+                          ? agentContext.memory._personaImageAppearanceOverride.trim()
+                          : null,
                       characterSheetImageId:
                         typeof retryPersonaReference?.characterSheetImageId === "string"
                           ? retryPersonaReference.characterSheetImageId
@@ -3705,8 +3833,27 @@ async function applyRetryResultEffects(args: {
                 illustratorCharacterPrompts.length > 0
                   ? buildUncaptionedCharacterAppearanceBlock(
                       [
-                        ...agentContext.characters,
-                        ...(agentContext.persona ? [agentContext.persona] : []),
+                        ...agentContext.characters.map((character) => ({
+                          name: character.name,
+                          appearance:
+                            readIllustratorImageAppearanceOverride(agentContext.memory, character.id) ??
+                            character.appearance ??
+                            "",
+                        })),
+                        ...(agentContext.persona
+                          ? [
+                              {
+                                name: agentContext.persona.name,
+                                appearance:
+                                  readIllustratorImageAppearanceOverride(
+                                    agentContext.memory,
+                                    personaEntityId(agentContext.memory),
+                                  ) ??
+                                  agentContext.persona.appearance ??
+                                  "",
+                              },
+                            ]
+                          : []),
                         ...referenceResolution.appearanceSources,
                       ],
                       illCharacters.filter((name): name is string => typeof name === "string"),
@@ -3747,7 +3894,7 @@ async function applyRetryResultEffects(args: {
               styleProfiles: imageSettings.styleProfiles,
               styleProfileId,
               imageDefaults,
-              generatedStyle: style,
+              generatedStyle: writerStyle,
               omitProfileStyleText:
                 illData._styleProfileInstructionApplied === true ||
                 typeof agentContext.memory._illustratorImageStyleInstruction === "string",
@@ -3774,7 +3921,7 @@ async function applyRetryResultEffects(args: {
                   styleProfiles: imageSettings.styleProfiles,
                   styleProfileId,
                   imageDefaults: imageFallback.imageDefaults,
-                  generatedStyle: style,
+                  generatedStyle: writerStyle,
                   omitProfileStyleText:
                     illData._styleProfileInstructionApplied === true ||
                     typeof agentContext.memory._illustratorImageStyleInstruction === "string",
@@ -4561,17 +4708,26 @@ export async function registerRetryAgentsRoute(
       const customAgentImportPolicy = await runRetrySetupPhase(abortController.signal, () =>
         getCustomAgentImportPolicy(app.db),
       );
+      const managedParameterDefinitions = await runRetrySetupPhase(abortController.signal, async () =>
+        parseManagedGenerationParameterDefinitions(
+          await createAppSettingsStorage(app.db).get(CUSTOM_GENERATION_PARAMETERS_SETTINGS_KEY),
+        ),
+      );
       const { conn, enabledConfigs, resolvedAgents, warnings } = await runRetrySetupPhase(abortController.signal, () =>
         resolveRetryAgents({
           agentTypes,
+          // Gallery Illustrate and Background are one-off runs, so neither needs Illustrator added to the chat.
           manualIllustration:
-            isManualIllustratorImageRequest && agentTypes.length === 1 && agentTypes[0] === "illustrator",
+            (isManualIllustratorImageRequest || isManualIllustratorBackgroundRequest) &&
+            agentTypes.length === 1 &&
+            agentTypes[0] === "illustrator",
           chat,
           conns,
           agentsStore,
           agentPromptTemplateIds,
           activeMusicPlayerSource,
           allowExternalAgentImports: customAgentImportPolicy.enabled,
+          managedParameterDefinitions,
           onFallback,
         }),
       );
@@ -4931,6 +5087,81 @@ export async function registerRetryAgentsRoute(
         ),
       );
 
+      // #7053: per-character image-prompt appearance overrides, read from each
+      // card's extensions. Built BEFORE the illustrator-only branch below: a retry
+      // targeting only a custom `trigger_image_generation` agent resolves no
+      // Illustrator prompt writer at all, yet its image prompt still needs the
+      // overrides. Also outside the `characterPromptInstruction` branch, because
+      // an empty instruction must not silently drop them.
+      let imageAppearanceOverrides: Record<string, string> | null = null;
+      try {
+        const retryImageAppearanceOverrides: Record<string, string> = {};
+        // Fetch concurrently: this runs inside the request path and each lookup
+        // touches storage, so a sequential await per character adds up on a large
+        // cast. A miss or failure is a no-op (no override).
+        const retryCharRows = await Promise.all(
+          agentContext.characters.map((character) => chars.getById(character.id).catch(() => null)),
+        );
+        agentContext.characters.forEach((character, index) => {
+          const charRow = retryCharRows[index];
+          if (!charRow) return;
+          // `parseSettingsRecord` is the file's tolerant record parse: a malformed
+          // card row degrades to "no override" instead of throwing out of
+          // override-building, which is a no-op for this feature.
+          const charData = parseSettingsRecord(charRow.data) as Record<string, unknown>;
+          const override = readImageAppearanceOverride(
+            charData.extensions && typeof charData.extensions === "object"
+              ? (charData.extensions as Record<string, unknown>)
+              : {},
+            null,
+          );
+          if (override) retryImageAppearanceOverrides[character.id] = override;
+        });
+        // Personas are keyed by their own id so both halves stay symmetric.
+        const retryPersonaIdForOverride = personaEntityId(agentContext.memory);
+        const retryPersonaOverride = agentContext.memory._personaImageAppearanceOverride;
+        if (
+          retryPersonaIdForOverride &&
+          agentContext.persona &&
+          typeof retryPersonaOverride === "string" &&
+          retryPersonaOverride
+        ) {
+          retryImageAppearanceOverrides[retryPersonaIdForOverride] = retryPersonaOverride;
+        }
+        // #7053: a character-backed user identity keys its override by
+        // `_userIdentityId`, not `_personaId`. The loop above only covers ids
+        // present in `agentContext.characters`; load the row when the identity is
+        // not among them so the user's own card keeps its override.
+        const retryIdentityIdForOverride =
+          typeof agentContext.memory._userIdentityId === "string" ? agentContext.memory._userIdentityId : null;
+        if (
+          retryIdentityIdForOverride &&
+          !retryImageAppearanceOverrides[retryIdentityIdForOverride] &&
+          agentContext.memory._userIdentitySource === "character"
+        ) {
+          const identityRow = await chars.getById(retryIdentityIdForOverride).catch(() => null);
+          const identityData = identityRow ? (parseSettingsRecord(identityRow.data) as Record<string, unknown>) : {};
+          const identityOverride = readImageAppearanceOverride(
+            identityData.extensions && typeof identityData.extensions === "object"
+              ? (identityData.extensions as Record<string, unknown>)
+              : {},
+            null,
+          );
+          if (identityOverride) retryImageAppearanceOverrides[retryIdentityIdForOverride] = identityOverride;
+        }
+        imageAppearanceOverrides =
+          Object.keys(retryImageAppearanceOverrides).length > 0 ? retryImageAppearanceOverrides : null;
+      } catch (error) {
+        if (abortController.signal.aborted) throw error;
+        logger.warn(error, "[retry-agents] Failed to resolve image appearance overrides");
+      }
+      if (imageAppearanceOverrides) {
+        agentContext.memory[IMAGE_APPEARANCE_OVERRIDES_MEMORY_KEY] = imageAppearanceOverrides;
+        if (preGenerationAgentContext) {
+          preGenerationAgentContext.memory[IMAGE_APPEARANCE_OVERRIDES_MEMORY_KEY] = imageAppearanceOverrides;
+        }
+      }
+
       const retryIllustratorPromptAgent = resolvedAgents.find((entry) => entry.resolved.type === "illustrator");
       if (retryIllustratorPromptAgent) {
         try {
@@ -4951,6 +5182,9 @@ export async function registerRetryAgentsRoute(
           if (abortController.signal.aborted) throw error;
           logger.warn(error, "[retry-agents] Failed to resolve image style instruction for the prompt writer");
         }
+        // #7053: the appearance override map is built above, before this
+        // Illustrator-only branch, so custom image agents and cards without a
+        // caption instruction both keep their overrides.
         try {
           const { instruction: characterPromptInstruction } = await runRetrySetupPhase(abortController.signal, () =>
             resolveIllustratorCharacterPromptInstruction({

@@ -1,10 +1,16 @@
 import { resolveDecisionConnection } from "../services/decision/decision-connection.js";
 import { askNoulQuestions } from "../services/decision/system-one.client.js";
 import { connectionChatTarget, probeDecisionSlot } from "../services/decision/sidecar-decision.backend.js";
+import {
+  BUNDLED_CLAUDE_CODE_VERSION,
+  claudeCodeExecutableOption,
+  readClaudeCodeModelCatalog,
+  resolveClaudeCodeInstall,
+} from "../services/llm/providers/claude-subscription/installed-cli.js";
 // ──────────────────────────────────────────────
 // Routes: Connections
 // ──────────────────────────────────────────────
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply } from "fastify";
 import { existsSync } from "fs";
 import { mkdir, readFile, writeFile } from "fs/promises";
 import { extname, join } from "path";
@@ -18,7 +24,9 @@ import {
   MODEL_LISTS,
   VIDEO_DEFAULTS_STORAGE_KEY,
   connectionImageCaptioningDefaultsSchema,
+  connectionModelPinSchema,
   createConnectionSchema,
+  MAX_PINNED_MODELS,
   createDefaultVideoGenerationProfile,
   decisionTestTimeoutMs,
   generationParametersSchema,
@@ -27,20 +35,28 @@ import {
   inferImageSource,
   inferVideoSource,
   isLocalAuthProvider,
+  isMistralAdjustableReasoningModel,
+  isMistralGlm53Model,
   isOpenAIGpt6Model,
   localAuthProviderBaseUrl,
   normalizeVideoGenerationProfile,
   type AtlasCloudVideoModelSchemaResponse,
 } from "@marinara-engine/shared";
 import type { TextModelPricing } from "@marinara-engine/shared";
-import { createConnectionsStorage } from "../services/storage/connections.storage.js";
 import { fetchModelsForAudioConnection, testAudioConnection } from "../services/tts/audio-connection-catalog.js";
+import {
+  connectionSavesModelList,
+  createConnectionsStorage,
+  readSavedModelList,
+  withoutSavedModels,
+} from "../services/storage/connections.storage.js";
 import {
   allowsDefaultChatModel,
   canRefreshLocalContext,
   fetchLocalContextLimit,
 } from "../services/llm/local-context-limit.js";
 import { resetMemoryRecallVectorizerCache } from "../services/memory-recall-embedding.js";
+import { withLongTermMemoryEmbeddingChange } from "../services/generation/long-term-memory-runtime.js";
 import { createLLMProvider } from "../services/llm/provider-registry.js";
 import { readTextModelPricing } from "../services/llm/model-pricing.js";
 import { resolveStoredChatOptions, resolveStoredMaxTokens } from "../services/generation/generation-parameters.js";
@@ -453,10 +469,10 @@ export async function connectionsRoutes(app: FastifyInstance) {
   ): T =>
     conn
       ? ({
-          ...conn,
+          ...withoutSavedModels(conn),
           apiKeyEncrypted: conn.apiKeyEncrypted ? "••••••••" : "",
           managementTokenEncrypted: conn.managementTokenEncrypted ? "••••••••" : "",
-        } as T)
+        } as unknown as T)
       : conn;
 
   app.get("/", async () => {
@@ -510,9 +526,11 @@ export async function connectionsRoutes(app: FastifyInstance) {
     const input = createConnectionSchema.parse(req.body);
     const validationError = nanoGptVideoConnectionError(input);
     if (validationError) return reply.status(400).send({ error: validationError });
-    const created = await storage.create(input);
-    resetMemoryRecallVectorizerCache();
-    return maskConnection(created);
+    return withLongTermMemoryEmbeddingChange(app.db, reply, async () => {
+      const created = await storage.create(input);
+      resetMemoryRecallVectorizerCache();
+      return maskConnection(created);
+    });
   });
 
   app.patch<{ Params: { id: string } }>("/:id", async (req, reply) => {
@@ -521,9 +539,11 @@ export async function connectionsRoutes(app: FastifyInstance) {
     if (!current) return reply.status(404).send({ error: "Connection not found" });
     const validationError = nanoGptVideoConnectionError({ ...current, ...data });
     if (validationError) return reply.status(400).send({ error: validationError });
-    const updated = await storage.update(req.params.id, data);
-    resetMemoryRecallVectorizerCache();
-    return maskConnection(updated);
+    return withLongTermMemoryEmbeddingChange(app.db, reply, async () => {
+      const updated = await storage.update(req.params.id, data);
+      resetMemoryRecallVectorizerCache();
+      return maskConnection(updated);
+    });
   });
 
   app.post<{ Params: { id: string } }>("/:id/image", async (req, reply) => {
@@ -590,14 +610,18 @@ export async function connectionsRoutes(app: FastifyInstance) {
         params[VIDEO_DEFAULTS_STORAGE_KEY] = rawRecord[VIDEO_DEFAULTS_STORAGE_KEY];
       }
     }
-    await storage.updateDefaultParameters(req.params.id, params);
-    resetMemoryRecallVectorizerCache();
-    return { success: true };
+    return withLongTermMemoryEmbeddingChange(app.db, reply, async () => {
+      await storage.updateDefaultParameters(req.params.id, params);
+      resetMemoryRecallVectorizerCache();
+      return { success: true };
+    });
   });
 
   app.delete<{ Params: { id: string } }>("/:id", async (req, reply) => {
-    await storage.remove(req.params.id);
-    resetMemoryRecallVectorizerCache();
+    await withLongTermMemoryEmbeddingChange(app.db, reply, async () => {
+      await storage.remove(req.params.id);
+      resetMemoryRecallVectorizerCache();
+    });
     return reply.status(204).send();
   });
 
@@ -963,30 +987,45 @@ export async function connectionsRoutes(app: FastifyInstance) {
     }
   });
 
-  app.get<{ Params: { id: string } }>("/:id/models", async (req, reply) => {
-    const conn = await storage.getWithKey(req.params.id);
-    if (!conn) return reply.status(404).send({ error: "Connection not found" });
-
+  /**
+   * Ask the provider for its model list. Returns the list, or the reply once an error has been sent.
+   * `builtIn` marks a list answered without asking the provider, which is never saved.
+   */
+  const discoverConnectionModels = async (
+    conn: NonNullable<Awaited<ReturnType<typeof storage.getWithKey>>>,
+    reply: FastifyReply,
+  ): Promise<{ models: Array<{ id: string; name: string }>; loras?: unknown[]; builtIn?: true } | FastifyReply> => {
     if (conn.provider === "decision") {
       // Jev is only the default of the System One sources; a chat server needs the
       // model name the user entered.
       const model = conn.model || (conn.decisionSource === "openai_compatible" ? "" : "jev-latest");
-      return { models: model ? [{ id: model, name: model }] : [] };
+      return { models: model ? [{ id: model, name: model }] : [], builtIn: true };
     }
     try {
       // PROVIDERS.audio has no modelsEndpoint, so the generic branch below would
-      // request the bare base URL. The speech catalog is per source.
+      // request the bare base URL. The speech catalog is per source and is
+      // fetched fresh rather than saved.
       if (conn.provider === "audio") {
-        const audioModels = await fetchModelsForAudioConnection(app.db, req.params.id);
-        if (audioModels) return { models: audioModels.models };
+        const audioModels = await fetchModelsForAudioConnection(app.db, String(conn.id));
+        if (audioModels) return { models: audioModels.models, builtIn: true };
       }
 
-      // Claude (Subscription) has no remote /models endpoint — return the
-      // curated static list for the subscription path.
+      // Claude (Subscription) has no remote /models endpoint. Use the catalog
+      // Claude Code caches for the signed-in account; it already leaves out
+      // models the account or the Claude Code in use can't run, so the curated
+      // list is only the fallback before a catalog exists. A connection with an
+      // API key bills that key, so the subscription catalog does not apply.
       if (conn.provider === "claude_subscription") {
         const { MODEL_LISTS } = await import("@marinara-engine/shared");
-        const models = MODEL_LISTS.claude_subscription.map((m) => ({ id: m.id, name: m.name }));
-        return { models };
+        // Without a known Claude Code version, models can't be checked against it.
+        const cliVersion = conn.apiKey
+          ? null
+          : ((await resolveClaudeCodeInstall())?.version ?? BUNDLED_CLAUDE_CODE_VERSION);
+        const catalog = cliVersion ? await readClaudeCodeModelCatalog(cliVersion) : [];
+        const models = catalog.length
+          ? catalog
+          : MODEL_LISTS.claude_subscription.map((m) => ({ id: m.id, name: m.name }));
+        return { models, builtIn: true };
       }
 
       if (conn.provider === "openai_chatgpt") {
@@ -995,9 +1034,10 @@ export async function connectionsRoutes(app: FastifyInstance) {
           if (models.length > 0) return { models };
         } catch {
           // Fall through to the curated list so the selector remains usable
-          // before the host has run `codex login`.
+          // before the host has run `codex login`. It is not saved, so a later
+          // look at the list asks Codex again.
         }
-        return { models: MODEL_LISTS.openai_chatgpt.map((m) => ({ id: m.id, name: m.name })) };
+        return { models: MODEL_LISTS.openai_chatgpt.map((m) => ({ id: m.id, name: m.name })), builtIn: true };
       }
 
       if (conn.provider === "grok_subscription") {
@@ -1438,6 +1478,40 @@ export async function connectionsRoutes(app: FastifyInstance) {
         error: `Failed to fetch models: ${detail}${code && /^[A-Z0-9_]+$/.test(code) ? ` (${code})` : ""}. The connection is made from the Marinara server; check that the provider is reachable there.`,
       });
     }
+  };
+
+  // A chat connection keeps the list it fetched, so later looks answer from it without asking the
+  // provider again. `refresh=true` (the Refresh and Fetch Models buttons) fetches and replaces it.
+  app.get<{ Params: { id: string }; Querystring: { refresh?: string } }>("/:id/models", async (req, reply) => {
+    const conn = await storage.getWithKey(req.params.id);
+    if (!conn) return reply.status(404).send({ error: "Connection not found" });
+    const savesList = connectionSavesModelList(conn.provider);
+    if (savesList && req.query.refresh !== "true") {
+      const saved = readSavedModelList(conn);
+      if (saved) return saved;
+    }
+    const discovered = await discoverConnectionModels(conn, reply);
+    if ((discovered as unknown) === reply) return reply;
+    const { builtIn, ...result } = discovered as Exclude<typeof discovered, FastifyReply>;
+    if (!savesList || builtIn) return result;
+    const saved = await storage.saveModelListIfUnchanged(conn, result.models);
+    // The provider, address or key changed while the list loaded, so it may belong to the old settings.
+    // Don't hand it out as current; the client asks again.
+    if (!saved) {
+      return reply.status(409).send({ error: "The connection changed while its models were loading." });
+    }
+    return saved;
+  });
+
+  app.post<{ Params: { id: string } }>("/:id/pinned-models", async (req, reply) => {
+    const parsed = connectionModelPinSchema.safeParse(req.body);
+    if (!parsed.success) return reply.status(400).send({ error: "Send a model ID and whether it is pinned." });
+    const result = await storage.setModelPinned(req.params.id, parsed.data.model, parsed.data.pinned);
+    if (result === "not_found") return reply.status(404).send({ error: "Connection not found" });
+    if (result === "limit") {
+      return reply.status(400).send({ error: `You can pin up to ${MAX_PINNED_MODELS} models per connection.` });
+    }
+    return result;
   });
 
   // ── Test image generation — uses a broadly supported 1K square canvas ──
@@ -1684,6 +1758,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
           permissionMode: "bypassPermissions",
           includePartialMessages: false,
           settings: { fastMode },
+          ...(await claudeCodeExecutableOption()),
           ...(conn.apiKey ? { env: { ...process.env, ANTHROPIC_API_KEY: conn.apiKey } } : {}),
         },
       });
@@ -1772,13 +1847,13 @@ export async function connectionsRoutes(app: FastifyInstance) {
       );
 
       const storedOptions = resolveStoredChatOptions(conn.defaultParameters, conn.provider, model);
-      // Always-reasoning models (GLM 5.3) spend one output budget on thinking and
-      // on text. At 200 tokens the whole budget is thinking and the test reports
+      // Reasoning models (GLM 5.3, Mistral reasoning models) spend one output budget on
+      // thinking and on text. At 200 tokens the whole budget is thinking and the test reports
       // success with nothing to show, so give them room for a one-line answer.
-      const maxTokens = resolveStoredMaxTokens(
-        conn.defaultParameters,
-        isGlm53MandatoryReasoningModel(model) ? 1024 : 200,
-      );
+      const reasoningTest =
+        isGlm53MandatoryReasoningModel(model) ||
+        (conn.provider === "mistral" && (isMistralAdjustableReasoningModel(model) || isMistralGlm53Model(model)));
+      const maxTokens = resolveStoredMaxTokens(conn.defaultParameters, reasoningTest ? 1024 : 200);
       let fullResponse = "";
       const generation = provider.chat([{ role: "user", content: "hi" }], {
         model,
@@ -1905,7 +1980,9 @@ function readOpenAICompatibleModelLimits(model: Record<string, unknown>): Pick<R
     readPositiveInteger(model.max_input_tokens) ??
     readPositiveInteger(model.input_token_limit) ??
     readPositiveInteger(model.inputTokenLimit) ??
-    readPositiveInteger(topProvider?.context_length);
+    readPositiveInteger(topProvider?.context_length) ??
+    // Mistral's /models
+    readPositiveInteger(model.max_context_length);
   const maxOutput =
     readPositiveInteger(topProvider?.max_completion_tokens) ??
     readPositiveInteger(model.max_completion_tokens) ??

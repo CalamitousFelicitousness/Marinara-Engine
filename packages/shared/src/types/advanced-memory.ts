@@ -2,6 +2,13 @@ import { z } from "zod";
 
 /** Distinguishes explicit scene participants from legacy visibility-based assignments. */
 export const ADVANCED_MEMORY_SCENE_AUDIENCE = { id: "scene-audience", revision: "participants-v1" } as const;
+/** The helper named participants that match no character, or none in a group chat. Saving access clears it. */
+export const ADVANCED_MEMORY_SCENE_AUDIENCE_UNMATCHED = "scene-audience-unmatched";
+/** Fix asked the helper again and it still couldn't tell who was there, so the user decides. */
+export const ADVANCED_MEMORY_SCENE_AUDIENCE_UNRESOLVED = {
+  id: "scene-audience-unresolved",
+  revision: "fix-v1",
+} as const;
 
 export const advancedMemorySettingsSchema = z.object({
   enabled: z.boolean().default(false),
@@ -17,6 +24,8 @@ export const advancedMemorySettingsSchema = z.object({
   retrieveMinMessages: z.number().int().min(0).max(50).default(3),
   retrieveMaxMessages: z.number().int().min(0).max(50).default(10),
   narratorCharacterId: z.string().nullable().default(null),
+  /** Individual group chats only: hide each new message from characters the memory model finds absent. */
+  autoMessageVisibility: z.boolean().default(false),
   /** A null value explicitly confirms knowledge from the beginning. Missing means unconfirmed. */
   knowledgeStarts: z.record(z.string().nullable()).default({}),
   knowledgeConfirmed: z.boolean().default(false),
@@ -50,12 +59,16 @@ export const advancedMemoryDecisionDiagnosticsSchema = z.object({
       }),
     )
     .max(128),
+  /** Receipt reason codes about excerpts, such as why a recalled scene has none. Never names or message text. */
+  notes: z.array(z.string().max(64)).max(8).optional(),
 });
 export type AdvancedMemoryDecisionDiagnostics = z.infer<typeof advancedMemoryDecisionDiagnosticsSchema>;
 
 export interface AdvancedMemoryJob {
   id?: string;
   blocking?: boolean;
+  /** Explicit user pause; ordinary interruptions and correction recovery may also be cancelled. */
+  paused?: boolean;
   status: "idle" | "running" | "ready" | "cancelled" | "error" | "needs_confirmation";
   stage: "idle" | "classifying" | "summarizing" | "indexing" | "compacting" | "ready";
   completed: number;
@@ -75,6 +88,17 @@ export interface AdvancedMemoryJob {
     /** A changed manual flag replaces the automatic window. */
     manualStartMessageId?: string | null;
   }>;
+  /** The last finished Fix run; kept until the next Fix or a reset. */
+  fixResult?: AdvancedMemoryFixResult | null;
+}
+
+export interface AdvancedMemoryFixResult {
+  /** The Fix job's `id`. */
+  jobId: string;
+  /** Scenes that were flagged before Fix and are healthy after it. */
+  fixedSceneIds: string[];
+  /** Scenes Fix left for the user: hand-edited summaries, unclear participants or failed checks. */
+  reviewSceneIds: string[];
 }
 
 export interface AdvancedMemoryRecord {
@@ -124,6 +148,8 @@ export interface AdvancedMemoryStatus {
 
 export interface AdvancedMemoryReceipt {
   decisionRecall?: AdvancedMemoryDecisionDiagnostics;
+  /** The finished scenes this audience could recall; a swipe recalls again when they change. */
+  archiveRevision?: string;
   sourceEndMessageId?: string | null;
   sourceFingerprint: string;
   policyRevision: string;
@@ -138,13 +164,72 @@ export interface AdvancedMemoryReceipt {
   reasons: string[];
 }
 
+export interface AdvancedMemoryProblems {
+  /** Scenes Fix repairs with the helper: unclear or unchecked participants, outdated or missing summaries. */
+  fixSceneIds: string[];
+  /** Scenes only the user can settle: hand-edited summaries that no longer match, or participants Fix couldn't decide. */
+  reviewSceneIds: string[];
+  /** Settings the user has to change; Fix can't. */
+  blockers: Array<"needs_confirmation" | "decision-connection-unavailable">;
+  /** The last memory job stopped with an error; Fix or Resume continues it. */
+  stopped: boolean;
+}
+
+/**
+ * Every Advanced Memory problem that needs the user's attention, from one status. Shared by the badge, the
+ * notice, the Fix box and the server's Fix report. Advisories (unscoped summaries or agents) are not problems.
+ */
+export function advancedMemoryProblems(
+  status: Pick<
+    AdvancedMemoryStatus,
+    "job" | "records" | "unpreparedScenes" | "warnings" | "missingKnowledgeCharacterIds"
+  >,
+): AdvancedMemoryProblems {
+  const fix = new Set<string>();
+  const review = new Set<string>();
+  const has = (record: AdvancedMemoryRecord, id: string) => record.dependencies.some((item) => item.id === id);
+  for (const record of status.records) {
+    // Excluded and deleted summaries are the user's choice, not problems.
+    if (record.kind !== "scene" || record.id === record.sceneId || !record.content || !record.enabled) continue;
+    if (record.manualOverride) {
+      if (record.embeddingStatus === "stale" || record.id === status.job.reviewRecordId) review.add(record.sceneId);
+    } else if (
+      has(record, ADVANCED_MEMORY_SCENE_AUDIENCE_UNMATCHED) &&
+      has(record, ADVANCED_MEMORY_SCENE_AUDIENCE_UNRESOLVED.id)
+    )
+      review.add(record.sceneId);
+    else if (
+      has(record, ADVANCED_MEMORY_SCENE_AUDIENCE_UNMATCHED) ||
+      !record.dependencies.some(
+        (item) =>
+          item.id === ADVANCED_MEMORY_SCENE_AUDIENCE.id && item.revision === ADVANCED_MEMORY_SCENE_AUDIENCE.revision,
+      ) ||
+      record.embeddingStatus === "stale"
+    )
+      fix.add(record.sceneId);
+  }
+  for (const scene of status.unpreparedScenes ?? []) {
+    if (scene.deleted) continue;
+    const manual = status.records.some(
+      (record) => record.kind === "scene" && record.sceneId === scene.sceneId && record.manualOverride,
+    );
+    (manual ? review : fix).add(scene.sceneId);
+  }
+  for (const id of review) fix.delete(id);
+  const blockers: AdvancedMemoryProblems["blockers"] = [];
+  if (status.job.status === "needs_confirmation" || status.missingKnowledgeCharacterIds.length)
+    blockers.push("needs_confirmation");
+  if (status.warnings.includes("decision-connection-unavailable")) blockers.push("decision-connection-unavailable");
+  return { fixSceneIds: [...fix], reviewSceneIds: [...review], blockers, stopped: status.job.status === "error" };
+}
+
 export interface PreparedAdvancedMemory {
   messageIds: string[];
   chatSummary: string | null;
   currentSceneSummary: string | null;
   recalledScenes: string | null;
   recalledMessages: string | null;
-  /** Persisted optional recall record IDs, distinct from source scene/message IDs. */
+  /** Persisted IDs used only by optional recall; constant-summary dependencies remain when recall is omitted. */
   recalledRecordIds: string[];
   receipt: AdvancedMemoryReceipt;
 }

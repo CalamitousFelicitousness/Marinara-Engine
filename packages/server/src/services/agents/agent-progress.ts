@@ -41,15 +41,26 @@ export function agentParameterSources(
       config.type === "beholder" ? "agent rule" : config.temperature !== undefined ? inherited : "default";
   }
   if (options.maxTokens !== undefined) {
-    // Batches sum member budgets; connection overrides and model output limits cap single calls.
+    // Batches sum member budgets; connection overrides and model output limits cap single calls, and thinking
+    // room raises them.
     sources.parameters.maxTokens =
-      configs.length > 1 || options.maxTokens < normalizeAgentMaxTokens(config.settings.maxTokens)
+      configs.length > 1 || options.maxTokens !== normalizeAgentMaxTokens(config.settings.maxTokens)
         ? "agent rule"
         : config.settings.maxTokens !== undefined
           ? "agent settings"
           : "default";
   }
-  if (options.reasoningEffort !== undefined) sources.parameters.reasoningEffort = "agent rule";
+  // The connection's saved values arrive through config.generation.
+  const generation = config.generation;
+  for (const key of ["topP", "topK", "minP", "frequencyPenalty", "presencePenalty", "verbosity"] as const) {
+    if (options[key] !== undefined && generation?.[key] !== undefined) sources.parameters[key] = "connection";
+  }
+  if (options.reasoningEffort !== undefined) {
+    sources.parameters.reasoningEffort =
+      generation?.reasoning && options.reasoningEffort === generation.reasoning.reasoningEffort
+        ? "connection"
+        : "agent rule";
+  }
   for (const [key, enabled] of Object.entries(options.enabledParameters ?? {}) as Array<
     [keyof NonNullable<ChatOptions["enabledParameters"]>, boolean]
   >) {

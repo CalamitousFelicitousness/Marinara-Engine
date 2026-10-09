@@ -51,7 +51,7 @@ test("a Decision connection's time limit saves, and Test reports an answer slowe
     const limit = editor.getByLabel("Time limit (seconds)", { exact: true });
     await limit.scrollIntoViewIfNeeded();
     await expect(limit).toHaveValue("1.5");
-    await expect(editor.getByText(/A later answer counts as no\./u)).toBeVisible();
+    await expect(editor.getByText(/Answers that come later count as no\./u)).toBeVisible();
 
     // An answer slower than the limit is reported with its real time, not as a dead endpoint.
     await limit.fill("0.5");

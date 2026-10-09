@@ -3,7 +3,6 @@
 // ──────────────────────────────────────────────
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { z } from "zod";
-import AdmZip from "adm-zip";
 import { logger } from "../lib/logger.js";
 import { getMariDbService } from "../services/mari-db/mari-db.service.js";
 import { cardPromptText } from "../services/prompt/card-text.js";
@@ -55,6 +54,7 @@ import {
   isMessagePinnedToContext,
   normalizeMessageMarkPatch,
   normalizeGroupChatMode,
+  normalizeIllustratorRunInterval,
   readMessagePrivateNote,
   stripPrivateMessageNote,
   MESSAGE_MARK_EXTRA_KEYS,
@@ -161,10 +161,11 @@ import {
 } from "../services/chat-insights/transcript-document.js";
 import { readSmallAvatarDataUri } from "../services/chat-insights/transcript-avatars.js";
 import { characters, gameStateSnapshots, memoryChunks } from "../db/schema/index.js";
-import { and, desc, eq, inArray } from "../db/file-query.js";
+import { and, desc, eq, inArray, isNotNull } from "../db/file-query.js";
 import { existsSync } from "fs";
 import { join } from "path";
 import { DATA_DIR } from "../utils/data-dir.js";
+import { singleChunk, streamExportZip } from "../utils/export-stream.js";
 import { normalizeTimestampOverrides } from "../services/import/import-timestamps.js";
 import {
   appendNonLeadingSystemMessagesToLastUser,
@@ -180,6 +181,7 @@ import {
   resolveBaseUrl,
   resolveActiveCharacterIds,
   resolveVisibleGameStateAnchor,
+  mergedChatSummaryReaders,
   shouldEnableAgentsForGeneration,
   formatConversationInstructionsForWrap,
   injectIntoOutputFormatOrLastUser,
@@ -212,6 +214,11 @@ import {
 } from "../services/generation/roleplay-summary-runtime.js";
 import { resolveLorebookTokenBudget } from "../services/generation/lorebook-generation-runtime.js";
 import { resolveGameGmPromptTemplate } from "../services/generation/game-gm-prompt-runtime.js";
+import {
+  parseScenePackageOrigin,
+  parseStoredScenePackageData,
+  releaseScenePackageOrigin,
+} from "../services/capability-packages/capability-scene-origin.service.js";
 import {
   isBackgroundAutonomousCandidate,
   hasRoleplayDmThreadMarkers,
@@ -1152,6 +1159,20 @@ export async function chatsRoutes(app: FastifyInstance) {
     if (data.characterIds?.includes(PROFESSOR_MARI_ID) && !hasProfessorMariCharacter(existing)) {
       return reply.status(400).send({ error: "Professor Mari is only available from the Home screen." });
     }
+    if (data.characterIds !== undefined) {
+      // A hosted room's AI roster lives in the room. Changing it here would leave the room's
+      // own list behind and every later room reply would be refused.
+      const room = parseChatMetadata(existing.metadata).multiplayer as { role?: unknown; status?: unknown } | null;
+      const before = new Set(resolveChatCharacterIds(existing.characterIds));
+      const after = new Set(data.characterIds);
+      if (
+        room?.role === "host" &&
+        room.status !== "ended" &&
+        (before.size !== after.size || [...after].some((id) => !before.has(id)))
+      ) {
+        return reply.status(409).send({ error: "Add or remove room characters from Players." });
+      }
+    }
     const nextPersonaCharacterId =
       data.personaCharacterId === undefined ? existing.personaCharacterId : data.personaCharacterId;
     if ((data.mode ?? existing.mode) === "game" && nextPersonaCharacterId) {
@@ -1455,6 +1476,10 @@ export async function chatsRoutes(app: FastifyInstance) {
     if (Object.prototype.hasOwnProperty.call(incoming, "summaryMaxTokens")) {
       incoming.summaryMaxTokens = clampRoleplaySummaryMaxTokens(incoming.summaryMaxTokens);
     }
+    if (Object.prototype.hasOwnProperty.call(incoming, "illustratorRunInterval")) {
+      // Numbers clamp to 0-100; anything else returns the chat to the agent's Run Interval.
+      incoming.illustratorRunInterval = normalizeIllustratorRunInterval(incoming.illustratorRunInterval);
+    }
     if (
       Object.prototype.hasOwnProperty.call(incoming, "noodleTimelineContextEnabled") &&
       typeof incoming.noodleTimelineContextEnabled !== "boolean"
@@ -1467,69 +1492,92 @@ export async function chatsRoutes(app: FastifyInstance) {
     ) {
       return reply.status(400).send({ error: "slurp2ActivityContextEnabled must be a boolean" });
     }
+    const cancelReplacedAdvancedMemory = (previous: Record<string, unknown>, saved: Record<string, unknown>) => {
+      if (
+        incoming.enableMemoryRecall === true &&
+        !normalizeAdvancedMemorySettings(saved.advancedMemory).enabled &&
+        normalizeAdvancedMemorySettings(previous.advancedMemory).enabled
+      ) {
+        createAdvancedMemoryService(app.db).cancelActiveOperation(req.params.id);
+      }
+    };
     if (
       Object.prototype.hasOwnProperty.call(incoming, "hideSummarisedMessages") &&
       typeof incoming.hideSummarisedMessages === "boolean"
     ) {
-      const updated = await storage.patchMetadata(req.params.id, async (freshMeta) => {
-        const previousHideEnabled = freshMeta.hideSummarisedMessages === true;
-        if (previousHideEnabled === incoming.hideSummarisedMessages) {
-          return incoming;
-        }
-
-        const allMessages = await storage.listMessages(req.params.id);
-        const currentEntries = normalizeChatSummaryEntries(freshMeta.summaryEntries, {
-          legacySummary: typeof freshMeta.summary === "string" ? freshMeta.summary : null,
-        });
-        const now = new Date().toISOString();
-        let nextEntries: ChatSummaryEntry[];
-
-        if (incoming.hideSummarisedMessages) {
-          const tail = resolveRoleplaySummaryTail(freshMeta.summaryTailMessages);
-          nextEntries = [];
-          for (const entry of currentEntries) {
-            if (!entry.enabled || !entry.messageIds?.length) {
-              nextEntries.push(entry);
-              continue;
-            }
-
-            const eligibleToHide = computeSummaryHideIds({
-              messages: allMessages,
-              entryMessageIds: entry.messageIds,
-              tail,
-            });
-            const hiddenMessageIds =
-              eligibleToHide.length > 0 ? await storage.bulkSetHiddenFromAI(req.params.id, eligibleToHide, true) : [];
-            const ownedHiddenMessageIds = Array.from(new Set([...(entry.hiddenMessageIds ?? []), ...hiddenMessageIds]));
-            nextEntries.push(
-              ownedHiddenMessageIds.length > 0
-                ? { ...entry, hiddenMessageIds: ownedHiddenMessageIds, updatedAt: now }
-                : entry,
-            );
+      const updated = await storage.patchMetadata(
+        req.params.id,
+        async (freshMeta) => {
+          const previousHideEnabled = freshMeta.hideSummarisedMessages === true;
+          if (previousHideEnabled === incoming.hideSummarisedMessages) {
+            return incoming;
           }
-        } else {
-          const summaryOwnedHiddenIds = Array.from(
-            new Set(currentEntries.flatMap((entry) => entry.hiddenMessageIds ?? [])),
-          );
-          if (summaryOwnedHiddenIds.length > 0) {
-            await storage.bulkSetHiddenFromAI(req.params.id, summaryOwnedHiddenIds, false);
-          }
-          nextEntries = currentEntries.map((entry) => {
-            if (!entry.hiddenMessageIds?.length) return entry;
-            const { hiddenMessageIds: _hiddenMessageIds, ...rest } = entry;
-            return { ...rest, updatedAt: now };
+
+          const allMessages = await storage.listMessages(req.params.id);
+          const currentEntries = normalizeChatSummaryEntries(freshMeta.summaryEntries, {
+            legacySummary: typeof freshMeta.summary === "string" ? freshMeta.summary : null,
           });
-        }
+          const now = new Date().toISOString();
+          let nextEntries: ChatSummaryEntry[];
 
-        return {
-          ...incoming,
-          summaryEntries: nextEntries,
-          summary: compileChatSummaryEntries(nextEntries),
-        };
-      });
+          if (incoming.hideSummarisedMessages) {
+            const tail = resolveRoleplaySummaryTail(freshMeta.summaryTailMessages);
+            nextEntries = [];
+            for (const entry of currentEntries) {
+              if (!entry.enabled || !entry.messageIds?.length) {
+                nextEntries.push(entry);
+                continue;
+              }
+
+              const eligibleToHide = computeSummaryHideIds({
+                messages: allMessages,
+                entryMessageIds: entry.messageIds,
+                tail,
+              });
+              const hiddenMessageIds =
+                eligibleToHide.length > 0 ? await storage.bulkSetHiddenFromAI(req.params.id, eligibleToHide, true) : [];
+              const ownedHiddenMessageIds = Array.from(
+                new Set([...(entry.hiddenMessageIds ?? []), ...hiddenMessageIds]),
+              );
+              nextEntries.push(
+                ownedHiddenMessageIds.length > 0
+                  ? { ...entry, hiddenMessageIds: ownedHiddenMessageIds, updatedAt: now }
+                  : entry,
+              );
+            }
+          } else {
+            const summaryOwnedHiddenIds = Array.from(
+              new Set(currentEntries.flatMap((entry) => entry.hiddenMessageIds ?? [])),
+            );
+            if (summaryOwnedHiddenIds.length > 0) {
+              await storage.bulkSetHiddenFromAI(req.params.id, summaryOwnedHiddenIds, false);
+            }
+            nextEntries = currentEntries.map((entry) => {
+              if (!entry.hiddenMessageIds?.length) return entry;
+              const { hiddenMessageIds: _hiddenMessageIds, ...rest } = entry;
+              return { ...rest, updatedAt: now };
+            });
+          }
+
+          return {
+            ...incoming,
+            summaryEntries: nextEntries,
+            summary: compileChatSummaryEntries(nextEntries),
+          };
+        },
+        { afterWrite: cancelReplacedAdvancedMemory },
+      );
       return updated ? normalizeChatForResponse(updated) : updated;
     }
-    const updated = await storage.patchMetadata(req.params.id, incoming);
+    // Rearranging windows or dismissing their hint is a view preference, not new chat activity.
+    const changedKeys = Object.keys(incoming);
+    const viewOnly =
+      changedKeys.length > 0 &&
+      changedKeys.every((key) => key === "windowLayout" || key === "chatSettingsHintDismissed");
+    const updated = await storage.patchMetadata(req.params.id, incoming, {
+      touchUpdatedAt: !viewOnly,
+      afterWrite: cancelReplacedAdvancedMemory,
+    });
     return updated ? normalizeChatForResponse(updated) : updated;
   });
 
@@ -2076,8 +2124,15 @@ export async function chatsRoutes(app: FastifyInstance) {
     }
     // If this is a scene chat, clean up the origin chat's scene pointer
     const chat = await storage.getById(req.params.id);
+    let scenePackageOrigin: ReturnType<typeof parseScenePackageOrigin> = null;
+    let scenePackageData: ReturnType<typeof parseStoredScenePackageData> = null;
     if (chat) {
       const meta = parseExtra(chat.metadata) as Record<string, unknown>;
+      // A package origin is told after the chat is gone, so its thread never unlocks while the scene still exists.
+      if (meta.sceneStatus === "active") {
+        scenePackageOrigin = parseScenePackageOrigin(meta.scenePackageOrigin);
+        scenePackageData = parseStoredScenePackageData(meta);
+      }
       const originId = meta.sceneOriginChatId;
       if (typeof originId === "string" && originId) {
         const origin = await storage.getById(originId);
@@ -2100,6 +2155,12 @@ export async function chatsRoutes(app: FastifyInstance) {
     // Disconnect from partner chat before deleting
     await storage.disconnectChat(req.params.id);
     await storage.remove(req.params.id);
+    if (scenePackageOrigin)
+      await releaseScenePackageOrigin(scenePackageOrigin, {
+        kind: "deleted",
+        sceneChatId: req.params.id,
+        data: scenePackageData,
+      });
     return reply.status(204).send();
   });
 
@@ -2389,9 +2450,18 @@ export async function chatsRoutes(app: FastifyInstance) {
     if (created?.id && input.role === "user") {
       const chat = await storage.getById(req.params.id);
       const personaSnapshot = await buildPersonaSnapshotForChat(app, chat);
-      if (personaSnapshot) {
-        return (await storage.updateMessageExtra(created.id, { personaSnapshot })) ?? created;
+      const saved = personaSnapshot
+        ? ((await storage.updateMessageExtra(created.id, { personaSnapshot })) ?? created)
+        : created;
+      const memory = normalizeAdvancedMemorySettings(parseExtra(chat?.metadata).advancedMemory);
+      if (chat?.mode !== "roleplay" || !memory.enabled || !memory.autoMessageVisibility) return saved;
+      // Your message is decided once, when you post it, even if no reply follows (#7349).
+      try {
+        await createAdvancedMemoryService(app.db).settleMessageVisibility(chat.id);
+      } catch (error) {
+        logger.warn(error, "[advanced-memory] Message visibility failed for chat %s; hiding nothing", chat.id);
       }
+      return (await storage.getMessage(created.id)) ?? saved;
     }
     return created;
   });
@@ -2533,12 +2603,31 @@ export async function chatsRoutes(app: FastifyInstance) {
             partial[key] = normalizeMessageCharacterIds(partial[key]);
           }
         }
+        // A whisper edited to nothing is removed from the message rather than kept as a blank secret.
+        if (Array.isArray(partial.roleplayCommandActivity)) {
+          partial.roleplayCommandActivity = partial.roleplayCommandActivity.filter(
+            (item: { command?: { type?: unknown; text?: unknown }; error?: unknown } | null) =>
+              !(
+                item?.command?.type === "whisper" &&
+                !item.error &&
+                typeof item.command.text === "string" &&
+                !item.command.text.trim()
+              ),
+          );
+        }
         const syncAllSwipeExtra: Record<string, unknown> = {};
         if (Object.prototype.hasOwnProperty.call(partial, "hiddenFromAI")) {
           syncAllSwipeExtra.hiddenFromAI = partial.hiddenFromAI;
         }
         if (Object.prototype.hasOwnProperty.call(partial, "hiddenFromAICharacterIds")) {
           syncAllSwipeExtra.hiddenFromAICharacterIds = partial.hiddenFromAICharacterIds;
+        }
+        // A user's visibility choice, for everyone or per character, always wins over Advanced Memory's automatic one (#7192).
+        if (
+          Object.prototype.hasOwnProperty.call(partial, "hiddenFromAI") ||
+          Object.prototype.hasOwnProperty.call(partial, "hiddenFromAICharacterIds")
+        ) {
+          partial.visibilityManual = syncAllSwipeExtra.visibilityManual = true;
         }
         if (Object.prototype.hasOwnProperty.call(partial, "isConversationStart")) {
           syncAllSwipeExtra.isConversationStart = partial.isConversationStart;
@@ -2612,7 +2701,10 @@ export async function chatsRoutes(app: FastifyInstance) {
       if (typeof hidden !== "boolean") {
         return reply.status(400).send({ error: "hidden must be a boolean" });
       }
-      const updated = (await storage.bulkSetHiddenFromAI(req.params.chatId, messageIds, hidden)).length;
+      // /hide and /unhide are the user's choice too, so Advanced Memory never overrides them (#7192).
+      const updated = (
+        await storage.bulkSetHiddenFromAI(req.params.chatId, messageIds, hidden, { visibilityManual: true })
+      ).length;
       return { updated };
     },
   );
@@ -2971,12 +3063,13 @@ export async function chatsRoutes(app: FastifyInstance) {
     if (!updated && !hasExplicitTarget) {
       updated = await gameStateStore.updateLatest(req.params.id, fields, manual);
     }
-    // Wipe all manual overrides when explicitly requested
+    // Wipe all manual overrides when explicitly requested. Every row's, because a regeneration
+    // starts from the edits on any swipe of the reply it replaces.
     if (clearOverrides && updated) {
       await app.db
         .update(gameStateSnapshots)
         .set({ manualOverrides: null })
-        .where(and(eq(gameStateSnapshots.chatId, req.params.id), eq(gameStateSnapshots.id, (updated as any).id)));
+        .where(and(eq(gameStateSnapshots.chatId, req.params.id), isNotNull(gameStateSnapshots.manualOverrides)));
       updated = { ...updated, manualOverrides: null };
     }
     // If no snapshot exists yet, create one so manual edits aren't lost
@@ -3166,6 +3259,8 @@ export async function chatsRoutes(app: FastifyInstance) {
           parameters: null,
           source: "cached",
           exact: true,
+          // Whose saved prompt this is, so Decision diagnostics can follow that character (#7264).
+          characterId: promptSourceMessage.characterId ?? null,
           generationInfo: cached.generationInfo ?? null,
           agentTraces: cached.agentTraces ?? null,
           gameToolPlanning: cached.gameToolPlanning ?? null,
@@ -3215,6 +3310,7 @@ export async function chatsRoutes(app: FastifyInstance) {
           buildChatMacroContext,
           buildPresetVariables,
           normalizeChatMacroVariables,
+          resolveCharacterMacroData,
           resolvePromptIdleDuration,
           setLorebookEntryCounts,
         } = await import("../services/prompt/index.js");
@@ -3655,6 +3751,16 @@ export async function chatsRoutes(app: FastifyInstance) {
             personaStats,
             chatMessages: mappedMessages,
             chatSummary: activeChatSummary,
+            // Read the summary as the next merged reply will, so the preview matches it (#7252).
+            chatSummaryReaders: activeChatSummary
+              ? mergedChatSummaryReaders({
+                  characterIds: assistantCharacterIds,
+                  individual: normalizeGroupChatMode(chatMeta.groupChatMode) === "individual",
+                  impersonate: false,
+                  narratorCharacterId: normalizeAdvancedMemorySettings(chatMeta.advancedMemory).narratorCharacterId,
+                  ...(await resolveCharacterMacroData(app.db, assistantCharacterIds)),
+                })
+              : undefined,
             enableAgents: chatMeta.enableAgents === true,
             activeAgentIds: activePromptAgentIds,
             activeLorebookIds: Array.isArray(chatMeta.activeLorebookIds)
@@ -4648,59 +4754,63 @@ export async function chatsRoutes(app: FastifyInstance) {
 
     if (chatsToExport.length === 0) return reply.status(404).send({ error: "No chats found to export" });
 
-    const zip = new AdmZip();
-    const manifest: Array<Record<string, unknown>> = [];
-
-    for (let index = 0; index < chatsToExport.length; index++) {
-      const chat = chatsToExport[index]!;
-      const serialized = await serializeChatTranscript(chat, format, { includeReasoning, includePrivateNotes });
-      const file = buildBulkExportFilename(
-        chat,
-        index,
-        chatsToExport.length,
-        serialized.branchName,
-        serialized.extension,
-      );
-      zip.addFile(file, Buffer.from(serialized.content, "utf8"));
-      manifest.push({
-        file,
-        id: chat.id,
-        name: chat.name,
-        mode: chat.mode,
-        groupId: chat.groupId,
-        folderId: chat.folderId,
-        branchName: serialized.branchName || null,
-        createdAt: chat.createdAt,
-        updatedAt: chat.updatedAt,
-        messageCount: serialized.messageCount,
-      });
-    }
-
-    zip.addFile(
-      "manifest.json",
-      Buffer.from(
-        JSON.stringify(
-          {
-            exportedAt: new Date().toISOString(),
-            format,
-            includeReasoning,
-            includePrivateNotes,
-            scope,
-            count: chatsToExport.length,
-            chats: manifest,
-          },
-          null,
-          2,
+    // One transcript is read and compressed at a time while the ZIP is sent (#7115); the manifest goes last.
+    const files = (async function* () {
+      const manifest: Array<Record<string, unknown>> = [];
+      for (let index = 0; index < chatsToExport.length; index++) {
+        const chat = chatsToExport[index]!;
+        const serialized = await serializeChatTranscript(chat, format, { includeReasoning, includePrivateNotes });
+        const file = buildBulkExportFilename(
+          chat,
+          index,
+          chatsToExport.length,
+          serialized.branchName,
+          serialized.extension,
+        );
+        manifest.push({
+          file,
+          id: chat.id,
+          name: chat.name,
+          mode: chat.mode,
+          groupId: chat.groupId,
+          folderId: chat.folderId,
+          branchName: serialized.branchName || null,
+          createdAt: chat.createdAt,
+          updatedAt: chat.updatedAt,
+          messageCount: serialized.messageCount,
+        });
+        yield {
+          stem: file.slice(0, -(serialized.extension.length + 1)),
+          extension: serialized.extension,
+          content: singleChunk(serialized.content),
+        };
+      }
+      yield {
+        stem: "manifest",
+        extension: "json",
+        content: singleChunk(
+          JSON.stringify(
+            {
+              exportedAt: new Date().toISOString(),
+              format,
+              includeReasoning,
+              includePrivateNotes,
+              scope,
+              count: chatsToExport.length,
+              chats: manifest,
+            },
+            null,
+            2,
+          ),
         ),
-        "utf8",
-      ),
-    );
+      };
+    })();
 
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
     return reply
       .header("Content-Type", "application/zip")
       .header("Content-Disposition", `attachment; filename="chat-transcripts-${format}-${stamp}.zip"`)
-      .send(zip.toBuffer());
+      .send(streamExportZip(files));
   });
 
   // Export chat — supports JSONL (default, SillyTavern-compatible), plain text, Markdown and a standalone HTML story
@@ -4742,7 +4852,8 @@ export async function chatsRoutes(app: FastifyInstance) {
       sourceChat.mode === "roleplay"
         ? await createAdvancedMemoryService(app.db).exportTransferRecords(sourceChat.id)
         : [];
-    const isSceneChat = sourceMeta.sceneStatus === "active" || !!sourceMeta.sceneOriginChatId;
+    const isSceneChat =
+      sourceMeta.sceneStatus === "active" || !!sourceMeta.sceneOriginChatId || !!sourceMeta.scenePackageOrigin;
     if (isSceneChat) {
       return reply.status(400).send({ error: "Scene chats cannot be branched" });
     }

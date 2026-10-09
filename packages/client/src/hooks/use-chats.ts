@@ -12,6 +12,7 @@ import {
 } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api, ApiError, isRequestTimeoutError, requestTimeoutSignal } from "../lib/api-client";
+import { EXPORT_FAILED_TOAST_ID } from "../lib/file-download";
 import { translate } from "../localization/i18n";
 import { useChatStore } from "../stores/chat.store";
 import { useAgentStore } from "../stores/agent.store";
@@ -26,7 +27,9 @@ import { isMessageHidden } from "../lib/message-visibility";
 import { copyLocalSpriteVisualSettings } from "../components/chat/local-sprite-visual-settings";
 import { lorebookKeys } from "./use-lorebooks";
 import { achievementKeys, trackAchievementEvent } from "./use-achievements";
+import { normalizeAdvancedMemorySettings } from "@marinara-engine/shared";
 import type {
+  AdvancedMemoryStatus,
   Chat,
   ChatMemoryChunk,
   ChatMemoryRecallExportPayload,
@@ -952,11 +955,31 @@ export function useUpdateChatMetadata(options?: { serialize?: boolean }) {
     onMutate: async ({ id, ...metadata }) => {
       await qc.cancelQueries({ queryKey: chatKeys.detail(id) });
       await qc.cancelQueries({ queryKey: chatKeys.list() });
+      const enablesBasicRecall =
+        metadata.enableMemoryRecall === true && !normalizeAdvancedMemorySettings(metadata.advancedMemory).enabled;
+      if (enablesBasicRecall) await qc.cancelQueries({ queryKey: ["advanced-memory", id] });
       const previous = qc.getQueryData<Chat>(chatKeys.detail(id));
       const fallback = useChatStore.getState().activeChat?.id === id ? useChatStore.getState().activeChat : null;
       const base = previous ?? fallback;
-      const updatedAt = new Date().toISOString();
+      const previousAdvancedStatus = enablesBasicRecall
+        ? qc.getQueryData<AdvancedMemoryStatus>(["advanced-memory", id])
+        : undefined;
+      let optimisticAdvancedStatus: AdvancedMemoryStatus | undefined;
+      if (enablesBasicRecall) {
+        metadata.advancedMemory = {
+          ...normalizeAdvancedMemorySettings(
+            metadata.advancedMemory ?? normalizeChatMetadataValue(base?.metadata).advancedMemory,
+          ),
+          enabled: false,
+        };
+        optimisticAdvancedStatus = qc.setQueryData<AdvancedMemoryStatus>(["advanced-memory", id], (status) =>
+          status ? { ...status, settings: { ...status.settings, enabled: false } } : status,
+        );
+      }
       const changedKeys = Object.keys(metadata);
+      const viewOnly =
+        changedKeys.length > 0 &&
+        changedKeys.every((key) => key === "windowLayout" || key === "chatSettingsHintDismissed");
       const version = nextChatMetadataMutationVersion(id, changedKeys);
       if (base) {
         syncCachedChat(qc, {
@@ -965,10 +988,18 @@ export function useUpdateChatMetadata(options?: { serialize?: boolean }) {
             ...(normalizeChatMetadataValue(base.metadata) as Record<string, unknown>),
             ...metadata,
           } as Chat["metadata"],
-          updatedAt,
+          updatedAt: viewOnly ? base.updatedAt : new Date().toISOString(),
         });
       }
-      return { previous, version, changedKeys };
+      return {
+        previous,
+        version,
+        changedKeys,
+        viewOnly,
+        enablesBasicRecall,
+        previousAdvancedStatus,
+        optimisticAdvancedStatus,
+      };
     },
     onError: (_error, variables, context) => {
       if (context?.previous) {
@@ -982,8 +1013,19 @@ export function useUpdateChatMetadata(options?: { serialize?: boolean }) {
             context.version,
             context.changedKeys,
           ),
-          updatedAt: context.previous.updatedAt,
+          updatedAt: context.viewOnly ? current.updatedAt : context.previous.updatedAt,
         });
+      }
+      if (context?.enablesBasicRecall) {
+        if (
+          context.optimisticAdvancedStatus &&
+          qc.getQueryData(["advanced-memory", variables.id]) === context.optimisticAdvancedStatus &&
+          shouldAcceptMetadataField(variables.id, "enableMemoryRecall", context.version)
+        ) {
+          qc.setQueryData(["advanced-memory", variables.id], context.previousAdvancedStatus);
+        }
+        qc.invalidateQueries({ queryKey: ["advanced-memory", variables.id] });
+        qc.invalidateQueries({ queryKey: chatKeys.detail(variables.id) });
       }
       if (options?.serialize || Object.hasOwn(variables, "background")) {
         // A later failed save may have captured an earlier optimistic value.
@@ -1005,7 +1047,7 @@ export function useUpdateChatMetadata(options?: { serialize?: boolean }) {
             data.metadata,
             context?.version ?? chatMetadataMutationVersions.get(vars.id) ?? 0,
           ),
-          updatedAt: data.updatedAt,
+          updatedAt: context?.viewOnly ? base.updatedAt : data.updatedAt,
         });
       } else {
         qc.invalidateQueries({ queryKey: chatKeys.detail(vars.id) });
@@ -1013,6 +1055,9 @@ export function useUpdateChatMetadata(options?: { serialize?: boolean }) {
       qc.invalidateQueries({ queryKey: chatKeys.list() });
       qc.invalidateQueries({ queryKey: [...chatKeys.all, "group"] });
       qc.invalidateQueries({ queryKey: lorebookKeys.active(vars.id) });
+      if (Object.hasOwn(vars, "enableMemoryRecall") || Object.hasOwn(vars, "advancedMemory")) {
+        qc.invalidateQueries({ queryKey: ["advanced-memory", vars.id] });
+      }
     },
   });
 }
@@ -1679,6 +1724,8 @@ export function usePeekPrompt() {
         parameters: unknown;
         source?: "cached" | "live_preview" | "raw_messages";
         exact?: boolean;
+        /** The character whose saved prompt this is. */
+        characterId?: string | null;
         generationInfo: {
           model?: string;
           provider?: string;
@@ -1732,7 +1779,9 @@ export function useExportChat() {
       );
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? `Export failed: ${error.message}` : "Export failed.");
+      toast.error(error instanceof Error ? `Export failed: ${error.message}` : "Export failed.", {
+        id: EXPORT_FAILED_TOAST_ID,
+      });
     },
   });
 }

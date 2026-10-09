@@ -113,8 +113,8 @@ export function FeaturedCharacterTrackerCard({
   characterIndex: number;
   deleteMode: boolean;
   addMode: boolean;
-  onToggleFeatured: () => void;
-  onToggleCollapsed: () => void;
+  onToggleFeatured?: () => void;
+  onToggleCollapsed?: () => void;
   onUploadAvatar: () => void;
 }) {
   useRenderTimer(`tracker-featured:${characterIndex}`); // [#3104 diagnostic]

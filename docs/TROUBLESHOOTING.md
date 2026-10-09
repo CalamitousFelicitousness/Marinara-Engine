@@ -27,15 +27,30 @@ When reporting a connection error, include mode, platform, the visible error and
 
 ### Termux: JavaScript heap out of memory while building the client
 
-If Vite stops with `Reached heap limit` or `JavaScript heap out of memory`, the client build ran out of Node.js heap. This is different from a missing native Rollup binary. Update and rerun `start-termux.sh`: client builds now temporarily raise a smaller automatic heap toward 1536 MiB, capped at half of known device RAM with a 1024 MiB floor. The RAM cap is rounded down in 128 MiB steps. If half of device RAM is below 1024 MiB, the 1024 MiB floor takes precedence. The running server keeps its smaller profile-based limit. An explicit heap limit in `NODE_OPTIONS` takes precedence for both processes, so check for a previously configured 1024 MiB override.
+If Vite stops with `Reached heap limit` or `JavaScript heap out of memory`, the client build ran out of Node.js heap. This is different from a missing native Rollup binary. Update and rerun `start-termux.sh`: client builds, including in-app updates, now run with their own 1536 MiB heap, capped at half of known device RAM but never below the 1280 MiB the build needs. The RAM cap is rounded down in 128 MiB steps. The running server keeps its smaller profile-based limit. An explicit heap limit in `NODE_OPTIONS` takes precedence for both processes, so check for a previously configured 1024 MiB override: the client no longer builds in 1024 MiB.
 
-Close other apps before retrying. Low-memory devices can still run out of memory or be stopped by Android; keep the complete launcher output when reporting that case. Do not delete your chats or profile to repair a build failure.
+Close other apps before retrying. Phones with less than about 3 GB of RAM can still run out of memory or be stopped by Android; keep the complete launcher output when reporting that case. Do not delete your chats or profile to repair a build failure.
 
-### Termux: missing multiplayer guest asset or incompatible Sharp
+### Termux: missing multiplayer guest asset
 
 If startup still reports a missing `packages/client/dist/multiplayer/guest.js` after rebuilding, update Engine and rerun `./start-termux.sh`. The launcher now runs the complete low-memory client build, including the guest assets checked at startup. You do not need to enable multiplayer to repair this build error.
 
-If image processing reports that Sharp cannot load on Android, update Engine and let the launcher reinstall dependencies. The matching `@img/sharp-wasm32` fallback is included as a regular dependency so frozen installs and updates retain it. Avoid replacing it with an unrelated Sharp version. Keep the complete error output if the problem persists.
+### Termux: server stops when you open Engine, or Sharp cannot load
+
+Sharp is the image library Engine uses for thumbnails and sprites. On Android it runs through a WebAssembly fallback. Updating in place from 2.4.6 could leave part of that fallback uninstalled, and the server then stopped the first time a browser opened Engine.
+
+Update Engine and let the launcher reinstall dependencies. The update installs the missing part, and Engine keeps it through later updates. If the server keeps stopping when you open Engine before you can update, repair the install by hand in Termux:
+
+```bash
+cd ~/Marinara-Engine
+rm -f node_modules/.modules.yaml
+SHARP_IGNORE_GLOBAL_LIBVIPS=1 pnpm --config.trustPolicy=off --config.confirmModulesPurge=false install --frozen-lockfile --prefer-offline
+./start-termux.sh
+```
+
+This clears pnpm's outdated install record and reinstalls the dependencies. Your chats and settings are not touched.
+
+If Sharp still cannot load, Engine now keeps running with image processing off: thumbnails it has already made still show, new ones show the full-size image instead, and sprite generation and the built-in background removal are unavailable. Do not replace Sharp with an unrelated version. Keep the complete error output when you report the problem.
 
 ### Blank page or JavaScript served as HTML after an update
 
@@ -197,11 +212,21 @@ For full setup, see [Local Model Setup](connections/local-model.md).
 
 A memory needs at least 5 new messages before it is created. Recall also only shows memories that closely match your new message, so it can return nothing even when memories exist.
 
+### Advanced Memory says scenes need attention
+
+A steady dot on the **Chat Settings** button, or a notice that Advanced Memory found problems, means some scene memories are unclear, out of date or missing.
+
+1. Open **Chat Settings** > **Memory Recall**, or press **Fix** in the notice.
+2. Press **Fix**. It repairs every scene it can with the Helper model and never changes summaries you edited.
+3. Select each scene number under **need your review** to open it in **Access memories for this chat**, then check its text and characters and press **Save correction**.
+
+If Fix stops with an error, check the Helper model's connection, then press **Resume processing** or **Fix** again. See [Fixing memory problems](agents/memory.md#fixing-memory-problems).
+
 ### Summaries are not generating
 
 Chat summaries need a working text connection to write them.
 
-- In Roleplay mode, open the **Chat Summary** popover and confirm a connection is set. Use **Backfill Summary** to catch up an older chat.
+- In Roleplay mode, open **Chat Settings** > **Chat Summary** and confirm a connection is set. Use **Backfill Summary** to catch up an older chat.
 - In Conversation mode, open **Automatic Summarization** and use **Backfill** to retry days that failed.
 - If your chat requires agent write approval, an AI summary waits for your review before it takes effect.
 - A summary that keeps failing (for example, a bad API key) is retried on a delay. Fix the connection, then use **Backfill**.
@@ -211,7 +236,8 @@ Chat summaries need a working text connection to write them.
 The **Card Browser** lets you search public character sites and import characters. Open it from the **Card Browser** icon in the top bar, then click **Download Cards**.
 
 - If JannyAI search or a character page fails with a Cloudflare block, Marinara shows a message. It asks you to visit the JannyAI site once in the same browser to clear the challenge, then retry.
-- If your CharacterTavern or Pygmalion login stops working after you restart the server, that is expected. Those logins live only in server memory and clear on restart. Open the login window and paste your cookie or token again.
+- If your Pygmalion login stops working after you restart the server, that is expected. That login lives only in server memory and clears on restart. Open the login window and paste your token again.
+- If CharacterTavern shows a notice instead of search results, that is expected. Its rebuilt website no longer offers the connection Marinara used. Download the card from character-tavern.com and import the file instead.
 
 ## Media generation problems
 
@@ -234,9 +260,9 @@ Then restart Marinara and click **Reapply Cleanup** in the sprite generation win
 Game Mode Storyboards turn a completed GM narration into keyframe images and optional clips. Roleplay Storyboards combine completed exchanges and display the result inline after the assistant response.
 
 - Confirm **Storyboard** is installed from **Agents** > **Download Agents**, then turn on **Enable Agents** and **Enable Storyboards** for the chat.
-- For a manual scene video, generate or upload a **Gallery** image first, then use its **Video** or **Animate** action. The **Gallery** splits **Images** and **Videos** into tabs, so check the **Videos** tab.
+- For a manual scene video, open **Chat Settings** > **Gallery**, generate or upload an image, then use its **Video** or **Animate** action. The **Gallery** splits **Images** and **Videos** into tabs, so check the **Videos** tab.
 - For automatic Game Mode Storyboards, open **Chat Settings** > **Agents** > **Storyboards** and confirm **Automatic Storyboard Illustrations** is on. Turn on **Automatic Storyboard Animations** too if you also want clips.
-- In Roleplay, add the **Storyboard** Agent to the chat. Choose **Still images** or **Animations**, set **Messages per episode**, and select the Storyboard image connection. **Manual only** runs from **Create storyboard** in the Gallery instead.
+- In Roleplay, add the **Storyboard** Agent to the chat. Choose **Still images** or **Animations**, set **Messages per episode**, and select the Storyboard image connection. **Manual only** runs from **Create storyboard** in the **Gallery** section of **Chat Settings** instead.
 - Keyframe images need an image connection. Clips also need a video connection.
 - If a custom prompt works better with all characters combined, turn off **Use NovelAI Character Prompts**.
 - Slow providers can hit a timeout. Raise `IMAGE_GEN_TIMEOUT_MS` or `VIDEO_GEN_TIMEOUT_MS` in `.env`, then restart Marinara. The server only reads these values at startup.

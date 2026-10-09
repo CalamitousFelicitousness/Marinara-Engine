@@ -7,7 +7,12 @@ import {
 } from "../services/multiplayer/generation-policy.js";
 import { rejectGenerationOutput, type GenerationOutput } from "./generate/sse.js";
 import { resolveStoredChatOptions, resolveStoredMaxTokens } from "../services/generation/generation-parameters.js";
-import { normalizeGameDifficulty, normalizeWeatherType, combatWeatherSchema } from "@marinara-engine/shared";
+import {
+  normalizeGameDifficulty,
+  normalizeWeatherType,
+  combatWeatherSchema,
+  readImageAppearanceOverride,
+} from "@marinara-engine/shared";
 import { resolveCombatWeather } from "../services/game/weather.service.js";
 import { resolveGameConnection } from "../services/game/connection.service.js";
 import { combatAiHintsSchema, combatTacticsSchema, combatInterruptFields } from "@marinara-engine/shared";
@@ -65,7 +70,6 @@ import { isDiceNotation, rollDice } from "../services/game/dice.service.js";
 import { jsonishLooksTruncated, parseGameJsonish } from "../services/game/jsonish.js";
 import {
   formatInitialGameGmConnectionError,
-  GAME_SETUP_GENERATION_TIMEOUT_MS,
   resolveInitialGameGmConnectionId,
 } from "../services/game/initial-game-setup.js";
 import { validateTransition } from "../services/game/state-machine.service.js";
@@ -380,6 +384,7 @@ import {
 import { loadGameFightItems, loadGameInventoryItemBook } from "../services/game/game-inventory.service.js";
 import { rollGameFightItemGate } from "../services/game/game-item-use.service.js";
 import {
+  normalizeIllustratorAppearance,
   readIllustratorAppearance,
   readPreferredCharacterReferenceImage,
   readPreferredPersonaReferenceImage,
@@ -552,7 +557,7 @@ async function addCharacterRowsIllustrationAssets(
   await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
 }
 
-async function addPersonaIllustrationAssets(
+export async function addPersonaIllustrationAssets(
   maps: IllustrationCharacterAssetMaps,
   persona:
     | {
@@ -560,6 +565,9 @@ async function addPersonaIllustrationAssets(
         name?: string | null;
         avatarPath?: string | null;
         appearance?: string | null;
+        /** Text-column override (#7053); "true"/"false" like its siblings. */
+        imageAppearanceEnabled?: string | null;
+        imageAppearance?: string | null;
         characterSheetImageId?: string | null;
         useCharacterSheetAsReference?: string;
       }
@@ -584,9 +592,44 @@ async function addPersonaIllustrationAssets(
   }
   if (persona.avatarPath) addNameLookupEntry(maps.charAvatarByName, name, persona.avatarPath);
 
-  const appearanceText = extractCharacterAppearanceText({ appearance: persona.appearance });
+  // #7053: the persona row carries the image-prompt override as TOP-LEVEL text
+  // columns (no extensions bag), so feed them through the shared helper. Without
+  // this the override reached conversation image prompts but not Game mode.
+  const appearanceText = readImageAppearanceOverride(
+    {
+      imageAppearanceEnabled: persona.imageAppearanceEnabled === "true",
+      imageAppearance: persona.imageAppearance,
+    },
+    normalizeIllustratorAppearance(persona.appearance),
+  );
   if (appearanceText) addNameLookupEntry(maps.charDescriptionByName, name, appearanceText);
   return name;
+}
+
+/**
+ * Loads the chat's selected persona into the illustration asset maps.
+ *
+ * #7053: the persona is a visible participant like any character, but both Game
+ * illustration routes built their lookups from character rows only, so the
+ * persona produced no appearance line at all — with or without an override.
+ * Shared so `/generate-assets` and `/generate-assets/preview` cannot drift apart.
+ */
+export async function addChatPersonaIllustrationAssets(args: {
+  maps: IllustrationCharacterAssetMaps;
+  characters: ReturnType<typeof createCharactersStorage>;
+  personaGallery: ReturnType<typeof createPersonaGalleryStorage>;
+  chat: { personaId?: string | null } | null | undefined;
+  setupConfig: Record<string, unknown> | null | undefined;
+}): Promise<string | null> {
+  const personaId = args.chat?.personaId || readTrimmedString(args.setupConfig?.personaId);
+  if (!personaId) return null;
+  try {
+    const persona = await args.characters.getPersona(personaId);
+    return await addPersonaIllustrationAssets(args.maps, persona, args.personaGallery);
+  } catch {
+    // An unresolvable persona must not break illustration generation.
+    return null;
+  }
 }
 
 function getStoryboardLibraryCharacterIds(
@@ -1982,6 +2025,8 @@ const jsonRepairApplySchema = z.object({
 const recruitPartyMemberSchema = z.object({
   chatId: z.string().min(1),
   characterName: z.string().min(1).max(200),
+  /** The player's pick when several characters share the name: a library card id, or null for the game's own. */
+  characterId: z.string().min(1).max(500).nullable().optional(),
   connectionId: z.string().optional(),
 });
 
@@ -2410,11 +2455,9 @@ export function removeMemberFromGameMetadata(input: RemoveMemberInput): RemoveMe
 function findGameNpcByName(npcs: GameNpc[], requestedName: string): GameNpc | null {
   const requestedLookup = normalizeCharacterLookupName(requestedName);
   let matches = npcs.filter((npc) => normalizeCharacterLookupName(npc.name) === requestedLookup);
-  if (matches.length === 0 && requestedLookup.length >= 3) {
-    matches = npcs.filter((npc) => {
-      const lookup = normalizeCharacterLookupName(npc.name);
-      return lookup.includes(requestedLookup) || (lookup.length >= 3 && requestedLookup.includes(lookup));
-    });
+  if (matches.length === 0) {
+    // Whole words only: an NPC named Sam is not the game's Samantha (#7324).
+    matches = npcs.filter((npc) => characterNamesLikelyMatch(npc.name, requestedName));
   }
   return matches.length === 1 ? matches[0]! : null;
 }
@@ -3269,7 +3312,6 @@ const GAME_SETUP_DEFAULT_OUTPUT_TOKENS = 16_384;
 const EXPERIENCE_GENERATION_MIN_OUTPUT_TOKENS = 1_024;
 const SESSION_CONCLUSION_DEFAULT_OUTPUT_TOKENS = 8192;
 const CAMPAIGN_PROGRESSION_DEFAULT_OUTPUT_TOKENS = SESSION_CONCLUSION_DEFAULT_OUTPUT_TOKENS;
-const GAME_GENERATION_TIMEOUT_MS = 5 * 60 * 1000;
 const GAME_ASSET_GENERATION_TIMEOUT_MS = 45 * 60 * 1000;
 const GAME_SCENE_VIDEO_GENERATION_TIMEOUT_MS = 31 * 60 * 1000;
 const GAME_ILLUSTRATION_SUMMARY_TIMEOUT_MS = 60 * 1000;
@@ -3314,12 +3356,15 @@ function createGameGenerationWatchdog(controller: AbortController, label: string
   return { promise, reset, clear };
 }
 
-async function runGameChatComplete(
+// Game calls wait for the Text generation timeout (CHAT_GENERATION_TIMEOUT_MS) between outputs, like
+// chats. Thinking is output too: a reasoning model can think for minutes before its first token (#7177).
+// Calls without onToken keep a total cap, even on providers that always stream their thinking.
+export async function runGameChatComplete(
   provider: { chatComplete(messages: ChatMessage[], options: ChatOptions): Promise<ChatCompletionResult> },
   messages: ChatMessage[],
   options: ChatOptions,
   label: string,
-  timeoutMs = GAME_GENERATION_TIMEOUT_MS,
+  timeoutMs = getChatGenerationTimeoutMs(),
 ): Promise<ChatCompletionResult> {
   const controller = new AbortController();
   const parentSignal = options.signal;
@@ -3331,7 +3376,7 @@ async function runGameChatComplete(
   }
 
   const watchdog = createGameGenerationWatchdog(controller, label, timeoutMs);
-  const onToken = options.onToken;
+  const { onToken, onThinking } = options;
   const watchedOptions: ChatOptions = {
     ...options,
     signal: controller.signal,
@@ -3340,6 +3385,10 @@ async function runGameChatComplete(
           onToken: async (chunk: string) => {
             watchdog.reset();
             await onToken(chunk);
+          },
+          onThinking: (chunk: string) => {
+            watchdog.reset();
+            onThinking?.(chunk);
           },
         }
       : {}),
@@ -3353,12 +3402,12 @@ async function runGameChatComplete(
   }
 }
 
-async function runGameChatStream(
+export async function runGameChatStream(
   provider: { chat(messages: ChatMessage[], options: ChatOptions): AsyncIterable<string> },
   messages: ChatMessage[],
   options: ChatOptions,
   label: string,
-  timeoutMs = GAME_GENERATION_TIMEOUT_MS,
+  timeoutMs = getChatGenerationTimeoutMs(),
 ): Promise<string> {
   const controller = new AbortController();
   const parentSignal = options.signal;
@@ -3370,9 +3419,19 @@ async function runGameChatStream(
   }
 
   const watchdog = createGameGenerationWatchdog(controller, label, timeoutMs);
+  const onThinking = options.onThinking;
+  const streamOptions: ChatOptions = {
+    ...options,
+    signal: controller.signal,
+    stream: true,
+    onThinking: (chunk: string) => {
+      watchdog.reset();
+      onThinking?.(chunk);
+    },
+  };
   const streamPromise = (async () => {
     let streamed = "";
-    for await (const chunk of provider.chat(messages, { ...options, signal: controller.signal, stream: true })) {
+    for await (const chunk of provider.chat(messages, streamOptions)) {
       watchdog.reset();
       streamed += chunk;
     }
@@ -4146,7 +4205,7 @@ async function runGameLorebookKeeperAfterConclusion(args: {
         temperature: 0.35,
         stream: streaming,
         signal: args.signal,
-        ...(streaming ? { onToken: args.onToken ?? (() => {}) } : {}),
+        ...(streaming ? { onToken: args.onToken ?? (() => {}), onThinking: args.onToken } : {}),
       },
       generationParameters,
       conn.provider,
@@ -6969,14 +7028,14 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     });
     const setupAbort = createResponseAbortTracker(
       "kind" in reply ? null : reply,
-      GAME_SETUP_GENERATION_TIMEOUT_MS,
+      getChatGenerationTimeoutMs(),
       "Game setup",
     );
     const setupOverrides: Partial<ChatOptions> = {
       maxTokens: setupMaxTokens,
       stream: streaming,
       signal: signal ? AbortSignal.any([signal, setupAbort.signal]) : setupAbort.signal,
-      ...(streaming ? { onToken: () => setupAbort.touch() } : {}),
+      ...(streaming ? { onToken: () => setupAbort.touch(), onThinking: () => setupAbort.touch() } : {}),
     };
     if (!setupGenerationParameters?.reasoningEffort) {
       setupOverrides.reasoningEffort = undefined;
@@ -7003,6 +7062,8 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
 
     try {
       for (let attempt = 1; attempt <= 2; attempt++) {
+        // A retry gets the full wait too, even when nothing streams to touch the timer.
+        setupAbort.touch();
         let result: ChatCompletionResult;
         try {
           result = await runGameChatComplete(
@@ -7541,7 +7602,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
               conn.model,
               {
                 temperature: 0.7,
-                signal: createResponseAbortSignal(reply, GAME_GENERATION_TIMEOUT_MS, "Game session recap"),
+                signal: createResponseAbortSignal(reply, getChatGenerationTimeoutMs(), "Game session recap"),
               },
               resolveStoredGameGenerationParameters(updatedNewMeta, defaultGenerationParameters),
               conn.provider,
@@ -7736,7 +7797,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
           temperature: 0.45,
           stream: streaming,
           signal: conclusionAbort.signal,
-          ...(streaming ? { onToken: () => conclusionAbort.touch() } : {}),
+          ...(streaming ? { onToken: () => conclusionAbort.touch(), onThinking: () => conclusionAbort.touch() } : {}),
         },
         conclusionGenerationParameters,
         conn.provider,
@@ -8124,7 +8185,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
 
     const lorebookKeeperAbort = createResponseAbortTracker(
       reply,
-      GAME_GENERATION_TIMEOUT_MS,
+      getChatGenerationTimeoutMs(),
       "Game lorebook keeper regeneration",
     );
     const result = await runGameLorebookKeeperAfterConclusion({
@@ -8300,7 +8361,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         temperature: 0.45,
         stream: streaming,
         signal: conclusionAbort.signal,
-        ...(streaming ? { onToken: () => conclusionAbort.touch() } : {}),
+        ...(streaming ? { onToken: () => conclusionAbort.touch(), onThinking: () => conclusionAbort.touch() } : {}),
       },
       conclusionGenerationParameters,
       conn.provider,
@@ -8558,7 +8619,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const provider = await createGameMainProvider(connections, conn, baseUrl);
     const progressionAbort = createResponseAbortTracker(
       reply,
-      GAME_GENERATION_TIMEOUT_MS,
+      getChatGenerationTimeoutMs(),
       "Game campaign progression update",
     );
     const progressionOptions = gameGenOptions(
@@ -8568,7 +8629,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         temperature: 0.35,
         stream: streaming,
         signal: progressionAbort.signal,
-        ...(streaming ? { onToken: () => progressionAbort.touch() } : {}),
+        ...(streaming ? { onToken: () => progressionAbort.touch(), onThinking: () => progressionAbort.touch() } : {}),
       },
       progressionGenerationParameters,
       conn.provider,
@@ -8958,7 +9019,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       {
         temperature: 0.45,
         maxTokens: 1200,
-        signal: createResponseAbortSignal(reply, GAME_GENERATION_TIMEOUT_MS, "Game character sheet regeneration"),
+        signal: createResponseAbortSignal(reply, getChatGenerationTimeoutMs(), "Game character sheet regeneration"),
         debugMode: input.debugMode || isDebugAgentsEnabled(),
       },
       generationParameters,
@@ -9082,20 +9143,75 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       }
     });
 
-    let matches = parsedCharacters.filter((candidate) => candidate.lookup === requestedLookup);
-    if (matches.length === 0 && requestedLookup.length >= 3) {
-      matches = parsedCharacters.filter(
-        (candidate) =>
-          candidate.lookup.includes(requestedLookup) ||
-          (candidate.lookup.length >= 3 && requestedLookup.includes(candidate.lookup)),
-      );
+    let chatCharacterIds: string[] = [];
+    try {
+      chatCharacterIds =
+        typeof chat.characterIds === "string"
+          ? ((JSON.parse(chat.characterIds) as string[]) ?? [])
+          : ((chat.characterIds as string[]) ?? []);
+    } catch {
+      chatCharacterIds = [];
     }
-    if (matches.length > 1) {
-      throw new Error(`Character "${requestedName}" is ambiguous. Use the exact character name.`);
+    const currentPartyIds = getStoredPartyCharacterIds(meta, setupConfig, chatCharacterIds);
+    const gameNpcs = (meta.gameNpcs as GameNpc[]) ?? [];
+    const trackedNpc = findGameNpcByName(gameNpcs, requestedName);
+    // An NPC met this session may not be tracked yet, but the journal's NPC log already has them.
+    const journalNpcLog = (meta.gameJournal as Journal | null)?.npcLog;
+    const gameHasOwnCharacter =
+      trackedNpc !== null ||
+      (Array.isArray(journalNpcLog) &&
+        journalNpcLog.some(
+          (entry) =>
+            typeof entry?.npcName === "string" && normalizeCharacterLookupName(entry.npcName) === requestedLookup,
+        ));
+
+    // A library card is matched by its exact name only. A partial match imported unrelated cards,
+    // like a "Samantha" card for an NPC named Sam (#7324).
+    const sameNameCards = parsedCharacters.filter((candidate) => candidate.lookup === requestedLookup);
+    const partyCards = parsedCharacters.filter((candidate) => currentPartyIds.includes(candidate.row.id));
+    const cardInParty = partyCards.find((candidate) => candidate.lookup === requestedLookup);
+    let matches: typeof sameNameCards;
+    // Someone of this name already in the party stays the only one, even when a stale choice is answered.
+    if (cardInParty) {
+      matches = [cardInParty];
+    } else if (trackedNpc && currentPartyIds.includes(buildPartyNpcId(trackedNpc.name))) {
+      matches = [];
+    } else if (input.characterId !== undefined) {
+      // The player's answer to the card choice below; null keeps the game's own character.
+      matches = sameNameCards.filter((candidate) => candidate.row.id === input.characterId);
+      if (input.characterId !== null && matches.length === 0) {
+        throw new Error(`No character card named "${requestedName}" matches that choice.`);
+      }
+    } else if (sameNameCards.length > 1 || (sameNameCards.length === 1 && gameHasOwnCharacter)) {
+      // More than one character has this name, so the player picks. Nothing changes until they do.
+      return {
+        sessionChat: chat,
+        added: false,
+        characterName: trackedNpc?.name ?? requestedName,
+        cardCreated: false,
+        cardChoices: sameNameCards.map(({ row, data, name }) => ({
+          id: row.id,
+          name,
+          title: row.comment?.trim() || null,
+          avatarPath: row.avatarPath ?? null,
+          avatarCrop: data.extensions?.avatarCrop ?? null,
+          // The character library's preview text, so cards without a title or avatar can still be told apart.
+          summary:
+            [data.summary, data.creator_notes, data.description, data.personality]
+              .map((value) => (typeof value === "string" ? value.replace(/\s+/g, " ").trim() : ""))
+              .find(Boolean)
+              ?.slice(0, 200) ?? null,
+        })),
+      };
+    } else if (sameNameCards.length > 0 || trackedNpc) {
+      matches = sameNameCards;
+    } else {
+      // A shortened name for someone already in the party ("Kael" for "Kael Stormborn") is that member.
+      const partyMembers = partyCards.filter((candidate) => characterNamesLikelyMatch(candidate.name, requestedName));
+      matches = partyMembers.length === 1 ? partyMembers : [];
     }
 
-    const gameNpcs = (meta.gameNpcs as GameNpc[]) ?? [];
-    let npcRecruit = matches.length === 0 ? findGameNpcByName(gameNpcs, requestedName) : null;
+    let npcRecruit = matches.length === 0 ? trackedNpc : null;
     const fallbackTrackedNpc = matches.length === 0 && !npcRecruit ? buildFallbackTrackedGameNpc(requestedName) : null;
     if (fallbackTrackedNpc) {
       npcRecruit = fallbackTrackedNpc;
@@ -9108,17 +9224,6 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
 
     const recruit = matches[0] ?? null;
     const characterById = new Map(parsedCharacters.map((candidate) => [candidate.row.id, candidate.name] as const));
-    let chatCharacterIds: string[] = [];
-    try {
-      chatCharacterIds =
-        typeof chat.characterIds === "string"
-          ? ((JSON.parse(chat.characterIds) as string[]) ?? [])
-          : ((chat.characterIds as string[]) ?? []);
-    } catch {
-      chatCharacterIds = [];
-    }
-
-    const currentPartyIds = getStoredPartyCharacterIds(meta, setupConfig, chatCharacterIds);
     const currentCards = (meta.gameCharacterCards as Array<Record<string, unknown>>) ?? [];
     const recruitId = recruit ? recruit.row.id : buildPartyNpcId(npcRecruit!.name);
     const recruitName = recruit ? recruit.name : npcRecruit!.name;
@@ -9226,7 +9331,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
 
         const recruitAbortSignal = createResponseAbortSignal(
           reply,
-          GAME_GENERATION_TIMEOUT_MS,
+          getChatGenerationTimeoutMs(),
           "Game party recruit card",
         );
         const result = await runGameChatComplete(
@@ -9608,7 +9713,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       { role: "user", content: "Generate the map." },
     ];
 
-    const mapAbortSignal = createResponseAbortSignal(reply, GAME_GENERATION_TIMEOUT_MS, "Game map generation");
+    const mapAbortSignal = createResponseAbortSignal(reply, getChatGenerationTimeoutMs(), "Game map generation");
     const result = await runGameChatComplete(
       provider,
       messages,
@@ -11355,7 +11460,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
           code: "chat_busy",
         });
       }
-      const signal = createResponseAbortSignal(reply, GAME_GENERATION_TIMEOUT_MS, "Experience generation");
+      const signal = createResponseAbortSignal(reply, getChatGenerationTimeoutMs(), "Experience generation");
       const release = await acquireGameAssetGenerationLock(req.params.chatId, signal);
       try {
         const options = gameGenOptions(
@@ -11815,7 +11920,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     ];
 
     const provider = await createGameMainProvider(connections, conn, baseUrl);
-    const partyTurnAbortSignal = createResponseAbortSignal(reply, GAME_GENERATION_TIMEOUT_MS, "Game party turn");
+    const partyTurnAbortSignal = createResponseAbortSignal(reply, getChatGenerationTimeoutMs(), "Game party turn");
     const result = await runGameChatComplete(
       provider,
       messages,
@@ -12104,7 +12209,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     // request should stay on the buffered completion path regardless of the
     // UI's live-streaming toggle. Some GPT-5.5/OpenAI-compatible stacks return
     // empty content when `chatComplete()` is asked to stream this JSON route.
-    const sceneWrapAbortSignal = createResponseAbortSignal(reply, GAME_GENERATION_TIMEOUT_MS, "Game scene wrap");
+    const sceneWrapAbortSignal = createResponseAbortSignal(reply, getChatGenerationTimeoutMs(), "Game scene wrap");
     const sceneWrapOptions = gameGenOptions(
       conn.model ?? "",
       {
@@ -14025,6 +14130,16 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         const allChars = await charStore.list();
         const illustrationCharacterAssets = emptyIllustrationCharacterAssetMaps();
         await addCharacterRowsIllustrationAssets(illustrationCharacterAssets, allChars, characterGallery);
+        // #7053: the preview route previews the same prompt the real route sends,
+        // so it must resolve the persona identically or the preview understates
+        // the appearance a frame will actually carry.
+        await addChatPersonaIllustrationAssets({
+          maps: illustrationCharacterAssets,
+          characters: charStore,
+          personaGallery,
+          chat,
+          setupConfig: setupCfg,
+        });
         const { charReferenceByName, charReferenceSourceByName, charAvatarByName, charDescriptionByName } =
           illustrationCharacterAssets;
 
@@ -14444,6 +14559,16 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
           const allChars = await charStore.list();
           const illustrationCharacterAssets = emptyIllustrationCharacterAssetMaps();
           await addCharacterRowsIllustrationAssets(illustrationCharacterAssets, allChars, characterGallery);
+          // #7053: the chat persona is a visible participant like any character,
+          // but only character rows were loaded here, so the persona never reached
+          // `charDescriptionByName` and produced no appearance line at all.
+          await addChatPersonaIllustrationAssets({
+            maps: illustrationCharacterAssets,
+            characters: charStore,
+            personaGallery,
+            chat,
+            setupConfig: setupCfg,
+          });
           const { charReferenceByName, charReferenceSourceByName, charAvatarByName, charDescriptionByName } =
             illustrationCharacterAssets;
 

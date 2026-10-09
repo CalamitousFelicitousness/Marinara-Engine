@@ -5,6 +5,7 @@ import {
   type DecisionSource,
   normalizeImagePromptInstructions,
   parseAudioConnectionSettings,
+  parsePinnedModels,
   resolveOpenAIImageQuality,
   PROVIDERS,
   type APIProvider,
@@ -18,6 +19,7 @@ export type ConnectionTransferRow = {
   provider?: unknown;
   baseUrl?: unknown;
   model?: unknown;
+  pinnedModels?: unknown;
   maxContext?: unknown;
   maxTokensOverride?: unknown;
   maxParallelJobs?: unknown;
@@ -66,6 +68,8 @@ export type SafeConnectionExport = {
   provider: APIProvider;
   baseUrl: string;
   model: string;
+  /** Pinned model IDs travel like other settings; the saved model list does not. */
+  pinnedModels: string[];
   maxContext: number;
   maxTokensOverride: number | null;
   maxParallelJobs: number;
@@ -160,6 +164,7 @@ export function normalizeImportedConnectionEntry(value: unknown): ConnectionImpo
       apiKey: "",
       baseUrl: asString(value.baseUrl),
       model: asString(value.model),
+      pinnedModels: parsePinnedModels(value.pinnedModels),
       maxContext: asPositiveInteger(value.maxContext, 128000),
       isDefault: false,
       fallbackForMain: false,
@@ -222,6 +227,7 @@ function serializeConnectionForExport(connection: ConnectionTransferRow): SafeCo
     provider,
     baseUrl: asString(connection.baseUrl),
     model: asString(connection.model),
+    pinnedModels: parsePinnedModels(connection.pinnedModels),
     maxContext: asPositiveInteger(connection.maxContext, 128000),
     maxTokensOverride: asNullablePositiveInteger(connection.maxTokensOverride),
     maxParallelJobs: asPositiveInteger(connection.maxParallelJobs, 1),

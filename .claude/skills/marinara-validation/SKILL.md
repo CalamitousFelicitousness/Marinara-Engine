@@ -214,6 +214,26 @@ that lane exits before reaching `prompt-attachments`, `context-fit`, or
 node ./scripts/run-regressions.mjs --filter scripts/regressions/author-note-presets.regression.ts
 ```
 
+### Regression suite: 592/598, as of 2026-10-09
+
+**Measured after the 2026-10-09 sync, app stopped.** Five of the six failures
+are the 2026-10-05 set minus `ruleset-combat-director`, which passed inside the
+budget this time: `launcher/update` by fork design and the four Windows-only
+lanes. The sixth is new upstream:
+
+- `multiplayer-peer-server-security.regression.ts` posts to its own TLS room
+  listener at `::1` whenever the machine has an IPv6 loopback, and Node rejects
+  the certificate with `ERR_TLS_CERT_ALTNAME_INVALID` (`Host: ::1. is not
+  cert's CN: localhost`) although the certificate lists `IP:::1`. Deterministic
+  alone. The lane and `services/multiplayer/` are byte-identical to upstream;
+  attributed on provenance, not yet on a clean upstream worktree.
+
+Upstream's Playwright config now has a third project, `mobile-webkit`. A run
+without `--project` includes it and every WebKit test fails in milliseconds with
+`Executable doesn't exist ... webkit-<N>` until the browser is installed, the
+same staleness trap as Chromium below. Pass `--project=desktop-chromium` or
+`--project=mobile-chromium` unless WebKit is installed.
+
 ### Regression suite: 535/541, as of 2026-10-05
 
 **Measured 2026-10-05, app stopped.** The same six lanes as 2026-10-03 fail:

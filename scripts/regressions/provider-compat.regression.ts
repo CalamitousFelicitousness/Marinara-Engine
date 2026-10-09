@@ -531,6 +531,7 @@ try {
 
   assert.equal(supportsAssistantReasoningPrefill("custom"), true);
   assert.equal(supportsAssistantReasoningPrefill("grok_subscription"), false);
+  assert.equal(supportsAssistantReasoningPrefill("mistral"), false, "Mistral messages have no reasoning field");
   assert.deepEqual(buildPrefillMessages("", "Unsupported reasoning", { supportsAssistantReasoningPrefill: false }), [
     { role: "user", content: "Continue." },
   ]);
@@ -1320,7 +1321,8 @@ assert.equal(
     assert.equal(subscriptionOptions.maxTurns, 1);
     assert.equal("allowedTools" in subscriptionOptions, false);
     assert.equal("mcpServers" in subscriptionOptions, false);
-    assert.equal("pathToClaudeCodeExecutable" in subscriptionOptions, false);
+    // A caller-supplied path is dropped; a host Claude Code install may still be chosen by the engine.
+    assert.notEqual(subscriptionOptions.pathToClaudeCodeExecutable, "/bin/false");
     assert.equal("extraArgs" in subscriptionOptions, false);
     assert.equal(subscriptionOptions.permissionMode, "bypassPermissions");
     assert.deepEqual(subscriptionOptions.settingSources, []);
@@ -3019,6 +3021,20 @@ assert.deepEqual(
     ],
   },
   "OpenAI-compatible Anthropic content blocks must preserve tool_use calls",
+);
+assert.deepEqual(
+  extractOpenAICompatibleContentBlocks([
+    {
+      type: "thinking",
+      thinking: [
+        { type: "text", text: "Checking " },
+        { type: "text", text: "the card." },
+      ],
+    },
+    { type: "text", text: "Ready." },
+  ]),
+  { text: "Ready.", thinking: "Checking the card.", anonymousToolCallIds: [], toolCalls: [] },
+  "Mistral ThinkChunks carry their thinking as a list of text chunks",
 );
 
 let anonymousContentBlockToolCallIndex = 0;

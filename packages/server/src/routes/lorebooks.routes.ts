@@ -84,6 +84,7 @@ import {
 import { sidecarModelService } from "../services/sidecar/sidecar-model.service.js";
 import { normalizeTimestampOverrides } from "../services/import/import-timestamps.js";
 import { DATA_DIR } from "../utils/data-dir.js";
+import { uniqueExportName } from "../utils/export-stream.js";
 import { assertInsideDir, extensionFromImageMime, isAllowedImageBuffer } from "../utils/security.js";
 import { parseLibraryPageQuery } from "../utils/list-pagination.js";
 import { createSeededRandom } from "../services/lorebook/seeded-random.js";
@@ -610,6 +611,7 @@ export async function lorebooksRoutes(app: FastifyInstance) {
     }
 
     const zip = new AdmZip();
+    const usedNames = new Set<string>();
     const exportBudget = { remainingBytes: LOREBOOK_EXPORT_IMAGE_MAX_BYTES };
     let exportedCount = 0;
     for (const id of ids) {
@@ -622,7 +624,11 @@ export async function lorebooksRoutes(app: FastifyInstance) {
       const folders = await storage.listFolders(id);
       if (format === "compatible") {
         zip.addFile(
-          `${toSafeExportName(String(lb.name || "lorebook"), `lorebook-${exportedCount + 1}`)}.json`,
+          uniqueExportName(
+            usedNames,
+            toSafeExportName(String(lb.name || "lorebook"), `lorebook-${exportedCount + 1}`),
+            "json",
+          ),
           Buffer.from(JSON.stringify(buildCompatibleLorebookExport(lb, entries), null, 2), "utf-8"),
         );
         exportedCount++;
@@ -635,7 +641,11 @@ export async function lorebooksRoutes(app: FastifyInstance) {
         data: { lorebook: lb, entries, folders },
       };
       zip.addFile(
-        `${toSafeExportName(String(lb.name || "lorebook"), `lorebook-${exportedCount + 1}`)}.marinara.json`,
+        uniqueExportName(
+          usedNames,
+          toSafeExportName(String(lb.name || "lorebook"), `lorebook-${exportedCount + 1}`),
+          "marinara.json",
+        ),
         Buffer.from(JSON.stringify(envelope, null, 2), "utf-8"),
       );
       exportedCount++;

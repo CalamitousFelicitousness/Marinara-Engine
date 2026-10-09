@@ -350,14 +350,18 @@ carry a `lane` read from their category, with a positive capability claim outran
 voice picker keeps speech. One listing serves every lane, so the caller choosing a voice and the
 caller choosing a score read one response.
 
-Surfaces: the model dropdown row and selected-model strip in `ConnectionEditor.tsx`, the speech
-model help line in `AudioSourceFields.tsx`, and the sound-effect and music lanes in
+Surfaces: the model dropdown row and selected-model strip in `ConnectionEditor.tsx`, the quick
+model picker (`ConnectionModelPicker.tsx`, upstream's, in the Connections menu and Chat Settings),
+the speech model help line in `AudioSourceFields.tsx`, and the sound-effect and music lanes in
 `AudioParameterSection.tsx`, which price whatever model their parameters name.
 
 Upstream-hot files touched: `routes/connections.routes.ts` (the reader import, the `pricing` field
-on `RemoteModel`), `routes/tts.routes.ts` (carrying lane and pricing through), `types/tts.ts` and
-`ConnectionEditor.tsx`. The readers themselves are fork-owned modules
-so a merge has one small surface to reconcile.
+on `RemoteModel`), `routes/tts.routes.ts` (carrying lane and pricing through), `types/tts.ts`,
+`ConnectionEditor.tsx`, `lib/connection-model-selection.ts` (`pricing` on both model types and in
+`mergeConnectionModelOptions`) and `services/storage/connections.storage.ts` (`pricing` in
+`SAVED_MODEL_EXTRA_FIELDS`). Upstream saves a connection's model list and answers from it until
+Refresh; a field missing from that list is dropped after the first fetch with nothing failing. The
+readers themselves are fork-owned modules so a merge has one small surface to reconcile.
 
 ### NanoGPT generates sound effects and music, through a job
 
@@ -485,9 +489,11 @@ note is marked `(edited)` beside **Save** and on its row in the list. Leaving it
 preset raises a three-way guard — **Save and switch**, **Discard**, or **Keep editing** — and a
 failed save keeps the editor where it is with the text still marked, since there is no global
 mutation error handler. Promoting a typed note with **Save as preset** prompts for the name
-rather than deriving one from the first line. Unsaved text survives the popover closing: the
-draft is parked in memory per chat, never written, so an outside click cannot destroy it, and
-a reload drops it like any unsaved edit.
+rather than deriving one from the first line. Unsaved text survives the panel closing: the
+draft is parked in memory per chat, never written, so collapsing the drawer or closing Chat
+Settings cannot destroy it, and a reload drops it like any unsaved edit. The panel is the Author's
+Notes drawer in upstream's movable Chat Settings window; it was a toolbar popover before upstream
+moved the chat tools there.
 
 Patches to upstream files: `packages/shared/src/types/chat.ts` (`ChatMetadata` gains the three
 fields — note that `authorNotes` and `authorNotesDepth` were previously read via untyped casts
@@ -495,15 +501,8 @@ and declared nowhere), `packages/server/src/routes/generate.routes.ts`,
 `packages/server/src/routes/generate/dry-run-route.ts`,
 `packages/server/src/routes/generate/retry-agents-route.ts`,
 `packages/server/src/routes/chats.routes.ts`, `packages/server/src/db/file-backed-store.ts`
-(table registration only — no `STORAGE_VERSION` bump, since new tables are additive),
-`packages/client/src/components/chat/ChatRoleplayPanels.tsx`,
-`packages/client/src/components/chat/ChatRoleplaySurface.tsx`, and `e2e/core-flows.e2e.ts`.
-
-The `ChatRoleplaySurface.tsx` patch is one guard: the Author's Notes popover's outside-click
-handler now ignores clicks inside `[data-chat-floating-panel]`. It already exempted
-`[data-macro-modal]`; app dialogs portal outside the popover, so without this the panel
-unmounted underneath the name prompt and the discard guard it had just opened. Same guard
-`ChatGalleryDrawer` and `ChatSettingsDrawer` already carry.
+(table registration only; no `STORAGE_VERSION` bump, since new tables are additive),
+`packages/client/src/components/chat/ChatRoleplayPanels.tsx`, and `e2e/core-flows.e2e.ts`.
 
 The 2026-08-20 sync conflicted in `retry-agents-route.ts`: upstream replaced the synchronous
 `resolveRoleplayChatSummary(chatMode, chatMeta)` with a precomputed `activeChatSummary` from the
@@ -575,6 +574,16 @@ Upstream added its own source tracking (`parameterSources` as plain strings) for
 editor's **Effective** line. The fork keeps its typed trace, and `routes/generate/parameter-preview-route.ts`
 (`POST /generate/parameters`) is rebuilt on `resolveGenerationParameterRuntime`, mapping each trace
 layer onto upstream's `generationParameters.source.*` labels.
+
+Upstream then built a second resolver, `resolveGenerationParameters`, so agent and package calls
+could send the connection's saved parameters (#7131, `services/generation/agent-generation-parameters.ts`).
+Only the fork's resolver survives: that module calls `resolveGenerationParameterRuntime`, and the
+Codex Default rule (`keepsCodexDefaultEffort`, labelled `default`) and Codex's unsent null effort
+were ported into it, so dry run and Peek Prompt match `/generate` for Codex. Its connection-only
+baseline passes `reasoningEffort: undefined`, meaning nothing chose a level yet, which
+`GenerationParameterInitial` allows and `resolveGenerationProviderRuntime` turns into `null`.
+`agentParameterSources` labels the connection's saved values (`config.generation`) as
+`connection`, and thinking room added to an agent's budget as `agent rule`.
 
 Patches to upstream files: `packages/shared/src/types/chat.ts`, `packages/shared/src/types/agent.ts`,
 `packages/server/src/services/llm/base-provider.ts`,
@@ -1344,7 +1353,8 @@ a field the prompt stops emitting is restored from history on the very next turn
 like it worked and did not.
 
 - **Per chat.** The menu action now deletes the chat's snapshots via `DELETE /chats/:id/game-state`
-  before writing the cleared state, behind a destructive confirm. Messages are untouched.
+  before writing the cleared state, behind a destructive confirm. Messages are untouched. The client
+  side is `useClearTrackers` in `hooks/use-agent-activity.ts`, an upstream file.
 - **Globally.** Settings gains "Reset all tracker data", which posts the existing admin expunge with a
   new narrow `trackers` scope. The `chats` scope already dropped `game_state_snapshots`, but it takes
   every message and chat with it, which is not what retiring a tracker schema needs.
@@ -1426,17 +1436,23 @@ the chat by 83px at scale 1.0, and `scale` renders 249px at scale 0.7324 (249/34
 Verified in a browser: at 1500px, where the gutter is 89px, the panel now renders at 340px with
 11.7px labels and two-column rows instead of an 89px sliver at 5.9px.
 
+Upstream later made the Roleplay column give way to a docked panel instead
+(`--tracker-panel-column-room` in `globals.css`, set by `AppShell`). The room is per placement
+(`resolveTrackerPanelColumnRoom` in `lib/tracker-panel-layout.ts`): `dock` reserves 176px plus the
+gap, so the panel docks wherever the pane can hold both; `float` reserves nothing; `scale` reserves
+upstream's 96px floor, where the panel's own buttons still fit.
+
 Persist migration v96 -> v97 folds the short-lived density setting into the text scale
 (compact/standard/comfortable -> S/M/L). Width presets set width only now; pairing them with a text
 size would re-conflate the axes this work separated.
 
 ### Branches can be read without switching to them
 
-Branch rows in the chat's branch popover showed only a name and a timestamp, and every new branch
-is named "New Branch", so siblings were told apart by opening each one. Each row now shows its
-message count and the newest visible line with its speaker (`ChatBranchTail`, reading the same
-four-message `useChatMessagePeek` window as the sidebar hover peek), plus a preview button. The
-popover header gains a button that opens the same browser on the active branch.
+Branch rows in the Chat Branches drawer (Chat Settings) showed only a name and a timestamp, and every
+new branch is named "New Branch", so siblings were told apart by opening each one. Each row now shows
+its message count and the newest visible line with its speaker (`ChatBranchTail`, reading the same
+four-message `useChatMessagePeek` window as the sidebar hover peek), plus a preview button. A button
+above the list opens the same browser on the active branch.
 
 The browser (`components/modals/ChatBranchBrowserModal.tsx`, modal type `chat-branch-browser`)
 lists the branches beside a transcript of the selected one. The transcript pages backwards 30
@@ -1445,11 +1461,80 @@ generation refreshes it, and inside a `flex-col-reverse` scroller so it opens at
 and holds its place as older pages load. A divider marks the branch point (`branchMessageId`), and
 the header names the parent branch. Below `sm` the list and transcript are separate screens.
 
-Patches to upstream files: `packages/client/src/components/chat/ChatBranchSelector.tsx`,
+Patches to upstream files: `packages/client/src/components/chat/ChatBranchesPanel.tsx`,
 `packages/client/src/components/layout/ModalRenderer.tsx`, `packages/client/src/hooks/use-chats.ts`,
 and `packages/client/src/localization/locales/en.json`.
 
 Covered by `scripts/regressions/chat-branch-preview.regression.ts`.
+
+### Sync with upstream, 2026-10-09
+
+1016 upstream commits (583 non-merge, 133 PRs) over seven days, merge base `ed542bc56`, through
+`f17f1c1f6`. v2.4.6 to v2.5.0, storage format 7 on both sides. 768 upstream-changed files, 113
+overlapping fork changes, 45 conflicts: 43 content, `ChatBranchSelector.tsx` modify/delete, and the
+`.agents/skills` symlink replaced by upstream's real folder (#7227). Splitting at v2.5.0 would have
+been 34 conflicts and then at least 11, with the three hard collisions all in the first half, so it
+ran as one merge.
+
+Upstream's v2.5.0 moved the chat tools into one movable Chat Settings window with drawers (#7049).
+The fork's toolbar features followed: branch preview now lives in the Chat Branches drawer
+(`ChatBranchesPanel.tsx`), Author's Notes presets in the Author's Notes drawer, and the Clear
+Trackers fix in `useClearTrackers`. See each section.
+
+Three features both lineages had built:
+
+- **Per-character voices.** Upstream's Character Editor Voice section wrote the app-level TTS
+  settings, which the fork's per-connection casting overrides. Its routes now edit the speaking
+  connection's cast; see "A TTS engine is a saved connection".
+- **Parameter resolution.** Upstream's second resolver for agent calls (#7131) is folded into the
+  fork's; see "Peek Prompt shows where each sampling parameter came from".
+- **Docked Tracker Panel in a narrow pane.** Upstream narrows the chat column for a 96px panel; the
+  fork floats below a 176px gutter. The column room is now per placement; see "Tracker panel reflows
+  instead of shrinking its text".
+
+Losses with no conflict marker, all fixed in the merge:
+
+- Model prices: dropped by upstream's saved model lists (`SAVED_MODEL_EXTRA_FIELDS`) and its
+  `mergeConnectionModelOptions`; the quick model picker now shows them too.
+- `AppShell` passed upstream's `minWidth` to the fork's `resolveTrackerPanelGutterWidth`, which
+  ignores it; the floor now applies to the panel width.
+- Multiswipe candidates 2..N lost upstream's `referencedCharacterIds` (#7046, narrator avatars);
+  `sharedSwipeExtra` carries it.
+- `generation-parameter-relevance.ts`: upstream's `nanogpt: ["topK"]` would hide Top K for NanoGPT
+  again; the fork keeps `nanogpt: []`.
+- `openai.provider.ts`: the request-body trace now reads the body after `normalizeMistralRequest`,
+  which deletes `reasoning_effort`.
+- `scene.routes.ts`: package scene origins (#7119) replaced `chat` with `origin.chat`; the fork's
+  `localVariables` now read from it.
+- Four `ui.panels.ttsconfigcard.*` keys the fork had pruned are used again by upstream's voice
+  picker and were restored; the branch browser's title moved to upstream's `chat.settings.branches`.
+- `STT_LOCAL_URLS_ENABLED` arrived default-off; it now follows the fork's rule for typed URLs.
+
+`package.json#pnpm`: `@fastify/busboy` 3.2.2, `@modelcontextprotocol/sdk` 1.32.1, `fast-copy` 4.1.1,
+`proxy-addr` 2.0.8 and `source-map-js` 1.2.2 mirrored into `pnpm-workspace.yaml`. Upstream deleted
+its own workspace `overrides` block as ignored by pnpm 10; for the fork on pnpm 11 it is the only one
+read, so it stays.
+
+Lanes adapted to the fork's shapes: `agent-connection-parameters` and `codex-reasoning-effort` seed a
+chat's level as a `chatParameterOverrides` Override, and the Codex lane reads the fork's `default`
+label; `decision-typesafe-address` sets `PROVIDER_LOCAL_URLS_ENABLED=false` before asserting
+refusals; `chat-branch-preview` reads `ChatBranchesPanel.tsx`; `e2e/docked-tracker-panel.e2e.ts` and
+`e2e/chat-position.e2e.ts` seed `trackerPanelWidth: 340` instead of the size profile;
+`e2e/author-notes.e2e.ts` closes the Chat Settings window instead of the removed close button;
+`e2e/ux-feedback-sweep.e2e.ts`'s Character Voice test reads the saved voice from the API instead of
+the TTS card's casting rows, which the fork moved to audio connections, and so runs on phones too.
+
+Regression suite after the merge, app stopped: 592/598 with the lanes above fixed. The six failures
+are `launcher/update` (fork design), the Windows-only `gallery-previews`, `server-signal-shutdown`,
+`decision-sidecar-runtime` and `lorebook-images`, and `multiplayer-peer-server-security` (new
+upstream). That lane posts to its own TLS listener at `::1` and fails Node's identity check with
+`ERR_TLS_CERT_ALTNAME_INVALID` on any machine with an IPv6 loopback; the lane and
+`services/multiplayer/` are byte-identical to upstream.
+
+Playwright, desktop: all 38 tests in the merge-touched specs pass (author's notes, docked Tracker
+Panel, chat position, the connection model picker, the UX sweep), one skipped by its spec. On mobile
+Chromium the author's-notes and Character Voice tests pass. Upstream added a `mobile-webkit`
+project, which needs `playwright install webkit` before it can launch here.
 
 ### Sync with upstream, 2026-10-03
 
@@ -2047,9 +2132,10 @@ local engine needs. `resolveTTSChunkCharLimit` is exported for them.
 
 ### Local address controls key on who supplied the URL
 
-`PROVIDER_LOCAL_URLS_ENABLED` and `TTS_LOCAL_URLS_ENABLED` now default to `true`, with an explicit
-`false` restoring deny. `IMAGE_LOCAL_URLS_ENABLED`, `DEEPLX_LOCAL_URLS_ENABLED`, and
-`WEBHOOK_LOCAL_URLS_ENABLED` are unchanged.
+`PROVIDER_LOCAL_URLS_ENABLED`, `TTS_LOCAL_URLS_ENABLED` and `STT_LOCAL_URLS_ENABLED` now default to
+`true`, with an explicit `false` restoring deny. `IMAGE_LOCAL_URLS_ENABLED`,
+`DEEPLX_LOCAL_URLS_ENABLED`, and `WEBHOOK_LOCAL_URLS_ENABLED` are unchanged. The speech-to-text
+server for Calls is typed into Connections like the other two, so it follows the same rule.
 
 Five flags with one shape were being read as one policy, but they guard two different situations.
 The axis that matters is URL provenance, not subsystem. A provider or TTS base URL exists because
@@ -2079,13 +2165,19 @@ Patches to upstream files: `packages/server/src/config/runtime-config.ts`,
 `packages/server/src/routes/tts.routes.ts`, `packages/shared/src/constants/tts-sources.ts`,
 `packages/client/src/lib/tts-error-notice.ts`, `packages/client/src/localization/locales/en.json`,
 `.env.example`, `docs/CONFIGURATION.md`, `docs/REMOTE_ACCESS.md`, `docs/TROUBLESHOOTING.md`,
-`docs/connections/local-self-hosted.md`, `docs/media/tts-setup.md`. The runtime-config and docs
-edits are the collision-prone ones: upstream owns the flag defaults and the configuration table.
+`docs/connections/local-self-hosted.md`, `docs/media/tts-setup.md`, `docs/conversation/calls.md`.
+The runtime-config and docs edits are the collision-prone ones: upstream owns the flag defaults and
+the configuration table.
 
 Merge recipe for that table: keep the fork's rows and the fork's row order. The prose under it
-reads "Set the first two to `false`", which means `PROVIDER_LOCAL_URLS_ENABLED` and
-`TTS_LOCAL_URLS_ENABLED`. Upstream orders them provider, image, tts, so taking upstream's order
-silently repoints that sentence at the image flag. Conflicted this way at the 2026-08-29 sync.
+reads "Set the first three to `false`", which means `PROVIDER_LOCAL_URLS_ENABLED`,
+`TTS_LOCAL_URLS_ENABLED` and `STT_LOCAL_URLS_ENABLED`. Upstream orders them provider, image, tts, so
+taking upstream's order silently repoints that sentence at the image flag. Conflicted this way at the
+2026-08-29 sync. In `.env.example`, an upstream `TTS_LOCAL_URLS_ENABLED=false` line arriving below
+the fork's `=true` overrides it, since the later line wins.
+
+`scripts/regressions/speech-to-text-server.regression.ts` (upstream's) sets the STT opt-out before
+its deny assertions and checks the default is on.
 
 Proven by `scripts/regressions/tts/tts-speak-timeout-abort.regression.ts` (LAN allowed with the flag
 absent, denied with it `false`, loopback unconditional) and
@@ -2255,6 +2347,15 @@ Patches to upstream files, all of which a merge can revert silently:
 
 Proven by `scripts/regressions/tts/tts-audio-connection-resolution.regression.ts`,
 `tts-audio-connection-migration.regression.ts`, and `tts-audio-connection-ux.regression.ts`.
+
+Upstream's Character Editor Voice section (`CharacterVoicePicker.tsx`) edits the speaking cast, not
+the app-level settings it was written against. A connection's `audioSettings` override those
+settings, so a voice saved there would show as saved and never be spoken. `PUT
+/tts/config/voice-assignment` and `/voice-mode` now write the resolved speech connection's
+`audioSettings`, starting from the cast it speaks with, and fall back to the app-level settings only
+when no audio connection exists. The picker reads `useEffectiveTTSConfig`, lists that connection's
+voices, and previews through it. Proven by `tts/tts-voice-assignment-connection.regression.ts`;
+upstream's `tts-voice-assignment-route` still covers the fallback.
 
 Deferred: a per-chat audio override, matching the per-chat model connection. The plumbing is in
 place, since `useEffectiveTTSConfig` takes an optional connection id and speak requests carry one end

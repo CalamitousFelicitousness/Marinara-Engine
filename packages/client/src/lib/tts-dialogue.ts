@@ -1,6 +1,7 @@
 import {
   decodeEncodedSpeakerTags,
   hasSpeakerTag,
+  setCharacterVoiceAssignment,
   speakerBodyFromMatch,
   speakerNameFromMatch,
   speakerTaggedSpanRegex,
@@ -9,6 +10,7 @@ import {
   TTS_CHUNK_CHARS_MAX,
   TTS_CHUNK_CHARS_MIN,
   type TTSConfig,
+  type TTSVoiceAssignment,
 } from "@marinara-engine/shared";
 import { DIALOGUE_QUOTE_CAPTURE_GROUP_PATTERN_SOURCE, stripSurroundingDialogueQuotes } from "./dialogue-quotes";
 
@@ -218,6 +220,30 @@ function resolveNpcDefaultVoice(
   return pool[stableTTSIndex(seed, pool.length)] ?? "";
 }
 
+/** The voice a character's own per-character row names, or "" when it has none. */
+export function getCharacterVoiceAssignment(
+  assignments: readonly TTSVoiceAssignment[] | undefined,
+  characterId: string,
+): string {
+  return assignments?.find((entry) => entry.characterId === characterId && entry.voice)?.voice ?? "";
+}
+
+/**
+ * The voice a character still gets from its name without a row of its own, such as
+ * an AU copy using the original card's voice, or "" when it uses the default voice.
+ */
+export function getCharacterNameVoice(
+  assignments: readonly TTSVoiceAssignment[] | undefined,
+  character: Pick<TTSVoiceAssignment, "characterId" | "characterName">,
+): string {
+  const otherRows = setCharacterVoiceAssignment(assignments, character, "");
+  return resolveTTSVoiceForSpeaker(
+    { voice: "", voiceMode: "per-character", voiceAssignments: otherRows },
+    character.characterName,
+    character.characterId,
+  );
+}
+
 export function resolveTTSVoiceForSpeaker(
   config: Pick<TTSConfig, "voice"> &
     Partial<
@@ -242,13 +268,14 @@ export function resolveTTSVoiceForSpeaker(
 
   if (config.voiceMode === "per-character") {
     const assignments = Array.isArray(config.voiceAssignments) ? config.voiceAssignments : [];
+    // A character's own row wins over another card that only shares its name.
+    const ownVoice = characterId ? getCharacterVoiceAssignment(assignments, characterId) : "";
+    if (ownVoice) return ownVoice;
     const normalizedSpeaker = normalizeTTSCharacterName(speaker);
-    const exactAssignment = assignments.find((entry) => {
-      if (!entry.voice) return false;
-      if (characterId && entry.characterId === characterId) return true;
-      return normalizedSpeaker.length > 0 && normalizeTTSCharacterName(entry.characterName) === normalizedSpeaker;
-    });
-    if (exactAssignment?.voice) return exactAssignment.voice;
+    const namedAssignment = normalizedSpeaker
+      ? assignments.find((entry) => entry.voice && normalizeTTSCharacterName(entry.characterName) === normalizedSpeaker)
+      : undefined;
+    if (namedAssignment?.voice) return namedAssignment.voice;
 
     const normalizedSpeakerBase = normalizeTTSCharacterBaseName(speaker);
     if (normalizedSpeakerBase) {

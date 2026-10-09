@@ -67,6 +67,25 @@ export function isZaiMaxReasoningEffortModel(model: string): boolean {
   return /(?:^|\/)glm-5\.[23](?:$|[-:])/u.test(model.toLowerCase());
 }
 
+/**
+ * Native Mistral models whose `reasoning_effort` can be set. They accept only "high" and "none". Other Mistral models
+ * (Magistral, older releases) are not listed as taking it, so they get no effort and keep their own behaviour.
+ * https://docs.mistral.ai/capabilities/reasoning
+ */
+export function isMistralAdjustableReasoningModel(model: string): boolean {
+  const normalized = model.trim().toLowerCase();
+  return (
+    normalized === "mistral-small-latest" ||
+    /^mistral-large-4(?:$|[-.])/u.test(normalized) ||
+    /^mistral-medium-3[-.]5(?:$|[-.])/u.test(normalized)
+  );
+}
+
+/** GLM 5.3 on Mistral (`zai-glm-5-3`) always reasons and takes only "low", "high" or "max", never "none". */
+export function isMistralGlm53Model(model: string): boolean {
+  return /^zai-glm-5-3(?:$|-)/u.test(model.trim().toLowerCase());
+}
+
 export function isOpenAIGpt56Model(model: string): boolean {
   return model.toLowerCase().startsWith("gpt-5.6");
 }
@@ -111,6 +130,12 @@ export function resolveProviderReasoningEffort(args: {
     (providerLower === "xai" && isXaiAutoReasoningModel(modelLower)) ||
     (providerLower === "openrouter" && modelLower.startsWith("x-ai/grok-"));
   if (xaiUsesAutoReasoning) return null;
+  // Mistral reasoning models have a single level besides "none".
+  if (providerLower === "mistral" && isMistralAdjustableReasoningModel(modelLower)) return "high";
+  if (providerLower === "mistral" && isMistralGlm53Model(modelLower)) {
+    if (args.reasoningEffort === "low") return "low";
+    return args.reasoningEffort === "medium" || args.reasoningEffort === "high" ? "high" : "max";
+  }
 
   const isNativeAnthropicAdaptiveOnly =
     (providerLower === "anthropic" || providerLower === "claude_subscription") &&
@@ -280,8 +305,8 @@ export const ANTHROPIC_MODELS: KnownModel[] = [
   { id: "claude-opus-4-1-20250805", name: "claude-opus-4-1-20250805", context: 200000, maxOutput: 32000 },
   { id: "claude-opus-4-0", name: "claude-opus-4-0", context: 200000, maxOutput: 32000 },
   { id: "claude-opus-4-20250514", name: "claude-opus-4-20250514", context: 200000, maxOutput: 32000 },
-  { id: "claude-sonnet-4-0", name: "claude-sonnet-4-0", context: 200000, maxOutput: 16000 },
-  { id: "claude-sonnet-4-20250514", name: "claude-sonnet-4-20250514", context: 200000, maxOutput: 16000 },
+  { id: "claude-sonnet-4-0", name: "claude-sonnet-4-0", context: 200000, maxOutput: 64000 },
+  { id: "claude-sonnet-4-20250514", name: "claude-sonnet-4-20250514", context: 200000, maxOutput: 64000 },
   { id: "claude-3-7-sonnet-latest", name: "claude-3-7-sonnet-latest", context: 200000, maxOutput: 128000 },
   { id: "claude-3-7-sonnet-20250219", name: "claude-3-7-sonnet-20250219", context: 200000, maxOutput: 128000 },
   { id: "claude-3-5-sonnet-latest", name: "claude-3-5-sonnet-latest", context: 200000, maxOutput: 8192 },
@@ -296,14 +321,17 @@ export const ANTHROPIC_MODELS: KnownModel[] = [
 // ── Claude (Subscription via Claude Agent SDK) ──
 // Models reachable through the local `claude` CLI auth (Pro / Max). Anthropic
 // gates which model IDs are available per plan tier; the SDK surfaces a clear
-// error if the signed-in plan can't run the requested model. We keep this list
-// to the current tool-eligible families to avoid offering retired aliases that
-// the subscription path no longer accepts.
+// error if the signed-in plan can't run the requested model. The model picker
+// shows Claude Code's cached catalog for the account; this curated list is the
+// fallback before Claude Code has cached one. We keep it to the current tool-eligible
+// families to avoid offering retired aliases the subscription path rejects.
 export const CLAUDE_SUBSCRIPTION_MODELS: KnownModel[] = [
   { id: "claude-opus-5-5", name: "Claude Opus 5.5", context: 1000000, maxOutput: 128000 },
   { id: "claude-opus-5", name: "Claude Opus 5", context: 1000000, maxOutput: 128000 },
   { id: "claude-sonnet-5-5", name: "Claude Sonnet 5.5", context: 1000000, maxOutput: 128000 },
   { id: "claude-sonnet-5", name: "Claude Sonnet 5", context: 1000000, maxOutput: 128000 },
+  { id: "claude-haiku-5-5", name: "Claude Haiku 5.5", context: 1000000, maxOutput: 128000 },
+  { id: "claude-fable-5-1", name: "Claude Fable 5.1", context: 1000000, maxOutput: 128000 },
   { id: "claude-fable-5", name: "Claude Fable 5", context: 1000000, maxOutput: 128000 },
   { id: "claude-opus-4-8", name: "Claude Opus 4.8", context: 1000000, maxOutput: 128000 },
   { id: "claude-opus-4-7", name: "Claude Opus 4.7", context: 1000000, maxOutput: 128000 },
@@ -317,9 +345,18 @@ export const CLAUDE_SUBSCRIPTION_MODELS: KnownModel[] = [
 // ── OpenAI (ChatGPT login via Codex auth) ──
 // The ChatGPT-backed Codex endpoint can return an account-specific model
 // catalog when authenticated. This curated fallback keeps the selector useful
-// before the user has run `codex login`.
+// before the user has run `codex login`. GPT-6 and GPT-5.6 contexts are Codex's
+// default window from its model catalog (October 2026). GPT-5.5 stays first so
+// new connections keep it as their default model.
 export const OPENAI_CHATGPT_MODELS: KnownModel[] = [
   { id: "gpt-5.5", name: "GPT-5.5", context: 1050000, maxOutput: 128000 },
+  { id: "gpt-6.1-sol", name: "GPT-6.1-Sol", context: 272000, maxOutput: 128000 },
+  { id: "gpt-6-astra", name: "GPT-6-Astra", context: 272000, maxOutput: 128000 },
+  { id: "gpt-6-sol", name: "GPT-6-Sol", context: 272000, maxOutput: 128000 },
+  { id: "gpt-6-luna", name: "GPT-6-Luna", context: 272000, maxOutput: 128000 },
+  { id: "gpt-5.6-sol", name: "GPT-5.6-Sol", context: 272000, maxOutput: 128000 },
+  { id: "gpt-5.6-terra", name: "GPT-5.6-Terra", context: 272000, maxOutput: 128000 },
+  { id: "gpt-5.6-luna", name: "GPT-5.6-Luna", context: 272000, maxOutput: 128000 },
   { id: "gpt-5.4", name: "GPT-5.4", context: 1050000, maxOutput: 128000 },
   { id: "gpt-5.4-mini", name: "GPT-5.4 Mini", context: 400000, maxOutput: 128000 },
   { id: "gpt-5.3-codex-spark", name: "GPT-5.3 Codex Spark", context: 400000, maxOutput: 128000 },

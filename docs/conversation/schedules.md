@@ -18,7 +18,7 @@ Schedules are optional. With autonomous messages on but schedules off, character
 You control this from the chat, not the character card. All of these controls live in the **Autonomous Messaging** section of **Chat Settings**.
 
 1. Open a Conversation chat.
-2. Open **Chat Settings** (the gear icon).
+2. Open **Chat Settings** (the **Chat Settings** button in the chat, at the top right unless you moved it).
 3. Find the **Autonomous Messaging** section.
 4. Turn on the **Autonomous Messages** toggle.
 
@@ -148,6 +148,15 @@ To clear that override and return Mira to her schedule:
 
 If the chat has only one character, you can leave the name out. Run **/status** with no options to see the list of characters and usage help.
 
+## Characters can change their own status
+
+With the **Schedule Updates** command on in **Chat Settings → Agents**, a character can set its own temporary status and activity. For example, if you ask it to focus for an hour, it can switch to **Busy** with the activity "Studying".
+
+- The change lasts as long as the character says, or one hour if it doesn't say. The longest is seven days.
+- When the time is up, the character goes back to its schedule, or to **Online** if it has none.
+- It never edits the saved schedule.
+- A status you set yourself with **/status** stays until you clear it. A character can't replace it.
+
 ## How autonomous messages are paced
 
 Marinara paces autonomous messages so a character never spams you. The rules below use each character's own schedule.
@@ -160,6 +169,8 @@ Marinara paces autonomous messages so a character never spams you. The rules bel
 - When you reply, the count resets. The next silence starts fresh.
 
 If several characters are ready at once, the one with the highest talkativeness and best timing goes first.
+
+In a group chat set to **Individual**, the characters share one daily check-in limit, so they also share this pacing. After any character checks in, the next check-in from anyone waits like a follow-up. When it is due, any character whose own wait has passed can send it, and the one with the fewest check-ins that day goes first. After a long absence, only one character checks in.
 
 ## Your presence status
 

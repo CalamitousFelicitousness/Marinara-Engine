@@ -1,4 +1,5 @@
 import type { DB } from "../../db/connection.js";
+import { readImageAppearanceOverride } from "@marinara-engine/shared";
 import { isDebugAgentsEnabled } from "../../config/runtime-config.js";
 import { logger, logDebugOverride } from "../../lib/logger.js";
 import {
@@ -8,6 +9,7 @@ import {
 import {
   compileImagePrompt,
   formatImageStylePromptGuidance,
+  removeCopiedPromptGuidance,
   resolveImageStyleGuidanceText,
 } from "../image/image-prompt-compiler.js";
 import { persistGeneratedImageToEntityGalleries } from "../image/generated-image-entity-gallery.js";
@@ -50,6 +52,8 @@ type PromptCharacter = {
   name: string;
   avatarPath?: string | null;
   appearance?: string | null;
+  /** Image-prompt appearance override (#7053), when the card enables one. */
+  imageAppearanceOverride?: string | null;
 };
 
 type PersonaReference = {
@@ -57,6 +61,8 @@ type PersonaReference = {
   name: string;
   avatarPath?: string | null;
   appearance?: string | null;
+  /** Image-prompt appearance override (#7053); wins over `appearance`. */
+  appearanceOverride?: string | null;
 } | null;
 
 const GROUP_SELFIE_REQUEST_RE =
@@ -147,9 +153,14 @@ async function generateSelfie(
   if (!imgConnFull) throw new Error("Cannot decrypt image generation connection");
 
   const extensions = parseRecord(args.charData?.extensions);
-  const appearance =
+  const cardAppearance =
     (typeof extensions?.appearance === "string" && extensions.appearance) ||
     (typeof args.charData?.description === "string" ? args.charData.description : "");
+  // #7243: resolve the override separately instead of folding it into `appearance`.
+  // Letting it replace the card text left the prompt-builder with a bare override
+  // — for a LoRA user, one unexplained token — and no visual context, so it
+  // discarded the token and invented a look.
+  const imageAppearance = readImageAppearanceOverride(extensions, null);
   const personality = typeof args.charData?.personality === "string" ? args.charData.personality : "";
   const characterImageInstructions =
     typeof extensions?.conversationImageInstructions === "string" ? extensions.conversationImageInstructions : "";
@@ -194,7 +205,10 @@ async function generateSelfie(
   const baseSelfieSystemPrompt = await resolveConversationSelfieSystemPrompt({
     promptOverridesStorage: createPromptOverridesStorage(args.db),
     chatPromptTemplate: selfiePromptTemplate,
-    appearance,
+    appearance: cardAppearance,
+    // #7243: the override rides its own variable so it can fall away when empty,
+    // the same way personality and characterImageInstructions do.
+    imageAppearance: imageAppearance ?? "",
     charName: args.charName,
     characterImageInstructions,
     personality,
@@ -211,7 +225,12 @@ async function generateSelfie(
     : `Generate a casual selfie of ${args.charName} based on the current conversation context.`;
   const debugOverrideEnabled = args.debugMode === true || isDebugAgentsEnabled();
   if (debugOverrideEnabled || logger.isLevelEnabled("debug")) {
-    logDebugOverride(debugOverrideEnabled, "[debug/commands/selfie] prompt-builder system:\n%s", selfieSystemPrompt);
+    // Log the system prompt as sent, with the image connection's instructions (#7357).
+    logDebugOverride(
+      debugOverrideEnabled,
+      "[debug/commands/selfie] prompt-builder system:\n%s",
+      selfieSystemPromptWithImageInstructions,
+    );
     logDebugOverride(debugOverrideEnabled, "[debug/commands/selfie] prompt-builder user:\n%s", userPrompt);
   }
   const promptResult = await promptRuntime.provider.chatComplete(
@@ -236,7 +255,13 @@ async function generateSelfie(
     },
   );
 
-  const imagePrompt = (promptResult.content ?? "").trim();
+  // The writer follows the style, the connection's instructions and the card's image habits; a
+  // sentence of them it copied word for word is not image-model text (#7357).
+  const imagePrompt = removeCopiedPromptGuidance((promptResult.content ?? "").trim(), [
+    styleGuidance,
+    imgConnFull.imagePromptInstructions,
+    characterImageInstructions,
+  ]);
   if (!imagePrompt) return;
 
   const imageFallback = await resolveImageConnectionFallback(args.connections, imgConnFull.id);
@@ -270,6 +295,11 @@ async function generateSelfie(
         name: character.name,
         avatarPath: character.avatarPath,
         appearance: character.appearance,
+        // #7053: pass the override explicitly. Without it the appended
+        // appearance-reference block would quote the RAW card appearance while
+        // the system prompt above already uses the override, so both texts
+        // would reach the image model on the same request.
+        appearanceOverride: character.imageAppearanceOverride ?? null,
       })),
       persona: null,
       requestedNames,
@@ -312,6 +342,11 @@ async function generateSelfie(
     omitProfileStyleText: true,
     omitProfileSubjectTags: true,
   });
+  logDebugOverride(
+    debugOverrideEnabled,
+    "[debug/commands/selfie] final image prompt:\n%s",
+    compiledSelfiePrompt.prompt,
+  );
   const imageResults = await generateIllustratorImageVariants({
     count: args.chatMeta.illustratorImagesPerGeneration,
     generate: () =>

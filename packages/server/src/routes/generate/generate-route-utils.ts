@@ -13,6 +13,7 @@ import {
   extractCharacterCardCastMembers,
   normalizeTextForMatch,
   type CharacterCardCastSource,
+  type CharacterMacroProfile,
   normalizeSummaryTailMessages,
   normalizeWorldCustomFields,
   isTrackerRowsUpdate,
@@ -41,7 +42,7 @@ import {
   hasSpeakerTag,
 } from "@marinara-engine/shared";
 import { wrapContent } from "../../services/prompt/format-engine.js";
-import { parseStoredRulesetLive } from "../../services/storage/game-state.storage.js";
+import { parseSceneManualOverrides, parseStoredRulesetLive } from "../../services/storage/game-state.storage.js";
 import {
   appendReadableAttachmentsToContent,
   extractFileAttachmentInputs,
@@ -1264,6 +1265,28 @@ export function resolvePromptCharacterIdsForTarget(
   return characterIds;
 }
 
+/**
+ * Who a merged group reply may voice, so the Chat Summary can mark who knows what (#7252). Undefined keeps
+ * the usual single reading: one character, Individual mode, impersonation, or a card that exists but cannot
+ * be read (it still replies, so reading for the rest would mislabel its sections). A deleted card's leftover
+ * id does not reply, so it is skipped. A chosen responder does not pin a merged Roleplay reply to one speaker
+ * (mergedSpeaksOnlyTarget in generate.routes.ts), and Advanced Memory reads for everyone present then too.
+ * The narrator is never a reader, so narrator-only sections stay out.
+ */
+export function mergedChatSummaryReaders(input: {
+  characterIds: readonly string[];
+  individual: boolean;
+  impersonate: boolean;
+  narratorCharacterId: string | null;
+  profilesById: ReadonlyMap<string, CharacterMacroProfile>;
+  unreadableIds: ReadonlySet<string>;
+}): CharacterMacroProfile[] | undefined {
+  if (input.characterIds.length < 2 || input.individual || input.impersonate) return undefined;
+  const readers = input.characterIds.filter((id) => id !== input.narratorCharacterId);
+  if (readers.some((id) => input.unreadableIds.has(id))) return undefined;
+  return readers.flatMap((id) => input.profilesById.get(id) ?? []);
+}
+
 export function shouldPreferLatestVisibleGameState(input: {
   attachments?: unknown[] | null;
   impersonate?: boolean;
@@ -1978,7 +2001,7 @@ export function parseJsonField<T>(value: unknown, fallback: T): T {
 }
 
 export function parseGameStateRow(row: Record<string, unknown>): GameState {
-  const manualOverrides = parseJsonField<Record<string, string> | null>(row.manualOverrides, null);
+  const manualOverrides = parseSceneManualOverrides(row.manualOverrides);
   const fieldLocks = parseTrackerFieldLocks(row.fieldLocks);
   const hiddenTrackerFields = parseTrackerHiddenFields(row.hiddenTrackerFields);
   return {

@@ -340,6 +340,17 @@ export function getLogPreset() {
 }
 
 /**
+ * Whether the `claude_subscription` provider may use the host's installed
+ * Claude Code instead of the Agent SDK's bundled build. Default `true`; set
+ * `CLAUDE_SUBSCRIPTION_USE_INSTALLED_CLI=false` (or `0`/`off`/`no`) to always
+ * use the bundled build.
+ */
+export function isClaudeSubscriptionInstalledCliEnabled(value = process.env.CLAUDE_SUBSCRIPTION_USE_INSTALLED_CLI) {
+  const raw = normalizeEnvValue(value);
+  return raw === null || !isDisabledFlag(raw);
+}
+
+/**
  * Kill switch for the `claude_subscription` provider's resume code path.
  * Default `true`; set `CLAUDE_SUBSCRIPTION_USE_RESUME=false` (or `0`/`off`/`no`)
  * to revert to the legacy transcript-fold path. When enabled, prior turns are
@@ -715,6 +726,13 @@ export function isImageLocalUrlsEnabled() {
 /** Default-on for the same reason as isProviderLocalUrlsEnabled: operator-supplied URL. */
 export function isTtsLocalUrlsEnabled() {
   const raw = normalizeEnvValue(process.env.TTS_LOCAL_URLS_ENABLED);
+  if (raw === null) return true;
+  return !isDisabledFlag(raw);
+}
+
+/** Default-on for the same reason as isProviderLocalUrlsEnabled: operator-supplied URL. */
+export function isSttLocalUrlsEnabled() {
+  const raw = normalizeEnvValue(process.env.STT_LOCAL_URLS_ENABLED);
   if (raw === null) return true;
   return !isDisabledFlag(raw);
 }

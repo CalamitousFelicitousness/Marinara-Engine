@@ -65,15 +65,15 @@ assert.equal(previewSpeakerName(message("u2", "user", "hi"), names), null, "no s
 assert.equal(previewSpeakerName(message("a2", "assistant", "hi", {}, "gone"), names), null);
 
 const selectorSource = readFileSync(
-  join(repositoryRoot, "packages/client/src/components/chat/ChatBranchSelector.tsx"),
+  join(repositoryRoot, "packages/client/src/components/chat/ChatBranchesPanel.tsx"),
   "utf8",
 );
 const modalRendererSource = readFileSync(
   join(repositoryRoot, "packages/client/src/components/layout/ModalRenderer.tsx"),
   "utf8",
 );
-assert.match(selectorSource, /openModal\("chat-branch-browser"/u, "the branch popover opens the browser");
-assert.match(selectorSource, /<ChatBranchTail /u, "popover rows show the branch tail");
+assert.match(selectorSource, /openModal\("chat-branch-browser"/u, "the branches drawer opens the browser");
+assert.match(selectorSource, /<ChatBranchTail /u, "drawer rows show the branch tail");
 assert.match(modalRendererSource, /case "chat-branch-browser":/u, "the browser is registered with ModalRenderer");
 
 console.log("chat-branch-preview regression passed.");

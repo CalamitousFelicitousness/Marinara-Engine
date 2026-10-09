@@ -1535,6 +1535,23 @@ function carriesFrenzy(ruleset: unknown): boolean {
 /** Attack rows changed by what a sheet holds, strikes it grants, entries only after the attack action,
  *  or a condition's granted attacks narrowed by name or to after the attack action (1.237), in
  *  catalogs too. */
+/** An entry's attack rule matching held weapons or kept only while wielding some, or a granted strike
+ *  kept within bounds (1.239), in catalogs too. */
+function carriesWeaponMatch(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesWeaponMatch(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const rules = Array.isArray(record.attackRows) ? record.attackRows.map((one) => plainRecord(one)) : [];
+  if (
+    rules.some((rule) => rule && (rule.items !== undefined || rule.wielding !== undefined || rule.names === undefined))
+  )
+    return true;
+  const grant = plainRecord(record.grantsStrike);
+  if (grant && (grant.when !== undefined || grant.wielding !== undefined)) return true;
+  return Object.values(record).some((one) => carriesWeaponMatch(one, depth + 1));
+}
+
 function carriesMartialArts(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesMartialArts(one, depth + 1));
@@ -3324,6 +3341,17 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Held weapons matched by name or tags, what is wielded, rows every sheet has, 1.239.
+  if (
+    !declaresApi(239) &&
+    ((plainRecord(plainRecord(ruleset)?.combat)?.attacks as unknown[] | undefined)?.some?.(
+      (source) => plainRecord(source)?.always !== undefined,
+    ) ||
+      carriesWeaponMatch(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesWeaponMatch(document)))
+  ) {
+    return "A ruleset with attack lists that give every sheet a row, entries that change held weapons' attacks, or rules kept only while wielding certain weapons or granted strikes kept within bounds, requires schemaVersion 2 and capabilityApi 1.239 or newer";
   }
   // Attack rows, granted strikes and the attack action, 1.237.
   if (

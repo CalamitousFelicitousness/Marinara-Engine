@@ -1978,14 +1978,46 @@ const afterAttackSchema: z.ZodType<RulesetAfterAttackDeclaration, z.ZodTypeDef, 
   z.object({ names: attackNamesSchema }).strict(),
 ]);
 
+/** Held weapons that are these (Capability API 1.239): one of `names`, the name its attack goes by,
+ *  or carrying every one of `tags` and none of `notTags`. 5e's monk weapons are the shortsword and
+ *  the simple melee weapons that are neither two-handed nor heavy, magic ones included. */
+export interface RulesetItemMatchDeclaration {
+  names?: string[];
+  tags?: string[];
+  notTags?: string[];
+}
+const itemMatchSchema: z.ZodType<RulesetItemMatchDeclaration, z.ZodTypeDef, unknown> = z
+  .object({
+    names: attackNamesSchema.optional(),
+    tags: z.array(sheetId).min(1).max(8).optional(),
+    notTags: z.array(sheetId).min(1).max(8).optional(),
+  })
+  .strict()
+  .refine((match) => match.names || match.tags || match.notTags, {
+    message: 'An item match names "names", "tags" or "notTags"',
+  });
+
+/** Only while every weapon its holder holds is one of `only` (Capability API 1.239), or none is held:
+ *  5e's "unarmed or wielding only monk weapons". */
+export interface RulesetWieldingDeclaration {
+  only: RulesetItemMatchDeclaration;
+}
+const wieldingSchema: z.ZodType<RulesetWieldingDeclaration, z.ZodTypeDef, unknown> = z
+  .object({ only: itemMatchSchema })
+  .strict();
+
 /** A strike its holder may buy with `budget` once an attack's own budget is spent (Capability API
  *  1.237), as a condition's `grants.attacks` gives one: only with the attacks `names` names, in reach
- *  with `melee`, and `afterAttack` only once the attack action has been taken this turn. */
+ *  with `melee`, and `afterAttack` only once the attack action has been taken this turn. `when` and
+ *  `wielding` (Capability API 1.239) keep it only while its holder's sheet and weapons say so: 5e's
+ *  Martial Arts bonus strike is not made in armour. */
 export interface RulesetStrikeGrantDeclaration {
   budget: string;
   names?: string[];
   melee?: true;
   afterAttack?: RulesetAfterAttackDeclaration;
+  when?: { value: RulesetValueRef; atLeast?: number; atMost?: number };
+  wielding?: RulesetWieldingDeclaration;
 }
 const catalogStrikeGrantSchema: z.ZodType<RulesetStrikeGrantDeclaration, z.ZodTypeDef, unknown> = z
   .object({
@@ -1993,6 +2025,8 @@ const catalogStrikeGrantSchema: z.ZodType<RulesetStrikeGrantDeclaration, z.ZodTy
     names: attackNamesSchema.optional(),
     melee: z.literal(true).optional(),
     afterAttack: afterAttackSchema.optional(),
+    when: sheetBoundsSchema("when", "held").optional(),
+    wielding: wieldingSchema.optional(),
   })
   .strict();
 
@@ -2001,15 +2035,21 @@ const catalogStrikeGrantSchema: z.ZodType<RulesetStrikeGrantDeclaration, z.ZodTy
  *  `die` sides (read off the sheet by step) in place of the row's dice where it is the better, and
  *  `qualities` its blows carry past a resistance. 5e's Martial Arts and Ki-Empowered Strikes. */
 export interface RulesetAttackRowsDeclaration {
-  names: string[];
+  names?: string[];
+  items?: RulesetItemMatchDeclaration;
   abilities?: string[];
   die?: { from: RulesetValueRef; table: Array<[number, number]> };
   qualities?: string[];
   when?: { value: RulesetValueRef; atLeast?: number; atMost?: number };
+  wielding?: RulesetWieldingDeclaration;
 }
 const catalogAttackRowsSchema: z.ZodType<RulesetAttackRowsDeclaration, z.ZodTypeDef, unknown> = z
   .object({
-    names: attackNamesSchema,
+    /** Rows and held weapons whose attack goes by one of these names. */
+    names: attackNamesSchema.optional(),
+    /** Held weapons that are these, whatever they are called (Capability API 1.239): a monk's
+     *  quarterstaff, or a dagger +1. */
+    items: itemMatchSchema.optional(),
     abilities: z.array(sheetId).min(1).max(6).optional(),
     die: z
       .object({
@@ -2020,10 +2060,15 @@ const catalogAttackRowsSchema: z.ZodType<RulesetAttackRowsDeclaration, z.ZodType
       .optional(),
     qualities: z.array(sheetId).min(1).max(8).optional(),
     when: sheetBoundsSchema("when", "held").optional(),
+    /** Only while every weapon held is one of these, or none is (Capability API 1.239). */
+    wielding: wieldingSchema.optional(),
   })
   .strict()
   .refine((rule) => rule.abilities || rule.die || rule.qualities, {
     message: '"attackRows" changes something: "abilities", "die" or "qualities"',
+  })
+  .refine((rule) => rule.names || rule.items, {
+    message: '"attackRows" names the attacks it changes: "names", "items" or both',
   });
 
 /** The generic actions the kind implements, named once so a ruleset opts into the ones it has. Up
@@ -4956,6 +5001,14 @@ const combatAttackSourceSchema = z
         type: combatColumnSchema.optional(),
       })
       .strict(),
+    /** Rows every sheet's fight has as well as its own, written in this list's columns (Capability
+     *  API 1.239): 5e's unarmed strike, which everybody makes. A sheet row of the same name is used
+     *  in its place. */
+    always: z
+      .array(z.record(sheetId, z.union([promptSafeText(200), z.number().finite(), z.boolean()])))
+      .min(1)
+      .max(4)
+      .optional(),
   })
   .strict();
 
@@ -8110,6 +8163,16 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         } else if (type !== want) issue(where, `Must name a ${want} column`);
       };
       column(source.name, "name", [...path, "name"]);
+      // Rows every sheet has (1.239): in the list's own columns, each with a name to go by.
+      source.always?.forEach((row, rowIndex) => {
+        for (const key of Object.keys(row)) {
+          if (typeOf(key) === undefined) issue([...path, "always", rowIndex, key], `Unknown column "${key}"`);
+        }
+        const name = row[source.name];
+        if (typeof name !== "string" || !name.trim()) {
+          issue([...path, "always", rowIndex, source.name], "A row every sheet has is named");
+        }
+      });
       // An ability column is an enum of ability ids; a value that is not one adds nothing, exactly
       // as `abilityModFromField` reads one.
       column(source.toHit.ability?.column, "enum", [...path, "toHit", "ability", "column"]);
@@ -10588,6 +10651,11 @@ export function rulesetCatalogEntryIssues(
         }
       }
     });
+    if (entry.mechanics?.grantsStrike?.when) {
+      for (const issue of rulesetValueRefIssues(entry.mechanics.grantsStrike.when.value, names, names.derived)) {
+        add([index, "mechanics", "grantsStrike", "when", "value", issue.key], issue.message);
+      }
+    }
     if (entry.offeredWhen) {
       for (const issue of rulesetValueRefIssues(entry.offeredWhen, names, names.derived, false)) {
         add([index, "offeredWhen", issue.key], issue.message);

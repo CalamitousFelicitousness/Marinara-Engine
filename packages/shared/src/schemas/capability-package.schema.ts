@@ -995,7 +995,11 @@ const capabilityPackageManifestBaseSchema = z
 //        condition grant's `names` and `afterAttack`.
 // 1.238: an opportunity attack's hit is held for answers as any other hit is (smite or stun it), the
 //        walk's window asked on once it lands; a walker held still on the way goes no further.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 238 } as const);
+// 1.239: `combat.attacks[].always` (rows every sheet has: 5e's unarmed strike); an `attackRows` rule's
+//        `items` (held weapons by tags, or by name with `names`, which a rule may now leave out) and
+//        `wielding.only` (kept only while every weapon held is one of these); `grantsStrike`'s `when`
+//        and `wielding`.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 239 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

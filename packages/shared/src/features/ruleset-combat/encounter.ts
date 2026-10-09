@@ -973,6 +973,57 @@ export function rulesetAttackNamed(label: string, names: readonly string[]): boo
   return names.some((name) => name.trim().toLowerCase() === own);
 }
 
+/** Whether a held weapon, its attack going by `label`, is one of these (1.239): by that name, or by
+ *  every one of `tags` and none of `notTags`. */
+export function rulesetItemMatches(
+  item: { tags?: readonly string[] },
+  label: string,
+  match: { names?: readonly string[]; tags?: readonly string[]; notTags?: readonly string[] },
+): boolean {
+  if (match.names && rulesetAttackNamed(label, match.names)) return true;
+  if (!match.tags && !match.notTags) return false;
+  const tags = item.tags ?? [];
+  return (
+    (match.tags ?? []).every((tag) => tags.includes(tag)) && !(match.notTags ?? []).some((tag) => tags.includes(tag))
+  );
+}
+
+/** What a held item's attack goes by: the stack's own name, else its category's. */
+function itemAttackLabel(definition: RulesetDefinition, held: RulesetSheetItem): string {
+  return (
+    held.name ??
+    definition.items?.categories.find((category) => category.id === held.item.category)?.label ??
+    held.item.category
+  );
+}
+
+/** Whether a sheet's bounds and weapons let a held entry's rule hold (1.237, 1.239): its `when` on the
+ *  sheet, and every weapon held being one of `wielding.only`, or none held at all. */
+function rulesetHeldRuleHolds(
+  definition: RulesetDefinition,
+  build: RulesetSheetBuild,
+  evaluated: EvaluatedRulesetSheet,
+  items: readonly RulesetSheetItem[] | undefined,
+  rule: {
+    when?: { value: RulesetValueRef; atLeast?: number; atMost?: number };
+    wielding?: { only: { names?: string[]; tags?: string[]; notTags?: string[] } };
+  },
+): boolean {
+  if (rule.when) {
+    const value = resolveRulesetValueRef(definition, build, rule.when.value, evaluated);
+    if (rule.when.atLeast !== undefined && !(value >= rule.when.atLeast)) return false;
+    if (rule.when.atMost !== undefined && !(value <= rule.when.atMost)) return false;
+  }
+  const only = rule.wielding?.only;
+  return (
+    !only ||
+    (items ?? []).every(
+      (held) =>
+        !held.worn || !held.item.attack || rulesetItemMatches(held.item, itemAttackLabel(definition, held), only),
+    )
+  );
+}
+
 /**
  * One attack row as the entries its sheet holds change it (1.237), while each one's `when` holds:
  * the best of its own ability and theirs, to hit and, where the row's damage adds the same ability,
@@ -982,20 +1033,18 @@ function applyAttackRowRules(
   definition: RulesetDefinition,
   build: RulesetSheetBuild,
   evaluated: EvaluatedRulesetSheet,
-  source: RulesetCombatAttackSource,
-  row: Record<string, unknown>,
   dice: RulesetCombatAmount,
   action: RulesetCombatAction,
   rules: readonly RulesetAttackRowRule[],
   pooled: boolean,
+  /** Whether the blow's damage adds the ability it is made with. */
+  dealtWith: (ability: string | undefined) => boolean,
+  /** A held weapon's own item, which `items` reads (1.239). */
+  item?: RulesetCatalogItem,
 ): void {
   for (const rule of rules) {
-    if (!rulesetAttackNamed(action.label, rule.names)) continue;
-    if (rule.when) {
-      const value = resolveRulesetValueRef(definition, build, rule.when.value, evaluated);
-      if (rule.when.atLeast !== undefined && !(value >= rule.when.atLeast)) continue;
-      if (rule.when.atMost !== undefined && !(value <= rule.when.atMost)) continue;
-    }
+    const named = rule.names !== undefined && rulesetAttackNamed(action.label, rule.names);
+    if (!named && !(item && rule.items && rulesetItemMatches(item, action.label, rule.items))) continue;
     const damage = action.damage!;
     if (rule.abilities) {
       const mod = (ability: string | undefined) =>
@@ -1009,11 +1058,7 @@ function applyAttackRowRules(
       const delta = best !== undefined ? mod(best) - mod(action.ability) : 0;
       if (best !== undefined && delta > 0) {
         action.toHit = (action.toHit ?? 0) + delta;
-        const dealtWith = columnValue(row, source.damage.ability?.column);
-        if (
-          dealtWith === action.ability ||
-          (action.ability === undefined && dealtWith === undefined && source.damage.ability)
-        ) {
+        if (dealtWith(action.ability)) {
           if (pooled) damage.count = Math.max(0, damage.count + delta);
           else damage.flat += delta;
         }
@@ -1047,8 +1092,20 @@ function attackActions(
   /** What the entries the sheet holds do to its rows (1.237). */
   rules: readonly RulesetAttackRowRule[] = [],
 ): RulesetCombatAction[] {
-  const rows = build.lists?.[source.list];
-  if (!Array.isArray(rows)) return [];
+  const own = build.lists?.[source.list];
+  // The rows every sheet has (1.239), after its own and only where it has none of the same name.
+  const ownNames = new Set(
+    (Array.isArray(own) ? own : []).flatMap((row) => {
+      const name = row && typeof row === "object" ? textFromColumn(row as Record<string, unknown>, source.name) : "";
+      return name ? [name.trim().toLowerCase()] : [];
+    }),
+  );
+  const always = (source.always ?? []).filter((row) => {
+    const name = textFromColumn(row, source.name);
+    return !!name && !ownNames.has(name.trim().toLowerCase());
+  });
+  const rows = [...(Array.isArray(own) ? own : []), ...always];
+  if (!rows.length) return [];
   // How many strikes one spend of this list's budget buys, read off the sheet once. A number below
   // one is the one strike every spend has always bought, so a sheet left alone changes nothing.
   const strikes = source.strikes
@@ -1115,7 +1172,20 @@ function attackActions(
               : {}),
           },
     };
-    if (rules.length) applyAttackRowRules(definition, build, evaluated, source, row, dice, action, rules, pooled);
+    if (rules.length) {
+      const dealtWith = columnValue(row, source.damage.ability?.column);
+      applyAttackRowRules(
+        definition,
+        build,
+        evaluated,
+        dice,
+        action,
+        rules,
+        pooled,
+        (ability) =>
+          dealtWith === ability || (ability === undefined && dealtWith === undefined && !!source.damage.ability),
+      );
+    }
     actions.push(action);
   });
   return actions;
@@ -1386,6 +1456,8 @@ function itemAttackActions(
   build: RulesetSheetBuild,
   evaluated: EvaluatedRulesetSheet,
   perCell: number | undefined,
+  /** What the entries the sheet holds do to its weapons' attacks (1.239). */
+  rules: readonly RulesetAttackRowRule[] = [],
 ): RulesetCombatAction[] {
   if (!items?.some((held) => held.worn && held.item.attack)) return [];
   const pooled = rulesetCombatIsPool(combat);
@@ -1451,10 +1523,7 @@ function itemAttackActions(
           ...(attack.ammo.recover ? { recover: attack.ammo.recover } : {}),
         }
       : undefined;
-    const label =
-      held.name ??
-      definition.items?.categories.find((category) => category.id === item.category)?.label ??
-      item.category;
+    const label = itemAttackLabel(definition, held);
     if (clip && attack.clip) {
       actions.push({
         id: `reload:${index}`,
@@ -1608,29 +1677,43 @@ function itemAttackActions(
       ...(attack.healedOnlyByRest ? { healedOnlyByRest: true as const } : {}),
       ...(attack.othersWhileMarked ? { othersWhileMarked: { ...attack.othersWhileMarked, item: index } } : {}),
     };
+    // What the sheet's entries do to it (1.239), as they do to a row: a monk's quarterstaff.
+    const ruled = (action: RulesetCombatAction, full: boolean) => {
+      if (rules.length && dice)
+        applyAttackRowRules(
+          definition,
+          build,
+          evaluated,
+          dice,
+          action,
+          rules,
+          pooled,
+          (ability) => full && ability !== undefined && dealtWith.includes(ability),
+          item,
+        );
+      return action;
+    };
+    // The off hand: the same weapon, struck with again on the off-hand budget: one blow, whatever
+    // strikes its main attack buys, and with the damage ability the ruleset lets an off hand keep.
+    // The off hand keeps the full ability for a fighter whose sheet says so (1.92: Two-Weapon
+    // Fighting), whatever the ruleset's rule for everyone else.
+    const clipped =
+      !!offHand &&
+      offHand.ability === "penalty-only" &&
+      !(offHand.fullWhen !== undefined && resolveRulesetValueRef(definition, build, offHand.fullWhen, evaluated) > 0);
+    const { strikes: _strikes, ...single } = weapon;
+    const off: RulesetCombatAction | undefined = offHand
+      ? {
+          ...single,
+          id: `offhand:${index}`,
+          budget: offHand.budget,
+          damage: damageOf(clipped ? Math.min(0, damageAbility) : damageAbility),
+          offHandOf: index,
+        }
+      : undefined;
+    ruled(weapon, true);
     actions.push(offHand ? { ...weapon, pairs: index } : weapon);
-    if (offHand) {
-      // The same weapon, struck with again on the off-hand budget: one blow, whatever strikes its
-      // main attack buys, and with the damage ability the ruleset lets an off hand keep.
-      const { strikes: _strikes, ...single } = weapon;
-      actions.push({
-        ...single,
-        id: `offhand:${index}`,
-        budget: offHand.budget,
-        // The off hand keeps the full ability for a fighter whose sheet says so (1.92: Two-Weapon
-        // Fighting), whatever the ruleset's rule for everyone else.
-        damage: damageOf(
-          offHand.ability === "penalty-only" &&
-            !(
-              offHand.fullWhen !== undefined &&
-              resolveRulesetValueRef(definition, build, offHand.fullWhen, evaluated) > 0
-            )
-            ? Math.min(0, damageAbility)
-            : damageAbility,
-        ),
-        offHandOf: index,
-      });
-    }
+    if (off) actions.push(ruled(off, !clipped));
   });
   return actions;
 }
@@ -2589,15 +2672,20 @@ function sheetCombatant(
     const entry = byRef.get(ref);
     return entry?.mechanics ? [entry.mechanics] : [];
   });
-  const rowRules = held.flatMap((mechanics) => mechanics.attackRows ?? []);
-  const strikeGrants = held.flatMap((mechanics) =>
-    mechanics.grantsStrike ? [structuredClone(mechanics.grantsStrike)] : [],
-  );
+  // Only while the sheet and the weapons it holds let each one hold (1.239): read once, for the fight.
+  const holds = (rule: Parameters<typeof rulesetHeldRuleHolds>[4]) =>
+    rulesetHeldRuleHolds(definition, build, evaluated, input.items, rule);
+  const rowRules = held.flatMap((mechanics) => (mechanics.attackRows ?? []).filter(holds));
+  const strikeGrants = held.flatMap((mechanics) => {
+    if (!mechanics.grantsStrike || !holds(mechanics.grantsStrike)) return [];
+    const { when: _when, wielding: _wielding, ...grant } = structuredClone(mechanics.grantsStrike);
+    return [grant];
+  });
   const actions = [
     ...(combat.attacks ?? []).flatMap((source, index) =>
       attackActions(definition, combat, source, index, build, evaluated, perCell, rowRules),
     ),
-    ...itemAttackActions(definition, combat, input.items, build, evaluated, perCell),
+    ...itemAttackActions(definition, combat, input.items, build, evaluated, perCell, rowRules),
     ...itemSwitchActions(input.items),
     ...itemUseActions(definition, combat, input.items, build, evaluated, perCell),
     ...abilities.flatMap((entry) => entry.actions),

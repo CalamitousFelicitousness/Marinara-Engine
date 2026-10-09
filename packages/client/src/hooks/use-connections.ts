@@ -435,13 +435,27 @@ export type NanoGptSubscriptionUsage = {
   provider: string;
 };
 
-/** Read the NanoGPT subscription quotas for the usage widget. */
-export function useNanoGptSubscriptionUsage(connectionId: string | null, enabled: boolean) {
+/**
+ * The Claude plan's rate-limit windows that the connection has switched on.
+ * The plan reports percentages only, so each window's counters are null.
+ */
+export type ClaudePlanUsage = {
+  provider: "claude_subscription";
+  /** The plan name Claude reports ("pro", "max", ...), or null. */
+  plan: string | null;
+  windows: Array<NanoGptQuotaWindow & { id: "five_hour" | "seven_day" }>;
+};
+
+export type SubscriptionUsage = NanoGptSubscriptionUsage | ClaudePlanUsage;
+
+/** Read a connection's subscription usage for the usage widget. */
+export function useSubscriptionUsage(connectionId: string | null, enabled: boolean) {
   return useQuery({
     queryKey: [...connectionKeys.detail(connectionId ?? ""), "subscription-usage"],
-    queryFn: () => api.get<NanoGptSubscriptionUsage>(`/connections/${connectionId}/subscription-usage`),
+    queryFn: () => api.get<SubscriptionUsage>(`/connections/${connectionId}/subscription-usage`),
     enabled: enabled && !!connectionId,
-    // Quotas move slowly and NanoGPT may rate limit reads; keep it calm.
+    // Quotas move slowly, NanoGPT may rate limit reads, and a Claude reading
+    // starts a Claude Code process on the host; keep it calm.
     staleTime: 60_000,
     retry: false,
   });

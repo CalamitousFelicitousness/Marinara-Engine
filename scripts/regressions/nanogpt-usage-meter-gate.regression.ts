@@ -8,8 +8,9 @@
 // is exactly why the chat HUD path needed its own proof.
 import assert from "node:assert/strict";
 import {
+  isConnectionFlagFalse,
   isConnectionFlagTrue,
-  resolveNanoGptUsageConnection,
+  resolveUsageConnection,
 } from "../../packages/client/src/lib/connection-filters.js";
 import { quotaPercentForDisplay, quotaTotalForDisplay } from "../../packages/client/src/lib/nanogpt-quota.js";
 
@@ -23,40 +24,68 @@ const rows: Row[] = [nanoOn, nanoOff, nanoBoolean, openai];
 
 // The core regression: the stored STRING form must resolve the meter.
 assert.deepEqual(
-  resolveNanoGptUsageConnection(rows, "nano-on"),
+  resolveUsageConnection(rows, "nano-on"),
   nanoOn,
   'a stored "true" string must show the meter (the bug was an === true check here)',
 );
 
 // Client-side payloads use real booleans, so both forms must work.
-assert.deepEqual(resolveNanoGptUsageConnection(rows, "nano-bool"), nanoBoolean);
+assert.deepEqual(resolveUsageConnection(rows, "nano-bool"), nanoBoolean);
 
 // Opted out stays quiet.
-assert.equal(resolveNanoGptUsageConnection(rows, "nano-off"), null);
+assert.equal(resolveUsageConnection(rows, "nano-off"), null);
 
 // Another provider is never read as NanoGPT, even with the flag set.
-assert.equal(resolveNanoGptUsageConnection(rows, "oai"), null);
+assert.equal(resolveUsageConnection(rows, "oai"), null);
 
 // Random has no single connection to read a quota from.
-assert.equal(resolveNanoGptUsageConnection(rows, "random"), null);
+assert.equal(resolveUsageConnection(rows, "random"), null);
 
 // A missing / empty selection, or an id not in the list, shows nothing.
-assert.equal(resolveNanoGptUsageConnection(rows, null), null);
-assert.equal(resolveNanoGptUsageConnection(rows, undefined), null);
-assert.equal(resolveNanoGptUsageConnection(rows, ""), null);
-assert.equal(resolveNanoGptUsageConnection(rows, "gone"), null);
-assert.equal(resolveNanoGptUsageConnection(null, "nano-on"), null);
-assert.equal(resolveNanoGptUsageConnection(undefined, "nano-on"), null);
+assert.equal(resolveUsageConnection(rows, null), null);
+assert.equal(resolveUsageConnection(rows, undefined), null);
+assert.equal(resolveUsageConnection(rows, ""), null);
+assert.equal(resolveUsageConnection(rows, "gone"), null);
+assert.equal(resolveUsageConnection(null, "nano-on"), null);
+assert.equal(resolveUsageConnection(undefined, "nano-on"), null);
 
 // A missing flag is not an opt-in, and neither is a truthy-looking impostor.
-assert.equal(resolveNanoGptUsageConnection([{ id: "x", provider: "nanogpt" }], "x"), null);
+assert.equal(resolveUsageConnection([{ id: "x", provider: "nanogpt" }], "x"), null);
 for (const value of ["1", "yes", 1, {}, [], "TRUE", "True", null, undefined] as unknown[]) {
   assert.equal(
-    resolveNanoGptUsageConnection([{ id: "x", provider: "nanogpt", showUsageWidget: value }], "x"),
+    resolveUsageConnection([{ id: "x", provider: "nanogpt", showUsageWidget: value }], "x"),
     null,
     `showUsageWidget=${JSON.stringify(value)} must not opt in`,
   );
 }
+
+// A Claude (Subscription) connection opts in with the same switch. Its two
+// window switches default to on, so only an explicit "false" on both hides the
+// meter; rows saved before the switches existed carry neither field.
+const claude = (flags: Record<string, unknown>) => [
+  { id: "claude", provider: "claude_subscription", showUsageWidget: "true", ...flags },
+];
+assert.equal(resolveUsageConnection(claude({}), "claude")?.id, "claude", "missing window flags mean on");
+assert.equal(resolveUsageConnection(claude({ showUsageFiveHour: "false" }), "claude")?.id, "claude");
+assert.equal(resolveUsageConnection(claude({ showUsageWeekly: false }), "claude")?.id, "claude");
+assert.equal(
+  resolveUsageConnection(claude({ showUsageFiveHour: "false", showUsageWeekly: "false" }), "claude"),
+  null,
+  "both windows off leaves nothing to draw",
+);
+assert.equal(resolveUsageConnection(claude({ showUsageWidget: "false" }), "claude"), null);
+// The window switches belong to Claude plans; they never hide a NanoGPT meter.
+assert.equal(
+  resolveUsageConnection(
+    [{ id: "n", provider: "nanogpt", showUsageWidget: "true", showUsageFiveHour: "false", showUsageWeekly: "false" }],
+    "n",
+  )?.id,
+  "n",
+);
+assert.equal(isConnectionFlagFalse("false"), true);
+assert.equal(isConnectionFlagFalse(false), true);
+assert.equal(isConnectionFlagFalse(undefined), false);
+assert.equal(isConnectionFlagFalse("true"), false);
 
 // The helper's contract that the gate depends on.
 assert.equal(isConnectionFlagTrue("true"), true);
@@ -68,7 +97,7 @@ assert.equal(isConnectionFlagTrue(null), false);
 assert.equal(isConnectionFlagTrue(1), false);
 
 // Object identity is preserved, so the caller reads the matched row's id.
-const resolved = resolveNanoGptUsageConnection(rows, "nano-on");
+const resolved = resolveUsageConnection(rows, "nano-on");
 assert.equal(resolved?.id, "nano-on");
 
 // The allowance is derived from used + remaining, and is only reported when both

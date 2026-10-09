@@ -30,6 +30,11 @@ export function supportsNativeToolCalls(provider: string | null | undefined): bo
   return !!provider && provider !== "claude_subscription" && provider !== "grok_subscription";
 }
 
+/** Providers whose connections can show a subscription usage meter. */
+export function supportsSubscriptionUsageWidget(provider: string | null | undefined): boolean {
+  return provider === "nanogpt" || provider === "claude_subscription";
+}
+
 export function isLocalAuthProvider(provider: string | null | undefined): boolean {
   return LOCAL_AUTH_PROVIDERS.includes(provider as (typeof LOCAL_AUTH_PROVIDERS)[number]);
 }

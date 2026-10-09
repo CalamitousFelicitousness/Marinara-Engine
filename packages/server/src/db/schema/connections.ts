@@ -38,8 +38,11 @@ export const apiConnections = fileTable("api_connections", {
    * subscription usage widget. Cannot authenticate inference endpoints.
    */
   managementTokenEncrypted: text("management_token_encrypted").notNull().default(""),
-  /** NanoGPT: whether the subscription usage widget is shown for this connection. */
+  /** NanoGPT and Claude (Subscription): whether the subscription usage widget is shown for this connection. */
   showUsageWidget: text("show_usage_widget").notNull().default("false"),
+  /** Claude (Subscription): which plan windows the usage widget shows. */
+  showUsageFiveHour: text("show_usage_five_hour").notNull().default("true"),
+  showUsageWeekly: text("show_usage_weekly").notNull().default("true"),
   /** Imported endpoints stay unavailable until the user reviews and saves them locally. */
   profileImportReviewRequired: text("profile_import_review_required").notNull().default("false"),
   model: text("model").notNull().default(""),

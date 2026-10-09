@@ -168,8 +168,11 @@ export interface APIConnection {
   treatAsLocalEndpoint: boolean;
   /** Folder this connection belongs to (null = root/unfiled). */
   folderId: string | null;
-  /** NanoGPT only: whether the subscription usage widget is shown. */
+  /** NanoGPT and Claude (Subscription): whether the subscription usage widget is shown. */
   showUsageWidget: boolean;
+  /** Claude (Subscription) only: which plan windows the usage widget shows. */
+  showUsageFiveHour: boolean;
+  showUsageWeekly: boolean;
   /** Manual sort order within a folder (lower = higher). 0 = use default sort. */
   sortOrder: number;
   createdAt: string;

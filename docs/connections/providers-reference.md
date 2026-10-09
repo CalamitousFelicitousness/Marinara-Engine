@@ -150,6 +150,24 @@ Connect DeepSeek here rather than pointing the **OpenAI** provider at DeepSeek's
 
 Install and login steps are in [Claude, ChatGPT, and Grok Subscription Connections](subscription-clis.md).
 
+### Plan usage
+
+This connection can show how much of your Claude plan's rate limits is used:
+
+1. Turn on **Show subscription usage** in the connection editor.
+2. Leave **5-hour window** and **Weekly window** checked, or uncheck the one you do not want to see.
+3. Save the connection.
+
+Each window gets a bar with the percentage used and when the window resets, for example `58% · resets in 2h`. The same bars appear under the context indicator in a chat's connection picker and in the chat's **Connection** settings while this connection is active. They do not appear for **Random**, which has no single connection to read.
+
+Things to know:
+
+- The bars count everything on your Claude plan, such as Claude Code and claude.ai, not only Marinara.
+- Claude reports a percentage for each window and no token counts, so none are shown.
+- A reading asks the Claude Code tool on the Marinara host for the same data its `/usage` command shows. It sends no message to Claude and uses none of your plan. It takes a second or two, and the refresh button reads it again.
+- The plan name next to the title, such as **Pro**, is the one Claude reports for the signed-in account.
+- Claude Code marks this usage data as experimental. If a future version changes it, the bars show an error with a retry button instead of a wrong number.
+
 ## OpenAI (ChatGPT)
 
 - API key: none. You sign in to a local tool instead.

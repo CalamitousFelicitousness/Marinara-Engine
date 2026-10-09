@@ -1,4 +1,4 @@
-import { LOCAL_SIDECAR_CONNECTION_ID, isChatProvider } from "@marinara-engine/shared";
+import { LOCAL_SIDECAR_CONNECTION_ID, isChatProvider, supportsSubscriptionUsageWidget } from "@marinara-engine/shared";
 
 export type ConnectionProviderLike = {
   id?: string | null;
@@ -27,14 +27,33 @@ export function isConnectionFlagTrue(value: unknown): boolean {
   return value === true || value === "true";
 }
 
-/** The active connection with its NanoGPT usage meter, or null when it should not show. */
-export function resolveNanoGptUsageConnection<
-  T extends { id?: string | null; provider?: string | null; showUsageWidget?: unknown },
+/** For flags that default to on: only an explicit false, in either stored or client form, is off. */
+export function isConnectionFlagFalse(value: unknown): boolean {
+  return value === false || value === "false";
+}
+
+/** The active connection with its subscription usage meter, or null when it should not show. */
+export function resolveUsageConnection<
+  T extends {
+    id?: string | null;
+    provider?: string | null;
+    showUsageWidget?: unknown;
+    showUsageFiveHour?: unknown;
+    showUsageWeekly?: unknown;
+  },
 >(connections: readonly T[] | null | undefined, connectionId: string | null | undefined): T | null {
   // A random pick has no single quota to read.
   if (!connectionId || connectionId === "random") return null;
   const connection = (connections ?? []).find((candidate) => candidate.id === connectionId);
-  if (!connection || connection.provider !== "nanogpt") return null;
+  if (!connection || !supportsSubscriptionUsageWidget(connection.provider)) return null;
+  // A Claude plan meter with both of its windows switched off has nothing to draw.
+  if (
+    connection.provider === "claude_subscription" &&
+    isConnectionFlagFalse(connection.showUsageFiveHour) &&
+    isConnectionFlagFalse(connection.showUsageWeekly)
+  ) {
+    return null;
+  }
   // The stored flag is a "true"/"false" string, so a strict boolean check
   // would always be false and silently hide the meter.
   return isConnectionFlagTrue(connection.showUsageWidget) ? connection : null;

@@ -4,9 +4,9 @@ import { LOCAL_SIDECAR_CONNECTION_ID } from "@marinara-engine/shared";
 import { ChatSettingsSection } from "../ChatSettingsSection";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { ContextBudgetIndicator } from "../../../components/chat/ContextBudgetIndicator";
-import { NanoGptUsageWidget } from "../../../components/connections/NanoGptUsageWidget";
+import { SubscriptionUsageWidget } from "../../../components/connections/SubscriptionUsageWidget";
 import { ConnectionModelPicker } from "../../../components/connections/ConnectionModelPicker";
-import { resolveNanoGptUsageConnection } from "../../../lib/connection-filters";
+import { resolveUsageConnection } from "../../../lib/connection-filters";
 import { cn } from "../../../lib/utils";
 import type { ProfessorMariContextBudget } from "../../../lib/professor-mari-context-budget";
 
@@ -99,7 +99,7 @@ export function ConnectionSection({
   const selectedLocalSidecar = connectionId === LOCAL_SIDECAR_CONNECTION_ID;
   // The usage meter follows the active connection: only a NanoGPT connection that
   // opted in from its editor shows it, and a random pick has no single quota.
-  const usageConnection = resolveNanoGptUsageConnection(connections, connectionId);
+  const usageConnection = resolveUsageConnection(connections, connectionId);
   // Random has no single connection and the Local Model has no model list, so neither gets a model field.
   const modelConnection =
     connectionId && connectionId !== "random" && !selectedLocalSidecar
@@ -142,7 +142,7 @@ export function ConnectionSection({
           </div>
           {modelConnection && <ConnectionModelField key={modelConnection.id} connection={modelConnection} />}
           {contextBudget && <ContextBudgetIndicator budget={contextBudget} />}
-          {usageConnection && <NanoGptUsageWidget connectionId={usageConnection.id} variant="panel" />}
+          {usageConnection && <SubscriptionUsageWidget connectionId={usageConnection.id} variant="panel" />}
         </div>
       ) : (
         // space-y-2 matches the game branch above and the other settings
@@ -175,7 +175,7 @@ export function ConnectionSection({
               </span>
             </div>
           )}
-          {usageConnection && <NanoGptUsageWidget connectionId={usageConnection.id} variant="panel" />}
+          {usageConnection && <SubscriptionUsageWidget connectionId={usageConnection.id} variant="panel" />}
         </div>
       )}
     </ChatSettingsSection>

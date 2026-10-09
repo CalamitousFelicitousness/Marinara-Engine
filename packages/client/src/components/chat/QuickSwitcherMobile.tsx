@@ -27,7 +27,7 @@ import { useSidecarStore } from "../../stores/sidecar.store";
 import {
   appendLocalSidecarConnectionOption,
   isLocalSidecarConnectionOption,
-  resolveNanoGptUsageConnection,
+  resolveUsageConnection,
 } from "../../lib/connection-filters";
 import { cn, getAvatarCropStyle } from "../../lib/utils";
 import { getCharacterTitle, parseCharacterDisplayData } from "../../lib/character-display";
@@ -36,7 +36,7 @@ import { useTranslation as useUiTranslation } from "react-i18next";
 import { LOCAL_SIDECAR_CONNECTION_ID, type CharacterGroup, type Persona } from "@marinara-engine/shared";
 import type { ProfessorMariContextBudget } from "../../lib/professor-mari-context-budget";
 import { ContextBudgetGauge, ContextBudgetIndicator } from "./ContextBudgetIndicator";
-import { NanoGptUsageWidget } from "../connections/NanoGptUsageWidget";
+import { SubscriptionUsageWidget } from "../connections/SubscriptionUsageWidget";
 import { ConnectionModelPicker } from "../connections/ConnectionModelPicker";
 
 interface PersonaGroupRow {
@@ -111,7 +111,7 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
 
   // Mirrors the desktop switcher: the NanoGPT quota follows the selected
   // connection, and Random has no single connection to read a quota from.
-  const usageConnection = resolveNanoGptUsageConnection(sortedConnections, activeConnectionId);
+  const usageConnection = resolveUsageConnection(sortedConnections, activeConnectionId);
 
   const sortedPersonas = (rawPersonas ?? []).slice().sort((a, b) => a.name.localeCompare(b.name));
   const normalizedSearch = search.trim().toLocaleLowerCase();
@@ -492,7 +492,7 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
                   )}
                   {usageConnection && (
                     <div className="px-2 pt-1">
-                      <NanoGptUsageWidget connectionId={usageConnection.id} variant="inline" />
+                      <SubscriptionUsageWidget connectionId={usageConnection.id} variant="inline" />
                     </div>
                   )}
                   <button

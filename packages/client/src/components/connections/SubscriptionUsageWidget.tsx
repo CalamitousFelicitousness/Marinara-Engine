@@ -1,6 +1,9 @@
 // ──────────────────────────────────────────────
-// NanoGPT Subscription Usage Widget
+// Subscription Usage Widget (NanoGPT, Claude plan)
 // ──────────────────────────────────────────────
+//
+// A Claude plan reports only a percentage and a reset time per window, for the
+// whole account, so its bars carry no token counts.
 //
 // Quota semantics that this widget must respect (see NanoGPT's management API docs):
 //   * `percentUsed` is a FRACTION (0.25 = 25%), and it MAY EXCEED 1.
@@ -12,8 +15,9 @@
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { Loader2, RefreshCw, TriangleAlert } from "lucide-react";
 import { PROVIDERS, type APIProvider } from "@marinara-engine/shared";
-import { useNanoGptSubscriptionUsage, type NanoGptQuotaWindow } from "../../hooks/use-connections";
+import { useSubscriptionUsage, type NanoGptQuotaWindow } from "../../hooks/use-connections";
 import { quotaPercentForDisplay, quotaTotalForDisplay } from "../../lib/nanogpt-quota";
+import { formatRelativeUntil } from "../../lib/relative-time";
 
 /**
  * The provider's display name, from the shared provider catalog rather than a
@@ -52,11 +56,14 @@ function QuotaBar({
   window,
   limit,
   compact = false,
+  labelInCompact = false,
 }: {
   label: string;
   window: NanoGptQuotaWindow;
   limit: number | null;
   compact?: boolean;
+  /** Name the window in the compact row, for a meter that draws more than one. */
+  labelInCompact?: boolean;
 }) {
   const { t: localizeUi } = useUiTranslation();
   const percent = quotaPercentForDisplay(window.percentUsed);
@@ -90,6 +97,9 @@ function QuotaBar({
   const used = formatTokens(window.used);
   const total = quotaTotalForDisplay(window, limit);
   const roundedPercent = String(Math.round(percent));
+  // A window without counts states when it resets instead.
+  const resetsIn = window.used === null && window.resetAt !== null ? formatRelativeUntil(window.resetAt) : null;
+  const resets = resetsIn ? localizeUi("ui.connections.connectioneditor.usageResets", { when: resetsIn }) : null;
   // The wider layouts state the percentage and the tokens together; the compact
   // one leaves the tokens to the header row above and states only the percentage.
   const reading =
@@ -99,21 +109,29 @@ function QuotaBar({
           used,
           limit: formatTokens(total),
         })
-      : localizeUi("ui.connections.connectioneditor.usagePercentOf", {
-          percent: roundedPercent,
-          used,
-        });
+      : window.used !== null
+        ? localizeUi("ui.connections.connectioneditor.usagePercentOf", {
+            percent: roundedPercent,
+            used,
+          })
+        : resets
+          ? localizeUi("ui.connections.connectioneditor.usagePercentAndResets", { percent: roundedPercent, resets })
+          : localizeUi("ui.connections.connectioneditor.usagePercentUsed", { percent: roundedPercent });
 
   return (
     <div>
       <div className="flex items-baseline justify-between gap-3">
         <span className="text-[0.6875rem] text-[var(--marinara-chat-chrome-panel-muted)]">
-          {compact
-            ? localizeUi("ui.connections.connectioneditor.usagePercentUsed", { percent: roundedPercent })
-            : label}
+          {!compact
+            ? label
+            : labelInCompact
+              ? localizeUi("ui.connections.connectioneditor.usageLabelPercentUsed", { label, percent: roundedPercent })
+              : localizeUi("ui.connections.connectioneditor.usagePercentUsed", { percent: roundedPercent })}
         </span>
-        {!compact && (
-          <span className="text-[0.6875rem] tabular-nums text-[var(--marinara-chat-chrome-panel-text)]">{reading}</span>
+        {(!compact || (labelInCompact && resets)) && (
+          <span className="text-[0.6875rem] tabular-nums text-[var(--marinara-chat-chrome-panel-text)]">
+            {compact ? resets : reading}
+          </span>
         )}
       </div>
       <div
@@ -150,7 +168,7 @@ function QuotaBar({
   );
 }
 
-export function NanoGptUsageWidget({
+export function SubscriptionUsageWidget({
   connectionId,
   /**
    * Which surface this is drawn on.
@@ -166,7 +184,7 @@ export function NanoGptUsageWidget({
   variant?: "card" | "inline" | "panel";
 }) {
   const { t: localizeUi } = useUiTranslation();
-  const { data, isLoading, isFetching, error, refetch } = useNanoGptSubscriptionUsage(connectionId, true);
+  const { data, isLoading, isFetching, error, refetch } = useSubscriptionUsage(connectionId, true);
   const compact = variant === "inline";
   // The same surface recipe for the settled, loading and failed states, so a
   // failure is drawn on the host's own surface rather than a stray card.
@@ -217,6 +235,70 @@ export function NanoGptUsageWidget({
 
   if (!data) return null;
 
+  const refreshButton = (
+    <button
+      onClick={() => void refetch()}
+      disabled={isFetching}
+      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[var(--marinara-chat-chrome-panel-muted)] transition-colors hover:text-[var(--marinara-chat-chrome-accent)] disabled:opacity-50"
+      aria-label={localizeUi("ui.connections.connectioneditor.refreshUsage")}
+    >
+      <RefreshCw size="0.6875rem" className={isFetching ? "animate-spin" : ""} />
+    </button>
+  );
+
+  if ("windows" in data) {
+    return (
+      <div className={frame}>
+        <div className="flex items-center justify-between gap-2">
+          <span
+            className={
+              compact
+                ? "text-[0.6875rem] text-[var(--marinara-chat-chrome-panel-muted)]"
+                : "text-xs font-semibold text-[var(--foreground)]"
+            }
+          >
+            {localizeUi("ui.connections.connectioneditor.claudePlanUsage")}
+          </span>
+          <div className="flex items-center gap-1.5">
+            {!compact && data.plan && (
+              <span className="rounded-md bg-[var(--marinara-chat-chrome-highlight-bg)] px-1.5 py-0.5 text-[0.5625rem] font-medium capitalize text-[var(--marinara-chat-chrome-accent)]">
+                {data.plan}
+              </span>
+            )}
+            {refreshButton}
+          </div>
+        </div>
+
+        {data.windows.map((planWindow) => (
+          <QuotaBar
+            key={planWindow.id}
+            label={localizeUi(
+              planWindow.id === "five_hour"
+                ? "ui.connections.connectioneditor.claudeFiveHourWindow"
+                : "ui.connections.connectioneditor.claudeWeeklyWindow",
+            )}
+            window={planWindow}
+            limit={null}
+            compact={compact}
+            labelInCompact
+          />
+        ))}
+
+        {data.windows.length === 0 && (
+          <p className="text-[0.625rem] text-[var(--muted-foreground)]">
+            {localizeUi("ui.connections.connectioneditor.claudePlanUsageNoWindows")}
+          </p>
+        )}
+
+        {!compact && (
+          <p className="text-[0.5625rem] text-[var(--muted-foreground)]">
+            {localizeUi("ui.connections.connectioneditor.claudePlanUsageAccountWide")}
+          </p>
+        )}
+      </div>
+    );
+  }
+
   const weekly = data.weeklyInputTokens;
   const daily = data.dailyInputTokens;
   // "Weekly usage" reads shorter than "Subscription usage" where space is tight,
@@ -265,14 +347,7 @@ export function NanoGptUsageWidget({
               {compactReading}
             </span>
           )}
-          <button
-            onClick={() => void refetch()}
-            disabled={isFetching}
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[var(--marinara-chat-chrome-panel-muted)] transition-colors hover:text-[var(--marinara-chat-chrome-accent)] disabled:opacity-50"
-            aria-label={localizeUi("ui.connections.connectioneditor.refreshUsage")}
-          >
-            <RefreshCw size="0.6875rem" className={isFetching ? "animate-spin" : ""} />
-          </button>
+          {refreshButton}
         </div>
       </div>
 

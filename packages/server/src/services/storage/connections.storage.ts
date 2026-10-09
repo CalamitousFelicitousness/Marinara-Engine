@@ -10,6 +10,7 @@ import {
   MAX_PINNED_MODELS,
   isChatProvider,
   parsePinnedModels,
+  supportsSubscriptionUsageWidget,
   type CreateConnectionInput,
 } from "@marinara-engine/shared";
 import { sweepDanglingConnectionReferences } from "./connection-reference-cleanup.js";
@@ -314,7 +315,9 @@ export function createConnectionsStorage(db: DB) {
           input.provider === "decision" && input.credentialsFromConnectionId ? "" : (input.apiKey ?? ""),
         ),
         managementTokenEncrypted: encryptApiKey(input.provider === "nanogpt" ? (input.managementToken ?? "") : ""),
-        showUsageWidget: String(input.provider === "nanogpt" && (input.showUsageWidget ?? false)),
+        showUsageWidget: String(supportsSubscriptionUsageWidget(input.provider) && (input.showUsageWidget ?? false)),
+        showUsageFiveHour: String(input.showUsageFiveHour ?? true),
+        showUsageWeekly: String(input.showUsageWeekly ?? true),
         profileImportReviewRequired: "false",
         model: input.model ?? "",
         pinnedModels: JSON.stringify(parsePinnedModels(input.pinnedModels ?? [])),
@@ -485,10 +488,10 @@ export function createConnectionsStorage(db: DB) {
       if (data.showUsageWidget !== undefined) {
         updateFields.showUsageWidget = String(data.showUsageWidget);
       }
-      if (effectiveProvider !== "nanogpt") {
-        updateFields.managementTokenEncrypted = encryptApiKey("");
-        updateFields.showUsageWidget = "false";
-      }
+      if (data.showUsageFiveHour !== undefined) updateFields.showUsageFiveHour = String(data.showUsageFiveHour);
+      if (data.showUsageWeekly !== undefined) updateFields.showUsageWeekly = String(data.showUsageWeekly);
+      if (effectiveProvider !== "nanogpt") updateFields.managementTokenEncrypted = encryptApiKey("");
+      if (!supportsSubscriptionUsageWidget(effectiveProvider)) updateFields.showUsageWidget = "false";
       if (data.model !== undefined) updateFields.model = data.model;
       if (data.pinnedModels !== undefined)
         updateFields.pinnedModels = JSON.stringify(parsePinnedModels(data.pinnedModels));
@@ -743,6 +746,8 @@ export function createConnectionsStorage(db: DB) {
         maxRequestsPerMinute: source.maxRequestsPerMinute,
         managementTokenEncrypted: source.managementTokenEncrypted,
         showUsageWidget: source.showUsageWidget,
+        showUsageFiveHour: source.showUsageFiveHour,
+        showUsageWeekly: source.showUsageWeekly,
         claudeFastMode: source.claudeFastMode,
         treatAsLocalEndpoint: source.treatAsLocalEndpoint,
         createdAt: timestamp,

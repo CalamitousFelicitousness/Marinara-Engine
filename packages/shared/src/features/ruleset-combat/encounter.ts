@@ -68,13 +68,14 @@ import {
   rulesetFootprint,
   rulesetFootprintAt,
   rulesetFootprintsSee,
+  rulesetGap,
   rulesetInCells,
   rulesetPositionOf,
   rulesetSpanOf,
   rulesetZoneCells,
 } from "./grid.js";
 import { rulesetCombatAdvantage, rulesetCombatIsPool, rulesetPoolDie, throwRulesetCombatPool } from "./pool.js";
-import { rulesetPaidLevel, rulesetReactionsAt } from "./options.js";
+import { rulesetPaidLevel, rulesetReactionsAt, rulesetSheetWithin } from "./options.js";
 import { RULESET_MOVE_MODES } from "./types.js";
 import type {
   RulesetMoveMode,
@@ -3382,9 +3383,25 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
     }
   }
 
+  // Kept on through the fight by what they hold or what their block says (1.258): 5e's paladin
+  // auras, Holy Nimbus. Held for the whole fight and never written back to a sheet.
+  for (const combatant of state.combatants) {
+    const kept = [
+      ...heldEntries(combatant).flatMap((entry) => entry.mechanics?.keepsOn ?? []),
+      ...(combatant.block?.keepsOn ?? []),
+    ];
+    for (const condition of new Set(kept)) {
+      if (combatant.tracked.some((entry) => entry.condition === condition)) continue;
+      if (rulesetImmuneToCondition(combatant, condition, definition, state)) continue;
+      combatant.tracked.push({ condition, rounds: null, kept: true });
+    }
+  }
+
   // Grown or shrunk by what they held as the fight began (1.190), before anybody is set down.
   rulesetSyncSizes(definition, state);
   placeRulesetCombatants(definition, combat, state, input.board);
+  // What auras spread from where everybody stands (1.258).
+  rulesetSyncAuras(definition, state);
   // A turn's budgets as conditions held from before the fight change them (combat C6d): the first
   // actor's turn begins now and never passes through the turn's own refill.
   for (const combatant of state.combatants) {
@@ -3741,6 +3758,78 @@ function fitsAt(grid: TacticalGrid, at: { x: number; y: number }, span: number, 
  * grows only as big as there is room for; nobody else is moved to make room. Somebody who shrinks
  * keeps their top-left cell. Returns who changed, each once.
  */
+/**
+ * What auras spread, brought up to date (Capability API 1.258): on whoever is now near a holder who
+ * is up and able to act, off whoever is not. Worked out from scratch each time, so moving, falling
+ * or waking says what it should without anybody telling it. A condition an aura spread carries no
+ * aura of its own, so nothing here chains. Returns what went on and came off, for a log.
+ */
+export function rulesetSyncAuras(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+): Array<{ targetId: string; condition: string; active: boolean; sourceId: string }> {
+  const combat = definition.combat;
+  const changes: Array<{ targetId: string; condition: string; active: boolean; sourceId: string }> = [];
+  if (!combat?.conditions?.some((entry) => entry.auras)) {
+    // A ruleset that had auras and lost them leaves nothing spread behind.
+    for (const target of state.combatants) {
+      if (target.tracked.some((entry) => entry.aura)) target.tracked = target.tracked.filter((entry) => !entry.aura);
+    }
+    return changes;
+  }
+  const perCell = combat.distance?.perCell;
+  const board = !!state.board?.grid;
+  // Who spreads what, read once: a holder down, out or unable to act spreads nothing.
+  const spreading = state.combatants.flatMap((holder) => {
+    if (holder.defeated || holder.down) return [];
+    if (rulesetCombatEffects(definition, combat, holder, state).has("cannot-act")) return [];
+    const held = new Set(holder.tracked.filter((entry) => !entry.aura).map((entry) => entry.condition));
+    for (const id of rulesetCombatConditions(definition, holder)) {
+      if (!holder.tracked.some((entry) => entry.condition === id && entry.aura)) held.add(id);
+    }
+    return (combat.conditions ?? []).flatMap((rule) =>
+      held.has(rule.condition)
+        ? (rule.auras ?? [])
+            .filter((aura) => rulesetSheetWithin(definition, holder, aura.when))
+            .map((aura) => ({ holder, aura }))
+        : [],
+    );
+  });
+  for (const target of state.combatants) {
+    const want = new Map<string, string>();
+    if (!target.defeated) {
+      for (const { holder, aura } of spreading) {
+        const same = holder.side === target.side;
+        if (holder.id === target.id ? !aura.self : aura.side === (same ? "enemies" : "allies")) continue;
+        if (board && perCell !== undefined && holder.id !== target.id) {
+          if (rulesetGap(holder, target) > rulesetInCells(aura.distance, perCell)) continue;
+        }
+        for (const condition of aura.conditions) if (!want.has(condition)) want.set(condition, holder.id);
+      }
+    }
+    for (const entry of [...target.tracked]) {
+      if (!entry.aura || want.get(entry.condition) === entry.aura) continue;
+      // Spread by somebody else now, it simply changes hands.
+      const by = want.get(entry.condition);
+      if (by) {
+        entry.aura = by;
+        entry.source = by;
+        continue;
+      }
+      target.tracked = target.tracked.filter((one) => one !== entry);
+      changes.push({ targetId: target.id, condition: entry.condition, active: false, sourceId: entry.aura });
+    }
+    for (const [condition, sourceId] of want) {
+      if (target.tracked.some((entry) => entry.condition === condition)) continue;
+      const source = rulesetCombatant(state, sourceId);
+      if (rulesetImmuneToCondition(target, condition, definition, state, source)) continue;
+      target.tracked.push({ condition, rounds: null, source: sourceId, aura: sourceId });
+      changes.push({ targetId: target.id, condition, active: true, sourceId });
+    }
+  }
+  return changes;
+}
+
 export function rulesetSyncSizes(
   definition: RulesetDefinition,
   state: RulesetEncounterState,

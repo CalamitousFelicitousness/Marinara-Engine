@@ -404,6 +404,7 @@ function blockFromCreature(creature: RulesetCreature, budgets: ReadonlySet<strin
     ...(creature.vulnerable ? { vulnerable: [...creature.vulnerable] } : {}),
     ...(creature.immune ? { immune: [...creature.immune] } : {}),
     ...(creature.conditionImmunities ? { conditionImmunities: [...creature.conditionImmunities] } : {}),
+    ...(creature.keepsOn ? { keepsOn: [...creature.keepsOn] } : {}),
     ...(creature.senses ? { senses: { ...creature.senses } } : {}),
     ...(creature.hardness !== undefined ? { hardness: creature.hardness } : {}),
     ...(creature.shield ? { shield: true as const } : {}),
@@ -640,6 +641,11 @@ export function clampRulesetStatBlock(
     }
     if (kept.length > 0) block.conditionImmunities = kept;
     else delete block.conditionImmunities;
+  }
+  // What it keeps on is a written creature's (1.258): an aura spreads harm the scale cannot bound.
+  if (block.keepsOn) {
+    delete block.keepsOn;
+    adjusted.push("Conditions kept on through the fight were dropped: the threat scale cannot bound an aura.");
   }
   // Senses are the fight's own (1.173); one it does not have is nothing to see by.
   if (block.senses) {

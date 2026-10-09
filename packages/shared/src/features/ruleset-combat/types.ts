@@ -379,6 +379,8 @@ export interface RulesetStatBlock {
   immune?: RulesetCreatureHideEntry[];
   /** Conditions it shrugs off, and tracks whose levels it never suffers (1.110). */
   conditionImmunities?: string[];
+  /** Conditions it has on through every fight (1.258): an aura it spreads. */
+  keepsOn?: string[];
   /** How far it senses with each of `combat.senses`, in the ruleset's distance (1.173). */
   senses?: Record<string, number>;
   /** Where its live tracks stand as the fight begins (1.110). */
@@ -865,6 +867,10 @@ export interface RulesetTrackedCondition {
   fails?: number;
   /** Who applied it, and whether their concentration is what holds it. */
   source?: string;
+  /** Spread by this combatant's aura (1.258): on while they are near, off as they part. */
+  aura?: string;
+  /** Kept on through the fight by what its holder has (1.258), never written to a sheet. */
+  kept?: true;
   /** What the action that put it on is known by (1.186), which a repeated save is against too. */
   action?: string[];
   concentration?: boolean;
@@ -1539,7 +1545,11 @@ export type RulesetCombatEvent =
         /** Not put on: its holder has one of its kind already (1.251). */
         | "already"
         /** Gone for what it becomes after its saves failed often enough (1.253). */
-        | "worsened";
+        | "worsened"
+        /** Put on by an aura its holder came near, or that came near them (1.258). */
+        | "aura"
+        /** Gone because its holder is out of the aura that spread it, or it stopped (1.258). */
+        | "parted";
       stacks?: number;
     }
   /** A number that attacks move: what came off it or went on it, why, and what it is now. A style

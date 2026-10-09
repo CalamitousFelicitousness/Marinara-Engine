@@ -1043,7 +1043,9 @@ const capabilityPackageManifestBaseSchema = z
 //        the `cannot-heal-nonmagical` effect and a restore op's `magical`; `ends` on a stat block's
 //        action.
 // 1.257: `qualities` on a stat block's action (a magical Healing Touch).
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 257 } as const);
+// 1.258: a combat condition's `auras` (Aura of Protection, Holy Nimbus), and `keepsOn` on a catalog
+//        entry's mechanics and on a stat block: conditions held for the whole fight.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 258 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

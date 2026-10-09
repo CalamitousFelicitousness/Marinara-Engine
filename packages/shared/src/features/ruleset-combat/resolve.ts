@@ -72,6 +72,7 @@ import {
   writeRulesetSheet,
   type RulesetCombatHealth,
   type RulesetConditionModifier,
+  rulesetSyncAuras,
   rulesetSyncSizes,
 } from "./encounter.js";
 import {
@@ -288,6 +289,16 @@ function begin(
       rulesetSyncZoneWalls(next);
       // Grown or shrunk as the conditions now held say (1.190).
       for (const change of rulesetSyncSizes(definition, next)) ctx.events.push({ type: "resized", ...change });
+      // Spread, or taken back, by auras as everybody now stands (1.258).
+      for (const change of rulesetSyncAuras(definition, next)) {
+        ctx.events.push({
+          type: "condition",
+          targetId: change.targetId,
+          condition: change.condition,
+          active: change.active,
+          reason: change.active ? "aura" : "parted",
+        });
+      }
       next.cursor = state.cursor + rolls;
       return { state: next, events: ctx.events };
     },
@@ -4065,6 +4076,10 @@ export function liftRulesetFightEffects(
       if (entry.endsWith === condition) lift(combatant, entry.condition, "linked");
   };
   for (const combatant of state.combatants) {
+    // What an aura spread or the fight kept on (1.258) was never on a sheet, so it simply goes.
+    if (combatant.tracked.some((entry) => entry.aura || entry.kept)) {
+      combatant.tracked = combatant.tracked.filter((entry) => !entry.aura && !entry.kept);
+    }
     if (combatant.crashedTurns !== undefined) {
       delete combatant.crashedTurns;
       if (crash && rulesetCombatConditions(definition, combatant).includes(crash)) lift(combatant, crash, "recovered");

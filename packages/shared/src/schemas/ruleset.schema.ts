@@ -2892,6 +2892,10 @@ const catalogMechanicsObject = z
     grantsStrike: catalogStrikeGrantSchema.optional(),
     /** Offered only once its holder has taken the attack action this turn (Capability API 1.237). */
     afterAttack: afterAttackSchema.optional(),
+    /** Held on a sheet's list, these conditions are on its holder through every fight (Capability
+     *  API 1.258), as long as nothing they are immune to: 5e's Aura of Protection, whose condition
+     *  spreads the aura. Never written to the sheet; the fight ends, they are gone with it. */
+    keepsOn: uniqueIds(4).optional(),
     /** Held on a sheet's list, its holder's initiative dice are thrown twice (Capability API 1.235),
      *  the better (`advantage`) or the worse kept: 5e's Feral Instinct. */
     initiativeMode: z.enum(["advantage", "disadvantage"]).optional(),
@@ -3948,6 +3952,9 @@ const creatureFields = {
   immune: z.array(creatureHideEntrySchema).max(30).optional(),
   /** The sheet's own condition ids this creature is never in. */
   conditionImmunities: z.array(sheetId).max(40).optional(),
+  /** Conditions it has on through every fight (Capability API 1.258), as a sheet's `keepsOn` entry
+   *  gives them: an aura it spreads. */
+  keepsOn: uniqueIds(4).optional(),
   /** How far it senses with each of `combat.senses`, in the ruleset's distance (Capability API
    *  1.173): a 5e goblin's `{ "darkvision": 60 }`. */
   senses: z.record(sheetId, z.number().finite().gt(0).max(10000)).optional(),
@@ -5780,6 +5787,62 @@ const combatSightSchema: z.ZodType<RulesetCombatSight, z.ZodTypeDef, unknown> = 
   .object({ unseenAttacks: z.literal(true).optional(), eyes: sheetId.optional() })
   .strict();
 
+/** What a condition leaves behind when it ends (combat C6d). */
+export interface RulesetConditionOnEnd {
+  applies?: RulesetCatalogApplies[];
+  tracks?: Array<{ track: string; by: number }>;
+  harm?: RulesetConditionEndHarm;
+}
+const conditionOnEndSchema: z.ZodType<RulesetConditionOnEnd, z.ZodTypeDef, unknown> = z
+  .object({
+    applies: z
+      .array(
+        catalogAppliesSchema.refine((applied) => typeof applied.duration === "object", {
+          message: "What a condition leaves behind lasts some rounds",
+          path: ["duration"],
+        }),
+      )
+      .min(1)
+      .max(4)
+      .superRefine(linkedApplies)
+      .optional(),
+    /** Its holder's live tracks moved by levels as it ends (Capability API 1.234): 5e's Frenzy
+     *  leaves a level of exhaustion when the rage is over. */
+    tracks: catalogTracksSchema.optional(),
+    /** Damage its holder takes as it ends (Capability API 1.240), from whoever put it on, unless
+     *  the holder is what `unless` names: Hurl Through Hell's 10d10 psychic, which a fiend
+     *  never takes. */
+    harm: conditionEndHarmSchema.optional(),
+  })
+  .strict()
+  .refine((ending) => ending.applies || ending.tracks || ending.harm, {
+    message: '"onEnd" names "applies", "tracks" or "harm"',
+  });
+
+/** Conditions a condition's holder spreads around them (1.258): 5e's Aura of Protection. */
+export interface RulesetConditionAura {
+  distance: number;
+  side: "allies" | "enemies" | "all";
+  self?: true;
+  conditions: string[];
+  when?: { value: RulesetValueRef; atLeast?: number; atMost?: number };
+}
+const conditionAuraSchema: z.ZodType<RulesetConditionAura, z.ZodTypeDef, unknown> = z
+  .object({
+    /** How far from its holder, in the ruleset's own distance, nearest cell to nearest cell. A fight
+     *  with no board measures nothing, so there it reaches everybody it names. */
+    distance: z.number().finite().gt(0).max(10000),
+    /** Whom: the holder's own side, the other side, or both. */
+    side: z.enum(["allies", "enemies", "all"]),
+    /** The holder too, where `side` names their own side. */
+    self: z.literal(true).optional(),
+    conditions: uniqueIds(8),
+    /** Only while this value off the holder's own sheet stands within the bounds: a paladin's
+     *  Charisma modifier for Aura of Protection's bonus, their level for its 30 feet. */
+    when: sheetBoundsSchema("when", "spread").optional(),
+  })
+  .strict();
+
 /** What a condition does on the rests it names (1.255). */
 export interface RulesetConditionOnRest {
   rests: string[];
@@ -6023,6 +6086,12 @@ const combatConditionSchema = z
      *  1.256), on a clock of their turns as `onEnd`'s is: 5e's Slimy Doom, stunned until the end of
      *  the holder's next turn. */
     onDamaged: conditionOnDamagedSchema.optional(),
+    /** What it spreads to whoever is near its holder while it holds (Capability API 1.258), for as
+     *  long as they stay near and the holder is up and able to act: 5e's Aura of Protection,
+     *  Devotion and Courage, a Holy Nimbus's radiant harm on enemies (the condition it puts on
+     *  `harms` them as their turn starts, from the holder), Countercharm. What it puts on is
+     *  nobody's to cure or save against: it comes off only as they leave, or the aura goes. */
+    auras: z.array(conditionAuraSchema).min(1).max(4).optional(),
     /** Run out on its clock, it turns into this condition, with no clock of its own (Capability API
      *  1.256): an aboleth's Tentacle disease after its minute. Ended any other way, it does not. A
      *  fight that ends first lets the clock run out. */
@@ -6035,32 +6104,7 @@ const combatConditionSchema = z
       .optional(),
     /** What it leaves behind is on a clock of its holder's turns: nothing rolls a save against it (it
      *  has no difficulty) and an instant one would never come off. */
-    onEnd: z
-      .object({
-        applies: z
-          .array(
-            catalogAppliesSchema.refine((applied) => typeof applied.duration === "object", {
-              message: "What a condition leaves behind lasts some rounds",
-              path: ["duration"],
-            }),
-          )
-          .min(1)
-          .max(4)
-          .superRefine(linkedApplies)
-          .optional(),
-        /** Its holder's live tracks moved by levels as it ends (Capability API 1.234): 5e's Frenzy
-         *  leaves a level of exhaustion when the rage is over. */
-        tracks: catalogTracksSchema.optional(),
-        /** Damage its holder takes as it ends (Capability API 1.240), from whoever put it on, unless
-         *  the holder is what `unless` names: Hurl Through Hell's 10d10 psychic, which a fiend
-         *  never takes. */
-        harm: conditionEndHarmSchema.optional(),
-      })
-      .strict()
-      .refine((ending) => ending.applies || ending.tracks || ending.harm, {
-        message: '"onEnd" names "applies", "tracks" or "harm"',
-      })
-      .optional(),
+    onEnd: conditionOnEndSchema.optional(),
   })
   .strict()
   .superRefine((entry, ctx) => {
@@ -8860,6 +8904,24 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
           issue([...path, "onEnd", "tracks", movedIndex, "track"], "A wound track is marked, not moved by levels");
         }
       });
+      entry.auras?.forEach((aura, auraIndex) => {
+        const at = [...path, "auras", auraIndex];
+        aura.conditions.forEach((spread, spreadIndex) => {
+          if (!conditions.has(spread)) issue([...at, "conditions", spreadIndex], `Unknown condition "${spread}"`);
+          else if (spread === entry.condition)
+            issue([...at, "conditions", spreadIndex], "A condition does not spread itself");
+          else if (combat.conditions?.some((other) => other.condition === spread && other.auras))
+            issue([...at, "conditions", spreadIndex], "What an aura spreads has no aura of its own");
+        });
+        if (aura.self && aura.side === "enemies")
+          issue([...at, "self"], 'Its holder is no enemy of their own: "self" goes with "allies" or "all"');
+        if (aura.when) {
+          const names = rulesetSheetNames(def.sheet, def.items);
+          for (const found of rulesetValueRefIssues(aura.when.value, names, names.derived)) {
+            issue([...at, "when", "value", found.key], found.message);
+          }
+        }
+      });
       if (entry.expires) {
         if (!conditions.has(entry.expires.becomes))
           issue([...path, "expires", "becomes"], `Unknown condition "${entry.expires.becomes}"`);
@@ -9912,6 +9974,10 @@ function creatureIssues(
   if (!combat) {
     return add(at, "This ruleset has no combat block, so there is nothing for a creature to be written in");
   }
+  creature.keepsOn?.forEach((kept, keptIndex) => {
+    if (!definition.sheet.live.conditions.some((condition) => condition.id === kept))
+      add([...at, "keepsOn", keptIndex], `Unknown condition "${kept}"`);
+  });
   if (creature.loot !== undefined && !definition.items?.lootTables?.some((table) => table.id === creature.loot)) {
     add([...at, "loot"], `Unknown loot table "${creature.loot}"`);
   }
@@ -11516,6 +11582,9 @@ export function rulesetCatalogEntryIssues(
     if (mechanics?.dismisses && mechanics.dismisses !== true) {
       targetIsIssues(definition, mechanics.dismisses.gone, [index, "mechanics", "dismisses", "gone"], add);
     }
+    mechanics?.keepsOn?.forEach((kept, keptIndex) => {
+      if (!liveConditions.has(kept)) add([index, "mechanics", "keepsOn", keptIndex], `Unknown condition "${kept}"`);
+    });
     if (mechanics?.endsCondition && !liveConditions.has(mechanics.endsCondition)) {
       add([index, "mechanics", "endsCondition"], `Unknown condition "${mechanics.endsCondition}"`);
     }

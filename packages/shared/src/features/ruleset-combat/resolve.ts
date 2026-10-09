@@ -4892,6 +4892,27 @@ function sparedByHealth(
 }
 
 /** Killed outright (1.182): no health left, and dead rather than dying, whichever side they are on. */
+/** What an action ends on its target: up to `count` of `conditions`, only as put on by `from`. */
+function endConditionsOf(
+  ctx: RulesetCombatContext,
+  action: RulesetCombatAction,
+  target: RulesetCombatant,
+  ends: { conditions: string[]; count?: number },
+): void {
+  let left = ends.count ?? ends.conditions.length;
+  for (const condition of ends.conditions) {
+    if (left <= 0) break;
+    // Only what a creature that is `from` put on (1.231); the same held from another stays on.
+    const by = (entry: RulesetTrackedCondition) =>
+      entry.condition === condition && rulesetPutOnBy(ctx.definition, ctx.state, entry, action.ends?.from);
+    if (!target.tracked.some(by)) continue;
+    if (target.tracked.some((entry) => entry.condition === condition && !by(entry))) {
+      target.tracked = target.tracked.filter((entry) => !by(entry));
+    } else removeCondition(ctx, target, condition, "cured");
+    left--;
+  }
+}
+
 /** Every point of health, temporary ones too, gone at once. */
 function emptyHealth(ctx: RulesetCombatContext, target: RulesetCombatant): void {
   const before = healthOf(ctx, target);
@@ -5334,6 +5355,8 @@ function resolveActionBody(
       // Failed, it takes every point instead (1.240): Quivering Palm.
       if (!saved && action.dropsOnFailedSave) {
         dropToNothing(ctx, target, actor.id, action.label);
+        // What it ends, it ends all the same: the vibrations are spent on a dying character too.
+        if (action.ends) endConditionsOf(ctx, action, target, action.ends);
         spendUsed();
         continue;
       }
@@ -5767,20 +5790,7 @@ function resolveActionBody(
       : action.ends;
     const cureTracks = action.cureOneOf ? (picked?.track ? [picked.track] : undefined) : action.tracks;
     const cureUnseals = action.cureOneOf ? picked?.unseals : action.unseals;
-    if (cureEnds) {
-      let left = cureEnds.count ?? cureEnds.conditions.length;
-      for (const condition of cureEnds.conditions) {
-        if (left <= 0) break;
-        // Only what a creature that is `from` put on (1.231); the same held from another stays on.
-        const by = (entry: RulesetTrackedCondition) =>
-          entry.condition === condition && rulesetPutOnBy(ctx.definition, ctx.state, entry, action.ends?.from);
-        if (!target.tracked.some(by)) continue;
-        if (target.tracked.some((entry) => entry.condition === condition && !by(entry))) {
-          target.tracked = target.tracked.filter((entry) => !by(entry));
-        } else removeCondition(ctx, target, condition, "cured");
-        left--;
-      }
-    }
+    if (cureEnds) endConditionsOf(ctx, action, target, cureEnds);
     if (heal) {
       const rolled = heal();
       dealHeal(ctx, target, { sourceId: actor.id, rolls: rolled.rolls, flat: rolled.flat, amount: rolled.total });

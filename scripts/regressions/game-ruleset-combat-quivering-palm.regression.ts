@@ -77,6 +77,7 @@ try {
       damageType: "necrotic",
       save: { save: "con_save", onSuccess: "none" },
       dropsOnFailedSave: true,
+      ends: { conditions: ["quivering"] },
     },
   };
   const hurl = {
@@ -253,12 +254,21 @@ try {
     assert.equal(hp(failed.state), 0);
     assert.ok(who(failed.state).defeated);
     assert.equal(of(failed.events, "damage").length, 0);
+    assert.deepEqual(
+      who(failed.state).tracked.map((one) => one.condition),
+      [],
+      "the vibrations are spent, dropped or not",
+    );
 
     const sturdy = palmed();
     who(sturdy).saves.con_save = 40;
     const made = take(sturdy, "End the Vibrations");
     assert.equal(of(made.events, "dropped").length, 0);
     assert.equal(80 - hp(made.state), 30);
+    assert.deepEqual(
+      who(made.state).tracked.map((one) => one.condition),
+      [],
+    );
     // Only on somebody it quivers in.
     const still = fight();
     const end = rulesetCombatOptions(definition, still, "monk").find((one) => one.label === "End the Vibrations");

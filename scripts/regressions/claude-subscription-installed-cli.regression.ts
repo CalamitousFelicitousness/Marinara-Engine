@@ -26,6 +26,12 @@ try {
   versions.set(onPath, "2.1.300");
   assert.deepEqual(await findClaudeCodeInstall("2.1.282", { env, home, probe }), { path: onPath, version: "2.1.300" });
   assert.equal(await findClaudeCodeInstall(null, { env, home, probe }), null, "unknown bundled version keeps it");
+  const optedOut = { ...env, CLAUDE_SUBSCRIPTION_USE_INSTALLED_CLI: "false" };
+  assert.equal(
+    await findClaudeCodeInstall("2.1.282", { env: optedOut, home, probe }),
+    null,
+    "env opt-out keeps bundled",
+  );
   versions.clear();
   assert.equal(await findClaudeCodeInstall("2.1.282", { env, home, probe }), null);
 

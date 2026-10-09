@@ -90,6 +90,7 @@ const { createConnectionsStorage } = await import("../../packages/server/src/ser
 const { createAdvancedMemoryService } = await import("../../packages/server/src/services/advanced-memory.js");
 const { sidecarModelService } = await import("../../packages/server/src/services/sidecar/sidecar-model.service.js");
 const { sidecarProcessService } = await import("../../packages/server/src/services/sidecar/sidecar-process.service.js");
+const { resolveDecisionSlot } = await import("../../packages/server/src/services/decision/decision-slots.js");
 const { SIDECAR_CONNECTION_ID } = await import("../../packages/shared/dist/index.js");
 const db = await createFileNativeDB();
 const chats = createChatsStorage(db);
@@ -193,6 +194,16 @@ try {
   assert.match(fallback.recalledScenes!, /TARGET_SCENE/, "ordinary recall still finds the scene");
   assert.equal(requests.length, beforeFailure, "nothing is asked of a model that did not start");
   startFails = false;
+
+  // A model still loading does not hold a caller past its own time limit, such as a recall pass's.
+  sidecarProcessService.ensureReady = () => new Promise<string>(() => {});
+  let stillWaiting: NodeJS.Timeout | undefined;
+  const loading = await Promise.race([
+    resolveDecisionSlot("primary", AbortSignal.timeout(50)),
+    new Promise<null>((resolve) => (stillWaiting = setTimeout(resolve, 5000, null))),
+  ]);
+  clearTimeout(stillWaiting);
+  assert.equal(loading?.failure?.reason, "stopped", "the caller stops waiting when its time limit passes");
 
   // The model is removed after it was chosen: the choice stays, flagged, and recall falls back.
   sidecarModelService.getStatus = () => ({ ...originalStatus.call(sidecarModelService), modelDownloaded: false });

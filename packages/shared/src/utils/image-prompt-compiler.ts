@@ -35,13 +35,6 @@ export interface CompileImagePromptInput {
    */
   omitProfileStyleText?: boolean;
   /**
-   * Instructions a prompt writer was given to follow, such as the image connection's Image
-   * Prompting Instructions. Sentences of them the writer copied word for word into `prompt`
-   * or `generatedStyle` are removed. With `omitProfileStyleText`, the profile's Style text
-   * counts too, because the writer got it as guidance (#7357).
-   */
-  promptWriterGuidance?: ReadonlyArray<string | null | undefined>;
-  /**
    * Suppress generic per-kind composition tags when a dedicated prompt template
    * already owns layout and framing (for example Comic Page versus Illustration).
    */
@@ -63,8 +56,11 @@ export function resolveImageStyleGuidanceText(
 
 /**
  * Remove each sentence of `guidance` that a prompt writer copied word for word into `text`
- * (#7357). Only sentences with at least four words between commas count, so a tag list such
- * as "masterpiece, best quality" that a user wants in the prompt is never removed.
+ * (#7357). Run it on the writer's own output only, before configured text such as positive
+ * tags or appearance notes is added. Only sentences with at least four words between commas
+ * count, so a tag list such as "masterpiece, best quality" that a user wants is never removed.
+ * ponytail: short instructions under four words are kept even when copied; telling them
+ * from short tags would need a grammar check.
  */
 export function removeCopiedPromptGuidance(text: string, guidance: ReadonlyArray<string | null | undefined>): string {
   let result = text;
@@ -111,27 +107,7 @@ function isBuiltInAutoStyleInstruction(profile: ImageStyleProfile): boolean {
   return profile.baseStyle === "auto" && profile.styleText.trim() === AUTO_STYLE_INSTRUCTION;
 }
 
-function resolveCompileProfile(input: CompileImagePromptInput): ImageStyleProfile {
-  return findImageStyleProfile(
-    input.styleProfiles,
-    input.styleProfileId || input.imageDefaults?.styleProfileId || input.styleProfiles.defaultProfileId,
-  );
-}
-
-/** The writer's text without guidance it was told to follow but copied instead (#7357). */
-function withoutCopiedWriterGuidance(input: CompileImagePromptInput): CompileImagePromptInput {
-  const guidance = [...(input.promptWriterGuidance ?? [])];
-  if (input.omitProfileStyleText) guidance.push(resolveCompileProfile(input).styleText);
-  if (!guidance.some((value) => value?.trim())) return input;
-  return {
-    ...input,
-    prompt: removeCopiedPromptGuidance(input.prompt, guidance),
-    generatedStyle: input.generatedStyle && removeCopiedPromptGuidance(input.generatedStyle, guidance),
-  };
-}
-
-export function compileImagePrompt(rawInput: CompileImagePromptInput): CompiledImagePrompt {
-  const input = withoutCopiedWriterGuidance(rawInput);
+export function compileImagePrompt(input: CompileImagePromptInput): CompiledImagePrompt {
   const initial = compileImagePromptPass(input, false, false);
   const generatedStyle = input.generatedStyle?.trim() ?? "";
   const userPositive = input.userPositive?.trim() ?? "";
@@ -156,7 +132,10 @@ function compileImagePromptPass(
   protectGeneratedStyle: boolean,
   protectUserPositive: boolean,
 ): CompiledImagePrompt {
-  const profile = resolveCompileProfile(input);
+  const profile = findImageStyleProfile(
+    input.styleProfiles,
+    input.styleProfileId || input.imageDefaults?.styleProfileId || input.styleProfiles.defaultProfileId,
+  );
   const promptMode = profile.promptMode;
   const positiveDiagnostics: string[] = [];
   const negativeDiagnostics: string[] = [];

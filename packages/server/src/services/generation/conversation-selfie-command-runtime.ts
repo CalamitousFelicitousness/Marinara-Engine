@@ -9,6 +9,7 @@ import {
 import {
   compileImagePrompt,
   formatImageStylePromptGuidance,
+  removeCopiedPromptGuidance,
   resolveImageStyleGuidanceText,
 } from "../image/image-prompt-compiler.js";
 import { persistGeneratedImageToEntityGalleries } from "../image/generated-image-entity-gallery.js";
@@ -249,7 +250,13 @@ async function generateSelfie(
     },
   );
 
-  const imagePrompt = (promptResult.content ?? "").trim();
+  // The writer follows the style, the connection's instructions and the card's image habits; a
+  // sentence of them it copied word for word is not image-model text (#7357).
+  const imagePrompt = removeCopiedPromptGuidance((promptResult.content ?? "").trim(), [
+    styleGuidance,
+    imgConnFull.imagePromptInstructions,
+    characterImageInstructions,
+  ]);
   if (!imagePrompt) return;
 
   const imageFallback = await resolveImageConnectionFallback(args.connections, imgConnFull.id);
@@ -328,7 +335,6 @@ async function generateSelfie(
     styleProfileId,
     imageDefaults,
     omitProfileStyleText: true,
-    promptWriterGuidance: [imgConnFull.imagePromptInstructions, characterImageInstructions],
     omitProfileSubjectTags: true,
   });
   const imageResults = await generateIllustratorImageVariants({

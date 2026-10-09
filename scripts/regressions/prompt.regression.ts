@@ -4794,23 +4794,32 @@ const cases: RegressionCase[] = [
       const danbooruStyle = styleProfiles.profiles.find((profile) => profile.id === "danbooru")!.styleText;
       const instructions = "Write everything in capital letters. Use comma-separated Danbooru tags only.";
       const quotedStyle = /Danbooru-tagged anime generation/iu;
-      const quotedInstructions = /capital letters|comma-separated Danbooru tags only/iu;
 
       // An Illustrator writer told to carry the style into its JSON "style" field echoes the Style
-      // text there and in its prompt. The writer got it as guidance, so none of it reaches the image model.
+      // text there and in its prompt. The Engine cleans the writer's own output before it adds
+      // configured text, so none of the guidance reaches the image model, but a configured positive
+      // prompt that happens to repeat an instruction stays as the user wrote it.
+      const writerGuidance = [danbooruStyle, instructions];
       const echoedStyle = danbooruStyle.replace(/\.$/u, "");
+      const writerStyle = removeCopiedPromptGuidance(echoedStyle, writerGuidance);
+      const writerPrompt = removeCopiedPromptGuidance(
+        `${echoedStyle}, 1GIRL, SOLO, SILVER HAIR, RAIN\n${instructions}`,
+        writerGuidance,
+      );
+      assert.equal(writerStyle, "");
+      const configuredPositive = "Write everything in capital letters";
       const written = compileImagePrompt({
         kind: "illustration",
-        prompt: `${echoedStyle}, 1GIRL, SOLO, SILVER HAIR, RAIN\n${instructions}`,
-        generatedStyle: echoedStyle,
+        prompt: [writerStyle, writerPrompt, configuredPositive].filter(Boolean).join(", "),
+        generatedStyle: writerStyle,
         styleProfiles,
         styleProfileId: "danbooru",
         omitProfileStyleText: true,
-        promptWriterGuidance: [instructions],
       });
       assert.doesNotMatch(written.prompt, quotedStyle, written.prompt);
-      assert.doesNotMatch(written.prompt, quotedInstructions, written.prompt);
+      assert.doesNotMatch(written.prompt, /comma-separated Danbooru tags only/iu, written.prompt);
       assert.match(written.prompt, /1GIRL, SOLO, SILVER HAIR, RAIN/u, written.prompt);
+      assert.match(written.prompt, /Write everything in capital letters$/u, "configured text stays: " + written.prompt);
       assert.match(written.prompt, /^masterpiece, best quality/u, "literal profile tags stay: " + written.prompt);
 
       // Tag lists are words for the image model, so a writer that uses them keeps them.

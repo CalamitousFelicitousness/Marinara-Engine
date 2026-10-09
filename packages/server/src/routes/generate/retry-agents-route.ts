@@ -38,6 +38,7 @@ import {
   type ManagedGenerationParameterDefinition,
   CUSTOM_GENERATION_PARAMETERS_SETTINGS_KEY,
   parseManagedGenerationParameterDefinitions,
+  removeCopiedPromptGuidance,
 } from "@marinara-engine/shared";
 import {
   resolveAgentConnectionParameters,
@@ -3690,10 +3691,19 @@ async function applyRetryResultEffects(args: {
               typeof agentContext.memory._gameImageStylePrompt === "string"
                 ? agentContext.memory._gameImageStylePrompt
                 : "";
+            // The writer follows the Style text and the connection's instructions; a sentence of
+            // them it copied word for word is not image-model text (#7357).
+            const writerGuidance = [
+              typeof agentContext.memory._illustratorImageStyleInstruction === "string"
+                ? agentContext.memory._illustratorImageStyleInstruction
+                : null,
+              imgConnFull.imagePromptInstructions,
+            ];
+            const writerStyle = removeCopiedPromptGuidance(style, writerGuidance);
             let fullPrompt = buildIllustratorImagePrompt({
               gameArtStylePrompt,
-              style,
-              imagePrompt,
+              style: writerStyle,
+              imagePrompt: removeCopiedPromptGuidance(imagePrompt, writerGuidance),
               imagePositivePrompt,
             });
             const requestedNegativePrompt = [negativePrompt, savedNegativePrompt].filter(Boolean).join(", ");
@@ -3875,11 +3885,10 @@ async function applyRetryResultEffects(args: {
               styleProfiles: imageSettings.styleProfiles,
               styleProfileId,
               imageDefaults,
-              generatedStyle: style,
+              generatedStyle: writerStyle,
               omitProfileStyleText:
                 illData._styleProfileInstructionApplied === true ||
                 typeof agentContext.memory._illustratorImageStyleInstruction === "string",
-              promptWriterGuidance: [imgConnFull.imagePromptInstructions],
               omitProfileSubjectTags: illustratorPromptTemplateOwnsComposition(
                 imagePromptAgent?.resolved.promptTemplate ?? "",
               ),
@@ -3903,11 +3912,10 @@ async function applyRetryResultEffects(args: {
                   styleProfiles: imageSettings.styleProfiles,
                   styleProfileId,
                   imageDefaults: imageFallback.imageDefaults,
-                  generatedStyle: style,
+                  generatedStyle: writerStyle,
                   omitProfileStyleText:
                     illData._styleProfileInstructionApplied === true ||
                     typeof agentContext.memory._illustratorImageStyleInstruction === "string",
-                  promptWriterGuidance: [imgConnFull.imagePromptInstructions],
                   omitProfileSubjectTags: illustratorPromptTemplateOwnsComposition(
                     imagePromptAgent?.resolved.promptTemplate ?? "",
                   ),

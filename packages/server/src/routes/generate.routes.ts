@@ -135,6 +135,7 @@ import {
   estimateTextTokens,
   diffChatVariables,
   mergeChatVariableChanges,
+  removeCopiedPromptGuidance,
   undoChatVariableChanges,
   type APIProvider,
   type MacroContext,
@@ -13215,8 +13216,18 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                       const imgWidth = illustrationSize.width;
                       const imgHeight = illustrationSize.height;
 
+                      // The writer follows the Style text and the connection's instructions; a sentence
+                      // of them it copied word for word is not image-model text (#7357).
+                      const writerGuidance = [
+                        typeof agentContext.memory._illustratorImageStyleInstruction === "string"
+                          ? agentContext.memory._illustratorImageStyleInstruction
+                          : null,
+                        imgConnFull.imagePromptInstructions,
+                      ];
+                      const writerStyle = removeCopiedPromptGuidance(style, writerGuidance);
+                      const writerPrompt = removeCopiedPromptGuidance(imagePrompt, writerGuidance);
                       // Prepend style to the prompt for better results
-                      let fullPrompt = style ? `${style}, ${imagePrompt}` : imagePrompt;
+                      let fullPrompt = writerStyle ? `${writerStyle}, ${writerPrompt}` : writerPrompt;
                       if (imagePositivePrompt) {
                         fullPrompt = `${fullPrompt}, ${imagePositivePrompt}`;
                       }
@@ -13369,9 +13380,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                         styleProfiles: imageSettings.styleProfiles,
                         styleProfileId,
                         imageDefaults,
-                        generatedStyle: style,
+                        generatedStyle: writerStyle,
                         omitProfileStyleText: typeof agentContext.memory._illustratorImageStyleInstruction === "string",
-                        promptWriterGuidance: [imgConnFull.imagePromptInstructions],
                         omitProfileSubjectTags: illustratorPromptTemplateOwnsComposition(
                           imagePromptAgent?.promptTemplate ?? "",
                         ),
@@ -13390,10 +13400,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                             styleProfiles: imageSettings.styleProfiles,
                             styleProfileId,
                             imageDefaults: imageFallback.imageDefaults,
-                            generatedStyle: style,
+                            generatedStyle: writerStyle,
                             omitProfileStyleText:
                               typeof agentContext.memory._illustratorImageStyleInstruction === "string",
-                            promptWriterGuidance: [imgConnFull.imagePromptInstructions],
                             omitProfileSubjectTags: illustratorPromptTemplateOwnsComposition(
                               imagePromptAgent?.promptTemplate ?? "",
                             ),

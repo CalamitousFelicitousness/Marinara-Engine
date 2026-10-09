@@ -338,7 +338,11 @@ export function AdvancedMemorySettings({
                 <select
                   value={settings.decisionConnectionId ?? ""}
                   disabled={
-                    disabled || savedConnections.isLoading || savedConnections.isError || decisionOptions.isLoading
+                    disabled ||
+                    savedConnections.isLoading ||
+                    savedConnections.isError ||
+                    decisionOptions.isLoading ||
+                    decisionOptions.isError
                   }
                   className={fieldClass}
                   onChange={(event) => save({ decisionConnectionId: event.target.value || null })}
@@ -369,10 +373,20 @@ export function AdvancedMemorySettings({
                   )}
                 </select>
               </label>
-              {savedConnections.isError && (
-                <p role="alert" className="text-xs text-[var(--destructive)]">
-                  {t("chat.advancedMemory.failed", { message: savedConnections.error.message })}{" "}
-                  <button type="button" className="underline" onClick={() => void savedConnections.refetch()}>
+              {/* Either list failing leaves the choice incomplete; the steady accent does not pulse. */}
+              {(savedConnections.isError || decisionOptions.isError) && (
+                <p role="alert" className="text-xs text-[var(--marinara-app-accent-static)]">
+                  {t("chat.advancedMemory.failed", {
+                    message: (savedConnections.error ?? decisionOptions.error)?.message,
+                  })}{" "}
+                  <button
+                    type="button"
+                    className="underline"
+                    onClick={() => {
+                      if (savedConnections.isError) void savedConnections.refetch();
+                      if (decisionOptions.isError) void decisionOptions.refetch();
+                    }}
+                  >
                     {t("chat.advancedMemory.retry")}
                   </button>
                 </p>

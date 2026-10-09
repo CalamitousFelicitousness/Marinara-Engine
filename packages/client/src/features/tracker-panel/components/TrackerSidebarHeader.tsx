@@ -406,13 +406,19 @@ export function TrackerSidebarHeader({
 
   return (
     <div className="mari-tracker-panel-header sticky top-0 z-30 flex-shrink-0 [background:inherit] shadow-[0_1px_0_color-mix(in_srgb,var(--border)_36%,transparent),0_8px_14px_color-mix(in_srgb,var(--background)_22%,transparent)]">
-      <div className="relative flex h-7 items-center justify-between gap-1 px-1">
+      <div
+        className={cn("relative flex items-center justify-between gap-1 px-1", launchers ? "min-h-7 flex-wrap" : "h-7")}
+      >
         {trackerPanelSide === "left" ? settingsControl : closePanelButton}
-        {/* Loading and failure tiles take the header's button size. A narrow panel clips the package
-            buttons rather than pushing its own controls out. */}
-        <div className="flex min-w-0 flex-1 items-center justify-center gap-0.5 self-stretch overflow-hidden [&_[data-capability-client-state]]:h-6 [&_[data-capability-client-state]]:w-6">
-          {launchers}
-        </div>
+        {launchers ? (
+          // A narrow panel gives the package buttons their own row, and too many scroll sideways, so the
+          // panel's own controls always keep their place. Loading and failure tiles take the button size.
+          <div className="flex h-7 min-w-0 flex-1 items-center justify-center-safe gap-0.5 overflow-x-auto px-px [scrollbar-width:none] @max-[160px]:order-last @max-[160px]:basis-full [&::-webkit-scrollbar]:hidden [&_[data-capability-client-state]]:h-6 [&_[data-capability-client-state]]:w-6">
+            {launchers}
+          </div>
+        ) : (
+          <div className="min-w-0 flex-1" />
+        )}
         {trackerPanelSide === "left" ? closePanelButton : settingsControl}
       </div>
       <div

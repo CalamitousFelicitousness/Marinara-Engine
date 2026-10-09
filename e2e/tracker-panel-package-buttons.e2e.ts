@@ -129,3 +129,32 @@ test("a tracker agent's own button sits in the Tracker Panel's top bar", async (
     await request.delete(`/api/chats/${chat.id}?force=true`);
   }
 });
+
+test("a narrow docked Tracker Panel gives the button its own row", async ({ page, request }, info) => {
+  test.skip(!info.project.name.includes("desktop"), "The docked Tracker Panel is a computer layout.");
+  const chat = await createChat(request);
+  try {
+    // At this width the panel shrinks to its minimum, where the top bar only fits the panel's own buttons.
+    await page.setViewportSize({ width: 1024, height: 800 });
+    await openChat(page, chat.id);
+    const panel = page.locator('[data-component="TrackerDataSidebar"]:visible');
+    const header = panel.locator(".mari-tracker-panel-header");
+    const dockButton = header.getByRole("button", { name: "Open fixture dock", exact: true });
+    await expect(dockButton).toBeVisible();
+    const [panelBox, buttonBox, closeBox, settingsBox] = await Promise.all([
+      panel.boundingBox(),
+      dockButton.boundingBox(),
+      header.getByRole("button", { name: "Close tracker panel", exact: true }).boundingBox(),
+      header.getByRole("button", { name: "Open tracker settings", exact: true }).boundingBox(),
+    ]);
+    for (const box of [buttonBox!, closeBox!, settingsBox!]) {
+      expect(box.x).toBeGreaterThanOrEqual(panelBox!.x - 1);
+      expect(box.x + box.width).toBeLessThanOrEqual(panelBox!.x + panelBox!.width + 1);
+    }
+    expect(buttonBox!.y).toBeGreaterThanOrEqual(closeBox!.y + closeBox!.height - 1);
+    await dockButton.click();
+    await expect(dockButton).toHaveAttribute("aria-pressed", "true");
+  } finally {
+    await request.delete(`/api/chats/${chat.id}?force=true`);
+  }
+});

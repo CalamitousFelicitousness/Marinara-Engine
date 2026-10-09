@@ -258,7 +258,7 @@ export function TrackerDataSidebar({
           onToggleDetached={onToggleDetached}
           onClose={closeTrackerPanel}
           launchers={
-            activeChatId
+            activeChatId && launcherPackages.length > 0
               ? launcherPackages.map((item) => (
                   <RoleplayTrackerCapability
                     key={item.id}

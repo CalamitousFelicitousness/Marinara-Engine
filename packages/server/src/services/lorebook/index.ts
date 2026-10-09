@@ -728,6 +728,8 @@ function applyCurrentLocationLoreBudget(
       (tokens) => tokenBudget <= 0 || usedTokens + tokens <= tokenBudget,
     );
     if (!fitted) {
+      // An entry with nothing to add was not skipped by the cap (#7325).
+      if (!candidate.entry.content.trim() && !candidate.entry.images?.length) continue;
       const estimatedTokens = estimateLorebookEntryTokens(candidate.entry);
       skipped.push({
         id: candidate.entry.id,
@@ -780,7 +782,13 @@ function trySelectBudgetedLorebookEntry(
   );
 
   if (!fitted) {
-    const entryTokens = estimateTextTokens(candidate.entry.content);
+    // Blank text, or text that macros resolved to nothing, has nothing to add, so no budget
+    // skipped it (#7325). An entry with only images is judged by the images pass.
+    const hasText = candidate.entry.content.trim().length > 0;
+    if (!hasText && (!includeImages || !candidate.entry.images?.length)) return { selected: false };
+    const entryTokens = hasText
+      ? estimateTextTokens(candidate.entry.content)
+      : estimateLorebookEntryTokens(candidate.entry);
     return {
       selected: false,
       skipped: {
@@ -924,6 +932,7 @@ function selectBudgetedLorebookEntryBatch(
         true,
       );
       if (selected.selected) selectedFromCandidates.push(selected.entry);
+      else if (selected.skipped) skippedFromCandidates.push(selected.skipped);
     }
 
     selectedFromCandidates.sort(lorebookInjectionOrder);
@@ -973,6 +982,7 @@ function selectBudgetedLorebookEntryBatch(
       true,
     );
     if (selected.selected) selectedFromCandidates.push(selected.entry);
+    else if (selected.skipped) skippedFromCandidates.push(selected.skipped);
   }
 
   selectedFromCandidates.sort(lorebookInjectionOrder);

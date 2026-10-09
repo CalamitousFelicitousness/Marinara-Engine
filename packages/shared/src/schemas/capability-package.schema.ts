@@ -985,7 +985,10 @@ const capabilityPackageManifestBaseSchema = z
 // 1.235: initiative thrown twice: `combat.initiative.checkAbility` (initiative is a check with that
 //        ability, so what rolls such checks twice rolls it twice: Foresight, Cat's Grace) and catalog
 //        mechanics' `initiativeMode` (Feral Instinct).
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 235 } as const);
+// 1.236: a "hit" reaction's `by: "self"` (its holder's own attack hitting, aimed at whoever it hit)
+//        and `weapon` (a weapon's blow only); catalog mechanics' `addsToBlow` (its amount joins that
+//        blow, doubled by its critical: Divine Smite) and `perCostStepsMax` (to 5d8 at most).
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 236 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

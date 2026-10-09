@@ -317,6 +317,7 @@ try {
       optionId: "scimitar",
       label: "Scimitar",
       blow: "melee",
+      weapon: true,
       total: 20,
       defense: 18,
     });

@@ -103,6 +103,7 @@ import {
 } from "./grid.js";
 import {
   rulesetDamageModifiers,
+  rulesetWeaponBlow,
   RULESET_MOVE_OPTION,
   RULESET_ZONE_OPTION_PREFIX,
   RULESET_ZONE_TURN_OPTION_PREFIX,
@@ -3474,6 +3475,7 @@ function takeReaction(
       ? { action: trigger.label }
       : {}),
     ...(trigger.kind === "hit" ? { blow: trigger.blow } : {}),
+    ...(trigger.kind === "hit" && trigger.weapon ? { weapon: true } : {}),
   });
   const source = rulesetCombatant(state, declared.reaction?.at === "target" ? (about ?? actor.id) : trigger.sourceId);
   let targets: RulesetCombatant[] | RulesetCombatRefusal;
@@ -3552,8 +3554,52 @@ function takeReaction(
     });
   }
   const workingTargets = targets.map((target) => rulesetCombatant(ctx.state, target.id)!);
+  // A hit's own maker is asked again while they hold more for it (1.236); a pass lets it go on.
+  const answered = () => {
+    const open = ctx.state.window;
+    if (trigger.kind === "hit" && trigger.sourceId === taking.id && open?.waiting[0] === taking.id) {
+      (open.taken ??= []).push(action.id);
+      if (
+        rulesetEncounterOutcome(ctx.state) === "ongoing" &&
+        rulesetWindowOptions(definition, ctx.state, taking.id).length > 0
+      )
+        return;
+    }
+    goOn(definition, combat, ctx);
+  };
+  // Added to its holder's own blow, held where it hit (1.236): rolled as that blow lands.
+  const holding = ctx.state.window?.resume;
+  if (
+    action.addsToBlow &&
+    action.damage &&
+    trigger.kind === "hit" &&
+    trigger.sourceId === taking.id &&
+    holding?.kind === "action" &&
+    holding.held
+  ) {
+    const steps = choice.payWith ? rulesetCostSteps(definition, action, choice.payWith, taking) : 0;
+    const { alternatives: _alternatives, ...damage } = structuredClone(action.damage);
+    (holding.held.adds ??= []).push({
+      label: action.label,
+      damage,
+      ...(action.use?.perCostStep && steps > 0
+        ? { extra: { amount: { ...action.use.perCostStep }, times: steps } }
+        : {}),
+    });
+    ctx.events.push({
+      type: "added",
+      actorId: taking.id,
+      targetId: holding.held.targetId,
+      label: action.label,
+      to: trigger.label,
+    });
+    holderActed(ctx, taking, action);
+    answered();
+    noteOutcome(ctx);
+    return finish();
+  }
   resolveAction(ctx, taking, action, workingTargets, choice.payWith);
-  goOn(definition, combat, ctx);
+  answered();
   noteOutcome(ctx);
   return finish();
 }
@@ -4128,6 +4174,7 @@ function hitAnswers(
           ...(action.catalog ? { catalog: action.catalog } : {}),
           ...(action.entry ? { entry: action.entry } : {}),
           blow: rulesetBlowKind(ctx.state, actor, target, action),
+          ...(rulesetWeaponBlow(action) ? { weapon: true } : {}),
         }).length > 0,
     )
     .map((one) => one.id);
@@ -4166,6 +4213,7 @@ function harmedBy(
   if (hold) {
     const { label, optionId, catalog, entry, blow, ...held } = hold;
     const { held: _previous, ...base } = resume;
+    const striking = actor.actions.find((one) => one.id === optionId) ?? action;
     openWindow(ctx, {
       kind: "reaction",
       trigger: {
@@ -4177,15 +4225,12 @@ function harmedBy(
         ...(catalog ? { catalog } : {}),
         ...(entry ? { entry } : {}),
         ...(blow ? { blow } : {}),
+        // A weapon's blow, for an answer that adds to one (1.236).
+        ...(rulesetWeaponBlow(striking) ? { weapon: true as const } : {}),
         total: held.roll.total,
         defense: held.roll.defense,
       },
-      waiting: hitAnswers(
-        ctx,
-        actor,
-        rulesetCombatant(ctx.state, held.targetId)!,
-        actor.actions.find((one) => one.id === optionId) ?? action,
-      ),
+      waiting: hitAnswers(ctx, actor, rulesetCombatant(ctx.state, held.targetId)!, striking),
       resume: { ...base, held: { ...held, hurt: [...hurt] } },
     });
     return;
@@ -4248,7 +4293,9 @@ function openWindow(ctx: RulesetCombatContext, window: Omit<RulesetCombatWindow,
     const at = ctx.state.order.indexOf(id);
     return at < 0 ? ctx.state.order.length : at;
   };
-  const waiting = [...window.waiting].sort((left, right) => order(left) - order(right));
+  // A hit's own maker is asked last (1.236): what they add to it is chosen once it still lands.
+  const last = (id: string) => (trigger.kind === "hit" && id === trigger.sourceId ? 1 : 0);
+  const waiting = [...window.waiting].sort((left, right) => last(left) - last(right) || order(left) - order(right));
   ctx.state.window = { id: `w${serial}`, ...window, waiting };
   const moment = rulesetWindowMoment(window.trigger);
   ctx.events.push({
@@ -5447,6 +5494,41 @@ function resolveActionBody(
         ...(critical ? { critical: true } : {}),
         ...(rolled.pool ? { pool: rolled.pool } : {}),
       });
+    }
+    // What its maker added to the blow while it was held (1.236): each amount rolled with what its
+    // higher payment adds, doubled by a critical, and each clause only on a target it reaches.
+    const adds = held && target.id === held.targetId && !spends ? (held.adds ?? []) : [];
+    for (const add of adds) {
+      const amounts = [
+        { amount: add.damage as RulesetCombatAmount, type: add.damage.type, extra: add.extra },
+        ...(add.damage.plus ?? [])
+          .filter(
+            (clause) =>
+              clauseReaches(ctx, actor, target, action, clause) &&
+              (!clause.onCritical || critical) &&
+              (clause.whileOn === undefined || rulesetItemOn(actor, clause.whileOn)),
+          )
+          .map((clause) => ({ amount: clause as RulesetCombatAmount, type: clause.type ?? add.damage.type })),
+      ];
+      for (const one of amounts) {
+        const extraOf = "extra" in one ? one.extra : undefined;
+        const rolled: { rolls: number[]; flat: number; total: number; pool?: RulesetDamageInput["pool"] } = pooled
+          ? throwHarm(ctx, target, one.amount, one.type, 0, extraOf)
+          : rollAmount(ctx, one.amount, extraOf);
+        const bonus = critical ? criticalExtra(ctx, one.amount, extraOf) : { rolls: [], flat: 0 };
+        const total = rolled.total + sumOf(bonus.rolls) + bonus.flat;
+        land({
+          sourceId: actor.id,
+          label: add.label,
+          ...(one.type ? { damageType: one.type } : {}),
+          rolls: [...rolled.rolls, ...bonus.rolls],
+          flat: rolled.flat + bonus.flat,
+          amount: halved ? Math.floor(total / 2) : total,
+          ...(halved ? { saved: true } : {}),
+          ...(critical ? { critical: true } : {}),
+          ...(rolled.pool ? { pool: rolled.pool } : {}),
+        });
+      }
     }
     if (parts.length) {
       for (const { modifier } of modifiers) {

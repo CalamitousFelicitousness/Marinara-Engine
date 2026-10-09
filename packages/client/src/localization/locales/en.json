@@ -1195,6 +1195,7 @@
   "game.combat.ruleset.board.walk": "Move",
   "game.combat.ruleset.board.who": "{{name}} stands here, health {{value}} of {{max}}.",
   "game.combat.ruleset.board.zones": "In {{zones}}.",
+  "game.combat.ruleset.event.added": "{{actor}} adds {{label}} to the {{to}} that hit {{target}}.",
   "game.combat.ruleset.event.area": "{{actor}} aims {{label}} at {{x}}, {{y}}, covering {{cells}} cells.",
   "game.combat.ruleset.event.attackCritical": "{{actor}} attacks {{target}} with {{label}}: {{roll}} against {{defense}}, a critical hit.",
   "game.combat.ruleset.event.attackHit": "{{actor}} attacks {{target}} with {{label}}: {{roll}} against {{defense}}, a hit.",

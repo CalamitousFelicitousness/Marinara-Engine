@@ -1532,6 +1532,22 @@ function carriesFrenzy(ruleset: unknown): boolean {
   });
 }
 
+/** A reaction to its holder's own hit or to a weapon's, a use added to that blow, or a cap on the
+ *  steps a higher cost adds (1.236), in catalogs too. */
+function carriesOwnHit(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesOwnHit(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.addsToBlow !== undefined || record.perCostStepsMax !== undefined) return true;
+  const reaction = plainRecord(record.reaction);
+  const narrowed = (moment: Record<string, unknown> | undefined) =>
+    !!moment && (moment.by !== undefined || moment.weapon !== undefined);
+  if (narrowed(reaction)) return true;
+  if (Array.isArray(reaction?.also) && reaction.also.some((one) => narrowed(plainRecord(one)))) return true;
+  return Object.values(record).some((one) => carriesOwnHit(one, depth + 1));
+}
+
 /** A use that throws its holder's initiative twice (1.235), in catalogs too. */
 function carriesInitiativeMode(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -3292,6 +3308,13 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Answers to one's own hit, added to it, and capped higher costs, 1.236.
+  if (
+    !declaresApi(236) &&
+    (carriesOwnHit(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesOwnHit(document)))
+  ) {
+    return "A ruleset with reactions to their holder's own hit or to a weapon's, uses added to that blow, or a most for a higher cost's steps, requires schemaVersion 2 and capabilityApi 1.236 or newer";
   }
   // Initiative thrown twice, 1.235.
   if (

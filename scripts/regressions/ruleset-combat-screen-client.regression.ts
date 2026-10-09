@@ -779,6 +779,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["surprised", say({ type: "surprised", actorIds: ["brenna", "lurker"] })],
     ["surpriseOver", say({ type: "surpriseOver", actorId: "lurker" })],
     ["extraTurn", say({ type: "extraTurn", actorId: "brenna", initiative: 7, label: "Thief's Reflexes" })],
+    ["added", say({ type: "added", actorId: "brenna", targetId: "lurker", label: "Divine Smite", to: "Longsword" })],
     [
       "healthPool",
       say({ type: "healthPool", actorId: "brenna", label: "Sleep", rolls: [8, 7], total: 15, affected: ["lurker"] }),
@@ -1016,6 +1017,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     printed.get("extraTurn"),
     "Brenna takes a second turn this round with Thief's Reflexes, at initiative 7.",
   );
+  assert.equal(printed.get("added"), "Brenna adds Divine Smite to the Longsword that hit Thorn Lurker.");
   assert.equal(
     say({ type: "surpriseOver", actorId: "brenna", label: "Rage" }),
     "Brenna shakes off the surprise with Rage.",

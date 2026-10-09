@@ -1732,19 +1732,42 @@ const rulesetReactionAgainstSchema = z
 
 /** What else narrows a moment (Capability API 1.113): `blow` answers only a hit struck in reach
  *  (`melee`) or from afar (`ranged`), and `seesSource` only while its holder sees whoever caused it.
- *  5e's Parry is both. */
+ *  5e's Parry is both. `by: "self"` (Capability API 1.236) answers its holder's OWN attack hitting,
+ *  aimed at whoever it hit, and `weapon` only a weapon's blow: 5e's Divine Smite and Stunning Strike. */
 const rulesetMomentNarrowing = {
   for: z.enum(["self", "ally", "any"]).optional(),
   within: z.number().finite().min(0).optional(),
   blow: z.enum(["melee", "ranged"]).optional(),
   seesSource: z.literal(true).optional(),
+  by: z.literal("self").optional(),
+  weapon: z.literal(true).optional(),
 };
-const blowOnlyOnHit = (moment: { on: string; blow?: string }, ctx: z.RefinementCtx, path: (string | number)[]) => {
+const blowOnlyOnHit = (
+  moment: { on: string; blow?: string; by?: string; weapon?: true; for?: string; within?: number },
+  ctx: z.RefinementCtx,
+  path: (string | number)[],
+) => {
   if (moment.blow && moment.on !== "hit") {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: [...path, "blow"],
       message: '"blow" says what kind of hit opens the moment, so it is on a "hit" moment',
+    });
+  }
+  for (const key of ["by", "weapon"] as const) {
+    if (moment[key] !== undefined && moment.on !== "hit") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [...path, key],
+        message: `"${key}" narrows a hit, so it is on a "hit" moment`,
+      });
+    }
+  }
+  if (moment.by && (moment.for !== undefined || moment.within !== undefined)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: [...path, "by"],
+      message: 'A reaction to its holder\'s own hit answers for nobody: "by" goes without "for" and "within"',
     });
   }
 };
@@ -2510,6 +2533,13 @@ const catalogMechanicsObject = z
       .optional(),
     /** What one step of a higher cost adds, for systems that let a player pay more. */
     perCostStep: z.object(catalogAmountShape).strict().optional(),
+    /** The most steps of a higher cost that count (Capability API 1.236): paying more than this
+     *  adds nothing more. 5e's Divine Smite, 2d8 and 1d8 a slot level above 1st, to 5d8 at most: 3. */
+    perCostStepsMax: z.number().int().min(1).max(20).optional(),
+    /** Taken as its holder's own attack hits (a `"hit"` reaction with `"by": "self"`), its amount is
+     *  added to that blow instead of dealt on its own (Capability API 1.236): rolled with it, doubled
+     *  by its critical, and taken as part of it. 5e's Divine Smite. */
+    addsToBlow: z.literal(true).optional(),
     /** How many more targets one step of a higher cost lets a use take (Capability API 1.166), up
      *  to 20 in all: 5e's Hold Person, one more creature for each slot level above 2nd. */
     targetsPerCostStep: z.number().int().min(1).max(10).optional(),
@@ -2543,12 +2573,12 @@ const catalogMechanicsObject = z
      *  turn (Capability API 1.232), when nothing keeps its holder from acting: 5e's Feral Instinct
      *  with Rage. The entry is otherwise passive. */
     ignoresSurpriseWith: catalogEntryRef.optional(),
-    /** Held on a sheet's list, its holder takes a second turn in a fight's first round (Capability
-     *  API 1.233), at their own initiative plus `initiative` (a negative number is later):
-     *  5e's Thief's Reflexes at -10. `unlessSurprised`: not when they begin the fight surprised. */
     /** Held on a sheet's list, its holder's initiative dice are thrown twice (Capability API 1.235),
      *  the better (`advantage`) or the worse kept: 5e's Feral Instinct. */
     initiativeMode: z.enum(["advantage", "disadvantage"]).optional(),
+    /** Held on a sheet's list, its holder takes a second turn in a fight's first round (Capability
+     *  API 1.233), at their own initiative plus `initiative` (a negative number is later):
+     *  5e's Thief's Reflexes at -10. `unlessSurprised`: not when they begin the fight surprised. */
     extraFirstTurn: z
       .object({ initiative: z.number().int().min(-100).max(100), unlessSurprised: z.literal(true).optional() })
       .strict()
@@ -2810,6 +2840,34 @@ const catalogMechanicsSchema: z.ZodType<
       code: z.ZodIssueCode.custom,
       path: [mechanics.reducesMax ? "reducesMax" : "leavesAtLeast"],
       message: "It works on the entry's damage, so it has an amount",
+    });
+  }
+  if (mechanics.addsToBlow) {
+    const moment = typeof mechanics.reaction === "object" ? mechanics.reaction : undefined;
+    if (moment?.on !== "hit" || moment.by !== "self" || !mechanics.amount || mechanics.kind !== "attack") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["addsToBlow"],
+        message:
+          '"addsToBlow" is an attack with an amount, taken as its holder\'s own hit: reaction "hit", "by": "self"',
+      });
+    }
+  }
+  {
+    const moment = typeof mechanics.reaction === "object" ? mechanics.reaction : undefined;
+    if (moment?.by && (moment.at ?? "source") === "source" && (mechanics.targets ?? "enemy") === "enemy") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["reaction", "at"],
+        message: 'A reaction to its holder\'s own hit is aimed at whoever it hit: "at": "target"',
+      });
+    }
+  }
+  if (mechanics.perCostStepsMax !== undefined && !mechanics.perCostStep && !mechanics.targetsPerCostStep) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["perCostStepsMax"],
+      message: '"perCostStepsMax" caps what "perCostStep" or "targetsPerCostStep" adds, so it has one',
     });
   }
   if (mechanics.healthPoolSkips && !mechanics.healthPool) {

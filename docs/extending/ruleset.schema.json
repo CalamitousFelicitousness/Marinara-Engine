@@ -9106,6 +9106,15 @@
                       },
                       "additionalProperties": false
                     },
+                    "perCostStepsMax": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 20
+                    },
+                    "addsToBlow": {
+                      "type": "boolean",
+                      "const": true
+                    },
                     "targetsPerCostStep": {
                       "type": "integer",
                       "minimum": 1,
@@ -10136,6 +10145,14 @@
                               "type": "boolean",
                               "const": true
                             },
+                            "by": {
+                              "type": "string",
+                              "const": "self"
+                            },
+                            "weapon": {
+                              "type": "boolean",
+                              "const": true
+                            },
                             "cancels": {
                               "type": "boolean",
                               "const": true
@@ -10271,6 +10288,14 @@
                                     ]
                                   },
                                   "seesSource": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "by": {
+                                    "type": "string",
+                                    "const": "self"
+                                  },
+                                  "weapon": {
                                     "type": "boolean",
                                     "const": true
                                   },
@@ -13499,6 +13524,14 @@
                                 "type": "boolean",
                                 "const": true
                               },
+                              "by": {
+                                "type": "string",
+                                "const": "self"
+                              },
+                              "weapon": {
+                                "type": "boolean",
+                                "const": true
+                              },
                               "cancels": {
                                 "type": "boolean",
                                 "const": true
@@ -13634,6 +13667,14 @@
                                       ]
                                     },
                                     "seesSource": {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
+                                    "by": {
+                                      "type": "string",
+                                      "const": "self"
+                                    },
+                                    "weapon": {
                                       "type": "boolean",
                                       "const": true
                                     },
@@ -20433,6 +20474,15 @@
                             "onSuccess"
                           ],
                           "additionalProperties": false
+                        },
+                        "perCostStepsMax": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 20
+                        },
+                        "addsToBlow": {
+                          "type": "boolean",
+                          "const": true
                         },
                         "zone": {
                           "type": "object",

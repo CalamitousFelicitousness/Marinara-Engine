@@ -275,6 +275,13 @@ export function rulesetCombatEventLine(
         initiative: event.initiative,
         label: event.label,
       });
+    case "added":
+      return key("added", {
+        actor: names.combatant(event.actorId),
+        target: names.combatant(event.targetId),
+        label: event.label,
+        to: event.to,
+      });
     case "surpriseOver":
       return key(event.label ? "surpriseShaken" : "surpriseOver", {
         actor: names.combatant(event.actorId),

@@ -507,6 +507,8 @@ export interface RulesetCombatAction {
   unseals?: true;
   /** It does one of its cures, not all (1.199): the mode picked, else the first the target needs. */
   cureOneOf?: true;
+  /** Taken as its holder's own attack hits, its damage joins that blow (1.236): Divine Smite. */
+  addsToBlow?: true;
   /** Its damage never takes a target below this much health (1.230). */
   leavesAtLeast?: number;
   /** It brings back a target that died no more than `withinRounds` rounds ago, at `amount` (1.171). */
@@ -525,6 +527,8 @@ export interface RulesetCombatAction {
     perCostStep?: RulesetCombatAmount;
     /** More targets for each step of a higher cost (1.166). */
     targetsPerStep?: number;
+    /** The most steps of a higher cost that count (1.236). */
+    stepsMax?: number;
   };
   uses?: RulesetCombatUses;
   recharge?: RulesetCombatRecharge;
@@ -561,6 +565,10 @@ export interface RulesetCombatAction {
     blow?: RulesetBlowKind;
     /** Only while its holder sees whoever caused the moment (1.113). */
     seesSource?: true;
+    /** Its holder's own attack hitting, aimed at whoever it hit (1.236). */
+    by?: "self";
+    /** Only a weapon's blow opens it (1.236). */
+    weapon?: true;
     /** It stops only what was paid for no higher up its pool family than this was (1.111). */
     upTo?: "paid";
     /** Above that, a check, read once as the fight began, against `dc` plus the level of what it
@@ -1028,6 +1036,9 @@ export interface RulesetCombatWindow {
   waiting: string[];
   /** What this window interrupted, when something waits for it to close. */
   resume?: RulesetWindowResume;
+  /** What a hit's own maker has already answered it with (1.236): they are asked again for the rest,
+   *  as a paladin smites and stuns with one blow, until they pass. */
+  taken?: string[];
 }
 
 /** What a window is for. `reaction` is somebody spending a budget out of turn; `signature` is a
@@ -1068,6 +1079,8 @@ export type RulesetWindowTrigger =
       entry?: string;
       /** Whether the blow was struck in reach or from afar (1.113). */
       blow?: RulesetBlowKind;
+      /** Whether it was a weapon's blow (1.236). */
+      weapon?: true;
       total: number;
       defense: number;
     }
@@ -1096,6 +1109,10 @@ export interface RulesetReactionAlso {
   against?: RulesetReactionAgainst;
   blow?: RulesetBlowKind;
   seesSource?: true;
+  /** Its holder's own attack hitting, not one that hits them (1.236). */
+  by?: "self";
+  /** Only a weapon's blow opens it (1.236). */
+  weapon?: true;
 }
 
 /** What caused a moment, as far as a reaction narrows what it answers: the catalog and entry behind
@@ -1106,6 +1123,8 @@ export interface RulesetMomentCause {
   catalog?: string;
   entry?: string;
   blow?: RulesetBlowKind;
+  /** The blow was a weapon's (1.236). */
+  weapon?: boolean;
 }
 
 /** What opens a moment for one reaction: an action from an entry of one of `catalogs`, or one of
@@ -1161,6 +1180,13 @@ export interface RulesetActionResume {
   held?: RulesetHeldAttack;
 }
 
+/** Damage added to a held blow by its maker's answer (1.236), with what a higher payment adds. */
+export interface RulesetHeldAddition {
+  label: string;
+  damage: RulesetCombatDamage;
+  extra?: { amount: RulesetCombatAmount; times: number };
+}
+
 /** An attack held after its roll hit, while the one it hit is asked. It picks up exactly here: the
  *  same roll against that target, then the rest of this action's targets, then the rest of its parts
  *  when it is one part of an action made of others. */
@@ -1183,6 +1209,8 @@ export interface RulesetHeldAttack {
   mine: string[];
   /** Whoever the action had already hurt before it was held, for the moment after it. */
   hurt: string[];
+  /** What its maker added to the blow while it was held (1.236): Divine Smite. */
+  adds?: RulesetHeldAddition[];
 }
 
 /** A walk stopped in its tracks, with everything needed to finish it exactly as it would have gone:
@@ -1580,6 +1608,8 @@ export type RulesetCombatEvent =
   | { type: "surpriseOver"; actorId: string; label?: string }
   /** A second turn this first round (1.233), at `initiative`, from the entry `label`. */
   | { type: "extraTurn"; actorId: string; initiative: number; label: string }
+  /** Its maker adds this to the blow that just hit (1.236): Divine Smite. */
+  | { type: "added"; actorId: string; targetId: string; label: string; to: string }
   /** A blow that follows a straight run at its target, before what the charge adds lands (1.181). */
   | {
       type: "charged";

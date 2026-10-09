@@ -1750,6 +1750,8 @@ function mechanicsAction(
               ? { perCostStep: amountOf(mechanics.perCostStep) ?? { count: 0, sides: 0, flat: 0 } }
               : {}),
             ...(mechanics.targetsPerCostStep ? { targetsPerStep: mechanics.targetsPerCostStep } : {}),
+            // No more steps count than this (1.236): Divine Smite stops at 5d8.
+            ...(mechanics.perCostStepsMax ? { stepsMax: mechanics.perCostStepsMax } : {}),
           },
         }
       : {}),
@@ -1777,6 +1779,8 @@ function mechanicsAction(
   }
   if (mechanics.healthAtMost !== undefined) action.healthAtMost = mechanics.healthAtMost;
   if (mechanics.kills) action.kills = true;
+  // Its damage joins its holder's own blow that just hit (1.236).
+  if (mechanics.addsToBlow && moment) action.addsToBlow = true;
   // Leaving `toHit` unset here would send it down the no-roll path and land it automatically.
   if (mechanics.attackRoll) action.toHit = from.toHit;
   if (mechanics.autoHit) action.autoHit = true;

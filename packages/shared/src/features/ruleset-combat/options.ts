@@ -850,13 +850,18 @@ export function rulesetCostSteps(
   const family = rulesetPoolFamily(definition, action.use?.group);
   const from = family.indexOf(action.use?.pool ?? "");
   const to = family.indexOf(payWith);
+  // Past its most, paying more adds nothing (1.236).
+  const most = action.use?.stepsMax ?? Infinity;
   if (to < 0 && from >= 0 && combatant && rulesetPoolPaysFor(definition, payWith, action.use?.group)) {
-    return Math.max(
-      0,
-      rulesetPaidLevel(definition, combatant, action, payWith) - rulesetPaidLevel(definition, combatant, action),
+    return Math.min(
+      most,
+      Math.max(
+        0,
+        rulesetPaidLevel(definition, combatant, action, payWith) - rulesetPaidLevel(definition, combatant, action),
+      ),
     );
   }
-  return from >= 0 && to > from ? to - from : 0;
+  return from >= 0 && to > from ? Math.min(most, to - from) : 0;
 }
 
 /** Whether a pool of another group may pay for this group's costs (1.166). */
@@ -1598,6 +1603,16 @@ function forecastFor(
 /** Modifiers that belong to THIS attack hit (Capability API 1.128). Rows and held weapons are
  *  attacks; a single-target stat-block roll is a creature's weapon. Catalog abilities and item
  *  uses are spell/other attacks. A save or an automatic hit never carries these additions. */
+/** Whether an action is a weapon's blow rather than a spell's or an item's: an attack, or a stat
+ *  block's single-target action, from no catalog (1.236). */
+export function rulesetWeaponBlow(action: RulesetCombatAction): boolean {
+  return (
+    (action.kind === "attack" || (action.kind === "block" && action.targets.count === 1)) &&
+    !action.catalog &&
+    !action.itemUse
+  );
+}
+
 export function rulesetDamageModifiers(
   definition: RulesetDefinition,
   state: RulesetEncounterState,
@@ -1608,10 +1623,7 @@ export function rulesetDamageModifiers(
 ): RulesetConditionModifier[] {
   const combat = definition.combat;
   if (!combat || !action.damage || action.toHit === undefined || action.autoHit || action.save) return [];
-  const weapon =
-    (action.kind === "attack" || (action.kind === "block" && action.targets.count === 1)) &&
-    !action.catalog &&
-    !action.itemUse;
+  const weapon = rulesetWeaponBlow(action);
   const holder = taken ? target : actor;
   if (!holder) return [];
   return rulesetConditionModifiers(definition, combat, holder, taken ? "damage-taken" : "damage", state).filter(
@@ -2383,16 +2395,21 @@ export function rulesetWindowOptions(
     ...("catalog" in trigger && trigger.catalog ? { catalog: trigger.catalog } : {}),
     ...("entry" in trigger && trigger.entry ? { entry: trigger.entry } : {}),
     ...(trigger.kind === "hit" && trigger.blow ? { blow: trigger.blow } : {}),
+    ...(trigger.kind === "hit" && trigger.weapon ? { weapon: true } : {}),
   };
-  return rulesetReactionsAt(definition, combat, state, actor, moment, source, cause).map((action) => {
-    const option = optionFrom(definition, combat, state, actor, action, true)!;
-    // Nobody to pick unless the entry says its holder picks: it is aimed back at whoever caused
-    // the moment, or, for something its holder does to themselves, at its holder.
-    if (moment === "falls" && action.targets.count > 1) return option;
-    return moment === "falls" || action.reaction?.at === "target" || rulesetReactionPointsAtSource(action)
-      ? { ...option, targets: { side: "self", count: 0 } }
-      : option;
-  });
+  // A hit's maker answers it once with each thing they hold (1.236).
+  const taken = trigger.kind === "hit" && actorId === source ? (window.taken ?? []) : [];
+  return rulesetReactionsAt(definition, combat, state, actor, moment, source, cause)
+    .filter((action) => !taken.includes(action.id))
+    .map((action) => {
+      const option = optionFrom(definition, combat, state, actor, action, true)!;
+      // Nobody to pick unless the entry says its holder picks: it is aimed back at whoever caused
+      // the moment, or, for something its holder does to themselves, at its holder.
+      if (moment === "falls" && action.targets.count > 1) return option;
+      return moment === "falls" || action.reaction?.at === "target" || rulesetReactionPointsAtSource(action)
+        ? { ...option, targets: { side: "self", count: 0 } }
+        : option;
+    });
 }
 
 /** Whether what is taken at a moment is aimed back at whoever caused it. False for one its holder
@@ -2464,6 +2481,9 @@ function momentAnswers(
   cause: RulesetMomentCause,
 ): boolean {
   if (!rulesetAgainstMatches(moment.against, cause.catalog, cause.entry, cause.action)) return false;
+  // Its holder's own hit, or somebody else's (1.236): never both.
+  if (moment.on === "hit" && (moment.by === "self") !== (sourceId === holder.id)) return false;
+  if (moment.weapon && !cause.weapon) return false;
   if (moment.blow && cause.blow !== moment.blow) return false;
   if (moment.seesSource && !rulesetSees(state, holder, rulesetCombatant(state, sourceId))) return false;
   return true;
@@ -2497,6 +2517,8 @@ export function rulesetReactionTarget(
   if (moment === "turn-start" || moment === "falls" || moment === "used") return sourceId;
   return [action.reaction!, ...(action.reaction?.also ?? [])].flatMap((one) => {
     if (one.on !== moment || !momentAnswers(state, holder, sourceId, one, cause)) return [];
+    // Its holder's own blow is about whoever it hit (1.236).
+    if (one.by === "self") return (cause.targetIds ?? []).filter((id) => id !== holder.id);
     return (cause.targetIds ?? [holder.id]).filter((id) => {
       if (!one.for || one.for === "self") return id === holder.id;
       const target = rulesetCombatant(state, id);
@@ -2544,11 +2566,13 @@ export function rulesetReactionsAt(
 ): RulesetCombatAction[] {
   if (!rulesetCombatStanding(actor)) return [];
   const effects = rulesetCombatEffects(definition, combat, actor, state);
-  if (effects.has("cannot-act") || effects.has("cannot-react")) return [];
+  if (effects.has("cannot-act")) return [];
   return actor.actions.filter((action) => {
     if (!action.reaction) return false;
     // Its own moment, or any it is also taken at, each read with its own `against`.
     const moments = [action.reaction, ...(action.reaction.also ?? [])];
+    // Choosing what one's own hit does is part of making it, not a reaction to it (1.236).
+    if (effects.has("cannot-react") && !moments.every((one) => one.by === "self")) return false;
     if (!moments.some((one) => one.on === moment && momentAnswers(state, actor, sourceId, one, cause))) return false;
     const target = rulesetReactionTarget(state, actor, action, moment, sourceId, cause);
     if ((moment === "aimed" || moment === "hit") && !target) return false;

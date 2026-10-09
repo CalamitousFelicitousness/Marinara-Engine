@@ -62,6 +62,8 @@ export function rulesetReactionAnswers(
       : {}),
     ...(moment.blow ? { blow: moment.blow } : {}),
     ...(moment.seesSource ? { seesSource: true as const } : {}),
+    ...(moment.by ? { by: moment.by } : {}),
+    ...(moment.weapon ? { weapon: true as const } : {}),
   });
   return {
     ...narrowing(reaction),

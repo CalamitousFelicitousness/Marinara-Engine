@@ -515,6 +515,7 @@ function MobileTrackerWindow({
   id,
   title,
   icon,
+  banner,
   width,
   height,
   children,
@@ -522,6 +523,8 @@ function MobileTrackerWindow({
   id: string;
   title: string;
   icon: ReactNode;
+  /** Shown on the button instead of the icon (World State's date, time and weather). */
+  banner?: ReactNode;
   width: number;
   height: number;
   children: ReactNode;
@@ -536,7 +539,7 @@ function MobileTrackerWindow({
       closeLabel={t("window.controls.close")}
       presentation="sheet"
       sheetClassName={PHONE_SHEET_CLASS}
-      minimizable={{ icon, label: title }}
+      minimizable={{ icon, banner, label: title }}
       getDefaultLayout={(bounds, bubbleSize) =>
         getChatControlDefaultLayout(bounds, 0, { width, height }, 0, bubbleSize)
       }
@@ -753,6 +756,7 @@ function CombinedWorldWidget({
       id={MOBILE_WORLD_WINDOW_ID}
       title={localizeUi("ui.panels.appearancesettings.worldState")}
       icon={<MapPin size="0.875rem" />}
+      banner={display.hasWorldState && <WorldStateMiniature display={display} />}
       width={288}
       height={400}
     >

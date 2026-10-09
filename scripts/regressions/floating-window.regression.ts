@@ -508,6 +508,30 @@ for (let x = 850; x <= 1000; x += 3) {
 // Bubbles stay on screen; a window opens below its bubble, or above it near the bottom.
 assert.deepEqual(clampWindowBubble({ x: -50, y: 5000 }, bounds), { x: 8, y: 860 });
 
+// #7320: a minimized World State window shows a banner wider than a bubble. It stays in the chat by its own
+// width, a drop never lands it on another bubble, and when it grows into a neighbour it is the one that moves.
+const banner = { width: 120, height: 32 };
+const bannerClear = (point: { x: number; y: number }, other: { x: number; y: number; width: number; height: number }) =>
+  point.x + banner.width <= other.x ||
+  point.x >= other.x + other.width ||
+  point.y + banner.height <= other.y ||
+  point.y >= other.y + other.height;
+assert.deepEqual(clampWindowBubble({ x: 9000, y: 9000 }, bounds, banner), { x: 1312, y: 860 });
+for (let x = 760; x <= 1000; x += 4) {
+  for (let y = 56; y <= 160; y += 4) {
+    const { point } = dropWindowBubble({ x, y }, row, bounds, banner);
+    for (const other of row) assert.ok(bannerClear(point, other), `a banner dropped at ${x},${y} stays clear`);
+  }
+}
+const grownBanner = placeWindowBubbles(
+  new Map([
+    ["square", { point: { x: 900, y: 64 }, bounds, size: 32 }],
+    ["banner", { point: { x: 820, y: 64, automatic: true as const }, bounds, size: banner }],
+  ]),
+);
+assert.deepEqual(grownBanner.get("square"), { x: 900, y: 64 }, "the bubble a banner grew into keeps its place");
+assert.ok(bannerClear(grownBanner.get("banner")!, { x: 900, y: 64, width: 32, height: 32 }), "the banner moves aside");
+
 // Sidebars squeeze a row of saved buttons into distinct visible places without changing the saved row.
 const savedButtons = new Map(
   [16, 56, 96, 1200, 1240, 1280].map((x, index) => [
@@ -861,6 +885,17 @@ const floatingWindowSource = read("packages/client/src/components/ui/FloatingWin
 const windowBubbleSource = read("packages/client/src/components/ui/WindowBubble.tsx");
 assert.match(windowBubbleSource, /className="mari-window-bubble fixed"/u);
 assert.match(windowBubbleSource, /data-minimized="true"/u);
+// A banner registers as movable, so placement moves it rather than a neighbour it grew into.
+assert.match(windowBubbleSource, /automatic: hasBanner \|\| point\.automatic \? true : undefined/u);
+// World State's popped-out window (computer) and its button (phone) show the banner once there is world state.
+assert.match(
+  read("packages/client/src/components/chat/RoleplayTrackerWindow.tsx"),
+  /banner=\{worldDisplay\.hasWorldState && <WorldStateMiniature display=\{worldDisplay\} \/>\}/u,
+);
+assert.match(
+  read("packages/client/src/components/chat/RoleplayHUD.tsx"),
+  /banner=\{display\.hasWorldState && <WorldStateMiniature display=\{display\} \/>\}/u,
+);
 // A tap is never read as a drag: touch needs a longer move before the bubble follows it.
 assert.match(windowBubbleSource, /DRAG_START_PX = \{ mouse: 4, touch: 10 \}/u);
 assert.match(floatingWindowSource, /<WindowBubble[\s\S]*data-presentation": "sheet"/u);

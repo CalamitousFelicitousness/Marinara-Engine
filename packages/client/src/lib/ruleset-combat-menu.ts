@@ -49,7 +49,7 @@ const MOVE_OPTION_WORDS: Record<string, "walk" | "stand" | "flyUp" | "flyDown"> 
 };
 
 export interface RulesetMenuStep {
-  stage: "style" | "mode" | "alter" | "pay" | "amount" | "move" | "target" | "aim" | "spare";
+  stage: "style" | "mode" | "alter" | "pay" | "amount" | "move" | "target" | "aim" | "spare" | "heighten";
   option: DirectedRulesetOption;
   /** The initiative style an attack is made in, where initiative is a number attacks move. */
   style?: string;
@@ -67,6 +67,10 @@ export interface RulesetMenuStep {
   cell?: RulesetCellChoice;
   /** Who of its user's side it could spare and how many at most, while that is picked (1.249). */
   spare?: { ids: string[]; most: number };
+  /** Who it spares, once that was picked (1.249). */
+  spared?: string[];
+  /** Who it could heighten, while that is picked (1.250). */
+  heighten?: { ids: string[] };
 }
 
 /** A shape half laid on the board: the cell it was first set down on, further copies of it, and for
@@ -276,21 +280,78 @@ export function rulesetSparePick(
     ...(step.alters ?? []).map((id) => step.option.alters?.find((offer) => offer.id === id)?.spares ?? 0),
   );
   if (most === 0) return null;
-  const user = view.combatants.find((combatant) => combatant.id === (view.window?.actorId ?? view.actorId));
+  const user = rulesetMenuUser(view);
   if (!user) return null;
+  const caught = rulesetCaught(view, step.option, targets, cell);
+  const ids = view.combatants
+    .filter((combatant) => combatant.side === user.side && caught.has(combatant.id))
+    .map((combatant) => combatant.id);
+  return ids.length > most ? { ids, most } : null;
+}
+
+/** Who is answering the menu: the actor, or whoever a window is asking. */
+function rulesetMenuUser(view: DirectedRulesetView) {
+  return view.combatants.find((combatant) => combatant.id === (view.window?.actorId ?? view.actorId));
+}
+
+/** Who a use catches: those it is pointed at, or for a shape who its aim says. A wall, whose aim
+ *  the board does not hold, could catch anybody. */
+function rulesetCaught(
+  view: DirectedRulesetView,
+  option: DirectedRulesetOption,
+  targets: string[],
+  cell?: RulesetCellChoice,
+): Set<string> {
   const aims = cell?.at ? [cell.at, ...(cell.also ?? [])] : [];
-  const aimed = aims.map((at) => step.option.aim?.find((one) => one.x === at.x && one.y === at.y));
-  const caught = new Set(
+  const aimed = aims.map((at) => option.aim?.find((one) => one.x === at.x && one.y === at.y));
+  return new Set(
     aims.length === 0
       ? targets
       : aimed.every((one) => one)
         ? aimed.flatMap((one) => one!.targetIds)
         : view.combatants.map((combatant) => combatant.id),
   );
+}
+
+/**
+ * Who an alteration it is used with could give disadvantage on their first save (1.250): Heightened
+ * Spell. Null when there is nothing to pick: none heightens, or it catches one at most besides its
+ * user.
+ */
+export function rulesetHeightenPick(
+  view: DirectedRulesetView,
+  step: Pick<RulesetMenuStep, "option" | "alters">,
+  targets: string[],
+  cell?: RulesetCellChoice,
+): { ids: string[] } | null {
+  const heightens = (step.alters ?? []).some((id) => step.option.alters?.find((offer) => offer.id === id)?.heightens);
+  const user = rulesetMenuUser(view);
+  if (!heightens || !user) return null;
+  const caught = rulesetCaught(view, step.option, targets, cell);
   const ids = view.combatants
-    .filter((combatant) => combatant.side === user.side && caught.has(combatant.id))
+    .filter((combatant) => combatant.id !== user.id && caught.has(combatant.id))
     .map((combatant) => combatant.id);
-  return ids.length > most ? { ids, most } : null;
+  return ids.length > 1 ? { ids } : null;
+}
+
+/**
+ * The step a use goes to once it is aimed or pointed, before it is sent (1.249, 1.250): who it
+ * spares, then who it heightens. Null when there is nothing left to pick and it is sent.
+ */
+export function rulesetPicksStep(
+  view: DirectedRulesetView,
+  step: RulesetMenuStep,
+  targets: string[],
+  cell?: RulesetCellChoice,
+): RulesetMenuStep | null {
+  const held = { ...step, targets, ...(cell ? { cell } : {}) };
+  if (step.spared === undefined) {
+    const spare = rulesetSparePick(view, step, targets, cell);
+    if (spare) return { ...held, stage: "spare", spare };
+  }
+  const heighten = rulesetHeightenPick(view, step, targets, cell);
+  if (heighten) return { ...held, stage: "heighten", heighten };
+  return null;
 }
 
 /** What is sent for an option that takes no picking: whoever it is already pointed at. */

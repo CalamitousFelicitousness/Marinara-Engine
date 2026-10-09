@@ -1405,6 +1405,7 @@
   "game.combat.ruleset.group.reload": "Reload",
   "game.combat.ruleset.group.standard": "Standard actions",
   "game.combat.ruleset.group.switch": "Switches",
+  "game.combat.ruleset.heighten.prompt": "Who rolls their first save against {{label}} at a disadvantage?",
   "game.combat.ruleset.log.title": "What happened",
   "game.combat.ruleset.menu.cancelSave": "Cancel on a successful {{save}} save against {{dc}}",
   "game.combat.ruleset.menu.endTurn": "End turn",

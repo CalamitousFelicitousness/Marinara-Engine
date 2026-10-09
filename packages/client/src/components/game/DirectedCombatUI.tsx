@@ -114,6 +114,7 @@ export function DirectedCombatUI(props: Props) {
     amount?: number,
     alters?: string[],
     spares?: string[],
+    heightens?: string,
   ) =>
     send({
       type: "ruleset",
@@ -132,6 +133,7 @@ export function DirectedCombatUI(props: Props) {
       ...(amount !== undefined ? { amount } : {}),
       ...(alters?.length ? { alters } : {}),
       ...(alters?.length && spares ? { spares } : {}),
+      ...(alters?.length && heightens ? { heightens } : {}),
     });
   return (
     <div className="flex h-full min-h-0 flex-col">

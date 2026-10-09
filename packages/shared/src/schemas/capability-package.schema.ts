@@ -1024,7 +1024,10 @@ const capabilityPackageManifestBaseSchema = z
 //        `alters`, and the `altered` event.
 // 1.249: Empowered rerolls the lowest of all a blow's damage dice (its clauses' and a critical's
 //        too); the alter offer's `spares` and the choice's `spares` (who Careful Spell spares).
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 249 } as const);
+// 1.250: catalog mechanics' `halfOnMiss` (a miss deals half: Acid Arrow), an applied condition's
+//        `harmsPerCostStep` (its harm grows with the cost it was put on at), and the alter offer's
+//        `heightens` with the choice's `heightens` (who Heightened Spell picks).
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 250 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

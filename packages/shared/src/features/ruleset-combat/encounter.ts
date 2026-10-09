@@ -2020,6 +2020,8 @@ function mechanicsAction(
   // Leaving `toHit` unset here would send it down the no-roll path and land it automatically.
   if (mechanics.attackRoll) action.toHit = from.toHit;
   if (mechanics.autoHit) action.autoHit = true;
+  // Half its damage on a miss (1.250): Acid Arrow.
+  if (mechanics.halfOnMiss && mechanics.attackRoll) action.halfOnMiss = true;
   if (mechanics.needs) action.needs = [...mechanics.needs];
   if (mechanics.seen) action.seen = true;
   if (mechanics.components) action.components = [...mechanics.components];

@@ -48,7 +48,7 @@ import {
 import {
   rulesetPickTarget,
   rulesetSendsOnPick,
-  rulesetSparePick,
+  rulesetPicksStep,
   type RulesetMenuStep,
 } from "../../lib/ruleset-combat-menu";
 import { RulesetCombatMenu } from "./RulesetCombatMenu";
@@ -76,6 +76,7 @@ export interface RulesetCombatBoardProps {
     amount?: number,
     alters?: string[],
     spares?: string[],
+    heightens?: string,
   ) => void;
   onFlee: () => void;
   /** The per-member manual and automatic toggles, built by the caller so this file stays about the
@@ -173,10 +174,11 @@ export function RulesetCombatBoard({
         setStep({ ...step, lay: taken.lay });
         return;
       }
-      // Who of its user's side it spares is picked in the menu first, where there is a pick (1.249).
-      const spare = rulesetSparePick(view, step, [], taken.send);
-      if (spare) {
-        setStep({ ...step, stage: "spare", targets: [], cell: taken.send, spare });
+      // Who it spares and who it heightens are picked in the menu first, where there is a pick
+      // (1.249, 1.250).
+      const picks = rulesetPicksStep(view, step, [], taken.send);
+      if (picks) {
+        setStep(picks);
         return;
       }
       setStep(null);

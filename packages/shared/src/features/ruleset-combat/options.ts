@@ -2106,9 +2106,10 @@ export function rulesetAlterFits(alter: RulesetCombatAlter, action: RulesetComba
 export function rulesetAlteredAction(
   action: RulesetCombatAction,
   alters: RulesetCombatAction[],
-  /** Who of its user's side it spares, where they were picked (1.249). */
-  spared?: string[],
+  /** Who of its user's side it spares (1.249), and who it heightens (1.250), where they were picked. */
+  picks: { spared?: string[]; heightened?: string } = {},
 ): RulesetCombatAction {
+  const { spared, heightened } = picks;
   let out: RulesetCombatAction = { ...action };
   const altered: NonNullable<RulesetCombatAction["altered"]> = { ...(action.altered ?? {}) };
   for (const one of alters) {
@@ -2145,6 +2146,7 @@ export function rulesetAlteredAction(
     if (alter.heightens) altered.heightens = true;
   }
   if (spared && altered.spares) altered.spared = spared.slice(0, altered.spares);
+  if (heightened !== undefined && altered.heightens) altered.heightened = heightened;
   if (Object.keys(altered).length > 0) out = { ...out, altered };
   out.alteredWith = [...(action.alteredWith ?? []), ...alters.map((one) => one.id)];
   return out;
@@ -2193,6 +2195,7 @@ export function rulesetAlterOffers(
         ...(alter.joins ? { joins: true as const } : {}),
         ...(alter.budget ? { budget: alter.budget.to } : {}),
         ...(alter.spares ? { spares: alter.spares } : {}),
+        ...(alter.heightens ? { heightens: true as const } : {}),
       },
     ];
   });

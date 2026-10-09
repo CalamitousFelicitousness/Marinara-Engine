@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: Heightened Spell lets the caster pick which target rolls at a disadvantage, and Acid Arrow splashes for half damage on a miss, with its later acid growing with the slot level (Capability API 1.250).
 - Rulesets: Empowered Spell rerolls the lowest of all the spell's damage dice, extra damage and critical dice included, and Careful Spell lets the caster pick which allies are spared; Metamagic picks are also kept when an area spell is aimed on the board (Capability API 1.249).
 - Rulesets: an ability that spends another feature's uses (such as Flurry of Blows spending ki) now pays its own price and that one counter only, not the other feature's cost or its other counters.
 - Rulesets: sorcerers' Metamagic (Careful, Distant, Empowered, Extended, Heightened, Quickened, Subtle and Twinned Spell) is chosen as a spell is cast and paid for with Sorcery Points (Capability API 1.248).

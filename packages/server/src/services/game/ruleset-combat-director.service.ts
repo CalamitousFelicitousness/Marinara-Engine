@@ -1939,6 +1939,7 @@ export function commandRulesetCombatDirector(
       ...(command.amount !== undefined ? { amount: command.amount } : {}),
       ...(command.alters?.length ? { alters: command.alters } : {}),
       ...(command.spares ? { spares: command.spares } : {}),
+      ...(command.heightens ? { heightens: command.heightens } : {}),
     });
     if (step.refused && step.refused.type === "refused") {
       return refuse(rulesetRefusalMessage(step.refused.reason), `ruleset_combat_${step.refused.reason}`);

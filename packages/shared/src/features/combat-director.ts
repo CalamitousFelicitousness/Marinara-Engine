@@ -69,6 +69,8 @@ export type DirectedCommand =
       alters?: string[];
       /** Who of its user's side an alteration that spares some spares (1.249): Careful Spell. */
       spares?: string[];
+      /** Who an alteration that heightens gives disadvantage (1.250): Heightened Spell. */
+      heightens?: string;
     }
   | { type: "choose"; candidateId: string }
   | { type: "continue" }

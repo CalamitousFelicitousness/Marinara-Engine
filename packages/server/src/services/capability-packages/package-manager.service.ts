@@ -1547,6 +1547,18 @@ function carriesMetamagic(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesMetamagic(one, depth + 1));
 }
 
+/** A miss dealing half (1.250), or a condition put on harming more at a higher cost, in catalogs too. */
+function carriesAcidArrow(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesAcidArrow(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.harmsPerCostStep !== undefined) return true;
+  const mechanics = plainRecord(record.mechanics);
+  if (mechanics && mechanics.halfOnMiss !== undefined) return true;
+  return Object.values(record).some((one) => carriesAcidArrow(one, depth + 1));
+}
+
 /** An entry giving back to a pool, past its maximum or not (1.247), in catalogs too. An item's
  *  `use.restore` is older and is not this. */
 function carriesFontOfMagic(value: unknown, depth = 0): boolean {
@@ -3447,6 +3459,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // A miss dealing half, or a condition harming more at a higher cost, 1.250.
+  if (
+    !declaresApi(250) &&
+    (carriesAcidArrow(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesAcidArrow(document)))
+  ) {
+    return "A ruleset with entries dealing half on a miss, or conditions harming more at a higher cost, requires schemaVersion 2 and capabilityApi 1.250 or newer";
   }
   // An entry changing how another is used, 1.248.
   if (

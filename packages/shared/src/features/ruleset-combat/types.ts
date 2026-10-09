@@ -105,6 +105,8 @@ export interface RulesetCombatApplies {
   targetIs?: RulesetTargetIs;
   /** It ends whenever this other condition put on with it ends (1.197). */
   endsWith?: string;
+  /** More of what the condition harms with for each step of a higher cost it was put on with (1.250). */
+  harmsPerCostStep?: { dice?: string; flat?: number };
 }
 
 /** A value read off a sheet and the bounds it must stand within: one bound or both. */
@@ -522,7 +524,17 @@ export interface RulesetCombatAction {
   /** Its price in uses is the level the action it alters is paid at, at least one (1.248). */
   usesSpentByLevel?: true;
   /** What the alterations it was used with left on it to do as it resolves (1.248). */
-  altered?: { spares?: number; spared?: string[]; rerolls?: number; heightens?: true; subtle?: true };
+  altered?: {
+    spares?: number;
+    spared?: string[];
+    rerolls?: number;
+    heightens?: true;
+    /** Who Heightened gives disadvantage, as its user picked them (1.250). */
+    heightened?: string;
+    subtle?: true;
+  };
+  /** A miss deals half its damage, and nothing else it does on a hit (1.250). */
+  halfOnMiss?: true;
   /** The alterations already set on it (1.248), so they are never set twice. */
   alteredWith?: string[];
   /** The tags of the held weapon it is made with (1.241), for what comes after the attack action. */
@@ -844,6 +856,9 @@ export interface RulesetTrackedCondition {
   endsWith?: string;
   /** How many times it is on, where the condition stacks (1.184). */
   stacks?: number;
+  /** What it harms with on top of the condition's own, from the higher cost it was put on with
+   *  (1.250): Acid Arrow's extra 1d4 a slot level. */
+  harmsMore?: RulesetCombatAmount;
 }
 
 export interface RulesetCombatant {
@@ -1240,6 +1255,8 @@ export interface RulesetActionResume {
   alters?: string[];
   /** Who of its user's side it spares, as they were picked (1.249). */
   spares?: string[];
+  /** Who Heightened gives disadvantage, as they were picked (1.250). */
+  heightens?: string;
 }
 
 /** Once the attack action has been taken this turn, with anything or with one of `names` (1.237). */
@@ -1837,6 +1854,9 @@ export interface RulesetCombatAlterOffer {
   budget?: string;
   /** How many of its user's side it catches it may spare (Careful), each picked by `spares` (1.249). */
   spares?: number;
+  /** It gives one it catches disadvantage on their first save (Heightened), picked by `heightens`
+   *  (1.250). */
+  heightens?: true;
 }
 
 export interface RulesetCombatOption {
@@ -1980,6 +2000,9 @@ export interface RulesetCombatChoice {
   /** Who of its user's side an alteration that spares some (Careful) spares (1.249): no more than
    *  its offer's `spares`, each one it catches. Left out, the first it catches. */
   spares?: string[];
+  /** Who an alteration that heightens (Heightened) gives disadvantage on their first save (1.250):
+   *  one it catches. Left out, the first it catches. */
+  heightens?: string;
 }
 
 export interface RulesetCombatStep {

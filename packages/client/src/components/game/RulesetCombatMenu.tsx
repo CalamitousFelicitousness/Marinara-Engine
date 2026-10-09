@@ -23,7 +23,7 @@ import {
 } from "../../lib/ruleset-combat-board";
 import {
   rulesetDefaultTargets,
-  rulesetSparePick,
+  rulesetPicksStep,
   rulesetMenuGroups,
   rulesetOptionCostText,
   rulesetModeText,
@@ -62,6 +62,8 @@ export interface RulesetCombatMenuProps {
     alters?: string[],
     /** Who of its user's side they spare (1.249): Careful Spell. */
     spares?: string[],
+    /** Who they give disadvantage on their first save (1.250): Heightened Spell. */
+    heightens?: string,
   ) => void;
   /** Walking away. The ruleset's menu never carries it, because leaving is not a thing the rules
    *  resolve: it is the director ending the session, exactly as the other two styles end it. */
@@ -113,6 +115,11 @@ export function RulesetCombatMenu({
   // of them missing the menu keeps its own, or a pick would be handed up and never come back down.
   const held = onStepChange !== undefined && heldStep !== undefined;
   const step = held ? heldStep : ownStep;
+  // Opened here or on the board, the spare step starts with as many ticked as it spares, in order.
+  const spareOpen = step?.stage === "spare" ? step.spare : undefined;
+  useEffect(() => {
+    if (spareOpen) setSparesPicked(spareOpen.ids.slice(0, spareOpen.most));
+  }, [spareOpen]);
   // Stable whatever the owner passes, so the turn reset below runs when the turn moves and never
   // because a parent handed down a fresh function.
   const stepChange = useRef(held ? onStepChange : undefined);
@@ -158,6 +165,7 @@ export function RulesetCombatMenu({
       stepStage === "mode" ||
       stepStage === "alter" ||
       stepStage === "spare" ||
+      stepStage === "heighten" ||
       stepStage === "pay" ||
       stepStage === "amount" ||
       stepStage === "target"
@@ -192,20 +200,33 @@ export function RulesetCombatMenu({
     amount: number | undefined = step?.amount,
     alters: string[] | undefined = step?.alters,
   ) => {
-    if (spareFirst({ option, targets, payWith, style, mode, amount, alters })) return;
+    if (picksFirst({ stage: "target", option, targets, payWith, style, mode, amount, alters })) return;
     closeStep();
     onChoose(option.id, targets, payWith, undefined, style, mode, amount, alters);
   };
-  /** Who it spares is picked before it is sent, where its alterations spare more of its user's side
-   *  than they can (1.249). True when that step was opened. */
-  const spareFirst = (
-    held: Pick<RulesetMenuStep, "option" | "targets" | "payWith" | "style" | "mode" | "amount" | "alters" | "cell">,
-  ): boolean => {
-    const spare = rulesetSparePick(view, held, held.targets, held.cell);
-    if (!spare) return false;
-    setSparesPicked(spare.ids.slice(0, spare.most));
-    setStep({ ...held, stage: "spare", spare });
+  /** Who it spares and who it heightens are picked before it is sent, where there is a pick to make
+   *  (1.249, 1.250). True when that step was opened. */
+  const picksFirst = (held: RulesetMenuStep): boolean => {
+    const next = rulesetPicksStep(view, held, held.targets, held.cell);
+    if (!next) return false;
+    setStep(next);
     return true;
+  };
+  /** Sent with what was picked for it. */
+  const sendPicked = (held: RulesetMenuStep, heightens?: string) => {
+    closeStep();
+    onChoose(
+      held.option.id,
+      held.targets,
+      held.payWith,
+      held.cell,
+      held.style,
+      held.mode,
+      held.amount,
+      held.alters,
+      held.spared,
+      heightens,
+    );
   };
   /** Which picking step this option opens, or null for one that is simply sent. On a board, a walk
    *  and a shape are picked on the board; everything else is the list below. */
@@ -498,18 +519,8 @@ export function RulesetCombatMenu({
             type="button"
             disabled={busy}
             onClick={() => {
-              closeStep();
-              onChoose(
-                step.option.id,
-                step.targets,
-                step.payWith,
-                step.cell,
-                step.style,
-                step.mode,
-                step.amount,
-                step.alters,
-                sparesPicked,
-              );
+              const picked = { ...step, spared: sparesPicked };
+              if (!picksFirst(picked)) sendPicked(picked);
             }}
             className={cn(buttonClass, "border-[var(--primary)]/50 bg-[var(--primary)]/20 text-white")}
           >
@@ -517,6 +528,40 @@ export function RulesetCombatMenu({
               ? t("game.combat.ruleset.spare.confirm", { count: sparesPicked.length })
               : t("game.combat.ruleset.spare.none")}
           </button>
+        </div>
+        <BackButton onClick={closeStep} label={t("game.combat.ruleset.target.back")} />
+      </div>
+    );
+  }
+
+  // ── Who it gives disadvantage on their first save (1.250): Heightened Spell ──
+  if (step?.stage === "heighten" && step.heighten) {
+    return (
+      <div className="flex flex-col gap-2 p-3">
+        <p className="text-xs text-white/60" id="ruleset-heighten-prompt">
+          {t("game.combat.ruleset.heighten.prompt", { label: rulesetOptionLabel(step.option, t) })}
+        </p>
+        <div className="flex flex-wrap gap-2" role="group" aria-labelledby="ruleset-heighten-prompt">
+          {step.heighten.ids.map((id, index) => {
+            const combatant = view.combatants.find((one) => one.id === id);
+            return (
+              <button
+                ref={index === 0 ? first : undefined}
+                key={id}
+                type="button"
+                disabled={busy}
+                onClick={() => sendPicked(step, id)}
+                className={cn(
+                  buttonClass,
+                  combatant?.side === "enemy"
+                    ? "border-amber-400/30 bg-amber-500/10 text-white/85 hover:bg-amber-500/20"
+                    : "border-blue-400/30 bg-blue-500/10 text-white/85 hover:bg-blue-500/20",
+                )}
+              >
+                <span className="block font-semibold">{combatant?.name ?? id}</span>
+              </button>
+            );
+          })}
         </div>
         <BackButton onClick={closeStep} label={t("game.combat.ruleset.target.back")} />
       </div>
@@ -631,7 +676,7 @@ export function RulesetCombatMenu({
     const sendLaid = () => {
       const laid = rulesetAimSoFar(lay);
       if (!laid) return;
-      if (spareFirst({ ...step, targets: [], cell: laid })) return;
+      if (picksFirst({ ...step, targets: [], cell: laid })) return;
       closeStep();
       onChoose(option.id, [], step.payWith, laid, step.style, step.mode, step.amount, step.alters);
     };

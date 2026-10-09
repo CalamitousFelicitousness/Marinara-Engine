@@ -2218,6 +2218,7 @@ export interface RulesetCatalogApplies {
   when?: z.infer<ReturnType<typeof sheetBoundsSchema>>;
   targetIs?: RulesetTargetIs;
   endsWith?: string;
+  harmsPerCostStep?: { dice?: string; flat?: number };
 }
 
 const catalogAppliesSchema: z.ZodType<RulesetCatalogApplies, z.ZodTypeDef, unknown> = z
@@ -2262,6 +2263,15 @@ const catalogAppliesSchema: z.ZodType<RulesetCatalogApplies, z.ZodTypeDef, unkno
      *  ends on its holder, however that ends (Capability API 1.197): 5e's Hypnotic Pattern, whose
      *  incapacitation lasts only as long as its charm. */
     endsWith: sheetId.optional(),
+    /** More of what the condition `harms` with for each step of a higher cost it was put on with
+     *  (Capability API 1.250): 5e's Acid Arrow, whose later acid grows by 1d4 a slot level. */
+    harmsPerCostStep: z
+      .object(catalogAmountShape)
+      .strict()
+      .refine((amount) => amount.dice !== undefined || (amount.flat ?? 0) > 0, {
+        message: '"harmsPerCostStep" names dice, a flat amount, or both',
+      })
+      .optional(),
   })
   .strict()
   .superRefine((applies, ctx) => {
@@ -2357,6 +2367,7 @@ const RIDER_ENTRY_FORBIDS = [
   "damageType",
   "plus",
   "attackRoll",
+  "halfOnMiss",
   "save",
   "cost",
   "perCostStep",
@@ -2715,6 +2726,9 @@ const catalogMechanicsObject = z
      *  "from nonmagical attacks" does not halve it. */
     qualities: z.array(sheetId).min(1).max(8).optional(),
     attackRoll: z.boolean().optional(),
+    /** A miss still deals half its damage (Capability API 1.250), and nothing else it does on a hit:
+     *  5e's Acid Arrow. Only on an entry that rolls to hit and deals damage. */
+    halfOnMiss: z.literal(true).optional(),
     /** `ignoresCover` (Capability API 1.69): the target gains nothing from cover on this save, as a
      *  spell whose text says so (5e's Sacred Flame). */
     save: z
@@ -3138,6 +3152,13 @@ const catalogMechanicsSchema: z.ZodType<
         message: '"alters" is on a "utility" entry that is no reaction: it is chosen with what it changes',
       });
     }
+  }
+  if (mechanics.halfOnMiss && (!mechanics.attackRoll || !mechanics.amount || mechanics.kind === "heal")) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["halfOnMiss"],
+      message: '"halfOnMiss" is on an entry that rolls to hit ("attackRoll") and deals an "amount"',
+    });
   }
   if (mechanics.usesSpentByLevel && (!mechanics.alters || mechanics.usesSpent !== undefined)) {
     ctx.addIssue({

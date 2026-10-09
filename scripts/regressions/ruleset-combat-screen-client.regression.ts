@@ -80,6 +80,8 @@ import {
   rulesetOptionNeedsTargets,
   rulesetPickTarget,
   rulesetSendsOnPick,
+  rulesetHeightenPick,
+  rulesetPicksStep,
   rulesetSparePick,
   type RulesetMenuStep,
 } from "../../packages/client/src/lib/ruleset-combat-menu.js";
@@ -1330,6 +1332,47 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     "ally",
     "p1",
   ]);
+}
+
+// ── Who Heightened Spell heightens is picked when it catches more than one (1.250), after who is spared ──
+{
+  const view = {
+    actorId: "sorc",
+    combatants: [
+      { id: "sorc", side: "party" },
+      { id: "ally", side: "party" },
+      { id: "p1", side: "party" },
+      { id: "foe", side: "enemy" },
+    ],
+  } as unknown as DirectedRulesetView;
+  const option = {
+    alters: [
+      { id: "careful", label: "Careful Spell", cost: 1, spares: 1 },
+      { id: "heightened", label: "Heightened Spell", cost: 3, heightens: true },
+    ],
+    aim: [
+      { x: 5, y: 5, targetIds: ["ally", "p1", "foe"] },
+      { x: 9, y: 9, targetIds: ["sorc", "foe"] },
+    ],
+  } as unknown as DirectedRulesetOption;
+  const at = { at: { x: 5, y: 5 } };
+  assert.deepEqual(rulesetHeightenPick(view, { option, alters: ["heightened"] }, [], at), {
+    ids: ["ally", "p1", "foe"],
+  });
+  assert.equal(
+    rulesetHeightenPick(view, { option, alters: ["heightened"] }, [], { at: { x: 9, y: 9 } }),
+    null,
+    "only one besides its user: nothing to pick",
+  );
+  assert.equal(rulesetHeightenPick(view, { option, alters: ["careful"] }, [], at), null);
+  const step: RulesetMenuStep = { stage: "aim", option, alters: ["careful", "heightened"], targets: [] };
+  const spare = rulesetPicksStep(view, step, [], at);
+  assert.equal(spare?.stage, "spare", "who is spared first");
+  assert.deepEqual(spare?.cell, at);
+  const heighten = rulesetPicksStep(view, { ...spare!, spared: ["p1"] }, [], at);
+  assert.equal(heighten?.stage, "heighten", "then who is heightened");
+  assert.deepEqual(heighten?.spared, ["p1"]);
+  assert.equal(rulesetPicksStep(view, { ...step, alters: [] }, [], at), null, "nothing to pick, it is sent");
 }
 
 // ── When a fight is the ruleset's own ──

@@ -1466,7 +1466,14 @@ function applyConditionId(
   target: RulesetCombatant,
   condition: string,
   applies: RulesetCombatApplies,
-  extra: { sourceId?: string; difficulty?: number; concentration?: boolean; action?: readonly string[] } = {},
+  extra: {
+    sourceId?: string;
+    difficulty?: number;
+    concentration?: boolean;
+    action?: readonly string[];
+    /** What it harms with on top of the condition's own (1.250). */
+    harmsMore?: RulesetCombatAmount;
+  } = {},
 ): void {
   const putter = extra.sourceId ? rulesetCombatant(ctx.state, extra.sourceId) : undefined;
   if (rulesetImmuneToCondition(target, condition, ctx.definition, ctx.state, putter)) {
@@ -1527,6 +1534,7 @@ function applyConditionId(
       : {}),
     ...(stacks !== undefined ? { stacks } : {}),
     ...(applies.endsWith ? { endsWith: applies.endsWith } : {}),
+    ...(extra.harmsMore ? { harmsMore: { ...extra.harmsMore } } : {}),
   });
   ctx.events.push(
     stacks !== undefined
@@ -1773,6 +1781,16 @@ function tickConditionsNow(ctx: RulesetCombatContext, actor: RulesetCombatant, a
   }
 }
 
+/** A condition's growth per step of a higher cost, over so many steps (1.250). */
+function harmsPerSteps(per: { dice?: string; flat?: number }, steps: number): RulesetCombatAmount {
+  const dice = per.dice ? parseRulesetCombatDice(per.dice) : null;
+  return {
+    count: (dice?.count ?? 0) * steps,
+    sides: dice?.sides ?? 0,
+    flat: ((dice?.flat ?? 0) + (per.flat ?? 0)) * steps,
+  };
+}
+
 /** A condition's own harm as a turn starts or ends (1.184), from whoever put it on. */
 function harmFromCondition(
   ctx: RulesetCombatContext,
@@ -1782,7 +1800,7 @@ function harmFromCondition(
 ): void {
   const harms = ctx.combat.conditions?.find((one) => one.condition === entry.condition)?.harms;
   if (!harms || harms.at !== at || holder.defeated) return;
-  conditionHarm(ctx, holder, entry.condition, entry.source, harms, entry.stacks ?? 1);
+  conditionHarm(ctx, holder, entry.condition, entry.source, harms, entry.stacks ?? 1, entry.harmsMore);
 }
 
 /** What a condition deals its holder, from whoever put it on: as a turn starts or ends (1.184), or
@@ -1794,19 +1812,32 @@ function conditionHarm(
   source: string | undefined,
   harms: { dice?: string; flat?: number; type?: string; healedOnlyByRest?: true },
   times: number,
+  /** On top of its own, from the higher cost it was put on with (1.250), as many times over. */
+  more?: RulesetCombatAmount,
 ): void {
   const dice = harms.dice ? parseRulesetCombatDice(harms.dice) : null;
   const amount = {
     count: (dice?.count ?? 0) * times,
     sides: dice?.sides ?? 0,
-    flat: ((dice?.flat ?? 0) + (harms.flat ?? 0)) * times,
+    flat: ((dice?.flat ?? 0) + (harms.flat ?? 0) + (more?.flat ?? 0)) * times,
   };
+  // Dice of the same size are one throw; dice of another size are thrown beside them.
+  const sameSides = !!more && (more.sides === amount.sides || amount.count === 0);
+  if (more && sameSides) {
+    amount.count += more.count * times;
+    amount.sides = more.count > 0 ? more.sides : amount.sides;
+  }
+  const beside = more && !sameSides && more.count > 0 ? { count: more.count * times, sides: more.sides } : null;
   const harm = rulesetCombatIsPool(ctx.combat)
     ? (({ rolls, flat, total, pool }) => ({ rolls, flat, amount: total, pool }))(
-        throwHarm(ctx, holder, amount, harms.type, 0),
+        // A pool throws a number of dice, whatever their size.
+        throwHarm(ctx, holder, { ...amount, count: amount.count + (beside?.count ?? 0) }, harms.type, 0),
       )
     : (() => {
-        const rolls = rollRulesetDice(ctx.roll, amount.count, amount.sides);
+        const rolls = [
+          ...rollRulesetDice(ctx.roll, amount.count, amount.sides),
+          ...(beside ? rollRulesetDice(ctx.roll, beside.count, beside.sides) : []),
+        ];
         return { rolls, flat: amount.flat, amount: sumOf(rolls) + amount.flat };
       })();
   const label = ctx.definition.sheet.live.conditions.find((one) => one.id === condition)?.label ?? condition;
@@ -2644,8 +2675,10 @@ export function applyRulesetCombatChoice(
   roller: RulesetCombatRoller,
 ): RulesetCombatStep {
   if (choice.alters === undefined || (Array.isArray(choice.alters) && choice.alters.length === 0)) {
-    // Who it spares is for an alteration that spares some (1.249), which it is not used with.
-    if (choice.spares !== undefined) return refusal(state, choice.actorId, "bad-alter", choice.optionId);
+    // Who it spares or heightens is for an alteration that does (1.249, 1.250), which it is not used with.
+    if (choice.spares !== undefined || choice.heightens !== undefined) {
+      return refusal(state, choice.actorId, "bad-alter", choice.optionId);
+    }
     const { alters: _none, ...plain } = choice;
     return applyChoice(definition, state, plain, roller);
   }
@@ -2686,9 +2719,23 @@ export function applyRulesetCombatChoice(
       return refusal(state, choice.actorId, "bad-alter", choice.optionId);
     }
   }
-  const view = withRulesetAction(state, actor.id, rulesetAlteredAction(own, chosen, spares));
-  const { alters: _ids, spares: _spared, ...plain } = choice;
-  const step = applyChoice(definition, view, plain, roller, chosen, spares);
+  // Who it heightens (1.250): only with an alteration that heightens, one combatant other than its
+  // user, and one of those it is pointed at where it is pointed at some.
+  const heightens = choice.heightens;
+  if (
+    heightens !== undefined &&
+    (!chosen.some((alter) => alter.alters!.heightens) ||
+      typeof heightens !== "string" ||
+      heightens === actor.id ||
+      !rulesetCombatant(state, heightens) ||
+      (choice.targetIds.length > 0 && !choice.targetIds.includes(heightens)))
+  ) {
+    return refusal(state, choice.actorId, "bad-alter", choice.optionId);
+  }
+  const picks = { ...(spares ? { spared: spares } : {}), ...(heightens ? { heightened: heightens } : {}) };
+  const view = withRulesetAction(state, actor.id, rulesetAlteredAction(own, chosen, picks));
+  const { alters: _ids, spares: _spared, heightens: _heightened, ...plain } = choice;
+  const step = applyChoice(definition, view, plain, roller, chosen, picks);
   // Refused, nothing moved: the fight as it was handed in.
   if (step.state === view) return { ...step, state };
   return { ...step, state: withRulesetAction(step.state, actor.id, own) };
@@ -2719,6 +2766,7 @@ function rulesetResumedAction(
   action: RulesetCombatAction,
   alters: string[] | undefined,
   spares?: string[],
+  heightens?: string,
 ): RulesetCombatAction {
   // Already set on it, as it is while the step that used it runs.
   if (!alters?.length || action.alteredWith) return action;
@@ -2726,7 +2774,10 @@ function rulesetResumedAction(
     const alter = actor.actions.find((entry) => entry.id === id);
     return alter?.alters ? [alter] : [];
   });
-  return rulesetAlteredAction(action, found, spares);
+  return rulesetAlteredAction(action, found, {
+    ...(spares ? { spared: spares } : {}),
+    ...(heightens ? { heightened: heightens } : {}),
+  });
 }
 
 function applyChoice(
@@ -2736,8 +2787,9 @@ function applyChoice(
   roller: RulesetCombatRoller,
   /** The alterations it is used with, already set on the action (1.248), to pay for now. */
   alters?: RulesetCombatAction[],
-  /** Who of its user's side they spare (1.249), already set on the action. */
-  spares?: string[],
+  /** Who of its user's side they spare (1.249) and who they heightened (1.250), already set on the
+   *  action. */
+  picks: { spared?: string[]; heightened?: string } = {},
 ): RulesetCombatStep {
   const combat = definition.combat;
   if (!combat) return refusal(state, choice.actorId, "encounter-over", choice.optionId);
@@ -3152,7 +3204,8 @@ function applyChoice(
     ...(budget ? { budget } : {}),
     ...(amount !== undefined ? { amount } : {}),
     ...(alters?.length ? { alters: alters.map((alter) => alter.id) } : {}),
-    ...(alters?.length && spares ? { spares: [...spares] } : {}),
+    ...(alters?.length && picks.spared ? { spares: [...picks.spared] } : {}),
+    ...(alters?.length && picks.heightened ? { heightens: picks.heightened } : {}),
   };
   // A condition that slows what its holder uses (1.115) may hold it over to their next turn.
   if (budget && delayRoll(ctx, working, action, budget)) {
@@ -3367,7 +3420,7 @@ function completeDelayed(ctx: RulesetCombatContext, actor: RulesetCombatant): vo
   delete actor.delayed;
   const { label, budget, ...resume } = delayed;
   const found = actor.actions.find((entry) => entry.id === resume.optionId);
-  const action = found && rulesetResumedAction(actor, found, resume.alters, resume.spares);
+  const action = found && rulesetResumedAction(actor, found, resume.alters, resume.spares, resume.heightens);
   const effects = rulesetCombatEffects(ctx.definition, ctx.combat, actor, ctx.state);
   if (!action || !rulesetCombatStanding(actor) || effects.has("cannot-act") || (actor.budgets[budget] ?? 0) < 1) {
     ctx.events.push({ type: "delay", actorId: actor.id, label, outcome: "lost" });
@@ -4520,7 +4573,8 @@ function resumeAction(ctx: RulesetCombatContext, resume: RulesetActionResume): v
   const own = found && rulesetActionAsUsed(found);
   // Picked up in the mode it was made in, and with what it was altered with (1.248).
   const moded = own && resume.mode ? (rulesetModedAction(ctx.definition, own, resume.mode) ?? own) : own;
-  let action = actor && moded ? rulesetResumedAction(actor, moded, resume.alters, resume.spares) : moded;
+  let action =
+    actor && moded ? rulesetResumedAction(actor, moded, resume.alters, resume.spares, resume.heightens) : moded;
   if (!actor || !action) return;
   if (resume.cancelled || !rulesetCombatStanding(actor)) {
     // A spell called off was cast all the same (1.175).
@@ -5495,7 +5549,8 @@ function resolveActionBody(
           .map((target) => target.id)
       : [],
   );
-  const heightened = action.altered?.heightens ? targets[0]?.id : undefined;
+  // Picked (1.250), it is theirs whether or not they come first; one it does not catch has nothing.
+  const heightened = action.altered?.heightens ? (action.altered.heightened ?? targets[0]?.id) : undefined;
   // One roller per clause, read the same way: an ability that lands on several targets without
   // rolling to hit rolls every clause once and everybody takes those numbers.
   const clauses = (action.damage?.plus ?? []).map((clause, index) =>
@@ -5783,6 +5838,33 @@ function resolveActionBody(
       }
     }
     if (!landed) {
+      // Half its damage on a miss, and nothing else it does on a hit (1.250): Acid Arrow.
+      if (action.halfOnMiss && action.damage && damage) {
+        const blow = action.damage;
+        const missed = [
+          { rolled: damage(), type: blow.type },
+          ...(blow.plus ?? []).flatMap((clause, index) =>
+            clause.onCritical ||
+            (clause.whileOn !== undefined && !rulesetItemOn(actor, clause.whileOn)) ||
+            !clauseReaches(ctx, actor, target, action, clause)
+              ? []
+              : [{ rolled: clauses[index]!(), type: clause.type ?? blow.type }],
+          ),
+        ];
+        for (const part of missed) {
+          if (target.defeated) break;
+          const dealt = applyDamage(ctx, target, {
+            sourceId: actor.id,
+            label: action.label,
+            ...(part.type ? { damageType: part.type } : {}),
+            rolls: part.rolled.rolls,
+            flat: part.rolled.flat,
+            amount: Math.floor(part.rolled.total / 2),
+            saved: true,
+          });
+          afterBlow(ctx, target, dealt, false);
+        }
+      }
       spendUsed();
       continue;
     }
@@ -6319,6 +6401,10 @@ function resolveActionBody(
         if (!rulesetSheetWithin(ctx.definition, actor, applies.when)) continue;
         if (!rulesetTargetIs(ctx.definition, target, applies.targetIs)) continue;
         applyConditionId(ctx, target, applies.condition, applies, {
+          // What it harms with grows with the higher cost it was put on with (1.250): Acid Arrow.
+          ...(applies.harmsPerCostStep && steps > 0
+            ? { harmsMore: harmsPerSteps(applies.harmsPerCostStep, steps) }
+            : {}),
           sourceId: actor.id,
           action: against.action,
           // The action's own save when it has one, otherwise what its source says saves are rolled

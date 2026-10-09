@@ -147,7 +147,7 @@ export function AppDialogRenderer() {
                     key={choice.key}
                     type="button"
                     onClick={() => resolveActiveDialog(choice.key)}
-                    className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-[var(--foreground)] ring-1 ring-[var(--border)] transition-colors hover:bg-[var(--accent)]"
+                    className="flex w-full items-center gap-3 rounded-lg border border-[var(--border)] px-3 py-2 text-left text-[var(--foreground)] transition-colors hover:bg-[var(--accent)]"
                   >
                     {choice.avatar.url ? (
                       <span className="relative block h-9 w-9 shrink-0 overflow-hidden rounded-full">
@@ -160,7 +160,10 @@ export function AppDialogRenderer() {
                         />
                       </span>
                     ) : (
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] text-xs font-bold">
+                      <span
+                        aria-hidden="true"
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] text-xs font-bold"
+                      >
                         {choice.label[0]}
                       </span>
                     )}

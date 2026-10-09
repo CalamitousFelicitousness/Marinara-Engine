@@ -4836,6 +4836,43 @@ const cases: RegressionCase[] = [
       );
       // A writer that returned nothing but the guidance keeps its text, so the image still has a subject.
       assert.equal(removeCopiedPromptGuidance(echoedStyle, [danbooruStyle]), echoedStyle);
+      // A sentence the user wrapped over two lines is still one sentence.
+      assert.equal(
+        removeCopiedPromptGuidance("1girl, Use moody lighting and show long shadows in rain., solo", [
+          "Use moody lighting\nand show long shadows in rain.",
+        ]),
+        "1girl, solo",
+      );
+
+      // Every writer path cleans its own output before configured text is added.
+      const routeSource = (path: string) =>
+        readFileSync(new URL(`../../packages/server/src/${path}`, import.meta.url), "utf8");
+      const generateRoute = routeSource("routes/generate.routes.ts");
+      assert.match(generateRoute, /const writerPrompt = removeCopiedPromptGuidance\(imagePrompt, writerGuidance\);/u);
+      assert.match(
+        generateRoute,
+        /let fullPrompt = writerStyle \? `\$\{writerStyle\}, \$\{writerPrompt\}` : writerPrompt;/u,
+      );
+      assert.equal(generateRoute.match(/generatedStyle: writerStyle,/gu)?.length, 2);
+      const retryRoute = routeSource("routes/generate/retry-agents-route.ts");
+      assert.match(
+        retryRoute,
+        /style: writerStyle,\s+imagePrompt: removeCopiedPromptGuidance\(imagePrompt, writerGuidance\),/u,
+      );
+      assert.equal(retryRoute.match(/generatedStyle: writerStyle,/gu)?.length, 2);
+      for (const selfiePath of [
+        "routes/gallery.routes.ts",
+        "services/generation/conversation-selfie-command-runtime.ts",
+      ]) {
+        assert.match(
+          routeSource(selfiePath),
+          /removeCopiedPromptGuidance\(\(promptResult\.content \?\? ""\)\.trim\(\), \[/u,
+        );
+      }
+      assert.match(
+        routeSource("services/generation/illustrator-background-generation.ts"),
+        /sceneDescription: removeCopiedPromptGuidance\(plan\.prompt, \[styleInstruction, imagePromptInstructions\]\)/u,
+      );
 
       // Without a prompt writer, the profile's Style text still applies as written (#7318).
       const unwritten = compileImagePrompt({

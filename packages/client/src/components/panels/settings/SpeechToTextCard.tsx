@@ -56,8 +56,11 @@ export function SpeechToTextCard() {
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The newest edit that is not saved yet. It is cleared only once a save of it succeeds.
   const pendingSaveRef = useRef<SpeechToTextConfig | null>(null);
-  const { mutate: saveInBackground } = updateConfig;
+  // Saves go out one at a time, so an older save cannot land after a newer one.
+  const saveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
+  const { mutateAsync: putConfig } = updateConfig;
 
   // Seed once: refetches after each save must not overwrite what the user is still typing.
   useEffect(() => {
@@ -68,9 +71,10 @@ export function SpeechToTextCard() {
     () => () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
       // Leaving Connections before the autosave fires still keeps the last edit.
-      if (pendingSaveRef.current) saveInBackground(pendingSaveRef.current);
+      const pending = pendingSaveRef.current;
+      if (pending) void saveQueueRef.current.then(() => putConfig(pending)).catch(() => undefined);
     },
-    [saveInBackground],
+    [putConfig],
   );
 
   if (!callsInstalled || !draft) return null;
@@ -80,11 +84,13 @@ export function SpeechToTextCard() {
       clearTimeout(saveTimerRef.current);
       saveTimerRef.current = null;
     }
-    pendingSaveRef.current = null;
     setSaveStatus("saving");
+    const run = saveQueueRef.current.then(() => putConfig(config));
+    saveQueueRef.current = run.catch(() => undefined);
     try {
-      await updateConfig.mutateAsync(config);
-      setSaveStatus("saved");
+      await run;
+      if (pendingSaveRef.current === config) pendingSaveRef.current = null;
+      if (!pendingSaveRef.current) setSaveStatus("saved");
     } catch (error) {
       setSaveStatus("error");
       throw error;

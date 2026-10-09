@@ -61,6 +61,7 @@ try {
   const { createAppSettingsStorage } =
     await import("../../packages/server/src/services/storage/app-settings.storage.js");
   const { speechToTextRoutes } = await import("../../packages/server/src/routes/speech-to-text.routes.js");
+  const { errorHandler } = await import("../../packages/server/src/middleware/error-handler.js");
   const { createCapabilityIntegrationHost } =
     await import("../../packages/server/src/services/capability-packages/capability-integrations.service.js");
   const { createSilentTestClip, loadSpeechToTextConfig, transcribeWithSpeechToTextServer } =
@@ -70,6 +71,7 @@ try {
   const settings = createAppSettingsStorage(db);
   app = Fastify();
   app.decorate("db", db);
+  app.setErrorHandler(errorHandler);
   await app.register(speechToTextRoutes, { prefix: "/api/speech-to-text" });
   const getConfig = () => app!.inject({ method: "GET", url: "/api/speech-to-text/config" });
   const putConfig = (payload: Record<string, unknown>) =>
@@ -109,7 +111,7 @@ try {
     204,
   );
   assert.equal((await loadSpeechToTextConfig(db)).apiKey, SECRET, "the masked key keeps the saved one");
-  assert.ok((await putConfig({ enabled: true, baseUrl: base, language: "pl_PL;" })).statusCode >= 400);
+  assert.equal((await putConfig({ enabled: true, baseUrl: base, language: "pl_PL;" })).statusCode, 400);
   assert.equal((await loadSpeechToTextConfig(db)).model, "Systran/faster-whisper-small", "a bad save changes nothing");
 
   // The Test button sends a short clip as an OpenAI-style multipart upload.

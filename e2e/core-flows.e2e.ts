@@ -3567,7 +3567,7 @@ test("mobile connection drag previews preserve configured Chroma text", async ({
     const expectedColor = await readScopedCssVariableColor(source, "--muted-foreground");
     await expect(sourceMetadata).toHaveCSS("color", expectedColor);
 
-    const dragHandle = source.getByTitle("Drag connection", { exact: true });
+    const dragHandle = source;
     const handleBounds = await dragHandle.boundingBox();
     expect(handleBounds).not.toBeNull();
     const point = {
@@ -24236,7 +24236,7 @@ test("Background library organization works with desktop drag and touch drag", a
     const folder = page.locator(`[data-background-folder-id="${folderId}"]`);
     await expect(folder).toBeVisible();
     if (testInfo.project.name.includes("mobile")) {
-      const dragHandle = backgroundRow.getByTitle(/^Drag /);
+      const dragHandle = backgroundRow.locator("[data-drag-surface]");
       const startRect = await dragHandle.boundingBox();
       expect(startRect).not.toBeNull();
       const start = {

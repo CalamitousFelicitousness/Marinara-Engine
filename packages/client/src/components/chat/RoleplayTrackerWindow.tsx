@@ -61,6 +61,7 @@ import {
   QuestsMiniature,
   RoleplayTrackerCapability,
   TRACKER_MINIATURE_TILE,
+  WorldStateBanner,
   WorldStateMiniature,
   getWorldMiniatureTileClass,
   getWorldTrackerDisplay,
@@ -361,7 +362,7 @@ function TrackerWindow({
                   <WorldStateMiniature display={worldDisplay} />
                 </span>
               }
-              banner={worldDisplay.hasWorldState && <WorldStateMiniature display={worldDisplay} />}
+              banner={worldDisplay.hasWorldState && <WorldStateBanner world={world} display={worldDisplay} />}
             >
               {(collapse) => (
                 <CombinedWorldPanel

@@ -515,6 +515,7 @@ test.describe("Pop-out drawers on desktop", () => {
       const banner = page.locator(`.mari-window-bubble[data-window="${WORLD_WINDOW}"]`);
       await expect(banner).toHaveAttribute("data-banner", "true");
       await expect(banner).toHaveAccessibleName("Open World State");
+      await expect(banner).toHaveAccessibleDescription("Harbor market, Day 12, 21:30, Light rain");
       await expect(banner.locator(".mari-window-bubble__banner svg")).toHaveCount(4);
       await expect(banner.locator(".mari-window-bubble__banner")).toContainText("12");
       const shown = await box(banner);

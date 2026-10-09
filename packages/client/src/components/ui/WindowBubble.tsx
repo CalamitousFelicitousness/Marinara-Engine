@@ -9,6 +9,7 @@
 // ──────────────────────────────────────────────
 import {
   useEffect,
+  useId,
   useLayoutEffect,
   useRef,
   useState,
@@ -143,6 +144,8 @@ export function WindowBubble({
   const [renderedHeight, setRenderedHeight] = useState(size);
   const renderedSize = { width: renderedWidth, height: renderedHeight };
   const hasBanner = Boolean(banner);
+  // A banner's text (what it shows, for screen readers) describes the button; its name stays "Open …".
+  const bannerId = `mari-window-bubble-banner-${useId().replace(/:/gu, "")}`;
   const placements = useSyncExternalStore(subscribeBubblePlacements, readBubblePlacements, readBubblePlacements);
   const placed = clampWindowBubble(live?.point ?? placements.get(id) ?? point, bounds, renderedSize);
 
@@ -329,7 +332,7 @@ export function WindowBubble({
         style={{ left: placed.x, top: placed.y, zIndex }}
         aria-label={ariaLabel ?? t("window.bubble.label", { title: label })}
         aria-expanded={expanded}
-        aria-describedby={describedBy}
+        aria-describedby={describedBy ?? (hasBanner ? bannerId : undefined)}
         title={
           locked
             ? t("window.bubble.lockedHint", { title: label })
@@ -345,7 +348,9 @@ export function WindowBubble({
       >
         <span className="mari-window-bubble__paint pointer-events-none" aria-hidden="true" />
         {hasBanner ? (
-          <span className="mari-window-bubble__banner">{banner}</span>
+          <span id={bannerId} className="mari-window-bubble__banner">
+            {banner}
+          </span>
         ) : (
           <span className="mari-window-bubble__icon">{icon}</span>
         )}

@@ -890,11 +890,11 @@ assert.match(windowBubbleSource, /automatic: hasBanner \|\| point\.automatic \? 
 // World State's popped-out window (computer) and its button (phone) show the banner once there is world state.
 assert.match(
   read("packages/client/src/components/chat/RoleplayTrackerWindow.tsx"),
-  /banner=\{worldDisplay\.hasWorldState && <WorldStateMiniature display=\{worldDisplay\} \/>\}/u,
+  /banner=\{worldDisplay\.hasWorldState && <WorldStateBanner world=\{world\} display=\{worldDisplay\} \/>\}/u,
 );
 assert.match(
   read("packages/client/src/components/chat/RoleplayHUD.tsx"),
-  /banner=\{display\.hasWorldState && <WorldStateMiniature display=\{display\} \/>\}/u,
+  /banner=\{display\.hasWorldState && <WorldStateBanner world=\{world\} display=\{display\} \/>\}/u,
 );
 // A tap is never read as a drag: touch needs a longer move before the bubble follows it.
 assert.match(windowBubbleSource, /DRAG_START_PX = \{ mouse: 4, touch: 10 \}/u);

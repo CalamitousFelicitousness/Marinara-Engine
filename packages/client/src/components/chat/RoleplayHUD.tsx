@@ -746,17 +746,15 @@ function CombinedWorldWidget({
 }) {
   const { t: localizeUi } = useUiTranslation();
   const close = () => useFloatingWindowStore.getState().closeWindow(MOBILE_WORLD_WINDOW_ID);
-  const display = getWorldTrackerDisplay(
-    { location, date, time, weather, temperature, worldCustomFields },
-    trackerTemperatureUnit,
-  );
+  const world = { location, date, time, weather, temperature, worldCustomFields };
+  const display = getWorldTrackerDisplay(world, trackerTemperatureUnit);
 
   return (
     <MobileTrackerWindow
       id={MOBILE_WORLD_WINDOW_ID}
       title={localizeUi("ui.panels.appearancesettings.worldState")}
       icon={<MapPin size="0.875rem" />}
-      banner={display.hasWorldState && <WorldStateMiniature display={display} />}
+      banner={display.hasWorldState && <WorldStateBanner world={world} display={display} />}
       width={288}
       height={400}
     >
@@ -788,6 +786,19 @@ function CombinedWorldWidget({
         />
       </Suspense>
     </MobileTrackerWindow>
+  );
+}
+
+/** World State's banner on its minimized window's button: the miniature, with its values for screen readers. */
+export function WorldStateBanner({ world, display }: { world: WorldTrackerValues; display: WorldTrackerDisplay }) {
+  const values = [world.location, world.date, world.time, world.weather, world.temperature];
+  return (
+    <>
+      <span aria-hidden="true" className="inline-flex items-center gap-1">
+        <WorldStateMiniature display={display} />
+      </span>
+      <span className="sr-only">{values.filter((value) => value.trim()).join(", ")}</span>
+    </>
   );
 }
 

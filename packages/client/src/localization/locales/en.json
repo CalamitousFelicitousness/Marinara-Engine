@@ -6592,6 +6592,7 @@
   "ui.chatSettings.advancedparameterssection.advancedParameters": "Advanced Parameters",
   "ui.chatSettings.advancedparameterssection.captioningConnection": "Captioning Connection",
   "ui.chatSettings.advancedparameterssection.contextMessageLimit": "Context message limit",
+  "ui.chatSettings.advancedparameterssection.contextMessageLimitAdvancedMemory": "With Advanced Memory Recall on, its Maximum allowed context decides how much history is sent.",
   "ui.chatSettings.advancedparameterssection.describeImageAttachmentsWithASelectedConnectionInsteadOf": "Have another connection describe attached images in words instead of sending the images. Use this for text-only models.",
   "ui.chatSettings.advancedparameterssection.excludePastReasoning": "Exclude Past Reasoning",
   "ui.chatSettings.advancedparameterssection.imageCaptioning": "Image Captioning",

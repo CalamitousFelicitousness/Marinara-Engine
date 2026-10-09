@@ -10,6 +10,7 @@ const dataDir = process.env.DATA_DIR;
 assert.ok(dataDir, "the regression runner provides a throwaway DATA_DIR");
 
 const { default: Fastify } = await import("../../packages/server/node_modules/fastify/fastify.js");
+const { default: AdmZip } = await import("../../node_modules/adm-zip/adm-zip.js");
 const {
   applyBakedGreetingImages,
   bakedGreetingImageRef,
@@ -24,6 +25,7 @@ const { getDB, closeDB } = await import("../../packages/server/src/db/connection
 const { errorHandler } = await import("../../packages/server/src/middleware/error-handler.js");
 const { buildCompatibleCharacterExport, charactersRoutes } =
   await import("../../packages/server/src/routes/characters.routes.js");
+const { backupRoutes } = await import("../../packages/server/src/routes/backup.routes.js");
 const { createCharactersStorage } = await import("../../packages/server/src/services/storage/characters.storage.js");
 const { createCharacterGalleryStorage } =
   await import("../../packages/server/src/services/storage/character-gallery.storage.js");
@@ -132,6 +134,9 @@ avif.write("ftypavif", 4, "ascii");
 assert.equal(validateGreetingImage(avif), null, "only PNG, JPEG, GIF and WebP");
 
 // ── Network guard ──
+// The editor shows these reasons, so they stay plain instead of naming address ranges.
+const homeNetwork = { message: "Links to your own computer or home network can't be saved" };
+const webLinksOnly = { message: "Only http and https image links can be saved" };
 for (const url of [
   "http://127.0.0.1:9/a.png",
   "http://localhost/a.png",
@@ -143,10 +148,10 @@ for (const url of [
   "http://[::7f00:1]/a.png",
   "http://[ff02::1]/a.png",
 ]) {
-  await assert.rejects(downloadGreetingImage(url), /private|loopback|reserved|local/i, url);
+  await assert.rejects(downloadGreetingImage(url), homeNetwork, url);
 }
-await assert.rejects(downloadGreetingImage("file:///etc/passwd"), /protocol/i);
-await assert.rejects(downloadGreetingImage("ftp://img.example/a.png"), /protocol/i);
+await assert.rejects(downloadGreetingImage("file:///etc/passwd"), webLinksOnly);
+await assert.rejects(downloadGreetingImage("ftp://img.example/a.png"), webLinksOnly);
 await assert.rejects(downloadGreetingImage("https://user:pass@img.example/a.png"), /username or password/i);
 await assert.rejects(downloadGreetingImage(`https://img.example/${"a".repeat(2100)}.png`), /too long/i);
 
@@ -155,10 +160,10 @@ process.env.TRUSTED_PRIVATE_NETWORKS = "192.168.1.0/24";
 try {
   await assert.rejects(
     downloadGreetingImage("http://10.0.0.5/a.png"),
-    /private|reserved/i,
+    homeNetwork,
     "narrowing the sign-in trust list must not open private ranges to downloads",
   );
-  await assert.rejects(downloadGreetingImage("http://169.254.169.254/latest"), /private|reserved/i);
+  await assert.rejects(downloadGreetingImage("http://169.254.169.254/latest"), homeNetwork);
 } finally {
   if (previousTrusted === undefined) delete process.env.TRUSTED_PRIVATE_NETWORKS;
   else process.env.TRUSTED_PRIVATE_NETWORKS = previousTrusted;
@@ -175,11 +180,17 @@ globalThis.fetch = (async (input: string | URL, init?: RequestInit) => {
     return new Response(null, { status: 302, headers: { location: "http://127.0.0.1/a.png" } });
   if (url.endsWith("/page.png")) return new Response("<!doctype html>", { headers: { "content-type": "image/png" } });
   if (url.endsWith("/missing.png")) return new Response("gone", { status: 404 });
+  if (url.endsWith("/huge.png"))
+    return new Response(new Uint8Array(11 * 1024 * 1024), { headers: { "content-type": "image/png" } });
   return new Response(png(320, 200), { headers: { "content-type": "image/png" } });
 }) as typeof fetch;
 
 try {
-  await assert.rejects(downloadGreetingImage(`${PUBLIC_HOST}/redirect.png`), /private|loopback|reserved/i);
+  await assert.rejects(downloadGreetingImage(`${PUBLIC_HOST}/redirect.png`), homeNetwork);
+  await assert.rejects(
+    downloadGreetingImage(`${PUBLIC_HOST}/huge.png`),
+    /Only PNG, JPEG, GIF or WebP images up to 10 MB/,
+  );
   await assert.rejects(downloadGreetingImage(`${PUBLIC_HOST}/page.png`), /Only PNG, JPEG, GIF or WebP/);
   await assert.rejects(downloadGreetingImage(`${PUBLIC_HOST}/missing.png`), /404/);
 
@@ -189,6 +200,7 @@ try {
   app.decorate("db", db);
   app.setErrorHandler(errorHandler);
   await app.register(charactersRoutes, { prefix: "/api/characters" });
+  await app.register(backupRoutes, { prefix: "/api/backup" });
   try {
     const character = await createCharactersStorage(db).create(characterDataSchema.parse({ name: "Baker" }));
     assert.ok(character);
@@ -206,7 +218,7 @@ try {
     const saved = results.filter((result) => result.file);
     assert.equal(saved.length, 1);
     assert.match(saved[0]!.file!, /^[A-Za-z0-9_-]{21}\.png$/, "the file name comes from the app, not the URL");
-    assert.ok(results.some((result) => /loopback|private|reserved/i.test(result.error ?? "")));
+    assert.ok(results.some((result) => result.error === homeNetwork.message));
     assert.ok(results.some((result) => /Only PNG/.test(result.error ?? "")));
     for (const request of requests) {
       assert.equal(request.redirect, "manual", "every redirect hop is re-validated");
@@ -235,6 +247,18 @@ try {
       payload: { urls: [`${PUBLIC_HOST}/a.png`] },
     });
     assert.equal(missing.statusCode, 404);
+
+    // The compatible profile export carries no gallery either.
+    await createCharactersStorage(db).create(characterDataSchema.parse({ ...baked, name: "Baked" }));
+    const profile = await app.inject("/api/backup/export-profile?format=compatible");
+    assert.equal(profile.statusCode, 200, profile.body);
+    const exportedCards = new AdmZip(profile.rawPayload)
+      .getEntries()
+      .filter((entry) => entry.entryName.startsWith("characters/"))
+      .map((entry) => JSON.parse(entry.getData().toString()).data);
+    const exportedBaked = exportedCards.find((card) => card.name === "Baked");
+    assert.equal(exportedBaked.first_mes, greetings.first_mes, "compatible profile cards get the web links back");
+    assert.equal(exportedBaked.alternate_greetings[1], restored.alternate_greetings[1]);
   } finally {
     await app.close();
     await closeDB();

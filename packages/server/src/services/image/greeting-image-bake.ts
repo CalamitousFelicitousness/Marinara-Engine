@@ -11,6 +11,19 @@ export const GREETING_IMAGE_MAX_PIXELS = 40_000_000;
 const GREETING_IMAGE_TIMEOUT_MS = 15_000;
 const GREETING_IMAGE_MAX_URL_LENGTH = 2048;
 const GREETING_IMAGE_TYPES = new Set(["png", "jpg", "gif", "webp"]);
+const GREETING_IMAGE_RULES = "Only PNG, JPEG, GIF or WebP images up to 10 MB and 40 megapixels can be saved";
+
+// The editor shows these reasons, so safeFetch's technical refusals (address
+// ranges, byte counts) become plain ones; the original stays as the cause for the log.
+function plainDownloadError(error: unknown) {
+  const message = error instanceof Error ? error.message : "";
+  if (error instanceof Error && error.name === "TimeoutError") return "The image host took too long to answer";
+  if (message.includes("did not resolve")) return "The image host could not be found";
+  if (/: protocol '[^']*' is not allowed/.test(message)) return "Only http and https image links can be saved";
+  if (message.startsWith("Refused to fetch")) return "Links to your own computer or home network can't be saved";
+  if (message.startsWith("Outbound response exceeded")) return GREETING_IMAGE_RULES;
+  return "The image could not be downloaded";
+}
 
 /** PNG, JPEG, GIF or WebP by magic bytes within the size and pixel caps; never SVG, HTML or anything else. */
 export function validateGreetingImage(buffer: Buffer) {
@@ -27,15 +40,21 @@ export async function downloadGreetingImage(rawUrl: string) {
   const url = URL.parse(rawUrl);
   if (!url) throw new Error("The image link is not a valid web address");
   if (url.username || url.password) throw new Error("Image links with a username or password can't be saved");
-  const response = await safeFetch(url, {
-    policy: { allowedProtocols: ["http:", "https:"], maxRedirects: 3 },
-    maxResponseBytes: GREETING_IMAGE_MAX_BYTES,
-    headers: { accept: "image/png,image/jpeg,image/gif,image/webp" },
-    signal: AbortSignal.timeout(GREETING_IMAGE_TIMEOUT_MS),
-  });
+  let response: Response;
+  let buffer: Buffer;
+  try {
+    response = await safeFetch(url, {
+      policy: { allowedProtocols: ["http:", "https:"], maxRedirects: 3 },
+      maxResponseBytes: GREETING_IMAGE_MAX_BYTES,
+      headers: { accept: "image/png,image/jpeg,image/gif,image/webp" },
+      signal: AbortSignal.timeout(GREETING_IMAGE_TIMEOUT_MS),
+    });
+    buffer = Buffer.from(await response.arrayBuffer());
+  } catch (error) {
+    throw new Error(plainDownloadError(error), { cause: error });
+  }
   if (!response.ok) throw new Error(`The image host answered ${response.status}`);
-  const buffer = Buffer.from(await response.arrayBuffer());
   const image = validateGreetingImage(buffer);
-  if (!image) throw new Error("Only PNG, JPEG, GIF or WebP images up to 10 MB and 40 megapixels can be saved");
+  if (!image) throw new Error(GREETING_IMAGE_RULES);
   return { buffer, ...image };
 }

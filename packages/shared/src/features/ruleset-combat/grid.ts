@@ -814,6 +814,12 @@ export function rulesetReachableCells(
       within.push({ source, ring });
     }
   }
+  // Drawn toward somebody and already inside the ring that keeps it near them (1.269): the ring is
+  // the leash then, so it may move about within it rather than only ever closer (Sympathy).
+  for (let index = driven.length - 1; index >= 0; index--) {
+    const one = driven[index]!;
+    if (one.moves === "toward" && within.some((ring) => ring.source.id === one.source.id)) driven.splice(index, 1);
+  }
 
   const threats = rulesetThreateningEnemies(definition, combat, state, actor);
   const slowed = rulesetSlowedCells(state, actor);

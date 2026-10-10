@@ -397,6 +397,28 @@ try {
       rulesetReachableCells(definition, far, "wolf").some((cell) => cell.x > 6),
       "not yet within reach: free to walk",
     );
+    // Drawn toward the friend too, as Sympathy is: outside the ring only nearer, inside it free to
+    // move about within it (1.271 follow-up).
+    const rule = definition.combat!.conditions!.find((one) => one.condition === "attracted")!;
+    rule.behavior = { ...rule.behavior!, moves: "toward" };
+    try {
+      const inside = rulesetReachableCells(definition, pulled(2), "wolf");
+      assert.ok(inside.length > 0, "inside the ring, drawn toward the friend, it may still move");
+      for (const cell of inside) {
+        const moved = { ...who(near, "wolf"), x: cell.x, y: cell.y };
+        assert.ok(rulesetGap(moved as never, friend) <= 1, `${cell.x},${cell.y} leaves the ring`);
+      }
+      const drawn = pulled(6);
+      const start = rulesetGap(who(drawn, "wolf"), who(drawn, "friend"));
+      const stops = rulesetReachableCells(definition, drawn, "wolf");
+      assert.ok(stops.length > 0, "outside the ring it walks nearer");
+      for (const cell of stops) {
+        const moved = { ...who(drawn, "wolf"), x: cell.x, y: cell.y };
+        assert.ok(rulesetGap(moved as never, who(drawn, "friend")) < start, `${cell.x},${cell.y} is no nearer`);
+      }
+    } finally {
+      delete (rule.behavior as { moves?: string }).moves;
+    }
   }
 
   // ── Import ──

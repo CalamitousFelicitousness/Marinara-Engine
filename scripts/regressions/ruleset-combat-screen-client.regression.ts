@@ -984,6 +984,11 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   );
   assert.equal(printed.get("heal"), "Corwin recovers 9, and is on 29 of 38.");
   assert.equal(printed.get("temporary"), "Brenna gains 5 temporary points.");
+  // Lost with the condition that gave them (1.269).
+  assert.equal(
+    say({ type: "temporary", targetId: "brenna", rolls: [], flat: 0, amount: 4, lost: true }),
+    "Brenna loses the last 4 temporary points.",
+  );
   assert.equal(printed.get("condition"), "Brenna is now Prone.");
   assert.equal(printed.get("spend"), "Corwin spends 1 1st-level slots.");
   assert.equal(printed.get("budget"), "Brenna has 0 Bonus action left.");

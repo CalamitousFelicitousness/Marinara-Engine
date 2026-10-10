@@ -1385,6 +1385,7 @@
   "game.combat.ruleset.event.switchOff": "{{actor}} turns {{label}} off.",
   "game.combat.ruleset.event.switchOn": "{{actor}} turns {{label}} on.",
   "game.combat.ruleset.event.temporary": "{{target}} gains {{amount}} temporary points.",
+  "game.combat.ruleset.event.temporaryLost": "{{target}} loses the last {{amount}} temporary points.",
   "game.combat.ruleset.event.trackDown": "{{actor}} takes {{target}}'s {{track}} down from {{from}} to {{to}}.",
   "game.combat.ruleset.event.trackUp": "{{actor}} raises {{target}}'s {{track}} from {{from}} to {{to}}.",
   "game.combat.ruleset.event.turn": "{{actor}} takes their turn.",

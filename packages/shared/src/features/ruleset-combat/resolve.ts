@@ -131,6 +131,7 @@ import {
   planRulesetAlterCost,
   rulesetActionAvailable,
   rulesetSheetWithin,
+  rulesetSheetValue,
   rulesetAimLegal,
   rulesetAimedCells,
   rulesetCopiesLegal,
@@ -1653,6 +1654,8 @@ function applyConditionId(
     action?: readonly string[];
     /** What it harms with on top of the condition's own (1.250). */
     harmsMore?: RulesetCombatAmount;
+    /** The number its applier gave it (1.269). */
+    value?: number;
   } = {},
 ): void {
   const putter = extra.sourceId ? rulesetCombatant(ctx.state, extra.sourceId) : undefined;
@@ -1727,6 +1730,7 @@ function applyConditionId(
     ...(stacks !== undefined ? { stacks } : {}),
     ...(applies.endsWith ? { endsWith: applies.endsWith } : {}),
     ...(extra.harmsMore ? { harmsMore: { ...extra.harmsMore } } : {}),
+    ...(extra.value !== undefined ? { value: extra.value } : {}),
   });
   ctx.events.push(
     stacks !== undefined
@@ -1834,6 +1838,18 @@ function removeCondition(
   }
   if (target.sheet) writeRulesetSheet(ctx.definition, target, { op: "condition", condition, active: false });
   ctx.events.push({ type: "condition", targetId: target.id, condition, active: false, reason });
+  // What is left of the temporary points it gave is lost with it (1.269): Heroism's. Points the
+  // holder has more of than it gave came from something else, and stay.
+  const temporary = ctx.combat.conditions?.find((one) => one.condition === condition)?.temporary;
+  if (temporary?.lostWhenEnds && removed?.gaveTemp && !("track" in ctx.combat.health)) {
+    const left = healthOf(ctx, target).temp;
+    if (left > 0 && left <= removed.gaveTemp) {
+      if (target.sheet)
+        writeRulesetSheet(ctx.definition, target, { op: "temp", pool: ctx.combat.health.pool, amount: 0 });
+      else if (target.health) target.health.temp = 0;
+      ctx.events.push({ type: "temporary", targetId: target.id, rolls: [], flat: 0, amount: left, lost: true });
+    }
+  }
   // Away only while it held this (1.231), it comes back, or stays gone.
   if (target.away?.while === condition && (!removed || removed.source === target.away.by)) {
     bringBack(ctx, target, reason);
@@ -1922,6 +1938,8 @@ function endConditionsOnHarm(
       tracked?.saveEnds &&
       tracked.difficulty !== undefined &&
       !(onDamage && damageSaves?.has(tracked)) &&
+      // Only on harm from whoever put it on, where it says so (1.269): Sympathy's.
+      !(onDamage && tracked.saveEnds.bySource && sourceId !== tracked.source) &&
       saveOutOfSight(ctx, target, tracked)
     ) {
       if (onDamage) damageSaves?.add(tracked);
@@ -2004,6 +2022,8 @@ function tickConditionsNow(ctx: RulesetCombatContext, actor: RulesetCombatant, a
     // What it harms its holder with now (1.184), once for each time it is on, before the save that
     // may end it: a sword of wounding's wounds.
     harmFromCondition(ctx, actor, entry, at);
+    // What it gives its holder now (1.269): Heroism's temporary points.
+    temporaryFromCondition(ctx, actor, entry, at);
     // Killed by it, nothing more is rolled; ended by it (a hurt that breaks a spell), it is gone.
     if (actor.defeated) return;
     if (!actor.tracked.includes(entry)) continue;
@@ -2126,6 +2146,33 @@ function harmsPerSteps(per: { dice?: string; flat?: number }, steps: number): Ru
     sides: dice?.sides ?? 0,
     flat: ((dice?.flat ?? 0) + (per.flat ?? 0)) * steps,
   };
+}
+
+/** A condition's own temporary points as a turn starts or ends (1.269), with the value its applier
+ *  gave it; remembered where they are what the holder now has, to be lost as it ends. */
+function temporaryFromCondition(
+  ctx: RulesetCombatContext,
+  holder: RulesetCombatant,
+  entry: RulesetTrackedCondition,
+  at: "turn-start" | "turn-end",
+): void {
+  const given = ctx.combat.conditions?.find((one) => one.condition === entry.condition)?.temporary;
+  if (!given || given.at !== at || holder.defeated || "track" in ctx.combat.health) return;
+  const dice = given.dice ? parseRulesetCombatDice(given.dice) : null;
+  const rolled = rollAmount(ctx, {
+    count: dice?.count ?? 0,
+    sides: dice?.sides ?? 0,
+    flat: (dice?.flat ?? 0) + (given.flat ?? 0),
+  });
+  const amount = Math.max(0, rolled.total + (given.value ? (entry.value ?? 0) : 0));
+  const before = healthOf(ctx, holder).temp;
+  grantTemporary(ctx, holder, {
+    ...(entry.source ? { sourceId: entry.source } : {}),
+    rolls: rolled.rolls,
+    flat: rolled.flat + (given.value ? (entry.value ?? 0) : 0),
+    amount,
+  });
+  if (amount > before) entry.gaveTemp = amount;
 }
 
 /** A condition's own harm as a turn starts or ends (1.184), from whoever put it on. */
@@ -6980,7 +7027,10 @@ function resolveActionBody(
           slay(ctx, target, actor.id, action.label);
           break;
         }
+        // A number off its applier's sheet, fixed as it goes on (1.269): Heroism's modifier.
+        const value = applies.value ? rulesetSheetValue(ctx.definition, actor, applies.value) : undefined;
         applyConditionId(ctx, target, applies.condition, applies, {
+          ...(value !== undefined ? { value } : {}),
           // What it harms with grows with the higher cost it was put on with (1.250): Acid Arrow.
           ...(applies.harmsPerCostStep && steps > 0
             ? { harmsMore: harmsPerSteps(applies.harmsPerCostStep, steps) }
@@ -7359,7 +7409,12 @@ function aurasAtTurn(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
       )
     )
       continue;
-    const saved = rollSave(ctx, actor, save.save, save.difficulty, holder.id, undefined, {
+    // The save difficulty of whatever put the aura on its holder, where it says so (1.269).
+    const difficulty =
+      (save.appliedDifficulty
+        ? holder.tracked.find((entry) => entry.condition === condition)?.difficulty
+        : undefined) ?? save.difficulty;
+    const saved = rollSave(ctx, actor, save.save, difficulty, holder.id, undefined, {
       conditions: save.applies.map((applied) => applied.condition),
     });
     if (saved) {
@@ -7373,7 +7428,7 @@ function aurasAtTurn(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
     for (const applied of applies) {
       applyConditionId(ctx, actor, applied.condition, applied as RulesetCombatApplies, {
         sourceId: holder.id,
-        difficulty: save.difficulty,
+        difficulty,
       });
       // Once it ends, however it ends, that aura stays off them (1.264): a sea hag's.
       const on = actor.tracked.find((entry) => entry.condition === applied.condition && entry.source === holder.id);

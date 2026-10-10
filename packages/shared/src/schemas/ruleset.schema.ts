@@ -1388,6 +1388,30 @@ const conditionHarmsSchema: z.ZodType<RulesetConditionHarms, z.ZodTypeDef, unkno
     message: "What it harms with names dice, a flat amount, or both",
   });
 
+/** Temporary points a combat condition gives its holder each turn (Capability API 1.269). Typed by
+ *  hand, as its harm is. */
+export interface RulesetConditionTemporary {
+  at: "turn-start" | "turn-end";
+  dice?: string;
+  flat?: number;
+  value?: true;
+  lostWhenEnds?: true;
+}
+const conditionTemporarySchema: z.ZodType<RulesetConditionTemporary, z.ZodTypeDef, unknown> = z
+  .object({
+    at: z.enum(["turn-start", "turn-end"]),
+    dice: catalogDice.optional(),
+    flat: z.number().int().min(0).max(1000).optional(),
+    /** Plus the `value` whoever put it on gave it as it went on: Heroism's spellcasting modifier. */
+    value: z.literal(true).optional(),
+    /** As it ends, its holder loses what is left of the points it gave. */
+    lostWhenEnds: z.literal(true).optional(),
+  })
+  .strict()
+  .refine((given) => given.dice !== undefined || given.flat !== undefined || given.value === true, {
+    message: "What it gives names dice, a flat amount, the value it was put on with, or some of them",
+  });
+
 /** Damage a condition deals as it ends (1.240), unless its holder is what `unless` names. */
 export interface RulesetConditionEndHarm {
   dice?: string;
@@ -2266,6 +2290,7 @@ export interface RulesetCatalogSaveEnds {
   unseen?: true;
   seenLean?: "advantage" | "disadvantage";
   beyond?: number;
+  bySource?: true;
 }
 
 export interface RulesetCatalogApplies {
@@ -2281,6 +2306,7 @@ export interface RulesetCatalogApplies {
   endsWith?: string;
   harmsPerCostStep?: { dice?: string; flat?: number };
   destroysUpTo?: RulesetDestroysUpTo[];
+  value?: RulesetValueRef;
 }
 
 /** How strong a creature a failed save destroys outright, by its threat tier (1.261). */
@@ -2320,8 +2346,15 @@ const catalogAppliesSchema: z.ZodType<RulesetCatalogApplies, z.ZodTypeDef, unkno
         /** Rolled only while its holder stands farther than this from whoever put it on, in the
          *  ruleset's distance (Capability API 1.265): Antipathy's "more than 60 feet away". */
         beyond: z.number().finite().gt(0).max(10000).optional(),
+        /** With `at: "damaged"`, rolled only when the harm came from whoever put it on (Capability
+         *  API 1.269): Sympathy's save when the target harms its holder. */
+        bySource: z.literal(true).optional(),
       })
       .strict()
+      .refine((ends) => !ends.bySource || ends.at === "damaged", {
+        message: '"bySource" narrows a save rolled on damage: it goes with "at": "damaged"',
+        path: ["bySource"],
+      })
       .optional(),
     /** It comes off after the first of these that happens to its holder: their own next attack roll,
      *  the next attack roll made against them, or their own next save. Whatever clock it has still
@@ -2373,6 +2406,10 @@ const catalogAppliesSchema: z.ZodType<RulesetCatalogApplies, z.ZodTypeDef, unkno
       .min(1)
       .max(10)
       .optional(),
+    /** A number read off the sheet of whoever applies it, fixed as it goes on (Capability API
+     *  1.269), for the condition's `temporary` to give: 5e's Heroism, its caster's spellcasting
+     *  modifier. */
+    value: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
   })
   .strict()
   .superRefine((applies, ctx) => {
@@ -5036,8 +5073,6 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     kind: true,
     // Sense needs belong to catalog entries and creature actions (1.122).
     needs: true,
-    // A kind is named as a spell is cast (1.265), not as an item is used.
-    kindChoice: true,
     needsAny: true,
     cost: true,
     perCostStep: true,
@@ -5138,6 +5173,11 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     }
     if (use.chargeStep && use.charges === undefined) {
       issue("chargeStep", 'More charges go beside the "charges" a use spends');
+    }
+    // A kind named as it is used (Capability API 1.269), as a spell names one (1.265): a scroll of
+    // Antipathy/Sympathy.
+    if (use.kindChoice && !use.applies?.length) {
+      issue("kindChoice", 'The kind chosen is remembered by what it puts on, so "kindChoice" goes with "applies"');
     }
     if (
       use.chargeStep &&
@@ -6110,6 +6150,7 @@ export interface RulesetConditionBehavior {
   onlyWhenStuck?: string[] | "any";
   moves?: "away" | "toward";
   keepsOut?: number;
+  keepsIn?: number;
   drops?: RulesetBehaviorDrops;
   table?: { dice: string; rows: Array<{ atMost: number; does: "wander" | "nothing" | "strike" | "normal" }> };
 }
@@ -6153,6 +6194,9 @@ const conditionBehaviorSchema: z.ZodType<RulesetConditionBehavior, z.ZodTypeDef,
      *  further off, and stops only outside it while there is anywhere outside it to stop (Capability
      *  API 1.261): Turn Undead's "can't willingly move to a space within 30 feet of you". */
     keepsOut: z.number().int().min(1).max(1000).optional(),
+    /** Once within this distance of whoever put it on, it never walks farther off than this
+     *  (Capability API 1.269): Sympathy's "can't willingly move away from the target". */
+    keepsIn: z.number().int().min(1).max(1000).optional(),
     /** It lets fall what it holds (Capability API 1.261): each worn item taking one of `slots`
      *  (a hand), each item and each stat block action carrying one of `tags`, as the condition goes
      *  on or as each of its holder's turns starts. What falls lies where they stood: it does nothing
@@ -6232,6 +6276,7 @@ export interface RulesetConditionAura {
   save?: {
     save: string;
     difficulty: number;
+    appliedDifficulty?: true;
     applies: RulesetCatalogApplies[];
     seen?: true;
     immuneOnSuccess?: true;
@@ -6290,6 +6335,10 @@ const conditionAuraSchema: z.ZodType<RulesetConditionAura, z.ZodTypeDef, unknown
       .object({
         save: sheetId,
         difficulty: z.number().int().min(1).max(100),
+        /** Against the save difficulty of whatever put the aura's condition on its holder, fixed as
+         *  it went on, in place of `difficulty` (Capability API 1.269): Antipathy/Sympathy's
+         *  caster's. `difficulty` stays for an aura nothing put on. */
+        appliedDifficulty: z.literal(true).optional(),
         applies: z.array(catalogAppliesSchema).min(1).max(4),
         seen: z.literal(true).optional(),
         immuneOnSuccess: z.literal(true).optional(),
@@ -6522,6 +6571,9 @@ const combatConditionSchema = z
     /** Damage its holder takes as each of their turns starts or ends (Capability API 1.184), from
      *  whoever put it on: a sword of wounding's 1d4 necrotic, before the save that ends it. */
     harms: conditionHarmsSchema.optional(),
+    /** Temporary points its holder gains as each of their turns starts or ends (Capability API
+     *  1.269), lost as it ends where it says so: 5e's Heroism. */
+    temporary: conditionTemporarySchema.optional(),
     /** Put on again while it holds, it stacks up to this many times rather than starting over
      *  (Capability API 1.184), and its `harms` is dealt once for each: a sword of wounding's wounds.
      *  Ending it ends them all. */
@@ -9340,6 +9392,13 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         issue([...path, "onEnd", "harm", "type"], `Unknown damage type "${endType}"`);
       }
       targetIsIssues(def, entry.onEnd?.harm?.unless, [...path, "onEnd", "harm", "unless"], issue);
+      // Temporary points each turn (1.269) need health with a buffer to hold them.
+      if (entry.temporary && "track" in combat.health) {
+        issue(
+          [...path, "temporary"],
+          `Health is the wound track "${combat.health.track}", which carries no buffer for temporary points`,
+        );
+      }
       if (entry.unseen) sightIssues(def, entry.unseen.pierced, [...path, "unseen"], issue);
       senseRangeIssues(def, entry.senses, path, issue);
       componentIssues(def, entry.forbids?.components, [...path, "forbids", "components"], issue);
@@ -10191,7 +10250,11 @@ function targetTestIssues(
   definition: RulesetDefinition,
   carrier: {
     plus?: ReadonlyArray<{ targetIs?: RulesetTargetIs }>;
-    applies?: ReadonlyArray<{ targetIs?: RulesetTargetIs; destroysUpTo?: RulesetDestroysUpTo[] }>;
+    applies?: ReadonlyArray<{
+      targetIs?: RulesetTargetIs;
+      destroysUpTo?: RulesetDestroysUpTo[];
+      value?: RulesetValueRef;
+    }>;
     targetTypes?: {
       is?: RulesetTargetIs;
       not?: RulesetTargetIs;
@@ -10228,6 +10291,14 @@ function targetTestIssues(
       }
     }),
   );
+  // The value it is put on with (1.269) is read off its applier's sheet.
+  carrier.applies?.forEach((entry, index) => {
+    if (!entry.value) return;
+    const names = rulesetSheetNames(definition.sheet, definition.items);
+    for (const found of rulesetValueRefIssues(entry.value, names, names.derived)) {
+      add([...at, "applies", index, "value", found.key], found.message);
+    }
+  });
   targetIsIssues(definition, carrier.targetTypes?.is, [...at, "targetTypes", "is"], add);
   targetIsIssues(definition, carrier.targetTypes?.not, [...at, "targetTypes", "not"], add);
   targetIsIssues(definition, carrier.maxAgainst, [...at, "maxAgainst"], add);
@@ -11260,6 +11331,8 @@ function useIssues(
   const health = definition.combat?.health ?? definition.battle?.health;
   const track =
     health && "track" in health ? definition.sheet.live.tracks.find((one) => one.id === health.track) : null;
+  if (use.kindChoice && !definition.combat?.creatureTypes)
+    add([...at, "kindChoice"], "This ruleset has no creature types to choose from");
   if (use.temporary && (track?.levels?.length || track?.boxes)) {
     add([...at, "temporary"], `Health is the wound track "${track.id}", which carries no buffer for temporary points`);
   }

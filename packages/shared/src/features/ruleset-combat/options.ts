@@ -2,7 +2,12 @@
 // forecast - picks an id from here, so legality is decided in exactly one place and a client never
 // computes it.
 
-import type { RulesetCombat, RulesetDefinition, RulesetTargetIs } from "../../schemas/ruleset.schema.js";
+import type {
+  RulesetCombat,
+  RulesetDefinition,
+  RulesetTargetIs,
+  RulesetValueRef,
+} from "../../schemas/ruleset.schema.js";
 import {
   applyRulesetSheetOp,
   evaluateRulesetSheetLive,
@@ -1499,6 +1504,24 @@ export function rulesetSheetWithin(
   return (
     (bounds.atLeast === undefined || value >= bounds.atLeast) && (bounds.atMost === undefined || value <= bounds.atMost)
   );
+}
+
+/** A number off a combatant's own sheet as it stands now (1.269), whole, or undefined for one with
+ *  no sheet to read. */
+export function rulesetSheetValue(
+  definition: RulesetDefinition,
+  combatant: RulesetCombatant,
+  ref: RulesetValueRef,
+): number | undefined {
+  if (!combatant.sheet) return undefined;
+  const { build, live, items } = combatant.sheet;
+  const value = resolveRulesetValueRef(
+    definition,
+    build,
+    ref,
+    evaluateRulesetSheetLive(definition, build, live, items),
+  );
+  return Number.isFinite(value) ? Math.trunc(value) : undefined;
 }
 
 /** Whether the action has uses left, has recharged, and has the coven members it needs nearby, and

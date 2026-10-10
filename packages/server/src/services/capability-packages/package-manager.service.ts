@@ -1549,6 +1549,24 @@ function carriesMetamagic(value: unknown, depth = 0): boolean {
 
 /** An aura that needs senses, harms at its holder's turn or asks for a save, or a save change
  *  narrowed to what is cast from a catalog (1.260). */
+/** What 1.269 reads off whoever put a condition on, and what Sympathy and a scroll's chosen kind
+ *  need, in catalogs too: a value an applied condition is put on with, temporary points a condition
+ *  gives each turn, an aura save against the applier's difficulty, a save on harm from the source,
+ *  a walk kept within reach, and a kind named as an item is used. */
+function carriesSourceNumbers(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesSourceNumbers(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (typeof record.condition === "string" && record.duration !== undefined && record.value !== undefined) return true;
+  if (plainRecord(record.temporary)?.at !== undefined) return true;
+  if (plainRecord(record.saveEnds)?.bySource !== undefined) return true;
+  if (plainRecord(record.behavior)?.keepsIn !== undefined) return true;
+  if (plainRecord(record.save)?.appliedDifficulty !== undefined) return true;
+  if (plainRecord(record.use)?.kindChoice !== undefined) return true;
+  return Object.values(record).some((one) => carriesSourceNumbers(one, depth + 1));
+}
+
 /** A weapon whose charges are spent on its hits (1.268), in catalogs too. */
 function carriesChargedHits(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -3722,6 +3740,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Numbers fixed off a condition's applier, Sympathy's reach and save, a scroll's chosen kind, 1.269.
+  if (
+    !declaresApi(269) &&
+    (carriesSourceNumbers(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesSourceNumbers(document)))
+  ) {
+    return "A ruleset with a condition put on with a value off its applier, temporary points a condition gives each turn, an aura save against its applier's difficulty, a save on harm from a condition's source, a walk kept within reach, or a kind chosen as an item is used, requires schemaVersion 2 and capabilityApi 1.269 or newer";
   }
   // A weapon's charges spent on its hits, 1.268.
   if (

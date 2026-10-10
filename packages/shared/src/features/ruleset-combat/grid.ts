@@ -796,6 +796,25 @@ export function rulesetReachableCells(
     }
   }
 
+  // Kept within a ring around whoever put a condition on, once inside it (1.269): Sympathy's.
+  const within: Array<{ source: RulesetCombatant; ring: number }> = [];
+  for (const entry of rulesetActiveConditions(definition, combat, actor, state)) {
+    const keepsIn = entry.behavior?.keepsIn;
+    if (keepsIn === undefined || !combat.distance) continue;
+    const sourceId = actor.tracked.find((tracked) => tracked.condition === entry.condition)?.source;
+    const source = sourceId ? rulesetCombatant(state, sourceId) : undefined;
+    const ring = Math.floor(keepsIn / combat.distance.perCell);
+    if (
+      source &&
+      source.id !== actor.id &&
+      rulesetPositionOf(source) &&
+      rulesetCombatStanding(source) &&
+      rulesetGap(actor, source) <= ring
+    ) {
+      within.push({ source, ring });
+    }
+  }
+
   const threats = rulesetThreateningEnemies(definition, combat, state, actor);
   const slowed = rulesetSlowedCells(state, actor);
   const best = new Map<string, number>([[`${from.x},${from.y}`, 0]]);
@@ -844,6 +863,7 @@ export function rulesetReachableCells(
         })
       )
         continue;
+      if (within.some((one) => rulesetGapFrom({ x, y }, span, one.source) > one.ring)) continue;
       // No squeezing between two solid corners: a step corner-wise needs one of its two sides open.
       if (
         dx !== 0 &&

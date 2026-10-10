@@ -402,6 +402,8 @@ export function rulesetCombatEventLine(
         maxHealth: event.maxHealth,
       });
     case "temporary":
+      // Lost with the condition that gave them (1.269): Heroism's.
+      if (event.lost) return key("temporaryLost", { target: names.combatant(event.targetId), amount: event.amount });
       return key("temporary", { target: names.combatant(event.targetId), amount: event.amount });
     case "restored":
       return key("restored", {

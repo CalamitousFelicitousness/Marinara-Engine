@@ -102,6 +102,8 @@ export interface RulesetCombatSaveEnds {
   /** Rolled only while its holder stands farther than this from whoever put it on (1.265), in the
    *  ruleset's distance. */
   beyond?: number;
+  /** With `at: "damaged"`, rolled only on harm from whoever put it on (1.269): Sympathy. */
+  bySource?: true;
 }
 
 /** One thing a combatant let fall (1.261). */
@@ -138,6 +140,8 @@ export interface RulesetCombatApplies {
   harmsPerCostStep?: { dice?: string; flat?: number };
   /** A creature of one of these threat tiers or below is destroyed in its place (1.261). */
   destroysUpTo?: Array<{ tier: string; when?: RulesetSheetBounds }>;
+  /** A number off its applier's sheet, fixed as it goes on, for the condition's `temporary` (1.269). */
+  value?: RulesetValueRef;
 }
 
 /** A value read off a sheet and the bounds it must stand within: one bound or both. */
@@ -941,6 +945,11 @@ export interface RulesetTrackedCondition {
   /** What it harms with on top of the condition's own, from the higher cost it was put on with
    *  (1.250): Acid Arrow's extra 1d4 a slot level. */
   harmsMore?: RulesetCombatAmount;
+  /** The number its applier gave it as it went on (1.269): Heroism's spellcasting modifier. */
+  value?: number;
+  /** The temporary points it last gave that its holder still had the most of (1.269), lost as it
+   *  ends where its rule says so. */
+  gaveTemp?: number;
 }
 
 export interface RulesetCombatant {
@@ -1607,7 +1616,16 @@ export type RulesetCombatEvent =
       /** A condition kept all of it off (1.186): 5e's Chill Touch. */
       blocked?: true;
     }
-  | { type: "temporary"; targetId: string; sourceId?: string; rolls: number[]; flat: number; amount: number }
+  | {
+      type: "temporary";
+      targetId: string;
+      sourceId?: string;
+      rolls: number[];
+      flat: number;
+      amount: number;
+      /** The points lost instead, as the condition that gave them ended (1.269). */
+      lost?: true;
+    }
   | {
       type: "restored";
       targetId: string;

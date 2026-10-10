@@ -5,6 +5,7 @@
  *     to the damage its target takes. Nothing comes off the target's maximum.
  *   - `drain.share` and `drain.damageType` on a catalog entry: Vampiric Touch, half of the necrotic
  *     damage dealt, rounded down; damage of another type gives nothing back.
+ *   - A bestiary creature's drain reaches the fight too (fixed after 1.276).
  *   - What comes back is what was dealt, after a resistance halved it, and never above the maximum.
  *   - Import refusals and the install gate.
  */
@@ -169,6 +170,64 @@ try {
     assert.equal(health(step.state, "foe").value, 100 + dealt, "the aboleth regains what it dealt");
     const heal = step.events.find((one) => one.type === "heal" && one.targetId === "foe");
     assert.ok(heal, "and the log says so");
+  }
+
+  // ── A bestiary creature's drain reaches the fight as a hand-built block's does ──
+  {
+    const withAboleth = parsed(
+      fiveE((doc) => {
+        doc.catalogs.push({ id: "spells", label: "Spells", feeds: ["spells"], entries: spells });
+        const creatures = doc.catalogs.find((one: { holds?: string }) => one.holds === "creatures");
+        const aboleth = structuredClone(creatures.entries.find((one: { id: string }) => one.id === "thorn-lurker"));
+        aboleth.id = "aboleth";
+        aboleth.label = "Aboleth";
+        aboleth.creature.actions = [
+          {
+            id: "psychic_drain",
+            name: "Psychic Drain",
+            budget: "action",
+            autoHit: true,
+            damage: { dice: "3d6", type: "psychic" },
+            drain: {},
+          },
+        ];
+        creatures.entries.push(aboleth);
+      }),
+    );
+    const creatures = withAboleth.catalogs.find((one) => one.holds === "creatures")!;
+    const state = createRulesetEncounter({
+      definition: withAboleth,
+      seed: 1,
+      roller: () => 10,
+      bestiary: { [creatures.id]: creatures.entries },
+      combatants: [
+        { id: "mage", name: "Mage", side: "party", build, live: {} },
+        { id: "foe", name: "Aboleth", side: "enemy", creature: { catalogId: creatures.id, entryId: "aboleth" } },
+      ],
+    });
+    state.order = ["mage", "foe"];
+    state.turn = 1;
+    const foe = rulesetCombatant(state, "foe")!;
+    assert.deepEqual(
+      foe.actions.find((one) => one.label === "Psychic Drain")?.drain,
+      {},
+      "the catalog creature's action keeps its drain",
+    );
+    foe.health!.value = Math.max(1, foe.health!.max - 30);
+    const before = rulesetCombatHealth(withAboleth, withAboleth.combat!, foe).value;
+    const option = rulesetCombatOptions(withAboleth, state, "foe").find((one) => one.label === "Psychic Drain")!;
+    const step = applyRulesetCombatChoice(
+      withAboleth,
+      state,
+      { actorId: "foe", optionId: option.id, targetIds: ["mage"] },
+      roll,
+    );
+    assert.equal(refused(step), undefined, JSON.stringify(refused(step)));
+    const heal = step.events.find((one) => one.type === "heal" && one.targetId === "foe");
+    assert.ok(heal, "the aboleth regains what it dealt");
+    assert.ok(
+      rulesetCombatHealth(withAboleth, withAboleth.combat!, rulesetCombatant(step.state, "foe")!).value > before,
+    );
   }
 
   // ── Never above its maximum ──

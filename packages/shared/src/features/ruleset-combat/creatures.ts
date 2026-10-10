@@ -226,6 +226,8 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
     // What its attack is made with (1.184), so changes narrowed to an ability reach it.
     ...(action.ability ? { ability: action.ability } : {}),
     ...(action.reducesMax ? { reducesMax: { ...action.reducesMax } } : {}),
+    // What it dealt comes back to it (1.276): an aboleth's Psychic Drain.
+    ...(action.drain ? { drain: { ...action.drain } } : {}),
     ...(action.targetHolds ? { targetHolds: structuredClone(action.targetHolds) } : {}),
     ...(action.range !== undefined ? { range: action.range } : {}),
     ...(action.area ? { area: { ...action.area } } : {}),

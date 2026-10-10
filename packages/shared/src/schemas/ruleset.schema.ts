@@ -4684,6 +4684,78 @@ export interface RulesetItemAttackDamage {
 }
 const itemAttackDamageSchema: z.ZodType<RulesetItemAttackDamage, z.ZodTypeDef, unknown> = itemAttackDamageBaseSchema;
 
+/** Charges its wielder may spend on a hit with the weapon (Capability API 1.268): a Staff of Power's
+ *  Power Strike, a Staff of Striking's 1d6 force a charge, a Staff of Withering's 2d10 necrotic and
+ *  its Constitution save. Typed by hand, as the last-charge die is. */
+export interface RulesetItemAttackSpend {
+  label: string;
+  charges: number;
+  amount: { dice?: string; flat?: number };
+  type?: string;
+  blow?: "melee" | "ranged";
+  chargeStep?: { max: number; amount: { dice?: string; flat?: number } };
+  onHit?: Array<{
+    condition: string;
+    rounds?: number;
+    save?: { save: string; difficulty: number };
+    saveEnds?: { save: string; difficulty: number; at: "turn-end" | "turn-start" | "damaged" };
+  }>;
+}
+const itemAttackSpendSchema: z.ZodType<RulesetItemAttackSpend, z.ZodTypeDef, unknown> = z
+  .object({
+    label: promptSafeText(40),
+    charges: z.number().int().min(1).max(100),
+    amount: z.object(catalogAmountShape).strict(),
+    type: promptSafeText(40).optional(),
+    /** Only on a blow of this kind: a Staff of Striking's melee attack. */
+    blow: z.enum(["melee", "ranged"]).optional(),
+    /** Up to `max` more charges spent on the same hit, each adding `amount`: a Staff of Striking's
+     *  three. */
+    chargeStep: z
+      .object({ max: z.number().int().min(1).max(20), amount: z.object(catalogAmountShape).strict() })
+      .strict()
+      .optional(),
+    /** Conditions the one it hit takes, each kept off by a made `save` where it names one. */
+    onHit: z
+      .array(
+        z
+          .object({
+            condition: sheetId,
+            rounds: z.number().int().min(1).max(10000).optional(),
+            save: z
+              .object({ save: sheetId, difficulty: z.number().int().min(0).max(1000) })
+              .strict()
+              .optional(),
+            saveEnds: z
+              .object({
+                save: sheetId,
+                difficulty: z.number().int().min(0).max(1000),
+                at: z.enum(["turn-end", "turn-start", "damaged"]),
+              })
+              .strict()
+              .optional(),
+          })
+          .strict()
+          .refine((entry) => entry.saveEnds === undefined || entry.rounds === undefined, {
+            message: "A condition that ends on a save lasts until it is made, not some rounds",
+            path: ["rounds"],
+          }),
+      )
+      .min(1)
+      .max(2)
+      .optional(),
+  })
+  .strict()
+  .refine((spend) => spend.amount.dice !== undefined || spend.amount.flat !== undefined, {
+    message: "What spending charges on a hit adds is dice, a flat amount, or both",
+    path: ["amount"],
+  })
+  .refine(
+    (spend) =>
+      !spend.chargeStep || spend.chargeStep.amount.dice !== undefined || spend.chargeStep.amount.flat !== undefined,
+    { message: "A charge more adds dice, a flat amount, or both", path: ["chargeStep", "amount"] },
+  );
+
 export const rulesetItemAttackSchema = z
   .object({
     budget: sheetId,
@@ -4855,6 +4927,10 @@ export const rulesetItemAttackSchema = z
      *  sword of sharpness's extra on a critical hit only (`when: "critical"`). A clause's save names
      *  its own difficulty: an item's blow has no save of its own to borrow one from. */
     plus: z.array(itemPlusClauseSchema).min(1).max(RULESET_DAMAGE_MAX_PLUS).optional(),
+    /** Charges its wielder may spend once it hits (Capability API 1.268), each entry its own choice
+     *  at that moment: more damage, more for each charge more, and conditions with their saves. The
+     *  item holds charges. */
+    spends: z.array(itemAttackSpendSchema).min(1).max(4).optional(),
   })
   .strict();
 export type RulesetItemAttack = z.infer<typeof rulesetItemAttackSchema>;
@@ -10958,11 +11034,12 @@ function itemIssues(
     if (
       item.use?.charges === undefined &&
       !item.attack?.slay?.some((entry) => entry.charges !== undefined) &&
-      !item.attack?.modes?.some((mode) => mode.charges !== undefined)
+      !item.attack?.modes?.some((mode) => mode.charges !== undefined) &&
+      !item.attack?.spends
     ) {
       add(
         [...at, "charges"],
-        "An item's charges are spent by its use, its weapon's slay or one of its weapon's modes, so one of them spends some",
+        "An item's charges are spent by its use, its weapon's slay, one of its weapon's modes or its hits, so one of them spends some",
       );
     }
     // Charges are one item's, so a stack of several would hold none of its own.
@@ -11445,6 +11522,23 @@ function attackIssues(
       if (!conditions.has(applies.condition))
         add([...where, "saved", appliesIndex, "condition"], `Unknown condition "${applies.condition}"`);
       escapeDcIssues(definition, applies, [...where, "saved", appliesIndex], add);
+    });
+  });
+  // Charges spent on a hit (1.268) are the item's own, and what they put on the target is the
+  // ruleset's.
+  attack.spends?.forEach((spend, index) => {
+    const where = [...at, "spends", index];
+    if (!item.charges) add([...where, "charges"], "Charges spent on a hit are the item's own, so it holds some");
+    if (spend.type !== undefined && damageTypes && !damageTypes.includes(spend.type.trim().toLowerCase()))
+      add([...where, "type"], `Unknown damage type "${spend.type}"`);
+    spend.onHit?.forEach((entry, entryIndex) => {
+      if (!conditions.has(entry.condition))
+        add([...where, "onHit", entryIndex, "condition"], `Unknown condition "${entry.condition}"`);
+      for (const key of ["save", "saveEnds"] as const) {
+        const save = entry[key]?.save;
+        if (save !== undefined && !saves.has(save))
+          add([...where, "onHit", entryIndex, key, "save"], `Unknown save "${save}"`);
+      }
     });
   });
   // An oathbow's other weapons (1.187): a condition the ruleset has, in a fight that rolls twice.

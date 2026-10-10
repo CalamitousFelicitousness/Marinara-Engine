@@ -669,6 +669,8 @@ export interface RulesetCombatAction {
     budget?: string;
     /** Only one of its holder's answers sharing this name is taken at each of their hits (1.243). */
     oneOf?: string;
+    /** Only a hit with the item at this place in its holder's items (1.268): charges spent on it. */
+    item?: number;
     /** It stops only what was paid for no higher up its pool family than this was (1.111). */
     upTo?: "paid";
     /** Above that, a check, read once as the fight began, against `dc` plus the level of what it
@@ -1278,6 +1280,8 @@ export interface RulesetReactionAlso {
   names?: string[];
   /** Only a hit by a strike paid for from this budget (1.243). */
   budget?: string;
+  /** Only a hit with the item at this place in its holder's items (1.268). */
+  item?: number;
 }
 
 /** What caused a moment, as far as a reaction narrows what it answers: the catalog and entry behind
@@ -1294,6 +1298,8 @@ export interface RulesetMomentCause {
   attack?: string;
   /** The budget the strike that hit was paid for from (1.243). */
   budget?: string;
+  /** The place in its maker's items of the item it was struck with (1.268). */
+  item?: number;
 }
 
 /** What opens a moment for one reaction: an action from an entry of one of `catalogs`, or one of
@@ -1380,6 +1386,8 @@ export interface RulesetHeldAddition {
   label: string;
   damage: RulesetCombatDamage;
   extra?: { amount: RulesetCombatAmount; times: number };
+  /** Conditions it puts on the one hit (1.268): a Staff of Withering's, against its save. */
+  onHit?: NonNullable<RulesetCombatAction["onHit"]>;
 }
 
 /** An attack held after its roll hit, while the one it hit is asked. It picks up exactly here: the

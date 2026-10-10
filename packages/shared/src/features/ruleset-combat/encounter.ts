@@ -1766,6 +1766,54 @@ function itemAttackActions(
     ruled(weapon, true);
     actions.push(offHand ? { ...weapon, pairs: index } : weapon);
     if (off) actions.push(ruled(off, !clipped));
+    // Charges spent once it hits (1.268), each its holder's own answer to a hit with it: more harm
+    // with the blow, more for each charge more, and what it puts on the one hit. One the item cannot
+    // count charges for is never offered.
+    attack.spends?.forEach((spend, n) => {
+      const amount = amountOf(spend.amount);
+      if (!amount || !(chargesMax !== undefined && chargesMax >= 1)) return;
+      const step = spend.chargeStep ? amountOf(spend.chargeStep.amount) : null;
+      const spendType = spend.type ?? type;
+      actions.push({
+        id: `spend:${index}:${n}`,
+        kind: "attack",
+        harmful: true,
+        label: `${label}: ${spend.label}`,
+        budget: attack.budget,
+        free: true,
+        targets: { side: "enemy", count: 1 },
+        reaction: {
+          on: "hit",
+          at: "target",
+          by: "self",
+          weapon: true,
+          item: index,
+          ...(spend.blow ? { blow: spend.blow } : {}),
+        },
+        addsToBlow: true,
+        damage: { ...amount, ...(spendType ? { type: spendType } : {}) },
+        ...(spend.onHit?.length
+          ? {
+              onHit: spend.onHit.map((entry) => ({
+                ...entry,
+                // Whatever the blow dealt: the hit is what calls for the save.
+                atLeast: 0,
+                ...(entry.save ? { save: { ...entry.save } } : {}),
+                ...(entry.saveEnds ? { saveEnds: { ...entry.saveEnds } } : {}),
+              })),
+            }
+          : {}),
+        itemUse: {
+          item: index,
+          charges: {
+            cost: spend.charges,
+            max: chargesMax,
+            ...(item.charges?.breaksOn ? { breaksOn: lastChargeDie(item.charges.breaksOn) } : {}),
+            ...(spend.chargeStep && step ? { step: { max: spend.chargeStep.max, amount: step } } : {}),
+          },
+        },
+      });
+    });
   });
   return actions;
 }

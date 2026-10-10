@@ -22739,6 +22739,167 @@
                           "minItems": 1,
                           "maxItems": 3
                         },
+                        "spends": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "label": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 40
+                              },
+                              "charges": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 100
+                              },
+                              "amount": {
+                                "type": "object",
+                                "properties": {
+                                  "dice": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                  },
+                                  "flat": {
+                                    "type": "integer"
+                                  },
+                                  "$comment": {}
+                                },
+                                "additionalProperties": false
+                              },
+                              "type": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 40
+                              },
+                              "blow": {
+                                "type": "string",
+                                "enum": [
+                                  "melee",
+                                  "ranged"
+                                ]
+                              },
+                              "chargeStep": {
+                                "type": "object",
+                                "properties": {
+                                  "max": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 20
+                                  },
+                                  "amount": {
+                                    "type": "object",
+                                    "properties": {
+                                      "dice": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                      },
+                                      "flat": {
+                                        "type": "integer"
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "additionalProperties": false
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "max",
+                                  "amount"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "onHit": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "condition": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "rounds": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 10000
+                                    },
+                                    "save": {
+                                      "type": "object",
+                                      "properties": {
+                                        "save": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "difficulty": {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "maximum": 1000
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "required": [
+                                        "save",
+                                        "difficulty"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    "saveEnds": {
+                                      "type": "object",
+                                      "properties": {
+                                        "save": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "difficulty": {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "maximum": 1000
+                                        },
+                                        "at": {
+                                          "type": "string",
+                                          "enum": [
+                                            "turn-end",
+                                            "turn-start",
+                                            "damaged"
+                                          ]
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "required": [
+                                        "save",
+                                        "difficulty",
+                                        "at"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    "$comment": {}
+                                  },
+                                  "required": [
+                                    "condition"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                "minItems": 1,
+                                "maxItems": 2
+                              },
+                              "$comment": {}
+                            },
+                            "required": [
+                              "label",
+                              "charges",
+                              "amount"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "minItems": 1,
+                          "maxItems": 4
+                        },
                         "$comment": {}
                       },
                       "required": [

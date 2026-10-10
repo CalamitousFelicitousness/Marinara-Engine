@@ -233,6 +233,16 @@ export interface RulesetItemAttackFact {
     save?: { save: string; difficulty: number };
     saveEnds?: { save: string; difficulty: number; at: "turn-start" | "turn-end" | "damaged" };
   }>;
+  /** Charges its holder may spend once it hits (1.268): what each adds, a charge more's, and the
+   *  conditions it puts on the one hit, by their labels. */
+  spends?: Array<{
+    label: string;
+    charges: number;
+    amount: string;
+    type?: string;
+    more?: { max: number; amount: string };
+    onHit?: Array<{ condition: string; rounds?: number; save?: { save: string; difficulty: number } }>;
+  }>;
   /** More damage on each hit (1.164): its amount, type, whom it reaches by the labels of the types
    *  and tags it names, whether only a critical hit carries it, and its own save. */
   plus?: Array<{
@@ -563,7 +573,42 @@ function rulesetItemAttackFacts(
           }),
         }
       : {}),
+    ...(attack.spends?.length
+      ? {
+          spends: attack.spends.map((spend) => ({
+            label: spend.label,
+            charges: spend.charges,
+            amount: amountWords(spend.amount),
+            ...(spend.type ? { type: spend.type } : {}),
+            ...(spend.chargeStep
+              ? { more: { max: spend.chargeStep.max, amount: amountWords(spend.chargeStep.amount) } }
+              : {}),
+            ...(spend.onHit?.length
+              ? {
+                  onHit: spend.onHit.map((entry) => ({
+                    condition: labelOf(definition.sheet.live.conditions, entry.condition),
+                    ...(entry.rounds !== undefined ? { rounds: entry.rounds } : {}),
+                    ...(entry.save
+                      ? {
+                          save: {
+                            save: labelOf(definition.sheet.saves, entry.save.save),
+                            difficulty: entry.save.difficulty,
+                          },
+                        }
+                      : {}),
+                  })),
+                }
+              : {}),
+          })),
+        }
+      : {}),
   };
+}
+
+/** Dice and a flat part as words: "1d6", "2d10+2", "3". */
+function amountWords(amount: { dice?: string; flat?: number }): string {
+  const flat = amount.flat ?? 0;
+  return amount.dice ? `${amount.dice}${flat > 0 ? `+${flat}` : flat < 0 ? String(flat) : ""}` : String(flat);
 }
 
 /** A gate's difficulty as a fight and the Use button read it: written, or the item's own stat, a
@@ -1438,6 +1483,19 @@ export function rulesetItemAttackText(attack: RulesetItemAttackFact): string {
             ? ` (${clause.save.save} ${clause.save.difficulty} ${clause.save.onSuccess === "half" ? "for half" : "negates"})`
             : ""
         }`,
+    ),
+    ...(attack.spends ?? []).map(
+      (spend) =>
+        `${spend.label}: on a hit, ${spend.charges} ${spend.charges === 1 ? "charge" : "charges"} for +${spend.amount}${
+          spend.type ? ` ${spend.type}` : ""
+        }${spend.more ? `, up to ${spend.more.max} more for +${spend.more.amount} each` : ""}${(spend.onHit ?? [])
+          .map(
+            (entry) =>
+              `, ${entry.condition}${entry.rounds !== undefined ? ` for ${entry.rounds} rounds` : ""}${
+                entry.save ? ` (${entry.save.save} ${entry.save.difficulty} resists)` : ""
+              }`,
+          )
+          .join("")}`,
     ),
     ...(attack.onHit ?? []).map(
       (entry) =>

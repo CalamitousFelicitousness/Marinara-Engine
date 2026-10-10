@@ -17,6 +17,7 @@ import {
   RULESET_CHARGE_STEP_PREFIX,
   rulesetChargeSteps,
   rulesetActionDropped,
+  rulesetActionItemIndex,
   rulesetAmmoLeft,
   rulesetDroppedItems,
   rulesetDroppedHeldDefense,
@@ -2857,6 +2858,7 @@ export function rulesetWindowOptions(
     ...(trigger.kind === "hit" && trigger.weapon ? { weapon: true } : {}),
     ...(trigger.kind === "hit" && !trigger.catalog ? { attack: trigger.label } : {}),
     ...(trigger.kind === "hit" && trigger.budget ? { budget: trigger.budget } : {}),
+    ...(trigger.kind === "hit" ? rulesetHitItem(trigger.optionId) : {}),
   };
   // A hit's maker answers it once with each thing they hold (1.236).
   const taken = trigger.kind === "hit" && actorId === source ? (window.taken ?? []) : [];
@@ -2871,6 +2873,13 @@ export function rulesetWindowOptions(
         ? { ...option, targets: { side: "self", count: 0 } }
         : option;
     });
+}
+
+/** The item a hit was struck with (1.268), as a moment's cause carries it: none for a blow that is
+ *  no item's. */
+export function rulesetHitItem(optionId: string): { item?: number } {
+  const item = rulesetActionItemIndex({ id: optionId });
+  return item !== undefined ? { item } : {};
 }
 
 /** Whether what is taken at a moment is aimed back at whoever caused it. False for one its holder
@@ -2948,6 +2957,8 @@ function momentAnswers(
   if (moment.names && !(cause.attack !== undefined && rulesetAttackNamed(cause.attack, moment.names))) return false;
   // Only a strike paid for from its budget (1.243): Open Hand Technique, on Flurry of Blows.
   if (moment.budget && cause.budget !== moment.budget) return false;
+  // Only a hit with its own item (1.268): charges spent on the staff that struck.
+  if (moment.item !== undefined && cause.item !== moment.item) return false;
   if (moment.blow && cause.blow !== moment.blow) return false;
   if (moment.seesSource && !rulesetSees(state, holder, rulesetCombatant(state, sourceId))) return false;
   return true;

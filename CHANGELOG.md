@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: a staff's charges can be spent when it hits, for more damage per charge and a save against a condition, as a Staff of Power's Power Strike, a Staff of Striking and a Staff of Withering (Capability API 1.268).
 - Rulesets: a staff can turn into a plain quarterstaff instead of breaking when its last charge is spent, in a fight and outside one (Capability API 1.267).
 - Rulesets: an item's first use can be named on the menu, a Staff of Healing adds its holder's spellcasting modifier, a Ring of the Ram pushes farther for each extra charge, and a staff's last charge can give charges back on a 20 (Capability API 1.266).
 - Rulesets: Antipathy/Sympathy can name a creature type as they are cast, their aura reaches only that kind within range or in sight, and the repeat save is rolled only from far enough away and out of sight (Capability API 1.265).

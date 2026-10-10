@@ -156,6 +156,7 @@ import {
   rulesetProneCondition,
   rulesetReactionPointsAtSource,
   rulesetReactionTarget,
+  rulesetHitItem,
   rulesetFallTargets,
   rulesetReactionsAt,
   rulesetSequenceCanHappen,
@@ -4380,6 +4381,7 @@ function takeReaction(
     ...(trigger.kind === "hit" && trigger.weapon ? { weapon: true } : {}),
     ...(trigger.kind === "hit" && !trigger.catalog ? { attack: trigger.label } : {}),
     ...(trigger.kind === "hit" && trigger.budget ? { budget: trigger.budget } : {}),
+    ...(trigger.kind === "hit" ? rulesetHitItem(trigger.optionId) : {}),
   });
   const source = rulesetCombatant(state, declared.reaction?.at === "target" ? (about ?? actor.id) : trigger.sourceId);
   let targets: RulesetCombatant[] | RulesetCombatRefusal;
@@ -4412,6 +4414,9 @@ function takeReaction(
 
   const { ctx, finish } = begin(definition, combat, state, roller);
   const taking = rulesetCombatant(ctx.state, actor.id)!;
+  // More of an item's charges (1.268), spent on its own hit.
+  const moreCharges = rulesetChargeSteps(declared, choice.payWith);
+  if (moreCharges) ctx.moreCharges = moreCharges;
   const action = taking.actions.find((entry) => entry.id === declared.id)!;
   // The OPTION says whether a budget is spent, exactly as it does on a turn: an entry marked free
   // carries none, and reading the action's own budget would refuse it for want of something it
@@ -4511,13 +4516,14 @@ function takeReaction(
     holding.held
   ) {
     const steps = choice.payWith ? rulesetCostSteps(definition, action, choice.payWith, taking) : 0;
+    // A higher payment's dice, or a charge more's (1.268).
+    const stepAmount = action.use?.perCostStep ?? action.itemUse?.charges?.step?.amount;
     const { alternatives: _alternatives, ...damage } = structuredClone(action.damage);
     (holding.held.adds ??= []).push({
       label: action.label,
       damage,
-      ...(action.use?.perCostStep && steps > 0
-        ? { extra: { amount: { ...action.use.perCostStep }, times: steps } }
-        : {}),
+      ...(stepAmount && steps > 0 ? { extra: { amount: { ...stepAmount }, times: steps } } : {}),
+      ...(action.onHit?.length ? { onHit: structuredClone(action.onHit) } : {}),
     });
     ctx.events.push({
       type: "added",
@@ -5167,6 +5173,7 @@ function hitAnswers(
           ...(rulesetWeaponBlow(action) ? { weapon: true } : {}),
           ...(!action.catalog ? { attack: action.label } : {}),
           ...(ctx.strikeBudget ? { budget: ctx.strikeBudget } : {}),
+          ...rulesetHitItem(action.id),
         }).length > 0,
     )
     .map((one) => one.id);
@@ -6853,11 +6860,16 @@ function resolveActionBody(
     if (dealt > 0) for (const entry of action.slay ?? []) slayOnHit(ctx, actor, action, target, entry, critical);
     // A blow that dealt enough harm puts the weapon's conditions on the one it hit, after what the
     // blow itself ended, as an action's own conditions are, so one that ends on damage stays on.
-    for (const [onHitIndex, entry] of (action.onHit ?? []).entries()) {
+    // And those of what its maker added to it while it was held (1.268): a Staff of Withering's.
+    const conditionsOnHit = [
+      ...(action.onHit ?? []).map((entry, at) => ({ entry, key: `${action.id}:${at}` })),
+      ...adds.flatMap((add, addAt) => (add.onHit ?? []).map((entry, at) => ({ entry, key: `add:${addAt}:${at}` }))),
+    ];
+    for (const { entry, key } of conditionsOnHit) {
       if (dealt < entry.atLeast) continue;
       // Only on a target that is what it names, and once a turn where it says so (1.182).
       if (!rulesetTargetIs(ctx.definition, target, entry.targetIs)) continue;
-      if (entry.oncePerTurn && !spendOncePerTurn(ctx, actor, `${action.id}:${onHitIndex}`)) continue;
+      if (entry.oncePerTurn && !spendOncePerTurn(ctx, actor, key)) continue;
       // A save against it keeps it off (1.164), and it is a save against that condition.
       if (
         entry.save &&

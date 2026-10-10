@@ -437,11 +437,11 @@ export function rulesetChargeSteps(action: RulesetCombatAction, payWith: string 
 /** Averting the eyes from a gaze's holder, or looking again (1.263): `avert:<holder id>`. */
 export const RULESET_AVERT_OPTION_PREFIX = "avert:";
 
-const ITEM_ACTION = /^(?:item|offhand|use|switch|reload):(\d+)(?::\d+)?$/;
+const ITEM_ACTION = /^(?:item|offhand|use|switch|reload|spend):(\d+)(?::\d+)?$/;
 
 /** The place in its holder's items of the item an action is made with, when it is one: a weapon's
- *  blow, its off-hand blow, a use, a switch or a reload. */
-export function rulesetActionItemIndex(action: RulesetCombatAction): number | undefined {
+ *  blow, its off-hand blow, a use, a switch, a reload or charges spent on a hit (1.268). */
+export function rulesetActionItemIndex(action: Pick<RulesetCombatAction, "id">): number | undefined {
   const match = ITEM_ACTION.exec(action.id);
   return match ? Number(match[1]) : undefined;
 }

@@ -75,24 +75,33 @@ async function mountWizard(page: Page, testInfo: TestInfo): Promise<Locator> {
   });
   const wizard = page.locator('[data-component="GameSetupWizard"]');
   await expect(wizard).toBeVisible();
+  await wizard
+    .locator("select")
+    .filter({ has: page.locator('option[value="wizard-connection"]') })
+    .first()
+    .selectOption("wizard-connection");
   return wizard;
+}
+
+/** Clicks Next once and waits for the next step's heading. */
+async function next(wizard: Locator) {
+  const heading = wizard.getByRole("heading", { level: 4 }).first();
+  const previous = await heading.innerText();
+  await wizard.getByRole("button", { name: "Next", exact: true }).click();
+  await expect(heading).not.toHaveText(previous);
 }
 
 /** Walks on with Next to the step whose heading is `title`. */
 async function stepTo(wizard: Locator, title: string) {
   const heading = wizard.getByRole("heading", { level: 4 }).first();
-  for (let guard = 0; guard < 8 && (await heading.textContent()) !== title; guard++) {
-    await wizard.getByRole("button", { name: "Next", exact: true }).click();
-  }
+  for (let guard = 0; guard < 8 && (await heading.innerText()) !== title; guard++) await next(wizard);
   await expect(heading).toHaveText(title);
 }
 
 /** Walks on to the last step and starts the game; the setup it started. */
 async function start(page: Page, wizard: Locator): Promise<Record<string, any>> {
   const startButton = wizard.getByRole("button", { name: "Start Game", exact: true });
-  for (let guard = 0; guard < 8 && !(await startButton.isVisible()); guard++) {
-    await wizard.getByRole("button", { name: "Next", exact: true }).click();
-  }
+  for (let guard = 0; guard < 8 && !(await startButton.isVisible()); guard++) await next(wizard);
   await startButton.click();
   await expect.poll(() => page.evaluate(() => Boolean(window.__styleSetup))).toBe(true);
   return (await page.evaluate(() => window.__styleSetup)) as Record<string, any>;

@@ -944,8 +944,12 @@ export function GameSetupWizard({
     (keys: string[]) => ["Surprise me!", ...keys.map((key) => localizeUi(key))],
     [localizeUi],
   );
-  const settingSuggestions = suggestionText(setupSuggestionKeys("setting", effectiveWorldKit?.id, suggestionOffset));
-  const goalSuggestions = suggestionText(setupSuggestionKeys("goal", effectiveWorldKit?.id, suggestionOffset));
+  const settingSuggestions = suggestionText(
+    setupSuggestionKeys("setting", overworldChosen ? effectiveWorldKit?.id : undefined, suggestionOffset),
+  );
+  const goalSuggestions = suggestionText(
+    setupSuggestionKeys("goal", overworldChosen ? effectiveWorldKit?.id : undefined, suggestionOffset),
+  );
   const allSettingSuggestions = useMemo(() => suggestionText(allSetupSuggestionKeys("setting")), [suggestionText]);
   const allGoalSuggestions = useMemo(() => suggestionText(allSetupSuggestionKeys("goal")), [suggestionText]);
   const learnedSettings = useMemo(

@@ -3,6 +3,7 @@ import { expect, test, type Locator, type Page, type TestInfo } from "@playwrigh
 import { readFileSync } from "node:fs";
 import { seedUIState } from "./ui-state-fixture.js";
 import {
+  WORLD_GENERATOR_VERSION,
   WORLD_STARTER_KITS,
   compileGameWorld,
   parseWorldKit,
@@ -953,7 +954,10 @@ test("The wizard suggests settings from across settings, and a picked kit brings
     .filter({ has: page.locator('option[value="wizard-connection"]') })
     .first()
     .selectOption("wizard-connection");
-  const { next } = stepNavigation(wizard);
+  // A Classic game has no kit, so its ideas come from across the settings.
+  const styles = wizard.getByTestId("game-style-chooser");
+  await styles.getByRole("radio", { name: /Classic/ }).click();
+  const { next, back } = stepNavigation(wizard);
   await next();
 
   // Without a kit: three ideas from three different settings, beside "Surprise me!".
@@ -962,6 +966,9 @@ test("The wizard suggests settings from across settings, and a picked kit brings
   expect(new Set(first.map((text) => settingOf.get(text))).size).toBe(3);
   await expect(wizard.getByRole("button", { name: "Surprise me!", exact: true }).first()).toBeVisible();
   await expect(wizard.getByRole("button", { name: "Fantasy", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await back();
+  await styles.getByRole("radio", { name: /Overworld RPG/ }).click();
+  await next();
 
   // A picked cyberpunk kit brings its own two ideas first, and its genre while none was chosen.
   await wizard.getByRole("button", { name: /A megacity of districts and stacked blocks/u }).click();
@@ -1194,7 +1201,11 @@ test("A world is made from a seed in the kit's words: the lore's places kept, th
   for (let step = 0; step < 5; step++) await next();
   await wizard.getByRole("button", { name: /Start/u }).click();
   const result = JSON.parse((await page.getByTestId("wizard-result").textContent()) ?? "{}");
-  expect(result.config.world).toMatchObject({ seed: 12345, generatorVersion: 1, grounding: "expand" });
+  expect(result.config.world).toMatchObject({
+    seed: 12345,
+    generatorVersion: WORLD_GENERATOR_VERSION,
+    grounding: "expand",
+  });
   expect(result.config.world.brief.premise).toBe("The old king is dead.");
   expect(result.config.world.brief.events).toEqual(canonEvents);
   expect(result.config.world.brief.groups[0]).toMatchObject({ name: "The River Guild", note: "Wants the bridge." });
@@ -1237,6 +1248,7 @@ test("A game that makes a world can lay it out as its World Maps map, exactly th
   await wizard.getByLabel("World seed", { exact: true }).fill("12345");
   await expect(wizard.getByTestId("world-preview")).toContainText("The party starts in ");
   for (let step = 0; step < 4; step++) await next();
+  await wizard.getByRole("button", { name: /Enable Agents/u }).click();
   const fromTheWorld = wizard.getByRole("button", { name: /^From the world/u });
   await fromTheWorld.click();
   await expect(fromTheWorld).toHaveAttribute("aria-pressed", "true");

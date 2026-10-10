@@ -339,7 +339,7 @@ export function GameSetupWorldChooser({
     <div className="space-y-2">
       {required ? (
         <div className="rounded-lg border border-[var(--border)] p-3 text-sm text-[var(--foreground)]">
-          {t("game.world.setup.labelOverworld")}
+          <span className="block">{t("game.world.setup.labelOverworld")}</span>
           <span className="mt-1 block text-xs text-[var(--muted-foreground)]">
             {t("game.world.setup.helpOverworld")}
           </span>

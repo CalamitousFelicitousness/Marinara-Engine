@@ -414,6 +414,9 @@ function blockFromCreature(creature: RulesetCreature, budgets: ReadonlySet<strin
     // Keen senses, sensitivity to light, camouflage (1.286); a printed passive Perception.
     ...(creature.checkModes ? { checkModes: structuredClone(creature.checkModes) } : {}),
     ...(creature.passive !== undefined ? { passive: creature.passive } : {}),
+    // Its own ways of hiding and finding (1.287); its own modes on attacks (1.288).
+    ...(creature.hiding ? { hiding: structuredClone(creature.hiding) } : {}),
+    ...(creature.attackModes ? { attackModes: structuredClone(creature.attackModes) } : {}),
     ...(creature.resist ? { resist: [...creature.resist] } : {}),
     ...(creature.vulnerable ? { vulnerable: [...creature.vulnerable] } : {}),
     ...(creature.immune ? { immune: [...creature.immune] } : {}),

@@ -1559,6 +1559,16 @@ function carriesHidingTraits(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesHidingTraits(one, depth + 1));
 }
 
+/** A creature's own modes on attacks (1.288). */
+function carriesAttackModes(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesAttackModes(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.attackModes !== undefined) return true;
+  return Object.values(record).some((one) => carriesAttackModes(one, depth + 1));
+}
+
 /** A creature's own ways of hiding and looking (1.286): modes on its checks, a printed passive,
  *  standard actions with its own budget. */
 function carriesCreatureSeeking(value: unknown, depth = 0): boolean {
@@ -3967,6 +3977,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // A creature's own modes on attacks, 1.288.
+  if (
+    !declaresApi(288) &&
+    (carriesAttackModes(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesAttackModes(document)))
+  ) {
+    return "A ruleset with creatures whose attacks are rolled twice where they stand requires schemaVersion 2 and capabilityApi 1.288 or newer";
   }
   // Somebody's own ways of hiding and finding, 1.287.
   if (

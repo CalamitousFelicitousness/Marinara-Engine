@@ -919,7 +919,7 @@ export function rulesetCheckMode(
   // A creature's own (1.286): keen senses, sensitivity to light, camouflage, where they hold.
   for (const rule of combatant.block?.checkModes ?? []) {
     if (skill === undefined || !rule.skills.includes(skill)) continue;
-    if (!checkModeHolds(definition, combat, combatant, state, rule)) continue;
+    if (!rulesetModeRuleHolds(definition, combat, combatant, state, rule)) continue;
     if (rule.mode === "advantage") advantage = true;
     else disadvantage = true;
   }
@@ -927,15 +927,15 @@ export function rulesetCheckMode(
   return advantage ? "advantage" : "disadvantage";
 }
 
-/** Whether a creature's own mode on checks holds where it is now (1.286): it can see, where `sight`
+/** Whether a creature's own mode on checks (1.286) or attacks (1.288) holds where it is now: it can see, where `sight`
  *  says so; the light it stands in is one `light` names; it stands on a tile, or the board is a
  *  place, `terrain` names. Off a board, only `sight` can hold. */
-function checkModeHolds(
+export function rulesetModeRuleHolds(
   definition: RulesetDefinition,
   combat: RulesetCombat,
   combatant: RulesetCombatant,
   state: RulesetEncounterState | undefined,
-  rule: RulesetCheckModeRule,
+  rule: Omit<RulesetCheckModeRule, "skills">,
 ): boolean {
   if (rule.sight) {
     const eyes = combat.sight?.eyes;

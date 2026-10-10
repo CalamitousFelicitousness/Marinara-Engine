@@ -14116,6 +14116,56 @@
                       "minItems": 1,
                       "maxItems": 8
                     },
+                    "attackModes": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "mode": {
+                            "type": "string",
+                            "enum": [
+                              "advantage",
+                              "disadvantage"
+                            ]
+                          },
+                          "sight": {
+                            "type": "boolean",
+                            "const": true
+                          },
+                          "light": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "enum": [
+                                "sunlight",
+                                "bright",
+                                "dim",
+                                "dark"
+                              ]
+                            },
+                            "minItems": 1,
+                            "maxItems": 4
+                          },
+                          "terrain": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 40
+                            },
+                            "minItems": 1,
+                            "maxItems": 12
+                          },
+                          "$comment": {}
+                        },
+                        "required": [
+                          "mode"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "minItems": 1,
+                      "maxItems": 8
+                    },
                     "passive": {
                       "type": "integer",
                       "minimum": 0,

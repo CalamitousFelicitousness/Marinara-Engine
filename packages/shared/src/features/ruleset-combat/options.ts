@@ -70,6 +70,7 @@ import {
   rulesetAttackNamed,
   rulesetItemMatches,
   rulesetModeAllowances,
+  rulesetModeRuleHolds,
   rulesetMovesOnly,
   rulesetMovementAllowance,
 } from "./encounter.js";
@@ -2544,6 +2545,10 @@ export function rulesetAttackMode(
     }
   }
   for (const entry of against) if (entry.mode) leans.add(entry.mode);
+  // A creature's own (1.288): sensitivity to sunlight, where it holds.
+  for (const rule of actor.block?.attackModes ?? []) {
+    if (rulesetModeRuleHolds(definition, combat, actor, where?.state, rule)) leans.add(rule.mode);
+  }
   // Another weapon's mark still standing (1.187): an oathbow's disadvantage with every other weapon
   // while its sworn enemy lives.
   if (blow?.kind === "attack" && where) {

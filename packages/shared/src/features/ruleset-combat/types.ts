@@ -436,6 +436,8 @@ export interface RulesetStatBlock {
   /** Its own rolls twice on some checks, where it says (1.286): keen senses, sensitivity to light,
    *  camouflage. */
   checkModes?: RulesetCheckModeRule[];
+  /** Its own attacks rolled twice, where it says (1.288): sensitivity to sunlight. */
+  attackModes?: RulesetAttackModeRule[];
   /** Its passive Perception as printed (1.286), where it is not the ruleset's passive plus its check. */
   passive?: number;
   /** Its own ways of hiding and finding (1.287), in the ruleset's distance. */
@@ -1619,6 +1621,10 @@ export interface RulesetCheckModeRule {
   /** Only standing on one of these tiles. */
   terrain?: string[];
 }
+
+/** A creature's own attack rolls rolled twice (1.288), only where it says, as a mode on its checks
+ *  holds: 5e's Sunlight Sensitivity (seeing, in sunlight). */
+export type RulesetAttackModeRule = Omit<RulesetCheckModeRule, "skills">;
 
 export interface RulesetCombatBoard {
   grid: TacticalGrid;

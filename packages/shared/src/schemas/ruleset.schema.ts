@@ -4377,6 +4377,29 @@ const creatureFields = {
     .min(1)
     .max(8)
     .optional(),
+  /** Its own attack rolls rolled twice (Capability API 1.288), where it says, as `checkModes` hold:
+   *  5e's Sunlight Sensitivity `{ "mode": "disadvantage", "sight": true, "light": ["sunlight"] }`. */
+  attackModes: z
+    .array(
+      z
+        .object({
+          mode: z.enum(["advantage", "disadvantage"]),
+          sight: z.literal(true).optional(),
+          light: z
+            .array(z.enum(["sunlight", "bright", "dim", "dark"]))
+            .min(1)
+            .max(4)
+            .optional(),
+          terrain: z.array(promptSafeText(40)).min(1).max(12).optional(),
+        })
+        .strict()
+        .refine((rule) => rule.sight || rule.light || rule.terrain, {
+          message: "A mode on attacks says where it holds: sight, light or terrain",
+        }),
+    )
+    .min(1)
+    .max(8)
+    .optional(),
   /** Its passive Perception as printed (Capability API 1.286), where it is not the ruleset's
    *  `hiding.passive` plus its Perception check. */
   passive: z.number().int().min(0).max(100).optional(),

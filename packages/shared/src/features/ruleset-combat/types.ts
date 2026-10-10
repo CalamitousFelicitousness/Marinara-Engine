@@ -292,6 +292,9 @@ export interface RulesetTeleport {
   leaves?: true;
   /** A cloud on the cell left and the cell landed in, until the end of its user's next turn (1.274). */
   smoke?: { pierced?: string[] };
+  /** A creature's (1.275): one of its own actions, by id, it may make once before or after the
+   *  teleport as part of the same action. A blink dog's bite. */
+  strike?: string;
 }
 
 /** One thing a stat block can do. `reach` and `range` are in the ruleset's own distance unit; a
@@ -725,6 +728,12 @@ export interface RulesetCombatAction {
   push?: number;
   /** Its user teleports (1.271): in the ruleset's distance on a block, in cells in a fight. */
   teleport?: RulesetTeleport;
+  /** Made, it lets its user make this other action once more this turn for nothing (1.275): a blink
+   *  dog's bite after its teleport, or its teleport after the bite. */
+  followUp?: string;
+  /** Built for a creature's teleport that strikes first (1.275): the actions it is made out of, whose
+   *  uses and recharge it shares. */
+  pairedWith?: string[];
   /** What it adds after a straight run at its target this turn, in cells (1.181). */
   charge?: RulesetCombatCharge;
   /** The shape this one covers, in cells, aimed at a cell rather than at anybody. */
@@ -1043,6 +1052,9 @@ export interface RulesetCombatant {
     stuck?: boolean;
     /** Something dropped was picked up this turn for nothing (1.261). */
     pickedUp?: boolean;
+    /** What an action made this turn lets its user make for nothing (1.275), each once. `paid` when
+     *  its uses and recharge were spent with what came first. */
+    followUps?: Array<{ id: string; paid?: true }>;
   };
   /** At zero and out of the fight. `dying` is a party member a ruleset with a dying rule still
    *  rolls for; `stable` is one that has stopped rolling; `defeated` is one the fight is over for. */
@@ -2120,6 +2132,8 @@ export interface RulesetCombatOption {
   /** Where a teleport may go (1.271), as cells its user's corner would stand on, and who of its
    *  user's side may go along, at most `count` of them. The choice names the cell as `at`. */
   teleport?: { cells: RulesetCombatCell[]; carries?: { count: number; ids: string[] }; leaves?: true };
+  /** The second half of an action already made this turn (1.275), and so free. */
+  followUp?: true;
   /** What it costs in the actor's own points, and how many they have. A signature option spends no
    *  budget: it is bought at the end of somebody else's turn. */
   signature?: { cost: number; points: number };

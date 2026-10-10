@@ -1635,6 +1635,14 @@ export function rulesetActionAvailable(
   definition?: RulesetDefinition,
 ): boolean {
   if (!rulesetActionUsable(definition, actor, action)) return false;
+  // A strike made before a teleport (1.275) has what both of them have left.
+  if (
+    action.pairedWith?.some((id) => {
+      const part = actor.actions.find((one) => one.id === id);
+      return !part || !rulesetActionAvailable(actor, part, state, definition);
+    })
+  )
+    return false;
   // What it is made with lies where it was dropped (1.261).
   if (rulesetActionDropped(actor, action)) return false;
   // Giving its own user back a pool they do not have is nothing (1.247): a 4th-level slot made by a
@@ -2023,6 +2031,16 @@ function optionFrom(
   // A teleport and nothing else (1.271) goes nowhere without a board.
   if (action.teleport && !positioned(state) && !action.teleport.leaves && !rulesetDoesMoreThanTeleport(action))
     return null;
+  // Nor, then, the strike made before one (1.275).
+  if (
+    action.pairedWith &&
+    !positioned(state) &&
+    action.pairedWith.some((id) => {
+      const port = actor.actions.find((one) => one.id === id)?.teleport;
+      return port && !port.leaves;
+    })
+  )
+    return null;
   // Only once the attack action has been taken this turn (1.237): Flurry of Blows.
   if (action.afterAttack && !rulesetTookAttackAction(actor, action.afterAttack)) return null;
   // Only on its holder's own turn before they have attacked in it (1.242): Reckless Attack.
@@ -2039,7 +2057,11 @@ function optionFrom(
   }
   // Free of the economy, or paid for out of strikes a spend already bought. Either way no budget is
   // asked for, and the option says so by carrying none.
-  const free = action.free === true || rulesetFreeStrike(actor, action);
+  // The other half of an action made this turn (1.275): a blink dog's bite after its teleport.
+  const following = rulesetOnOwnTurn(state, actor)
+    ? actor.flags.followUps?.find((one) => one.id === action.id)
+    : undefined;
+  const free = action.free === true || !!following || rulesetFreeStrike(actor, action);
   // Its own budget spent, a condition's grant may pay instead (combat C6d): one weapon attack of a
   // single strike, or an item's use, as Haste's extra action allows. A creature's weapon is an
   // attack roll of its stat block at one target: its bite as much as a fighter's sword. Only on the
@@ -2073,7 +2095,7 @@ function optionFrom(
     oneStrike = grant.attacks === true && weapon;
     inReach = oneStrike && grant.melee === true && !!action.range;
   }
-  if (!rulesetActionAvailable(actor, action, state, definition)) return null;
+  if (!following?.paid && !rulesetActionAvailable(actor, action, state, definition)) return null;
   // Its own price, or, with that pool empty, a higher one that pays for it: a 1st-level spell is
   // still cast with a 2nd-level slot, or a warlock's pact slot (1.166).
   const paid = planRulesetCombatCost(definition, actor, action);
@@ -2084,6 +2106,7 @@ function optionFrom(
     kind: action.kind,
     label: action.label,
     ...(free ? {} : { budget }),
+    ...(following ? { followUp: true as const } : {}),
     ...(oneStrike ? { oneStrike: true as const } : {}),
     // A melee grant's thrown weapon is swung (1.234): its reach is all it has.
     ...(inReach ? { range: { normal: 0 } } : {}),

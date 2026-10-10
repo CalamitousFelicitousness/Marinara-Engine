@@ -2756,7 +2756,7 @@ function blockActions(
       typeof range === "number" || range.long === undefined ? undefined : rulesetInCells(range.long, perCell);
     return { normal, ...(long !== undefined && long > normal ? { long } : {}) };
   };
-  return block.actions.map((action, index) => ({
+  const built: RulesetCombatAction[] = block.actions.map((action, index) => ({
     id: idOf(index),
     kind: "block" as const,
     label: action.name,
@@ -2878,6 +2878,28 @@ function blockActions(
         }
       : {}),
   }));
+  // A teleport with a strike before or after it (1.275): the teleport lets the strike follow, and the
+  // strike made first is an action of its own, on the teleport's budget, that lets the teleport follow.
+  block.actions.forEach((action, index) => {
+    const strikeIndex = action.teleport?.strike ? indexById.get(action.teleport.strike) : undefined;
+    const port = built[index]!;
+    const strike = strikeIndex === undefined || strikeIndex === index ? undefined : built[strikeIndex];
+    // A fight that measures nothing has no teleport to pair the strike with.
+    if (!port.teleport || !strike || strike.teleport || strike.sequence || strike.reaction || strike.signature) return;
+    port.followUp = strike.id;
+    const first: RulesetCombatAction = {
+      ...structuredClone(strike),
+      id: `${port.id}:first`,
+      label: `${strike.label}, then ${port.label}`,
+      budget: port.budget,
+      pairedWith: [port.id, strike.id],
+      followUp: port.id,
+    };
+    delete first.uses;
+    delete first.recharge;
+    built.push(first);
+  });
+  return built;
 }
 
 /**

@@ -3024,6 +3024,11 @@ function spendAvailability(ctx: RulesetCombatContext, actor: RulesetCombatant, a
     });
   }
   if (action.recharge && !actor.spent.includes(action.id)) actor.spent.push(action.id);
+  // A strike before a teleport (1.275) spends what both of them would.
+  for (const id of action.pairedWith ?? []) {
+    const part = actor.actions.find((one) => one.id === id);
+    if (part) spendAvailability(ctx, actor, part);
+  }
   // The rest of its recharge group goes with it (1.181): one breath spends the other.
   const group = action.recharge?.group;
   if (group) {
@@ -3674,7 +3679,17 @@ function applyChoice(
       alters: alters.map((alter) => alter.label),
     });
   }
-  spendAvailability(ctx, working, action);
+  // The other half of an action made this turn (1.275), once, and already paid for when the strike
+  // came first. Made as the first half, it lets the other follow.
+  const following = option.followUp ? working.flags.followUps?.find((one) => one.id === action.id) : undefined;
+  if (following) working.flags.followUps = working.flags.followUps!.filter((one) => one !== following);
+  if (!following?.paid) spendAvailability(ctx, working, action);
+  if (!option.followUp && action.followUp) {
+    (working.flags.followUps ??= []).push({
+      id: action.followUp,
+      ...(action.pairedWith?.includes(action.followUp) ? { paid: true as const } : {}),
+    });
+  }
   // An item's gate is rolled once the item is spent: failed, it is used up for nothing, and nobody is
   // asked about a use that never happened.
   if (action.itemUse?.gate && !passesGate(ctx, working, action, action.itemUse.gate)) {

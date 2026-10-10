@@ -1547,8 +1547,16 @@ function carriesMetamagic(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesMetamagic(one, depth + 1));
 }
 
-/** An aura that needs senses, harms at its holder's turn or asks for a save, or a save change
- *  narrowed to what is cast from a catalog (1.260). */
+/** A teleport that strikes before or after it (1.275): a blink dog's bite. */
+function carriesTeleportStrike(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesTeleportStrike(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.teleport)?.strike !== undefined) return true;
+  return Object.values(record).some((one) => carriesTeleportStrike(one, depth + 1));
+}
+
 /** A teleport that leaves the fight, takes along only those its user sees, or leaves smoke (1.274). */
 function carriesTeleportExtras(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -1745,6 +1753,8 @@ function carriesBehaviorMore(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesBehaviorMore(one, depth + 1));
 }
 
+/** An aura that needs senses, harms at its holder's turn or asks for a save, or a save change
+ *  narrowed to what is cast from a catalog (1.260). */
 function carriesAuraTurns(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesAuraTurns(one, depth + 1));
@@ -3802,6 +3812,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // A teleport with a strike before or after it, 1.275.
+  if (
+    !declaresApi(275) &&
+    (carriesTeleportStrike(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesTeleportStrike(document)))
+  ) {
+    return "A ruleset with a creature's teleport that strikes before or after it requires schemaVersion 2 and capabilityApi 1.275 or newer";
   }
   // Teleports out of the fight, seen passengers and smoke, 1.274.
   if (

@@ -1344,6 +1344,11 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     rulesetOptionCostText({ ...sword, budget: undefined, strikes: 1 }, budgetLabel, t),
     "Free, 1 strike left",
   );
+  // The other half of an action already made this turn (1.275): a blink dog's bite after its teleport.
+  assert.equal(
+    rulesetOptionCostText({ ...sword, budget: undefined, followUp: true }, budgetLabel, t),
+    "Free, part of the same action",
+  );
   // A weapon says what it has loaded and what its holder carries to shoot, and a reload is named for
   // the weapon it fills and says what there is to load.
   assert.equal(

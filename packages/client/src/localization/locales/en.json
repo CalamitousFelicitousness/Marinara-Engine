@@ -1468,6 +1468,7 @@
   "game.combat.ruleset.option.ammo": "{{count}} to shoot",
   "game.combat.ruleset.option.ammoToLoad": "{{count}} to load",
   "game.combat.ruleset.option.cost": "{{amount}} {{pool}}",
+  "game.combat.ruleset.option.followUp": "Free, part of the same action",
   "game.combat.ruleset.option.forecastDamage": "about {{amount}} damage",
   "game.combat.ruleset.option.forecastHeal": "about {{amount}} healed",
   "game.combat.ruleset.option.forecastHit": "{{percent}}% to hit",

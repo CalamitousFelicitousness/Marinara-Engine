@@ -165,6 +165,8 @@ export function rulesetOptionCostText(
   else if (typeof option.strikes === "number") {
     parts.push(t("game.combat.ruleset.option.freeStrike", { count: option.strikes }));
   }
+  // The other half of an action already made this turn (1.275): a blink dog's bite after its teleport.
+  else if (option.followUp) parts.push(t("game.combat.ruleset.option.followUp"));
   // A walk is priced in the ruleset's own distance rather than in a budget, so it is said beside
   // whichever of the two above applied.
   if (typeof option.movementCost === "number") {

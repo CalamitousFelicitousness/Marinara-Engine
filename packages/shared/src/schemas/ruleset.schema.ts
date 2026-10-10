@@ -2847,6 +2847,7 @@ export interface RulesetTeleportRule {
   carriesSeen?: true;
   leaves?: true;
   smoke?: RulesetSeenThrough;
+  strike?: string;
 }
 /** Its user moves at once to a free place within `distance`, touching nothing between: no step, so
  *  nobody gets a strike at them leaving. With `seen`, only a place they can see. `carries` willing
@@ -2868,6 +2869,10 @@ const teleportSchema: z.ZodType<RulesetTeleportRule, z.ZodTypeDef, unknown> = z
      *  `obscures` does, until the end of its user's next turn (Capability API 1.274): the Cape of
      *  the Mountebank's smoke. */
     smoke: seenThroughSchema.optional(),
+    /** A creature's: one of its own actions it may make once, before or after teleporting, as the
+     *  same action (Capability API 1.275): a blink dog's bite. The menu offers the teleport, with
+     *  the strike after it, and the strike, with the teleport after it. */
+    strike: sheetId.optional(),
   })
   .strict()
   .refine((teleport) => teleport.carriesWithin === undefined || teleport.carries !== undefined, {
@@ -3302,6 +3307,14 @@ const catalogMechanicsSchema: z.ZodType<
   const why = zoneIssue(mechanics);
   if (why) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["zone"], message: why });
   // Where a teleport goes is picked as it is used (1.271): never an aim or an answer.
+  // A strike made with it is one of a creature's own actions (1.275).
+  if (mechanics.teleport?.strike) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["teleport", "strike"],
+      message: "A teleport's strike is one of a creature's own actions, so only a creature's teleport names one",
+    });
+  }
   if (mechanics.teleport && (mechanics.area || mechanics.reaction)) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -5245,6 +5258,11 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     }
     // Where a teleport goes is picked as it is used (Capability API 1.271), never aimed.
     if (use.teleport && use.area) issue("teleport", "A teleport goes where its user picks, so it is not an area");
+    if (use.teleport?.strike)
+      issue(
+        "teleport",
+        "A teleport's strike is one of a creature's own actions, so only a creature's teleport names one",
+      );
     // A kind named as it is used (Capability API 1.269), as a spell names one (1.265): a scroll of
     // Antipathy/Sympathy.
     if (use.kindChoice && !use.applies?.length) {
@@ -10973,6 +10991,19 @@ function creatureIssues(
       // would be had for a budget on the creature's own turn, which is neither.
       if (named.signature) add(where, `"${step.action}" is bought with points, so a sequence cannot name it`);
     });
+    // A blink dog's bite before or after its teleport (1.275): one of its other plain actions.
+    const strike = action.teleport?.strike;
+    if (strike) {
+      const where: (string | number)[] = [...path, "teleport", "strike"];
+      const named = byId.get(strike);
+      if (!named) add(where, `Unknown action "${strike}"`);
+      else if (named.id === action.id) add(where, "A teleport's strike is another action, not the teleport itself");
+      else if (named.reaction || named.sequence || named.teleport || named.signature)
+        add(
+          where,
+          `"${strike}" is a reaction, a sequence, a teleport or bought with points, so it is no teleport's strike`,
+        );
+    }
   });
 
   // Actions that recharge together roll one set of dice for it (1.181), so they all name the same.

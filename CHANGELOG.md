@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: a will-o'-wisp's light disappears with it while it is invisible, and a sun blade's light counts as sunlight for creatures that hate the sun (Capability API 1.293).
 - Rulesets: spells can light an area (Daylight, Dancing Lights) or a cone ahead of their caster (a bullseye lantern), Daylight ends a magical darkness of its level or lower, and a lantern of revealing shows invisible creatures in its bright light (Capability API 1.292).
 - Rulesets: creatures can set themselves ablaze and put their flames out, a will-o'-wisp can brighten or dim, and a hooded lantern sheds a little dim light with its hood down (Capability API 1.291).
 - Rulesets: torches can be put out and lit again in a fight, to slip away unseen in the dark or light the way, and lanterns shed light only while they are lit (Capability API 1.290).

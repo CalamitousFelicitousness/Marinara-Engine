@@ -445,6 +445,8 @@ export interface RulesetStatBlock {
   light?: RulesetLightRadius;
   /** It begins the fight with its light out (1.291). */
   unlit?: true;
+  /** Its own light out while one of these conditions is on it (1.293). */
+  lightOutWhile?: string[];
   /** Its own attacks rolled twice, where it says (1.288): sensitivity to sunlight. */
   attackModes?: RulesetAttackModeRule[];
   /** Its passive Perception as printed (1.286), where it is not the ruleset's passive plus its check. */
@@ -2511,7 +2513,7 @@ export interface RulesetEncounterSummary {
 /** How a lasting area behaves (1.167), as the catalog entry said it. */
 export interface RulesetCombatZoneRule {
   /** The light it sheds over its own cells, in CELLS from its middle (1.292). */
-  lights?: { bright: number; dim: number; reveals?: true };
+  lights?: { bright: number; dim: number; reveals?: true; sunlight?: true };
   /** Magical darkness of this level or lower ends where it meets it (1.292). */
   dispelsDark?: { upTo: number };
   rounds: number;

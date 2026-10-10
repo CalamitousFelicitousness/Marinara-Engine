@@ -1479,6 +1479,7 @@ export interface RulesetLightRadius {
   bright: number;
   dim: number;
   reveals?: true;
+  sunlight?: true;
 }
 const lightRadiusSchema: z.ZodType<RulesetLightRadius, z.ZodTypeDef, unknown> = z
   .object({
@@ -1487,6 +1488,9 @@ const lightRadiusSchema: z.ZodType<RulesetLightRadius, z.ZodTypeDef, unknown> = 
     /** Whoever a condition hides (the invisible) is seen in its bright light (Capability API
      *  1.292): 5e's lantern of revealing. */
     reveals: z.literal(true).optional(),
+    /** Its bright light is sunlight (Capability API 1.293), for what holds only in sunlight: 5e's
+     *  sun blade against Sunlight Sensitivity. */
+    sunlight: z.literal(true).optional(),
   })
   .strict()
   .refine((light) => light.bright + light.dim > 0, { message: "A light reaches somewhere" });
@@ -4455,6 +4459,9 @@ const creatureFields = {
   /** It begins the fight with its light out (Capability API 1.291), until one of its actions that
    *  `sheds` lights it: a magmin not yet ablaze. */
   unlit: z.literal(true).optional(),
+  /** Its own light sheds nothing while one of these conditions is on it (Capability API 1.293), and
+   *  comes back when it ends: a will-o'-wisp invisible, its light with it. */
+  lightOutWhile: z.array(sheetId).min(1).max(8).optional(),
   /** Its own attack rolls rolled twice (Capability API 1.288), where it says, as `checkModes` hold:
    *  5e's Sunlight Sensitivity `{ "mode": "disadvantage", "sight": true, "light": ["sunlight"] }`. */
   attackModes: z
@@ -11287,6 +11294,11 @@ function creatureIssues(
   });
   if (creature.unlit && !creature.actions.some((action) => action.sheds !== undefined && action.sheds !== "out"))
     add([...at, "unlit"], "A creature that begins with its light out needs an action that lights it");
+  creature.lightOutWhile?.forEach((id, index) => {
+    if (!conditions.has(id)) add([...at, "lightOutWhile", index], `Unknown condition "${id}"`);
+  });
+  if (creature.lightOutWhile && !creature.light && !creature.actions.some((action) => action.sheds !== undefined))
+    add([...at, "lightOutWhile"], "A creature whose light goes out while a condition is on it sheds a light");
   // Its own modes on checks (1.286) name the sheet's skills.
   const skills = new Set(definition.sheet.skills.map((skill) => skill.id));
   creature.checkModes?.forEach((rule, ruleIndex) => {

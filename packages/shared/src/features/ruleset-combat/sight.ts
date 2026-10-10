@@ -134,6 +134,8 @@ interface LightSource {
   reveals?: number;
   /** The only cells it lights, a zone's own (1.292). */
   only?: Set<string>;
+  /** How far its bright light is sunlight (1.293). */
+  sunlight?: number;
 }
 
 /**
@@ -145,16 +147,17 @@ export function rulesetLightOf(
   definition: RulesetDefinition,
   who: RulesetCombatant,
   state?: RulesetEncounterState,
-): { bright: number; dim: number; reveals?: number } | null {
+): { bright: number; dim: number; reveals?: number; sunlight?: number } | null {
   const combat = definition.combat;
   const darkness = combat?.sight?.darkness;
   const perCell = combat?.distance?.perCell;
   if (!combat || !darkness || perCell === undefined) return null;
+  const active = rulesetActiveConditions(definition, combat, who, state);
+  // Its own light hidden with it (1.293): a will-o'-wisp's while it is invisible.
+  const hidden = who.block?.lightOutWhile?.some((id) => active.some((source) => source.condition === id));
   const radii = [
-    ...ownLight(who),
-    ...rulesetActiveConditions(definition, combat, who, state).flatMap((source) =>
-      source.light && !source.item ? [source.light] : [],
-    ),
+    ...(hidden ? [] : ownLight(who)),
+    ...active.flatMap((source) => (source.light && !source.item ? [source.light] : [])),
     ...itemLights(who),
   ];
   if (darkness.carried && !who.doused && rulesetCarriesLight(definition, who, state)) radii.push(darkness.carried);
@@ -167,7 +170,15 @@ export function rulesetLightOf(
   const reveals = revealing.length
     ? Math.max(...revealing.map((one) => rulesetInCells(one.bright, perCell)))
     : undefined;
-  return { bright, dim: Math.max(0, edge - bright), ...(reveals !== undefined ? { reveals } : {}) };
+  // Its bright light the sun's (1.293): a sun blade's.
+  const sunny = radii.filter((one) => one.sunlight && one.bright > 0);
+  const sunlight = sunny.length ? Math.max(...sunny.map((one) => rulesetInCells(one.bright, perCell))) : undefined;
+  return {
+    bright,
+    dim: Math.max(0, edge - bright),
+    ...(reveals !== undefined ? { reveals } : {}),
+    ...(sunlight !== undefined ? { sunlight } : {}),
+  };
 }
 
 /** A creature's own light (1.289): as its block says, out while it begins `unlit`, and as its own
@@ -217,6 +228,7 @@ function lightSources(definition: RulesetDefinition, state: RulesetEncounterStat
             bright: light.bright,
             edge: light.bright + light.dim,
             ...(light.reveals !== undefined ? { reveals: light.reveals } : {}),
+            ...(light.sunlight !== undefined ? { sunlight: light.sunlight } : {}),
           },
         ]
       : [];
@@ -235,6 +247,7 @@ function lightSources(definition: RulesetDefinition, state: RulesetEncounterStat
         edge: lights.bright + lights.dim,
         only,
         ...(lights.reveals && lights.bright > 0 ? { reveals: lights.bright } : {}),
+        ...(lights.sunlight && lights.bright > 0 ? { sunlight: lights.bright } : {}),
       },
     ];
   });
@@ -273,8 +286,10 @@ function lightFrom(
     for (const from of source.cells) {
       const away = Math.max(Math.abs(from.x - cell.x), Math.abs(from.y - cell.y));
       if (away > source.edge || !rulesetLineOfSight(grid, from, cell)) continue;
-      if (source.bright > 0 && away <= source.bright) return "bright";
-      light = "dim";
+      // Sunlight outshines any other bright light (1.293), so the search goes on past one.
+      if (source.sunlight !== undefined && away <= source.sunlight) return "sunlight";
+      if (source.bright > 0 && away <= source.bright) light = "bright";
+      else if (light === "dark") light = "dim";
     }
   }
   return light;
@@ -291,7 +306,12 @@ export function rulesetLightAt(
 ): RulesetBoardLight {
   const base = state.board?.light ?? "bright";
   const grid = state.board?.grid;
-  if (brightLight(base) || !definition.combat?.sight?.darkness || !grid) return base;
+  if (base === "sunlight" || !definition.combat?.sight?.darkness || !grid) return base;
+  // Bright light already: only a light that is sunlight changes it (1.293).
+  if (base === "bright") {
+    const sunlit = lightSources(definition, state).filter((source) => source.sunlight !== undefined);
+    return sunlit.length ? lightFrom(sunlit, grid, cell, base) : base;
+  }
   return lightFrom(lightSources(definition, state), grid, cell, base);
 }
 

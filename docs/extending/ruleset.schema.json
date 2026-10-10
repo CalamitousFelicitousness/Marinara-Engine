@@ -9790,6 +9790,10 @@
                               "type": "boolean",
                               "const": true
                             },
+                            "sunlight": {
+                              "type": "boolean",
+                              "const": true
+                            },
                             "$comment": {}
                           },
                           "required": [
@@ -14181,6 +14185,10 @@
                           "type": "boolean",
                           "const": true
                         },
+                        "sunlight": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "$comment": {}
                       },
                       "required": [
@@ -14192,6 +14200,16 @@
                     "unlit": {
                       "type": "boolean",
                       "const": true
+                    },
+                    "lightOutWhile": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "minItems": 1,
+                      "maxItems": 8
                     },
                     "attackModes": {
                       "type": "array",
@@ -17799,6 +17817,10 @@
                                     "type": "boolean",
                                     "const": true
                                   },
+                                  "sunlight": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
                                   "$comment": {}
                                 },
                                 "required": [
@@ -19366,6 +19388,10 @@
                               "type": "boolean",
                               "const": true
                             },
+                            "sunlight": {
+                              "type": "boolean",
+                              "const": true
+                            },
                             "$comment": {}
                           },
                           "required": [
@@ -20247,6 +20273,10 @@
                               "maximum": 10000
                             },
                             "reveals": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "sunlight": {
                               "type": "boolean",
                               "const": true
                             },
@@ -21285,6 +21315,10 @@
                                     "maximum": 10000
                                   },
                                   "reveals": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "sunlight": {
                                     "type": "boolean",
                                     "const": true
                                   },
@@ -25606,6 +25640,10 @@
                                   "maximum": 10000
                                 },
                                 "reveals": {
+                                  "type": "boolean",
+                                  "const": true
+                                },
+                                "sunlight": {
                                   "type": "boolean",
                                   "const": true
                                 },
@@ -31095,6 +31133,10 @@
                                         "type": "boolean",
                                         "const": true
                                       },
+                                      "sunlight": {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
                                       "$comment": {}
                                     },
                                     "required": [
@@ -35388,6 +35430,10 @@
                               "maximum": 10000
                             },
                             "reveals": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "sunlight": {
                               "type": "boolean",
                               "const": true
                             },
@@ -41819,6 +41865,10 @@
                     "maximum": 10000
                   },
                   "reveals": {
+                    "type": "boolean",
+                    "const": true
+                  },
+                  "sunlight": {
                     "type": "boolean",
                     "const": true
                   },

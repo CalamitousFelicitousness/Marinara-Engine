@@ -2508,6 +2508,7 @@ function mechanicsAction(
             (lights.bright > 0 ? rulesetInCells(lights.bright, perCell ?? 1) : 0),
         ),
         ...(lights.reveals ? { reveals: true as const } : {}),
+        ...(lights.sunlight ? { sunlight: true as const } : {}),
       };
     }
     if (mechanics.zone.dispelsDark) action.zone.dispelsDark = { upTo: mechanics.zone.dispelsDark.upTo };

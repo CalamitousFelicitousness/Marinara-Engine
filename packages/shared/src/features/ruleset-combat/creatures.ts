@@ -422,6 +422,7 @@ function blockFromCreature(creature: RulesetCreature, budgets: ReadonlySet<strin
     // The light it sheds (1.289).
     ...(creature.light ? { light: { ...creature.light } } : {}),
     ...(creature.unlit ? { unlit: true as const } : {}),
+    ...(creature.lightOutWhile ? { lightOutWhile: [...creature.lightOutWhile] } : {}),
     ...(creature.resist ? { resist: [...creature.resist] } : {}),
     ...(creature.vulnerable ? { vulnerable: [...creature.vulnerable] } : {}),
     ...(creature.immune ? { immune: [...creature.immune] } : {}),

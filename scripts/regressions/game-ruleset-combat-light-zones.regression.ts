@@ -94,7 +94,13 @@ try {
     range: 120,
     zone: { rounds: 10, triggers: [], obscures: {} },
   });
-  const spells = [daylight, glow, dark, bullseye, reveal, peek, fog];
+  // Sunlight over a single cell's burst (1.293).
+  const sunbeam = spell("sunbeam", {
+    area: { shape: "burst", size: 5 },
+    range: 120,
+    zone: { rounds: 10, triggers: [], lights: { bright: 5, dim: 0, sunlight: true } },
+  });
+  const spells = [daylight, glow, dark, bullseye, reveal, peek, fog, sunbeam];
   const fiveE = (edit: (doc: Record<string, any>) => void = () => {}): Record<string, any> => {
     const doc = JSON.parse(fiveEText) as Record<string, any>;
     doc.combat.senses = [
@@ -183,6 +189,14 @@ try {
     assert.equal(light(lit.state, 16, 7), "dim", "its edge");
     assert.equal(light(lit.state, 17, 7), "dark", "past its own cells");
     assert.equal(sees(lit.state, "mage", "a"), true, "a lit up");
+  }
+
+  // ── A zone's sunlight (1.293) ──
+  {
+    const lit = cast(fight(), "mage", "Sunbeam", { x: 12, y: 7 });
+    assert.equal(light(lit.state, 12, 7), "sunlight", "its middle");
+    assert.equal(light(lit.state, 13, 7), "sunlight", "its edge");
+    assert.equal(light(lit.state, 14, 7), "dark", "past it");
   }
 
   // ── A bullseye lantern's cone ──

@@ -2780,6 +2780,21 @@ const catalogSummonsSchema: z.ZodType<
   })
   .strict();
 
+/** Its maker regains health by the damage a blow dealt (1.276): an aboleth's Psychic Drain, all of it;
+ *  Vampiric Touch, half of the necrotic. The target's maximum is not touched. */
+export interface RulesetDrain {
+  share?: number;
+  damageType?: string;
+}
+const drainSchema: z.ZodType<RulesetDrain, z.ZodTypeDef, unknown> = z
+  .object({
+    /** The share of what was dealt that comes back, rounded down: 1 when left out. */
+    share: z.number().gt(0).max(1).optional(),
+    /** Only the damage of this type counts. */
+    damageType: promptSafeText(40).optional(),
+  })
+  .strict();
+
 /** A blow lowering the health maximum (1.198, 1.230), on a creature's action or a catalog entry. */
 export interface RulesetReducesMax {
   save?: string;
@@ -3076,6 +3091,9 @@ const catalogMechanicsObject = z
      *  of its own: on every target, or with `onFailedSave` only on one that failed the entry's save
      *  (5e's Harm). Health only in points. */
     reducesMax: reducesMaxSchema.optional(),
+    /** Its user regains health by the damage it dealt, or a share of it (Capability API 1.276):
+     *  Vampiric Touch, half of the necrotic. */
+    drain: drainSchema.optional(),
     /** Its damage never takes a target below this much health (Capability API 1.230): Harm's 1. */
     leavesAtLeast: z.number().int().min(1).max(100000).optional(),
     /** Offered only on a target that holds one of these (Capability API 1.230). */
@@ -3368,6 +3386,14 @@ const catalogMechanicsSchema: z.ZodType<
       code: z.ZodIssueCode.custom,
       path: ["reducesMax", "onFailedSave"],
       message: '"onFailedSave" follows the entry\'s own save, so it has one',
+    });
+  }
+  // What it regains is what it dealt (1.276), so it deals something.
+  if (mechanics.drain && (!mechanics.amount || mechanics.kind === "heal")) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["drain"],
+      message: "A drain gives back what the blow dealt, so it deals damage",
     });
   }
   if ((mechanics.reducesMax || mechanics.leavesAtLeast !== undefined) && !mechanics.amount) {
@@ -3806,6 +3832,9 @@ const creatureActionSchema = z
      *  (Capability API 1.198), until a rest, or with `lasting` until something gives it back
      *  (`unseals`); brought to 0 that way, it dies. 5e's wraith's Life Drain, a clay golem's Slam. */
     reducesMax: reducesMaxSchema.optional(),
+    /** The creature regains health by the damage it dealt, or a share of it (Capability API 1.276):
+     *  an aboleth's Psychic Drain. */
+    drain: drainSchema.optional(),
     /** Offered only on a target that holds one of these (Capability API 1.230). */
     targetHolds: targetHoldsSchema.optional(),
     /** What a save that ENDS one of `applies` is rolled against, when the action has no save of its
@@ -10909,6 +10938,8 @@ function creatureIssues(
       }
       if (!action.damage) add([...path, "reducesMax"], "A maximum is lowered by the damage taken, so it has damage");
     }
+    if (action.drain && !action.damage)
+      add([...path, "drain"], "A drain gives back what the blow dealt, so it deals damage");
     targetHoldsIssues(definition, action.targetHolds, [...path, "targetHolds"], add);
     targetTestIssues(definition, { plus: action.damage?.plus }, [...path, "damage"], add);
     targetTestIssues(definition, { applies: action.applies, save: action.save }, path, add);

@@ -1547,6 +1547,16 @@ function carriesMetamagic(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesMetamagic(one, depth + 1));
 }
 
+/** A blow whose maker regains what it dealt (1.276): Psychic Drain, Vampiric Touch. */
+function carriesDrain(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesDrain(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.drain)) return true;
+  return Object.values(record).some((one) => carriesDrain(one, depth + 1));
+}
+
 /** A teleport that strikes before or after it (1.275): a blink dog's bite. */
 function carriesTeleportStrike(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -3812,6 +3822,13 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // A blow whose maker regains what it dealt, 1.276.
+  if (
+    !declaresApi(276) &&
+    (carriesDrain(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesDrain(document)))
+  ) {
+    return "A ruleset with a blow whose maker regains the damage it dealt requires schemaVersion 2 and capabilityApi 1.276 or newer";
   }
   // A teleport with a strike before or after it, 1.275.
   if (

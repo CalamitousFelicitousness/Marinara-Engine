@@ -6785,6 +6785,8 @@ function resolveActionBody(
     let sapped: boolean | undefined;
     // What of it lowered the maximum (1.230): its maker regains it with `heals`.
     let sappedDealt = 0;
+    // What of it its maker drains back (1.276): Psychic Drain's all, Vampiric Touch's half.
+    let drainDealt = 0;
     const landNow = (part: RulesetDamageInput) => {
       if (takes) {
         const amount = Math.max(0, Math.floor(part.amount));
@@ -6838,6 +6840,12 @@ function resolveActionBody(
       dealt += partDealt;
       if (saps) sappedDealt += partDealt;
       if (part.drains) drained += partDealt;
+      const drain = action.drain;
+      if (
+        drain &&
+        (!drain.damageType || drain.damageType.trim().toLowerCase() === part.damageType?.trim().toLowerCase())
+      )
+        drainDealt += partDealt;
       // A compound hit marks once, using the most severe kind that actually landed.
       if (woundTrack && partDealt > 0) {
         const kind = woundTrack.kinds?.find(
@@ -7108,6 +7116,9 @@ function resolveActionBody(
     if (sappedDealt > 0 && action.reducesMax?.heals) {
       dealHeal(ctx, actor, { sourceId: actor.id, rolls: [], flat: sappedDealt, amount: sappedDealt });
     }
+    // What it dealt, its maker regains (1.276), with nothing taken off the target's maximum.
+    const drainBack = action.drain ? Math.floor(drainDealt * (action.drain.share ?? 1)) : 0;
+    if (drainBack > 0) dealHeal(ctx, actor, { sourceId: actor.id, rolls: [], flat: drainBack, amount: drainBack });
     if (drained > 0) grantTemporary(ctx, actor, { sourceId: actor.id, rolls: [], flat: drained, amount: drained });
     // A blow that slays (1.182) kills somebody it left low enough, after what it dealt.
     if (dealt > 0) for (const entry of action.slay ?? []) slayOnHit(ctx, actor, action, target, entry, critical);

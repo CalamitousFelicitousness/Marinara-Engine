@@ -11140,6 +11140,23 @@
                       },
                       "additionalProperties": false
                     },
+                    "drain": {
+                      "type": "object",
+                      "properties": {
+                        "share": {
+                          "type": "number",
+                          "exclusiveMinimum": 0,
+                          "maximum": 1
+                        },
+                        "damageType": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 40
+                        },
+                        "$comment": {}
+                      },
+                      "additionalProperties": false
+                    },
                     "leavesAtLeast": {
                       "type": "integer",
                       "minimum": 1,
@@ -14799,6 +14816,23 @@
                               "lasting": {
                                 "type": "boolean",
                                 "const": true
+                              },
+                              "$comment": {}
+                            },
+                            "additionalProperties": false
+                          },
+                          "drain": {
+                            "type": "object",
+                            "properties": {
+                              "share": {
+                                "type": "number",
+                                "exclusiveMinimum": 0,
+                                "maximum": 1
+                              },
+                              "damageType": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 40
                               },
                               "$comment": {}
                             },
@@ -26344,6 +26378,23 @@
                           },
                           "additionalProperties": false
                         },
+                        "drain": {
+                          "type": "object",
+                          "properties": {
+                            "share": {
+                              "type": "number",
+                              "exclusiveMinimum": 0,
+                              "maximum": 1
+                            },
+                            "damageType": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 40
+                            },
+                            "$comment": {}
+                          },
+                          "additionalProperties": false
+                        },
                         "leavesAtLeast": {
                           "type": "integer",
                           "minimum": 1,
@@ -31657,6 +31708,23 @@
                                   "lasting": {
                                     "type": "boolean",
                                     "const": true
+                                  },
+                                  "$comment": {}
+                                },
+                                "additionalProperties": false
+                              },
+                              "drain": {
+                                "type": "object",
+                                "properties": {
+                                  "share": {
+                                    "type": "number",
+                                    "exclusiveMinimum": 0,
+                                    "maximum": 1
+                                  },
+                                  "damageType": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 40
                                   },
                                   "$comment": {}
                                 },

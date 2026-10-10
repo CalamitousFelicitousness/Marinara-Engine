@@ -2243,6 +2243,8 @@ function mechanicsAction(
   if (mechanics.unseals) action.unseals = true;
   // A lowered maximum, a floor and whom it may be pointed at (1.230): 5e's Harm.
   if (mechanics.reducesMax) action.reducesMax = { ...mechanics.reducesMax };
+  // What it dealt comes back to its user (1.276): Vampiric Touch.
+  if (mechanics.drain) action.drain = { ...mechanics.drain };
   if (mechanics.leavesAtLeast !== undefined) action.leavesAtLeast = mechanics.leavesAtLeast;
   if (mechanics.targetHolds) action.targetHolds = structuredClone(mechanics.targetHolds);
   // One cure of several (1.199), picked like a weapon's mode: a condition, a track, or the maximum.
@@ -2846,6 +2848,7 @@ function blockActions(
       : {}),
     ...(action.ability ? { ability: action.ability } : {}),
     ...(action.reducesMax ? { reducesMax: { ...action.reducesMax } } : {}),
+    ...(action.drain ? { drain: { ...action.drain } } : {}),
     ...(action.targetHolds ? { targetHolds: structuredClone(action.targetHolds) } : {}),
     ...(perCell !== undefined && action.push !== undefined ? { push: rulesetInCells(action.push, perCell) } : {}),
     ...(action.teleport && (perCell !== undefined || action.teleport.leaves)

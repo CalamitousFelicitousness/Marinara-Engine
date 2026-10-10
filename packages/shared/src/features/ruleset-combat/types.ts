@@ -341,6 +341,9 @@ export interface RulesetStatBlockAction {
     heals?: true;
     lasting?: true;
   };
+  /** Its maker regains health by `share` (1 when left out) of the damage dealt, only `damageType`'s
+   *  when named (1.276). */
+  drain?: { share?: number; damageType?: string };
   /** Offered only on a target holding one of these, or one of `fromSelf` its maker put on (1.230). */
   targetHolds?: { conditions?: string[]; fromSelf?: string[] };
   /** What it adds after a straight run at its target this turn (1.181). */
@@ -522,6 +525,9 @@ export interface RulesetCombatAction {
     heals?: true;
     lasting?: true;
   };
+  /** Its maker regains health by `share` (1 when left out) of the damage dealt, only `damageType`'s
+   *  when named (1.276). */
+  drain?: { share?: number; damageType?: string };
   /** Offered only on a target holding one of these, or one of `fromSelf` its maker put on (1.230). */
   targetHolds?: { conditions?: string[]; fromSelf?: string[] };
   toHit?: number;

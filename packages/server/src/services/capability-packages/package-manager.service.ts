@@ -1559,6 +1559,17 @@ function carriesHidingTraits(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesHidingTraits(one, depth + 1));
 }
 
+/** Darkness that puts out spell light, magical light, and Daylight's dispelling reach (1.294). */
+function carriesDarkAgainstLight(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesDarkAgainstLight(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.dispelsLight !== undefined || record.magical !== undefined) return true;
+  if (plainRecord(record.dispelsDark)?.within !== undefined) return true;
+  return Object.values(record).some((one) => carriesDarkAgainstLight(one, depth + 1));
+}
+
 /** A creature's light out under a condition, and light that is sunlight (1.293). */
 function carriesSunAndHiddenLight(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -4031,6 +4042,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Darkness against spell light, magical light, and a dispelling reach, 1.294.
+  if (
+    !declaresApi(294) &&
+    (carriesDarkAgainstLight(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesDarkAgainstLight(document)))
+  ) {
+    return "A ruleset with darkness that puts out spell light, magical light, or a dispelling reach, requires schemaVersion 2 and capabilityApi 1.294 or newer";
   }
   // A creature's light out under a condition, and sunlight, 1.293.
   if (

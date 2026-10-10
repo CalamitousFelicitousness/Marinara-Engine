@@ -169,7 +169,7 @@ try {
     give(state, "dwarf", "lit");
     assert.deepEqual(
       rulesetLightOf(definition, who(state, "dwarf"), state),
-      { bright: 4, dim: 4 },
+      { bright: 4, dim: 4, magic: { bright: 4, dim: 4 } },
       "the Light cantrip",
     );
     // A lantern, worn: an item's light, the farther-reaching of the two.

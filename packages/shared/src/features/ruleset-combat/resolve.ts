@@ -1698,6 +1698,8 @@ function applyConditionId(
     harmsMore?: RulesetCombatAmount;
     /** The number its applier gave it (1.269). */
     value?: number;
+    /** The level of the spell that put it on (1.294). */
+    level?: number;
   } = {},
 ): void {
   const putter = extra.sourceId ? rulesetCombatant(ctx.state, extra.sourceId) : undefined;
@@ -1773,6 +1775,7 @@ function applyConditionId(
     ...(applies.endsWith ? { endsWith: applies.endsWith } : {}),
     ...(extra.harmsMore ? { harmsMore: { ...extra.harmsMore } } : {}),
     ...(extra.value !== undefined ? { value: extra.value } : {}),
+    ...(extra.level !== undefined ? { level: extra.level } : {}),
   });
   ctx.events.push(
     stacks !== undefined
@@ -1872,7 +1875,8 @@ function removeCondition(
     | "cured"
     | "moved"
     | "linked"
-    | "worsened",
+    | "worsened"
+    | "dispelled",
 ): void {
   const removed = target.tracked.find((entry) => entry.condition === condition);
   // Already gone, with what it was put on with (1.197): a loop over a list read before that is not
@@ -2442,22 +2446,76 @@ function disperseFogs(ctx: RulesetCombatContext): void {
  *  5e's Daylight on a Darkness of 3rd level or lower, as it appears or moves. */
 function dispelDarkness(ctx: RulesetCombatContext): void {
   if (!ctx.state.board?.grid) return;
+  const key = (cell: RulesetCombatCell) => `${cell.x},${cell.y}`;
+  const away = (a: RulesetCombatCell, b: RulesetCombatCell) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
   const lights = rulesetStandingZones(ctx.state).filter(({ action }) => action.zone?.dispelsDark);
-  if (lights.length === 0) return;
-  for (const { caster, zone, action } of rulesetStandingZones(ctx.state)) {
+  for (const { caster, zone, action } of lights.length ? rulesetStandingZones(ctx.state) : []) {
     const rule = zone.obscures ?? action.zone?.obscures;
     if (!rule?.darkness || !caster.zones?.includes(zone)) continue;
     const level = rulesetPaidLevel(ctx.definition, caster, action, zone.payWith);
-    const dark = new Set(rulesetZoneCells(ctx.state, caster, zone).map((cell) => `${cell.x},${cell.y}`));
-    const met = lights.some(
-      (light) =>
-        level <= light.action.zone!.dispelsDark!.upTo &&
-        rulesetZoneCells(ctx.state, light.caster, light.zone).some((cell) => dark.has(`${cell.x},${cell.y}`)),
-    );
+    const dark = new Set(rulesetZoneCells(ctx.state, caster, zone).map(key));
+    const met = lights.some((light) => {
+      const dispels = light.action.zone!.dispelsDark!;
+      if (level > dispels.upTo || !light.caster.zones?.includes(light.zone)) return false;
+      // Only as near its middle as it says (1.294): Daylight's bright sphere, not its dim light.
+      const middle = zoneMiddle(light.caster, light.zone);
+      return rulesetZoneCells(ctx.state, light.caster, light.zone).some(
+        (cell) =>
+          dark.has(key(cell)) &&
+          (dispels.within === undefined || middle.some((from) => away(from, cell) <= dispels.within!)),
+      );
+    });
     if (!met) continue;
     ctx.events.push({ type: "zone", actorId: caster.id, label: zone.label, outcome: "dispelled" });
     spendZone(ctx, caster, zone);
   }
+  // Magical darkness puts out the light a spell of its level or lower made (1.294): 5e's Darkness.
+  const darks = rulesetStandingZones(ctx.state).flatMap(({ caster, zone, action }) =>
+    action.zone?.dispelsLight && (zone.obscures ?? action.zone.obscures)?.darkness
+      ? [{ upTo: action.zone.dispelsLight.upTo, cells: new Set(rulesetZoneCells(ctx.state, caster, zone).map(key)) }]
+      : [],
+  );
+  if (darks.length === 0) return;
+  for (const { caster, zone, action } of rulesetStandingZones(ctx.state)) {
+    if (!action.zone?.lights || !caster.zones?.includes(zone)) continue;
+    const level = rulesetPaidLevel(ctx.definition, caster, action, zone.payWith);
+    const cells = rulesetZoneCells(ctx.state, caster, zone);
+    if (!darks.some((dark) => level <= dark.upTo && cells.some((cell) => dark.cells.has(key(cell))))) continue;
+    ctx.events.push({ type: "zone", actorId: caster.id, label: zone.label, outcome: "dispelled" });
+    spendZone(ctx, caster, zone);
+  }
+  // A condition's light, as far as it reaches from its holder.
+  const perCell = ctx.combat.distance?.perCell ?? 1;
+  for (const holder of ctx.state.combatants) {
+    if (holder.defeated || !rulesetPositionOf(holder)) continue;
+    for (const entry of [...holder.tracked]) {
+      if (entry.level === undefined || !holder.tracked.includes(entry)) continue;
+      const light = ctx.combat.conditions?.find((one) => one.condition === entry.condition)?.light;
+      if (!light) continue;
+      const reach = rulesetInCells(light.bright + light.dim, perCell);
+      const from = rulesetFootprint(holder);
+      const met = darks.some(
+        (dark) =>
+          entry.level! <= dark.upTo &&
+          [...dark.cells].some((cell) => {
+            const [x, y] = cell.split(",").map(Number) as [number, number];
+            return from.some((at) => away(at, { x, y }) <= reach);
+          }),
+      );
+      if (!met) continue;
+      // The spell is over: its concentration with it, where that is what holds it.
+      const source = entry.source ? rulesetCombatant(ctx.state, entry.source) : undefined;
+      if (entry.concentration && source?.concentrating && entry.action?.includes(source.concentrating.actionId)) {
+        endConcentration(ctx, source, "spent");
+      }
+      removeCondition(ctx, holder, entry.condition, "dispelled");
+    }
+  }
+}
+
+/** Where a zone's light and reach are measured from (1.292): the point it was put at, or its caster. */
+function zoneMiddle(caster: RulesetCombatant, zone: RulesetCombatZone): RulesetCombatCell[] {
+  return zone.anchor === "point" ? (zone.at ? [zone.at] : []) : rulesetFootprint(caster);
 }
 
 /** How many whole rounds have passed since a turn stamped "round:turn": one once the same turn of
@@ -8040,6 +8098,8 @@ function resolveActionBody(
         const value = applies.value ? rulesetSheetValue(ctx.definition, actor, applies.value) : undefined;
         applyConditionId(ctx, target, applies.condition, applies, {
           ...(value !== undefined ? { value } : {}),
+          // A spell's, the level it was cast at (1.294): what magical darkness puts its light out by.
+          ...(rulesetIsSpell(action) ? { level: rulesetPaidLevel(ctx.definition, actor, action, payWith) } : {}),
           // What it harms with grows with the higher cost it was put on with (1.250): Acid Arrow.
           ...(applies.harmsPerCostStep && steps > 0
             ? { harmsMore: harmsPerSteps(applies.harmsPerCostStep, steps) }

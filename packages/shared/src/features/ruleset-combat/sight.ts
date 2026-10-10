@@ -87,6 +87,19 @@ function cellsBetween(a: RulesetCombatCell, b: RulesetCombatCell): RulesetCombat
   return cells;
 }
 
+/** The cells magical darkness covers now (1.294). */
+function magicalDarkness(state: RulesetEncounterState): Set<string> {
+  const cells = new Set<string>();
+  for (const caster of state.combatants) {
+    for (const zone of caster.zones ?? []) {
+      const rule = zone.obscures ?? caster.actions.find((entry) => entry.id === zone.actionId)?.zone?.obscures;
+      if (!rule?.darkness) continue;
+      for (const cell of rulesetZoneCells(state, caster, zone)) cells.add(`${cell.x},${cell.y}`);
+    }
+  }
+  return cells;
+}
+
 /** The cells obscuring zones cover now, each with the senses that see through it. */
 function obscured(state: RulesetEncounterState): Array<{ cells: Set<string>; pierced: string[]; light?: true }> {
   return state.combatants.flatMap((caster) =>
@@ -136,6 +149,8 @@ interface LightSource {
   only?: Set<string>;
   /** How far its bright light is sunlight (1.293). */
   sunlight?: number;
+  /** How far its magical light reaches (1.294), the only light in magical darkness. */
+  magic?: { bright: number; edge: number };
 }
 
 /**
@@ -147,7 +162,14 @@ export function rulesetLightOf(
   definition: RulesetDefinition,
   who: RulesetCombatant,
   state?: RulesetEncounterState,
-): { bright: number; dim: number; reveals?: number; sunlight?: number } | null {
+): {
+  bright: number;
+  dim: number;
+  reveals?: number;
+  sunlight?: number;
+  /** The part of it that is magical (1.294), which alone lights magical darkness. */
+  magic?: { bright: number; dim: number };
+} | null {
   const combat = definition.combat;
   const darkness = combat?.sight?.darkness;
   const perCell = combat?.distance?.perCell;
@@ -155,11 +177,9 @@ export function rulesetLightOf(
   const active = rulesetActiveConditions(definition, combat, who, state);
   // Its own light hidden with it (1.293): a will-o'-wisp's while it is invisible.
   const hidden = who.block?.lightOutWhile?.some((id) => active.some((source) => source.condition === id));
-  const radii = [
-    ...(hidden ? [] : ownLight(who)),
-    ...active.flatMap((source) => (source.light && !source.item ? [source.light] : [])),
-    ...itemLights(who),
-  ];
+  // A condition's light is a spell's (1.294), and magical.
+  const spelled = active.flatMap((source) => (source.light && !source.item ? [source.light] : []));
+  const radii = [...(hidden ? [] : ownLight(who)), ...spelled, ...itemLights(who)];
   if (darkness.carried && !who.doused && rulesetCarriesLight(definition, who, state)) radii.push(darkness.carried);
   if (radii.length === 0) return null;
   // No bright light at all is none, not the one cell a distance rounds up to (1.291).
@@ -173,9 +193,17 @@ export function rulesetLightOf(
   // Its bright light the sun's (1.293): a sun blade's.
   const sunny = radii.filter((one) => one.sunlight && one.bright > 0);
   const sunlight = sunny.length ? Math.max(...sunny.map((one) => rulesetInCells(one.bright, perCell))) : undefined;
+  const magical = [...spelled, ...radii.filter((one) => one.magical && !spelled.includes(one))];
+  const magicBright = magical.length
+    ? Math.max(...magical.map((one) => (one.bright > 0 ? rulesetInCells(one.bright, perCell) : 0)))
+    : 0;
+  const magicEdge = magical.length
+    ? Math.max(...magical.map((one) => rulesetInCells(one.bright + one.dim, perCell)))
+    : 0;
   return {
     bright,
     dim: Math.max(0, edge - bright),
+    ...(magical.length ? { magic: { bright: magicBright, dim: Math.max(0, magicEdge - magicBright) } } : {}),
     ...(reveals !== undefined ? { reveals } : {}),
     ...(sunlight !== undefined ? { sunlight } : {}),
   };
@@ -229,6 +257,9 @@ function lightSources(definition: RulesetDefinition, state: RulesetEncounterStat
             edge: light.bright + light.dim,
             ...(light.reveals !== undefined ? { reveals: light.reveals } : {}),
             ...(light.sunlight !== undefined ? { sunlight: light.sunlight } : {}),
+            ...(light.magic
+              ? { magic: { bright: light.magic.bright, edge: light.magic.bright + light.magic.dim } }
+              : {}),
           },
         ]
       : [];
@@ -248,6 +279,8 @@ function lightSources(definition: RulesetDefinition, state: RulesetEncounterStat
         only,
         ...(lights.reveals && lights.bright > 0 ? { reveals: lights.bright } : {}),
         ...(lights.sunlight && lights.bright > 0 ? { sunlight: lights.bright } : {}),
+        // A spell's light is magical (1.294).
+        magic: { bright: lights.bright, edge: lights.bright + lights.dim },
       },
     ];
   });
@@ -279,16 +312,20 @@ function lightFrom(
   grid: TacticalGrid,
   cell: RulesetCombatCell,
   base: RulesetBoardLight,
+  /** In magical darkness (1.294): only magical light reaches it. */
+  magicDark = false,
 ): RulesetBoardLight {
   let light = base;
   for (const source of sources) {
     if (source.only && !source.only.has(`${cell.x},${cell.y}`)) continue;
+    const reach = magicDark ? source.magic : source;
+    if (!reach) continue;
     for (const from of source.cells) {
       const away = Math.max(Math.abs(from.x - cell.x), Math.abs(from.y - cell.y));
-      if (away > source.edge || !rulesetLineOfSight(grid, from, cell)) continue;
+      if (away > reach.edge || !rulesetLineOfSight(grid, from, cell)) continue;
       // Sunlight outshines any other bright light (1.293), so the search goes on past one.
-      if (source.sunlight !== undefined && away <= source.sunlight) return "sunlight";
-      if (source.bright > 0 && away <= source.bright) light = "bright";
+      if (source.sunlight !== undefined && away <= Math.min(source.sunlight, reach.bright)) return "sunlight";
+      if (reach.bright > 0 && away <= reach.bright) light = "bright";
       else if (light === "dark") light = "dim";
     }
   }
@@ -306,7 +343,12 @@ export function rulesetLightAt(
 ): RulesetBoardLight {
   const base = state.board?.light ?? "bright";
   const grid = state.board?.grid;
-  if (base === "sunlight" || !definition.combat?.sight?.darkness || !grid) return base;
+  if (!definition.combat?.sight?.darkness || !grid) return base;
+  // Magical darkness (1.294): dark whatever the fight is fought in, lit only by magical light.
+  if (magicalDarkness(state).has(`${cell.x},${cell.y}`)) {
+    return lightFrom(lightSources(definition, state), grid, cell, "dark", true);
+  }
+  if (base === "sunlight") return base;
   // Bright light already: only a light that is sunlight changes it (1.293).
   if (base === "bright") {
     const sunlit = lightSources(definition, state).filter((source) => source.sunlight !== undefined);

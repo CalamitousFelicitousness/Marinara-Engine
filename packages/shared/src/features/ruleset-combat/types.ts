@@ -1055,6 +1055,9 @@ export interface RulesetTrackedCondition {
   harmsMore?: RulesetCombatAmount;
   /** The number its applier gave it as it went on (1.269): Heroism's spellcasting modifier. */
   value?: number;
+  /** The level of the spell that put it on, as it was paid for (1.294): what magical darkness of
+   *  that level or more puts its light out by. */
+  level?: number;
   /** The temporary points it last gave that its holder still had the most of (1.269), lost as it
    *  ends where its rule says so. */
   gaveTemp?: number;
@@ -1879,7 +1882,9 @@ export type RulesetCombatEvent =
         /** Put on by an aura its holder came near, or that came near them (1.258). */
         | "aura"
         /** Gone because its holder is out of the aura that spread it, or it stopped (1.258). */
-        | "parted";
+        | "parted"
+        /** Its spell's light put out by magical darkness (1.294). */
+        | "dispelled";
       stacks?: number;
     }
   /** A number that attacks move: what came off it or went on it, why, and what it is now. A style
@@ -2514,8 +2519,11 @@ export interface RulesetEncounterSummary {
 export interface RulesetCombatZoneRule {
   /** The light it sheds over its own cells, in CELLS from its middle (1.292). */
   lights?: { bright: number; dim: number; reveals?: true; sunlight?: true };
-  /** Magical darkness of this level or lower ends where it meets it (1.292). */
-  dispelsDark?: { upTo: number };
+  /** Spell light of this level or lower it puts out where they meet (1.294): 5e's Darkness. */
+  dispelsLight?: { upTo: number };
+  /** Magical darkness of this level or lower ends where it meets it (1.292), within this many CELLS
+   *  of its middle where it says (1.294). */
+  dispelsDark?: { upTo: number; within?: number };
   rounds: number;
   anchor: "point" | "caster";
   triggers: Array<"enter" | "turn-start" | "turn-end">;

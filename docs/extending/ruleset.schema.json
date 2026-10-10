@@ -9794,6 +9794,10 @@
                               "type": "boolean",
                               "const": true
                             },
+                            "magical": {
+                              "type": "boolean",
+                              "const": true
+                            },
                             "$comment": {}
                           },
                           "required": [
@@ -9803,6 +9807,26 @@
                           "additionalProperties": false
                         },
                         "dispelsDark": {
+                          "type": "object",
+                          "properties": {
+                            "upTo": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 20
+                            },
+                            "within": {
+                              "type": "number",
+                              "exclusiveMinimum": 0,
+                              "maximum": 10000
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "upTo"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "dispelsLight": {
                           "type": "object",
                           "properties": {
                             "upTo": {
@@ -14189,6 +14213,10 @@
                           "type": "boolean",
                           "const": true
                         },
+                        "magical": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "$comment": {}
                       },
                       "required": [
@@ -17821,6 +17849,10 @@
                                     "type": "boolean",
                                     "const": true
                                   },
+                                  "magical": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
                                   "$comment": {}
                                 },
                                 "required": [
@@ -19392,6 +19424,10 @@
                               "type": "boolean",
                               "const": true
                             },
+                            "magical": {
+                              "type": "boolean",
+                              "const": true
+                            },
                             "$comment": {}
                           },
                           "required": [
@@ -20277,6 +20313,10 @@
                               "const": true
                             },
                             "sunlight": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "magical": {
                               "type": "boolean",
                               "const": true
                             },
@@ -21319,6 +21359,10 @@
                                     "const": true
                                   },
                                   "sunlight": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "magical": {
                                     "type": "boolean",
                                     "const": true
                                   },
@@ -25647,6 +25691,10 @@
                                   "type": "boolean",
                                   "const": true
                                 },
+                                "magical": {
+                                  "type": "boolean",
+                                  "const": true
+                                },
                                 "$comment": {}
                               },
                               "required": [
@@ -25656,6 +25704,26 @@
                               "additionalProperties": false
                             },
                             "dispelsDark": {
+                              "type": "object",
+                              "properties": {
+                                "upTo": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 20
+                                },
+                                "within": {
+                                  "type": "number",
+                                  "exclusiveMinimum": 0,
+                                  "maximum": 10000
+                                },
+                                "$comment": {}
+                              },
+                              "required": [
+                                "upTo"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "dispelsLight": {
                               "type": "object",
                               "properties": {
                                 "upTo": {
@@ -31137,6 +31205,10 @@
                                         "type": "boolean",
                                         "const": true
                                       },
+                                      "magical": {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
                                       "$comment": {}
                                     },
                                     "required": [
@@ -31146,6 +31218,26 @@
                                     "additionalProperties": false
                                   },
                                   "dispelsDark": {
+                                    "type": "object",
+                                    "properties": {
+                                      "upTo": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "maximum": 20
+                                      },
+                                      "within": {
+                                        "type": "number",
+                                        "exclusiveMinimum": 0,
+                                        "maximum": 10000
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "required": [
+                                      "upTo"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  "dispelsLight": {
                                     "type": "object",
                                     "properties": {
                                       "upTo": {
@@ -35434,6 +35526,10 @@
                               "const": true
                             },
                             "sunlight": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "magical": {
                               "type": "boolean",
                               "const": true
                             },
@@ -41869,6 +41965,10 @@
                     "const": true
                   },
                   "sunlight": {
+                    "type": "boolean",
+                    "const": true
+                  },
+                  "magical": {
                     "type": "boolean",
                     "const": true
                   },

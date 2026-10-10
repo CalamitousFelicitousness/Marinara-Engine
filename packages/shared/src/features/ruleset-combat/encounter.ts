@@ -2511,7 +2511,14 @@ function mechanicsAction(
         ...(lights.sunlight ? { sunlight: true as const } : {}),
       };
     }
-    if (mechanics.zone.dispelsDark) action.zone.dispelsDark = { upTo: mechanics.zone.dispelsDark.upTo };
+    const dispels = mechanics.zone.dispelsDark;
+    if (dispels) {
+      action.zone.dispelsDark = {
+        upTo: dispels.upTo,
+        ...(dispels.within !== undefined ? { within: rulesetInCells(dispels.within, perCell ?? 1) } : {}),
+      };
+    }
+    if (mechanics.zone.dispelsLight) action.zone.dispelsLight = { upTo: mechanics.zone.dispelsLight.upTo };
     if (mechanics.zone.disperses) action.zone.disperses = true;
     const inside = mechanics.zone.inside;
     if (inside) {

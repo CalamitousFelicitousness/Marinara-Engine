@@ -1480,6 +1480,7 @@ export interface RulesetLightRadius {
   dim: number;
   reveals?: true;
   sunlight?: true;
+  magical?: true;
 }
 const lightRadiusSchema: z.ZodType<RulesetLightRadius, z.ZodTypeDef, unknown> = z
   .object({
@@ -1491,6 +1492,9 @@ const lightRadiusSchema: z.ZodType<RulesetLightRadius, z.ZodTypeDef, unknown> = 
     /** Its bright light is sunlight (Capability API 1.293), for what holds only in sunlight: 5e's
      *  sun blade against Sunlight Sensitivity. */
     sunlight: z.literal(true).optional(),
+    /** Magical light (Capability API 1.294), which shines into magical darkness where other light
+     *  does not: a sun blade's. A spell's light, on a zone or a condition, always is. */
+    magical: z.literal(true).optional(),
   })
   .strict()
   .refine((light) => light.bright + light.dim > 0, { message: "A light reaches somewhere" });
@@ -1632,7 +1636,8 @@ export interface RulesetCatalogZone {
   obscures?: RulesetSeenThrough;
   disperses?: true;
   lights?: RulesetLightRadius;
-  dispelsDark?: { upTo: number };
+  dispelsDark?: { upTo: number; within?: number };
+  dispelsLight?: { upTo: number };
   inside?: RulesetZoneInside;
   forbids?: RulesetForbids;
   wards?: RulesetZoneWards;
@@ -1767,6 +1772,19 @@ const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = 
     /** Magical darkness (an `obscures` with `darkness`) of this level or lower ends where it meets
      *  this zone (Capability API 1.292), as it appears or moves: 5e's Daylight, `{ "upTo": 3 }`. */
     dispelsDark: z
+      .object({
+        upTo: z.number().int().min(0).max(20),
+        /** Only darkness this near its middle (Capability API 1.294), in the ruleset's distance: 5e's
+         *  Daylight dispels what its 60-foot bright sphere meets, not its dim light beyond. */
+        within: z.number().finite().gt(0).max(10000).optional(),
+      })
+      .strict()
+      .optional(),
+    /** Magical darkness that puts out spell light (Capability API 1.294): every light a spell of this
+     *  level or lower made (a zone's `lights`, or a condition's `light` a spell put on) that meets it
+     *  ends, as either appears or moves. 5e's Darkness, `{ "upTo": 2 }`. Only magical light lights
+     *  any magical darkness's cells. */
+    dispelsLight: z
       .object({ upTo: z.number().int().min(0).max(20) })
       .strict()
       .optional(),
@@ -3405,6 +3423,8 @@ function zoneIssue(mechanics: {
   if (zone.damageType && zone.triggers.length === 0 && !zone.side && !zone.move?.ram) {
     return 'A zone\'s "damageType" is what it deals at its triggers, so it names one';
   }
+  if (zone.dispelsLight && !zone.obscures?.darkness)
+    return "A zone that puts out spell light is magical darkness, an obscures with darkness";
   return !mechanics.area
     ? "A zone is an area that stays, so it needs an area"
     : zone.anchor === "caster" && !["burst", "line", "cone"].includes(mechanics.area.shape)

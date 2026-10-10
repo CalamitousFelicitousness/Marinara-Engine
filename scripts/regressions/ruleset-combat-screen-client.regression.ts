@@ -760,6 +760,10 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
         path: [{ x: 4, y: 2 }],
       }),
     ],
+    [
+      "teleported",
+      say({ type: "teleported", actorId: "brenna", from: { x: 3, y: 2 }, to: { x: 6, y: 1 }, label: "Misty Step" }),
+    ],
     ["slain", say({ type: "slain", actorId: "brenna", targetId: "lurker", label: "Mace of Disruption" })],
     ["dropped", say({ type: "dropped", actorId: "brenna", targetId: "lurker", label: "Quivering Palm" })],
     [
@@ -1105,6 +1109,19 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   );
   assert.equal(printed.get("charged"), "Thorn Lurker charges Brenna with Gore.");
   assert.equal(printed.get("pushed"), "Brenna pushes Thorn Lurker back 1, to 4, 2.");
+  assert.equal(printed.get("teleported"), "Brenna teleports with Misty Step, to 6, 1.");
+  // Carried along (1.271).
+  assert.equal(
+    say({
+      type: "teleported",
+      actorId: "lurker",
+      from: { x: 4, y: 2 },
+      to: { x: 7, y: 1 },
+      label: "Dimension Door",
+      by: "brenna",
+    }),
+    "Thorn Lurker goes along with Brenna's Dimension Door, to 7, 1.",
+  );
   assert.equal(printed.get("resized"), "Thorn Lurker is now Large.");
   assert.equal(printed.get("section"), "Brenna's Mace strikes the Wall of Ice for 7; that section has 23 left.");
   const struck = (outcome: "hit" | "miss" | "critical", dealt: number, health: number, broken?: true) =>
@@ -1740,6 +1757,19 @@ function drawn(...rows: string[]): TacticalGrid {
   assert.deepEqual(path.at(-1), { x: 3, y: 0 }, "and the way ends where it was going");
   assert.deepEqual(rulesetPathTo(step, { x: 2, y: 1 }), [], "a square nobody offered has no way to it");
   assert.deepEqual(rulesetPathTo(null, { x: 1, y: 1 }), [], "and neither has any square without a step");
+  // A teleport is aimed at where it goes (1.271), and each square it may go to says so.
+  const blink: DirectedRulesetOption = {
+    ...walk,
+    id: "teleport",
+    kind: "ability",
+    cells: undefined,
+    teleport: { cells: [{ x: 3, y: 0 }] },
+    aim: [{ x: 3, y: 0, targetIds: [] }],
+  };
+  assert.ok(rulesetOptionNeedsAim(blink) && !rulesetOptionNeedsCell(blink));
+  const blinking = rulesetBoardCells(view, { stage: "aim", option: blink, targets: [] });
+  assert.ok(rulesetCellSentences(at(blinking, 3, 0), view, t).includes("Can be teleported to."));
+  assert.ok(!rulesetCellSentences(at(blinking, 3, 0), view, t).includes("Can be aimed at, catching nobody."));
 
   // Nobody can be swung at from where she stands, and the board says so out loud rather than
   // offering an attack that can be pointed at nobody.

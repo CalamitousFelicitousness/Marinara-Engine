@@ -685,24 +685,55 @@ export function RulesetCombatMenu({
       closeStep();
       onChoose(option.id, [], step.payWith, laid, step.style, step.mode, step.amount, step.alters);
     };
+    // Who may go along on a teleport (1.271), ticked here while the board takes the cell.
+    const carries = step.stage === "aim" ? option.teleport?.carries : undefined;
     const prompt =
       step.stage === "move"
         ? "game.combat.ruleset.board.movePrompt"
-        : turning
-          ? "game.combat.ruleset.board.aimTurnPrompt"
-          : wall && !lay?.ring
-            ? "game.combat.ruleset.board.aimWallPrompt"
-            : copies > 1
-              ? "game.combat.ruleset.board.aimCopiesPrompt"
-              : rulesetOptionHasAim(option)
-                ? "game.combat.ruleset.board.aimPrompt"
-                : "game.combat.ruleset.board.aimNobody";
+        : option.teleport
+          ? "game.combat.ruleset.board.teleportPrompt"
+          : turning
+            ? "game.combat.ruleset.board.aimTurnPrompt"
+            : wall && !lay?.ring
+              ? "game.combat.ruleset.board.aimWallPrompt"
+              : copies > 1
+                ? "game.combat.ruleset.board.aimCopiesPrompt"
+                : rulesetOptionHasAim(option)
+                  ? "game.combat.ruleset.board.aimPrompt"
+                  : "game.combat.ruleset.board.aimNobody";
     return (
       <div className="flex flex-col gap-2 p-3">
         <p className="text-xs text-amber-200">
           {t(prompt, { label: rulesetOptionLabel(option, t), name: actorName, count: copies, placed })}
         </p>
         {/* How a wall is laid (1.172) and how many copies are down (1.173): the board takes the cells. */}
+        {carries && (
+          <div className="flex flex-wrap gap-2">
+            {carries.ids.map((id) => {
+              const along = step.targets.includes(id);
+              const full = !along && step.targets.length >= carries.count;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  disabled={busy || full}
+                  aria-pressed={along}
+                  onClick={() =>
+                    setStep({
+                      ...step,
+                      targets: along ? step.targets.filter((one) => one !== id) : [...step.targets, id],
+                    })
+                  }
+                  className={cn(buttonClass, along ? "border-[var(--primary)]/60 bg-[var(--primary)]/25" : "")}
+                >
+                  {t("game.combat.ruleset.board.teleportCarry", {
+                    name: view.combatants.find((one) => one.id === id)?.name ?? id,
+                  })}
+                </button>
+              );
+            })}
+          </div>
+        )}
         {(wall || copies > 1) && (
           <div className="flex flex-wrap gap-2">
             {wall && area?.ring !== undefined && !turning && (

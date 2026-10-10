@@ -140,3 +140,27 @@ export function rulesetCanSee(
   const theirCells = rulesetFootprint(seen);
   return rulesetFootprint(viewer).some((a) => theirCells.some((b) => clear(a, b)));
 }
+
+/**
+ * Whether `viewer` sees a cell of the board (1.271): as they would see somebody of one cell standing
+ * there with nothing about them hidden, so what keeps their own eyes from it (blindness, a fog, a
+ * wall, the dark past what their senses reach) keeps the cell from them too.
+ */
+export function rulesetSeesCell(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  viewer: RulesetCombatant,
+  cell: RulesetCombatCell,
+): boolean {
+  if (rulesetFootprint(viewer).some((one) => one.x === cell.x && one.y === cell.y)) return true;
+  const there = {
+    id: "\u0000cell",
+    name: "",
+    side: viewer.side,
+    tracked: [],
+    flags: {},
+    x: cell.x,
+    y: cell.y,
+  } as unknown as RulesetCombatant;
+  return rulesetCanSee(definition, state, viewer, there);
+}

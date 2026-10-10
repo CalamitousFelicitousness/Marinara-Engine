@@ -647,7 +647,10 @@ export function rulesetMenu(
     ? rulesetWindowOptions(definition, encounter, actorId)
     : rulesetCombatOptions(definition, encounter, actorId);
   return menu.map((option) => {
-    const aim = option.area ? rulesetAimCells(encounter, actorId, option.id, RULESET_AIM_LIMIT) : [];
+    // A teleport is aimed as a shape is (1.271): at a cell it may go to, catching nobody.
+    const aim = option.area
+      ? rulesetAimCells(encounter, actorId, option.id, RULESET_AIM_LIMIT)
+      : (option.teleport?.cells.map((cell) => ({ x: cell.x, y: cell.y, targetIds: [] as string[] })) ?? []);
     const actor = rulesetCombatant(encounter, actorId);
     const action = actor?.actions.find((one) => one.id === option.id);
     const fallers =
@@ -1107,6 +1110,12 @@ function rulesetCandidatesFrom(
       if (moved) candidates.push(moved);
       continue;
     }
+    // A teleport (1.271) is weighed from where the actor stands, by where it would take them.
+    if (option.teleport) {
+      const gone = standing ? null : teleportCandidate(definition, combat, encounter, actor, option, way, price);
+      if (gone) candidates.push(gone);
+      continue;
+    }
     // Walking is not a candidate of its own: it is what a candidate does before it acts, and a turn
     // with nothing to act on closes the distance instead (see `rulesetClosingMove`).
     if (option.kind === "move") continue;
@@ -1416,6 +1425,59 @@ function zoneMoveCandidate(
       option,
     },
     setup: Math.min(1, 0.4 * best.gain),
+    cost: price,
+  };
+}
+
+/**
+ * Where an opponent teleports to (1.271), if anywhere: away from the enemies beside it when it is
+ * hurt badly enough (half its health or less), as far from the nearest of them as it can get, or,
+ * when it fights in reach and has nobody in reach, next to the nearest enemy. Otherwise nowhere:
+ * spending it to stand somewhere else for nothing is an opponent played badly.
+ */
+function teleportCandidate(
+  definition: RulesetDefinition,
+  combat: NonNullable<RulesetDefinition["combat"]>,
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+  option: RulesetCombatOption,
+  way: { payWith?: string; style?: string; mode?: string },
+  price: number,
+): CombatAiCandidate<RulesetCandidate> | null {
+  const cells = option.teleport?.cells ?? [];
+  const span = rulesetSpanOf(actor);
+  const foes = encounter.combatants.filter(
+    (one) => one.side !== actor.side && rulesetCombatStanding(one) && !one.away && !!rulesetPositionOf(one),
+  );
+  if (cells.length === 0 || foes.length === 0) return null;
+  const nearest = (at: { x: number; y: number }) => Math.min(...foes.map((foe) => rulesetGapFrom(at, span, foe)));
+  const here = rulesetPositionOf(actor)!;
+  const health = rulesetCombatHealth(definition, combat, actor);
+  const reaches = actor.actions
+    .filter((action) => action.kind !== "reload" && action.damage && action.reach !== undefined && !action.range)
+    .map((action) => action.reach!);
+  let best: { x: number; y: number } | null = null;
+  let worth = 0;
+  if (nearest(here) <= 1 && health.max > 0 && health.value * 2 <= health.max) {
+    // Fleeing: the cell farthest from every enemy, and only if it gets clear of them.
+    for (const cell of cells) if (!best || nearest(cell) > nearest(best)) best = cell;
+    if (best && nearest(best) > 1) worth = 0.6;
+  } else if (reaches.length > 0 && nearest(here) > Math.max(...reaches)) {
+    // Closing: the cell nearest an enemy that puts one in reach.
+    const reach = Math.max(...reaches);
+    for (const cell of cells) {
+      if (nearest(cell) > reach) continue;
+      if (!best || nearest(cell) < nearest(best)) best = cell;
+    }
+    if (best) worth = 0.5;
+  }
+  if (!best || worth <= 0) return null;
+  return {
+    action: {
+      choice: { actorId: actor.id, optionId: option.id, targetIds: [], at: { x: best.x, y: best.y }, ...paying(way) },
+      option,
+    },
+    setup: worth,
     cost: price,
   };
 }
@@ -1993,6 +2055,7 @@ export function commandRulesetCombatDirector(
       ...(command.ring !== undefined ? { ring: command.ring } : {}),
       ...(command.also?.length ? { also: command.also } : {}),
       ...(command.wall ? { wall: command.wall } : {}),
+      ...(command.carries?.length ? { carries: command.carries } : {}),
       ...(command.amount !== undefined ? { amount: command.amount } : {}),
       ...(command.alters?.length ? { alters: command.alters } : {}),
       ...(command.spares ? { spares: command.spares } : {}),

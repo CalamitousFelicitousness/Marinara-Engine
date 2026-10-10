@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: spells, items and creatures can teleport, as Misty Step to a place its caster can see, Dimension Door with one friend along, and a blink dog, picked on the battle map with no free strike on leaving (Capability API 1.271).
 - Rulesets: a fright like Antipathy's pauses while its victim is far away and out of sight and comes back when they return, and a condition like Calm Emotions can pause charms and frights until it ends (Capability API 1.270).
 - Rulesets: Antipathy/Sympathy save against their caster's DC, Heroism gives its caster's modifier in temporary hit points each turn and takes them back when it ends, Sympathy's victims stay within reach and save when the target harms them, and a scroll of Antipathy/Sympathy names its creature kind (Capability API 1.269).
 - Rulesets: a staff's charges can be spent when it hits, for more damage per charge and a save against a condition, as a Staff of Power's Power Strike, a Staff of Striking and a Staff of Withering (Capability API 1.268).

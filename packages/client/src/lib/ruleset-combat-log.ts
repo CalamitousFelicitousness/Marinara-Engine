@@ -573,6 +573,21 @@ export function rulesetCombatEventLine(
         x: event.to.x,
         y: event.to.y,
       });
+    case "teleported":
+      return event.by
+        ? key("teleportedAlong", {
+            actor: names.combatant(event.actorId),
+            by: names.combatant(event.by),
+            label: event.label,
+            x: event.to.x,
+            y: event.to.y,
+          })
+        : key("teleported", {
+            actor: names.combatant(event.actorId),
+            label: event.label,
+            x: event.to.x,
+            y: event.to.y,
+          });
     case "spend":
       return key("spend", { actor: names.combatant(event.actorId), amount: event.amount, pool: event.label });
     case "budget":

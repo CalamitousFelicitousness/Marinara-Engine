@@ -2834,6 +2834,30 @@ const targetHoldsSchema: z.ZodType<RulesetTargetHolds, z.ZodTypeDef, unknown> = 
     message: '"targetHolds" names "conditions", "fromSelf" or both',
   });
 
+/** Where a teleport goes (Capability API 1.271). Typed by hand, to keep the definition's type small. */
+export interface RulesetTeleportRule {
+  distance: number;
+  seen?: true;
+  carries?: number;
+  carriesWithin?: number;
+}
+/** Its user moves at once to a free place within `distance`, touching nothing between: no step, so
+ *  nobody gets a strike at them leaving. With `seen`, only a place they can see. `carries` willing
+ *  creatures of their own side no bigger than they are, within `carriesWithin` (touching when left
+ *  out), go along and land as near them as there is room. Only on a board. */
+const teleportSchema: z.ZodType<RulesetTeleportRule, z.ZodTypeDef, unknown> = z
+  .object({
+    distance: z.number().finite().gt(0).max(100000),
+    seen: z.literal(true).optional(),
+    carries: z.number().int().min(1).max(8).optional(),
+    carriesWithin: z.number().finite().gt(0).max(10000).optional(),
+  })
+  .strict()
+  .refine((teleport) => teleport.carriesWithin === undefined || teleport.carries !== undefined, {
+    message: '"carriesWithin" is how near those it "carries" stand, so it goes with "carries"',
+    path: ["carriesWithin"],
+  });
+
 const catalogMechanicsObject = z
   .object({
     kind: z.enum(["attack", "heal", "buff", "debuff", "utility", "rider"]),
@@ -2954,6 +2978,9 @@ const catalogMechanicsObject = z
      *  in the catalog's unit (Capability API 1.177): 5e's Gust of Wind, 15 feet. A zone pushes
      *  whoever it catches the same way. */
     push: z.number().finite().gt(0).max(10000).optional(),
+    /** Its user teleports (Capability API 1.271), in the catalog's unit: 5e's Misty Step, 30 feet to
+     *  a place they can see; Dimension Door, 500 feet, carrying one willing creature within 5 feet. */
+    teleport: teleportSchema.optional(),
     /** Takes these conditions off whoever it lands on, up to `count` of them (all when left out) in
      *  the order named (Capability API 1.171): 5e's Lesser Restoration ends one of blinded, deafened,
      *  paralyzed or poisoned. */
@@ -3252,6 +3279,14 @@ const catalogMechanicsSchema: z.ZodType<
 > = catalogMechanicsObject.superRefine((mechanics, ctx) => {
   const why = zoneIssue(mechanics);
   if (why) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["zone"], message: why });
+  // Where a teleport goes is picked as it is used (1.271): never an aim or an answer.
+  if (mechanics.teleport && (mechanics.area || mechanics.reaction)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["teleport"],
+      message: "A teleport goes where its user picks, so it is not an area or a reaction",
+    });
+  }
   const cureParts =
     (mechanics.ends?.conditions.length ?? 0) + (mechanics.tracks?.length ?? 0) + (mechanics.unseals ? 1 : 0);
   if (mechanics.kindChoice && !mechanics.applies?.length) {
@@ -3726,6 +3761,9 @@ const creatureActionSchema = z
      *  distance (Capability API 1.179); with a save, only on a failed one: a bronze dragon's
      *  Repulsion Breath, a dragon turtle's Tail. */
     push: z.number().finite().gt(0).max(10000).optional(),
+    /** The creature teleports (Capability API 1.271), in the ruleset's own distance, as a catalog
+     *  entry's `teleport` does: a blink dog's Teleport, 40 feet to a place it can see. */
+    teleport: teleportSchema.optional(),
     /** The ability its attack is made with (Capability API 1.184), so a change to attacks or damage
      *  narrowed to an ability reaches it: a gold dragon's Weakening Breath on an ogre's club. */
     ability: sheetId.optional(),
@@ -3816,6 +3854,14 @@ const creatureActionSchema = z
   })
   .strict()
   .superRefine((action, ctx) => {
+    // Where a teleport goes is picked as it is taken (1.271): never an aim, an answer or a part.
+    if (action.teleport && (action.area || action.reaction || action.sequence)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["teleport"],
+        message: "A teleport goes where its user picks, so it is not an area, a reaction or a sequence",
+      });
+    }
     if (action.heal) {
       if (action.heal.dice === undefined && action.heal.flat === undefined) {
         ctx.addIssue({
@@ -5087,7 +5133,7 @@ export const rulesetItemUseSchema = catalogMechanicsObject
   })
   .extend({
     /** `utility` (Capability API 1.176) is a use that only leaves an area standing: a scroll of Fog
-     *  Cloud, Darkness or Silence. */
+     *  Cloud, Darkness or Silence; or one that teleports (1.271): a cape's Dimension Door. */
     kind: z.enum(["attack", "heal", "buff", "debuff", "utility"]),
     // A wall's thickness and a ring are a wand's or a scroll's too (1.172), and a line's width
     // (1.179): a scroll of Gust of Wind.
@@ -5174,6 +5220,8 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     if (use.chargeStep && use.charges === undefined) {
       issue("chargeStep", 'More charges go beside the "charges" a use spends');
     }
+    // Where a teleport goes is picked as it is used (Capability API 1.271), never aimed.
+    if (use.teleport && use.area) issue("teleport", "A teleport goes where its user picks, so it is not an area");
     // A kind named as it is used (Capability API 1.269), as a spell names one (1.265): a scroll of
     // Antipathy/Sympathy.
     if (use.kindChoice && !use.applies?.length) {
@@ -5196,8 +5244,8 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     if (use.restore && use.kind !== "heal" && use.kind !== "buff") {
       issue("restore", "A restore is on a use that helps, a heal or a buff");
     }
-    if (use.kind === "utility" && (!use.zone || !use.area)) {
-      issue("kind", "A utility use leaves an area standing, so it has an area and a zone");
+    if (use.kind === "utility" && !use.teleport && (!use.zone || !use.area)) {
+      issue("kind", "A utility use leaves an area standing or teleports, so it has an area and a zone, or a teleport");
     }
     // An area that stays, as a scroll of the spell leaves one (1.169).
     const zone = zoneIssue(use);
@@ -11358,6 +11406,8 @@ function useIssues(
     health && "track" in health ? definition.sheet.live.tracks.find((one) => one.id === health.track) : null;
   if (use.kindChoice && !definition.combat?.creatureTypes)
     add([...at, "kindChoice"], "This ruleset has no creature types to choose from");
+  if (use.teleport && !definition.combat?.distance)
+    add([...at, "teleport"], '"teleport" is measured in cells, so the combat block declares "distance" too');
   if (use.temporary && (track?.levels?.length || track?.boxes)) {
     add([...at, "temporary"], `Health is the wound track "${track.id}", which carries no buffer for temporary points`);
   }
@@ -12274,6 +12324,11 @@ export function rulesetCatalogEntryIssues(
     }
     if (mechanics?.kindChoice && !definition.combat?.creatureTypes)
       add([index, "mechanics", "kindChoice"], "This ruleset has no creature types to choose from");
+    if (mechanics?.teleport && !definition.combat?.distance)
+      add(
+        [index, "mechanics", "teleport"],
+        '"teleport" is measured in cells, so the combat block declares "distance" too',
+      );
     mechanics?.keepsOn?.forEach((kept, keptIndex) => {
       if (!liveConditions.has(kept)) add([index, "mechanics", "keepsOn", keptIndex], `Unknown condition "${kept}"`);
     });

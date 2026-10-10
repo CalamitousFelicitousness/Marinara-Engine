@@ -100,6 +100,7 @@ import type {
   RulesetEncounterState,
   RulesetStatBlockAction,
   RulesetStatBlock,
+  RulesetTeleport,
 } from "./types.js";
 
 /** The dice of a catalog entry's `amount`, which the schema already holds to `<count>d<sides>`. */
@@ -1940,6 +1941,16 @@ function abilityAction(
   });
 }
 
+/** A teleport's distances in cells (1.271). */
+function rulesetTeleportInCells(teleport: RulesetTeleport, perCell: number): RulesetTeleport {
+  return {
+    distance: rulesetInCells(teleport.distance, perCell),
+    ...(teleport.seen ? { seen: true as const } : {}),
+    ...(teleport.carries ? { carries: teleport.carries } : {}),
+    ...(teleport.carriesWithin !== undefined ? { carriesWithin: rulesetInCells(teleport.carriesWithin, perCell) } : {}),
+  };
+}
+
 /**
  * What a catalog entry's `mechanics`, or an item's `use`, does in a fight, as one action: the harm
  * or healing it deals, its save, the conditions it applies, its temporary points, its reach, range
@@ -1987,7 +1998,8 @@ function mechanicsAction(
     !cures &&
     !places &&
     !mechanics.rescue &&
-    !mechanics.alters
+    !mechanics.alters &&
+    !mechanics.teleport
   ) {
     return null;
   }
@@ -2258,6 +2270,9 @@ function mechanicsAction(
     };
   }
   if (mechanics.push !== undefined) action.push = rulesetInCells(mechanics.push, perCell ?? 1);
+  // Measured on a board (1.271): a fight without one has nowhere to go.
+  if (mechanics.teleport && perCell !== undefined)
+    action.teleport = rulesetTeleportInCells(mechanics.teleport, perCell);
   if (mechanics.zone) {
     action.zone = {
       rounds: mechanics.zone.rounds,
@@ -2730,22 +2745,24 @@ function blockActions(
     // A sequence may be pointed at as many targets as all of its parts together, so a caller can
     // send each strike somewhere else. Fewer is legal too: every part takes the ones it was given.
     // One that lands on the creature itself points at nobody: its effect is its own.
-    targets: action.self
-      ? { side: "self" as const, count: 0 }
-      : {
-          // An area catches each creature in it, the creature's allies too (1.187): off a board it may
-          // be pointed at either side, unless it spares its own.
-          side: action.targets ?? (action.area && action.area.friendlyFire !== false ? "any" : ("enemy" as const)),
-          count: action.sequence
-            ? Math.max(
-                1,
-                action.sequence.reduce((total, step) => {
-                  const named = block.actions[indexById.get(step.action) ?? -1];
-                  return total + (named ? Math.max(1, named.targetCount ?? 1) * step.times : 0);
-                }, 0),
-              )
-            : Math.max(1, action.targetCount ?? 1),
-        },
+    // So does a teleport (1.271): where it goes is its choice, not whom.
+    targets:
+      action.self || action.teleport
+        ? { side: "self" as const, count: 0 }
+        : {
+            // An area catches each creature in it, the creature's allies too (1.187): off a board it may
+            // be pointed at either side, unless it spares its own.
+            side: action.targets ?? (action.area && action.area.friendlyFire !== false ? "any" : ("enemy" as const)),
+            count: action.sequence
+              ? Math.max(
+                  1,
+                  action.sequence.reduce((total, step) => {
+                    const named = block.actions[indexById.get(step.action) ?? -1];
+                    return total + (named ? Math.max(1, named.targetCount ?? 1) * step.times : 0);
+                  }, 0),
+                )
+              : Math.max(1, action.targetCount ?? 1),
+          },
     ...(action.toHit !== undefined ? { toHit: action.toHit } : {}),
     ...(action.autoHit ? { autoHit: true } : {}),
     ...(action.needs ? { needs: [...action.needs] } : {}),
@@ -2812,6 +2829,7 @@ function blockActions(
     ...(action.reducesMax ? { reducesMax: { ...action.reducesMax } } : {}),
     ...(action.targetHolds ? { targetHolds: structuredClone(action.targetHolds) } : {}),
     ...(perCell !== undefined && action.push !== undefined ? { push: rulesetInCells(action.push, perCell) } : {}),
+    ...(perCell !== undefined && action.teleport ? { teleport: rulesetTeleportInCells(action.teleport, perCell) } : {}),
     // A run is measured on a board (1.181), so a fight with none never charges.
     ...(perCell !== undefined && action.charge
       ? {

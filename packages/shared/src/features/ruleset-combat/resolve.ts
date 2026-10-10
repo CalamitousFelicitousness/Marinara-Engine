@@ -175,6 +175,7 @@ import {
   type RulesetInitiativeStyle,
   rulesetCanRevive,
   rulesetPutOnBy,
+  rulesetRoomAt,
 } from "./options.js";
 import type {
   RulesetActionResume,
@@ -259,6 +260,8 @@ interface RulesetCombatContext {
   chosenAmount?: number;
   /** How many more of an item's charges its user spends on the action being resolved (1.264). */
   moreCharges?: number;
+  /** Where the teleport being resolved goes, and who goes along (1.271). */
+  teleport?: { to: RulesetCombatCell; carries: string[] };
 }
 
 /** A working copy, plus a roller that counts its dice so the state's cursor stays exact. */
@@ -3361,6 +3364,26 @@ function applyChoice(
   if (choice.payWith !== undefined && !(option.payWith ?? []).includes(choice.payWith)) {
     return refusal(state, choice.actorId, "bad-pool", option.id);
   }
+  // Where a teleport goes and who goes along (1.271): only what its option offers.
+  const teleporting = option.teleport;
+  if (
+    teleporting &&
+    !(choice.at && teleporting.cells.some((cell) => cell.x === choice.at!.x && cell.y === choice.at!.y))
+  ) {
+    return refusal(state, choice.actorId, "bad-cell", option.id);
+  }
+  if (
+    choice.carries !== undefined &&
+    !(
+      teleporting &&
+      Array.isArray(choice.carries) &&
+      new Set(choice.carries).size === choice.carries.length &&
+      choice.carries.length <= (teleporting.carries?.count ?? 0) &&
+      choice.carries.every((id) => teleporting.carries!.ids.includes(id))
+    )
+  ) {
+    return refusal(state, choice.actorId, "bad-target", option.id);
+  }
   // A wall's section struck at instead of a creature (1.195).
   if (choice.wall !== undefined) return strikeSection(definition, combat, state, actor, option, choice, roller);
   // Targets, checked against the side and the count the option itself declared, or the count the
@@ -3404,6 +3427,9 @@ function applyChoice(
   const { ctx, finish } = begin(definition, combat, state, roller);
   if (area && choice.at) ctx.aimedAt = { x: choice.at.x, y: choice.at.y };
   if (also) ctx.aimedAlso = also;
+  if (teleporting && choice.at) {
+    ctx.teleport = { to: { x: choice.at.x, y: choice.at.y }, carries: [...(choice.carries ?? [])] };
+  }
   const working = rulesetCombatant(ctx.state, actor.id)!;
   const workingTargets = targets.map((target) => rulesetCombatant(ctx.state, target.id)!);
 
@@ -5642,10 +5668,60 @@ function resolveAction(
   if (actor.surprised && actor.surpriseOut?.includes(action.id)) endSurprise(ctx, actor, action.label);
   const before = new Set(actor.tracked);
   const result = resolveActionFalling(ctx, actor, action, targets, payWith, held, styleId, spend);
+  // Gone once the rest is done (1.271).
+  if (!result && action.teleport && ctx.teleport) teleport(ctx, actor, action);
   // Finished, rather than held for an answer to one of its rolls (1.175).
   if (!result) holderActed(ctx, actor, action, before);
   if (!result && action.endsCondition) endOwnCondition(ctx, actor, action.endsCondition);
   return result;
+}
+
+/**
+ * A teleport (1.271): its user is set down on the cell chosen, with no step between, so nobody gets a
+ * strike at them leaving, and whoever went along lands as near them as there is room, nearest first.
+ * A zone they land in catches them as walking in would. Somebody who could not stand there any more,
+ * or who has been taken out since it was chosen, stays where they are.
+ */
+function teleport(ctx: RulesetCombatContext, actor: RulesetCombatant, action: RulesetCombatAction): void {
+  const { to, carries } = ctx.teleport!;
+  delete ctx.teleport;
+  const grid = ctx.state.board?.grid;
+  const from = rulesetPositionOf(actor);
+  if (!grid || !from || !rulesetCombatStanding(actor) || !rulesetRoomAt(ctx.state, grid, actor, to)) return;
+  const set = (one: RulesetCombatant, at: RulesetCombatCell, was: RulesetCombatCell, by?: string) => {
+    const before = zonesAround(ctx);
+    one.x = at.x;
+    one.y = at.y;
+    if (one.altitude !== undefined && !rulesetAirborne(grid, one)) delete one.altitude;
+    ctx.events.push({
+      type: "teleported",
+      actorId: one.id,
+      from: { ...was },
+      to: { ...at },
+      label: action.label,
+      ...(by ? { by } : {}),
+    });
+    zonesEntered(ctx, one, before);
+  };
+  set(actor, to, from);
+  for (const id of carries) {
+    const one = rulesetCombatant(ctx.state, id);
+    const was = rulesetPositionOf(one);
+    if (!one || !was || !rulesetCombatStanding(one) || !rulesetCombatStanding(actor)) continue;
+    let spot: RulesetCombatCell | null = null;
+    const here = rulesetPositionOf(actor)!;
+    for (let reach = 1; reach <= Math.max(grid.width, grid.height) && !spot; reach++) {
+      for (let y = here.y - reach; y <= here.y + reach && !spot; y++) {
+        for (let x = here.x - reach; x <= here.x + reach; x++) {
+          if (Math.max(Math.abs(x - here.x), Math.abs(y - here.y)) !== reach) continue;
+          if (!rulesetRoomAt(ctx.state, grid, one, { x, y })) continue;
+          spot = { x, y };
+          break;
+        }
+      }
+    }
+    if (spot) set(one, spot, was, actor.id);
+  }
 }
 
 /** Out of the fight, alive (1.231): for good, or while it holds what the same use put on it, whose

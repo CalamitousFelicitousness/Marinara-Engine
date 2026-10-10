@@ -10025,6 +10025,35 @@
                       "exclusiveMinimum": 0,
                       "maximum": 10000
                     },
+                    "teleport": {
+                      "type": "object",
+                      "properties": {
+                        "distance": {
+                          "type": "number",
+                          "exclusiveMinimum": 0,
+                          "maximum": 100000
+                        },
+                        "seen": {
+                          "type": "boolean",
+                          "const": true
+                        },
+                        "carries": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 8
+                        },
+                        "carriesWithin": {
+                          "type": "number",
+                          "exclusiveMinimum": 0,
+                          "maximum": 10000
+                        },
+                        "$comment": {}
+                      },
+                      "required": [
+                        "distance"
+                      ],
+                      "additionalProperties": false
+                    },
                     "ends": {
                       "type": "object",
                       "properties": {
@@ -14638,6 +14667,35 @@
                             "type": "number",
                             "exclusiveMinimum": 0,
                             "maximum": 10000
+                          },
+                          "teleport": {
+                            "type": "object",
+                            "properties": {
+                              "distance": {
+                                "type": "number",
+                                "exclusiveMinimum": 0,
+                                "maximum": 100000
+                              },
+                              "seen": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "carries": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 8
+                              },
+                              "carriesWithin": {
+                                "type": "number",
+                                "exclusiveMinimum": 0,
+                                "maximum": 10000
+                              },
+                              "$comment": {}
+                            },
+                            "required": [
+                              "distance"
+                            ],
+                            "additionalProperties": false
                           },
                           "ability": {
                             "type": "string",
@@ -25106,6 +25164,35 @@
                           "exclusiveMinimum": 0,
                           "maximum": 10000
                         },
+                        "teleport": {
+                          "type": "object",
+                          "properties": {
+                            "distance": {
+                              "type": "number",
+                              "exclusiveMinimum": 0,
+                              "maximum": 100000
+                            },
+                            "seen": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "carries": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 8
+                            },
+                            "carriesWithin": {
+                              "type": "number",
+                              "exclusiveMinimum": 0,
+                              "maximum": 10000
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "distance"
+                          ],
+                          "additionalProperties": false
+                        },
                         "ends": {
                           "type": "object",
                           "properties": {
@@ -30360,6 +30447,35 @@
                                 "type": "number",
                                 "exclusiveMinimum": 0,
                                 "maximum": 10000
+                              },
+                              "teleport": {
+                                "type": "object",
+                                "properties": {
+                                  "distance": {
+                                    "type": "number",
+                                    "exclusiveMinimum": 0,
+                                    "maximum": 100000
+                                  },
+                                  "seen": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "carries": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 8
+                                  },
+                                  "carriesWithin": {
+                                    "type": "number",
+                                    "exclusiveMinimum": 0,
+                                    "maximum": 10000
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "distance"
+                                ],
+                                "additionalProperties": false
                               },
                               "ends": {
                                 "type": "object",

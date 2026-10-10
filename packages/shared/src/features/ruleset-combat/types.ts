@@ -276,6 +276,16 @@ export interface RulesetCombatRider {
   type?: string;
 }
 
+/** A teleport (1.271): its user goes at once to a free place within `distance`, one they can see
+ *  with `seen`, taking up to `carries` willing creatures of their side no bigger than them from
+ *  within `carriesWithin` (touching when left out), who land as near them as there is room. */
+export interface RulesetTeleport {
+  distance: number;
+  seen?: true;
+  carries?: number;
+  carriesWithin?: number;
+}
+
 /** One thing a stat block can do. `reach` and `range` are in the ruleset's own distance unit; a
  *  positioned fight turns them into cells when it starts. */
 export interface RulesetStatBlockAction {
@@ -305,6 +315,8 @@ export interface RulesetStatBlockAction {
   /** Pushed this far straight away from the creature, in the ruleset's own distance, on a failed save
    *  when it has one (1.179). */
   push?: number;
+  /** The creature teleports, in the ruleset's own distance (1.271). */
+  teleport?: RulesetTeleport;
   /** The ability its attack is made with (1.184), so changes narrowed to an ability reach it. */
   ability?: string;
   /** Its damage lowers the health maximum (1.198): on a failed save of its own, on a failed save of
@@ -703,6 +715,8 @@ export interface RulesetCombatAction {
   /** Cells whoever it lands on and does not save against is pushed straight away from its maker
    *  (1.177): 5e's Gust of Wind. */
   push?: number;
+  /** Its user teleports (1.271): in the ruleset's distance on a block, in cells in a fight. */
+  teleport?: RulesetTeleport;
   /** What it adds after a straight run at its target this turn, in cells (1.181). */
   charge?: RulesetCombatCharge;
   /** The shape this one covers, in cells, aimed at a cell rather than at anybody. */
@@ -1939,6 +1953,15 @@ export type RulesetCombatEvent =
       to: RulesetCombatCell;
       path: RulesetCombatCell[];
     }
+  /** Teleported (1.271): the user, or one they carried (`by` names the user then). */
+  | {
+      type: "teleported";
+      actorId: string;
+      from: RulesetCombatCell;
+      to: RulesetCombatCell;
+      label: string;
+      by?: string;
+    }
   /** A held attack's roll, checked again once the one it hit had answered: against what their
    *  defense then was, and whether it still lands. */
   | {
@@ -2082,6 +2105,9 @@ export interface RulesetCombatOption {
   targetsWith?: Record<string, number>;
   /** The cells of standing wall sections this attack may be pointed at instead (1.195). */
   walls?: RulesetCombatCell[];
+  /** Where a teleport may go (1.271), as cells its user's corner would stand on, and who of its
+   *  user's side may go along, at most `count` of them. The choice names the cell as `at`. */
+  teleport?: { cells: RulesetCombatCell[]; carries?: { count: number; ids: string[] } };
   /** What it costs in the actor's own points, and how many they have. A signature option spends no
    *  budget: it is bought at the end of somebody else's turn. */
   signature?: { cost: number; points: number };
@@ -2162,8 +2188,11 @@ export interface RulesetCombatChoice {
   payWith?: string;
   /** Where the `move` option is walking to. */
   to?: RulesetCombatCell;
-  /** The cell an area is aimed at. An option with an area takes this instead of target ids. */
+  /** The cell an area is aimed at. An option with an area takes this instead of target ids. Where
+   *  a teleport goes (1.271): one of its option's `teleport.cells`. */
   at?: RulesetCombatCell;
+  /** Who goes along on a teleport (1.271): ids its option's `teleport.carries` offers. */
+  carries?: string[];
   /** Which way a wall runs from `at` (1.172): toward this cell. Across the line to its maker when
    *  left out. A ring ignores it. */
   toward?: RulesetCombatCell;

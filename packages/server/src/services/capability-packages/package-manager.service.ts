@@ -1549,6 +1549,17 @@ function carriesMetamagic(value: unknown, depth = 0): boolean {
 
 /** An aura that needs senses, harms at its holder's turn or asks for a save, or a save change
  *  narrowed to what is cast from a catalog (1.260). */
+/** A teleport (1.271), on a catalog entry, an item's use or a creature's action. */
+function carriesTeleports(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesTeleports(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const teleport = plainRecord(record.teleport);
+  if (teleport && typeof teleport.distance === "number") return true;
+  return Object.values(record).some((one) => carriesTeleports(one, depth + 1));
+}
+
 /** A condition held off rather than ended (1.270): near its source as well as in sight, or held off
  *  by another condition. */
 function carriesHeldOff(value: unknown, depth = 0): boolean {
@@ -3752,6 +3763,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Teleports, 1.271.
+  if (
+    !declaresApi(271) &&
+    (carriesTeleports(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesTeleports(document)))
+  ) {
+    return "A ruleset with a spell, an item or a creature that teleports requires schemaVersion 2 and capabilityApi 1.271 or newer";
   }
   // A condition held off near its source or by another condition, 1.270.
   if (!declaresApi(270) && carriesHeldOff(ruleset)) {

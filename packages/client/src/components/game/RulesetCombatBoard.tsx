@@ -182,7 +182,18 @@ export function RulesetCombatBoard({
         return;
       }
       setStep(null);
-      onChoose(step.option.id, [], step.payWith, taken.send, step.style, step.mode, step.amount, step.alters);
+      // Who goes along on a teleport (1.271), picked in the menu while it is aimed.
+      const carries = step.option.teleport ? step.targets : [];
+      onChoose(
+        step.option.id,
+        [],
+        step.payWith,
+        carries.length ? { ...taken.send, carries } : taken.send,
+        step.style,
+        step.mode,
+        step.amount,
+        step.alters,
+      );
       return;
     }
     // A wall's section the attack may strike (1.195): sent at once, as one target is.

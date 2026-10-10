@@ -63,6 +63,8 @@ export type DirectedCommand =
       also?: Array<{ x: number; y: number }>;
       /** A wall's section struck at instead of a creature (1.195): one of the option's `walls`. */
       wall?: { x: number; y: number };
+      /** Who goes along on a teleport (1.271): ids its option's `teleport.carries` offers. */
+      carries?: string[];
       /** How many uses it spends, where the option offers an `amount` (1.246): Lay on Hands. */
       amount?: number;
       /** The alterations it is used with (1.248), from the option's `alters`: Metamagic. */

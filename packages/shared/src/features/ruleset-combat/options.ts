@@ -91,10 +91,13 @@ import {
   rulesetGap,
   rulesetNearestCell,
   rulesetSpanOf,
+  rulesetCellSolidFor,
+  rulesetFootprintAt,
+  rulesetFills,
 } from "./grid.js";
 import { coverTier, elevationAt } from "../tactical-combat/math.js";
 import { rulesetStandingSections, rulesetZoneMoveCells, rulesetZoneTurnCells } from "./zones.js";
-import { rulesetCanSee } from "./sight.js";
+import { rulesetCanSee, rulesetSeesCell } from "./sight.js";
 import type {
   RulesetAfterAttack,
   RulesetCombatAmount,
@@ -256,6 +259,96 @@ export function rulesetGrantedStandard(
 /** The one thing a fight with no board answers about distance: nothing at all. */
 function positioned(state: RulesetEncounterState): boolean {
   return !!state.board?.grid;
+}
+
+/** Whether an action with a teleport does anything besides (1.271), off a board where it cannot go. */
+function rulesetDoesMoreThanTeleport(action: RulesetCombatAction): boolean {
+  return !!(
+    action.damage ||
+    action.heal ||
+    action.temporary ||
+    action.applies?.length ||
+    action.ends ||
+    action.restore ||
+    action.gives ||
+    action.standard ||
+    action.sequence
+  );
+}
+
+/** Whether somebody `span` cells a side may stand with their corner here, nobody else in the way. */
+export function rulesetRoomAt(
+  state: RulesetEncounterState,
+  grid: NonNullable<NonNullable<RulesetEncounterState["board"]>["grid"]>,
+  mover: RulesetCombatant,
+  at: RulesetCombatCell,
+  others: readonly string[] = [],
+): boolean {
+  return rulesetFootprintAt(at, rulesetSpanOf(mover)).every(
+    (cell) =>
+      !rulesetCellSolidFor(grid, cell.x, cell.y, mover) &&
+      !state.combatants.some(
+        (other) => other.id !== mover.id && !others.includes(other.id) && !other.defeated && rulesetFills(other, cell),
+      ),
+  );
+}
+
+/**
+ * Where a teleport may go (1.271): every cell its user's corner may stand on within its distance of
+ * where they stand now, nearest cell to nearest cell, with room for all of them and nobody there,
+ * and, where it says `seen`, a cell of it they can see. Never where they already are.
+ */
+export function rulesetTeleportCells(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  actor: RulesetCombatant,
+  teleport: NonNullable<RulesetCombatAction["teleport"]>,
+): RulesetCombatCell[] {
+  const grid = state.board?.grid;
+  const from = rulesetPositionOf(actor);
+  if (!grid || !from) return [];
+  const span = rulesetSpanOf(actor);
+  const cells: RulesetCombatCell[] = [];
+  for (let y = 0; y < grid.height; y++) {
+    for (let x = 0; x < grid.width; x++) {
+      if (x === from.x && y === from.y) continue;
+      const at = { x, y };
+      if (rulesetGapFrom(at, span, actor) > teleport.distance) continue;
+      if (!rulesetRoomAt(state, grid, actor, at)) continue;
+      if (
+        teleport.seen &&
+        !rulesetFootprintAt(at, span).some((cell) => rulesetSeesCell(definition, state, actor, cell))
+      ) {
+        continue;
+      }
+      cells.push(at);
+    }
+  }
+  return cells;
+}
+
+/** Who may go along on a teleport (1.271): standing creatures of its user's side, no bigger than
+ *  they are, within its `carriesWithin` of them (touching when it says nothing), never held off the
+ *  board. None for one that carries nobody. */
+export function rulesetTeleportPassengers(
+  state: RulesetEncounterState,
+  actor: RulesetCombatant,
+  teleport: NonNullable<RulesetCombatAction["teleport"]>,
+): string[] {
+  if (!teleport.carries || !rulesetPositionOf(actor)) return [];
+  const within = teleport.carriesWithin ?? 1;
+  return state.combatants
+    .filter(
+      (one) =>
+        one.id !== actor.id &&
+        one.side === actor.side &&
+        rulesetCombatStanding(one) &&
+        !one.away &&
+        !!rulesetPositionOf(one) &&
+        rulesetSpanOf(one) <= rulesetSpanOf(actor) &&
+        rulesetGap(actor, one) <= within,
+    )
+    .map((one) => one.id);
 }
 
 /** How many cells one aim scan may look at: the area of the largest board a saved fight may hold. */
@@ -1918,6 +2011,8 @@ function optionFrom(
   // Breaking free is only there while something holds on.
   if (action.contest?.from && !rulesetContestHolder(state, actor, action.contest)) return null;
   if (!actionDoesSomething(action)) return null;
+  // A teleport and nothing else (1.271) goes nowhere without a board.
+  if (action.teleport && !positioned(state) && !rulesetDoesMoreThanTeleport(action)) return null;
   // Only once the attack action has been taken this turn (1.237): Flurry of Blows.
   if (action.afterAttack && !rulesetTookAttackAction(actor, action.afterAttack)) return null;
   // Only on its holder's own turn before they have attacked in it (1.242): Reckless Attack.
@@ -2048,6 +2143,16 @@ function optionFrom(
   if (!atItsMoment) {
     const walls = rulesetWallTargets(state, actor, action);
     if (walls.length > 0) option.walls = walls;
+  }
+  // Where a teleport may go, and who may go along (1.271). With nowhere to go it is not offered.
+  if (action.teleport && positioned(state)) {
+    const cells = rulesetTeleportCells(definition, state, actor, action.teleport);
+    if (cells.length === 0) return null;
+    const ids = rulesetTeleportPassengers(state, actor, action.teleport);
+    option.teleport = {
+      cells,
+      ...(ids.length > 0 ? { carries: { count: action.teleport.carries!, ids } } : {}),
+    };
   }
   // The weapon's other ways to make this attack, each only while its holder has the shots for it,
   // and each with what it is expected to do. Not in a window: what is taken at its moment is made

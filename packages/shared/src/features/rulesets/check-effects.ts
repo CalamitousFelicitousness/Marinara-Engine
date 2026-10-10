@@ -17,6 +17,7 @@ import { parseRulesetCombatDice } from "../ruleset-combat/dice.js";
 import { evaluateRulesetSheetLive, readRulesetLive } from "./live-state.js";
 import {
   resolveRulesetValueRef,
+  rulesetHeldItemDoes,
   rulesetCheckAdjust,
   rulesetCheckModifier,
   type EvaluatedRulesetSheet,
@@ -189,15 +190,17 @@ export function rulesetItemSources(
   const seen = new Set<unknown>();
   for (const held of items ?? []) {
     const name = held.name ?? held.item.category;
-    const effect = held.worn ? held.item.worn : held.item.carried;
+    // A fake does what it truly does (1.74), under the name it is shown by.
+    const does = rulesetHeldItemDoes(held);
+    const effect = held.worn ? does.worn : does.carried;
     if (effect && !seen.has(effect)) {
       seen.add(effect);
       sources.push({ ...effect, name });
     }
     // What the wearer falls short of, while it is worn.
-    if (!held.worn || !held.item.requires || seen.has(held.item.requires)) continue;
-    seen.add(held.item.requires);
-    for (const requirement of held.item.requires) {
+    if (!held.worn || !does.requires || seen.has(does.requires)) continue;
+    seen.add(does.requires);
+    for (const requirement of does.requires) {
       if (resolveRulesetValueRef(definition, build, requirement.value, sheet()) >= requirement.atLeast) continue;
       sources.push({ ...requirement.otherwise, name });
     }

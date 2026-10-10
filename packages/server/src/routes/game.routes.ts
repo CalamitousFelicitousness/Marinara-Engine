@@ -10465,13 +10465,12 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
           (effect) => effect.ruleset && gameInventoryNameKey(effect.name) === gameInventoryNameKey(line.name),
         );
         if (!worked) continue;
-        // ponytail: one that holds charges spends them from whichever stack has enough, not in this order,
-        // so a fake's charges do what they seem; and an order whose member falls before acting is not spent
-        // by the screen, so later uses of its line in that round read one stack on. Upgrade: work the
-        // effect out as each use resolves.
+        // ponytail: an order whose member falls before acting is not spent by the screen, so later uses of its
+        // line in that round read one stack on. Upgrade: work the effect out as each use resolves. One that
+        // holds charges reads the stack its charge comes from once the round's earlier uses spent theirs.
         const nth = spent.get(line.name) ?? 0;
-        if (worked.consumes !== false) spent.set(line.name, nth + 1);
-        const does = uses && !worked.charges ? uses.effectOf(line.ownName ?? line.name, worked, nth) : worked;
+        if (worked.consumes !== false || worked.charges) spent.set(line.name, nth + 1);
+        const does = uses ? uses.effectOf(line.ownName ?? line.name, worked, nth) : worked;
         const who = combatants.find((c) => c.id === user)?.name ?? "";
         const gate = line.item ? await rollGameFightItemGate(app.db, chatId, who, line.item) : null;
         action.itemEffect = gate && !gate.success ? { ...does, failed: gate.line } : does;

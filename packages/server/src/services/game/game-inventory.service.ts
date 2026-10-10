@@ -9,9 +9,17 @@ import {
   followGameInventoryDetails,
   normalizeCharacterLookupName,
   forgetGameInventoryTelling,
+  applyGameInventoryOps,
   gameFightItems,
+  revealGameInventoryFake,
+  rulesetCardItems,
+  rulesetFakesTheSheetShows,
+  rulesetItemSources,
+  readRulesetLive,
   gameFightUseEffect,
+  gameInventoryChargeStack,
   gameInventoryFightSpendStack,
+  gameInventoryItemsOwnNamed,
   gameInventoryForTelling,
   normalizeGameInventoryStacks,
   readGameInventoryTurn,
@@ -34,7 +42,7 @@ import type { DB } from "../../db/connection.js";
 import { logger } from "../../lib/logger.js";
 import { loadRulesetCatalogEntries } from "./ruleset-catalog.service.js";
 import { loadRulesetRegistry, resolveGameRuleset, type ResolvedGameRuleset } from "./ruleset-registry.service.js";
-import { sheetCommandCards } from "./ruleset-sheet-turn.service.js";
+import { loadGameRulesetSheetContext, sheetCommandCards } from "./ruleset-sheet-turn.service.js";
 import { createCharactersStorage } from "../storage/characters.storage.js";
 import { resolveChatUserIdentity } from "../chat-user-identity.js";
 import { createChatsStorage, withChatMetadataPatchQueue } from "../storage/chats.storage.js";
@@ -71,6 +79,8 @@ export type GameInventoryRowTarget =
 
 export interface GameInventoryCommitted<T> {
   stacks: GameInventoryStack[];
+  /** What the change found out (a fake its holder's sheet shows for what it is), as lines to show. */
+  foundOut?: string[];
   /** The game state's stats after the change, when a row with a detailed inventory was written. */
   playerStats?: PlayerStats;
   value: T;
@@ -245,8 +255,19 @@ export async function loadGameFightUseEffects(
   const book = await loadGameInventoryItemBook(db, { metadata }, "player");
   if (!book) return null;
   return {
-    effectOf: (name, effect, nth = 0) =>
-      gameFightUseEffect(effect, gameInventoryFightSpendStack(stacks, name, book, nth), book),
+    // One that holds charges spends them from the stack a charge takes them from: the `nth` use from now
+    // is read after the uses before it spent theirs (a stack run dry passes to the next).
+    effectOf: (name, effect, nth = 0) => {
+      if (!effect.charges)
+        return gameFightUseEffect(effect, gameInventoryFightSpendStack(stacks, name, book, nth), book);
+      const before =
+        nth > 0 ? applyGameInventoryOps(stacks, [{ op: "charge", name, count: nth }], undefined, book).stacks : stacks;
+      return gameFightUseEffect(
+        effect,
+        gameInventoryChargeStack(before, gameInventoryItemsOwnNamed(before, name), book),
+        book,
+      );
+    },
   };
 }
 
@@ -287,7 +308,18 @@ export async function applyGameInventoryChangeHeld<T>(
   if (!chat) return null;
   const metadata = readMetadata(chat.metadata);
   const before = normalizeGameInventoryStacks(metadata.gameInventory);
-  const outcome = change(before, metadata);
+  const changed = change(before, metadata);
+  // A worn or carried fake that the sheet shows for what it is, is found out with the change that
+  // made it so (1.74, the user's ruling). Never at the cost of the change itself.
+  let found: Awaited<ReturnType<typeof revealFakesTheSheetShows>> = null;
+  if (changed.stacks !== before) {
+    try {
+      found = await revealFakesTheSheetShows(db, chatId, metadata, changed.stacks);
+    } catch (error) {
+      logger.warn(error, "[game/inventory] Could not tell whether a fake shows on a sheet in chat %s", chatId);
+    }
+  }
+  const outcome = found ? withFoundOut(changed, found) : changed;
   if (outcome.stacks === before && outcome.journal.length === 0 && !outcome.events?.length && !outcome.metadata) {
     return { stacks: before, value: outcome.value };
   }
@@ -309,9 +341,118 @@ export async function applyGameInventoryChangeHeld<T>(
     },
     { metadataQueueHeld: true },
   );
-  if (outcome.stacks === before || target.kind === "none") return { stacks: outcome.stacks, value: outcome.value };
+  const foundOut = found ? { foundOut: found.events.map((event) => event.content) } : {};
+  if (outcome.stacks === before || target.kind === "none") {
+    return { stacks: outcome.stacks, value: outcome.value, ...foundOut };
+  }
   const playerStats = await followOnRow(db, chatId, before, outcome.stacks, target);
-  return { stacks: outcome.stacks, ...(playerStats ? { playerStats } : {}), value: outcome.value };
+  return { stacks: outcome.stacks, ...(playerStats ? { playerStats } : {}), value: outcome.value, ...foundOut };
+}
+
+/** A change with what it found out: the revealed stacks, the journal's lines, and a telling's record (a
+ *  Game Master's turn) that remembers the revealed stacks too, so a swipe still finds its turn. */
+export function withFoundOut<T>(
+  changed: GameInventoryChange<T>,
+  found: { stacks: GameInventoryStack[]; events: Array<{ title: string; content: string }> },
+): GameInventoryChange<T> {
+  const turn = changed.metadata?.gameInventoryTurn as { swipes?: Record<string, GameInventoryStack[]> } | undefined;
+  const metadata =
+    turn?.swipes && changed.metadata
+      ? {
+          ...changed.metadata,
+          gameInventoryTurn: {
+            ...turn,
+            swipes: Object.fromEntries(
+              Object.entries(turn.swipes).map(([index, stacks]) => [
+                index,
+                stacks === changed.stacks ? found.stacks : stacks,
+              ]),
+            ),
+          },
+        }
+      : changed.metadata;
+  return {
+    ...changed,
+    stacks: found.stacks,
+    events: [...(changed.events ?? []), ...found.events],
+    ...(metadata ? { metadata } : {}),
+  };
+}
+
+/**
+ * The fakes a character wears or carries that their sheet shows for what they truly are (a number on
+ * the sheet, or what a check adds, differs from the item they pass for): each found out, as a reveal
+ * finds it, with a journal line saying what it was. Null when there is none (a game with no ruleset,
+ * no fake held, or nothing the sheet tells apart).
+ */
+async function revealFakesTheSheetShows(
+  db: DB,
+  chatId: string,
+  metadata: Record<string, unknown>,
+  stacks: GameInventoryStack[],
+): Promise<{ stacks: GameInventoryStack[]; events: Array<{ title: string; content: string }> } | null> {
+  if (!stacks.some((stack) => stack.truly) || metadata.gameRuleset == null) return null;
+  const resolved = resolveGameRuleset(metadata, await loadRulesetRegistry(db));
+  if (resolved.status !== "ok") return null;
+  const book = await loadGameInventoryItemBook(db, { metadata, resolved }, "player");
+  const context = await loadGameRulesetSheetContext(db, chatId, resolved);
+  if (!book || !context) return null;
+  const { definition } = resolved;
+  const itemsOf = rulesetCardItems(
+    book,
+    stacks,
+    context.cards.map((card) => card.name),
+    context.playerName,
+  );
+  // Only a card with a sheet of its own: a sheet nobody has is not one anybody reads a fake off.
+  const sheeted = new Set(
+    (Array.isArray(metadata.gameCharacterCards) ? (metadata.gameCharacterCards as Array<Record<string, unknown>>) : [])
+      .filter((card) => card.rulesetSheet != null && typeof card.name === "string")
+      .map((card) => normalizeCharacterLookupName(card.name as string)),
+  );
+  // As the sheet stands in play: its live state, which a requirement or a stat may read.
+  const latest = await createGameStateStorage(db).getLatest(chatId);
+  const liveByName =
+    latest?.rulesetLive && typeof latest.rulesetLive === "object"
+      ? (latest.rulesetLive as Record<string, unknown>)
+      : {};
+  let next = stacks;
+  const events: Array<{ title: string; content: string }> = [];
+  for (const card of context.cards) {
+    if (!sheeted.has(normalizeCharacterLookupName(card.name))) continue;
+    const held = itemsOf(card.name);
+    if (!held.some((each) => each.truly)) continue;
+    const live = readRulesetLive(definition, card.build, liveByName[normalizeCharacterLookupName(card.name)] as never);
+    for (const index of rulesetFakesTheSheetShows(
+      definition,
+      card.build,
+      held,
+      // What a check reads of them: a fight's own parts (resistances, immunities) are not a check's.
+      (items, sheet) =>
+        rulesetItemSources(definition, card.build, items, sheet)
+          .map(
+            ({
+              resist: _resist,
+              vulnerable: _vulnerable,
+              immune: _immune,
+              conditionImmunities: _conditions,
+              ...check
+            }) => check,
+          )
+          // A source with nothing left a check reads is no source to a check.
+          .filter((check) => Object.keys(check).some((key) => key !== "name" && key !== "$comment")),
+      live,
+    )) {
+      const fake = held[index]!;
+      if (!fake.stack || !fake.truly) continue;
+      next = revealGameInventoryFake(next, fake.stack.id, book);
+      const shown = fake.name ?? fake.stack.ref;
+      // The player's own bag is theirs, whoever's card reads it.
+      const whose = fake.stack.holder === undefined ? "Your" : `${card.name}'s`;
+      events.push({ title: `${shown} found out`, content: `${whose} ${shown} was really ${fake.truly.name}.` });
+    }
+  }
+  return events.length ? { stacks: next, events } : null;
 }
 
 /** The detailed inventory on one row, moved by the difference between two stack lists. Returns the

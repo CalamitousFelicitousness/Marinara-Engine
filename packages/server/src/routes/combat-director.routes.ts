@@ -1020,7 +1020,7 @@ export async function combatDirectorRoutes(
         // A use that comes out of a fake does what the fake truly does (1.74); the fight lists it as what
         // it passes for, so only the stack it is spent from says so.
         const usedEffect = usedLine && state.itemEffects.find((effect) => effect.name === usedLine.name);
-        if (usedLine && usedEffect && !usedEffect.charges) {
+        if (usedLine && usedEffect) {
           const chat = await chats.getById(input.chatId);
           const uses = chat ? await loadGameFightUseEffects(app.db, JSON.parse(chat.metadata || "{}")) : null;
           const truly = uses?.effectOf(usedLine.ownName ?? usedLine.name, usedEffect);

@@ -61,6 +61,7 @@ export async function gameInventoryRoutes(app: FastifyInstance) {
       inventory: committed.stacks,
       results: committed.value,
       ...(committed.playerStats ? { playerStats: committed.playerStats } : {}),
+      ...(committed.foundOut ? { foundOut: committed.foundOut } : {}),
     };
   });
 

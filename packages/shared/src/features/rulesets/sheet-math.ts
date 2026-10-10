@@ -228,6 +228,12 @@ export function rulesetReadsItems(definition: RulesetDefinition): boolean {
   return definition.items !== undefined;
 }
 
+/** The item whose effects and stats a held item brings to the sheet: a fake's true item (1.74, the
+ *  user's ruling: a worn or carried fake does what it truly does), else the item itself. */
+export function rulesetHeldItemDoes(held: RulesetSheetItem): RulesetSheetItem["item"] {
+  return held.truly?.item ?? held.item;
+}
+
 /** What a character's items do to their abilities: each ability's highest `set` and the sum of its
  *  `add`s, from each worn item's `worn` effect and each other item's `carried` one, one item once. */
 function itemAbilityChanges(
@@ -236,7 +242,8 @@ function itemAbilityChanges(
   const changes = new Map<string, { set?: number; add: number }>();
   const seen = new Set<unknown>();
   for (const held of items ?? []) {
-    const effect = held.worn ? held.item.worn : held.item.carried;
+    const does = rulesetHeldItemDoes(held);
+    const effect = held.worn ? does.worn : does.carried;
     if (!effect?.abilities || seen.has(effect)) continue;
     seen.add(effect);
     for (const [id, change] of Object.entries(effect.abilities)) {
@@ -260,11 +267,12 @@ function readItemStat(
   const held = (items ?? []).filter(
     (each) =>
       (spec.from === "all" || (spec.from === "worn") === each.worn) &&
-      (spec.slot === undefined || (each.item.slots?.[spec.slot] ?? 0) > 0) &&
-      (spec.category === undefined || each.item.category === spec.category) &&
-      (spec.tag === undefined || (each.item.tags ?? []).includes(spec.tag)),
+      (spec.slot === undefined || (rulesetHeldItemDoes(each).slots?.[spec.slot] ?? 0) > 0) &&
+      (spec.category === undefined || rulesetHeldItemDoes(each).category === spec.category) &&
+      (spec.tag === undefined || (rulesetHeldItemDoes(each).tags ?? []).includes(spec.tag)),
   );
-  const given = (each: RulesetSheetItem) => (spec.stat === undefined ? undefined : each.item.stats?.[spec.stat]);
+  const given = (each: RulesetSheetItem) =>
+    spec.stat === undefined ? undefined : rulesetHeldItemDoes(each).stats?.[spec.stat];
   if (spec.pick === "count") {
     const counted =
       spec.stat === undefined
@@ -1127,4 +1135,55 @@ export function resolveRulesetAbilityValues(
     ...(toHitRef ? { toHitRef } : {}),
     ...(saveRef ? { saveDifficulty: resolveRulesetValueRef(definition, build, saveRef, evaluated) } : {}),
   };
+}
+
+/**
+ * Which of a character's held fakes the sheet shows for what they are (1.74): one whose true item,
+ * worn or carried as it is, makes any of the sheet's numbers other than the item it passes for would,
+ * or changes what a check or save adds. The item's place in `items` for each, so a caller can find it
+ * out. `sources` is how a check reads items (`rulesetItemSources`), passed in to keep this module free
+ * of the check code.
+ */
+export function rulesetFakesTheSheetShows(
+  definition: RulesetDefinition,
+  build: RulesetSheetBuild,
+  items: readonly RulesetSheetItem[],
+  sources: (items: readonly RulesetSheetItem[], sheet: () => EvaluatedRulesetSheet) => unknown,
+  /** The character's live state as the sheet reads it (`readRulesetLive`). */
+  live: RulesetSheetLiveValues,
+): number[] {
+  const read = (held: readonly RulesetSheetItem[]) => {
+    const sheet = evaluateRulesetSheet(definition, build, { ...live, items: held });
+    return stableJson([
+      sheet.abilityScores,
+      sheet.abilityMods,
+      sheet.skillMods,
+      sheet.saveMods,
+      sheet.derived,
+      sources(held, () => sheet),
+    ]);
+  };
+  const shown: number[] = [];
+  const truth = read(items);
+  items.forEach((held, index) => {
+    if (!held.truly) return;
+    const seeming = items.map((each, at) => {
+      if (at !== index) return each;
+      const { truly: _truly, ...rest } = each;
+      return rest;
+    });
+    if (read(seeming) !== truth) shown.push(index);
+  });
+  return shown;
+}
+
+/** A value as JSON with its keys in order, so two equal objects written in another order compare equal. */
+function stableJson(value: unknown): string {
+  return JSON.stringify(value, (_key, each: unknown) =>
+    each && typeof each === "object" && !Array.isArray(each)
+      ? Object.fromEntries(
+          Object.entries(each as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+        )
+      : each,
+  );
 }

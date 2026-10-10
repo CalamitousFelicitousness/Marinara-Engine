@@ -36,6 +36,7 @@ import {
   swapGameInventoryStacks,
   takeFromGameInventory,
   wearGameInventoryStack,
+  type GameInventoryBagRef,
   type GameInventoryItemRules,
   type GameInventoryStack,
   type GameInventoryWearRefusal,
@@ -172,6 +173,26 @@ export interface GameInventoryOpsOutcome {
 }
 
 /**
+ * The stack a charge op spends its next use from: of these items, one its holder may use it from (worn
+ * where it takes slots, bound where it binds) with charges enough for a use, the player's own bag
+ * first, then the party's in the order the stacks are kept. Undefined when none has a use left.
+ */
+export function gameInventoryChargeStack(
+  stacks: readonly GameInventoryStack[],
+  items: ReadonlySet<string>,
+  rules: GameInventoryItemRules | undefined,
+  from?: GameInventoryBagRef,
+): GameInventoryStack | undefined {
+  const usable = stacks.filter((stack) => {
+    if (!items.has(gameInventoryItemId(stack))) return false;
+    if (from && gameInventoryBagKey(stack.holder) !== gameInventoryBagKey(from.holder)) return false;
+    const held = gameInventoryUsableStack(stack, rules) && stack.item ? rules?.itemOf(stack.item)?.charges : undefined;
+    return !!held && Math.min(held.max, stack.charges ?? held.max) >= held.cost;
+  });
+  return usable.find((each) => !each.holder) ?? usable[0];
+}
+
+/**
  * Every operation in order, each on the stacks the one before it left. One that cannot happen is
  * refused and changes nothing, and the rest still apply, the way the Game Master's sheet commands do.
  * `rules` are what the game's ruleset says about its items; without them every item is plain.
@@ -290,7 +311,6 @@ export function applyGameInventoryOps(
       case "charge": {
         const from = op.from ? { holder: cleanGameInventoryHolder(op.from.holder) } : undefined;
         const items = gameInventoryItemsNamed(current, op.name, from);
-        // Only from a stack the item may be used from: worn where it takes slots, bound where it binds.
         const chargesOf = (stack: GameInventoryStack) =>
           gameInventoryUsableStack(stack, rules) && stack.item ? rules?.itemOf(stack.item)?.charges : undefined;
         const left = (stack: GameInventoryStack) => {
@@ -299,17 +319,12 @@ export function applyGameInventoryOps(
         };
         let spent = 0;
         let broke = 0;
+        // A fake's charges spent are found out (1.74): written by its true name.
+        const fakes = new Map<string, number>();
         for (; spent < op.count; spent++) {
-          // The player's own bag first, then the party in the order the stacks are kept.
-          const usable = current.filter(
-            (stack) =>
-              items.has(gameInventoryItemId(stack)) &&
-              (!from || gameInventoryBagKey(stack.holder) === gameInventoryBagKey(from.holder)) &&
-              chargesOf(stack) !== undefined &&
-              left(stack) >= chargesOf(stack)!.cost,
-          );
-          const stack = usable.find((each) => !each.holder) ?? usable[0];
+          const stack = gameInventoryChargeStack(current, items, rules, from);
           if (!stack) break;
+          if (stack.truly) fakes.set(stack.truly, (fakes.get(stack.truly) ?? 0) + 1);
           const held = chargesOf(stack)!;
           const spentTo = left(stack) - held.cost;
           const face = spentTo === 0 && held.breaksOn && roll ? roll(held.breaksOn.die) : undefined;
@@ -349,8 +364,12 @@ export function applyGameInventoryOps(
           refuse("none-held");
           break;
         }
-        results.push({ ok: true, count: spent, ...(broke > 0 ? { broke } : {}) });
-        journal.push({ item: op.name.trim(), action: "used", quantity: spent });
+        const revealed = fakes.size ? [...fakes.keys()].map((truly) => rules?.itemOf(truly)?.name ?? truly) : undefined;
+        results.push({ ok: true, count: spent, ...(broke > 0 ? { broke } : {}), ...(revealed ? { revealed } : {}) });
+        const fakeUses = [...fakes.values()].reduce((total, each) => total + each, 0);
+        if (spent > fakeUses) journal.push({ item: op.name.trim(), action: "used", quantity: spent - fakeUses });
+        for (const [truly, quantity] of fakes)
+          journal.push({ item: rules?.itemOf(truly)?.name ?? truly, action: "used", quantity });
         if (broke > 0) journal.push({ item: op.name.trim(), action: "lost", quantity: broke });
         break;
       }

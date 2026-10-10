@@ -91,6 +91,15 @@ try {
       // Blinded takes the eyes away.
       doc.combat.sight = { eyes: "sight" };
       for (const entry of doc.combat.conditions) if (entry.condition === "blinded") entry.lacks = ["sight"];
+      // A bestiary creature that teleports, as a blink dog does.
+      const creatures = doc.catalogs.find((one: { holds?: string }) => one.holds === "creatures");
+      const blinker = structuredClone(creatures.entries.find((one: { id: string }) => one.id === "thorn-lurker"));
+      blinker.id = "blinker";
+      blinker.label = "Blinker";
+      blinker.creature.actions = [
+        { id: "blink", name: "Teleport", budget: "action", teleport: { distance: 40, seen: true } },
+      ];
+      creatures.entries.push(blinker);
     }),
   );
   const block = (extra: Partial<RulesetStatBlock> = {}): RulesetStatBlock => ({
@@ -338,6 +347,30 @@ try {
     assert.equal(optionOf(plain, "Door"), undefined);
     plain.turn = plain.order.indexOf("a");
     assert.equal(optionOf(plain, "Teleport", "a"), undefined);
+  }
+
+  // ── A bestiary creature's teleport reaches the fight ──
+  {
+    const creatures = definition.catalogs.find((one) => one.id === "creatures")!;
+    const state = createRulesetEncounter({
+      definition,
+      seed: 1,
+      roller: () => 10,
+      bestiary: { creatures: creatures.entries },
+      combatants: [
+        { id: "mage", name: "Mage", side: "party", build, live: {}, catalogs: { spells } },
+        { id: "dog", name: "Dog", side: "enemy", creature: { catalogId: "creatures", entryId: "blinker" } },
+      ],
+      board: { grid: grid(), placements: { mage: { x: 2, y: 7 }, dog: { x: 6, y: 7 } } },
+    });
+    state.order = ["mage", "dog"];
+    state.turn = 1;
+    const option = optionOf(state, "Teleport", "dog");
+    assert.ok(option?.teleport, "the bestiary blinker may teleport");
+    assert.deepEqual(option!.targets, { side: "self", count: 0 });
+    const step = go(state, "Teleport", { at: { x: 12, y: 2 } }, "dog");
+    assert.equal(refused(step), undefined, JSON.stringify(refused(step)));
+    assert.deepEqual(at(step.state, "dog"), { x: 12, y: 2 });
   }
 
   // ── Import refusals ──

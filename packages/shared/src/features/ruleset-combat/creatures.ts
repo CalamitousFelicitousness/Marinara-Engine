@@ -252,6 +252,8 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
         }
       : {}),
     ...(action.self ? { self: true as const } : {}),
+    // In the ruleset's distance, as push is (1.271): the encounter turns it into cells.
+    ...(action.teleport ? { teleport: { ...action.teleport } } : {}),
   };
 }
 

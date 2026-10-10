@@ -76,7 +76,7 @@ import {
   rulesetZoneCells,
 } from "./grid.js";
 import { rulesetCombatAdvantage, rulesetCombatIsPool, rulesetPoolDie, throwRulesetCombatPool } from "./pool.js";
-import { rulesetDroppedItems } from "./ammo.js";
+import { rulesetActionItemIndex, rulesetDroppedItems } from "./ammo.js";
 import { rulesetPaidLevel, rulesetReactionsAt, rulesetSheetWithin } from "./options.js";
 import { rulesetCanSee } from "./sight.js";
 import { RULESET_MOVE_MODES } from "./types.js";
@@ -1379,6 +1379,7 @@ function lastChargeDie(
     die: breaks.die,
     ...(breaks.atMost !== undefined ? { atMost: breaks.atMost } : {}),
     ...(breaks.regains && regained ? { regains: { atLeast: breaks.regains.atLeast, amount: regained } } : {}),
+    ...(breaks.becomes !== undefined ? { becomes: breaks.becomes } : {}),
   };
 }
 
@@ -2873,6 +2874,22 @@ function sheetCombatant(
     ...abilities.flatMap((entry) => entry.actions),
   ];
   const riders = abilities.flatMap((entry) => entry.riders);
+  // What an item becomes on its last charge (1.267), read now with what it would do then.
+  const becomes: NonNullable<RulesetCombatant["becomes"]> = {};
+  input.items?.forEach((held, index) => {
+    const ref = held.item.charges?.breaksOn?.becomes;
+    const other = ref ? byRef.get(ref) : undefined;
+    if (!ref || !other?.item) return;
+    const { charges: _charges, ...rest } = held;
+    const next: RulesetSheetItem = { ...rest, item: other.item, name: other.label };
+    const items = input.items!.map((one, at) => (at === index ? next : one));
+    const made = [
+      ...itemAttackActions(definition, combat, items, build, evaluated, perCell, rowRules),
+      ...itemSwitchActions(items),
+      ...itemUseActions(definition, combat, items, build, evaluated, perCell),
+    ].filter((action) => rulesetActionItemIndex(action) === index);
+    becomes[index] = { ref, name: other.label, item: other.item, actions: made };
+  });
   // What they soak and what they may spend, read once like their defense.
   const read = (ref: RulesetValueRef) =>
     Math.max(0, Math.round(resolveRulesetValueRef(definition, build, ref, evaluated)));
@@ -2977,6 +2994,7 @@ function sheetCombatant(
       return Object.keys(speeds).length > 0 ? { speeds } : {};
     })(),
     sheet: { build, live: input.live, catalogs, ...(input.items ? { items: input.items } : {}) },
+    ...(Object.keys(becomes).length ? { becomes } : {}),
   };
 }
 

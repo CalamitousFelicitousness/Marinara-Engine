@@ -73,6 +73,8 @@ export interface RulesetItemUseSaid {
   broke?: number;
   /** It spent its last charge and its `breaksOn` die gave some back (1.266): the face, and how many. */
   recharged?: { roll: number; amount: number };
+  /** It spent its last charge and became another item (1.267): that item's name, and the face. */
+  becomes?: { name: string; roll: number };
   /** Its gate, when its user rolled one: what was rolled, the total (a pool's successes) against the
    *  difficulty, and whether it passed. Failed, nothing it does happened. */
   gate?: { check: string; total: number; difficulty: number; success: boolean; rolls: number[] };
@@ -250,8 +252,12 @@ export function useRulesetItemOutsideFight(input: {
   const regained =
     breaks?.regains && face !== undefined && face >= breaks.regains.atLeast ? rolled(breaks.regains.amount) : null;
   const recharged = regained && max !== undefined ? { roll: face!, amount: Math.min(max, regained.total) } : undefined;
-  const broke =
+  const cracked =
     !recharged && breaks?.atMost !== undefined && face !== undefined && face <= breaks.atMost ? face : undefined;
+  // Or it becomes another item instead (1.267).
+  const turnsInto = cracked !== undefined && breaks?.becomes ? input.itemOf(breaks.becomes) : undefined;
+  const becomes = turnsInto && breaks?.becomes ? { ref: breaks.becomes, name: turnsInto.name } : undefined;
+  const broke = becomes ? undefined : cracked;
   const after = recharged ? recharged.amount : charges;
   const spent = applyRulesetFightItemChanges(stacks, [
     {
@@ -260,6 +266,7 @@ export function useRulesetItemOutsideFight(input: {
       taken: use.consumes || broke !== undefined ? 1 : 0,
       ...(after !== undefined ? { charges: after } : {}),
       ...(broke !== undefined ? { broke: true as const } : {}),
+      ...(becomes ? { becomes } : {}),
     },
   ]);
   if (!spent) return { ok: false, reason: "no-stack" };
@@ -279,6 +286,7 @@ export function useRulesetItemOutsideFight(input: {
       ...(aimed ? { aimed } : {}),
       ...(broke !== undefined ? { broke } : {}),
       ...(recharged ? { recharged } : {}),
+      ...(becomes ? { becomes: { name: becomes.name, roll: cracked! } } : {}),
       ...(gate ? { gate } : {}),
       left:
         after !== undefined && max !== undefined
@@ -376,13 +384,15 @@ export function rulesetItemUseLine(said: RulesetItemUseSaid): string {
   const left =
     said.broke !== undefined
       ? `Its last charge spent, it breaks (a ${said.broke} on its die).`
-      : said.recharged
-        ? `Its last charge spent, it gets ${said.recharged.amount} back (a ${said.recharged.roll} on its die).`
-        : "charges" in said.left
-          ? `${said.left.charges} of ${said.left.max} charges left.`
-          : said.left.count > 0
-            ? `${said.left.count} left.`
-            : "None left.";
+      : said.becomes
+        ? `Its last charge spent, it becomes ${said.becomes.name} (a ${said.becomes.roll} on its die).`
+        : said.recharged
+          ? `Its last charge spent, it gets ${said.recharged.amount} back (a ${said.recharged.roll} on its die).`
+          : "charges" in said.left
+            ? `${said.left.charges} of ${said.left.max} charges left.`
+            : said.left.count > 0
+              ? `${said.left.count} left.`
+              : "None left.";
   return `${said.user} uses ${said.item}: ${gate}${does}. ${left}`;
 }
 

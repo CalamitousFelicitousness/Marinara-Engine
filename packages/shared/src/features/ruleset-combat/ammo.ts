@@ -254,6 +254,32 @@ export function breakRulesetItem(
     };
   }
   if (breaks.atMost === undefined || face > breaks.atMost) return null;
+  // It becomes another item instead (1.267): a staff of striking's nonmagical quarterstaff, struck
+  // and used as that from now on.
+  const next = breaks.becomes !== undefined ? actor.becomes?.[use.item] : undefined;
+  if (next) {
+    const held = actor.sheet?.items?.[use.item];
+    if (held && actor.sheet?.items) {
+      const { charges: _charges, ...rest } = held;
+      actor.sheet.items = actor.sheet.items.map((one, at) =>
+        at === use.item ? { ...rest, item: next.item, name: next.name } : one,
+      );
+    }
+    actor.actions = [
+      ...actor.actions.filter((one) => rulesetActionItemIndex(one) !== use.item),
+      ...structuredClone(next.actions),
+    ];
+    (actor.became ??= {})[use.item] = next.ref;
+    delete actor.charges?.[use.item];
+    return {
+      type: "broke",
+      actorId: actor.id,
+      optionId: action.id,
+      label: action.label,
+      roll: face,
+      becomes: next.name,
+    };
+  }
   (actor.itemsUsed ??= {})[use.item] = (actor.itemsUsed?.[use.item] ?? 0) + 1;
   (actor.broken ??= {})[use.item] = true;
   return { type: "broke", actorId: actor.id, optionId: action.id, label: action.label, roll: face };
@@ -271,6 +297,8 @@ export interface RulesetFightItemChange {
   charges?: number;
   /** It broke when its last charge was spent: what was taken is lost, not used. */
   broke?: true;
+  /** It became another item when its last charge was spent (1.267): that item, and its name. */
+  becomes?: { ref: string; name: string };
   /** A fake's true name (1.74): what a use of it is written as. */
   truly?: string;
   /** Its switch as the fight left it, when the fight turned it (1.165). */
@@ -292,7 +320,7 @@ export function rulesetFightItemChanges(
     if (
       combatant.side !== "party" ||
       !items ||
-      (!combatant.itemsUsed && !combatant.loaded && !combatant.charges && !combatant.on)
+      (!combatant.itemsUsed && !combatant.loaded && !combatant.charges && !combatant.on && !combatant.became)
     ) {
       continue;
     }
@@ -306,7 +334,10 @@ export function rulesetFightItemChanges(
       const spent = charges !== undefined && charges !== earlier?.charges?.[index];
       const on = combatant.on?.[index];
       const switched = on !== undefined && on !== (earlier?.on?.[index] ?? held.on === true);
-      if (taken === 0 && !reloaded && !spent && !switched) return;
+      // Become another item on its last charge (1.267), since `before`.
+      const became = combatant.became?.[index];
+      const turned = became !== undefined && earlier?.became?.[index] === undefined;
+      if (taken === 0 && !reloaded && !spent && !switched && !turned) return;
       changes.push({
         stack: { ...held.stack },
         name: held.name ?? held.stack.ref,
@@ -315,6 +346,7 @@ export function rulesetFightItemChanges(
         ...(spent ? { charges } : {}),
         ...(switched ? { on } : {}),
         ...(combatant.broken?.[index] && !earlier?.broken?.[index] ? { broke: true as const } : {}),
+        ...(turned ? { becomes: { ref: became, name: combatant.sheet?.items?.[index]?.name ?? became } } : {}),
         ...(held.truly ? { truly: held.truly.name } : {}),
       });
     });
@@ -368,6 +400,14 @@ export function applyRulesetFightItemChanges(
     }
     const { on: wasOn, ...kept } = stack;
     const on = change.on ?? wasOn === true;
+    // Become another item (1.267): the stack holds that item now, under its name, with no charges.
+    if (change.becomes) {
+      const { charges: _charges, loaded: _loaded, ...plain } = kept;
+      journal.push({ item: stack.name, action: "lost", quantity: 1 });
+      journal.push({ item: change.becomes.name, action: "acquired", quantity: 1 });
+      next[at] = { ...plain, item: change.becomes.ref, name: change.becomes.name, quantity };
+      continue;
+    }
     next[at] = {
       ...kept,
       quantity,

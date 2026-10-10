@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: a staff can turn into a plain quarterstaff instead of breaking when its last charge is spent, in a fight and outside one (Capability API 1.267).
 - Rulesets: an item's first use can be named on the menu, a Staff of Healing adds its holder's spellcasting modifier, a Ring of the Ram pushes farther for each extra charge, and a staff's last charge can give charges back on a 20 (Capability API 1.266).
 - Rulesets: Antipathy/Sympathy can name a creature type as they are cast, their aura reaches only that kind within range or in sight, and the repeat save is rolled only from far enough away and out of sight (Capability API 1.265).
 - Rulesets: a staff's spells can use the wielder's own spell save DC and attack bonus, a staff can spend more charges to cast a spell at a higher level or strike harder, a sea hag's Horrific Appearance stops once its fright has ended, and a ruleset may declare up to 320 conditions (Capability API 1.264).

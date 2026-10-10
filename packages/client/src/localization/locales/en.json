@@ -1217,6 +1217,7 @@
   "game.combat.ruleset.event.attackStyle": "{{label}} ({{style}})",
   "game.combat.ruleset.event.averted": "{{actor}} averts their eyes from {{target}}.",
   "game.combat.ruleset.event.broke": "{{label}} breaks (a {{roll}} on its die).",
+  "game.combat.ruleset.event.brokeBecomes": "{{label}} becomes {{becomes}} (a {{roll}} on its die).",
   "game.combat.ruleset.event.budget": "{{actor}} has {{left}} {{budget}} left.",
   "game.combat.ruleset.event.cancelled": "{{by}} stops {{actor}}: {{label}} never happens.",
   "game.combat.ruleset.event.charged": "{{actor}} charges {{target}} with {{label}}.",

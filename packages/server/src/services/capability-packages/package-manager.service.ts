@@ -1549,6 +1549,16 @@ function carriesMetamagic(value: unknown, depth = 0): boolean {
 
 /** An aura that needs senses, harms at its holder's turn or asks for a save, or a save change
  *  narrowed to what is cast from a catalog (1.260). */
+/** A last charge's die that turns the item into another (1.267), in catalogs too. */
+function carriesBecomes(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesBecomes(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.breaksOn)?.becomes !== undefined) return true;
+  return Object.values(record).some((one) => carriesBecomes(one, depth + 1));
+}
+
 /** An item's first use named, a use adding a value off its holder's sheet, more charges pushing
  *  farther, and a last charge's die that gives charges back or breaks nothing (1.266), in catalogs
  *  too. */
@@ -3056,6 +3066,13 @@ export function getCapabilityPackageInstallIssue(
     const issue = rulesetFakeIssue(fake.ref, fake.item, itemsByRef.get(fake.item.passesFor!));
     if (issue) return `The fake "${fake.ref}" cannot pass for "${fake.item.passesFor}": ${issue}`;
   }
+  // What an item becomes on its last charge (1.267) is an item, in whichever file it is.
+  for (const [ref, item] of itemsByRef) {
+    const becomes = plainRecord(plainRecord(item.charges)?.breaksOn)?.becomes;
+    if (typeof becomes === "string" && (becomes === ref || !itemsByRef.has(becomes))) {
+      return `The item "${ref}" cannot become "${becomes}": it is no other item of this ruleset`;
+    }
+  }
   // The battle block lives inside the ruleset file too, so it is read the same way and for the same
   // reason: an Engine that does not know the key refuses the whole file, and the package would be
   // installed with no rules at all.
@@ -3695,6 +3712,13 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // An item that becomes another on its last charge, 1.267.
+  if (
+    !declaresApi(267) &&
+    (carriesBecomes(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesBecomes(document)))
+  ) {
+    return "A ruleset with an item that becomes another when its last charge is spent requires schemaVersion 2 and capabilityApi 1.267 or newer";
   }
   // An item's first use named, a use plus its holder's value, pushes a charge, charges back, 1.266.
   if (

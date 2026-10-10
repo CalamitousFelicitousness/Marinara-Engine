@@ -128,6 +128,8 @@ export interface GameInventoryRulesetItem {
       die: number;
       atMost?: number;
       regains?: { atLeast: number; count: number; sides: number; flat: number };
+      /** What it becomes in place of breaking (1.267), "<catalog>/<entry>". */
+      becomes?: string;
     };
   };
   /** It has a switch (Capability API 1.165): what turning it on does, in the ruleset's words. */

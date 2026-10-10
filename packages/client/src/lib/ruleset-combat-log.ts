@@ -582,7 +582,9 @@ export function rulesetCombatEventLine(
     case "uses":
       return key("uses", { label: event.label, left: event.left, of: event.of });
     case "broke":
-      return key("broke", { label: event.label, roll: event.roll });
+      return event.becomes
+        ? key("brokeBecomes", { label: event.label, roll: event.roll, becomes: event.becomes })
+        : key("broke", { label: event.label, roll: event.roll });
     case "recharged":
       return key("recharged", { label: event.label, roll: event.roll, amount: event.amount });
     case "fake":

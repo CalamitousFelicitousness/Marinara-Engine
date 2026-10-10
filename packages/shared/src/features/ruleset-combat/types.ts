@@ -5,6 +5,7 @@
 // functions, so a later slice can persist a fight as JSON and read it back exactly.
 
 import type {
+  RulesetCatalogItem,
   RulesetCatalogEntriesById,
   RulesetCreatureHideEntry,
   RulesetCreature,
@@ -771,7 +772,13 @@ export interface RulesetCombatAction {
       cost: number;
       max: number;
       /** Its last charge's die (1.266: `regains` on a high face, `atMost` optional). */
-      breaksOn?: { die: number; atMost?: number; regains?: { atLeast: number; amount: RulesetCombatAmount } };
+      breaksOn?: {
+        die: number;
+        atMost?: number;
+        regains?: { atLeast: number; amount: RulesetCombatAmount };
+        /** What it becomes in place of breaking (1.267), "<catalog>/<entry>". */
+        becomes?: string;
+      };
       /** More charges its user may spend, each a step of a higher cost (1.264), and farther pushed for
        *  each, in cells (1.266). */
       step?: { max: number; amount?: RulesetCombatAmount; targets?: number; push?: number };
@@ -1090,6 +1097,11 @@ export interface RulesetCombatant {
   charges?: Record<string, number>;
   /** The items that broke when their last charge was spent, keyed as the rest are. */
   broken?: Record<string, true>;
+  /** What an item becomes on its last charge (1.267), read as the fight began: what it is, its name,
+   *  and the actions it is made with then, in place of its own. Keyed as the rest are. */
+  becomes?: Record<string, { ref: string; name: string; item: RulesetCatalogItem; actions: RulesetCombatAction[] }>;
+  /** The items that became another in this fight (1.267): what each became. */
+  became?: Record<string, string>;
   /** Each item switched on or off in this fight, keyed as the rest are (1.165). */
   on?: Record<string, boolean>;
   /** A party member's sheet, which is where their health and conditions really live. */
@@ -1654,7 +1666,15 @@ export type RulesetCombatEvent =
   | { type: "budget"; actorId: string; budget: string; left: number }
   | { type: "uses"; actorId: string; optionId: string; label: string; left: number; of: number }
   /** An item whose last charge was just spent, and whose die said it breaks. */
-  | { type: "broke"; actorId: string; optionId: string; label: string; roll: number }
+  | {
+      type: "broke";
+      actorId: string;
+      optionId: string;
+      label: string;
+      roll: number;
+      /** What it became in place of breaking (1.267): its name. */
+      becomes?: string;
+    }
   /** Its last charge spent, the die gave some back (1.266): a Staff of the Magi's 20. */
   | {
       type: "recharged";

@@ -4877,6 +4877,9 @@ export interface RulesetItemLastCharge {
   die: number;
   atMost?: number;
   regains?: { atLeast: number; amount: { dice?: string; flat?: number } };
+  /** On the faces that would break it, it becomes this item instead (Capability API 1.267): a Staff
+   *  of Striking's nonmagical quarterstaff. */
+  becomes?: string;
 }
 const itemLastChargeSchema: z.ZodType<RulesetItemLastCharge, z.ZodTypeDef, unknown> = z
   .object({
@@ -4889,9 +4892,17 @@ const itemLastChargeSchema: z.ZodType<RulesetItemLastCharge, z.ZodTypeDef, unkno
       })
       .strict()
       .optional(),
+    becomes: rulesetItemRefSchema.optional(),
   })
   .strict()
   .superRefine((breaks, ctx) => {
+    if (breaks.becomes !== undefined && breaks.atMost === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["becomes"],
+        message: 'An item becomes another on the faces that would break it, so "becomes" goes with "atMost"',
+      });
+    }
     if (breaks.atMost !== undefined && breaks.atMost > breaks.die) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -11651,6 +11662,13 @@ export function rulesetCatalogEntryIssues(
   const seen = new Set<string>();
   entries.forEach((entry, index) => {
     if (seen.has(entry.id)) add([index, "id"], `Duplicate entry id "${entry.id}"`);
+    // What it becomes on its last charge (1.267) is another item, where it can be read now.
+    const becomes = entry.item?.charges?.breaksOn?.becomes;
+    if (becomes !== undefined && becomes === `${catalog.id}/${entry.id}`) {
+      add([index, "item", "charges", "breaksOn", "becomes"], "An item becomes another item");
+    } else if (becomes !== undefined && readable(becomes) && !itemsByRef.has(becomes)) {
+      add([index, "item", "charges", "breaksOn", "becomes"], `Unknown item "${becomes}"`);
+    }
     if (entry.item?.passesFor !== undefined && readable(entry.item.passesFor)) {
       const issue = rulesetFakeIssue(`${catalog.id}/${entry.id}`, entry.item, itemsByRef.get(entry.item.passesFor));
       if (issue) add([index, "item", "passesFor"], issue);

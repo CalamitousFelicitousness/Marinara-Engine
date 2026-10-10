@@ -885,6 +885,17 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.equal(printed.get("window"), "Brenna breaks away, and Thorn Lurker may strike.");
   assert.equal(printed.get("restored"), "Corwin gets back 2 Ki, and is on 5 of 7.");
   assert.equal(printed.get("broke"), "Wand of sparks breaks (a 1 on its die).");
+  assert.equal(
+    say({
+      type: "broke",
+      actorId: "corwin",
+      optionId: "use:0",
+      label: "Staff of striking",
+      roll: 1,
+      becomes: "Quarterstaff",
+    }),
+    "Staff of striking becomes Quarterstaff (a 1 on its die).",
+  );
   assert.equal(printed.get("recharged"), "Staff of the magi gets 7 charges back (a 20 on its die).");
   assert.equal(printed.get("fake"), "The Potion of healing was really Potion of poison.");
   assert.equal(

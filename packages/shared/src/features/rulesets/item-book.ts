@@ -182,7 +182,7 @@ export interface RulesetItemUseFact {
     max: number;
     recharge?: { rests: string[]; amount: "max" | string };
     /** `regains` (1.266): the faces at or over `atLeast` give back `amount` charges. */
-    breaksOn?: { die: number; atMost?: number; regains?: { atLeast: number; amount: string } };
+    breaksOn?: { die: number; atMost?: number; regains?: { atLeast: number; amount: string }; becomes?: string };
   };
   /** A pool it gives back some of, by the pool's label. */
   restore?: { pool: string; amount: string };
@@ -380,6 +380,10 @@ function rulesetItemUseFacts(
                   breaksOn: {
                     die: item.charges.breaksOn.die,
                     ...(item.charges.breaksOn.atMost !== undefined ? { atMost: item.charges.breaksOn.atMost } : {}),
+                    // What it becomes, by its name where the ruleset's own catalogs hold it (1.267).
+                    ...(item.charges.breaksOn.becomes !== undefined
+                      ? { becomes: itemLabelOf(definition, item.charges.breaksOn.becomes) }
+                      : {}),
                     ...(item.charges.breaksOn.regains
                       ? {
                           regains: {
@@ -923,6 +927,13 @@ export function rulesetItemFacts(
   };
 }
 
+/** An item's name by "<catalog>/<entry>", where the ruleset's own catalogs hold it; else the ref. */
+function itemLabelOf(definition: RulesetDefinition, ref: string): string {
+  const at = ref.indexOf("/");
+  const catalog = definition.catalogs?.find((one) => one.id === ref.slice(0, at));
+  return catalog?.entries?.find((entry) => entry.id === ref.slice(at + 1))?.label ?? ref;
+}
+
 /** An item's last-charge die as an inventory spends it (1.266): its `regains` dice read once. */
 function bookBreaksOn(
   breaks: NonNullable<NonNullable<RulesetCatalogItem["charges"]>["breaksOn"]>,
@@ -931,6 +942,7 @@ function bookBreaksOn(
   return {
     die: breaks.die,
     ...(breaks.atMost !== undefined ? { atMost: breaks.atMost } : {}),
+    ...(breaks.becomes !== undefined ? { becomes: breaks.becomes } : {}),
     ...(breaks.regains
       ? {
           regains: {
@@ -1347,7 +1359,7 @@ export function rulesetItemUseText(use: RulesetItemUseFact): string {
       ? `regains ${use.charges.recharge.amount === "max" ? "all" : use.charges.recharge.amount} on ${use.charges.recharge.rests.join(" or ")}`
       : "",
     use.charges?.breaksOn?.atMost !== undefined
-      ? `breaks on ${rulesetBreakFaces({ atMost: use.charges.breaksOn.atMost })} on a d${use.charges.breaksOn.die} when emptied`
+      ? `${use.charges.breaksOn.becomes ? `becomes ${use.charges.breaksOn.becomes}` : "breaks"} on ${rulesetBreakFaces({ atMost: use.charges.breaksOn.atMost })} on a d${use.charges.breaksOn.die} when emptied`
       : "",
     use.charges?.breaksOn?.regains
       ? `regains ${use.charges.breaksOn.regains.amount} on ${rulesetRegainFaces(use.charges.breaksOn.die, use.charges.breaksOn.regains.atLeast)} on a d${use.charges.breaksOn.die} when emptied`

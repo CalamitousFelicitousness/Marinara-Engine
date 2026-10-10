@@ -328,8 +328,18 @@ export function applyGameInventoryOps(
                   ),
                 )
               : spentTo;
-          const breaks =
+          const cracks =
             face !== undefined && now === 0 && held.breaksOn?.atMost !== undefined && face <= held.breaksOn.atMost;
+          // Or it becomes another item instead (1.267), under that item's name.
+          const into = cracks && held.breaksOn?.becomes ? rules?.itemOf(held.breaksOn.becomes) : undefined;
+          if (into) {
+            const { charges: _charges, ...plain } = stack;
+            current = current.map((each) => (each === stack ? { ...plain, item: into.item, name: into.name } : each));
+            journal.push({ item: stack.name, action: "lost", quantity: 1 });
+            journal.push({ item: into.name, action: "acquired", quantity: 1 });
+            continue;
+          }
+          const breaks = cracks;
           if (breaks) broke++;
           current = breaks
             ? current.filter((each) => each !== stack)

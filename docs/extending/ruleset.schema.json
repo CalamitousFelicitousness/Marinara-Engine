@@ -33065,6 +33065,11 @@
                               ],
                               "additionalProperties": false
                             },
+                            "becomes": {
+                              "type": "string",
+                              "maxLength": 81,
+                              "pattern": "^[a-z][a-z0-9_]{0,39}\\/[a-z0-9]+(?:-[a-z0-9]+)*$"
+                            },
                             "$comment": {}
                           },
                           "required": [

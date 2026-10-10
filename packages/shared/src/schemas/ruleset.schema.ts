@@ -1434,6 +1434,10 @@ const conditionEndHarmSchema: z.ZodType<RulesetConditionEndHarm, z.ZodTypeDef, u
 /** The senses that see through an obscuring zone or past a condition that hides (1.173). */
 export interface RulesetSeenThrough {
   pierced?: string[];
+  /** Only lightly obscured (1.281): it hides nobody, and only makes looking into it harder. */
+  light?: true;
+  /** A wind of the fight's disperses it (1.281): 5e's Fog Cloud, not its Darkness. */
+  dispersed?: true;
 }
 const seenThroughSchema: z.ZodType<RulesetSeenThrough, z.ZodTypeDef, unknown> = z
   .object({
@@ -1443,6 +1447,12 @@ const seenThroughSchema: z.ZodType<RulesetSeenThrough, z.ZodTypeDef, unknown> = 
       .max(8)
       .refine((senses) => new Set(senses).size === senses.length, { message: "Each sense is named once" })
       .optional(),
+    /** Only lightly obscured (Capability API 1.281): nobody is hidden by it, though the fight
+     *  knows who is seen only through it: 5e's dim light, a Cape of the Mountebank's smoke. */
+    light: z.literal(true).optional(),
+    /** A zone that `disperses` ends it where it reaches it (Capability API 1.281): 5e's Fog Cloud,
+     *  dispersed by a Gust of Wind. */
+    dispersed: z.literal(true).optional(),
   })
   .strict();
 
@@ -1585,6 +1595,7 @@ export interface RulesetCatalogZone {
   side?: { distance: number; triggers: Array<"enter" | "turn-start" | "turn-end"> };
   sections?: RulesetZoneSections;
   obscures?: RulesetSeenThrough;
+  disperses?: true;
   inside?: RulesetZoneInside;
   forbids?: RulesetForbids;
   wards?: RulesetZoneWards;
@@ -1709,6 +1720,9 @@ const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = 
      *  `pierced` names, within that sense's range: 5e's Fog Cloud and Darkness (pierced by nothing
      *  but blindsight and truesight), or a plain darkness darkvision sees through. */
     obscures: seenThroughSchema.optional(),
+    /** A wind (Capability API 1.281): every obscuring zone that is `dispersed` ends where this one
+     *  reaches it, as it appears, moves or turns: 5e's Gust of Wind on a Fog Cloud. */
+    disperses: z.literal(true).optional(),
     /** Whoever stands in it has these conditions and shrugs off these damage types while there
      *  (Capability API 1.174): 5e's Silence deafens and keeps thunder out. */
     inside: zoneInsideSchema.optional(),
@@ -3317,6 +3331,7 @@ function zoneIssue(mechanics: {
                 !zone.terrain &&
                 !wall &&
                 !zone.obscures &&
+                !zone.disperses &&
                 !zone.inside &&
                 !zone.forbids &&
                 !zone.wards &&

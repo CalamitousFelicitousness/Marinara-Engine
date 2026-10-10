@@ -1547,6 +1547,21 @@ function carriesMetamagic(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesMetamagic(one, depth + 1));
 }
 
+/** A fog only lightly obscuring, or one a strong wind blows away, or that wind (1.281): a Cape of the
+ *  Mountebank's thin smoke, a Fog Cloud, a Gust of Wind. */
+function carriesLightOrWind(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesLightOrWind(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.disperses === true) return true;
+  for (const key of ["obscures", "smoke"]) {
+    const fog = plainRecord(record[key]);
+    if (fog && (fog.light !== undefined || fog.dispersed !== undefined)) return true;
+  }
+  return Object.values(record).some((one) => carriesLightOrWind(one, depth + 1));
+}
+
 /** A legendary move that follows what its action does, or on one named speed (1.280): a dragon's Wing
  *  Attack, then its flight. */
 function carriesMoveAfter(value: unknown, depth = 0): boolean {
@@ -3877,6 +3892,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // A light fog, a fog the wind blows away, and that wind, 1.281.
+  if (
+    !declaresApi(281) &&
+    (carriesLightOrWind(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesLightOrWind(document)))
+  ) {
+    return "A ruleset with a lightly obscuring fog, or a fog or wind that blows it away, requires schemaVersion 2 and capabilityApi 1.281 or newer";
   }
   // A legendary move after what its action does, or on one speed, 1.280.
   if (

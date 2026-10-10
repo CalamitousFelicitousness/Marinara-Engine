@@ -1966,7 +1966,13 @@ function rulesetTeleportInCells(teleport: RulesetTeleport, perCell: number): Rul
     ...(teleport.carriesSeen ? { carriesSeen: true as const } : {}),
     ...(teleport.leaves ? { leaves: true as const } : {}),
     ...(teleport.smoke
-      ? { smoke: { ...(teleport.smoke.pierced ? { pierced: [...teleport.smoke.pierced] } : {}) } }
+      ? {
+          smoke: {
+            ...(teleport.smoke.pierced ? { pierced: [...teleport.smoke.pierced] } : {}),
+            ...(teleport.smoke.light ? { light: true as const } : {}),
+            ...(teleport.smoke.dispersed ? { dispersed: true as const } : {}),
+          },
+        }
       : {}),
   };
 }
@@ -2373,7 +2379,14 @@ function mechanicsAction(
     if (side) {
       action.zone.side = { distance: rulesetInCells(side.distance, perCell ?? 1), triggers: [...side.triggers] };
     }
-    if (mechanics.zone.obscures) action.zone.obscures = { pierced: [...(mechanics.zone.obscures.pierced ?? [])] };
+    if (mechanics.zone.obscures) {
+      action.zone.obscures = {
+        pierced: [...(mechanics.zone.obscures.pierced ?? [])],
+        ...(mechanics.zone.obscures.light ? { light: true as const } : {}),
+        ...(mechanics.zone.obscures.dispersed ? { dispersed: true as const } : {}),
+      };
+    }
+    if (mechanics.zone.disperses) action.zone.disperses = true;
     const inside = mechanics.zone.inside;
     if (inside) {
       action.zone.inside = {

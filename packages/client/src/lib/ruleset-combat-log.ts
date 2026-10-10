@@ -653,6 +653,10 @@ export function rulesetCombatEventLine(
           label: event.label,
         });
       }
+      // Blown away by a strong wind (1.281).
+      if (event.outcome === "dispersed") {
+        return key("zoneDispersed", { actor: names.combatant(event.actorId), label: event.label });
+      }
       if (event.outcome === "turned") {
         return key("zoneTurned", { actor: names.combatant(event.actorId), label: event.label });
       }

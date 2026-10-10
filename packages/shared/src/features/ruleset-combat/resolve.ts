@@ -321,6 +321,8 @@ function begin(
       if (next.pendingFalls?.length === 0) delete next.pendingFalls;
       if (landed) noteOutcome(ctx);
       if (!next.window) endActionConditions(ctx);
+      // Fog a wind now reaches is blown away (1.281).
+      disperseFogs(ctx);
       // The cells standing walls close, as the zones now standing say (1.172).
       rulesetSyncZoneWalls(next);
       // Grown or shrunk as the conditions now held say (1.190).
@@ -2384,6 +2386,26 @@ function detonate(ctx: RulesetCombatContext, caster: RulesetCombatant, zone: Rul
       [again.damage.type, ...(again.damage.plus ?? []).map((clause) => clause.type)],
       rulesetZoneCells(ctx.state, caster, zone),
     );
+  }
+}
+
+/** Every obscuring zone a wind reaches, where it is `dispersed`, blown away (1.281): 5e's Gust of
+ *  Wind on a Fog Cloud, as the gust appears, moves or turns, and as anybody carrying either moves. */
+function disperseFogs(ctx: RulesetCombatContext): void {
+  if (!ctx.state.board?.grid) return;
+  const winds = rulesetStandingZones(ctx.state).filter(({ action }) => action.zone?.disperses);
+  if (winds.length === 0) return;
+  const blown = new Set(
+    winds.flatMap(({ caster, zone }) => rulesetZoneCells(ctx.state, caster, zone).map((cell) => `${cell.x},${cell.y}`)),
+  );
+  for (const caster of ctx.state.combatants) {
+    for (const zone of [...(caster.zones ?? [])]) {
+      const rule = zone.obscures ?? caster.actions.find((entry) => entry.id === zone.actionId)?.zone?.obscures;
+      if (!rule?.dispersed || !caster.zones?.includes(zone) || winds.some((wind) => wind.zone === zone)) continue;
+      if (!rulesetZoneCells(ctx.state, caster, zone).some((cell) => blown.has(`${cell.x},${cell.y}`))) continue;
+      ctx.events.push({ type: "zone", actorId: caster.id, label: zone.label, outcome: "dispersed" });
+      spendZone(ctx, caster, zone);
+    }
   }
 }
 
@@ -6021,7 +6043,11 @@ function teleport(ctx: RulesetCombatContext, actor: RulesetCombatant, action: Ru
       triggers: [],
       at: { ...to },
       cells: [...cells.values()],
-      obscures: { pierced: [...(action.teleport.smoke.pierced ?? [])] },
+      obscures: {
+        pierced: [...(action.teleport.smoke.pierced ?? [])],
+        ...(action.teleport.smoke.light ? { light: true as const } : {}),
+        ...(action.teleport.smoke.dispersed ? { dispersed: true as const } : {}),
+      },
     });
     (actor.flags.freshZones ??= []).push(action.id);
   }

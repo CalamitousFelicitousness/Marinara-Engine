@@ -9738,9 +9738,21 @@
                               "minItems": 1,
                               "maxItems": 8
                             },
+                            "light": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "dispersed": {
+                              "type": "boolean",
+                              "const": true
+                            },
                             "$comment": {}
                           },
                           "additionalProperties": false
+                        },
+                        "disperses": {
+                          "type": "boolean",
+                          "const": true
                         },
                         "inside": {
                           "type": "object",
@@ -10079,6 +10091,14 @@
                               },
                               "minItems": 1,
                               "maxItems": 8
+                            },
+                            "light": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "dispersed": {
+                              "type": "boolean",
+                              "const": true
                             },
                             "$comment": {}
                           },
@@ -14773,6 +14793,14 @@
                                     },
                                     "minItems": 1,
                                     "maxItems": 8
+                                  },
+                                  "light": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "dispersed": {
+                                    "type": "boolean",
+                                    "const": true
                                   },
                                   "$comment": {}
                                 },
@@ -25033,9 +25061,21 @@
                                   "minItems": 1,
                                   "maxItems": 8
                                 },
+                                "light": {
+                                  "type": "boolean",
+                                  "const": true
+                                },
+                                "dispersed": {
+                                  "type": "boolean",
+                                  "const": true
+                                },
                                 "$comment": {}
                               },
                               "additionalProperties": false
+                            },
+                            "disperses": {
+                              "type": "boolean",
+                              "const": true
                             },
                             "inside": {
                               "type": "object",
@@ -25374,6 +25414,14 @@
                                   },
                                   "minItems": 1,
                                   "maxItems": 8
+                                },
+                                "light": {
+                                  "type": "boolean",
+                                  "const": true
+                                },
+                                "dispersed": {
+                                  "type": "boolean",
+                                  "const": true
                                 },
                                 "$comment": {}
                               },
@@ -30368,9 +30416,21 @@
                                         "minItems": 1,
                                         "maxItems": 8
                                       },
+                                      "light": {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
+                                      "dispersed": {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
                                       "$comment": {}
                                     },
                                     "additionalProperties": false
+                                  },
+                                  "disperses": {
+                                    "type": "boolean",
+                                    "const": true
                                   },
                                   "inside": {
                                     "type": "object",
@@ -30709,6 +30769,14 @@
                                         },
                                         "minItems": 1,
                                         "maxItems": 8
+                                      },
+                                      "light": {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
+                                      "dispersed": {
+                                        "type": "boolean",
+                                        "const": true
                                       },
                                       "$comment": {}
                                     },
@@ -40863,6 +40931,14 @@
                     },
                     "minItems": 1,
                     "maxItems": 8
+                  },
+                  "light": {
+                    "type": "boolean",
+                    "const": true
+                  },
+                  "dispersed": {
+                    "type": "boolean",
+                    "const": true
                   },
                   "$comment": {}
                 },

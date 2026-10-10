@@ -292,6 +292,13 @@ export interface RulesetCombatMove {
   speed?: RulesetMoveMode;
 }
 
+/** What an obscuring zone does to sight (1.173, 1.281). */
+export interface RulesetObscures {
+  pierced: string[];
+  light?: true;
+  dispersed?: true;
+}
+
 export interface RulesetTeleport {
   distance: number;
   seen?: true;
@@ -302,7 +309,7 @@ export interface RulesetTeleport {
   /** It may take its user, and those along, out of the fight (1.274). */
   leaves?: true;
   /** A cloud on the cell left and the cell landed in, until the end of its user's next turn (1.274). */
-  smoke?: { pierced?: string[] };
+  smoke?: { pierced?: string[]; light?: true; dispersed?: true };
   /** A creature's (1.275): one of its own actions, by id, it may make once before or after the
    *  teleport as part of the same action. A blink dog's bite. */
   strike?: string;
@@ -1866,7 +1873,18 @@ export type RulesetCombatEvent =
       label: string;
       /** `shoved`: put off a wall that went up where they stood, to `to` (1.172). `turned`: a line
        *  or cone its caster turned to face another way (1.177). */
-      outcome: "appeared" | "struck" | "ended" | "moved" | "drifted" | "shoved" | "turned" | "detonated" | "burning";
+      outcome:
+        | "appeared"
+        | "struck"
+        | "ended"
+        | "moved"
+        | "drifted"
+        | "shoved"
+        | "turned"
+        | "detonated"
+        | "burning"
+        /** Blown away by a wind's zone (1.281). */
+        | "dispersed";
       targetId?: string;
       /** What caught them: one of the zone's triggers, or walking on its ground (1.168). */
       trigger?: RulesetCombatZoneRule["triggers"][number] | "moving" | "ram";
@@ -2400,8 +2418,11 @@ export interface RulesetCombatZoneRule {
       perCostStep?: RulesetCombatAmount;
     };
   };
-  /** Nobody sees into it, out of it or through it but by one of these senses, in range (1.173). */
-  obscures?: { pierced: string[] };
+  /** Nobody sees into it, out of it or through it but by one of these senses, in range (1.173);
+   *  `light` only makes looking harder, `dispersed` a wind ends it (1.281). */
+  obscures?: RulesetObscures;
+  /** A wind: obscuring zones it reaches that are `dispersed` end (1.281). */
+  disperses?: true;
   /** Conditions on, and damage types kept off, whoever stands in it (1.174). */
   inside?: { conditions?: string[]; immune?: string[] };
   /** Components nothing used from inside it may need (1.174). */
@@ -2425,7 +2446,7 @@ export interface RulesetCombatZone {
   facing?: { dx: number; dy: number };
   cells?: RulesetCombatCell[];
   /** A cloud of its own, not its action's zone (1.274): a teleport's smoke. */
-  obscures?: { pierced: string[] };
+  obscures?: RulesetObscures;
   /** The cells on a wall's chosen side that catch as its `side` says (1.172). */
   sideCells?: RulesetCombatCell[];
   payWith?: string;

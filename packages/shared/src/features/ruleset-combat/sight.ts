@@ -70,13 +70,13 @@ function cellsBetween(a: RulesetCombatCell, b: RulesetCombatCell): RulesetCombat
 }
 
 /** The cells obscuring zones cover now, each with the senses that see through it. */
-function obscured(state: RulesetEncounterState): Array<{ cells: Set<string>; pierced: string[] }> {
+function obscured(state: RulesetEncounterState): Array<{ cells: Set<string>; pierced: string[]; light?: true }> {
   return state.combatants.flatMap((caster) =>
     (caster.zones ?? []).flatMap((zone) => {
       const rule = zone.obscures ?? caster.actions.find((entry) => entry.id === zone.actionId)?.zone?.obscures;
       if (!rule) return [];
       const cells = new Set(rulesetZoneCells(state, caster, zone).map((cell) => `${cell.x},${cell.y}`));
-      return cells.size > 0 ? [{ cells, pierced: rule.pierced }] : [];
+      return cells.size > 0 ? [{ cells, pierced: rule.pierced, ...(rule.light ? { light: true as const } : {}) }] : [];
     }),
   );
 }
@@ -90,6 +90,30 @@ export function rulesetCanSee(
   state: RulesetEncounterState,
   viewer: RulesetCombatant,
   seen: RulesetCombatant,
+): boolean {
+  return sees(definition, state, viewer, seen, false);
+}
+
+/**
+ * Whether `viewer` sees `seen` only through something that lightly obscures them (1.281): seen,
+ * but by no line that is free of it. A sight-based Perception into it is harder.
+ */
+export function rulesetLightlyObscured(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  viewer: RulesetCombatant,
+  seen: RulesetCombatant,
+): boolean {
+  return sees(definition, state, viewer, seen, false) && !sees(definition, state, viewer, seen, true);
+}
+
+/** Whether `viewer` sees `seen`; with `clearly`, a light obscurement counts against it too. */
+function sees(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  viewer: RulesetCombatant,
+  seen: RulesetCombatant,
+  clearly: boolean,
 ): boolean {
   if (viewer.id === seen.id) return true;
   const combat = definition.combat;
@@ -129,7 +153,8 @@ export function rulesetCanSee(
     if (!outlined && entry.unseen && theirs.has(entry.condition) && !pierces(entry.unseen.pierced)) return false;
   }
   if (!positioned) return true;
-  const fogs = obscured(state);
+  // A light obscurement hides nobody (1.281): it only keeps them from being seen clearly.
+  const fogs = obscured(state).filter((fog) => clearly || !fog.light);
   // Any cell the viewer fills to any cell the seen one does (1.189): one clear line is enough.
   const clear = (a: RulesetCombatCell, b: RulesetCombatCell) => {
     if (!rulesetLineOfSight(grid, a, b)) return false;

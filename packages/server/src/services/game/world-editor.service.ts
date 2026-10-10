@@ -18,6 +18,10 @@ import {
   type GameWorld,
   type StoryScript,
   type WorldEdits,
+  WORLD_FURNITURE,
+  layOutInterior,
+  worldBuildingHasRooms,
+  worldTownBase,
 } from "@marinara-engine/shared";
 
 /** A world as compiled, in the shape a world editor draws: the ground and its classes (with the look
@@ -64,6 +68,22 @@ export function worldTownForEditor(game: GameWorld, settlementId: string) {
   if (!town) return null;
   const { people: _people, homeOf: _homeOf, workOf: _workOf, ...drawn } = town;
   return { town: drawn, layout: game.edits?.towns?.find((each) => each.settlement === settlementId) ?? null };
+}
+
+/** A building's rooms for a room editor (worldgen W13b): as laid out (in the town as laid out by hand),
+ *  before any furniture placed by hand, with the hand furnishing kept for it, if any. Null for no such
+ *  building, or one that is a part of town. */
+export function worldInteriorForEditor(game: GameWorld, settlementId: string, buildingId: string) {
+  const town = worldTownBase(game, settlementId);
+  const building = town?.buildings.find((each) => each.id === buildingId);
+  if (!town || !building || !worldBuildingHasRooms(game, building)) return null;
+  const { seats: _seats, ...interior } = layOutInterior(game, town, building);
+  return {
+    interior,
+    edit:
+      game.edits?.interiors?.find((each) => each.settlement === settlementId && each.building === buildingId) ?? null,
+    furniture: WORLD_FURNITURE,
+  };
 }
 
 /** A place's people as the world has them, its hand edits applied. */

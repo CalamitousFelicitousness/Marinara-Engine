@@ -7,7 +7,13 @@
 import { z } from "zod";
 import { gameWorldKitFromMetadata, type WorldKit } from "../../schemas/world-kit.schema.js";
 import { checkWorldBrief, worldBriefSchema, type WorldBrief } from "../../schemas/world-brief.schema.js";
-import { WORLD_GENERATOR_VERSION, compileWorld, type CompiledWorld, type WorldPlace } from "./compile.js";
+import {
+  WORLD_GENERATOR_VERSION,
+  compileWorld,
+  worldGeneratorReads,
+  type CompiledWorld,
+  type WorldPlace,
+} from "./compile.js";
 import { applyWorldEdits, checkWorldEdits, worldEditsSchema, worldPlaceNamed, type WorldEdits } from "./edits.js";
 import { worldEditsFightable } from "./battlefield-maps.js";
 import { worldCast, worldCastSize, worldPersonSheet } from "./people.js";
@@ -50,6 +56,9 @@ export interface GameWorld {
   world: CompiledWorld;
   /** The world as compiled, before the edits: the one its history and its weeks of play were made on. */
   compiled?: CompiledWorld;
+  /** The generator version its recipe was made by: a world is made again as that version made it. The
+   *  latest when left out. */
+  generatorVersion?: number;
   /** The snapshot this world was read from (W11): its people, history and towns are the snapshot's, never
    *  made again. */
   frozen?: import("./snapshot.js").WorldSnapshot;
@@ -81,9 +90,17 @@ const cached = (key: string, make: () => CompiledWorld) => {
 /** Compiles a world from its stored inputs and applies its edit layer, or reuses the same inputs' last
  *  compile. The compile is kept apart from the edits, so editing a world never compiles it again. */
 export function compileGameWorld(input: Omit<GameWorld, "world">): CompiledWorld {
-  const key = JSON.stringify([input.seed, input.grounding, input.kit, input.brief]);
+  // The recipe's own version, or the snapshot's for a world read from one.
+  const version = input.generatorVersion ?? input.frozen?.generatorVersion ?? WORLD_GENERATOR_VERSION;
+  const key = JSON.stringify([input.seed, input.grounding, input.kit, input.brief, version]);
   const compiled = cached(key, () =>
-    compileWorld({ seed: input.seed, kit: input.kit, brief: input.brief, strict: input.grounding === "strict" }),
+    compileWorld({
+      seed: input.seed,
+      kit: input.kit,
+      brief: input.brief,
+      strict: input.grounding === "strict",
+      generatorVersion: version,
+    }),
   );
   if (!input.edits) return compiled;
   return cached(JSON.stringify([key, input.edits]), () => applyWorldEdits(input.kit, compiled, input.edits));
@@ -96,10 +113,16 @@ export function gameWorldFromMetadata(metadata: Record<string, unknown> | null |
   const kit = gameWorldKitFromMetadata(metadata);
   if (!kit) return null;
   const parsed = gameWorldSchema.safeParse(metadata.gameWorld);
-  if (!parsed.success || parsed.data.generatorVersion !== WORLD_GENERATOR_VERSION) return null;
+  if (!parsed.success || !worldGeneratorReads(parsed.data.generatorVersion)) return null;
   const checked = checkWorldBrief(kit, parsed.data.brief);
   if (!checked.ok) return null;
-  const inputs = { kit, seed: parsed.data.seed, grounding: parsed.data.grounding, brief: checked.brief };
+  const inputs = {
+    kit,
+    seed: parsed.data.seed,
+    grounding: parsed.data.grounding,
+    brief: checked.brief,
+    generatorVersion: parsed.data.generatorVersion,
+  };
   // A layer that does not fit its world (one written around the editor's check) is not applied at all,
   // so what the editor's route refuses never reaches a reader by another route.
   const edits = parsed.data.edits && worldEditsFightable(parsed.data.edits).edits;

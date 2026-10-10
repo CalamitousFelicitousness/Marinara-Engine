@@ -18,6 +18,7 @@ import {
   storyState,
   type StoryScript,
   worldEditsEmpty,
+  worldEditsVersioned,
   worldEditIssues,
   worldTownEditIssues,
   worldEditsSchema,
@@ -52,6 +53,7 @@ import {
   worldForEditor,
   worldPeopleOf,
   worldTownForEditor,
+  worldInteriorForEditor,
 } from "../services/game/world-editor.service.js";
 import { logger, logDebugOverride } from "../lib/logger.js";
 import {
@@ -268,15 +270,38 @@ import {
   worldJournal,
   worldPlaceInForce,
   worldPresent,
-  worldOverworldHere,
-  worldRoute,
+  worldOverworldSpot,
+  worldTrip,
+  worldIsSite,
+  worldSettlementOf,
+  worldSiteLocks,
   worldWalkFromMetadata,
   worldWalkJoined,
   worldTown,
   worldTownDoor,
   worldTownMinutes,
+  worldTownPath,
+  WORLD_WALK_STEPS_MAX,
   worldTownSpotFromMetadata,
   worldTownVisitFromMetadata,
+  dungeonSetFor,
+  dungeonSetForPlace,
+  gameDungeonMapFromPlaceMap,
+  gameDungeonMapSchema,
+  gameDungeonOnWayOut,
+  worldPlaceMap,
+  worldCast,
+  generateDungeonMap,
+  gameDungeonSeed,
+  gameDungeonMapFromDungeon,
+  dungeonFromGameDungeonMap,
+  dungeonPath,
+  dungeonWalkMinutes,
+  gameDungeonMapFromMetadata,
+  gameDungeonWalkFromMetadata,
+  type GameDungeonMap,
+  type GameDungeonWalk,
+  worldInterior,
   worldPlaceByName,
   worldAddedPlace,
   type WorldTownVisit,
@@ -288,6 +313,7 @@ import {
   stripReputationTags,
   checkWorldBrief,
   WORLD_GENERATOR_VERSION,
+  worldGeneratorReads,
   RULESET_REF_MAX_OPTIONS,
   type RulesetDefinition,
   type RulesetRef,
@@ -6049,7 +6075,7 @@ function editIssues(game: Omit<GameWorld, "world" | "edits">, edits: unknown): s
   if (!parsed.success) return [parsed.error.issues[0]?.message ?? "The edits do not read."];
   const issues = worldEditIssues(game, parsed.data);
   // And its towns laid out by hand (worldgen W9h), against the towns the world with these edits makes.
-  if (issues.length || !parsed.data.towns?.length) return issues;
+  if (issues.length || (!parsed.data.towns?.length && !parsed.data.interiors?.length)) return issues;
   return worldTownEditIssues({ ...game, world: compileGameWorld(game) }, parsed.data);
 }
 
@@ -6076,7 +6102,7 @@ function readNewGameWorld(input: {
   // A world another generator made comes with its snapshot (W11) and is played as it was made: its kit,
   // recipe and edits are the snapshot's.
   let snapshot: WorldSnapshot | null = null;
-  if (requestedWorld && requestedWorld.generatorVersion !== WORLD_GENERATOR_VERSION) {
+  if (requestedWorld && !worldGeneratorReads(requestedWorld.generatorVersion)) {
     const read = input.worldSnapshot != null ? readWorldSnapshot(input.worldSnapshot) : null;
     if (read && !read.ok) {
       return { ok: false, error: `The world's snapshot does not read: ${read.issues[0]}`, code: "world_invalid" };
@@ -6095,12 +6121,12 @@ function readNewGameWorld(input: {
   }
   if (requestedWorld && !snapshot) {
     const checked = worldKit ? checkWorldBrief(worldKit, requestedWorld.brief) : null;
-    if (!worldKit || !checked?.ok || requestedWorld.generatorVersion !== WORLD_GENERATOR_VERSION) {
+    if (!worldKit || !checked?.ok || !worldGeneratorReads(requestedWorld.generatorVersion)) {
       return {
         ok: false,
         error: !worldKit
           ? "A world needs a setting kit."
-          : requestedWorld.generatorVersion !== WORLD_GENERATOR_VERSION
+          : !worldGeneratorReads(requestedWorld.generatorVersion)
             ? "This world was made by another version of the generator."
             : `The world's brief does not hold together: ${checked && !checked.ok ? checked.issues[0] : ""}`,
         code: "world_invalid",
@@ -6109,7 +6135,13 @@ function readNewGameWorld(input: {
     // Hand edits (worldgen W9c) sent with a world are held to what a saved edit layer is.
     const unfit = requestedWorld.edits
       ? editIssues(
-          { kit: worldKit, seed: requestedWorld.seed, grounding: requestedWorld.grounding, brief: checked.brief },
+          {
+            kit: worldKit,
+            seed: requestedWorld.seed,
+            grounding: requestedWorld.grounding,
+            brief: checked.brief,
+            generatorVersion: requestedWorld.generatorVersion,
+          },
           requestedWorld.edits,
         )
       : [];
@@ -11008,17 +11040,21 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
   const overworldPlace = async (chatId: string, meta: Record<string, unknown>, world: GameWorld) => {
     const replies = await gameRepliesBefore(app.db, chatId);
     const present = worldPresent(world, replies.ledger);
+    // The sites the story keeps closed until the Game Master opens them (design-game-overworld-sites.md).
+    // Reveals from every session (carried ones first), not only this one's.
+    const locks = worldSiteLocks(world, gameStoryFromMetadata(meta, world), replies.all);
     const walk = worldWalkFromMetadata(meta);
-    if (walk) return { here: walk.to, walk, present, placeName: undefined };
+    if (walk) return { here: walk.to, walk, present, placeName: undefined, locks };
     const place = worldPlaceInForce(
       world,
       lastGamePlace(replies.scoped),
       (await resolveOwnerSpatialProjection(chatId, {}, meta))?.currentLocationId,
     );
     return {
-      here: worldOverworldHere(world, present, place?.name)?.id ?? null,
+      here: worldOverworldSpot(world, present, place?.name)?.id ?? null,
       walk: null,
       present,
+      locks,
       placeName: place?.name,
     };
   };
@@ -11027,7 +11063,12 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
   // Laid out from the world, with where in it the party stands: where it last walked to there, else the
   // building of the place in force when that is a place in town, else the square.
   const townOf = async (chatId: string, meta: Record<string, unknown>, world: GameWorld) => {
-    const { here, present, placeName } = await overworldPlace(chatId, meta, world);
+    const { here: overworldAt, present, placeName } = await overworldPlace(chatId, meta, world);
+    // At a site a few steps out of its settlement, the party is still by that settlement's town.
+    const here =
+      overworldAt && worldIsSite(world, overworldAt)
+        ? (worldSettlementOf(world, overworldAt)?.id ?? null)
+        : overworldAt;
     const town = here ? worldTown(world, here, present) : null;
     if (!town) return null;
     const spot = worldTownSpotFromMetadata(meta);
@@ -11052,6 +11093,20 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     return { town: found ? { ...found.town, at: found.at, visit: found.visit } : null };
   });
 
+  // ── GET /game/:chatId/town/interior?building= (worldgen W13) ──
+  // The rooms of a building in the town the party is in, as the world keeps them.
+  app.get<{ Params: { chatId: string } }>("/:chatId/town/interior", async (req, reply) => {
+    const { building } = z.object({ building: z.string().min(1).max(16) }).parse(req.query);
+    const chat = await createChatsStorage(app.db).getById(req.params.chatId);
+    if (!chat) return reply.status(404).send({ error: "Chat not found" });
+    const meta = parseMeta(chat.metadata);
+    const world = chat.mode === "game" ? await loadGameWorld(app.db, chat.id, meta) : null;
+    const found = world ? await townOf(req.params.chatId, meta, world) : null;
+    if (!world || !found) return reply.status(400).send({ error: "The party is not in a town." });
+    const interior = worldInterior(world, found.town, building);
+    return interior ? { interior } : reply.status(404).send({ error: "No such building in this town." });
+  });
+
   // ── POST /game/:chatId/town/visit ──
   // A walk across town to a building or the square: its minutes on the game's clock, where the party
   // stands kept, and the visit kept for the next turn to tell the Game Master.
@@ -11067,6 +11122,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     if (!found) return reply.status(400).send({ error: "The party is not in a town." });
     if (!worldTownDoor(found.town, to)) return reply.status(400).send({ error: "No such place in this town." });
     if (to === found.at) return reply.status(400).send({ error: "The party is already there." });
+    const path = worldTownPath(found.town, found.at, to) ?? [];
     const minutes = worldTownMinutes(found.town, found.at, to);
     let visit: WorldTownVisit | undefined;
     let time: GameTime | undefined;
@@ -11080,6 +11136,8 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         settlementId: found.town.settlementId,
         to,
         minutes: (found.visit?.minutes ?? 0) + minutes,
+        // Every cell walked since the last turn told, for the story's step events (map events).
+        steps: [...(found.visit?.steps ?? []), ...path].slice(-WORLD_WALK_STEPS_MAX),
       };
       time = addMinutes((fresh.gameTime as GameTime) ?? createInitialTime(), minutes);
       return { gameTownVisit: visit, gameTownSpot: { settlementId: found.town.settlementId, at: to }, gameTime: time };
@@ -11088,7 +11146,172 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     await updateLatestGameStateWithTrackerLocks(createGameStateStorage(app.db), chatId, {
       time: formatGameTime(time),
     });
-    return { visit, at: to, minutes, time, formatted: formatGameTime(time) };
+    return { visit, at: to, path, minutes, time, formatted: formatGameTime(time) };
+  });
+
+  // ── Dungeon, cave and station maps ──
+  // A map the Game Master opened with `[map:]`, kept on the chat as it was made: where the party stands
+  // on it, a walk across it on the game's clock, kept for the next turn to tell, and the way out.
+
+  // GET /game/:chatId/map: the game's map and the walk not yet told, or null for none.
+  app.get<{ Params: { chatId: string } }>("/:chatId/map", async (req, reply) => {
+    const chat = await createChatsStorage(app.db).getById(req.params.chatId);
+    if (!chat) return reply.status(404).send({ error: "Chat not found" });
+    const meta = parseMeta(chat.metadata);
+    return { map: gameDungeonMapFromMetadata(meta), walk: gameDungeonWalkFromMetadata(meta) };
+  });
+
+  // POST /game/:chatId/map/walk: the party walks to a cell by the shortest way; the minutes go on the
+  // clock and the walk waits for the next turn, joined to any walk not yet told.
+  app.post<{ Params: { chatId: string } }>("/:chatId/map/walk", async (req, reply) => {
+    const { chatId } = req.params;
+    const body = z
+      .object({
+        map: z.string().min(1).max(80),
+        x: z.number().int().min(0).max(63),
+        y: z.number().int().min(0).max(47),
+      })
+      .parse(req.body);
+    const chats = createChatsStorage(app.db);
+    let path: Array<{ x: number; y: number }> | null = null;
+    let minutes = 0;
+    let walk: GameDungeonWalk | undefined;
+    let time: GameTime | undefined;
+    let map: GameDungeonMap | undefined;
+    const updated = await chats.patchMetadata(chatId, (fresh) => {
+      const kept = gameDungeonMapFromMetadata(fresh);
+      if (!kept || kept.id !== body.map) {
+        throw Object.assign(new Error("The party is not on that map."), { statusCode: 409 });
+      }
+      const cells = dungeonFromGameDungeonMap(kept);
+      if (kept.at.x === body.x && kept.at.y === body.y) {
+        throw Object.assign(new Error("The party is already there."), { statusCode: 400 });
+      }
+      path = dungeonPath(cells, kept.at, body);
+      if (!path) throw Object.assign(new Error("There is no way there."), { statusCode: 400 });
+      minutes = dungeonWalkMinutes(path.length);
+      const pending = gameDungeonWalkFromMetadata(fresh);
+      walk = {
+        id: randomUUID(),
+        map: kept.id,
+        from: pending?.map === kept.id ? pending.from : kept.at,
+        to: { x: body.x, y: body.y },
+        minutes: Math.min(600, (pending?.map === kept.id ? pending.minutes : 0) + minutes),
+        // On a map made by hand: its place and every cell walked, for the story's step events.
+        ...(kept.hand && kept.place
+          ? {
+              place: kept.place,
+              steps: [...(pending?.map === kept.id ? (pending.steps ?? []) : []), ...path!].slice(-2000),
+            }
+          : {}),
+      };
+      map = { ...kept, at: { x: body.x, y: body.y } };
+      time = addMinutes((fresh.gameTime as GameTime) ?? createInitialTime(), minutes);
+      return { gameDungeonMap: map, gameDungeonWalk: walk, gameTime: time };
+    });
+    if (!updated || !walk || !time || !map) return reply.status(404).send({ error: "Chat not found" });
+    await updateLatestGameStateWithTrackerLocks(createGameStateStorage(app.db), chatId, {
+      time: formatGameTime(time),
+    });
+    return { map, walk, path, minutes, time, formatted: formatGameTime(time) };
+  });
+
+  // POST /game/:chatId/map/leave: the party leaves by the way out it stands on; the next turn says so.
+  app.post<{ Params: { chatId: string } }>("/:chatId/map/leave", async (req, reply) => {
+    const { chatId } = req.params;
+    const body = z.object({ map: z.string().min(1).max(80) }).parse(req.body);
+    const chats = createChatsStorage(app.db);
+    let left: string | undefined;
+    const updated = await chats.patchMetadata(chatId, (fresh) => {
+      const kept = gameDungeonMapFromMetadata(fresh);
+      if (!kept || kept.id !== body.map) {
+        throw Object.assign(new Error("The party is not on that map."), { statusCode: 409 });
+      }
+      if (!gameDungeonOnWayOut(kept)) {
+        throw Object.assign(new Error("The way out is elsewhere."), { statusCode: 400 });
+      }
+      left = kept.name;
+      return { gameDungeonMap: null, gameDungeonWalk: null, gameDungeonLeft: kept.name };
+    });
+    if (!updated || !left) return reply.status(404).send({ error: "Chat not found" });
+    return { left };
+  });
+
+  // POST /game/:chatId/map/enter: the party goes down into the place in town it stands at (a cave, a
+  // mine, a crypt, a sewer, by its words; map editor Phase 3): its map, laid out from the game and the
+  // place's name as the Game Master's `[map:]` would be, or the one the party is already on.
+  app.post<{ Params: { chatId: string } }>("/:chatId/map/enter", async (req, reply) => {
+    const { chatId } = req.params;
+    const body = z
+      .object({ at: z.string().min(1).max(16).optional(), place: z.string().min(1).max(16).optional() })
+      .refine((value) => Boolean(value.at) !== Boolean(value.place), "A building in town or a site, one of them")
+      .parse(req.body);
+    const chats = createChatsStorage(app.db);
+    const chat = await chats.getById(chatId);
+    if (!chat) return reply.status(404).send({ error: "Chat not found" });
+    const meta = parseMeta(chat.metadata);
+    const world = chat.mode === "game" ? await loadGameWorld(app.db, chat.id, meta) : null;
+    if (!world) return reply.status(400).send({ error: "This game has no world." });
+    // A site out in the world (design-game-overworld-sites.md): the one the party is at on the overworld.
+    // Else a building in the town the party is in, where it stands.
+    let building: { id: string; placeId?: string; name?: string } | undefined;
+    let placeKey: string;
+    if (body.place) {
+      const { here, locks } = await overworldPlace(chatId, meta, world);
+      if (here !== body.place || !worldIsSite(world, body.place))
+        return reply.status(400).send({ error: "The party is not there." });
+      if (locks.has(body.place)) return reply.status(400).send({ error: "That place is closed to the party for now." });
+      building = { id: body.place, placeId: body.place };
+      placeKey = body.place;
+    } else {
+      const found = await townOf(chatId, meta, world);
+      if (!found) return reply.status(400).send({ error: "The party is not in a town." });
+      if (found.at !== body.at) return reply.status(400).send({ error: "The party is not there." });
+      building = found.town.buildings.find((each) => each.id === body.at);
+      placeKey = building?.placeId ?? `${found.town.settlementId}:${building?.id}`;
+    }
+    const place = building?.placeId ? world.world.places.find((each) => each.id === building.placeId) : undefined;
+    const name = building?.name ?? place?.name;
+    const family = worldKitArtFamily(gameWorldKitFromMetadata(meta) ?? undefined);
+    // A map made for the place by hand (map editor Phase 3) is the one gone down into; else one laid out
+    // from its name, for a place whose words say it is one to go down into.
+    const hand = building?.placeId ? worldPlaceMap(world, building.placeId) : null;
+    const set =
+      building && name
+        ? (dungeonSetForPlace({ name, tags: place?.tags }, family) ?? (hand ? dungeonSetFor(undefined, family) : null))
+        : null;
+    if (!building || !name || !set) return reply.status(400).send({ error: "There is no going down here." });
+    let map: GameDungeonMap | undefined;
+    const updated = await chats.patchMetadata(chatId, (fresh) => {
+      const current = gameDungeonMapFromMetadata(fresh);
+      if (current?.place === placeKey) {
+        map = current;
+        return { gameDungeonView: "map" };
+      }
+      // Another map the party is on (one the Game Master opened) is never thrown away for this one.
+      if (current) throw Object.assign(new Error("The party is on another map; leave it first."), { statusCode: 409 });
+      if (hand) {
+        // A hand-made map the game cannot keep (made for a later Engine) is never half kept.
+        const kept = gameDungeonMapSchema.safeParse(
+          gameDungeonMapFromPlaceMap(
+            hand,
+            name,
+            set,
+            randomUUID(),
+            placeKey,
+            (person) => worldCast(world, person.replace(/-e?\d+$/u, "")).find((each) => each.id === person)?.name,
+          ),
+        );
+        if (!kept.success) throw Object.assign(new Error("This place's map can't be read."), { statusCode: 400 });
+        map = kept.data;
+      } else {
+        const made = generateDungeonMap(set.id, gameDungeonSeed(chatId, name), "medium");
+        map = { ...gameDungeonMapFromDungeon(made, name, randomUUID()), place: placeKey };
+      }
+      return { gameDungeonMap: map, gameDungeonWalk: null, gameDungeonLeft: null, gameDungeonView: "map" };
+    });
+    if (!updated || !map) return reply.status(404).send({ error: "Chat not found" });
+    return { map };
   });
 
   // ── The world editor (worldgen W9c): a game's world as compiled, its hand edits, a place's people ──
@@ -11111,7 +11334,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       if (meta.gameWorld == null) continue;
       const kit = gameWorldKitFromMetadata(meta);
       const stored = gameWorldSchema.safeParse(meta.gameWorld);
-      if (!kit || !stored.success || stored.data.generatorVersion !== WORLD_GENERATOR_VERSION) continue;
+      if (!kit || !stored.success || !worldGeneratorReads(stored.data.generatorVersion)) continue;
       worlds.push({
         chatId: chat.id,
         name: chat.name,
@@ -11147,6 +11370,20 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     return found ?? reply.status(404).send({ error: "No such settlement in this world." });
   });
 
+  // GET /game/:chatId/world/interior?settlement=&building=: a building's rooms for a room editor (W13b).
+  app.get<{ Params: { chatId: string } }>("/:chatId/world/interior", async (req, reply) => {
+    const { settlement, building } = z
+      .object({ settlement: z.string().min(1).max(16), building: z.string().min(1).max(16) })
+      .parse(req.query);
+    const chat = await createChatsStorage(app.db).getById(req.params.chatId);
+    if (!chat) return reply.status(404).send({ error: "Chat not found" });
+    const game = chat.mode === "game" ? await loadGameWorld(app.db, chat.id, parseMeta(chat.metadata)) : null;
+    if (!game) return reply.status(404).send({ error: "This game has no world." });
+    if (!worldMadeByThisGenerator(game)) return reply.status(409).send({ error: OLD_GENERATOR_REFUSAL });
+    const found = worldInteriorForEditor(game, settlement, building);
+    return found ?? reply.status(404).send({ error: "No building with rooms there." });
+  });
+
   // PUT /game/:chatId/world/edits: the whole edit layer, checked against the world; an empty one clears it.
   app.put<{ Params: { chatId: string } }>("/:chatId/world/edits", async (req, reply) => {
     const { chatId } = req.params;
@@ -11165,7 +11402,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const worldIssues = worldEditIssues(game, parsed.data);
     const issues = worldIssues.length ? worldIssues : worldTownEditIssues(game, parsed.data);
     if (issues.length) return reply.status(400).send({ error: issues.join(" "), issues });
-    const edits = worldEditsEmpty(parsed.data) ? undefined : parsed.data;
+    const edits = worldEditsEmpty(parsed.data) ? undefined : worldEditsVersioned(parsed.data);
     // The game's story (worldgen W10) names places and people: edits that take one away are refused, as
     // the story stands when the edits are written (one saved meanwhile counts).
     let storyRefusal = null as { error: string; issues: string[] } | null;
@@ -11271,7 +11508,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       game.kit,
       {
         seed: game.seed,
-        generatorVersion: game.frozen?.generatorVersion ?? WORLD_GENERATOR_VERSION,
+        generatorVersion: game.frozen?.generatorVersion ?? game.generatorVersion ?? WORLD_GENERATOR_VERSION,
         grounding: game.grounding,
         brief: game.brief,
         ...(game.edits ? { edits: game.edits } : {}),
@@ -11483,8 +11720,20 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const meta = parseMeta(chat.metadata);
     const world = chat.mode === "game" ? await loadGameWorld(app.db, chat.id, meta) : null;
     if (!world) return { overworld: null };
-    const { here, walk, present } = await overworldPlace(req.params.chatId, meta, world);
-    return { overworld: { here, walk, ruined: present.ruined } };
+    const { here, walk, present, locks } = await overworldPlace(req.params.chatId, meta, world);
+    // A hidden site is never sent: the player does not know it is there.
+    const locked = Object.fromEntries([...locks].filter(([, lock]) => lock === "sealed"));
+    const hidden = new Set([...locks].filter(([, lock]) => lock === "hidden").map(([id]) => id));
+    return {
+      overworld: {
+        here,
+        walk,
+        ruined: present.ruined,
+        // Only when the story keeps a site closed: an overworld without any reads as it always did.
+        ...(Object.keys(locked).length ? { locked } : {}),
+        ...(hidden.size ? { hidden: [...hidden] } : {}),
+      },
+    };
   });
 
   // ── POST /game/:chatId/overworld/walk ──
@@ -11499,8 +11748,9 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const meta = parseMeta(chat.metadata);
     const world = chat.mode === "game" ? await loadGameWorld(app.db, chat.id, meta) : null;
     if (!world) return reply.status(400).send({ error: "This game has no world." });
-    const { here, walk } = await overworldPlace(chatId, meta, world);
-    const route = here ? worldRoute(world.world, here, to) : null;
+    const { here, walk, locks } = await overworldPlace(chatId, meta, world);
+    if (locks.has(to)) return reply.status(400).send({ error: "That place is closed to the party for now." });
+    const route = here ? worldTrip(world, here, to) : null;
     if (!route) return reply.status(400).send({ error: "No way leads there from where the party is." });
     let walked: WorldWalk | undefined;
     let time: GameTime | undefined;

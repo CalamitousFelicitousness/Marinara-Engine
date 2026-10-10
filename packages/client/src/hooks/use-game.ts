@@ -39,7 +39,17 @@ import type {
   TacticalEvent,
   RPGStatPool,
 } from "@marinara-engine/shared";
-import type { Chat, GameWorld, WorldRoute, WorldTown, WorldTownVisit, WorldWalk } from "@marinara-engine/shared";
+import type {
+  Chat,
+  GameDungeonMap,
+  GameDungeonWalk,
+  GameWorld,
+  WorldRoute,
+  WorldInterior,
+  WorldTown,
+  WorldTownVisit,
+  WorldWalk,
+} from "@marinara-engine/shared";
 import { isJsonRecord } from "@marinara-engine/shared";
 
 // ── Query Keys ──
@@ -50,6 +60,7 @@ export const gameKeys = {
   overworld: (chatId: string) => [...gameKeys.all, "overworld", chatId] as const,
   world: (chatId: string) => [...gameKeys.all, "world", chatId] as const,
   town: (chatId: string) => [...gameKeys.all, "town", chatId] as const,
+  dungeonMap: (chatId: string) => [...gameKeys.all, "dungeon-map", chatId] as const,
 };
 
 // ── Types ──
@@ -981,6 +992,10 @@ export interface OverworldState {
   here: string | null;
   walk: WorldWalk | null;
   ruined: string[];
+  /** Sites the story keeps closed until the Game Master opens them, shown sealed (older servers: none). */
+  locked?: Record<string, "sealed">;
+  /** Sites the story keeps off the overworld until revealed. */
+  hidden?: string[];
 }
 
 /** The overworld of a game with a world, read again after each turn (`turnKey`). */
@@ -1045,15 +1060,31 @@ export function useTown(chatId: string, turnKey: string | null, enabled: boolean
   });
 }
 
+/** The rooms of a building in the town the party is in (worldgen W13). */
+export function useTownInterior(chatId: string, buildingId: string | null) {
+  return useQuery({
+    queryKey: [...gameKeys.town(chatId), "interior", buildingId],
+    queryFn: () =>
+      api.get<{ interior: WorldInterior }>(`/game/${chatId}/town/interior?building=${encodeURIComponent(buildingId!)}`),
+    select: (data) => data.interior,
+    enabled: !!chatId && !!buildingId,
+    staleTime: 5 * 60_000,
+  });
+}
+
 /** A walk across town to a building or the square: its minutes go on the game's clock. */
 export function useTownVisit() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (data: { chatId: string; to: string }) =>
-      api.post<{ visit: WorldTownVisit; at: string; minutes: number; formatted: string }>(
-        `/game/${data.chatId}/town/visit`,
-        { to: data.to },
-      ),
+      api.post<{
+        visit: WorldTownVisit;
+        at: string;
+        /** The way walked, as the cells after the door the party left (older servers: none). */
+        path?: Array<{ x: number; y: number }>;
+        minutes: number;
+        formatted: string;
+      }>(`/game/${data.chatId}/town/visit`, { to: data.to }),
     // The party is where it walked at once, so the town never shows it back where it set out.
     onSuccess: (res, variables) => {
       qc.setQueriesData<{ town: TownState | null }>({ queryKey: gameKeys.town(variables.chatId) }, (old) =>
@@ -1062,6 +1093,74 @@ export function useTownVisit() {
     },
     onSettled: (_res, _error, variables) => {
       qc.invalidateQueries({ queryKey: gameKeys.town(variables.chatId) });
+      qc.invalidateQueries({ queryKey: chatKeys.detail(variables.chatId) });
+    },
+  });
+}
+
+// ── Dungeon, cave and station maps ──
+
+/** The map the party is on, and the walk on it its next turn tells. */
+export function useDungeonMap(chatId: string, turnKey: string | null, enabled: boolean) {
+  return useQuery({
+    queryKey: [...gameKeys.dungeonMap(chatId), turnKey],
+    queryFn: () => api.get<{ map: GameDungeonMap | null; walk: GameDungeonWalk | null }>(`/game/${chatId}/map`),
+    enabled: enabled && !!chatId,
+    staleTime: 30_000,
+  });
+}
+
+/** A walk on the map to a cell, by the shortest way: its minutes go on the game's clock. */
+export function useDungeonWalk() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { chatId: string; map: string; x: number; y: number }) =>
+      api.post<{
+        map: GameDungeonMap;
+        walk: GameDungeonWalk;
+        path: Array<{ x: number; y: number }>;
+        minutes: number;
+        formatted: string;
+      }>(`/game/${data.chatId}/map/walk`, { map: data.map, x: data.x, y: data.y }),
+    // The party is where it walked at once, so the map never shows it back where it set out.
+    onSuccess: (res, variables) => {
+      qc.setQueriesData<{ map: GameDungeonMap | null; walk: GameDungeonWalk | null }>(
+        { queryKey: gameKeys.dungeonMap(variables.chatId) },
+        (old) => (old ? { map: res.map, walk: res.walk } : old),
+      );
+    },
+    onSettled: (_res, _error, variables) => {
+      qc.invalidateQueries({ queryKey: gameKeys.dungeonMap(variables.chatId) });
+      qc.invalidateQueries({ queryKey: chatKeys.detail(variables.chatId) });
+    },
+  });
+}
+
+/** The party leaves the map by the way out it stands on. */
+export function useDungeonLeave() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { chatId: string; map: string }) =>
+      api.post<{ left: string }>(`/game/${data.chatId}/map/leave`, { map: data.map }),
+    onSettled: (_res, _error, variables) => {
+      qc.invalidateQueries({ queryKey: gameKeys.dungeonMap(variables.chatId) });
+      qc.invalidateQueries({ queryKey: chatKeys.detail(variables.chatId) });
+    },
+  });
+}
+
+/** Going down into a place in town the party stands at (a cave, a mine, a crypt, by its words), or into a
+ *  site out in the world the party is at on the overworld. */
+export function useDungeonEnter() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { chatId: string; at?: string; place?: string }) =>
+      api.post<{ map: GameDungeonMap }>(
+        `/game/${data.chatId}/map/enter`,
+        data.place ? { place: data.place } : { at: data.at },
+      ),
+    onSettled: (_res, _error, variables) => {
+      qc.invalidateQueries({ queryKey: gameKeys.dungeonMap(variables.chatId) });
       qc.invalidateQueries({ queryKey: chatKeys.detail(variables.chatId) });
     },
   });

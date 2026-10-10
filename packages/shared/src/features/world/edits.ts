@@ -16,10 +16,54 @@ import type { WorldKit } from "../../schemas/world-kit.schema.js";
 import { promptSafeText } from "../../schemas/ruleset.schema.js";
 import { compileLinks, worldTerrainEntries, type CompiledWorld, type WorldPlace } from "./compile.js";
 import { WORLD_BATTLEFIELDS_MAX, worldBattlefieldIssues, worldBattlefieldMapSchema } from "./battlefield-maps.js";
+import { WORLD_FURNITURE, WORLD_INTERIOR_USES } from "./furniture.js";
 
 /** The most places a layer adds, people it renames or adds, and compiled places it changes. */
 export const WORLD_EDITS_MAX_ADDED = 200;
 export const WORLD_EDITS_MAX_PEOPLE = 500;
+/** The most pieces of furniture a building's rooms hold by hand. */
+export const WORLD_INTERIOR_EDIT_PIECES = 256;
+/** Towns laid out freely (map editor Phase 2, `editsVersion` 3): what a cell of a town's painted ground may be
+ *  ("." as laid out, s street, q square, o open ground kept clear, t a tree, w a well, f a field, p a path,
+ *  ~ water, b a bridge, h a hedge or fence), which of them a walk crosses, the sides a placed building's door
+ *  opens on, and a town's decorations (a pack's eight props, drawn only: never in the way). */
+export const WORLD_TOWN_GROUND = ".sqotwfp~bh";
+export const WORLD_TOWN_WALKABLE = ".sqofpb";
+export const WORLD_TOWN_DOOR_SIDES = Object.freeze(["s", "w", "e"] as const);
+export const WORLD_TOWN_PROPS = Object.freeze([
+  "town_prop0",
+  "town_prop1",
+  "town_prop2",
+  "town_prop3",
+  "town_prop4",
+  "town_prop5",
+  "town_prop6",
+  "town_prop7",
+] as const);
+export const WORLD_TOWN_DECO_MAX = 256;
+/** Maps made by hand for places (map editor Phase 3, `editsVersion` 3): a cell is "#" wall, "." floor or "~"
+ *  liquid (a cave's water, a crypt's ooze, a station's coolant: the map's pack says), at most WORLD_MAP_MAX
+ *  cells across and down; props are a dungeon pack's eight (`dn_prop5` the way out), drawn only. */
+export const WORLD_MAP_MAX = Object.freeze({ width: 64, height: 48 });
+export const WORLD_MAPS_MAX = 16;
+export const WORLD_MAP_PROPS = Object.freeze([
+  "dn_prop0",
+  "dn_prop1",
+  "dn_prop2",
+  "dn_prop3",
+  "dn_prop4",
+  "dn_prop5",
+  "dn_prop6",
+  "dn_prop7",
+] as const);
+export const WORLD_MAP_PROPS_MAX = 256;
+/** A site's lock on the overworld, as its creator sets it (a cave, mine or ruin outside any town; Engine's
+ *  overworld sites): hidden (off the map until the Game Master reveals it), sealed (shown, closed until
+ *  revealed) or open (never locked, even when the story names it). */
+export const WORLD_SITE_LOCKS = Object.freeze(["hidden", "sealed", "open"] as const);
+/** Spots on a hand-made map where people stand, by the hour (map editor Phase 3, B3). */
+export const WORLD_MAP_SPOTS_MAX = 32;
+export const WORLD_MAP_SPOT_PEOPLE_MAX = 8;
 /** The largest ground a world has (the world scale's 96 by 64 cells). */
 const MAX_CELLS = 96 * 64;
 
@@ -31,7 +75,10 @@ const cell = z.object({ x: z.number().int().min(0).max(255), y: z.number().int()
 
 export const worldEditsSchema = z
   .object({
-    editsVersion: z.literal(1),
+    /** 3 when the layer lays towns out freely, holds maps of places (map editor Phases 2 and 3) or sites'
+     *  locks, 2 when it
+     *  holds rooms drawn by hand (W13c), so an older Engine refuses it; 1 otherwise. */
+    editsVersion: z.union([z.literal(1), z.literal(2), z.literal(3)]),
     /** The ground as painted: one character per cell, "." where it is as compiled, else the base-36
      *  index of a kit terrain class. */
     ground: z
@@ -106,16 +153,149 @@ export const worldEditsSchema = z
               )
               .max(WORLD_EDITS_MAX_PEOPLE)
               .optional(),
+            /** Buildings placed anywhere free (Phase 2), after the moves (a placed building's move is dropped):
+             *  its top-left cell, its size its own, and the side its door opens on (south by default). */
+            place: z
+              .array(
+                z
+                  .object({
+                    building: z.string().min(1).max(16),
+                    x: z.number().int().min(0).max(255),
+                    y: z.number().int().min(0).max(255),
+                    door: z.enum(WORLD_TOWN_DOOR_SIDES).optional(),
+                  })
+                  .strict(),
+              )
+              .max(WORLD_EDITS_MAX_PEOPLE)
+              .optional(),
             ground: z
               .string()
               // The biggest town, a city's 52 by 36 cells.
               .max(52 * 36)
-              .regex(/^[.sqotw]*$/, "A town's painted ground is one of . s q o t w per cell")
+              .regex(/^[.sqotwfp~bh]*$/, "A town's painted ground is one of . s q o t w f p ~ b h per cell")
+              .optional(),
+            /** Decorations (Phase 2): a pack's props anywhere clear, drawn only. */
+            deco: z
+              .array(
+                z
+                  .object({
+                    tile: z.enum(WORLD_TOWN_PROPS),
+                    x: z.number().int().min(0).max(255),
+                    y: z.number().int().min(0).max(255),
+                  })
+                  .strict(),
+              )
+              .max(WORLD_TOWN_DECO_MAX)
               .optional(),
           })
           .strict(),
       )
       .max(WORLD_EDITS_MAX_ADDED)
+      .optional(),
+    /** Buildings' rooms furnished by hand (worldgen W13): a building's furniture in place of the pieces
+     *  its rooms were laid out with, for rooms of the size they were laid out at (the walls never move).
+     *  Checked against the rooms when saved (`worldInteriorEditIssues`). */
+    interiors: z
+      .array(
+        z
+          .object({
+            settlement: placeId,
+            building: z.string().min(1).max(16),
+            width: z.number().int().min(3).max(64),
+            height: z.number().int().min(3).max(64),
+            /** What the rooms were furnished as when furnished (a home, a tavern ...). */
+            use: z.enum(WORLD_INTERIOR_USES).optional(),
+            /** Rooms drawn by hand (W13c, `editsVersion` 2): the walls, floor and doorways, one character per
+             *  cell ("#" wall, "." floor, "d" a doorway between rooms, "D" the way out), in place of the
+             *  laid-out rooms, at their own size (at most WORLD_HAND_ROOM_MAX each way). */
+            ground: z
+              .string()
+              .max(64 * 64)
+              .regex(/^[#.dD]*$/, "Rooms drawn by hand are one of # . d D per cell")
+              .optional(),
+            furniture: z
+              .array(
+                z
+                  .object({
+                    x: z.number().int().min(0).max(63),
+                    y: z.number().int().min(0).max(63),
+                    kind: z.enum(WORLD_FURNITURE),
+                  })
+                  .strict(),
+              )
+              .max(WORLD_INTERIOR_EDIT_PIECES),
+          })
+          .strict(),
+      )
+      .max(WORLD_EDITS_MAX_PEOPLE)
+      .optional(),
+    /** Maps made by hand for places (map editor Phase 3): when a place has one, entering it opens this map
+     *  instead of a generated one. Checked when saved (`worldMapEditIssues`). */
+    maps: z
+      .array(
+        z
+          .object({
+            id: z.string().regex(/^m\d{1,3}$/, "A map's id is m and a number"),
+            place: placeId,
+            /** The image pack the map is drawn from (a cave, crypt or station set), by its id; the game's own
+             *  pack when none is named. */
+            pack: z
+              .string()
+              .max(80)
+              .regex(/^[a-z0-9][a-z0-9_/-]*$/, "A pack's id is lowercase letters, digits, _ - and /")
+              .optional(),
+            width: z.number().int().min(4).max(WORLD_MAP_MAX.width),
+            height: z.number().int().min(4).max(WORLD_MAP_MAX.height),
+            /** One character per cell, row by row: "#" wall, "." floor, "~" liquid. */
+            ground: z
+              .string()
+              .max(WORLD_MAP_MAX.width * WORLD_MAP_MAX.height)
+              .regex(/^[#.~]*$/, "A map's ground is one of # . ~ per cell"),
+            /** Where the party steps in. */
+            entry: cell,
+            props: z
+              .array(
+                z
+                  .object({
+                    tile: z.enum(WORLD_MAP_PROPS),
+                    x: z.number().int().min(0).max(255),
+                    y: z.number().int().min(0).max(255),
+                  })
+                  .strict(),
+              )
+              .max(WORLD_MAP_PROPS_MAX)
+              .optional(),
+            /** Where people stand (B3): a named spot, who stands there, and the hours (from, up to but not
+             *  including to; all day when left out). */
+            spots: z
+              .array(
+                z
+                  .object({
+                    id: z.string().regex(/^s\d{1,2}$/, "A spot's id is s and a number"),
+                    x: z.number().int().min(0).max(255),
+                    y: z.number().int().min(0).max(255),
+                    name: personName,
+                    people: z
+                      .array(z.string().regex(/^[a-z0-9]{1,16}-e?\d{1,4}$/, "A person's id"))
+                      .max(WORLD_MAP_SPOT_PEOPLE_MAX)
+                      .optional(),
+                    from: z.number().int().min(0).max(23).optional(),
+                    to: z.number().int().min(1).max(24).optional(),
+                  })
+                  .strict(),
+              )
+              .max(WORLD_MAP_SPOTS_MAX)
+              .optional(),
+          })
+          .strict(),
+      )
+      .max(WORLD_MAPS_MAX)
+      .optional(),
+    /** Sites locked or opened by hand (`editsVersion` 3): a place outside any town and its lock. Checked when
+     *  saved (`worldSiteEditIssues`). */
+    sites: z
+      .array(z.object({ place: placeId, lock: z.enum(WORLD_SITE_LOCKS) }).strict())
+      .max(WORLD_EDITS_MAX_PEOPLE)
       .optional(),
   })
   .strict();
@@ -124,6 +304,22 @@ export type WorldEditsInput = z.input<typeof worldEditsSchema>;
 
 /** True for a person added by hand (`<placeId>-e<n>`); drawn people are `<placeId>-<n>`. */
 export const worldPersonByHand = (id: string) => /-e\d+$/.test(id);
+
+/** A layer as saved: `editsVersion` 3 when it lays towns out freely (placed buildings, decorations, the new
+ *  ground kinds) or holds maps of places or sites' locks, 2 when it holds rooms drawn by hand (W13c), so an older Engine refuses
+ *  it rather than misreading it; 1 otherwise, so a layer without them stays readable by older Engines. */
+export function worldEditsVersioned(edits: WorldEdits): WorldEdits {
+  const freeTowns = edits.towns?.some(
+    (each) => each.place?.length || each.deco?.length || /[fp~bh]/.test(each.ground ?? ""),
+  );
+  const version =
+    freeTowns || edits.maps?.length || edits.sites?.length
+      ? 3
+      : edits.interiors?.some((each) => each.ground !== undefined)
+        ? 2
+        : 1;
+  return edits.editsVersion === version ? edits : { ...edits, editsVersion: version };
+}
 
 /** True when a layer changes nothing. */
 export function worldEditsEmpty(edits: WorldEdits | null | undefined): boolean {
@@ -135,7 +331,10 @@ export function worldEditsEmpty(edits: WorldEdits | null | undefined): boolean {
       !edits.people?.length &&
       !edits.addedPeople?.length &&
       !edits.battlefields?.length &&
-      !edits.towns?.length)
+      !edits.towns?.length &&
+      !edits.interiors?.length &&
+      !edits.maps?.length &&
+      !edits.sites?.length)
   );
 }
 

@@ -11,6 +11,11 @@ import {
   type TilePack,
 } from "@marinara-engine/shared";
 import { capabilityPackageManager } from "../capability-packages/package-manager.service.js";
+import { cleanImageTilePack } from "./tile-pack-images.service.js";
+
+/** Map pack tiles already checked, by package, version and the tiles file's hash; the oldest go first. */
+const checkedTiles = new Map<string, TilePack>();
+const CHECKED_TILES_KEPT = 8;
 
 export type MapPack = ExperienceMapPack;
 
@@ -52,9 +57,25 @@ export async function readMapPack(packageId: string): Promise<MapPackRead> {
   }
   let tiles: TilePack | null = null;
   if (files.tiles) {
-    const read = parseTilePack(files.tiles.toString("utf8"));
-    if (!read.ok) return { ok: false, reason: `its tiles do not read: ${read.issues[0]}` };
-    tiles = read.pack;
+    // Checked once per package version and file (an image pack's sheets are decoded to be checked).
+    const key = `${packageId}@${files.version}#${files.tilesSha256 ?? ""}`;
+    const cached = checkedTiles.get(key);
+    if (cached) tiles = cached;
+    else {
+      const read = parseTilePack(files.tiles.toString("utf8"));
+      if (!read.ok) return { ok: false, reason: `its tiles do not read: ${read.issues[0]}` };
+      tiles = read.pack;
+      if (tiles.tilePackVersion === 2) {
+        const api = files.capabilityApi;
+        if (!api || api.major !== 1 || api.minor < 75)
+          return { ok: false, reason: "its tiles are an image pack, which needs capabilityApi 1.75 or newer" };
+        const cleaned = await cleanImageTilePack(tiles);
+        if (!cleaned.ok) return { ok: false, reason: `its tiles do not read: ${cleaned.issue}` };
+        tiles = cleaned.pack;
+      }
+      checkedTiles.set(key, tiles);
+      if (checkedTiles.size > CHECKED_TILES_KEPT) checkedTiles.delete(checkedTiles.keys().next().value!);
+    }
   }
   return { ok: true, pack: { packageId, name: files.name, kit: kit.kit, worlds, tiles } };
 }
@@ -64,7 +85,7 @@ export function mapPackLockIssue(
   pack: MapPack,
   setup: {
     worldKit?: unknown;
-    world?: { seed: number; grounding?: string; brief: unknown; edits?: unknown } | null;
+    world?: { seed: number; generatorVersion?: number; grounding?: string; brief: unknown; edits?: unknown } | null;
     story?: unknown;
   },
 ): string | null {
@@ -77,6 +98,8 @@ export function mapPackLockIssue(
     ? pack.worlds.some(
         ({ world: shipped, story }) =>
           shipped.seed === world.seed &&
+          // The version that made it too: the same seed on another generator is another world.
+          shipped.generatorVersion === world.generatorVersion &&
           shipped.grounding === (world.grounding ?? "expand") &&
           sameJson(shipped.brief, world.brief) &&
           sameJson(shipped.edits ?? null, world.edits ?? null) &&

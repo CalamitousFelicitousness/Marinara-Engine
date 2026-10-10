@@ -147,6 +147,8 @@ export interface GmPromptContext {
   /** The market block for the place the scene is in (`rulesetMarketPromptText`), where the ruleset
    *  has a market (#6917). */
   market?: string;
+  /** The map the party is on, its areas and where the party stands, and a walk not yet told. */
+  dungeonMap?: string;
   /** The layers the game's ruleset really plays with, for what a layer hides without rewriting the
    *  ruleset (its coins). */
   rulesetLayerOptions?: RulesetLayerOptions;
@@ -1215,6 +1217,7 @@ export function buildGmFormatReminder(
     | "inventoryBearers"
     | "inventoryPurses"
     | "market"
+    | "dungeonMap"
     | "whereYouAre"
     | "storyNow"
     | "rulesetLayerOptions"
@@ -1571,6 +1574,7 @@ export function buildGmFormatReminder(
             : []),
         ]),
     `- [Note: contents] or [Book: contents] - when a new readable note or book is acquired and should be tracked in the journal.`,
+    `- [map: kind="cave|dungeon|station" name="Name"] - when the party goes into a cave, a dungeon, a crypt, a sewer, a ruin or a ship or station deck it will explore room by room. The Engine makes a map of it and shows it; the party starts at its way in. Never for a building in town. When they come back out, write [map: leave]. A place listed below as closed opens to the party only when the story reaches it: then write [map: reveal name="Name"].${ctx.dungeonMap?.startsWith("MAP:") ? " The MAP block below is the one they are on now: describe only what it holds." : ""}`,
     `- [state: exploration|dialogue|combat|travel_rest] - only on actual mode transitions. If you're planning to use [state: combat], this one ALWAYS has to be at the end of the turn, as it initiates a new combat generation and UI.`,
     `- [reputation: npc="Name" action="helped"] - when an NPC's tracked stance changes because of what happened. When two tracked people share a name, add the one you mean: id="..." as listed.`,
     `- [party_change: character="Exact Character Name" change="add|remove"] - only when someone truly joins or leaves the party. Use remove when a party member dies, permanently departs, or is no longer traveling with the player.`,
@@ -1726,6 +1730,7 @@ export function buildGmFormatReminder(
   if (ctx.whereYouAre) lines.push(``, ctx.whereYouAre);
   if (ctx.storyNow) lines.push(``, `STORY:`, ctx.storyNow);
   if (ctx.market) lines.push(``, ctx.market);
+  if (ctx.dungeonMap) lines.push(``, ctx.dungeonMap);
 
   const specialInstructions = normalizePromptText(ctx.gameSpecialInstructions);
   if (specialInstructions) {

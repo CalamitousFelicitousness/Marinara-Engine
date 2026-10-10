@@ -226,6 +226,24 @@ import {
   worldTownVisitSchema,
   worldTownVisitTags,
   worldTownVisitText,
+  dungeonSetFor,
+  gameDungeonMapFromDungeon,
+  gameDungeonMapFromMetadata,
+  gameDungeonMapPromptText,
+  gameDungeonSeed,
+  gameDungeonToldText,
+  gameDungeonWalkFromMetadata,
+  gameDungeonWalkSchema,
+  generateDungeonMap,
+  readGameDungeonTags,
+  type GameDungeonTag,
+  worldSiteLocks,
+  worldSiteLocksText,
+  type GameDungeonMap,
+  type GameDungeonWalk,
+  worldInterior,
+  worldInteriorWords,
+  worldKitArtFamily,
   type WorldTownVisit,
   lastGamePlace,
   rulesetMarketPlace,
@@ -1942,6 +1960,43 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               return worldTownVisitFromMetadata(chatMeta);
             })()
           : Promise.resolve(null);
+      // A walk on a dungeon map and a leaving this turn tells, as the town visit is told. A regeneration
+      // tells again what the reply it replaces told.
+      const turnDungeonPromise: Promise<{
+        walk: GameDungeonWalk | null;
+        left: string | null;
+        restore?: { map: GameDungeonMap | null; view: string | null };
+      }> =
+        chatMode === "game" && !input.impersonate && !input.continueMessageId
+          ? (async () => {
+              if (input.regenerateMessageId) {
+                const replaced = parseExtra((await chats.getMessage(input.regenerateMessageId))?.extra);
+                // The reply being replaced opened or left a map: this telling starts from the map as it
+                // stood before it. Only in the prompt for now: it is kept once the new reply is saved, so a
+                // regeneration that fails leaves the reply it would replace as it was.
+                const before = replaced.dungeonBefore as { map?: unknown; view?: unknown } | undefined;
+                let restore: { map: GameDungeonMap | null; view: string | null } | undefined;
+                if (before && typeof before === "object") {
+                  restore = {
+                    map: gameDungeonMapFromMetadata({ gameDungeonMap: before.map }),
+                    view: typeof before.view === "string" ? before.view : null,
+                  };
+                  chatMeta.gameDungeonMap = restore.map;
+                  chatMeta.gameDungeonView = restore.view;
+                  chatMeta.gameDungeonWalk = null;
+                  chatMeta.gameDungeonLeft = null;
+                }
+                const walk = gameDungeonWalkSchema.safeParse(replaced.dungeonWalk);
+                const left = typeof replaced.dungeonLeft === "string" ? replaced.dungeonLeft : null;
+                if (walk.success || left) return { walk: walk.success ? walk.data : null, left, restore };
+                if (restore) return { walk: null, left: null, restore };
+              }
+              return {
+                walk: gameDungeonWalkFromMetadata(chatMeta),
+                left: typeof chatMeta.gameDungeonLeft === "string" ? chatMeta.gameDungeonLeft : null,
+              };
+            })()
+          : Promise.resolve({ walk: null, left: null });
       // The story's turn (worldgen W10): what its script trips before this reply, read once (when the
       // prompt is built, the player named by then) for the Game Master's prompt and for the reply, so both
       // tell the same turn. A continuation trips nothing, as it tells no walk.
@@ -1956,6 +2011,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 const replies = await gameRepliesBefore(app.db, input.chatId, input.regenerateMessageId ?? null);
                 const walk = await turnWalkPromise;
                 const visit = await turnVisitPromise;
+                const dungeonWalk = (await turnDungeonPromise).walk;
                 const before = replies.ledger;
                 const town = visit ? worldTown(game, visit.settlementId, worldPresent(game, before)) : null;
                 // The walk and the visit this turn tells, as their tags will stand before the reply.
@@ -1979,6 +2035,13 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                     day: present.day,
                     fight: storyFightOutcome(replies.player),
                     playerName: personaName,
+                    // The cells this turn's walks walked (map events): in town, and on a map made by hand.
+                    steps: [
+                      ...(visit?.steps ?? []).map((step) => ({ place: visit!.settlementId, ...step })),
+                      ...(dungeonWalk?.place
+                        ? (dungeonWalk.steps ?? []).map((step) => ({ place: dungeonWalk.place!, ...step }))
+                        : []),
+                    ],
                   }),
                 };
               })()
@@ -4805,6 +4868,28 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           const promptStoryNow = promptTurnStory
             ? storyTurnPromptText(promptTurnStory.story, promptTurnStory.turn)
             : "";
+          // The map the party is on (dungeon maps), and what it did since the last turn.
+          const promptDungeonMap = await (async () => {
+            // After the turn's own read, which may have put back the map a replaced reply changed.
+            const told = await turnDungeonPromise;
+            const map = gameDungeonMapFromMetadata(chatMeta);
+            const toldText = gameDungeonToldText(map, told.walk, told.left);
+            // The hour, for who stands on a hand-made map's spots now.
+            const hour = (chatMeta.gameTime as { hour?: unknown } | undefined)?.hour;
+            const text = map ? gameDungeonMapPromptText(map, typeof hour === "number" ? hour : undefined) : "";
+            // The sites the story keeps closed, and how to open one.
+            const locksText = promptWorld
+              ? worldSiteLocksText(
+                  promptWorld,
+                  worldSiteLocks(
+                    promptWorld,
+                    gameStoryFromMetadata(chatMeta, promptWorld),
+                    (await promptRepliesAll()).all,
+                  ),
+                )
+              : "";
+            return [text, toldText, locksText].filter(Boolean).join("\n") || undefined;
+          })();
           const promptWhereYouAre = promptWorld
             ? await (async () => {
                 // The world as the story has left it (worldgen W4): the ledger in all the replies.
@@ -4815,8 +4900,11 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 const visitTown = visit ? worldTown(promptWorld, visit.settlementId, present) : null;
                 // In the order they happened: a visit in a town the party then walked away from comes first.
                 const walkLine = walk ? `${worldWalkText(promptWorld, walk)}\n` : "";
+                const visitInside = visit && visitTown ? worldInterior(promptWorld, visitTown, visit.to) : null;
                 const visitLine =
-                  visit && visitTown ? `${worldTownVisitText(promptWorld, visitTown, visit, turnHour)}\n` : "";
+                  visit && visitTown
+                    ? `${worldTownVisitText(promptWorld, visitTown, visit, turnHour, visitInside ? worldInteriorWords(visitInside, worldKitArtFamily(promptWorld.kit)) : undefined)}\n`
+                    : "";
                 const walked =
                   walk && visit && visit.settlementId !== walk.to ? visitLine + walkLine : walkLine + visitLine;
                 if (!before?.name) {
@@ -5017,6 +5105,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 : {}),
               ...(promptStoryNow ? { storyNow: promptStoryNow } : {}),
               ...(promptMarket ? { market: promptMarket } : {}),
+              ...(promptDungeonMap ? { dungeonMap: promptDungeonMap } : {}),
               ...(pinnedGameRuleset?.status === "ok" && pinnedGameRuleset.layers.length > 0
                 ? {
                     rulesetLayerOptions: Object.fromEntries(
@@ -10384,6 +10473,66 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             } catch (err) {
               // The reply is saved either way: a failed write is logged, never the turn's failure.
               logger.error(err, "[generate] Overworld walk and clock update failed for chat %s", input.chatId);
+            }
+          }
+          // ── Dungeon, cave and station maps ──
+          // The walk and the leaving this reply told stay with it and are no longer pending; its `[map:]`
+          // tags open a map (the last one wins) or leave the one the party is on.
+          if (savedMsg?.id && chatMode === "game" && !input.impersonate && fullResponse.trim()) {
+            try {
+              const told = await turnDungeonPromise;
+              // A reveal opens a closed site to the party and no map: it is read from the replies.
+              const tags = readGameDungeonTags(fullResponse).filter(
+                (tag): tag is Exclude<GameDungeonTag, { reveal: true }> => tag.leave === true || !tag.reveal,
+              );
+              const last = tags.at(-1);
+              if (told.walk || told.left || last || told.restore) {
+                const family = worldKitArtFamily(gameWorldKitFromMetadata(chatMeta) ?? undefined);
+                let before: { map: unknown; view: unknown } | undefined;
+                await chats.patchMetadata(input.chatId, (stored) => {
+                  const patch: Record<string, unknown> = {};
+                  // A regeneration first puts the map back as it stood before the reply it replaced.
+                  if (told.restore)
+                    Object.assign(patch, {
+                      gameDungeonMap: told.restore.map,
+                      gameDungeonView: told.restore.view,
+                      gameDungeonWalk: null,
+                      gameDungeonLeft: null,
+                    });
+                  const fresh = { ...stored, ...patch };
+                  const current = gameDungeonMapFromMetadata(fresh);
+                  if (told.walk && gameDungeonWalkFromMetadata(fresh)?.id === told.walk.id)
+                    patch.gameDungeonWalk = null;
+                  if (told.left && fresh.gameDungeonLeft === told.left) patch.gameDungeonLeft = null;
+                  if (last?.leave) {
+                    if (current) {
+                      before = { map: current, view: fresh.gameDungeonView ?? null };
+                      Object.assign(patch, { gameDungeonMap: null, gameDungeonWalk: null });
+                    }
+                  } else if (last && current?.name.toLowerCase() !== last.name.toLowerCase()) {
+                    // A map the party is already on is kept as it stands: the Game Master may name it again.
+                    before = { map: current, view: fresh.gameDungeonView ?? null };
+                    const set = dungeonSetFor(last.kind, family, last.set);
+                    const map = generateDungeonMap(set.id, gameDungeonSeed(input.chatId, last.name), "medium");
+                    Object.assign(patch, {
+                      gameDungeonMap: gameDungeonMapFromDungeon(map, last.name, randomUUID()),
+                      gameDungeonWalk: null,
+                      gameDungeonView: "map",
+                    });
+                  }
+                  return patch;
+                });
+                if (told.walk || told.left || before) {
+                  await chats.updateMessageExtra(savedMsg.id, {
+                    ...(told.walk ? { dungeonWalk: told.walk } : {}),
+                    ...(told.left ? { dungeonLeft: told.left } : {}),
+                    ...(before ? { dungeonBefore: before } : {}),
+                  });
+                }
+              }
+            } catch (err) {
+              // The reply is saved either way.
+              logger.error(err, "[generate] Dungeon map update failed for chat %s", input.chatId);
             }
           }
           // Empty messageId on the paths that save no message; that costs the claim, never the effect.

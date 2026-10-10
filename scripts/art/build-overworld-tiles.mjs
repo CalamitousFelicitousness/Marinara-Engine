@@ -575,6 +575,31 @@ function grounds(p) {
       speckle(t, p.stone, 4, s + 90);
       return t;
     }),
+    // More forests (user, 2026-10-05): conifers for cold regions, autumn broadleaf, and jungle.
+    conifer_forest: [70, 71].map((s) => {
+      const t = ground(p, "grassDark", "leafDark", "leaf", s, 0.6);
+      pine(t, Math.floor(noise(s, 0, 5) * 3), 0, p);
+      pine(t, 9 + Math.floor(noise(s, 1, 5) * 2), 2 + Math.floor(noise(s, 2, 5) * 2), p);
+      pine(t, 4 + Math.floor(noise(s, 3, 5) * 3), 9, p);
+      return t;
+    }),
+    autumn_forest: [72, 73].map((s) => {
+      const autumn = { ...p, leaf: "#c27a34", leafLight: "#dda04a", leafDark: "#8e4a22" };
+      const t = ground(p, "grassDark", "soil", "grass", s, 0.6);
+      roundTree(t, Math.floor(noise(s, 0, 5) * 3), 0, autumn);
+      roundTree(t, 9 + Math.floor(noise(s, 1, 5) * 2), 2 + Math.floor(noise(s, 2, 5) * 2), autumn);
+      roundTree(t, 4 + Math.floor(noise(s, 3, 5) * 3), 9, autumn);
+      return t;
+    }),
+    jungle: [74, 75].map((s) => {
+      const lush = { ...p, leaf: "#2f7a36", leafLight: "#4fa048", leafDark: "#1d5226" };
+      const t = ground(lush, "leafDark", "leaf", "leafDark", s, 0.7);
+      roundTree(t, Math.floor(noise(s, 0, 5) * 2), 0, lush);
+      roundTree(t, 8 + Math.floor(noise(s, 1, 5) * 2), 1, lush);
+      roundTree(t, 2 + Math.floor(noise(s, 2, 5) * 3), 7, lush);
+      roundTree(t, 9, 9, lush);
+      return t;
+    }),
     dead_forest: [45, 46].map((s) => {
       const t = ground(p, "soil", "sandDark", "soilDark", s, 0.5);
       bareTree(t, 2 + (s % 3), 2, p);
@@ -854,6 +879,260 @@ function towns(p, family) {
   return out;
 }
 
+// ── Inside buildings (worldgen W13): floors, walls and furniture, in the family's palette only ──
+// Drawn with the palette's own colours at full strength, so the family's pack keeps under its colour limit.
+
+/** The floor each family lays: boards, tatami, tiles, parquet, deck plating or poured concrete. */
+const FLOOR = {
+  fantasy: "boards",
+  wuxia: "tatami",
+  modern: "tiles",
+  jazz_age: "parquet",
+  scifi: "plating",
+  wasteland: "concrete",
+};
+
+function floor(p, kind, seed) {
+  const t = tile();
+  if (kind === "boards") {
+    fill(t, p.soil);
+    for (let y = 3; y < T; y += 4) rect(t, 0, y, T, 1, p.soilDark);
+    for (let y = 0; y < T; y += 4) rect(t, ((y / 4) * 5 + seed * 3) % T, y, 1, 3, p.soilDark);
+  } else if (kind === "parquet") {
+    // Blocks of short boards laid crosswise in turn.
+    fill(t, p.sand);
+    for (let by = 0; by < T; by += 8)
+      for (let bx = 0; bx < T; bx += 8) {
+        const across = (bx + by) % 16 === 0;
+        for (let i = 2; i < 8; i += 3)
+          across ? rect(t, bx, by + i, 8, 1, p.sandDark) : rect(t, bx + i, by, 1, 8, p.sandDark);
+      }
+    if (seed % 2) rect(t, 0, 0, T, 1, p.sandDark);
+  } else if (kind === "tatami") {
+    fill(t, p.crop);
+    rect(t, 0, 0, T, 1, p.cropDark);
+    rect(t, 0, 0, 1, T, p.cropDark);
+    for (let y = 2; y < T; y += 2) rect(t, 1, y, T - 1, 1, p.sand);
+    rect(t, seed % 2 ? 7 : 0, 0, 1, T, p.cropDark);
+  } else if (kind === "tiles") {
+    fill(t, p.rockLight);
+    rect(t, 0, 7, T, 1, p.rock);
+    rect(t, 7, 0, 1, T, p.rock);
+    if (seed % 2) (rect(t, 0, 0, 7, 7, p.stone), rect(t, 8, 8, 8, 8, p.stone));
+  } else if (kind === "plating") {
+    fill(t, p.rock);
+    rect(t, 0, 0, T, 1, p.rockLight);
+    rect(t, 0, 0, 1, T, p.rockLight);
+    rect(t, 0, T - 1, T, 1, p.rockDark);
+    rect(t, T - 1, 0, 1, T, p.rockDark);
+    for (const [x, y] of [
+      [2, 2],
+      [13, 2],
+      [2, 13],
+      [13, 13],
+    ])
+      px(t, x, y, p.rockDark);
+    if (seed % 2) rect(t, 4, 7, 8, 2, p.rockDark);
+  } else {
+    fill(t, p.stone);
+    speckle(t, p.stoneDark, 7, seed + 40);
+    speckle(t, p.rockLight, 4, seed + 41);
+  }
+  return t;
+}
+
+/** A wall seen from above inside: its top, and its face where the room is below it. */
+function innerWall(p) {
+  const t = tile();
+  fill(t, p.wallShade);
+  rect(t, 0, 0, T, 3, p.wall);
+  rect(t, 0, T - 2, T, 2, p.stoneDark);
+  return t;
+}
+
+function doorway(p, kind) {
+  const t = floor(p, kind, 1);
+  rect(t, 2, 0, 12, 2, p.door);
+  rect(t, 2, T - 2, 12, 2, p.door);
+  return t;
+}
+
+function furniture(p, kind, family) {
+  const t = tile();
+  if (family === "wuxia" && (kind === "bench" || kind === "bed")) {
+    // Floor mats to kneel on, and a sleeping mat rolled out on the floor.
+    const [y, h] = kind === "bench" ? [4, 8] : [1, 14];
+    rect(t, 1, y, 14, h, p.cropDark);
+    rect(t, 2, y + 1, 12, h - 2, p.crop);
+    if (kind === "bed") (rect(t, 3, 2, 10, 3, p.wall), rect(t, 2, 6, 12, 8, p.cloak));
+    return t;
+  }
+  const wood = p.trunk;
+  const dark = p.door;
+  switch (kind) {
+    case "bed":
+      rect(t, 2, 1, 12, 14, dark);
+      rect(t, 3, 2, 10, 4, p.wall);
+      rect(t, 3, 6, 10, 8, p.cloak);
+      rect(t, 3, 12, 10, 2, p.cloakShade);
+      break;
+    case "table":
+      rect(t, 2, 4, 12, 7, wood);
+      rect(t, 2, 4, 12, 1, p.soil);
+      rect(t, 2, 11, 12, 1, dark);
+      rect(t, 3, 12, 1, 3, dark);
+      rect(t, 12, 12, 1, 3, dark);
+      break;
+    case "chair":
+      rect(t, 5, 3, 6, 2, dark);
+      rect(t, 5, 7, 6, 4, wood);
+      rect(t, 5, 11, 1, 3, dark);
+      rect(t, 10, 11, 1, 3, dark);
+      break;
+    case "counter":
+      rect(t, 0, 4, T, 9, wood);
+      rect(t, 0, 4, T, 2, p.soil);
+      rect(t, 0, 13, T, 1, dark);
+      break;
+    case "shelf":
+      rect(t, 1, 0, 14, 15, dark);
+      for (const y of [2, 7, 12]) rect(t, 2, y, 12, 1, wood);
+      for (const [x, y, c] of [
+        [3, 0, p.accent],
+        [6, 5, p.roof],
+        [9, 0, p.cloak],
+        [11, 5, p.crop],
+        [4, 10, p.leaf],
+        [10, 10, p.wall],
+      ])
+        rect(t, x, y + 0, 2, 2, c);
+      break;
+    case "hearth":
+      rect(t, 1, 1, 14, 14, p.stoneDark);
+      rect(t, 3, 5, 10, 9, "#000000");
+      rect(t, 5, 9, 6, 4, p.roof);
+      rect(t, 6, 10, 4, 2, p.accent);
+      rect(t, 1, 1, 14, 2, p.stone);
+      break;
+    case "crate":
+      rect(t, 3, 4, 10, 10, wood);
+      rect(t, 3, 4, 10, 1, p.soil);
+      rect(t, 3, 13, 10, 1, dark);
+      for (let i = 0; i < 9; i++) px(t, 4 + i, 5 + i, dark);
+      break;
+    case "barrel":
+      rect(t, 4, 2, 8, 12, wood);
+      rect(t, 3, 4, 10, 8, wood);
+      rect(t, 3, 5, 10, 1, p.stoneDark);
+      rect(t, 3, 10, 10, 1, p.stoneDark);
+      rect(t, 5, 2, 6, 1, p.soil);
+      break;
+    case "altar":
+      rect(t, 1, 6, 14, 8, p.stone);
+      rect(t, 1, 6, 14, 2, p.rockLight);
+      rect(t, 1, 13, 14, 1, p.stoneDark);
+      // Two candles and an offering bowl: no one faith's sign.
+      for (const x of [2, 12]) (rect(t, x, 3, 2, 3, p.wall), px(t, x, 2, p.accent), px(t, x + 1, 1, p.roof));
+      rect(t, 6, 4, 4, 2, p.stoneDark);
+      rect(t, 7, 3, 2, 1, p.crop);
+      break;
+    case "bench":
+      rect(t, 0, 6, T, 4, wood);
+      rect(t, 0, 6, T, 1, p.soil);
+      rect(t, 1, 10, 1, 3, dark);
+      rect(t, 14, 10, 1, 3, dark);
+      break;
+    case "workbench":
+      rect(t, 1, 5, 14, 6, wood);
+      rect(t, 1, 5, 14, 1, p.soil);
+      rect(t, 2, 11, 1, 4, dark);
+      rect(t, 13, 11, 1, 4, dark);
+      rect(t, 4, 3, 3, 2, p.stoneDark);
+      rect(t, 9, 4, 4, 1, p.rockLight);
+      break;
+    case "furnace":
+      rect(t, 2, 1, 12, 14, p.stoneDark);
+      rect(t, 2, 1, 12, 2, p.stone);
+      rect(t, 4, 7, 8, 6, "#000000");
+      rect(t, 5, 9, 6, 3, p.roof);
+      rect(t, 7, 10, 2, 1, p.accent);
+      break;
+    case "desk":
+      rect(t, 1, 4, 14, 7, wood);
+      rect(t, 1, 4, 14, 1, p.soil);
+      rect(t, 2, 11, 1, 4, dark);
+      rect(t, 13, 11, 1, 4, dark);
+      rect(t, 4, 5, 5, 4, p.wall);
+      rect(t, 11, 5, 1, 4, p.cloak);
+      break;
+    case "bookshelf":
+      rect(t, 1, 0, 14, 15, dark);
+      for (const y of [1, 6, 11]) {
+        let x = 2;
+        for (const c of [p.roof, p.cloak, p.leaf, p.accent, p.roofShade, p.cloakShade]) {
+          rect(t, x, y, 2, 4, c);
+          x += 2;
+        }
+      }
+      break;
+    case "rack":
+      rect(t, 1, 2, 14, 1, dark);
+      rect(t, 1, 12, 14, 1, dark);
+      for (const x of [3, 7, 11]) (rect(t, x, 1, 1, 12, p.rockLight), rect(t, x - 1, 1, 3, 1, p.stoneDark));
+      break;
+    case "rug":
+      rect(t, 1, 3, 14, 10, p.roof);
+      rect(t, 2, 4, 12, 8, p.roofShade);
+      rect(t, 4, 6, 8, 4, p.accent);
+      break;
+    case "plant":
+      rect(t, 5, 10, 6, 5, p.roofShade);
+      rect(t, 5, 10, 6, 1, p.roof);
+      rect(t, 4, 3, 8, 7, p.leaf);
+      rect(t, 6, 2, 4, 3, p.leafLight);
+      speckle(t, p.leafDark, 4, 9);
+      break;
+    case "lamp":
+      rect(t, 7, 6, 2, 8, dark);
+      rect(t, 5, 13, 6, 2, dark);
+      rect(t, 5, 2, 6, 5, p.accent);
+      rect(t, 6, 3, 4, 3, p.wall);
+      break;
+  }
+  return t;
+}
+
+const FURNITURE_KINDS = [
+  "bed",
+  "table",
+  "chair",
+  "counter",
+  "shelf",
+  "hearth",
+  "crate",
+  "barrel",
+  "altar",
+  "bench",
+  "workbench",
+  "furnace",
+  "desk",
+  "bookshelf",
+  "rack",
+  "rug",
+  "plant",
+  "lamp",
+];
+
+function interiors(p, family) {
+  const out = {
+    in_floor: [1, 2].map((seed) => floor(p, FLOOR[family], seed)),
+    in_wall: [innerWall(p)],
+    in_door: [doorway(p, FLOOR[family])],
+  };
+  for (const kind of FURNITURE_KINDS) out[`in_${kind}`] = [furniture(p, kind, family)];
+  return out;
+}
+
 // ── Packs: each family's tiles as data, a palette and rows of characters (the shared tile-pack format) ──
 
 const ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -906,6 +1185,7 @@ for (const [family, p] of Object.entries(PALETTES)) {
   add("ruin", [ruin]);
   add("party", [party(p)]);
   for (const [id, images] of Object.entries(towns(p, family))) add(id, images);
+  for (const [id, images] of Object.entries(interiors(p, family))) add(id, images);
   const pack = { tilePackVersion: 1, id: family, name: NAMES[family], family, version: 1, palette, tiles };
   writeFileSync(join(outDir, `${family}.json`), `${JSON.stringify(pack)}\n`);
   written++;

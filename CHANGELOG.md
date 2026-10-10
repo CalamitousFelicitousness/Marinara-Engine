@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: a cloud can take a while to blow away: Stinking Cloud lasts a whole round in Gust of Wind before it disperses (Capability API 1.284).
 - Rulesets: Ready works for real: hold an attack, a spell or a walk for when an opponent comes within reach or acts, then take it with a reaction; a readied spell is paid now and held by concentration (Capability API 1.283).
 - Rulesets: hiding works for real: Hide rolls Stealth against each unseeing opponent's passive Perception, the hidden cannot be targeted and attack with advantage, attacking or a spoken spell gives them away, being seen finds them, and Search or a legendary Detect looks for them (Capability API 1.282).
 - Rulesets: a fog or smoke can be only light, hiding nobody, and a wind can blow fog away, ending the spell that holds it (a Cape of the Mountebank's thin smoke, Gust of Wind on a Fog Cloud) (Capability API 1.281).

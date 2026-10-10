@@ -1436,8 +1436,9 @@ export interface RulesetSeenThrough {
   pierced?: string[];
   /** Only lightly obscured (1.281): it hides nobody, and only makes looking into it harder. */
   light?: true;
-  /** A wind of the fight's disperses it (1.281): 5e's Fog Cloud, not its Darkness. */
-  dispersed?: true;
+  /** A wind of the fight's disperses it (1.281): 5e's Fog Cloud, not its Darkness. `{ after }`
+   *  only once it has stood in one that many whole rounds (1.284): 5e's Stinking Cloud. */
+  dispersed?: true | { after: number };
 }
 const seenThroughSchema: z.ZodType<RulesetSeenThrough, z.ZodTypeDef, unknown> = z
   .object({
@@ -1452,7 +1453,14 @@ const seenThroughSchema: z.ZodType<RulesetSeenThrough, z.ZodTypeDef, unknown> = 
     light: z.literal(true).optional(),
     /** A zone that `disperses` ends it where it reaches it (Capability API 1.281): 5e's Fog Cloud,
      *  dispersed by a Gust of Wind. */
-    dispersed: z.literal(true).optional(),
+    dispersed: z
+      .union([
+        z.literal(true),
+        /** Only once a wind has reached it this many whole rounds (Capability API 1.284): 5e's
+         *  Stinking Cloud, dispersed after 1 round in a strong wind. */
+        z.object({ after: z.number().int().min(1).max(10) }).strict(),
+      ])
+      .optional(),
   })
   .strict();
 

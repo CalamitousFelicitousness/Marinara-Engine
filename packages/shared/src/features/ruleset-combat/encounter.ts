@@ -1970,7 +1970,7 @@ function rulesetTeleportInCells(teleport: RulesetTeleport, perCell: number): Rul
           smoke: {
             ...(teleport.smoke.pierced ? { pierced: [...teleport.smoke.pierced] } : {}),
             ...(teleport.smoke.light ? { light: true as const } : {}),
-            ...(teleport.smoke.dispersed ? { dispersed: true as const } : {}),
+            ...(teleport.smoke.dispersed ? { dispersed: rulesetCopyDispersed(teleport.smoke.dispersed) } : {}),
           },
         }
       : {}),
@@ -2383,7 +2383,9 @@ function mechanicsAction(
       action.zone.obscures = {
         pierced: [...(mechanics.zone.obscures.pierced ?? [])],
         ...(mechanics.zone.obscures.light ? { light: true as const } : {}),
-        ...(mechanics.zone.obscures.dispersed ? { dispersed: true as const } : {}),
+        ...(mechanics.zone.obscures.dispersed
+          ? { dispersed: rulesetCopyDispersed(mechanics.zone.obscures.dispersed) }
+          : {}),
       };
     }
     if (mechanics.zone.disperses) action.zone.disperses = true;
@@ -4365,4 +4367,9 @@ function placeRulesetCombatants(
  *  blob tolerantly, so an empty object is a member with nothing spent. */
 function readStoredLive(stored: unknown): RulesetLiveState {
   return stored && typeof stored === "object" && !Array.isArray(stored) ? (stored as RulesetLiveState) : {};
+}
+
+/** A copy of what disperses a fog (1.281, 1.284): at once, or after it stands in a wind a while. */
+export function rulesetCopyDispersed(dispersed: true | { after: number }): true | { after: number } {
+  return dispersed === true ? true : { after: dispersed.after };
 }

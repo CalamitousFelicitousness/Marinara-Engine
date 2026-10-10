@@ -296,7 +296,8 @@ export interface RulesetCombatMove {
 export interface RulesetObscures {
   pierced: string[];
   light?: true;
-  dispersed?: true;
+  /** Ended by a wind at once, or only once it has stood in one this many whole rounds (1.284). */
+  dispersed?: true | { after: number };
 }
 
 export interface RulesetTeleport {
@@ -309,7 +310,7 @@ export interface RulesetTeleport {
   /** It may take its user, and those along, out of the fight (1.274). */
   leaves?: true;
   /** A cloud on the cell left and the cell landed in, until the end of its user's next turn (1.274). */
-  smoke?: { pierced?: string[]; light?: true; dispersed?: true };
+  smoke?: { pierced?: string[]; light?: true; dispersed?: true | { after: number } };
   /** A creature's (1.275): one of its own actions, by id, it may make once before or after the
    *  teleport as part of the same action. A blink dog's bite. */
   strike?: string;
@@ -2505,6 +2506,9 @@ export interface RulesetCombatZone {
   cells?: RulesetCombatCell[];
   /** A cloud of its own, not its action's zone (1.274): a teleport's smoke. */
   obscures?: RulesetObscures;
+  /** The turn ("round:turn") a wind first reached it, for a fog it disperses only after a while
+   *  (1.284); gone once no wind reaches it. */
+  blown?: string;
   /** The cells on a wall's chosen side that catch as its `side` says (1.172). */
   sideCells?: RulesetCombatCell[];
   payWith?: string;

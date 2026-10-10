@@ -48,6 +48,7 @@ import {
   rulesetOnOwnTurn,
   refreshRulesetMovement,
   rulesetCombatant,
+  rulesetCopyDispersed,
   rulesetActiveConditions,
   rulesetTargetHasSenses,
   rulesetTargetIs,
@@ -2404,23 +2405,39 @@ function detonate(ctx: RulesetCombatContext, caster: RulesetCombatant, zone: Rul
 }
 
 /** Every obscuring zone a wind reaches, where it is `dispersed`, blown away (1.281): 5e's Gust of
- *  Wind on a Fog Cloud, as the gust appears, moves or turns, and as anybody carrying either moves. */
+ *  Wind on a Fog Cloud, as the gust appears, moves or turns, and as anybody carrying either moves.
+ *  One dispersed only `after` a while (1.284) goes once a wind has reached it that many whole
+ *  rounds running: 5e's Stinking Cloud. */
 function disperseFogs(ctx: RulesetCombatContext): void {
   if (!ctx.state.board?.grid) return;
   const winds = rulesetStandingZones(ctx.state).filter(({ action }) => action.zone?.disperses);
-  if (winds.length === 0) return;
   const blown = new Set(
     winds.flatMap(({ caster, zone }) => rulesetZoneCells(ctx.state, caster, zone).map((cell) => `${cell.x},${cell.y}`)),
   );
+  const now = turnStamp(ctx);
   for (const caster of ctx.state.combatants) {
     for (const zone of [...(caster.zones ?? [])]) {
       const rule = zone.obscures ?? caster.actions.find((entry) => entry.id === zone.actionId)?.zone?.obscures;
       if (!rule?.dispersed || !caster.zones?.includes(zone) || winds.some((wind) => wind.zone === zone)) continue;
-      if (!rulesetZoneCells(ctx.state, caster, zone).some((cell) => blown.has(`${cell.x},${cell.y}`))) continue;
+      if (!rulesetZoneCells(ctx.state, caster, zone).some((cell) => blown.has(`${cell.x},${cell.y}`))) {
+        delete zone.blown;
+        continue;
+      }
+      if (rule.dispersed !== true) {
+        zone.blown ??= now;
+        if (wholeRoundsSince(ctx, zone.blown) < rule.dispersed.after) continue;
+      }
       ctx.events.push({ type: "zone", actorId: caster.id, label: zone.label, outcome: "dispersed" });
       spendZone(ctx, caster, zone);
     }
   }
+}
+
+/** How many whole rounds have passed since a turn stamped "round:turn": one once the same turn of
+ *  the next round has come. */
+function wholeRoundsSince(ctx: RulesetCombatContext, stamp: string): number {
+  const [round, turn] = stamp.split(":").map(Number) as [number, number];
+  return ctx.state.round - round - (ctx.state.turn < turn ? 1 : 0);
 }
 
 /** A spell's zone used up (1.178), gone off or burned away: the spell is over, and the concentration
@@ -6430,7 +6447,9 @@ function teleport(ctx: RulesetCombatContext, actor: RulesetCombatant, action: Ru
       obscures: {
         pierced: [...(action.teleport.smoke.pierced ?? [])],
         ...(action.teleport.smoke.light ? { light: true as const } : {}),
-        ...(action.teleport.smoke.dispersed ? { dispersed: true as const } : {}),
+        ...(action.teleport.smoke.dispersed
+          ? { dispersed: rulesetCopyDispersed(action.teleport.smoke.dispersed) }
+          : {}),
       },
     });
     (actor.flags.freshZones ??= []).push(action.id);

@@ -9743,8 +9743,27 @@
                               "const": true
                             },
                             "dispersed": {
-                              "type": "boolean",
-                              "const": true
+                              "anyOf": [
+                                {
+                                  "type": "boolean",
+                                  "const": true
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "after": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 10
+                                    },
+                                    "$comment": {}
+                                  },
+                                  "required": [
+                                    "after"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              ]
                             },
                             "$comment": {}
                           },
@@ -10097,8 +10116,27 @@
                               "const": true
                             },
                             "dispersed": {
-                              "type": "boolean",
-                              "const": true
+                              "anyOf": [
+                                {
+                                  "type": "boolean",
+                                  "const": true
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "after": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 10
+                                    },
+                                    "$comment": {}
+                                  },
+                                  "required": [
+                                    "after"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              ]
                             },
                             "$comment": {}
                           },
@@ -14800,8 +14838,27 @@
                                     "const": true
                                   },
                                   "dispersed": {
-                                    "type": "boolean",
-                                    "const": true
+                                    "anyOf": [
+                                      {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "after": {
+                                            "type": "integer",
+                                            "minimum": 1,
+                                            "maximum": 10
+                                          },
+                                          "$comment": {}
+                                        },
+                                        "required": [
+                                          "after"
+                                        ],
+                                        "additionalProperties": false
+                                      }
+                                    ]
                                   },
                                   "$comment": {}
                                 },
@@ -25071,8 +25128,27 @@
                                   "const": true
                                 },
                                 "dispersed": {
-                                  "type": "boolean",
-                                  "const": true
+                                  "anyOf": [
+                                    {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "after": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 10
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "required": [
+                                        "after"
+                                      ],
+                                      "additionalProperties": false
+                                    }
+                                  ]
                                 },
                                 "$comment": {}
                               },
@@ -25425,8 +25501,27 @@
                                   "const": true
                                 },
                                 "dispersed": {
-                                  "type": "boolean",
-                                  "const": true
+                                  "anyOf": [
+                                    {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "after": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 10
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "required": [
+                                        "after"
+                                      ],
+                                      "additionalProperties": false
+                                    }
+                                  ]
                                 },
                                 "$comment": {}
                               },
@@ -30426,8 +30521,27 @@
                                         "const": true
                                       },
                                       "dispersed": {
-                                        "type": "boolean",
-                                        "const": true
+                                        "anyOf": [
+                                          {
+                                            "type": "boolean",
+                                            "const": true
+                                          },
+                                          {
+                                            "type": "object",
+                                            "properties": {
+                                              "after": {
+                                                "type": "integer",
+                                                "minimum": 1,
+                                                "maximum": 10
+                                              },
+                                              "$comment": {}
+                                            },
+                                            "required": [
+                                              "after"
+                                            ],
+                                            "additionalProperties": false
+                                          }
+                                        ]
                                       },
                                       "$comment": {}
                                     },
@@ -30780,8 +30894,27 @@
                                         "const": true
                                       },
                                       "dispersed": {
-                                        "type": "boolean",
-                                        "const": true
+                                        "anyOf": [
+                                          {
+                                            "type": "boolean",
+                                            "const": true
+                                          },
+                                          {
+                                            "type": "object",
+                                            "properties": {
+                                              "after": {
+                                                "type": "integer",
+                                                "minimum": 1,
+                                                "maximum": 10
+                                              },
+                                              "$comment": {}
+                                            },
+                                            "required": [
+                                              "after"
+                                            ],
+                                            "additionalProperties": false
+                                          }
+                                        ]
                                       },
                                       "$comment": {}
                                     },
@@ -40943,8 +41076,27 @@
                     "const": true
                   },
                   "dispersed": {
-                    "type": "boolean",
-                    "const": true
+                    "anyOf": [
+                      {
+                        "type": "boolean",
+                        "const": true
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "after": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 10
+                          },
+                          "$comment": {}
+                        },
+                        "required": [
+                          "after"
+                        ],
+                        "additionalProperties": false
+                      }
+                    ]
                   },
                   "$comment": {}
                 },

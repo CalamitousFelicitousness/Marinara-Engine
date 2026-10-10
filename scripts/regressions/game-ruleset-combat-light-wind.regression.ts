@@ -73,8 +73,10 @@ try {
     range: 120,
     zone: { rounds: 10, triggers: [], obscures: { light: true, dispersed: true }, disperses: true },
   });
+  // Stinking Cloud: a strong wind disperses it only after it has blown on it a whole round (1.284).
+  const stink = spell("stink", cloud({ dispersed: { after: 1 } }, 5));
   const cape = spell("cape", { teleport: { distance: 30, smoke: { light: true } } });
-  const spells = [fog, dark, haze, gust, cape, storm];
+  const spells = [fog, dark, haze, gust, cape, storm, stink];
   const fiveE = (edit: (doc: Record<string, any>) => void = () => {}): Record<string, any> => {
     const doc = JSON.parse(fiveEText) as Record<string, any>;
     doc.catalogs.push({ id: "spells", label: "Spells", feeds: ["spells"], entries: structuredClone(spells) });
@@ -199,6 +201,44 @@ try {
     assert.ok(late.events.some((one) => one.type === "zone" && one.outcome === "dispersed"));
   }
 
+  // ── A cloud the wind takes a whole round to blow away (1.284) ──
+  {
+    const end = (state: RulesetEncounterState) => {
+      const actorId = state.order[state.turn]!;
+      const step = applyRulesetCombatChoice(
+        definition,
+        state,
+        { actorId, optionId: "end-turn", targetIds: [] },
+        () => 10,
+      );
+      assert.equal(refused(step), undefined, JSON.stringify(step.events));
+      return step.state;
+    };
+    const turnOf = (state: RulesetEncounterState) => `${state.round}:${state.order[state.turn]}`;
+    let state = cast(fight(), "mage", "Stink", { x: 10, y: 7 }).state;
+    const round = state.round;
+    state = cast(state, "druid", "Gust", { x: 12, y: 7 }).state;
+    assert.deepEqual(labels(state, "mage"), ["Stink"], "not blown away at once");
+    state = end(end(end(end(state))));
+    assert.equal(turnOf(state), `${round + 1}:druid`);
+    assert.deepEqual(labels(state, "mage"), [], "gone once the wind has blown on it a whole round");
+    assert.equal(who(state, "mage").concentrating ?? null, null, "and the concentration with it");
+    // A wind that stops before the round is out starts over when it comes again.
+    state = cast(fight(), "mage", "Stink", { x: 10, y: 7 }).state;
+    state = cast(state, "druid", "Gust", { x: 12, y: 7 }).state;
+    state = end(end(end(state)));
+    assert.equal(turnOf(state), `${round + 1}:mage`);
+    assert.deepEqual(labels(state, "mage"), ["Stink"]);
+    who(state, "druid").zones = [];
+    state = end(state);
+    assert.deepEqual(labels(state, "mage"), ["Stink"], "the wind dropped in time");
+    state = cast(state, "druid", "Gust", { x: 12, y: 7 }).state;
+    assert.deepEqual(labels(state, "mage"), ["Stink"], "it starts over");
+    state = end(end(end(end(state))));
+    assert.equal(turnOf(state), `${round + 2}:druid`);
+    assert.deepEqual(labels(state, "mage"), [], "a whole round of the new wind");
+  }
+
   // ── Refusals ──
   {
     const withSpell = (mechanics: Record<string, unknown>) =>
@@ -207,6 +247,8 @@ try {
       });
     refusedDoc(withSpell(cloud({ light: false })), /light/);
     refusedDoc(withSpell(cloud({ dispersed: "yes" })), /dispersed/);
+    refusedDoc(withSpell(cloud({ dispersed: { after: 0 } })), /dispersed/);
+    refusedDoc(withSpell(cloud({ dispersed: { after: 1, soon: true } })), /dispersed/);
     refusedDoc(
       withSpell({ area: { shape: "burst", size: 5 }, zone: { rounds: 1, triggers: [], disperses: false } }),
       /disperses/,
@@ -243,10 +285,15 @@ try {
       assert.notEqual(getCapabilityPackageInstallIssue(manifest(281) as never, only(entry)), gate, entry.id);
     }
     assert.notEqual(getCapabilityPackageInstallIssue(manifest(280) as never, only(dark)), gate, "darkness");
+    const slow =
+      "A ruleset with a fog a wind disperses only after a while requires schemaVersion 2 and capabilityApi 1.284 or newer";
+    assert.equal(getCapabilityPackageInstallIssue(manifest(283) as never, only(stink)), slow);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(284) as never, only(stink)), null);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(283) as never, only(fog)), slow, "a fog blown at once");
   }
 
   console.log(
-    "Light and wind: a light fog or the Cape's thin smoke hides nobody but leaves whoever is seen through it lightly obscured; a wind's zone blows away the fogs it reaches with their concentration, not darkness; refusals; gated at 1.281.",
+    "Light and wind: a light fog or the Cape's thin smoke hides nobody but leaves whoever is seen through it lightly obscured; a wind's zone blows away the fogs it reaches with their concentration, not darkness; Stinking Cloud only after a whole round of wind (1.284); refusals; gated at 1.281 and 1.284.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

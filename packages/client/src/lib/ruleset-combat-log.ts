@@ -16,6 +16,7 @@ import type {
   RulesetCombatRollMode,
   RulesetConditionBonus,
   RulesetContestSide,
+  RulesetSearchApart,
   RulesetDefinition,
   RulesetValueRef,
 } from "@marinara-engine/shared";
@@ -273,6 +274,17 @@ export function rulesetCombatEventLine(
   names: RulesetCombatNames,
   t: TFunction,
 ): string | null {
+  // Those a search looked for with a throw of their own (1.285): a Cloak of Elvenkind's wearer.
+  const searchApart = (apart: RulesetSearchApart[] | undefined) =>
+    (apart ?? [])
+      .map(
+        (one) =>
+          ` ${key("searchApart", {
+            names: one.ids.map((id) => names.combatant(id)).join(", "),
+            roll: checkRollText(one.check, names, t),
+          })}`,
+      )
+      .join("");
   const key = (name: string, params: Record<string, unknown> = {}) =>
     t(`game.combat.ruleset.event.${name}`, params) as string;
   switch (event.type) {
@@ -451,14 +463,16 @@ export function rulesetCombatEventLine(
     // A legendary search (1.282).
     case "search": {
       const roll = checkRollText(event.check, names, t);
-      return event.found.length > 0
-        ? key("searchFound", {
-            actor: names.combatant(event.actorId),
-            label: event.label,
-            roll,
-            names: event.found.map((id) => names.combatant(id)).join(", "),
-          })
-        : key("searchNone", { actor: names.combatant(event.actorId), label: event.label, roll });
+      const line =
+        event.found.length > 0
+          ? key("searchFound", {
+              actor: names.combatant(event.actorId),
+              label: event.label,
+              roll,
+              names: event.found.map((id) => names.combatant(id)).join(", "),
+            })
+          : key("searchNone", { actor: names.combatant(event.actorId), label: event.label, roll });
+      return `${line}${searchApart(event.apart)}`;
     }
     // Hiding given away (1.282).
     case "revealed":
@@ -970,9 +984,10 @@ export function rulesetCombatEventLine(
             ? key("standardHideFrom", { actor: names.combatant(event.actorId), roll, names: list(event.from) })
             : key("standardHideSeen", { actor: names.combatant(event.actorId), roll });
         }
-        return event.found?.length
+        const line = event.found?.length
           ? key("standardSearchFound", { actor: names.combatant(event.actorId), roll, names: list(event.found) })
           : key("standardSearchNone", { actor: names.combatant(event.actorId), roll });
+        return `${line}${searchApart(event.apart)}`;
       }
       return key(`standard${event.action[0]!.toUpperCase()}${event.action.slice(1)}`, {
         actor: names.combatant(event.actorId),

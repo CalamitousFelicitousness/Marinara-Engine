@@ -10,7 +10,14 @@
  * read it for their roll's mode, and "a creature you can see" reads it for who may be picked.
  */
 import type { RulesetDefinition } from "../../schemas/ruleset.schema.js";
-import { rulesetActiveConditions, rulesetCombatConditions } from "./encounter.js";
+import {
+  rulesetActiveConditions,
+  rulesetCheckAbility,
+  rulesetCheckMode,
+  rulesetCheckSkill,
+  rulesetCheckTakenModes,
+  rulesetCombatConditions,
+} from "./encounter.js";
 import {
   rulesetInCells,
   rulesetLineOfSight,
@@ -118,7 +125,39 @@ export function rulesetStaysHidden(
   if (!hiding || viewer.side === seen.side || viewer.defeated || viewer.id === seen.id) return false;
   if (sees(definition, state, viewer, seen, true)) return false;
   const dim = sees(definition, state, viewer, seen, false) ? (hiding.lightly ?? 5) : 0;
-  return total >= (hiding.passive ?? 10) + (viewer.checks?.[hiding.perception] ?? 0) - dim;
+  return (
+    total >=
+    (hiding.passive ?? 10) +
+      (viewer.checks?.[hiding.perception] ?? 0) -
+      dim +
+      passiveShift(definition, state, viewer, seen)
+  );
+}
+
+/** What a passive Perception gains or loses for the advantage or disadvantage it has (1.285): the
+ *  viewer's own, and what the one it looks for puts on looking for them. */
+function passiveShift(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  viewer: RulesetCombatant,
+  seen: RulesetCombatant,
+): number {
+  const combat = definition.combat!;
+  const shift = combat.hiding?.passiveMode;
+  if (!shift) return 0;
+  const check = combat.hiding!.perception;
+  const skill = rulesetCheckSkill(definition, check);
+  const taken = rulesetCheckTakenModes(definition, combat, seen, state, skill);
+  const mode = rulesetCheckMode(
+    definition,
+    combat,
+    viewer,
+    state,
+    skill,
+    rulesetCheckAbility(definition, check),
+    taken,
+  );
+  return mode === "advantage" ? shift : mode === "disadvantage" ? -shift : 0;
 }
 
 /**

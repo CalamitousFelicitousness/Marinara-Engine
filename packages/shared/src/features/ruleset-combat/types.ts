@@ -1890,6 +1890,8 @@ export type RulesetCombatEvent =
       check?: RulesetContestSide;
       from?: string[];
       found?: string[];
+      /** Those looked for with a throw of their own (1.285), where they change how it is thrown. */
+      apart?: RulesetSearchApart[];
     }
   /** Something readied (1.283), set off, let go at the start of its holder's turn, or lost with the
    *  concentration holding it. */
@@ -1901,7 +1903,14 @@ export type RulesetCombatEvent =
       outcome: "readied" | "released" | "expired" | "lost";
     }
   /** A legendary search (1.282): the check thrown, and whom it found. */
-  | { type: "search"; actorId: string; label: string; check: RulesetContestSide; found: string[] }
+  | {
+      type: "search";
+      actorId: string;
+      label: string;
+      check: RulesetContestSide;
+      found: string[];
+      apart?: RulesetSearchApart[];
+    }
   /** Somebody hiding given away to these opponents (1.282): by attacking, by noise, or seen clearly. */
   | { type: "revealed"; actorId: string; byIds: string[]; reason: "attack" | "noise" | "seen" }
   | {
@@ -2528,4 +2537,11 @@ export interface RulesetCombatZone {
   sections?: Array<{ cells: RulesetCombatCell[]; health: number }>;
   /** Set alight, and burning away (1.178). */
   burning?: boolean;
+}
+
+/** A Search's own throw for those who change how looking for them is thrown (1.285): 5e's Cloak of
+ *  Elvenkind. */
+export interface RulesetSearchApart {
+  ids: string[];
+  check: RulesetContestSide;
 }

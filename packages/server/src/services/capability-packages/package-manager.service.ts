@@ -1547,6 +1547,17 @@ function carriesMetamagic(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesMetamagic(one, depth + 1));
 }
 
+/** Looking for the hidden, weighed (1.285): a passive's `passiveMode`, a change to checks to find
+ *  somebody. */
+function carriesSeekingModes(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesSeekingModes(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.to === "checks-taken" || plainRecord(record.hiding)?.passiveMode !== undefined) return true;
+  return Object.values(record).some((one) => carriesSeekingModes(one, depth + 1));
+}
+
 /** A fog a wind disperses only after a while (1.284): `dispersed: { after }`. */
 function carriesSlowDispersal(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -3928,6 +3939,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Looking for the hidden, weighed, 1.285.
+  if (
+    !declaresApi(285) &&
+    (carriesSeekingModes(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesSeekingModes(document)))
+  ) {
+    return "A ruleset with a passive Perception that reads advantage, or a change to checks made to find somebody, requires schemaVersion 2 and capabilityApi 1.285 or newer";
   }
   // A fog dispersed after a while, 1.284.
   if (

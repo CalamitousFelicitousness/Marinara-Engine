@@ -6073,6 +6073,10 @@ export const RULESET_COMBAT_MODIFIER_TARGETS = [
   /** Attacks made against the holder (Capability API 1.180), rolled twice by `mode`, from attackers
    *  that are `from`: 5e's Protection from Evil and Good. */
   "attacks-taken",
+  /** Checks made to find the holder (Capability API 1.285), rolled twice by `mode`, narrowed by
+   *  `skills` to the skill rolled: an opponent's Search for them and its passive Perception
+   *  against their hiding. 5e's Cloak of Elvenkind, disadvantage on Perception to see its wearer. */
+  "checks-taken",
 ] as const;
 /** The ones that are ROLLED, so dice may be added to them and are rolled every time. */
 export const RULESET_ROLLED_MODIFIER_TARGETS: readonly string[] = [
@@ -6180,7 +6184,8 @@ const combatModifierSchema = z
         "A modifier changes its number by a flat amount, by dice, for speed, health-max or damage by times, or for checks and saves by a mode",
       );
     }
-    if (modifier.skills !== undefined && modifier.to !== "checks") add("skills", '"skills" narrows a change to checks');
+    if (modifier.skills !== undefined && modifier.to !== "checks" && modifier.to !== "checks-taken")
+      add("skills", '"skills" narrows a change to checks');
     if (modifier.against !== undefined && modifier.to !== "saves")
       add("against", '"against" narrows a change to saves');
     if (modifier.saves !== undefined && modifier.to !== "saves") add("saves", '"saves" narrows a change to saves');
@@ -6189,7 +6194,8 @@ const combatModifierSchema = z
       modifier.to !== "checks" &&
       modifier.to !== "saves" &&
       modifier.to !== "attacks" &&
-      modifier.to !== "attacks-taken"
+      modifier.to !== "attacks-taken" &&
+      modifier.to !== "checks-taken"
     ) {
       add("mode", '"mode" rolls checks, saves or attacks twice, so it changes nothing else');
     }
@@ -6198,6 +6204,12 @@ const combatModifierSchema = z
       (modifier.mode === undefined || modifier.flat !== undefined || modifier.dice !== undefined)
     ) {
       add("to", '"attacks-taken" rolls attacks against the holder twice, so it takes a "mode" and nothing else');
+    }
+    if (
+      modifier.to === "checks-taken" &&
+      (modifier.mode === undefined || modifier.flat !== undefined || modifier.dice !== undefined)
+    ) {
+      add("to", '"checks-taken" rolls checks to find the holder twice, so it takes a "mode" and nothing else');
     }
     if (modifier.from !== undefined && modifier.to !== "attacks-taken")
       add("from", '"from" narrows attacks-taken only');
@@ -7525,17 +7537,6 @@ const combatSchema = z
     /** The numbers a contest reads, and the contests a combatant may take. */
     checks: z.array(combatCheckSchema).max(12).optional(),
     /**
-     * Hiding for real (Capability API 1.282). The `hide` standard action throws `stealth` (one of
-     * `checks`) on the fight's own dice, and its user is hidden from each opponent that does not see
-     * them clearly and whose passive `perception` (`passive` plus that check) the total meets; one
-     * who sees them only lightly obscured has `lightly` off it. Whoever they are hidden from does not
-     * see them: cannot point anything at them, and is attacked by them as by somebody unseen. It
-     * lasts until they attack, use something that needs one of the `noisy` components, or are seen
-     * clearly by that opponent, and the `search` standard action (or a creature's `search` action)
-     * finds them where its Perception check meets their total. 5e's Hide, Search and passive
-     * Perception: `{ "stealth": "stealth", "perception": "perception", "noisy": ["verbal"] }`.
-     */
-    /**
      * Readying for real (Capability API 1.283). The `ready` standard action then readies one of its
      * user's other options taken with the same budget, or a move, to be taken with `budget` (5e's
      * reaction) when it happens: an opponent coming where it can reach them, or an opponent its
@@ -7547,6 +7548,17 @@ const combatSchema = z
       .object({ budget: sheetId, concentrates: z.literal(true).optional() })
       .strict()
       .optional(),
+    /**
+     * Hiding for real (Capability API 1.282). The `hide` standard action throws `stealth` (one of
+     * `checks`) on the fight's own dice, and its user is hidden from each opponent that does not see
+     * them clearly and whose passive `perception` (`passive` plus that check) the total meets; one
+     * who sees them only lightly obscured has `lightly` off it. Whoever they are hidden from does not
+     * see them: cannot point anything at them, and is attacked by them as by somebody unseen. It
+     * lasts until they attack, use something that needs one of the `noisy` components, or are seen
+     * clearly by that opponent, and the `search` standard action (or a creature's `search` action)
+     * finds them where its Perception check meets their total. 5e's Hide, Search and passive
+     * Perception: `{ "stealth": "stealth", "perception": "perception", "noisy": ["verbal"] }`.
+     */
     hiding: z
       .object({
         stealth: sheetId,
@@ -7554,6 +7566,9 @@ const combatSchema = z
         passive: z.number().int().min(0).max(100).optional(),
         lightly: z.number().int().min(0).max(100).optional(),
         noisy: componentIdsSchema.optional(),
+        /** Added to a passive Perception rolled with advantage, and taken off one with disadvantage
+         *  (Capability API 1.285): 5e's 5. Without it a passive reads no mode. */
+        passiveMode: z.number().int().min(1).max(20).optional(),
       })
       .strict()
       .optional(),

@@ -842,6 +842,39 @@ export function rulesetCheckAbility(definition: RulesetDefinition, check: string
   return value?.skillMod ? sheet.skills.find((entry) => entry.id === value.skillMod)?.ability : undefined;
 }
 
+/** The skill a check of the fight's is rolled with (1.285): a skill itself, or a `combat.checks`
+ *  entry read off one (`skillMod`), so what is narrowed to that skill counts on it: 5e's Stealth in
+ *  heavy armor. */
+export function rulesetCheckSkill(definition: RulesetDefinition, check: string | undefined): string | undefined {
+  if (!check) return undefined;
+  if (definition.sheet.skills.some((entry) => entry.id === check)) return check;
+  const value = definition.combat?.checks?.find((entry) => entry.id === check)?.value as
+    { skillMod?: string } | undefined;
+  return value?.skillMod;
+}
+
+/** The modes `holder` puts on checks made to find them (1.285), with the skill rolled: 5e's Cloak
+ *  of Elvenkind, disadvantage on Perception to see its wearer. */
+export function rulesetCheckTakenModes(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  holder: RulesetCombatant,
+  state: RulesetEncounterState | undefined,
+  skill: string | undefined,
+): { advantage: boolean; disadvantage: boolean } {
+  const modes = { advantage: false, disadvantage: false };
+  if (!rulesetCombatAdvantage(combat)) return modes;
+  for (const entry of rulesetActiveConditions(definition, combat, holder, state)) {
+    for (const modifier of entry.modifiers ?? []) {
+      if (modifier.to !== "checks-taken" || !modifier.mode) continue;
+      const skills = modifier.skills ?? entry.skills;
+      if (skills && !(skill !== undefined && skills.includes(skill))) continue;
+      modes[modifier.mode] = true;
+    }
+  }
+  return modes;
+}
+
 /** The ability an item's gate is rolled with (1.183): a raw ability check's own, or a skill's as it is
  *  rolled. A value off the sheet names none. */
 function gateAbility(target: RulesetCheckTarget | null | undefined): string | undefined {
@@ -862,10 +895,12 @@ export function rulesetCheckMode(
   skill?: string,
   /** The ability the check is made with (1.183), so what is narrowed to it counts. */
   ability?: string,
+  /** What whoever it is made against puts on it (1.285): `rulesetCheckTakenModes`. */
+  taken?: { advantage: boolean; disadvantage: boolean },
 ): "normal" | "advantage" | "disadvantage" {
   if (!rulesetCombatAdvantage(combat)) return "normal";
-  let advantage = false;
-  let disadvantage = false;
+  let advantage = !!taken?.advantage;
+  let disadvantage = !!taken?.disadvantage;
   const narrowedAway = (skills: readonly string[] | undefined) =>
     !!skills && !(skill !== undefined && skills.includes(skill));
   for (const entry of rulesetActiveConditions(definition, combat, combatant, state)) {

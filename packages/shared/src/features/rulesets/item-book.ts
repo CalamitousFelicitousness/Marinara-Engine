@@ -73,6 +73,7 @@ export interface RulesetItemEffectFact {
     | "ability"
     | "attacks"
     | "attacks-taken"
+    | "checks-taken"
     | "defense"
     | "speed"
     | "health-max"
@@ -753,8 +754,11 @@ export function rulesetItemEffectFacts(
           }
         : {};
     const narrowed =
-      to === "checks" || to === "saves"
-        ? names(to, to === "checks" ? (modifier.skills ?? effect.skills) : (modifier.saves ?? effect.saves))
+      to === "checks" || to === "saves" || to === "checks-taken"
+        ? names(
+            to === "saves" ? "saves" : "checks",
+            to === "saves" ? (modifier.saves ?? effect.saves) : (modifier.skills ?? effect.skills),
+          )
         : to === "defense" && defense
           ? [defense]
           : [];
@@ -854,7 +858,8 @@ export function rulesetItemEffectText(fact: RulesetItemEffectFact): string {
   const against = fact.against
     ? ` against ${[...fact.against.names, ...(fact.against.magic ? ["magic"] : [])].join(" or ")}`
     : "";
-  const to = fact.to === "attacks-taken" ? "attacks against them" : fact.to;
+  const to =
+    fact.to === "attacks-taken" ? "attacks against them" : fact.to === "checks-taken" ? "checks to find them" : fact.to;
   const which = `${to}${fact.names.length ? ` (${fact.names.join(", ")})` : ""}${against}`;
   if ("fails" in change) return `fails ${which}`;
   return `${"mode" in change ? change.mode : "value" in change ? change.value : ""} on ${which}`;

@@ -18314,7 +18314,8 @@
                                   "health-max",
                                   "damage",
                                   "damage-taken",
-                                  "attacks-taken"
+                                  "attacks-taken",
+                                  "checks-taken"
                                 ]
                               },
                               "attacks": {
@@ -19172,7 +19173,8 @@
                                   "health-max",
                                   "damage",
                                   "damage-taken",
-                                  "attacks-taken"
+                                  "attacks-taken",
+                                  "checks-taken"
                                 ]
                               },
                               "attacks": {
@@ -20184,7 +20186,8 @@
                                         "health-max",
                                         "damage",
                                         "damage-taken",
-                                        "attacks-taken"
+                                        "attacks-taken",
+                                        "checks-taken"
                                       ]
                                     },
                                     "attacks": {
@@ -41208,7 +41211,8 @@
                         "health-max",
                         "damage",
                         "damage-taken",
-                        "attacks-taken"
+                        "attacks-taken",
+                        "checks-taken"
                       ]
                     },
                     "attacks": {
@@ -46181,7 +46185,8 @@
                         "health-max",
                         "damage",
                         "damage-taken",
-                        "attacks-taken"
+                        "attacks-taken",
+                        "checks-taken"
                       ]
                     },
                     "attacks": {
@@ -47088,6 +47093,11 @@
               },
               "minItems": 1,
               "maxItems": 6
+            },
+            "passiveMode": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 20
             },
             "$comment": {}
           },

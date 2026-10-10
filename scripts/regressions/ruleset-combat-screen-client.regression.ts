@@ -897,6 +897,22 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   ];
   const printed = new Map(table);
   assert.equal(printed.get("search"), "Thorn Lurker uses Detect (12 + 3 = 15) and finds Brenna.");
+  assert.equal(
+    say({
+      type: "search",
+      actorId: "lurker",
+      label: "Detect",
+      check: { check: "perception", rolls: [12], modifier: 3, total: 15 },
+      found: [],
+      apart: [
+        {
+          ids: ["brenna"],
+          check: { check: "perception", rolls: [12, 2], modifier: 3, total: 5, mode: "disadvantage" },
+        },
+      ],
+    })?.startsWith("Thorn Lurker uses Detect (12 + 3 = 15) and finds nobody. Looking for Brenna: "),
+    true,
+  );
   assert.equal(printed.get("revealed"), "Brenna attacks and gives away where they were hiding.");
   assert.equal(printed.get("ready"), "Brenna readies Sword for an enemy coming in reach.");
   assert.equal(

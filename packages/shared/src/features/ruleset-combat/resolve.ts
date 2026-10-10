@@ -74,6 +74,8 @@ import {
   rulesetCreatureKind,
   rulesetCombatHide,
   rulesetCheckAbility,
+  rulesetCheckSkill,
+  rulesetCheckTakenModes,
   rulesetActionAsUsed,
   rulesetImmuneToCondition,
   writeRulesetSheet,
@@ -218,6 +220,7 @@ import type {
   RulesetConditionBonus,
   RulesetConditionEnding,
   RulesetContestSide,
+  RulesetSearchApart,
   RulesetEncounterOutcome,
   RulesetEncounterState,
   RulesetEncounterSummary,
@@ -4118,12 +4121,16 @@ function throwCheck(
   who: RulesetCombatant,
   check: string,
   modifier: number,
+  /** What whoever it is made against puts on it (1.285): a Cloak of Elvenkind on a Search. */
+  taken?: { advantage: boolean; disadvantage: boolean },
 ): RulesetContestSide {
-  // What is narrowed to the ability the check is made with counts (1.183): Rage's Strength.
+  // What is narrowed to the ability the check is made with counts (1.183): Rage's Strength. And,
+  // since 1.285, what is narrowed to the skill it is read off: Stealth in heavy armor.
   const ability = rulesetCheckAbility(ctx.definition, check);
-  const mode = rulesetCheckMode(ctx.definition, ctx.combat, who, ctx.state, undefined, ability);
+  const skill = rulesetCheckSkill(ctx.definition, check);
+  const mode = rulesetCheckMode(ctx.definition, ctx.combat, who, ctx.state, skill, ability, taken);
   const checkModifiers = () =>
-    rulesetConditionModifiers(ctx.definition, ctx.combat, who, "checks", ctx.state, undefined, undefined, ability);
+    rulesetConditionModifiers(ctx.definition, ctx.combat, who, "checks", ctx.state, skill, undefined, ability);
   if (rulesetCombatIsPool(ctx.combat)) {
     const bonuses = rollBonuses(ctx, checkModifiers());
     const pool = throwPool(ctx, who, modifier + bonusTotal(bonuses), mode);
@@ -6097,8 +6104,8 @@ function resolveStandard(
     return;
   } else if (action === "hide") actor.flags.hidden = true;
   else if (action === "search" && ctx.combat.hiding) {
-    const { check, found } = search(ctx, actor);
-    ctx.events.push({ type: "standard", actorId: actor.id, action, check, found });
+    const { check, found, apart } = search(ctx, actor);
+    ctx.events.push({ type: "standard", actorId: actor.id, action, check, found, ...(apart ? { apart } : {}) });
     return;
   } else if (action === "ready") actor.flags.ready = true;
   else if (action === "help" && target) target.flags.helped = true;
@@ -6111,23 +6118,48 @@ function resolveStandard(
 }
 
 /** A check of the fight's own `checks` thrown on its own (1.282), its number off the combatant. */
-function hidingCheck(ctx: RulesetCombatContext, who: RulesetCombatant, check: string): RulesetContestSide {
-  return throwCheck(ctx, who, check, who.checks?.[check] ?? 0);
+function hidingCheck(
+  ctx: RulesetCombatContext,
+  who: RulesetCombatant,
+  check: string,
+  taken?: { advantage: boolean; disadvantage: boolean },
+): RulesetContestSide {
+  return throwCheck(ctx, who, check, who.checks?.[check] ?? 0, taken);
 }
 
 /**
  * Looking for whoever hides (1.282): a Perception check, and every opponent hidden from the searcher
  * whose Stealth total it meets is found by them.
  */
-function search(ctx: RulesetCombatContext, actor: RulesetCombatant): { check: RulesetContestSide; found: string[] } {
-  const check = hidingCheck(ctx, actor, ctx.combat.hiding!.perception);
+function search(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+): { check: RulesetContestSide; found: string[]; apart?: RulesetSearchApart[] } {
+  const perception = ctx.combat.hiding!.perception;
+  const check = hidingCheck(ctx, actor, perception);
+  // Whoever makes looking for them harder or easier (1.285) is looked for with a throw of its own,
+  // where that changes how it is thrown.
+  const skill = rulesetCheckSkill(ctx.definition, perception);
+  const ability = rulesetCheckAbility(ctx.definition, perception);
+  const plain = check.mode ?? "normal";
+  const throws = new Map<string, RulesetSearchApart>();
   const found: string[] = [];
   for (const other of ctx.state.combatants) {
-    if (!rulesetHiddenFrom(actor, other) || check.total < other.hiding!.total) continue;
+    if (!rulesetHiddenFrom(actor, other)) continue;
+    const taken = rulesetCheckTakenModes(ctx.definition, ctx.combat, other, ctx.state, skill);
+    const mode = rulesetCheckMode(ctx.definition, ctx.combat, actor, ctx.state, skill, ability, taken);
+    let mine = check;
+    if (mode !== plain) {
+      const own = throws.get(mode) ?? { ids: [], check: hidingCheck(ctx, actor, perception, taken) };
+      own.ids.push(other.id);
+      throws.set(mode, own);
+      mine = own.check;
+    }
+    if (mine.total < other.hiding!.total) continue;
     found.push(other.id);
     loseHiding(other, [actor.id]);
   }
-  return { check, found };
+  return { check, found, ...(throws.size > 0 ? { apart: [...throws.values()] } : {}) };
 }
 
 /** No longer hidden from these opponents (1.282), and no longer hiding once that is nobody. */
@@ -6378,8 +6410,15 @@ function resolveAction(
   // A legendary Detect (1.282): the looking, and nothing else.
   if (action.search) {
     if (ctx.combat.hiding) {
-      const { check, found } = search(ctx, actor);
-      ctx.events.push({ type: "search", actorId: actor.id, label: action.label, check, found });
+      const { check, found, apart } = search(ctx, actor);
+      ctx.events.push({
+        type: "search",
+        actorId: actor.id,
+        label: action.label,
+        check,
+        found,
+        ...(apart ? { apart } : {}),
+      });
     }
     return null;
   }

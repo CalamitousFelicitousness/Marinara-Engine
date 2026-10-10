@@ -118,6 +118,8 @@ export {
   rulesetZoneConditions,
   rulesetAbilityNarrowing,
   rulesetCheckAbility,
+  rulesetCheckSkill,
+  rulesetCheckTakenModes,
   rulesetCheckMode,
   rulesetCombatant,
   rulesetCombatConditions,

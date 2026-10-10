@@ -309,6 +309,22 @@ function sourceInSight(
   return rulesetFootprintsSee(grid, combatant, source);
 }
 
+/** Whether whoever applied a condition stands within this distance of its holder (1.270). Without
+ *  a board, or a source to measure to, it is near: a fight that measures nothing gates nothing. */
+function sourceWithin(
+  combatant: RulesetCombatant,
+  condition: string,
+  state: RulesetEncounterState | undefined,
+  combat: RulesetCombat,
+  distance: number,
+): boolean {
+  const sourceId = combatant.tracked.find((entry) => entry.condition === condition)?.source;
+  if (!sourceId || !state?.board || !combat.distance) return true;
+  const source = rulesetCombatant(state, sourceId);
+  if (!source || !rulesetPositionOf(combatant) || !rulesetPositionOf(source)) return true;
+  return rulesetGap(combatant, source) <= rulesetInCells(distance, combat.distance.perCell);
+}
+
 /**
  * The condition entries that are ON this combatant right now, with their gates read.
  *
@@ -345,6 +361,12 @@ export function rulesetActiveConditions(
     if (!active.has(entry.condition)) return [];
     const gate = entry.whileSourceInSight;
     if (!gate || sourceInSight(combatant, entry.condition, state)) return [entry];
+    // Or near enough, seen or not (1.270): Antipathy's 60 feet.
+    if (
+      entry.orSourceWithin !== undefined &&
+      sourceWithin(combatant, entry.condition, state, combat, entry.orSourceWithin)
+    )
+      return [entry];
     // Out of sight: `true` takes the whole condition off, and a list takes off only what it names,
     // so an effect nobody has to see to suffer stays.
     if (gate === true) return [];
@@ -353,6 +375,13 @@ export function rulesetActiveConditions(
     // fright you fail a save against whether or not you can see it is exactly what the list is for.
     return [{ ...entry, effects: entry.effects.filter((effect) => !gate.includes(effect)) }];
   });
+  // Held off, not ended, by another that holds (1.270): Calm Emotions' charm and fright.
+  const suppressed = new Set(conditions.flatMap((entry) => entry.suppresses ?? []));
+  if (suppressed.size) {
+    for (let at = conditions.length - 1; at >= 0; at -= 1) {
+      if (suppressed.has(conditions[at]!.condition)) conditions.splice(at, 1);
+    }
+  }
   const levels = combat.levels?.length ? activeLevels(definition, combat, combatant, rawLevels) : [];
   // And what the fighter's items do, each named for the stack, as a level is named for its track.
   const items = heldSources(definition, combatant).map((source): RulesetActiveCondition => ({

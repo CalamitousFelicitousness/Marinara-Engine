@@ -1549,6 +1549,18 @@ function carriesMetamagic(value: unknown, depth = 0): boolean {
 
 /** An aura that needs senses, harms at its holder's turn or asks for a save, or a save change
  *  narrowed to what is cast from a catalog (1.260). */
+/** A condition held off rather than ended (1.270): near its source as well as in sight, or held off
+ *  by another condition. */
+function carriesHeldOff(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesHeldOff(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (typeof record.condition === "string" && (record.orSourceWithin !== undefined || record.suppresses !== undefined))
+    return true;
+  return Object.values(record).some((one) => carriesHeldOff(one, depth + 1));
+}
+
 /** What 1.269 reads off whoever put a condition on, and what Sympathy and a scroll's chosen kind
  *  need, in catalogs too: a value an applied condition is put on with, temporary points a condition
  *  gives each turn, an aura save against the applier's difficulty, a save on harm from the source,
@@ -3740,6 +3752,10 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // A condition held off near its source or by another condition, 1.270.
+  if (!declaresApi(270) && carriesHeldOff(ruleset)) {
+    return "A ruleset with a condition that holds while its source is near as well as in sight, or one condition that holds others off, requires schemaVersion 2 and capabilityApi 1.270 or newer";
   }
   // Numbers fixed off a condition's applier, Sympathy's reach and save, a scroll's chosen kind, 1.269.
   if (

@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: a fright like Antipathy's pauses while its victim is far away and out of sight and comes back when they return, and a condition like Calm Emotions can pause charms and frights until it ends (Capability API 1.270).
 - Rulesets: Antipathy/Sympathy save against their caster's DC, Heroism gives its caster's modifier in temporary hit points each turn and takes them back when it ends, Sympathy's victims stay within reach and save when the target harms them, and a scroll of Antipathy/Sympathy names its creature kind (Capability API 1.269).
 - Rulesets: a staff's charges can be spent when it hits, for more damage per charge and a save against a condition, as a Staff of Power's Power Strike, a Staff of Striking and a Staff of Withering (Capability API 1.268).
 - Rulesets: a staff can turn into a plain quarterstaff instead of breaking when its last charge is spent, in a fight and outside one (Capability API 1.267).

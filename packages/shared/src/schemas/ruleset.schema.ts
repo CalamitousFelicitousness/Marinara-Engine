@@ -6488,6 +6488,14 @@ const combatConditionSchema = z
      * fight that measures nothing has no line to break.
      */
     whileSourceInSight: z.union([z.literal(true), z.array(combatConditionEffectSchema).min(1).max(12)]).optional(),
+    /** Or while its holder stands within this distance of whoever applied it, in the ruleset's own
+     *  distance, seen or not (Capability API 1.270). Out of both it is held off, not ended, and it
+     *  holds again the moment either is true: Antipathy's fright, within 60 feet or in sight. */
+    orSourceWithin: z.number().finite().gt(0).max(10000).optional(),
+    /** While this holds, these conditions on its holder are held off, not ended (Capability API
+     *  1.270): what they do stops and their clocks run on, and they hold again once this ends.
+     *  Calm Emotions' charm and fright, Mindless Rage's. */
+    suppresses: uniqueIds(12).optional(),
     /** It comes off the moment whoever applied it goes down. */
     endsWhenSourceDown: z.boolean().optional(),
     /** What ends this condition (Capability API 1.120): any damage, or harm from whoever applied
@@ -6644,6 +6652,20 @@ const combatConditionSchema = z
   .superRefine((entry, ctx) => {
     savesNeedSomethingToNarrow(entry, ctx);
     skillsNeedSomethingToNarrow(entry, ctx);
+    if (entry.suppresses?.includes(entry.condition)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["suppresses"],
+        message: "A condition holds off others, not itself",
+      });
+    }
+    if (entry.orSourceWithin !== undefined && entry.whileSourceInSight === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["orSourceWithin"],
+        message: '"orSourceWithin" widens "whileSourceInSight", so the condition names that too',
+      });
+    }
     if (entry.grants && !entry.grants.standard && !entry.grants.attacks && !entry.grants.items) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -9560,6 +9582,9 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       if (entry.size && !combat.sizes) {
         issue([...path, "size"], "A condition that changes size needs combat.sizes");
       }
+      entry.suppresses?.forEach((held, heldIndex) => {
+        if (!conditions.has(held)) issue([...path, "suppresses", heldIndex], `Unknown condition "${held}"`);
+      });
       // Gating an effect this condition does not have says nothing, and is nearly always a typo for
       // one it does.
       if (Array.isArray(entry.whileSourceInSight)) {

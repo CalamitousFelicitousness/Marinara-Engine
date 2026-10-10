@@ -281,6 +281,15 @@ export interface RulesetCombatRider {
 /** A teleport (1.271): its user goes at once to a free place within `distance`, one they can see
  *  with `seen`, taking up to `carries` willing creatures of their side no bigger than them from
  *  within `carriesWithin` (touching when left out), who land as near them as there is room. */
+/** A legendary move (1.278). `noOpportunity`: nobody strikes at it leaving. `untouchable`: nothing
+ *  harms or holds it on the way (a mummy lord's Whirlwind of Sand). */
+export interface RulesetCombatMove {
+  share?: number;
+  distance?: number;
+  noOpportunity?: true;
+  untouchable?: true;
+}
+
 export interface RulesetTeleport {
   distance: number;
   seen?: true;
@@ -328,6 +337,8 @@ export interface RulesetStatBlockAction {
   push?: number;
   /** The creature teleports, in the ruleset's own distance (1.271). */
   teleport?: RulesetTeleport;
+  /** A move bought with points (1.278): `share` of its speed or `distance` in the ruleset's own unit. */
+  move?: RulesetCombatMove;
   /** The ability its attack is made with (1.184), so changes narrowed to an ability reach it. */
   ability?: string;
   /** Its damage lowers the health maximum (1.198): on a failed save of its own, on a failed save of
@@ -741,6 +752,9 @@ export interface RulesetCombatAction {
   push?: number;
   /** Its user teleports (1.271): in the ruleset's distance on a block, in cells in a fight. */
   teleport?: RulesetTeleport;
+  /** A move bought with points between turns (1.278), to a cell picked from the option's `cells`:
+   *  `share` of its speed, or `distance` (in cells in a fight), its own speed with neither. */
+  move?: RulesetCombatMove;
   /** A burst centred on its user, never aimed (1.277): everybody within `size` cells of them is
    *  caught, they are not, behind walls too with `throughWalls`, their own side not with
    *  `friendlyFire: false`. Off a board, everybody. */
@@ -1492,6 +1506,16 @@ export interface RulesetWalkResume {
    *  long path past the same foe never offers a second. */
   asked: string[];
   spent: number;
+  /** A legendary move (1.278): what its maker's own allowance was before the one it was lent, put
+   *  back when the walk ends, and how the move walks. */
+  legendary?: {
+    kept: { movementLeft?: number; modeLeft?: Partial<Record<RulesetMoveMode, number>> };
+    noOpportunity?: true;
+    untouchable?: true;
+  };
+  /** The window between turns a legendary move was bought in, held behind a strike it provoked and
+   *  asked on from once the walk ends. */
+  outer?: RulesetCombatWindow;
 }
 
 /** The board, as the fight keeps it: the tactical engine's own grid and where it came from. The

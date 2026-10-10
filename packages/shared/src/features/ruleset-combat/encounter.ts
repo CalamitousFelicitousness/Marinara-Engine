@@ -2778,7 +2778,7 @@ function blockActions(
     // One that lands on the creature itself points at nobody: its effect is its own.
     // So does a teleport (1.271): where it goes is its choice, not whom.
     targets:
-      action.self || action.teleport || action.area?.around
+      action.self || action.teleport || action.area?.around || action.move
         ? { side: "self" as const, count: 0 }
         : {
             // An area catches each creature in it, the creature's allies too (1.187): off a board it may
@@ -2859,6 +2859,17 @@ function blockActions(
     ...(action.ability ? { ability: action.ability } : {}),
     ...(action.reducesMax ? { reducesMax: { ...action.reducesMax } } : {}),
     ...(action.drain ? { drain: { ...action.drain } } : {}),
+    // A legendary move (1.278): a board's business, so its distance is in cells.
+    ...(action.move
+      ? {
+          move: {
+            ...action.move,
+            ...(action.move.distance !== undefined
+              ? { distance: rulesetInCells(action.move.distance, perCell ?? 1) }
+              : {}),
+          },
+        }
+      : {}),
     ...(action.targetHolds ? { targetHolds: structuredClone(action.targetHolds) } : {}),
     ...(perCell !== undefined && action.push !== undefined ? { push: rulesetInCells(action.push, perCell) } : {}),
     ...(action.teleport && (perCell !== undefined || action.teleport.leaves)

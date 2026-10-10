@@ -1120,6 +1120,12 @@ function rulesetCandidatesFrom(
       if (gone) candidates.push(gone);
       continue;
     }
+    // A legendary move (1.278) the same way, by where it would take them.
+    if (option.signature && option.cells) {
+      const moved = standing ? null : legendaryMoveCandidate(definition, combat, encounter, actor, option, price);
+      if (moved) candidates.push(moved);
+      continue;
+    }
     // Walking is not a candidate of its own: it is what a candidate does before it acts, and a turn
     // with nothing to act on closes the distance instead (see `rulesetClosingMove`).
     if (option.kind === "move") continue;
@@ -1480,7 +1486,6 @@ function teleportCandidate(
   price: number,
 ): CombatAiCandidate<RulesetCandidate> | null {
   const cells = option.teleport?.cells ?? [];
-  const span = rulesetSpanOf(actor);
   // Out of the fight (1.274), when it is going badly: at a quarter of its health or less, with
   // whoever may go along.
   if (option.teleport?.leaves) {
@@ -1508,6 +1513,52 @@ function teleportCandidate(
       };
     }
   }
+  const picked = repositionCell(definition, combat, encounter, actor, cells);
+  if (!picked) return null;
+  const { best, worth } = picked;
+  return {
+    action: {
+      choice: { actorId: actor.id, optionId: option.id, targetIds: [], at: { x: best.x, y: best.y }, ...paying(way) },
+      option,
+    },
+    setup: worth,
+    cost: price,
+  };
+}
+
+/** A legendary move (1.278), weighed as a teleport is: away when hurt and beside an enemy, or into
+ *  reach of one when none is. */
+function legendaryMoveCandidate(
+  definition: RulesetDefinition,
+  combat: NonNullable<RulesetDefinition["combat"]>,
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+  option: RulesetCombatOption,
+  price: number,
+): CombatAiCandidate<RulesetCandidate> | null {
+  const picked = repositionCell(definition, combat, encounter, actor, option.cells ?? []);
+  if (!picked) return null;
+  return {
+    action: {
+      choice: { actorId: actor.id, optionId: option.id, targetIds: [], to: { x: picked.best.x, y: picked.best.y } },
+      option,
+    },
+    setup: picked.worth,
+    cost: price,
+  };
+}
+
+/** Where to go among `cells`, and what it is worth: the cell farthest from every enemy when hurt and
+ *  beside one, so long as it gets clear; else the nearest one that puts an enemy in reach when none
+ *  is. Null when neither is worth it. */
+function repositionCell(
+  definition: RulesetDefinition,
+  combat: NonNullable<RulesetDefinition["combat"]>,
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+  cells: ReadonlyArray<{ x: number; y: number }>,
+): { best: { x: number; y: number }; worth: number } | null {
+  const span = rulesetSpanOf(actor);
   const foes = encounter.combatants.filter(
     (one) => one.side !== actor.side && rulesetCombatStanding(one) && !one.away && !!rulesetPositionOf(one),
   );
@@ -1534,14 +1585,7 @@ function teleportCandidate(
     if (best) worth = 0.5;
   }
   if (!best || worth <= 0) return null;
-  return {
-    action: {
-      choice: { actorId: actor.id, optionId: option.id, targetIds: [], at: { x: best.x, y: best.y }, ...paying(way) },
-      option,
-    },
-    setup: worth,
-    cost: price,
-  };
+  return { best, worth };
 }
 
 /**

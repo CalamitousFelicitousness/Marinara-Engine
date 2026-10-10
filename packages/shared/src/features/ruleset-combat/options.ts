@@ -69,6 +69,8 @@ import {
   rulesetOnOwnTurn,
   rulesetAttackNamed,
   rulesetItemMatches,
+  rulesetModeAllowances,
+  rulesetMovementAllowance,
 } from "./encounter.js";
 import {
   rulesetAirborne,
@@ -119,6 +121,9 @@ import type {
   RulesetReactionMoment,
   RulesetSheetBounds,
   RulesetWindowTrigger,
+  RulesetCombatMove,
+  RulesetMoveMode,
+  RulesetReachableCell,
 } from "./types.js";
 
 /** The budget a standard action spends: the first one the economy declares, which is the main one. */
@@ -2938,6 +2943,81 @@ export function rulesetUncompelledOptions(
   return options;
 }
 
+/** What a legendary move lends its maker to walk with (1.278): a share of its turn's allowance,
+ *  each way of moving alike, or a distance on every way it moves. Nothing for one held in place,
+ *  unless nothing holds it. */
+export function rulesetLentMovement(
+  definition: RulesetDefinition,
+  actor: RulesetCombatant,
+  move: RulesetCombatMove,
+  state?: RulesetEncounterState,
+): { movementLeft: number; modeLeft?: Partial<Record<RulesetMoveMode, number>> } {
+  const combat = definition.combat;
+  if (!combat) return { movementLeft: 0 };
+  // Measured as nothing held it, for one nothing holds (Whirlwind of Sand).
+  const loose = move.untouchable ? { ...actor, tracked: [], flags: { ...actor.flags } } : actor;
+  if (move.distance !== undefined) {
+    // A distance is still walked: one held still, or with no speed at all, goes nowhere.
+    if (rulesetMovementAllowance(definition, combat, loose, state) <= 0) return { movementLeft: 0 };
+    const modes = rulesetModeAllowances(definition, combat, loose, state);
+    return {
+      movementLeft: move.distance,
+      ...(modes
+        ? {
+            modeLeft: Object.fromEntries(
+              Object.entries(modes).map(([mode, cells]) => [mode, (cells ?? 0) > 0 ? move.distance! : 0]),
+            ),
+          }
+        : {}),
+    };
+  }
+  const share = move.share ?? 1;
+  const modes = rulesetModeAllowances(definition, combat, loose, state);
+  return {
+    movementLeft: Math.floor(share * rulesetMovementAllowance(definition, combat, loose, state)),
+    ...(modes
+      ? {
+          modeLeft: Object.fromEntries(
+            Object.entries(modes).map(([mode, cells]) => [mode, Math.floor(share * (cells ?? 0))]),
+          ),
+        }
+      : {}),
+  };
+}
+
+/** Runs `read` with the actor's allowance set to `lent`, and puts its own back afterwards. */
+export function rulesetWithMovement<T>(
+  actor: RulesetCombatant,
+  lent: { movementLeft?: number; modeLeft?: Partial<Record<RulesetMoveMode, number>> },
+  read: () => T,
+): T {
+  const kept = { movementLeft: actor.movementLeft, modeLeft: actor.modeLeft };
+  actor.movementLeft = lent.movementLeft;
+  if (lent.modeLeft) actor.modeLeft = lent.modeLeft;
+  else delete actor.modeLeft;
+  try {
+    return read();
+  } finally {
+    if (kept.movementLeft === undefined) delete actor.movementLeft;
+    else actor.movementLeft = kept.movementLeft;
+    if (kept.modeLeft === undefined) delete actor.modeLeft;
+    else actor.modeLeft = kept.modeLeft;
+  }
+}
+
+/** Where a legendary move may end (1.278), each with the path it walks: on a board only. */
+export function rulesetLegendaryMoveCells(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+): RulesetReachableCell[] {
+  if (!action.move || !state.board) return [];
+  const lent = rulesetLentMovement(definition, actor, action.move, state);
+  if (lent.movementLeft < 1) return [];
+  return rulesetWithMovement(actor, lent, () => rulesetReachableCells(definition, state, actor.id));
+}
+
 /**
  * What this combatant could buy with its own points RIGHT NOW. A signature action is spent at the
  * end of somebody else's turn, so the actor whose turn it is has none to offer, and the points are
@@ -2969,6 +3049,12 @@ export function rulesetSignatureOptions(
       ...(action.heal ? { heals: true } : {}),
       signature: { cost: action.signature.cost, points },
     };
+    // A move (1.278) offers where it may end, and is not offered with nowhere to go.
+    if (action.move) {
+      const cells = rulesetLegendaryMoveCells(definition, state, actor, action);
+      if (cells.length === 0) continue;
+      option.cells = cells;
+    }
     if (action.uses) option.left = rulesetActionUses(actor, action, state);
     const forecast = forecastFor(definition, combat, state, actor, action);
     if (forecast) option.forecast = forecast;

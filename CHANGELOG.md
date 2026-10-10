@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: a creature can move between turns as a legendary action, a share of its speed or a set distance, optionally without provoking or untouchable on the way (a tarrasque's Move, a vampire's Move, a mummy lord's Whirlwind of Sand) (Capability API 1.278).
 - Rulesets: an area can be centred on its user and go through walls, catching everybody nearby without being aimed (a mummy lord's Channel Negative Energy) (Capability API 1.277).
 - Rulesets: a blow can heal its maker by the damage it dealt, all of it or a share, without touching the target's maximum (an aboleth's Psychic Drain, Vampiric Touch) (Capability API 1.276).
 - Rulesets: a blink dog can bite before or after its teleport as one action, and the director uses it to blink in and bite (Capability API 1.275).

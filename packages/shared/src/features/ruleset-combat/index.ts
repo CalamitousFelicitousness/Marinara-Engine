@@ -199,6 +199,8 @@ export {
   rulesetAnswerDeflects,
   rulesetAreaTargets,
   rulesetAroundTargets,
+  rulesetLegendaryMoveCells,
+  rulesetLentMovement,
   rulesetAttackMode,
   rulesetToHitAgainst,
   rulesetAgainstHere,

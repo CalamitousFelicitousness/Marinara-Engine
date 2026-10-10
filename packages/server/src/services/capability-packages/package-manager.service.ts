@@ -1547,6 +1547,18 @@ function carriesMetamagic(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesMetamagic(one, depth + 1));
 }
 
+/** A legendary move (1.278): a tarrasque's Move, a mummy lord's Whirlwind of Sand. A lasting area's
+ *  own `move` always names its budget, so it is not one. */
+function carriesLegendaryMove(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesLegendaryMove(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const move = plainRecord(record.move);
+  if (move && move.budget === undefined) return true;
+  return Object.values(record).some((one) => carriesLegendaryMove(one, depth + 1));
+}
+
 /** A burst centred on its user, through walls or not (1.277): Channel Negative Energy. */
 function carriesAround(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -3833,6 +3845,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // A legendary move, 1.278.
+  if (
+    !declaresApi(278) &&
+    (carriesLegendaryMove(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesLegendaryMove(document)))
+  ) {
+    return "A ruleset with a legendary move requires schemaVersion 2 and capabilityApi 1.278 or newer";
   }
   // A burst centred on its user, 1.277.
   if (

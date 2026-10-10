@@ -115,6 +115,8 @@ import {
 } from "./grid.js";
 import {
   rulesetAttackModifierReaches,
+  rulesetLegendaryMoveCells,
+  rulesetLentMovement,
   rulesetDamageModifiers,
   rulesetWeaponBlow,
   RULESET_MOVE_OPTION,
@@ -184,6 +186,7 @@ import type {
   RulesetBlowKind,
   RulesetCombatAction,
   RulesetCombatCharge,
+  RulesetCombatMove,
   RulesetCombatDamageClause,
   RulesetCombatModeLine,
   RulesetCombatAmount,
@@ -4870,10 +4873,19 @@ function applySignature(
   ) {
     return refusal(state, choice.actorId, "insufficient", action.id);
   }
+  // A move (1.278): only to a cell the menu offered.
+  const destination = action.move
+    ? rulesetLegendaryMoveCells(definition, state, actor, action).find(
+        (cell) => cell.x === choice.to?.x && cell.y === choice.to?.y,
+      )
+    : undefined;
+  if (action.move && !destination) return refusal(state, choice.actorId, "unreachable", action.id);
   // A burst centred on it (1.277): a mummy lord's Channel Negative Energy.
-  const targets = action.around
-    ? rulesetAroundTargets(state, actor, action)
-    : pickTargets(definition, state, actor, action, choice.targetIds);
+  const targets = action.move
+    ? []
+    : action.around
+      ? rulesetAroundTargets(state, actor, action)
+      : pickTargets(definition, state, actor, action, choice.targetIds);
   if (!Array.isArray(targets)) return refusal(state, choice.actorId, targets, action.id);
 
   const { ctx, finish } = begin(definition, combat, state, roller);
@@ -4884,10 +4896,57 @@ function applySignature(
   ctx.events.push({ type: "signature", actorId: working.id, optionId: action.id, label: action.label, cost, left });
   const workingAction = working.actions.find((entry) => entry.id === action.id)!;
   spendAvailability(ctx, working, workingAction);
-  resolveAction(ctx, working, workingAction, workingTargets);
-  goOn(definition, combat, ctx);
+  if (workingAction.move && destination) {
+    legendaryMove(ctx, working, workingAction.move, destination.path);
+    // Held behind a strike it provoked: the walk asks the window on once it ends.
+    if (ctx.state.window?.trigger.kind === "between-turns") goOn(definition, combat, ctx);
+  } else {
+    resolveAction(ctx, working, workingAction, workingTargets);
+    goOn(definition, combat, ctx);
+  }
   noteOutcome(ctx);
   return finish();
+}
+
+/**
+ * A legendary move (1.278): its maker walks the path on an allowance lent for it alone, a share of
+ * its speed or a distance, and keeps its own. One that provokes nothing (a vampire's) is struck at
+ * by nobody; one nothing can harm or hold (a mummy lord's Whirlwind of Sand) is first let go of by
+ * whatever held it still, then struck by nobody and caught by no zone on the way.
+ */
+function legendaryMove(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  move: RulesetCombatMove,
+  path: RulesetCombatCell[],
+): void {
+  const kept = {
+    ...(actor.movementLeft !== undefined ? { movementLeft: actor.movementLeft } : {}),
+    ...(actor.modeLeft ? { modeLeft: actor.modeLeft } : {}),
+  };
+  const lent = rulesetLentMovement(ctx.definition, actor, move, ctx.state);
+  if (move.untouchable) {
+    for (const entry of rulesetActiveConditions(ctx.definition, ctx.combat, actor, ctx.state)) {
+      if (entry.effects.includes("speed-zero")) removeCondition(ctx, actor, entry.condition, "moved");
+    }
+  }
+  actor.movementLeft = lent.movementLeft;
+  if (lent.modeLeft) actor.modeLeft = lent.modeLeft;
+  else delete actor.modeLeft;
+  walkOn(ctx, actor, {
+    kind: "walk",
+    actorId: actor.id,
+    from: { x: actor.x!, y: actor.y! },
+    walked: [],
+    path: [...path],
+    asked: [],
+    spent: 0,
+    legendary: {
+      kept,
+      ...(move.noOpportunity ? { noOpportunity: true as const } : {}),
+      ...(move.untouchable ? { untouchable: true as const } : {}),
+    },
+  });
 }
 
 // ── The board ──
@@ -5076,21 +5135,42 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
   let stopped = false;
   let at = walked.length > 0 ? walked[walked.length - 1]! : resume.from;
   const rest = [...resume.path];
+  const legendary = resume.legendary;
+  // Taken back up after a strike it provoked (1.278): the window it was bought in stands again, so
+  // nothing else opens over it while the walk goes on.
+  let outer = resume.outer;
+  if (outer && !ctx.state.window) ctx.state.window = outer;
   while (rest.length > 0) {
-    // Nor does one an answer held still, stunned or grappled on the way (1.238).
+    // Nor does one an answer held still, stunned or grappled on the way (1.238). Nothing holds one
+    // that nothing can (1.278).
     if (
       !rulesetCombatStanding(actor) ||
-      rulesetCombatEffects(ctx.definition, ctx.combat, actor, ctx.state).has("speed-zero")
+      (!legendary?.untouchable && rulesetCombatEffects(ctx.definition, ctx.combat, actor, ctx.state).has("speed-zero"))
     ) {
       stopped = true;
       break;
     }
     const cell = rest[0]!;
     // Nobody is asked once the fight is over: the walk simply finishes on the cells it has left.
-    if (opportunity && !actor.flags.disengaged && rulesetEncounterOutcome(ctx.state) === "ongoing") {
+    if (
+      opportunity &&
+      !actor.flags.disengaged &&
+      !legendary?.noOpportunity &&
+      !legendary?.untouchable &&
+      rulesetEncounterOutcome(ctx.state) === "ongoing"
+    ) {
       const threats = threatsLeaving(ctx, actor, at, cell).filter((enemy) => !asked.has(enemy.id));
       if (threats.length > 0) {
         for (const enemy of threats) asked.add(enemy.id);
+        // A legendary move holds the window it was bought in behind the strike (1.278), its maker
+        // already off the front of it.
+        if (legendary && ctx.state.window) {
+          if (ctx.state.window !== outer) {
+            outer = ctx.state.window;
+            outer.waiting.shift();
+          }
+          ctx.state.window = undefined;
+        }
         openWindow(ctx, {
           kind: "reaction",
           trigger: { kind: "leaves-reach", moverId: actor.id, from: { ...at }, to: { ...cell } },
@@ -5103,6 +5183,8 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
             path: rest,
             asked: [...asked],
             spent,
+            ...(legendary ? { legendary } : {}),
+            ...(outer ? { outer } : {}),
           },
         });
         return;
@@ -5124,9 +5206,12 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
         )
       : 1;
     walked.push(cell);
-    // What a charge reads (1.181): where this turn's walking began, then each cell of it.
-    if (!actor.trail?.length) actor.trail = [{ ...at }];
-    actor.trail.push({ ...cell });
+    // What a charge reads (1.181): where this turn's walking began, then each cell of it. A
+    // legendary move is nobody's turn.
+    if (!legendary) {
+      if (!actor.trail?.length) actor.trail = [{ ...at }];
+      actor.trail.push({ ...cell });
+    }
     at = cell;
     actor.x = cell.x;
     actor.y = cell.y;
@@ -5134,11 +5219,21 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
     // goes on from there as anybody on the ground does.
     if (actor.altitude !== undefined && !rulesetAirborne(grid, actor)) delete actor.altitude;
     // Into a zone, or a zone carried onto somebody (1.167), and ground that hurts to cross (1.168).
-    zonesEntered(ctx, actor, before);
-    zoneGround(ctx, actor, cell);
+    // Nothing harms one that nothing can (1.278).
+    if (!legendary?.untouchable) {
+      zonesEntered(ctx, actor, before);
+      zoneGround(ctx, actor, cell);
+    }
   }
   if (!stopped && !rulesetCombatStanding(actor)) stopped = true;
   spendRulesetMovement(actor, spent);
+  // Its own allowance back (1.278): the lent one was for this move only.
+  if (legendary) {
+    if (legendary.kept.movementLeft === undefined) delete actor.movementLeft;
+    else actor.movementLeft = legendary.kept.movementLeft;
+    if (legendary.kept.modeLeft === undefined) delete actor.modeLeft;
+    else actor.modeLeft = legendary.kept.modeLeft;
+  }
   ctx.events.push({
     type: "move",
     actorId: actor.id,
@@ -5149,6 +5244,8 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
     left: actor.movementLeft ?? 0,
     ...(stopped ? { stopped: true } : {}),
   });
+  // Held behind a strike it provoked (1.278): the window it was bought in is asked on from there.
+  if (resume.outer && ctx.state.window === resume.outer) goOn(ctx.definition, ctx.combat, ctx, false);
 }
 
 /**

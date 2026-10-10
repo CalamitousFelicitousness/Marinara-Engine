@@ -132,10 +132,11 @@ export function rulesetAimTake(
   return { send: { at } };
 }
 
-/** Whether taking this option asks the player to pick a cell to walk to. Getting back up spends
- *  movement and goes nowhere, so it is sent straight off the menu. */
+/** Whether taking this option asks the player to pick a cell to walk to: a walk, or a legendary
+ *  move (1.278). Getting back up spends movement and goes nowhere, so it is sent straight off the
+ *  menu. */
 export function rulesetOptionNeedsCell(option: DirectedRulesetOption): boolean {
-  return option.kind === "move" && (option.cells?.length ?? 0) > 0;
+  return (option.kind === "move" || !!option.signature) && (option.cells?.length ?? 0) > 0;
 }
 
 /**

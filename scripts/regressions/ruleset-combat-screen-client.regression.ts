@@ -1762,6 +1762,10 @@ function drawn(...rows: string[]): TacticalGrid {
     "Costs 15 ft",
   );
   assert.ok(!rulesetOptionNeedsCell(stand), "it goes nowhere, so nothing is picked on the board");
+  // A legendary move (1.278) is walked the same way, bought between turns.
+  const legendaryMove = { ...walk, id: "move", kind: "ability" as const, signature: { cost: 1, points: 3 } };
+  assert.ok(rulesetOptionNeedsCell(legendaryMove), "a legendary move asks for a square");
+  assert.ok(!rulesetOptionNeedsCell({ ...legendaryMove, cells: undefined }), "one with nowhere to go does not");
 
   // Walking: the cells the server offered, each with its cost and the way it got there.
   const step: RulesetMenuStep = { stage: "move", option: walk, targets: [] };

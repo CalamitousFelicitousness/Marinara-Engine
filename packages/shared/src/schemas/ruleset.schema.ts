@@ -3954,9 +3954,61 @@ const creatureActionSchema = z
     reaction: rulesetReactionMomentSchema.optional(),
     /** It lands on the creature itself rather than on somebody else: a parry, a guard, a hardening. */
     self: z.literal(true).optional(),
+    /** A move bought with points between turns (Capability API 1.278), to a cell its maker picks:
+     *  `share` of its speed (a tarrasque's half), or `distance` in the ruleset's own unit (a mummy
+     *  lord's 60 feet), its own speed when neither is given. `noOpportunity`: nobody strikes at it
+     *  leaving (a vampire's). `untouchable`: nothing harms or holds it on the way, so nobody strikes
+     *  at it, ground and zones it crosses do nothing to it, and what held it in place lets go (a
+     *  mummy lord's Whirlwind of Sand). Its own turn's movement is not spent. */
+    move: z
+      .object({
+        share: z.number().gt(0).max(1).optional(),
+        distance: z.number().finite().gt(0).max(10000).optional(),
+        noOpportunity: z.literal(true).optional(),
+        untouchable: z.literal(true).optional(),
+      })
+      .strict()
+      .refine((move) => move.share === undefined || move.distance === undefined, {
+        message: 'A move is a "share" of its speed or a "distance", not both',
+      })
+      .optional(),
   })
   .strict()
   .superRefine((action, ctx) => {
+    // A legendary move (1.278) is bought with points, and only moves.
+    if (action.move) {
+      if (!action.signature) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["move"],
+          message: "A move is bought with points between turns, so it carries a signature",
+        });
+      }
+      const extras = (
+        [
+          "damage",
+          "heal",
+          "applies",
+          "area",
+          "teleport",
+          "sequence",
+          "reaction",
+          "toHit",
+          "autoHit",
+          "save",
+          "ends",
+          "push",
+          "charge",
+        ] as const
+      ).filter((key) => action[key] !== undefined);
+      if (extras.length) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["move"],
+          message: `A move only moves, so it carries no ${extras.join(", ")}`,
+        });
+      }
+    }
     // Where a teleport goes is picked as it is taken (1.271): never an aim, an answer or a part.
     if (action.teleport && (action.area || action.reaction || action.sequence)) {
       ctx.addIssue({

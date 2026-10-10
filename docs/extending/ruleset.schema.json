@@ -17352,6 +17352,31 @@
                             "type": "boolean",
                             "const": true
                           },
+                          "move": {
+                            "type": "object",
+                            "properties": {
+                              "share": {
+                                "type": "number",
+                                "exclusiveMinimum": 0,
+                                "maximum": 1
+                              },
+                              "distance": {
+                                "type": "number",
+                                "exclusiveMinimum": 0,
+                                "maximum": 10000
+                              },
+                              "noOpportunity": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "untouchable": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "$comment": {}
+                            },
+                            "additionalProperties": false
+                          },
                           "$comment": {}
                         },
                         "required": [

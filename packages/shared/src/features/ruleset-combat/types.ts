@@ -339,6 +339,8 @@ export interface RulesetStatBlockAction {
   teleport?: RulesetTeleport;
   /** A move bought with points (1.278): `share` of its speed or `distance` in the ruleset's own unit. */
   move?: RulesetCombatMove;
+  /** A spell cast with points between turns (1.279): its own spellcasting, or cantrips only. */
+  casting?: { cantripsOnly?: true };
   /** The ability its attack is made with (1.184), so changes narrowed to an ability reach it. */
   ability?: string;
   /** Its damage lowers the health maximum (1.198): on a failed save of its own, on a failed save of
@@ -755,6 +757,8 @@ export interface RulesetCombatAction {
   /** A move bought with points between turns (1.278), to a cell picked from the option's `cells`:
    *  `share` of its speed, or `distance` (in cells in a fight), its own speed with neither. */
   move?: RulesetCombatMove;
+  /** A spell cast with points between turns (1.279). */
+  casting?: { cantripsOnly?: true };
   /** A burst centred on its user, never aimed (1.277): everybody within `size` cells of them is
    *  caught, they are not, behind walls too with `throughWalls`, their own side not with
    *  `friendlyFire: false`. Off a board, everybody. */
@@ -1275,6 +1279,9 @@ export interface RulesetCombatWindow {
   /** What a hit's own maker has already answered it with (1.236): they are asked again for the rest,
    *  as a paladin smites and stuns with one blow, until they pass. */
   taken?: string[];
+  /** The window between turns a legendary cast was bought in (1.279), held behind this one: asked on
+   *  from once this one, and everything it led to, has closed. */
+  outer?: RulesetCombatWindow;
 }
 
 /** What a window is for. `reaction` is somebody spending a budget out of turn; `signature` is a
@@ -2178,6 +2185,9 @@ export interface RulesetCombatOption {
   /** What it costs in the actor's own points, and how many they have. A signature option spends no
    *  budget: it is bought at the end of somebody else's turn. */
   signature?: { cost: number; points: number };
+  /** A spell a legendary cast offers (1.279): the cast bought, and the option of its maker's own it
+   *  casts, as it would be on its turn. */
+  castOf?: { actionId: string; optionId: string };
   /** How many times this is left, for an action that counts its uses. */
   left?: number;
   /** How many of what a weapon shoots its holder carries, for one that shoots something. */

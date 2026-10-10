@@ -3041,6 +3041,11 @@ export function rulesetSignatureOptions(
   for (const action of actor.actions) {
     if (!action.signature || action.signature.cost > points) continue;
     if (!rulesetActionAvailable(actor, action, state, definition) || !rulesetSequenceCanHappen(actor, action)) continue;
+    // A cast (1.279) offers each spell its maker could cast on its own turn, aimed as it would be.
+    if (action.casting) {
+      options.push(...rulesetSignatureCasts(definition, state, actor, action, points));
+      continue;
+    }
     const option: RulesetCombatOption = {
       id: action.id,
       kind: action.kind,
@@ -3061,6 +3066,60 @@ export function rulesetSignatureOptions(
     options.push(option);
   }
   return options;
+}
+
+/**
+ * The fight as its maker's own turn would show it, for a legendary cast (1.279): no window open,
+ * its turn, and one of the budget the cast is made with, whatever its own turn left.
+ */
+export function rulesetBorrowedTurn(
+  state: RulesetEncounterState,
+  actorId: string,
+  budget: string,
+): RulesetEncounterState {
+  const { window: _window, ...rest } = state;
+  return {
+    ...rest,
+    turn: Math.max(0, state.order.indexOf(actorId)),
+    combatants: state.combatants.map((combatant) =>
+      combatant.id === actorId
+        ? { ...combatant, budgets: { ...combatant.budgets, [budget]: Math.max(1, combatant.budgets[budget] ?? 0) } }
+        : combatant,
+    ),
+  };
+}
+
+/** Whether an action of a combatant's is one of its spells (1.279): cast out of a catalog, never an
+ *  item's use, what a condition lends, or something bought with points. */
+function rulesetIsSpell(action: RulesetCombatAction): boolean {
+  return !!action.catalog && action.kind !== "item" && !action.whileHolds && !action.signature;
+}
+
+/** Each spell a legendary cast offers (1.279): the option its maker's own turn would show for it,
+ *  bought with points instead of the budget, and only cantrips where it says so. */
+function rulesetSignatureCasts(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  points: number,
+): RulesetCombatOption[] {
+  const view = rulesetBorrowedTurn(state, actor.id, action.budget);
+  return rulesetCombatOptions(definition, view, actor.id).flatMap((spell) => {
+    const own = actor.actions.find((entry) => entry.id === spell.id);
+    if (!own || !rulesetIsSpell(own) || spell.budget !== action.budget) return [];
+    if (action.casting!.cantripsOnly && rulesetPaidLevel(definition, actor, own) !== 0) return [];
+    const { budget: _budget, ...rest } = spell;
+    return [
+      {
+        ...rest,
+        id: `${action.id}>${spell.id}`,
+        label: `${action.label}: ${spell.label}`,
+        signature: { cost: action.signature!.cost, points },
+        castOf: { actionId: action.id, optionId: spell.id },
+      },
+    ];
+  });
 }
 
 /** Letting a window go by. Not an action and not on any turn's menu: the one id a window always

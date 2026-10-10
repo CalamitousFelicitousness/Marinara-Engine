@@ -201,6 +201,7 @@ export {
   rulesetAroundTargets,
   rulesetLegendaryMoveCells,
   rulesetLentMovement,
+  rulesetBorrowedTurn,
   rulesetAttackMode,
   rulesetToHitAgainst,
   rulesetAgainstHere,

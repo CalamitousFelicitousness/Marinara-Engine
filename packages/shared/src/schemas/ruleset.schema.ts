@@ -3972,9 +3972,51 @@ const creatureActionSchema = z
         message: 'A move is a "share" of its speed or a "distance", not both',
       })
       .optional(),
+    /** A spell cast with points between turns (Capability API 1.279): any of its maker's own
+     *  `spellcasting`, paid for as it always is (a sphinx's Cast a Spell), or only its cantrips with
+     *  `cantripsOnly` (a lich's Cantrip). Aimed, answered and resolved as on its turn. */
+    casting: z
+      .object({ cantripsOnly: z.literal(true).optional() })
+      .strict()
+      .optional(),
   })
   .strict()
   .superRefine((action, ctx) => {
+    // A legendary cast (1.279) is bought with points, and only casts.
+    if (action.casting) {
+      if (!action.signature) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["casting"],
+          message: "A cast is bought with points between turns, so it carries a signature",
+        });
+      }
+      const extras = (
+        [
+          "damage",
+          "heal",
+          "applies",
+          "area",
+          "teleport",
+          "move",
+          "sequence",
+          "reaction",
+          "toHit",
+          "autoHit",
+          "save",
+          "ends",
+          "push",
+          "charge",
+        ] as const
+      ).filter((key) => action[key] !== undefined);
+      if (extras.length) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["casting"],
+          message: `A cast is the spell it casts, so it carries no ${extras.join(", ")}`,
+        });
+      }
+    }
     // A legendary move (1.278) is bought with points, and only moves.
     if (action.move) {
       if (!action.signature) {

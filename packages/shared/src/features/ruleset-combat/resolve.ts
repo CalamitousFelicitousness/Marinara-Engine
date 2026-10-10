@@ -115,6 +115,7 @@ import {
 } from "./grid.js";
 import {
   rulesetAttackModifierReaches,
+  rulesetBorrowedTurn,
   rulesetLegendaryMoveCells,
   rulesetLentMovement,
   rulesetDamageModifiers,
@@ -269,7 +270,14 @@ interface RulesetCombatContext {
   teleport?: { to?: RulesetCombatCell; carries: string[] };
   /** The catalog the action being resolved was cast out of, and what it puts on (1.273). */
   harming?: { catalog: string; applies: string[] };
+  /** The window between turns a legendary cast was bought in (1.279): every window opened while it
+   *  resolves holds it, to be asked on from once they have all closed. */
+  outer?: RulesetCombatWindow;
 }
+
+/** Set while a legendary cast (1.279) resolves as its maker's turn would, so each step begun inside
+ *  it knows the window it was bought in. */
+let borrowedOuter: RulesetCombatWindow | undefined;
 
 /** A working copy, plus a roller that counts its dice so the state's cursor stays exact. */
 function begin(
@@ -291,6 +299,7 @@ function begin(
     events: [],
     overwhelmed: new Set(),
     harmEndings: [],
+    ...(borrowedOuter ? { outer: borrowedOuter } : {}),
   };
   for (const target of next.combatants) endImmuneConditions(ctx, target);
   return {
@@ -4459,6 +4468,10 @@ function applyInWindow(
 
   const option = rulesetWindowOptions(definition, state, actor.id).find((entry) => entry.id === choice.optionId);
   if (!option) return refusal(state, choice.actorId, "unknown-option", choice.optionId);
+  // A spell cast with points (1.279), resolved as its maker's own turn would resolve it.
+  if (window.kind === "signature" && option.castOf) {
+    return castWithPoints(definition, combat, state, window, actor, option.castOf, choice, roller);
+  }
   if (window.kind === "signature") {
     const action = actor.actions.find((entry) => entry.id === choice.optionId && entry.signature);
     if (!action) return refusal(state, choice.actorId, "unknown-option", choice.optionId);
@@ -4802,8 +4815,37 @@ function goOn(
   }
   const over = rulesetEncounterOutcome(ctx.state) !== "ongoing";
   if (window.waiting.length > 0 && !over) return;
-  const { resume, trigger } = window;
   ctx.state.window = undefined;
+  // Held inside a legendary cast (1.279): whatever it led to holds the same window, and once it all
+  // has closed the window the cast was bought in is asked on from where it was.
+  const carried = window.outer;
+  if (!carried) {
+    windowClosed(definition, combat, ctx, window, over);
+    return;
+  }
+  const before = ctx.outer;
+  ctx.outer = carried;
+  try {
+    windowClosed(definition, combat, ctx, window, over);
+  } finally {
+    if (before) ctx.outer = before;
+    else delete ctx.outer;
+  }
+  if (!ctx.state.window) {
+    ctx.state.window = carried;
+    goOn(definition, combat, ctx, false);
+  }
+}
+
+/** What a window was holding, picked up now it has closed. */
+function windowClosed(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  ctx: RulesetCombatContext,
+  window: RulesetCombatWindow,
+  over: boolean,
+): void {
+  const { resume, trigger } = window;
   // A walk is finished even when the last blow ended the fight: its own event says where the walker
   // really stopped, and a fight that ended mid-step would otherwise never say they never left.
   if (resume && (resume.kind === "walk" || rulesetLegacyWalk(resume))) {
@@ -4906,6 +4948,74 @@ function applySignature(
   }
   noteOutcome(ctx);
   return finish();
+}
+
+/**
+ * A legendary cast (1.279): the spell is chosen, aimed and resolved exactly as on its maker's own
+ * turn (`rulesetBorrowedTurn`), slots and uses paid as they always are, and the points paid for the
+ * cast instead of the budget. Its maker's own turn keeps every budget it had. Anything the spell
+ * opens (a Counterspell, a Shield, somebody hurt by it) holds the window the cast was bought in,
+ * which is asked on from once all of it has closed.
+ */
+function castWithPoints(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  state: RulesetEncounterState,
+  window: RulesetCombatWindow,
+  actor: RulesetCombatant,
+  castOf: { actionId: string; optionId: string },
+  choice: RulesetCombatChoice,
+  roller: RulesetCombatRoller,
+): RulesetCombatStep {
+  const action = actor.actions.find((entry) => entry.id === castOf.actionId && entry.casting && entry.signature);
+  if (!action) return refusal(state, choice.actorId, "unknown-option", choice.optionId);
+  const cost = action.signature!.cost;
+  const outer = structuredClone(window);
+  outer.waiting.shift();
+  const view = rulesetBorrowedTurn(state, actor.id, action.budget);
+  const { window: _window, ...plain } = choice;
+  let cast: RulesetCombatStep;
+  borrowedOuter = outer;
+  try {
+    cast = applyRulesetCombatChoice(definition, view, { ...plain, optionId: castOf.optionId }, roller);
+  } finally {
+    borrowedOuter = undefined;
+  }
+  // Refused, nothing moved: the fight as it was handed in, and the refusal said of the cast.
+  if (cast.state === view) {
+    return {
+      state,
+      events: cast.events.map((event) => (event.type === "refused" ? { ...event, optionId: choice.optionId } : event)),
+    };
+  }
+  const { ctx, finish } = begin(definition, combat, cast.state, roller);
+  // Back to the turn it really is, with the budgets that turn left.
+  ctx.state.turn = state.turn;
+  const working = rulesetCombatant(ctx.state, actor.id)!;
+  working.budgets = { ...actor.budgets };
+  const left = Math.max(0, (actor.signature?.points ?? 0) - cost);
+  if (working.signature) working.signature.points = left;
+  spendAvailability(
+    ctx,
+    working,
+    working.actions.find((entry) => entry.id === action.id)!,
+  );
+  // Nothing it opened is still open: the window it was bought in goes on.
+  if (!ctx.state.window) {
+    ctx.state.window = outer;
+    goOn(definition, combat, ctx, false);
+  }
+  // The cast's own step already said so, if it ended the fight.
+  if (!cast.events.some((event) => event.type === "outcome")) noteOutcome(ctx);
+  const after = finish();
+  return {
+    state: after.state,
+    events: [
+      { type: "signature", actorId: actor.id, optionId: choice.optionId, label: action.label, cost, left },
+      ...cast.events,
+      ...after.events,
+    ],
+  };
 }
 
 /**
@@ -5563,7 +5673,13 @@ function openWindow(ctx: RulesetCombatContext, window: Omit<RulesetCombatWindow,
   // A hit's own maker is asked last (1.236): what they add to it is chosen once it still lands.
   const last = (id: string) => (trigger.kind === "hit" && id === trigger.sourceId ? 1 : 0);
   const waiting = [...window.waiting].sort((left, right) => last(left) - last(right) || order(left) - order(right));
-  ctx.state.window = { id: `w${serial}`, ...window, waiting };
+  // Opened inside a legendary cast (1.279): it holds the window the cast was bought in.
+  ctx.state.window = {
+    id: `w${serial}`,
+    ...window,
+    waiting,
+    ...(ctx.outer && !window.outer ? { outer: ctx.outer } : {}),
+  };
   const moment = rulesetWindowMoment(window.trigger);
   ctx.events.push({
     type: "window",

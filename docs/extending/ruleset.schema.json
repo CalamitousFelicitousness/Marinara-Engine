@@ -17377,6 +17377,17 @@
                             },
                             "additionalProperties": false
                           },
+                          "casting": {
+                            "type": "object",
+                            "properties": {
+                              "cantripsOnly": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "$comment": {}
+                            },
+                            "additionalProperties": false
+                          },
                           "$comment": {}
                         },
                         "required": [

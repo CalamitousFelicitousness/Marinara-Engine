@@ -1547,6 +1547,17 @@ function carriesMetamagic(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesMetamagic(one, depth + 1));
 }
 
+/** A spell cast with points between turns (1.279): a sphinx's Cast a Spell, a lich's Cantrip. */
+function carriesLegendaryCast(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesLegendaryCast(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  // Always with its signature: a builder's `casting` column stamp is not one.
+  if (plainRecord(record.casting) && plainRecord(record.signature)) return true;
+  return Object.values(record).some((one) => carriesLegendaryCast(one, depth + 1));
+}
+
 /** A legendary move (1.278): a tarrasque's Move, a mummy lord's Whirlwind of Sand. A lasting area's
  *  own `move` always names its budget, so it is not one. */
 function carriesLegendaryMove(value: unknown, depth = 0): boolean {
@@ -3845,6 +3856,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // A spell cast with points, 1.279.
+  if (
+    !declaresApi(279) &&
+    (carriesLegendaryCast(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesLegendaryCast(document)))
+  ) {
+    return "A ruleset with a legendary cast requires schemaVersion 2 and capabilityApi 1.279 or newer";
   }
   // A legendary move, 1.278.
   if (

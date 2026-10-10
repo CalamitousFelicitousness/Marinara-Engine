@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: creatures can set themselves ablaze and put their flames out, a will-o'-wisp can brighten or dim, and a hooded lantern sheds a little dim light with its hood down (Capability API 1.291).
 - Rulesets: torches can be put out and lit again in a fight, to slip away unseen in the dark or light the way, and lanterns shed light only while they are lit (Capability API 1.290).
 - Rulesets: fights can be kept dark: nobody is seen in darkness, or clearly in dim light, except by darkvision, blindsight or truesight, while torches, lanterns, the Light cantrip and creatures' own light light the way, and caves and dungeons are dark at any hour (Capability API 1.289).
 - Rulesets: creatures can attack at a disadvantage or an advantage where they stand, such as a kobold or drow in sunlight, and a bestiary creature now keeps its own ways of hiding (Capability API 1.288).

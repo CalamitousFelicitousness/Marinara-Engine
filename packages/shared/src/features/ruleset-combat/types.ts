@@ -354,6 +354,8 @@ export interface RulesetStatBlockAction {
   casting?: { cantripsOnly?: true };
   /** It looks for whoever is hiding (1.282): a legendary Detect. */
   search?: true;
+  /** The light it sheds from now on, or "out" (1.291), in the ruleset's distance. */
+  sheds?: RulesetLightRadius | "out";
   /** A permission (1.286): these standard actions taken with this action's budget, only while it
    *  stands obscured where it says so. 5e's Nimble Escape, Cunning Action, Shadow Stealth. */
   standard?: { actions: string[]; while?: "obscured" };
@@ -439,6 +441,8 @@ export interface RulesetStatBlock {
   checkModes?: RulesetCheckModeRule[];
   /** The light it sheds (1.289), in the ruleset's distance. */
   light?: RulesetLightRadius;
+  /** It begins the fight with its light out (1.291). */
+  unlit?: true;
   /** Its own attacks rolled twice, where it says (1.288): sensitivity to sunlight. */
   attackModes?: RulesetAttackModeRule[];
   /** Its passive Perception as printed (1.286), where it is not the ruleset's passive plus its check. */
@@ -790,6 +794,8 @@ export interface RulesetCombatAction {
   casting?: { cantripsOnly?: true };
   /** It looks for whoever is hiding (1.282), and does nothing else: a legendary Detect. */
   search?: true;
+  /** The light its user sheds from now on, or "out" (1.291), and nothing else: a magmin ablaze. */
+  sheds?: RulesetLightRadius | "out";
   /** A burst centred on its user, never aimed (1.277): everybody within `size` cells of them is
    *  caught, they are not, behind walls too with `throughWalls`, their own side not with
    *  `friendlyFire: false`. Off a board, everybody. */
@@ -1236,6 +1242,9 @@ export interface RulesetCombatant {
   on?: Record<string, boolean>;
   /** The light they carry is out (1.290). */
   doused?: true;
+  /** The light a creature sheds now, in place of its block's, since one of its actions lit or put
+   *  it out (1.291). */
+  shedding?: RulesetLightRadius | "out";
   /** A party member's sheet, which is where their health and conditions really live. */
   sheet?: {
     build: RulesetSheetBuild;

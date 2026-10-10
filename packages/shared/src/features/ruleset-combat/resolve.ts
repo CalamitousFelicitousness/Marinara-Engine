@@ -6458,6 +6458,18 @@ function resolveAction(
 ): RulesetHitHold | null {
   // What shakes surprise off, taken first (1.232): the rest of the turn is a turn like any other.
   if (actor.surprised && actor.surpriseOut?.includes(action.id)) endSurprise(ctx, actor, action.label);
+  // Its light lit or put out (1.291), and nothing else: what it shows is asked as the step ends.
+  if (action.sheds !== undefined) {
+    actor.shedding = action.sheds === "out" ? "out" : { ...action.sheds };
+    ctx.events.push({
+      type: "switch",
+      actorId: actor.id,
+      optionId: action.id,
+      label: action.label,
+      on: action.sheds !== "out",
+    });
+    return null;
+  }
   // A legendary Detect (1.282): the looking, and nothing else.
   if (action.search) {
     if (ctx.combat.hiding) {

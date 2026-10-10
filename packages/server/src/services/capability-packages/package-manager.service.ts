@@ -1559,6 +1559,16 @@ function carriesHidingTraits(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesHidingTraits(one, depth + 1));
 }
 
+/** Lights switched by a creature's own actions, or dim while an item is off (1.291). */
+function carriesLightActions(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesLightActions(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.sheds !== undefined || record.unlit !== undefined || record.offLight !== undefined) return true;
+  return Object.values(record).some((one) => carriesLightActions(one, depth + 1));
+}
+
 /** A carried light with a name or a price to put out and light again (1.290). */
 function carriesLightSwitch(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -4000,6 +4010,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Lights switched by creatures, and items' light while off, 1.291.
+  if (
+    !declaresApi(291) &&
+    (carriesLightActions(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesLightActions(document)))
+  ) {
+    return "A ruleset with creatures that light or put out their own light, or items that shed light while switched off, requires schemaVersion 2 and capabilityApi 1.291 or newer";
   }
   // A carried light's switch, 1.290.
   if (!declaresApi(290) && carriesLightSwitch(ruleset)) {

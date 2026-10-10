@@ -2954,7 +2954,8 @@ function blockActions(
       rulesetMovesOnly(action) ||
       action.casting ||
       action.search ||
-      action.standard
+      action.standard ||
+      action.sheds !== undefined
         ? { side: "self" as const, count: 0 }
         : {
             // An area catches each creature in it, the creature's allies too (1.187): off a board it may
@@ -3050,6 +3051,8 @@ function blockActions(
     ...(action.casting ? { casting: { ...action.casting } } : {}),
     // A legendary Detect (1.282).
     ...(action.search ? { search: true as const } : {}),
+    // Its light lit or put out (1.291), in the ruleset's distance as every light is.
+    ...(action.sheds !== undefined ? { sheds: action.sheds === "out" ? ("out" as const) : { ...action.sheds } } : {}),
     // A permission (1.286): standard actions taken with this action's own budget.
     ...(action.standard
       ? {

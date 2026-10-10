@@ -14137,6 +14137,10 @@
                       ],
                       "additionalProperties": false
                     },
+                    "unlit": {
+                      "type": "boolean",
+                      "const": true
+                    },
                     "attackModes": {
                       "type": "array",
                       "items": {
@@ -17719,6 +17723,35 @@
                           "search": {
                             "type": "boolean",
                             "const": true
+                          },
+                          "sheds": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "bright": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 10000
+                                  },
+                                  "dim": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 10000
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "bright",
+                                  "dim"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "string",
+                                "const": "out"
+                              }
+                            ]
                           },
                           "standard": {
                             "type": "object",
@@ -35172,6 +35205,27 @@
                           "type": "string",
                           "maxLength": 40,
                           "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "offLight": {
+                          "type": "object",
+                          "properties": {
+                            "bright": {
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 10000
+                            },
+                            "dim": {
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 10000
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "bright",
+                            "dim"
+                          ],
+                          "additionalProperties": false
                         },
                         "$comment": {}
                       },

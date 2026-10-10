@@ -260,6 +260,8 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
     ...(action.move ? { move: { ...action.move } } : {}),
     ...(action.casting ? { casting: { ...action.casting } } : {}),
     ...(action.search ? { search: true as const } : {}),
+    // Its light lit or put out (1.291).
+    ...(action.sheds !== undefined ? { sheds: action.sheds === "out" ? ("out" as const) : { ...action.sheds } } : {}),
     // Standard actions with its own budget (1.286): Nimble Escape.
     ...(action.standard ? { standard: structuredClone(action.standard) } : {}),
   };
@@ -419,6 +421,7 @@ function blockFromCreature(creature: RulesetCreature, budgets: ReadonlySet<strin
     ...(creature.attackModes ? { attackModes: structuredClone(creature.attackModes) } : {}),
     // The light it sheds (1.289).
     ...(creature.light ? { light: { ...creature.light } } : {}),
+    ...(creature.unlit ? { unlit: true as const } : {}),
     ...(creature.resist ? { resist: [...creature.resist] } : {}),
     ...(creature.vulnerable ? { vulnerable: [...creature.vulnerable] } : {}),
     ...(creature.immune ? { immune: [...creature.immune] } : {}),

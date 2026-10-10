@@ -145,7 +145,7 @@ export function rulesetLightOf(
   const perCell = combat?.distance?.perCell;
   if (!combat || !darkness || perCell === undefined) return null;
   const radii = [
-    ...(who.block?.light ? [who.block.light] : []),
+    ...ownLight(who),
     ...rulesetActiveConditions(definition, combat, who, state).flatMap((source) =>
       source.light && !source.item ? [source.light] : [],
     ),
@@ -153,9 +153,17 @@ export function rulesetLightOf(
   ];
   if (darkness.carried && !who.doused && rulesetCarriesLight(definition, who, state)) radii.push(darkness.carried);
   if (radii.length === 0) return null;
-  const bright = Math.max(...radii.map((one) => rulesetInCells(one.bright, perCell)));
+  // No bright light at all is none, not the one cell a distance rounds up to (1.291).
+  const bright = Math.max(...radii.map((one) => (one.bright > 0 ? rulesetInCells(one.bright, perCell) : 0)));
   const edge = Math.max(...radii.map((one) => rulesetInCells(one.bright + one.dim, perCell)));
   return { bright, dim: Math.max(0, edge - bright) };
+}
+
+/** A creature's own light (1.289): as its block says, out while it begins `unlit`, and as its own
+ *  actions last lit or put it out (1.291). */
+function ownLight(who: RulesetCombatant): Array<{ bright: number; dim: number }> {
+  const now = who.shedding ?? (who.block?.unlit ? "out" : who.block?.light);
+  return now && now !== "out" ? [now] : [];
 }
 
 /** Whether somebody carries the ruleset's `carried` light (1.289), lit or put out (1.290): they fight
@@ -178,9 +186,11 @@ function itemLights(who: RulesetCombatant): Array<{ bright: number; dim: number 
   if (items.length === 0) return [];
   const dropped = rulesetDroppedItems(who);
   return items.flatMap((held, index) => {
-    const light = (held.worn ? held.item.worn : held.item.carried)?.light;
-    if (!light || dropped.has(index) || (held.item.toggle && !rulesetItemOn(who, index))) return [];
-    return [light];
+    if (dropped.has(index)) return [];
+    // Switched off, only what it sheds while off (1.291): a hooded lantern's hood down.
+    const off = !!held.item.toggle && !rulesetItemOn(who, index);
+    const light = off ? held.item.toggle?.offLight : (held.worn ? held.item.worn : held.item.carried)?.light;
+    return light ? [light] : [];
   });
 }
 
@@ -205,7 +215,7 @@ function lightFrom(
     for (const from of source.cells) {
       const away = Math.max(Math.abs(from.x - cell.x), Math.abs(from.y - cell.y));
       if (away > source.edge || !rulesetLineOfSight(grid, from, cell)) continue;
-      if (away <= source.bright) return "bright";
+      if (source.bright > 0 && away <= source.bright) return "bright";
       light = "dim";
     }
   }

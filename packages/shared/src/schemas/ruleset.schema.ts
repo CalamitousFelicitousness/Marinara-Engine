@@ -4057,6 +4057,10 @@ const creatureActionSchema = z
     /** It looks for whoever is hiding, as the `search` standard action does (Capability API 1.282):
      *  a creature's legendary Detect, bought with points between turns. */
     search: z.literal(true).optional(),
+    /** The light it sheds from now on (Capability API 1.291), or `"out"`, and nothing else: the
+     *  magmin's Ignited Illumination, one action to set itself ablaze and one to put its flames
+     *  out, or a will-o'-wisp's Variable Illumination, one action for each reach. */
+    sheds: z.union([lightRadiusSchema, z.literal("out")]).optional(),
     /** A permission (Capability API 1.286): the standard actions named, from `combat.standard`,
      *  taken with this action's budget, and with `while: "obscured"` only while it stands lightly
      *  or heavily obscured (in a fog, or in dim light or darkness). 5e's goblin's Nimble Escape is
@@ -4071,6 +4075,34 @@ const creatureActionSchema = z
   })
   .strict()
   .superRefine((action, ctx) => {
+    // A light switched (1.291) is nothing else.
+    if (action.sheds !== undefined) {
+      const extras = (
+        [
+          "damage",
+          "heal",
+          "applies",
+          "area",
+          "teleport",
+          "move",
+          "casting",
+          "sequence",
+          "reaction",
+          "toHit",
+          "autoHit",
+          "save",
+          "search",
+          "standard",
+        ] as const
+      ).filter((key) => action[key] !== undefined);
+      if (extras.length) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["sheds"],
+          message: `Lighting or putting out its light is all it does, so it carries no ${extras.join(", ")}`,
+        });
+      }
+    }
     // A search (1.282) is the looking, and nothing else.
     if (action.search) {
       const extras = (
@@ -4391,6 +4423,9 @@ const creatureFields = {
   /** The light it sheds (Capability API 1.289): a fire elemental, a will-o'-wisp, or bandits with
    *  torches. Read where `combat.sight.darkness` makes the dark real. */
   light: lightRadiusSchema.optional(),
+  /** It begins the fight with its light out (Capability API 1.291), until one of its actions that
+   *  `sheds` lights it: a magmin not yet ablaze. */
+  unlit: z.literal(true).optional(),
   /** Its own attack rolls rolled twice (Capability API 1.288), where it says, as `checkModes` hold:
    *  5e's Sunlight Sensitivity `{ "mode": "disadvantage", "sight": true, "light": ["sunlight"] }`. */
   attackModes: z
@@ -5698,7 +5733,13 @@ const catalogItemObjectSchema = z
      *  it stays as it was left; it starts off. A weapon's `plus` clause `when: "toggled"` is dealt
      *  only while it is on: 5e's flame tongue. */
     toggle: z
-      .object({ label: promptSafeText(40), budget: sheetId })
+      .object({
+        label: promptSafeText(40),
+        budget: sheetId,
+        /** The light it sheds while switched off (Capability API 1.291), in place of its effect's:
+         *  a hooded lantern with its hood down, dim light 5 feet. */
+        offLight: lightRadiusSchema.optional(),
+      })
       .strict()
       .optional(),
   })
@@ -11211,6 +11252,12 @@ function creatureIssues(
   if (creature.hiding) hidingTraitsIssues(definition, creature.hiding, [...at, "hiding"], add);
   if (creature.light && !combat.sight?.darkness)
     add([...at, "light"], "Light is read where combat.sight.darkness makes the dark real");
+  creature.actions.forEach((action, index) => {
+    if (action.sheds !== undefined && !combat.sight?.darkness)
+      add([...at, "actions", index, "sheds"], "Light is read where combat.sight.darkness makes the dark real");
+  });
+  if (creature.unlit && !creature.actions.some((action) => action.sheds !== undefined && action.sheds !== "out"))
+    add([...at, "unlit"], "A creature that begins with its light out needs an action that lights it");
   // Its own modes on checks (1.286) name the sheet's skills.
   const skills = new Set(definition.sheet.skills.map((skill) => skill.id));
   creature.checkModes?.forEach((rule, ruleIndex) => {

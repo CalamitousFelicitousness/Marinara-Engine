@@ -31,12 +31,7 @@ import { useGameAssetManifest } from "../../hooks/use-game-assets";
 import { useCombatRound } from "../../hooks/use-game";
 import { useTTSConfig } from "../../hooks/use-tts";
 import { AnimatedText } from "./AnimatedText";
-import {
-  combatInterruptFields,
-  WORLD_DEFAULT_ELEMENTS,
-  worldElementId,
-  type WorldElementSet,
-} from "@marinara-engine/shared";
+import { combatInterruptFields, worldElementId, type WorldElementSet } from "@marinara-engine/shared";
 import type {
   Combatant,
   CombatAttackResult,
@@ -3216,11 +3211,13 @@ function CombatantCard({
   elements?: WorldElementSet;
 }) {
   const { t: localizeUi } = useUiTranslation();
-  // An aura's colour is its element's own in the game's set, else the older colours by its word.
-  const auraSet = elements ?? WORLD_DEFAULT_ELEMENTS;
+  // An aura's colour is its element's own in a setting kit's set, else the older colours by its word, as a
+  // game without a kit (Classic Game Mode) always drew them.
   const auraColor = combatant.elementAura
-    ? (auraSet.elements.find((element) => element.id === worldElementId(auraSet, combatant.elementAura!.element))
-        ?.color ?? ELEMENT_AURA_COLORS[combatant.elementAura.element])
+    ? ((elements
+        ? elements.elements.find((element) => element.id === worldElementId(elements, combatant.elementAura!.element))
+            ?.color
+        : undefined) ?? ELEMENT_AURA_COLORS[combatant.elementAura.element])
     : undefined;
   const hpPercent = combatant.maxHp > 0 ? (combatant.hp / combatant.maxHp) * 100 : 0;
   const mpPercent = combatant.maxMp && combatant.maxMp > 0 ? ((combatant.mp ?? 0) / combatant.maxMp) * 100 : null;

@@ -111,6 +111,15 @@ export interface WorldWriteRequest {
 
 export const rollWorldSeed = () => String(crypto.getRandomValues(new Uint32Array(1))[0]);
 
+/** A fresh world for a kit: a rolled seed, grounded loosely in the lore, with no brief yet. */
+export const newWorldDraft = (): WorldDraft => ({
+  seed: rollWorldSeed(),
+  grounding: "expand",
+  lorebookIds: [],
+  canon: [],
+  brief: null,
+});
+
 /** The world a draft makes, or why it cannot be made yet. A draft with no brief yet is a world of the
  *  kit and the lore alone, with the kit's own summary as its premise. */
 export function worldDraftConfig(
@@ -219,6 +228,7 @@ export function GameSetupWorldChooser({
   onChange,
   lorebooks,
   request,
+  required = false,
 }: {
   kit: WorldKit;
   draft: WorldDraft | null;
@@ -226,6 +236,8 @@ export function GameSetupWorldChooser({
   lorebooks: Array<{ id: string; name: string }>;
   /** What the model writes for; null until a connection is chosen. */
   request: WorldWriteRequest | null;
+  /** An Overworld RPG game: it always has a world, so there is no switch to leave one out. */
+  required?: boolean;
 }) {
   const { t } = useUiTranslation();
   const [busy, setBusy] = useState<"lore" | "brief" | null>(null);
@@ -325,24 +337,27 @@ export function GameSetupWorldChooser({
 
   return (
     <div className="space-y-2">
-      <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-[var(--border)] p-3 text-sm text-[var(--foreground)]">
-        <input
-          type="checkbox"
-          checked={Boolean(draft)}
-          onChange={(event) =>
-            onChange(
-              event.target.checked
-                ? { seed: rollWorldSeed(), grounding: "expand", lorebookIds: [], canon: [], brief: null }
-                : null,
-            )
-          }
-          className="mt-1 size-4 accent-[var(--primary)]"
-        />
-        <span>
-          {t("game.world.setup.label")}
-          <span className="mt-1 block text-xs text-[var(--muted-foreground)]">{t("game.world.setup.help")}</span>
-        </span>
-      </label>
+      {required ? (
+        <div className="rounded-lg border border-[var(--border)] p-3 text-sm text-[var(--foreground)]">
+          {t("game.world.setup.labelOverworld")}
+          <span className="mt-1 block text-xs text-[var(--muted-foreground)]">
+            {t("game.world.setup.helpOverworld")}
+          </span>
+        </div>
+      ) : (
+        <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-[var(--border)] p-3 text-sm text-[var(--foreground)]">
+          <input
+            type="checkbox"
+            checked={Boolean(draft)}
+            onChange={(event) => onChange(event.target.checked ? newWorldDraft() : null)}
+            className="mt-1 size-4 accent-[var(--primary)]"
+          />
+          <span>
+            {t("game.world.setup.label")}
+            <span className="mt-1 block text-xs text-[var(--muted-foreground)]">{t("game.world.setup.help")}</span>
+          </span>
+        </label>
+      )}
 
       {draft && (
         <div className="space-y-3 rounded-lg border border-[var(--border)] bg-[var(--card)] p-3 text-xs">

@@ -228,6 +228,7 @@ import {
   worldTownVisitText,
   dungeonSetFor,
   gameDungeonMapFromDungeon,
+  gameStyleFromMetadata,
   gameDungeonMapFromMetadata,
   gameDungeonMapPromptText,
   gameDungeonSeed,
@@ -5077,6 +5078,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               dicePoolBlock,
               rollDiceToolAttached,
               // A package that brought its own inventory takes the built-in one out of the prompt.
+              // Dungeon, cave and station maps are the Overworld RPG's; Classic Game Mode never opens one.
+              overworld: gameStyleFromMetadata(chatMeta) === "overworld",
               experienceProvidedSystems: capabilityPromptContext.provides,
               // A package that declares GM verbs gets one COMMANDS line each. No package declares a
               // table today, so this renders nothing and the reminder is byte-identical.
@@ -10483,7 +10486,13 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           // ── Dungeon, cave and station maps ──
           // The walk and the leaving this reply told stay with it and are no longer pending; its `[map:]`
           // tags open a map (the last one wins) or leave the one the party is on.
-          if (savedMsg?.id && chatMode === "game" && !input.impersonate && fullResponse.trim()) {
+          if (
+            savedMsg?.id &&
+            chatMode === "game" &&
+            !input.impersonate &&
+            fullResponse.trim() &&
+            gameStyleFromMetadata(chatMeta) === "overworld"
+          ) {
             try {
               const told = await turnDungeonPromise;
               // A reveal opens a closed site to the party and no map: it is read from the replies.

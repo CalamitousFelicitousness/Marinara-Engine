@@ -165,6 +165,7 @@ export function GameSetupWorldKitChooser({
   onChange,
   onImportWorld,
   writeRequest,
+  required = false,
 }: {
   kit: WorldKitInput | null;
   onChange: (kit: WorldKitInput | null) => void;
@@ -172,6 +173,8 @@ export function GameSetupWorldKitChooser({
   onImportWorld: (kit: WorldKit, world: WorldFileWorld, story?: StoryScript, snapshot?: WorldSnapshot) => void;
   /** What the model writes a kit for; null until a connection is chosen. */
   writeRequest: WorldKitWriteRequest | null;
+  /** An Overworld RPG game: its world needs a kit, so "no setting kit" is not offered. */
+  required?: boolean;
 }) {
   const { t } = useUiTranslation();
   const [writing, setWriting] = useState(false);
@@ -305,7 +308,9 @@ export function GameSetupWorldKitChooser({
   return (
     <div>
       <span className="mb-1 block text-xs font-medium text-[var(--foreground)]">{t("game.worldKit.setup.label")}</span>
-      <p className="mb-1.5 text-[0.6875rem] text-[var(--muted-foreground)]">{t("game.worldKit.setup.help")}</p>
+      <p className="mb-1.5 text-[0.6875rem] text-[var(--muted-foreground)]">
+        {t(required ? "game.worldKit.setup.helpOverworld" : "game.worldKit.setup.help")}
+      </p>
       <div className="mb-2 flex flex-wrap gap-2">
         <button
           type="button"
@@ -384,10 +389,14 @@ export function GameSetupWorldKitChooser({
         </p>
       )}
       <div className="grid gap-2 sm:grid-cols-2">
-        <button type="button" onClick={() => choose(null)} aria-pressed={!kit} className={cardClass(!kit)}>
-          <span className="block font-medium text-[var(--foreground)]">{t("game.worldKit.setup.none")}</span>
-          <span className="mt-1 block text-[var(--muted-foreground)]">{t("game.worldKit.setup.noneDescription")}</span>
-        </button>
+        {!required && (
+          <button type="button" onClick={() => choose(null)} aria-pressed={!kit} className={cardClass(!kit)}>
+            <span className="block font-medium text-[var(--foreground)]">{t("game.worldKit.setup.none")}</span>
+            <span className="mt-1 block text-[var(--muted-foreground)]">
+              {t("game.worldKit.setup.noneDescription")}
+            </span>
+          </button>
+        )}
         {WORLD_STARTER_KITS.map((starter) => {
           const selected = kit?.id === starter.id;
           return (

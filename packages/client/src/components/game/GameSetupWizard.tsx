@@ -3,6 +3,8 @@ import {
   gameWorldFromSnapshot,
   normalizeGameDifficulty,
   parseWorldKit,
+  WORLD_STARTER_KITS,
+  type GameStyle,
   worldSpatialDraft,
   type GenerateSpatialMapDraftResponse,
   type WorldKitInput,
@@ -93,7 +95,14 @@ import { useCharacterGroups, usePersonas } from "../../hooks/use-characters";
 import { GameSetupRulesChooser, GameSetupRulesetSheetStatus } from "./GameSetupRulesChooser";
 import { GameSetupWorldKitChooser, MapPackLock } from "./GameSetupWorldKitChooser";
 import { useExperienceMapPack } from "../../hooks/use-map-pack";
-import { GameSetupWorldChooser, worldDraftConfig, worldDraftFromWorld, type WorldDraft } from "./GameSetupWorldChooser";
+import {
+  GameSetupWorldChooser,
+  newWorldDraft,
+  worldDraftConfig,
+  worldDraftFromWorld,
+  type WorldDraft,
+} from "./GameSetupWorldChooser";
+import { GameSetupStyleChooser } from "./GameSetupStyleChooser";
 import {
   GAME_SETUP_FIELD_LABEL,
   GAME_SETUP_GHOST_BUTTON_CLASS,
@@ -556,8 +565,12 @@ export function GameSetupWizard({
     ? restoredRulesetLayers(activeRuleset.definition, rulesetLayerOptions(rulesetLayerIds))
     : [];
   const [rulesetImportNotice, setRulesetImportNotice] = useState<string | null>(null);
-  // The setting kit (worldgen W0): off unless the player picks one, and only for a new game.
+  // Classic Game Mode or the Overworld RPG, chosen once for a new game; new games start on the Overworld.
+  const [gameStyle, setGameStyle] = useState<GameStyle>("overworld");
+  // The setting kit (worldgen W0): only for a new game on the Overworld, where it is needed for its world.
   const [worldKit, setWorldKit] = useState<WorldKitInput | null>(null);
+  // Whether the player picked the kit: until they do, the Overworld's kit follows the chosen genre.
+  const kitChosenRef = useRef(false);
   // An Experience's map pack (worldgen W9e) owns the kit, and the world when it ships maps, while the
   // Experience is on. The player's own choices stay untouched underneath and come back once it is off.
   const mapPackQuery = useExperienceMapPack(
@@ -571,8 +584,10 @@ export function GameSetupWizard({
   const mapPackWorld = mapPack
     ? (mapPack.worlds.find((world) => world.path === mapPackWorldPath) ?? mapPack.worlds[0] ?? null)
     : null;
+  // An Experience's map pack is always played on the Overworld; Classic has no kit or world at all.
+  const overworldChosen = Boolean(mapPack) || gameStyle === "overworld";
   const effectiveWorldKit: WorldKitInput | null = mapPack ? mapPack.kit : worldKit;
-  const checkedWorldKit = isNewGame && effectiveWorldKit ? parseWorldKit(effectiveWorldKit) : null;
+  const checkedWorldKit = isNewGame && overworldChosen && effectiveWorldKit ? parseWorldKit(effectiveWorldKit) : null;
   // The world made in that kit's words (worldgen W1): off unless the player asks for one.
   const [worldDraft, setWorldDraft] = useState<WorldDraft | null>(null);
   const mapPackDraft = useMemo(
@@ -958,10 +973,28 @@ export function GameSetupWizard({
   // A picked starter kit brings its genre while the player has not chosen one (no cyberpunk kit told
   // the Game Master it is "Fantasy").
   const chooseWorldKit = (kit: WorldKitInput | null) => {
+    kitChosenRef.current = true;
     setWorldKit(kit);
     const genre = kit ? SETTING_GENRE[kit.id] : undefined;
     if (genre && !genresChosenRef.current) setGenres([genre]);
   };
+
+  // On the Overworld a world needs a kit: until the player picks one, the starter kit of the first chosen
+  // genre that has one (High Fantasy otherwise), and a world rolled for it, so the game always has one.
+  const genreKitId = useMemo(() => {
+    const genre = genres.find((each) => Object.values(SETTING_GENRE).includes(each));
+    return Object.entries(SETTING_GENRE).find(([, each]) => each === genre)?.[0] ?? WORLD_STARTER_KITS[0]?.id;
+  }, [genres]);
+  useEffect(() => {
+    if (!isNewGame || mapPack || gameStyle !== "overworld" || kitChosenRef.current) return;
+    if (worldKit?.id === genreKitId) return;
+    setWorldKit(WORLD_STARTER_KITS.find((kit) => kit.id === genreKitId) ?? null);
+  }, [isNewGame, mapPack, gameStyle, genreKitId, worldKit?.id]);
+  useEffect(() => {
+    if (isNewGame && !mapPack && gameStyle === "overworld" && checkedWorldKit?.ok && !worldDraft) {
+      setWorldDraft(newWorldDraft());
+    }
+  }, [isNewGame, mapPack, gameStyle, checkedWorldKit?.ok, worldDraft]);
 
   const addCustomGenre = () => {
     const trimmed = customGenre.trim();
@@ -1216,6 +1249,9 @@ export function GameSetupWizard({
       });
       const config = imported.config;
       setRulesetId(config.ruleset?.id ?? null);
+      // A file with a kit is an Overworld game's; one without is Classic unless it says otherwise.
+      setGameStyle(config.worldKit ? "overworld" : (config.gameStyle ?? "classic"));
+      kitChosenRef.current = Boolean(config.worldKit);
       setWorldKit(config.worldKit ?? null);
       setWorldDraft(config.world ? worldDraftFromWorld(config.world, config.story, config.worldSnapshot) : null);
       // The layers the file chose, against the definition installed HERE: an id this version of the
@@ -1440,6 +1476,7 @@ export function GameSetupWizard({
       setting: setting || `A ${(genres[0] ?? "fantasy").toLowerCase()} world`,
       tone: tones.join(", ") || "Heroic",
       difficulty: normalizeGameDifficulty(difficulty),
+      ...(isNewGame ? { gameStyle: overworldChosen ? ("overworld" as const) : ("classic" as const) } : {}),
       combatStyle,
       ...(activeRuleset
         ? {
@@ -1458,8 +1495,9 @@ export function GameSetupWizard({
       // A world another generator made goes with its snapshot (W11), played as it was made.
       ...(checkedWorld?.ok && checkedWorld.snapshot ? { worldSnapshot: checkedWorld.snapshot } : {}),
       combatDirector: true,
-      // New games take tactical turns one unit at a time in a rolled order (combat C6c).
-      tacticalTurnOrder: "initiative",
+      // New Overworld games take tactical turns one unit at a time in a rolled order (combat C6c); Classic
+      // keeps the party's phase then the enemies', as it always has.
+      ...(overworldChosen ? { tacticalTurnOrder: "initiative" as const } : {}),
       gmBossControl,
       ...(Object.keys(tacticalBattlefield).length > 0 ? { tacticalBattlefield } : {}),
       spatialMapInstructions:
@@ -1794,6 +1832,10 @@ export function GameSetupWizard({
                         </p>
                       )}
                     </div>
+
+                    {isNewGame && !mapPack && (
+                      <GameSetupStyleChooser value={gameStyle} onChange={setGameStyle} disabled={isLoading} />
+                    )}
 
                     {/* Absent when nothing provides an experience, leaving this step exactly as it was. */}
                     {isNewGame && !multiplayerPlayers && (
@@ -2244,8 +2286,9 @@ export function GameSetupWizard({
                         }
                       />
                     )}
-                    {isNewGame && !mapPack && !mapPackUnreadable && (
+                    {isNewGame && overworldChosen && !mapPack && !mapPackUnreadable && (
                       <GameSetupWorldKitChooser
+                        required
                         kit={worldKit}
                         onChange={chooseWorldKit}
                         onImportWorld={(kit, world, story, snapshot) => {
@@ -2257,6 +2300,7 @@ export function GameSetupWizard({
                     )}
                     {checkedWorldKit?.ok && !mapPackWorld && !mapPackUnreadable && (
                       <GameSetupWorldChooser
+                        required
                         kit={checkedWorldKit.kit}
                         draft={worldDraft}
                         onChange={setWorldDraft}

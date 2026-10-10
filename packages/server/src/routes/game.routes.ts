@@ -360,6 +360,7 @@ import type {
   GameActiveState,
   GameInitialSetupConnectionSnapshot,
   GameSetupConfig,
+  GameStyle,
   GameCampaignPlan,
   GameMap,
   GameNpc,
@@ -1943,6 +1944,7 @@ const gameSetupConfigSchema = z.object({
   setting: z.string().min(1),
   tone: z.string().min(1).max(200),
   difficulty: z.string().min(1).max(100).transform(normalizeGameDifficulty),
+  gameStyle: z.enum(["classic", "overworld"]).optional(),
   combatStyle: z.enum(["classic", "tactical"]).optional(),
   combatDirector: z.boolean().optional(),
   gmBossControl: z.boolean().optional(),
@@ -6041,6 +6043,8 @@ const ITEM_NOT_IN_FIGHT = "That item does nothing in this fight.";
 export function parseRoomGameConfig(value: unknown): GameSetupConfig {
   const { worldSnapshot, ...config } = gameSetupConfigSchema.parse(value);
   if (config.gameExperienceId) throw new Error("Package Game Experiences are unavailable in shared rooms.");
+  const styleIssue = classicGameWorldIssue({ ...config, worldSnapshot });
+  if (styleIssue) throw new Error(styleIssue);
   // A world another generator made comes with its snapshot (W11), checked whole here as at creation.
   if (worldSnapshot == null) return config;
   const read = readWorldSnapshot(worldSnapshot);
@@ -6077,6 +6081,21 @@ function editIssues(game: Omit<GameWorld, "world" | "edits">, edits: unknown): s
   // And its towns laid out by hand (worldgen W9h), against the towns the world with these edits makes.
   if (issues.length || (!parsed.data.towns?.length && !parsed.data.interiors?.length)) return issues;
   return worldTownEditIssues({ ...game, world: compileGameWorld(game) }, parsed.data);
+}
+
+/** Why a setup cannot be made as it asks: a Classic game is the Game Mode without a world, so it takes
+ *  no setting kit, world, snapshot or story. Null when it holds together. */
+function classicGameWorldIssue(config: {
+  gameStyle?: GameStyle;
+  worldKit?: unknown;
+  world?: unknown;
+  worldSnapshot?: unknown;
+  story?: unknown;
+}): string | null {
+  if (config.gameStyle !== "classic") return null;
+  return config.worldKit != null || config.world != null || config.worldSnapshot != null || config.story != null
+    ? "A Classic game has no setting kit or world: choose the Overworld RPG for one."
+    : null;
 }
 
 /** A new world as sent with a game's setup, or added to an older game (worldgen W12), checked: made in its
@@ -6754,6 +6773,8 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     }
     // A world (worldgen W1) is made in its kit's words, by this Engine's generator, or kept as another
     // generator made it (W11); with its story (W10). The same checks as a world added to an older game.
+    const styleIssue = classicGameWorldIssue(parsedCreateGameInput.setupConfig);
+    if (styleIssue) return rejectGenerationOutput(reply, 400, { error: styleIssue, code: "world_invalid" });
     const newWorld = readNewGameWorld(parsedCreateGameInput.setupConfig);
     if (!newWorld.ok) return rejectGenerationOutput(reply, 400, { error: newWorld.error, code: newWorld.code });
     const { gameWorld, snapshot: sentSnapshot, story: gameStory } = newWorld;
@@ -6934,6 +6955,9 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       gameSceneConnectionId: setupConfig.sceneConnectionId || null,
       // Chosen at creation and fixed for the game's lifetime (see GameSetupConfig).
       gameExperienceId: setupConfig.gameExperienceId || null,
+      // Classic or Overworld, likewise fixed; a setup made before the choice stores none (see
+      // `gameStyleFromMetadata`).
+      ...(setupConfig.gameStyle ? { gameStyle: setupConfig.gameStyle } : {}),
       // Likewise fixed for the game's lifetime. Written only when a ruleset was chosen, so a game
       // on Marinara's own rules carries exactly the metadata it always has.
       ...(gameRuleset ? { gameRuleset } : {}),
@@ -11631,6 +11655,9 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     if (meta.gameWorld != null) return reply.status(409).send({ error: "This game has a world already." });
     if (meta.gameExperienceId) {
       return reply.status(409).send({ error: "This game's Experience decides its world." });
+    }
+    if (meta.gameStyle === "classic") {
+      return reply.status(409).send({ error: "A Classic game has no world." });
     }
     const read = readNewGameWorld(body.data);
     if (!read.ok) return reply.status(400).send({ error: read.error, code: read.code });

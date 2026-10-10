@@ -2387,9 +2387,12 @@ function GameSurfaceComponent({
   const experienceOwnsGame =
     experienceSurfaceActive || (gameExperienceId !== null && installedCapabilityPackagesPending);
   // A game made without a world may be given one from the journal (worldgen W12), written for its own
-  // setting with its own connection; never one an Experience decides.
+  // setting with its own connection; never one an Experience decides, nor one made as Classic Game Mode.
   const canMakeWorld =
-    chatMeta.gameWorld == null && gameExperienceId === null && chatMeta.gameSessionStatus !== "concluded";
+    chatMeta.gameWorld == null &&
+    gameExperienceId === null &&
+    chatMeta.gameStyle !== "classic" &&
+    chatMeta.gameSessionStatus !== "concluded";
   const makeWorldRequest = useMemo(() => {
     const setup = chatMeta.gameSetupConfig as GameSetupConfig | undefined;
     if (!chat.connectionId) return null;
@@ -13511,7 +13514,7 @@ function GameSurfaceComponent({
               {!replayActive && pendingReaction && (
                 <GameElementReaction
                   reaction={pendingReaction}
-                  elements={gameElements}
+                  elements={gameKit ? gameElements : undefined}
                   onDismiss={() => setPendingReaction(null)}
                 />
               )}
@@ -13970,7 +13973,7 @@ function GameSurfaceComponent({
                             />
                           ) : (
                             <GameCombatUI
-                              elements={gameElements}
+                              elements={gameKit ? gameElements : undefined}
                               chatId={activeChatId}
                               party={combatParty}
                               enemies={combatEnemies}

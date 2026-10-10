@@ -813,7 +813,8 @@ export interface RulesetCombatAction {
    *  `sheet.items`) and how many it holds. An attack spends what is loaded; a `reload` fills it. */
   clip?: { item: number; max: number };
   /** Turning one of the holder's items on or off (1.165): its place in `sheet.items`. */
-  switches?: { item: number };
+  /** What it turns: an item (1.165), or the light its holder carries (1.290). */
+  switches?: { item: number } | { carried: true };
   /** Other ways to make this attack, chosen with it like an initiative style. */
   modes?: RulesetCombatMode[];
   /** How many one attack shoots when a mode says so, in place of its ammunition's own. */
@@ -1109,6 +1110,8 @@ export interface RulesetCombatant {
   /** What a standard action left behind. `dodging`, `dashed`, `disengaged`, `hidden` and `ready`
    *  are cleared at the start of the actor's next turn; `helped` is spent by their next attack. */
   flags: {
+    /** The light they carry was put out or lit this turn, for nothing (1.290). */
+    lightSwitched?: true;
     dodging?: boolean;
     dashed?: boolean;
     disengaged?: boolean;
@@ -1231,6 +1234,8 @@ export interface RulesetCombatant {
   became?: Record<string, string>;
   /** Each item switched on or off in this fight, keyed as the rest are (1.165). */
   on?: Record<string, boolean>;
+  /** The light they carry is out (1.290). */
+  doused?: true;
   /** A party member's sheet, which is where their health and conditions really live. */
   sheet?: {
     build: RulesetSheetBuild;

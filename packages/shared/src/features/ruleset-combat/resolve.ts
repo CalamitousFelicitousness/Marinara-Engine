@@ -3650,7 +3650,14 @@ function applyChoice(
   // A switch turns its item on or off and does nothing else (1.165).
   if (option.kind === "switch") {
     const switching = working.actions.find((entry) => entry.id === option.id);
-    if (switching?.switches) {
+    if (switching?.switches && "carried" in switching.switches) {
+      // The light they carry, put out or lit again (1.290): the hiding it gave away is asked again.
+      const on = !!working.doused;
+      if (on) delete working.doused;
+      else working.doused = true;
+      if (switching.free) working.flags.lightSwitched = true;
+      ctx.events.push({ type: "switch", actorId: working.id, optionId: switching.id, label: switching.label, on });
+    } else if (switching?.switches && "item" in switching.switches) {
       const on = !rulesetItemOn(working, switching.switches.item);
       working.on = { ...(working.on ?? {}), [switching.switches.item]: on };
       ctx.events.push({ type: "switch", actorId: working.id, optionId: switching.id, label: switching.label, on });

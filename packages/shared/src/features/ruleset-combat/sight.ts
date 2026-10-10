@@ -35,6 +35,7 @@ import type {
   RulesetHidingTraits,
 } from "./types.js";
 import type { TacticalGrid } from "../tactical-combat/types.js";
+import { rulesetDroppedItems, rulesetItemOn } from "./ammo.js";
 
 /** How far each of the fight's senses reaches for this combatant, in cells: a creature's off its
  *  block, anybody else's as it was read off their sheet when the fight began. What their conditions
@@ -146,17 +147,41 @@ export function rulesetLightOf(
   const radii = [
     ...(who.block?.light ? [who.block.light] : []),
     ...rulesetActiveConditions(definition, combat, who, state).flatMap((source) =>
-      source.light ? [source.light] : [],
+      source.light && !source.item ? [source.light] : [],
     ),
+    ...itemLights(who),
   ];
-  if (darkness.carried && !who.block) {
-    const ranges = rulesetSenseRanges(definition, who, state);
-    if (!darkness.seeIn.some((sense) => (ranges[sense] ?? 0) > 0)) radii.push(darkness.carried);
-  }
+  if (darkness.carried && !who.doused && rulesetCarriesLight(definition, who, state)) radii.push(darkness.carried);
   if (radii.length === 0) return null;
   const bright = Math.max(...radii.map((one) => rulesetInCells(one.bright, perCell)));
   const edge = Math.max(...radii.map((one) => rulesetInCells(one.bright + one.dim, perCell)));
   return { bright, dim: Math.max(0, edge - bright) };
+}
+
+/** Whether somebody carries the ruleset's `carried` light (1.289), lit or put out (1.290): they fight
+ *  from a sheet and no sense of theirs sees in the dark. */
+export function rulesetCarriesLight(
+  definition: RulesetDefinition,
+  who: RulesetCombatant,
+  state?: RulesetEncounterState,
+): boolean {
+  const darkness = definition.combat?.sight?.darkness;
+  if (!darkness?.carried || who.block) return false;
+  const ranges = rulesetSenseRanges(definition, who, state);
+  return !darkness.seeIn.some((sense) => (ranges[sense] ?? 0) > 0);
+}
+
+/** The light their items shed (1.289): a worn item's `worn` effect and any other's `carried` one,
+ *  not where it was dropped, and one with a switch only while it is on (1.290). */
+function itemLights(who: RulesetCombatant): Array<{ bright: number; dim: number }> {
+  const items = who.sheet?.items ?? [];
+  if (items.length === 0) return [];
+  const dropped = rulesetDroppedItems(who);
+  return items.flatMap((held, index) => {
+    const light = (held.worn ? held.item.worn : held.item.carried)?.light;
+    if (!light || dropped.has(index) || (held.item.toggle && !rulesetItemOn(who, index))) return [];
+    return [light];
+  });
 }
 
 function lightSources(definition: RulesetDefinition, state: RulesetEncounterState): LightSource[] {

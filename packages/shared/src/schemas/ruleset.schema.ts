@@ -6534,7 +6534,7 @@ const combatSenseSchema: z.ZodType<RulesetCombatSense, z.ZodTypeDef, unknown> = 
 export interface RulesetCombatDarkness {
   seeIn: string[];
   pierced?: string[];
-  carried?: RulesetLightRadius;
+  carried?: RulesetLightRadius & { label?: string; budget?: string };
 }
 /** What seeing does in a fight (1.173). */
 export interface RulesetCombatSight {
@@ -6556,7 +6556,18 @@ const combatSightSchema: z.ZodType<RulesetCombatSight, z.ZodTypeDef, unknown> = 
       .object({
         seeIn: z.array(sheetId).min(1).max(8),
         pierced: z.array(sheetId).min(1).max(8).optional(),
-        carried: lightRadiusSchema.optional(),
+        /** Put out and lit again in a fight (Capability API 1.290), as a switch on the menu named
+         *  `label` ("Torch"), on `budget`, or once a turn for nothing where it names none. */
+        carried: z
+          .object({
+            bright: z.number().finite().min(0).max(10000),
+            dim: z.number().finite().min(0).max(10000),
+            label: promptSafeText(40).optional(),
+            budget: sheetId.optional(),
+          })
+          .strict()
+          .refine((light) => light.bright + light.dim > 0, { message: "A light reaches somewhere" })
+          .optional(),
       })
       .strict()
       .optional(),
@@ -7194,12 +7205,20 @@ export const rulesetItemEffectSchema = z
   .superRefine((entry, ctx) => {
     const abilities = Object.entries(entry.abilities ?? {});
     const hide = entry.resist ?? entry.vulnerable ?? entry.immune ?? entry.conditionImmunities;
-    if (!entry.effects && !entry.modifiers && !entry.failsSaves && abilities.length === 0 && !hide && !entry.senses) {
+    if (
+      !entry.effects &&
+      !entry.modifiers &&
+      !entry.failsSaves &&
+      abilities.length === 0 &&
+      !hide &&
+      !entry.senses &&
+      !entry.light
+    ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["effects"],
         message:
-          "An item's effect does something: effects, modifiers, saves it fails, abilities it changes, senses it gives, or harm or conditions it keeps off",
+          "An item's effect does something: effects, modifiers, saves it fails, abilities it changes, senses it gives, light it sheds, or harm or conditions it keeps off",
       });
     }
     if (abilities.length > 12) {
@@ -9642,6 +9661,9 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
           if (!senses.has(sense)) issue(at("sight", "darkness", key, index), `Unknown sense "${sense}"`);
         });
       }
+      const switchBudget = combat.sight.darkness.carried?.budget;
+      if (switchBudget !== undefined && !combat.economy.budgets.some((budget) => budget.id === switchBudget))
+        issue(at("sight", "darkness", "carried", "budget"), `Unknown budget "${switchBudget}"`);
     }
     // Hiding (1.282): the checks it throws are the fight's own, and so are the components it hears.
     if (combat.hiding) {

@@ -1559,6 +1559,17 @@ function carriesHidingTraits(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesHidingTraits(one, depth + 1));
 }
 
+/** A carried light with a name or a price to put out and light again (1.290). */
+function carriesLightSwitch(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesLightSwitch(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const carried = plainRecord(plainRecord(record.darkness)?.carried);
+  if (carried && (carried.label !== undefined || carried.budget !== undefined)) return true;
+  return Object.values(record).some((one) => carriesLightSwitch(one, depth + 1));
+}
+
 /** The dark kept real, and light shed in it (1.289): `sight.darkness`, a `light` with its reach. */
 function carriesDarkness(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -3989,6 +4000,10 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // A carried light's switch, 1.290.
+  if (!declaresApi(290) && carriesLightSwitch(ruleset)) {
+    return "A ruleset whose carried light has a name or a price to put out and light again requires schemaVersion 2 and capabilityApi 1.290 or newer";
   }
   // The dark, and light, 1.289.
   if (

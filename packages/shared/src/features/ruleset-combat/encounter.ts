@@ -1622,6 +1622,25 @@ function itemSwitchActions(items: readonly RulesetSheetItem[] | undefined): Rule
   });
 }
 
+/** Putting out and lighting again the light a fighter carries (1.290), on its budget or for nothing.
+ *  On the menu only while they carry one. */
+function carriedSwitchActions(combat: RulesetCombat): RulesetCombatAction[] {
+  const carried = combat.sight?.darkness?.carried;
+  const first = combat.economy.budgets[0]?.id;
+  if (!carried || (!carried.budget && !first)) return [];
+  return [
+    {
+      id: "light:carried",
+      kind: "switch",
+      label: carried.label ?? "Light",
+      budget: carried.budget ?? first!,
+      ...(carried.budget ? {} : { free: true as const }),
+      targets: { side: "self", count: 0 },
+      switches: { carried: true },
+    },
+  ];
+}
+
 /**
  * The weapons a fighter holds, as attacks: each worn item with an `attack`, read the way an attack
  * row is, with its values in place of columns and each stat it reads off the item itself. It adds
@@ -3213,6 +3232,7 @@ function sheetCombatant(
     ),
     ...itemAttackActions(definition, combat, input.items, build, evaluated, perCell, rowRules),
     ...itemSwitchActions(input.items),
+    ...carriedSwitchActions(combat),
     ...itemUseActions(definition, combat, input.items, build, evaluated, perCell),
     ...abilities.flatMap((entry) => entry.actions),
   ];

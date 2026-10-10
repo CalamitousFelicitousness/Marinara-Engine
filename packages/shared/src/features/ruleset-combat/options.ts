@@ -101,7 +101,13 @@ import {
 } from "./grid.js";
 import { coverTier, elevationAt } from "../tactical-combat/math.js";
 import { rulesetStandingSections, rulesetZoneMoveCells, rulesetZoneTurnCells } from "./zones.js";
-import { rulesetCanSee, rulesetHiddenFrom, rulesetSeesCell, rulesetStandsObscured } from "./sight.js";
+import {
+  rulesetCanSee,
+  rulesetCarriesLight,
+  rulesetHiddenFrom,
+  rulesetSeesCell,
+  rulesetStandsObscured,
+} from "./sight.js";
 import type {
   RulesetAfterAttack,
   RulesetCombatAmount,
@@ -1693,6 +1699,11 @@ export function rulesetActionAvailable(
     return false;
   // What it is made with lies where it was dropped (1.261).
   if (rulesetActionDropped(actor, action)) return false;
+  // A light only while they carry one, and for nothing once a turn (1.290).
+  if (action.switches && "carried" in action.switches) {
+    if (!definition || !rulesetCarriesLight(definition, actor, state)) return false;
+    if (action.free && actor.flags.lightSwitched) return false;
+  }
   // Giving its own user back a pool they do not have is nothing (1.247): a 4th-level slot made by a
   // sorcerer with no 4th-level slots at all.
   if (action.restore && action.targets.side === "self" && actor.sheet && definition) {
@@ -2171,7 +2182,9 @@ function optionFrom(
       : {}),
     ...(rulesetFreeStrike(actor, action) ? { strikes: actor.strikesLeft } : {}),
     ...(action.heal ? { heals: true } : {}),
-    ...(action.switches ? { on: rulesetItemOn(actor, action.switches.item) } : {}),
+    ...(action.switches
+      ? { on: "item" in action.switches ? rulesetItemOn(actor, action.switches.item) : !actor.doused }
+      : {}),
     ...(action.restore ? { restores: action.restore.pool } : {}),
   };
   if (paid && paid.cost.length > 0) option.cost = paid.cost;

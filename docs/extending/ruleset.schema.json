@@ -46885,6 +46885,25 @@
           },
           "maxItems": 12
         },
+        "readying": {
+          "type": "object",
+          "properties": {
+            "budget": {
+              "type": "string",
+              "maxLength": 40,
+              "pattern": "^[a-z][a-z0-9_]*$"
+            },
+            "concentrates": {
+              "type": "boolean",
+              "const": true
+            },
+            "$comment": {}
+          },
+          "required": [
+            "budget"
+          ],
+          "additionalProperties": false
+        },
         "hiding": {
           "type": "object",
           "properties": {

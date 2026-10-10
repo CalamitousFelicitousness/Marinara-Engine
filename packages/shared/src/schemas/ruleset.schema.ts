@@ -7527,6 +7527,18 @@ const combatSchema = z
      * finds them where its Perception check meets their total. 5e's Hide, Search and passive
      * Perception: `{ "stealth": "stealth", "perception": "perception", "noisy": ["verbal"] }`.
      */
+    /**
+     * Readying for real (Capability API 1.283). The `ready` standard action then readies one of its
+     * user's other options taken with the same budget, or a move, to be taken with `budget` (5e's
+     * reaction) when it happens: an opponent coming where it can reach them, or an opponent its
+     * user sees using something. It waits until the start of its user's next turn. With
+     * `concentrates`, a spell readied is paid for as it is readied and held by concentration: lost
+     * with it, and spent if it never goes off. 5e: `{ "budget": "reaction", "concentrates": true }`.
+     */
+    readying: z
+      .object({ budget: sheetId, concentrates: z.literal(true).optional() })
+      .strict()
+      .optional(),
     hiding: z
       .object({
         stealth: sheetId,
@@ -9438,6 +9450,12 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       });
     }
     if (combat.opportunity) checkBudget(combat.opportunity.budget, at("opportunity", "budget"));
+    // Readying (1.283): released with a budget the fight has, and held by a concentration it keeps.
+    if (combat.readying) {
+      checkBudget(combat.readying.budget, at("readying", "budget"));
+      if (combat.readying.concentrates && !combat.concentration)
+        issue(at("readying", "concentrates"), "A spell held by concentration needs combat.concentration");
+    }
     if (combat.offHand) checkBudget(combat.offHand.budget, at("offHand", "budget"));
     if (combat.offHand?.fullWhen) checkRef(combat.offHand.fullWhen, at("offHand", "fullWhen"), derivedIds);
 

@@ -146,8 +146,22 @@ export function rulesetOptionLabel(option: DirectedRulesetOption, t: TFunction):
     return t(option.avert.back ? "game.combat.ruleset.menu.lookBack" : "game.combat.ruleset.menu.avert", {
       target: option.label,
     });
+  // Readying one of the others (1.283), and taking what was readied.
+  if (option.ready)
+    return t(
+      option.ready.on === "comes" ? "game.combat.ruleset.menu.readyComes" : "game.combat.ruleset.menu.readyActs",
+      {
+        option: rulesetMenuReadyName(option.ready.label, option.ready.optionId, t),
+      },
+    );
+  if (option.readied) return t("game.combat.ruleset.menu.readied", { option: option.label });
   if (option.kind !== "standard") return option.label;
   return t(`game.combat.ruleset.standard.${option.label}`, { defaultValue: option.label });
+}
+
+/** The name a readied option goes by (1.283): a walk is the Engine's own word. */
+function rulesetMenuReadyName(label: string, optionId: string, t: TFunction): string {
+  return optionId === RULESET_MOVE_OPTION ? t("game.combat.ruleset.board.walk", { defaultValue: label }) : label;
 }
 
 /** What one option spends, in the ruleset's own words: its budget, the pools it draws on, and how

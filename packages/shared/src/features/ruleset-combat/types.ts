@@ -1076,6 +1076,9 @@ export interface RulesetCombatant {
   /** Hidden (1.282): the Stealth total it hid with, and the opponents it is hidden from, by id. Gone
    *  once it is hidden from nobody. */
   hiding?: { total: number; from: string[] };
+  /** What it readied (1.283), taken with the ruleset's reaction budget when it happens, until the
+   *  start of its next turn. */
+  readied?: RulesetReadied;
   /** What a standard action left behind. `dodging`, `dashed`, `disengaged`, `hidden` and `ready`
    *  are cleared at the start of the actor's next turn; `helped` is spent by their next attack. */
   flags: {
@@ -1350,7 +1353,10 @@ export type RulesetWindowTrigger =
   | { kind: "harmed"; sourceId: string; label: string; catalog?: string; entry?: string }
   /** Somebody is falling, before its damage and prone (1.119). The source is the faller. */
   | { kind: "falls"; sourceId: string; label: "fall"; levels: number; fallerIds?: string[] }
-  | { kind: "turn-start"; sourceId: string; label: string };
+  | { kind: "turn-start"; sourceId: string; label: string }
+  /** What somebody readied waits for has happened (1.283): `sourceId` came where it can be reached
+   *  (`comes`, before the rest of their walk) or has just used something (`acts`). */
+  | { kind: "readied"; sourceId: string; on: RulesetReadyOn };
 
 /** The moments the Engine notices, and opens a window for. `aimed` is before something lands on
  *  the holder, `used` is before somebody on the other side uses something, `hit` is after an attack
@@ -1519,6 +1525,21 @@ export interface RulesetHeldAttack {
 /** A walk stopped in its tracks, with everything needed to finish it exactly as it would have gone:
  *  the cells already crossed, the ones still to cross, what has been paid so far and who has
  *  already struck, so nobody strikes the same passer-by twice. */
+/** What a readied option waits for (1.283): an opponent coming where it can reach them, or an
+ *  opponent it sees using something. */
+export type RulesetReadyOn = "comes" | "acts";
+
+/** Something readied (1.283): the option, what it waits for, and, for a spell readied with
+ *  `readying.concentrates`, that it was paid for when readied (with what) and is held by
+ *  concentration. */
+export interface RulesetReadied {
+  optionId: string;
+  label: string;
+  on: RulesetReadyOn;
+  paid?: true;
+  payWith?: string;
+}
+
 export interface RulesetWalkResume {
   kind: "walk";
   actorId: string;
@@ -1528,6 +1549,8 @@ export interface RulesetWalkResume {
   /** Everybody already ASKED about this walk, struck or passed: one chance each per walk, so a
    *  long path past the same foe never offers a second. */
   asked: string[];
+  /** Whoever was asked already, on this walk, for what they readied (1.283). */
+  readyAsked?: string[];
   spent: number;
   /** A legendary move (1.278): what its maker's own allowance was before the one it was lent, put
    *  back when the walk ends, and how the move walks. */
@@ -1867,6 +1890,15 @@ export type RulesetCombatEvent =
       from?: string[];
       found?: string[];
     }
+  /** Something readied (1.283), set off, let go at the start of its holder's turn, or lost with the
+   *  concentration holding it. */
+  | {
+      type: "ready";
+      actorId: string;
+      label: string;
+      on: RulesetReadyOn;
+      outcome: "readied" | "released" | "expired" | "lost";
+    }
   /** A legendary search (1.282): the check thrown, and whom it found. */
   | { type: "search"; actorId: string; label: string; check: RulesetContestSide; found: string[] }
   /** Somebody hiding given away to these opponents (1.282): by attacking, by noise, or seen clearly. */
@@ -1928,6 +1960,8 @@ export type RulesetCombatEvent =
       /** Which moment opened it, for the ones a reaction waits for, what is happening at it, and
        *  who is doing it. */
       moment?: RulesetReactionMoment;
+      /** Opened for what was readied (1.283), and which way it was set off. */
+      readied?: RulesetReadyOn;
       label?: string;
       sourceId?: string;
       /** For a held hit: what the roll came to, and what it was made against. */
@@ -2228,6 +2262,10 @@ export interface RulesetCombatOption {
   /** A spell a legendary cast offers (1.279): the cast bought, and the option of its maker's own it
    *  casts, as it would be on its turn. */
   castOf?: { actionId: string; optionId: string };
+  /** Readying another option (1.283): which, and what it waits for. */
+  ready?: { optionId: string; label: string; on: RulesetReadyOn };
+  /** What its holder readied, offered when it happens (1.283). */
+  readied?: true;
   /** A legendary action that moves after what it does (1.280): `cells` are where it may then go,
    *  and going nowhere is a choice too. */
   moveAfter?: true;

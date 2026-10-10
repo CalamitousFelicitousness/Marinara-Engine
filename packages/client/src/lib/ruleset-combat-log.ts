@@ -434,6 +434,20 @@ export function rulesetCombatEventLine(
         condition: names.condition(event.condition),
         ...(event.stacks !== undefined ? { stacks: event.stacks } : {}),
       });
+    // Readying (1.283).
+    case "ready":
+      return key(
+        event.outcome === "readied"
+          ? event.on === "comes"
+            ? "readyComes"
+            : "readyActs"
+          : event.outcome === "released"
+            ? "readyReleased"
+            : event.outcome === "expired"
+              ? "readyExpired"
+              : "readyLost",
+        { actor: names.combatant(event.actorId), label: event.label },
+      );
     // A legendary search (1.282).
     case "search": {
       const roll = checkRollText(event.check, names, t);
@@ -839,6 +853,13 @@ export function rulesetCombatEventLine(
     case "window":
       // Who the fight stopped for. The window between two turns is nobody's interruption, so it is
       // said as a pause rather than as somebody being caught out.
+      // What somebody readied, set off (1.283).
+      if (event.readied) {
+        return key(event.readied === "comes" ? "windowReadiedComes" : "windowReadiedActs", {
+          actor: names.combatant(event.waiting[0] ?? ""),
+          mover: names.combatant(event.sourceId ?? ""),
+        });
+      }
       return key(
         event.targetIds?.some((id) => id !== event.waiting[0]) && (event.moment === "aimed" || event.moment === "hit")
           ? "windowBystander"

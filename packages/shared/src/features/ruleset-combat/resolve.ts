@@ -181,6 +181,11 @@ import {
   rulesetCanRevive,
   rulesetPutOnBy,
   rulesetRoomAt,
+  rulesetIsSpell,
+  rulesetReadiedOption,
+  rulesetUseIsFree,
+  rulesetWithFreeUse,
+  rulesetAimCells,
 } from "./options.js";
 import type {
   RulesetActionResume,
@@ -245,6 +250,8 @@ interface RulesetCombatContext {
   /** Whoever gave themselves away while hiding (1.282), and how: found out once the step is done,
    *  so the blow itself is still made unseen. */
   giveaways?: Map<string, "attack" | "noise">;
+  /** Whoever used something in this step (1.283), for what was readied for an opponent acting. */
+  acted?: Set<string>;
   /** Combatants a blow could find no box for on a wound track that refuses when full. In the
    *  systems that keep such a track that is what being taken out IS, so the blow puts them down;
    *  without it a fight on one could never end. Read, and cleared, when the blow is finished. */
@@ -328,6 +335,8 @@ function begin(
       disperseFogs(ctx);
       // Whoever gave themselves away, or is now seen clearly, is hidden no longer (1.282).
       syncHiding(ctx);
+      // What was readied for an opponent using something, asked about now (1.283).
+      readiedActs(ctx);
       // The cells standing walls close, as the zones now standing say (1.172).
       rulesetSyncZoneWalls(next);
       // Grown or shrunk as the conditions now held say (1.190).
@@ -2956,6 +2965,12 @@ function endConcentration(
   const held = actor.concentrating;
   if (!held) return;
   actor.concentrating = null;
+  // A spell held ready by it is lost with it (1.283).
+  const readied = actor.readied;
+  if (readied?.paid && readied.optionId === held.actionId) {
+    delete actor.readied;
+    ctx.events.push({ type: "ready", actorId: actor.id, label: readied.label, on: readied.on, outcome: "lost" });
+  }
   endSummons(ctx, actor, held.actionId);
   endZones(ctx, actor, held.actionId);
   const concentration = ctx.combat.concentration;
@@ -3046,6 +3061,8 @@ function pickTargets(
 /** What using an action costs the actor in its own bookkeeping: one of its uses, and, for an action
  *  that recharges, its availability until the dice bring it back. */
 function spendAvailability(ctx: RulesetCombatContext, actor: RulesetCombatant, action: RulesetCombatAction): void {
+  // Paid already, as it was readied (1.283).
+  if (rulesetUseIsFree(actor.id, action.id)) return;
   const shot = spendRulesetShots(actor, action, action.itemUse ? (ctx.moreCharges ?? 0) : 0);
   if (shot) ctx.events.push(shot);
   // The last charge spent: an item that may break rolls for it now.
@@ -3598,6 +3615,13 @@ function applyChoice(
         });
       }
       spendAvailability(ctx, working, granted.action);
+    }
+    // Readying something for real (1.283).
+    if (option.ready) {
+      if (!readyAction(ctx, working, option.ready, choice.payWith)) {
+        return refusal(state, choice.actorId, "insufficient", option.id);
+      }
+      return finish();
     }
     resolveStandard(ctx, working, rulesetStandardName(option.id), workingTargets[0]);
     return finish();
@@ -4518,6 +4542,10 @@ function applyInWindow(
   }
 
   const trigger = window.trigger;
+  // What its holder readied, now that it has happened (1.283).
+  if (trigger.kind === "readied" && option.readied) {
+    return releaseReadied(definition, combat, state, window, actor, choice, roller);
+  }
   // A strike at somebody walking away, taken rather than made for them. It costs and resolves
   // exactly as the automatic one did: the same budget, the same books, the same dice.
   if (trigger.kind === "leaves-reach") {
@@ -5072,6 +5100,184 @@ function castWithPoints(
 }
 
 /**
+ * Readying (1.283): what it readies and what for. A spell, where the ruleset holds readied spells
+ * by concentration, is paid for now (with `payWith`, as the menu offered) and held: its holder's
+ * concentration is now on it. False when it cannot be paid.
+ */
+function readyAction(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  ready: NonNullable<RulesetCombatOption["ready"]>,
+  payWith?: string,
+): boolean {
+  const action = actor.actions.find((entry) => entry.id === ready.optionId);
+  let paid = false;
+  if (action && ctx.combat.readying?.concentrates && rulesetIsSpell(action)) {
+    const price = planRulesetCombatCost(ctx.definition, actor, action, payWith);
+    if (!price) return false;
+    if (price.live && actor.sheet) actor.sheet.live = price.live;
+    countRulesetSpend(actor, price.cost);
+    for (const entry of price.cost) {
+      ctx.events.push({ type: "spend", actorId: actor.id, pool: entry.pool, label: entry.label, amount: entry.amount });
+    }
+    spendAvailability(ctx, actor, action);
+    startConcentration(ctx, actor, action);
+    paid = true;
+  }
+  actor.readied = {
+    optionId: ready.optionId,
+    label: ready.label,
+    on: ready.on,
+    ...(paid ? { paid: true as const } : {}),
+    ...(paid && payWith ? { payWith } : {}),
+  };
+  ctx.events.push({ type: "ready", actorId: actor.id, label: ready.label, on: ready.on, outcome: "readied" });
+  return true;
+}
+
+/**
+ * What was readied, taken now (1.283) with the ruleset's readying budget: resolved as its holder's
+ * own turn would resolve it, a spell held by concentration already paid for, a walk on an allowance
+ * of its whole speed. The window it was taken in then goes on, and a walk it interrupted with it.
+ */
+function releaseReadied(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  state: RulesetEncounterState,
+  window: RulesetCombatWindow,
+  actor: RulesetCombatant,
+  choice: RulesetCombatChoice,
+  roller: RulesetCombatRoller,
+): RulesetCombatStep {
+  const readied = actor.readied!;
+  const budget = combat.readying!.budget;
+  const released = {
+    type: "ready" as const,
+    actorId: actor.id,
+    label: readied.label,
+    on: readied.on,
+    outcome: "released" as const,
+  };
+  if (readied.optionId === RULESET_MOVE_OPTION) {
+    const option = rulesetReadiedOption(definition, state, actor);
+    const to = option?.cells?.find((cell) => cell.x === choice.to?.x && cell.y === choice.to?.y);
+    if (!to) return refusal(state, choice.actorId, "unreachable", choice.optionId);
+    const { ctx, finish } = begin(definition, combat, state, roller);
+    const working = rulesetCombatant(ctx.state, actor.id)!;
+    spendBudget(ctx, working, budget);
+    delete working.readied;
+    ctx.events.push(released);
+    legendaryMove(ctx, working, { share: 1 }, to.path);
+    // Held behind a strike it provoked: the walk asks the window on once it ends.
+    if (ctx.state.window?.id === window.id) goOn(definition, combat, ctx);
+    noteOutcome(ctx);
+    return finish();
+  }
+  const own = actor.actions.find((entry) => entry.id === readied.optionId);
+  if (!own) return refusal(state, choice.actorId, "unknown-option", choice.optionId);
+  const outer = structuredClone(window);
+  outer.waiting.shift();
+  const view = rulesetBorrowedTurn(state, actor.id, own.budget);
+  // A held spell lets go of what held it as it goes off: what it starts it starts afresh.
+  if (readied.paid) {
+    view.combatants = view.combatants.map((one) => (one.id === actor.id ? { ...one, concentrating: null } : one));
+  }
+  const { window: _window, ...plain } = choice;
+  const taken = { ...plain, optionId: readied.optionId, ...(readied.payWith ? { payWith: readied.payWith } : {}) };
+  let step: RulesetCombatStep;
+  borrowedOuter = outer;
+  try {
+    const run = () => applyRulesetCombatChoice(definition, view, taken, roller);
+    step = readied.paid ? rulesetWithFreeUse(actor.id, own.id, run) : run();
+  } finally {
+    borrowedOuter = undefined;
+  }
+  if (step.state === view) {
+    return {
+      state,
+      events: step.events.map((event) => (event.type === "refused" ? { ...event, optionId: choice.optionId } : event)),
+    };
+  }
+  const { ctx, finish } = begin(definition, combat, step.state, roller);
+  // Back to the turn it really is, with the budgets that turn left, less the one it was taken with.
+  ctx.state.turn = state.turn;
+  const working = rulesetCombatant(ctx.state, actor.id)!;
+  working.budgets = { ...actor.budgets };
+  spendBudget(ctx, working, budget);
+  delete working.readied;
+  if (!ctx.state.window) {
+    ctx.state.window = outer;
+    goOn(definition, combat, ctx, false);
+  }
+  if (!step.events.some((event) => event.type === "outcome")) noteOutcome(ctx);
+  const after = finish();
+  return { state: after.state, events: [released, ...step.events, ...after.events] };
+}
+
+/**
+ * Whoever readied something for an opponent coming where it reaches them (1.283), and whom this
+ * mover now comes within reach of. `reached` is who could reach them before the step.
+ */
+function readiedReaching(ctx: RulesetCombatContext, mover: RulesetCombatant, asked: Set<string>): string[] {
+  return ctx.state.combatants
+    .filter(
+      (one) =>
+        one.readied?.on === "comes" &&
+        one.side !== mover.side &&
+        !asked.has(one.id) &&
+        rulesetCombatStanding(one) &&
+        readiedReaches(ctx, one, mover),
+    )
+    .map((one) => one.id);
+}
+
+/** Whether what `holder` readied could be taken at `mover` where they stand now (1.283): aimed at
+ *  them, an area that would catch them, or, for a walk, them coming next to its holder. */
+function readiedReaches(ctx: RulesetCombatContext, holder: RulesetCombatant, mover: RulesetCombatant): boolean {
+  const readied = holder.readied!;
+  if (!rulesetCanSee(ctx.definition, ctx.state, holder, mover)) return false;
+  if (readied.optionId === RULESET_MOVE_OPTION) return rulesetGap(holder, mover) <= 1;
+  const own = holder.actions.find((entry) => entry.id === readied.optionId);
+  if (!own) return false;
+  const view = rulesetBorrowedTurn(ctx.state, holder.id, own.budget);
+  const find = () => rulesetCombatOptions(ctx.definition, view, holder.id).find((one) => one.id === own.id);
+  const option = readied.paid ? rulesetWithFreeUse(holder.id, own.id, find) : find();
+  if (!option) return false;
+  if (own.area && view.board) {
+    return rulesetAimCells(view, holder.id, own.id, Infinity, true).some((aim) => aim.targetIds.includes(mover.id));
+  }
+  return rulesetOptionTargets(ctx.definition, view, holder.id, option).includes(mover.id);
+}
+
+/**
+ * After a step in which somebody used something (1.283): everybody who readied something for an
+ * opponent acting, and saw this one do it, is asked whether they take it now.
+ */
+function readiedActs(ctx: RulesetCombatContext): void {
+  if (!ctx.combat.readying || ctx.state.window || !ctx.acted?.size) return;
+  if (rulesetEncounterOutcome(ctx.state) !== "ongoing") return;
+  for (const id of ctx.acted) {
+    const source = rulesetCombatant(ctx.state, id);
+    if (!source) continue;
+    const waiting = ctx.state.combatants
+      .filter(
+        (one) =>
+          one.readied?.on === "acts" &&
+          one.side !== source.side &&
+          one.id !== source.id &&
+          rulesetCombatStanding(one) &&
+          (one.budgets[ctx.combat.readying!.budget] ?? 0) >= 1 &&
+          rulesetCanSee(ctx.definition, ctx.state, one, source),
+      )
+      .map((one) => one.id);
+    if (waiting.length === 0) continue;
+    openWindow(ctx, { kind: "reaction", trigger: { kind: "readied", sourceId: id, on: "acts" }, waiting });
+    break;
+  }
+  ctx.acted.clear();
+}
+
+/**
  * A legendary move (1.278): its maker walks the path on an allowance lent for it alone, a share of
  * its speed or a distance, and keeps its own. One that provokes nothing (a vampire's) is struck at
  * by nobody; one nothing can harm or hold (a mummy lord's Whirlwind of Sand) is first let go of by
@@ -5294,6 +5500,10 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
   const grid = ctx.state.board?.grid;
   const walked = [...resume.walked];
   const asked = new Set(resume.asked);
+  const readyAsked = new Set(resume.readyAsked ?? []);
+  // Only when somebody has readied something for an opponent coming near (1.283).
+  const readying =
+    !!ctx.combat.readying && ctx.state.combatants.some((one) => one.readied?.on === "comes" && one.side !== actor.side);
   let spent = resume.spent;
   let stopped = false;
   let at = walked.length > 0 ? walked[walked.length - 1]! : resume.from;
@@ -5345,6 +5555,7 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
             walked,
             path: rest,
             asked: [...asked],
+            ...(readyAsked.size ? { readyAsked: [...readyAsked] } : {}),
             spent,
             ...(legendary ? { legendary } : {}),
             ...(outer ? { outer } : {}),
@@ -5355,6 +5566,8 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
     }
     rest.shift();
     const before = zonesAround(ctx);
+    // Who could already reach them, before this step (1.283).
+    const reachedBefore = readying ? new Set(readiedReaching(ctx, actor, readyAsked)) : undefined;
     // What the menu showed for the same step: entering the cell, and climbing up to it (combat C6b). The
     // path came from that menu, so a cliff is never on it; a saved one that has one costs a plain step.
     // With other ways of moving (1.108) the same choice the menu made, on what this walk has spent.
@@ -5380,6 +5593,43 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
     actor.y = cell.y;
     // Seen on the way, out in the open (1.282), even where the walk ends back in hiding.
     recheckHiding(ctx, actor);
+    // Come where something readied for it reaches it (1.283): taken now, the rest of the walk after.
+    const readied = reachedBefore
+      ? readiedReaching(ctx, actor, readyAsked).filter(
+          (id) =>
+            !reachedBefore.has(id) && (rulesetCombatant(ctx.state, id)!.budgets[ctx.combat.readying!.budget] ?? 0) >= 1,
+        )
+      : [];
+    if (readied.length > 0 && rulesetEncounterOutcome(ctx.state) === "ongoing") {
+      for (const id of readied) readyAsked.add(id);
+      if (legendary && ctx.state.window) {
+        if (ctx.state.window !== outer) {
+          outer = ctx.state.window;
+          outer.waiting.shift();
+        }
+        ctx.state.window = undefined;
+      }
+      if (!ctx.state.window) {
+        openWindow(ctx, {
+          kind: "reaction",
+          trigger: { kind: "readied", sourceId: actor.id, on: "comes" },
+          waiting: readied,
+          resume: {
+            kind: "walk",
+            actorId: actor.id,
+            from: resume.from,
+            walked,
+            path: rest,
+            asked: [...asked],
+            readyAsked: [...readyAsked],
+            spent,
+            ...(legendary ? { legendary } : {}),
+            ...(outer ? { outer } : {}),
+          },
+        });
+        return;
+      }
+    }
     // A flier that came onto ground as high as it flew, or higher, is standing on it (1.109), and
     // goes on from there as anybody on the ground does.
     if (actor.altitude !== undefined && !rulesetAirborne(grid, actor)) delete actor.altitude;
@@ -5745,6 +5995,7 @@ function openWindow(ctx: RulesetCombatContext, window: Omit<RulesetCombatWindow,
     waiting: [...waiting],
     ...(window.trigger.kind === "leaves-reach" ? { moverId: window.trigger.moverId } : {}),
     ...(moment ? { moment } : {}),
+    ...(window.trigger.kind === "readied" ? { readied: window.trigger.on } : {}),
     ...("targetIds" in window.trigger && window.trigger.targetIds ? { targetIds: window.trigger.targetIds } : {}),
     ...("label" in window.trigger ? { label: window.trigger.label } : {}),
     ...("sourceId" in window.trigger ? { sourceId: window.trigger.sourceId } : {}),
@@ -6115,6 +6366,8 @@ function resolveAction(
     }
     return null;
   }
+  // Somebody using something, for what was readied for it (1.283).
+  if (ctx.combat.readying) (ctx.acted ??= new Set()).add(actor.id);
   // Hiding, and giving it away (1.282): found out once the step is done.
   const giveaway = actor.hiding ? givesAway(ctx, action) : undefined;
   if (giveaway) (ctx.giveaways ??= new Map()).set(actor.id, giveaway);
@@ -7955,6 +8208,13 @@ function beginNextTurn(definition: RulesetDefinition, combat: RulesetCombat, ctx
     // A stance lasts until the actor's next turn, and that turn is now. Help was given to somebody
     // else and is spent by their own next attack, so it survives this.
     actor.flags = actor.flags.helped ? { helped: true } : {};
+    // What it readied waits no longer (1.283): a spell held for it is spent all the same.
+    const readied = actor.readied;
+    if (readied) {
+      delete actor.readied;
+      ctx.events.push({ type: "ready", actorId: actor.id, label: readied.label, on: readied.on, outcome: "expired" });
+      if (readied.paid && actor.concentrating?.actionId === readied.optionId) endConcentration(ctx, actor, "spent");
+    }
     refreshRulesetMovement(definition, combat, actor, ctx.state);
     delete actor.trail;
     ctx.events.push({ type: "turn", actorId: actor.id, round });

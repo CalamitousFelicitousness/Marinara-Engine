@@ -932,6 +932,8 @@ export function planRulesetCombatCost(
   const free: RulesetCombatCost = { steps: [], live: null, cost: [] };
   // More of an item's charges is the item's to spend (1.264), never a pool's.
   if (rulesetChargeSteps(action, payWith) !== null) payWith = undefined;
+  // Paid already, as it was readied (1.283).
+  if (rulesetUseIsFree(combatant.id, action.id)) return free;
   // An opponent's actions cost nothing off a sheet: their block is the only bookkeeping there is.
   if (action.innate || !combatant.sheet) return payWith ? null : free;
   const { build, catalogs } = combatant.sheet;
@@ -2932,6 +2934,11 @@ export function rulesetUncompelledOptions(
   }
   for (const action of combat.standard ?? []) {
     if ((actor.budgets[budget] ?? 0) < 1) break;
+    // Readying for real (1.283): one entry for each option it may ready, and what it waits for.
+    if (action === "ready" && combat.readying) {
+      options.push(...readyOptions(options, budget));
+      continue;
+    }
     options.push({
       id: `standard:${action}`,
       kind: "standard",
@@ -3111,9 +3118,101 @@ export function rulesetBorrowedTurn(
   };
 }
 
+/**
+ * What the Ready action may ready (1.283): each option on the menu taken with the same budget (an
+ * attack, a spell, an item's use), and walking, each waiting for an opponent to come where it can
+ * reach them or for one to use something.
+ */
+function readyOptions(menu: RulesetCombatOption[], budget: string): RulesetCombatOption[] {
+  const readiable = menu.filter(
+    (option) =>
+      (option.budget === budget &&
+        ["attack", "ability", "block", "contest", "item"].includes(option.kind) &&
+        !option.followUp &&
+        !option.signature) ||
+      (option.id === RULESET_MOVE_OPTION && (option.cells?.length ?? 0) > 0),
+  );
+  return readiable.flatMap((option) =>
+    (["comes", "acts"] as const).map((on) => ({
+      id: `${RULESET_READY_OPTION_PREFIX}${option.id}@${on}`,
+      kind: "standard" as const,
+      label: "ready",
+      budget,
+      targets: { side: "self" as const, count: 0 },
+      ...(option.cost ? { cost: option.cost } : {}),
+      ...(option.payWith ? { payWith: option.payWith } : {}),
+      ...(option.upcastOnly ? { upcastOnly: true as const } : {}),
+      ready: { optionId: option.id, label: option.label, on },
+    })),
+  );
+}
+
+/** What a ready entry's id starts with (1.283): `ready:<option>@<comes|acts>`. */
+export const RULESET_READY_OPTION_PREFIX = "ready:";
+
+/** The id a readied option is taken with, in the window its moment opens (1.283). */
+export const RULESET_READIED_OPTION = "readied";
+
+/** An action whose cost was paid already (1.283): a spell readied with concentration, now released.
+ *  Set only around the step that releases it. */
+let freeUse: { actorId: string; actionId: string } | undefined;
+
+/** Runs `step` with this combatant's use of this action costing nothing off its sheet (1.283). */
+export function rulesetWithFreeUse<T>(actorId: string, actionId: string, step: () => T): T {
+  const before = freeUse;
+  freeUse = { actorId, actionId };
+  try {
+    return step();
+  } finally {
+    freeUse = before;
+  }
+}
+
+/** Whether this use is the one already paid for (1.283). */
+export function rulesetUseIsFree(actorId: string, actionId: string): boolean {
+  return freeUse?.actorId === actorId && freeUse.actionId === actionId;
+}
+
+/**
+ * The option a readied action is taken with (1.283), as its holder's own menu would show it were
+ * it their turn and its budget theirs: aimed, and paid with, as on a turn. A readied walk is a
+ * walk of their whole speed, its own allowance kept.
+ */
+export function rulesetReadiedOption(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  actor: RulesetCombatant,
+): RulesetCombatOption | undefined {
+  const readied = actor.readied;
+  const readying = definition.combat?.readying;
+  if (!readied || !readying) return undefined;
+  if (readied.optionId === RULESET_MOVE_OPTION) {
+    const cells = rulesetLegendaryMoveCells(definition, state, actor, {
+      move: { share: 1 },
+    } as RulesetCombatAction);
+    if (cells.length === 0) return undefined;
+    return {
+      id: RULESET_READIED_OPTION,
+      kind: "move",
+      label: readied.label,
+      budget: readying.budget,
+      targets: { side: "self", count: 0 },
+      cells,
+      readied: true,
+    };
+  }
+  const own = actor.actions.find((entry) => entry.id === readied.optionId);
+  if (!own) return undefined;
+  const view = rulesetBorrowedTurn(state, actor.id, own.budget);
+  const find = () => rulesetCombatOptions(definition, view, actor.id).find((option) => option.id === readied.optionId);
+  const option = readied.paid ? rulesetWithFreeUse(actor.id, own.id, find) : find();
+  if (!option) return undefined;
+  return { ...option, id: RULESET_READIED_OPTION, budget: readying.budget, readied: true };
+}
+
 /** Whether an action of a combatant's is one of its spells (1.279): cast out of a catalog, never an
  *  item's use, what a condition lends, or something bought with points. */
-function rulesetIsSpell(action: RulesetCombatAction): boolean {
+export function rulesetIsSpell(action: RulesetCombatAction): boolean {
   return !!action.catalog && action.kind !== "item" && !action.whileHolds && !action.signature;
 }
 
@@ -3193,6 +3292,16 @@ export function rulesetWindowOptions(
         budget: opportunity.budget,
       },
     ];
+  }
+
+  // What it readied, now that it has happened (1.283).
+  if (window.trigger.kind === "readied") {
+    if (!rulesetCombatStanding(actor) || !combat.readying) return [];
+    const effects = rulesetCombatEffects(definition, combat, actor, state);
+    if (effects.has("cannot-act") || effects.has("cannot-react")) return [];
+    if ((actor.budgets[combat.readying.budget] ?? 0) < 1) return [];
+    const option = rulesetReadiedOption(definition, state, actor);
+    return option ? [option] : [];
   }
 
   // A moment the Engine noticed, and everything this one holds that waits for exactly it.

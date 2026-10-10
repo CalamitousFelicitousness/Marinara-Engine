@@ -892,10 +892,17 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
       }),
     ],
     ["revealed", say({ type: "revealed", actorId: "brenna", byIds: ["lurker"], reason: "attack" })],
+    // Ready (1.283).
+    ["ready", say({ type: "ready", actorId: "brenna", label: "Sword", on: "comes", outcome: "readied" })],
   ];
   const printed = new Map(table);
   assert.equal(printed.get("search"), "Thorn Lurker uses Detect (12 + 3 = 15) and finds Brenna.");
   assert.equal(printed.get("revealed"), "Brenna attacks and gives away where they were hiding.");
+  assert.equal(printed.get("ready"), "Brenna readies Sword for an enemy coming in reach.");
+  assert.equal(
+    say({ type: "ready", actorId: "brenna", label: "Sword", on: "acts", outcome: "lost" }),
+    "Brenna loses the readied Sword with their concentration.",
+  );
   assert.equal(
     say({ type: "revealed", actorId: "brenna", byIds: ["lurker"], reason: "seen" }),
     "Thorn Lurker spots Brenna.",

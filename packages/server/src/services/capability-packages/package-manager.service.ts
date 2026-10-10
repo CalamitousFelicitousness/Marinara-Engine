@@ -1547,6 +1547,16 @@ function carriesMetamagic(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesMetamagic(one, depth + 1));
 }
 
+/** Readying for real (1.283): the fight's `readying`. */
+function carriesReadying(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesReadying(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.readying)) return true;
+  return Object.values(record).some((one) => carriesReadying(one, depth + 1));
+}
+
 /** Hiding for real (1.282): the fight's `hiding`, the Search standard action, a creature's Detect. */
 function carriesHiding(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -3906,6 +3916,13 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Readying, 1.283.
+  if (
+    !declaresApi(283) &&
+    (carriesReadying(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesReadying(document)))
+  ) {
+    return "A ruleset that readies for real requires schemaVersion 2 and capabilityApi 1.283 or newer";
   }
   // Hiding, Search and Detect, 1.282.
   if (

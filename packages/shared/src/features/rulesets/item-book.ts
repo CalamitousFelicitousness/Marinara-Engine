@@ -6,6 +6,7 @@
 // screen and the Game Master are shown about it. The server builds the book from the catalogs it
 // loads and the browser from the ones it fetches, so both read an item the same way.
 // ──────────────────────────────────────────────
+import { parseRulesetCombatDice } from "../ruleset-combat/dice.js";
 import {
   rulesetCoinAmount,
   RULESET_ITEM_CHARGES_MAX,
@@ -180,7 +181,8 @@ export interface RulesetItemUseFact {
     cost: number;
     max: number;
     recharge?: { rests: string[]; amount: "max" | string };
-    breaksOn?: { die: number; atMost: number };
+    /** `regains` (1.266): the faces at or over `atLeast` give back `amount` charges. */
+    breaksOn?: { die: number; atMost?: number; regains?: { atLeast: number; amount: string } };
   };
   /** A pool it gives back some of, by the pool's label. */
   restore?: { pool: string; amount: string };
@@ -373,7 +375,22 @@ function rulesetItemUseFacts(
                   },
                 }
               : {}),
-            ...(item.charges?.breaksOn ? { breaksOn: { ...item.charges.breaksOn } } : {}),
+            ...(item.charges?.breaksOn
+              ? {
+                  breaksOn: {
+                    die: item.charges.breaksOn.die,
+                    ...(item.charges.breaksOn.atMost !== undefined ? { atMost: item.charges.breaksOn.atMost } : {}),
+                    ...(item.charges.breaksOn.regains
+                      ? {
+                          regains: {
+                            atLeast: item.charges.breaksOn.regains.atLeast,
+                            amount: amount(item.charges.breaksOn.regains.amount),
+                          },
+                        }
+                      : {}),
+                  },
+                }
+              : {}),
           },
         }
       : {}),
@@ -906,6 +923,27 @@ export function rulesetItemFacts(
   };
 }
 
+/** An item's last-charge die as an inventory spends it (1.266): its `regains` dice read once. */
+function bookBreaksOn(
+  breaks: NonNullable<NonNullable<RulesetCatalogItem["charges"]>["breaksOn"]>,
+): NonNullable<NonNullable<RulesetItemBookEntry["charges"]>["breaksOn"]> {
+  const dice = breaks.regains?.amount.dice ? parseRulesetCombatDice(breaks.regains.amount.dice) : null;
+  return {
+    die: breaks.die,
+    ...(breaks.atMost !== undefined ? { atMost: breaks.atMost } : {}),
+    ...(breaks.regains
+      ? {
+          regains: {
+            atLeast: breaks.regains.atLeast,
+            count: dice?.count ?? 0,
+            sides: dice?.sides ?? 0,
+            flat: (dice?.flat ?? 0) + (breaks.regains.amount.flat ?? 0),
+          },
+        }
+      : {}),
+  };
+}
+
 /**
  * The book for a game: its ruleset's item catalogs, with the entries each has (`entries` by catalog
  * id; a catalog that could not be read is simply absent). `layerOptions` are the game's pinned layer
@@ -948,7 +986,7 @@ export function rulesetItemBook(
             charges: {
               cost: charges.cost,
               max: charges.max,
-              ...(charges.breaksOn ? { breaksOn: charges.breaksOn } : {}),
+              ...(charges.breaksOn ? { breaksOn: bookBreaksOn(entry.item.charges!.breaksOn!) } : {}),
             },
           }
         : {}),
@@ -1308,8 +1346,11 @@ export function rulesetItemUseText(use: RulesetItemUseFact): string {
     use.charges?.recharge
       ? `regains ${use.charges.recharge.amount === "max" ? "all" : use.charges.recharge.amount} on ${use.charges.recharge.rests.join(" or ")}`
       : "",
-    use.charges?.breaksOn
-      ? `breaks on ${rulesetBreakFaces(use.charges.breaksOn)} on a d${use.charges.breaksOn.die} when emptied`
+    use.charges?.breaksOn?.atMost !== undefined
+      ? `breaks on ${rulesetBreakFaces({ atMost: use.charges.breaksOn.atMost })} on a d${use.charges.breaksOn.die} when emptied`
+      : "",
+    use.charges?.breaksOn?.regains
+      ? `regains ${use.charges.breaksOn.regains.amount} on ${rulesetRegainFaces(use.charges.breaksOn.die, use.charges.breaksOn.regains.atLeast)} on a d${use.charges.breaksOn.die} when emptied`
       : "",
     use.gate ? rulesetItemGateText(use.gate) : "",
   ]
@@ -1408,4 +1449,9 @@ export function rulesetItemAttackText(attack: RulesetItemAttackFact): string {
 /** The faces an item breaks on when its last charge is spent: "a 1", or "1 to 3". */
 export function rulesetBreakFaces(breaks: { atMost: number }): string {
   return breaks.atMost === 1 ? "a 1" : `1 to ${breaks.atMost}`;
+}
+
+/** The faces a last charge's die gives charges back on (1.266): "a 20", "19 to 20". */
+export function rulesetRegainFaces(die: number, atLeast: number): string {
+  return atLeast === die ? `a ${die}` : `${atLeast} to ${die}`;
 }

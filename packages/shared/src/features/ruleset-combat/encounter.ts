@@ -1288,7 +1288,7 @@ function itemUseActions(
     const { item } = held;
     if (!item.use) return;
     // Its first use, then any more it has (1.262), each its own choice paid from the same charges.
-    useOf(held, index, `use:${index}`, item.use);
+    useOf(held, index, `use:${index}`, item.use, item.use.label);
     item.moreUses?.forEach((more, n) => useOf(held, index, `use:${index}:${n + 1}`, more.use, more.label));
   });
   return actions;
@@ -1337,13 +1337,17 @@ function itemUseActions(
             charges: {
               cost: use.charges,
               max,
-              ...(item.charges?.breaksOn ? { breaksOn: { ...item.charges.breaksOn } } : {}),
+              ...(item.charges?.breaksOn ? { breaksOn: lastChargeDie(item.charges.breaksOn) } : {}),
               ...(use.chargeStep
                 ? {
                     step: {
                       max: use.chargeStep.max,
                       ...(amountOf(use.chargeStep.amount) ? { amount: amountOf(use.chargeStep.amount)! } : {}),
                       ...(use.chargeStep.targets ? { targets: use.chargeStep.targets } : {}),
+                      // Farther pushed a charge (1.266), in cells: a Ring of the Ram's.
+                      ...(use.chargeStep.push !== undefined && perCell !== undefined
+                        ? { push: rulesetInCells(use.chargeStep.push, perCell) }
+                        : {}),
                     },
                   }
                 : {}),
@@ -1364,6 +1368,18 @@ function itemUseActions(
     };
     actions.push(action);
   }
+}
+
+/** An item's last-charge die as a fight holds it (1.266): what breaks it, and what it gives back. */
+function lastChargeDie(
+  breaks: NonNullable<NonNullable<RulesetCatalogItem["charges"]>["breaksOn"]>,
+): NonNullable<NonNullable<NonNullable<RulesetCombatAction["itemUse"]>["charges"]>["breaksOn"]> {
+  const regained = breaks.regains ? amountOf(breaks.regains.amount) : null;
+  return {
+    die: breaks.die,
+    ...(breaks.atMost !== undefined ? { atMost: breaks.atMost } : {}),
+    ...(breaks.regains && regained ? { regains: { atLeast: breaks.regains.atLeast, amount: regained } } : {}),
+  };
 }
 
 /** What one use does, as an action holds it: the parts a fake takes from what it truly is (1.74). */

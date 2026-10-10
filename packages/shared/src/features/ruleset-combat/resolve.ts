@@ -6985,9 +6985,12 @@ function resolveActionBody(
           ...(action.concentration ? { concentration: true } : {}),
         });
       }
-      // Pushed away from its maker (1.177), once whatever else it does has landed.
-      if (action.push !== undefined && target.id !== actor.id && rulesetCombatStanding(target)) {
-        pushTarget(ctx, actor, target, action.push);
+      // Pushed away from its maker (1.177), once whatever else it does has landed, and farther for
+      // each charge more spent on it (1.266): a Ring of the Ram's.
+      const pushedMore = (ctx.moreCharges ?? 0) * (action.itemUse?.charges?.step?.push ?? 0);
+      const pushBy = action.push !== undefined || pushedMore > 0 ? (action.push ?? 0) + pushedMore : undefined;
+      if (pushBy !== undefined && target.id !== actor.id && rulesetCombatStanding(target)) {
+        pushTarget(ctx, actor, target, pushBy);
       }
       // Sent out of the fight (1.231), last of all.
       if (action.dismisses && target.id !== actor.id) dismiss(ctx, actor, action, target);

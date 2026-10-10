@@ -235,9 +235,25 @@ export function breakRulesetItem(
 ): RulesetCombatEvent | null {
   const use = action.itemUse;
   const breaks = use?.charges?.breaksOn;
-  if (!use || !breaks || rulesetItemUseLeft(actor, use) > 0 || actor.broken?.[use.item]) return null;
+  if (!use?.charges || !breaks || rulesetItemUseLeft(actor, use) > 0 || actor.broken?.[use.item]) return null;
   const face = roll(breaks.die);
-  if (face > breaks.atMost) return null;
+  // A high face gives charges back instead (1.266): a Staff of the Magi's 20.
+  if (breaks.regains && face >= breaks.regains.atLeast) {
+    const amount = breaks.regains.amount;
+    const rolls = Array.from({ length: Math.max(0, amount.count) }, () => roll(amount.sides));
+    const back = Math.max(0, Math.min(use.charges.max, rolls.reduce((sum, one) => sum + one, 0) + amount.flat));
+    (actor.charges ??= {})[use.item] = back;
+    return {
+      type: "recharged",
+      actorId: actor.id,
+      optionId: action.id,
+      label: action.label,
+      roll: face,
+      rolls,
+      amount: back,
+    };
+  }
+  if (breaks.atMost === undefined || face > breaks.atMost) return null;
   (actor.itemsUsed ??= {})[use.item] = (actor.itemsUsed?.[use.item] ?? 0) + 1;
   (actor.broken ??= {})[use.item] = true;
   return { type: "broke", actorId: actor.id, optionId: action.id, label: action.label, roll: face };

@@ -1322,6 +1322,7 @@
   "game.combat.ruleset.event.pickedUp": "{{actor}} picks up {{item}}.",
   "game.combat.ruleset.event.pushed": "{{actor}} pushes {{target}} back {{distance}}, to {{x}}, {{y}}.",
   "game.combat.ruleset.event.rechargeBack": "{{label}} is ready again: {{roll}}, needing {{from}}.",
+  "game.combat.ruleset.event.recharged": "{{label}} gets {{amount}} charges back (a {{roll}} on its die).",
   "game.combat.ruleset.event.rechargeNot": "{{label}} is not ready yet: {{roll}}, needing {{from}}.",
   "game.combat.ruleset.event.recheckHit": "Against {{defense}}, {{actor}}'s {{label}} still hits {{target}}.",
   "game.combat.ruleset.event.recheckMiss": "Against {{defense}}, {{actor}}'s {{label}} now misses {{target}}.",

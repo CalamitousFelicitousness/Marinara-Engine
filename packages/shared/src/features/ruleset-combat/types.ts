@@ -770,9 +770,11 @@ export interface RulesetCombatAction {
     charges?: {
       cost: number;
       max: number;
-      breaksOn?: { die: number; atMost: number };
-      /** More charges its user may spend, each a step of a higher cost (1.264). */
-      step?: { max: number; amount?: RulesetCombatAmount; targets?: number };
+      /** Its last charge's die (1.266: `regains` on a high face, `atMost` optional). */
+      breaksOn?: { die: number; atMost?: number; regains?: { atLeast: number; amount: RulesetCombatAmount } };
+      /** More charges its user may spend, each a step of a higher cost (1.264), and farther pushed for
+       *  each, in cells (1.266). */
+      step?: { max: number; amount?: RulesetCombatAmount; targets?: number; push?: number };
     };
     /** Its `gate`, read off the user's sheet as the fight began: what is rolled (a skill's id when it
      *  is one, so what is narrowed to it counts), the sheet's number for it, and the difficulty. No
@@ -1653,6 +1655,16 @@ export type RulesetCombatEvent =
   | { type: "uses"; actorId: string; optionId: string; label: string; left: number; of: number }
   /** An item whose last charge was just spent, and whose die said it breaks. */
   | { type: "broke"; actorId: string; optionId: string; label: string; roll: number }
+  /** Its last charge spent, the die gave some back (1.266): a Staff of the Magi's 20. */
+  | {
+      type: "recharged";
+      actorId: string;
+      optionId: string;
+      label: string;
+      roll: number;
+      rolls: number[];
+      amount: number;
+    }
   /** A fake just used, found out (1.74): what it truly was, and whether it did nothing. */
   | { type: "fake"; actorId: string; optionId: string; label: string; truly: string; dud?: true }
   /** An item's gate: the check its user rolled before it could work. A failed one used it up for

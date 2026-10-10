@@ -311,8 +311,25 @@ export function applyGameInventoryOps(
           const stack = usable.find((each) => !each.holder) ?? usable[0];
           if (!stack) break;
           const held = chargesOf(stack)!;
-          const now = left(stack) - held.cost;
-          const breaks = now === 0 && held.breaksOn && roll ? roll(held.breaksOn.die) <= held.breaksOn.atMost : false;
+          const spentTo = left(stack) - held.cost;
+          const face = spentTo === 0 && held.breaksOn && roll ? roll(held.breaksOn.die) : undefined;
+          // A high face gives charges back (1.266): a Staff of the Magi's 20.
+          const regains = held.breaksOn?.regains;
+          const now =
+            face !== undefined && regains && roll && face >= regains.atLeast
+              ? Math.max(
+                  0,
+                  Math.min(
+                    held.max,
+                    Array.from({ length: regains.count }, () => roll(regains.sides)).reduce(
+                      (sum, one) => sum + one,
+                      0,
+                    ) + regains.flat,
+                  ),
+                )
+              : spentTo;
+          const breaks =
+            face !== undefined && now === 0 && held.breaksOn?.atMost !== undefined && face <= held.breaksOn.atMost;
           if (breaks) broke++;
           current = breaks
             ? current.filter((each) => each !== stack)

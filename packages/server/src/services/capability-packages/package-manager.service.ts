@@ -1549,6 +1549,26 @@ function carriesMetamagic(value: unknown, depth = 0): boolean {
 
 /** An aura that needs senses, harms at its holder's turn or asks for a save, or a save change
  *  narrowed to what is cast from a catalog (1.260). */
+/** An item's first use named, a use adding a value off its holder's sheet, more charges pushing
+ *  farther, and a last charge's die that gives charges back or breaks nothing (1.266), in catalogs
+ *  too. */
+function carriesStaffExtras(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesStaffExtras(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const uses = [
+    record.use,
+    ...(Array.isArray(record.moreUses) ? record.moreUses.map((more) => plainRecord(more)?.use) : []),
+  ];
+  if (uses.some((use) => plainRecord(use)?.amountAdd !== undefined || plainRecord(use)?.label !== undefined))
+    return true;
+  if (plainRecord(record.chargeStep)?.push !== undefined) return true;
+  // A die with no `atMost` always has `regains`.
+  if (plainRecord(record.breaksOn)?.regains !== undefined) return true;
+  return Object.values(record).some((one) => carriesStaffExtras(one, depth + 1));
+}
+
 /** A creature type chosen as a catalog entry is used, auras reaching only that kind or whoever sees
  *  their holder, and a save ending a condition only from far enough away (1.265), in catalogs too. */
 function carriesKindChoice(value: unknown, depth = 0): boolean {
@@ -3675,6 +3695,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // An item's first use named, a use plus its holder's value, pushes a charge, charges back, 1.266.
+  if (
+    !declaresApi(266) &&
+    (carriesStaffExtras(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesStaffExtras(document)))
+  ) {
+    return "A ruleset with an item whose first use is named, an item use adding a value off its holder's sheet, more charges that push farther, or a last charge's die that gives charges back, requires schemaVersion 2 and capabilityApi 1.266 or newer";
   }
   // A creature type chosen as it is used, auras by that kind or by sight, saves from far away, 1.265.
   if (

@@ -119,8 +119,17 @@ export interface GameInventoryRulesetItem {
   /** Bought and never carried (#6917): nothing adds it to a bag. */
   service?: true;
   /** A use spends `cost` of the `max` charges it holds (a stack without a count is full), and the last
-   *  one spent rolls a d`die` that breaks it at `atMost` or under. */
-  charges?: { cost: number; max: number; breaksOn?: { die: number; atMost: number } };
+   *  one spent rolls a d`die` that breaks it at `atMost` or under, or at `regains.atLeast` or over
+   *  gives back `count`d`sides` + `flat` charges (1.266). */
+  charges?: {
+    cost: number;
+    max: number;
+    breaksOn?: {
+      die: number;
+      atMost?: number;
+      regains?: { atLeast: number; count: number; sides: number; flat: number };
+    };
+  };
   /** It has a switch (Capability API 1.165): what turning it on does, in the ruleset's words. */
   toggle?: { label: string };
 }

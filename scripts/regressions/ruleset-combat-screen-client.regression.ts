@@ -591,6 +591,18 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["uses", say({ type: "uses", actorId: "lurker", optionId: "thorns", label: "Thorns", left: 1, of: 3 })],
     ["broke", say({ type: "broke", actorId: "corwin", optionId: "use:0", label: "Wand of sparks", roll: 1 })],
     [
+      "recharged",
+      say({
+        type: "recharged",
+        actorId: "corwin",
+        optionId: "use:0",
+        label: "Staff of the magi",
+        roll: 20,
+        rolls: [6],
+        amount: 7,
+      }),
+    ],
+    [
       "fake",
       say({
         type: "fake",
@@ -873,6 +885,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.equal(printed.get("window"), "Brenna breaks away, and Thorn Lurker may strike.");
   assert.equal(printed.get("restored"), "Corwin gets back 2 Ki, and is on 5 of 7.");
   assert.equal(printed.get("broke"), "Wand of sparks breaks (a 1 on its die).");
+  assert.equal(printed.get("recharged"), "Staff of the magi gets 7 charges back (a 20 on its die).");
   assert.equal(printed.get("fake"), "The Potion of healing was really Potion of poison.");
   assert.equal(
     say({

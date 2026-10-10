@@ -4871,6 +4871,79 @@ export type RulesetItemAttack = z.infer<typeof rulesetItemAttackSchema>;
 /** The most charges an item holds, written down or read off a stat, and so the most one use spends. */
 export const RULESET_ITEM_CHARGES_MAX = 100;
 
+/** An item's last-charge die (Capability API 1.61; `regains`, and `atMost` optional, 1.266). Typed
+ *  by hand: written out, its inferred type is too long for the definition schema around it to emit. */
+export interface RulesetItemLastCharge {
+  die: number;
+  atMost?: number;
+  regains?: { atLeast: number; amount: { dice?: string; flat?: number } };
+}
+const itemLastChargeSchema: z.ZodType<RulesetItemLastCharge, z.ZodTypeDef, unknown> = z
+  .object({
+    die: z.number().int().min(2).max(100),
+    atMost: z.number().int().min(1).max(100).optional(),
+    regains: z
+      .object({
+        atLeast: z.number().int().min(1).max(100),
+        amount: z.object(catalogAmountShape).strict(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict()
+  .superRefine((breaks, ctx) => {
+    if (breaks.atMost !== undefined && breaks.atMost > breaks.die) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["atMost"],
+        message: "A break is at most the die's own faces",
+      });
+    }
+    if (breaks.atMost === undefined && !breaks.regains) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["atMost"],
+        message: 'The last charge\'s die breaks the item ("atMost"), gives charges back ("regains"), or both',
+      });
+    }
+    const regains = breaks.regains;
+    if (
+      regains &&
+      (regains.atLeast > breaks.die || (breaks.atMost !== undefined && regains.atLeast <= breaks.atMost))
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["regains", "atLeast"],
+        message: "Charges come back on faces the die has, above any that break it",
+      });
+    }
+    if (regains && regains.amount.dice === undefined && regains.amount.flat === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["regains", "amount"],
+        message: "Charges given back say how many",
+      });
+    }
+  });
+
+/** More charges a use may spend (Capability API 1.264; `push`, 1.266). Typed by hand, as above. */
+export interface RulesetItemChargeStep {
+  max: number;
+  amount?: { dice?: string; flat?: number };
+  targets?: number;
+  push?: number;
+}
+const itemChargeStepSchema: z.ZodType<RulesetItemChargeStep, z.ZodTypeDef, unknown> = z
+  .object({
+    max: z.number().int().min(1).max(20),
+    amount: z.object(catalogAmountShape).strict().optional(),
+    targets: z.number().int().min(1).max(10).optional(),
+    /** Farther pushed for each, in the ruleset's distance (Capability API 1.266): a Ring of the
+     *  Ram's 5 feet a charge. */
+    push: z.number().finite().gt(0).max(10000).optional(),
+  })
+  .strict();
+
 export const rulesetItemUseSchema = catalogMechanicsObject
   .omit({
     kind: true,
@@ -4879,8 +4952,6 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     // A kind is named as a spell is cast (1.265), not as an item is used.
     kindChoice: true,
     needsAny: true,
-    // A sheet value added to an amount is a catalog entry's (1.78): an item's use reads its own stats.
-    amountAdd: true,
     cost: true,
     perCostStep: true,
     targetsPerCostStep: true,
@@ -4925,17 +4996,16 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     /** The save difficulty read off its holder's own sheet instead (Capability API 1.264): a staff
      *  cast "using your spell save DC". */
     sheetDifficulty: itemToHitValueRefSchema.optional(),
+    /** Added to `amount`, read off its holder's own sheet as the fight begins (Capability API 1.266):
+     *  a Staff of Healing's Cure Wounds plus its holder's spellcasting modifier. Needs an amount. */
+    amountAdd: itemToHitValueRefSchema.optional(),
+    /** What the menu calls it beside the item's name (Capability API 1.266), as a `moreUses` label
+     *  is: a staff's first spell. */
+    label: promptSafeText(60).optional(),
     /** More charges its user may spend on it (Capability API 1.264), up to `max` beyond `charges`:
      *  each adds `amount` and `targets`, and counts as one step of a higher cost (a Staff of Power's
      *  spell cast at a higher level, a Staff of Striking's 1d6 force a charge). */
-    chargeStep: z
-      .object({
-        max: z.number().int().min(1).max(20),
-        amount: z.object(catalogAmountShape).strict().optional(),
-        targets: z.number().int().min(1).max(10).optional(),
-      })
-      .strict()
-      .optional(),
+    chargeStep: itemChargeStepSchema.optional(),
     consumes: z.literal(true).optional(),
     /** Using it casts an entry of this catalog (Capability API 1.175), as a scroll or a wand does: a
      *  condition that ends when its holder casts from that catalog ends when they use it. */
@@ -4982,9 +5052,16 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     if (use.chargeStep && use.charges === undefined) {
       issue("chargeStep", 'More charges go beside the "charges" a use spends');
     }
-    if (use.chargeStep && !use.chargeStep.targets && !use.chargeStep.amount?.dice && !use.chargeStep.amount?.flat) {
-      issue("chargeStep", "A charge more adds an amount, targets, or both");
+    if (
+      use.chargeStep &&
+      !use.chargeStep.targets &&
+      !use.chargeStep.push &&
+      !use.chargeStep.amount?.dice &&
+      !use.chargeStep.amount?.flat
+    ) {
+      issue("chargeStep", "A charge more adds an amount, targets, a push, or some of them");
     }
+    if (use.amountAdd && !use.amount) issue("amountAdd", "amountAdd adds to an amount: give the amount too");
     if (use.restore && use.restore.amount.dice === undefined && use.restore.amount.flat === undefined) {
       issue("restore", "A restore says how much it gives back");
     }
@@ -5010,7 +5087,7 @@ const itemMoreUseSchema: z.ZodType<RulesetItemMoreUse, z.ZodTypeDef, unknown> = 
   .object({ label: promptSafeText(40), use: rulesetItemUseSchema })
   .strict();
 
-const catalogItemSchema = z
+const catalogItemObjectSchema = z
   .object({
     category: sheetId,
     rarity: sheetId.optional(),
@@ -5070,20 +5147,10 @@ const catalogItemSchema = z
           })
           .strict()
           .optional(),
-        /** A die rolled when a use spends the last charge: at or under `atMost`, the item breaks. */
-        breaksOn: z
-          .object({ die: z.number().int().min(2).max(100), atMost: z.number().int().min(1).max(100) })
-          .strict()
-          .superRefine((breaks, ctx) => {
-            if (breaks.atMost > breaks.die) {
-              ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                path: ["atMost"],
-                message: "A break is at most the die's own faces",
-              });
-            }
-          })
-          .optional(),
+        /** A die rolled when a use spends the last charge: at or under `atMost`, the item breaks; at or
+         *  over `regains.atLeast` (Capability API 1.266), it gets back `regains.amount` charges, a
+         *  Staff of the Magi's 1d12 + 1 on a 20. Either, or both. */
+        breaksOn: itemLastChargeSchema.optional(),
       })
       .strict()
       .optional(),
@@ -5097,6 +5164,11 @@ const catalogItemSchema = z
       .optional(),
   })
   .strict();
+
+/** Typed by its own name (1.266): written out, the item's inferred type is too long for the
+ *  definition schema around it to emit. */
+export type RulesetCatalogItem = z.infer<typeof catalogItemObjectSchema>;
+const catalogItemSchema: z.ZodType<RulesetCatalogItem, z.ZodTypeDef, unknown> = catalogItemObjectSchema;
 
 /** What a catalog entry gives a character when it is picked through the guided builder (Capability API
  *  1.81), and takes back when it is unpicked. The catalog picker ignores it. */
@@ -9801,7 +9873,6 @@ export type RulesetCatalogHeader = z.infer<typeof catalogSchema>;
 export type RulesetCatalogEntry = z.infer<typeof catalogEntrySchema>;
 export type RulesetCatalogGrants = z.infer<typeof catalogGrantsSchema>;
 
-export type RulesetCatalogItem = z.infer<typeof catalogItemSchema>;
 /** One item as a catalog entry writes it, for reading an invented item back off a game. */
 export const rulesetCatalogItemSchema = catalogItemSchema;
 export type RulesetItems = z.infer<typeof itemsSchema>;
@@ -10865,6 +10936,10 @@ function itemIssues(
     useIssues(definition, item, more.use, [...at, "moreUses", index, "use"], add),
   );
   if (item.moreUses && !item.use) add([...at, "moreUses"], 'More uses go beside a "use"');
+  item.moreUses?.forEach((more, index) => {
+    if (more.use.label !== undefined)
+      add([...at, "moreUses", index, "use", "label"], "A further use is named by its own label");
+  });
   if (item.charges) {
     itemValueChecker(definition, add)(item.charges.max, "number", [...at, "charges", "max"]);
     // Or by its weapon slaying (1.182): a nine lives stealer's.
@@ -11009,6 +11084,12 @@ function useIssues(
     const names = rulesetSheetNames(definition.sheet, definition.items);
     for (const issue of rulesetValueRefIssues(use.sheetDifficulty, names, names.derived, true)) {
       add([...at, "sheetDifficulty", issue.key], issue.message);
+    }
+  }
+  if (use.amountAdd) {
+    const names = rulesetSheetNames(definition.sheet, definition.items);
+    for (const issue of rulesetValueRefIssues(use.amountAdd, names, names.derived, true)) {
+      add([...at, "amountAdd", issue.key], issue.message);
     }
   }
   if (use.damageType && types && !types.has(use.damageType.trim().toLowerCase())) {

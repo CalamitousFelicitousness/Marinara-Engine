@@ -323,7 +323,11 @@ When the fork prunes something upstream still has (stale localization keys, a
 gutted component's helpers), the merge keeps the deletion. A new upstream
 consumer of that name then fails in `pnpm localization:check` or `tsc`, not as a
 conflict. On 2026-10-09 four `ui.panels.ttsconfigcard.*` keys and
-`buildTTSVoiceOptions` came back this way. Restore the key from upstream's
+`buildTTSVoiceOptions` came back this way. Two more, the tracker add-mode keys,
+passed every check and showed as raw text on a button: `localization:check` and
+upstream's key lane only read `localizeUi("literal")`. The fork's
+`localization-key-literals` lane reads every catalog-shaped literal; run it
+after each sync. Restore the key from upstream's
 catalog, or point the consumer at the fork's equivalent; do not rewrite
 upstream's consumer around the gap.
 
@@ -340,6 +344,17 @@ by default; an upstream lane that deletes `PROVIDER_LOCAL_URLS_ENABLED` and
 asserts a refusal then times out on the fetch instead. Set the flag to `false`
 in the lane. Upstream e2e specs seed `trackerPanelSizeProfile`, which the fork's
 store replaced with `trackerPanelWidth`; `tsc` in `check:e2e-types` catches it.
+
+### Upstream tests of the Trackers window are skipped, not adapted
+
+The fork never mounts upstream's Trackers window (`trackersWindowAvailable` in
+`RoleplayTrackerWindow.tsx`); trackers show only in the Tracker Panel. A new
+upstream e2e test that seeds `trackerPanelEnabled: false` on a computer, or
+looks for `[data-window="trackers"]`, fails on its first locator. Add its title
+to `e2e/fork-excluded-tests.ts` instead of editing the spec, then check it
+dropped out of `playwright test --list --project=desktop-chromium`. A conflict
+on the `showWindow` line means upstream changed when the window shows: keep the
+gate.
 
 ## Checks that no conflict marker will warn you about
 

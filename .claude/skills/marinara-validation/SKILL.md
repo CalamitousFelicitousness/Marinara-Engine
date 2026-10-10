@@ -225,8 +225,21 @@ lanes. The sixth is new upstream:
   listener at `::1` whenever the machine has an IPv6 loopback, and Node rejects
   the certificate with `ERR_TLS_CERT_ALTNAME_INVALID` (`Host: ::1. is not
   cert's CN: localhost`) although the certificate lists `IP:::1`. Deterministic
-  alone. The lane and `services/multiplayer/` are byte-identical to upstream;
-  attributed on provenance, not yet on a clean upstream worktree.
+  alone, and identical on a clean `upstream/staging` worktree (`f17f1c1f6`).
+
+`e2e/drawer-popout.e2e.ts:489` (`a minimized World State window stays in view
+as a movable banner`) fails its saved-position check by a sub-pixel: the saved
+bubble `x` is `581.5078125` against a measured `581.5`. Identical on the same
+clean upstream worktree, so it is upstream's on this machine. The fork now skips
+it on desktop with the other Trackers window tests (`e2e/fork-excluded-tests.ts`).
+
+A test that ends on "Marinara hit a recoverable UI error" with
+`Failed to fetch dynamically imported module` in its trace is usually not a
+crash. Chromium got `net::ERR_NO_BUFFER_SPACE` loading a module from the Vite
+dev server: Windows runs out of socket buffers late in a long run, or on a
+`page.reload()`, which re-requests every module. Grep the trace's console events
+for `ERR_NO_BUFFER_SPACE`, then re-run the test alone; on 2026-10-10 the Help
+Layout test failed this way 15 minutes into a run and passed alone.
 
 Upstream's Playwright config now has a third project, `mobile-webkit`. A run
 without `--project` includes it and every WebKit test fails in milliseconds with

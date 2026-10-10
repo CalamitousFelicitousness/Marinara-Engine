@@ -1,6 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 import { fileURLToPath } from "node:url";
 import { forceColorValueEnablesColor } from "./e2e/playwright-color-environment.js";
+import { forkExcludedTests } from "./e2e/fork-excluded-tests.js";
 
 const callerDisabledColors = process.env.NO_COLOR !== undefined && process.env.NO_COLOR !== "";
 const shouldPreventPlaywrightColorOverride =
@@ -30,6 +31,7 @@ const mobileBaseURL = process.env.PLAYWRIGHT_MOBILE_BASE_URL ?? `http://127.0.0.
 export default defineConfig({
   testDir: "./e2e",
   testMatch: "**/*.e2e.ts",
+  grepInvert: forkExcludedTests,
   timeout: 60_000,
   expect: {
     timeout: 10_000,

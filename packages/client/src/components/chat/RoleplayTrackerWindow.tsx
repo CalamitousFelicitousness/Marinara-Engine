@@ -151,7 +151,10 @@ export function RoleplayTrackerWindow({
     BUILT_IN_TRACKER_TYPES.some((type) => props.enabledAgentTypes.has(type)) ||
     packages.memoryNag.length + packages.other.length > 0;
 
-  const showWindow = !phoneLayout && !trackerPanelSelected && hasTrackers;
+  // This fork shows trackers only in the Tracker Panel, so the window, its pop-outs and its World State
+  // banner never mount. Beholder's control windows still do.
+  const trackersWindowAvailable = false;
+  const showWindow = trackersWindowAvailable && !phoneLayout && !trackerPanelSelected && hasTrackers;
   return (
     <>
       {packages.beholder.map((item, index) => (

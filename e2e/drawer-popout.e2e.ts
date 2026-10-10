@@ -771,8 +771,13 @@ test.describe("Pop-out drawers on desktop", () => {
 
       for (const topP of ["0.9", "0.8"]) {
         await settle(popped);
-        await expect(popped.getByRole("textbox", { name: "Temperature", exact: true })).toHaveValue("1.37");
-        await expect(popped.getByRole("textbox", { name: "Max Output Tokens", exact: true })).toHaveValue("777");
+        // Inherited values show with the layer that set them; a chat's own value is an Override.
+        await expect(popped.getByRole("textbox", { name: "Temperature", exact: true })).toHaveValue(/^1\.37\b/u);
+        await expect(popped.getByRole("textbox", { name: "Max Output Tokens", exact: true })).toHaveValue(/^777\b/u);
+        await popped
+          .getByRole("radiogroup", { name: "Top P source" })
+          .getByRole("radio", { name: "Override", exact: true })
+          .click();
         const input = popped.getByRole("textbox", { name: "Top P", exact: true });
         await expect(input).toBeEnabled();
         await input.fill(topP);
@@ -781,9 +786,9 @@ test.describe("Pop-out drawers on desktop", () => {
           .poll(async () => {
             const row = await (await request.get(`/api/chats/${chat.id}`)).json();
             const metadata = typeof row.metadata === "string" ? JSON.parse(row.metadata) : row.metadata;
-            return metadata.chatParameters;
+            return metadata.chatParameterOverrides?.topP;
           })
-          .toMatchObject({ topP: Number(topP), enabledParameters: inheritedSend });
+          .toEqual({ mode: "override", value: Number(topP) });
         if (topP === "0.9") {
           await expect
             .poll(async () => (await readSavedLayout(request, chat.id))?.detached)

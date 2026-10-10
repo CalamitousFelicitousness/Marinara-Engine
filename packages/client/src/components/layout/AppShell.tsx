@@ -1174,11 +1174,6 @@ export function AppShell({
     trackerPanelWidth,
   ]);
 
-  const trackerPanelOverlayClearance =
-    !shellOverlayMode && trackerPanelAnchoredForMotion && trackerPanelSurfaceAvailable
-      ? trackerPanelResolvedWidth + TRACKER_PANEL_HUD_GAP
-      : 0;
-  const trackerPanelHudClearance = trackerPanelHideHudWidgets ? trackerPanelOverlayClearance : 0;
   // "float" always sits over the chat column. "dock" only gives up and floats
   // once the gutter cannot hold a usable row.
   const trackerPanelOverlaid =
@@ -1187,6 +1182,13 @@ export function AppShell({
   const trackerPanelRenderWidth = trackerPanelOverlaid
     ? Math.min(trackerPanelWidth, Math.max(TRACKER_PANEL_MIN_DOCK_WIDTH, trackerPanelMainWidth - 16))
     : trackerPanelResolvedWidth;
+  // The width the panel is drawn at: a floating panel is wider than the gutter it was measured in, and the
+  // Chat Settings button and chat tool buttons place themselves by this.
+  const trackerPanelOverlayClearance =
+    !shellOverlayMode && trackerPanelAnchoredForMotion && trackerPanelSurfaceAvailable
+      ? trackerPanelRenderWidth + TRACKER_PANEL_HUD_GAP
+      : 0;
+  const trackerPanelHudClearance = trackerPanelHideHudWidgets ? trackerPanelOverlayClearance : 0;
   // Shrinking type is now the opt-out, not the default: with reflow doing the
   // adapting there is nothing left for a width-derived scale to fix.
   const trackerPanelContentScale =

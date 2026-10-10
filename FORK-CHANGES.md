@@ -167,6 +167,29 @@ returned 3 of 3 identical replies, and `z-ai/glm-5.3` pinned to the `zai` provid
 unconstrained controls returned 3 distinct replies on both. Default-routed `z-ai/glm-5.3` ignored
 both samplers. No route tested applied `min_p`.
 
+### Trackers show only in the Tracker Panel
+
+`RoleplayTrackerWindow.tsx` gates upstream's Trackers window off with `trackersWindowAvailable =
+false`. Upstream shows that window on a computer whenever the Tracker Panel is closed, each of its
+drawers pops out into a window of its own, and World State minimizes to a banner, all beside the
+panel's own dock, float and detach. The panel is now the only computer surface: the Chat Settings
+dice opens and closes it, and closing it from its header leaves upstream's Trackers button, which
+reopens it. Beholder's control windows render from the same component and stay. Phones never had
+the window.
+
+The gate leaves upstream's window code in place, so a sync conflicts only when upstream edits that
+line, and the source-shape lanes that read the file keep passing.
+
+With the window gone, a computer with the Tracker Panel switched off in Settings shows no trackers
+until the dice turns it back on. The switch's subtitle therefore reads `offUntilTurnedOn` instead of
+upstream's `inATrackerWindow`, and Tracker text size sits in the drawer's fieldset with the panel's
+other settings.
+
+Eleven upstream tests (twelve desktop runs) exercise the window. `e2e/fork-excluded-tests.ts` lists
+their titles, and `playwright.config.ts`, an upstream file, passes them to `grepInvert` anchored to
+the desktop projects. `e2e/tracker-panel-only.e2e.ts` covers the dice instead and fails with the
+gate open.
+
 ## Fork-only additions
 
 ### Preset variables resolve in every mode, not only Roleplay
@@ -1354,7 +1377,9 @@ like it worked and did not.
 
 - **Per chat.** The menu action now deletes the chat's snapshots via `DELETE /chats/:id/game-state`
   before writing the cleared state, behind a destructive confirm. Messages are untouched. The client
-  side is `useClearTrackers` in `hooks/use-agent-activity.ts`, an upstream file.
+  side is `useClearTrackers` in `hooks/use-agent-activity.ts`, an upstream file. Upstream later added
+  its own confirm; the fork's `clearTrackersConfirm` opens with upstream's question ("Clear all
+  trackers for this chat?") so upstream's `core-flows.e2e.ts` finds the dialog.
 - **Globally.** Settings gains "Reset all tracker data", which posts the existing admin expunge with a
   new narrow `trackers` scope. The `chats` scope already dropped `game_state_snapshots`, but it takes
   every message and chat with it, which is not what retiring a tracker schema needs.
@@ -1419,6 +1444,12 @@ size on the panel root, each multiplied by both the user's text scale and the le
 88 occurrences across 25 files moved onto those tokens. `rem` rather than `em` on purpose: the extras
 tree nests arbitrarily deep and `em` would compound at every level.
 
+A token resolves where it is declared, and an undeclared one leaves `font-size` invalid, so the text
+silently inherits its parent's size. The HUD's agent activity rows use `TRACKER_TEXT_ROW` outside the
+panel, so the tokens are declared on `:root` at scale 1 and again on the panel at its Text size.
+
+Text size is also a row in Settings → Appearance → Roleplay → Tracker Panel, below Desktop size.
+
 Placement is a three-way setting, since the question turned out to be where the panel sits rather than
 only what happens when it does not fit:
 
@@ -1441,6 +1472,12 @@ Upstream later made the Roleplay column give way to a docked panel instead
 (`resolveTrackerPanelColumnRoom` in `lib/tracker-panel-layout.ts`): `dock` reserves 176px plus the
 gap, so the panel docks wherever the pane can hold both; `float` reserves nothing; `scale` reserves
 upstream's 96px floor, where the panel's own buttons still fit.
+
+Upstream's Chat Settings button and chat tool buttons stay clear of the panel by
+`--tracker-panel-overlay-clearance`. A floating panel is drawn wider than the gutter it was measured
+in, so the clearance is the drawn width (`trackerPanelRenderWidth`); from the gutter width the panel
+covered the Chat Settings button. `e2e/floating-tracker-panel.e2e.ts` checks every button against a
+floating panel at 1024px and 1440px.
 
 Persist migration v96 -> v97 folds the short-lived density setting into the text scale
 (compact/standard/comfortable -> S/M/L). Width presets set width only now; pairing them with a text
@@ -1508,6 +1545,11 @@ Losses with no conflict marker, all fixed in the merge:
   `localVariables` now read from it.
 - Four `ui.panels.ttsconfigcard.*` keys the fork had pruned are used again by upstream's voice
   picker and were restored; the branch browser's title moved to upstream's `chat.settings.branches`.
+  So were `enterTrackerAddMode`/`exitTrackerAddMode`, retired with the fork's edit mode but used by
+  the Trackers window's add button. Upstream's `localization-key-references` lane reads only the
+  literal right after `localizeUi(`, so a key chosen by a ternary or passed to `t(` showed as raw text
+  unnoticed; `localization-key-literals.regression.ts` checks every catalog-shaped literal, and found
+  upstream's own dangling `ui.panels.connectionspanel.retry` too.
 - `STT_LOCAL_URLS_ENABLED` arrived default-off; it now follows the fork's rule for typed URLs.
 
 `package.json#pnpm`: `@fastify/busboy` 3.2.2, `@modelcontextprotocol/sdk` 1.32.1, `fast-copy` 4.1.1,
@@ -1522,7 +1564,9 @@ refusals; `chat-branch-preview` reads `ChatBranchesPanel.tsx`; `e2e/docked-track
 `e2e/chat-position.e2e.ts` seed `trackerPanelWidth: 340` instead of the size profile;
 `e2e/author-notes.e2e.ts` closes the Chat Settings window instead of the removed close button;
 `e2e/ux-feedback-sweep.e2e.ts`'s Character Voice test reads the saved voice from the API instead of
-the TTS card's casting rows, which the fork moved to audio connections, and so runs on phones too.
+the TTS card's casting rows, which the fork moved to audio connections, and so runs on phones too;
+`e2e/drawer-popout.e2e.ts`'s popped-out Advanced Parameters test reads inherited values with their
+layer label and sets Top P as an Override.
 
 Regression suite after the merge, app stopped: 592/598 with the lanes above fixed. The six failures
 are `launcher/update` (fork design), the Windows-only `gallery-previews`, `server-signal-shutdown`,

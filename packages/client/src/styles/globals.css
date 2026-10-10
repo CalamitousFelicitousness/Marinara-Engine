@@ -4960,7 +4960,13 @@ strong {
    means adding one token here, nothing else.
 
    rem rather than em on purpose: the extras tree nests arbitrarily deep, and em
-   would compound at every level. */
+   would compound at every level.
+
+   The tokens resolve where they are declared, so the panel declares them again
+   at its own scale over :root's scale 1, which serves tracker parts shown
+   outside the panel (the HUD). Without a declaration a token is invalid and
+   the text inherits its parent's size. */
+:root,
 [data-tracker-text-size] {
   --tracker-fs-0-4375: calc(0.4375rem * var(--tracker-text-scale, 1) * var(--tracker-panel-font-scale, 1));
   --tracker-fs-0-5: calc(0.5rem * var(--tracker-text-scale, 1) * var(--tracker-panel-font-scale, 1));

@@ -16,6 +16,7 @@ import {
   getDefaultChatTextColor,
   getTrackerPanelWidthForProfile,
   resolveTrackerPanelPreset,
+  TRACKER_PANEL_TEXT_SIZES,
   type ChatWidgetPreset,
   type ChatWidgetShape,
   type ConversationAvatarShape,
@@ -1323,6 +1324,14 @@ const SETTINGS_SEARCHABLE_CONTROLS: readonly SettingsSearchableControlMeta[] = [
     label: "Desktop size",
     description: "Choose the Tracker panel desktop width.",
     aliases: ["tracker", "width", "compact", "expanded"],
+    kind: "Button group",
+  },
+  {
+    id: "tracker-text-size",
+    sectionId: "roleplay-tracker",
+    label: "Tracker text size",
+    description: "Size of tracker text in the Tracker Panel.",
+    aliases: ["tracker", "text", "font", "size", "larger", "smaller"],
     kind: "Button group",
   },
   {
@@ -2675,6 +2684,8 @@ function TrackerPanelAppearanceDrawer() {
   const setTrackerTemperatureUnit = useUIStore((state) => state.setTrackerTemperatureUnit);
   const trackerStatDisplayMode = useUIStore((state) => state.trackerStatDisplayMode);
   const setTrackerStatDisplayMode = useUIStore((state) => state.setTrackerStatDisplayMode);
+  const trackerPanelTextSize = useUIStore((state) => state.trackerPanelTextSize);
+  const setTrackerPanelTextSize = useUIStore((state) => state.setTrackerPanelTextSize);
 
   return (
     <section className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--background)]/34 shadow-[inset_0_1px_0_color-mix(in_srgb,var(--foreground)_8%,transparent)]">
@@ -2693,7 +2704,7 @@ function TrackerPanelAppearanceDrawer() {
             <span className="block truncate text-[0.625rem] text-[var(--muted-foreground)]">
               {trackerPanelEnabled
                 ? localizeUi("ui.panels.trackerpanelappearancedrawer.shownInTheRoleplayHud")
-                : localizeUi("ui.panels.trackerpanelappearancedrawer.inATrackerWindow")}
+                : localizeUi("ui.panels.trackerpanelappearancedrawer.offUntilTurnedOn")}
             </span>
           </span>
         </div>
@@ -2773,6 +2784,33 @@ function TrackerPanelAppearanceDrawer() {
                     </span>
                     {opt.label}
                   </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <div id={getSettingsControlAnchorId("tracker-text-size")} className="mt-2 grid scroll-mt-3 gap-1.5">
+          <span className="inline-flex items-center gap-1 text-[0.6875rem] font-medium">
+            {localizeUi("ui.panels.trackerpanelappearancedrawer.textSize")}
+            <HelpTooltip text={localizeUi("ui.panels.trackerpanelappearancedrawer.textSizeHelp")} />
+          </span>
+          <div className="grid grid-cols-4 gap-0.5 rounded-lg border border-[var(--border)] bg-[var(--secondary)]/45 p-0.5">
+            {TRACKER_PANEL_TEXT_SIZES.map((size) => {
+              const selected = trackerPanelTextSize === size;
+              return (
+                <button
+                  key={size}
+                  type="button"
+                  onClick={() => setTrackerPanelTextSize(size)}
+                  aria-pressed={selected}
+                  className={cn(
+                    "flex min-h-8 items-center justify-center rounded-md px-1.5 text-[0.6875rem] font-semibold transition-all",
+                    selected
+                      ? "bg-[var(--primary)]/12 text-[var(--foreground)] ring-1 ring-[var(--primary)]/45"
+                      : "text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]",
+                  )}
+                >
+                  {size.toUpperCase()}
                 </button>
               );
             })}

@@ -1559,6 +1559,18 @@ function carriesHidingTraits(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesHidingTraits(one, depth + 1));
 }
 
+/** The dark kept real, and light shed in it (1.289): `sight.darkness`, a `light` with its reach. */
+function carriesDarkness(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesDarkness(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.darkness)) return true;
+  const light = plainRecord(record.light);
+  if (light && (light.bright !== undefined || light.dim !== undefined)) return true;
+  return Object.values(record).some((one) => carriesDarkness(one, depth + 1));
+}
+
 /** A creature's own modes on attacks (1.288). */
 function carriesAttackModes(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -3977,6 +3989,13 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // The dark, and light, 1.289.
+  if (
+    !declaresApi(289) &&
+    (carriesDarkness(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesDarkness(document)))
+  ) {
+    return "A ruleset whose fights are kept dark, or with things that shed light, requires schemaVersion 2 and capabilityApi 1.289 or newer";
   }
   // A creature's own modes on attacks, 1.288.
   if (

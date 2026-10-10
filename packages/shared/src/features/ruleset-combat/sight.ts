@@ -27,7 +27,14 @@ import {
   rulesetFootprint,
   rulesetGap,
 } from "./grid.js";
-import type { RulesetCombatant, RulesetCombatCell, RulesetEncounterState, RulesetHidingTraits } from "./types.js";
+import type {
+  RulesetBoardLight,
+  RulesetCombatant,
+  RulesetCombatCell,
+  RulesetEncounterState,
+  RulesetHidingTraits,
+} from "./types.js";
+import type { TacticalGrid } from "../tactical-combat/types.js";
 
 /** How far each of the fight's senses reaches for this combatant, in cells: a creature's off its
  *  block, anybody else's as it was read off their sheet when the fight began. What their conditions
@@ -91,14 +98,108 @@ function obscured(state: RulesetEncounterState): Array<{ cells: Set<string>; pie
 
 /**
  * Whether somebody stands lightly or heavily obscured now (1.286): in a fog or a haze, or on a
- * board fought in dim light or darkness. What a creature may do only out of sight reads this.
+ * board fought in dim light or darkness; where the dark is real (1.289), in dim light or darkness
+ * where they stand, past what anybody's light reaches. What a creature may do only out of sight
+ * reads this.
  */
-export function rulesetStandsObscured(state: RulesetEncounterState, who: RulesetCombatant): boolean {
+export function rulesetStandsObscured(
+  state: RulesetEncounterState,
+  who: RulesetCombatant,
+  definition?: RulesetDefinition,
+): boolean {
   const board = state.board;
   if (!board?.grid) return false;
-  if (board.light === "dim" || board.light === "dark") return true;
-  const cells = rulesetFootprint(who).map((cell) => `${cell.x},${cell.y}`);
+  const footprint = rulesetFootprint(who);
+  if (definition?.combat?.sight?.darkness) {
+    if (footprint.some((cell) => !brightLight(rulesetLightAt(definition, state, cell)))) return true;
+  } else if (board.light === "dim" || board.light === "dark") return true;
+  const cells = footprint.map((cell) => `${cell.x},${cell.y}`);
   return obscured(state).some((fog) => cells.some((key) => fog.cells.has(key)));
+}
+
+function brightLight(light: RulesetBoardLight): boolean {
+  return light === "bright" || light === "sunlight";
+}
+
+/** Light shed from where somebody stands (1.289), in cells. */
+interface LightSource {
+  cells: RulesetCombatCell[];
+  bright: number;
+  /** How far the dim light reaches, from the same cells. */
+  edge: number;
+}
+
+/**
+ * The light somebody sheds now where the dark is real (1.289), in cells: the farthest-reaching of
+ * their block's, their conditions' and items', and the light the ruleset says everybody fighting
+ * from a sheet carries unless they see in the dark. Null when they shed none.
+ */
+export function rulesetLightOf(
+  definition: RulesetDefinition,
+  who: RulesetCombatant,
+  state?: RulesetEncounterState,
+): { bright: number; dim: number } | null {
+  const combat = definition.combat;
+  const darkness = combat?.sight?.darkness;
+  const perCell = combat?.distance?.perCell;
+  if (!combat || !darkness || perCell === undefined) return null;
+  const radii = [
+    ...(who.block?.light ? [who.block.light] : []),
+    ...rulesetActiveConditions(definition, combat, who, state).flatMap((source) =>
+      source.light ? [source.light] : [],
+    ),
+  ];
+  if (darkness.carried && !who.block) {
+    const ranges = rulesetSenseRanges(definition, who, state);
+    if (!darkness.seeIn.some((sense) => (ranges[sense] ?? 0) > 0)) radii.push(darkness.carried);
+  }
+  if (radii.length === 0) return null;
+  const bright = Math.max(...radii.map((one) => rulesetInCells(one.bright, perCell)));
+  const edge = Math.max(...radii.map((one) => rulesetInCells(one.bright + one.dim, perCell)));
+  return { bright, dim: Math.max(0, edge - bright) };
+}
+
+function lightSources(definition: RulesetDefinition, state: RulesetEncounterState): LightSource[] {
+  return state.combatants.flatMap((one) => {
+    if (one.defeated || !rulesetPositionOf(one)) return [];
+    const light = rulesetLightOf(definition, one, state);
+    return light ? [{ cells: rulesetFootprint(one), bright: light.bright, edge: light.bright + light.dim }] : [];
+  });
+}
+
+/** The light on a cell from these sources, over a board fought in `base` (1.289). Light goes no
+ *  further than a line from where it is shed reaches: walls keep it out. */
+function lightFrom(
+  sources: LightSource[],
+  grid: TacticalGrid,
+  cell: RulesetCombatCell,
+  base: RulesetBoardLight,
+): RulesetBoardLight {
+  let light = base;
+  for (const source of sources) {
+    for (const from of source.cells) {
+      const away = Math.max(Math.abs(from.x - cell.x), Math.abs(from.y - cell.y));
+      if (away > source.edge || !rulesetLineOfSight(grid, from, cell)) continue;
+      if (away <= source.bright) return "bright";
+      light = "dim";
+    }
+  }
+  return light;
+}
+
+/**
+ * The light on a cell of the board now (1.289): the light the fight is fought in, raised where the
+ * dark is real by whatever light somebody sheds there. Bright light when nothing says otherwise.
+ */
+export function rulesetLightAt(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  cell: RulesetCombatCell,
+): RulesetBoardLight {
+  const base = state.board?.light ?? "bright";
+  const grid = state.board?.grid;
+  if (brightLight(base) || !definition.combat?.sight?.darkness || !grid) return base;
+  return lightFrom(lightSources(definition, state), grid, cell, base);
 }
 
 /**
@@ -312,9 +413,28 @@ function sees(
   if (!positioned) return true;
   // A light obscurement hides nobody (1.281): it only keeps them from being seen clearly.
   const fogs = obscured(state).filter((fog) => clearly || !fog.light);
+  // The dark (1.289), for eyes: nobody in darkness is seen, nor anybody in dim light clearly, but by
+  // a sense that sees in the dark (one step brighter) or whatever the light, within its range.
+  const darkness = combat.sight?.darkness;
+  const base = state.board?.light ?? "bright";
+  const dark =
+    darkness && !sightless && !brightLight(base)
+      ? {
+          sources: lightSources(definition, state),
+          anyway: [...blindSenses, ...(darkness.pierced ?? [])].some((sense) => (ranges[sense] ?? 0) >= away),
+          seeIn: darkness.seeIn.some((sense) => (ranges[sense] ?? 0) >= away),
+        }
+      : null;
+  const lit = (b: RulesetCombatCell) => {
+    if (!dark || dark.anyway) return true;
+    const light = lightFrom(dark.sources, grid, b, base);
+    if (brightLight(light)) return true;
+    if (light === "dim") return dark.seeIn || !clearly;
+    return dark.seeIn && !clearly;
+  };
   // Any cell the viewer fills to any cell the seen one does (1.189): one clear line is enough.
   const clear = (a: RulesetCombatCell, b: RulesetCombatCell) => {
-    if (!rulesetLineOfSight(grid, a, b)) return false;
+    if (!rulesetLineOfSight(grid, a, b) || !lit(b)) return false;
     if (fogs.length === 0) return true;
     const line = cellsBetween(a, b).map((cell) => `${cell.x},${cell.y}`);
     return fogs.every((fog) => !line.some((key) => fog.cells.has(key)) || pierces(fog.pierced));

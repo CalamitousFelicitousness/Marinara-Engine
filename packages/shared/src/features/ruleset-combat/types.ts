@@ -9,6 +9,7 @@ import type {
   RulesetCatalogEntriesById,
   RulesetCreatureHideEntry,
   RulesetCreature,
+  RulesetLightRadius,
   RulesetSheetBuild,
   RulesetTargetIs,
   RulesetValueRef,
@@ -436,6 +437,8 @@ export interface RulesetStatBlock {
   /** Its own rolls twice on some checks, where it says (1.286): keen senses, sensitivity to light,
    *  camouflage. */
   checkModes?: RulesetCheckModeRule[];
+  /** The light it sheds (1.289), in the ruleset's distance. */
+  light?: RulesetLightRadius;
   /** Its own attacks rolled twice, where it says (1.288): sensitivity to sunlight. */
   attackModes?: RulesetAttackModeRule[];
   /** Its passive Perception as printed (1.286), where it is not the ruleset's passive plus its check. */

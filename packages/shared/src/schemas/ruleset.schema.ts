@@ -1468,6 +1468,17 @@ const seenThroughSchema: z.ZodType<RulesetSeenThrough, z.ZodTypeDef, unknown> = 
  *  a range, or (Capability API 1.177) `{ "add": N }`, which adds N to the holder's own range of that
  *  sense and is the range N for a holder without it (5e's goggles of night). */
 export type RulesetSenseGrant = number | { add: number };
+/** Light something sheds (Capability API 1.289), in the ruleset's distance: bright light this far,
+ *  dim light as far again beyond it. 5e's torch is `{ "bright": 20, "dim": 20 }`. */
+export interface RulesetLightRadius {
+  bright: number;
+  dim: number;
+}
+const lightRadiusSchema: z.ZodType<RulesetLightRadius, z.ZodTypeDef, unknown> = z
+  .object({ bright: z.number().finite().min(0).max(10000), dim: z.number().finite().min(0).max(10000) })
+  .strict()
+  .refine((light) => light.bright + light.dim > 0, { message: "A light reaches somewhere" });
+
 const senseRangesSchema: z.ZodType<Record<string, RulesetSenseGrant>, z.ZodTypeDef, unknown> = z.record(
   sheetId,
   z.union([z.number().finite().gt(0).max(10000), z.object({ add: z.number().finite().gt(0).max(10000) }).strict()]),
@@ -4377,6 +4388,9 @@ const creatureFields = {
     .min(1)
     .max(8)
     .optional(),
+  /** The light it sheds (Capability API 1.289): a fire elemental, a will-o'-wisp, or bandits with
+   *  torches. Read where `combat.sight.darkness` makes the dark real. */
+  light: lightRadiusSchema.optional(),
   /** Its own attack rolls rolled twice (Capability API 1.288), where it says, as `checkModes` hold:
    *  5e's Sunlight Sensitivity `{ "mode": "disadvantage", "sight": true, "light": ["sunlight"] }`. */
   attackModes: z
@@ -6516,13 +6530,37 @@ const combatSenseSchema: z.ZodType<RulesetCombatSense, z.ZodTypeDef, unknown> = 
   .object({ id: sheetId, label, sheet: rulesetValueRefSchema.optional(), blind: z.literal(true).optional() })
   .strict();
 
+/** The dark keeping eyes from seeing (1.289): see `combat.sight.darkness`. */
+export interface RulesetCombatDarkness {
+  seeIn: string[];
+  pierced?: string[];
+  carried?: RulesetLightRadius;
+}
 /** What seeing does in a fight (1.173). */
 export interface RulesetCombatSight {
   unseenAttacks?: true;
   eyes?: string;
+  darkness?: RulesetCombatDarkness;
 }
 const combatSightSchema: z.ZodType<RulesetCombatSight, z.ZodTypeDef, unknown> = z
-  .object({ unseenAttacks: z.literal(true).optional(), eyes: sheetId.optional() })
+  .object({
+    unseenAttacks: z.literal(true).optional(),
+    eyes: sheetId.optional(),
+    /** The light a fight is fought in keeps eyes from seeing (Capability API 1.289). Somebody in
+     *  darkness is not seen, and in dim light not seen clearly, except by a sense of `seeIn` within
+     *  its range (darkvision), which sees darkness as dim light and dim light as bright, or by a
+     *  `blind` sense or one of `pierced` (truesight) within its range, which see whatever the light.
+     *  What lights the dark is `light` on a condition, an item's effect or a creature, and `carried`:
+     *  the light everybody fighting from a sheet carries, unless one of `seeIn` reaches for them. */
+    darkness: z
+      .object({
+        seeIn: z.array(sheetId).min(1).max(8),
+        pierced: z.array(sheetId).min(1).max(8).optional(),
+        carried: lightRadiusSchema.optional(),
+      })
+      .strict()
+      .optional(),
+  })
   .strict();
 
 /** What a condition leaves behind when it ends (combat C6d). */
@@ -6882,6 +6920,9 @@ const combatConditionSchema = z
      *  distance (Capability API 1.175): 5e's Darkvision spell, True Seeing's truesight. Their own
      *  reach stands where it is longer; `{ "add": N }` (1.177) adds to it. */
     senses: senseRangesSchema.optional(),
+    /** The light its holder sheds while it holds (Capability API 1.289): 5e's Light cantrip, a lit
+     *  torch. Read where `combat.sight.darkness` makes the dark real. */
+    light: lightRadiusSchema.optional(),
     /** A condition's `unseen` hides its holder from nobody while this holds (Capability API 1.175):
      *  5e's Faerie Fire, under which the invisible are outlined. */
     cancelsUnseen: z.literal(true).optional(),
@@ -7146,6 +7187,8 @@ export const rulesetItemEffectSchema = z
     /** How far its holder senses with each of `combat.senses`, in the ruleset's distance (Capability
      *  API 1.175): 5e's goggles of night give darkvision. Their own reach stands where it is longer. */
     senses: senseRangesSchema.optional(),
+    /** The light it sheds for its holder (Capability API 1.289): a lantern, a sun blade. */
+    light: lightRadiusSchema.optional(),
   })
   .strict()
   .superRefine((entry, ctx) => {
@@ -9591,6 +9634,15 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
     unique(combat.contests ?? [], at("contests"), "contest");
     if (combat.standard?.includes("search") && !combat.hiding)
       issue(at("standard"), "Search looks for whoever is hiding, so it needs combat.hiding");
+    // The dark (1.289): the senses that see in it are the fight's own, and it needs eyes to keep.
+    if (combat.sight?.darkness) {
+      const senses = new Set((combat.senses ?? []).map((sense) => sense.id));
+      for (const key of ["seeIn", "pierced"] as const) {
+        combat.sight.darkness[key]?.forEach((sense, index) => {
+          if (!senses.has(sense)) issue(at("sight", "darkness", key, index), `Unknown sense "${sense}"`);
+        });
+      }
+    }
     // Hiding (1.282): the checks it throws are the fight's own, and so are the components it hears.
     if (combat.hiding) {
       for (const key of ["stealth", "perception"] as const) {
@@ -9902,6 +9954,8 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       }
       if (entry.unseen) sightIssues(def, entry.unseen.pierced, [...path, "unseen"], issue);
       senseRangeIssues(def, entry.senses, path, issue);
+      if (entry.light && !combat.sight?.darkness)
+        issue([...path, "light"], "Light is read where combat.sight.darkness makes the dark real");
       componentIssues(def, entry.forbids?.components, [...path, "forbids", "components"], issue);
       // The action economy it changes (1.71) is the ruleset's own: budgets it declares, conditions it has.
       entry.budgets?.forEach((change, changeIndex) => {
@@ -11133,6 +11187,8 @@ function creatureIssues(
     if (!checks.has(check)) add([...at, "checks", check], `Unknown contest check "${check}"`);
   }
   if (creature.hiding) hidingTraitsIssues(definition, creature.hiding, [...at, "hiding"], add);
+  if (creature.light && !combat.sight?.darkness)
+    add([...at, "light"], "Light is read where combat.sight.darkness makes the dark real");
   // Its own modes on checks (1.286) name the sheet's skills.
   const skills = new Set(definition.sheet.skills.map((skill) => skill.id));
   creature.checkModes?.forEach((rule, ruleIndex) => {

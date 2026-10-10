@@ -14116,6 +14116,27 @@
                       "minItems": 1,
                       "maxItems": 8
                     },
+                    "light": {
+                      "type": "object",
+                      "properties": {
+                        "bright": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 10000
+                        },
+                        "dim": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 10000
+                        },
+                        "$comment": {}
+                      },
+                      "required": [
+                        "bright",
+                        "dim"
+                      ],
+                      "additionalProperties": false
+                    },
                     "attackModes": {
                       "type": "array",
                       "items": {
@@ -19235,6 +19256,27 @@
                             "$comment": {}
                           }
                         },
+                        "light": {
+                          "type": "object",
+                          "properties": {
+                            "bright": {
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 10000
+                            },
+                            "dim": {
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 10000
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "bright",
+                            "dim"
+                          ],
+                          "additionalProperties": false
+                        },
                         "$comment": {}
                       },
                       "additionalProperties": false,
@@ -20093,6 +20135,27 @@
                           "properties": {
                             "$comment": {}
                           }
+                        },
+                        "light": {
+                          "type": "object",
+                          "properties": {
+                            "bright": {
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 10000
+                            },
+                            "dim": {
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 10000
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "bright",
+                            "dim"
+                          ],
+                          "additionalProperties": false
                         },
                         "$comment": {}
                       },
@@ -21106,6 +21169,27 @@
                                 "properties": {
                                   "$comment": {}
                                 }
+                              },
+                              "light": {
+                                "type": "object",
+                                "properties": {
+                                  "bright": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 10000
+                                  },
+                                  "dim": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 10000
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "bright",
+                                  "dim"
+                                ],
+                                "additionalProperties": false
                               },
                               "$comment": {}
                             },
@@ -41491,6 +41575,27 @@
                   "$comment": {}
                 }
               },
+              "light": {
+                "type": "object",
+                "properties": {
+                  "bright": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 10000
+                  },
+                  "dim": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 10000
+                  },
+                  "$comment": {}
+                },
+                "required": [
+                  "bright",
+                  "dim"
+                ],
+                "additionalProperties": false
+              },
               "cancelsUnseen": {
                 "type": "boolean",
                 "const": true
@@ -48170,6 +48275,57 @@
               "type": "string",
               "maxLength": 40,
               "pattern": "^[a-z][a-z0-9_]*$"
+            },
+            "darkness": {
+              "type": "object",
+              "properties": {
+                "seeIn": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 40,
+                    "pattern": "^[a-z][a-z0-9_]*$"
+                  },
+                  "minItems": 1,
+                  "maxItems": 8
+                },
+                "pierced": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 40,
+                    "pattern": "^[a-z][a-z0-9_]*$"
+                  },
+                  "minItems": 1,
+                  "maxItems": 8
+                },
+                "carried": {
+                  "type": "object",
+                  "properties": {
+                    "bright": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 10000
+                    },
+                    "dim": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 10000
+                    },
+                    "$comment": {}
+                  },
+                  "required": [
+                    "bright",
+                    "dim"
+                  ],
+                  "additionalProperties": false
+                },
+                "$comment": {}
+              },
+              "required": [
+                "seeIn"
+              ],
+              "additionalProperties": false
             },
             "$comment": {}
           },

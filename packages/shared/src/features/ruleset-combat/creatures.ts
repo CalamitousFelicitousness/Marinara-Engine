@@ -417,6 +417,8 @@ function blockFromCreature(creature: RulesetCreature, budgets: ReadonlySet<strin
     // Its own ways of hiding and finding (1.287); its own modes on attacks (1.288).
     ...(creature.hiding ? { hiding: structuredClone(creature.hiding) } : {}),
     ...(creature.attackModes ? { attackModes: structuredClone(creature.attackModes) } : {}),
+    // The light it sheds (1.289).
+    ...(creature.light ? { light: { ...creature.light } } : {}),
     ...(creature.resist ? { resist: [...creature.resist] } : {}),
     ...(creature.vulnerable ? { vulnerable: [...creature.vulnerable] } : {}),
     ...(creature.immune ? { immune: [...creature.immune] } : {}),

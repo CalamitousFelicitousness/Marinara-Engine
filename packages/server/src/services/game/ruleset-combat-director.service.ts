@@ -477,17 +477,20 @@ function buildRulesetBoard(
 
 /** Places a fight's light comes from its own lamps rather than the sky. */
 const INDOOR_ENVIRONMENTS = new Set(["dungeon", "cave", "castle", "mansion", "spaceship"]);
+/** Places with no lamps of their own (1.289): dark whatever the hour, lit only by what is carried. */
+const DARK_ENVIRONMENTS = new Set(["dungeon", "cave"]);
 
 /**
  * The light a fight is fought in (1.286), off the scene's time of day: outdoors, the sun by day,
  * dim light at dawn and dusk, darkness at night; indoors, or when the time says nothing it
  * understands, bright light that is not the sun's (nothing said). A clock reading ("14:30",
- * "7pm") is read by its hour.
+ * "7pm") is read by its hour. A cave or a dungeon is dark at any hour (1.289).
  */
 export function rulesetBoardLightFor(
   time: string | null | undefined,
   environment: string | undefined,
 ): RulesetBoardLight | undefined {
+  if (environment && DARK_ENVIRONMENTS.has(environment)) return "dark";
   if (!time || (environment && INDOOR_ENVIRONMENTS.has(environment))) return undefined;
   const text = time.trim().toLowerCase();
   const clock = /^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/.exec(text);

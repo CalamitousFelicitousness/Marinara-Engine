@@ -301,7 +301,10 @@ try {
     assert.equal(rulesetBoardLightFor("Late night", "snow"), "dark");
     assert.equal(rulesetBoardLightFor("dusk", undefined), "dim");
     assert.equal(rulesetBoardLightFor("Morning", "plains"), "sunlight");
-    assert.equal(rulesetBoardLightFor("noon", "cave"), undefined, "indoors, its own lamps");
+    assert.equal(rulesetBoardLightFor("noon", "castle"), undefined, "indoors, its own lamps");
+    // A cave is dark at any hour (1.289).
+    assert.equal(rulesetBoardLightFor("noon", "cave"), "dark");
+    assert.equal(rulesetBoardLightFor(null, "dungeon"), "dark");
     assert.equal(rulesetBoardLightFor(null, "plains"), undefined);
     assert.equal(rulesetBoardLightFor("the third bell", "plains"), undefined);
   }

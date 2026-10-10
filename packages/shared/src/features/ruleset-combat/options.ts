@@ -218,7 +218,7 @@ function grantedStandardOptions(
     const granted = action.standard;
     if (!granted || (actor.budgets[granted.budget] ?? 0) < 1) continue;
     // Only out of sight, where it says so (1.286): Shadow Stealth.
-    if (!grantHolds(action, actor, state)) continue;
+    if (!grantHolds(definition, action, actor, state)) continue;
     if (!rulesetActionAvailable(actor, action, state, definition)) continue;
     const paid = planRulesetCombatCost(definition, actor, action);
     if (!paid) continue;
@@ -241,8 +241,13 @@ function grantedStandardOptions(
 }
 
 /** Whether a permission holds now (1.286): one given only while its holder stands obscured. */
-function grantHolds(action: RulesetCombatAction, actor: RulesetCombatant, state?: RulesetEncounterState): boolean {
-  return action.standard?.while !== "obscured" || (!!state && rulesetStandsObscured(state, actor));
+function grantHolds(
+  definition: RulesetDefinition,
+  action: RulesetCombatAction,
+  actor: RulesetCombatant,
+  state?: RulesetEncounterState,
+): boolean {
+  return action.standard?.while !== "obscured" || (!!state && rulesetStandsObscured(state, actor, definition));
 }
 
 /** The ability behind a `standard:<id>@<budget>` option, when one of the actor's own granted it.
@@ -265,7 +270,7 @@ export function rulesetGrantedStandard(
     (entry) =>
       entry.standard?.budget === budget &&
       entry.standard.actions.includes(name) &&
-      grantHolds(entry, actor, state) &&
+      grantHolds(definition, entry, actor, state) &&
       rulesetActionAvailable(actor, entry, state, definition) &&
       !!planRulesetCombatCost(definition, actor, entry),
   );

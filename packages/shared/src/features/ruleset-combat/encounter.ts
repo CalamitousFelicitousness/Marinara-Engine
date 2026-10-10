@@ -78,7 +78,7 @@ import {
 import { rulesetCombatAdvantage, rulesetCombatIsPool, rulesetPoolDie, throwRulesetCombatPool } from "./pool.js";
 import { rulesetActionItemIndex, rulesetDroppedItems } from "./ammo.js";
 import { rulesetPaidLevel, rulesetReactionsAt, rulesetSheetWithin } from "./options.js";
-import { rulesetCanSee, rulesetHidingTraits, rulesetStaysHidden } from "./sight.js";
+import { rulesetCanSee, rulesetHidingTraits, rulesetLightAt, rulesetStaysHidden } from "./sight.js";
 import { RULESET_MOVE_MODES } from "./types.js";
 import type {
   RulesetBoardLight,
@@ -413,6 +413,7 @@ export function rulesetActiveConditions(
     ...(source.immune ? { immune: [...source.immune] } : {}),
     ...(source.conditionImmunities ? { conditionImmunities: [...source.conditionImmunities] } : {}),
     ...(source.senses ? { senses: { ...source.senses } } : {}),
+    ...(source.light ? { light: { ...source.light } } : {}),
   }));
   return [...conditions, ...levels, ...items, ...zoned];
 }
@@ -947,7 +948,10 @@ export function rulesetModeRuleHolds(
       return false;
   }
   const board = state?.board;
-  if (rule.light && !rule.light.some((light) => rulesetLightMatches(board?.light, light))) return false;
+  // The light where it stands, where the dark is real (1.289); else the board's.
+  const at = rulesetPositionOf(combatant);
+  const here = state && at ? rulesetLightAt(definition, state, at) : board?.light;
+  if (rule.light && !rule.light.some((light) => rulesetLightMatches(here, light))) return false;
   if (rule.terrain) {
     const tile =
       board?.grid && combatant.x !== undefined && combatant.y !== undefined

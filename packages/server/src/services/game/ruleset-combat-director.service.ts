@@ -51,6 +51,8 @@ import {
   planRulesetCombatCost,
   rulesetCombatRoller,
   rulesetCombatStanding,
+  rulesetHiddenFrom,
+  rulesetStandardName,
   rulesetContestChance,
   rulesetProposedCreatureSchema,
   rulesetEncounterOutcome,
@@ -1816,10 +1818,18 @@ function answerRulesetWindows(
     if (controller === "manual") return;
     if (controller === "gm" && openRulesetWindowDecision(definition, state, fight, asking)) return;
     const menu = rulesetWindowOptions(definition, fight.encounter, asking);
-    const picked = menu.length > 0 ? pickRulesetChoice(definition, state, fight.encounter, asking, menu) : null;
-    const choice: RulesetCombatChoice = picked?.choice
-      ? { ...picked.choice, window: window.id }
-      : { actorId: asking, optionId: RULESET_PASS_OPTION, targetIds: [], window: window.id };
+    // Somebody hidden from it, and a Detect to look for them with (1.282).
+    const looking = searchOption(definition, fight.encounter, asking, menu, false);
+    const picked = looking
+      ? null
+      : menu.length > 0
+        ? pickRulesetChoice(definition, state, fight.encounter, asking, menu)
+        : null;
+    const choice: RulesetCombatChoice = looking
+      ? { actorId: asking, optionId: looking.id, targetIds: [], window: window.id }
+      : picked?.choice
+        ? { ...picked.choice, window: window.id }
+        : { actorId: asking, optionId: RULESET_PASS_OPTION, targetIds: [], window: window.id };
     // A refusal inside a window would ask the same question again with the same state, so the
     // moment is let go instead and the fight moves on. It is an Engine bug rather than anybody's
     // choice, so it is said out loud: a refusal is never recorded, and this pass would otherwise
@@ -1892,6 +1902,15 @@ function playRulesetTurn(
   const actor = rulesetCombatant(fight.encounter, actorId);
   if (actor && rulesetDrivenFrom(definition, fight.encounter, actor))
     walkTowardsTrouble(definition, state, fight, actorId);
+  // Everybody it could fight is hidden from it (1.282): it looks for them first.
+  const looking = searchOption(
+    definition,
+    fight.encounter,
+    actorId,
+    rulesetCombatOptions(definition, fight.encounter, actorId),
+    true,
+  );
+  if (looking) applyChoice(definition, state, fight, { actorId, optionId: looking.id, targetIds: [] });
   for (let action = 0; action < RULESET_TURN_ACTION_LIMIT; action++) {
     if (rulesetEncounterOutcome(fight.encounter) !== "ongoing") break;
     const picked = pickRulesetChoice(definition, state, fight.encounter, actorId);
@@ -1911,6 +1930,29 @@ function playRulesetTurn(
     if (applyChoice(definition, state, fight, picked.choice).refused) break;
   }
   advanceTurn(definition, state, fight);
+}
+
+/**
+ * The option that looks for whoever hides from this actor (1.282), when it should: on its turn the
+ * Search, once every opponent still standing is hidden from it; between turns a Detect, once any is.
+ */
+function searchOption(
+  definition: RulesetDefinition,
+  encounter: RulesetEncounterState,
+  actorId: string,
+  menu: RulesetCombatOption[],
+  everyone: boolean,
+): RulesetCombatOption | undefined {
+  const actor = rulesetCombatant(encounter, actorId);
+  if (!actor || !definition.combat?.hiding) return undefined;
+  const foes = encounter.combatants.filter((one) => one.side !== actor.side && rulesetCombatStanding(one));
+  const hidden = foes.filter((one) => rulesetHiddenFrom(actor, one));
+  if (hidden.length === 0 || (everyone && hidden.length < foes.length)) return undefined;
+  return menu.find((option) =>
+    option.signature
+      ? !everyone && !!actor.actions.find((action) => action.id === option.id)?.search
+      : everyone && option.kind === "standard" && rulesetStandardName(option.id) === "search",
+  );
 }
 
 /** The walk a candidate does before it acts, refused exactly as a player's would be. */

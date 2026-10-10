@@ -350,6 +350,8 @@ export interface RulesetStatBlockAction {
   move?: RulesetCombatMove;
   /** A spell cast with points between turns (1.279): its own spellcasting, or cantrips only. */
   casting?: { cantripsOnly?: true };
+  /** It looks for whoever is hiding (1.282): a legendary Detect. */
+  search?: true;
   /** The ability its attack is made with (1.184), so changes narrowed to an ability reach it. */
   ability?: string;
   /** Its damage lowers the health maximum (1.198): on a failed save of its own, on a failed save of
@@ -768,6 +770,8 @@ export interface RulesetCombatAction {
   move?: RulesetCombatMove;
   /** A spell cast with points between turns (1.279). */
   casting?: { cantripsOnly?: true };
+  /** It looks for whoever is hiding (1.282), and does nothing else: a legendary Detect. */
+  search?: true;
   /** A burst centred on its user, never aimed (1.277): everybody within `size` cells of them is
    *  caught, they are not, behind walls too with `throughWalls`, their own side not with
    *  `friendlyFire: false`. Off a board, everybody. */
@@ -1069,6 +1073,9 @@ export interface RulesetCombatant {
   ridersSpent?: string[];
   tracked: RulesetTrackedCondition[];
   concentrating: { actionId: string; label: string } | null;
+  /** Hidden (1.282): the Stealth total it hid with, and the opponents it is hidden from, by id. Gone
+   *  once it is hidden from nobody. */
+  hiding?: { total: number; from: string[] };
   /** What a standard action left behind. `dodging`, `dashed`, `disengaged`, `hidden` and `ready`
    *  are cleared at the start of the actor's next turn; `helped` is spent by their next attack. */
   flags: {
@@ -1850,7 +1857,20 @@ export type RulesetCombatEvent =
       /** `zone`: a zone that breaks concentration caught them and they failed the save (1.169). */
       reason?: "replaced" | "damage" | "down" | "zone" | "spent";
     }
-  | { type: "standard"; actorId: string; action: string; targetId?: string }
+  | {
+      type: "standard";
+      actorId: string;
+      action: string;
+      targetId?: string;
+      /** A real Hide or Search (1.282): the check thrown, and whom it hid from or found, by id. */
+      check?: RulesetContestSide;
+      from?: string[];
+      found?: string[];
+    }
+  /** A legendary search (1.282): the check thrown, and whom it found. */
+  | { type: "search"; actorId: string; label: string; check: RulesetContestSide; found: string[] }
+  /** Somebody hiding given away to these opponents (1.282): by attacking, by noise, or seen clearly. */
+  | { type: "revealed"; actorId: string; byIds: string[]; reason: "attack" | "noise" | "seen" }
   | {
       type: "move";
       actorId: string;

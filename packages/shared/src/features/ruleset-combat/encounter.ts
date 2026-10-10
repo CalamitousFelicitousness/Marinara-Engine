@@ -2823,7 +2823,12 @@ function blockActions(
     // One that lands on the creature itself points at nobody: its effect is its own.
     // So does a teleport (1.271): where it goes is its choice, not whom.
     targets:
-      action.self || action.teleport || action.area?.around || rulesetMovesOnly(action) || action.casting
+      action.self ||
+      action.teleport ||
+      action.area?.around ||
+      rulesetMovesOnly(action) ||
+      action.casting ||
+      action.search
         ? { side: "self" as const, count: 0 }
         : {
             // An area catches each creature in it, the creature's allies too (1.187): off a board it may
@@ -2917,6 +2922,8 @@ function blockActions(
       : {}),
     // A legendary cast (1.279): its maker's own spells, offered between turns.
     ...(action.casting ? { casting: { ...action.casting } } : {}),
+    // A legendary Detect (1.282).
+    ...(action.search ? { search: true as const } : {}),
     ...(action.targetHolds ? { targetHolds: structuredClone(action.targetHolds) } : {}),
     ...(perCell !== undefined && action.push !== undefined ? { push: rulesetInCells(action.push, perCell) } : {}),
     ...(action.teleport && (perCell !== undefined || action.teleport.leaves)

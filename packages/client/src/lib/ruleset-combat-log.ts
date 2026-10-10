@@ -15,6 +15,7 @@ import type {
   RulesetCombatPoolRoll,
   RulesetCombatRollMode,
   RulesetConditionBonus,
+  RulesetContestSide,
   RulesetDefinition,
   RulesetValueRef,
 } from "@marinara-engine/shared";
@@ -233,7 +234,21 @@ export function rulesetRefusalText(code: string | undefined, serverText: string,
   return translated || serverText;
 }
 
-const STANDARD_ACTIONS = new Set(["dash", "disengage", "dodge", "help", "hide", "ready"]);
+/** A check thrown on its own (1.282), as one side of a contest is written. */
+function checkRollText(roll: RulesetContestSide, names: RulesetCombatNames, t: TFunction): string {
+  return roll.pool
+    ? rulesetPoolRollText({ ...roll, pool: roll.pool }, t, bonusNamer(names, t))
+    : rulesetRollText(
+        {
+          ...roll,
+          kept: roll.total - roll.modifier - (roll.bonuses ?? []).reduce((sum, bonus) => sum + bonus.value, 0),
+        },
+        t,
+        bonusNamer(names, t),
+      );
+}
+
+const STANDARD_ACTIONS = new Set(["dash", "disengage", "dodge", "help", "hide", "ready", "search"]);
 
 /** What each kind of held-open moment is called on screen. A window is not an interruption to
  *  apologise for: each of these says what is happening and who may answer it. */
@@ -419,6 +434,27 @@ export function rulesetCombatEventLine(
         condition: names.condition(event.condition),
         ...(event.stacks !== undefined ? { stacks: event.stacks } : {}),
       });
+    // A legendary search (1.282).
+    case "search": {
+      const roll = checkRollText(event.check, names, t);
+      return event.found.length > 0
+        ? key("searchFound", {
+            actor: names.combatant(event.actorId),
+            label: event.label,
+            roll,
+            names: event.found.map((id) => names.combatant(id)).join(", "),
+          })
+        : key("searchNone", { actor: names.combatant(event.actorId), label: event.label, roll });
+    }
+    // Hiding given away (1.282).
+    case "revealed":
+      return key(
+        event.reason === "attack" ? "revealedAttack" : event.reason === "noise" ? "revealedNoise" : "revealedSeen",
+        {
+          actor: names.combatant(event.actorId),
+          names: event.byIds.map((id) => names.combatant(id)).join(", "),
+        },
+      );
     case "contest": {
       // Both sides as a roll, with the check each one added, so the line reads the way the table
       // would say it without adding anything up itself.
@@ -903,6 +939,19 @@ export function rulesetCombatEventLine(
       // and prints its own id rather than nothing.
       if (!STANDARD_ACTIONS.has(event.action)) {
         return key("standardOther", { actor: names.combatant(event.actorId), action: event.action });
+      }
+      // A real Hide or Search (1.282): the check, and whom it hid from or found.
+      if (event.check) {
+        const roll = checkRollText(event.check, names, t);
+        const list = (ids: string[] | undefined) => (ids ?? []).map((id) => names.combatant(id)).join(", ");
+        if (event.action === "hide") {
+          return event.from?.length
+            ? key("standardHideFrom", { actor: names.combatant(event.actorId), roll, names: list(event.from) })
+            : key("standardHideSeen", { actor: names.combatant(event.actorId), roll });
+        }
+        return event.found?.length
+          ? key("standardSearchFound", { actor: names.combatant(event.actorId), roll, names: list(event.found) })
+          : key("standardSearchNone", { actor: names.combatant(event.actorId), roll });
       }
       return key(`standard${event.action[0]!.toUpperCase()}${event.action.slice(1)}`, {
         actor: names.combatant(event.actorId),

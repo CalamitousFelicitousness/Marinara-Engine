@@ -1547,6 +1547,20 @@ function carriesMetamagic(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesMetamagic(one, depth + 1));
 }
 
+/** Hiding for real (1.282): the fight's `hiding`, the Search standard action, a creature's Detect. */
+function carriesHiding(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesHiding(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.hiding) || record.search === true) return true;
+  for (const key of ["standard", "actions"]) {
+    const list = record[key];
+    if (Array.isArray(list) && list.includes("search")) return true;
+  }
+  return Object.values(record).some((one) => carriesHiding(one, depth + 1));
+}
+
 /** A fog only lightly obscuring, or one a strong wind blows away, or that wind (1.281): a Cape of the
  *  Mountebank's thin smoke, a Fog Cloud, a Gust of Wind. */
 function carriesLightOrWind(value: unknown, depth = 0): boolean {
@@ -3892,6 +3906,13 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Hiding, Search and Detect, 1.282.
+  if (
+    !declaresApi(282) &&
+    (carriesHiding(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesHiding(document)))
+  ) {
+    return "A ruleset that hides for real, searches, or has a creature that detects requires schemaVersion 2 and capabilityApi 1.282 or newer";
   }
   // A light fog, a fog the wind blows away, and that wind, 1.281.
   if (

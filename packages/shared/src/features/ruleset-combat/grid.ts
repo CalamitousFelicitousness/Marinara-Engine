@@ -219,6 +219,8 @@ export function rulesetSees(
   other: RulesetCombatant | undefined,
 ): boolean {
   if (other?.flags.hidden) return false;
+  // Hidden from this one for real (1.282).
+  if (other && other.id !== holder.id && other.hiding?.from.includes(holder.id)) return false;
   const grid = state.board?.grid;
   if (!grid || !rulesetPositionOf(holder) || !rulesetPositionOf(other)) return true;
   return rulesetFootprintsSee(grid, holder, other);

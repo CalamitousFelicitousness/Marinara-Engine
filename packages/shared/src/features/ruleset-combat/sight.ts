@@ -91,7 +91,34 @@ export function rulesetCanSee(
   viewer: RulesetCombatant,
   seen: RulesetCombatant,
 ): boolean {
+  // Nobody sees somebody hidden from them (1.282).
+  if (rulesetHiddenFrom(viewer, seen)) return false;
   return sees(definition, state, viewer, seen, false);
+}
+
+/** Whether `seen` is hidden from `viewer` (1.282): they hid, and that opponent has not found them. */
+export function rulesetHiddenFrom(viewer: RulesetCombatant, seen: RulesetCombatant | undefined): boolean {
+  return !!seen && viewer.id !== seen.id && !!seen.hiding?.from.includes(viewer.id);
+}
+
+/**
+ * Whether somebody hiding with this Stealth `total` would stay hidden from `viewer` (1.282): an
+ * opponent still in the fight that does not see them clearly, and whose passive Perception (the
+ * ruleset's `passive` plus its `perception` check, `lightly` less where it sees them only lightly
+ * obscured) the total meets.
+ */
+export function rulesetStaysHidden(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  viewer: RulesetCombatant,
+  seen: RulesetCombatant,
+  total: number,
+): boolean {
+  const hiding = definition.combat?.hiding;
+  if (!hiding || viewer.side === seen.side || viewer.defeated || viewer.id === seen.id) return false;
+  if (sees(definition, state, viewer, seen, true)) return false;
+  const dim = sees(definition, state, viewer, seen, false) ? (hiding.lightly ?? 5) : 0;
+  return total >= (hiding.passive ?? 10) + (viewer.checks?.[hiding.perception] ?? 0) - dim;
 }
 
 /**
@@ -104,6 +131,7 @@ export function rulesetLightlyObscured(
   viewer: RulesetCombatant,
   seen: RulesetCombatant,
 ): boolean {
+  if (rulesetHiddenFrom(viewer, seen)) return false;
   return sees(definition, state, viewer, seen, false) && !sees(definition, state, viewer, seen, true);
 }
 

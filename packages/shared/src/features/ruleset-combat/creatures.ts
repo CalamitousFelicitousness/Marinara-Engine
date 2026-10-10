@@ -259,6 +259,7 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
     // In the ruleset's distance too (1.278).
     ...(action.move ? { move: { ...action.move } } : {}),
     ...(action.casting ? { casting: { ...action.casting } } : {}),
+    ...(action.search ? { search: true as const } : {}),
   };
 }
 

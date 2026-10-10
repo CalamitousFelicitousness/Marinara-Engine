@@ -13648,11 +13648,12 @@
                               "dodge",
                               "help",
                               "hide",
-                              "ready"
+                              "ready",
+                              "search"
                             ]
                           },
                           "minItems": 1,
-                          "maxItems": 6
+                          "maxItems": 7
                         },
                         "budget": {
                           "type": "string",
@@ -17425,6 +17426,10 @@
                               "$comment": {}
                             },
                             "additionalProperties": false
+                          },
+                          "search": {
+                            "type": "boolean",
+                            "const": true
                           },
                           "$comment": {}
                         },
@@ -40703,10 +40708,11 @@
               "dodge",
               "help",
               "hide",
-              "ready"
+              "ready",
+              "search"
             ]
           },
-          "maxItems": 6
+          "maxItems": 7
         },
         "standardEffects": {
           "type": "object",
@@ -41779,11 +41785,12 @@
                         "dodge",
                         "help",
                         "hide",
-                        "ready"
+                        "ready",
+                        "search"
                       ]
                     },
                     "minItems": 1,
-                    "maxItems": 6
+                    "maxItems": 7
                   },
                   "attacks": {
                     "type": "boolean",
@@ -44767,7 +44774,8 @@
                         "dodge",
                         "help",
                         "hide",
-                        "ready"
+                        "ready",
+                        "search"
                       ]
                     },
                     "maxItems": 8
@@ -44784,7 +44792,8 @@
                             "dodge",
                             "help",
                             "hide",
-                            "ready"
+                            "ready",
+                            "search"
                           ]
                         },
                         "minItems": 1,
@@ -46875,6 +46884,47 @@
             "additionalProperties": false
           },
           "maxItems": 12
+        },
+        "hiding": {
+          "type": "object",
+          "properties": {
+            "stealth": {
+              "type": "string",
+              "maxLength": 40,
+              "pattern": "^[a-z][a-z0-9_]*$"
+            },
+            "perception": {
+              "type": "string",
+              "maxLength": 40,
+              "pattern": "^[a-z][a-z0-9_]*$"
+            },
+            "passive": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "lightly": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "noisy": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 40,
+                "pattern": "^[a-z][a-z0-9_]*$"
+              },
+              "minItems": 1,
+              "maxItems": 6
+            },
+            "$comment": {}
+          },
+          "required": [
+            "stealth",
+            "perception"
+          ],
+          "additionalProperties": false
         },
         "contests": {
           "type": "array",

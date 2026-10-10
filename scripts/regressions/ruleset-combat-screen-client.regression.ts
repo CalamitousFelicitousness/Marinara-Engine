@@ -880,8 +880,46 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
       "switch",
       say({ type: "switch", actorId: "brenna", optionId: "switch:0", label: "Flame Tongue: Flames", on: true }),
     ],
+    // Hiding, and looking (1.282).
+    [
+      "search",
+      say({
+        type: "search",
+        actorId: "lurker",
+        label: "Detect",
+        check: { check: "perception", rolls: [12], modifier: 3, total: 15 },
+        found: ["brenna"],
+      }),
+    ],
+    ["revealed", say({ type: "revealed", actorId: "brenna", byIds: ["lurker"], reason: "attack" })],
   ];
   const printed = new Map(table);
+  assert.equal(printed.get("search"), "Thorn Lurker uses Detect (12 + 3 = 15) and finds Brenna.");
+  assert.equal(printed.get("revealed"), "Brenna attacks and gives away where they were hiding.");
+  assert.equal(
+    say({ type: "revealed", actorId: "brenna", byIds: ["lurker"], reason: "seen" }),
+    "Thorn Lurker spots Brenna.",
+  );
+  assert.equal(
+    say({
+      type: "standard",
+      actorId: "brenna",
+      action: "hide",
+      check: { check: "stealth", rolls: [10], modifier: 3, total: 13 },
+      from: ["lurker"],
+    }),
+    "Brenna hides (10 + 3 = 13), unseen by Thorn Lurker.",
+  );
+  assert.equal(
+    say({
+      type: "standard",
+      actorId: "lurker",
+      action: "search",
+      check: { check: "perception", rolls: [4], modifier: 3, total: 7 },
+      found: [],
+    }),
+    "Thorn Lurker searches (4 + 3 = 7) and finds nobody.",
+  );
   for (const [type, text] of table) {
     assert.ok(text && text.length > 0, `a "${type}" event prints nothing`);
   }

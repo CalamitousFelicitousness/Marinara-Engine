@@ -100,7 +100,7 @@ import {
 } from "./grid.js";
 import { coverTier, elevationAt } from "../tactical-combat/math.js";
 import { rulesetStandingSections, rulesetZoneMoveCells, rulesetZoneTurnCells } from "./zones.js";
-import { rulesetCanSee, rulesetSeesCell } from "./sight.js";
+import { rulesetCanSee, rulesetHiddenFrom, rulesetSeesCell } from "./sight.js";
 import type {
   RulesetAfterAttack,
   RulesetCombatAmount,
@@ -1514,6 +1514,8 @@ export function rulesetOptionTargets(
         if (tooBig(combatant)) return false;
         // Whoever put a condition on this actor that says they may not be pointed at.
         if (forbidden.has(combatant.id)) return false;
+        // Nor anybody hidden from them (1.282): where they are is not known.
+        if (rulesetHiddenFrom(actor, combatant)) return false;
         // Helping yourself is not help.
         // Read the NAME rather than the id: the same standard action is also offered bought with
         // another budget, as `standard:help@bonus`, and nobody helps themselves whichever they took.

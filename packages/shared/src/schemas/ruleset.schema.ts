@@ -2163,7 +2163,8 @@ const catalogAttackRowsSchema: z.ZodType<RulesetAttackRowsDeclaration, z.ZodType
 /** The generic actions the kind implements, named once so a ruleset opts into the ones it has. Up
  *  here rather than beside the combat block because a catalog entry names them too: an ability that
  *  lets its holder buy one of them with another budget says which ones. */
-const combatStandardActionSchema = z.enum(["dash", "disengage", "dodge", "help", "hide", "ready"]);
+/** `search` (Capability API 1.282) looks for whoever is hiding: see `combat.hiding`. */
+const combatStandardActionSchema = z.enum(["dash", "disengage", "dodge", "help", "hide", "ready", "search"]);
 export const RULESET_COMBAT_STANDARD_ACTIONS = combatStandardActionSchema.options;
 
 /** How long a condition an entry applies lasts. `until-save` has no clock of its own, so it needs
@@ -3261,7 +3262,7 @@ const catalogMechanicsObject = z
     /** The standard actions its holder may take for a budget other than the main one. The menu
      *  offers them beside the ordinary ones, and the resolver spends the budget named here. */
     standard: z
-      .object({ actions: z.array(combatStandardActionSchema).min(1).max(6), budget: sheetId })
+      .object({ actions: z.array(combatStandardActionSchema).min(1).max(7), budget: sheetId })
       .strict()
       .optional(),
     /** What this adds to the first qualifying hit of a period, all by itself. */
@@ -3997,9 +3998,41 @@ const creatureActionSchema = z
       .object({ cantripsOnly: z.literal(true).optional() })
       .strict()
       .optional(),
+    /** It looks for whoever is hiding, as the `search` standard action does (Capability API 1.282):
+     *  a creature's legendary Detect, bought with points between turns. */
+    search: z.literal(true).optional(),
   })
   .strict()
   .superRefine((action, ctx) => {
+    // A search (1.282) is the looking, and nothing else.
+    if (action.search) {
+      const extras = (
+        [
+          "damage",
+          "heal",
+          "applies",
+          "area",
+          "teleport",
+          "move",
+          "casting",
+          "sequence",
+          "reaction",
+          "toHit",
+          "autoHit",
+          "save",
+          "ends",
+          "push",
+          "charge",
+        ] as const
+      ).filter((key) => action[key] !== undefined);
+      if (extras.length) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["search"],
+          message: `A search is the looking, so it carries no ${extras.join(", ")}`,
+        });
+      }
+    }
     // A legendary cast (1.279) is bought with points, and only casts.
     if (action.casting) {
       if (!action.signature) {
@@ -6816,7 +6849,7 @@ const combatConditionSchema = z
     grants: z
       .object({
         budget: sheetId,
-        standard: z.array(combatStandardActionSchema).min(1).max(6).optional(),
+        standard: z.array(combatStandardActionSchema).min(1).max(7).optional(),
         attacks: z.literal(true).optional(),
         /** Any item's use, or only the use of an item with one of these tags (5e's Use an Object is a
          *  mundane item's, never a magic item's activation). */
@@ -7448,7 +7481,7 @@ const combatSchema = z
       .optional(),
     attacks: z.array(combatAttackSourceSchema).max(8).optional(),
     abilities: z.array(combatAbilitySourceSchema).max(8).optional(),
-    standard: z.array(combatStandardActionSchema).max(6).optional(),
+    standard: z.array(combatStandardActionSchema).max(7).optional(),
     /**
      * What a standard action does BEYOND the flag it sets, for the ones where the flag is not the
      * whole rule. Only `dodge` has such a part today: many systems also make the dodger harder to
@@ -7483,6 +7516,27 @@ const combatSchema = z
       .optional(),
     /** The numbers a contest reads, and the contests a combatant may take. */
     checks: z.array(combatCheckSchema).max(12).optional(),
+    /**
+     * Hiding for real (Capability API 1.282). The `hide` standard action throws `stealth` (one of
+     * `checks`) on the fight's own dice, and its user is hidden from each opponent that does not see
+     * them clearly and whose passive `perception` (`passive` plus that check) the total meets; one
+     * who sees them only lightly obscured has `lightly` off it. Whoever they are hidden from does not
+     * see them: cannot point anything at them, and is attacked by them as by somebody unseen. It
+     * lasts until they attack, use something that needs one of the `noisy` components, or are seen
+     * clearly by that opponent, and the `search` standard action (or a creature's `search` action)
+     * finds them where its Perception check meets their total. 5e's Hide, Search and passive
+     * Perception: `{ "stealth": "stealth", "perception": "perception", "noisy": ["verbal"] }`.
+     */
+    hiding: z
+      .object({
+        stealth: sheetId,
+        perception: sheetId,
+        passive: z.number().int().min(0).max(100).optional(),
+        lightly: z.number().int().min(0).max(100).optional(),
+        noisy: componentIdsSchema.optional(),
+      })
+      .strict()
+      .optional(),
     contests: z.array(combatContestSchema).max(12).optional(),
     /** How big a combatant is, smallest first: what a contest's `maxSizeAbove` reads (1.98). */
     sizes: combatSizesSchema.optional(),
@@ -9392,6 +9446,23 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
     const contestChecks = unique(combat.checks ?? [], at("checks"), "contest check");
     combat.checks?.forEach((check, index) => checkRef(check.value, at("checks", index, "value"), derivedIds));
     unique(combat.contests ?? [], at("contests"), "contest");
+    if (combat.standard?.includes("search") && !combat.hiding)
+      issue(at("standard"), "Search looks for whoever is hiding, so it needs combat.hiding");
+    // Hiding (1.282): the checks it throws are the fight's own, and so are the components it hears.
+    if (combat.hiding) {
+      for (const key of ["stealth", "perception"] as const) {
+        if (!contestChecks.has(combat.hiding[key]))
+          issue(at("hiding", key), `Unknown contest check "${combat.hiding[key]}"`);
+      }
+      const components = new Set((combat.components ?? []).map((component) => component.id));
+      combat.hiding.noisy?.forEach((component, index) => {
+        if (!components.has(component))
+          issue(
+            at("hiding", "noisy", index),
+            components.size ? `Unknown component "${component}"` : "This ruleset declares no combat components",
+          );
+      });
+    }
     combat.contests?.forEach((contest, index) => {
       const path = at("contests", index);
       const checkId = (id: string, where: (string | number)[]) => {

@@ -31,7 +31,7 @@ import {
 } from "./ammo.js";
 import { parseRulesetCombatDice, rollRulesetDice, sumOf } from "./dice.js";
 import { elevationAt } from "../tactical-combat/math.js";
-import { rulesetCanSee } from "./sight.js";
+import { rulesetCanSee, rulesetHiddenFrom, rulesetStaysHidden } from "./sight.js";
 import {
   rulesetCombatIsPool,
   rulesetCombatPenalty,
@@ -242,6 +242,9 @@ interface RulesetCombatContext {
   state: RulesetEncounterState;
   roll: RulesetCombatRoller;
   events: RulesetCombatEvent[];
+  /** Whoever gave themselves away while hiding (1.282), and how: found out once the step is done,
+   *  so the blow itself is still made unseen. */
+  giveaways?: Map<string, "attack" | "noise">;
   /** Combatants a blow could find no box for on a wound track that refuses when full. In the
    *  systems that keep such a track that is what being taken out IS, so the blow puts them down;
    *  without it a fight on one could never end. Read, and cleared, when the blow is finished. */
@@ -323,6 +326,8 @@ function begin(
       if (!next.window) endActionConditions(ctx);
       // Fog a wind now reaches is blown away (1.281).
       disperseFogs(ctx);
+      // Whoever gave themselves away, or is now seen clearly, is hidden no longer (1.282).
+      syncHiding(ctx);
       // The cells standing walls close, as the zones now standing say (1.172).
       rulesetSyncZoneWalls(next);
       // Grown or shrunk as the conditions now held say (1.190).
@@ -3772,6 +3777,8 @@ function applyChoice(
   // A contest is settled between the two of them on the spot. A fall it causes can be held.
   if (action.contest) {
     const before = new Set(working.tracked);
+    // A grab or a shove gives a hider away as an attack does (1.282).
+    if (working.hiding) (ctx.giveaways ??= new Map()).set(working.id, "attack");
     resolveContest(ctx, working, action, action.contest, workingTargets[0]!);
     holderActed(ctx, working, action, before);
     noteOutcome(ctx);
@@ -4063,6 +4070,51 @@ function reopenAction(
  * pushes what the contest names, in that order, with the winner as the source of what it applies, so
  * a hold ends when the holder goes down. Losing does nothing at all, which is what a failed grab is.
  */
+/** One side of a contest, or a check of its own (1.282: Stealth, Perception), thrown as its
+ *  maker's conditions say: twice with one kept, and whatever they add rolled after the dice. */
+function throwCheck(
+  ctx: RulesetCombatContext,
+  who: RulesetCombatant,
+  check: string,
+  modifier: number,
+): RulesetContestSide {
+  // What is narrowed to the ability the check is made with counts (1.183): Rage's Strength.
+  const ability = rulesetCheckAbility(ctx.definition, check);
+  const mode = rulesetCheckMode(ctx.definition, ctx.combat, who, ctx.state, undefined, ability);
+  const checkModifiers = () =>
+    rulesetConditionModifiers(ctx.definition, ctx.combat, who, "checks", ctx.state, undefined, undefined, ability);
+  if (rulesetCombatIsPool(ctx.combat)) {
+    const bonuses = rollBonuses(ctx, checkModifiers());
+    const pool = throwPool(ctx, who, modifier + bonusTotal(bonuses), mode);
+    return {
+      check,
+      rolls: pool.rolls,
+      modifier,
+      total: pool.botch ? 0 : pool.successes,
+      ...(mode === "normal" ? {} : { mode }),
+      ...(bonuses.length > 0 ? { bonuses } : {}),
+      pool: poolRecord(pool),
+    };
+  }
+  const { count, sides } = ctx.combat.attackRoll!.dice;
+  const first = rollRulesetDice(ctx.roll, count, sides);
+  const second = mode === "normal" ? null : rollRulesetDice(ctx.roll, count, sides);
+  const kept = second
+    ? mode === "advantage"
+      ? Math.max(sumOf(first), sumOf(second))
+      : Math.min(sumOf(first), sumOf(second))
+    : sumOf(first);
+  const bonuses = rollBonuses(ctx, checkModifiers());
+  return {
+    check,
+    rolls: second ? [...first, ...second] : first,
+    modifier,
+    total: kept + modifier + bonusTotal(bonuses),
+    ...(mode === "normal" ? {} : { mode }),
+    ...(bonuses.length > 0 ? { bonuses } : {}),
+  };
+}
+
 function resolveContest(
   ctx: RulesetCombatContext,
   actor: RulesetCombatant,
@@ -4073,43 +4125,7 @@ function resolveContest(
   // Each side thrown as its own conditions say: twice with one kept, and whatever they add rolled
   // after the dice. A side nothing leans or adds to is written exactly as it always was. In a pool
   // fight each side throws its check as a pool and the one with more net successes wins.
-  const thrown = (who: RulesetCombatant, check: string, modifier: number): RulesetContestSide => {
-    // What is narrowed to the ability the check is made with counts (1.183): Rage's Strength.
-    const ability = rulesetCheckAbility(ctx.definition, check);
-    const mode = rulesetCheckMode(ctx.definition, ctx.combat, who, ctx.state, undefined, ability);
-    const checkModifiers = () =>
-      rulesetConditionModifiers(ctx.definition, ctx.combat, who, "checks", ctx.state, undefined, undefined, ability);
-    if (rulesetCombatIsPool(ctx.combat)) {
-      const bonuses = rollBonuses(ctx, checkModifiers());
-      const pool = throwPool(ctx, who, modifier + bonusTotal(bonuses), mode);
-      return {
-        check,
-        rolls: pool.rolls,
-        modifier,
-        total: pool.botch ? 0 : pool.successes,
-        ...(mode === "normal" ? {} : { mode }),
-        ...(bonuses.length > 0 ? { bonuses } : {}),
-        pool: poolRecord(pool),
-      };
-    }
-    const { count, sides } = ctx.combat.attackRoll!.dice;
-    const first = rollRulesetDice(ctx.roll, count, sides);
-    const second = mode === "normal" ? null : rollRulesetDice(ctx.roll, count, sides);
-    const kept = second
-      ? mode === "advantage"
-        ? Math.max(sumOf(first), sumOf(second))
-        : Math.min(sumOf(first), sumOf(second))
-      : sumOf(first);
-    const bonuses = rollBonuses(ctx, checkModifiers());
-    return {
-      check,
-      rolls: second ? [...first, ...second] : first,
-      modifier,
-      total: kept + modifier + bonusTotal(bonuses),
-      ...(mode === "normal" ? {} : { mode }),
-      ...(bonuses.length > 0 ? { bonuses } : {}),
-    };
-  };
+  const thrown = (who: RulesetCombatant, check: string, modifier: number) => throwCheck(ctx, who, check, modifier);
   const mine = rulesetContestCheck(actor, contest, "attacker");
   const attacker = thrown(actor, mine.check, mine.modifier);
   // Breaking free of a hold that names its escape DC (1.98): nobody throws for the holder, and the
@@ -5362,6 +5378,8 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
     at = cell;
     actor.x = cell.x;
     actor.y = cell.y;
+    // Seen on the way, out in the open (1.282), even where the walk ends back in hiding.
+    recheckHiding(ctx, actor);
     // A flier that came onto ground as high as it flew, or higher, is standing on it (1.109), and
     // goes on from there as anybody on the ground does.
     if (actor.altitude !== undefined && !rulesetAirborne(grid, actor)) delete actor.altitude;
@@ -5799,8 +5817,22 @@ function resolveStandard(
     // The same allowance again, in a fight that has cells to spend it on.
     if (actor.movement !== undefined) grantRulesetMovement(ctx.definition, ctx.combat, actor, ctx.state);
   } else if (action === "disengage") actor.flags.disengaged = true;
-  else if (action === "hide") actor.flags.hidden = true;
-  else if (action === "ready") actor.flags.ready = true;
+  else if (action === "hide" && ctx.combat.hiding) {
+    // Hiding for real (1.282): a Stealth check, hidden from each opponent it beats unseen.
+    const check = hidingCheck(ctx, actor, ctx.combat.hiding.stealth);
+    const from = ctx.state.combatants
+      .filter((viewer) => rulesetStaysHidden(ctx.definition, ctx.state, viewer, actor, check.total))
+      .map((viewer) => viewer.id);
+    if (from.length > 0) actor.hiding = { total: check.total, from };
+    else delete actor.hiding;
+    ctx.events.push({ type: "standard", actorId: actor.id, action, check, from });
+    return;
+  } else if (action === "hide") actor.flags.hidden = true;
+  else if (action === "search" && ctx.combat.hiding) {
+    const { check, found } = search(ctx, actor);
+    ctx.events.push({ type: "standard", actorId: actor.id, action, check, found });
+    return;
+  } else if (action === "ready") actor.flags.ready = true;
   else if (action === "help" && target) target.flags.helped = true;
   ctx.events.push({
     type: "standard",
@@ -5808,6 +5840,94 @@ function resolveStandard(
     action,
     ...(action === "help" && target ? { targetId: target.id } : {}),
   });
+}
+
+/** A check of the fight's own `checks` thrown on its own (1.282), its number off the combatant. */
+function hidingCheck(ctx: RulesetCombatContext, who: RulesetCombatant, check: string): RulesetContestSide {
+  return throwCheck(ctx, who, check, who.checks?.[check] ?? 0);
+}
+
+/**
+ * Looking for whoever hides (1.282): a Perception check, and every opponent hidden from the searcher
+ * whose Stealth total it meets is found by them.
+ */
+function search(ctx: RulesetCombatContext, actor: RulesetCombatant): { check: RulesetContestSide; found: string[] } {
+  const check = hidingCheck(ctx, actor, ctx.combat.hiding!.perception);
+  const found: string[] = [];
+  for (const other of ctx.state.combatants) {
+    if (!rulesetHiddenFrom(actor, other) || check.total < other.hiding!.total) continue;
+    found.push(other.id);
+    loseHiding(other, [actor.id]);
+  }
+  return { check, found };
+}
+
+/** No longer hidden from these opponents (1.282), and no longer hiding once that is nobody. */
+function loseHiding(hider: RulesetCombatant, byIds: string[]): void {
+  if (!hider.hiding) return;
+  const from = hider.hiding.from.filter((id) => !byIds.includes(id));
+  if (from.length > 0) hider.hiding.from = from;
+  else delete hider.hiding;
+}
+
+/**
+ * Whether using this action gives its hiding user away (1.282): an attack, anything harming somebody
+ * or asking them to save, or anything needing one of the ruleset's `noisy` components (5e's verbal).
+ * A fog set down in silence is no giveaway.
+ */
+function givesAway(ctx: RulesetCombatContext, action: RulesetCombatAction): "attack" | "noise" | undefined {
+  if (
+    action.toHit !== undefined ||
+    action.autoHit ||
+    action.sequence ||
+    action.contest ||
+    action.damage ||
+    action.save
+  ) {
+    return "attack";
+  }
+  const noisy = ctx.combat.hiding?.noisy ?? [];
+  return action.components?.some((component) => noisy.includes(component)) ? "noise" : undefined;
+}
+
+/**
+ * After every step (1.282): whoever gave themselves away is hidden from nobody, and each opponent
+ * that now sees somebody clearly, or whose passive Perception now beats their total, finds them.
+ */
+function syncHiding(ctx: RulesetCombatContext): void {
+  if (!ctx.combat.hiding) return;
+  for (const [id, reason] of ctx.giveaways ?? []) {
+    const hider = rulesetCombatant(ctx.state, id);
+    if (!hider?.hiding) continue;
+    ctx.events.push({ type: "revealed", actorId: id, byIds: [...hider.hiding.from], reason });
+    delete hider.hiding;
+  }
+  ctx.giveaways?.clear();
+  for (const hider of ctx.state.combatants) recheckHiding(ctx, hider);
+}
+
+/** Each opponent a hider is hidden from that now sees them clearly, or whose passive Perception now
+ *  beats their total, finds them (1.282): after a step, and on every cell of a walk. */
+function recheckHiding(ctx: RulesetCombatContext, hider: RulesetCombatant): void {
+  if (!ctx.combat.hiding || !hider.hiding) return;
+  // Nobody down is hiding any more.
+  if (hider.defeated) {
+    delete hider.hiding;
+    return;
+  }
+  const total = hider.hiding.total;
+  const seen = hider.hiding.from.filter((id) => {
+    const viewer = rulesetCombatant(ctx.state, id);
+    // Somebody gone from the fight for good finds nothing, and is dropped; somebody down is not
+    // looking, and keeps not knowing.
+    if (!viewer) return true;
+    if (viewer.defeated) return false;
+    return !rulesetStaysHidden(ctx.definition, ctx.state, viewer, hider, total);
+  });
+  if (seen.length === 0) return;
+  const byIds = seen.filter((id) => rulesetCombatant(ctx.state, id));
+  if (byIds.length > 0) ctx.events.push({ type: "revealed", actorId: hider.id, byIds, reason: "seen" });
+  loseHiding(hider, seen);
 }
 
 /**
@@ -5987,6 +6107,17 @@ function resolveAction(
 ): RulesetHitHold | null {
   // What shakes surprise off, taken first (1.232): the rest of the turn is a turn like any other.
   if (actor.surprised && actor.surpriseOut?.includes(action.id)) endSurprise(ctx, actor, action.label);
+  // A legendary Detect (1.282): the looking, and nothing else.
+  if (action.search) {
+    if (ctx.combat.hiding) {
+      const { check, found } = search(ctx, actor);
+      ctx.events.push({ type: "search", actorId: actor.id, label: action.label, check, found });
+    }
+    return null;
+  }
+  // Hiding, and giving it away (1.282): found out once the step is done.
+  const giveaway = actor.hiding ? givesAway(ctx, action) : undefined;
+  if (giveaway) (ctx.giveaways ??= new Map()).set(actor.id, giveaway);
   const before = new Set(actor.tracked);
   // What it was cast out of, for a condition that harm from there ends (1.273).
   const harming = ctx.harming;

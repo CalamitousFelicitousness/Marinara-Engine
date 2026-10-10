@@ -1549,6 +1549,16 @@ function carriesMetamagic(value: unknown, depth = 0): boolean {
 
 /** An aura that needs senses, harms at its holder's turn or asks for a save, or a save change
  *  narrowed to what is cast from a catalog (1.260). */
+/** More than four conditions put on by one entry, item use or creature action (1.272). */
+function carriesManyApplies(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesManyApplies(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (Array.isArray(record.applies) && record.applies.length > 4) return true;
+  return Object.values(record).some((one) => carriesManyApplies(one, depth + 1));
+}
+
 /** A teleport (1.271), on a catalog entry, an item's use or a creature's action. */
 function carriesTeleports(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -3763,6 +3773,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Five or six conditions put on at once, 1.272.
+  if (
+    !declaresApi(272) &&
+    (carriesManyApplies(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesManyApplies(document)))
+  ) {
+    return "A ruleset with a spell, an item or a creature action that puts on more than four conditions requires schemaVersion 2 and capabilityApi 1.272 or newer";
   }
   // Teleports, 1.271.
   if (

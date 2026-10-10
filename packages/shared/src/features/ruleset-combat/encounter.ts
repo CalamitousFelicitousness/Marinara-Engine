@@ -297,6 +297,7 @@ export function rulesetCombatConditions(definition: RulesetDefinition, combatant
  * all all read as "yes": a fight that measures nothing has no line for anything to break.
  */
 function sourceInSight(
+  definition: RulesetDefinition,
   combatant: RulesetCombatant,
   condition: string,
   state: RulesetEncounterState | undefined,
@@ -307,8 +308,20 @@ function sourceInSight(
   const source = rulesetCombatant(state, sourceId);
   if (!source || !rulesetPositionOf(combatant) || !rulesetPositionOf(source)) return true;
   // Any cell of one to any cell of the other (1.189).
-  return rulesetFootprintsSee(grid, combatant, source);
+  if (!rulesetFootprintsSee(grid, combatant, source)) return false;
+  // And seen with the holder's own eyes and senses (1.272): blindness, a fog, the dark past what
+  // they see in, or a source unseen to them break it as a wall does. What they see with is read off
+  // their conditions, which is what is being gated here, so while that is read the line is enough.
+  if (sightGated.has(combatant.id)) return true;
+  sightGated.add(combatant.id);
+  try {
+    return rulesetCanSee(definition, state, combatant, source);
+  } finally {
+    sightGated.delete(combatant.id);
+  }
 }
+/** Holders whose sight a gate is reading right now, so reading it never asks itself again. */
+const sightGated = new Set<string>();
 
 /** Whether whoever applied a condition stands within this distance of its holder (1.270). Without
  *  a board, or a source to measure to, it is near: a fight that measures nothing gates nothing. */
@@ -361,7 +374,7 @@ export function rulesetActiveConditions(
   const conditions = (combat.conditions ?? []).flatMap((entry): RulesetActiveCondition[] => {
     if (!active.has(entry.condition)) return [];
     const gate = entry.whileSourceInSight;
-    if (!gate || sourceInSight(combatant, entry.condition, state)) return [entry];
+    if (!gate || sourceInSight(definition, combatant, entry.condition, state)) return [entry];
     // Or near enough, seen or not (1.270): Antipathy's 60 feet.
     if (
       entry.orSourceWithin !== undefined &&

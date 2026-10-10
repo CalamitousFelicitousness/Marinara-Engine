@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: a spell, item or creature can put on up to six conditions at once (Mindless Rage beside Rage), and a frightened creature that is blinded, or whose fear's source is invisible or hidden in fog, no longer counts as seeing it (Capability API 1.272).
 - Rulesets: a creature drawn toward Sympathy's target can move about once it is beside them, instead of being stuck in place.
 - Rulesets: spells, items and creatures can teleport, as Misty Step to a place its caster can see, Dimension Door with one friend along, and a blink dog, picked on the battle map with no free strike on leaving (Capability API 1.271).
 - Rulesets: a fright like Antipathy's pauses while its victim is far away and out of sight and comes back when they return, and a condition like Calm Emotions can pause charms and frights until it ends (Capability API 1.270).

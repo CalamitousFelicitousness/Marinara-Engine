@@ -12584,7 +12584,7 @@
                           ]
                         }
                       },
-                      "maxItems": 4
+                      "maxItems": 6
                     },
                     "temporary": {
                       "type": "object",
@@ -15500,7 +15500,7 @@
                                 ]
                               }
                             },
-                            "maxItems": 4
+                            "maxItems": 6
                           },
                           "targetCount": {
                             "type": "integer",
@@ -27048,7 +27048,7 @@
                               ]
                             }
                           },
-                          "maxItems": 4
+                          "maxItems": 6
                         },
                         "temporary": {
                           "type": "object",
@@ -32332,7 +32332,7 @@
                                     ]
                                   }
                                 },
-                                "maxItems": 4
+                                "maxItems": 6
                               },
                               "temporary": {
                                 "type": "object",

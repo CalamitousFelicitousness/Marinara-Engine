@@ -3105,8 +3105,9 @@ const catalogMechanicsObject = z
     targetCount: z.number().int().min(1).max(20).optional(),
     /** The amount simply lands: no roll and no save. */
     autoHit: z.boolean().optional(),
-    /** Conditions a use puts on the targets it affects. */
-    applies: z.array(catalogAppliesSchema).max(4).superRefine(linkedApplies).optional(),
+    /** Conditions a use puts on the targets it affects: up to 6 (Capability API 1.272; 4 before),
+     *  for a rage whose path adds its own (Mindless Rage beside Rage's and Frenzy's). */
+    applies: z.array(catalogAppliesSchema).max(6).superRefine(linkedApplies).optional(),
     /** An amount granted as temporary points on the health pool, which damage drains first. */
     temporary: z.object(catalogAmountShape).strict().optional(),
     /** Health to share out among its targets (Capability API 1.191): the one with the least health
@@ -3776,7 +3777,8 @@ const creatureActionSchema = z
     /** What a save that ENDS one of `applies` is rolled against, when the action has no save of its
      *  own to borrow the number from. */
     saveDifficulty: z.number().int().min(0).max(1000).optional(),
-    applies: z.array(catalogAppliesSchema).max(4).superRefine(linkedApplies).optional(),
+    /** Up to 6 (Capability API 1.272; 4 before). */
+    applies: z.array(catalogAppliesSchema).max(6).superRefine(linkedApplies).optional(),
     targetCount: z.number().int().min(1).max(20).optional(),
     /** In the ruleset's own distance unit, read once a fight has positions. */
     reach: z.number().finite().min(0).max(10000).optional(),

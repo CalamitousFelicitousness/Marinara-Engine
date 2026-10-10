@@ -2545,6 +2545,8 @@ export interface RulesetCatalogArea {
   ring?: number;
   copies?: number;
   sizePerCostStep?: number;
+  around?: true;
+  throughWalls?: true;
 }
 const catalogAreaSchema: z.ZodType<RulesetCatalogArea, z.ZodTypeDef, unknown> = z
   .object({
@@ -2561,8 +2563,22 @@ const catalogAreaSchema: z.ZodType<RulesetCatalogArea, z.ZodTypeDef, unknown> = 
     /** It grows by this much for each step of a higher cost it is paid with (Capability API 1.262):
      *  5e's Confusion, 5 feet more radius a slot level above 4th. Not a wall. */
     sizePerCostStep: z.number().finite().gt(0).optional(),
+    /** Centred on its user and never aimed (Capability API 1.277): everybody within `size` of them
+     *  is caught, they are not. A mummy lord's Channel Negative Energy, 60 feet. Only a burst. */
+    around: z.literal(true).optional(),
+    /** Walls and corners do not stop it (Capability API 1.277): "including ones behind barriers and
+     *  around corners". Only with `around`. */
+    throughWalls: z.literal(true).optional(),
   })
   .strict()
+  .refine((area) => !area.around || (area.shape === "burst" && area.copies === undefined), {
+    message: "Only a single burst is centred on its user",
+    path: ["around"],
+  })
+  .refine((area) => !area.throughWalls || area.around, {
+    message: "Only a burst centred on its user goes through walls",
+    path: ["throughWalls"],
+  })
   .refine((area) => area.sizePerCostStep === undefined || area.shape !== "wall", {
     message: "A wall does not grow with its cost",
     path: ["sizePerCostStep"],
@@ -3388,6 +3404,14 @@ const catalogMechanicsSchema: z.ZodType<
       message: '"onFailedSave" follows the entry\'s own save, so it has one',
     });
   }
+  // A burst centred on its user (1.277) lands at once; one that stays is laid where it is aimed.
+  if (mechanics.area?.around && mechanics.zone) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["area", "around"],
+      message: "A burst centred on its user lands at once, so it leaves no zone",
+    });
+  }
   // What it regains is what it dealt (1.276), so it deals something.
   if (mechanics.drain && (!mechanics.amount || mechanics.kind === "heal")) {
     ctx.addIssue({
@@ -3859,11 +3883,25 @@ const creatureActionSchema = z
         width: z.number().finite().gt(0).optional(),
         /** False spares the creature's own side, as a catalog entry's does. */
         friendlyFire: z.boolean().optional(),
+        /** Centred on its user and never aimed (Capability API 1.277): everybody within `size` of them
+         *  is caught, they are not. A mummy lord's Channel Negative Energy, 60 feet. Only a burst. */
+        around: z.literal(true).optional(),
+        /** Walls and corners do not stop it (Capability API 1.277): "including ones behind barriers and
+         *  around corners". Only with `around`. */
+        throughWalls: z.literal(true).optional(),
       })
       .strict()
       .refine((area) => area.width === undefined || area.shape === "line", {
         message: "Only a line area may carry width",
         path: ["width"],
+      })
+      .refine((area) => !area.around || area.shape === "burst", {
+        message: "Only a single burst is centred on its user",
+        path: ["around"],
+      })
+      .refine((area) => !area.throughWalls || area.around, {
+        message: "Only a burst centred on its user goes through walls",
+        path: ["throughWalls"],
       })
       .optional(),
     /** How many times it can be done at all, and over what stretch. */

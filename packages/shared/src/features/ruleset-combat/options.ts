@@ -728,6 +728,29 @@ export function rulesetAreaTargets(
     .map((combatant) => combatant.id);
 }
 
+/** Everybody a burst centred on its user catches (1.277): within its size of them on a board, and
+ *  seen from where they stand unless it goes through walls; off a board, everybody. Never its user,
+ *  and never its user's own side when it spares them. A mending one, only whom it mends. */
+export function rulesetAroundTargets(
+  state: RulesetEncounterState,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+): RulesetCombatant[] {
+  const around = action.around;
+  if (!around) return [];
+  const grid = state.board?.grid;
+  return state.combatants.filter((combatant) => {
+    if (combatant.id === actor.id || combatant.defeated) return false;
+    const sameSide = combatant.side === actor.side;
+    if (around.friendlyFire === false && sameSide) return false;
+    if (action.heal && !sameSide) return false;
+    if (!grid) return true;
+    if (!rulesetPositionOf(actor) || !rulesetPositionOf(combatant)) return false;
+    if (rulesetGap(actor, combatant) > around.size) return false;
+    return !!around.throughWalls || rulesetFootprintsSee(grid, actor, combatant);
+  });
+}
+
 /**
  * What cover adds for this combatant against something coming from `from` (combat C6a-2): half
  * cover's bonus, or three-quarters' when the ruleset has one, graded by corner lines from `from`.

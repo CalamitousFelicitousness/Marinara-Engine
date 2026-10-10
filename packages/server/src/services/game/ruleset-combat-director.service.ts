@@ -56,6 +56,7 @@ import {
   rulesetEncounterOutcome,
   rulesetEncounterSummary,
   rulesetOptionTargets,
+  rulesetAroundTargets,
   rulesetReactionPointsAtSource,
   rulesetReactionTarget,
   rulesetFallTargets,
@@ -1195,6 +1196,21 @@ function rulesetCandidatesFrom(
       });
       continue;
     }
+    // A burst centred on the actor (1.277) is worth whom it catches from where it stands: the other
+    // side for it, its own against it, or the other way round for one that mends.
+    const aroundAction = fallingAction?.around ? fallingAction : undefined;
+    if (aroundAction) {
+      if (standing) continue;
+      const caught = rulesetAroundTargets(encounter, actor, aroundAction);
+      // Harm that catches nobody of the other side is not worth its price, whoever it does catch.
+      if (!aroundAction.heal && !caught.some((one) => one.side !== actor.side && !one.down)) continue;
+      const candidate: CombatAiCandidate<RulesetCandidate> = {
+        action: { choice: { actorId, optionId: option.id, targetIds: [], ...paying(way) }, option },
+        cost: price,
+      };
+      if (weighCaught(definition, combat, actor, option, caught, candidate)) candidates.push(candidate);
+      continue;
+    }
     const lands = menu ? rulesetWindowTargetOf(encounter, actor, option) : undefined;
     if (option.targets.count <= 0 && !lands) {
       // Holding the thing it is already holding would end it and start it again for the same price.
@@ -1319,8 +1335,6 @@ function areaCandidates(
   way: { payWith?: string; style?: string; mode?: string },
   price: number,
 ): Array<CombatAiCandidate<RulesetCandidate>> {
-  const average = option.forecast?.averageDamage ?? 0;
-  const chance = option.forecast?.hitChance ?? 1;
   const candidates: Array<CombatAiCandidate<RulesetCandidate>> = [];
   // The same bound the view keeps, and the aims that catch the most people first, so what is left
   // out on a very large board is what mattered least. The sort is stable, so equal aims keep the
@@ -1336,7 +1350,6 @@ function areaCandidates(
       .map((id) => rulesetCombatant(encounter, id))
       .filter((target): target is RulesetCombatant => !!target);
     const foes = caught.filter((target) => target.side !== actor.side && !target.down);
-    const friends = caught.filter((target) => target.side === actor.side);
     const candidate: CombatAiCandidate<RulesetCandidate> = {
       action: {
         choice: {
@@ -1353,38 +1366,57 @@ function areaCandidates(
       ...(foes[0] ? { targetId: foes[0].id } : {}),
       cost: price,
     };
-    if (option.heals) {
-      const helped = friends.filter((target) => {
-        const health = rulesetCombatHealth(definition, combat, target);
-        return target.down || health.value < health.max;
-      });
-      if (helped.length === 0) continue;
-      candidate.healing = helped.reduce((total, target) => {
-        const health = rulesetCombatHealth(definition, combat, target);
-        return total + Math.min(1, average / Math.max(1, health.max)) + (target.down ? 1 : 0);
-      }, 0);
-    } else if (average > 0) {
-      if (foes.length === 0) continue;
-      const share = foes.reduce((total, target) => {
-        const health = rulesetCombatHealth(definition, combat, target);
-        return total + average / Math.max(1, health.value + health.temp);
-      }, 0);
-      const hurt = friends.reduce((total, target) => {
-        const health = rulesetCombatHealth(definition, combat, target);
-        return total + average / Math.max(1, health.value + health.temp);
-      }, 0);
-      candidate.damage = Math.max(0, Math.min(2, share - hurt)) * chance;
-      if (candidate.damage <= 0) continue;
-    } else if (foes.length > 0) candidate.setup = 0.4;
-    else {
-      if (option.restores && !friends.some((friend) => rulesetPoolHasRoom(definition, friend, option.restores!))) {
-        continue;
-      }
-      candidate.support = 0.4;
-    }
+    if (!weighCaught(definition, combat, actor, option, caught, candidate)) continue;
     candidates.push(candidate);
   }
   return candidates;
+}
+
+/** What a shape is worth by whom it catches (an aimed one, or one centred on its maker, 1.277): the
+ *  harm to the other side less the harm to its own, healing for its own, or a setup or a support.
+ *  False when it is worth nothing. */
+function weighCaught(
+  definition: RulesetDefinition,
+  combat: NonNullable<RulesetDefinition["combat"]>,
+  actor: RulesetCombatant,
+  option: RulesetCombatOption,
+  caught: RulesetCombatant[],
+  candidate: CombatAiCandidate<RulesetCandidate>,
+): boolean {
+  const average = option.forecast?.averageDamage ?? 0;
+  const chance = option.forecast?.hitChance ?? 1;
+  const foes = caught.filter((target) => target.side !== actor.side && !target.down);
+  const friends = caught.filter((target) => target.side === actor.side);
+  if (option.heals) {
+    const helped = friends.filter((target) => {
+      const health = rulesetCombatHealth(definition, combat, target);
+      return target.down || health.value < health.max;
+    });
+    if (helped.length === 0) return false;
+    candidate.healing = helped.reduce((total, target) => {
+      const health = rulesetCombatHealth(definition, combat, target);
+      return total + Math.min(1, average / Math.max(1, health.max)) + (target.down ? 1 : 0);
+    }, 0);
+  } else if (average > 0) {
+    if (foes.length === 0) return false;
+    const share = foes.reduce((total, target) => {
+      const health = rulesetCombatHealth(definition, combat, target);
+      return total + average / Math.max(1, health.value + health.temp);
+    }, 0);
+    const hurt = friends.reduce((total, target) => {
+      const health = rulesetCombatHealth(definition, combat, target);
+      return total + average / Math.max(1, health.value + health.temp);
+    }, 0);
+    candidate.damage = Math.max(0, Math.min(2, share - hurt)) * chance;
+    if (candidate.damage <= 0) return false;
+  } else if (foes.length > 0) candidate.setup = 0.4;
+  else {
+    if (option.restores && !friends.some((friend) => rulesetPoolHasRoom(definition, friend, option.restores!))) {
+      return false;
+    }
+    candidate.support = 0.4;
+  }
+  return true;
 }
 
 /**

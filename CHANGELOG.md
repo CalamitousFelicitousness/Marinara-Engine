@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: an area can be centred on its user and go through walls, catching everybody nearby without being aimed (a mummy lord's Channel Negative Energy) (Capability API 1.277).
 - Rulesets: a blow can heal its maker by the damage it dealt, all of it or a share, without touching the target's maximum (an aboleth's Psychic Drain, Vampiric Touch) (Capability API 1.276).
 - Rulesets: a blink dog can bite before or after its teleport as one action, and the director uses it to blink in and bite (Capability API 1.275).
 - Rulesets: a teleport can take its user and friends out of the fight (a unicorn's escape; a party that leaves this way has fled, not fallen), can take along only those its user sees, and can leave smoke at both ends like the Cape of the Mountebank (Capability API 1.274).

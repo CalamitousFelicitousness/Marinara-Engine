@@ -198,6 +198,7 @@ export {
   rulesetAimLegal,
   rulesetAnswerDeflects,
   rulesetAreaTargets,
+  rulesetAroundTargets,
   rulesetAttackMode,
   rulesetToHitAgainst,
   rulesetAgainstHere,

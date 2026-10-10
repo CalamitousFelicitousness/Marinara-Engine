@@ -356,7 +356,14 @@ export interface RulesetStatBlockAction {
   reach?: number;
   range?: number | RulesetCombatRange;
   /** The shape it lands in, in the ruleset's own distance unit. */
-  area?: { shape: RulesetCombatArea["shape"]; size: number; width?: number; friendlyFire?: boolean };
+  area?: {
+    shape: RulesetCombatArea["shape"];
+    size: number;
+    width?: number;
+    friendlyFire?: boolean;
+    around?: true;
+    throughWalls?: true;
+  };
   uses?: RulesetCombatUses;
   recharge?: RulesetCombatRecharge;
   /** Other actions of this block, in order. ONE budget pays for the lot, and each part takes its
@@ -734,6 +741,10 @@ export interface RulesetCombatAction {
   push?: number;
   /** Its user teleports (1.271): in the ruleset's distance on a block, in cells in a fight. */
   teleport?: RulesetTeleport;
+  /** A burst centred on its user, never aimed (1.277): everybody within `size` cells of them is
+   *  caught, they are not, behind walls too with `throughWalls`, their own side not with
+   *  `friendlyFire: false`. Off a board, everybody. */
+  around?: { size: number; throughWalls?: true; friendlyFire?: false };
   /** Made, it lets its user make this other action once more this turn for nothing (1.275): a blink
    *  dog's bite after its teleport, or its teleport after the bite. */
   followUp?: string;

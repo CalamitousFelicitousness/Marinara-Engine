@@ -1895,6 +1895,8 @@ function clausesOf(
 /** Who a catalog entry may be pointed at. What it does decides it when the entry says nothing: a
  *  heal or a buff goes to the actor's own side, anything else to the other one. */
 function targetsOf(mechanics: RulesetCatalogMechanics): RulesetCombatAction["targets"] {
+  // A burst centred on its user (1.277) is pointed at nobody: it catches whom it reaches.
+  if (mechanics.area?.around) return { side: "self", count: 0 };
   // A `utility` entry is only ever here because it changes what the turn may hold, and what it
   // changes is the holder's own economy: there is nobody to point it at. One that cures (1.171) is
   // pointed at whom it cures, an ally unless it says otherwise.
@@ -2422,7 +2424,7 @@ function mechanicsAction(
   if (perCell !== undefined) {
     if (mechanics.range === 0 && !mechanics.area) action.reach = 1;
     else if (mechanics.range !== undefined) action.range = { normal: rulesetInCells(mechanics.range, perCell) };
-    if (mechanics.area) {
+    if (mechanics.area && !mechanics.area.around) {
       action.area = {
         shape: mechanics.area.shape,
         size: rulesetInCells(mechanics.area.size, perCell),
@@ -2435,6 +2437,14 @@ function mechanicsAction(
         ...(mechanics.friendlyFire === false ? { friendlyFire: false } : {}),
       };
     }
+  }
+  // Centred on its user (1.277), measured with or without a board: off one it catches everybody.
+  if (mechanics.area?.around) {
+    action.around = {
+      size: rulesetInCells(mechanics.area.size, perCell ?? 1),
+      ...(mechanics.area.throughWalls ? { throughWalls: true as const } : {}),
+      ...(mechanics.friendlyFire === false ? { friendlyFire: false as const } : {}),
+    };
   }
   return action;
 }
@@ -2768,7 +2778,7 @@ function blockActions(
     // One that lands on the creature itself points at nobody: its effect is its own.
     // So does a teleport (1.271): where it goes is its choice, not whom.
     targets:
-      action.self || action.teleport
+      action.self || action.teleport || action.area?.around
         ? { side: "self" as const, count: 0 }
         : {
             // An area catches each creature in it, the creature's allies too (1.187): off a board it may
@@ -2870,7 +2880,17 @@ function blockActions(
       ? { reach: rulesetInCells(action.reach, perCell) }
       : {}),
     ...(rangeOf(action.range) ? { range: rangeOf(action.range)! } : {}),
-    ...(perCell !== undefined && action.area
+    // Centred on the creature itself (1.277): never aimed, so not an area anything is pointed with.
+    ...(action.area?.around
+      ? {
+          around: {
+            size: rulesetInCells(action.area.size, perCell ?? 1),
+            ...(action.area.throughWalls ? { throughWalls: true as const } : {}),
+            ...(action.area.friendlyFire === false ? { friendlyFire: false as const } : {}),
+          },
+        }
+      : {}),
+    ...(perCell !== undefined && action.area && !action.area.around
       ? {
           area: {
             shape: action.area.shape,

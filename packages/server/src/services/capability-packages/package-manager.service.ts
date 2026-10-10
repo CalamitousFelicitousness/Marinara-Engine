@@ -1547,6 +1547,17 @@ function carriesMetamagic(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesMetamagic(one, depth + 1));
 }
 
+/** A burst centred on its user, through walls or not (1.277): Channel Negative Energy. */
+function carriesAround(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesAround(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const area = plainRecord(record.area);
+  if (area && (area.around !== undefined || area.throughWalls !== undefined)) return true;
+  return Object.values(record).some((one) => carriesAround(one, depth + 1));
+}
+
 /** A blow whose maker regains what it dealt (1.276): Psychic Drain, Vampiric Touch. */
 function carriesDrain(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -3822,6 +3833,13 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // A burst centred on its user, 1.277.
+  if (
+    !declaresApi(277) &&
+    (carriesAround(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesAround(document)))
+  ) {
+    return "A ruleset with a burst centred on its user requires schemaVersion 2 and capabilityApi 1.277 or newer";
   }
   // A blow whose maker regains what it dealt, 1.276.
   if (

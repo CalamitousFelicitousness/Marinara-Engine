@@ -8608,6 +8608,14 @@
                           "type": "number",
                           "exclusiveMinimum": 0
                         },
+                        "around": {
+                          "type": "boolean",
+                          "const": true
+                        },
+                        "throughWalls": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "$comment": {}
                       },
                       "required": [
@@ -15667,6 +15675,14 @@
                               },
                               "friendlyFire": {
                                 "type": "boolean"
+                              },
+                              "around": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "throughWalls": {
+                                "type": "boolean",
+                                "const": true
                               },
                               "$comment": {}
                             },

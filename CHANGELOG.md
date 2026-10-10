@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Game Mode: a new game is played as the **Overworld RPG** (a world for your setting, walked on an overworld with towns, sites and dungeon maps; the default) or as **Classic** Game Mode, chosen on the wizard's first step and kept for the game. Classic has no setting kit, world or dungeon maps, keeps tactical turns by side, and draws element colours as before; a game made before the choice plays as it did.
 - Rulesets: a blink dog can bite before or after its teleport as one action, and the director uses it to blink in and bite (Capability API 1.275).
 - Rulesets: a teleport can take its user and friends out of the fight (a unicorn's escape; a party that leaves this way has fled, not fallen), can take along only those its user sees, and can leave smoke at both ends like the Cape of the Mountebank (Capability API 1.274).
 - Rulesets: a barbarian who starts raging while frightened or charmed has the effect suspended for the rage and back afterwards, instead of cured outright (Mindless Rage).

@@ -207,10 +207,40 @@ try {
     const chats = createChatsStorage(db);
     const chat = await chats.create({ name: "Maps", mode: "game", characterIds: [], connectionId: connection!.id });
     const chatId = chat.id;
+    // Dungeon maps are the Overworld RPG's: a Classic game (one made without a world, or chosen as
+    // Classic) is never taught the tag, and a `[map:]` its Game Master writes anyway opens nothing.
+    for (const style of [undefined, "classic"] as const) {
+      const classic = await chats.create({
+        name: "Classic",
+        mode: "game",
+        characterIds: [],
+        connectionId: connection!.id,
+      });
+      await chats.patchMetadata(classic.id, {
+        gameId: `classic-${classic.id}`,
+        gameSessionStatus: "active",
+        gameIntroPresented: true,
+        ...(style ? { gameStyle: style } : {}),
+      });
+      await chats.createMessage({ chatId: classic.id, role: "assistant", content: "A hillside." });
+      replies.push('You step inside. [map: kind="cave" name="Wolf Hollow"]');
+      prompts.length = 0;
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/generate/",
+        payload: { chatId: classic.id, userMessage: "We go on.", streaming: false },
+      });
+      assert.equal(response.statusCode, 200, response.body);
+      assert.doesNotMatch(prompts.join("\n"), /\[map: kind=/u, "Classic is not taught the map tag");
+      const kept = JSON.parse((await chats.getById(classic.id))!.metadata as string) as Record<string, unknown>;
+      assert.equal(kept.gameDungeonMap ?? null, null, "Classic opens no map");
+    }
+
     await chats.patchMetadata(chatId, {
       gameId: `maps-${chatId}`,
       gameSessionStatus: "active",
       gameIntroPresented: true,
+      gameStyle: "overworld",
       gameTime: { day: 1, hour: 10, minute: 0 },
     });
     await chats.createMessage({ chatId, role: "assistant", content: "A hillside, and a dark mouth in it." });

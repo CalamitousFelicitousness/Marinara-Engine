@@ -79,6 +79,8 @@ test("the Game Master opens a crypt, the party walks it, and leaves by the way o
         gameId: `crypt-${chatId}`,
         gameSessionStatus: "active",
         gameIntroPresented: true,
+        // Dungeon maps are the Overworld RPG's.
+        gameStyle: "overworld",
         gameImageAutoGenerationEnabled: false,
         enableAgents: false,
         enableTools: false,

@@ -144,6 +144,8 @@ export interface DirectedRulesetCombatant {
   defeated: boolean;
   /** Sent out of the fight, alive (1.231): off the board until it comes back, if it does. */
   away?: true;
+  /** Gone of its own accord, by a teleport that leaves the fight (1.274). */
+  left?: true;
   /** Caught unaware (1.232): their first turn is only ended, and they answer nothing until then. */
   surprised?: true;
   /** The two counts of the ruleset's dying rule, for a member the fight is still rolling for. */

@@ -1549,6 +1549,18 @@ function carriesMetamagic(value: unknown, depth = 0): boolean {
 
 /** An aura that needs senses, harms at its holder's turn or asks for a save, or a save change
  *  narrowed to what is cast from a catalog (1.260). */
+/** A teleport that leaves the fight, takes along only those its user sees, or leaves smoke (1.274). */
+function carriesTeleportExtras(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesTeleportExtras(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const teleport = plainRecord(record.teleport);
+  if (teleport && (teleport.leaves !== undefined || teleport.carriesSeen !== undefined || teleport.smoke !== undefined))
+    return true;
+  return Object.values(record).some((one) => carriesTeleportExtras(one, depth + 1));
+}
+
 /** What Calm Emotions needs (1.273): a save its user's side may fail, indifference to a whole side,
  *  and endings on being attacked, harmed by what a catalog casts, or a friend harmed in sight. */
 function carriesCalm(value: unknown, depth = 0): boolean {
@@ -3790,6 +3802,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Teleports out of the fight, seen passengers and smoke, 1.274.
+  if (
+    !declaresApi(274) &&
+    (carriesTeleportExtras(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesTeleportExtras(document)))
+  ) {
+    return "A ruleset with a teleport that leaves the fight, takes along only those its user sees, or leaves smoke behind requires schemaVersion 2 and capabilityApi 1.274 or newer";
   }
   // Calm Emotions, 1.273.
   if (

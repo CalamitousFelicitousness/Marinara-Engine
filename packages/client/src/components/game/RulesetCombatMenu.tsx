@@ -691,7 +691,9 @@ export function RulesetCombatMenu({
       step.stage === "move"
         ? "game.combat.ruleset.board.movePrompt"
         : option.teleport
-          ? "game.combat.ruleset.board.teleportPrompt"
+          ? option.teleport.cells.length === 0
+            ? "game.combat.ruleset.board.teleportLeavePrompt"
+            : "game.combat.ruleset.board.teleportPrompt"
           : turning
             ? "game.combat.ruleset.board.aimTurnPrompt"
             : wall && !lay?.ring
@@ -732,6 +734,32 @@ export function RulesetCombatMenu({
                 </button>
               );
             })}
+          </div>
+        )}
+        {/* Out of the fight altogether (1.274), with whoever is ticked to go along. */}
+        {option.teleport?.leaves && step.stage === "aim" && (
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                const along = step.targets;
+                closeStep();
+                onChoose(
+                  option.id,
+                  [],
+                  step.payWith,
+                  along.length ? { carries: along } : undefined,
+                  step.style,
+                  step.mode,
+                  step.amount,
+                  step.alters,
+                );
+              }}
+              className={buttonClass}
+            >
+              {t("game.combat.ruleset.board.teleportLeave")}
+            </button>
           </div>
         )}
         {(wall || copies > 1) && (

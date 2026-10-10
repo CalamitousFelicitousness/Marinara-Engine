@@ -260,8 +260,9 @@ interface RulesetCombatContext {
   chosenAmount?: number;
   /** How many more of an item's charges its user spends on the action being resolved (1.264). */
   moreCharges?: number;
-  /** Where the teleport being resolved goes, and who goes along (1.271). */
-  teleport?: { to: RulesetCombatCell; carries: string[] };
+  /** Where the teleport being resolved goes, and who goes along (1.271); nowhere is out of the
+   *  fight (1.274). */
+  teleport?: { to?: RulesetCombatCell; carries: string[] };
   /** The catalog the action being resolved was cast out of, and what it puts on (1.273). */
   harming?: { catalog: string; applies: string[] };
 }
@@ -3407,9 +3408,12 @@ function applyChoice(
   }
   // Where a teleport goes and who goes along (1.271): only what its option offers.
   const teleporting = option.teleport;
+  // No cell is out of the fight, where it may leave it (1.274).
   if (
     teleporting &&
-    !(choice.at && teleporting.cells.some((cell) => cell.x === choice.at!.x && cell.y === choice.at!.y))
+    !(choice.at
+      ? teleporting.cells.some((cell) => cell.x === choice.at!.x && cell.y === choice.at!.y)
+      : teleporting.leaves)
   ) {
     return refusal(state, choice.actorId, "bad-cell", option.id);
   }
@@ -3468,8 +3472,11 @@ function applyChoice(
   const { ctx, finish } = begin(definition, combat, state, roller);
   if (area && choice.at) ctx.aimedAt = { x: choice.at.x, y: choice.at.y };
   if (also) ctx.aimedAlso = also;
-  if (teleporting && choice.at) {
-    ctx.teleport = { to: { x: choice.at.x, y: choice.at.y }, carries: [...(choice.carries ?? [])] };
+  if (teleporting) {
+    ctx.teleport = {
+      ...(choice.at ? { to: { x: choice.at.x, y: choice.at.y } } : {}),
+      carries: [...(choice.carries ?? [])],
+    };
   }
   const working = rulesetCombatant(ctx.state, actor.id)!;
   const workingTargets = targets.map((target) => rulesetCombatant(ctx.state, target.id)!);
@@ -5737,9 +5744,36 @@ function resolveAction(
 function teleport(ctx: RulesetCombatContext, actor: RulesetCombatant, action: RulesetCombatAction): void {
   const { to, carries } = ctx.teleport!;
   delete ctx.teleport;
+  if (!to) {
+    if (!action.teleport?.leaves || !rulesetCombatStanding(actor)) return;
+    // Out of the fight (1.274), and whoever goes along with it.
+    const along = carries
+      .map((id) => rulesetCombatant(ctx.state, id))
+      .filter((one): one is RulesetCombatant => !!one && rulesetCombatStanding(one) && !one.away);
+    leaveFight(ctx, actor, action);
+    for (const one of along) leaveFight(ctx, one, action, actor.id);
+    return;
+  }
   const grid = ctx.state.board?.grid;
   const from = rulesetPositionOf(actor);
   if (!grid || !from || !rulesetCombatStanding(actor) || !rulesetRoomAt(ctx.state, grid, actor, to)) return;
+  // A cloud where it left and where it lands (1.274), until the end of its next turn.
+  if (action.teleport?.smoke) {
+    const cells = new Map<string, RulesetCombatCell>();
+    for (const cell of [...rulesetFootprint(actor), ...rulesetFootprintAt(to, rulesetSpanOf(actor))])
+      cells.set(`${cell.x},${cell.y}`, { x: cell.x, y: cell.y });
+    (actor.zones ??= []).push({
+      actionId: action.id,
+      label: action.label,
+      rounds: 1,
+      anchor: "point",
+      triggers: [],
+      at: { ...to },
+      cells: [...cells.values()],
+      obscures: { pierced: [...(action.teleport.smoke.pierced ?? [])] },
+    });
+    (actor.flags.freshZones ??= []).push(action.id);
+  }
   const set = (one: RulesetCombatant, at: RulesetCombatCell, was: RulesetCombatCell, by?: string) => {
     const before = zonesAround(ctx);
     one.x = at.x;
@@ -5774,6 +5808,18 @@ function teleport(ctx: RulesetCombatContext, actor: RulesetCombatant, action: Ru
     }
     if (spot) set(one, spot, was, actor.id);
   }
+}
+
+/** Gone from the fight alive, of its own accord (1.274): a teleport that leaves it. Nothing brings
+ *  it back, and what it held up ends as it would for one sent away. */
+function leaveFight(ctx: RulesetCombatContext, one: RulesetCombatant, action: RulesetCombatAction, by?: string): void {
+  one.defeated = true;
+  one.away = { by: by ?? one.id, label: action.label, left: true };
+  ctx.events.push({ type: "left", actorId: one.id, label: action.label, ...(by ? { by } : {}) });
+  endSummons(ctx, one);
+  endZones(ctx, one);
+  endConcentration(ctx, one, "spent");
+  endConditionsFromSource(ctx, one);
 }
 
 /** Out of the fight, alive (1.231): for good, or while it holds what the same use put on it, whose
@@ -7747,7 +7793,10 @@ export function rulesetEncounterOutcome(state: RulesetEncounterState): RulesetEn
   const enemies = state.combatants.filter((combatant) => combatant.side === "enemy");
   const party = state.combatants.filter((combatant) => combatant.side === "party");
   if (enemies.length > 0 && enemies.every((combatant) => !rulesetCombatStanding(combatant))) return "victory";
-  if (party.length > 0 && party.every((combatant) => !rulesetCombatStanding(combatant))) return "defeat";
+  if (party.length > 0 && party.every((combatant) => !rulesetCombatStanding(combatant))) {
+    // Out of it with somebody gone alive (1.274): the party got away, it did not fall.
+    return party.some((combatant) => combatant.away?.left) ? "fled" : "defeat";
+  }
   return "ongoing";
 }
 
@@ -7776,6 +7825,7 @@ export function rulesetEncounterSummary(
           dying: combatant.dying,
           stable: combatant.stable,
           conditions: rulesetCombatConditions(definition, combatant),
+          ...(combatant.away?.left ? { left: true as const } : {}),
         };
       }),
     enemies: state.combatants
@@ -7788,6 +7838,7 @@ export function rulesetEncounterSummary(
           health: now.value,
           maxHealth: now.max,
           defeated: combatant.defeated,
+          ...(combatant.away?.left ? { left: true as const } : {}),
         };
       }),
   };

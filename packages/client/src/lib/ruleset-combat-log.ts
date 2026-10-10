@@ -515,6 +515,14 @@ export function rulesetCombatEventLine(
         label: event.label,
         ...(event.while ? { condition: names.condition(event.while) } : {}),
       });
+    case "left":
+      return event.by
+        ? key("leftAlong", {
+            actor: names.combatant(event.actorId),
+            by: names.combatant(event.by),
+            label: event.label,
+          })
+        : key("left", { actor: names.combatant(event.actorId), label: event.label });
     case "returned":
       return key(event.gone ? "returnedGone" : "returned", { target: names.combatant(event.targetId) });
     case "charged":
@@ -933,7 +941,9 @@ export function rulesetCombatEventLine(
       return key("revived", { actor: names.combatant(event.actorId), health: event.health });
     case "outcome":
       if (event.outcome === "ongoing") return null;
-      return key(event.outcome === "victory" ? "outcomeVictory" : "outcomeDefeat");
+      return key(
+        event.outcome === "victory" ? "outcomeVictory" : event.outcome === "fled" ? "outcomeFled" : "outcomeDefeat",
+      );
     case "refused":
       return key("refused", {
         actor: names.combatant(event.actorId),

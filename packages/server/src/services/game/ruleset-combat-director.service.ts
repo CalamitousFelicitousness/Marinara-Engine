@@ -506,7 +506,8 @@ export function syncRulesetCombatants(definition: RulesetDefinition, state: Comb
   // The ruleset decides who won, not the Engine's own hit points. They agree, because the numbers
   // below are the same numbers, but the ruleset is the one that is read.
   const outcome = rulesetEncounterOutcome(fight.encounter);
-  if (!state.outcome && outcome !== "ongoing") state.outcome = outcome;
+  // A party gone from the fight alive (1.274) got away, as fleeing does.
+  if (!state.outcome && outcome !== "ongoing") state.outcome = outcome === "fled" ? "flee" : outcome;
   // The Engine's own round is the ruleset's round here, so the shell's header and the recap's
   // "after N rounds" report the fight that was actually fought rather than staying on round one.
   state.round = fight.encounter.round;
@@ -517,7 +518,8 @@ export function syncRulesetCombatants(definition: RulesetDefinition, state: Comb
     if (!unit) continue;
     const health = rulesetCombatHealth(definition, combat, combatant);
     unit.maxHp = Math.max(1, Math.floor(health.max));
-    unit.hp = combatant.defeated ? 0 : Math.min(unit.maxHp, Math.max(0, Math.floor(health.value)));
+    // Somebody away from the fight is not dead: what they had stays theirs.
+    unit.hp = combatant.defeated && !combatant.away ? 0 : Math.min(unit.maxHp, Math.max(0, Math.floor(health.value)));
     unit.statusEffects = conditionsOf(definition, combatant).map((condition) => ({
       name: condition.label,
       modifier: 0,
@@ -603,6 +605,7 @@ function projectCombatant(
     stable: combatant.stable,
     defeated: combatant.defeated,
     ...(combatant.away ? { away: true as const } : {}),
+    ...(combatant.away?.left ? { left: true as const } : {}),
     ...(combatant.surprised ? { surprised: true as const } : {}),
     ...(deathTrack ? { deathTrack } : {}),
     ...(saveModifiers.length ? { saveModifiers } : {}),
@@ -1446,10 +1449,37 @@ function teleportCandidate(
 ): CombatAiCandidate<RulesetCandidate> | null {
   const cells = option.teleport?.cells ?? [];
   const span = rulesetSpanOf(actor);
+  // Out of the fight (1.274), when it is going badly: at a quarter of its health or less, with
+  // whoever may go along.
+  if (option.teleport?.leaves) {
+    const health = rulesetCombatHealth(definition, combat, actor);
+    const threatened = encounter.combatants.some(
+      (one) => one.side !== actor.side && rulesetCombatStanding(one) && !one.away,
+    );
+    if (threatened && health.max > 0 && health.value * 4 <= health.max) {
+      const carries = option.teleport.carries
+        ? option.teleport.carries.ids.slice(0, option.teleport.carries.count)
+        : [];
+      return {
+        action: {
+          choice: {
+            actorId: actor.id,
+            optionId: option.id,
+            targetIds: [],
+            ...(carries.length ? { carries } : {}),
+            ...paying(way),
+          },
+          option,
+        },
+        setup: 0.7,
+        cost: price,
+      };
+    }
+  }
   const foes = encounter.combatants.filter(
     (one) => one.side !== actor.side && rulesetCombatStanding(one) && !one.away && !!rulesetPositionOf(one),
   );
-  if (cells.length === 0 || foes.length === 0) return null;
+  if (cells.length === 0 || foes.length === 0 || !rulesetPositionOf(actor)) return null;
   const nearest = (at: { x: number; y: number }) => Math.min(...foes.map((foe) => rulesetGapFrom(at, span, foe)));
   const here = rulesetPositionOf(actor)!;
   const health = rulesetCombatHealth(definition, combat, actor);

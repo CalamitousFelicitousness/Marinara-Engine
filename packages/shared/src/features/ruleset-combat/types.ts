@@ -286,6 +286,12 @@ export interface RulesetTeleport {
   seen?: true;
   carries?: number;
   carriesWithin?: number;
+  /** Only those its user sees go along (1.274). */
+  carriesSeen?: true;
+  /** It may take its user, and those along, out of the fight (1.274). */
+  leaves?: true;
+  /** A cloud on the cell left and the cell landed in, until the end of its user's next turn (1.274). */
+  smoke?: { pierced?: string[] };
 }
 
 /** One thing a stat block can do. `reach` and `range` are in the ruleset's own distance unit; a
@@ -1049,7 +1055,8 @@ export interface RulesetCombatant {
   object?: true;
   /** Sent out of the fight by somebody (1.231), and `defeated` while away: for good, or until they
    *  no longer hold `while` (5e's Banishment), when they come back where they were. */
-  away?: { by: string; label: string; while?: string; gone?: RulesetTargetIs };
+  /** `left` (1.274): gone from the fight of its own accord, by a teleport that leaves it. */
+  away?: { by: string; label: string; while?: string; gone?: RulesetTargetIs; left?: true };
   /** Caught unaware as the fight began (1.232): no move and no action on their first turn, and no
    *  reaction until it ends. `surpriseOut` are the actions that end it if taken first (Feral
    *  Instinct's rage). */
@@ -1914,6 +1921,8 @@ export type RulesetCombatEvent =
   | { type: "rescued"; actorId: string; optionId: string; label: string; by: RulesetCombatRescue["by"] }
   /** Sent out of the fight (1.231): for good, or for as long as `while` holds. */
   | { type: "dismissed"; actorId: string; targetId: string; label: string; while?: string }
+  /** Out of the fight by a teleport that leaves it (1.274), or along with whoever did (`by`). */
+  | { type: "left"; actorId: string; label: string; by?: string }
   /** Back from where it was sent (1.231), or, with `gone`, kept there for good. */
   | { type: "returned"; targetId: string; gone?: true }
   /** Caught unaware as the fight began (1.232). */
@@ -2023,7 +2032,8 @@ export type RulesetCombatEvent =
   | { type: "outcome"; outcome: RulesetEncounterOutcome }
   | { type: "refused"; actorId: string; optionId?: string; reason: RulesetCombatRefusal };
 
-export type RulesetEncounterOutcome = "ongoing" | "victory" | "defeat";
+/** `fled` (1.274): the party is out of the fight with somebody of it gone from it alive. */
+export type RulesetEncounterOutcome = "ongoing" | "victory" | "defeat" | "fled";
 
 /** One legal thing the actor whose turn it is may do right now. Everything a player, an opponent's
  *  own choices and a forecast go through is on this menu: nothing else computes legality. */
@@ -2109,7 +2119,7 @@ export interface RulesetCombatOption {
   walls?: RulesetCombatCell[];
   /** Where a teleport may go (1.271), as cells its user's corner would stand on, and who of its
    *  user's side may go along, at most `count` of them. The choice names the cell as `at`. */
-  teleport?: { cells: RulesetCombatCell[]; carries?: { count: number; ids: string[] } };
+  teleport?: { cells: RulesetCombatCell[]; carries?: { count: number; ids: string[] }; leaves?: true };
   /** What it costs in the actor's own points, and how many they have. A signature option spends no
    *  budget: it is bought at the end of somebody else's turn. */
   signature?: { cost: number; points: number };
@@ -2251,8 +2261,10 @@ export interface RulesetEncounterSummary {
      *  tell a member who has stopped slipping from one who is still on the clock. */
     stable: boolean;
     conditions: string[];
+    /** Gone from the fight alive, by a teleport that leaves it (1.274). */
+    left?: true;
   }>;
-  enemies: Array<{ id: string; name: string; health: number; maxHealth: number; defeated: boolean }>;
+  enemies: Array<{ id: string; name: string; health: number; maxHealth: number; defeated: boolean; left?: true }>;
 }
 
 /** How a lasting area behaves (1.167), as the catalog entry said it. */
@@ -2342,6 +2354,8 @@ export interface RulesetCombatZone {
    *  (1.177). */
   facing?: { dx: number; dy: number };
   cells?: RulesetCombatCell[];
+  /** A cloud of its own, not its action's zone (1.274): a teleport's smoke. */
+  obscures?: { pierced: string[] };
   /** The cells on a wall's chosen side that catch as its `side` says (1.172). */
   sideCells?: RulesetCombatCell[];
   payWith?: string;

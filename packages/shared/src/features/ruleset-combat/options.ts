@@ -334,8 +334,12 @@ export function rulesetTeleportPassengers(
   state: RulesetEncounterState,
   actor: RulesetCombatant,
   teleport: NonNullable<RulesetCombatAction["teleport"]>,
+  /** Given, `carriesSeen` keeps to those its user sees (1.274). */
+  definition?: RulesetDefinition,
 ): string[] {
-  if (!teleport.carries || !rulesetPositionOf(actor)) return [];
+  // Off a board only leaving goes anywhere (1.274), and nothing measures who stands near.
+  const board = !!state.board?.grid && !!rulesetPositionOf(actor);
+  if (!teleport.carries || (!board && !teleport.leaves)) return [];
   const within = teleport.carriesWithin ?? 1;
   return state.combatants
     .filter(
@@ -344,9 +348,9 @@ export function rulesetTeleportPassengers(
         one.side === actor.side &&
         rulesetCombatStanding(one) &&
         !one.away &&
-        !!rulesetPositionOf(one) &&
+        (!board || (!!rulesetPositionOf(one) && rulesetGap(actor, one) <= within)) &&
         rulesetSpanOf(one) <= rulesetSpanOf(actor) &&
-        rulesetGap(actor, one) <= within,
+        (!teleport.carriesSeen || !definition || rulesetCanSee(definition, state, actor, one)),
     )
     .map((one) => one.id);
 }
@@ -2017,7 +2021,8 @@ function optionFrom(
   if (action.contest?.from && !rulesetContestHolder(state, actor, action.contest)) return null;
   if (!actionDoesSomething(action)) return null;
   // A teleport and nothing else (1.271) goes nowhere without a board.
-  if (action.teleport && !positioned(state) && !rulesetDoesMoreThanTeleport(action)) return null;
+  if (action.teleport && !positioned(state) && !action.teleport.leaves && !rulesetDoesMoreThanTeleport(action))
+    return null;
   // Only once the attack action has been taken this turn (1.237): Flurry of Blows.
   if (action.afterAttack && !rulesetTookAttackAction(actor, action.afterAttack)) return null;
   // Only on its holder's own turn before they have attacked in it (1.242): Reckless Attack.
@@ -2150,13 +2155,15 @@ function optionFrom(
     if (walls.length > 0) option.walls = walls;
   }
   // Where a teleport may go, and who may go along (1.271). With nowhere to go it is not offered.
-  if (action.teleport && positioned(state)) {
-    const cells = rulesetTeleportCells(definition, state, actor, action.teleport);
-    if (cells.length === 0) return null;
-    const ids = rulesetTeleportPassengers(state, actor, action.teleport);
+  // Or out of the fight altogether, where it may leave it (1.274), the only way it goes off a board.
+  if (action.teleport && (positioned(state) || action.teleport.leaves)) {
+    const cells = positioned(state) ? rulesetTeleportCells(definition, state, actor, action.teleport) : [];
+    if (cells.length === 0 && !action.teleport.leaves) return null;
+    const ids = rulesetTeleportPassengers(state, actor, action.teleport, definition);
     option.teleport = {
       cells,
       ...(ids.length > 0 ? { carries: { count: action.teleport.carries!, ids } } : {}),
+      ...(action.teleport.leaves ? { leaves: true as const } : {}),
     };
   }
   // The weapon's other ways to make this attack, each only while its holder has the shots for it,

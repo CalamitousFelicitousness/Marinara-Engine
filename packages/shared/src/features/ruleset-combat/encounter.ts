@@ -1961,6 +1961,11 @@ function rulesetTeleportInCells(teleport: RulesetTeleport, perCell: number): Rul
     ...(teleport.seen ? { seen: true as const } : {}),
     ...(teleport.carries ? { carries: teleport.carries } : {}),
     ...(teleport.carriesWithin !== undefined ? { carriesWithin: rulesetInCells(teleport.carriesWithin, perCell) } : {}),
+    ...(teleport.carriesSeen ? { carriesSeen: true as const } : {}),
+    ...(teleport.leaves ? { leaves: true as const } : {}),
+    ...(teleport.smoke
+      ? { smoke: { ...(teleport.smoke.pierced ? { pierced: [...teleport.smoke.pierced] } : {}) } }
+      : {}),
   };
 }
 
@@ -2284,9 +2289,9 @@ function mechanicsAction(
     };
   }
   if (mechanics.push !== undefined) action.push = rulesetInCells(mechanics.push, perCell ?? 1);
-  // Measured on a board (1.271): a fight without one has nowhere to go.
-  if (mechanics.teleport && perCell !== undefined)
-    action.teleport = rulesetTeleportInCells(mechanics.teleport, perCell);
+  // Measured on a board (1.271): a fight without one has nowhere to go, but out of it (1.274).
+  if (mechanics.teleport && (perCell !== undefined || mechanics.teleport.leaves))
+    action.teleport = rulesetTeleportInCells(mechanics.teleport, perCell ?? 1);
   if (mechanics.zone) {
     action.zone = {
       rounds: mechanics.zone.rounds,
@@ -2843,7 +2848,9 @@ function blockActions(
     ...(action.reducesMax ? { reducesMax: { ...action.reducesMax } } : {}),
     ...(action.targetHolds ? { targetHolds: structuredClone(action.targetHolds) } : {}),
     ...(perCell !== undefined && action.push !== undefined ? { push: rulesetInCells(action.push, perCell) } : {}),
-    ...(perCell !== undefined && action.teleport ? { teleport: rulesetTeleportInCells(action.teleport, perCell) } : {}),
+    ...(action.teleport && (perCell !== undefined || action.teleport.leaves)
+      ? { teleport: rulesetTeleportInCells(action.teleport, perCell ?? 1) }
+      : {}),
     // A run is measured on a board (1.181), so a fight with none never charges.
     ...(perCell !== undefined && action.charge
       ? {

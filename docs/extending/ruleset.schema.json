@@ -10051,6 +10051,31 @@
                           "exclusiveMinimum": 0,
                           "maximum": 10000
                         },
+                        "carriesSeen": {
+                          "type": "boolean",
+                          "const": true
+                        },
+                        "leaves": {
+                          "type": "boolean",
+                          "const": true
+                        },
+                        "smoke": {
+                          "type": "object",
+                          "properties": {
+                            "pierced": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 8
+                            },
+                            "$comment": {}
+                          },
+                          "additionalProperties": false
+                        },
                         "$comment": {}
                       },
                       "required": [
@@ -14697,6 +14722,31 @@
                                 "type": "number",
                                 "exclusiveMinimum": 0,
                                 "maximum": 10000
+                              },
+                              "carriesSeen": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "leaves": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "smoke": {
+                                "type": "object",
+                                "properties": {
+                                  "pierced": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 8
+                                  },
+                                  "$comment": {}
+                                },
+                                "additionalProperties": false
                               },
                               "$comment": {}
                             },
@@ -25198,6 +25248,31 @@
                               "exclusiveMinimum": 0,
                               "maximum": 10000
                             },
+                            "carriesSeen": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "leaves": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "smoke": {
+                              "type": "object",
+                              "properties": {
+                                "pierced": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "minItems": 1,
+                                  "maxItems": 8
+                                },
+                                "$comment": {}
+                              },
+                              "additionalProperties": false
+                            },
                             "$comment": {}
                           },
                           "required": [
@@ -30485,6 +30560,31 @@
                                     "type": "number",
                                     "exclusiveMinimum": 0,
                                     "maximum": 10000
+                                  },
+                                  "carriesSeen": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "leaves": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "smoke": {
+                                    "type": "object",
+                                    "properties": {
+                                      "pierced": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 8
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "additionalProperties": false
                                   },
                                   "$comment": {}
                                 },

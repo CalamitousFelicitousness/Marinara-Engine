@@ -73,7 +73,7 @@ function cellsBetween(a: RulesetCombatCell, b: RulesetCombatCell): RulesetCombat
 function obscured(state: RulesetEncounterState): Array<{ cells: Set<string>; pierced: string[] }> {
   return state.combatants.flatMap((caster) =>
     (caster.zones ?? []).flatMap((zone) => {
-      const rule = caster.actions.find((entry) => entry.id === zone.actionId)?.zone?.obscures;
+      const rule = zone.obscures ?? caster.actions.find((entry) => entry.id === zone.actionId)?.zone?.obscures;
       if (!rule) return [];
       const cells = new Set(rulesetZoneCells(state, caster, zone).map((cell) => `${cell.x},${cell.y}`));
       return cells.size > 0 ? [{ cells, pierced: rule.pierced }] : [];

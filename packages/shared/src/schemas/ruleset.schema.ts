@@ -2844,6 +2844,9 @@ export interface RulesetTeleportRule {
   seen?: true;
   carries?: number;
   carriesWithin?: number;
+  carriesSeen?: true;
+  leaves?: true;
+  smoke?: RulesetSeenThrough;
 }
 /** Its user moves at once to a free place within `distance`, touching nothing between: no step, so
  *  nobody gets a strike at them leaving. With `seen`, only a place they can see. `carries` willing
@@ -2855,11 +2858,25 @@ const teleportSchema: z.ZodType<RulesetTeleportRule, z.ZodTypeDef, unknown> = z
     seen: z.literal(true).optional(),
     carries: z.number().int().min(1).max(8).optional(),
     carriesWithin: z.number().finite().gt(0).max(10000).optional(),
+    /** Only those its user can see go along (Capability API 1.274): a unicorn's "willing creatures
+     *  it can see". */
+    carriesSeen: z.literal(true).optional(),
+    /** It may instead take its user, and whoever goes along, out of the fight altogether (Capability
+     *  API 1.274): a unicorn's mile. Off a board that is the only place it goes. */
+    leaves: z.literal(true).optional(),
+    /** It leaves a cloud on the cell its user left and the one it lands in, obscuring as a zone's
+     *  `obscures` does, until the end of its user's next turn (Capability API 1.274): the Cape of
+     *  the Mountebank's smoke. */
+    smoke: seenThroughSchema.optional(),
   })
   .strict()
   .refine((teleport) => teleport.carriesWithin === undefined || teleport.carries !== undefined, {
     message: '"carriesWithin" is how near those it "carries" stand, so it goes with "carries"',
     path: ["carriesWithin"],
+  })
+  .refine((teleport) => !teleport.carriesSeen || teleport.carries !== undefined, {
+    message: '"carriesSeen" says which of those it "carries" may go, so it goes with "carries"',
+    path: ["carriesSeen"],
   });
 
 const catalogMechanicsObject = z
@@ -10766,6 +10783,11 @@ function creatureIssues(
       );
     }
   });
+  // And what sees through a teleport's smoke (1.274).
+  creature.actions?.forEach((action, index) => {
+    if (action.teleport?.smoke)
+      sightIssues(definition, action.teleport.smoke.pierced, [...at, "actions", index, "teleport", "smoke"], add);
+  });
   const kinds = rulesetConditionKindIds(definition);
   creature.conditionImmunities?.forEach((condition, index) => {
     if (!conditions.has(condition) && !leveled.has(condition) && !kinds.has(condition)) {
@@ -11359,6 +11381,7 @@ function useIssues(
   targetTestIssues(definition, use, at, add);
   cureIssues(definition, use, at, add);
   if (use.zone?.obscures) sightIssues(definition, use.zone.obscures.pierced, [...at, "zone", "obscures"], add);
+  if (use.teleport?.smoke) sightIssues(definition, use.teleport.smoke.pierced, [...at, "teleport", "smoke"], add);
   zoneInsideIssues(definition, use.zone, [...at, "zone"], add);
   componentIssues(definition, use.components, [...at, "components"], add);
   if (use.casts !== undefined)
@@ -12364,6 +12387,10 @@ export function rulesetCatalogEntryIssues(
     }
     if (mechanics?.zone?.obscures) {
       sightIssues(definition, mechanics.zone.obscures.pierced, [index, "mechanics", "zone", "obscures"], add);
+    }
+    // What sees through a teleport's smoke (1.274) is the ruleset's own senses.
+    if (mechanics?.teleport?.smoke) {
+      sightIssues(definition, mechanics.teleport.smoke.pierced, [index, "mechanics", "teleport", "smoke"], add);
     }
     zoneInsideIssues(definition, mechanics?.zone, [index, "mechanics", "zone"], add);
     componentIssues(definition, mechanics?.components, [index, "mechanics", "components"], add);

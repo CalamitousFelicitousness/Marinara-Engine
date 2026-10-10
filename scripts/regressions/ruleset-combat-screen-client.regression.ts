@@ -828,6 +828,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["unsealed", say({ type: "unsealed", targetId: "lurker", sourceId: "brenna", amount: 5, maxHealth: 30 })],
     ["dismissed", say({ type: "dismissed", actorId: "brenna", targetId: "lurker", label: "Dismissal" })],
     ["returned", say({ type: "returned", targetId: "lurker" })],
+    ["left", say({ type: "left", actorId: "lurker", label: "Teleport" })],
     ["surprised", say({ type: "surprised", actorIds: ["brenna", "lurker"] })],
     ["surpriseOver", say({ type: "surpriseOver", actorId: "lurker" })],
     ["extraTurn", say({ type: "extraTurn", actorId: "brenna", initiative: 7, label: "Thief's Reflexes" })],
@@ -1167,6 +1168,13 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     "Brenna's Banishment sends Thorn Lurker away for as long as they are Prone.",
   );
   assert.equal(printed.get("returned"), "Thorn Lurker comes back into the fight.");
+  // Out of the fight by a teleport (1.274), and along with whoever went.
+  assert.equal(printed.get("left"), "Thorn Lurker leaves the fight with Teleport.");
+  assert.equal(
+    say({ type: "left", actorId: "brenna", label: "Teleport", by: "lurker" }),
+    "Brenna leaves the fight along with Thorn Lurker's Teleport.",
+  );
+  assert.equal(say({ type: "outcome", outcome: "fled" }), "The party has left the fight.");
   assert.equal(
     say({ type: "returned", targetId: "lurker", gone: true }),
     "Thorn Lurker stays where they were sent, gone for good.",
@@ -1611,6 +1619,17 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     "Party on 5e (SRD 5.1) rules: Brenna: 0/60 Hit points (dying; Unconscious); Corwin: 20/38 Hit points (stable; 4 temporary)",
     "Still standing: Thorn Lurker (3/12)",
     "Sheets: the 5e (SRD 5.1) sheets were kept up to date while the fight ran, so every cost is already paid. Do not change those numbers again.",
+  ]);
+
+  // Gone from the fight alive by a teleport (1.274): neither beaten nor still standing.
+  const away = {
+    ...summary,
+    party: [{ ...summary.party[0]!, left: true as const }, summary.party[1]!],
+    enemies: [{ id: "lurker", name: "Thorn Lurker", health: 3, maxHealth: 12, defeated: true, left: true as const }],
+  };
+  assert.deepEqual(rulesetCombatRecapLines(fiveE, away).slice(0, 2), [
+    "Party on 5e (SRD 5.1) rules: Brenna: 60/60 Hit points (left the fight); Corwin: 20/38 Hit points",
+    "Got away: Thorn Lurker (3/12)",
   ]);
 
   // A condition that OUTLIVES the fight is the Game Master's to end, as it is at a table: the thing

@@ -210,6 +210,8 @@ export interface RulesetCombatSaveRider {
   succeeds?: { immune?: string[]; conditionImmune?: string[]; is?: RulesetTargetIs };
   /** A target that is this rolls it twice, the better or the worse kept (1.180). */
   modes?: Array<{ is: RulesetTargetIs; mode: "advantage" | "disadvantage" }>;
+  /** Its user's own side fails it without rolling (1.273): Calm Emotions. */
+  alliesMayFail?: true;
 }
 
 /** How often something can be done at all, and over what stretch. `day` outlives one fight, so the

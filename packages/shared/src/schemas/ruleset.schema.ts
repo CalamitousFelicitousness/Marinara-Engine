@@ -2194,8 +2194,12 @@ export interface RulesetSaveExtras {
   against?: { conditions?: string[]; damage?: string[] };
   succeeds?: { immune?: string[]; conditionImmune?: string[]; is?: RulesetTargetIs };
   modes?: Array<{ is: RulesetTargetIs; mode: (typeof RULESET_ROLL_MODES)[number] }>;
+  alliesMayFail?: true;
 }
 const saveExtrasShape = {
+  /** Its user's own side may choose to fail it (Capability API 1.273), and do: they fail without
+   *  rolling, as a friend lets a spell in. 5e's Calm Emotions. */
+  alliesMayFail: z.literal(true).optional(),
   /** What else the save counts as being against (Capability API 1.176), for a save modifier's
    *  `against`: 5e's Stinking Cloud is a save against poison, which a dwarf has advantage on. */
   against: z
@@ -5791,6 +5795,9 @@ const combatConditionEffectSchema = z.enum([
   "resist-all",
   /** The holder may not point anything at whoever put this on them. */
   "cannot-target-source",
+  /** Nor at anybody on that one's side (Capability API 1.273), unless the holder is on it too: 5e's
+   *  Calm Emotions, indifferent to the creatures its caster chose. */
+  "cannot-target-source-side",
   /** And may not walk to a cell nearer them than the one they stand in. Read only by a fight with
    *  a board, exactly as the three effects above it are, so a ruleset may say it either way. */
   "cannot-approach-source",
@@ -6048,6 +6055,7 @@ export const RULESET_LEVEL_REFUSED_EFFECTS = [
   "half-move-to-stand",
   "ends-on-damage",
   "cannot-target-source",
+  "cannot-target-source-side",
   "cannot-approach-source",
 ] as const;
 
@@ -6549,13 +6557,19 @@ const combatConditionSchema = z
     /** It comes off the moment whoever applied it goes down. */
     endsWhenSourceDown: z.boolean().optional(),
     /** What ends this condition (Capability API 1.120): any damage, or harm from whoever applied
-     *  it or their side. Source-side harm finishes resolving before the condition ends. */
+     *  it or their side. Source-side harm finishes resolving before the condition ends. Or
+     *  (Capability API 1.273) an attack roll at its holder, from anybody, or harm to one of its
+     *  holder's friends that its holder sees: 5e's Calm Emotions. Those too wait for the step. */
     endsWhen: z
-      .array(z.enum(["damaged", "harmed-by-source-side"]))
+      .array(z.enum(["damaged", "harmed-by-source-side", "attacked", "ally-harmed-in-sight"]))
       .min(1)
-      .max(2)
+      .max(4)
       .refine((entries) => new Set(entries).size === entries.length, { message: "Condition endings must be unique" })
       .optional(),
+    /** Harm from anything cast out of these catalogs ends it, from anybody (Capability API 1.273),
+     *  a scroll's spell and a standing zone's included: 5e's Calm Emotions, harmed by a spell. It
+     *  waits for the step, as source-side harm does. */
+    endsWhenHarmedFrom: uniqueIds(8).optional(),
     /** Damage above zero repeats the applies' saveEnds with its stored DC (Capability API 1.120).
      *  A holder with no saveEnds or DC has nothing to roll. */
     saveWhenDamaged: z.literal(true).optional(),
@@ -9632,6 +9646,11 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       if (entry.size && !combat.sizes) {
         issue([...path, "size"], "A condition that changes size needs combat.sizes");
       }
+      entry.endsWhenHarmedFrom?.forEach((catalogId, catalogIndex) => {
+        if (!def.catalogs?.some((catalog) => catalog.id === catalogId)) {
+          issue([...path, "endsWhenHarmedFrom", catalogIndex], `Unknown catalog "${catalogId}"`);
+        }
+      });
       entry.suppresses?.forEach((held, heldIndex) => {
         if (!conditions.has(held)) issue([...path, "suppresses", heldIndex], `Unknown condition "${held}"`);
       });

@@ -5,6 +5,8 @@
  *     Rage and Frenzy each add Mindless Rage's condition beside their four.
  *   - `whileSourceInSight` reads the holder's own sight, as an aura's `orSeen` does: a blinded
  *     holder, or a source it cannot see (invisible), no longer "sees" the source of its fear.
+ *   - A condition its holder's own condition holds off is not cured by the immunity that condition
+ *     gives (1.273): a fright on when a rage begins is suspended and back when the rage ends.
  *   - Import refusals and the install gate.
  */
 import assert from "node:assert/strict";
@@ -162,6 +164,64 @@ try {
     const unseen = scared();
     rulesetCombatant(unseen, "ghost")!.tracked.push({ condition: "invisible", rounds: null } as never);
     assert.ok(!effects(unseen).includes("own-attacks-disadvantage"), "an invisible source is out of sight");
+  }
+
+  // ── A rage holds a fright already on off, and it comes back after (1.273) ──
+  {
+    const raging = parsed(
+      fiveE((doc) => {
+        doc.catalogs.push({ id: "spells", label: "Spells", feeds: ["spells"], entries: [sixfold] });
+        doc.sheet.live.conditions.push({ id: "raging", label: "Raging" });
+        doc.combat.conditions.push({
+          condition: "raging",
+          effects: [],
+          conditionImmunities: ["frightened"],
+          suppresses: ["frightened"],
+        });
+      }),
+    );
+    const state = fight();
+    const hero = rulesetCombatant(state, "hero")!;
+    hero.tracked.push({ condition: "frightened", rounds: null, source: "ghost" } as never);
+    hero.tracked.push({ condition: "raging", rounds: null } as never);
+    const option = rulesetCombatOptions(raging, state, "hero").find((one) => one.label === "Sixfold")!;
+    const step = applyRulesetCombatChoice(
+      raging,
+      state,
+      { actorId: "hero", optionId: option.id, targetIds: ["hero"] },
+      () => 10,
+    );
+    const after = rulesetCombatant(step.state, "hero")!;
+    assert.ok(
+      after.tracked.some((one) => one.condition === "frightened"),
+      "suspended, not cured",
+    );
+    const held = (combatant: typeof after) =>
+      rulesetActiveConditions(raging, raging.combat!, combatant, step.state).some(
+        (one) => one.condition === "frightened",
+      );
+    assert.equal(held(after), false, "held off while raging");
+    after.tracked = after.tracked.filter((one) => one.condition !== "raging");
+    assert.equal(held(after), true, "back once the rage ends");
+    // Immune without holding it off: cured, as before.
+    const cures = parsed(
+      fiveE((doc) => {
+        doc.catalogs.push({ id: "spells", label: "Spells", feeds: ["spells"], entries: [sixfold] });
+        doc.sheet.live.conditions.push({ id: "raging", label: "Raging" });
+        doc.combat.conditions.push({ condition: "raging", effects: [], conditionImmunities: ["frightened"] });
+      }),
+    );
+    const plain = fight();
+    rulesetCombatant(plain, "hero")!.tracked.push({ condition: "frightened", rounds: null, source: "ghost" } as never);
+    rulesetCombatant(plain, "hero")!.tracked.push({ condition: "raging", rounds: null } as never);
+    const cureOption = rulesetCombatOptions(cures, plain, "hero").find((one) => one.label === "Sixfold")!;
+    const cured = applyRulesetCombatChoice(
+      cures,
+      plain,
+      { actorId: "hero", optionId: cureOption.id, targetIds: ["hero"] },
+      () => 10,
+    );
+    assert.ok(!rulesetCombatant(cured.state, "hero")!.tracked.some((one) => one.condition === "frightened"), "cured");
   }
 
   // ── Import ──

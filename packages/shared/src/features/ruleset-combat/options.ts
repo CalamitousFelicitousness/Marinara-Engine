@@ -1316,9 +1316,14 @@ export function rulesetForbiddenTargets(
   const forbidden = new Set<string>();
   if (!combat) return forbidden;
   for (const entry of rulesetActiveConditions(definition, combat, actor, state)) {
-    if (!entry.effects.includes("cannot-target-source")) continue;
     const source = actor.tracked.find((tracked) => tracked.condition === entry.condition)?.source;
-    if (source) forbidden.add(source);
+    if (source && entry.effects.includes("cannot-target-source")) forbidden.add(source);
+    // Nor anybody on their side (1.273), unless it is the holder's own: a friend is not kept off.
+    const by =
+      source && entry.effects.includes("cannot-target-source-side") ? rulesetCombatant(state, source) : undefined;
+    if (by && by.side !== actor.side) {
+      for (const one of state.combatants) if (one.side === by.side) forbidden.add(one.id);
+    }
   }
   // A turn the dice made a strike at one creature (1.259): nobody else.
   if (actor.flags.compelled === "strike" && actor.flags.compelledTarget) {

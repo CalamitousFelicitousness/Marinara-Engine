@@ -8944,6 +8944,10 @@
                           "type": "boolean",
                           "const": true
                         },
+                        "alliesMayFail": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "against": {
                           "type": "object",
                           "properties": {
@@ -14520,6 +14524,10 @@
                                 ]
                               },
                               "ignoresCover": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "alliesMayFail": {
                                 "type": "boolean",
                                 "const": true
                               },
@@ -24247,6 +24255,10 @@
                               "type": "boolean",
                               "const": true
                             },
+                            "alliesMayFail": {
+                              "type": "boolean",
+                              "const": true
+                            },
                             "against": {
                               "type": "object",
                               "properties": {
@@ -29528,6 +29540,10 @@
                                     ]
                                   },
                                   "ignoresCover": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "alliesMayFail": {
                                     "type": "boolean",
                                     "const": true
                                   },
@@ -40683,6 +40699,7 @@
                     "own-checks-disadvantage",
                     "resist-all",
                     "cannot-target-source",
+                    "cannot-target-source-side",
                     "cannot-approach-source",
                     "cannot-heal",
                     "cannot-heal-nonmagical"
@@ -41238,6 +41255,7 @@
                         "own-checks-disadvantage",
                         "resist-all",
                         "cannot-target-source",
+                        "cannot-target-source-side",
                         "cannot-approach-source",
                         "cannot-heal",
                         "cannot-heal-nonmagical"
@@ -41272,12 +41290,24 @@
                   "type": "string",
                   "enum": [
                     "damaged",
-                    "harmed-by-source-side"
+                    "harmed-by-source-side",
+                    "attacked",
+                    "ally-harmed-in-sight"
                   ]
                 },
                 "minItems": 1,
-                "maxItems": 2,
+                "maxItems": 4,
                 "uniqueItems": true
+              },
+              "endsWhenHarmedFrom": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 40,
+                  "pattern": "^[a-z][a-z0-9_]*$"
+                },
+                "minItems": 1,
+                "maxItems": 8
               },
               "saveWhenDamaged": {
                 "type": "boolean",

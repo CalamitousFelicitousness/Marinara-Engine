@@ -262,6 +262,8 @@ interface RulesetCombatContext {
   moreCharges?: number;
   /** Where the teleport being resolved goes, and who goes along (1.271). */
   teleport?: { to: RulesetCombatCell; carries: string[] };
+  /** The catalog the action being resolved was cast out of, and what it puts on (1.273). */
+  harming?: { catalog: string; applies: string[] };
 }
 
 /** A working copy, plus a roller that counts its dice so the state's cursor stays exact. */
@@ -1771,8 +1773,13 @@ function letFall(
 
 /** A newly gained immunity ends a condition already on its holder (Capability API 1.127). */
 function endImmuneConditions(ctx: RulesetCombatContext, target: RulesetCombatant): void {
-  const ended = rulesetCombatConditions(ctx.definition, target).filter((condition) =>
-    rulesetImmuneToCondition(target, condition, ctx.definition, ctx.state),
+  // One its holder's own condition holds off is suspended, not cured (1.273): a fright already on
+  // when a rage that is immune to it begins comes back when the rage ends.
+  const held = new Set(
+    rulesetActiveConditions(ctx.definition, ctx.combat, target, ctx.state).flatMap((entry) => entry.suppresses ?? []),
+  );
+  const ended = rulesetCombatConditions(ctx.definition, target).filter(
+    (condition) => !held.has(condition) && rulesetImmuneToCondition(target, condition, ctx.definition, ctx.state),
   );
   for (const condition of ended) {
     if (rulesetCombatConditions(ctx.definition, target).includes(condition))
@@ -1914,8 +1921,13 @@ function endConditionsOnHarm(
   dealt = 0,
   harmful = false,
   damageSaves?: Set<RulesetTrackedCondition>,
+  /** An attack roll is about to be made at them (1.273). */
+  attacked = false,
 ): () => void {
   const endings: RulesetTrackedCondition[] = [];
+  // Harmed by what was cast out of a catalog (1.273), but not by a casting that puts the very same
+  // condition on again: that one is refreshed, not ended.
+  const harmFrom = (dealt > 0 || harmful) && ctx.harming ? ctx.harming : undefined;
   const actor = rulesetCombatant(ctx.state, sourceId ?? "");
   const brought: Array<{ applied: RulesetCombatApplies; source?: string }> = [];
   for (const condition of rulesetCombatConditions(ctx.definition, target)) {
@@ -1958,9 +1970,35 @@ function endConditionsOnHarm(
       );
       if (savedAgainst(ctx, target, tracked, saved)) continue;
     }
-    if (!(dealt > 0 || harmful) || !rule?.endsWhen?.includes("harmed-by-source-side") || !tracked || !actor) continue;
+    if (!tracked) continue;
+    if (
+      (attacked && rule?.endsWhen?.includes("attacked")) ||
+      (harmFrom && rule?.endsWhenHarmedFrom?.includes(harmFrom.catalog) && !harmFrom.applies.includes(condition))
+    ) {
+      endings.push(tracked);
+      continue;
+    }
+    if (!(dealt > 0 || harmful) || !rule?.endsWhen?.includes("harmed-by-source-side") || !actor) continue;
     const source = rulesetCombatant(ctx.state, tracked.source ?? "");
     if (source && source.side === actor.side) endings.push(tracked);
+  }
+  // Seen happening to a friend (1.273): damage to one of their own side they see.
+  const witnessed: Array<{ holder: RulesetCombatant; entry: RulesetTrackedCondition }> = [];
+  if (dealt > 0) {
+    for (const holder of ctx.state.combatants) {
+      if (holder.id === target.id || holder.side !== target.side || holder.defeated) continue;
+      for (const condition of rulesetCombatConditions(ctx.definition, holder)) {
+        const rule = ctx.combat.conditions?.find((entry) => entry.condition === condition);
+        const entry = holder.tracked.find((one) => one.condition === condition);
+        if (
+          entry &&
+          rule?.endsWhen?.includes("ally-harmed-in-sight") &&
+          rulesetCanSee(ctx.definition, ctx.state, holder, target)
+        ) {
+          witnessed.push({ holder, entry });
+        }
+      }
+    }
   }
   if (brought.length > 0) {
     // Taken in the middle of their own turn, "until the end of its next turn" is the next one.
@@ -1974,6 +2012,9 @@ function endConditionsOnHarm(
   return () => {
     for (const entry of endings) {
       if (target.tracked.includes(entry)) removeCondition(ctx, target, entry.condition, "harmed");
+    }
+    for (const { holder, entry } of witnessed) {
+      if (holder.tracked.includes(entry)) removeCondition(ctx, holder, entry.condition, "harmed");
     }
   };
 }
@@ -5667,7 +5708,18 @@ function resolveAction(
   // What shakes surprise off, taken first (1.232): the rest of the turn is a turn like any other.
   if (actor.surprised && actor.surpriseOut?.includes(action.id)) endSurprise(ctx, actor, action.label);
   const before = new Set(actor.tracked);
-  const result = resolveActionFalling(ctx, actor, action, targets, payWith, held, styleId, spend);
+  // What it was cast out of, for a condition that harm from there ends (1.273).
+  const harming = ctx.harming;
+  const from = action.catalog ?? action.casts;
+  if (from) ctx.harming = { catalog: from, applies: (action.applies ?? []).map((one) => one.condition) };
+  else delete ctx.harming;
+  let result: RulesetHitHold | null;
+  try {
+    result = resolveActionFalling(ctx, actor, action, targets, payWith, held, styleId, spend);
+  } finally {
+    if (harming) ctx.harming = harming;
+    else delete ctx.harming;
+  }
   // Gone once the rest is done (1.271).
   if (!result && action.teleport && ctx.teleport) teleport(ctx, actor, action);
   // Finished, rather than held for an answer to one of its rolls (1.175).
@@ -6278,6 +6330,8 @@ function resolveActionBody(
         action.kind === "attack" ||
         (action.kind === "block" && (action.damage || action.save || action.applies?.length))
       ),
+      undefined,
+      rulesetIsAttack(action) && !action.autoHit,
     );
     let landed = true;
     let critical = false;
@@ -6580,6 +6634,21 @@ function resolveActionBody(
         automatic: true,
       });
       saved = true;
+    } else if (action.save?.alliesMayFail && target.side === actor.side) {
+      // A friend lets it in (1.273): failed, nothing rolled.
+      ctx.events.push({
+        type: "save",
+        actorId: target.id,
+        sourceId: actor.id,
+        save: action.save.save,
+        rolls: [],
+        kept: 0,
+        modifier: target.saves[action.save.save] ?? 0,
+        total: 0,
+        difficulty: action.save.difficulty,
+        success: false,
+        automatic: true,
+      });
     } else if (action.save) {
       saved = rollSave(
         ctx,

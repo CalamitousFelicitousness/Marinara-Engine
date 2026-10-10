@@ -1549,6 +1549,23 @@ function carriesMetamagic(value: unknown, depth = 0): boolean {
 
 /** An aura that needs senses, harms at its holder's turn or asks for a save, or a save change
  *  narrowed to what is cast from a catalog (1.260). */
+/** What Calm Emotions needs (1.273): a save its user's side may fail, indifference to a whole side,
+ *  and endings on being attacked, harmed by what a catalog casts, or a friend harmed in sight. */
+function carriesCalm(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCalm(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.alliesMayFail === true || record.endsWhenHarmedFrom !== undefined) return true;
+  if (Array.isArray(record.effects) && record.effects.includes("cannot-target-source-side")) return true;
+  if (
+    Array.isArray(record.endsWhen) &&
+    record.endsWhen.some((one) => one === "attacked" || one === "ally-harmed-in-sight")
+  )
+    return true;
+  return Object.values(record).some((one) => carriesCalm(one, depth + 1));
+}
+
 /** More than four conditions put on by one entry, item use or creature action (1.272). */
 function carriesManyApplies(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -3773,6 +3790,13 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Calm Emotions, 1.273.
+  if (
+    !declaresApi(273) &&
+    (carriesCalm(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesCalm(document)))
+  ) {
+    return "A ruleset with a save its user's side may fail, a condition that keeps its holder off a whole side, or one that ends on an attack, on harm from a catalog or on a friend harmed in sight requires schemaVersion 2 and capabilityApi 1.273 or newer";
   }
   // Five or six conditions put on at once, 1.272.
   if (

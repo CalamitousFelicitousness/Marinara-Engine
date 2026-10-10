@@ -758,6 +758,8 @@ Teleports (Capability API 1.271). A catalog entry's `mechanics.teleport`, an ite
 
 Six conditions at once, and sight that is really seeing (Capability API 1.272). `applies` holds up to 6 entries on a catalog entry's mechanics, an item's use and a creature action (4 before): Rage and Frenzy each add Mindless Rage's condition beside their four. And `whileSourceInSight` (with `orSourceWithin` beside it) now reads the holder's own sight, as an aura's `orSeen` does: a clear line on the board is still needed, and on top of it the holder must see its source with its eyes or senses, so blindness that takes the eyes, a fog that obscures, the dark beyond what it sees in, or a source unseen to it (invisible) all break it as a wall does.
 
+Calm Emotions (Capability API 1.273). A save may say `alliesMayFail: true` (on a catalog entry's, an item use's or a creature action's `save`): a target on its user's own side lets it in and fails without rolling, and the log says so, while anybody else rolls as usual. A condition's `effects` may carry `cannot-target-source-side`: its holder points nothing at whoever put it on them or at anybody on their side, unless that side is the holder's own (then it keeps nobody off). `endsWhen` takes two more endings beside `damaged` and `harmed-by-source-side`, up to all four: `attacked`, an attack roll made at its holder by anybody, hit or miss (an action that hits without rolling is not one), and `ally-harmed-in-sight`, damage to anybody else on its holder's side that its holder sees (a clear line on the board and its own eyes or senses). And `endsWhenHarmedFrom` lists catalogs: harm to its holder from anything cast out of one of them, by anybody, a scroll's spell and a standing zone's included, ends it; harm is damage, or being the target of a harmful action, as for `harmed-by-source-side`, and casting the very same condition on again refreshes it rather than ending it. Each of these waits until the step that caused it has finished. And a condition its holder's own active condition `suppresses` is no longer ended by an immunity that same condition gives: it is suspended, not cured, so a fright already on when a rage immune to fright begins comes back when the rage ends (5e's Mindless Rage), while new frights still cannot land.
+
 The picker shows this block as one line. Who reads the rest depends on which block your ruleset opted in with:
 
 - With a [`combat` block](#combat-a-fight-your-own-rules-resolve), the fight reads its combat effects. `range`, `area` and `friendlyFire` apply on a battlefield with positions; `reaction` marks an entry as one that answers something rather than one taken on a turn, and names the moment it waits for (see [Windows](#windows-holding-the-fight-open)); one marked plain `true` names none and is on no menu. `check` applies to skill checks, as described above.
@@ -1274,7 +1276,7 @@ The weapon's details and the Game Master's line say all of it: `modes Volley (2 
 
 What an item does while worn or carried may also change a fight (Capability API 1.56), for its holder, alongside their conditions and levels. Each takes the parts of a condition a fight reads:
 
-- `effects`: any of a condition's but the four a level cannot have (`half-move-to-stand`, `ends-on-damage`, `cannot-target-source`, `cannot-approach-source`), since nobody put an item on its holder and it never ends by itself: `own-attacks-advantage`, `attacks-against-disadvantage`, `resist-all`, `speed-zero` and the rest.
+- `effects`: any of a condition's but the five a level cannot have (`half-move-to-stand`, `ends-on-damage`, `cannot-target-source`, `cannot-target-source-side`, `cannot-approach-source`), since nobody put an item on its holder and it never ends by itself: `own-attacks-advantage`, `attacks-against-disadvantage`, `resist-all`, `speed-zero` and the rest.
 - `modifiers`: changes `to` defense, attacks and speed as well as checks and saves, exactly as a condition's; in a `dice-pool` fight a change to attacks is a flat number of dice, as a condition's is.
 - `resist`, `vulnerable` and `immune`: kinds of harm its holder takes half of, double, or none of, as a creature's are (and checked against `combat.damageTypes` when you declare any). `conditionImmunities`: your own conditions that are never put on its holder.
 
@@ -1791,7 +1793,7 @@ same keys for a d20 system:
   `attacks-against-far-disadvantage`, `attacks-from-adjacent-critical`, `cannot-act`,
   `cannot-react`, `speed-zero`, `half-move-to-stand`, `ends-on-damage`, `own-saves-advantage`,
   `own-saves-disadvantage`, `own-checks-advantage`, `own-checks-disadvantage`, `resist-all`,
-  `cannot-target-source` and `cannot-approach-source`.
+  `cannot-target-source`, `cannot-target-source-side` (1.273) and `cannot-approach-source`.
   `failsSaves` names saves the condition fails without rolling. The six that need distance or
   movement (`attacks-against-adjacent-advantage`, `attacks-against-far-disadvantage`,
   `attacks-from-adjacent-critical`, `speed-zero`, `half-move-to-stand`, `cannot-approach-source`)
@@ -1904,7 +1906,8 @@ same keys for a d20 system:
   holder's side of a contest, which is where a fight makes its ability checks, and to their checks
   outside a fight. `resist-all` halves every kind of harm on top of whatever
   the target's own hide said, and cancels against a vulnerability the same way.
-  `cannot-target-source` keeps the holder from pointing anything at whoever put it on them, and
+  `cannot-target-source` keeps the holder from pointing anything at whoever put it on them
+  (`cannot-target-source-side`, 1.273: or at anybody on their side, unless it is the holder's own), and
   `cannot-approach-source` keeps them from walking any nearer to that somebody than the cell they
   stand in, the route included: a way round to a cell just as far off is still offered, and one
   that would dip past them and come out the other side is not.
@@ -2002,8 +2005,8 @@ same keys for a d20 system:
   names a plain `track` (not a wound track), the level `at` which it starts, and what it does, with
   the same `effects`, `modifiers`, `failsSaves`, `saves` and `skills` a condition has. Every level the track has
   reached counts, so they add up as it climbs. A level has no source and ends only when what it
-  reads goes down, so `half-move-to-stand`, `ends-on-damage`, `cannot-target-source` and
-  `cannot-approach-source` are refused on one. Only a combatant with a sheet has tracks. The log names
+  reads goes down, so `half-move-to-stand`, `ends-on-damage`, `cannot-target-source`,
+  `cannot-target-source-side` and `cannot-approach-source` are refused on one. Only a combatant with a sheet has tracks. The log names
   a level by its track and number ("- 1 (Heat 3)").
 
   In place of `track`, a level may read a `derived` value (Capability API 1.54), worked out with the

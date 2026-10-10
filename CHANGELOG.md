@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: a barbarian who starts raging while frightened or charmed has the effect suspended for the rage and back afterwards, instead of cured outright (Mindless Rage).
+- Rulesets: Calm Emotions works in full: the caster's friends let it in without a save, a calmed foe cannot target anybody on the caster's side, and the calm ends when its holder is attacked, harmed by a spell, or sees a friend harmed (Capability API 1.273).
 - Rulesets: a spell, item or creature can put on up to six conditions at once (Mindless Rage beside Rage), and a frightened creature that is blinded, or whose fear's source is invisible or hidden in fog, no longer counts as seeing it (Capability API 1.272).
 - Rulesets: a creature drawn toward Sympathy's target can move about once it is beside them, instead of being stuck in place.
 - Rulesets: spells, items and creatures can teleport, as Misty Step to a place its caster can see, Dimension Door with one friend along, and a blink dog, picked on the battle map with no free strike on leaving (Capability API 1.271).

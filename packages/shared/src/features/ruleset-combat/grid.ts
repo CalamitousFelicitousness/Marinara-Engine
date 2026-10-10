@@ -661,6 +661,9 @@ export function rulesetOpportunityAttack(combatant: RulesetCombatant): RulesetCo
     // Nor is an answer to a moment, or what is added to another blow (1.238): Divine Smite is no
     // strike of its own.
     if (action.reaction || action.addsToBlow) continue;
+    // Nor a strike a condition gives (1.231) while that condition is not on its holder: Flame
+    // Blade's, with the blade not called up.
+    if (action.whileHolds && !combatant.tracked.some((entry) => entry.condition === action.whileHolds)) continue;
     const average = action.damage.count * ((action.damage.sides + 1) / 2) + action.damage.flat;
     if (average > most) {
       most = average;

@@ -2749,6 +2749,38 @@ function narrowCatalogs(build: RulesetSheetBuild, catalogs: RulesetCatalogEntrie
   return narrowed;
 }
 
+/** A legendary move that does nothing else (1.278); one that does something first moves after it
+ *  (1.280). */
+export function rulesetMovesOnly(action: {
+  move?: unknown;
+  damage?: unknown;
+  heal?: unknown;
+  applies?: unknown;
+  area?: unknown;
+  around?: unknown;
+  save?: unknown;
+  ends?: unknown;
+  push?: unknown;
+  toHit?: unknown;
+  autoHit?: unknown;
+}): boolean {
+  return (
+    !!action.move &&
+    [
+      action.damage,
+      action.heal,
+      action.applies,
+      action.area,
+      action.around,
+      action.save,
+      action.ends,
+      action.push,
+      action.toHit,
+      action.autoHit,
+    ].every((one) => one === undefined || one === false)
+  );
+}
+
 function blockActions(
   definition: RulesetDefinition,
   block: RulesetStatBlockLike,
@@ -2778,7 +2810,7 @@ function blockActions(
     // One that lands on the creature itself points at nobody: its effect is its own.
     // So does a teleport (1.271): where it goes is its choice, not whom.
     targets:
-      action.self || action.teleport || action.area?.around || action.move || action.casting
+      action.self || action.teleport || action.area?.around || rulesetMovesOnly(action) || action.casting
         ? { side: "self" as const, count: 0 }
         : {
             // An area catches each creature in it, the creature's allies too (1.187): off a board it may

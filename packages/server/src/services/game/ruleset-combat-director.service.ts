@@ -1121,7 +1121,7 @@ function rulesetCandidatesFrom(
       continue;
     }
     // A legendary move (1.278) the same way, by where it would take them.
-    if (option.signature && option.cells) {
+    if (option.signature && option.cells && !option.moveAfter) {
       const moved = standing ? null : legendaryMoveCandidate(definition, combat, encounter, actor, option, price);
       if (moved) candidates.push(moved);
       continue;
@@ -1310,6 +1310,14 @@ function rulesetCandidatesFrom(
       } else candidate.setup = 0.4;
       candidates.push(candidate);
     }
+  }
+  // A legendary action that moves after what it does (1.280): on to where a teleport would go, or
+  // nowhere when nowhere is worth it.
+  for (const candidate of standing ? [] : candidates) {
+    const { option, choice } = candidate.action;
+    if (!option.moveAfter || !option.cells?.length || choice.to) continue;
+    const picked = repositionCell(definition, combat, encounter, actor, option.cells);
+    if (picked) choice.to = { x: picked.best.x, y: picked.best.y };
   }
   if (standing) for (const candidate of candidates) candidate.action.to = { ...standing };
   return candidates;

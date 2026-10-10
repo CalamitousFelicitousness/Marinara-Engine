@@ -145,6 +145,7 @@ export {
   grantRulesetMovement,
   rulesetFastestSpeed,
   rulesetModeAllowances,
+  rulesetMovesOnly,
   spendRulesetMovement,
   rulesetSaveMode,
   type RulesetActiveCondition,

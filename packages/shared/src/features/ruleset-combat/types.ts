@@ -288,6 +288,8 @@ export interface RulesetCombatMove {
   distance?: number;
   noOpportunity?: true;
   untouchable?: true;
+  /** The one way of moving it uses (1.280). */
+  speed?: RulesetMoveMode;
 }
 
 export interface RulesetTeleport {
@@ -2188,6 +2190,9 @@ export interface RulesetCombatOption {
   /** A spell a legendary cast offers (1.279): the cast bought, and the option of its maker's own it
    *  casts, as it would be on its turn. */
   castOf?: { actionId: string; optionId: string };
+  /** A legendary action that moves after what it does (1.280): `cells` are where it may then go,
+   *  and going nowhere is a choice too. */
+  moveAfter?: true;
   /** How many times this is left, for an action that counts its uses. */
   left?: number;
   /** How many of what a weapon shoots its holder carries, for one that shoots something. */

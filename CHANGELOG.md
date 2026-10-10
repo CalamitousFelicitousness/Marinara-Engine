@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: a legendary action can do its thing and then move, and a legendary move can use one named speed (a dragon's Wing Attack, then flying half its flying speed) (Capability API 1.280).
 - Rulesets: a creature can cast one of its own spells between turns as a legendary action, any of them or cantrips only, aimed and paid as on its turn and answerable by Counterspell (a sphinx's Cast a Spell, a lich's Cantrip) (Capability API 1.279).
 - Rulesets: a creature can move between turns as a legendary action, a share of its speed or a set distance, optionally without provoking or untouchable on the way (a tarrasque's Move, a vampire's Move, a mummy lord's Whirlwind of Sand) (Capability API 1.278).
 - Rulesets: an area can be centred on its user and go through walls, catching everybody nearby without being aimed (a mummy lord's Channel Negative Energy) (Capability API 1.277).

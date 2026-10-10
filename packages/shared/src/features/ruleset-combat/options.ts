@@ -70,6 +70,7 @@ import {
   rulesetAttackNamed,
   rulesetItemMatches,
   rulesetModeAllowances,
+  rulesetMovesOnly,
   rulesetMovementAllowance,
 } from "./encounter.js";
 import {
@@ -2956,6 +2957,22 @@ export function rulesetLentMovement(
   if (!combat) return { movementLeft: 0 };
   // Measured as nothing held it, for one nothing holds (Whirlwind of Sand).
   const loose = move.untouchable ? { ...actor, tracked: [], flags: { ...actor.flags } } : actor;
+  // One way of moving only (1.280): its share read off that speed, every other way at nothing.
+  if (move.speed) {
+    const modes = rulesetModeAllowances(definition, combat, loose, state);
+    const own =
+      move.speed === "walk"
+        ? (modes?.walk ?? rulesetMovementAllowance(definition, combat, loose, state, loose.speed))
+        : (modes?.[move.speed] ?? 0);
+    const cells = own <= 0 ? 0 : move.distance !== undefined ? move.distance : Math.floor((move.share ?? 1) * own);
+    return {
+      movementLeft: cells,
+      modeLeft: {
+        ...Object.fromEntries(Object.keys(modes ?? { walk: 0 }).map((mode) => [mode, 0])),
+        [move.speed]: cells,
+      },
+    };
+  }
   if (move.distance !== undefined) {
     // A distance is still walked: one held still, or with no speed at all, goes nowhere.
     if (rulesetMovementAllowance(definition, combat, loose, state) <= 0) return { movementLeft: 0 };
@@ -3054,11 +3071,14 @@ export function rulesetSignatureOptions(
       ...(action.heal ? { heals: true } : {}),
       signature: { cost: action.signature.cost, points },
     };
-    // A move (1.278) offers where it may end, and is not offered with nowhere to go.
+    // A move (1.278) offers where it may end, and is not offered with nowhere to go. One that
+    // follows what its action does (1.280) is offered all the same, and simply goes nowhere.
     if (action.move) {
       const cells = rulesetLegendaryMoveCells(definition, state, actor, action);
-      if (cells.length === 0) continue;
-      option.cells = cells;
+      const only = rulesetMovesOnly(action);
+      if (only && cells.length === 0) continue;
+      if (cells.length > 0) option.cells = cells;
+      if (!only) option.moveAfter = true;
     }
     if (action.uses) option.left = rulesetActionUses(actor, action, state);
     const forecast = forecastFor(definition, combat, state, actor, action);

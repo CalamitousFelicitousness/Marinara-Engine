@@ -407,8 +407,8 @@ try {
       /A move is a "share" of its speed or a "distance", not both/,
     );
     refusedDoc(
-      withCreature({ signature: { cost: 1 }, move: { share: 0.5 }, damage: { dice: "1d6" }, toHit: 4 }),
-      /A move only moves, so it carries no/,
+      withCreature({ signature: { cost: 1 }, move: { share: 0.5 }, teleport: { distance: 30 } }),
+      /A move follows what its action does, so it carries no teleport/,
     );
     refusedDoc(withCreature({ signature: { cost: 1 }, move: { share: 1.5 } }), /share/);
   }

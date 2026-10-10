@@ -82,6 +82,7 @@ import {
   rulesetAuraSpreaders,
   rulesetSyncAuras,
   rulesetSyncSizes,
+  rulesetMovesOnly,
 } from "./encounter.js";
 import {
   rulesetAreaCells,
@@ -4915,15 +4916,20 @@ function applySignature(
   ) {
     return refusal(state, choice.actorId, "insufficient", action.id);
   }
-  // A move (1.278): only to a cell the menu offered.
-  const destination = action.move
-    ? rulesetLegendaryMoveCells(definition, state, actor, action).find(
-        (cell) => cell.x === choice.to?.x && cell.y === choice.to?.y,
-      )
-    : undefined;
-  if (action.move && !destination) return refusal(state, choice.actorId, "unreachable", action.id);
+  // A move (1.278): only to a cell the menu offered. One that follows what its action does (1.280)
+  // may go nowhere.
+  const only = rulesetMovesOnly(action);
+  const destination =
+    action.move && (only || choice.to)
+      ? rulesetLegendaryMoveCells(definition, state, actor, action).find(
+          (cell) => cell.x === choice.to?.x && cell.y === choice.to?.y,
+        )
+      : undefined;
+  if (action.move && (only || choice.to) && !destination) {
+    return refusal(state, choice.actorId, "unreachable", action.id);
+  }
   // A burst centred on it (1.277): a mummy lord's Channel Negative Energy.
-  const targets = action.move
+  const targets = only
     ? []
     : action.around
       ? rulesetAroundTargets(state, actor, action)
@@ -4938,14 +4944,23 @@ function applySignature(
   ctx.events.push({ type: "signature", actorId: working.id, optionId: action.id, label: action.label, cost, left });
   const workingAction = working.actions.find((entry) => entry.id === action.id)!;
   spendAvailability(ctx, working, workingAction);
-  if (workingAction.move && destination) {
-    legendaryMove(ctx, working, workingAction.move, destination.path);
+  if (!only) resolveAction(ctx, working, workingAction, workingTargets);
+  // Then the move (1.280), where it may still go: what it did may have changed the board.
+  const path =
+    workingAction.move && destination
+      ? only
+        ? destination.path
+        : rulesetCombatStanding(working) && rulesetEncounterOutcome(ctx.state) === "ongoing"
+          ? rulesetLegendaryMoveCells(definition, ctx.state, working, workingAction).find(
+              (cell) => cell.x === destination.x && cell.y === destination.y,
+            )?.path
+          : undefined
+      : undefined;
+  if (workingAction.move && path) {
+    legendaryMove(ctx, working, workingAction.move, path);
     // Held behind a strike it provoked: the walk asks the window on once it ends.
     if (ctx.state.window?.trigger.kind === "between-turns") goOn(definition, combat, ctx);
-  } else {
-    resolveAction(ctx, working, workingAction, workingTargets);
-    goOn(definition, combat, ctx);
-  }
+  } else goOn(definition, combat, ctx);
   noteOutcome(ctx);
   return finish();
 }

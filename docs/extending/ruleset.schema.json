@@ -17373,6 +17373,16 @@
                                 "type": "boolean",
                                 "const": true
                               },
+                              "speed": {
+                                "type": "string",
+                                "enum": [
+                                  "walk",
+                                  "fly",
+                                  "swim",
+                                  "climb",
+                                  "burrow"
+                                ]
+                              },
                               "$comment": {}
                             },
                             "additionalProperties": false

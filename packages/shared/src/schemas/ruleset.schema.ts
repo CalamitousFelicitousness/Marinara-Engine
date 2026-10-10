@@ -3966,6 +3966,9 @@ const creatureActionSchema = z
         distance: z.number().finite().gt(0).max(10000).optional(),
         noOpportunity: z.literal(true).optional(),
         untouchable: z.literal(true).optional(),
+        /** The one way of moving it uses (Capability API 1.280), its share read off that speed: a
+         *  dragon "can then fly up to half its flying speed". */
+        speed: z.enum(["walk", "fly", "swim", "climb", "burrow"]).optional(),
       })
       .strict()
       .refine((move) => move.share === undefined || move.distance === undefined, {
@@ -4017,7 +4020,8 @@ const creatureActionSchema = z
         });
       }
     }
-    // A legendary move (1.278) is bought with points, and only moves.
+    // A legendary move (1.278) is bought with points, and follows whatever else it does (1.280): a
+    // dragon's Wing Attack, then its flight.
     if (action.move) {
       if (!action.signature) {
         ctx.addIssue({
@@ -4026,28 +4030,14 @@ const creatureActionSchema = z
           message: "A move is bought with points between turns, so it carries a signature",
         });
       }
-      const extras = (
-        [
-          "damage",
-          "heal",
-          "applies",
-          "area",
-          "teleport",
-          "sequence",
-          "reaction",
-          "toHit",
-          "autoHit",
-          "save",
-          "ends",
-          "push",
-          "charge",
-        ] as const
-      ).filter((key) => action[key] !== undefined);
+      const extras = (["teleport", "sequence", "reaction", "charge"] as const).filter(
+        (key) => action[key] !== undefined,
+      );
       if (extras.length) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["move"],
-          message: `A move only moves, so it carries no ${extras.join(", ")}`,
+          message: `A move follows what its action does, so it carries no ${extras.join(", ")}`,
         });
       }
     }

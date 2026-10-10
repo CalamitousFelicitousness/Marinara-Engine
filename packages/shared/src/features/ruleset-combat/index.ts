@@ -119,6 +119,7 @@ export {
   rulesetAbilityNarrowing,
   rulesetCheckAbility,
   rulesetCheckSkill,
+  rulesetLightMatches,
   rulesetCheckTakenModes,
   rulesetCheckMode,
   rulesetCombatant,

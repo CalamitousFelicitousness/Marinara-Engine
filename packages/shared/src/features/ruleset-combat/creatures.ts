@@ -260,6 +260,8 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
     ...(action.move ? { move: { ...action.move } } : {}),
     ...(action.casting ? { casting: { ...action.casting } } : {}),
     ...(action.search ? { search: true as const } : {}),
+    // Standard actions with its own budget (1.286): Nimble Escape.
+    ...(action.standard ? { standard: structuredClone(action.standard) } : {}),
   };
 }
 
@@ -409,6 +411,9 @@ function blockFromCreature(creature: RulesetCreature, budgets: ReadonlySet<strin
     ...(creature.abilities ? { abilities: { ...creature.abilities } } : {}),
     ...(creature.saves ? { saves: { ...creature.saves } } : {}),
     ...(creature.checks ? { checks: { ...creature.checks } } : {}),
+    // Keen senses, sensitivity to light, camouflage (1.286); a printed passive Perception.
+    ...(creature.checkModes ? { checkModes: structuredClone(creature.checkModes) } : {}),
+    ...(creature.passive !== undefined ? { passive: creature.passive } : {}),
     ...(creature.resist ? { resist: [...creature.resist] } : {}),
     ...(creature.vulnerable ? { vulnerable: [...creature.vulnerable] } : {}),
     ...(creature.immune ? { immune: [...creature.immune] } : {}),

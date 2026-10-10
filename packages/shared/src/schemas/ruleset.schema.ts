@@ -4009,6 +4009,17 @@ const creatureActionSchema = z
     /** It looks for whoever is hiding, as the `search` standard action does (Capability API 1.282):
      *  a creature's legendary Detect, bought with points between turns. */
     search: z.literal(true).optional(),
+    /** A permission (Capability API 1.286): the standard actions named, from `combat.standard`,
+     *  taken with this action's budget, and with `while: "obscured"` only while it stands lightly
+     *  or heavily obscured (in a fog, or in dim light or darkness). 5e's goblin's Nimble Escape is
+     *  `{ "name": "Nimble Escape", "budget": "bonus", "standard": { "actions": ["disengage", "hide"] } }`. */
+    standard: z
+      .object({
+        actions: z.array(combatStandardActionSchema).min(1).max(7),
+        while: z.literal("obscured").optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .superRefine((action, ctx) => {
@@ -4304,6 +4315,34 @@ const creatureFields = {
   saves: z.record(z.number().int().min(-50).max(50)).optional(),
   /** What it adds in a contest, keyed by the ids of `combat.checks`. One it does not name is zero. */
   checks: z.record(z.number().int().min(-100).max(100)).optional(),
+  /** Its own checks with these skills rolled twice (Capability API 1.286), only while it can see
+   *  (`sight`), in one of these lights where it stands (`light`), or on one of these board tiles
+   *  (`terrain`), as it says: 5e's Keen Sight `{ "skills": ["perception"], "mode": "advantage",
+   *  "sight": true }`, Sunlight Sensitivity `{ ..., "mode": "disadvantage", "sight": true, "light":
+   *  ["sunlight"] }`, Stone Camouflage `{ "skills": ["stealth"], "mode": "advantage", "terrain":
+   *  ["rock", "mountain"] }`. */
+  checkModes: z
+    .array(
+      z
+        .object({
+          skills: z.array(sheetId).min(1).max(12),
+          mode: z.enum(["advantage", "disadvantage"]),
+          sight: z.literal(true).optional(),
+          light: z
+            .array(z.enum(["sunlight", "bright", "dim", "dark"]))
+            .min(1)
+            .max(4)
+            .optional(),
+          terrain: z.array(promptSafeText(40)).min(1).max(12).optional(),
+        })
+        .strict(),
+    )
+    .min(1)
+    .max(8)
+    .optional(),
+  /** Its passive Perception as printed (Capability API 1.286), where it is not the ruleset's
+   *  `hiding.passive` plus its Perception check. */
+  passive: z.number().int().min(0).max(100).optional(),
   /** What it soaks in a `dice-pool` fight: `all` for any harm, and `byKind` for one kind of the
    *  health track, which wins over `all` for that kind. Nothing it does not name is soaked. */
   soak: z
@@ -11030,6 +11069,24 @@ function creatureIssues(
   for (const check of Object.keys(creature.checks ?? {})) {
     if (!checks.has(check)) add([...at, "checks", check], `Unknown contest check "${check}"`);
   }
+  // Its own modes on checks (1.286) name the sheet's skills.
+  const skills = new Set(definition.sheet.skills.map((skill) => skill.id));
+  creature.checkModes?.forEach((rule, ruleIndex) => {
+    rule.skills.forEach((skill, skillIndex) => {
+      if (!skills.has(skill)) add([...at, "checkModes", ruleIndex, "skills", skillIndex], `Unknown skill "${skill}"`);
+    });
+  });
+  if (creature.passive !== undefined && !combat.hiding) {
+    add([...at, "passive"], "A printed passive Perception is read by hiding, so it needs combat.hiding");
+  }
+  // What it may take as a standard action with another budget (1.286) is one the fight has.
+  creature.actions.forEach((action, index) => {
+    action.standard?.actions.forEach((name, nameIndex) => {
+      if (!combat.standard?.includes(name)) {
+        add([...at, "actions", index, "standard", "actions", nameIndex], `Unknown standard action "${name}"`);
+      }
+    });
+  });
   if (creature.hover && !creature.speeds?.fly) add([...at, "hover"], "A creature that hovers has a fly speed");
   if (creature.type !== undefined || creature.tags) {
     const kinds = combat.creatureTypes;

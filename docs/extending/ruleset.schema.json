@@ -14010,6 +14010,72 @@
                         "$comment": {}
                       }
                     },
+                    "checkModes": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "skills": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "minItems": 1,
+                            "maxItems": 12
+                          },
+                          "mode": {
+                            "type": "string",
+                            "enum": [
+                              "advantage",
+                              "disadvantage"
+                            ]
+                          },
+                          "sight": {
+                            "type": "boolean",
+                            "const": true
+                          },
+                          "light": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "enum": [
+                                "sunlight",
+                                "bright",
+                                "dim",
+                                "dark"
+                              ]
+                            },
+                            "minItems": 1,
+                            "maxItems": 4
+                          },
+                          "terrain": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 40
+                            },
+                            "minItems": 1,
+                            "maxItems": 12
+                          },
+                          "$comment": {}
+                        },
+                        "required": [
+                          "skills",
+                          "mode"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "minItems": 1,
+                      "maxItems": 8
+                    },
+                    "passive": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 100
+                    },
                     "soak": {
                       "type": "object",
                       "properties": {
@@ -17487,6 +17553,37 @@
                           "search": {
                             "type": "boolean",
                             "const": true
+                          },
+                          "standard": {
+                            "type": "object",
+                            "properties": {
+                              "actions": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "enum": [
+                                    "dash",
+                                    "disengage",
+                                    "dodge",
+                                    "help",
+                                    "hide",
+                                    "ready",
+                                    "search"
+                                  ]
+                                },
+                                "minItems": 1,
+                                "maxItems": 7
+                              },
+                              "while": {
+                                "type": "string",
+                                "const": "obscured"
+                              },
+                              "$comment": {}
+                            },
+                            "required": [
+                              "actions"
+                            ],
+                            "additionalProperties": false
                           },
                           "$comment": {}
                         },

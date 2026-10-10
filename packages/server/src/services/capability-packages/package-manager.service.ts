@@ -1547,6 +1547,22 @@ function carriesMetamagic(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesMetamagic(one, depth + 1));
 }
 
+/** A creature's own ways of hiding and looking (1.286): modes on its checks, a printed passive,
+ *  standard actions with its own budget. */
+function carriesCreatureSeeking(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCreatureSeeking(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.checkModes !== undefined) return true;
+  // A creature's printed passive; the fight's own `hiding.passive` names the checks beside it.
+  if (record.passive !== undefined && record.stealth === undefined && record.perception === undefined) return true;
+  // A creature action's permission; a catalog entry's names its budget inside it.
+  const standard = plainRecord(record.standard);
+  if (standard && standard.budget === undefined) return true;
+  return Object.values(record).some((one) => carriesCreatureSeeking(one, depth + 1));
+}
+
 /** Looking for the hidden, weighed (1.285): a passive's `passiveMode`, a change to checks to find
  *  somebody. */
 function carriesSeekingModes(value: unknown, depth = 0): boolean {
@@ -3939,6 +3955,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // A creature's own ways of hiding and looking, 1.286.
+  if (
+    !declaresApi(286) &&
+    (carriesCreatureSeeking(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesCreatureSeeking(document)))
+  ) {
+    return "A ruleset with a creature that has its own modes on checks, a printed passive Perception, or standard actions with its own budget requires schemaVersion 2 and capabilityApi 1.286 or newer";
   }
   // Looking for the hidden, weighed, 1.285.
   if (

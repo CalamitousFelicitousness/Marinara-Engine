@@ -100,7 +100,7 @@ import {
 } from "./grid.js";
 import { coverTier, elevationAt } from "../tactical-combat/math.js";
 import { rulesetStandingSections, rulesetZoneMoveCells, rulesetZoneTurnCells } from "./zones.js";
-import { rulesetCanSee, rulesetHiddenFrom, rulesetSeesCell } from "./sight.js";
+import { rulesetCanSee, rulesetHiddenFrom, rulesetSeesCell, rulesetStandsObscured } from "./sight.js";
 import type {
   RulesetAfterAttack,
   RulesetCombatAmount,
@@ -215,6 +215,8 @@ function grantedStandardOptions(
   for (const action of actor.actions) {
     const granted = action.standard;
     if (!granted || (actor.budgets[granted.budget] ?? 0) < 1) continue;
+    // Only out of sight, where it says so (1.286): Shadow Stealth.
+    if (!grantHolds(action, actor, state)) continue;
     if (!rulesetActionAvailable(actor, action, state, definition)) continue;
     const paid = planRulesetCombatCost(definition, actor, action);
     if (!paid) continue;
@@ -234,6 +236,11 @@ function grantedStandardOptions(
     }
   }
   return options;
+}
+
+/** Whether a permission holds now (1.286): one given only while its holder stands obscured. */
+function grantHolds(action: RulesetCombatAction, actor: RulesetCombatant, state?: RulesetEncounterState): boolean {
+  return action.standard?.while !== "obscured" || (!!state && rulesetStandsObscured(state, actor));
 }
 
 /** The ability behind a `standard:<id>@<budget>` option, when one of the actor's own granted it.
@@ -256,6 +263,7 @@ export function rulesetGrantedStandard(
     (entry) =>
       entry.standard?.budget === budget &&
       entry.standard.actions.includes(name) &&
+      grantHolds(entry, actor, state) &&
       rulesetActionAvailable(actor, entry, state, definition) &&
       !!planRulesetCombatCost(definition, actor, entry),
   );

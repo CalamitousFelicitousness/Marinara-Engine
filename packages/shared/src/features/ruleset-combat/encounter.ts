@@ -81,6 +81,8 @@ import { rulesetPaidLevel, rulesetReactionsAt, rulesetSheetWithin } from "./opti
 import { rulesetCanSee } from "./sight.js";
 import { RULESET_MOVE_MODES } from "./types.js";
 import type {
+  RulesetBoardLight,
+  RulesetCheckModeRule,
   RulesetMoveMode,
   RulesetMoveSpeeds,
   RulesetCombatAction,
@@ -914,8 +916,54 @@ export function rulesetCheckMode(
     if (entry.effects.includes("own-checks-advantage")) advantage = true;
     if (entry.effects.includes("own-checks-disadvantage")) disadvantage = true;
   }
+  // A creature's own (1.286): keen senses, sensitivity to light, camouflage, where they hold.
+  for (const rule of combatant.block?.checkModes ?? []) {
+    if (skill === undefined || !rule.skills.includes(skill)) continue;
+    if (!checkModeHolds(definition, combat, combatant, state, rule)) continue;
+    if (rule.mode === "advantage") advantage = true;
+    else disadvantage = true;
+  }
   if (advantage === disadvantage) return "normal";
   return advantage ? "advantage" : "disadvantage";
+}
+
+/** Whether a creature's own mode on checks holds where it is now (1.286): it can see, where `sight`
+ *  says so; the light it stands in is one `light` names; it stands on a tile, or the board is a
+ *  place, `terrain` names. Off a board, only `sight` can hold. */
+function checkModeHolds(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  combatant: RulesetCombatant,
+  state: RulesetEncounterState | undefined,
+  rule: RulesetCheckModeRule,
+): boolean {
+  if (rule.sight) {
+    const eyes = combat.sight?.eyes;
+    const own = new Set(rulesetCombatConditions(definition, combatant));
+    if (
+      eyes !== undefined &&
+      (combat.conditions ?? []).some((one) => own.has(one.condition) && one.lacks?.includes(eyes))
+    )
+      return false;
+  }
+  const board = state?.board;
+  if (rule.light && !rule.light.some((light) => rulesetLightMatches(board?.light, light))) return false;
+  if (rule.terrain) {
+    const tile =
+      board?.grid && combatant.x !== undefined && combatant.y !== undefined
+        ? board.grid.tiles[combatant.y]?.[combatant.x]
+        : undefined;
+    if (!rule.terrain.some((one) => one === tile || (board?.environment !== undefined && one === board.environment)))
+      return false;
+  }
+  return true;
+}
+
+/** Whether the light a board is fought in is `wanted` (1.286): sunlight is bright light too, and a
+ *  board that says nothing is in bright light that is not the sun's. */
+export function rulesetLightMatches(light: RulesetBoardLight | undefined, wanted: RulesetBoardLight): boolean {
+  const is = light ?? "bright";
+  return is === wanted || (wanted === "bright" && is === "sunlight");
 }
 
 /** A combatant who can still be acted on and still take a turn. */
@@ -2865,7 +2913,8 @@ function blockActions(
       action.area?.around ||
       rulesetMovesOnly(action) ||
       action.casting ||
-      action.search
+      action.search ||
+      action.standard
         ? { side: "self" as const, count: 0 }
         : {
             // An area catches each creature in it, the creature's allies too (1.187): off a board it may
@@ -2961,6 +3010,16 @@ function blockActions(
     ...(action.casting ? { casting: { ...action.casting } } : {}),
     // A legendary Detect (1.282).
     ...(action.search ? { search: true as const } : {}),
+    // A permission (1.286): standard actions taken with this action's own budget.
+    ...(action.standard
+      ? {
+          standard: {
+            actions: [...action.standard.actions],
+            budget: action.budget,
+            ...(action.standard.while ? { while: action.standard.while } : {}),
+          },
+        }
+      : {}),
     ...(action.targetHolds ? { targetHolds: structuredClone(action.targetHolds) } : {}),
     ...(perCell !== undefined && action.push !== undefined ? { push: rulesetInCells(action.push, perCell) } : {}),
     ...(action.teleport && (perCell !== undefined || action.teleport.leaves)
@@ -3486,7 +3545,14 @@ export interface RulesetEncounterInput {
    * every combatant in it has a cell. Anything less and the board is left out entirely, so a fight
    * is never half on a grid.
    */
-  board?: { grid: TacticalGrid; placements: Record<string, { x: number; y: number }>; battlefield?: unknown };
+  board?: {
+    grid: TacticalGrid;
+    placements: Record<string, { x: number; y: number }>;
+    battlefield?: unknown;
+    /** The light it is fought in, and the kind of place it is (1.286). */
+    light?: RulesetBoardLight;
+    environment?: string;
+  };
   /** Who is caught unaware as it begins (1.232): no move or action on their first turn, and no
    *  reaction until it ends. One whose conditions say they cannot be surprised is not. */
   surprised?: string[];
@@ -4389,6 +4455,8 @@ function placeRulesetCombatants(
   state.board = {
     grid,
     ...(board.battlefield ? { battlefield: board.battlefield as RulesetCombatBoard["battlefield"] } : {}),
+    ...(board.light ? { light: board.light } : {}),
+    ...(board.environment ? { environment: board.environment } : {}),
     // What a shot gains from higher ground, as the ruleset said at the start (combat C6b).
     ...(combat.elevation?.rangeBonus ? { rangeBonus: combat.elevation.rangeBonus } : {}),
     // What one level is worth in cells, which is what a flier pays to rise one (1.109).

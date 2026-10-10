@@ -906,6 +906,8 @@ export async function combatDirectorRoutes(
             bestiary: await loadBestiary(resolved.packageId, definition, proposedSheetLists(definition, input.enemies)),
             // Who the scene caught unaware (1.232).
             surprised: [...input.party, ...input.enemies].flatMap((one) => (one.surprised ? [one.id] : [])),
+            // The scene's time of day, for the light it is fought in (1.286).
+            time: (await visibleLiveRow(input.chatId)).row?.time ?? null,
           });
           if (!built.ok) return reply.code(400).send({ error: built.error });
           state.rulesetFight = built.fight;

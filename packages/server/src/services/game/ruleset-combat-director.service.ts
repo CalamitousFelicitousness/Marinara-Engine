@@ -92,6 +92,7 @@ import {
   type DirectedRulesetCombatant,
   type DirectedRulesetOption,
   type DirectedRulesetView,
+  type RulesetBoardLight,
   type RulesetCatalogEntriesById,
   type RulesetCombatChoice,
   type RulesetCombatEvent,
@@ -216,6 +217,8 @@ export interface RulesetFightSeed {
   bestiary: RulesetCatalogEntriesById;
   /** Who is caught unaware as it begins (1.232), by id, as the Game Master set the scene. */
   surprised?: string[];
+  /** The scene's time of day as the game tracks it (1.286), which sets the light outdoors. */
+  time?: string | null;
 }
 
 export type RulesetFightSeedResult = { ok: true; fight: RulesetFightState } | { ok: false; error: string };
@@ -417,7 +420,13 @@ function buildRulesetBoard(
   input: RulesetFightSeed,
   combatants: readonly RulesetCombatantInput[],
 ):
-  | { grid: TacticalGrid; placements: Record<string, { x: number; y: number }>; battlefield?: unknown }
+  | {
+      grid: TacticalGrid;
+      placements: Record<string, { x: number; y: number }>;
+      battlefield?: unknown;
+      light?: RulesetBoardLight;
+      environment?: string;
+    }
   | { error: string }
   | null {
   if (!input.positioned || !input.definition.combat?.distance) return null;
@@ -453,7 +462,48 @@ function buildRulesetBoard(
   }
   const placements: Record<string, { x: number; y: number }> = {};
   for (const stand of stands) placements[stand.id] = { x: stand.x, y: stand.y };
-  return { grid, placements, battlefield: generated.battlefield };
+  // The light it is fought in and the kind of place it is (1.286): what keen eyes, a sensitivity
+  // to light, camouflage and hiding in shadows read.
+  const environment = input.environment ? normalizeTacticalEnvironment(input.environment) : undefined;
+  const light = rulesetBoardLightFor(input.time, environment);
+  return {
+    grid,
+    placements,
+    battlefield: generated.battlefield,
+    ...(light ? { light } : {}),
+    ...(environment ? { environment } : {}),
+  };
+}
+
+/** Places a fight's light comes from its own lamps rather than the sky. */
+const INDOOR_ENVIRONMENTS = new Set(["dungeon", "cave", "castle", "mansion", "spaceship"]);
+
+/**
+ * The light a fight is fought in (1.286), off the scene's time of day: outdoors, the sun by day,
+ * dim light at dawn and dusk, darkness at night; indoors, or when the time says nothing it
+ * understands, bright light that is not the sun's (nothing said). A clock reading ("14:30",
+ * "7pm") is read by its hour.
+ */
+export function rulesetBoardLightFor(
+  time: string | null | undefined,
+  environment: string | undefined,
+): RulesetBoardLight | undefined {
+  if (!time || (environment && INDOOR_ENVIRONMENTS.has(environment))) return undefined;
+  const text = time.trim().toLowerCase();
+  const clock = /^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/.exec(text);
+  if (clock) {
+    let hour = Number(clock[1]);
+    if (clock[3] === "pm" && hour < 12) hour += 12;
+    if (clock[3] === "am" && hour === 12) hour = 0;
+    if (hour > 23) return undefined;
+    if (hour >= 7 && hour < 18) return "sunlight";
+    if (hour === 6 || hour === 18 || hour === 19) return "dim";
+    return "dark";
+  }
+  if (/\b(midnight|night)\b/.test(text)) return "dark";
+  if (/\b(dawn|dusk|twilight|sunrise|sunset|evening)\b/.test(text)) return "dim";
+  if (/\b(morning|noon|midday|day|daytime|afternoon)\b/.test(text)) return "sunlight";
+  return undefined;
 }
 
 // ── Reading the fight ──

@@ -89,6 +89,18 @@ function obscured(state: RulesetEncounterState): Array<{ cells: Set<string>; pie
 }
 
 /**
+ * Whether somebody stands lightly or heavily obscured now (1.286): in a fog or a haze, or on a
+ * board fought in dim light or darkness. What a creature may do only out of sight reads this.
+ */
+export function rulesetStandsObscured(state: RulesetEncounterState, who: RulesetCombatant): boolean {
+  const board = state.board;
+  if (!board?.grid) return false;
+  if (board.light === "dim" || board.light === "dark") return true;
+  const cells = rulesetFootprint(who).map((cell) => `${cell.x},${cell.y}`);
+  return obscured(state).some((fog) => cells.some((key) => fog.cells.has(key)));
+}
+
+/**
  * Whether `viewer` sees `seen` now. Yourself you always see. Off a board, or without anybody's
  * position, everybody sees everybody: nothing measures anything there.
  */
@@ -125,13 +137,9 @@ export function rulesetStaysHidden(
   if (!hiding || viewer.side === seen.side || viewer.defeated || viewer.id === seen.id) return false;
   if (sees(definition, state, viewer, seen, true)) return false;
   const dim = sees(definition, state, viewer, seen, false) ? (hiding.lightly ?? 5) : 0;
-  return (
-    total >=
-    (hiding.passive ?? 10) +
-      (viewer.checks?.[hiding.perception] ?? 0) -
-      dim +
-      passiveShift(definition, state, viewer, seen)
-  );
+  // A creature's printed passive, where it has one (1.286).
+  const passive = viewer.block?.passive ?? (hiding.passive ?? 10) + (viewer.checks?.[hiding.perception] ?? 0);
+  return total >= passive - dim + passiveShift(definition, state, viewer, seen);
 }
 
 /** What a passive Perception gains or loses for the advantage or disadvantage it has (1.285): the

@@ -353,6 +353,9 @@ export interface RulesetStatBlockAction {
   casting?: { cantripsOnly?: true };
   /** It looks for whoever is hiding (1.282): a legendary Detect. */
   search?: true;
+  /** A permission (1.286): these standard actions taken with this action's budget, only while it
+   *  stands obscured where it says so. 5e's Nimble Escape, Cunning Action, Shadow Stealth. */
+  standard?: { actions: string[]; while?: "obscured" };
   /** The ability its attack is made with (1.184), so changes narrowed to an ability reach it. */
   ability?: string;
   /** Its damage lowers the health maximum (1.198): on a failed save of its own, on a failed save of
@@ -430,6 +433,11 @@ export interface RulesetStatBlock {
   defense?: number;
   initiativeModifier?: number;
   actions: RulesetStatBlockAction[];
+  /** Its own rolls twice on some checks, where it says (1.286): keen senses, sensitivity to light,
+   *  camouflage. */
+  checkModes?: RulesetCheckModeRule[];
+  /** Its passive Perception as printed (1.286), where it is not the ruleset's passive plus its check. */
+  passive?: number;
   /** Spells cast without slots, kept beside the block's own actions (1.118). */
   spellcasting?: RulesetCreature["spellcasting"];
   /** The creature described in the ruleset's OWN terms: a character sheet, as partial as it likes,
@@ -701,7 +709,7 @@ export interface RulesetCombatAction {
   gives?: Array<{ budget: string; count: number }>;
   /** The standard actions its holder may take for THIS budget instead of the main one. The action
    *  itself is a permission: what it grants is on the menu as `standard:<id>@<budget>`. */
-  standard?: { actions: string[]; budget: string };
+  standard?: { actions: string[]; budget: string; while?: "obscured" };
   /** The other actions this one resolves, in order, for one budget. */
   sequence?: RulesetCombatSequenceStep[];
   /** Bought with the actor's own points at the end of somebody else's turn, not with a budget. */
@@ -1567,8 +1575,29 @@ export interface RulesetWalkResume {
 
 /** The board, as the fight keeps it: the tactical engine's own grid and where it came from. The
  *  fight never generates one of its own. */
+/** The light a fight is fought in (1.286): sunlight is bright light that is also the sun's. */
+export type RulesetBoardLight = "sunlight" | "bright" | "dim" | "dark";
+
+/** A creature's own roll twice on checks with these skills (1.286), only where it says: 5e's Keen
+ *  Sight (seeing), Sunlight Sensitivity (seeing, in sunlight), Stone Camouflage (on rocky ground). */
+export interface RulesetCheckModeRule {
+  skills: string[];
+  mode: "advantage" | "disadvantage";
+  /** Only while it can see. */
+  sight?: true;
+  /** Only in one of these lights where it stands. */
+  light?: RulesetBoardLight[];
+  /** Only standing on one of these tiles. */
+  terrain?: string[];
+}
+
 export interface RulesetCombatBoard {
   grid: TacticalGrid;
+  /** The light the fight is fought in (1.286), all over the board; obscuring zones dim it where
+   *  they stand. Bright light when it is not said. */
+  light?: RulesetBoardLight;
+  /** The kind of place it is (1.286), as the tactical generator names it: snow, cave, mountains. */
+  environment?: string;
   battlefield?: TacticalBattlefieldProvenance;
   /** Cells a shot carries further down from higher ground (combat C6b), as the ruleset said when the
    *  fight began. */

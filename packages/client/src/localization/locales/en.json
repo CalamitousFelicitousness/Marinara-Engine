@@ -1353,6 +1353,7 @@
   "game.combat.ruleset.event.returned": "{{target}} comes back into the fight.",
   "game.combat.ruleset.event.returnedGone": "{{target}} stays where they were sent, gone for good.",
   "game.combat.ruleset.event.revealedAttack": "{{actor}} attacks and gives away where they were hiding.",
+  "game.combat.ruleset.event.revealedMoved": "{{actor}} moves, and {{names}} can see them now.",
   "game.combat.ruleset.event.revealedNoise": "{{actor}} makes a sound and gives away where they were hiding.",
   "game.combat.ruleset.event.revealedSeen": "{{names}} spots {{actor}}.",
   "game.combat.ruleset.event.revived": "{{actor}} is back up on {{health}}.",

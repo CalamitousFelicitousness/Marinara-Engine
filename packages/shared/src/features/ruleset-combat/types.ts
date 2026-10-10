@@ -438,6 +438,8 @@ export interface RulesetStatBlock {
   checkModes?: RulesetCheckModeRule[];
   /** Its passive Perception as printed (1.286), where it is not the ruleset's passive plus its check. */
   passive?: number;
+  /** Its own ways of hiding and finding (1.287), in the ruleset's distance. */
+  hiding?: RulesetHidingTraits;
   /** Spells cast without slots, kept beside the block's own actions (1.118). */
   spellcasting?: RulesetCreature["spellcasting"];
   /** The creature described in the ruleset's OWN terms: a character sheet, as partial as it likes,
@@ -710,6 +712,8 @@ export interface RulesetCombatAction {
   /** The standard actions its holder may take for THIS budget instead of the main one. The action
    *  itself is a permission: what it grants is on the menu as `standard:<id>@<budget>`. */
   standard?: { actions: string[]; budget: string; while?: "obscured" };
+  /** Its holder's own ways of hiding and finding (1.287), `aware` in cells. A permission. */
+  hiding?: RulesetHidingTraits;
   /** The other actions this one resolves, in order, for one budget. */
   sequence?: RulesetCombatSequenceStep[];
   /** Bought with the actor's own points at the end of somebody else's turn, not with a budget. */
@@ -1084,7 +1088,16 @@ export interface RulesetCombatant {
   concentrating: { actionId: string; label: string } | null;
   /** Hidden (1.282): the Stealth total it hid with, and the opponents it is hidden from, by id. Gone
    *  once it is hidden from nobody. */
-  hiding?: { total: number; from: string[] };
+  hiding?: {
+    total: number;
+    from: string[];
+    /** What standing still adds to the total (1.287), taken off once it moves or acts: Hide in
+     *  Plain Sight. */
+    still?: number;
+    /** Hidden in plain sight (1.287): kept from whoever does not beat the total, seen clearly or
+     *  not, and lost once it moves. A gelatinous cube, Transparent. */
+    plain?: true;
+  };
   /** What it readied (1.283), taken with the ruleset's reaction budget when it happens, until the
    *  start of its next turn. */
   readied?: RulesetReadied;
@@ -1578,6 +1591,22 @@ export interface RulesetWalkResume {
 /** The light a fight is fought in (1.286): sunlight is bright light that is also the sun's. */
 export type RulesetBoardLight = "sunlight" | "bright" | "dim" | "dark";
 
+/** Ways of hiding and of finding the hidden that are its holder's own (1.287). Distances are in
+ *  the ruleset's own unit where a ruleset writes them, and in cells on a combatant's action. */
+export interface RulesetHidingTraits {
+  /** It may hide behind somebody at least one size larger than it: a halfling's Naturally Stealthy. */
+  behindLarger?: true;
+  /** Added to its Stealth total while it neither moves nor acts: Hide in Plain Sight's +10. */
+  still?: number;
+  /** Its Hide rolled so, when it has moved no more than half its speed this turn: Supreme Sneak. */
+  slow?: "advantage";
+  /** Nobody within this distance hides from it, unless it has one of these conditions: Blindsense. */
+  aware?: { within: number; lostWith?: string[] };
+  /** A creature's (only): it begins the fight hidden with this total, from whoever does not beat it,
+   *  until it moves or gives itself away. A gelatinous cube's Transparent, DC 15. */
+  starts?: number;
+}
+
 /** A creature's own roll twice on checks with these skills (1.286), only where it says: 5e's Keen
  *  Sight (seeing), Sunlight Sensitivity (seeing, in sunlight), Stone Camouflage (on rocky ground). */
 export interface RulesetCheckModeRule {
@@ -1941,7 +1970,7 @@ export type RulesetCombatEvent =
       apart?: RulesetSearchApart[];
     }
   /** Somebody hiding given away to these opponents (1.282): by attacking, by noise, or seen clearly. */
-  | { type: "revealed"; actorId: string; byIds: string[]; reason: "attack" | "noise" | "seen" }
+  | { type: "revealed"; actorId: string; byIds: string[]; reason: "attack" | "noise" | "seen" | "moved" }
   | {
       type: "move";
       actorId: string;

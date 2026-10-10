@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: characters and creatures can have their own ways of hiding and finding the hidden: a halfling hides behind somebody larger, a ranger hidden in plain sight, a thief's Supreme Sneak, a rogue's Blindsense, and a gelatinous cube nobody notices until it moves (Capability API 1.287).
 - Rulesets: creatures can hide and look in their own ways: a goblin's Nimble Escape hides with a bonus action, a shadow only in the dark, keen senses, sunlight sensitivity and camouflage roll twice where they apply, and a fight knows its light from the time of day (Capability API 1.286).
 - Rulesets: armor, items and spells narrowed to Stealth or Perception now count on Hide and Search, a passive Perception gains or loses 5 for advantage or disadvantage, and a Cloak of Elvenkind makes its wearer harder to find (Capability API 1.285).
 - Rulesets: a cloud can take a while to blow away: Stinking Cloud lasts a whole round in Gust of Wind before it disperses (Capability API 1.284).

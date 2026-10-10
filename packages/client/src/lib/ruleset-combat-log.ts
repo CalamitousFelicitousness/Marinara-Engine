@@ -477,7 +477,13 @@ export function rulesetCombatEventLine(
     // Hiding given away (1.282).
     case "revealed":
       return key(
-        event.reason === "attack" ? "revealedAttack" : event.reason === "noise" ? "revealedNoise" : "revealedSeen",
+        event.reason === "attack"
+          ? "revealedAttack"
+          : event.reason === "noise"
+            ? "revealedNoise"
+            : event.reason === "moved"
+              ? "revealedMoved"
+              : "revealedSeen",
         {
           actor: names.combatant(event.actorId),
           names: event.byIds.map((id) => names.combatant(id)).join(", "),

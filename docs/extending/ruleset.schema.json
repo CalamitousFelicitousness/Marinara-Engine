@@ -13706,6 +13706,51 @@
                       ],
                       "additionalProperties": false
                     },
+                    "hiding": {
+                      "type": "object",
+                      "properties": {
+                        "behindLarger": {
+                          "type": "boolean",
+                          "const": true
+                        },
+                        "still": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 20
+                        },
+                        "slow": {
+                          "type": "string",
+                          "const": "advantage"
+                        },
+                        "aware": {
+                          "type": "object",
+                          "properties": {
+                            "within": {
+                              "type": "number",
+                              "exclusiveMinimum": 0,
+                              "maximum": 10000
+                            },
+                            "lostWith": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 8
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "within"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "$comment": {}
+                      },
+                      "additionalProperties": false
+                    },
                     "rider": {
                       "type": "object",
                       "properties": {
@@ -14075,6 +14120,56 @@
                       "type": "integer",
                       "minimum": 0,
                       "maximum": 100
+                    },
+                    "hiding": {
+                      "type": "object",
+                      "properties": {
+                        "behindLarger": {
+                          "type": "boolean",
+                          "const": true
+                        },
+                        "still": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 20
+                        },
+                        "slow": {
+                          "type": "string",
+                          "const": "advantage"
+                        },
+                        "aware": {
+                          "type": "object",
+                          "properties": {
+                            "within": {
+                              "type": "number",
+                              "exclusiveMinimum": 0,
+                              "maximum": 10000
+                            },
+                            "lostWith": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 8
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "within"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "starts": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 60
+                        },
+                        "$comment": {}
+                      },
+                      "additionalProperties": false
                     },
                     "soak": {
                       "type": "object",
@@ -28246,6 +28341,51 @@
                           "type": "boolean",
                           "const": true
                         },
+                        "hiding": {
+                          "type": "object",
+                          "properties": {
+                            "behindLarger": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "still": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 20
+                            },
+                            "slow": {
+                              "type": "string",
+                              "const": "advantage"
+                            },
+                            "aware": {
+                              "type": "object",
+                              "properties": {
+                                "within": {
+                                  "type": "number",
+                                  "exclusiveMinimum": 0,
+                                  "maximum": 10000
+                                },
+                                "lostWith": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "minItems": 1,
+                                  "maxItems": 8
+                                },
+                                "$comment": {}
+                              },
+                              "required": [
+                                "within"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "$comment": {}
+                          },
+                          "additionalProperties": false
+                        },
                         "kind": {
                           "type": "string",
                           "enum": [
@@ -33638,6 +33778,51 @@
                               "free": {
                                 "type": "boolean",
                                 "const": true
+                              },
+                              "hiding": {
+                                "type": "object",
+                                "properties": {
+                                  "behindLarger": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "still": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 20
+                                  },
+                                  "slow": {
+                                    "type": "string",
+                                    "const": "advantage"
+                                  },
+                                  "aware": {
+                                    "type": "object",
+                                    "properties": {
+                                      "within": {
+                                        "type": "number",
+                                        "exclusiveMinimum": 0,
+                                        "maximum": 10000
+                                      },
+                                      "lostWith": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 8
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "required": [
+                                      "within"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  "$comment": {}
+                                },
+                                "additionalProperties": false
                               },
                               "kind": {
                                 "type": "string",

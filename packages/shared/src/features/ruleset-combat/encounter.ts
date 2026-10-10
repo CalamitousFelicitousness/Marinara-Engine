@@ -78,7 +78,7 @@ import {
 import { rulesetCombatAdvantage, rulesetCombatIsPool, rulesetPoolDie, throwRulesetCombatPool } from "./pool.js";
 import { rulesetActionItemIndex, rulesetDroppedItems } from "./ammo.js";
 import { rulesetPaidLevel, rulesetReactionsAt, rulesetSheetWithin } from "./options.js";
-import { rulesetCanSee } from "./sight.js";
+import { rulesetCanSee, rulesetHidingTraits, rulesetStaysHidden } from "./sight.js";
 import { RULESET_MOVE_MODES } from "./types.js";
 import type {
   RulesetBoardLight,
@@ -2103,6 +2103,8 @@ function mechanicsAction(
     mechanics.kind === "utility" &&
     !mechanics.gives &&
     !mechanics.standard &&
+    // A way of hiding or finding that is its holder's own (1.287) is read off it.
+    !mechanics.hiding &&
     !cancels &&
     !cures &&
     !places &&
@@ -2514,6 +2516,21 @@ function mechanicsAction(
   if (mechanics.gives?.length) action.gives = mechanics.gives.map((gift) => ({ ...gift }));
   if (mechanics.standard) {
     action.standard = { actions: [...mechanics.standard.actions], budget: mechanics.standard.budget };
+  }
+  // Its holder's own ways of hiding and finding (1.287): a permission, its distances in cells.
+  if (mechanics.hiding) {
+    const { aware, ...rest } = mechanics.hiding;
+    action.hiding = {
+      ...structuredClone(rest),
+      ...(aware
+        ? {
+            aware: {
+              within: rulesetInCells(aware.within, perCell ?? 1),
+              ...(aware.lostWith ? { lostWith: [...aware.lostWith] } : {}),
+            },
+          }
+        : {}),
+    };
   }
   // Distance, in the unit this CATALOG declared, or the combat block's when it declared none. A
   // range of zero is self or touch, and touching somebody else is the next cell: a REACH of one,
@@ -3835,6 +3852,18 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
   placeRulesetCombatants(definition, combat, state, input.board);
   // What auras spread from where everybody stands (1.258).
   rulesetSyncAuras(definition, state);
+  // Hidden in plain sight from the start (1.287), from whoever's passive Perception does not beat
+  // it: a gelatinous cube's Transparent.
+  if (combat.hiding) {
+    for (const combatant of state.combatants) {
+      const total = rulesetHidingTraits(definition, combatant).starts;
+      if (!total) continue;
+      const from = state.combatants
+        .filter((viewer) => rulesetStaysHidden(definition, state, viewer, combatant, total, true))
+        .map((viewer) => viewer.id);
+      if (from.length > 0) combatant.hiding = { total, from, plain: true };
+    }
+  }
   // A turn's budgets as conditions held from before the fight change them (combat C6d): the first
   // actor's turn begins now and never passes through the turn's own refill.
   for (const combatant of state.combatants) {

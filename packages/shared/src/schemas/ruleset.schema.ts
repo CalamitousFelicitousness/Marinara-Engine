@@ -2173,6 +2173,40 @@ const catalogAttackRowsSchema: z.ZodType<RulesetAttackRowsDeclaration, z.ZodType
  *  lets its holder buy one of them with another budget says which ones. */
 /** `search` (Capability API 1.282) looks for whoever is hiding: see `combat.hiding`. */
 const combatStandardActionSchema = z.enum(["dash", "disengage", "dodge", "help", "hide", "ready", "search"]);
+
+const hidingTraitFields = {
+  /** It may hide behind somebody at least one size larger than it, as behind anything else that
+   *  keeps it from being seen clearly: a halfling's Naturally Stealthy. Needs `combat.sizes`. */
+  behindLarger: z.literal(true).optional(),
+  /** Added to its Stealth total as it hides, and taken off again once it moves or takes an action:
+   *  a ranger's Hide in Plain Sight, `10`. */
+  still: z.number().int().min(1).max(20).optional(),
+  /** Its Hide is rolled so when it has moved no more than half its speed this turn: a thief's
+   *  Supreme Sneak, `"advantage"`. */
+  slow: z.literal("advantage").optional(),
+  /** Nobody within this distance, in the ruleset's own unit, is hidden from it, unless it has one
+   *  of `lostWith` (a rogue's Blindsense, 10 feet, lost while deafened). */
+  aware: z
+    .object({
+      within: z.number().finite().gt(0).max(10000),
+      lostWith: z.array(sheetId).min(1).max(8).optional(),
+    })
+    .strict()
+    .optional(),
+};
+/** Ways of hiding and of finding the hidden that are their holder's own (Capability API 1.287), read
+ *  where `combat.hiding` hides for real. */
+const hidingTraitsSchema = z
+  .object(hidingTraitFields)
+  .strict()
+  .refine((traits) => Object.keys(traits).length > 0, { message: "hiding names at least one way of hiding" });
+/** A creature's, which may also begin the fight hidden (`starts`, the total it hides with until it
+ *  moves or gives itself away, from whoever's passive Perception does not beat it, seen clearly or
+ *  not: a gelatinous cube's Transparent, `15`). */
+const creatureHidingTraitsSchema = z
+  .object({ ...hidingTraitFields, starts: z.number().int().min(1).max(60).optional() })
+  .strict()
+  .refine((traits) => Object.keys(traits).length > 0, { message: "hiding names at least one way of hiding" });
 export const RULESET_COMBAT_STANDARD_ACTIONS = combatStandardActionSchema.options;
 
 /** How long a condition an entry applies lasts. `until-save` has no clock of its own, so it needs
@@ -3273,6 +3307,9 @@ const catalogMechanicsObject = z
       .object({ actions: z.array(combatStandardActionSchema).min(1).max(7), budget: sheetId })
       .strict()
       .optional(),
+    /** Its holder's own ways of hiding and finding the hidden (Capability API 1.287): a permission
+     *  like `standard`, read where `combat.hiding` hides for real. */
+    hiding: hidingTraitsSchema.optional(),
     /** What this adds to the first qualifying hit of a period, all by itself. */
     rider: catalogRiderSchema.optional(),
   })
@@ -4343,6 +4380,9 @@ const creatureFields = {
   /** Its passive Perception as printed (Capability API 1.286), where it is not the ruleset's
    *  `hiding.passive` plus its Perception check. */
   passive: z.number().int().min(0).max(100).optional(),
+  /** Its own ways of hiding and finding the hidden (Capability API 1.287), as a catalog entry's
+   *  `hiding` says, and `starts`. */
+  hiding: creatureHidingTraitsSchema.optional(),
   /** What it soaks in a `dice-pool` fight: `all` for any harm, and `byKind` for one kind of the
    *  health track, which wins over `all` for that kind. Nothing it does not name is soaked. */
   soak: z
@@ -11069,6 +11109,7 @@ function creatureIssues(
   for (const check of Object.keys(creature.checks ?? {})) {
     if (!checks.has(check)) add([...at, "checks", check], `Unknown contest check "${check}"`);
   }
+  if (creature.hiding) hidingTraitsIssues(definition, creature.hiding, [...at, "hiding"], add);
   // Its own modes on checks (1.286) name the sheet's skills.
   const skills = new Set(definition.sheet.skills.map((skill) => skill.id));
   creature.checkModes?.forEach((rule, ruleIndex) => {
@@ -12839,6 +12880,7 @@ export function rulesetCatalogEntryIssues(
         add([...path, "type"], `Unknown damage type "${mechanics.rider.type}"`);
       }
     }
+    if (mechanics?.hiding) hidingTraitsIssues(definition, mechanics.hiding, [index, "mechanics", "hiding"], add);
     if (mechanics?.standard && definition.combat) {
       const path = [index, "mechanics", "standard"];
       if (!budgets?.has(mechanics.standard.budget)) {
@@ -13032,4 +13074,27 @@ export function capImportedRulesetSheets(value: unknown): {
     else sheets[id] = sheet;
   }
   return { sheets: Object.keys(sheets).length > 0 ? sheets : undefined, dropped };
+}
+
+/** What is wrong with somebody's own ways of hiding (1.287): read only where hiding is real, behind
+ *  somebody larger only where there are sizes, and lost only with conditions the sheet has. */
+function hidingTraitsIssues(
+  definition: RulesetDefinition,
+  traits: { behindLarger?: true; aware?: { lostWith?: string[] } },
+  path: Array<string | number>,
+  add: (path: Array<string | number>, message: string) => void,
+): void {
+  if (!definition.combat?.hiding) {
+    add(path, "A way of hiding is read where combat.hiding hides for real, so it needs combat.hiding");
+    return;
+  }
+  if (traits.behindLarger && !definition.combat.sizes) {
+    add([...path, "behindLarger"], "Hiding behind somebody larger reads combat.sizes");
+  }
+  const conditions = new Set(definition.sheet.live.conditions.map((condition) => condition.id));
+  traits.aware?.lostWith?.forEach((condition, conditionIndex) => {
+    if (!conditions.has(condition)) {
+      add([...path, "aware", "lostWith", conditionIndex], `Unknown condition "${condition}"`);
+    }
+  });
 }

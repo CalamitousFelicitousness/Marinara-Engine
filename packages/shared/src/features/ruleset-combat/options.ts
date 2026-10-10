@@ -168,7 +168,8 @@ export function rulesetFreeStrike(actor: RulesetCombatant, action: RulesetCombat
  *  standard actions its holder may buy with another budget is a PERMISSION, not something to take:
  *  what it grants is on the menu as `standard:<id>@<budget>`, and the entry itself is not. */
 function actionDoesSomething(action: RulesetCombatAction): boolean {
-  if (!action.standard) return true;
+  // A way of hiding that is its holder's own (1.287) is a permission too.
+  if (!action.standard && !action.hiding) return true;
   return !!(
     action.damage ||
     action.heal ||

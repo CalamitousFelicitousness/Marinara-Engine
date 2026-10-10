@@ -31,7 +31,7 @@ import {
 } from "./ammo.js";
 import { parseRulesetCombatDice, rollRulesetDice, sumOf } from "./dice.js";
 import { elevationAt } from "../tactical-combat/math.js";
-import { rulesetCanSee, rulesetHiddenFrom, rulesetStaysHidden } from "./sight.js";
+import { rulesetCanSee, rulesetHiddenFrom, rulesetHidingTraits, rulesetStaysHidden } from "./sight.js";
 import {
   rulesetCombatIsPool,
   rulesetCombatPenalty,
@@ -5615,7 +5615,9 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
     at = cell;
     actor.x = cell.x;
     actor.y = cell.y;
-    // Seen on the way, out in the open (1.282), even where the walk ends back in hiding.
+    // Seen on the way, out in the open (1.282), even where the walk ends back in hiding; and no
+    // longer still (1.287).
+    stirs(ctx, actor, "moved");
     recheckHiding(ctx, actor);
     // Come where something readied for it reaches it (1.283): taken now, the rest of the walk after.
     const readied = reachedBefore
@@ -6086,6 +6088,8 @@ function resolveStandard(
 ): void {
   // Hide and Ready are accepted and do nothing yet: one needs sight lines and the other a trigger
   // window, and both arrive with the slices that build them.
+  // Anything else it does gives up what standing still was worth (1.287).
+  if (action !== "hide") stirs(ctx, actor, "acted");
   if (action === "dodge") actor.flags.dodging = true;
   else if (action === "dash") {
     actor.flags.dashed = true;
@@ -6094,12 +6098,33 @@ function resolveStandard(
   } else if (action === "disengage") actor.flags.disengaged = true;
   else if (action === "hide" && ctx.combat.hiding) {
     // Hiding for real (1.282): a Stealth check, hidden from each opponent it beats unseen.
-    const check = hidingCheck(ctx, actor, ctx.combat.hiding.stealth);
+    // A thief who has moved no more than half their speed hides with advantage, and a ranger
+    // standing still adds what that is worth (1.287).
+    const traits = rulesetHidingTraits(ctx.definition, actor);
+    const slow =
+      traits.slow &&
+      actor.movement !== undefined &&
+      actor.movement - (actor.movementLeft ?? 0) <= Math.floor(actor.movement / 2);
+    const check = hidingCheck(
+      ctx,
+      actor,
+      ctx.combat.hiding.stealth,
+      slow ? { advantage: true, disadvantage: false } : undefined,
+    );
+    if (traits.still) check.total += traits.still;
+    // Something that begins the fight hidden in plain sight hides that way again (1.287).
+    const plain = !!traits.starts;
     const from = ctx.state.combatants
-      .filter((viewer) => rulesetStaysHidden(ctx.definition, ctx.state, viewer, actor, check.total))
+      .filter((viewer) => rulesetStaysHidden(ctx.definition, ctx.state, viewer, actor, check.total, plain))
       .map((viewer) => viewer.id);
-    if (from.length > 0) actor.hiding = { total: check.total, from };
-    else delete actor.hiding;
+    if (from.length > 0) {
+      actor.hiding = {
+        total: check.total,
+        from,
+        ...(traits.still ? { still: traits.still } : {}),
+        ...(plain ? { plain: true as const } : {}),
+      };
+    } else delete actor.hiding;
     ctx.events.push({ type: "standard", actorId: actor.id, action, check, from });
     return;
   } else if (action === "hide") actor.flags.hidden = true;
@@ -6160,6 +6185,25 @@ function search(
     loseHiding(other, [actor.id]);
   }
   return { check, found, ...(throws.size > 0 ? { apart: [...throws.values()] } : {}) };
+}
+
+/**
+ * A hider moving or acting (1.287): what standing still added to its total is gone, and somebody
+ * hidden in plain sight that moves is hidden no more. Whether the smaller total still hides it is
+ * asked as every step ends, and on every cell of a walk.
+ */
+function stirs(ctx: RulesetCombatContext, actor: RulesetCombatant, how: "moved" | "acted"): void {
+  const hiding = actor.hiding;
+  if (!hiding) return;
+  if (hiding.plain && how === "moved") {
+    ctx.events.push({ type: "revealed", actorId: actor.id, byIds: [...hiding.from], reason: "moved" });
+    delete actor.hiding;
+    return;
+  }
+  if (hiding.still) {
+    hiding.total -= hiding.still;
+    delete hiding.still;
+  }
 }
 
 /** No longer hidden from these opponents (1.282), and no longer hiding once that is nobody. */
@@ -6425,6 +6469,7 @@ function resolveAction(
   // Somebody using something, for what was readied for it (1.283).
   if (ctx.combat.readying) (ctx.acted ??= new Set()).add(actor.id);
   // Hiding, and giving it away (1.282): found out once the step is done.
+  stirs(ctx, actor, "acted");
   const giveaway = actor.hiding ? givesAway(ctx, action) : undefined;
   if (giveaway) (ctx.giveaways ??= new Map()).set(actor.id, giveaway);
   const before = new Set(actor.tracked);

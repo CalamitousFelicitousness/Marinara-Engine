@@ -17,6 +17,7 @@ import {
   rulesetCheckSkill,
   rulesetCheckTakenModes,
   rulesetCombatConditions,
+  rulesetSizeRank,
 } from "./encounter.js";
 import {
   rulesetInCells,
@@ -26,7 +27,7 @@ import {
   rulesetFootprint,
   rulesetGap,
 } from "./grid.js";
-import type { RulesetCombatant, RulesetCombatCell, RulesetEncounterState } from "./types.js";
+import type { RulesetCombatant, RulesetCombatCell, RulesetEncounterState, RulesetHidingTraits } from "./types.js";
 
 /** How far each of the fight's senses reaches for this combatant, in cells: a creature's off its
  *  block, anybody else's as it was read off their sheet when the fight began. What their conditions
@@ -124,7 +125,9 @@ export function rulesetHiddenFrom(viewer: RulesetCombatant, seen: RulesetCombata
  * Whether somebody hiding with this Stealth `total` would stay hidden from `viewer` (1.282): an
  * opponent still in the fight that does not see them clearly, and whose passive Perception (the
  * ruleset's `passive` plus its `perception` check, `lightly` less where it sees them only lightly
- * obscured) the total meets.
+ * obscured) the total meets. Somebody hidden in `plain` sight (1.287) needs only the passive beaten;
+ * one that may hide behind somebody larger is not seen clearly from behind them; and nobody hides
+ * from a viewer aware of everybody that near.
  */
 export function rulesetStaysHidden(
   definition: RulesetDefinition,
@@ -132,14 +135,93 @@ export function rulesetStaysHidden(
   viewer: RulesetCombatant,
   seen: RulesetCombatant,
   total: number,
+  plain = !!seen.hiding?.plain,
 ): boolean {
   const hiding = definition.combat?.hiding;
   if (!hiding || viewer.side === seen.side || viewer.defeated || viewer.id === seen.id) return false;
-  if (sees(definition, state, viewer, seen, true)) return false;
-  const dim = sees(definition, state, viewer, seen, false) ? (hiding.lightly ?? 5) : 0;
+  if (rulesetAwareOf(definition, state, viewer, seen)) return false;
+  let dim = 0;
+  if (!plain) {
+    if (sees(definition, state, viewer, seen, true)) {
+      if (!rulesetHidingTraits(definition, seen).behindLarger || !screenedByLarger(definition, state, viewer, seen))
+        return false;
+    } else if (sees(definition, state, viewer, seen, false)) dim = hiding.lightly ?? 5;
+  }
   // A creature's printed passive, where it has one (1.286).
   const passive = viewer.block?.passive ?? (hiding.passive ?? 10) + (viewer.checks?.[hiding.perception] ?? 0);
   return total >= passive - dim + passiveShift(definition, state, viewer, seen);
+}
+
+/** A combatant's own ways of hiding and finding the hidden (1.287), off its abilities and, for a
+ *  creature, its block, `aware` in cells. */
+export function rulesetHidingTraits(
+  definition: RulesetDefinition,
+  who: RulesetCombatant,
+): {
+  behindLarger?: true;
+  still?: number;
+  slow?: "advantage";
+  aware: Array<{ within: number; lostWith?: string[] }>;
+  starts?: number;
+} {
+  const traits: ReturnType<typeof rulesetHidingTraits> = { aware: [] };
+  const perCell = definition.combat?.distance?.perCell ?? 1;
+  const add = (one: RulesetHidingTraits | undefined, inCells: boolean) => {
+    if (!one) return;
+    if (one.behindLarger) traits.behindLarger = true;
+    if (one.still) traits.still = Math.max(traits.still ?? 0, one.still);
+    if (one.slow) traits.slow = one.slow;
+    if (one.starts) traits.starts = Math.max(traits.starts ?? 0, one.starts);
+    if (one.aware) {
+      traits.aware.push({
+        within: inCells ? one.aware.within : rulesetInCells(one.aware.within, perCell),
+        ...(one.aware.lostWith ? { lostWith: one.aware.lostWith } : {}),
+      });
+    }
+  };
+  for (const action of who.actions) add(action.hiding, true);
+  add(who.block?.hiding, false);
+  return traits;
+}
+
+/** Whether `viewer` is aware of `seen` where it stands (1.287): close enough that nobody hides from
+ *  it, and without whatever takes that away. A rogue's Blindsense. */
+export function rulesetAwareOf(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  viewer: RulesetCombatant,
+  seen: RulesetCombatant,
+): boolean {
+  const aware = rulesetHidingTraits(definition, viewer).aware;
+  if (aware.length === 0 || !state.board?.grid || !rulesetPositionOf(viewer) || !rulesetPositionOf(seen)) return false;
+  const own = new Set(rulesetCombatConditions(definition, viewer));
+  const gap = rulesetGap(viewer, seen);
+  return aware.some((one) => gap <= one.within && !one.lostWith?.some((condition) => own.has(condition)));
+}
+
+/** Whether somebody at least one size larger than `seen` stands between them and `viewer` (1.287),
+ *  on every line from the one to the other. */
+function screenedByLarger(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  viewer: RulesetCombatant,
+  seen: RulesetCombatant,
+): boolean {
+  const combat = definition.combat;
+  if (!combat || !state.board?.grid) return false;
+  const rank = rulesetSizeRank(combat, seen);
+  if (rank === undefined) return false;
+  const screens = state.combatants.filter((one) => {
+    if (one.id === viewer.id || one.id === seen.id || one.defeated || !rulesetPositionOf(one)) return false;
+    const theirs = rulesetSizeRank(combat, one);
+    return theirs !== undefined && theirs > rank;
+  });
+  if (screens.length === 0) return false;
+  const blocking = new Set(screens.flatMap((one) => rulesetFootprint(one).map((cell) => `${cell.x},${cell.y}`)));
+  const theirCells = rulesetFootprint(seen);
+  return rulesetFootprint(viewer).every((a) =>
+    theirCells.every((b) => cellsBetween(a, b).some((cell) => blocking.has(`${cell.x},${cell.y}`))),
+  );
 }
 
 /** What a passive Perception gains or loses for the advantage or disadvantage it has (1.285): the

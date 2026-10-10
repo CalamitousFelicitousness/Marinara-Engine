@@ -1439,6 +1439,8 @@ export interface RulesetSeenThrough {
   /** A wind of the fight's disperses it (1.281): 5e's Fog Cloud, not its Darkness. `{ after }`
    *  only once it has stood in one that many whole rounds (1.284): 5e's Stinking Cloud. */
   dispersed?: true | { after: number };
+  /** Magical darkness (1.292), which a zone that `dispelsDark` ends. */
+  darkness?: true;
 }
 const seenThroughSchema: z.ZodType<RulesetSeenThrough, z.ZodTypeDef, unknown> = z
   .object({
@@ -1461,6 +1463,9 @@ const seenThroughSchema: z.ZodType<RulesetSeenThrough, z.ZodTypeDef, unknown> = 
         z.object({ after: z.number().int().min(1).max(10) }).strict(),
       ])
       .optional(),
+    /** It is magical darkness (Capability API 1.292): a zone that `dispelsDark` ends it where the
+     *  two meet, at its level or lower. 5e's Darkness. */
+    darkness: z.literal(true).optional(),
   })
   .strict();
 
@@ -1473,9 +1478,16 @@ export type RulesetSenseGrant = number | { add: number };
 export interface RulesetLightRadius {
   bright: number;
   dim: number;
+  reveals?: true;
 }
 const lightRadiusSchema: z.ZodType<RulesetLightRadius, z.ZodTypeDef, unknown> = z
-  .object({ bright: z.number().finite().min(0).max(10000), dim: z.number().finite().min(0).max(10000) })
+  .object({
+    bright: z.number().finite().min(0).max(10000),
+    dim: z.number().finite().min(0).max(10000),
+    /** Whoever a condition hides (the invisible) is seen in its bright light (Capability API
+     *  1.292): 5e's lantern of revealing. */
+    reveals: z.literal(true).optional(),
+  })
   .strict()
   .refine((light) => light.bright + light.dim > 0, { message: "A light reaches somewhere" });
 
@@ -1615,6 +1627,8 @@ export interface RulesetCatalogZone {
   sections?: RulesetZoneSections;
   obscures?: RulesetSeenThrough;
   disperses?: true;
+  lights?: RulesetLightRadius;
+  dispelsDark?: { upTo: number };
   inside?: RulesetZoneInside;
   forbids?: RulesetForbids;
   wards?: RulesetZoneWards;
@@ -1739,6 +1753,19 @@ const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = 
      *  `pierced` names, within that sense's range: 5e's Fog Cloud and Darkness (pierced by nothing
      *  but blindsight and truesight), or a plain darkness darkvision sees through. */
     obscures: seenThroughSchema.optional(),
+    /** The light it sheds (Capability API 1.292) over its own cells: bright within `bright` of its
+     *  middle (the point it is centred on, or its caster), dim in the rest. 5e's Daylight is a
+     *  120-foot sphere with `{ "bright": 60, "dim": 60 }`; a bullseye lantern a 120-foot cone held by
+     *  its caster, `{ "bright": 60, "dim": 60 }`; Dancing Lights' one glowing form a 10-foot sphere
+     *  moved with the spell, `{ "bright": 0, "dim": 10 }`. Read where `combat.sight.darkness` makes
+     *  the dark real. */
+    lights: lightRadiusSchema.optional(),
+    /** Magical darkness (an `obscures` with `darkness`) of this level or lower ends where it meets
+     *  this zone (Capability API 1.292), as it appears or moves: 5e's Daylight, `{ "upTo": 3 }`. */
+    dispelsDark: z
+      .object({ upTo: z.number().int().min(0).max(20) })
+      .strict()
+      .optional(),
     /** A wind (Capability API 1.281): every obscuring zone that is `dispersed` ends where this one
      *  reaches it, as it appears, moves or turns: 5e's Gust of Wind on a Fog Cloud. */
     disperses: z.literal(true).optional(),
@@ -3393,7 +3420,9 @@ function zoneIssue(mechanics: {
                 !zone.forbids &&
                 !zone.wards &&
                 !zone.detonates &&
-                !zone.burns
+                !zone.burns &&
+                !zone.lights &&
+                !zone.dispelsDark
               ? "A zone names at least one trigger, unless it is a wall, or what it does is to its ground or to whoever stands in it"
               : (zone.move || zone.drift) && (zone.anchor === "caster" || mechanics.area.shape !== "burst")
                 ? "Only a burst held at a point is moved or drifts"

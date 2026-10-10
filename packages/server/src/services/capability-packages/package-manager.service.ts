@@ -1559,6 +1559,17 @@ function carriesHidingTraits(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesHidingTraits(one, depth + 1));
 }
 
+/** Zones that shed light or end magical darkness, and light that shows the invisible (1.292). */
+function carriesLightZones(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesLightZones(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.lights !== undefined || record.dispelsDark !== undefined || record.reveals !== undefined) return true;
+  if (plainRecord(record.obscures)?.darkness !== undefined) return true;
+  return Object.values(record).some((one) => carriesLightZones(one, depth + 1));
+}
+
 /** Lights switched by a creature's own actions, or dim while an item is off (1.291). */
 function carriesLightActions(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -4010,6 +4021,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Zones that shed light or end magical darkness, 1.292.
+  if (
+    !declaresApi(292) &&
+    (carriesLightZones(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesLightZones(document)))
+  ) {
+    return "A ruleset with zones that shed light or end magical darkness, or light that shows the invisible, requires schemaVersion 2 and capabilityApi 1.292 or newer";
   }
   // Lights switched by creatures, and items' light while off, 1.291.
   if (

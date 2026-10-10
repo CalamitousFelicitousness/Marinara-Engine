@@ -727,6 +727,10 @@ export function rulesetCombatEventLine(
       if (event.outcome === "dispersed") {
         return key("zoneDispersed", { actor: names.combatant(event.actorId), label: event.label });
       }
+      // Magical darkness a light met (1.292).
+      if (event.outcome === "dispelled") {
+        return key("zoneDispelled", { actor: names.combatant(event.actorId), label: event.label });
+      }
       if (event.outcome === "turned") {
         return key("zoneTurned", { actor: names.combatant(event.actorId), label: event.label });
       }

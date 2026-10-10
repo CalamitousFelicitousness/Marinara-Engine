@@ -2494,8 +2494,23 @@ function mechanicsAction(
         ...(mechanics.zone.obscures.dispersed
           ? { dispersed: rulesetCopyDispersed(mechanics.zone.obscures.dispersed) }
           : {}),
+        ...(mechanics.zone.obscures.darkness ? { darkness: true as const } : {}),
       };
     }
+    // The light it sheds (1.292), in cells; and the magical darkness it ends.
+    const lights = mechanics.zone.lights;
+    if (lights) {
+      action.zone.lights = {
+        bright: lights.bright > 0 ? rulesetInCells(lights.bright, perCell ?? 1) : 0,
+        dim: Math.max(
+          0,
+          rulesetInCells(lights.bright + lights.dim, perCell ?? 1) -
+            (lights.bright > 0 ? rulesetInCells(lights.bright, perCell ?? 1) : 0),
+        ),
+        ...(lights.reveals ? { reveals: true as const } : {}),
+      };
+    }
+    if (mechanics.zone.dispelsDark) action.zone.dispelsDark = { upTo: mechanics.zone.dispelsDark.upTo };
     if (mechanics.zone.disperses) action.zone.disperses = true;
     const inside = mechanics.zone.inside;
     if (inside) {

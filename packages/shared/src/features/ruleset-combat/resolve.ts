@@ -337,6 +337,8 @@ function begin(
       if (!next.window) endActionConditions(ctx);
       // Fog a wind now reaches is blown away (1.281).
       disperseFogs(ctx);
+      // Magical darkness a light meets is dispelled (1.292).
+      dispelDarkness(ctx);
       // Whoever gave themselves away, or is now seen clearly, is hidden no longer (1.282).
       syncHiding(ctx);
       // What was readied for an opponent using something, asked about now (1.283).
@@ -2433,6 +2435,28 @@ function disperseFogs(ctx: RulesetCombatContext): void {
       ctx.events.push({ type: "zone", actorId: caster.id, label: zone.label, outcome: "dispersed" });
       spendZone(ctx, caster, zone);
     }
+  }
+}
+
+/** Every magical darkness a zone that `dispelsDark` meets, at its level or lower, dispelled (1.292):
+ *  5e's Daylight on a Darkness of 3rd level or lower, as it appears or moves. */
+function dispelDarkness(ctx: RulesetCombatContext): void {
+  if (!ctx.state.board?.grid) return;
+  const lights = rulesetStandingZones(ctx.state).filter(({ action }) => action.zone?.dispelsDark);
+  if (lights.length === 0) return;
+  for (const { caster, zone, action } of rulesetStandingZones(ctx.state)) {
+    const rule = zone.obscures ?? action.zone?.obscures;
+    if (!rule?.darkness || !caster.zones?.includes(zone)) continue;
+    const level = rulesetPaidLevel(ctx.definition, caster, action, zone.payWith);
+    const dark = new Set(rulesetZoneCells(ctx.state, caster, zone).map((cell) => `${cell.x},${cell.y}`));
+    const met = lights.some(
+      (light) =>
+        level <= light.action.zone!.dispelsDark!.upTo &&
+        rulesetZoneCells(ctx.state, light.caster, light.zone).some((cell) => dark.has(`${cell.x},${cell.y}`)),
+    );
+    if (!met) continue;
+    ctx.events.push({ type: "zone", actorId: caster.id, label: zone.label, outcome: "dispelled" });
+    spendZone(ctx, caster, zone);
   }
 }
 

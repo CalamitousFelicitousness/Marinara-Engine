@@ -27,6 +27,7 @@ import {
   rulesetFootprint,
   rulesetGap,
 } from "./grid.js";
+import type { RulesetLightRadius } from "../../schemas/ruleset.schema.js";
 import type {
   RulesetBoardLight,
   RulesetCombatant,
@@ -36,6 +37,7 @@ import type {
 } from "./types.js";
 import type { TacticalGrid } from "../tactical-combat/types.js";
 import { rulesetDroppedItems, rulesetItemOn } from "./ammo.js";
+import { rulesetStandingZones } from "./zones.js";
 
 /** How far each of the fight's senses reaches for this combatant, in cells: a creature's off its
  *  block, anybody else's as it was read off their sheet when the fight began. What their conditions
@@ -128,6 +130,10 @@ interface LightSource {
   bright: number;
   /** How far the dim light reaches, from the same cells. */
   edge: number;
+  /** How far its bright light shows the invisible (1.292). */
+  reveals?: number;
+  /** The only cells it lights, a zone's own (1.292). */
+  only?: Set<string>;
 }
 
 /**
@@ -139,7 +145,7 @@ export function rulesetLightOf(
   definition: RulesetDefinition,
   who: RulesetCombatant,
   state?: RulesetEncounterState,
-): { bright: number; dim: number } | null {
+): { bright: number; dim: number; reveals?: number } | null {
   const combat = definition.combat;
   const darkness = combat?.sight?.darkness;
   const perCell = combat?.distance?.perCell;
@@ -156,12 +162,17 @@ export function rulesetLightOf(
   // No bright light at all is none, not the one cell a distance rounds up to (1.291).
   const bright = Math.max(...radii.map((one) => (one.bright > 0 ? rulesetInCells(one.bright, perCell) : 0)));
   const edge = Math.max(...radii.map((one) => rulesetInCells(one.bright + one.dim, perCell)));
-  return { bright, dim: Math.max(0, edge - bright) };
+  // Its bright light showing the invisible (1.292): a lantern of revealing's own reach.
+  const revealing = radii.filter((one) => one.reveals && one.bright > 0);
+  const reveals = revealing.length
+    ? Math.max(...revealing.map((one) => rulesetInCells(one.bright, perCell)))
+    : undefined;
+  return { bright, dim: Math.max(0, edge - bright), ...(reveals !== undefined ? { reveals } : {}) };
 }
 
 /** A creature's own light (1.289): as its block says, out while it begins `unlit`, and as its own
  *  actions last lit or put it out (1.291). */
-function ownLight(who: RulesetCombatant): Array<{ bright: number; dim: number }> {
+function ownLight(who: RulesetCombatant): RulesetLightRadius[] {
   const now = who.shedding ?? (who.block?.unlit ? "out" : who.block?.light);
   return now && now !== "out" ? [now] : [];
 }
@@ -181,7 +192,7 @@ export function rulesetCarriesLight(
 
 /** The light their items shed (1.289): a worn item's `worn` effect and any other's `carried` one,
  *  not where it was dropped, and one with a switch only while it is on (1.290). */
-function itemLights(who: RulesetCombatant): Array<{ bright: number; dim: number }> {
+function itemLights(who: RulesetCombatant): RulesetLightRadius[] {
   const items = who.sheet?.items ?? [];
   if (items.length === 0) return [];
   const dropped = rulesetDroppedItems(who);
@@ -195,11 +206,57 @@ function itemLights(who: RulesetCombatant): Array<{ bright: number; dim: number 
 }
 
 function lightSources(definition: RulesetDefinition, state: RulesetEncounterState): LightSource[] {
-  return state.combatants.flatMap((one) => {
+  if (!definition.combat?.sight?.darkness) return [];
+  const shed = state.combatants.flatMap((one): LightSource[] => {
     if (one.defeated || !rulesetPositionOf(one)) return [];
     const light = rulesetLightOf(definition, one, state);
-    return light ? [{ cells: rulesetFootprint(one), bright: light.bright, edge: light.bright + light.dim }] : [];
+    return light
+      ? [
+          {
+            cells: rulesetFootprint(one),
+            bright: light.bright,
+            edge: light.bright + light.dim,
+            ...(light.reveals !== undefined ? { reveals: light.reveals } : {}),
+          },
+        ]
+      : [];
   });
+  // A zone's light (1.292), over its own cells from its middle: a point's, or its caster's.
+  const zones = rulesetStandingZones(state).flatMap(({ caster, zone, action }): LightSource[] => {
+    const lights = action.zone?.lights;
+    if (!lights) return [];
+    const middle = zone.anchor === "point" ? (zone.at ? [zone.at] : []) : rulesetFootprint(caster);
+    const only = new Set(rulesetZoneCells(state, caster, zone).map((cell) => `${cell.x},${cell.y}`));
+    if (middle.length === 0 || only.size === 0) return [];
+    return [
+      {
+        cells: middle,
+        bright: lights.bright,
+        edge: lights.bright + lights.dim,
+        only,
+        ...(lights.reveals && lights.bright > 0 ? { reveals: lights.bright } : {}),
+      },
+    ];
+  });
+  return [...shed, ...zones];
+}
+
+/** Whether `seen` stands in the bright light of something that shows the invisible (1.292). */
+function revealedByLight(sources: LightSource[], grid: TacticalGrid, seen: RulesetCombatant): boolean {
+  const theirs = rulesetFootprint(seen);
+  return sources.some(
+    (source) =>
+      source.reveals !== undefined &&
+      theirs.some(
+        (cell) =>
+          (!source.only || source.only.has(`${cell.x},${cell.y}`)) &&
+          source.cells.some(
+            (from) =>
+              Math.max(Math.abs(from.x - cell.x), Math.abs(from.y - cell.y)) <= source.reveals! &&
+              rulesetLineOfSight(grid, from, cell),
+          ),
+      ),
+  );
 }
 
 /** The light on a cell from these sources, over a board fought in `base` (1.289). Light goes no
@@ -212,6 +269,7 @@ function lightFrom(
 ): RulesetBoardLight {
   let light = base;
   for (const source of sources) {
+    if (source.only && !source.only.has(`${cell.x},${cell.y}`)) continue;
     for (const from of source.cells) {
       const away = Math.max(Math.abs(from.x - cell.x), Math.abs(from.y - cell.y));
       if (away > source.edge || !rulesetLineOfSight(grid, from, cell)) continue;
@@ -441,7 +499,12 @@ function sees(
   // Hidden by a condition (5e's invisible) unless a sense sees it, or another of theirs gives them
   // away (1.175: Faerie Fire outlines the invisible).
   const theirs = new Set(rulesetCombatConditions(definition, seen));
-  const outlined = entries.some((entry) => entry.cancelsUnseen && theirs.has(entry.condition));
+  // Or by standing in the bright light of a lantern of revealing (1.292).
+  const outlined =
+    entries.some((entry) => entry.cancelsUnseen && theirs.has(entry.condition)) ||
+    (positioned &&
+      entries.some((entry) => entry.unseen && theirs.has(entry.condition)) &&
+      revealedByLight(lightSources(definition, state), grid, seen));
   for (const entry of entries) {
     if (!outlined && entry.unseen && theirs.has(entry.condition) && !pierces(entry.unseen.pierced)) return false;
   }

@@ -299,6 +299,8 @@ export interface RulesetObscures {
   light?: true;
   /** Ended by a wind at once, or only once it has stood in one this many whole rounds (1.284). */
   dispersed?: true | { after: number };
+  /** Magical darkness, which a zone that `dispelsDark` ends (1.292). */
+  darkness?: true;
 }
 
 export interface RulesetTeleport {
@@ -2027,7 +2029,9 @@ export type RulesetCombatEvent =
         | "detonated"
         | "burning"
         /** Blown away by a wind's zone (1.281). */
-        | "dispersed";
+        | "dispersed"
+        /** Magical darkness ended where a light met it (1.292). */
+        | "dispelled";
       targetId?: string;
       /** What caught them: one of the zone's triggers, or walking on its ground (1.168). */
       trigger?: RulesetCombatZoneRule["triggers"][number] | "moving" | "ram";
@@ -2506,6 +2510,10 @@ export interface RulesetEncounterSummary {
 
 /** How a lasting area behaves (1.167), as the catalog entry said it. */
 export interface RulesetCombatZoneRule {
+  /** The light it sheds over its own cells, in CELLS from its middle (1.292). */
+  lights?: { bright: number; dim: number; reveals?: true };
+  /** Magical darkness of this level or lower ends where it meets it (1.292). */
+  dispelsDark?: { upTo: number };
   rounds: number;
   anchor: "point" | "caster";
   triggers: Array<"enter" | "turn-start" | "turn-end">;

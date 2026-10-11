@@ -284,6 +284,8 @@ export {
   rulesetSaveDifficultyShift,
   liftRulesetFightEffects,
   settleRulesetFledFight,
+  rulesetReleaseHeldGround,
+  type RulesetHeldGroundRelease,
   rulesetEncounterOutcome,
   rulesetEncounterSummary,
 } from "./resolve.js";

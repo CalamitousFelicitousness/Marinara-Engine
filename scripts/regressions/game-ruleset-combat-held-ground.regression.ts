@@ -22,6 +22,7 @@ import {
   rulesetCombatConditions,
   rulesetCombatOptions,
   rulesetCreatureBlock,
+  rulesetReleaseHeldGround,
   rulesetSheetBuildSchema,
   supportedCapabilityApi,
   type RulesetCombatChoice,
@@ -279,6 +280,79 @@ try {
     assert.equal(getCapabilityPackageInstallIssue(manifest(317) as never, reaper), gate);
     assert.notEqual(getCapabilityPackageInstallIssue(manifest(318) as never, reaper), gate);
     assert.notEqual(getCapabilityPackageInstallIssue(manifest(317) as never, document()), gate);
+  }
+
+  // ── Let go mid-fight (1.325): the felled die, the marks come due ──
+  {
+    assert.ok(supportedCapabilityApi.minor >= 325);
+    const marked = (state: RulesetEncounterState, id: string, marks: number) => {
+      const sheet = who(state, id).sheet!;
+      sheet.live = {
+        ...(sheet.live as object),
+        tracks: { ...((sheet.live as { tracks?: object }).tracks ?? {}), owing: marks },
+      };
+    };
+    const ready = () => {
+      const state = fight(held);
+      const felled = strike(state, "Dagger", "foe").state;
+      const down = act(felled, { actorId: "imp", optionId: "claw", targetIds: ["ally"] }).state;
+      assert.ok(who(down, "ally").felled && who(down, "foe").felled);
+      assert.equal(owing(down, "ally"), 1);
+      marked(down, "cat", 3);
+      return down;
+    };
+    const at = (face: number) => (sides: number) => (sides === 20 ? face : 3);
+    // The year turns: the felled die, and the cat's three marks are three saves, each made at 12.
+    const turned = rulesetReleaseHeldGround(definition, ready(), at(12), { owing: {} });
+    assert.equal(turned.state.heldGround, undefined);
+    assert.deepEqual(of(turned.events, "heldGroundReleased"), [
+      { type: "heldGroundReleased", label: "Held Ground", died: ["ally", "foe"] },
+    ]);
+    assert.ok(who(turned.state, "ally").defeated && !who(turned.state, "ally").stable);
+    assert.deepEqual(
+      of(turned.events, "owing").map((one) => [one.actorId, one.rolls, one.result]),
+      [["cat", [12, 12, 12], "safe"]],
+    );
+    assert.equal(owing(turned.state, "cat"), 0, "the marks are spent");
+    assert.ok(!who(turned.state, "cat").defeated);
+    // Each at 7: three failures, paid with a life; with Debts Settled 3 on each, made.
+    const paid = rulesetReleaseHeldGround(definition, ready(), at(7), { owing: {} });
+    assert.deepEqual(of(paid.events, "owing")[0]?.result, "dead");
+    assert.ok(who(paid.state, "cat").defeated);
+    assert.equal(of(paid.events, "outcome")[0]?.outcome, "defeat", "nobody of the party is left");
+    const settled = rulesetReleaseHeldGround(definition, ready(), at(7), { owing: { bonus: 3 } });
+    assert.deepEqual(
+      of(settled.events, "owing").map((one) => [one.rolls, one.bonus, one.result]),
+      [[[7, 7, 7], 3, "safe"]],
+    );
+    // A natural 1 is two failures: two marks at 1 are four.
+    const ones = ready();
+    marked(ones, "cat", 2);
+    assert.equal(
+      of(rulesetReleaseHeldGround(definition, ones, at(1), { owing: {} }).events, "owing")[0]?.result,
+      "dead",
+    );
+    // Or the felled go down instead, dying from here; and no marks are asked for, none are rolled.
+    const dying = rulesetReleaseHeldGround(definition, ready(), at(12), { felled: "down" });
+    assert.deepEqual(of(dying.events, "heldGroundReleased")[0]?.died, ["foe"]);
+    assert.deepEqual(of(dying.events, "heldGroundReleased")[0]?.down, ["ally"]);
+    assert.ok(who(dying.state, "ally").dying && !who(dying.state, "ally").felled && !who(dying.state, "ally").defeated);
+    assert.deepEqual(of(dying.events, "owing"), []);
+    // From here the ground holds nothing: the next blow takes the cat down, dying.
+    Object.assign(who(dying.state, "imp"), { x: 2, y: 3 });
+    who(dying.state, "imp").budgets.action = 1;
+    const cat = who(dying.state, "cat").sheet!;
+    const pool = (definition.combat!.health as { pool: string }).pool;
+    cat.live = {
+      ...(cat.live as object),
+      pools: { ...((cat.live as { pools?: object }).pools ?? {}), [pool]: { value: 1 } },
+    };
+    const after = act(dying.state, { actorId: "imp", optionId: "claw", targetIds: ["cat"] });
+    assert.ok(who(after.state, "cat").dying, "dying, as anywhere else");
+    assert.deepEqual(of(after.events, "felled"), []);
+    // Off Held Ground, nothing to let go.
+    const plain = fight(undefined);
+    assert.equal(rulesetReleaseHeldGround(definition, plain, at(12)).state, plain);
   }
 
   console.log(

@@ -28,6 +28,8 @@ import {
   holdRulesetCombatant,
   holdRulesetSheetHealth,
   settleRulesetFledFight,
+  rulesetReleaseHeldGround,
+  type RulesetHeldGroundRelease,
   normalizeCharacterLookupName,
   normalizeGameDifficulty,
   normalizeTacticalEnvironment,
@@ -2305,6 +2307,27 @@ function continueBossTurn(
   if (currentRulesetActor(fight.encounter)?.id === actorId) advanceTurn(definition, state, fight);
 }
 
+/**
+ * Held Ground let go in a running fight (1.325), as the story says the year has turned: the felled
+ * die (or go down), the marks come due, and the log tells the Game Master. Refused when the battle
+ * is not a ruleset's, is over, or is not on Held Ground.
+ */
+export function releaseRulesetHeldGround(
+  definition: RulesetDefinition,
+  state: CombatDirectorState,
+  release: RulesetHeldGroundRelease = {},
+): RulesetCommandResult {
+  const fight = fightOf(state);
+  if (!fight) return refuse("This battle is not resolved by a ruleset.", "ruleset_combat_not_a_ruleset_fight");
+  if (!definition.combat)
+    return refuse("This game's ruleset no longer resolves its own fights.", "ruleset_combat_no_block");
+  if (state.outcome) return refuse("Battle already finished.", "ruleset_combat_encounter-over");
+  if (!fight.encounter.heldGround) return refuse("This battle is not on Held Ground.", "ruleset_combat_not_held");
+  absorb(definition, state, fight, rulesetReleaseHeldGround(definition, fight.encounter, rollerFor(fight), release));
+  return settled(state);
+}
+
+// ── Commands ──
 // ── Commands ──
 
 /**

@@ -2280,6 +2280,18 @@ export type RulesetCombatEvent =
     }
   /** Left at 1 instead of dropping to 0 (1.315), and how many more times it may. */
   | { type: "hangsOn"; actorId: string; label?: string; left: number }
+  /** Held Ground let go mid-fight (1.325): who died of it, and who went down instead. */
+  | { type: "heldGroundReleased"; label?: string; died: string[]; down?: string[] }
+  /** Marks come due as Held Ground lets go (1.325): one dying save a mark, `bonus` on each. */
+  | {
+      type: "owing";
+      actorId: string;
+      rolls: number[];
+      bonus: number;
+      successes: number;
+      failures: number;
+      result: "dead" | "safe";
+    }
   /** Felled on Held Ground instead of dying or going down (1.318). */
   | { type: "felled"; actorId: string; label?: string }
   /** Reaped as it was felled, by a blow that reaps (1.318): it stays down. */

@@ -666,6 +666,25 @@ export function rulesetCombatEventLine(
         health: event.health,
       });
     // Felled on Held Ground, and reaped (1.318).
+    // Held Ground let go mid-fight (1.325), and the marks coming due.
+    case "heldGroundReleased": {
+      const line = key(event.label ? "heldGroundReleasedNamed" : "heldGroundReleased", { label: event.label ?? "" });
+      const died = event.died.map((id) => names.combatant(id)).join(", ");
+      const down = (event.down ?? []).map((id) => names.combatant(id)).join(", ");
+      return [
+        line,
+        died ? key("heldGroundDied", { names: died }) : "",
+        down ? key("heldGroundDown", { names: down }) : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+    }
+    case "owing":
+      return key(event.result === "dead" ? "owingDead" : "owingSafe", {
+        actor: names.combatant(event.actorId),
+        count: event.rolls.length,
+        rolls: event.rolls.map((roll) => roll + event.bonus).join(", "),
+      });
     case "felled":
       return key(event.label ? "felledNamed" : "felled", {
         actor: names.combatant(event.actorId),

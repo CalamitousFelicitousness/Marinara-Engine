@@ -5089,6 +5089,119 @@ function pushOutcome(ctx: RulesetCombatContext, outcome: Exclude<RulesetEncounte
   ctx.events.push({ type: "outcome", outcome });
 }
 
+/** How Held Ground lets go in a running fight (1.325). */
+export interface RulesetHeldGroundRelease {
+  /** What becomes of the felled: they die (the default), or a character goes down as anywhere else,
+   *  dying by the ruleset's own rule. */
+  felled?: "die" | "down";
+  /** What comes due: each mark on `track` (Held Ground's first marked track when not said) costs one
+   *  of the ruleset's dying saves, `bonus` added to each, and the marks are spent. */
+  owing?: { track?: string; bonus?: number };
+}
+
+/**
+ * Held Ground let go in the middle of a fight (1.325): the year turns. From here whoever reaches no
+ * health dies or goes down as anywhere else; the felled die (or go down, dying); and each character's
+ * marks come due, one dying save a mark, rolled until they run out or the count is decided. The
+ * Held Autumn's last roll. A fight not on Held Ground is handed back as it was.
+ */
+export function rulesetReleaseHeldGround(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  roller: RulesetCombatRoller,
+  release: RulesetHeldGroundRelease = {},
+): RulesetCombatStep {
+  const combat = definition.combat;
+  const held = state.heldGround;
+  if (!combat || !held || rulesetEncounterOutcome(state) !== "ongoing") return { state, events: [] };
+  const { ctx, finish } = begin(definition, combat, state, roller);
+  delete ctx.state.heldGround;
+  const died: string[] = [];
+  const down: string[] = [];
+  for (const target of ctx.state.combatants) {
+    if (!target.felled || target.reaped || target.object) continue;
+    if (release.felled === "down" && target.side !== "enemy") {
+      // Down as anywhere else: dying, the count from nothing.
+      delete target.felled;
+      target.down = true;
+      target.stable = false;
+      target.dying = !!combat.dying;
+      clearDyingTracks(ctx, target);
+      down.push(target.id);
+      continue;
+    }
+    if (!target.defeated) {
+      target.defeated = true;
+      target.diedRound = ctx.state.round;
+    }
+    target.dying = false;
+    target.stable = false;
+    died.push(target.id);
+  }
+  ctx.events.push({
+    type: "heldGroundReleased",
+    ...(held.label ? { label: held.label } : {}),
+    died,
+    ...(down.length ? { down } : {}),
+  });
+  const dying = combat.dying;
+  const track = release.owing ? (release.owing.track ?? held.marks?.[0]?.track) : undefined;
+  if (dying && track) {
+    const bonus = Math.trunc(release.owing?.bonus ?? 0);
+    for (const target of ctx.state.combatants) {
+      if (target.side === "enemy" || !target.sheet || target.defeated) continue;
+      const marks = trackValue(ctx, target, track);
+      if (marks <= 0) continue;
+      const wasDying = target.dying;
+      const rolls: number[] = [];
+      let result: "dead" | "safe" = "safe";
+      for (let mark = 0; mark < marks; mark++) {
+        const thrown = rollRulesetDice(ctx.roll, dying.dice.count, dying.dice.sides);
+        const kept = sumOf(thrown);
+        rolls.push(kept);
+        const single = dying.dice.count === 1;
+        const top = single && kept === dying.dice.sides;
+        const bottom = single && kept === 1;
+        let failures = 0;
+        if (bottom && dying.naturals.min === "two-failures") failures = 2;
+        else if (bottom && dying.naturals.min === "one-failure") failures = 1;
+        else if (!(top && dying.naturals.max !== "none") && kept + bonus < dying.succeedAt) failures = 1;
+        if (failures > 0) {
+          writeRulesetSheet(ctx.definition, target, { op: "track", track: dying.failures, by: failures });
+          if (trackValue(ctx, target, dying.failures) >= trackMax(ctx, target, dying.failures)) {
+            result = "dead";
+            break;
+          }
+        } else {
+          writeRulesetSheet(ctx.definition, target, { op: "track", track: dying.successes, by: 1 });
+          if (trackValue(ctx, target, dying.successes) >= trackMax(ctx, target, dying.successes)) break;
+        }
+      }
+      const successes = trackValue(ctx, target, dying.successes);
+      const failures = trackValue(ctx, target, dying.failures);
+      moveTrack(ctx, target, target, track, -marks);
+      if (result === "dead") {
+        target.defeated = true;
+        target.dying = false;
+        target.stable = false;
+        target.diedRound = ctx.state.round;
+        endSummons(ctx, target);
+        endZones(ctx, target);
+        unconjureAll(ctx, target);
+        endConcentration(ctx, target, "down");
+      } else if (!wasDying) clearDyingTracks(ctx, target);
+      else if (successes >= trackMax(ctx, target, dying.successes)) {
+        // Down and dying, and the count decided: stable.
+        target.stable = true;
+        clearDyingTracks(ctx, target);
+      }
+      ctx.events.push({ type: "owing", actorId: target.id, rolls, bonus, successes, failures, result });
+    }
+  }
+  noteOutcome(ctx);
+  return finish();
+}
+
 /**
  * A fight the party walked away from (1.255): counted saves still to make are rolled out, as
  * `pushOutcome` does for every other ending, then what only meant something inside it comes off.

@@ -658,6 +658,17 @@ export function rulesetCombatEventLine(
         dealt: event.dealt,
         health: event.health,
       });
+    // The board doing something on its own (1.313), and growth taken off it.
+    case "boardEvent":
+      return event.tell
+        ? key("boardEventTell", { tell: event.tell })
+        : key("boardEvent", { label: event.label ?? event.id, cells: event.cells });
+    case "growth":
+      return key(event.by === "cut" ? "growthCut" : event.by === "burnt" ? "growthBurnt" : "growthCleared", {
+        actor: event.actorId ? names.combatant(event.actorId) : "",
+        label: event.label ?? "",
+        count: event.cells,
+      });
     // A prop struck or caught in an area (1.311).
     case "prop":
       return key(

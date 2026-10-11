@@ -480,6 +480,13 @@ export function RulesetCombatBoard({
                       {cell.section.health}
                     </span>
                   )}
+                  {/* Growth (1.313): a green tangle over the square. */}
+                  {cell.growth && (
+                    <span
+                      className="pointer-events-none absolute inset-0 bg-emerald-700/40 ring-1 ring-inset ring-emerald-400/40"
+                      title={t("game.combat.ruleset.board.growth")}
+                    />
+                  )}
                   {/* A prop (1.311): drawn as a crate standing in the square, its health in the corner;
                       broken, as its rubble. */}
                   {cell.prop && (

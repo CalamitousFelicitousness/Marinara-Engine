@@ -201,6 +201,8 @@ export interface DirectedRulesetView {
     elevation?: number[][];
     /** Cells standing walls close (1.172), by "x,y": 1 movement, 2 sight, 3 both. */
     walls?: Record<string, number>;
+    /** Growth and seasons on its cells (1.313), by "x,y". */
+    ground?: Record<string, { growth?: true; season?: string }>;
     distance: { label: string; perCell: number };
     /** The scene a board painted for the place (worldgen W9g) looks like, drawn instead of the fight's own. */
     scene?: TacticalEnvironment;

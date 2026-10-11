@@ -434,6 +434,8 @@ function buildRulesetBoard(
       light?: RulesetBoardLight;
       environment?: string;
       props?: NonNullable<TacticalMadeBattlefield["props"]>;
+      events?: NonNullable<TacticalMadeBattlefield["events"]>;
+      ground?: Record<string, { growth?: true; season?: string }>;
     }
   | { error: string }
   | null {
@@ -482,7 +484,20 @@ function buildRulesetBoard(
     ...(environment ? { environment } : {}),
     // What its painter stood on it that may be broken (1.311).
     ...(input.made?.props?.length ? { props: input.made.props } : {}),
+    // What it does each round, and the growth and seasons on its cells (1.313).
+    ...(input.made?.events?.length ? { events: input.made.events } : {}),
+    ...(madeGround(input.made) ? { ground: madeGround(input.made)! } : {}),
   };
+}
+
+/** The growth and seasons a painted board's cells start with (1.313), or null. */
+function madeGround(
+  made: TacticalMadeBattlefield | undefined,
+): Record<string, { growth?: true; season?: string }> | null {
+  const ground: Record<string, { growth?: true; season?: string }> = {};
+  for (const cell of made?.growth ?? []) ground[`${cell.x},${cell.y}`] = { growth: true };
+  for (const [at, season] of Object.entries(made?.seasons ?? {})) ground[at] = { ...ground[at], season };
+  return Object.keys(ground).length ? ground : null;
 }
 
 /** Places a fight's light comes from its own lamps rather than the sky. */
@@ -779,6 +794,26 @@ export function directedRulesetView(
             tiles: grid.tiles.map((row) => [...row]),
             ...(grid.elevation ? { elevation: grid.elevation.map((row) => [...row]) } : {}),
             ...(grid.walls ? { walls: { ...grid.walls } } : {}),
+            // Growth and seasons on its cells (1.313); light and fog come with the shading.
+            ...(grid.ground && Object.values(grid.ground).some((here) => here.growth || here.season)
+              ? {
+                  ground: Object.fromEntries(
+                    Object.entries(grid.ground).flatMap(([at, here]) =>
+                      here.growth || here.season
+                        ? [
+                            [
+                              at,
+                              {
+                                ...(here.growth ? { growth: true as const } : {}),
+                                ...(here.season ? { season: here.season } : {}),
+                              },
+                            ],
+                          ]
+                        : [],
+                    ),
+                  ),
+                }
+              : {}),
             distance: { ...distance },
             ...(made ? { scene: made.scene } : {}),
             ...shaded,

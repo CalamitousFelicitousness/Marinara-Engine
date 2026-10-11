@@ -1559,6 +1559,16 @@ function carriesHidingTraits(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesHidingTraits(one, depth + 1));
 }
 
+/** An entry or an item's use that clears growth (1.313). */
+function carriesClears(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesClears(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.clears !== undefined) return true;
+  return Object.values(record).some((one) => carriesClears(one, depth + 1));
+}
+
 /** A creature's legendary resistances, and an item's use no bigger than it reaches (1.312). */
 function carriesLegendaryResistance(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -4270,6 +4280,13 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Clearing growth, 1.313.
+  if (
+    !declaresApi(313) &&
+    (carriesClears(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesClears(document)))
+  ) {
+    return "A ruleset with an entry or an item use that clears growth requires schemaVersion 2 and capabilityApi 1.313 or newer";
   }
   // Legendary Resistance, 1.312.
   if (

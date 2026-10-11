@@ -28,7 +28,8 @@ import {
   type RulesetTargetIs,
   type RulesetValueRef,
 } from "../../schemas/ruleset.schema.js";
-import type { TacticalGrid } from "../tactical-combat/types.js";
+import type { TacticalGrid, TacticalGroundCell } from "../tactical-combat/types.js";
+import { rulesetBoardEvents, type RulesetBoardEventInput } from "./board-events.js";
 import {
   applyRulesetSheetOp,
   evaluateRulesetSheetLive,
@@ -1667,8 +1668,6 @@ function itemUseMechanics(
   if (item.tags?.length) action.qualities = [...new Set([...(action.qualities ?? []), ...item.tags])];
   if (aim.target !== undefined) action.target = aim.target;
   if (use.casts) action.casts = use.casts;
-  // No bigger than it holds (1.312): a scroll of Resilient Sphere.
-  if (use.targetsUpTo) action.targetsUpTo = use.targetsUpTo;
   const restored = amountOf(use.restore?.amount);
   if (use.restore && restored) action.restore = { pool: use.restore.pool, amount: restored };
   return action;
@@ -2126,7 +2125,8 @@ function targetsOf(mechanics: RulesetCatalogMechanics): RulesetCombatAction["tar
     !!mechanics.ends || !!mechanics.stabilizes || !!mechanics.revives || !!mechanics.tracks || !!mechanics.unseals;
   // One that leaves an area standing (1.173: Fog Cloud, Darkness) is set down wherever its caster
   // likes, and off a board held on whoever it is cast on.
-  if (mechanics.kind === "utility" && mechanics.zone && mechanics.area) {
+  // So is one that clears growth from an area (1.313): Prune, a pair of shears.
+  if (mechanics.kind === "utility" && (mechanics.zone || mechanics.clears) && mechanics.area) {
     return { side: mechanics.targets ?? "any", count: Math.max(1, mechanics.targetCount ?? 1) };
   }
   if (mechanics.kind === "utility" && !cures) return { side: "self", count: 0 };
@@ -2236,6 +2236,8 @@ function mechanicsAction(
     !!mechanics.ends || !!mechanics.stabilizes || !!mechanics.revives || !!mechanics.tracks || !!mechanics.unseals;
   // And so is leaving an area standing that only hides or blocks (1.173).
   const places = !!mechanics.zone && !!mechanics.area;
+  // Clearing growth from an area is as well (1.313).
+  const clears = !!mechanics.clears && !!mechanics.area;
   // Spent when its holder's roll fails is something to resolve too (1.244): Indomitable.
   if (
     mechanics.kind === "utility" &&
@@ -2246,6 +2248,7 @@ function mechanicsAction(
     !cancels &&
     !cures &&
     !places &&
+    !clears &&
     !mechanics.rescue &&
     !mechanics.alters &&
     !mechanics.conjures &&
@@ -2431,6 +2434,8 @@ function mechanicsAction(
   // Never on its own user (1.251).
   if (mechanics.notSelf) action.notSelf = true;
   if (mechanics.targetsUpTo) action.targetsUpTo = mechanics.targetsUpTo;
+  // Clears growth where it lands (1.313).
+  if (mechanics.clears) action.clears = mechanics.clears;
   if (mechanics.oncePerTarget) action.oncePerTarget = { until: mechanics.oncePerTarget.until };
   // Leaving `toHit` unset here would send it down the no-roll path and land it automatically.
   if (mechanics.attackRoll) action.toHit = from.toHit;
@@ -3892,6 +3897,11 @@ export interface RulesetEncounterInput {
     /** What stands on it that may be broken (1.311): a jar, a lantern, a door. Its cells off the
      *  board are dropped, and one with none on it is left out; its `defense` is 10 when not said. */
     props?: RulesetBoardPropInput[];
+    /** What the board does on its own each round (1.313), and what burns and cuts its growth. */
+    events?: RulesetBoardEventInput[];
+    growth?: { burnedBy?: string[]; cutBy?: string[] };
+    /** What lies on its cells from the start (1.313), by "x,y": growth, light, fog, a season. */
+    ground?: Record<string, TacticalGroundCell>;
   };
   /** Who is caught unaware as it begins (1.232): no move or action on their first turn, and no
    *  reaction until it ends. One whose conditions say they cannot be surprised is not. */
@@ -4925,9 +4935,18 @@ function placeRulesetCombatants(
     combatant.movementLeft = 0;
     grantRulesetMovement(definition, combat, combatant);
   }
+  const events = rulesetBoardEvents(grid, board.events);
+  const words = (list: string[] | undefined, fallback: string[]) =>
+    Array.isArray(list)
+      ? list.filter((one) => typeof one === "string" && one.trim()).map((one) => one.trim().toLowerCase())
+      : fallback;
   state.board = {
     grid,
     ...(props.length ? { props } : {}),
+    ...(events.length ? { events } : {}),
+    ...(board.growth
+      ? { growth: { burnedBy: words(board.growth.burnedBy, ["fire"]), cutBy: words(board.growth.cutBy, ["slashing"]) } }
+      : {}),
     ...(board.battlefield ? { battlefield: board.battlefield as RulesetCombatBoard["battlefield"] } : {}),
     ...(board.light ? { light: board.light } : {}),
     ...(board.environment ? { environment: board.environment } : {}),
@@ -4946,6 +4965,31 @@ function placeRulesetCombatants(
       walls[`${cell.x},${cell.y}`] = (walls[`${cell.x},${cell.y}`] ?? 0) | bits;
   }
   if (Object.keys(walls).length > 0) state.board.grid = { ...grid, walls };
+  // What lies on the cells from the start (1.313), only on the board and only what a cell holds.
+  const ground = groundOf(grid, board.ground);
+  if (ground) state.board.grid = { ...state.board.grid, ground };
+}
+
+function groundOf(
+  grid: TacticalGrid,
+  input: Record<string, TacticalGroundCell> | undefined,
+): Record<string, TacticalGroundCell> | null {
+  const ground: Record<string, TacticalGroundCell> = {};
+  for (const [at, here] of Object.entries(input ?? {})) {
+    const match = /^(\d+),(\d+)$/.exec(at);
+    if (!match || !here || typeof here !== "object") continue;
+    const x = Number(match[1]);
+    const y = Number(match[2]);
+    if (x >= grid.width || y >= grid.height) continue;
+    const cell: TacticalGroundCell = {
+      ...(here.growth === true ? { growth: true as const } : {}),
+      ...(here.light && ["bright", "dim", "dark", "sunlight"].includes(here.light) ? { light: here.light } : {}),
+      ...(here.obscured === "light" || here.obscured === "heavy" ? { obscured: here.obscured } : {}),
+      ...(typeof here.season === "string" && here.season.trim() ? { season: here.season.trim() } : {}),
+    };
+    if (Object.keys(cell).length) ground[`${x},${y}`] = cell;
+  }
+  return Object.keys(ground).length ? ground : null;
 }
 
 /** The stored live blob as the encounter keeps it. `applyRulesetSheetOp` already reads a stored

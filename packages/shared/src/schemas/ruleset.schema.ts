@@ -3534,6 +3534,8 @@ const catalogMechanicsObject = z
     /** Pointed only at a creature no bigger than this one of `combat.sizes` (Capability API 1.309):
      *  Resilient Sphere's "a creature of Large size or smaller". Not on an area or its user. */
     targetsUpTo: sheetId.optional(),
+    /** Takes growth off the cells its area covers (Capability API 1.313): a druid's clearing word. */
+    clears: z.literal("growth").optional(),
     /** Used on a creature, not used on that one again until its user takes this rest (Capability API
      *  1.299), however many fights come between: Chains of Carceri's "You must finish a long rest
      *  before you can use this invocation on the same creature again". Not on an area or on its user. */
@@ -3838,6 +3840,13 @@ const catalogMechanicsSchema: z.ZodType<
       code: z.ZodIssueCode.custom,
       path: ["targetsUpTo"],
       message: '"targetsUpTo" is on an entry pointed at a creature, not an area or its user',
+    });
+  }
+  if (mechanics.clears && !mechanics.area) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["clears"],
+      message: '"clears" takes growth off the cells of an area, so the entry has one',
     });
   }
   if (mechanics.notSelf && mechanics.targets !== "ally" && mechanics.targets !== "any") {
@@ -5993,6 +6002,8 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     /** Only a creature this size or smaller is a target (Capability API 1.312), one of
      *  `combat.sizes`: a scroll of Resilient Sphere's "Large size or smaller". */
     targetsUpTo: sheetId.optional(),
+    /** Takes growth off the cells its area covers (Capability API 1.313): pruning shears. */
+    clears: z.literal("growth").optional(),
     charges: z.number().int().min(1).max(RULESET_ITEM_CHARGES_MAX).optional(),
     /** A pool of the user's sheet it gives back some of, as a blood bag gives back blood. */
     restore: z
@@ -6064,8 +6075,11 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     if (use.restore && use.kind !== "heal" && use.kind !== "buff") {
       issue("restore", "A restore is on a use that helps, a heal or a buff");
     }
-    if (use.kind === "utility" && !use.teleport && (!use.zone || !use.area)) {
-      issue("kind", "A utility use leaves an area standing or teleports, so it has an area and a zone, or a teleport");
+    if (use.kind === "utility" && !use.teleport && !use.clears && (!use.zone || !use.area)) {
+      issue(
+        "kind",
+        "A utility use leaves an area standing, clears growth or teleports, so it has an area and a zone, clears, or a teleport",
+      );
     }
     // A scroll's or a wand's beams and darts (Capability API 1.303), as the spell's own (1.300).
     for (const key of ["targetsScale", "targetsRepeat"] as const) {
@@ -12457,6 +12471,8 @@ function useIssues(
     }
     if (use.area) add([...at, "targetsUpTo"], '"targetsUpTo" is on a use pointed at a creature, not an area');
   }
+  if (use.clears && !use.area)
+    add([...at, "clears"], '"clears" takes growth off the cells of an area, so the use has one');
   // What it puts on its own reader (1.306): a scroll of Sunbeam's mote.
   use.appliesSelf?.forEach((applies, index) => {
     if (!conditions.has(applies.condition)) {

@@ -851,6 +851,11 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["sphere", say({ type: "sphere", actorId: "brenna", how: "put-down", targetId: "lurker" })],
     ["lair", say({ type: "lair", actorId: "lurker", optionId: "quake", label: "Tremor" })],
     ["legendaryResistance", say({ type: "legendaryResistance", actorId: "lurker", save: "dex_save", left: 2 })],
+    ["boardEvent", say({ type: "boardEvent", id: "e1", label: "The tide", cells: 2 })],
+    ["boardEventTell", say({ type: "boardEvent", id: "e2", tell: "The shelves lean.", cells: 1 })],
+    ["growthCut", say({ type: "growth", actorId: "brenna", label: "Shears", cells: 1, by: "cut" })],
+    ["growthBurnt", say({ type: "growth", cells: 3, by: "burnt" })],
+    ["growthCleared", say({ type: "growth", actorId: "brenna", label: "Prune", cells: 9, by: "cleared" })],
     ["left", say({ type: "left", actorId: "lurker", label: "Teleport" })],
     ["surprised", say({ type: "surprised", actorIds: ["brenna", "lurker"] })],
     ["surpriseOver", say({ type: "surpriseOver", actorId: "lurker" })],
@@ -1235,6 +1240,11 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     "Thorn Lurker chooses to succeed on the Dexterity save instead: legendary resistance, 2 left.",
   );
   assert.equal(printed.get("prop"), "Brenna's Mace strikes Oil Jar for 3; it has 2 left.");
+  assert.equal(printed.get("boardEvent"), "The board changes: The tide (2 squares).");
+  assert.equal(printed.get("boardEventTell"), "The shelves lean.");
+  assert.equal(printed.get("growthCut"), "Brenna's Shears cuts the growth back.");
+  assert.equal(printed.get("growthBurnt"), "The growth burns away from 3 squares.");
+  assert.equal(printed.get("growthCleared"), "Brenna's Prune clears the growth from 9 squares.");
   const broke = (outcome: "hit" | "miss" | "critical" | "area", dealt: number, health: number, broken?: true) =>
     say({
       type: "prop",

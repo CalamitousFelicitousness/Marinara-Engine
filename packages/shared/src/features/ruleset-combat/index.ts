@@ -49,6 +49,7 @@
 
 export * from "./types.js";
 export * from "./zones.js";
+export * from "./board-events.js";
 export * from "./sight.js";
 export {
   RULESET_PICK_UP_OPTION_PREFIX,

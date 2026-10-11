@@ -16,7 +16,7 @@ import type {
 } from "../../schemas/ruleset.schema.js";
 import type { RulesetLiveState } from "../rulesets/live-state.js";
 import type { RulesetSheetItem } from "../rulesets/sheet-math.js";
-import type { TacticalBattlefieldProvenance, TacticalGrid } from "../tactical-combat/types.js";
+import type { TacticalBattlefieldProvenance, TacticalGrid, TacticalTerrain } from "../tactical-combat/types.js";
 
 /** A die roller: one call, one die, a face from 1 to `sides`. Every random number a fight needs
  *  comes through one of these, so a scripted sequence reproduces a fight exactly. */
@@ -718,6 +718,8 @@ export interface RulesetCombatAction {
   /** Pointed only at a creature no bigger than this size (1.309): Resilient Sphere's "Large or
    *  smaller". */
   targetsUpTo?: string;
+  /** Takes growth off the cells its area covers (1.313). */
+  clears?: "growth";
   /** Puts a weapon in its user's hand, the one its mode names (1.301): Pact of the Blade. What each
    *  mode makes is the combatant's `conjurable`. */
   conjures?: true;
@@ -1777,8 +1779,53 @@ export interface RulesetBoardProp {
   fragile?: true;
 }
 
+/** Where a board event happens (1.313): listed cells, a block, a ring widening from a cell, a line
+ *  sweeping from an edge (both by `step` cells each time it happens, `filled` for everything inside
+ *  rather than the newest band), or every cell beside growth. */
+export type RulesetBoardEventWhere =
+  | { cells: RulesetCombatCell[] }
+  | { block: { x: number; y: number; w: number; h: number } }
+  | { ring: { x: number; y: number; start: number; step: number; filled?: true } }
+  | { sweep: { from: "north" | "south" | "east" | "west"; start: number; step: number; filled?: true } }
+  | { spread: "growth" };
+
+/** What a board event does to its cells (1.313). `rotate` turns a square block a quarter turn
+ *  clockwise that many times, with whoever and whatever stands wholly in it. */
+export interface RulesetBoardEventChange {
+  terrain?: TacticalTerrain;
+  height?: number;
+  light?: "bright" | "dim" | "dark" | "sunlight" | "clear";
+  obscured?: "light" | "heavy" | "clear";
+  growth?: boolean;
+  season?: string | null;
+  rotate?: 1 | 2 | 3;
+  /** A line the log and the Game Master are told. */
+  tell?: string;
+}
+
+/** Something the board does on its own each round (1.313): at the start of round `from` (2 when not
+ *  said, the first round's start being the board as set) or the end of round `from` (1), then every
+ *  `every` rounds, through `until`. */
+export interface RulesetBoardEvent {
+  id: string;
+  label?: string;
+  at: "round-start" | "round-end";
+  from: number;
+  every: number;
+  until?: number;
+  where: RulesetBoardEventWhere;
+  /** Only cells of these terrains. */
+  onlyOn?: TacticalTerrain[];
+  change: RulesetBoardEventChange;
+}
+
 export interface RulesetCombatBoard {
   grid: TacticalGrid;
+  /** What the board does on its own each round (1.313), and how many times each has happened. */
+  events?: RulesetBoardEvent[];
+  happened?: Record<string, number>;
+  /** What burns growth away and what cuts it back (1.313): fire, and slashing, when not said. */
+  growth?: { burnedBy: string[]; cutBy: string[] };
   /** What stands on it that may be broken (1.311), broken ones at 0. */
   props?: RulesetBoardProp[];
   /** The labels of what has been broken (1.311), in the order it broke. */
@@ -2108,6 +2155,17 @@ export type RulesetCombatEvent =
       health: number;
       broken?: true;
     }
+  /** A board event happening (1.313): on how many cells, what it says, and who it moved. */
+  | {
+      type: "boardEvent";
+      id: string;
+      label?: string;
+      tell?: string;
+      cells: number;
+      moved?: Array<{ id: string; to: RulesetCombatCell }>;
+    }
+  /** Growth taken off cells (1.313): cut back, burnt, or cleared by something made for it. */
+  | { type: "growth"; actorId?: string; label?: string; cells: number; by: "cut" | "burnt" | "cleared" }
   /** A failed save turned into a success by a legendary resistance (1.312), and how many are left. */
   | { type: "legendaryResistance"; actorId: string; save: string; left: number }
   /** A lair action taken on its lair's count (1.310); what it does follows. */

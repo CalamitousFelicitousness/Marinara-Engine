@@ -59,6 +59,82 @@ export const worldBattlefieldPropSchema = z
   .strict();
 export type WorldBattlefieldProp = z.infer<typeof worldBattlefieldPropSchema>;
 
+const boardCell = z.object({ x: z.number().int().min(0).max(13), y: z.number().int().min(0).max(9) }).strict();
+const reach = z.number().int().min(0).max(14);
+
+/** Something a painted board does on its own each round (Capability API 1.313): growth spreading,
+ *  ice cracking, a wheel turning, the ground freezing in rings. */
+export const worldBattlefieldEventSchema = z
+  .object({
+    id: z.string().regex(/^e\d{1,4}$/, "A board event's id is e and a number"),
+    label: promptSafeText(60).optional(),
+    at: z.enum(["round-start", "round-end"]),
+    from: z.number().int().min(1).max(100).optional(),
+    every: z.number().int().min(1).max(100).optional(),
+    until: z.number().int().min(1).max(100).optional(),
+    where: z.union([
+      z.object({ cells: z.array(boardCell).min(1).max(140) }).strict(),
+      z
+        .object({
+          block: z
+            .object({
+              x: z.number().int().min(0).max(13),
+              y: z.number().int().min(0).max(9),
+              w: z.number().int().min(1).max(14),
+              h: z.number().int().min(1).max(10),
+            })
+            .strict(),
+        })
+        .strict(),
+      z
+        .object({
+          ring: z
+            .object({
+              x: z.number().int().min(0).max(13),
+              y: z.number().int().min(0).max(9),
+              start: reach,
+              step: reach,
+              filled: z.literal(true).optional(),
+            })
+            .strict(),
+        })
+        .strict(),
+      z
+        .object({
+          sweep: z
+            .object({
+              from: z.enum(["north", "south", "east", "west"]),
+              start: reach,
+              step: reach,
+              filled: z.literal(true).optional(),
+            })
+            .strict(),
+        })
+        .strict(),
+      z.object({ spread: z.literal("growth") }).strict(),
+    ]),
+    onlyOn: z.array(z.enum(TACTICAL_TERRAINS)).min(1).max(6).optional(),
+    change: z
+      .object({
+        terrain: z.enum(TACTICAL_TERRAINS).optional(),
+        height: z.number().int().min(0).max(3).optional(),
+        light: z.enum(["bright", "dim", "dark", "sunlight", "clear"]).optional(),
+        obscured: z.enum(["light", "heavy", "clear"]).optional(),
+        growth: z.boolean().optional(),
+        season: z.union([z.string().trim().min(1).max(40), z.null()]).optional(),
+        rotate: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(),
+        tell: promptSafeText(200).optional(),
+      })
+      .strict()
+      .refine((change) => Object.keys(change).length > 0, "A board event changes something"),
+  })
+  .strict()
+  .refine(
+    (event) => !event.change.rotate || ("block" in event.where && event.where.block.w === event.where.block.h),
+    "Only a square block turns",
+  );
+export type WorldBattlefieldEvent = z.infer<typeof worldBattlefieldEventSchema>;
+
 export const worldBattlefieldMapSchema = z
   .object({
     /** `b<n>`, as the editor numbers them. */
@@ -83,6 +159,15 @@ export const worldBattlefieldMapSchema = z
       .optional(),
     /** What stands on it that may be broken (Capability API 1.311): a jar, a lantern, a door. */
     props: z.array(worldBattlefieldPropSchema).max(WORLD_BATTLEFIELD_PROPS_MAX).optional(),
+    /** Growth on its tiles from the start (Capability API 1.313), a row of characters each, the same
+     *  shape as `rows`: g growth, . none. */
+    growth: z
+      .array(z.string().regex(/^[g.]{1,14}$/, "A battlefield's growth row is g or . per tile"))
+      .min(1)
+      .max(10)
+      .optional(),
+    /** What it does on its own each round (Capability API 1.313). */
+    events: z.array(worldBattlefieldEventSchema).max(16).optional(),
   })
   .strict();
 export type WorldBattlefieldMap = z.infer<typeof worldBattlefieldMapSchema>;
@@ -106,6 +191,16 @@ export function worldBattlefieldIssues(map: WorldBattlefieldMap): string[] {
   const issues = tacticalMadeBoardIssues(map.size, grid);
   // Each prop on the board (1.311), and no two with one id.
   const ids = new Set<string>();
+  if (
+    map.growth &&
+    (map.growth.length !== map.rows.length || map.growth.some((row, y) => row.length !== map.rows[y]!.length))
+  )
+    issues.push("Its growth rows are not the shape of its tiles");
+  const eventIds = new Set<string>();
+  for (const event of map.events ?? []) {
+    if (eventIds.has(event.id)) issues.push(`Two board events are numbered ${event.id}`);
+    eventIds.add(event.id);
+  }
   for (const prop of map.props ?? []) {
     if (ids.has(prop.id)) issues.push(`Two props are numbered ${prop.id}`);
     ids.add(prop.id);
@@ -128,6 +223,12 @@ export function worldEditsFightable<T extends { battlefields?: WorldBattlefieldM
   const kept = edits.battlefields!.filter((map) => !unfit.includes(map));
   const { battlefields: _all, ...rest } = edits;
   return { edits: (kept.length ? { ...rest, battlefields: kept } : rest) as T, dropped: unfit.map((map) => map.name) };
+}
+
+/** Painted growth rows as the cells it lies on (1.313). */
+function worldBattlefieldGrowth(rows: string[]): { growth?: Array<{ x: number; y: number }> } {
+  const growth = rows.flatMap((row, y) => [...row].flatMap((char, x) => (char === "g" ? [{ x, y }] : [])));
+  return growth.length ? { growth } : {};
 }
 
 /** A board of the size, plains throughout: where painting one starts. */
@@ -159,6 +260,8 @@ export function worldBattlefieldHere(
       scene: map.scene,
       grid: worldBattlefieldGrid(map),
       ...(map.props?.length ? { props: map.props.map((prop) => structuredClone(prop)) } : {}),
+      ...(map.events?.length ? { events: map.events.map((event) => structuredClone(event)) } : {}),
+      ...(map.growth ? worldBattlefieldGrowth(map.growth) : {}),
     };
   }
   return null;

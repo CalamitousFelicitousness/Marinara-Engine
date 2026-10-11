@@ -256,6 +256,7 @@ import {
   rulesetZoneSideOccupants,
   rulesetSyncZoneWalls,
 } from "./zones.js";
+import { rulesetClearGrowth, rulesetGrowthRule, rulesetRunBoardEvents } from "./board-events.js";
 
 /** Everything one step of the fight needs: the rules, the state it is changing, its dice and the
  *  events it has produced so far. */
@@ -2609,6 +2610,12 @@ function spendZone(ctx: RulesetCombatContext, caster: RulesetCombatant, zone: Ru
 function igniteZones(ctx: RulesetCombatContext, types: Array<string | undefined>, cells: RulesetCombatCell[]): void {
   const lower = new Set(types.flatMap((type) => (type ? [type.trim().toLowerCase()] : [])));
   if (lower.size === 0 || cells.length === 0) return;
+  // Growth it reaches is burnt away (1.313).
+  const grid = ctx.state.board?.grid;
+  if (grid?.ground && rulesetGrowthRule(ctx.state).burnedBy.some((type) => lower.has(type))) {
+    const burnt = rulesetClearGrowth(grid, cells);
+    if (burnt > 0) ctx.events.push({ type: "growth", cells: burnt, by: "burnt" });
+  }
   const keys = new Set(cells.map((cell) => `${cell.x},${cell.y}`));
   for (const { caster, zone, action } of rulesetStandingZones(ctx.state)) {
     const burns = action.zone?.burns;
@@ -4275,7 +4282,7 @@ function objectBlows(
 ): Record<string, { roll?: Extract<RulesetCombatEvent, { type: "attack" }>; dealt: number; struck: boolean }> {
   const set = new Set(ids);
   const about = (event: RulesetCombatEvent) =>
-    ("targetId" in event && set.has(event.targetId ?? "")) || ("actorId" in event && set.has(event.actorId));
+    ("targetId" in event && set.has(event.targetId ?? "")) || ("actorId" in event && set.has(event.actorId ?? ""));
   const said = ctx.events.splice(from);
   ctx.events.push(...said.filter((event) => !about(event)));
   return Object.fromEntries(
@@ -4343,7 +4350,8 @@ function strikeSection(
   const at = (cells: RulesetCombatCell[]) => cells.some((one) => one.x === cell.x && one.y === cell.y);
   const found =
     rulesetStandingSections(state).some(({ section }) => at(section.cells)) ||
-    rulesetStandingProps(state).some((prop) => at(prop.cells));
+    rulesetStandingProps(state).some((prop) => at(prop.cells)) ||
+    !!state.board?.grid.ground?.[`${cell.x},${cell.y}`]?.growth;
   if (!found) return refusal(state, choice.actorId, "bad-target", option.id);
   const own = actor.actions.find((entry) => entry.id === option.id)!;
   const styles = rulesetAttackStyles(combat, actor, own);
@@ -4365,7 +4373,14 @@ function strikeSection(
   }
   spendAvailability(ctx, working, action);
   const standing = rulesetStandingSections(ctx.state).find(({ section }) => at(section.cells));
-  const prop = standing ? undefined : rulesetStandingProps(ctx.state).find((one) => at(one.cells))!;
+  const prop = standing ? undefined : rulesetStandingProps(ctx.state).find((one) => at(one.cells));
+  // Growth, cut back (1.313): no roll, the square cleared.
+  if (!standing && !prop) {
+    const cut = rulesetClearGrowth(ctx.state.board!.grid, [cell]);
+    ctx.events.push({ type: "growth", actorId: working.id, label: action.label, cells: cut, by: "cut" });
+    noteOutcome(ctx);
+    return finish();
+  }
   const rule = standing ? standing.action.zone!.sections! : { ...prop!, health: prop!.max };
   const stand = objectStandIn(
     SECTION_ID,
@@ -6446,6 +6461,17 @@ function resumeAction(ctx: RulesetCombatContext, resume: RulesetActionResume): v
     }
     return hold;
   });
+  // Growth cleared where it lands (1.313): pruning shears.
+  if (grid && at && action.area && action.clears === "growth" && !resume.held) {
+    const cleared = rulesetClearGrowth(
+      grid,
+      areaCellsFor(ctx.state, actor, action.id, at, {
+        ...(resume.also ? { also: resume.also } : {}),
+        grow: areaGrowth(ctx.definition, actor, action.id, resume.payWith),
+      }),
+    );
+    ctx.events.push({ type: "growth", actorId: actor.id, label: action.label, cells: cleared, by: "cleared" });
+  }
   // Fire landing on a web with nobody in it sets it alight all the same (1.178).
   if (grid && at && action.area && action.damage && !action.zone?.detonates) {
     igniteZones(
@@ -9081,7 +9107,10 @@ function beginNextTurn(definition: RulesetDefinition, combat: RulesetCombat, ctx
       refreshRulesetBudgets(combat, combatant.budgets, "round");
       refreshSpendLimits(combatant, "round");
     }
+    // What the board does as the round ends, and as the next begins (1.313).
+    ctx.events.push(...rulesetRunBoardEvents(ctx.state, "round-end", round - 1));
     ctx.events.push({ type: "round", round });
+    ctx.events.push(...rulesetRunBoardEvents(ctx.state, "round-start", round));
     // A first round in which they took no turn (down, held) still ends their surprise (1.232).
     for (const combatant of ctx.state.combatants) endSurprise(ctx, combatant);
     // A ruleset whose initiative is thrown every round throws it again now, and the round starts at

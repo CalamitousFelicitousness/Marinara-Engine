@@ -538,6 +538,14 @@ export function rulesetWallTargets(
   const cells = [
     ...rulesetStandingSections(state).flatMap(({ section }) => section.cells),
     ...rulesetStandingProps(state).flatMap((prop) => prop.cells),
+    // Growth an edge that cuts may cut back (1.313).
+    ...(cutsGrowth(state, action)
+      ? Object.entries(grid.ground ?? {}).flatMap(([at, here]) => {
+          if (!here.growth) return [];
+          const [x, y] = at.split(",").map(Number);
+          return [{ x: x!, y: y! }];
+        })
+      : []),
   ];
   if (cells.length === 0) return [];
   const reach = rulesetOptionReach(state, actor.id, action.id);
@@ -551,6 +559,15 @@ export function rulesetWallTargets(
         ),
     )
     .map((cell) => ({ x: cell.x, y: cell.y }));
+}
+
+/** Whether an action's damage is of a kind that cuts growth back (1.313): slashing, unless the board
+ *  says otherwise. */
+function cutsGrowth(state: RulesetEncounterState, action: RulesetCombatAction): boolean {
+  if (!state.board?.grid.ground) return false;
+  const cut = state.board.growth?.cutBy ?? ["slashing"];
+  const types = [action.damage?.type, ...(action.damage?.plus ?? []).map((clause) => clause.type)];
+  return types.some((type) => !!type && cut.includes(type.trim().toLowerCase()));
 }
 
 /** Whether an area option may be aimed at this cell: on the board, within the distance it carries,

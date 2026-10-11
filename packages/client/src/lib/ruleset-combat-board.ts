@@ -50,6 +50,10 @@ export interface RulesetBoardCell {
   zones?: string[];
   /** A wall's section standing here (1.195): whose wall, and what it has left of what; 0 is broken. */
   section?: { wall: string; health: number; max: number };
+  /** Growth here (1.313): hard going, lightly obscuring. */
+  growth?: true;
+  /** The season on this cell (1.313), when it has one of its own. */
+  season?: string;
   /** A prop standing here (1.311): what it is, and what it has left of what; 0 is broken. */
   prop?: { label: string; health: number; max: number };
   /** Set while a target is being chosen and the attack may strike the section here (1.195). */
@@ -245,6 +249,8 @@ export function rulesetBoardCells(view: DirectedRulesetView, step: RulesetMenuSt
         ...(zoned.has(key) ? { zones: zoned.get(key)! } : {}),
         ...(sections.has(key) ? { section: sections.get(key)! } : {}),
         ...(props.has(key) ? { prop: props.get(key)! } : {}),
+        ...(grid.ground?.[key]?.growth ? { growth: true as const } : {}),
+        ...(grid.ground?.[key]?.season ? { season: grid.ground[key]!.season! } : {}),
         ...(strikable.has(key) ? { strikable: true as const } : {}),
         ...(grid.light?.[key] ? { light: grid.light[key] } : {}),
         ...(grid.fog?.[key] ? { fog: grid.fog[key] } : {}),
@@ -356,6 +362,8 @@ export function rulesetCellSentences(cell: RulesetBoardCell, view: DirectedRules
         : t("game.combat.ruleset.board.sectionBroken", { wall: cell.section.wall }),
     );
   }
+  if (cell.growth) said.push(t("game.combat.ruleset.board.growth"));
+  if (cell.season) said.push(t("game.combat.ruleset.board.season", { season: cell.season }));
   if (cell.prop) {
     said.push(
       cell.prop.health > 0

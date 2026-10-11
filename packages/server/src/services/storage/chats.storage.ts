@@ -2651,7 +2651,8 @@ export function createChatsStorage(db: DB) {
         const existing = await this.getMessage(id);
         const prepare =
           existing && (existing.role === "user" || options.authored)
-            ? await userRoleplayPreparer(existing.chatId, existing.role !== "user")
+            ? // Only a typed whisper needs the persona, so other edits skip its lookup.
+              await userRoleplayPreparer(existing.chatId, existing.role !== "user" && /\[whisper/iu.test(content))
             : null;
         const prepared = prepare?.(content, existing?.extra);
         content = prepared?.content ?? content;

@@ -398,6 +398,11 @@ export class ClaudeSubscriptionProvider extends BaseLLMProvider {
     //     permission resolution framing.
     //   • `maxTurns: 1` — single assistant turn per call; we drive any
     //     multi-turn agent loop ourselves at the route layer.
+    //   • `title` — a preset session title. Without it the CLI spends a
+    //     second, hidden model request (`generate_session_title`) naming
+    //     every new session: the first message of a chat, every one-off
+    //     `[system, user]` call and every fold-path request. Resumed
+    //     sessions never trigger it.
     //
     // Wire-level artifacts the SDK still injects (`<system-reminder>`
     // userEmail/currentDate, metadata account/device UUIDs, the SDK
@@ -414,6 +419,7 @@ export class ClaudeSubscriptionProvider extends BaseLLMProvider {
       permissionMode: "bypassPermissions",
       allowDangerouslySkipPermissions: true,
       settingSources: [],
+      title: "Title",
       // Always pass `settings.fastMode` explicitly so the SDK can't fall back
       // on a persisted CLI value that would silently downgrade the model. The
       // value comes from the connection-level toggle — default `false` so

@@ -1741,6 +1741,8 @@ export async function connectionsRoutes(app: FastifyInstance) {
           tools: [],
           permissionMode: "bypassPermissions",
           includePartialMessages: false,
+          // A preset title skips the CLI's hidden session-naming request.
+          title: "Title",
           settings: { fastMode },
           ...(await claudeCodeExecutableOption()),
           ...(conn.apiKey ? { env: { ...process.env, ANTHROPIC_API_KEY: conn.apiKey } } : {}),

@@ -2370,6 +2370,8 @@ function mechanicsAction(
   if (mechanics.applies?.length) action.applies = mechanics.applies.map((entry2) => ({ ...entry2 }));
   // What it puts on its own user (1.302): Sunbeam's mote.
   if (mechanics.appliesSelf?.length) action.appliesSelf = mechanics.appliesSelf.map((entry2) => ({ ...entry2 }));
+  // The standard actions taken with it (1.308): Expeditious Retreat's Dash.
+  if ("takes" in mechanics && mechanics.takes?.length) action.takes = [...mechanics.takes];
   if (mechanics.concentration) action.concentration = true;
   if (mechanics.ends) {
     action.ends = {
@@ -4066,6 +4068,7 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
         of: action.id,
         ...(action.repeats.notSaved ? { notSaved: true as const } : {}),
         ...(action.repeats.sameTargets ? { sameTargets: true as const } : {}),
+        ...(action.repeats.group ? { group: action.repeats.group } : {}),
       };
       delete copy.repeats;
       delete copy.concentration;

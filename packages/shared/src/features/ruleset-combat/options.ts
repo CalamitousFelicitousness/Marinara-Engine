@@ -1781,7 +1781,7 @@ export function rulesetActionAvailable(
     if (!pools.some((pool) => pool.key === action.restore!.pool || pool.label.toLowerCase() === wanted)) return false;
   }
   // Made again only while its cast is concentrated on (1.305).
-  if (action.again && actor.concentrating?.actionId !== action.again.of) return false;
+  if (action.again && !rulesetRepeatsHeld(actor, action.again)) return false;
   // Given by a condition, only while its user holds it (1.231).
   if (action.whileHolds) {
     const held = definition
@@ -2937,6 +2937,8 @@ export function rulesetUncompelledOptions(
     label: "End turn",
     targets: { side: "self", count: 0 },
   };
+  // Away and still taking turns (1.308): only the way back, by what ends what keeps them away.
+  if (actor.away?.turns) return [...endingOptions(definition, combat, actor), endTurn];
   if (!rulesetCombatStanding(actor) || blocked(definition, combat, state, actor)) return [endTurn];
 
   const options: RulesetCombatOption[] = [];
@@ -3029,19 +3031,7 @@ export function rulesetUncompelledOptions(
     }
   }
   const budget = rulesetStandardBudget(combat);
-  // A save its holder spends their action on (1.259): 5e's Irresistible Dance.
-  for (const entry of actor.tracked) {
-    if (entry.saveEnds?.at !== "action" || entry.difficulty === undefined || (actor.budgets[budget] ?? 0) < 1) continue;
-    const label = definition.sheet.live.conditions.find((one) => one.id === entry.condition)?.label ?? entry.condition;
-    options.push({
-      id: `resave:${entry.condition}`,
-      kind: "standard",
-      label: `Try to end ${label}`,
-      budget,
-      targets: { side: "self", count: 0 },
-      resave: { condition: entry.condition, label },
-    });
-  }
+  options.push(...endingOptions(definition, combat, actor));
   for (const action of combat.standard ?? []) {
     if ((actor.budgets[budget] ?? 0) < 1) break;
     // Readying for real (1.283): one entry for each option it may ready, and what it waits for.
@@ -3318,6 +3308,55 @@ export function rulesetReadiedOption(
   const option = readied.paid ? rulesetWithFreeUse(actor.id, own.id, find) : find();
   if (!option) return undefined;
   return { ...option, id: RULESET_READIED_OPTION, budget: readying.budget, readied: true };
+}
+
+/** What its holder may spend the standard budget on to end a condition: a save (1.259), 5e's
+ *  Irresistible Dance, or a check (1.308), Maze's way out. */
+function endingOptions(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  actor: RulesetCombatant,
+): RulesetCombatOption[] {
+  const budget = rulesetStandardBudget(combat);
+  if ((actor.budgets[budget] ?? 0) < 1) return [];
+  const options: RulesetCombatOption[] = [];
+  for (const entry of actor.tracked) {
+    const label = definition.sheet.live.conditions.find((one) => one.id === entry.condition)?.label ?? entry.condition;
+    if (entry.saveEnds?.at === "action" && entry.difficulty !== undefined) {
+      options.push({
+        id: `resave:${entry.condition}`,
+        kind: "standard",
+        label: `Try to end ${label}`,
+        budget,
+        targets: { side: "self", count: 0 },
+        resave: { condition: entry.condition, label },
+      });
+    }
+    if (entry.checkEnds) {
+      options.push({
+        id: `checkends:${entry.condition}`,
+        kind: "standard",
+        label: `Try to end ${label}`,
+        budget,
+        targets: { side: "self", count: 0 },
+        checkEnds: { condition: entry.condition, label },
+      });
+    }
+  }
+  return options;
+}
+
+/** Whether what its user concentrates on is the cast a repeat makes again (1.305), or one of the
+ *  same casting's choices (1.308): Eyebite's three. */
+export function rulesetRepeatsHeld(
+  actor: Pick<RulesetCombatant, "concentrating" | "actions">,
+  again: NonNullable<RulesetCombatAction["again"]>,
+): boolean {
+  const held = actor.concentrating?.actionId;
+  if (held === undefined) return false;
+  if (held === again.of) return true;
+  if (again.group === undefined) return false;
+  return actor.actions.find((one) => one.id === held)?.repeats?.group === again.group;
 }
 
 /** Whether an action of a combatant's is one of its spells (1.279): cast out of a catalog, never an

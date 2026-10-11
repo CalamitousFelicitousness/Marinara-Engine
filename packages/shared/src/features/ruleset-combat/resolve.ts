@@ -189,6 +189,7 @@ import {
   rulesetPutOnBy,
   rulesetRoomAt,
   rulesetIsSpell,
+  rulesetRepeatsHeld,
   rulesetReadiedOption,
   rulesetUseIsFree,
   rulesetWithFreeUse,
@@ -1767,6 +1768,7 @@ function applyConditionId(
         }
       : {}),
     ...(applies.endsAway ? { endsAway: { ...applies.endsAway } } : {}),
+    ...(applies.checkEnds ? { checkEnds: structuredClone(applies.checkEnds) } : {}),
     ...(applies.saveEnds ? { saveEnds: applies.saveEnds } : {}),
     ...(applies.kind ? { kind: applies.kind } : {}),
     ...(extra.difficulty !== undefined ? { difficulty: extra.difficulty } : {}),
@@ -3253,7 +3255,7 @@ function conjure(ctx: RulesetCombatContext, actor: RulesetCombatant, action: Rul
  *  (1.305): Eyebite never picks them again. */
 function noteSaved(actor: RulesetCombatant, action: RulesetCombatAction, target: RulesetCombatant): void {
   const held = actor.concentrating;
-  if (!held || (held.actionId !== action.id && held.actionId !== action.again?.of)) return;
+  if (!held || (held.actionId !== action.id && !(action.again && rulesetRepeatsHeld(actor, action.again)))) return;
   if (!held.saved?.includes(target.id)) held.saved = [...(held.saved ?? []), target.id];
 }
 
@@ -3556,7 +3558,9 @@ function applyChoice(
   // Ending a turn is always allowed, down or not: a character lying at zero still has a turn, and
   // it is the one their roll against death happens on.
   if (choice.optionId === "end-turn") return advanceRulesetTurn(definition, state, roller);
-  if (!rulesetCombatStanding(actor)) return refusal(state, choice.actorId, "down", choice.optionId);
+  // Away and still taking turns (1.308), it may try the way back.
+  if (!rulesetCombatStanding(actor) && !actor.away?.turns)
+    return refusal(state, choice.actorId, "down", choice.optionId);
 
   const option = rulesetCombatOptions(definition, state, actor.id).find((entry) => entry.id === choice.optionId);
   if (!option) {
@@ -3805,6 +3809,29 @@ function applyChoice(
         leanInSight(ctx, working, entry),
       );
       savedAgainst(ctx, working, entry, saved);
+    }
+    noteOutcome(ctx);
+    return finish();
+  }
+
+  // A check that ends what it holds (1.308): Maze's way out.
+  if (option.checkEnds) {
+    const entry = working.tracked.find((one) => one.condition === option.checkEnds!.condition);
+    const rule = entry?.checkEnds;
+    if (entry && rule) {
+      const automatic = !!rule.passes && rulesetTargetIs(ctx.definition, working, rule.passes);
+      const thrown = automatic ? undefined : throwCheck(ctx, working, rule.check, working.checks?.[rule.check] ?? 0);
+      const success = automatic || (thrown !== undefined && thrown.total >= rule.difficulty);
+      ctx.events.push({
+        type: "checkEnded",
+        actorId: working.id,
+        condition: entry.condition,
+        difficulty: rule.difficulty,
+        ...(thrown ? { total: thrown.total, rolls: thrown.rolls } : {}),
+        success,
+        ...(automatic ? { automatic: true as const } : {}),
+      });
+      if (success) removeCondition(ctx, working, entry.condition, "save");
     }
     noteOutcome(ctx);
     return finish();
@@ -6904,7 +6931,14 @@ function dismiss(
   target.away = {
     by: actor.id,
     label: action.label,
-    ...(rule !== true ? { while: rule.while, ...(rule.gone ? { gone: structuredClone(rule.gone) } : {}) } : {}),
+    ...(rule !== true
+      ? {
+          while: rule.while,
+          ...(rule.gone ? { gone: structuredClone(rule.gone) } : {}),
+          // Still taking its turns away (1.308): Maze.
+          ...(rule.turns ? { turns: true as const } : {}),
+        }
+      : {}),
   };
   ctx.events.push({
     type: "dismissed",
@@ -7361,6 +7395,8 @@ function resolveActionBody(
       });
     }
   }
+  // The standard actions taken with it (1.308): Expeditious Retreat's Dash as it is cast.
+  if (!held) for (const taken of action.takes ?? []) resolveStandard(ctx, actor, taken, undefined);
   // A higher cost's more, or more charges' (1.264); once for every so many steps (1.295).
   const per = action.use?.perCostStep ?? action.itemUse?.charges?.step?.amount;
   const every = action.use?.stepsEvery ?? 1;
@@ -8571,7 +8607,8 @@ function rollRulesetRecharges(ctx: RulesetCombatContext, actor: RulesetCombatant
 /** Who is next to act: anybody the fight is not over for. A member who is down with nothing left to
  *  roll is stepped over until somebody brings them back. */
 function canTakeTurn(combatant: RulesetCombatant): boolean {
-  if (combatant.defeated) return false;
+  // Away and still taking turns (1.308), to find the way out of a maze.
+  if (combatant.defeated) return !!(combatant.away?.turns && combatant.away.while);
   return !combatant.down || (combatant.dying && !combatant.stable);
 }
 

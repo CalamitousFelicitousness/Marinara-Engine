@@ -39,6 +39,7 @@ import {
   type GameInventoryItemRules,
   type GameInventoryStack,
   type GameInventoryWearRefusal,
+  releaseGameInventoryUnmetBindings,
 } from "./game-inventory-stacks.js";
 
 /** The most operations one request applies. */
@@ -496,7 +497,8 @@ export function applyGameInventoryOps(
       }
     }
   }
-  return { stacks: current, results, journal };
+  // A binding whose needed items went elsewhere, or came off, is undone (1.308).
+  return { stacks: releaseGameInventoryUnmetBindings(current, rules), results, journal };
 }
 
 /**

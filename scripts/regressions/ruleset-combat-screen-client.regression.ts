@@ -838,6 +838,10 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["unsealed", say({ type: "unsealed", targetId: "lurker", sourceId: "brenna", amount: 5, maxHealth: 30 })],
     ["dismissed", say({ type: "dismissed", actorId: "brenna", targetId: "lurker", label: "Dismissal" })],
     ["returned", say({ type: "returned", targetId: "lurker" })],
+    [
+      "checkEnded",
+      say({ type: "checkEnded", actorId: "lurker", condition: "poisoned", difficulty: 20, total: 21, success: true }),
+    ],
     ["left", say({ type: "left", actorId: "lurker", label: "Teleport" })],
     ["surprised", say({ type: "surprised", actorIds: ["brenna", "lurker"] })],
     ["surpriseOver", say({ type: "surpriseOver", actorId: "lurker" })],

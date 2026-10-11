@@ -7865,6 +7865,8 @@ function GameSurfaceComponent({
           return localizeUi("ui.game.gamesurfacecomponent.notBindableValue1", { value1 });
         case "binding-full":
           return localizeUi("ui.game.gamesurfacecomponent.bindingFullValue1", { value1 });
+        case "needs-worn":
+          return localizeUi("ui.game.gamesurfacecomponent.needsWornValue1", { value1 });
         case "missing-stack":
           return localizeUi("ui.game.gamesurfacecomponent.thatStackIsNoLongerInYourInventory");
         default:

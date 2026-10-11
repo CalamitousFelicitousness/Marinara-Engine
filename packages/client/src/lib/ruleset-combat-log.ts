@@ -595,6 +595,14 @@ export function rulesetCombatEventLine(
         : key("left", { actor: names.combatant(event.actorId), label: event.label });
     case "returned":
       return key(event.gone ? "returnedGone" : "returned", { target: names.combatant(event.targetId) });
+    // A check made to end a condition (1.308): Maze's way out.
+    case "checkEnded":
+      return key(event.automatic ? "checkEndedAutomatic" : event.success ? "checkEnded" : "checkEndedFailed", {
+        actor: names.combatant(event.actorId),
+        condition: names.condition(event.condition),
+        total: event.total ?? 0,
+        difficulty: event.difficulty,
+      });
     case "charged":
       return key("charged", {
         actor: names.combatant(event.actorId),

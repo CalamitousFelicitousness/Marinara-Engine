@@ -2479,6 +2479,7 @@ export interface RulesetCatalogApplies {
   when?: z.infer<ReturnType<typeof sheetBoundsSchema>>;
   targetIs?: RulesetTargetIs;
   endsWith?: string;
+  checkEnds?: { check: string; difficulty: number; passes?: RulesetTargetIs };
   harmsPerCostStep?: { dice?: string; flat?: number };
   destroysUpTo?: RulesetDestroysUpTo[];
   value?: RulesetValueRef;
@@ -2571,6 +2572,18 @@ const catalogAppliesSchema: z.ZodType<RulesetCatalogApplies, z.ZodTypeDef, unkno
      *  ends on its holder, however that ends (Capability API 1.197): 5e's Hypnotic Pattern, whose
      *  incapacitation lasts only as long as its charm. */
     endsWith: sheetId.optional(),
+    /** Its holder may spend the standard budget on a check of `combat.checks` against `difficulty`
+     *  to end it (Capability API 1.308), offered even while it keeps them out of the fight; one that
+     *  is `passes` succeeds without a roll. 5e's Maze: an Intelligence check against 20, which a
+     *  minotaur or a goristro always makes. */
+    checkEnds: z
+      .object({
+        check: sheetId,
+        difficulty: z.number().int().min(0).max(1000),
+        passes: targetIsSchema.optional(),
+      })
+      .strict()
+      .optional(),
     /** More of what the condition `harms` with for each step of a higher cost it was put on with
      *  (Capability API 1.250): 5e's Acid Arrow, whose later acid grows by 1d4 a slot level. */
     harmsPerCostStep: z
@@ -3351,11 +3364,15 @@ const catalogMechanicsObject = z
     dismisses: z
       .union([
         z.literal(true),
-        z.object({ while: sheetId, gone: targetIsSchema.optional() }).strict() as z.ZodType<
-          { while: string; gone?: RulesetTargetIs },
-          z.ZodTypeDef,
-          unknown
-        >,
+        z
+          .object({
+            while: sheetId,
+            gone: targetIsSchema.optional(),
+            /** Away, it still takes its turns (Capability API 1.308), on which it may only try what
+             *  ends what keeps it away (`checkEnds`, or a save spent an action on): 5e's Maze. */
+            turns: z.literal(true).optional(),
+          })
+          .strict() as z.ZodType<{ while: string; gone?: RulesetTargetIs; turns?: true }, z.ZodTypeDef, unknown>,
       ])
       .optional(),
     /** Whoever it lands on who is dying stops rolling, stable (1.171): 5e's Spare the Dying. */
@@ -3404,6 +3421,10 @@ const catalogMechanicsObject = z
         budget: sheetId,
         notSaved: z.literal(true).optional(),
         sameTargets: z.literal(true).optional(),
+        /** Entries that share a `group` are one casting's choices (Capability API 1.308): while its
+         *  user concentrates on any of them, every one of them is offered again. Eyebite's asleep,
+         *  panicked and sickened, picked anew for each creature. */
+        group: sheetId.optional(),
       })
       .strict()
       .optional(),
@@ -3458,6 +3479,14 @@ const catalogMechanicsObject = z
      *  its targets, held by its concentration when it has one: Sunbeam's mote of radiance, which
      *  sheds light and gives the later beams as an action. */
     appliesSelf: z.array(catalogAppliesSchema).min(1).max(4).superRefine(linkedApplies).optional(),
+    /** Standard actions its user takes as part of it, for nothing more (Capability API 1.308): 5e's
+     *  Expeditious Retreat, which Dashes as it is cast; its later bonus-action Dashes are what the
+     *  condition it puts on its caster `grants`. */
+    takes: z
+      .array(z.enum(["dash", "disengage", "dodge"]))
+      .min(1)
+      .max(3)
+      .optional(),
     /** An amount granted as temporary points on the health pool, which damage drains first. */
     temporary: z.object(catalogAmountShape).strict().optional(),
     /** Health to share out among its targets (Capability API 1.191): the one with the least health
@@ -6047,7 +6076,18 @@ const catalogItemObjectSchema = z
     passesFor: rulesetItemRefSchema.optional(),
     /** The item has to be bound (attuned, invested) before it does anything while worn. */
     binds: z
-      .object({ restriction: catalogText(200).optional(), cursed: z.boolean().optional() })
+      .object({
+        restriction: catalogText(200).optional(),
+        cursed: z.boolean().optional(),
+        /** Items its bearer must have worn to bind it, one of each group's `anyOf`, each bound where
+         *  it binds (Capability API 1.308): a Hammer of Thunderbolts needs a belt of giant strength
+         *  and the gauntlets of ogre power. It is unbound as soon as one comes off. */
+        needsWorn: z
+          .array(z.object({ anyOf: z.array(rulesetItemRefSchema).min(1).max(12) }).strict())
+          .min(1)
+          .max(4)
+          .optional(),
+      })
       .strict()
       .optional(),
     /** What it does while worn: on, and bound where it binds. */
@@ -7580,7 +7620,16 @@ export const RULESET_ITEM_CHECK_MODIFIER_TARGETS = ["checks", "saves"] as const;
  *  stays), or `add` to it. */
 const itemAbilityChangeSchema = z.union([
   z.object({ set: z.number().int() }).strict(),
-  z.object({ add: z.number().int().min(-100).max(100) }).strict(),
+  z
+    .object({
+      add: z.number().int().min(-100).max(100),
+      /** It goes on top of whatever the score is after every item's `set`, and lifts it to no more
+       *  than this (Capability API 1.308): an Ioun Stone of Strength's +2 to at most 20, a Hammer of
+       *  Thunderbolts' +4 to at most 30. A score already above it stays. Without `max` an add goes on
+       *  the character's own score, a set higher still winning, as before. */
+      max: z.number().int().min(-1000).max(1000).optional(),
+    })
+    .strict(),
 ]);
 
 export const rulesetItemEffectSchema = z
@@ -11540,10 +11589,15 @@ function escapeDcIssues(
     escapeDc?: number | "save";
     escapeChecks?: string[];
     endsWhenHolder?: { casts?: string[] };
+    checkEnds?: { check: string };
   },
   at: (string | number)[],
   add: (path: (string | number)[], message: string) => void,
 ): void {
+  // The check that ends it (1.308) is one of the fight's own.
+  if (applies.checkEnds && !definition.combat?.checks?.some((one) => one.id === applies.checkEnds!.check)) {
+    add([...at, "checkEnds", "check"], `Unknown contest check "${applies.checkEnds.check}"`);
+  }
   // What ends it when its holder casts (1.175) is cast from the ruleset's own catalogs.
   castsIssues(definition, applies.endsWhenHolder?.casts, [...at, "endsWhenHolder", "casts"], add);
   // The checks that may break it (1.170) are contest checks, and only mean something with an escape DC.
@@ -12893,6 +12947,14 @@ export function rulesetCatalogEntryIssues(
     } else if (becomes !== undefined && readable(becomes) && !itemsByRef.has(becomes)) {
       add([index, "item", "charges", "breaksOn", "becomes"], `Unknown item "${becomes}"`);
     }
+    // What its binding needs worn (1.308) are other items, each worn in its own right.
+    entry.item?.binds?.needsWorn?.forEach((group, groupIndex) =>
+      group.anyOf.forEach((ref, refIndex) => {
+        const at = [index, "item", "binds", "needsWorn", groupIndex, "anyOf", refIndex];
+        if (ref === `${catalog.id}/${entry.id}`) add(at, "An item's binding needs other items worn, not itself");
+        else if (readable(ref) && !itemsByRef.has(ref)) add(at, `Unknown item "${ref}"`);
+      }),
+    );
     if (entry.item?.passesFor !== undefined && readable(entry.item.passesFor)) {
       const issue = rulesetFakeIssue(`${catalog.id}/${entry.id}`, entry.item, itemsByRef.get(entry.item.passesFor));
       if (issue) add([index, "item", "passesFor"], issue);

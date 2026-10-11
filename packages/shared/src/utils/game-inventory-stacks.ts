@@ -114,8 +114,10 @@ export interface GameInventoryRulesetItem {
   weight?: number;
   /** The slots it takes while equipped, by slot id. Without any, it cannot be equipped. */
   slots?: Readonly<Record<string, number>>;
-  /** It has to be bound to work; `cursed` keeps it bound. Without this, it cannot be bound. */
-  binds?: { cursed?: boolean };
+  /** It has to be bound to work; `cursed` keeps it bound. Without this, it cannot be bound. Its bearer
+   *  binds it only with one item of each `needsWorn` group worn, and it comes unbound when one comes
+   *  off (1.308). */
+  binds?: { cursed?: boolean; needsWorn?: ReadonlyArray<{ anyOf: readonly string[] }> };
   /** Bought and never carried (#6917): nothing adds it to a bag. */
   service?: true;
   /** A use spends `cost` of the `max` charges it holds (a stack without a count is full), and the last
@@ -1210,7 +1212,8 @@ export type GameInventoryWear = "equip" | "unequip" | "bind" | "unbind";
 
 /** Why a stack could not be worn or bound: it takes no slots, its slots are taken, it does not bind,
  *  its bearer has bound all they can, or it is a bound cursed item the player cannot part with. */
-export type GameInventoryWearRefusal = "not-wearable" | "no-slot" | "not-bindable" | "binding-full" | "cursed";
+export type GameInventoryWearRefusal =
+  "not-wearable" | "no-slot" | "not-bindable" | "binding-full" | "cursed" | "needs-worn";
 
 /**
  * One stack put on, taken off, bound or unbound by whoever carries it. Only a ruleset item that takes
@@ -1238,7 +1241,14 @@ export function wearGameInventoryStack(
     if (!stack[flag]) return { stacks, id };
     if (keptByCurse(stack, rules)) return { refused: "cursed" };
     const { [flag]: _dropped, ...rest } = stack;
-    return { stacks: stacks.map((each, i) => (i === index ? rest : each)), id };
+    // Whatever its binding needed worn, it no longer is (1.308).
+    return {
+      stacks: releaseGameInventoryUnmetBindings(
+        stacks.map((each, i) => (i === index ? rest : each)),
+        rules,
+      ),
+      id,
+    };
   }
   if (stack[flag]) return { stacks, id };
   const known = stack.item ? rules?.itemOf(stack.item) : undefined;
@@ -1252,6 +1262,7 @@ export function wearGameInventoryStack(
     }
   } else {
     if (!known?.binds) return { refused: "not-bindable" };
+    if (!bindingNeedsMet(stacks, stack, rules)) return { refused: "needs-worn" };
     const max = rules?.bearer?.(stack.holder).bindingMax;
     if (max !== undefined && gameInventoryBoundCount(stacks, stack.holder) + 1 > max) {
       return { refused: "binding-full" };
@@ -1299,6 +1310,43 @@ export function gameInventoryWearNeeds(item: { slots?: Readonly<Record<string, n
 } {
   const takesSlots = Object.values(item.slots ?? {}).some((count) => count > 0);
   return { ...(takesSlots ? { equipped: true as const } : {}), ...(item.binds ? { bound: true as const } : {}) };
+}
+
+/** Whether what a stack's binding needs worn is worn (1.308): for each group of its item's
+ *  `binds.needsWorn`, another stack in its bearer's bag of one of the items named, worn and bound as
+ *  that item asks. */
+function bindingNeedsMet(
+  stacks: readonly GameInventoryStack[],
+  stack: GameInventoryStack,
+  rules: GameInventoryItemRules | undefined,
+): boolean {
+  const needs = stack.item ? rules?.itemOf(stack.item)?.binds?.needsWorn : undefined;
+  if (!needs?.length) return true;
+  const bag = gameInventoryBagKey(stack.holder);
+  return needs.every((group) =>
+    stacks.some((other) => {
+      if (other === stack || !other.item || !group.anyOf.includes(other.item)) return false;
+      if (gameInventoryBagKey(other.holder) !== bag) return false;
+      const item = rules?.itemOf(other.item);
+      const wears = item ? gameInventoryWearNeeds(item) : {};
+      return (wears.equipped || wears.bound) === true && gameInventoryWearMet(other, wears);
+    }),
+  );
+}
+
+/** The stacks with every binding whose needed items are no longer worn undone (1.308): the hammer
+ *  unbound once its belt or gauntlets come off, or leave its bearer's bag. */
+export function releaseGameInventoryUnmetBindings(
+  stacks: GameInventoryStack[],
+  rules: GameInventoryItemRules | undefined,
+): GameInventoryStack[] {
+  let current = stacks;
+  for (;;) {
+    const at = current.findIndex((stack) => stack.bound === true && !bindingNeedsMet(current, stack, rules));
+    if (at < 0) return current;
+    const { bound: _bound, ...rest } = current[at]!;
+    current = current.map((each, i) => (i === at ? rest : each));
+  }
 }
 
 /** Whether a stack is worn and bound as `needs` asks. */

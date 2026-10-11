@@ -1040,7 +1040,14 @@ export function rulesetItemBook(
       ...(entry.item.stack !== undefined ? { stack: entry.item.stack } : {}),
       ...(typeof weight === "number" && weight > 0 ? { weight } : {}),
       ...(entry.item.slots && Object.keys(entry.item.slots).length > 0 ? { slots: entry.item.slots } : {}),
-      ...(entry.item.binds ? { binds: { ...(entry.item.binds.cursed ? { cursed: true } : {}) } } : {}),
+      ...(entry.item.binds
+        ? {
+            binds: {
+              ...(entry.item.binds.cursed ? { cursed: true } : {}),
+              ...(entry.item.binds.needsWorn ? { needsWorn: entry.item.binds.needsWorn } : {}),
+            },
+          }
+        : {}),
       ...(entry.item.service ? { service: true as const } : {}),
       ...(entry.item.toggle ? { toggle: { label: entry.item.toggle.label } } : {}),
       ...(charges
@@ -1302,7 +1309,7 @@ export function rulesetSheetItems(
   holder: string | undefined,
 ): RulesetSheetItem[] {
   const bag = gameInventoryBagKey(holder);
-  return stacks.flatMap((stack) => {
+  const held = stacks.flatMap((stack) => {
     if (!stack.item || gameInventoryBagKey(stack.holder) !== bag) return [];
     const item = book.itemOf(stack.item)?.entry.item;
     if (!item) return [];
@@ -1325,6 +1332,19 @@ export function rulesetSheetItems(
       },
     ];
   });
+  // A binding that needs other items worn holds only while they are (1.308): a stack left bound
+  // after its belt came off by some other road is still not worn.
+  for (;;) {
+    const unmet = held.find(
+      (one) =>
+        one.worn &&
+        one.item.binds?.needsWorn?.some(
+          (group) => !held.some((other) => other !== one && other.worn && group.anyOf.includes(other.stack!.ref)),
+        ),
+    );
+    if (!unmet) return held;
+    unmet.worn = false;
+  }
 }
 
 /** Each party card's items, as its sheet reads them: the card read for the player (the one named

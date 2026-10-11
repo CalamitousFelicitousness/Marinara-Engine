@@ -140,6 +140,8 @@ export interface RulesetCombatApplies {
   targetIs?: RulesetTargetIs;
   /** It ends whenever this other condition put on with it ends (1.197). */
   endsWith?: string;
+  /** A check its holder may spend the standard budget on to end it (1.308): Maze's way out. */
+  checkEnds?: { check: string; difficulty: number; passes?: RulesetTargetIs };
   /** More of what the condition harms with for each step of a higher cost it was put on with (1.250). */
   harmsPerCostStep?: { dice?: string; flat?: number };
   /** A creature of one of these threat tiers or below is destroyed in its place (1.261). */
@@ -654,7 +656,7 @@ export interface RulesetCombatAction {
   usableIn?: { light: RulesetBoardLight[] };
   /** Whoever it lands on leaves the fight (1.231): for good, or only while they hold `while`, put on
    *  by the same use; with `gone`, one that is that stays gone if `while` ran its whole time. */
-  dismisses?: true | { while: string; gone?: RulesetTargetIs };
+  dismisses?: true | { while: string; gone?: RulesetTargetIs; turns?: true };
   /** It steadies a dying target: no more dying rolls (1.171). */
   stabilizes?: boolean;
   /** Live tracks it moves on whoever it lands on and who does not save, by levels (1.196). */
@@ -722,12 +724,14 @@ export interface RulesetCombatAction {
   applies?: RulesetCombatApplies[];
   /** What it puts on its own user as it is made (1.302): Sunbeam's mote. */
   appliesSelf?: RulesetCombatApplies[];
+  /** Standard actions its user takes with it (1.308): Expeditious Retreat's Dash. */
+  takes?: Array<"dash" | "disengage" | "dodge">;
   /** The same made again while its user concentrates on this one (1.305): Vampiric Touch. This is
    *  the cast; `again` marks the copy offered on `budget`. */
-  repeats?: { budget: string; notSaved?: true; sameTargets?: true };
+  repeats?: { budget: string; notSaved?: true; sameTargets?: true; group?: string };
   /** A concentration entry's effect made again (1.305): offered only while its user concentrates on
    *  `of`, costing nothing off the sheet, at what the cast was paid at. */
-  again?: { of: string; notSaved?: true; sameTargets?: true };
+  again?: { of: string; notSaved?: true; sameTargets?: true; group?: string };
   concentration?: boolean;
   /** How the price is paid. The name is what the sheet's own `use` command knows the row by, and
    *  the pool and its family are what a higher-pool payment is measured against. */
@@ -1102,6 +1106,8 @@ export interface RulesetTrackedCondition {
   escapeChecks?: string[];
   /** The condition put on with it that it ends with (1.197). */
   endsWith?: string;
+  /** A check its holder may spend the standard budget on to end it (1.308): Maze's way out. */
+  checkEnds?: { check: string; difficulty: number; passes?: RulesetTargetIs };
   /** How many times it is on, where the condition stacks (1.184). */
   stacks?: number;
   /** What it harms with on top of the condition's own, from the higher cost it was put on with
@@ -1231,7 +1237,7 @@ export interface RulesetCombatant {
   /** Sent out of the fight by somebody (1.231), and `defeated` while away: for good, or until they
    *  no longer hold `while` (5e's Banishment), when they come back where they were. */
   /** `left` (1.274): gone from the fight of its own accord, by a teleport that leaves it. */
-  away?: { by: string; label: string; while?: string; gone?: RulesetTargetIs; left?: true };
+  away?: { by: string; label: string; while?: string; gone?: RulesetTargetIs; left?: true; turns?: true };
   /** Caught unaware as the fight began (1.232): no move and no action on their first turn, and no
    *  reaction until it ends. `surpriseOut` are the actions that end it if taken first (Feral
    *  Instinct's rage). */
@@ -2253,6 +2259,17 @@ export type RulesetCombatEvent =
   | { type: "left"; actorId: string; label: string; by?: string }
   /** Back from where it was sent (1.231), or, with `gone`, kept there for good. */
   | { type: "returned"; targetId: string; gone?: true }
+  /** A check made to end a condition (1.308): Maze's way out, or no roll for one that always makes it. */
+  | {
+      type: "checkEnded";
+      actorId: string;
+      condition: string;
+      difficulty: number;
+      total?: number;
+      rolls?: number[];
+      success: boolean;
+      automatic?: true;
+    }
   /** Caught unaware as the fight began (1.232). */
   | { type: "surprised"; actorIds: string[] }
   /** No longer surprised (1.232): their first turn is over, or `label` shook it off. */
@@ -2418,6 +2435,8 @@ export interface RulesetCombatOption {
   shakeOff?: { holderId: string; condition: string; name: string; label: string };
   /** The condition its holder spends this on a save against (1.259). */
   resave?: { condition: string; label: string };
+  /** A check that ends a condition its actor holds (1.308): Maze's way out. */
+  checkEnds?: { condition: string; label: string };
   id: string;
   /** `move` is the one a positioned fight adds: walking, and getting back up. `reload` fills a
    *  weapon's clip. */

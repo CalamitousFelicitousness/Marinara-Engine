@@ -6,11 +6,15 @@ type GenerationPromptMessage = {
   content: string;
 };
 
-/** Read the active Scene roster, including Scenes created before every participant was marked busy. */
+/**
+ * Read the active Scene roster, including Scenes created before every participant was marked busy.
+ * `userReply` honors the Scene's "let characters reply here" switch; autonomous messages stay paused.
+ */
 export async function resolveSceneBusyCharacterIds(
   chats: { getById(id: string): Promise<{ characterIds: unknown; metadata: unknown } | null | undefined> },
   originChatId: string,
   metadata?: Record<string, unknown>,
+  options?: { userReply?: boolean },
 ): Promise<string[]> {
   const parse = (value: unknown) => {
     try {
@@ -26,6 +30,7 @@ export async function resolveSceneBusyCharacterIds(
   if (!scene) return [];
   const meta = parse(scene.metadata);
   if (meta?.sceneStatus !== "active" || meta.sceneOriginChatId !== originChatId) return [];
+  if (options?.userReply && meta.sceneOriginRepliesAllowed === true) return [];
   const ids = parse(scene.characterIds);
   return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === "string") : [];
 }

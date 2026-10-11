@@ -80,12 +80,14 @@ import {
   type SemanticSummaryRetrievalControlField,
 } from "./SemanticSummaryRetrievalControls";
 import { useTouchFolderDrag } from "../../hooks/use-touch-folder-drag";
+import { ApiError } from "../../lib/api-client";
 import { getTouchReorderDropIndex } from "../../lib/touch-reorder";
 import {
   CHAT_SUMMARY_BATCH_MAX_MESSAGES,
   createNextChatSummaryBatchRange,
   inspectChatSummaryBatchRanges,
   orderChatSummaryBatchEntries,
+  resolveChatSummaryWriteCoverage,
   sortChatSummaryBatchRanges,
   type ChatSummaryBatchRangeDraft,
   type ChatSummaryBatchRangeError,
@@ -507,6 +509,11 @@ export function ChatSummaryPanel({
     [batchRanges, totalMessageCount],
   );
   const firstBatchRange = inspectedBatchRanges[0];
+  // The server covers (and, when the chat hides summarized messages, hides) a new range entry like Generate.
+  const writeScope = useMemo(
+    () => resolveChatSummaryWriteCoverage(sourceMode, firstBatchRange),
+    [firstBatchRange, sourceMode],
+  );
   const lastBatchRange = inspectedBatchRanges[inspectedBatchRanges.length - 1];
   const nextBatchRange = lastBatchRange
     ? createNextChatSummaryBatchRange(lastBatchRange, totalMessageCount)
@@ -637,12 +644,20 @@ export function ChatSummaryPanel({
       return next.size === current.size ? current : next;
     });
   }, [visiblePersistedEntries]);
+  // Until it is saved, a new written summary follows the Summary Scope, so a refused range can be changed.
+  const shownDraftEntry = useMemo(
+    () =>
+      draftEntry && !displayEntries.some((entry) => entry.id === draftEntry.id)
+        ? { ...draftEntry, ...writeScope.coverage }
+        : draftEntry,
+    [displayEntries, draftEntry, writeScope.coverage],
+  );
   const visibleEntries = useMemo(() => {
-    if (!draftEntry || visiblePersistedEntries.some((entry) => entry.id === draftEntry.id)) {
+    if (!shownDraftEntry || visiblePersistedEntries.some((entry) => entry.id === shownDraftEntry.id)) {
       return visiblePersistedEntries;
     }
-    return [...visiblePersistedEntries, draftEntry];
-  }, [draftEntry, visiblePersistedEntries]);
+    return [...visiblePersistedEntries, shownDraftEntry];
+  }, [shownDraftEntry, visiblePersistedEntries]);
   const enabledTokenEstimate = displayEntries.reduce(
     (total, entry) => (entry.enabled ? total + entry.tokenEstimate : total),
     0,
@@ -1255,11 +1270,16 @@ export function ChatSummaryPanel({
   }, []);
 
   const handleCreateManualEntry = useCallback(() => {
+    // In Range scope a written summary covers the first range; an invalid range stops it, as it stops Generate.
+    if (writeScope.error) {
+      toast.error(summaryBatchRangeErrorMessage(writeScope.error, localizeUi));
+      return;
+    }
     const entry = createBlankManualSummaryEntry(localizeUi);
     setEditingEntryId(entry.id);
     setDraftEntry(entry);
     setExpandedEntryIds((current) => new Set(current).add(entry.id));
-  }, [localizeUi]);
+  }, [localizeUi, writeScope.error]);
 
   const handleCancelEditEntry = useCallback(() => {
     setEditingEntryId(null);
@@ -1275,6 +1295,10 @@ export function ChatSummaryPanel({
         return;
       }
       const existingEntry = displayEntries.find((candidate) => candidate.id === entry.id);
+      if (!existingEntry && writeScope.error) {
+        toast.error(summaryBatchRangeErrorMessage(writeScope.error, localizeUi));
+        return;
+      }
       const entryPayload = existingEntry
         ? {
             id: entry.id,
@@ -1284,6 +1308,7 @@ export function ChatSummaryPanel({
           }
         : {
             ...entry,
+            ...writeScope.coverage,
             title,
             content,
             tokenEstimate: estimateChatSummaryTokens(content),
@@ -1295,11 +1320,19 @@ export function ChatSummaryPanel({
         });
         setEditingEntryId(null);
         setDraftEntry(null);
-      } catch {
-        toast.error(localizeUi("ui.chat.summarypopover.couldNotSaveSummaryEntry"));
+      } catch (error) {
+        // The server refuses a range it can't cover (say, every message in it is already hidden); say why.
+        const refusal = error instanceof ApiError ? (error.payload as { code?: unknown } | undefined)?.code : undefined;
+        toast.error(
+          refusal === "hidden"
+            ? localizeUi("ui.chat.summarypopover.batchRangeAllHidden")
+            : refusal === "invalid" || refusal === "outside" || refusal === "tooLarge"
+              ? summaryBatchRangeErrorMessage(refusal, localizeUi)
+              : localizeUi("ui.chat.summarypopover.couldNotSaveSummaryEntry"),
+        );
       }
     },
-    [chatId, displayEntries, updateSummaryEntry, localizeUi],
+    [chatId, displayEntries, updateSummaryEntry, localizeUi, writeScope],
   );
 
   const handleToggleEntry = useCallback(
@@ -2373,7 +2406,7 @@ export function ChatSummaryPanel({
                         dragging={draggingEntryIndex === entryIndex}
                         expanded={expandedEntryIds.has(entry.id)}
                         editing={editingEntryId === entry.id}
-                        draftEntry={editingEntryId === entry.id ? draftEntry : null}
+                        draftEntry={editingEntryId === entry.id ? shownDraftEntry : null}
                         textareaRef={entryTextareaRef}
                         mutationPending={entryMutationPending || pendingToggleIds.has(entry.id)}
                         selected={selectedEntryIds.has(entry.id)}
@@ -3086,7 +3119,8 @@ interface SummaryEntryEditorProps {
 function SummaryEntryEditor({ entry, textareaRef, mutationPending, onCancel, onSave }: SummaryEntryEditorProps) {
   const { t: localizeUi } = useUiTranslation();
   const [draft, setDraft] = useState(() => ({ ...entry }));
-  const metaLine = getSummaryEntryMetaLine(draft, localizeUi);
+  // Only the title and text are edited here; what the entry covers comes from the panel (a new one follows its scope).
+  const metaLine = getSummaryEntryMetaLine(entry, localizeUi);
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-2 text-[0.625rem] text-[var(--muted-foreground)]">

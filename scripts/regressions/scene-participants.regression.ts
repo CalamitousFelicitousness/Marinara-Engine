@@ -304,6 +304,25 @@ try {
     }
   }
   assert.equal(requests.length, before, "Invalid selections never call the provider");
+  // The Scene card switch frees participants for user replies only; autonomous messages stay paused.
+  await api("PATCH", `/api/chats/${scene.id}/metadata`, { sceneOriginRepliesAllowed: true });
+  assert.deepEqual(await resolveSceneBusyCharacterIds(store, origin.id, legacyMeta, { userReply: true }), []);
+  assert.deepEqual(await resolveSceneBusyCharacterIds(store, origin.id, legacyMeta), selected.participantCharacterIds);
+  assert.deepEqual(
+    (await resolveConversationPresenceRuntime({ ...presenceArgs, forCharacterId: ids[0] })).respondingCharacterIds,
+    [ids[0]],
+  );
+  assert.deepEqual(
+    (await resolveConversationPresenceRuntime({ ...presenceArgs, shouldAccountAutonomousGeneration: true }))
+      .respondingCharacterIds,
+    [ids[2]],
+    "Autonomous messages keep Scene participants paused",
+  );
+  await api("PATCH", `/api/chats/${scene.id}/metadata`, { sceneOriginRepliesAllowed: false });
+  assert.deepEqual(
+    await resolveSceneBusyCharacterIds(store, origin.id, legacyMeta, { userReply: true }),
+    selected.participantCharacterIds,
+  );
   await api("POST", "/api/scene/abandon", { sceneChatId: scene.id });
   const restored = (await api("GET", `/api/chats/${origin.id}`)).metadata;
   assert.deepEqual(await resolveSceneBusyCharacterIds(store, origin.id, legacyMeta), []);

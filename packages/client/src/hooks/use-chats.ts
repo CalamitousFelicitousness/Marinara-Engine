@@ -1146,9 +1146,9 @@ function useSummaryEntryMutation() {
       }
       // The PATCH returns the updated chat; syncCachedChat already refreshes its list entry.
       qc.invalidateQueries({ queryKey: lorebookKeys.active(vars.chatId) });
-      // Only delete changes message visibility (it unhides server-side), so scope
-      // the message-list refetch to that operation rather than every summary edit.
-      if (vars.operation === "delete") {
+      // Only delete (unhides) and a new range entry (may hide) change message visibility
+      // server-side, so scope the message-list refetch to those rather than every summary edit.
+      if (vars.operation === "delete" || (vars.operation === "replace" && vars.entry.sourceMode === "range")) {
         qc.invalidateQueries({ queryKey: chatKeys.messages(vars.chatId) });
       }
     },

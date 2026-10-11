@@ -13,8 +13,10 @@ import {
   getNextCardVariable,
   getRelevantCardVariables,
   hasOnboardingContent,
+  MAX_CARD_VARIABLES,
   ONBOARDING_MAX_QUESTIONS,
   resolveCardVariables,
+  seedCardVariables,
   validateOnboarding,
   withUniqueOnboardingIds,
   type CharacterOnboarding,
@@ -457,6 +459,132 @@ assert.deepEqual(
   [...findUnresolvedCardVariableUses(onboarding({}), ["{{anything}}"])],
   [],
   "no card questions, nothing to report",
+);
+
+// ── Default seeding for chats that never ask the questions (#7434, S3) ──
+// The Roleplay wizard writes real answers, but a chat can also be created
+// without it (Quick Start, the conversation wizard, start-from-card). Seeding
+// the declared questions' defaults keeps the card's `{{name}}` from reaching
+// the model as a literal tag.
+const seeded = seedCardVariables(card);
+assert.deepEqual(
+  seeded,
+  { relationshipToUser: "a childhood friend" },
+  "a choice question seeds its first option; a free-text question seeds nothing at all",
+);
+assert.equal(
+  seeded.relationshipToUser,
+  resolveCardVariables(card, answers({ relationshipToUser: { optionIds: ["friend"] } })).relationshipToUser,
+  "the seed is the same value the questions window starts on, not a second opinion",
+);
+// The option value itself carries a macro (`warmly, as {{formality}}`), and
+// `formality` has no default, so `tone` cannot be seeded: writing it would put a
+// literal tag in the prompt, which is the whole thing this exists to prevent.
+const withUnresolvedDefault = onboarding({
+  cardVariables: [{ id: "t", variableName: "tone", options: [option("warm", "warmly, as {{formality}}")] }],
+});
+assert.deepEqual(
+  seedCardVariables(withUnresolvedDefault),
+  {},
+  "a default holding an unresolved macro is dropped rather than stored as a raw tag",
+);
+assert.deepEqual(
+  seedCardVariables(onboarding({ cardVariables: [{ id: "n", variableName: "nickname" }] })),
+  {},
+  "a free-text question has no default, so the name stays absent",
+);
+assert.deepEqual(seedCardVariables(onboarding({})), {}, "no card questions, nothing seeded");
+assert.deepEqual(seedCardVariables(null), {}, "a card without onboarding is safe to ask");
+assert.deepEqual(seedCardVariables(undefined), {}, "an absent onboarding block is safe to ask");
+// Names the chat route would refuse are skipped, because one bad name 400s the
+// whole `macroVariables` patch and would take every seeded answer with it.
+assert.deepEqual(
+  seedCardVariables(
+    onboarding({
+      cardVariables: [
+        { id: "r", variableName: "char", options: [option("a", "someone")] },
+        { id: "o", variableName: "nickname", options: [option("a", "Sunny")] },
+      ],
+    }),
+  ),
+  { nickname: "Sunny" },
+  "a reserved name is skipped and the storable one beside it still seeds",
+);
+// `__proto__` is refused outright: the engine only reads bare `{{name}}` tags,
+// so a name the chat route would reject must not be seeded either. The point of
+// the assertion is that the rejection is by NAME RULE, not by an assignment that
+// could have reached Object.prototype on the way.
+const protoSeed = seedCardVariables(
+  onboarding({ cardVariables: [{ id: "p", variableName: "__proto__", options: [option("a", "polluted")] }] }),
+);
+assert.deepEqual(protoSeed, {}, "a question named __proto__ is not storable, so nothing seeds");
+assert.equal(({} as Record<string, unknown>).polluted, undefined, "and never reaches Object.prototype");
+assert.equal(Object.getPrototypeOf(protoSeed), Object.prototype, "the result is an ordinary object");
+// The cap is the same one the write path enforces, so a card at the limit seeds
+// exactly what it could have written.
+const manyDefaults = onboarding({
+  cardVariables: Array.from({ length: MAX_CARD_VARIABLES + 5 }, (_, index) => ({
+    id: `v${index}`,
+    variableName: `name${index}`,
+    options: [option(`o${index}`, `value${index}`)],
+  })),
+});
+assert.equal(Object.keys(seedCardVariables(manyDefaults)).length, MAX_CARD_VARIABLES, "seeding stops at the cap");
+
+// `{{user}}` / `{{char}}` STAY LIVE. This file's convention (see
+// `resolveFields`) is that both resolve to themselves, so a seeded value keeps
+// them and the engine fills in the real name at generation time — per user,
+// per chat, forever. A default that baked in today's name would be wrong.
+assert.deepEqual(
+  seedCardVariables(
+    onboarding({ cardVariables: [{ id: "u", variableName: "ally", options: [option("a", "{{user}}'s old friend")] }] }),
+  ),
+  { ally: "{{user}}'s old friend" },
+  "a user macro stays live in a seeded default",
+);
+assert.deepEqual(
+  seedCardVariables(
+    onboarding({
+      cardVariables: [{ id: "s", variableName: "ally", options: [option("a", "one of {{char}}'s allies")] }],
+    }),
+  ),
+  { ally: "one of {{char}}'s allies" },
+  "a char macro stays live in a seeded default",
+);
+// A leftover tag naming another QUESTION is different: nothing will resolve it,
+// so the prompt would show it raw and the name stays unseeded instead.
+assert.deepEqual(
+  seedCardVariables(
+    onboarding({ cardVariables: [{ id: "d", variableName: "ally", options: [option("a", "with {{nowhere}}")] }] }),
+  ),
+  {},
+  "a default naming a question with no default of its own is dropped",
+);
+// A default that merely mentions another question IS usable once that question
+// has a default of its own: the two passes let it settle in either order.
+const chainedDefaults = onboarding({
+  cardVariables: [
+    { id: "a", variableName: "rank", options: [option("a", "a captain")] },
+    { id: "b", variableName: "title", options: [option("b", "{{rank}} of the guard")] },
+  ],
+});
+assert.deepEqual(
+  seedCardVariables(chainedDefaults),
+  { rank: "a captain", title: "a captain of the guard" },
+  "a default built from another question resolves once that question has a default",
+);
+// Order must not matter: the dependent question may be declared first.
+assert.deepEqual(
+  seedCardVariables(
+    onboarding({
+      cardVariables: [
+        { id: "b", variableName: "title", options: [option("b", "{{rank}} of the guard")] },
+        { id: "a", variableName: "rank", options: [option("a", "a captain")] },
+      ],
+    }),
+  ),
+  { title: "a captain of the guard", rank: "a captain" },
+  "declaration order does not change what can be resolved",
 );
 
 console.info("onboarding s3 (card variables) regressions passed.");

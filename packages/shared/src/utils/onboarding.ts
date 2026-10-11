@@ -492,6 +492,101 @@ export function resolveCardVariables(
   return Object.fromEntries(entries);
 }
 
+/**
+ * The card variables a chat should START with, so a card field never reaches the
+ * model with a raw `{{tag}}` in it.
+ *
+ * Only the Roleplay wizard asks the character questions, but a chat can also be
+ * created without it (Quick Start, the conversation wizard, start-from-card).
+ * Those paths have no answers at all, so every declared name is seeded with its
+ * own default — the value the question would have shown first. A field is then
+ * filled with something sensible instead of the literal tag.
+ *
+ * This is a starting point, not a decision: the wizard's own answers overwrite
+ * whatever it seeded (its `macroVariables` patch runs after creation), and a
+ * `{{setvar}}` write during play overwrites both.
+ *
+ * `{{user}}` and `{{char}}` stay LIVE in a seeded value, exactly as they do in
+ * the persona path: this file's own convention resolves both to themselves, so
+ * `"{{user}}'s old friend"` seeds that text and the engine fills in the name at
+ * generation time. Any OTHER name still holding a tag is dropped instead, since
+ * the prompt inserts a value in one non-recursive pass and would show it raw.
+ */
+export function seedCardVariables(onboarding: CharacterOnboarding | null | undefined): Record<string, string> {
+  const variables = onboarding?.cardVariables ?? [];
+  if (variables.length === 0) return {};
+  const names = new Set(variables.map((variable) => variable.variableName));
+  const entries: Array<[string, string]> = [];
+  const taken = new Set<string>();
+  // Seeded values, plus every declared name resolving to itself, so a default
+  // can be re-read with its dependencies substituted.
+  const seedValues: Record<string, string> = {};
+  const readDefault = (variable: CharacterOnboardingVariable): string | null => {
+    const first = variable.options[0];
+    // A free-text question has no default. An option with a blank value means
+    // "same as the label", exactly as the questions modal reads it.
+    if (!first) return null;
+    const raw = first.value.trim() ? first.value : first.label;
+    return resolveMacros(raw, seedContext(names, seedValues), { trimResult: false }).trim();
+  };
+  // Two passes: a default may reference another question, and that question may
+  // itself be reached first. The engine inserts values in a single pass, so a
+  // default is only usable once every name it holds is already seeded — a
+  // second pass lets those settle instead of dropping them on ordering.
+  const settle = () => {
+    for (const variable of variables) {
+      const name = variable.variableName;
+      if (!name || taken.has(name) || !isStorableCardVariableName(name)) continue;
+      if (entries.length >= MAX_CARD_VARIABLES) return;
+      const value = readDefault(variable);
+      // A leftover tag is only acceptable when something will still resolve it
+      // later. The engine runs its built-in passes before the `{{name}}`
+      // catch-all, so `{{user}}` / `{{char}}` / `{{time}}` stay live and are
+      // filled in at generation time — that is what keeps `"{{user}}'s old
+      // friend"` per-user instead of baking in one name. Any OTHER leftover tag
+      // names a question, which nothing resolves once this map is written, so
+      // the prompt would show it raw and this question stays unseeded.
+      if (!value || unresolvedNonMacroName(value) !== null) continue;
+      taken.add(name);
+      seedValues[name] = value;
+      entries.push([name, value]);
+    }
+  };
+  settle();
+  settle();
+  return Object.fromEntries(entries);
+}
+
+/**
+ * The first `{{name}}` in `text` that no built-in pass will resolve, or null.
+ * A reserved macro name is one the engine expands on its own (before the
+ * `{{name}}` catch-all), so it is safe to leave in a value; anything else would
+ * reach the model as a literal tag once this map is written.
+ */
+function unresolvedNonMacroName(text: string): string | null {
+  for (const match of text.matchAll(/\{\{([A-Za-z_]\w*)\}\}/g)) {
+    if (!isReservedMacroName(match[1]!)) return match[1]!;
+  }
+  return null;
+}
+
+/**
+ * A macro context in which every declared name resolves to its own seeded value,
+ * or to itself while it has none — so a candidate default can be re-read
+ * without any name silently collapsing to nothing.
+ */
+function seedContext(names: Set<string>, seedValues: Record<string, string>) {
+  const values: Record<string, string> = {};
+  for (const name of names) {
+    if (!name) continue;
+    Object.defineProperty(values, name, {
+      value: Object.prototype.hasOwnProperty.call(seedValues, name) ? seedValues[name]! : `{{${name}}}`,
+      enumerable: true,
+    });
+  }
+  return { user: "{{user}}", char: "{{char}}", characters: [], variables: values, localVariables: {} };
+}
+
 export type OnboardingIssue =
   | {
       code: "emptyName" | "invalidName" | "reservedName" | "duplicateName" | "unused" | "unknownOptionName";

@@ -58,6 +58,8 @@ import { ActiveChatBackgroundPicker } from "../panels/settings/BackgroundPicker"
 import {
   characterOnboardingSchema,
   type CharacterOnboarding,
+  type OnboardingCardFields,
+  hasOnboardingContent,
   withUniqueOnboardingIds,
   CONVERSATION_COMMAND_AGENT_IDS,
   CONVERSATION_COMMAND_KEYS,
@@ -2625,10 +2627,12 @@ function RoleplaySetupWizard({ chat, onFinish, defaultsApplied, defaultsAction }
   const isPresetStep = currentStep.key === "preset";
   const nextDisabled = isPresetStep && (updateChat.isPending || (!!chat.promptPresetId && presetFullLoading));
 
-  // Every card that ships enabled onboarding: marked in the character list, and
-  // once chosen, offered as a persona to create.
+  // Every card that ships enabled onboarding with something to offer: marked in
+  // the character list, and once chosen, offered as a persona to create. An
+  // enabled-but-empty block is filtered out here, so the wizard never offers a
+  // window with no questions and no field text behind it.
   const onboardingByCharacterId = useMemo(() => {
-    const byId = new Map<string, { name: string; onboarding: CharacterOnboarding }>();
+    const byId = new Map<string, { name: string; onboarding: CharacterOnboarding; cardFields: OnboardingCardFields }>();
     for (const character of characters) {
       try {
         const data = typeof character.data === "string" ? JSON.parse(character.data) : character.data;
@@ -2636,7 +2640,20 @@ function RoleplaySetupWizard({ chat, onFinish, defaultsApplied, defaultsAction }
         if (parsed.success && parsed.data.enabled) {
           // Cards saved before ids were made unique, or via the API, may still repeat one.
           const onboarding = withUniqueOnboardingIds(parsed.data as CharacterOnboarding);
-          byId.set(character.id, { name: String(data?.name ?? ""), onboarding });
+          if (!hasOnboardingContent(onboarding)) continue;
+          // The card's own text decides which character questions are asked, so
+          // the wizard has to hand the modal the same fields the prompt reads.
+          byId.set(character.id, {
+            name: String(data?.name ?? ""),
+            onboarding,
+            cardFields: {
+              description: data?.description,
+              personality: data?.personality,
+              backstory: data?.backstory,
+              appearance: data?.appearance,
+              scenario: data?.scenario,
+            },
+          });
         }
       } catch {
         /* unreadable card data: no onboarding */
@@ -2665,7 +2682,10 @@ function RoleplaySetupWizard({ chat, onFinish, defaultsApplied, defaultsAction }
         setShowChoiceModal(true);
         return;
       }
-      // When leaving the participants step with an onboarding picked as persona, ask its questions.
+      // When leaving the participants step with an onboarding picked as persona,
+      // ask its questions. A card with character questions opens the window even
+      // when no persona was asked for, since those answers still have to be
+      // written before the chat starts.
       if (currentStep.key === "participants" && onboardingCharacter) {
         setShowOnboarding(true);
         return;
@@ -2685,29 +2705,42 @@ function RoleplaySetupWizard({ chat, onFinish, defaultsApplied, defaultsAction }
     onboardingCharacter,
   ]);
 
-  // The new persona replaces the onboarding choice, so going Back and Next again doesn't ask twice.
-  // The questions window stays open (and locked) until the chat update settles,
-  // so Next can't run in between. If it fails, the wizard stays on this step:
-  // the persona already exists and is in the list, so asking the questions
-  // again would create a second one.
+  // The new persona replaces the onboarding choice, so going Back and Next again
+  // doesn't ask twice. The questions window stays open (and locked) until every
+  // write settles, so Next can't run in between. If the persona write fails, the
+  // wizard stays on this step: the persona already exists and is in the list, so
+  // asking the questions again would create a second one.
   const finishOnboarding = useCallback(
-    async (personaId: string) => {
+    async (personaId: string | null, cardVariables: Record<string, string>) => {
+      // Chat variables go in their OWN request: `PATCH /chats/:id/metadata`
+      // rejects `macroVariables` alongside any other key, and they are a
+      // metadata write while `personaId` is a chat-column write.
       try {
-        await updateChat.mutateAsync({ id: chat.id, personaId, personaCharacterId: null });
+        if (Object.keys(cardVariables).length > 0) {
+          await updateMeta.mutateAsync({ id: chat.id, macroVariables: cardVariables });
+        }
       } catch {
-        toast.error(localizeUi("ui.characters.onboarding.selectFailed"));
-        return;
-      } finally {
-        setOnboardingCharacterId(null);
-        setShowOnboarding(false);
+        // The answers are lost but the chat is usable: the card falls back to
+        // whatever the unseeded field reads, and the wizard still moves on.
+        toast.error(localizeUi("ui.characters.onboarding.cardVariablesFailed"));
       }
+      if (personaId) {
+        try {
+          await updateChat.mutateAsync({ id: chat.id, personaId, personaCharacterId: null });
+        } catch {
+          toast.error(localizeUi("ui.characters.onboarding.selectFailed"));
+          return;
+        }
+      }
+      setOnboardingCharacterId(null);
+      setShowOnboarding(false);
       setStep((s) => s + 1);
       setCharSearch("");
       setLbSearch("");
       setAgentSearch("");
       setAgentAddPreview(null);
     },
-    [chat.id, localizeUi, updateChat],
+    [chat.id, localizeUi, updateChat, updateMeta],
   );
 
   const previous = useCallback(() => {
@@ -3716,6 +3749,8 @@ function RoleplaySetupWizard({ chat, onFinish, defaultsApplied, defaultsAction }
           open={showOnboarding}
           characterName={onboardingCharacter.name}
           onboarding={onboardingCharacter.onboarding}
+          cardFields={onboardingCharacter.cardFields}
+          withPersona
           onBack={() => setShowOnboarding(false)}
           onCreated={finishOnboarding}
         />

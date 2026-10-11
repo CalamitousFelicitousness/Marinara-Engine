@@ -53,6 +53,7 @@ References: [OpenAI agent instructions](https://learn.chatgpt.com/docs/agent-con
 - Before pushing, follow the local validation and reporting requirements in `CONTRIBUTING.md § Validation`.
 - Run `pnpm version:check` when you touch release metadata, version-bearing files, or README release references.
 - For every bug fix, behavior change, or new feature, add a concise user-focused entry under the appropriate `CHANGELOG.md` `[Unreleased]` heading. Purely mechanical changes with no product or contributor-workflow impact do not need an entry.
+- Write that entry last, from the final diff, not from the issue, and say plainly when something that worked before no longer does. See `.github/agents/chai-workflow.md § Universal Operating Rules`.
 
 ## Temporary Tests
 

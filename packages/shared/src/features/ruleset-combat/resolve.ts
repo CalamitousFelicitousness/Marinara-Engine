@@ -22,6 +22,7 @@ import {
   breakRulesetItem,
   recoverRulesetAmmo,
   rulesetActionDropped,
+  rulesetActionItemIndex,
   rulesetThingsToDrop,
   reloadRulesetClip,
   rulesetItemOn,
@@ -3194,6 +3195,30 @@ function pickTargets(
   return targets;
 }
 
+/** A weapon put in hand (1.301): the one before it goes, a bound one back to what it was, and this
+ *  mode's attacks take their place. */
+function conjure(ctx: RulesetCombatContext, actor: RulesetCombatant, action: RulesetCombatAction, mode: string): void {
+  const made = actor.conjurable?.[`${action.id}|${mode}`];
+  if (!made) return;
+  const before = actor.conjured?.[action.id];
+  const bound = before ? actor.conjurable?.[`${action.id}|${before.mode}`]?.bound : undefined;
+  actor.actions = actor.actions.filter(
+    (one) =>
+      !one.id.startsWith(`conjured:${action.id}:`) && (bound === undefined || rulesetActionItemIndex(one) !== bound),
+  );
+  if (bound !== undefined && before?.was) actor.actions.push(...structuredClone(before.was));
+  let was: RulesetCombatAction[] | undefined;
+  if (made.bound !== undefined) {
+    was = actor.actions.filter((one) => rulesetActionItemIndex(one) === made.bound);
+    actor.actions = actor.actions.filter((one) => rulesetActionItemIndex(one) !== made.bound);
+  }
+  actor.actions.push(...structuredClone(made.actions));
+  actor.conjured = { ...actor.conjured, [action.id]: { mode, ...(was ? { was } : {}) } };
+  // Named as the entry, not as the mode it was used in: "Pact of the Blade", not "(Longsword)".
+  const label = actor.actions.find((one) => one.id === action.id)?.label ?? action.label;
+  ctx.events.push({ type: "conjured", actorId: actor.id, optionId: action.id, label, item: made.item });
+}
+
 /** Who an entry used once a creature until a rest (1.299) was used on now, written where
  *  `rulesetUsedOn` reads it. */
 function markUsedOn(actor: RulesetCombatant, action: RulesetCombatAction, targets: RulesetCombatant[]): void {
@@ -3609,7 +3634,9 @@ function applyChoice(
   const mode = choice.mode === undefined ? undefined : option.modes?.find((entry) => entry.id === choice.mode);
   if (choice.mode !== undefined && !mode) return refusal(state, choice.actorId, "unknown-mode", option.id);
   // A creature type is picked as it is used (1.265): no kind, no Antipathy.
-  if (!mode && actor.actions.find((entry) => entry.id === option.id)?.kindChoice) {
+  // And so is the weapon put in hand (1.301).
+  const namedIn = actor.actions.find((entry) => entry.id === option.id);
+  if (!mode && (namedIn?.kindChoice || namedIn?.conjures)) {
     return refusal(state, choice.actorId, "unknown-mode", option.id);
   }
   if (choice.payWith !== undefined && !(option.payWith ?? []).includes(choice.payWith)) {
@@ -3907,6 +3934,7 @@ function applyChoice(
   if (following) working.flags.followUps = working.flags.followUps!.filter((one) => one !== following);
   if (!following?.paid) spendAvailability(ctx, working, action);
   markUsedOn(working, action, workingTargets);
+  if (action.conjures && mode) conjure(ctx, working, action, mode.id);
   if (!option.followUp && action.followUp) {
     (working.flags.followUps ??= []).push({
       id: action.followUp,

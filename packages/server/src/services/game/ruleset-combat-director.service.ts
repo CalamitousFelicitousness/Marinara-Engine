@@ -1193,6 +1193,29 @@ function rulesetCandidatesFrom(
       candidates.push({ action: { choice: { actorId, optionId: option.id, targetIds: [] }, option }, hold: true });
       continue;
     }
+    // A weapon put in hand (1.301), once, before it fights: the one that hits hardest of those it
+    // may make or bind. With one in hand already it is never taken again.
+    const conjuring = actor.actions.find((entry) => entry.id === option.id);
+    if (conjuring?.conjures) {
+      if (standing || actor.conjured?.[option.id]) continue;
+      const average = (mode: string) =>
+        Math.max(
+          0,
+          ...(actor.conjurable?.[`${option.id}|${mode}`]?.actions ?? []).map((one) =>
+            one.damage ? (one.damage.count * (one.damage.sides + 1)) / 2 + one.damage.flat : 0,
+          ),
+        );
+      // The action's own modes: each way weighed here is one of them, with the others taken off.
+      const best = [...(conjuring.modes ?? [])].sort((a, b) => average(b.id) - average(a.id))[0];
+      // Each mode is a way of its own: only the best is weighed.
+      if (!best || average(best.id) <= 0 || way.mode !== best.id) continue;
+      candidates.push({
+        action: { choice: { actorId, optionId: option.id, targetIds: [], ...paying(way) }, option },
+        setup: 0.6,
+        cost: price,
+      });
+      continue;
+    }
     // A guard taken after being hit is worth the blow it turns aside, and nothing at all when the
     // roll beats it anyway: spending it then would only waste it. Read before any other weighing,
     // since a guard aimed at its own holder would otherwise be scored as help for a friend.

@@ -603,6 +603,16 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
       }),
     ],
     [
+      "conjured",
+      say({
+        type: "conjured",
+        actorId: "corwin",
+        optionId: "ability:1:0",
+        label: "Pact of the Blade",
+        item: "Longsword",
+      }),
+    ],
+    [
       "fake",
       say({
         type: "fake",
@@ -964,6 +974,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   );
   assert.equal(printed.get("recharged"), "Staff of the magi gets 7 charges back (a 20 on its die).");
   assert.equal(printed.get("fake"), "The Potion of healing was really Potion of poison.");
+  assert.equal(printed.get("conjured"), "Corwin uses Pact of the Blade and holds Longsword.");
   assert.equal(
     say({
       type: "fake",

@@ -270,8 +270,14 @@ function readPackage(bytes: Buffer): RulesetPackageRead {
     })),
   };
   for (const catalog of complete.catalogs ?? []) {
-    // What names entries of other catalogs: a creature's spells, an entry's amends (1.297).
-    if (!catalog.entries?.some((entry) => entry.creature?.spellcasting || entry.mechanics?.amends)) continue;
+    // What names entries of other catalogs: a creature's spells, an entry's amends (1.297), the
+    // weapons it conjures (1.301).
+    if (
+      !catalog.entries?.some(
+        (entry) => entry.creature?.spellcasting || entry.mechanics?.amends || entry.mechanics?.conjures,
+      )
+    )
+      continue;
     const issues = rulesetCatalogEntryIssues(complete, catalog, catalog.entries ?? []);
     if (issues.length)
       return refused(...issues.slice(0, 10).map((issue) => `${catalog.id} ${issue.path.join(".")}: ${issue.message}`));

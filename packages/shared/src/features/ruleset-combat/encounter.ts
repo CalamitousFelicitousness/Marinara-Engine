@@ -2146,6 +2146,7 @@ function mechanicsAction(
     !places &&
     !mechanics.rescue &&
     !mechanics.alters &&
+    !mechanics.conjures &&
     !mechanics.teleport
   ) {
     return null;
@@ -2403,6 +2404,9 @@ function mechanicsAction(
       ...(mechanics.unseals ? [{ id: "unseals", label: healthLabel, cure: { unseals: true as const } }] : []),
     ];
   }
+  // A weapon put in hand (1.301): which one is picked as it is used, its modes filled in once the
+  // sheet's items and entries are known.
+  if (mechanics.conjures) action.conjures = true;
   // A creature type named as it is used (1.265), picked like a weapon's mode: Antipathy/Sympathy.
   const creatureTypes = definition.combat?.creatureTypes;
   if (mechanics.kindChoice && creatureTypes) {
@@ -3292,38 +3296,117 @@ function sheetCombatant(
     ...itemUseActions(definition, combat, input.items, build, evaluated, perCell),
     ...abilities.flatMap((entry) => entry.actions),
   ];
+  // What a conjuring entry puts in hand (1.301), read now like everything else: each weapon it may
+  // make, and each held weapon it may bind, as attacks of that entry's, so what amends it amends them.
+  const conjurable: NonNullable<RulesetCombatant["conjurable"]> = {};
+  for (const action of actions) {
+    const conjures = action.conjures && action.entry ? byRef.get(action.entry)?.mechanics?.conjures : undefined;
+    if (!conjures) continue;
+    const ownership = (made: RulesetCombatAction[]) =>
+      made.map((one) => ({
+        ...one,
+        entry: action.entry,
+        ...(one.damage && conjures.qualities
+          ? {
+              damage: {
+                ...one.damage,
+                qualities: [...new Set([...(one.damage.qualities ?? []), ...conjures.qualities])],
+              },
+            }
+          : {}),
+      }));
+    const modes: RulesetCombatMode[] = [];
+    conjures.items.forEach((ref, at) => {
+      const entry = byRef.get(ref);
+      const attack = entry?.item?.attack;
+      if (!entry?.item || !attack) return;
+      const item = conjures.proficient
+        ? { ...entry.item, attack: { ...attack, toHit: { ...attack.toHit, proficiency: { const: 1 } } } }
+        : entry.item;
+      const made = itemAttackActions(
+        definition,
+        combat,
+        [{ item, quantity: 1, worn: true, name: entry.label }],
+        build,
+        evaluated,
+        perCell,
+        rowRules,
+      ).filter((one) => one.kind !== "reload");
+      if (!made.length) return;
+      const mode = `weapon-${at}`;
+      modes.push({ id: mode, label: entry.label, targets: 0 });
+      conjurable[`${action.id}|${mode}`] = {
+        item: entry.label,
+        actions: ownership(made).map((one) => ({ ...one, id: `conjured:${action.id}:${one.id}` })),
+      };
+    });
+    if (conjures.binds) {
+      const items = input.items ?? [];
+      items.forEach((held, index) => {
+        if (!held.worn || !held.item.attack) return;
+        if (!rulesetItemMatches(held.item, itemAttackLabel(definition, held), conjures.binds!)) return;
+        const made = itemAttackActions(definition, combat, items, build, evaluated, perCell, rowRules).filter(
+          (one) => rulesetActionItemIndex(one) === index,
+        );
+        const mode = `bind-${index}`;
+        const name = itemAttackLabel(definition, held);
+        modes.push({ id: mode, label: name, targets: 0 });
+        conjurable[`${action.id}|${mode}`] = { item: name, actions: ownership(made), bound: index };
+      });
+    }
+    action.modes = modes;
+  }
   // Held, what changes one named entry of theirs each time they use it (1.297): 5e's invocations.
   const amends = held.flatMap((mechanics) => mechanics.amends ?? []);
-  for (const amend of amends) {
-    for (const action of actions) {
-      if (action.entry !== amend.entry) continue;
-      if (amend.damageAdd && action.damage) {
-        action.damage.flat += Math.round(resolveRulesetValueRef(definition, build, amend.damageAdd, evaluated));
-      }
-      if (amend.range !== undefined && perCell !== undefined) {
-        const range = rulesetInCells(amend.range, perCell);
-        action.range = action.range
-          ? { ...action.range, normal: Math.max(action.range.normal, range) }
-          : { normal: range };
-      }
-    }
-  }
-  // Pushes last, so one offered without its push carries everything else.
-  for (const amend of amends) {
-    for (const action of [...actions]) {
-      if (action.entry !== amend.entry || action.id.endsWith(":still")) continue;
-      if (amend.push !== undefined && perCell !== undefined) {
-        // Offered without it too where it says the push is its user's choice.
-        if (amend.pushOptional) {
-          const still = structuredClone(action);
-          still.id = `${action.id}:still`;
-          still.label = `${action.label} (no push)`;
-          actions.splice(actions.indexOf(action) + 1, 0, still);
+  const amendAll = (list: RulesetCombatAction[]) => {
+    for (const amend of amends) {
+      for (const action of list) {
+        if (action.entry !== amend.entry) continue;
+        if (amend.damageAdd && action.damage) {
+          action.damage.flat += Math.round(resolveRulesetValueRef(definition, build, amend.damageAdd, evaluated));
         }
-        action.push = (action.push ?? 0) + rulesetInCells(amend.push, perCell);
+        // More of its own type on a hit (1.301): Lifedrinker.
+        if (amend.damagePlus && action.damage) {
+          const added = Math.round(resolveRulesetValueRef(definition, build, amend.damagePlus.add, evaluated));
+          action.damage.plus = [
+            ...(action.damage.plus ?? []),
+            {
+              count: 0,
+              sides: 0,
+              flat: Math.max(amend.damagePlus.atLeast ?? 0, added),
+              ...(amend.damagePlus.type ? { type: amend.damagePlus.type } : {}),
+            },
+          ];
+        }
+        // As many strikes for one spend as it says, where that is more (1.301): Thirsting Blade.
+        if (amend.strikes !== undefined && action.damage) action.strikes = Math.max(action.strikes ?? 1, amend.strikes);
+        if (amend.range !== undefined && perCell !== undefined) {
+          const range = rulesetInCells(amend.range, perCell);
+          action.range = action.range
+            ? { ...action.range, normal: Math.max(action.range.normal, range) }
+            : { normal: range };
+        }
       }
     }
-  }
+    // Pushes last, so one offered without its push carries everything else.
+    for (const amend of amends) {
+      for (const action of [...list]) {
+        if (action.entry !== amend.entry || action.id.endsWith(":still")) continue;
+        if (amend.push !== undefined && perCell !== undefined) {
+          // Offered without it too where it says the push is its user's choice.
+          if (amend.pushOptional) {
+            const still = structuredClone(action);
+            still.id = `${action.id}:still`;
+            still.label = `${action.label} (no push)`;
+            list.splice(list.indexOf(action) + 1, 0, still);
+          }
+          action.push = (action.push ?? 0) + rulesetInCells(amend.push, perCell);
+        }
+      }
+    }
+  };
+  amendAll(actions);
+  for (const made of Object.values(conjurable)) amendAll(made.actions);
   const riders = abilities.flatMap((entry) => entry.riders);
   // What an item becomes on its last charge (1.267), read now with what it would do then.
   const becomes: NonNullable<RulesetCombatant["becomes"]> = {};
@@ -3446,6 +3529,7 @@ function sheetCombatant(
     })(),
     sheet: { build, live: input.live, catalogs, ...(input.items ? { items: input.items } : {}) },
     ...(Object.keys(becomes).length ? { becomes } : {}),
+    ...(Object.keys(conjurable).length ? { conjurable } : {}),
   };
 }
 

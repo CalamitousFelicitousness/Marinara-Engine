@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: a feature can put a weapon of its user's choice in hand, or bind a magic one they hold, and invocations can add damage or attacks to it, so Pact of the Blade, Lifedrinker and Thirsting Blade work (Capability API 1.301).
 - Rulesets: an attack can take more targets as a character levels and hit the same one more than once, so eldritch blast fires its extra beams at one foe or several, each with its own roll and invocations (Capability API 1.300).
 - Rulesets: a feature can be used on each creature only once until a long rest, across fights, so Chains of Carceri works (Capability API 1.299).
 - Rulesets: an action can be offered only in dim light or darkness, and a condition can end when its holder moves or acts, so One with Shadows works (Capability API 1.298).

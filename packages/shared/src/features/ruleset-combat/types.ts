@@ -692,6 +692,9 @@ export interface RulesetCombatAction {
   rescue?: RulesetCombatRescue;
   /** Never pointed at its own user (1.251): Bardic Inspiration's "one creature other than you". */
   notSelf?: true;
+  /** Puts a weapon in its user's hand, the one its mode names (1.301): Pact of the Blade. What each
+   *  mode makes is the combatant's `conjurable`. */
+  conjures?: true;
   /** Not used on the same creature again until its user takes this rest (1.299): Chains of Carceri. */
   oncePerTarget?: { until: string };
   /** Its damage never takes a target below this much health (1.230). */
@@ -1263,6 +1266,12 @@ export interface RulesetCombatant {
   /** Whom an entry used once a creature until a rest went to (1.299), for one without a sheet: keyed
    *  `rest|action`, by name. A sheet keeps it on its live state. */
   usedOn?: Record<string, string[]>;
+  /** What each conjuring action makes in each of its modes (1.301), keyed `action|mode`, read as the
+   *  fight began: a new weapon's actions, or a held one's, as its own made with the binding. */
+  conjurable?: Record<string, { item: string; actions: RulesetCombatAction[]; bound?: number }>;
+  /** The mode each conjuring action was last used in (1.301), and a bound weapon's actions as they
+   *  were, to give back when another takes its place. */
+  conjured?: Record<string, { mode: string; was?: RulesetCombatAction[] }>;
   /** Each item switched on or off in this fight, keyed as the rest are (1.165). */
   on?: Record<string, boolean>;
   /** The light they carry is out (1.290). */
@@ -1944,6 +1953,8 @@ export type RulesetCombatEvent =
     }
   /** A fake just used, found out (1.74): what it truly was, and whether it did nothing. */
   | { type: "fake"; actorId: string; optionId: string; label: string; truly: string; dud?: true }
+  /** A weapon put in hand (1.301): Pact of the Blade's. */
+  | { type: "conjured"; actorId: string; optionId: string; label: string; item: string }
   /** An item's gate: the check its user rolled before it could work. A failed one used it up for
    *  nothing. Shaped as a save is, with `check` naming what was rolled. */
   | {

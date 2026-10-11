@@ -11168,6 +11168,77 @@
                       "minItems": 1,
                       "maxItems": 4
                     },
+                    "conjures": {
+                      "type": "object",
+                      "properties": {
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 121,
+                            "pattern": "^[a-z][a-z0-9_]*\\/[a-z0-9]+(?:-[a-z0-9]+)*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 40
+                        },
+                        "proficient": {
+                          "type": "boolean",
+                          "const": true
+                        },
+                        "qualities": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 8
+                        },
+                        "binds": {
+                          "type": "object",
+                          "properties": {
+                            "names": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 80
+                              },
+                              "minItems": 1,
+                              "maxItems": 30
+                            },
+                            "tags": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 8
+                            },
+                            "notTags": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 8
+                            },
+                            "$comment": {}
+                          },
+                          "additionalProperties": false
+                        },
+                        "$comment": {}
+                      },
+                      "required": [
+                        "items"
+                      ],
+                      "additionalProperties": false
+                    },
                     "amends": {
                       "type": "array",
                       "items": {
@@ -11324,6 +11395,172 @@
                               ]
                             }
                           },
+                          "damagePlus": {
+                            "type": "object",
+                            "properties": {
+                              "add": {
+                                "type": "object",
+                                "properties": {
+                                  "const": {
+                                    "type": "number"
+                                  },
+                                  "field": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "derived": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "abilityScore": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "abilityMod": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "abilityModFromField": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "skillMod": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "saveMod": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "liveTrack": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "read": {
+                                    "type": "string",
+                                    "enum": [
+                                      "value",
+                                      "filled",
+                                      "remaining",
+                                      "penalty"
+                                    ]
+                                  },
+                                  "livePool": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "listSum": {
+                                    "type": "object",
+                                    "properties": {
+                                      "list": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "column": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "onlyWhen": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "required": [
+                                      "list",
+                                      "column"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  "itemStat": {
+                                    "type": "object",
+                                    "properties": {
+                                      "stat": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "from": {
+                                        "type": "string",
+                                        "enum": [
+                                          "worn",
+                                          "carried",
+                                          "all"
+                                        ]
+                                      },
+                                      "pick": {
+                                        "type": "string",
+                                        "enum": [
+                                          "sum",
+                                          "max",
+                                          "min",
+                                          "count"
+                                        ]
+                                      },
+                                      "slot": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "category": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "tag": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "default": {
+                                        "type": "number"
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "required": [
+                                      "from",
+                                      "pick"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  "$comment": {}
+                                },
+                                "additionalProperties": false,
+                                "dependencies": {
+                                  "read": [
+                                    "liveTrack"
+                                  ]
+                                }
+                              },
+                              "type": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "atLeast": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 1000
+                              },
+                              "$comment": {}
+                            },
+                            "required": [
+                              "add"
+                            ],
+                            "additionalProperties": false
+                          },
                           "range": {
                             "type": "number",
                             "exclusiveMinimum": 0,
@@ -11337,6 +11574,11 @@
                           "pushOptional": {
                             "type": "boolean",
                             "const": true
+                          },
+                          "strikes": {
+                            "type": "integer",
+                            "minimum": 2,
+                            "maximum": 6
                           },
                           "$comment": {}
                         },
@@ -27668,6 +27910,172 @@
                                   ]
                                 }
                               },
+                              "damagePlus": {
+                                "type": "object",
+                                "properties": {
+                                  "add": {
+                                    "type": "object",
+                                    "properties": {
+                                      "const": {
+                                        "type": "number"
+                                      },
+                                      "field": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "derived": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "abilityScore": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "abilityMod": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "abilityModFromField": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "skillMod": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "saveMod": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "liveTrack": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "read": {
+                                        "type": "string",
+                                        "enum": [
+                                          "value",
+                                          "filled",
+                                          "remaining",
+                                          "penalty"
+                                        ]
+                                      },
+                                      "livePool": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "listSum": {
+                                        "type": "object",
+                                        "properties": {
+                                          "list": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "column": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "onlyWhen": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "$comment": {}
+                                        },
+                                        "required": [
+                                          "list",
+                                          "column"
+                                        ],
+                                        "additionalProperties": false
+                                      },
+                                      "itemStat": {
+                                        "type": "object",
+                                        "properties": {
+                                          "stat": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "from": {
+                                            "type": "string",
+                                            "enum": [
+                                              "worn",
+                                              "carried",
+                                              "all"
+                                            ]
+                                          },
+                                          "pick": {
+                                            "type": "string",
+                                            "enum": [
+                                              "sum",
+                                              "max",
+                                              "min",
+                                              "count"
+                                            ]
+                                          },
+                                          "slot": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "category": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "tag": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "default": {
+                                            "type": "number"
+                                          },
+                                          "$comment": {}
+                                        },
+                                        "required": [
+                                          "from",
+                                          "pick"
+                                        ],
+                                        "additionalProperties": false
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "additionalProperties": false,
+                                    "dependencies": {
+                                      "read": [
+                                        "liveTrack"
+                                      ]
+                                    }
+                                  },
+                                  "type": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "atLeast": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 1000
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "add"
+                                ],
+                                "additionalProperties": false
+                              },
                               "range": {
                                 "type": "number",
                                 "exclusiveMinimum": 0,
@@ -27681,6 +28089,11 @@
                               "pushOptional": {
                                 "type": "boolean",
                                 "const": true
+                              },
+                              "strikes": {
+                                "type": "integer",
+                                "minimum": 2,
+                                "maximum": 6
                               },
                               "$comment": {}
                             },
@@ -33426,6 +33839,172 @@
                                         ]
                                       }
                                     },
+                                    "damagePlus": {
+                                      "type": "object",
+                                      "properties": {
+                                        "add": {
+                                          "type": "object",
+                                          "properties": {
+                                            "const": {
+                                              "type": "number"
+                                            },
+                                            "field": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
+                                            },
+                                            "derived": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
+                                            },
+                                            "abilityScore": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
+                                            },
+                                            "abilityMod": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
+                                            },
+                                            "abilityModFromField": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
+                                            },
+                                            "skillMod": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
+                                            },
+                                            "saveMod": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
+                                            },
+                                            "liveTrack": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
+                                            },
+                                            "read": {
+                                              "type": "string",
+                                              "enum": [
+                                                "value",
+                                                "filled",
+                                                "remaining",
+                                                "penalty"
+                                              ]
+                                            },
+                                            "livePool": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
+                                            },
+                                            "listSum": {
+                                              "type": "object",
+                                              "properties": {
+                                                "list": {
+                                                  "type": "string",
+                                                  "maxLength": 40,
+                                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                                },
+                                                "column": {
+                                                  "type": "string",
+                                                  "maxLength": 40,
+                                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                                },
+                                                "onlyWhen": {
+                                                  "type": "string",
+                                                  "maxLength": 40,
+                                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                                },
+                                                "$comment": {}
+                                              },
+                                              "required": [
+                                                "list",
+                                                "column"
+                                              ],
+                                              "additionalProperties": false
+                                            },
+                                            "itemStat": {
+                                              "type": "object",
+                                              "properties": {
+                                                "stat": {
+                                                  "type": "string",
+                                                  "maxLength": 40,
+                                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                                },
+                                                "from": {
+                                                  "type": "string",
+                                                  "enum": [
+                                                    "worn",
+                                                    "carried",
+                                                    "all"
+                                                  ]
+                                                },
+                                                "pick": {
+                                                  "type": "string",
+                                                  "enum": [
+                                                    "sum",
+                                                    "max",
+                                                    "min",
+                                                    "count"
+                                                  ]
+                                                },
+                                                "slot": {
+                                                  "type": "string",
+                                                  "maxLength": 40,
+                                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                                },
+                                                "category": {
+                                                  "type": "string",
+                                                  "maxLength": 40,
+                                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                                },
+                                                "tag": {
+                                                  "type": "string",
+                                                  "maxLength": 40,
+                                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                                },
+                                                "default": {
+                                                  "type": "number"
+                                                },
+                                                "$comment": {}
+                                              },
+                                              "required": [
+                                                "from",
+                                                "pick"
+                                              ],
+                                              "additionalProperties": false
+                                            },
+                                            "$comment": {}
+                                          },
+                                          "additionalProperties": false,
+                                          "dependencies": {
+                                            "read": [
+                                              "liveTrack"
+                                            ]
+                                          }
+                                        },
+                                        "type": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "atLeast": {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "maximum": 1000
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "required": [
+                                        "add"
+                                      ],
+                                      "additionalProperties": false
+                                    },
                                     "range": {
                                       "type": "number",
                                       "exclusiveMinimum": 0,
@@ -33439,6 +34018,11 @@
                                     "pushOptional": {
                                       "type": "boolean",
                                       "const": true
+                                    },
+                                    "strikes": {
+                                      "type": "integer",
+                                      "minimum": 2,
+                                      "maximum": 6
                                     },
                                     "$comment": {}
                                   },

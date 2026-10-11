@@ -1559,6 +1559,19 @@ function carriesHidingTraits(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesHidingTraits(one, depth + 1));
 }
 
+/** Weapons put in hand, and amends that add typed damage or strikes (1.301). */
+function carriesConjures(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesConjures(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.conjures !== undefined) return true;
+  const amends = Array.isArray(record.amends) ? record.amends : [];
+  if (amends.some((one) => plainRecord(one)?.damagePlus !== undefined || plainRecord(one)?.strikes !== undefined))
+    return true;
+  return Object.values(record).some((one) => carriesConjures(one, depth + 1));
+}
+
 /** Targets that grow with the sheet, and the same target more than once (1.300). */
 function carriesBeams(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -4104,6 +4117,13 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Weapons put in hand, and amends that add typed damage or strikes, 1.301.
+  if (
+    !declaresApi(301) &&
+    (carriesConjures(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesConjures(document)))
+  ) {
+    return "A ruleset with weapons put in hand, or amends that add damage of a type or strikes, requires schemaVersion 2 and capabilityApi 1.301 or newer";
   }
   // Targets that grow with the sheet, or the same target again, 1.300.
   if (

@@ -3216,6 +3216,20 @@ const catalogMechanicsObject = z
      *  API 1.258), as long as nothing they are immune to: 5e's Aura of Protection, whose condition
      *  spreads the aura. Never written to the sheet; the fight ends, they are gone with it. */
     keepsOn: uniqueIds(4).optional(),
+    /** Used, it puts a weapon in its user's hand for the rest of the fight (Capability API 1.301),
+     *  one of `items` (melee weapons of the item catalogs) picked as it is used, or one they already
+     *  hold that `binds` matches: 5e's Pact of the Blade. Whatever amends this entry amends that
+     *  weapon's attacks (Lifedrinker, Thirsting Blade); with `proficient` it is used with proficiency,
+     *  and its blows carry `qualities` (magical). Another use replaces it. */
+    conjures: z
+      .object({
+        items: z.array(catalogEntryRef).min(1).max(40),
+        proficient: z.literal(true).optional(),
+        qualities: z.array(sheetId).min(1).max(8).optional(),
+        binds: itemMatchSchema.optional(),
+      })
+      .strict()
+      .optional(),
     /** Held on a sheet's list, how it changes one named entry of its holder's every time they use it
      *  (Capability API 1.297), stacking with every other such: 5e's Agonizing Blast adds the
      *  Charisma modifier to eldritch blast's damage on a hit (`damageAdd`), Eldritch Spear makes its
@@ -3227,14 +3241,33 @@ const catalogMechanicsObject = z
           .object({
             entry: catalogEntryRef,
             damageAdd: rulesetValueRefSchema.optional(),
+            /** More damage of its own type on a hit (Capability API 1.301), at least `atLeast`:
+             *  Lifedrinker's necrotic equal to the Charisma modifier, minimum 1. */
+            damagePlus: z
+              .object({
+                add: rulesetValueRefSchema,
+                type: sheetId.optional(),
+                atLeast: z.number().int().min(0).max(1000).optional(),
+              })
+              .strict()
+              .optional(),
             range: z.number().finite().gt(0).max(10000).optional(),
             push: z.number().finite().gt(0).max(10000).optional(),
             pushOptional: z.literal(true).optional(),
+            /** At least this many strikes for one spend of its budget (Capability API 1.301): Thirsting
+             *  Blade's two attacks with the pact weapon. */
+            strikes: z.number().int().min(2).max(6).optional(),
           })
           .strict()
-          .refine((amend) => amend.damageAdd !== undefined || amend.range !== undefined || amend.push !== undefined, {
-            message: 'An amend changes something: "damageAdd", "range" or "push"',
-          })
+          .refine(
+            (amend) =>
+              amend.damageAdd !== undefined ||
+              amend.damagePlus !== undefined ||
+              amend.range !== undefined ||
+              amend.push !== undefined ||
+              amend.strikes !== undefined,
+            { message: 'An amend changes something: "damageAdd", "damagePlus", "range", "push" or "strikes"' },
+          )
           .refine((amend) => !amend.pushOptional || amend.push !== undefined, {
             message: '"pushOptional" offers its "push" or none, so it has one',
             path: ["pushOptional"],
@@ -3668,6 +3701,16 @@ const catalogMechanicsSchema: z.ZodType<
         message: `"${key}" is on an entry pointed at creatures, not an area or its user`,
       });
     }
+  }
+  if (
+    mechanics.conjures &&
+    (mechanics.kind !== "utility" || (mechanics.targets ?? "self") !== "self" || mechanics.area)
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["conjures"],
+      message: '"conjures" is on a "utility" entry its user uses on themselves',
+    });
   }
   if (mechanics.oncePerTarget && (mechanics.targets === "self" || mechanics.area)) {
     ctx.addIssue({
@@ -5686,6 +5729,7 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     summons: true,
     reaction: true,
     scales: true,
+    conjures: true,
     targetsScale: true,
     targetsRepeat: true,
     gives: true,
@@ -13110,6 +13154,17 @@ export function rulesetCatalogEntryIssues(
       );
     mechanics?.keepsOn?.forEach((kept, keptIndex) => {
       if (!liveConditions.has(kept)) add([index, "mechanics", "keepsOn", keptIndex], `Unknown condition "${kept}"`);
+    });
+    mechanics?.conjures?.items.forEach((ref, refIndex) => {
+      const catalogId = ref.slice(0, ref.indexOf("/"));
+      const catalog = definition.catalogs?.find((one) => one.id === catalogId);
+      // A catalog kept in its own file has no entries here yet: the whole ruleset's pass checks it.
+      if (!catalog) return add([index, "mechanics", "conjures", "items", refIndex], `Unknown entry "${ref}"`);
+      if (!catalog.entries) return;
+      const attack = catalog.entries.find((one) => `${catalogId}/${one.id}` === ref)?.item?.attack;
+      if (!attack) add([index, "mechanics", "conjures", "items", refIndex], `"${ref}" is not a weapon`);
+      else if (attack.range || attack.ammo || attack.clip)
+        add([index, "mechanics", "conjures", "items", refIndex], `"${ref}" is not a melee weapon`);
     });
     if (mechanics?.oncePerTarget && !definition.rests.some((one) => one.id === mechanics.oncePerTarget!.until)) {
       add([index, "mechanics", "oncePerTarget", "until"], `Unknown rest "${mechanics.oncePerTarget.until}"`);

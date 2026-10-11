@@ -850,6 +850,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["sphere", say({ type: "sphere", actorId: "brenna", how: "lifted", targetId: "lurker" })],
     ["sphere", say({ type: "sphere", actorId: "brenna", how: "put-down", targetId: "lurker" })],
     ["lair", say({ type: "lair", actorId: "lurker", optionId: "quake", label: "Tremor" })],
+    ["legendaryResistance", say({ type: "legendaryResistance", actorId: "lurker", save: "dex_save", left: 2 })],
     ["left", say({ type: "left", actorId: "lurker", label: "Teleport" })],
     ["surprised", say({ type: "surprised", actorIds: ["brenna", "lurker"] })],
     ["surpriseOver", say({ type: "surpriseOver", actorId: "lurker" })],
@@ -1228,6 +1229,10 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.equal(
     struck("critical", 30, 0, true),
     "Brenna's Mace strikes the Wall of Ice for 30 and breaks that section.",
+  );
+  assert.equal(
+    printed.get("legendaryResistance"),
+    "Thorn Lurker chooses to succeed on the Dexterity save instead: legendary resistance, 2 left.",
   );
   assert.equal(printed.get("prop"), "Brenna's Mace strikes Oil Jar for 3; it has 2 left.");
   const broke = (outcome: "hit" | "miss" | "critical" | "area", dealt: number, health: number, broken?: true) =>

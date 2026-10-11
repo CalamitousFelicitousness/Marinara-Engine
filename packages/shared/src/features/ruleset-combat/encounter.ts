@@ -1667,6 +1667,8 @@ function itemUseMechanics(
   if (item.tags?.length) action.qualities = [...new Set([...(action.qualities ?? []), ...item.tags])];
   if (aim.target !== undefined) action.target = aim.target;
   if (use.casts) action.casts = use.casts;
+  // No bigger than it holds (1.312): a scroll of Resilient Sphere.
+  if (use.targetsUpTo) action.targetsUpTo = use.targetsUpTo;
   const restored = amountOf(use.restore?.amount);
   if (use.restore && restored) action.restore = { pool: use.restore.pool, amount: restored };
   return action;

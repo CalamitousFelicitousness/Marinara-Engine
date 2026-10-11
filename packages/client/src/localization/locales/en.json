@@ -1329,6 +1329,7 @@
   "game.combat.ruleset.event.lair": "{{actor}}'s lair acts: {{label}}.",
   "game.combat.ruleset.event.left": "{{actor}} leaves the fight with {{label}}.",
   "game.combat.ruleset.event.leftAlong": "{{actor}} leaves the fight along with {{by}}'s {{label}}.",
+  "game.combat.ruleset.event.legendaryResistance": "{{actor}} chooses to succeed on the {{save}} instead: legendary resistance, {{left}} left.",
   "game.combat.ruleset.event.letFall": "{{actor}} drops {{items}} ({{condition}}).",
   "game.combat.ruleset.event.lookedBack": "{{actor}} looks at {{target}} again.",
   "game.combat.ruleset.event.lowered": "{{actor}}'s {{label}} takes {{by}} off {{target}}'s {{to}}, to {{total}}.",

@@ -1559,6 +1559,21 @@ function carriesHidingTraits(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesHidingTraits(one, depth + 1));
 }
 
+/** A creature's legendary resistances, and an item's use no bigger than it reaches (1.312). */
+function carriesLegendaryResistance(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesLegendaryResistance(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.legendaryResistance !== undefined) return true;
+  // An item's use no bigger than it reaches (1.312); an entry's own came with 1.309.
+  const use = plainRecord(record.use);
+
+  if (Array.isArray(record.moreUses) && record.moreUses.some((one) => plainRecord(one)?.targetsUpTo !== undefined))
+    return true;
+  return Object.values(record).some((one) => carriesLegendaryResistance(one, depth + 1));
+}
+
 /** Lair actions and a lair's count (1.310). */
 function carriesLair(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -4255,6 +4270,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Legendary Resistance, 1.312.
+  if (
+    !declaresApi(312) &&
+    (carriesLegendaryResistance(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesLegendaryResistance(document)))
+  ) {
+    return "A ruleset with a creature's legendary resistances or an item use's targetsUpTo requires schemaVersion 2 and capabilityApi 1.312 or newer";
   }
   // Lair actions, 1.310.
   if (

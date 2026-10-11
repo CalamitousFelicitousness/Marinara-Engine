@@ -16272,6 +16272,11 @@
                       "minimum": -100,
                       "maximum": 1000
                     },
+                    "legendaryResistance": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 20
+                    },
                     "actions": {
                       "type": "array",
                       "items": {

@@ -4885,6 +4885,9 @@ const creatureFields = {
   /** The count its `lair` actions are taken on (Capability API 1.310), losing ties: 20 when left
    *  out. */
   lairInitiative: z.number().int().min(-100).max(1000).optional(),
+  /** How many failed saves it may turn into successes (Capability API 1.312), each fight: 5e's
+   *  Legendary Resistance (3/Day). */
+  legendaryResistance: z.number().int().min(1).max(20).optional(),
   actions: z.array(creatureActionSchema).min(1).max(RULESET_CREATURE_MAX_ACTIONS),
   /** Catalog spells cast without spending anything off a sheet (Capability API 1.118). Omitted
    *  uses means at will; a coven spell shares its uses while enough members stand nearby. */
@@ -5987,6 +5990,9 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     /** Using it casts an entry of this catalog (Capability API 1.175), as a scroll or a wand does: a
      *  condition that ends when its holder casts from that catalog ends when they use it. */
     casts: sheetId.optional(),
+    /** Only a creature this size or smaller is a target (Capability API 1.312), one of
+     *  `combat.sizes`: a scroll of Resilient Sphere's "Large size or smaller". */
+    targetsUpTo: sheetId.optional(),
     charges: z.number().int().min(1).max(RULESET_ITEM_CHARGES_MAX).optional(),
     /** A pool of the user's sheet it gives back some of, as a blood bag gives back blood. */
     restore: z
@@ -12439,6 +12445,18 @@ function useIssues(
   componentIssues(definition, use.components, [...at, "components"], add);
   if (use.casts !== undefined)
     castsIssues(definition, [use.casts], at, (_path, message) => add([...at, "casts"], message));
+  // The biggest it reaches is one of the fight's sizes, and it is aimed at somebody (1.312).
+  if (use.targetsUpTo !== undefined) {
+    if (!definition.combat?.sizes?.order.some((one) => one.id === use.targetsUpTo)) {
+      add(
+        [...at, "targetsUpTo"],
+        definition.combat?.sizes
+          ? `Unknown size "${use.targetsUpTo}"`
+          : '"targetsUpTo" reads combat.sizes, so the block declares "sizes" too',
+      );
+    }
+    if (use.area) add([...at, "targetsUpTo"], '"targetsUpTo" is on a use pointed at a creature, not an area');
+  }
   // What it puts on its own reader (1.306): a scroll of Sunbeam's mote.
   use.appliesSelf?.forEach((applies, index) => {
     if (!conditions.has(applies.condition)) {

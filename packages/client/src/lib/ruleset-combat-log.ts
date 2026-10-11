@@ -846,6 +846,13 @@ export function rulesetCombatEventLine(
         roll: rulesetRollText({ ...event, modifier: 0, total: event.kept }, t),
         from: event.from,
       });
+    // A failed save turned into a success (1.312).
+    case "legendaryResistance":
+      return key("legendaryResistance", {
+        actor: names.combatant(event.actorId),
+        save: names.save(event.save),
+        left: event.left,
+      });
     case "lair":
       return key("lair", { actor: names.combatant(event.actorId), label: event.label });
     case "signature":

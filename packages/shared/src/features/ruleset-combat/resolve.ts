@@ -1219,7 +1219,29 @@ function deathSave(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
 
 // ── Saves ──
 
+/** A save, and a creature's legendary resistance (Capability API 1.312) turning a failure into a
+ *  success while it has uses left: 5e's "If the dragon fails a saving throw, it can choose to succeed
+ *  instead." A creature run by the Engine always chooses to. */
 function rollSave(
+  ctx: RulesetCombatContext,
+  combatant: RulesetCombatant,
+  save: string,
+  difficulty: number,
+  sourceId?: string,
+  from?: RulesetCombatCell | null,
+  against?: RulesetSaveAgainst,
+  lean?: "advantage" | "disadvantage",
+): boolean {
+  if (throwSave(ctx, combatant, save, difficulty, sourceId, from, against, lean)) return true;
+  const uses = combatant.block?.legendaryResistance;
+  const spent = combatant.legendaryResisted ?? 0;
+  if (!uses || spent >= uses || combatant.object || !rulesetCombatStanding(combatant)) return false;
+  combatant.legendaryResisted = spent + 1;
+  ctx.events.push({ type: "legendaryResistance", actorId: combatant.id, save, left: uses - spent - 1 });
+  return true;
+}
+
+function throwSave(
   ctx: RulesetCombatContext,
   combatant: RulesetCombatant,
   save: string,
@@ -1350,7 +1372,7 @@ function rollSave(
   if (!success && !rerolled) {
     const rescue = rescueEntry(ctx, combatant, "saves", undefined, undefined, save);
     if (rescue?.rescue?.by === "reroll")
-      return rollSave(ctx, combatant, save, difficulty, sourceId, from, against, lean, true);
+      return throwSave(ctx, combatant, save, difficulty, sourceId, from, against, lean, true);
     if (rescue) return true;
   }
   return success;

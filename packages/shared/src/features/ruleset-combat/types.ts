@@ -522,6 +522,8 @@ export interface RulesetStatBlock {
   signaturePoints?: number;
   /** The count its lair actions are taken on (1.310), losing ties; 20 when left out. */
   lairInitiative?: number;
+  /** How many failed saves it may turn into successes (1.312): 5e's Legendary Resistance (3/Day). */
+  legendaryResistance?: number;
   /** What this creature adds to the first qualifying hit of a period, all by itself. */
   riders?: RulesetCombatRider[];
 }
@@ -1167,6 +1169,8 @@ export interface RulesetCombatant {
   signature?: { points: number; max: number };
   /** It fights in its lair (1.310): its lair actions are taken, on `lairAt`, losing ties. */
   lair?: { at: number; last?: { round: number; id: string } };
+  /** How many of its block's legendary resistances it has spent (1.312). */
+  legendaryResisted?: number;
   /** Strikes in hand: what is left of a spend that bought several. Absent when there are none, and
    *  cleared at the end of the turn they were bought on, so nothing carries into the next one. */
   strikesLeft?: number;
@@ -2104,6 +2108,8 @@ export type RulesetCombatEvent =
       health: number;
       broken?: true;
     }
+  /** A failed save turned into a success by a legendary resistance (1.312), and how many are left. */
+  | { type: "legendaryResistance"; actorId: string; save: string; left: number }
   /** A lair action taken on its lair's count (1.310); what it does follows. */
   | { type: "lair"; actorId: string; optionId: string; label: string }
   /** A spend that bought several strikes, and what is left of it after this one. */

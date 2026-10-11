@@ -683,7 +683,9 @@ export function rulesetCombatEventLine(
     case "recharged":
       return key("recharged", { label: event.label, roll: event.roll, amount: event.amount });
     case "conjured":
-      return key("conjured", { actor: names.combatant(event.actorId), label: event.label, item: event.item });
+      return event.gone
+        ? key("conjuredGone", { actor: names.combatant(event.actorId), item: event.item })
+        : key("conjured", { actor: names.combatant(event.actorId), label: event.label, item: event.item });
     case "fake":
       return key(event.dud ? "fakeDud" : "fake", { label: event.label, truly: event.truly });
     case "gate":

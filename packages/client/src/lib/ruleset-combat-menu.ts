@@ -134,6 +134,8 @@ export function rulesetOptionLabel(option: DirectedRulesetOption, t: TFunction):
   // blow with a weapon in the off hand.
   if (option.kind === "reload") return t("game.combat.ruleset.menu.reload", { weapon: option.label });
   if (option.offHand) return t("game.combat.ruleset.menu.offHand", { weapon: option.label });
+  // Putting away a weapon put in hand (1.303).
+  if (option.dismiss) return t("game.combat.ruleset.menu.dismiss", { item: option.label });
   // A switch says which way it turns the item, which is the Engine's own word too.
   if (option.kind === "switch")
     return t(option.on ? "game.combat.ruleset.menu.switchOff" : "game.combat.ruleset.menu.switchOn", {

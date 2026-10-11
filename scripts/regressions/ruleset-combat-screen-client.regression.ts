@@ -976,6 +976,10 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.equal(printed.get("fake"), "The Potion of healing was really Potion of poison.");
   assert.equal(printed.get("conjured"), "Corwin uses Pact of the Blade and holds Longsword.");
   assert.equal(
+    say({ type: "conjured", actorId: "corwin", optionId: "ability:1:0", label: "", item: "Longsword", gone: true }),
+    "Corwin's Longsword vanishes.",
+  );
+  assert.equal(
     say({
       type: "fake",
       actorId: "corwin",

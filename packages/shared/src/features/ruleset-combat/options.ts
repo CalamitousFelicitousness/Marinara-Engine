@@ -1388,6 +1388,34 @@ export function rulesetUsedOnName(combatant: Pick<RulesetCombatant, "name">): st
   return normalizeCharacterLookupName(combatant.name);
 }
 
+/** Whether a name is borne by nobody else in this fight (1.303): only then does it say who is meant. */
+function usedOnNameUnique(state: RulesetEncounterState, combatant: RulesetCombatant): boolean {
+  const name = rulesetUsedOnName(combatant);
+  return !state.combatants.some((other) => other.id !== combatant.id && rulesetUsedOnName(other) === name);
+}
+
+/** How a combatant is written down as used on (1.303): by name and id, so a second creature of the
+ *  same name is not taken for the first, and by name alone too while nobody else in the fight bears
+ *  it, which is what a later fight knows them by. */
+export function rulesetUsedOnMarks(state: RulesetEncounterState, combatant: RulesetCombatant): string[] {
+  const name = rulesetUsedOnName(combatant);
+  const own = `${name}#${combatant.id}`.slice(0, 200);
+  return usedOnNameUnique(state, combatant) ? [own, name] : [own];
+}
+
+/** Whether a list of marks means this combatant (1.303): by its name and id, or by a name only it
+ *  bears in this fight. Two of one name in a fight are told apart, and neither is taken for one met
+ *  under that name before. */
+export function rulesetUsedOnMeans(
+  state: RulesetEncounterState,
+  used: readonly string[],
+  combatant: RulesetCombatant,
+): boolean {
+  const name = rulesetUsedOnName(combatant);
+  if (used.includes(`${name}#${combatant.id}`.slice(0, 200))) return true;
+  return used.includes(name) && usedOnNameUnique(state, combatant);
+}
+
 /** Whoever this combatant may not point anything at: the source of a condition on them that says
  *  so. A charm keeps a character from turning on whoever charmed them, in the ruleset's own words. */
 export function rulesetForbiddenTargets(
@@ -1573,7 +1601,7 @@ export function rulesetOptionTargets(
         // "One creature other than you" (1.251).
         if (cure?.notSelf && combatant.id === actor.id) return false;
         // Used on them already since the rest that frees it (1.299).
-        if (cure?.oncePerTarget && rulesetUsedOn(actor, cure).includes(rulesetUsedOnName(combatant))) return false;
+        if (cure?.oncePerTarget && rulesetUsedOnMeans(state, rulesetUsedOn(actor, cure), combatant)) return false;
         if (option.targets.side === "self") return combatant.id === actor.id;
         // A strike the dice aimed (1.259) is at whoever they picked, friend or foe.
         if (actor.flags.compelled === "strike" && option.targets.side === "enemy" && combatant.id !== actor.id)
@@ -2217,9 +2245,11 @@ function optionFrom(
       : {}),
     ...(rulesetFreeStrike(actor, action) ? { strikes: actor.strikesLeft } : {}),
     ...(action.heal ? { heals: true } : {}),
-    ...(action.switches
-      ? { on: "item" in action.switches ? rulesetItemOn(actor, action.switches.item) : !actor.doused }
-      : {}),
+    ...(action.switches && "conjured" in action.switches
+      ? { dismiss: true as const }
+      : action.switches
+        ? { on: "item" in action.switches ? rulesetItemOn(actor, action.switches.item) : !actor.doused }
+        : {}),
     ...(action.restore ? { restores: action.restore.pool } : {}),
   };
   if (paid && paid.cost.length > 0) option.cost = paid.cost;

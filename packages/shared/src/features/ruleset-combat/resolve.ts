@@ -165,7 +165,7 @@ import {
   rulesetOptionTargets,
   rulesetUsedOn,
   rulesetUsedOnKey,
-  rulesetUsedOnName,
+  rulesetUsedOnMarks,
   rulesetProneCondition,
   rulesetReactionPointsAtSource,
   rulesetReactionTarget,
@@ -1072,6 +1072,7 @@ function dropToZero(ctx: RulesetCombatContext, target: RulesetCombatant): void {
     target.diedRound = ctx.state.round;
     endSummons(ctx, target);
     endZones(ctx, target);
+    unconjureAll(ctx, target);
   }
   endConcentration(ctx, target, "down");
   endConditionsFromSource(ctx, target);
@@ -1137,6 +1138,7 @@ function addDeathFailures(ctx: RulesetCombatContext, target: RulesetCombatant, a
   target.diedRound = ctx.state.round;
   endSummons(ctx, target);
   endZones(ctx, target);
+  unconjureAll(ctx, target);
   target.dying = false;
   ctx.events.push({
     type: "dying",
@@ -3214,18 +3216,55 @@ function conjure(ctx: RulesetCombatContext, actor: RulesetCombatant, action: Rul
     actor.actions = actor.actions.filter((one) => rulesetActionItemIndex(one) !== made.bound);
   }
   actor.actions.push(...structuredClone(made.actions));
+  // Put away again for nothing (1.303): "if you dismiss the weapon (no action required)".
+  actor.actions.push({
+    id: `conjured:${action.id}:dismiss`,
+    kind: "switch",
+    label: made.item,
+    budget: action.budget,
+    free: true,
+    targets: { side: "self", count: 0 },
+    switches: { conjured: action.id },
+  });
   actor.conjured = { ...actor.conjured, [action.id]: { mode, ...(was ? { was } : {}) } };
   // Named as the entry, not as the mode it was used in: "Pact of the Blade", not "(Longsword)".
   const label = actor.actions.find((one) => one.id === action.id)?.label ?? action.label;
   ctx.events.push({ type: "conjured", actorId: actor.id, optionId: action.id, label, item: made.item });
 }
 
+/** A weapon put in hand gone again (1.303): dismissed, or its maker dead. A bound weapon is what it
+ *  was before. */
+function unconjure(ctx: RulesetCombatContext, actor: RulesetCombatant, actionId: string): void {
+  const made = actor.conjured?.[actionId];
+  if (!made) return;
+  const bound = actor.conjurable?.[`${actionId}|${made.mode}`]?.bound;
+  const item = actor.conjurable?.[`${actionId}|${made.mode}`]?.item ?? "";
+  actor.actions = actor.actions.filter(
+    (one) =>
+      !one.id.startsWith(`conjured:${actionId}:`) && (bound === undefined || rulesetActionItemIndex(one) !== bound),
+  );
+  if (bound !== undefined && made.was) actor.actions.push(...structuredClone(made.was));
+  delete actor.conjured![actionId];
+  ctx.events.push({ type: "conjured", actorId: actor.id, optionId: actionId, label: "", item, gone: true });
+}
+
+/** Everything its maker put in hand gone with them (1.303). */
+function unconjureAll(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
+  for (const id of Object.keys(actor.conjured ?? {})) unconjure(ctx, actor, id);
+}
+
 /** Who an entry used once a creature until a rest (1.299) was used on now, written where
  *  `rulesetUsedOn` reads it. */
-function markUsedOn(actor: RulesetCombatant, action: RulesetCombatAction, targets: RulesetCombatant[]): void {
+function markUsedOn(
+  state: RulesetEncounterState,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  targets: RulesetCombatant[],
+): void {
   if (!action.oncePerTarget || targets.length === 0) return;
   const key = rulesetUsedOnKey(action);
-  const names = [...new Set([...rulesetUsedOn(actor, action), ...targets.map(rulesetUsedOnName)])].slice(-60);
+  const marks = targets.flatMap((target) => rulesetUsedOnMarks(state, target));
+  const names = [...new Set([...rulesetUsedOn(actor, action), ...marks])].slice(-60);
   if (actor.sheet) actor.sheet.live = { ...actor.sheet.live, usedOn: { ...actor.sheet.live.usedOn, [key]: names } };
   else actor.usedOn = { ...actor.usedOn, [key]: names };
 }
@@ -3811,6 +3850,9 @@ function applyChoice(
       else working.doused = true;
       if (switching.free) working.flags.lightSwitched = true;
       ctx.events.push({ type: "switch", actorId: working.id, optionId: switching.id, label: switching.label, on });
+    } else if (switching?.switches && "conjured" in switching.switches) {
+      // A weapon put in hand, put away for nothing (1.303).
+      unconjure(ctx, working, switching.switches.conjured);
     } else if (switching?.switches && "item" in switching.switches) {
       const on = !rulesetItemOn(working, switching.switches.item);
       working.on = { ...(working.on ?? {}), [switching.switches.item]: on };
@@ -3934,7 +3976,7 @@ function applyChoice(
   const following = option.followUp ? working.flags.followUps?.find((one) => one.id === action.id) : undefined;
   if (following) working.flags.followUps = working.flags.followUps!.filter((one) => one !== following);
   if (!following?.paid) spendAvailability(ctx, working, action);
-  markUsedOn(working, action, workingTargets);
+  markUsedOn(ctx.state, working, action, workingTargets);
   if (action.conjures && mode) conjure(ctx, working, action, mode.id);
   if (!option.followUp && action.followUp) {
     (working.flags.followUps ??= []).push({
@@ -4847,6 +4889,8 @@ function takeReaction(
   spendAvailability(ctx, taking, action);
   const cancelSave = action.reaction?.cancelSave;
   if (cancelSave && !rollSave(ctx, taking, cancelSave.save, cancelSave.dc, trigger.sourceId)) {
+    // A reaction is acting too (1.303): One with Shadows ends on it, as on one resolved in full.
+    stirs(ctx, taking, "acted");
     holderActed(ctx, taking, action);
     goOn(definition, combat, ctx);
     noteOutcome(ctx);
@@ -4912,6 +4956,8 @@ function takeReaction(
       by,
       total: roll.total,
     });
+    // A reaction is acting too (1.303): One with Shadows ends on it, as on one resolved in full.
+    stirs(ctx, taking, "acted");
     holderActed(ctx, taking, action);
     answered();
     noteOutcome(ctx);
@@ -4943,6 +4989,8 @@ function takeReaction(
       label: action.label,
       to: trigger.label,
     });
+    // A reaction is acting too (1.303): One with Shadows ends on it, as on one resolved in full.
+    stirs(ctx, taking, "acted");
     holderActed(ctx, taking, action);
     answered();
     noteOutcome(ctx);
@@ -7110,6 +7158,7 @@ function slay(ctx: RulesetCombatContext, target: RulesetCombatant, sourceId: str
   target.diedRound = ctx.state.round;
   endSummons(ctx, target);
   endZones(ctx, target);
+  unconjureAll(ctx, target);
 }
 
 /** An action with its charge added to it (1.181): the clauses after its own, the charge's save as one

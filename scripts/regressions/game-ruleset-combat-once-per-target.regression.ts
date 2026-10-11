@@ -145,7 +145,10 @@ try {
     const briefly = use(quasit.state, "Brief", ["a"]);
     assert.equal(refusal(briefly), undefined);
     live = liveOf(briefly.state);
-    assert.deepEqual(live.usedOn, { "long|spells/chains": ["imp", "quasit"], "short|spells/brief": ["imp"] });
+    assert.deepEqual(live.usedOn, {
+      "long|spells/chains": ["imp#a", "imp", "quasit#b", "quasit"],
+      "short|spells/brief": ["imp#a", "imp"],
+    });
     assert.deepEqual(rulesetLiveStateSchema.parse(live).usedOn, live.usedOn, "a stored live state keeps it");
   }
 
@@ -160,7 +163,7 @@ try {
     const long = rest(short, "long");
     assert.equal(long.usedOn, undefined, "a long rest clears it");
     assert.deepEqual(targetsOf(fight(long), "Chains"), ["a", "b"]);
-    assert.deepEqual(rest(live, "long").usedOn, { "short|spells/brief": ["imp"] }, "only its own");
+    assert.deepEqual(rest(live, "long").usedOn, { "short|spells/brief": ["imp#a", "imp"] }, "only its own");
   }
 
   // ── Refusals ──

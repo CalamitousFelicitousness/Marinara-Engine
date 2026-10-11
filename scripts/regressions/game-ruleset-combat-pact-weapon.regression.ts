@@ -30,6 +30,7 @@ import {
   type RulesetEncounterState,
   type RulesetSheetItem,
 } from "../../packages/shared/src/index.js";
+import { rulesetOptionLabel } from "../../packages/client/src/lib/ruleset-combat-menu.js";
 
 const dataDir = mkdtempSync(join(tmpdir(), "marinara-pact-weapon-"));
 process.env.DATA_DIR = dataDir;
@@ -61,6 +62,8 @@ try {
     { id: "greataxe", label: "Greataxe", item: weapon("1d12", "slashing") },
     { id: "bow", label: "Bow", item: weapon("1d8", "piercing", { range: { normal: 80, long: 320 } }) },
     { id: "rope", label: "Rope", item: { category: "gear" } },
+    // Thrown, and struck with in reach (1.303).
+    { id: "dagger", label: "Dagger", item: weapon("1d4", "piercing", { reach: 5, range: { normal: 20, long: 60 } }) },
   ];
   const feature = (id: string, mechanics: Record<string, unknown>) =>
     ({
@@ -126,7 +129,12 @@ try {
     worn: true,
     name: "Dagger",
   };
-  const fight = (held: RulesetCatalogEntry[], cha = 16, items: RulesetSheetItem[] = []): RulesetEncounterState => {
+  const fight = (
+    held: RulesetCatalogEntry[],
+    cha = 16,
+    items: RulesetSheetItem[] = [],
+    allies: boolean = false,
+  ): RulesetEncounterState => {
     const state = createRulesetEncounter({
       definition,
       seed: 1,
@@ -157,13 +165,28 @@ try {
             actions: [{ name: "Claw", budget: "action", toHit: 4, damage: { count: 1, sides: 4, flat: 0 } }],
           },
         },
+        // Somebody left standing, so the fight goes on past its warlock.
+        ...(allies
+          ? [
+              {
+                id: "b",
+                name: "B",
+                side: "party" as const,
+                build: rulesetSheetBuildSchema.parse({
+                  abilities: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 },
+                  fields: { level: 5, ac: 12, speed: 30, hp_max: 300 },
+                }),
+                live: {},
+              },
+            ]
+          : []),
       ],
       board: {
         grid: { width: 10, height: 5, tiles: Array.from({ length: 5 }, () => Array(10).fill("plains")) } as never,
-        placements: { lock: { x: 2, y: 2 }, a: { x: 3, y: 2 } },
+        placements: { lock: { x: 2, y: 2 }, a: { x: 3, y: 2 }, ...(allies ? { b: { x: 5, y: 2 } } : {}) },
       },
     });
-    state.order = ["lock", "a"];
+    state.order = allies ? ["lock", "a", "b"] : ["lock", "a"];
     state.turn = 0;
     return state;
   };
@@ -197,7 +220,7 @@ try {
     return take(state, "Pact", { mode: mode.id });
   };
   const actionOf = (state: RulesetEncounterState, label: string) =>
-    rulesetCombatant(state, "lock")!.actions.find((one) => one.label === label);
+    rulesetCombatant(state, "lock")!.actions.find((one) => one.label === label && one.kind !== "switch");
 
   // ── Put in hand, picked as it is used ──
   {
@@ -226,6 +249,70 @@ try {
     const axe = conjure(step.state, "Greataxe");
     assert.equal(actionOf(axe.state, "Longsword"), undefined, "the longsword is gone");
     assert.ok(actionOf(axe.state, "Greataxe"));
+  }
+
+  // ── Dismissed for nothing, and gone with its maker (1.303) ──
+  {
+    const state = fight([pact], 16, [flameTongue]);
+    const dismissOf = (at: RulesetEncounterState) =>
+      rulesetCombatOptions(definition, at, "lock").find((one) => one.dismiss);
+    assert.equal(dismissOf(state), undefined, "nothing to dismiss yet");
+    const sword = conjure(state, "Longsword");
+    const dismiss = dismissOf(sword.state);
+    assert.ok(dismiss, "dismissing is offered");
+    assert.equal(dismiss.label, "Longsword");
+    assert.equal(dismiss.budget, undefined, "for no action");
+    const t = ((key: string, values: { item: string }) => `${key}:${values.item}`) as never;
+    assert.equal(rulesetOptionLabel(dismiss, t), "game.combat.ruleset.menu.dismiss:Longsword");
+    const gone = take(sword.state, "Longsword", { optionId: dismiss.id });
+    assert.equal(actionOf(gone.state, "Longsword"), undefined, "dismissed");
+    assert.equal(dismissOf(gone.state), undefined);
+    assert.deepEqual(rulesetCombatant(gone.state, "lock")!.conjured, {});
+    const event = gone.events.find((one) => one.type === "conjured");
+    assert.deepEqual(event && { item: event.item, gone: event.gone }, { item: "Longsword", gone: true });
+    // A bound weapon dismissed is what it was.
+    const bound = conjure(fight([pact], 16, [flameTongue]), "Flame Tongue");
+    const back = take(bound.state, "Flame Tongue", { optionId: dismissOf(bound.state)!.id });
+    assert.ok(actionOf(back.state, "Flame Tongue"), "still held");
+    assert.equal(actionOf(back.state, "Flame Tongue")!.entry, undefined, "and no longer the pact's");
+    // A thrown weapon is a melee weapon too.
+    const withDagger = parsed(
+      fiveE((doc) => {
+        doc.catalogs
+          .find((one: { id: string }) => one.id === "features")
+          .entries[0].mechanics.conjures.items.push("gear/dagger");
+      }),
+    );
+    assert.ok(withDagger);
+    // Its maker dead, it is gone.
+    const dying = conjure(fight([pact], 16, [], true), "Longsword");
+    const lock = rulesetCombatant(dying.state, "lock")!;
+    const foe = rulesetCombatant(dying.state, "a")!;
+    foe.actions.push({
+      id: "kill",
+      kind: "block",
+      label: "Kill",
+      budget: "action",
+      targets: { side: "enemy", count: 1 },
+      autoHit: true,
+      damage: { count: 0, sides: 0, flat: 500 },
+    } as never);
+    // Down and dying, it is still in hand; hurt while dying until dead, it is not.
+    let killed = { state: dying.state, events: [] as RulesetCombatStep["events"] };
+    for (let blow = 0; blow < 4 && !rulesetCombatant(killed.state, "lock")!.defeated; blow++) {
+      killed.state.turn = 1;
+      const striker = rulesetCombatant(killed.state, "a")!;
+      for (const key of Object.keys(striker.budgets)) striker.budgets[key] = 9;
+      killed = applyRulesetCombatChoice(
+        definition,
+        killed.state,
+        { actorId: "a", optionId: "kill", targetIds: ["lock"] },
+        () => 15,
+      );
+      if (blow === 0) assert.ok(actionOf(killed.state, "Longsword"), "kept while dying");
+    }
+    assert.ok(rulesetCombatant(killed.state, "lock")!.defeated, "dead");
+    assert.equal(actionOf(killed.state, "Longsword"), undefined, "gone with its maker");
   }
 
   // ── Lifedrinker and Thirsting Blade ride on it ──
@@ -258,7 +345,9 @@ try {
     assert.equal(tongue.entry, "features/pact");
     assert.equal(tongue.damage!.plus![0]!.type, "necrotic", "Lifedrinker on the bound weapon");
     assert.equal(
-      rulesetCombatant(bound.state, "lock")!.actions.filter((one) => one.label === "Flame Tongue").length,
+      rulesetCombatant(bound.state, "lock")!.actions.filter(
+        (one) => one.label === "Flame Tongue" && one.kind !== "switch",
+      ).length,
       1,
       "the same weapon, not two",
     );

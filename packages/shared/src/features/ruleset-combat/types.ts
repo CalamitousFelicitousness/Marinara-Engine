@@ -841,7 +841,7 @@ export interface RulesetCombatAction {
   clip?: { item: number; max: number };
   /** Turning one of the holder's items on or off (1.165): its place in `sheet.items`. */
   /** What it turns: an item (1.165), or the light its holder carries (1.290). */
-  switches?: { item: number } | { carried: true };
+  switches?: { item: number } | { carried: true } | { conjured: string };
   /** Other ways to make this attack, chosen with it like an initiative style. */
   modes?: RulesetCombatMode[];
   /** How many one attack shoots when a mode says so, in place of its ammunition's own. */
@@ -1958,7 +1958,15 @@ export type RulesetCombatEvent =
   /** A fake just used, found out (1.74): what it truly was, and whether it did nothing. */
   | { type: "fake"; actorId: string; optionId: string; label: string; truly: string; dud?: true }
   /** A weapon put in hand (1.301): Pact of the Blade's. */
-  | { type: "conjured"; actorId: string; optionId: string; label: string; item: string }
+  | {
+      type: "conjured";
+      actorId: string;
+      optionId: string;
+      label: string;
+      item: string;
+      /** Dismissed, or its maker dead (1.303). */
+      gone?: true;
+    }
   /** An item's gate: the check its user rolled before it could work. A failed one used it up for
    *  nothing. Shaped as a save is, with `check` naming what was rolled. */
   | {
@@ -2415,6 +2423,8 @@ export interface RulesetCombatOption {
   offHand?: true;
   /** Whether the item a switch turns is on now (1.165). */
   on?: boolean;
+  /** Putting away a weapon put in hand (1.303), named by `label`. */
+  dismiss?: true;
   /** Picking up what its holder dropped (1.261), named by `label`. */
   pickUp?: true;
   /** Averting the eyes from a gaze's holder, named by `label`, or looking at them again (1.263). */

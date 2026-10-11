@@ -1186,6 +1186,8 @@ function rulesetCandidatesFrom(
     if (option.kind === "move") continue;
     // Averting the eyes is settled as the turn starts (see `playRulesetTurn`).
     if (option.avert) continue;
+    // Putting away a weapon put in hand (1.303) is its player's own call: the Engine keeps it.
+    if (option.dismiss) continue;
     // From another cell, only what the actor would do THERE is worth enumerating: everything it
     // could do without moving is already on the list.
     if (standing && option.targets.count <= 0 && !option.area) continue;

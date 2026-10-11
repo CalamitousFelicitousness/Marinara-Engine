@@ -1559,6 +1559,25 @@ function carriesHidingTraits(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesHidingTraits(one, depth + 1));
 }
 
+/** An item's use whose targets grow with the sheet, or that takes the same target again (1.303). */
+function carriesItemBeams(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesItemBeams(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const beams = (use: unknown) => {
+    const one = plainRecord(use);
+    return !!one && (one.targetsScale !== undefined || one.targetsRepeat !== undefined);
+  };
+  const item = plainRecord(record.item);
+  if (
+    item &&
+    (beams(item.use) || (Array.isArray(item.moreUses) && item.moreUses.some((more) => beams(plainRecord(more)?.use))))
+  )
+    return true;
+  return Object.values(record).some((one) => carriesItemBeams(one, depth + 1));
+}
+
 /** A creature's own action held by its concentration, ends on using a named action, and what a use
  *  puts on its own user (1.302). */
 function carriesSelfHeld(value: unknown, depth = 0): boolean {
@@ -4132,6 +4151,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Beams and darts on an item's use, 1.303.
+  if (
+    !declaresApi(303) &&
+    (carriesItemBeams(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesItemBeams(document)))
+  ) {
+    return "A ruleset with an item use whose targets grow with the sheet, or that takes the same target more than once, requires schemaVersion 2 and capabilityApi 1.303 or newer";
   }
   // Creature concentration, ending on a named action, and conditions on a use's own user, 1.302.
   if (

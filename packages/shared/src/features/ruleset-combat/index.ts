@@ -228,6 +228,8 @@ export {
   rulesetOptionTargets,
   rulesetUsedOn,
   rulesetUsedOnKey,
+  rulesetUsedOnMarks,
+  rulesetUsedOnMeans,
   rulesetUsedOnName,
   rulesetCanRevive,
   rulesetHitChance,

@@ -5747,8 +5747,6 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     scales: true,
     conjures: true,
     appliesSelf: true,
-    targetsScale: true,
-    targetsRepeat: true,
     gives: true,
     standard: true,
     rider: true,
@@ -5879,6 +5877,12 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     }
     if (use.kind === "utility" && !use.teleport && (!use.zone || !use.area)) {
       issue("kind", "A utility use leaves an area standing or teleports, so it has an area and a zone, or a teleport");
+    }
+    // A scroll's or a wand's beams and darts (Capability API 1.303), as the spell's own (1.300).
+    for (const key of ["targetsScale", "targetsRepeat"] as const) {
+      if (use[key] && (use.targets === "self" || use.area)) {
+        issue(key, `"${key}" is on a use pointed at creatures, not an area or its user`);
+      }
     }
     // An area that stays, as a scroll of the spell leaves one (1.169).
     const zone = zoneIssue(use);
@@ -12163,6 +12167,13 @@ function useIssues(
       add([...at, "amountAdd", issue.key], issue.message);
     }
   }
+  // Read off its user's sheet (1.303): a scroll's eldritch blast by its reader's level.
+  if (use.targetsScale) {
+    const names = rulesetSheetNames(definition.sheet, definition.items);
+    for (const issue of rulesetValueRefIssues(use.targetsScale.from, names, names.derived, true)) {
+      add([...at, "targetsScale", "from", issue.key], issue.message);
+    }
+  }
   if (use.damageType && types && !types.has(use.damageType.trim().toLowerCase())) {
     add([...at, "damageType"], `Unknown damage type "${use.damageType}"`);
   }
@@ -13186,7 +13197,8 @@ export function rulesetCatalogEntryIssues(
       if (!catalog.entries) return;
       const attack = catalog.entries.find((one) => `${catalogId}/${one.id}` === ref)?.item?.attack;
       if (!attack) add([index, "mechanics", "conjures", "items", refIndex], `"${ref}" is not a weapon`);
-      else if (attack.range || attack.ammo || attack.clip)
+      // A thrown weapon strikes in reach too (1.303): a dagger, a javelin, a trident.
+      else if ((attack.range && attack.reach === undefined) || attack.ammo || attack.clip)
         add([index, "mechanics", "conjures", "items", refIndex], `"${ref}" is not a melee weapon`);
     });
     if (mechanics?.oncePerTarget && !definition.rests.some((one) => one.id === mechanics.oncePerTarget!.until)) {

@@ -1886,6 +1886,9 @@ export type RulesetBoardEventWhere =
   | { sweep: { from: "north" | "south" | "east" | "west"; start: number; step: number; filled?: true } }
   | { spread: "growth" };
 
+/** An edge of the board, the way a board event carries things (1.324). */
+export type RulesetBoardEdge = "north" | "south" | "east" | "west";
+
 /** What a board event does to its cells (1.313). `rotate` turns a square block a quarter turn
  *  clockwise that many times, with whoever and whatever stands wholly in it. */
 export interface RulesetBoardEventChange {
@@ -1896,6 +1899,12 @@ export interface RulesetBoardEventChange {
   growth?: boolean;
   season?: string | null;
   rotate?: 1 | 2 | 3;
+  /** Whoever stands on its cells, on the ground, is carried `squares` toward that edge (1.324), a
+   *  cell at a time until something stops them: the millrace. */
+  push?: { toward: RulesetBoardEdge; squares: number };
+  /** What obscures its cells is blown `squares` toward that edge (1.324), coming back in at the far
+   *  side of its block, or of the board for any other `where`: the Leaffall's drifts. */
+  drift?: { toward: RulesetBoardEdge; squares: number };
   /** A line the log and the Game Master are told. */
   tell?: string;
 }
@@ -2266,6 +2275,8 @@ export type RulesetCombatEvent =
       tell?: string;
       cells: number;
       moved?: Array<{ id: string; to: RulesetCombatCell }>;
+      /** Who it carried and where to (1.324). */
+      pushed?: Array<{ id: string; from: RulesetCombatCell; to: RulesetCombatCell }>;
     }
   /** Left at 1 instead of dropping to 0 (1.315), and how many more times it may. */
   | { type: "hangsOn"; actorId: string; label?: string; left: number }

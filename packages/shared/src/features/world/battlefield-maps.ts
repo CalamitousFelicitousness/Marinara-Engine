@@ -61,6 +61,9 @@ export type WorldBattlefieldProp = z.infer<typeof worldBattlefieldPropSchema>;
 
 const boardCell = z.object({ x: z.number().int().min(0).max(13), y: z.number().int().min(0).max(9) }).strict();
 const reach = z.number().int().min(0).max(14);
+const boardCarry = z
+  .object({ toward: z.enum(["north", "south", "east", "west"]), squares: z.number().int().min(1).max(6) })
+  .strict();
 
 /** Something a painted board does on its own each round (Capability API 1.313): growth spreading,
  *  ice cracking, a wheel turning, the ground freezing in rings. */
@@ -123,6 +126,9 @@ export const worldBattlefieldEventSchema = z
         growth: z.boolean().optional(),
         season: z.union([z.string().trim().min(1).max(40), z.null()]).optional(),
         rotate: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(),
+        /** Carries whoever stands there, or what obscures it, toward an edge (1.324). */
+        push: boardCarry.optional(),
+        drift: boardCarry.optional(),
         tell: promptSafeText(200).optional(),
       })
       .strict()

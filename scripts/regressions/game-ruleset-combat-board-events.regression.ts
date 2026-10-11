@@ -42,6 +42,7 @@ import {
   worldBattlefieldHere,
   worldBattlefieldIssues,
   worldBattlefieldMapSchema,
+  worldBattlefieldEventSchema,
   type DirectedRulesetView,
   type GameWorld,
   type RulesetBoardEventInput,
@@ -402,6 +403,90 @@ try {
     assert.equal(turned.state.board?.grid.tiles[6]?.[6], "forest", "top-right to bottom-right");
     assert.deepEqual(growing(turned.state), ["4,4"], "bottom-left to top-left");
     assert.deepEqual([rulesetCombatant(turned.state, "mage")!.x, rulesetCombatant(turned.state, "mage")!.y], [1, 1]);
+  }
+
+  // ── The millrace carries, the drifts blow (1.324) ──
+  {
+    assert.ok(supportedCapabilityApi.minor >= 324);
+    // Checked as handed: a way and at most 6 squares; anything else is left out.
+    const carry = rulesetBoardEvents(grid(), [
+      {
+        at: "round-start",
+        where: { cells: [{ x: 1, y: 1 }] },
+        change: { push: { toward: "south", squares: 9 }, drift: { toward: "up" as never, squares: 1 } },
+      },
+    ]);
+    assert.deepEqual(carry[0]?.change, { push: { toward: "south", squares: 6 } });
+    // The race runs east along row 5: the brute is carried 3 east, the mage beside the race is not;
+    // a second race stops a step short of the mage and of a wall.
+    const race = Array.from({ length: 10 }, (_, x) => ({ x, y: 5 }));
+    const flowing = nextRound(
+      fight(
+        [{ id: "race", at: "round-start", where: { cells: race }, change: { push: { toward: "east", squares: 3 } } }],
+        {},
+        {
+          mage: { x: 2, y: 4 },
+          a: { x: 2, y: 5 },
+        },
+      ),
+    );
+    const [ran] = of(flowing.events, "boardEvent");
+    assert.deepEqual(ran?.pushed, [{ id: "a", from: { x: 2, y: 5 }, to: { x: 5, y: 5 } }]);
+    assert.deepEqual([rulesetCombatant(flowing.state, "a")!.x, rulesetCombatant(flowing.state, "a")!.y], [5, 5]);
+    assert.deepEqual([rulesetCombatant(flowing.state, "mage")!.x, rulesetCombatant(flowing.state, "mage")!.y], [2, 4]);
+    const blocked = fight(
+      [{ id: "race", at: "round-start", where: { cells: race }, change: { push: { toward: "east", squares: 4 } } }],
+      { props: [{ id: "weir", label: "Weir", cells: [{ x: 4, y: 5 }], health: 5, blocks: { move: true } }] },
+      { mage: { x: 8, y: 8 }, a: { x: 1, y: 5 } },
+    );
+    const stopped = nextRound(blocked);
+    assert.deepEqual(of(stopped.events, "boardEvent")[0]?.pushed?.[0]?.to, { x: 3, y: 5 }, "a step short of the weir");
+    // Somebody aloft is not carried.
+    const aloft = fight(
+      [{ id: "race", at: "round-start", where: { cells: race }, change: { push: { toward: "east", squares: 2 } } }],
+      {},
+      { mage: { x: 8, y: 8 }, a: { x: 1, y: 5 } },
+    );
+    rulesetCombatant(aloft, "a")!.altitude = 10;
+    assert.equal(of(nextRound(aloft).events, "boardEvent")[0]?.pushed, undefined);
+    // The drifts: heavy fog in a 4-wide block blown 3 east comes back in at the block's west side.
+    const leaves = fight(
+      [
+        {
+          id: "wind",
+          at: "round-start",
+          where: { block: { x: 0, y: 0, w: 4, h: 2 } },
+          change: { drift: { toward: "east", squares: 3 } },
+        },
+      ],
+      {
+        ground: {
+          "0,0": { obscured: "heavy" },
+          "2,1": { obscured: "light", growth: true },
+          "6,0": { obscured: "heavy" },
+        },
+      },
+      { mage: { x: 8, y: 8 }, a: { x: 5, y: 5 } },
+    );
+    const blown = ground(nextRound(leaves).state);
+    assert.equal(blown["3,0"]?.obscured, "heavy");
+    assert.equal(blown["0,0"]?.obscured, undefined);
+    assert.equal(blown["1,1"]?.obscured, "light", "2 + 3 comes back in at 1");
+    assert.equal(blown["2,1"]?.growth, true, "the growth stays");
+    assert.equal(blown["2,1"]?.obscured, undefined);
+    assert.equal(blown["6,0"]?.obscured, "heavy", "outside the block, nothing blows");
+    // Painted on a battlefield, and checked.
+    const painted = {
+      id: "e1",
+      at: "round-start",
+      where: { cells: [{ x: 0, y: 0 }] },
+      change: { push: { toward: "west", squares: 2 } },
+    };
+    assert.ok(worldBattlefieldEventSchema.safeParse(painted).success);
+    assert.equal(
+      worldBattlefieldEventSchema.safeParse({ ...painted, change: { drift: { toward: "west", squares: 7 } } }).success,
+      false,
+    );
   }
 
   // ── Growth: hard going, lightly obscuring, cut, burnt, cleared ──

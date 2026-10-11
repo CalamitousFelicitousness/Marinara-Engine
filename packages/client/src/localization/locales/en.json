@@ -1232,6 +1232,7 @@
   "game.combat.ruleset.event.auraGrows": "{{actor}}'s {{condition}} spreads further, reaching {{distance}} now.",
   "game.combat.ruleset.event.averted": "{{actor}} averts their eyes from {{target}}.",
   "game.combat.ruleset.event.boardEvent": "The board changes: {{label}} ({{cells}} squares).",
+  "game.combat.ruleset.event.boardEventCarried": "It carries {{names}} along.",
   "game.combat.ruleset.event.boardEventTell": "{{tell}}",
   "game.combat.ruleset.event.broke": "{{label}} breaks (a {{roll}} on its die).",
   "game.combat.ruleset.event.brokeBecomes": "{{label}} becomes {{becomes}} (a {{roll}} on its die).",

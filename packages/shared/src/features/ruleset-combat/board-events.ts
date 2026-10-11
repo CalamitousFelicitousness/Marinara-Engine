@@ -14,6 +14,7 @@ import { TACTICAL_TERRAINS } from "../tactical-combat/environments.js";
 import { rulesetFitCell } from "./encounter.js";
 import { rulesetFootprint, rulesetPositionOf } from "./grid.js";
 import type {
+  RulesetBoardEdge,
   RulesetBoardEvent,
   RulesetBoardEventChange,
   RulesetBoardEventWhere,
@@ -28,6 +29,13 @@ export const RULESET_BOARD_EVENTS_MAX = 32;
 const key = (cell: RulesetCombatCell) => `${cell.x},${cell.y}`;
 const LIGHTS = new Set(["bright", "dim", "dark", "sunlight", "clear"]);
 const TERRAINS = new Set<string>(TACTICAL_TERRAINS);
+const EDGES = new Set<string>(["north", "south", "east", "west"]);
+const STEP: Record<RulesetBoardEdge, RulesetCombatCell> = {
+  north: { x: 0, y: -1 },
+  south: { x: 0, y: 1 },
+  east: { x: 1, y: 0 },
+  west: { x: -1, y: 0 },
+};
 
 /** A board event as a fight is handed it (1.313), before it is checked. */
 export interface RulesetBoardEventInput {
@@ -127,6 +135,11 @@ export function rulesetBoardEvents(
     if ((change.rotate === 1 || change.rotate === 2 || change.rotate === 3) && "block" in where) {
       if (where.block.w === where.block.h) out.rotate = change.rotate;
     }
+    for (const way of ["push", "drift"] as const) {
+      const given = change[way];
+      if (given && EDGES.has(given.toward) && Number.isInteger(given.squares) && given.squares >= 1)
+        out[way] = { toward: given.toward, squares: Math.min(given.squares, 6) };
+    }
     if (typeof change.tell === "string" && change.tell.trim()) out.tell = change.tell.trim();
     return Object.keys(out).length ? out : null;
   }
@@ -219,6 +232,8 @@ export function rulesetRunBoardEvents(
     // A prop turned closes the cells it stands on now as the step ends, as every wall does.
     if (event.change.rotate && "block" in event.where) rotateBlock(state, event.where.block, event.change.rotate);
     for (const cell of cells) changeCell(board.grid, cell, event.change);
+    if (event.change.drift) drift(board.grid, cells, event.where, event.change.drift);
+    const pushed = event.change.push ? push(state, cells, event.change.push) : [];
     const moved = settle(state);
     said.push({
       type: "boardEvent",
@@ -227,9 +242,83 @@ export function rulesetRunBoardEvents(
       ...(event.change.tell ? { tell: event.change.tell } : {}),
       cells: cells.length,
       ...(moved.length ? { moved } : {}),
+      ...(pushed.length ? { pushed } : {}),
     });
   }
   return said;
+}
+
+/** What obscures these cells, blown `squares` toward an edge (1.324), coming back in at the far side
+ *  of the block, or of the board. Nothing else on the cells moves. */
+function drift(
+  grid: TacticalGrid,
+  cells: readonly RulesetCombatCell[],
+  where: RulesetBoardEventWhere,
+  way: { toward: RulesetBoardEdge; squares: number },
+): void {
+  const box = "block" in where ? where.block : { x: 0, y: 0, w: grid.width, h: grid.height };
+  const wrap = (value: number, start: number, size: number) => start + ((((value - start) % size) + size) % size);
+  const step = STEP[way.toward];
+  const blown = cells.flatMap((cell) => {
+    const obscured = grid.ground?.[key(cell)]?.obscured;
+    return obscured ? [{ cell, obscured }] : [];
+  });
+  for (const { cell } of blown) {
+    const { obscured: _gone, ...rest } = grid.ground?.[key(cell)] ?? {};
+    setGround(grid, cell, rest);
+  }
+  for (const { cell, obscured } of blown) {
+    const to = {
+      x: wrap(cell.x + step.x * way.squares, box.x, box.w),
+      y: wrap(cell.y + step.y * way.squares, box.y, box.h),
+    };
+    const here = grid.ground?.[key(to)];
+    // Heavy over light where two meet.
+    if (here?.obscured === "heavy") continue;
+    setGround(grid, to, { ...here, obscured });
+  }
+}
+
+/** Whoever stands on the ground on these cells, carried `squares` toward an edge (1.324), a cell at a
+ *  time: never off the board, into a wall or a closed prop, onto ground nobody may stand on, or into
+ *  anybody else. Nobody strikes at them for it. The nearest to that edge go first. */
+function push(
+  state: RulesetEncounterState,
+  cells: readonly RulesetCombatCell[],
+  way: { toward: RulesetBoardEdge; squares: number },
+): Array<{ id: string; from: RulesetCombatCell; to: RulesetCombatCell }> {
+  const grid = state.board!.grid;
+  const on = new Set(cells.map(key));
+  const step = STEP[way.toward];
+  const standing = state.combatants.filter(
+    (one) => !one.defeated && !one.object && rulesetPositionOf(one) && !(one.altitude && one.altitude > 0),
+  );
+  const carried = standing
+    .filter((one) => rulesetFootprint(one).some((cell) => on.has(key(cell))))
+    .sort((a, b) => (b.x! - a.x!) * step.x + (b.y! - a.y!) * step.y);
+  const pushed: Array<{ id: string; from: RulesetCombatCell; to: RulesetCombatCell }> = [];
+  for (const one of carried) {
+    const from = { x: one.x!, y: one.y! };
+    const others = new Set(
+      standing.filter((other) => other !== one).flatMap((other) => rulesetFootprint(other).map(key)),
+    );
+    const open = (cell: RulesetCombatCell) => {
+      if (cell.x < 0 || cell.y < 0 || cell.x >= grid.width || cell.y >= grid.height) return false;
+      const terrain = grid.tiles[cell.y]?.[cell.x];
+      if (terrain === undefined || TERRAIN_DATA[terrain]?.impassable) return false;
+      if ((grid.walls?.[key(cell)] ?? 0) & 1) return false;
+      return !others.has(key(cell));
+    };
+    for (let n = 0; n < way.squares; n++) {
+      const next = { x: one.x! + step.x, y: one.y! + step.y };
+      const footprint = rulesetFootprint({ ...one, ...next });
+      if (!footprint.every(open)) break;
+      one.x = next.x;
+      one.y = next.y;
+    }
+    if (one.x !== from.x || one.y !== from.y) pushed.push({ id: one.id, from, to: { x: one.x!, y: one.y! } });
+  }
+  return pushed;
 }
 
 /** The ground an action changes (1.319), as a board event changes it: whoever is left standing on a

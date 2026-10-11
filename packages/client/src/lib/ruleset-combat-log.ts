@@ -723,10 +723,15 @@ export function rulesetCombatEventLine(
       });
     }
     // The board doing something on its own (1.313), and growth taken off it.
-    case "boardEvent":
-      return event.tell
+    case "boardEvent": {
+      const line = event.tell
         ? key("boardEventTell", { tell: event.tell })
         : key("boardEvent", { label: event.label ?? event.id, cells: event.cells });
+      // Who it carried (1.324).
+      if (!event.pushed?.length) return line;
+      const carried = event.pushed.map((one) => names.combatant(one.id)).join(", ");
+      return `${line} ${key("boardEventCarried", { names: carried })}`;
+    }
     case "growth":
       return key(event.by === "cut" ? "growthCut" : event.by === "burnt" ? "growthBurnt" : "growthCleared", {
         actor: event.actorId ? names.combatant(event.actorId) : "",

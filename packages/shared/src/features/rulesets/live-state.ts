@@ -75,6 +75,9 @@ export interface RulesetLiveState {
   /** What each condition's rests took off health's maximum for good (1.256), keyed by condition
    *  id, for one that gives it back when it is cured (`restoredWhenCured`). */
   lowered?: Record<string, number>;
+  /** Whom an entry used once a creature until a rest went to (1.299), by name, keyed `rest|action`:
+   *  that rest clears its lists. */
+  usedOn?: Record<string, string[]>;
 }
 
 /** Live state of every card in one game, keyed by normalizeCharacterLookupName(card name). */
@@ -96,6 +99,9 @@ const MAX_LIVE_CONDITIONS = RULESET_CONDITIONS_MAX;
 const MAX_LIVE_CONDITION_LENGTH = 80;
 const MAX_LIVE_STATES = 30;
 const MAX_LIVE_STATE_VALUE_LENGTH = 80;
+const MAX_LIVE_USED_ON = 40;
+const MAX_LIVE_USED_ON_NAMES = 60;
+const liveUsedOnNames = z.array(z.string().max(MAX_LIVE_KEY_LENGTH)).max(MAX_LIVE_USED_ON_NAMES);
 /** Every stored number is an integer in this range, so no arithmetic here can reach an unsafe one. */
 const MAX_LIVE_NUMBER = 1_000_000;
 /** What one command may move at once. A bigger number is a typo or a model inventing damage. */
@@ -150,6 +156,7 @@ export const rulesetLiveStateSchema = z
     conditions: z.array(z.string().max(MAX_LIVE_CONDITION_LENGTH)).max(MAX_LIVE_CONDITIONS).optional(),
     states: boundedRecord(z.string().max(MAX_LIVE_STATE_VALUE_LENGTH), MAX_LIVE_STATES, "states").optional(),
     lowered: boundedRecord(liveNumber, MAX_LIVE_CONDITIONS, "lowered maximums").optional(),
+    usedOn: boundedRecord(liveUsedOnNames, MAX_LIVE_USED_ON, "used-on lists").optional(),
   })
   .strip();
 
@@ -688,6 +695,8 @@ function readStoredLiveStateAsIs(stored: unknown): RulesetLiveState {
   if (states) state.states = states;
   const lowered = keepValid(source.lowered, liveNumber, MAX_LIVE_CONDITIONS);
   if (lowered) state.lowered = lowered;
+  const usedOn = keepValid(source.usedOn, liveUsedOnNames, MAX_LIVE_USED_ON);
+  if (usedOn) state.usedOn = usedOn;
   return state;
 }
 
@@ -701,6 +710,7 @@ function normalizeLiveState(state: RulesetLiveState): RulesetLiveState {
   if (state.conditions && state.conditions.length > 0) normalized.conditions = state.conditions;
   if (state.states && Object.keys(state.states).length > 0) normalized.states = state.states;
   if (state.lowered && Object.keys(state.lowered).length > 0) normalized.lowered = state.lowered;
+  if (state.usedOn && Object.keys(state.usedOn).length > 0) normalized.usedOn = state.usedOn;
   return normalized;
 }
 
@@ -1382,6 +1392,8 @@ export function applyRulesetSheetOp(
     changes.push(`${label} lowers ${healthPool.label}'s maximum by ${sealed - sealedBefore}`);
   }
   for (const id of rest.clear.text) setText(id, "");
+  // What may be used on a creature once until this rest may be again (1.299).
+  for (const key of Object.keys(next.usedOn ?? {})) if (key.startsWith(`${rest.id}|`)) delete next.usedOn![key];
   const before = next.conditions ?? [];
   if (rest.clear.conditions === "all") next.conditions = [];
   else if (rest.clear.conditions.length > 0) {

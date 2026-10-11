@@ -1559,6 +1559,16 @@ function carriesHidingTraits(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesHidingTraits(one, depth + 1));
 }
 
+/** Uses once a creature until a rest (1.299). */
+function carriesOncePerTarget(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesOncePerTarget(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.oncePerTarget !== undefined) return true;
+  return Object.values(record).some((one) => carriesOncePerTarget(one, depth + 1));
+}
+
 /** Uses only in some light, and conditions that moving or acting ends (1.298). */
 function carriesShadowUses(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -4084,6 +4094,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Uses once a creature until a rest, 1.299.
+  if (
+    !declaresApi(299) &&
+    (carriesOncePerTarget(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesOncePerTarget(document)))
+  ) {
+    return "A ruleset with uses once a creature until a rest requires schemaVersion 2 and capabilityApi 1.299 or newer";
   }
   // Uses only in some light, and endings on moving or acting, 1.298.
   if (

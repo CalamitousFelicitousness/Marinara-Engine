@@ -162,6 +162,9 @@ import {
   rulesetFreeStrike,
   rulesetGrantedStandard,
   rulesetOptionTargets,
+  rulesetUsedOn,
+  rulesetUsedOnKey,
+  rulesetUsedOnName,
   rulesetProneCondition,
   rulesetReactionPointsAtSource,
   rulesetReactionTarget,
@@ -3190,6 +3193,16 @@ function pickTargets(
   return targets;
 }
 
+/** Who an entry used once a creature until a rest (1.299) was used on now, written where
+ *  `rulesetUsedOn` reads it. */
+function markUsedOn(actor: RulesetCombatant, action: RulesetCombatAction, targets: RulesetCombatant[]): void {
+  if (!action.oncePerTarget || targets.length === 0) return;
+  const key = rulesetUsedOnKey(action);
+  const names = [...new Set([...rulesetUsedOn(actor, action), ...targets.map(rulesetUsedOnName)])].slice(-60);
+  if (actor.sheet) actor.sheet.live = { ...actor.sheet.live, usedOn: { ...actor.sheet.live.usedOn, [key]: names } };
+  else actor.usedOn = { ...actor.usedOn, [key]: names };
+}
+
 /** What using an action costs the actor in its own bookkeeping: one of its uses, and, for an action
  *  that recharges, its availability until the dice bring it back. */
 function spendAvailability(ctx: RulesetCombatContext, actor: RulesetCombatant, action: RulesetCombatAction): void {
@@ -3892,6 +3905,7 @@ function applyChoice(
   const following = option.followUp ? working.flags.followUps?.find((one) => one.id === action.id) : undefined;
   if (following) working.flags.followUps = working.flags.followUps!.filter((one) => one !== following);
   if (!following?.paid) spendAvailability(ctx, working, action);
+  markUsedOn(working, action, workingTargets);
   if (!option.followUp && action.followUp) {
     (working.flags.followUps ??= []).push({
       id: action.followUp,

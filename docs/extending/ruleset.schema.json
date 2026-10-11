@@ -13511,6 +13511,21 @@
                       "type": "boolean",
                       "const": true
                     },
+                    "oncePerTarget": {
+                      "type": "object",
+                      "properties": {
+                        "until": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "$comment": {}
+                      },
+                      "required": [
+                        "until"
+                      ],
+                      "additionalProperties": false
+                    },
                     "usesSpent": {
                       "type": "integer",
                       "minimum": 2,
@@ -28779,6 +28794,21 @@
                           "type": "boolean",
                           "const": true
                         },
+                        "oncePerTarget": {
+                          "type": "object",
+                          "properties": {
+                            "until": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "until"
+                          ],
+                          "additionalProperties": false
+                        },
                         "usesSpent": {
                           "type": "integer",
                           "minimum": 2,
@@ -34521,6 +34551,21 @@
                               "notSelf": {
                                 "type": "boolean",
                                 "const": true
+                              },
+                              "oncePerTarget": {
+                                "type": "object",
+                                "properties": {
+                                  "until": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "until"
+                                ],
+                                "additionalProperties": false
                               },
                               "usesSpent": {
                                 "type": "integer",

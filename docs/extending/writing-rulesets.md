@@ -810,6 +810,8 @@ Entries that change another (Capability API 1.297). An entry held on a sheet's l
 
 Uses only in some light, and conditions moving or acting ends (Capability API 1.298). An entry with `"usableIn": { "light": ["dark", "dim"] }` is offered only while its user stands in one of those lights: One with Shadows. A condition's `endsWhenHolder` may also say `"moves": true` (it ends when its holder moves) or `"acts": true` (it ends when its holder takes an action, attacks or casts), beside `attacks` and `casts`: the shadows hide a warlock who stays still. Needs Capability API 1.298.
 
+Once a creature until a rest (Capability API 1.299). An entry with `"oncePerTarget": { "until": "long" }` (a rest the ruleset declares) is not offered against a creature it was already used on until its user takes that rest, however many fights come between: Chains of Carceri. Whom it was used on is kept by name on the user's live sheet, and only that rest clears it. Not on an area or an entry aimed at its user. Needs Capability API 1.299.
+
 The picker shows this block as one line. Who reads the rest depends on which block your ruleset opted in with:
 
 - With a [`combat` block](#combat-a-fight-your-own-rules-resolve), the fight reads its combat effects. `range`, `area` and `friendlyFire` apply on a battlefield with positions; `reaction` marks an entry as one that answers something rather than one taken on a turn, and names the moment it waits for (see [Windows](#windows-holding-the-fight-open)); one marked plain `true` names none and is on no menu. `check` applies to skill checks, as described above.

@@ -3387,6 +3387,10 @@ const catalogMechanicsObject = z
     /** Never pointed at its own user (Capability API 1.251): Bardic Inspiration's "one creature
      *  other than you". Only on an entry that may be pointed at its user's side. */
     notSelf: z.literal(true).optional(),
+    /** Used on a creature, not used on that one again until its user takes this rest (Capability API
+     *  1.299), however many fights come between: Chains of Carceri's "You must finish a long rest
+     *  before you can use this invocation on the same creature again". Not on an area or on its user. */
+    oncePerTarget: z.object({ until: sheetId }).strict().optional(),
     /** How many of those uses one use spends (Capability API 1.240): Quivering Palm's 3 ki. */
     usesSpent: z.number().int().min(2).max(20).optional(),
     /** Its user chooses how many of those uses one use spends, one up to what is left, and it heals
@@ -3647,6 +3651,13 @@ const catalogMechanicsSchema: z.ZodType<
         message: '"alters" is on a "utility" entry that is no reaction: it is chosen with what it changes',
       });
     }
+  }
+  if (mechanics.oncePerTarget && (mechanics.targets === "self" || mechanics.area)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["oncePerTarget"],
+      message: '"oncePerTarget" is on an entry pointed at a creature, not an area or its user',
+    });
   }
   if (mechanics.notSelf && mechanics.targets !== "ally" && mechanics.targets !== "any") {
     ctx.addIssue({
@@ -13081,6 +13092,9 @@ export function rulesetCatalogEntryIssues(
     mechanics?.keepsOn?.forEach((kept, keptIndex) => {
       if (!liveConditions.has(kept)) add([index, "mechanics", "keepsOn", keptIndex], `Unknown condition "${kept}"`);
     });
+    if (mechanics?.oncePerTarget && !definition.rests.some((one) => one.id === mechanics.oncePerTarget!.until)) {
+      add([index, "mechanics", "oncePerTarget", "until"], `Unknown rest "${mechanics.oncePerTarget.until}"`);
+    }
     if (mechanics?.endsCondition && !liveConditions.has(mechanics.endsCondition)) {
       add([index, "mechanics", "endsCondition"], `Unknown condition "${mechanics.endsCondition}"`);
     }

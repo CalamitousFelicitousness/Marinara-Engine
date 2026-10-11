@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: a feature can be used on each creature only once until a long rest, across fights, so Chains of Carceri works (Capability API 1.299).
 - Rulesets: an action can be offered only in dim light or darkness, and a condition can end when its holder moves or acts, so One with Shadows works (Capability API 1.298).
 - Rulesets: features can change one named spell every time it is cast, so Agonizing Blast, Eldritch Spear and Repelling Blast work on eldritch blast and stack (Capability API 1.297).
 - Rulesets: Darkness or Daylight cast on something a creature holds now moves with them, and Dancing Lights makes four separate lights that move together (Capability API 1.296).

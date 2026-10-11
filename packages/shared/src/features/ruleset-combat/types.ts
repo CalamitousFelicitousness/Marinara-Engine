@@ -691,6 +691,8 @@ export interface RulesetCombatAction {
   rescue?: RulesetCombatRescue;
   /** Never pointed at its own user (1.251): Bardic Inspiration's "one creature other than you". */
   notSelf?: true;
+  /** Not used on the same creature again until its user takes this rest (1.299): Chains of Carceri. */
+  oncePerTarget?: { until: string };
   /** Its damage never takes a target below this much health (1.230). */
   leavesAtLeast?: number;
   /** It brings back a target that died no more than `withinRounds` rounds ago, at `amount` (1.171). */
@@ -1257,6 +1259,9 @@ export interface RulesetCombatant {
   becomes?: Record<string, { ref: string; name: string; item: RulesetCatalogItem; actions: RulesetCombatAction[] }>;
   /** The items that became another in this fight (1.267): what each became. */
   became?: Record<string, string>;
+  /** Whom an entry used once a creature until a rest went to (1.299), for one without a sheet: keyed
+   *  `rest|action`, by name. A sheet keeps it on its live state. */
+  usedOn?: Record<string, string[]>;
   /** Each item switched on or off in this fight, keyed as the rest are (1.165). */
   on?: Record<string, boolean>;
   /** The light they carry is out (1.290). */

@@ -34,6 +34,7 @@ import {
   rulesetItemChargesLeft,
 } from "./ammo.js";
 import { resolveRulesetValueRef } from "../rulesets/sheet-math.js";
+import { normalizeCharacterLookupName } from "../../utils/character-lookup-name.js";
 import { parseRulesetCombatDice, rulesetAverageDamage } from "./dice.js";
 import {
   rulesetCombatAdvantage,
@@ -1366,6 +1367,27 @@ function blocked(
   return rulesetCombatEffects(definition, combat, actor, state).has("cannot-act");
 }
 
+/** Whom an entry used once a creature until a rest (1.299) went to already: names, as a fight
+ *  outlives its combatants' ids, kept on a sheet's live state so they last until that rest, and on
+ *  the combatant for one without a sheet. */
+export function rulesetUsedOn(
+  actor: RulesetCombatant,
+  action: Pick<RulesetCombatAction, "id" | "entry" | "oncePerTarget">,
+): string[] {
+  if (!action.oncePerTarget) return [];
+  const key = rulesetUsedOnKey(action);
+  return (actor.sheet ? actor.sheet.live.usedOn?.[key] : actor.usedOn?.[key]) ?? [];
+}
+
+/** Keyed by the entry it was built from, which outlasts the fight's action ids. */
+export function rulesetUsedOnKey(action: Pick<RulesetCombatAction, "id" | "entry" | "oncePerTarget">): string {
+  return `${action.oncePerTarget!.until}|${action.entry ?? action.id}`;
+}
+
+export function rulesetUsedOnName(combatant: Pick<RulesetCombatant, "name">): string {
+  return normalizeCharacterLookupName(combatant.name);
+}
+
 /** Whoever this combatant may not point anything at: the source of a condition on them that says
  *  so. A charm keeps a character from turning on whoever charmed them, in the ruleset's own words. */
 export function rulesetForbiddenTargets(
@@ -1550,6 +1572,8 @@ export function rulesetOptionTargets(
         if (rulesetStandardName(option.id) === "help" && combatant.id === actor.id) return false;
         // "One creature other than you" (1.251).
         if (cure?.notSelf && combatant.id === actor.id) return false;
+        // Used on them already since the rest that frees it (1.299).
+        if (cure?.oncePerTarget && rulesetUsedOn(actor, cure).includes(rulesetUsedOnName(combatant))) return false;
         if (option.targets.side === "self") return combatant.id === actor.id;
         // A strike the dice aimed (1.259) is at whoever they picked, friend or foe.
         if (actor.flags.compelled === "strike" && option.targets.side === "enemy" && combatant.id !== actor.id)

@@ -2314,6 +2314,7 @@ function mechanicsAction(
   }
   // Never on its own user (1.251).
   if (mechanics.notSelf) action.notSelf = true;
+  if (mechanics.oncePerTarget) action.oncePerTarget = { until: mechanics.oncePerTarget.until };
   // Leaving `toHit` unset here would send it down the no-roll path and land it automatically.
   if (mechanics.attackRoll) action.toHit = from.toHit;
   if (mechanics.autoHit) action.autoHit = true;

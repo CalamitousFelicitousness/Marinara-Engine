@@ -13,6 +13,7 @@ import type {
   SetLorebooksEnabledResult,
 } from "@marinara-engine/shared";
 import { characterKeys } from "./use-characters";
+import { libraryFolderKeys } from "./use-library-folders";
 import { achievementKeys, trackAchievementEvent } from "./use-achievements";
 import {
   collectAllPaginatedItems,
@@ -249,6 +250,7 @@ export function useDeleteLorebook() {
       qc.removeQueries({ queryKey: lorebookKeys.detail(id) });
       qc.removeQueries({ queryKey: lorebookKeys.entries(id) });
       qc.invalidateQueries({ queryKey: lorebookKeys.all });
+      qc.invalidateQueries({ queryKey: libraryFolderKeys.list("lorebooks") });
       qc.invalidateQueries({ queryKey: ["chats"] });
       // The server clears `character_book` and the
       // `extensions.importMetadata.embeddedLorebook` pointer for any

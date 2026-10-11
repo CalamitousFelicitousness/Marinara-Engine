@@ -186,17 +186,18 @@ export const CHAT_PRESET_EXCLUDED_PACKAGE_METADATA_KEYS: readonly string[] = [
  * The only chat settings "Save and update N other chats" copies from a profile (#7409). Each is a
  * setting Chat Settings controls in Conversation or Roleplay that should match across the chats
  * using one profile. A chat updated this way keeps every other key exactly as it is: its story, cast,
- * lorebooks, files, background, notes, progress, and anything agents or packages keep in it. A key
- * the profile has no value for keeps the chat's own value. Applying a profile by hand still sets
- * everything the profile holds. Game mode has no profiles, so its keys are not listed.
+ * lorebooks, files, background, notes, progress, and anything agents or packages keep in it. Each
+ * listed key gets what applying the profile by hand gives it, so a key the profile has no value for
+ * goes back to its default. Applying a profile by hand still sets everything the profile holds. Game
+ * mode has no profiles, so its keys are not listed.
  *
  * Left off on purpose: who may use narrator-only Roleplay commands (it only works with the chat's own
  * narrator) and Noodle's permission to use the chat's messages (each chat gives that itself).
  *
- * Two keys copy only in part (see syncFollowerMetadata in chat-presets.storage.ts): Advanced
+ * Three keys copy only in part (see syncFollowerMetadata in chat-presets.storage.ts): Advanced
  * Parameters reach only chats on the profile's connection, because they are edited against it, and
  * the agents each chat sets up itself (knowledge sources, a target lorebook, sprite characters) stay
- * on or off as the chat has them.
+ * on or off, with their prompt templates, as the chat has them.
  */
 export const CHAT_PROFILE_FOLLOWER_SYNC_KEYS: readonly string[] = [
   // Generation and context
@@ -242,7 +243,7 @@ export const CHAT_PROFILE_FOLLOWER_SYNC_KEYS: readonly string[] = [
   // Agents
   "enableAgents", // Agents on or off
   "activeAgentIds", // Which agents run, except the agents each chat sets up itself
-  "agentPromptTemplateIds", // Prompt template per agent
+  "agentPromptTemplateIds", // Prompt template per agent, except the agents each chat sets up itself
   "customAgentImageSettings", // Image connection and style per custom agent
   "agentWriteApprovalRequired", // Review agent changes before they are saved
   "attachSummariesToAgents", // Give agents the chat summary

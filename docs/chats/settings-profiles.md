@@ -60,7 +60,7 @@ To create your first profile, configure a chat and choose **Save current chat se
 Each chat keeps its own copy of the profile's settings, so saving a profile does not change other chats by itself. When other chats of the same mode use the profile, saving asks what to do:
 
 - **Save to this profile only** saves the profile and leaves the other chats as they are.
-- **Save and update** followed by the number of chats, such as **Save and update 3 other chats**, also copies the profile's Chat Settings into those chats. Their own changes to those settings are replaced.
+- **Save and update** followed by the number of chats, such as **Save and update 3 other chats**, also copies the profile's Chat Settings into those chats. Their own changes to those settings are replaced, and a setting you left at its default in the chat you save from goes back to its default in them.
 
 **Save and update** copies:
 
@@ -81,7 +81,7 @@ Everything else stays as each chat has it, including:
 - Which Roleplay commands only its narrator may use
 - Whether Noodle may use its messages
 
-Advanced Parameters change only in chats that use the profile's connection, because they are set for that connection. Knowledge Retrieval, Knowledge Router, Lorebook Keeper and Expression Engine stay on or off as each chat has them. Each chat picks their sources, lorebook or sprites itself.
+Advanced Parameters change only in chats that use the profile's connection, because they are set for that connection. Knowledge Retrieval, Knowledge Router, Lorebook Keeper and Expression Engine stay on or off, with their prompt templates, as each chat has them. Each chat picks their sources, lorebook or sprites itself.
 
 Multiplayer rooms are never updated this way. When no other chat uses the profile, **Save** works without asking.
 

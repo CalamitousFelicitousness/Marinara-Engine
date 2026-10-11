@@ -27,7 +27,7 @@ const { createAgentsStorage } = await import("../../packages/server/src/services
 const { roleplayAgentText } = await import("../../packages/server/src/services/generation/roleplay-commands.js");
 const { characterDataSchema, replaceBuiltInAgentDefinitions } = await import("../../packages/shared/dist/index.js");
 
-const SENTINELS = ["PRE_AGENT_FIXTURE", "POST_AGENT_FIXTURE", "ROOM_TRACKER_FIXTURE"] as const;
+const SENTINELS = ["PRE_AGENT_FIXTURE", "POST_AGENT_FIXTURE", "REWRITE_AGENT_FIXTURE", "ROOM_TRACKER_FIXTURE"] as const;
 const agentPrompts = new Map<string, string[]>(SENTINELS.map((sentinel) => [sentinel, []]));
 const mainPrompts: string[] = [];
 let outputs: string[] = [];
@@ -39,7 +39,14 @@ const provider = createServer(async (request, response) => {
   const sentinel = SENTINELS.find((candidate) => prompt.includes(candidate));
   if (sentinel) agentPrompts.get(sentinel)!.push(prompt);
   else mainPrompts.push(prompt);
-  const content = sentinel === "ROOM_TRACKER_FIXTURE" ? "{}" : sentinel ? "Agent note." : outputs.shift();
+  const content =
+    sentinel === "ROOM_TRACKER_FIXTURE"
+      ? "{}"
+      : sentinel === "REWRITE_AGENT_FIXTURE"
+        ? JSON.stringify({ editNeeded: false, editedText: "", changes: [] })
+        : sentinel
+          ? "Agent note."
+          : outputs.shift();
   assert.notEqual(content, undefined, "unexpected provider request");
   if (body.stream) {
     response.writeHead(200, { "content-type": "text/event-stream" });
@@ -59,6 +66,11 @@ const inOrder = (text: string, ...parts: string[]) =>
     (part, index) => text.includes(part) && (index === 0 || text.indexOf(parts[index - 1]!) < text.indexOf(part)),
   );
 const count = (text: string, part: string) => text.split(part).length - 1;
+/** The reply an agent was given to process. */
+const responseOf = (prompt: string) =>
+  /<assistant_response>\n([\s\S]*?)\n<\/assistant_response>/u.exec(
+    (JSON.parse(prompt) as Array<{ content: string }>).map((message) => message.content).join("\n"),
+  )?.[1] ?? "";
 
 const db = await getDB();
 const chats = createChatsStorage(db);
@@ -238,6 +250,31 @@ try {
   );
   assert.equal(roleplayAgentText("", onlyWhisper, bobNames), "[Private whisper to Bob: ONLY]");
   assert.equal(roleplayAgentText("[Private whisper]", onlyWhisper, null), "[Private whisper]");
+
+  // A retried agent reads the retried reply with its whispers; a rewrite agent edits only its public text.
+  const rewrite = await agents.create({
+    type: "custom-whisper-rewrite",
+    name: "Whisper rewrite",
+    phase: "post_processing",
+    connectionId: connection.id,
+    promptTemplate: "REWRITE_AGENT_FIXTURE Polish the reply.",
+    settings: { resultType: "text_rewrite", contextSize: 10 },
+  });
+  assert(rewrite);
+  await chats.patchMetadata(chat.id, { activeAgentIds: [pre.type, post.type, rewrite.type] });
+  const firstReply = (await chats.listMessages(chat.id)).find((message) => message.content.startsWith("Before."))!;
+  const retryReply = await app.inject({
+    method: "POST",
+    url: "/api/generate/retry-agents",
+    payload: { chatId: chat.id, agentTypes: [post.type, rewrite.type], forMessageId: firstReply.id },
+  });
+  assert.equal(retryReply.statusCode, 200, retryReply.body);
+  const retriedReply = responseOf(latest("POST_AGENT_FIXTURE"));
+  assert(inOrder(retriedReply, "Before.", "[Private whisper to Bob: REPLY_SECRET]", "After."), retriedReply);
+  const rewriteTarget = responseOf(latest("REWRITE_AGENT_FIXTURE"));
+  assert(rewriteTarget.includes("Before.") && !rewriteTarget.includes("[Private whisper"), rewriteTarget);
+  assert.equal((await chats.getMessage(firstReply.id))!.content, firstReply.content);
+  await chats.patchMetadata(chat.id, { activeAgentIds: [pre.type, post.type] });
 
   // Retried agents read them too.
   const retry = await app.inject({

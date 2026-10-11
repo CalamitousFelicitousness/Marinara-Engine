@@ -2513,6 +2513,7 @@ async function executeRetryBatches(
   chatMeta?: Record<string, unknown>,
   customLorebookReadBehindContexts: ReadonlyMap<string, AgentContext> = new Map(),
   preparedCapabilityContexts: Map<string, AgentContext> = new Map(),
+  agentMainResponse?: string,
 ) {
   const retryAgents = mergeRetryPairedBuiltInRewriteAgents(resolvedAgents);
   const effectiveChatMode: ChatMode = chatMode ?? (agentContext.chatMode as ChatMode);
@@ -2524,9 +2525,17 @@ async function executeRetryBatches(
   >();
   const connectionLimits = new Map<string, number>();
 
+  // Agents read the retried reply with its whispers (#7430); rewrite agents still edit its public text.
+  const agentFacingContext =
+    agentMainResponse === undefined ? agentContext : { ...agentContext, mainResponse: agentMainResponse };
   for (const entry of retryAgents) {
+    const lane = getAgentBatchLane(entry.resolved);
     const phaseContext =
-      preGenerationContext && entry.resolved.phase === "pre_generation" ? preGenerationContext : agentContext;
+      preGenerationContext && entry.resolved.phase === "pre_generation"
+        ? preGenerationContext
+        : lane === "rewrite"
+          ? agentContext
+          : agentFacingContext;
     const baseContext = customLorebookReadBehindContexts.get(entry.resolved.id) ?? phaseContext;
     const isTracker = trackerAgentTypes.has(entry.resolved.type);
     const context = applyTrackerLorebookContextPolicy({
@@ -2550,7 +2559,6 @@ async function executeRetryBatches(
       connectionKey,
       Math.min(connectionLimits.get(connectionKey) ?? maxParallelJobs, maxParallelJobs),
     );
-    const lane = getAgentBatchLane(entry.resolved);
     // Rewrite agents all edit the same reply, so they form one chain whatever their connection.
     const key =
       lane === "rewrite" ? `rewrite::${contextKind}` : `${connectionKey}::${entry.agentModel}::${contextKind}::${lane}`;
@@ -5371,6 +5379,9 @@ export async function registerRetryAgentsRoute(
                   chatMeta,
                   new Map([...customLorebookReadBehindTargets].map(([agentId, target]) => [agentId, target.context])),
                   preparedCapabilityContexts,
+                  agentWhisperNames
+                    ? roleplayAgentText(agentContext.mainResponse ?? "", lastAssistant, agentWhisperNames)
+                    : undefined,
                 )
               : [];
       if (abortController.signal.aborted) return;

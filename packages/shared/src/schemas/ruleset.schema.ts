@@ -13067,7 +13067,8 @@ export function rulesetCatalogEntryIssues(
     mechanics?.amends?.forEach((amend, amendIndex) => {
       const catalogId = amend.entry.slice(0, amend.entry.indexOf("/"));
       const catalog = definition.catalogs?.find((one) => one.id === catalogId);
-      if (!catalog?.entries?.some((one) => `${catalogId}/${one.id}` === amend.entry))
+      // A catalog kept in its own file has no entries here yet: the whole ruleset's pass checks it.
+      if (!catalog || (catalog.entries && !catalog.entries.some((one) => `${catalogId}/${one.id}` === amend.entry)))
         add([index, "mechanics", "amends", amendIndex, "entry"], `Unknown entry "${amend.entry}"`);
       if ((amend.range !== undefined || amend.push !== undefined) && !definition.combat?.distance)
         add(

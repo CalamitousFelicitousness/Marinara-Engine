@@ -7,6 +7,8 @@
  *   - Import refusals and the install gate.
  */
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import AdmZip from "adm-zip";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -14,6 +16,7 @@ import { fileURLToPath } from "node:url";
 import {
   applyRulesetCombatChoice,
   createRulesetEncounter,
+  parseRulesetCatalogFile,
   parseRulesetDefinition,
   rowsFromCatalogEntry,
   rulesetCombatant,
@@ -200,6 +203,72 @@ try {
       }),
       /Unknown entry "spells\/nothing"/,
     );
+  }
+
+  // ── Catalogs kept in their own files: the entry is checked once every file is read ──
+  {
+    const { readRulesetPackageZip } = await import("../../packages/server/src/services/game/ruleset-package-zip.js");
+    const { createGameRulesetsStorage } =
+      await import("../../packages/server/src/services/storage/game-rulesets.storage.js");
+    const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
+    const storage = createGameRulesetsStorage(await getDB());
+    try {
+      for (const fault of [false, true]) {
+        const doc = fiveE();
+        if (fault) doc.catalogs.at(-2).entries.shift();
+        const files: Record<string, string> = {};
+        for (const header of doc.catalogs.slice(-2)) {
+          files[header.id] = JSON.stringify({ schemaVersion: 1, catalog: header.id, entries: header.entries });
+          delete header.entries;
+          header.asset = `catalogs/${header.id}.json`;
+        }
+        // Read on its own, the invocations' file cannot see the spells' and takes the name on trust.
+        assert.ok(parseRulesetCatalogFile(parsed(doc), "invocations", JSON.parse(files.invocations!)).ok);
+        const documents = {
+          "ruleset.json": JSON.stringify(doc),
+          ...Object.fromEntries(Object.entries(files).map(([id, text]) => [`catalogs/${id}.json`, text])),
+        };
+        const declared = {
+          schemaVersion: 2,
+          capabilityApi: { major: 1, minor: 297 },
+          builtAgainst: { engineVersion: "2.4.6", engineCommit: "0".repeat(40) },
+          id: "ruleset-amends",
+          name: "Amends",
+          version: "0.1.0",
+          description: "Invocations.",
+          engine: { min: "2.4.6", maxExclusive: "4.0.0" },
+          kind: ["ruleset"],
+          entrypoints: {},
+          contributions: { assets: { paths: Object.keys(documents) } },
+          files: Object.entries(documents).map(([path, text]) => ({
+            path,
+            bytes: Buffer.byteLength(text),
+            sha256: createHash("sha256").update(text).digest("hex"),
+          })),
+          permissions: [],
+          restartRequired: false,
+        };
+        const archive = new AdmZip();
+        for (const [name, text] of Object.entries({ ...documents, "manifest.json": JSON.stringify(declared) }))
+          archive.addFile(name, Buffer.from(text));
+        const result = readRulesetPackageZip(archive.toBuffer());
+        assert.equal(result.ok, !fault, JSON.stringify(result));
+        const input = {
+          rulesetId: `local/${doc.id}`,
+          version: doc.version,
+          sourceKind: "local" as const,
+          definition: JSON.stringify(doc),
+          catalogs: files,
+        };
+        if (!fault) assert.equal((await storage.put(input)).status, "added");
+        else {
+          if (!result.ok) assert.match(result.issues.join("; "), /Unknown entry "spells\/eldritch-blast"/);
+          await assert.rejects(storage.put(input), /Unknown entry "spells\/eldritch-blast"/);
+        }
+      }
+    } finally {
+      await closeDB();
+    }
   }
 
   // ── The gate ──

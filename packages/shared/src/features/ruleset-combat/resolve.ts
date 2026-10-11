@@ -1765,6 +1765,7 @@ function applyConditionId(
           },
         }
       : {}),
+    ...(applies.endsAway ? { endsAway: { ...applies.endsAway } } : {}),
     ...(applies.saveEnds ? { saveEnds: applies.saveEnds } : {}),
     ...(applies.kind ? { kind: applies.kind } : {}),
     ...(extra.difficulty !== undefined ? { difficulty: extra.difficulty } : {}),
@@ -2144,6 +2145,21 @@ function tickConditionsNow(ctx: RulesetCombatContext, actor: RulesetCombatant, a
     if (entry.rounds === null || at !== (entry.clock ?? "turn-end") || ticksOnSource(ctx, actor, entry)) continue;
     entry.rounds -= 1;
     if (entry.rounds <= 0) removeCondition(ctx, actor, entry.condition, "expired");
+  }
+}
+
+/** What comes off its holder by being far enough from whoever put it on, and out of their sight
+ *  where it says so (1.305): Eyebite's panic. Anybody's walk may part them, the putter's own too. */
+function endsAway(ctx: RulesetCombatContext): void {
+  const perCell = ctx.definition.combat?.distance?.perCell;
+  if (!ctx.state.board?.grid || perCell === undefined) return;
+  for (const holder of ctx.state.combatants) {
+    for (const entry of holder.tracked.filter((one) => one.endsAway && one.source)) {
+      const source = rulesetCombatant(ctx.state, entry.source!);
+      if (source && rulesetGap(holder, source) <= rulesetInCells(entry.endsAway!.beyond, perCell)) continue;
+      if (source && entry.endsAway!.unseen && rulesetCanSee(ctx.definition, ctx.state, holder, source)) continue;
+      if (holder.tracked.includes(entry)) removeCondition(ctx, holder, entry.condition, "spent");
+    }
   }
 }
 
@@ -3230,6 +3246,14 @@ function conjure(ctx: RulesetCombatContext, actor: RulesetCombatant, action: Rul
   // Named as the entry, not as the mode it was used in: "Pact of the Blade", not "(Longsword)".
   const label = actor.actions.find((one) => one.id === action.id)?.label ?? action.label;
   ctx.events.push({ type: "conjured", actorId: actor.id, optionId: action.id, label, item: made.item });
+}
+
+/** Who succeeded on a save against a cast its maker concentrates on, or against a repeat of it
+ *  (1.305): Eyebite never picks them again. */
+function noteSaved(actor: RulesetCombatant, action: RulesetCombatAction, target: RulesetCombatant): void {
+  const held = actor.concentrating;
+  if (!held || (held.actionId !== action.id && held.actionId !== action.again?.of)) return;
+  if (!held.saved?.includes(target.id)) held.saved = [...(held.saved ?? []), target.id];
 }
 
 /** A weapon put in hand gone again (1.303): dismissed, or its maker dead. A bound weapon is what it
@@ -5830,6 +5854,7 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
     // longer still (1.287).
     stirs(ctx, actor, "moved");
     recheckHiding(ctx, actor);
+    endsAway(ctx);
     // Come where something readied for it reaches it (1.283): taken now, the rest of the walk after.
     const readied = reachedBefore
       ? readiedReaching(ctx, actor, readyAsked).filter(
@@ -7271,6 +7296,12 @@ function resolveActionBody(
     : payWith
       ? rulesetCostSteps(ctx.definition, action, payWith, actor)
       : 0;
+  // What a repeat is made at, and whom (1.305), kept with the concentration it holds.
+  if (!held && action.repeats && actor.concentrating?.actionId === action.id) {
+    actor.concentrating.steps = steps;
+    if (rulesetIsSpell(action)) actor.concentrating.level = rulesetPaidLevel(ctx.definition, actor, action, payWith);
+    actor.concentrating.targets = targets.map((one) => one.id);
+  }
   // What it puts on its own user as it is made (1.302), whatever its targets do: Sunbeam's mote,
   // held by the same concentration and given the level it was cast at.
   if (!held) {
@@ -7295,7 +7326,10 @@ function resolveActionBody(
     ? Math.min(
         action.heldSteps.max ?? Infinity,
         Math.floor(
-          (actor.tracked.find((entry) => entry.condition === action.whileHolds)?.steps ?? 0) /
+          // A repeat, by what its cast was paid at (1.305).
+          ((action.again
+            ? actor.concentrating?.steps
+            : actor.tracked.find((entry) => entry.condition === action.whileHolds)?.steps) ?? 0) /
             (action.heldSteps.every ?? 1),
         ),
       )
@@ -7744,6 +7778,7 @@ function resolveActionBody(
         automatic: true,
       });
       saved = true;
+      noteSaved(actor, action, target);
     } else if (action.save?.alliesMayFail && target.side === actor.side) {
       // A friend lets it in (1.273): failed, nothing rolled.
       ctx.events.push({
@@ -7772,6 +7807,7 @@ function resolveActionBody(
           ? leanWith(saveLean(ctx, target, action.save.modes), "disadvantage")
           : saveLean(ctx, target, action.save.modes),
       );
+      if (saved) noteSaved(actor, action, target);
       if (saved && action.save.onSuccess === "negates") {
         spendUsed();
         continue;
@@ -8298,7 +8334,11 @@ function resolveActionBody(
         applyConditionId(ctx, target, applies.condition, applies, {
           ...(value !== undefined ? { value } : {}),
           // A spell's, the level it was cast at (1.294): what magical darkness puts its light out by.
-          ...(rulesetIsSpell(action) ? { level: rulesetPaidLevel(ctx.definition, actor, action, payWith) } : {}),
+          ...(rulesetIsSpell(action)
+            ? { level: rulesetPaidLevel(ctx.definition, actor, action, payWith) }
+            : action.again && actor.concentrating?.level !== undefined
+              ? { level: actor.concentrating.level }
+              : {}),
           // And how far above its base cost (1.295): what an action the condition gives grows by.
           ...(rulesetIsSpell(action) && steps > 0 ? { steps } : {}),
           // What it harms with grows with the higher cost it was put on with (1.250): Acid Arrow.
@@ -8501,6 +8541,7 @@ export function advanceRulesetTurn(
   if (leaving) {
     // Ending a turn in a zone comes before the turn's own conditions run out (1.167).
     zonesAtTurn(ctx, leaving, "turn-end");
+    endsAway(ctx);
     tickConditions(ctx, leaving, "turn-end");
     // The first turn, spent surprised, is over (1.232).
     endSurprise(ctx, leaving);

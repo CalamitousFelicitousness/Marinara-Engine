@@ -11833,6 +11833,29 @@
                     "concentration": {
                       "type": "boolean"
                     },
+                    "repeats": {
+                      "type": "object",
+                      "properties": {
+                        "budget": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "notSaved": {
+                          "type": "boolean",
+                          "const": true
+                        },
+                        "sameTargets": {
+                          "type": "boolean",
+                          "const": true
+                        },
+                        "$comment": {}
+                      },
+                      "required": [
+                        "budget"
+                      ],
+                      "additionalProperties": false
+                    },
                     "reaction": {
                       "anyOf": [
                         {
@@ -12689,6 +12712,25 @@
                             },
                             "additionalProperties": false
                           },
+                          "endsAway": {
+                            "type": "object",
+                            "properties": {
+                              "beyond": {
+                                "type": "number",
+                                "minimum": 0,
+                                "maximum": 100000
+                              },
+                              "unseen": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "$comment": {}
+                            },
+                            "required": [
+                              "beyond"
+                            ],
+                            "additionalProperties": false
+                          },
                           "escapeDc": {
                             "anyOf": [
                               {
@@ -13448,6 +13490,25 @@
                               },
                               "$comment": {}
                             },
+                            "additionalProperties": false
+                          },
+                          "endsAway": {
+                            "type": "object",
+                            "properties": {
+                              "beyond": {
+                                "type": "number",
+                                "minimum": 0,
+                                "maximum": 100000
+                              },
+                              "unseen": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "$comment": {}
+                            },
+                            "required": [
+                              "beyond"
+                            ],
                             "additionalProperties": false
                           },
                           "escapeDc": {
@@ -16973,6 +17034,25 @@
                                   },
                                   "additionalProperties": false
                                 },
+                                "endsAway": {
+                                  "type": "object",
+                                  "properties": {
+                                    "beyond": {
+                                      "type": "number",
+                                      "minimum": 0,
+                                      "maximum": 100000
+                                    },
+                                    "unseen": {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
+                                    "$comment": {}
+                                  },
+                                  "required": [
+                                    "beyond"
+                                  ],
+                                  "additionalProperties": false
+                                },
                                 "escapeDc": {
                                   "anyOf": [
                                     {
@@ -18029,6 +18109,25 @@
                                         },
                                         "$comment": {}
                                       },
+                                      "additionalProperties": false
+                                    },
+                                    "endsAway": {
+                                      "type": "object",
+                                      "properties": {
+                                        "beyond": {
+                                          "type": "number",
+                                          "minimum": 0,
+                                          "maximum": 100000
+                                        },
+                                        "unseen": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "required": [
+                                        "beyond"
+                                      ],
                                       "additionalProperties": false
                                     },
                                     "escapeDc": {
@@ -24981,6 +25080,25 @@
                                       },
                                       "additionalProperties": false
                                     },
+                                    "endsAway": {
+                                      "type": "object",
+                                      "properties": {
+                                        "beyond": {
+                                          "type": "number",
+                                          "minimum": 0,
+                                          "maximum": 100000
+                                        },
+                                        "unseen": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "required": [
+                                        "beyond"
+                                      ],
+                                      "additionalProperties": false
+                                    },
                                     "escapeDc": {
                                       "anyOf": [
                                         {
@@ -29413,6 +29531,25 @@
                                   },
                                   "$comment": {}
                                 },
+                                "additionalProperties": false
+                              },
+                              "endsAway": {
+                                "type": "object",
+                                "properties": {
+                                  "beyond": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 100000
+                                  },
+                                  "unseen": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "beyond"
+                                ],
                                 "additionalProperties": false
                               },
                               "escapeDc": {
@@ -35560,6 +35697,25 @@
                                         },
                                         "$comment": {}
                                       },
+                                      "additionalProperties": false
+                                    },
+                                    "endsAway": {
+                                      "type": "object",
+                                      "properties": {
+                                        "beyond": {
+                                          "type": "number",
+                                          "minimum": 0,
+                                          "maximum": 100000
+                                        },
+                                        "unseen": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "required": [
+                                        "beyond"
+                                      ],
                                       "additionalProperties": false
                                     },
                                     "escapeDc": {
@@ -46115,6 +46271,25 @@
                           },
                           "additionalProperties": false
                         },
+                        "endsAway": {
+                          "type": "object",
+                          "properties": {
+                            "beyond": {
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 100000
+                            },
+                            "unseen": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "beyond"
+                          ],
+                          "additionalProperties": false
+                        },
                         "escapeDc": {
                           "anyOf": [
                             {
@@ -47263,6 +47438,25 @@
                                 },
                                 "additionalProperties": false
                               },
+                              "endsAway": {
+                                "type": "object",
+                                "properties": {
+                                  "beyond": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 100000
+                                  },
+                                  "unseen": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "beyond"
+                                ],
+                                "additionalProperties": false
+                              },
                               "escapeDc": {
                                 "anyOf": [
                                   {
@@ -48043,6 +48237,25 @@
                                       },
                                       "$comment": {}
                                     },
+                                    "additionalProperties": false
+                                  },
+                                  "endsAway": {
+                                    "type": "object",
+                                    "properties": {
+                                      "beyond": {
+                                        "type": "number",
+                                        "minimum": 0,
+                                        "maximum": 100000
+                                      },
+                                      "unseen": {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "required": [
+                                      "beyond"
+                                    ],
                                     "additionalProperties": false
                                   },
                                   "escapeDc": {
@@ -49035,6 +49248,25 @@
                             },
                             "$comment": {}
                           },
+                          "additionalProperties": false
+                        },
+                        "endsAway": {
+                          "type": "object",
+                          "properties": {
+                            "beyond": {
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 100000
+                            },
+                            "unseen": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "beyond"
+                          ],
                           "additionalProperties": false
                         },
                         "escapeDc": {

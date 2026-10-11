@@ -2473,6 +2473,7 @@ export interface RulesetCatalogApplies {
   saveEnds?: RulesetCatalogSaveEnds;
   endsAfter?: "own-attack" | "attacked" | "own-save";
   endsWhenHolder?: RulesetHolderEnding;
+  endsAway?: { beyond: number; unseen?: true };
   escapeDc?: number | "save";
   escapeChecks?: string[];
   when?: z.infer<ReturnType<typeof sheetBoundsSchema>>;
@@ -2539,6 +2540,14 @@ const catalogAppliesSchema: z.ZodType<RulesetCatalogApplies, z.ZodTypeDef, unkno
      *  Invisibility, which ends for a target that attacks or casts a spell. What the attack or the
      *  spell rolled still had it; whatever came after does not. */
     endsWhenHolder: holderEndingSchema.optional(),
+    /** It comes off once its holder stands farther than `beyond` (the ruleset's own distance) from
+     *  whoever put it on, and, with `unseen`, can no longer see them (Capability API 1.305): 5e's
+     *  Eyebite, whose panicked target is free again "at least 60 feet away from you where it can no
+     *  longer see you". Asked as each step of a walk ends and as each turn ends. */
+    endsAway: z
+      .object({ beyond: z.number().min(0).max(100000), unseen: z.literal(true).optional() })
+      .strict()
+      .optional(),
     /** What breaking free of it is rolled against, in place of the holder's own side of the contest
      *  that breaks free of it (Capability API 1.98): 5e's "the target is grappled (escape DC 13)".
      *  `"save"` is the save difficulty of whatever applied it (1.169): Web and Black Tentacles. */
@@ -3385,6 +3394,19 @@ const catalogMechanicsObject = z
       .strict()
       .optional(),
     concentration: z.boolean().optional(),
+    /** Made again on later turns while its user concentrates on it (Capability API 1.305), on
+     *  `budget`, with no cost and no new concentration, at the cost it was cast at: Vampiric Touch,
+     *  Call Lightning, Heat Metal (a bonus action). `notSaved`: never at a creature that succeeded on a
+     *  save against this casting (Eyebite). `sameTargets`: only at whom the cast was aimed at (Heat
+     *  Metal's holder). */
+    repeats: z
+      .object({
+        budget: sheetId,
+        notSaved: z.literal(true).optional(),
+        sameTargets: z.literal(true).optional(),
+      })
+      .strict()
+      .optional(),
     /** Something taken at a MOMENT rather than on a turn. `true` says only that much, and an entry
      *  that says only that much is on no menu: nothing knows which moment it waits for. An object
      *  names the moment, and then the entry is offered in the window that moment opens.
@@ -3643,6 +3665,14 @@ const catalogMechanicsSchema: z.ZodType<
       code: z.ZodIssueCode.custom,
       path: ["teleport", "strike"],
       message: "A teleport's strike is one of a creature's own actions, so only a creature's teleport names one",
+    });
+  }
+  // Made again only while held by concentration (1.305).
+  if (mechanics.repeats && !mechanics.concentration) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["repeats"],
+      message: '"repeats" is made again while its user concentrates on it, so it goes with "concentration"',
     });
   }
   if (mechanics.teleport && (mechanics.area || mechanics.reaction)) {
@@ -5786,6 +5816,7 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     scales: true,
     conjures: true,
     appliesSelf: true,
+    repeats: true,
     gives: true,
     standard: true,
     rider: true,
@@ -13245,6 +13276,13 @@ export function rulesetCatalogEntryIssues(
       else if ((attack.range && attack.reach === undefined) || attack.ammo || attack.clip)
         add([index, "mechanics", "conjures", "items", refIndex], `"${ref}" is not a melee weapon`);
     });
+    if (
+      mechanics?.repeats &&
+      definition.combat &&
+      !definition.combat.economy.budgets.some((one) => one.id === mechanics.repeats!.budget)
+    ) {
+      add([index, "mechanics", "repeats", "budget"], `Unknown budget "${mechanics.repeats.budget}"`);
+    }
     if (mechanics?.oncePerTarget && !definition.rests.some((one) => one.id === mechanics.oncePerTarget!.until)) {
       add([index, "mechanics", "oncePerTarget", "until"], `Unknown rest "${mechanics.oncePerTarget.until}"`);
     }

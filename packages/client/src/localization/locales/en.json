@@ -1460,6 +1460,7 @@
   "game.combat.ruleset.group.switch": "Switches",
   "game.combat.ruleset.heighten.prompt": "Who rolls their first save against {{label}} at a disadvantage?",
   "game.combat.ruleset.log.title": "What happened",
+  "game.combat.ruleset.menu.again": "{{label}} again",
   "game.combat.ruleset.menu.avert": "Avert eyes from {{target}}",
   "game.combat.ruleset.menu.cancelSave": "Cancel on a successful {{save}} save against {{dc}}",
   "game.combat.ruleset.menu.dismiss": "Dismiss {{item}}",

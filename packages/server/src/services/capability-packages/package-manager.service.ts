@@ -1559,6 +1559,17 @@ function carriesHidingTraits(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesHidingTraits(one, depth + 1));
 }
 
+/** A concentration entry's effect made again, and a condition ended by distance from its putter
+ *  (1.305). */
+function carriesRepeats(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesRepeats(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.repeats)?.budget !== undefined || !!plainRecord(record.endsAway)) return true;
+  return Object.values(record).some((one) => carriesRepeats(one, depth + 1));
+}
+
 /** Hide in Plain Sight's needs, Feral Senses, surprise from a hidden start, and a weapon bound out
  *  of the fight (1.304). */
 function carriesHidingNeeds(value: unknown, depth = 0): boolean {
@@ -4168,6 +4179,13 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Repeats of a concentration entry, and conditions that end at a distance, 1.305.
+  if (
+    !declaresApi(305) &&
+    (carriesRepeats(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesRepeats(document)))
+  ) {
+    return "A ruleset with an entry made again while its user concentrates on it, or a condition that ends at a distance from whoever put it on, requires schemaVersion 2 and capabilityApi 1.305 or newer";
   }
   // Hide in Plain Sight's needs, Feral Senses, surprise from a hidden start, a ritual-bound weapon, 1.304.
   if (

@@ -136,6 +136,8 @@ export function rulesetOptionLabel(option: DirectedRulesetOption, t: TFunction):
   if (option.offHand) return t("game.combat.ruleset.menu.offHand", { weapon: option.label });
   // Putting away a weapon put in hand (1.303).
   if (option.dismiss) return t("game.combat.ruleset.menu.dismiss", { item: option.label });
+  // A concentration entry made again (1.305): Vampiric Touch's later touches.
+  if (option.again) return t("game.combat.ruleset.menu.again", { label: option.label });
   // A switch says which way it turns the item, which is the Engine's own word too.
   if (option.kind === "switch")
     return t(option.on ? "game.combat.ruleset.menu.switchOff" : "game.combat.ruleset.menu.switchOn", {

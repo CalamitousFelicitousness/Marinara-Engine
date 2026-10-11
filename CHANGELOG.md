@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: Vampiric Touch, Eyebite and Heat Metal can be used again each turn while concentrated on, at the level they were cast and never at a creature that saved, and Eyebite's panic ends once its target is far away and out of sight (Capability API 1.305).
 - Rulesets: Hide in Plain Sight can need camouflage and a wall to press against, Feral Senses lets a ranger attack unseen foes without disadvantage, a gelatinous cube surprises those who don't notice it, and a pact weapon can be bound by a ritual outside the fight (Capability API 1.304).
 - Rulesets: a scroll or wand can fire several beams or darts that grow with its reader's level, a reaction now ends what acting ends, Chains of Carceri tells two creatures of one name apart, and a pact weapon can be a dagger or javelin, dismissed for free and gone when its warlock dies (Capability API 1.303).
 - Rulesets: a creature's own spell-like action can be held by its concentration, a condition can end when its holder uses a named action, and a spell can put a condition on its own caster, so a quasit's invisibility ends on its Scare or when it is hurt, and Sunbeam leaves a mote in its caster's hand for the later beams (Capability API 1.302).

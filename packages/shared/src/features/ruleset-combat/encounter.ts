@@ -2371,6 +2371,8 @@ function mechanicsAction(
   }
   // Used, it ends a condition on its user (1.231): the spell that gave it.
   if (mechanics.endsCondition) action.endsCondition = mechanics.endsCondition;
+  // Made again while concentrated on (1.305): Vampiric Touch.
+  if ("repeats" in mechanics && mechanics.repeats) action.repeats = { ...mechanics.repeats };
   if (mechanics.usableIn) action.usableIn = { light: [...mechanics.usableIn.light] };
   // Sent out of the fight (1.231): Dismissal, Banishment.
   if (mechanics.dismisses) action.dismisses = structuredClone(mechanics.dismisses);
@@ -4036,6 +4038,39 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
     for (const combatant of state.combatants) {
       combatant.actions = [...combatant.actions, ...contestActions(combat, combatant.actions, perCell)];
     }
+  }
+
+  // A concentration entry's effect made again (1.305), offered while its user concentrates on it: on
+  // its own budget, paid for already, with no concentration of its own and nothing on its user again.
+  for (const combatant of state.combatants) {
+    const again = combatant.actions.flatMap((action): RulesetCombatAction[] => {
+      if (!action.repeats || !action.concentration) return [];
+      const copy: RulesetCombatAction = structuredClone(action);
+      copy.id = `${action.id}:again`;
+      copy.budget = action.repeats.budget;
+      copy.again = {
+        of: action.id,
+        ...(action.repeats.notSaved ? { notSaved: true as const } : {}),
+        ...(action.repeats.sameTargets ? { sameTargets: true as const } : {}),
+      };
+      delete copy.repeats;
+      delete copy.concentration;
+      delete copy.appliesSelf;
+      delete copy.reaction;
+      delete copy.free;
+      // Grown by what the cast was paid at, as a condition's action grows (1.295).
+      const per = copy.use?.perCostStep;
+      if (per) {
+        copy.heldSteps = {
+          amount: per,
+          ...(copy.use!.stepsEvery ? { every: copy.use!.stepsEvery } : {}),
+          ...(copy.use!.stepsMax ? { max: copy.use!.stepsMax } : {}),
+        };
+      }
+      delete copy.use;
+      return [copy];
+    });
+    if (again.length) combatant.actions = [...combatant.actions, ...again];
   }
 
   // Kept on through the fight by what they hold or what their block says (1.258): 5e's paladin

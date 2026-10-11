@@ -1601,6 +1601,9 @@ export function rulesetOptionTargets(
         if (rulesetStandardName(option.id) === "help" && combatant.id === actor.id) return false;
         // "One creature other than you" (1.251).
         if (cure?.notSelf && combatant.id === actor.id) return false;
+        // A repeat never at one that saved against the cast (1.305), or only at whom it was aimed at.
+        if (cure?.again?.notSaved && actor.concentrating?.saved?.includes(combatant.id)) return false;
+        if (cure?.again?.sameTargets && !actor.concentrating?.targets?.includes(combatant.id)) return false;
         // Used on them already since the rest that frees it (1.299).
         if (cure?.oncePerTarget && rulesetUsedOnMeans(state, rulesetUsedOn(actor, cure), combatant)) return false;
         if (option.targets.side === "self") return combatant.id === actor.id;
@@ -1775,6 +1778,8 @@ export function rulesetActionAvailable(
     const pools = readRulesetLive(definition, actor.sheet.build, actor.sheet.live).pools;
     if (!pools.some((pool) => pool.key === action.restore!.pool || pool.label.toLowerCase() === wanted)) return false;
   }
+  // Made again only while its cast is concentrated on (1.305).
+  if (action.again && actor.concentrating?.actionId !== action.again.of) return false;
   // Given by a condition, only while its user holds it (1.231).
   if (action.whileHolds) {
     const held = definition
@@ -2252,6 +2257,7 @@ function optionFrom(
         ? { on: "item" in action.switches ? rulesetItemOn(actor, action.switches.item) : !actor.doused }
         : {}),
     ...(action.restore ? { restores: action.restore.pool } : {}),
+    ...(action.again ? { again: true as const } : {}),
   };
   if (paid && paid.cost.length > 0) option.cost = paid.cost;
   // As many uses as its user chooses (1.246).
@@ -3315,7 +3321,7 @@ export function rulesetReadiedOption(
 /** Whether an action of a combatant's is one of its spells (1.279): cast out of a catalog, never an
  *  item's use, what a condition lends, or something bought with points. */
 export function rulesetIsSpell(action: RulesetCombatAction): boolean {
-  return !!action.catalog && action.kind !== "item" && !action.whileHolds && !action.signature;
+  return !!action.catalog && action.kind !== "item" && !action.whileHolds && !action.signature && !action.again;
 }
 
 /** Each spell a legendary cast offers (1.279): the option its maker's own turn would show for it,

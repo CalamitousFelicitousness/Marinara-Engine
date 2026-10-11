@@ -126,6 +126,9 @@ export interface RulesetCombatApplies {
   endsAfter?: RulesetConditionEnding;
   /** It comes off once its holder attacks, or casts from one of these catalogs (1.175). */
   endsWhenHolder?: { attacks?: true; casts?: string[]; moves?: true; acts?: true; uses?: string[] };
+  /** It comes off once its holder is this far from whoever put it on, and, with `unseen`, out of
+   *  their sight (1.305): Eyebite's panic. */
+  endsAway?: { beyond: number; unseen?: true };
   /** What breaking free of it is rolled against, in place of the holder's own side of the contest
    *  (1.98): 5e's "grappled (escape DC 13)"; `"save"` is the applier's save difficulty (1.169). */
   escapeDc?: number | "save";
@@ -709,6 +712,12 @@ export interface RulesetCombatAction {
   applies?: RulesetCombatApplies[];
   /** What it puts on its own user as it is made (1.302): Sunbeam's mote. */
   appliesSelf?: RulesetCombatApplies[];
+  /** The same made again while its user concentrates on this one (1.305): Vampiric Touch. This is
+   *  the cast; `again` marks the copy offered on `budget`. */
+  repeats?: { budget: string; notSaved?: true; sameTargets?: true };
+  /** A concentration entry's effect made again (1.305): offered only while its user concentrates on
+   *  `of`, costing nothing off the sheet, at what the cast was paid at. */
+  again?: { of: string; notSaved?: true; sameTargets?: true };
   concentration?: boolean;
   /** How the price is paid. The name is what the sheet's own `use` command knows the row by, and
    *  the pool and its family are what a higher-pool payment is measured against. */
@@ -1043,6 +1052,8 @@ export interface RulesetTrackedCondition {
   endsAfter?: RulesetConditionEnding;
   /** What its holder does that takes it off (1.175): attacking, or casting from these catalogs. */
   endsWhenHolder?: { attacks?: true; casts?: string[]; moves?: true; acts?: true; uses?: string[] };
+  /** How far from its putter, and out of their sight, takes it off (1.305). */
+  endsAway?: { beyond: number; unseen?: true };
   /** The difficulty the repeated save is rolled against: the one that applied it. */
   difficulty?: number;
   /** The saves that ended it made and failed so far, where they are counted (1.253). */
@@ -1126,7 +1137,16 @@ export interface RulesetCombatant {
    *  every turn, whosever it is; a "round" rider when the round turns over. */
   ridersSpent?: string[];
   tracked: RulesetTrackedCondition[];
-  concentrating: { actionId: string; label: string } | null;
+  concentrating: {
+    actionId: string;
+    label: string;
+    /** What the cast was paid at above its base, and its level (1.305): what a repeat is made at. */
+    steps?: number;
+    level?: number;
+    /** Whom the cast was aimed at, and who has succeeded on a save against it (1.305). */
+    targets?: string[];
+    saved?: string[];
+  } | null;
   /** Hidden (1.282): the Stealth total it hid with, and the opponents it is hidden from, by id. Gone
    *  once it is hidden from nobody. */
   hiding?: {
@@ -2432,6 +2452,8 @@ export interface RulesetCombatOption {
   on?: boolean;
   /** Putting away a weapon put in hand (1.303), named by `label`. */
   dismiss?: true;
+  /** A concentration entry's effect made again (1.305), named by `label`. */
+  again?: true;
   /** Picking up what its holder dropped (1.261), named by `label`. */
   pickUp?: true;
   /** Averting the eyes from a gaze's holder, named by `label`, or looking at them again (1.263). */

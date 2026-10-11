@@ -665,7 +665,6 @@ export function rulesetCombatEventLine(
         dealt: event.dealt,
         health: event.health,
       });
-    // Felled on Held Ground, and reaped (1.318).
     // A prop lit again (1.327).
     case "relit":
       return key("relit", { actor: names.combatant(event.actorId), label: event.label });
@@ -688,6 +687,7 @@ export function rulesetCombatEventLine(
         count: event.rolls.length,
         rolls: event.rolls.map((roll) => roll + event.bonus).join(", "),
       });
+    // Felled on Held Ground, and reaped (1.318).
     case "felled":
       return key(event.label ? "felledNamed" : "felled", {
         actor: names.combatant(event.actorId),

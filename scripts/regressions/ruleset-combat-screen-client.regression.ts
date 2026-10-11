@@ -953,8 +953,11 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
         result: "safe",
       }),
     ],
+    // A prop lit again (1.327).
+    ["relit", say({ type: "relit", actorId: "brenna", propId: "p1", label: "Bonfire", cells: 9 })],
   ];
   const printed = new Map(table);
+  assert.equal(printed.get("relit"), "Brenna lights Bonfire again.");
   assert.equal(
     printed.get("heldGroundReleased"),
     "The Wheel lets go: death is held here no longer. The felled die: Thorn Lurker. Down and dying now: Brenna.",

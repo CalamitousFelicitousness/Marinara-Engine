@@ -564,21 +564,31 @@ export function validateOnboarding(onboarding: CharacterOnboarding, card?: Onboa
     onboarding.cardVariables ?? [],
     card === undefined ? null : readNames(onboardingCardFieldTexts(card).join("\n")),
   );
-  const known = new Set([ONBOARDING_PLAYER_VARIABLE, ...seen]);
-  const isUnknown = (name: string) => !known.has(name) && !isReservedMacroName(name);
-  // An option value like `{{hometown}}` with no such question would reach the persona raw.
-  for (const { id: variableId, options } of [...(onboarding.variables ?? []), ...(onboarding.cardVariables ?? [])]) {
-    for (const name of readNames(options.map((option) => option.value).join("\n"))) {
-      if (isUnknown(name)) issues.push({ code: "unknownOptionName", variableId, name });
+  const cardNames = new Set((onboarding.cardVariables ?? []).map((variable) => variable.variableName));
+  // Every name either list defines is known to the persona's own text: a card
+  // answer is saved as a chat variable, and a persona field keeps its `{{name}}`
+  // through persona creation, so the prompt resolves it from the chat (measured
+  // 2026-10-11). A card field is different — it is read from the chat, where
+  // only card names exist.
+  const personaKnown = new Set([ONBOARDING_PLAYER_VARIABLE, ...seen]);
+  const isUnknown = (known: Set<string>, name: string) => !known.has(name) && !isReservedMacroName(name);
+  // An option value like `{{hometown}}` with no such question would reach the text raw.
+  const checkOptions = (variables: CharacterOnboardingVariable[], known: Set<string>) => {
+    for (const { id: variableId, options } of variables) {
+      for (const name of readNames(options.map((option) => option.value).join("\n"))) {
+        if (isUnknown(known, name)) issues.push({ code: "unknownOptionName", variableId, name });
+      }
     }
-  }
+  };
+  checkOptions(onboarding.variables ?? [], personaKnown);
+  checkOptions(onboarding.cardVariables ?? [], cardNames);
   for (const field of ONBOARDING_PERSONA_FIELDS) {
     const fieldText = onboarding[field] ?? "";
     // `{{if}}` / `{{If}}` without `#` is not a conditional: it reaches the persona
     // verbatim. (`{{else if}}` is correct as is — the engine's else-if has no `#`.)
     if (/\{\{\s*if\b/i.test(fieldText)) issues.push({ code: "plainIf", field });
     for (const name of readNames(fieldText)) {
-      if (isUnknown(name)) issues.push({ code: "unknownName", field, name });
+      if (isUnknown(personaKnown, name)) issues.push({ code: "unknownName", field, name });
     }
   }
   return issues;

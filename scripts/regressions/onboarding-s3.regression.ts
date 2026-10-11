@@ -353,6 +353,93 @@ assert.deepEqual(
   "a shared id yields one issue per list, distinguishable by name alone",
 );
 
+// ── Which names each side knows ──
+// A persona field keeps its `{{name}}` through persona creation, and a card
+// answer is a chat variable, so the prompt resolves a card name written into a
+// persona field (measured 2026-10-11). No warning there — it does work.
+assert.deepEqual(
+  issuesFor(
+    {
+      description: "She greets {{cardOnly}}.",
+      variables: [{ id: "p", variableName: "personaOnly" }],
+      cardVariables: [{ id: "c", variableName: "cardOnly" }],
+    },
+    CARD_FIELDS,
+  ).filter((issue) => issue.code === "unknownName"),
+  [],
+  "a card name in a persona field is known: the chat's own answer resolves it there",
+);
+// The card's own text is deliberately not scanned for unknown names: a card
+// field is the author's prose and only ever reaches the model, whereas
+// `unknownName` reports a tag typed into one of the PERSONA question fields,
+// where a leftover would be written into the persona the player gets.
+// An option value belongs to its own list either way. A persona option value
+// keeps its `{{cardName}}` through persona creation exactly like field text does,
+// so the chat resolves it later — known, no warning.
+assert.deepEqual(
+  issuesFor({
+    variables: [{ id: "p", variableName: "personaOnly", options: [option("a", "{{cardOnly}}")] }],
+    cardVariables: [{ id: "c", variableName: "cardOnly" }],
+  })
+    .filter((issue) => issue.code === "unknownOptionName")
+    .map((issue) => issue.name),
+  [],
+  "a card name in a persona option value is known: it survives into the persona and the chat resolves it",
+);
+// A card option value is different: it is resolved while the persona is built,
+// from the card's own answers alone, so it knows card names only.
+assert.deepEqual(
+  issuesFor({
+    cardVariables: [
+      { id: "c", variableName: "cardOnly", options: [option("a", "{{cardLater}}")] },
+      { id: "d", variableName: "cardLater" },
+    ],
+    variables: [{ id: "p", variableName: "personaOnly" }],
+  })
+    .filter((issue) => issue.code === "unknownOptionName")
+    .map((issue) => issue.name),
+  [],
+  "a card option value may name another card question",
+);
+assert.deepEqual(
+  issuesFor({
+    cardVariables: [{ id: "c", variableName: "cardOnly", options: [option("a", "{{personaOnly}}")] }],
+    variables: [{ id: "p", variableName: "personaOnly" }],
+  })
+    .filter((issue) => issue.code === "unknownOptionName")
+    .map((issue) => issue.name),
+  ["personaOnly"],
+  "a persona name in a card option value is unknown: the card's own answers cannot fill it",
+);
+// The split decides `unused` the same way: only the field a question feeds
+// counts as reading it.
+const crossRead = {
+  variables: [{ id: "p", variableName: "personaOnly" }],
+  cardVariables: [
+    { id: "c", variableName: "cardOnly" },
+    { id: "d", variableName: "cardUnread" },
+  ],
+};
+assert.deepEqual(
+  issuesFor(crossRead, { description: "She greets {{cardOnly}} and {{personaOnly}}." })
+    .filter((issue) => issue.code === "unused")
+    .map((issue) => issue.name)
+    .sort(),
+  ["cardUnread", "personaOnly"],
+  "a card field does not read a persona question, and reading one card name leaves the other card question unused",
+);
+assert.deepEqual(
+  issuesFor(
+    { ...crossRead, description: "{{cardOnly}}", personality: "Reads {{personaOnly}}." },
+    { description: "nothing here" },
+  )
+    .filter((issue) => issue.code === "unused")
+    .map((issue) => issue.name)
+    .sort(),
+  ["cardOnly", "cardUnread"],
+  "a persona field does not read a card question, so neither card question is used",
+);
+
 // ── The deferred greeting limitation is detectable ──
 // A greeting is shown from the client's own macro context, which does not read
 // chat variables, so a card variable there renders literally for now (see PR).

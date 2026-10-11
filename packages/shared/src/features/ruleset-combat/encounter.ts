@@ -15,6 +15,7 @@ import {
   type RulesetCatalogEntry,
   type RulesetCatalogItem,
   type RulesetCatalogMechanics,
+  type RulesetCatalogZone,
   type RulesetItemUse,
   type RulesetCombat,
   type RulesetCombatAbilitySource,
@@ -1607,6 +1608,158 @@ function lastChargeDie(
   };
 }
 
+/** A zone as a fight holds it (1.167), in cells: a catalog entry's, an item use's, or a creature
+ *  action's (1.319). */
+export function rulesetZoneAction(
+  zone: RulesetCatalogZone,
+  perCell: number | undefined,
+): NonNullable<RulesetCombatAction["zone"]> {
+  const out: NonNullable<RulesetCombatAction["zone"]> = {
+    rounds: zone.rounds,
+    ...(zone.untilLair ? { untilLair: true as const } : {}),
+    anchor: zone.anchor ?? "point",
+    ...(zone.carried ? { carried: zone.carried } : {}),
+    triggers: [...zone.triggers],
+    atCast: zone.atCast !== false,
+  };
+  const { move, drift, terrain } = zone;
+  if (move) {
+    out.move = {
+      budget: move.budget,
+      distance: rulesetInCells(move.distance, perCell ?? 1),
+      ...(move.ram ? { ram: true } : {}),
+    };
+  }
+  if (drift) out.drift = rulesetInCells(drift.distance, perCell ?? 1);
+  if (zone.turn) out.turn = { budget: zone.turn.budget };
+  if (terrain?.towardCaster) out.towardCaster = true;
+  const { detonates, burns } = zone;
+  if (detonates) {
+    // What goes off later does nothing as it appears.
+    out.atCast = false;
+    const grows = amountOf(detonates.grows);
+    out.detonates = { ...(grows ? { grows } : {}), ...(detonates.touched ? { touched: true } : {}) };
+  }
+  if (burns) {
+    const amount = amountOf(burns.amount);
+    out.burns = {
+      by: [...burns.by],
+      ...(amount ? { amount } : {}),
+      ...(burns.damageType ? { damageType: burns.damageType } : {}),
+    };
+  }
+  if (terrain?.difficult) out.difficult = true;
+  if (terrain?.costTimes !== undefined) out.costTimes = terrain.costTimes;
+  if (terrain?.halvesSpeed) out.halvesSpeed = true;
+  if (zone.breaksConcentration) out.breaksConcentration = true;
+  if (zone.damageCap !== undefined) out.damageCap = zone.damageCap;
+  if (zone.damageType) out.damageType = zone.damageType;
+  const sections = zone.sections;
+  if (sections) {
+    const broken = sections.broken;
+    const brokenAmount = broken ? amountOf(broken.amount) : undefined;
+    out.sections = {
+      every: Math.max(1, rulesetInCells(sections.every, perCell ?? 1)),
+      health: sections.health,
+      defense: sections.defense,
+      ...(sections.vulnerable ? { vulnerable: [...sections.vulnerable] } : {}),
+      ...(sections.resist ? { resist: [...sections.resist] } : {}),
+      ...(sections.immune ? { immune: [...sections.immune] } : {}),
+      ...(broken && brokenAmount
+        ? {
+            broken: {
+              triggers: [...broken.triggers],
+              amount: brokenAmount,
+              ...(broken.damageType ? { damageType: broken.damageType } : {}),
+              ...(broken.save ? { save: broken.save } : {}),
+              ...(broken.onSave ? { onSave: broken.onSave } : {}),
+              ...(broken.perCostStep && amountOf(broken.perCostStep)
+                ? { perCostStep: amountOf(broken.perCostStep)! }
+                : {}),
+            },
+          }
+        : {}),
+    };
+  }
+  const blocks = zone.blocks;
+  if (blocks?.length) {
+    out.blocks = {
+      ...(blocks.includes("move") ? { move: true } : {}),
+      ...(blocks.includes("sight") ? { sight: true } : {}),
+    };
+  }
+  const side = zone.side;
+  if (side) {
+    out.side = { distance: rulesetInCells(side.distance, perCell ?? 1), triggers: [...side.triggers] };
+  }
+  if (zone.obscures) {
+    out.obscures = {
+      pierced: [...(zone.obscures.pierced ?? [])],
+      ...(zone.obscures.light ? { light: true as const } : {}),
+      ...(zone.obscures.dispersed ? { dispersed: rulesetCopyDispersed(zone.obscures.dispersed) } : {}),
+      ...(zone.obscures.darkness ? { darkness: true as const } : {}),
+    };
+  }
+  // The light it sheds (1.292), in cells; and the magical darkness it ends.
+  const lights = zone.lights;
+  if (lights) {
+    out.lights = {
+      bright: lights.bright > 0 ? rulesetInCells(lights.bright, perCell ?? 1) : 0,
+      dim: Math.max(
+        0,
+        rulesetInCells(lights.bright + lights.dim, perCell ?? 1) -
+          (lights.bright > 0 ? rulesetInCells(lights.bright, perCell ?? 1) : 0),
+      ),
+      ...(lights.reveals ? { reveals: true as const } : {}),
+      ...(lights.sunlight ? { sunlight: true as const } : {}),
+      ...(lights.shade ? { shade: true as const } : {}),
+    };
+  }
+  const dispels = zone.dispelsDark;
+  if (dispels) {
+    out.dispelsDark = {
+      upTo: dispels.upTo,
+      ...(dispels.within !== undefined ? { within: rulesetInCells(dispels.within, perCell ?? 1) } : {}),
+    };
+  }
+  if (zone.dispelsLight) out.dispelsLight = { upTo: zone.dispelsLight.upTo };
+  if (zone.disperses) out.disperses = true;
+  const inside = zone.inside;
+  if (inside) {
+    out.inside = {
+      ...(inside.conditions ? { conditions: [...inside.conditions] } : {}),
+      ...(inside.immune ? { immune: [...inside.immune] } : {}),
+    };
+  }
+  if (zone.forbids) out.forbids = { components: [...zone.forbids.components] };
+  if (zone.wards) {
+    out.wards = {
+      catalogs: [...zone.wards.catalogs],
+      maxLevel: zone.wards.maxLevel,
+      ...(zone.wards.by ? { by: zone.wards.by } : {}),
+      ...(zone.wards.maxLevelPerCostStep ? { maxLevelPerCostStep: zone.wards.maxLevelPerCostStep } : {}),
+    };
+  }
+  const held = zone.whileHeld;
+  const heldAmount = held && amountOf(held.amount);
+  if (held && heldAmount) {
+    out.whileHeld = {
+      condition: held.condition,
+      amount: heldAmount,
+      ...(held.damageType ? { damageType: held.damageType } : {}),
+    };
+  }
+  const harm = terrain?.perDistance && amountOf(terrain.perDistance.amount);
+  if (terrain?.perDistance && harm) {
+    out.perDistance = {
+      every: rulesetInCells(terrain.perDistance.every, perCell ?? 1),
+      amount: harm,
+      ...(terrain.perDistance.damageType ? { damageType: terrain.perDistance.damageType } : {}),
+    };
+  }
+  return out;
+}
+
 /** What one use does, as an action holds it: the parts a fake takes from what it truly is (1.74). */
 export const RULESET_FAKE_EFFECT_KEYS = [
   "toHit",
@@ -2549,154 +2702,7 @@ function mechanicsAction(
   // Measured on a board (1.271): a fight without one has nowhere to go, but out of it (1.274).
   if (mechanics.teleport && (perCell !== undefined || mechanics.teleport.leaves))
     action.teleport = rulesetTeleportInCells(mechanics.teleport, perCell ?? 1);
-  if (mechanics.zone) {
-    action.zone = {
-      rounds: mechanics.zone.rounds,
-      anchor: mechanics.zone.anchor ?? "point",
-      ...(mechanics.zone.carried ? { carried: mechanics.zone.carried } : {}),
-      triggers: [...mechanics.zone.triggers],
-      atCast: mechanics.zone.atCast !== false,
-    };
-    const { move, drift, terrain } = mechanics.zone;
-    if (move) {
-      action.zone.move = {
-        budget: move.budget,
-        distance: rulesetInCells(move.distance, perCell ?? 1),
-        ...(move.ram ? { ram: true } : {}),
-      };
-    }
-    if (drift) action.zone.drift = rulesetInCells(drift.distance, perCell ?? 1);
-    if (mechanics.zone.turn) action.zone.turn = { budget: mechanics.zone.turn.budget };
-    if (terrain?.towardCaster) action.zone.towardCaster = true;
-    const { detonates, burns } = mechanics.zone;
-    if (detonates) {
-      // What goes off later does nothing as it appears.
-      action.zone.atCast = false;
-      const grows = amountOf(detonates.grows);
-      action.zone.detonates = { ...(grows ? { grows } : {}), ...(detonates.touched ? { touched: true } : {}) };
-    }
-    if (burns) {
-      const amount = amountOf(burns.amount);
-      action.zone.burns = {
-        by: [...burns.by],
-        ...(amount ? { amount } : {}),
-        ...(burns.damageType ? { damageType: burns.damageType } : {}),
-      };
-    }
-    if (terrain?.difficult) action.zone.difficult = true;
-    if (terrain?.costTimes !== undefined) action.zone.costTimes = terrain.costTimes;
-    if (terrain?.halvesSpeed) action.zone.halvesSpeed = true;
-    if (mechanics.zone.breaksConcentration) action.zone.breaksConcentration = true;
-    if (mechanics.zone.damageCap !== undefined) action.zone.damageCap = mechanics.zone.damageCap;
-    if (mechanics.zone.damageType) action.zone.damageType = mechanics.zone.damageType;
-    const sections = mechanics.zone.sections;
-    if (sections) {
-      const broken = sections.broken;
-      const brokenAmount = broken ? amountOf(broken.amount) : undefined;
-      action.zone.sections = {
-        every: Math.max(1, rulesetInCells(sections.every, perCell ?? 1)),
-        health: sections.health,
-        defense: sections.defense,
-        ...(sections.vulnerable ? { vulnerable: [...sections.vulnerable] } : {}),
-        ...(sections.resist ? { resist: [...sections.resist] } : {}),
-        ...(sections.immune ? { immune: [...sections.immune] } : {}),
-        ...(broken && brokenAmount
-          ? {
-              broken: {
-                triggers: [...broken.triggers],
-                amount: brokenAmount,
-                ...(broken.damageType ? { damageType: broken.damageType } : {}),
-                ...(broken.save ? { save: broken.save } : {}),
-                ...(broken.onSave ? { onSave: broken.onSave } : {}),
-                ...(broken.perCostStep && amountOf(broken.perCostStep)
-                  ? { perCostStep: amountOf(broken.perCostStep)! }
-                  : {}),
-              },
-            }
-          : {}),
-      };
-    }
-    const blocks = mechanics.zone.blocks;
-    if (blocks?.length) {
-      action.zone.blocks = {
-        ...(blocks.includes("move") ? { move: true } : {}),
-        ...(blocks.includes("sight") ? { sight: true } : {}),
-      };
-    }
-    const side = mechanics.zone.side;
-    if (side) {
-      action.zone.side = { distance: rulesetInCells(side.distance, perCell ?? 1), triggers: [...side.triggers] };
-    }
-    if (mechanics.zone.obscures) {
-      action.zone.obscures = {
-        pierced: [...(mechanics.zone.obscures.pierced ?? [])],
-        ...(mechanics.zone.obscures.light ? { light: true as const } : {}),
-        ...(mechanics.zone.obscures.dispersed
-          ? { dispersed: rulesetCopyDispersed(mechanics.zone.obscures.dispersed) }
-          : {}),
-        ...(mechanics.zone.obscures.darkness ? { darkness: true as const } : {}),
-      };
-    }
-    // The light it sheds (1.292), in cells; and the magical darkness it ends.
-    const lights = mechanics.zone.lights;
-    if (lights) {
-      action.zone.lights = {
-        bright: lights.bright > 0 ? rulesetInCells(lights.bright, perCell ?? 1) : 0,
-        dim: Math.max(
-          0,
-          rulesetInCells(lights.bright + lights.dim, perCell ?? 1) -
-            (lights.bright > 0 ? rulesetInCells(lights.bright, perCell ?? 1) : 0),
-        ),
-        ...(lights.reveals ? { reveals: true as const } : {}),
-        ...(lights.sunlight ? { sunlight: true as const } : {}),
-        ...(lights.shade ? { shade: true as const } : {}),
-      };
-    }
-    const dispels = mechanics.zone.dispelsDark;
-    if (dispels) {
-      action.zone.dispelsDark = {
-        upTo: dispels.upTo,
-        ...(dispels.within !== undefined ? { within: rulesetInCells(dispels.within, perCell ?? 1) } : {}),
-      };
-    }
-    if (mechanics.zone.dispelsLight) action.zone.dispelsLight = { upTo: mechanics.zone.dispelsLight.upTo };
-    if (mechanics.zone.disperses) action.zone.disperses = true;
-    const inside = mechanics.zone.inside;
-    if (inside) {
-      action.zone.inside = {
-        ...(inside.conditions ? { conditions: [...inside.conditions] } : {}),
-        ...(inside.immune ? { immune: [...inside.immune] } : {}),
-      };
-    }
-    if (mechanics.zone.forbids) action.zone.forbids = { components: [...mechanics.zone.forbids.components] };
-    if (mechanics.zone.wards) {
-      action.zone.wards = {
-        catalogs: [...mechanics.zone.wards.catalogs],
-        maxLevel: mechanics.zone.wards.maxLevel,
-        ...(mechanics.zone.wards.by ? { by: mechanics.zone.wards.by } : {}),
-        ...(mechanics.zone.wards.maxLevelPerCostStep
-          ? { maxLevelPerCostStep: mechanics.zone.wards.maxLevelPerCostStep }
-          : {}),
-      };
-    }
-    const held = mechanics.zone.whileHeld;
-    const heldAmount = held && amountOf(held.amount);
-    if (held && heldAmount) {
-      action.zone.whileHeld = {
-        condition: held.condition,
-        amount: heldAmount,
-        ...(held.damageType ? { damageType: held.damageType } : {}),
-      };
-    }
-    const harm = terrain?.perDistance && amountOf(terrain.perDistance.amount);
-    if (terrain?.perDistance && harm) {
-      action.zone.perDistance = {
-        every: rulesetInCells(terrain.perDistance.every, perCell ?? 1),
-        amount: harm,
-        ...(terrain.perDistance.damageType ? { damageType: terrain.perDistance.damageType } : {}),
-      };
-    }
-  }
+  if (mechanics.zone) action.zone = rulesetZoneAction(mechanics.zone, perCell);
   // What the turn's own economy makes of it: free of a budget, handing budgets back, or letting
   // its holder buy a standard action with a budget other than the main one.
   if (mechanics.free) action.free = true;
@@ -3182,6 +3188,9 @@ function blockActions(
     ...(action.dyingOnly ? { dyingOnly: true as const } : {}),
     ...(action.slaysOnFailedSave ? { slaysOnFailedSave: true as const } : {}),
     ...(action.reaps ? { reaps: true as const } : {}),
+    // An area that stays, and the ground changed (1.319): The Owed's Freezing Fog, a bonfire guttering.
+    ...(action.zone ? { zone: rulesetZoneAction(action.zone, perCell) } : {}),
+    ...(action.ground ? { ground: structuredClone(action.ground) } : {}),
     ...(action.healsOnSlay ? { healsOnSlay: { ...action.healsOnSlay } } : {}),
     ...(action.uses ? { uses: { ...action.uses } } : {}),
     ...(action.recharge

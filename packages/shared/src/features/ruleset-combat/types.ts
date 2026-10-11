@@ -7,6 +7,8 @@
 import type {
   RulesetCatalogItem,
   RulesetCatalogEntriesById,
+  RulesetCatalogZone,
+  RulesetCreatureGround,
   RulesetCreatureHideEntry,
   RulesetCreature,
   RulesetLightRadius,
@@ -365,6 +367,10 @@ export interface RulesetStatBlockAction {
   search?: true;
   /** The light it sheds from now on, or "out" (1.291), in the ruleset's distance. */
   sheds?: RulesetLightRadius | "out";
+  /** An area that stays where its area is aimed (1.319), as a catalog entry's. */
+  zone?: RulesetCatalogZone;
+  /** What it does to the ground its area covers, for good (1.319). */
+  ground?: RulesetCreatureGround;
   /** A permission (1.286): these standard actions taken with this action's budget, only while it
    *  stands obscured where it says so. 5e's Nimble Escape, Cunning Action, Shadow Stealth. */
   standard?: { actions: string[]; while?: "obscured" };
@@ -864,6 +870,8 @@ export interface RulesetCombatAction {
   search?: true;
   /** The light its user sheds from now on, or "out" (1.291), and nothing else: a magmin ablaze. */
   sheds?: RulesetLightRadius | "out";
+  /** What it does to the ground its area covers, for good (1.319): a bonfire guttering, ice cracking. */
+  ground?: RulesetCreatureGround;
   /** A burst centred on its user, never aimed (1.277): everybody within `size` cells of them is
    *  caught, they are not, behind walls too with `throughWalls`, their own side not with
    *  `friendlyFire: false`. Off a board, everybody. */
@@ -2842,6 +2850,8 @@ export interface RulesetCombatZoneRule {
    *  of its middle where it says (1.294). */
   dispelsDark?: { upTo: number; within?: number };
   rounds: number;
+  /** It ends as its maker's lair count next comes round (1.319). */
+  untilLair?: true;
   anchor: "point" | "caster";
   /** Put on a cell somebody stands on, carried with them (1.296): only its caster (`own`), or anybody. */
   carried?: "own" | "any";
@@ -2959,6 +2969,8 @@ export interface RulesetCombatZone {
   sections?: Array<{ cells: RulesetCombatCell[]; health: number }>;
   /** Set alight, and burning away (1.178). */
   burning?: boolean;
+  /** Until its maker's next lair count (1.319). */
+  untilLair?: true;
 }
 
 /** A Search's own throw for those who change how looking for them is thrown (1.285): 5e's Cloak of

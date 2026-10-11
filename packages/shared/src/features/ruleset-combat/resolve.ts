@@ -259,7 +259,7 @@ import {
   rulesetZoneSideOccupants,
   rulesetSyncZoneWalls,
 } from "./zones.js";
-import { rulesetClearGrowth, rulesetGrowthRule, rulesetRunBoardEvents } from "./board-events.js";
+import { rulesetChangeGround, rulesetClearGrowth, rulesetGrowthRule, rulesetRunBoardEvents } from "./board-events.js";
 
 /** Everything one step of the fight needs: the rules, the state it is changing, its dice and the
  *  events it has produced so far. */
@@ -2804,6 +2804,8 @@ function placeZone(
     rounds: rule.rounds,
     anchor: rule.anchor,
     triggers: [...rule.triggers],
+    // Until its maker's next lair count (1.319).
+    ...(rule.untilLair ? { untilLair: true as const } : {}),
     ...(at && rule.anchor === "point" ? { at: { x: at.x, y: at.y } } : {}),
     ...(also.length ? { also } : {}),
     ...(holder ? { on: holder.id } : {}),
@@ -6559,6 +6561,22 @@ function resumeAction(ctx: RulesetCombatContext, resume: RulesetActionResume): v
     );
     ctx.events.push({ type: "growth", actorId: actor.id, label: action.label, cells: cleared, by: "cleared" });
   }
+  // The ground it changes (1.319): a bonfire guttering, the ice cracking.
+  if (grid && at && action.area && action.ground && !resume.held) {
+    const cells = areaCellsFor(ctx.state, actor, action.id, at, {
+      ...(resume.also ? { also: resume.also } : {}),
+      grow: areaGrowth(ctx.definition, actor, action.id, resume.payWith),
+    });
+    const moved = rulesetChangeGround(ctx.state, cells, action.ground);
+    ctx.events.push({
+      type: "boardEvent",
+      id: action.id,
+      label: action.label,
+      ...(action.ground.tell ? { tell: action.ground.tell } : {}),
+      cells: cells.length,
+      ...(moved.length ? { moved } : {}),
+    });
+  }
   // Fire landing on a web with nobody in it sets it alight all the same (1.178).
   if (grid && at && action.area && action.damage && !action.zone?.detonates) {
     igniteZones(
@@ -9237,6 +9255,14 @@ export function advanceRulesetTurn(
  *  that asks them. Nobody is asked when nobody can afford anything: an empty window would hold the
  *  fight open for an answer with nothing in it. */
 function openSignatureWindow(ctx: RulesetCombatContext): boolean {
+  // What lasts until the next lair action ends as its maker's lair count comes round (1.319).
+  for (const maker of ctx.state.combatants) {
+    if (!maker.lair || !maker.zones?.some((zone) => zone.untilLair)) continue;
+    if (rulesetLairRound(ctx.definition, ctx.state, maker) === null) continue;
+    // Its count is due and not yet taken this round, so whatever lasts until it ends now.
+    for (const actionId of new Set(maker.zones.filter((zone) => zone.untilLair).map((zone) => zone.actionId)))
+      endZones(ctx, maker, actionId);
+  }
   const waiting = [...new Set(ctx.state.order)].filter(
     (id) => rulesetSignatureOptions(ctx.definition, ctx.state, id).length > 0,
   );

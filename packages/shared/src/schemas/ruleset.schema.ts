@@ -1621,6 +1621,7 @@ const zoneSectionsSchema: z.ZodType<RulesetZoneSections, z.ZodTypeDef, unknown> 
 
 export interface RulesetCatalogZone {
   rounds: number;
+  untilLair?: true;
   anchor?: "point" | "caster";
   carried?: "own" | "any";
   triggers: Array<"enter" | "turn-start" | "turn-end">;
@@ -1654,9 +1655,36 @@ export interface RulesetCatalogZone {
   burns?: { by: string[]; amount?: { dice?: string; flat?: number }; damageType?: string };
 }
 
+/** What a creature's action does to the ground (Capability API 1.319): the tactical terrains, a
+ *  height of 0 to 3, a cell's own light or obscurement (`clear` takes it off), growth, a season. */
+export interface RulesetCreatureGround {
+  terrain?: "plains" | "forest" | "mountain" | "ruin" | "water" | "wall";
+  height?: number;
+  light?: "bright" | "dim" | "dark" | "sunlight" | "clear";
+  obscured?: "light" | "heavy" | "clear";
+  growth?: boolean;
+  season?: string | null;
+  tell?: string;
+}
+const creatureGroundSchema: z.ZodType<RulesetCreatureGround, z.ZodTypeDef, unknown> = z
+  .object({
+    terrain: z.enum(["plains", "forest", "mountain", "ruin", "water", "wall"]).optional(),
+    height: z.number().int().min(0).max(3).optional(),
+    light: z.enum(["bright", "dim", "dark", "sunlight", "clear"]).optional(),
+    obscured: z.enum(["light", "heavy", "clear"]).optional(),
+    growth: z.boolean().optional(),
+    season: z.union([z.string().trim().min(1).max(40), z.null()]).optional(),
+    tell: promptSafeText(200).optional(),
+  })
+  .strict()
+  .refine((change) => Object.keys(change).length > 0, { message: "A change to the ground changes something" });
+
 const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = z
   .object({
     rounds: z.number().int().min(1).max(1000),
+    /** It ends as its maker's lair count next comes round (Capability API 1.319), if `rounds` has
+     *  not ended it first: "until the next lair action", The Owed's Freezing Fog. */
+    untilLair: z.literal(true).optional(),
     anchor: z.enum(["point", "caster"]).optional(),
     /** Cast on a thing somebody holds (Capability API 1.296), it is carried with them: a burst put on
      *  a cell its caster stands on (`own`), or on anybody's (`any`), moves with whoever stands
@@ -4416,6 +4444,13 @@ const creatureActionSchema = z
      *  magmin's Ignited Illumination, one action to set itself ablaze and one to put its flames
      *  out, or a will-o'-wisp's Variable Illumination, one action for each reach. */
     sheds: z.union([lightRadiusSchema, z.literal("out")]).optional(),
+    /** An area that stays where it is aimed (Capability API 1.319), as a catalog entry's `zone`
+     *  says it: The Owed's Freezing Fog, Scatter Flour's cube of flour. It needs an `area`. */
+    zone: catalogZoneSchema.optional(),
+    /** What it does to the ground its `area` covers, for good (Capability API 1.319), as a board
+     *  event's `change` says it: the bonfire gutters (`"light": "dark"`), the ice cracks
+     *  (`"terrain": "water"`). It needs an `area`. */
+    ground: creatureGroundSchema.optional(),
     /** A permission (Capability API 1.286): the standard actions named, from `combat.standard`,
      *  taken with this action's budget, and with `while: "obscured"` only while it stands lightly
      *  or heavily obscured (in a fog, or in dim light or darkness). 5e's goblin's Nimble Escape is
@@ -4439,6 +4474,16 @@ const creatureActionSchema = z
   })
   .strict()
   .superRefine((action, ctx) => {
+    // Where it stands and what ground it changes is where its area is aimed (1.319).
+    for (const key of ["zone", "ground"] as const) {
+      if (action[key] && !action.area) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [key],
+          message: `A creature action's "${key}" is where its "area" is aimed, so it has one`,
+        });
+      }
+    }
     if (action.slaysOnFailedSave && !action.save) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

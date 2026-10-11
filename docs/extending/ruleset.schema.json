@@ -9485,6 +9485,10 @@
                           "minimum": 1,
                           "maximum": 1000
                         },
+                        "untilLair": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "anchor": {
                           "type": "string",
                           "enum": [
@@ -19826,6 +19830,750 @@
                               }
                             ]
                           },
+                          "zone": {
+                            "type": "object",
+                            "properties": {
+                              "rounds": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 1000
+                              },
+                              "untilLair": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "anchor": {
+                                "type": "string",
+                                "enum": [
+                                  "point",
+                                  "caster"
+                                ]
+                              },
+                              "carried": {
+                                "type": "string",
+                                "enum": [
+                                  "own",
+                                  "any"
+                                ]
+                              },
+                              "triggers": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "enum": [
+                                    "enter",
+                                    "turn-start",
+                                    "turn-end"
+                                  ]
+                                },
+                                "maxItems": 3
+                              },
+                              "atCast": {
+                                "type": "boolean"
+                              },
+                              "move": {
+                                "type": "object",
+                                "properties": {
+                                  "budget": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "distance": {
+                                    "type": "number",
+                                    "exclusiveMinimum": 0
+                                  },
+                                  "ram": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "budget",
+                                  "distance"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "turn": {
+                                "type": "object",
+                                "properties": {
+                                  "budget": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "budget"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "detonates": {
+                                "type": "object",
+                                "properties": {
+                                  "grows": {
+                                    "type": "object",
+                                    "properties": {
+                                      "dice": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                      },
+                                      "flat": {
+                                        "type": "integer"
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "additionalProperties": false
+                                  },
+                                  "touched": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "$comment": {}
+                                },
+                                "additionalProperties": false
+                              },
+                              "burns": {
+                                "type": "object",
+                                "properties": {
+                                  "by": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 40
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 8
+                                  },
+                                  "amount": {
+                                    "type": "object",
+                                    "properties": {
+                                      "dice": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                      },
+                                      "flat": {
+                                        "type": "integer"
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "additionalProperties": false
+                                  },
+                                  "damageType": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 40
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "by"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "drift": {
+                                "type": "object",
+                                "properties": {
+                                  "distance": {
+                                    "type": "number",
+                                    "exclusiveMinimum": 0
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "distance"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "terrain": {
+                                "type": "object",
+                                "properties": {
+                                  "difficult": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "costTimes": {
+                                    "type": "integer",
+                                    "minimum": 2,
+                                    "maximum": 10
+                                  },
+                                  "halvesSpeed": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "towardCaster": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "perDistance": {
+                                    "type": "object",
+                                    "properties": {
+                                      "every": {
+                                        "type": "number",
+                                        "exclusiveMinimum": 0
+                                      },
+                                      "amount": {
+                                        "type": "object",
+                                        "properties": {
+                                          "dice": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                          },
+                                          "flat": {
+                                            "type": "integer"
+                                          },
+                                          "$comment": {}
+                                        },
+                                        "additionalProperties": false
+                                      },
+                                      "damageType": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 40
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "required": [
+                                      "every",
+                                      "amount"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  "$comment": {}
+                                },
+                                "additionalProperties": false
+                              },
+                              "breaksConcentration": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "whileHeld": {
+                                "type": "object",
+                                "properties": {
+                                  "condition": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "amount": {
+                                    "type": "object",
+                                    "properties": {
+                                      "dice": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                      },
+                                      "flat": {
+                                        "type": "integer"
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "additionalProperties": false
+                                  },
+                                  "damageType": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 40
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "condition",
+                                  "amount"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "damageCap": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 100000
+                              },
+                              "damageType": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 40
+                              },
+                              "obscures": {
+                                "type": "object",
+                                "properties": {
+                                  "pierced": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 8
+                                  },
+                                  "light": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "dispersed": {
+                                    "anyOf": [
+                                      {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "after": {
+                                            "type": "integer",
+                                            "minimum": 1,
+                                            "maximum": 10
+                                          },
+                                          "$comment": {}
+                                        },
+                                        "required": [
+                                          "after"
+                                        ],
+                                        "additionalProperties": false
+                                      }
+                                    ]
+                                  },
+                                  "darkness": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "$comment": {}
+                                },
+                                "additionalProperties": false
+                              },
+                              "lights": {
+                                "type": "object",
+                                "properties": {
+                                  "bright": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 10000
+                                  },
+                                  "dim": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 10000
+                                  },
+                                  "reveals": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "sunlight": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "magical": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "shade": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "bright",
+                                  "dim"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "dispelsDark": {
+                                "type": "object",
+                                "properties": {
+                                  "upTo": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 20
+                                  },
+                                  "within": {
+                                    "type": "number",
+                                    "exclusiveMinimum": 0,
+                                    "maximum": 10000
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "upTo"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "dispelsLight": {
+                                "type": "object",
+                                "properties": {
+                                  "upTo": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 20
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "upTo"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "disperses": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "inside": {
+                                "type": "object",
+                                "properties": {
+                                  "conditions": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 8
+                                  },
+                                  "immune": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 40
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 12
+                                  },
+                                  "$comment": {}
+                                },
+                                "additionalProperties": false
+                              },
+                              "forbids": {
+                                "type": "object",
+                                "properties": {
+                                  "components": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 8
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "components"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "wards": {
+                                "type": "object",
+                                "properties": {
+                                  "catalogs": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 8
+                                  },
+                                  "maxLevel": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 20
+                                  },
+                                  "by": {
+                                    "type": "string",
+                                    "enum": [
+                                      "base",
+                                      "paid"
+                                    ]
+                                  },
+                                  "maxLevelPerCostStep": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 10
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "catalogs",
+                                  "maxLevel"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "blocks": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "enum": [
+                                    "move",
+                                    "sight"
+                                  ]
+                                },
+                                "minItems": 1,
+                                "maxItems": 2
+                              },
+                              "sections": {
+                                "type": "object",
+                                "properties": {
+                                  "every": {
+                                    "type": "number",
+                                    "exclusiveMinimum": 0
+                                  },
+                                  "health": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 100000
+                                  },
+                                  "defense": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 1000
+                                  },
+                                  "vulnerable": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 40
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 16
+                                  },
+                                  "resist": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 40
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 16
+                                  },
+                                  "immune": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 40
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 16
+                                  },
+                                  "broken": {
+                                    "type": "object",
+                                    "properties": {
+                                      "triggers": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "enum": [
+                                            "enter",
+                                            "turn-start",
+                                            "turn-end"
+                                          ]
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 3
+                                      },
+                                      "amount": {
+                                        "type": "object",
+                                        "properties": {
+                                          "dice": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                          },
+                                          "flat": {
+                                            "type": "integer"
+                                          },
+                                          "$comment": {}
+                                        },
+                                        "additionalProperties": false,
+                                        "allOf": [
+                                          {
+                                            "anyOf": [
+                                              {
+                                                "required": [
+                                                  "dice"
+                                                ]
+                                              },
+                                              {
+                                                "required": [
+                                                  "flat"
+                                                ]
+                                              }
+                                            ]
+                                          }
+                                        ]
+                                      },
+                                      "damageType": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 40
+                                      },
+                                      "save": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "onSave": {
+                                        "type": "string",
+                                        "enum": [
+                                          "half",
+                                          "none"
+                                        ]
+                                      },
+                                      "perCostStep": {
+                                        "type": "object",
+                                        "properties": {
+                                          "dice": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                          },
+                                          "flat": {
+                                            "type": "integer"
+                                          },
+                                          "$comment": {}
+                                        },
+                                        "additionalProperties": false
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "required": [
+                                      "triggers",
+                                      "amount"
+                                    ],
+                                    "additionalProperties": false,
+                                    "allOf": [
+                                      {
+                                        "if": {
+                                          "required": [
+                                            "onSave"
+                                          ]
+                                        },
+                                        "then": {
+                                          "required": [
+                                            "save"
+                                          ]
+                                        }
+                                      }
+                                    ]
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "every",
+                                  "health",
+                                  "defense"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "side": {
+                                "type": "object",
+                                "properties": {
+                                  "distance": {
+                                    "type": "number",
+                                    "exclusiveMinimum": 0
+                                  },
+                                  "triggers": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "enum": [
+                                        "enter",
+                                        "turn-start",
+                                        "turn-end"
+                                      ]
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 3
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "distance",
+                                  "triggers"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "$comment": {}
+                            },
+                            "required": [
+                              "rounds",
+                              "triggers"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "ground": {
+                            "type": "object",
+                            "properties": {
+                              "terrain": {
+                                "type": "string",
+                                "enum": [
+                                  "plains",
+                                  "forest",
+                                  "mountain",
+                                  "ruin",
+                                  "water",
+                                  "wall"
+                                ]
+                              },
+                              "height": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 3
+                              },
+                              "light": {
+                                "type": "string",
+                                "enum": [
+                                  "bright",
+                                  "dim",
+                                  "dark",
+                                  "sunlight",
+                                  "clear"
+                                ]
+                              },
+                              "obscured": {
+                                "type": "string",
+                                "enum": [
+                                  "light",
+                                  "heavy",
+                                  "clear"
+                                ]
+                              },
+                              "growth": {
+                                "type": "boolean"
+                              },
+                              "season": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 40
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "tell": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 200
+                              },
+                              "$comment": {}
+                            },
+                            "additionalProperties": false
+                          },
                           "standard": {
                             "type": "object",
                             "properties": {
@@ -27590,6 +28338,10 @@
                               "minimum": 1,
                               "maximum": 1000
                             },
+                            "untilLair": {
+                              "type": "boolean",
+                              "const": true
+                            },
                             "anchor": {
                               "type": "string",
                               "enum": [
@@ -35344,6 +36096,10 @@
                                     "type": "integer",
                                     "minimum": 1,
                                     "maximum": 1000
+                                  },
+                                  "untilLair": {
+                                    "type": "boolean",
+                                    "const": true
                                   },
                                   "anchor": {
                                     "type": "string",

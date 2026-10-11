@@ -1574,6 +1574,26 @@ function carriesBossAsks(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesBossAsks(one, depth + 1));
 }
 
+/** A creature's action that leaves an area standing or changes the ground, or an area that lasts
+ *  until the next lair action (1.319). */
+function carriesCreatureZones(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCreatureZones(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.untilLair !== undefined) return true;
+  const creature = plainRecord(record.creature);
+  if (
+    Array.isArray(creature?.actions) &&
+    creature.actions.some((one) => {
+      const action = plainRecord(one);
+      return action?.zone !== undefined || action?.ground !== undefined;
+    })
+  )
+    return true;
+  return Object.values(record).some((one) => carriesCreatureZones(one, depth + 1));
+}
+
 /** A blow that reaps what it fells on Held Ground (1.318): the Reaping Hook. */
 function carriesReaps(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -4328,6 +4348,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Creature zones and ground, and areas until the next lair action, 1.319.
+  if (
+    !declaresApi(319) &&
+    (carriesCreatureZones(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesCreatureZones(document)))
+  ) {
+    return "A ruleset with a creature action that leaves an area standing or changes the ground, or an area that lasts until the next lair action, requires schemaVersion 2 and capabilityApi 1.319 or newer";
   }
   // Blows that reap, 1.318.
   if (

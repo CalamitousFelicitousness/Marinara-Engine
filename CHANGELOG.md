@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: creature actions can leave an area standing (`zone`), one that lasts until the next lair action (`untilLair`: The Owed's Freezing Fog), or change the ground they cover for good (`ground`: the bonfire gutters, the ice cracks) (Capability API 1.319).
 - Rulesets: Held Ground: a fight can hold death, so whoever reaches no health is felled instead, out of the fight or lying stable with a mark of Owing, and nothing slays; a weapon or creature action that reaps keeps whoever it fells down for good (the Reaping Hook) (Capability API 1.318).
 - Rulesets: an item's use can be taken as a reaction, at the moment it names: Liesl's Coffin's +5 AC for someone beside its bearer as they are hit, once a day, and the Straw Proxy that takes an attack aimed at its owner and burns (Capability API 1.317).
 - Rulesets: a fight board's light rule can ask a save that escapes it this time, which a save modifier against what it names can help (Noonfield's Constitution save, with a straw hat's advantage), and can stop a track at a most (exhaustion 3 at most) (Capability API 1.316).

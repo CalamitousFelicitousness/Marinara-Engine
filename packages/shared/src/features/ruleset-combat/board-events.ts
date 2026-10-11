@@ -230,6 +230,19 @@ export function rulesetRunBoardEvents(
   return said;
 }
 
+/** The ground an action changes (1.319), as a board event changes it: whoever is left standing on a
+ *  cell nobody may stand on is moved to the nearest open one. */
+export function rulesetChangeGround(
+  state: RulesetEncounterState,
+  cells: readonly RulesetCombatCell[],
+  change: RulesetBoardEventChange,
+): Array<{ id: string; to: RulesetCombatCell }> {
+  const grid = state.board?.grid;
+  if (!grid) return [];
+  for (const cell of cells) changeCell(grid, cell, change);
+  return settle(state);
+}
+
 function changeCell(grid: TacticalGrid, cell: RulesetCombatCell, change: RulesetBoardEventChange): void {
   if (change.terrain && grid.tiles[cell.y]) grid.tiles[cell.y]![cell.x] = change.terrain;
   if (change.height !== undefined) {

@@ -162,8 +162,11 @@ import { SETTINGS_BUTTON_CLASS, SettingsSwitch } from "../panels/settings/Settin
 import {
   characterOnboardingSchema,
   createDefaultRpgStatPools,
+  findUnresolvedCardVariableUses,
   getOnboardingVariables,
   getRelevantOnboardingVariables,
+  hasOnboardingContent,
+  MAX_CARD_VARIABLES,
   normalizeSpriteExpressionLabel,
   normalizeRpgStatPools,
   ONBOARDING_MAX_QUESTIONS,
@@ -179,6 +182,7 @@ import {
   type CharacterOnboarding,
   type CharacterOnboardingVariable,
   type OnboardingAnswers,
+  type OnboardingCardFields,
   type OnboardingIssue,
   type OnboardingPersonaField,
   type CharacterTrackerCustomFieldDefault,
@@ -232,6 +236,7 @@ const CHARACTER_ONBOARDING_SECTIONS = [
   { id: "character-onboarding-backstory", label: "Backstory" },
   { id: "character-onboarding-appearance", label: "Appearance" },
   { id: "character-onboarding-scenario", label: "Scenario" },
+  { id: "character-onboarding-card-questions", label: "Card Questions" },
   { id: "character-onboarding-preview", label: "Rendered preview" },
 ] as const;
 
@@ -1592,9 +1597,17 @@ function CharacterCardTab({
   );
 }
 
-/** A new onboarding question: free text until the author adds options. */
-function createOnboardingVariable(existing: CharacterOnboardingVariable[]): CharacterOnboardingVariable {
-  const names = new Set(existing.map((variable) => variable.variableName));
+/**
+ * A new onboarding question: free text until the author adds options.
+ * Both lists share one name space — the validator rejects a name used twice
+ * across them, because the two are answered in one window — so the suggestion
+ * has to consider the other list's names too.
+ */
+function createOnboardingVariable(
+  existing: CharacterOnboardingVariable[],
+  otherList: CharacterOnboardingVariable[] = [],
+): CharacterOnboardingVariable {
+  const names = new Set([...existing, ...otherList].map((variable) => variable.variableName));
   let index = existing.length + 1;
   while (names.has(`question_${index}`)) index++;
   return {
@@ -1660,18 +1673,73 @@ function OnboardingTab({
   };
   const setVariables = (change: (variables: CharacterOnboardingVariable[]) => CharacterOnboardingVariable[]) =>
     update((latest) => ({ variables: change(latest.variables) }));
+  const setCardVariables = (change: (variables: CharacterOnboardingVariable[]) => CharacterOnboardingVariable[]) =>
+    update((latest) => ({ cardVariables: change(latest.cardVariables) }));
 
-  const issues = useMemo(() => validateOnboarding(onboarding), [onboarding]);
-  const variableIssues: Record<string, string> = {};
+  // The text a card question's `{{name}}` has to appear in to be asked: what the
+  // prompt macro-resolves for this character. Passing it lets the validator say
+  // which card questions nothing uses yet.
+  const cardFields: OnboardingCardFields = useMemo(
+    () => ({
+      description: formData.description,
+      personality: formData.personality,
+      backstory: (formData.extensions.backstory as string) ?? "",
+      appearance: (formData.extensions.appearance as string) ?? "",
+      scenario: formData.scenario,
+    }),
+    [
+      formData.description,
+      formData.personality,
+      formData.scenario,
+      formData.extensions.backstory,
+      formData.extensions.appearance,
+    ],
+  );
+  const issues = useMemo(() => validateOnboarding(onboarding, cardFields), [onboarding, cardFields]);
   const plainIfFields = new Set<OnboardingPersonaField>();
   const unknownNames: Partial<Record<OnboardingPersonaField, string[]>> = {};
-  // One message per question, and a real problem wins over the "unused" warning.
-  const byPriority = [...issues].sort((a, b) => Number(a.code === "unused") - Number(b.code === "unused"));
-  for (const issue of byPriority) {
+  for (const issue of issues) {
     if (issue.code === "plainIf") plainIfFields.add(issue.field);
     else if (issue.code === "unknownName") (unknownNames[issue.field] ??= []).push(issue.name);
-    else variableIssues[issue.variableId] ??= localizeUi(ONBOARDING_ISSUE_KEYS[issue.code], { value1: issue.name });
   }
+  // An issue carries its question's id and name but no list tag, and the two
+  // lists may repeat an id (withUniqueOnboardingIds keeps ids unique per list, not
+  // across them). The pair is therefore what says which list an issue is about,
+  // bar a question typed identically into both — same id, same name, which
+  // `duplicateName` reports anyway. ponytail: a `list` on OnboardingIssue would
+  // make this exact, but that changes a shared result shape every caller reads.
+  const questionKey = (variableId: string, name: string) => `${variableId}\u0000${name}`;
+  const issuesByQuestion = (
+    variables: CharacterOnboardingVariable[],
+    unusedKey: string | undefined,
+  ): Record<string, string> => {
+    const keys = new Set(variables.map((variable) => questionKey(variable.id, variable.variableName)));
+    const messages: Record<string, string> = {};
+    // One message per question, and a real problem wins over the "unused" warning.
+    for (const issue of [...issues].sort((a, b) => Number(a.code === "unused") - Number(b.code === "unused"))) {
+      if (issue.code === "plainIf" || issue.code === "unknownName") continue;
+      if (!keys.has(questionKey(issue.variableId, issue.name))) continue;
+      const key = issue.code === "unused" && unusedKey ? unusedKey : ONBOARDING_ISSUE_KEYS[issue.code];
+      messages[issue.variableId] ??= localizeUi(key, { value1: issue.name });
+    }
+    return messages;
+  };
+  const variableIssues = issuesByQuestion(onboarding.variables, undefined);
+  // `unused` is the one code whose text differs: each list names its own fields.
+  const cardVariableIssues = issuesByQuestion(
+    onboarding.cardVariables ?? [],
+    "ui.characters.onboarding.issueUnusedCard",
+  );
+  // A greeting is shown from the chat's own text, which does not read chat
+  // variables, so a card question's tag there would reach the player as typed.
+  const greetingUses = useMemo(
+    () =>
+      findUnresolvedCardVariableUses(onboarding, [
+        formData.first_mes,
+        ...((formData.alternate_greetings as string[] | undefined) ?? []),
+      ]),
+    [onboarding, formData.first_mes, formData.alternate_greetings],
+  );
 
   // Example answers, like the prompt-override preview: the first option of a
   // choice, the variable's own name for free text.
@@ -1755,6 +1823,15 @@ function OnboardingTab({
       />
       {onboarding.enabled && (
         <>
+          {!hasOnboardingContent(onboarding) && (
+            <p
+              role="status"
+              className="mt-3 flex flex-wrap items-center gap-1.5 rounded-xl border border-[var(--border)] bg-[var(--card)] p-3 text-[0.6875rem] text-[var(--muted-foreground)]"
+            >
+              <AlertTriangle size="0.75rem" className="shrink-0 text-[var(--marinara-app-accent-static)]" aria-hidden />
+              {localizeUi("ui.characters.onboarding.emptyOnboarding")}
+            </p>
+          )}
           <div className="mari-editor-panel mt-4 space-y-2 p-3 text-xs">
             <p className="flex items-center gap-1.5 font-semibold">
               <Sparkles size="0.875rem" className="mari-chrome-accent-icon mari-accent-animated" />
@@ -1769,6 +1846,7 @@ function OnboardingTab({
                 {localizeUi("ui.characters.onboarding.tutorialQuestionsAfter")}
               </li>
               <li>{localizeUi("ui.characters.onboarding.tutorialFields")}</li>
+              <li>{localizeUi("ui.characters.onboarding.tutorialCardQuestions")}</li>
               <li>
                 {localizeUi("ui.characters.onboarding.tutorialPlayerBefore")}{" "}
                 <code className={codeClass}>{ONBOARDING_PLAYER_VARIABLE}</code>{" "}
@@ -1780,7 +1858,11 @@ function OnboardingTab({
                 {localizeUi("ui.characters.onboarding.tutorialIfAfter")}
               </li>
             </ol>
-            <p className="text-[var(--muted-foreground)]">{localizeUi("ui.characters.onboarding.tutorialResult")}</p>
+            <p className="flex flex-wrap items-center gap-1 text-[var(--muted-foreground)]">
+              {localizeUi("ui.characters.onboarding.tutorialResultBefore")}{" "}
+              <code className={codeClass}>{localizeUi("ui.characters.onboarding.modalTitle")}</code>{" "}
+              {localizeUi("ui.characters.onboarding.tutorialResultAfter")}
+            </p>
           </div>
           <div className="mt-4">
             <EditorSectionJumps items={CHARACTER_ONBOARDING_SECTIONS} />
@@ -1796,7 +1878,7 @@ function OnboardingTab({
                   setVariables((variables) =>
                     variables.length >= ONBOARDING_MAX_QUESTIONS
                       ? variables
-                      : [...variables, createOnboardingVariable(variables)],
+                      : [...variables, createOnboardingVariable(variables, latestRef.current.cardVariables)],
                   )
                 }
                 onUpdate={(variableId, patch) =>
@@ -1895,6 +1977,58 @@ function OnboardingTab({
                 </EditorSectionAnchor>
               );
             })}
+            <EditorSectionAnchor id="character-onboarding-card-questions">
+              <p className="mb-2 text-xs text-[var(--muted-foreground)]">
+                {localizeUi("ui.characters.onboarding.cardQuestionsHelp")}
+              </p>
+              <PresetVariablesEditor
+                variant="onboarding-card"
+                variables={onboarding.cardVariables}
+                issues={cardVariableIssues}
+                maxCount={MAX_CARD_VARIABLES}
+                onCreate={() =>
+                  setCardVariables((variables) =>
+                    variables.length >= MAX_CARD_VARIABLES
+                      ? variables
+                      : [...variables, createOnboardingVariable(variables, latestRef.current.variables)],
+                  )
+                }
+                onUpdate={(variableId, patch) =>
+                  setCardVariables((variables) =>
+                    variables.map((variable) => (variable.id === variableId ? { ...variable, ...patch } : variable)),
+                  )
+                }
+                onDelete={(variableId) =>
+                  setCardVariables((variables) => variables.filter((variable) => variable.id !== variableId))
+                }
+                onReorder={(variableIds) =>
+                  setCardVariables((variables) => {
+                    const pool = new Map(variables.map((variable) => [variable.id, variable]));
+                    const ordered = variableIds.flatMap((id) => {
+                      const variable = pool.get(id);
+                      pool.delete(id);
+                      return variable ? [variable] : [];
+                    });
+                    return [...ordered, ...pool.values()];
+                  })
+                }
+              />
+              {greetingUses.size > 0 && (
+                <p
+                  role="status"
+                  className="mt-1.5 flex flex-wrap items-center gap-1 text-[0.625rem] text-[var(--foreground)]"
+                >
+                  <AlertTriangle
+                    size="0.625rem"
+                    className="shrink-0 text-[var(--marinara-app-accent-static)]"
+                    aria-hidden
+                  />
+                  {localizeUi("ui.characters.onboarding.cardVariableInGreeting", {
+                    value1: [...greetingUses].join(", "),
+                  })}
+                </p>
+              )}
+            </EditorSectionAnchor>
             <EditorSectionAnchor id="character-onboarding-preview">
               <div className="mari-editor-panel space-y-2 p-3">
                 <div className="flex items-center justify-between gap-2">

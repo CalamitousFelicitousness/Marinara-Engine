@@ -326,6 +326,32 @@ assert.equal(
   false,
   "without card fields, card questions are not called unused",
 );
+// An id may repeat across the two lists (only within a list must it be unique),
+// and `withUniqueOnboardingIds` leaves such a pair alone.
+const sharedId = withUniqueOnboardingIds(
+  onboarding({
+    variables: [{ id: "a", variableName: "personaOnly", question: "?" }],
+    cardVariables: [{ id: "a", variableName: "cardOnly", question: "?" }],
+  }),
+);
+assert.equal(
+  sharedId.variables[0]!.id === "a" && sharedId.cardVariables![0]!.id === "a",
+  true,
+  "an id repeated across the two lists is not renamed: they are never rendered together",
+);
+// So an issue carries `variableId` and `name` but no list tag — an identical id
+// in both lists yields two issues that only the name tells apart. The editor
+// routes by that pair; a future `list` field would replace the pairing.
+assert.deepEqual(
+  validateOnboarding(sharedId, { description: "", personality: "", backstory: "", appearance: "", scenario: "" }).map(
+    (issue) => [issue.code, issue.variableId, issue.name],
+  ),
+  [
+    ["unused", "a", "personaOnly"],
+    ["unused", "a", "cardOnly"],
+  ],
+  "a shared id yields one issue per list, distinguishable by name alone",
+);
 
 // ── The deferred greeting limitation is detectable ──
 // A greeting is shown from the client's own macro context, which does not read

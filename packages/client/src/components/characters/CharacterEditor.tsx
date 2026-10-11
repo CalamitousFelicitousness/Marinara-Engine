@@ -3013,6 +3013,9 @@ function DialogueTab({
           {localizeUi("ui.characters.dialoguetab.firstMessage")}{" "}
           <HelpTooltip text={localizeUi("ui.characters.dialoguetab.theCharacterSOpeningMessageWhenANewChat")} />
         </span>
+        <p className="text-[0.625rem] text-[var(--muted-foreground)]/70">
+          {localizeUi("ui.characters.dialoguetab.greetingsRoleplayOnly")}
+        </p>
         <MacroTextarea
           showTokenCount
           value={formData.first_mes}
@@ -3044,6 +3047,9 @@ function DialogueTab({
             {localizeUi("ui.characters.dialoguetab.add")}
           </button>
         </div>
+        <p className="text-[0.625rem] text-[var(--muted-foreground)]/70">
+          {localizeUi("ui.characters.dialoguetab.greetingsRoleplayOnly")}
+        </p>
         {formData.alternate_greetings.map((g, i) => (
           <div
             key={greetingKeysRef.current[i] ?? i}
@@ -6138,9 +6144,7 @@ function ColorsTab({
         value={dialogueColor}
         onChange={(v) => updateExtension("dialogueColor", v)}
         label={localizeUi("ui.characters.colorstab.dialogueHighlightColor")}
-        helpText={
-          'Text inside dialogue quotation marks ("", “”, «», 「」, 『』) will be automatically colored with this, and can also be bolded from Settings.'
-        }
+        helpText={`Text inside dialogue quotation marks ("", “”, «», 「」, 『』) will be automatically colored with this, and can also be bolded from Settings. ${localizeUi("ui.characters.colorstab.notUsedInConversation")}`}
       />
 
       {/* Box Color */}
@@ -6148,7 +6152,7 @@ function ColorsTab({
         value={boxColor}
         onChange={(v) => updateExtension("boxColor", v)}
         label={localizeUi("ui.characters.colorstab.messageBoxColor")}
-        helpText="Background color for this character's chat message bubbles. Use a semi-transparent color for best results (e.g. rgba)."
+        helpText={`Background color for this character's chat message bubbles. Use a semi-transparent color for best results (e.g. rgba). ${localizeUi("ui.characters.colorstab.notUsedInConversation")}`}
       />
       {/* Name Aliases */}
       <NameAliasesSection

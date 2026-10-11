@@ -525,7 +525,7 @@ try {
       `${key}${values ? JSON.stringify(values) : ""}`) as never;
     const cells = rulesetBoardCells(shown, null);
     const at = (x: number, y: number) => cells.find((cell) => cell.x === x && cell.y === y)!;
-    assert.deepEqual(at(3, 3).prop, { label: "Sluice Gate", health: 12, max: 12 });
+    assert.deepEqual(at(3, 3).prop, { label: "Sluice Gate", health: 12, max: 12, dx: 0, dy: 1 });
     assert.equal(at(4, 4).prop, undefined);
     assert.ok(
       rulesetCellSentences(at(3, 3), shown, t).includes(

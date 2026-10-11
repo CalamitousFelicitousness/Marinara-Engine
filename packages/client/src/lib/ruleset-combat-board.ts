@@ -388,7 +388,7 @@ export function rulesetCellSentences(cell: RulesetBoardCell, view: DirectedRules
   if (cell.prop) {
     said.push(
       cell.prop.health > 0
-        ? t("game.combat.ruleset.board.prop", cell.prop)
+        ? t("game.combat.ruleset.board.prop", { label: cell.prop.label, health: cell.prop.health, max: cell.prop.max })
         : t("game.combat.ruleset.board.propBroken", { label: cell.prop.label }),
     );
   }

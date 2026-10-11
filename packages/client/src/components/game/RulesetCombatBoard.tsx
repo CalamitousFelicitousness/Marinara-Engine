@@ -574,7 +574,11 @@ export function RulesetCombatBoard({
                       style={art?.prop ? boardSliceStyle(art.prop) : undefined}
                       title={
                         cell.prop.health > 0
-                          ? t("game.combat.ruleset.board.prop", cell.prop)
+                          ? t("game.combat.ruleset.board.prop", {
+                              label: cell.prop.label,
+                              health: cell.prop.health,
+                              max: cell.prop.max,
+                            })
                           : t("game.combat.ruleset.board.propBroken", { label: cell.prop.label })
                       }
                     />

@@ -239,6 +239,14 @@ export const SETTINGS_SEARCHABLE_CONTROLS: readonly SettingsSearchableControlMet
     kind: "Select",
   },
   {
+    id: "mari-window-height",
+    sectionId: "omnibar",
+    label: "Professor Mari window height",
+    description: "Set the height of her window on larger screens.",
+    aliases: ["mari", "window size", "taller", "resize"],
+    kind: "Slider",
+  },
+  {
     id: "mari-edit-view",
     sectionId: "omnibar",
     label: "Change cards open in",
@@ -1216,6 +1224,14 @@ export const SETTINGS_SEARCHABLE_CONTROLS: readonly SettingsSearchableControlMet
     label: "Show message numbers",
     description: "Display message numbers in chats.",
     aliases: ["metadata", "index"],
+    kind: "Toggle",
+  },
+  {
+    id: "show-history-trim-notice",
+    sectionId: "message-tools",
+    label: 'Show "older messages not sent" note',
+    description: "Warn under a reply when the prompt budget left older messages out.",
+    aliases: ["not sent", "trimmed", "dropped", "context", "long chat", "warning"],
     kind: "Toggle",
   },
   {

@@ -127,6 +127,15 @@ export type ChatListBackgroundMode = "hover" | "always" | "off";
 export type SummaryPopoverSourceMode = "last" | "range";
 export const DEFAULT_ROLEPLAY_BACKGROUND_URL = "/api/backgrounds/file/Black.jpg";
 const DEFAULT_CONVERSATION_BACKGROUND_IMAGE_OPACITY = 45;
+export const MARI_WINDOW_HEIGHT_MIN_REM = 44;
+export const MARI_WINDOW_HEIGHT_DEFAULT_REM = 48;
+export const MARI_WINDOW_HEIGHT_MAX_REM = 64;
+
+export function normalizeMariWindowHeightRem(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.max(MARI_WINDOW_HEIGHT_MIN_REM, Math.min(MARI_WINDOW_HEIGHT_MAX_REM, Math.round(value)))
+    : MARI_WINDOW_HEIGHT_DEFAULT_REM;
+}
 
 export function normalizeConversationBackgroundImageOpacity(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value)
@@ -680,6 +689,8 @@ interface UIState {
   /** Idle time after a dead-end query before the aside calls a model (R23). */
   omnibarAsideDelayMs: number;
   mariEditViewMode: MariEditViewMode;
+  /** Desktop window height, capped to the available viewport. */
+  mariWindowHeightRem: number;
   /** One complete appearance, shared by every Professor Mari surface. */
   mariAppearancePackId: string;
   /** R12: packs whose play-time rule was met once; the one-time "unlocked" toast has been shown for them. */
@@ -894,6 +905,8 @@ interface UIState {
   showTokenUsage: boolean;
   showContextUsage: boolean;
   showMessageNumbers: boolean;
+  /** When false, the "older messages not sent" note is left out of the reply line (the checkup still lists it). */
+  showHistoryTrimNotice: boolean;
   /** When true, character cards are available in Persona pickers. */
   showCharactersInPersonaPickers: boolean;
   guideGenerations: boolean;
@@ -1178,6 +1191,7 @@ interface UIState {
   setOmnibarAsideDisclosed: (disclosed: boolean) => void;
   setOmnibarAsideDelayMs: (delayMs: number) => void;
   setMariEditViewMode: (mode: MariEditViewMode) => void;
+  setMariWindowHeightRem: (height: number) => void;
   setMariAppearancePack: (packId: string) => void;
   markMariPackUnlocked: (packId: string) => void;
   setChatBackground: (url: string | null) => void;
@@ -1301,6 +1315,7 @@ interface UIState {
   setShowTokenUsage: (v: boolean) => void;
   setShowContextUsage: (v: boolean) => void;
   setShowMessageNumbers: (v: boolean) => void;
+  setShowHistoryTrimNotice: (v: boolean) => void;
   setShowCharactersInPersonaPickers: (v: boolean) => void;
   setGuideGenerations: (v: boolean) => void;
   setKeepGuidanceAfterRegenerate: (v: boolean) => void;
@@ -1562,6 +1577,7 @@ export function pickSyncedSettings(state: UIState) {
     showTokenUsage: state.showTokenUsage,
     showContextUsage: state.showContextUsage,
     showMessageNumbers: state.showMessageNumbers,
+    showHistoryTrimNotice: state.showHistoryTrimNotice,
     showCharactersInPersonaPickers: state.showCharactersInPersonaPickers,
     guideGenerations: state.guideGenerations,
     keepGuidanceAfterRegenerate: state.keepGuidanceAfterRegenerate,
@@ -1594,6 +1610,7 @@ export function pickSyncedSettings(state: UIState) {
     omnibarAsideDisclosed: state.omnibarAsideDisclosed,
     omnibarAsideDelayMs: state.omnibarAsideDelayMs,
     mariEditViewMode: state.mariEditViewMode,
+    mariWindowHeightRem: normalizeMariWindowHeightRem(state.mariWindowHeightRem),
     mariAppearancePackId: getMariAppearancePack(state.mariAppearancePackId).id,
     mariUnlockedPackIds: state.mariUnlockedPackIds,
     mariConnectionId: state.mariConnectionId,
@@ -1746,6 +1763,7 @@ export function pickPersistedUIState(state: UIState) {
     omnibarAsideDisclosed: state.omnibarAsideDisclosed,
     omnibarAsideDelayMs: state.omnibarAsideDelayMs,
     mariEditViewMode: state.mariEditViewMode,
+    mariWindowHeightRem: normalizeMariWindowHeightRem(state.mariWindowHeightRem),
     mariAppearancePackId: getMariAppearancePack(state.mariAppearancePackId).id,
     mariUnlockedPackIds: state.mariUnlockedPackIds,
     mariConnectionId: state.mariConnectionId,
@@ -1804,6 +1822,7 @@ export function pickPersistedUIState(state: UIState) {
     showTokenUsage: state.showTokenUsage,
     showContextUsage: state.showContextUsage,
     showMessageNumbers: state.showMessageNumbers,
+    showHistoryTrimNotice: state.showHistoryTrimNotice,
     showCharactersInPersonaPickers: state.showCharactersInPersonaPickers,
     guideGenerations: state.guideGenerations,
     keepGuidanceAfterRegenerate: state.keepGuidanceAfterRegenerate,
@@ -1972,6 +1991,7 @@ export const useUIStore = create<UIState>()(
         omnibarAsideDisclosed: false,
         omnibarAsideDelayMs: OMNIBAR_ASIDE_DELAY_MS,
         mariEditViewMode: "easy",
+        mariWindowHeightRem: MARI_WINDOW_HEIGHT_DEFAULT_REM,
         mariAppearancePackId: "basic",
         mariUnlockedPackIds: [],
         mariConnectionId: null,
@@ -2086,6 +2106,7 @@ export const useUIStore = create<UIState>()(
         showTokenUsage: false,
         showContextUsage: true,
         showMessageNumbers: false,
+        showHistoryTrimNotice: true,
         showCharactersInPersonaPickers: false,
         guideGenerations: false,
         keepGuidanceAfterRegenerate: true,
@@ -2339,6 +2360,7 @@ export const useUIStore = create<UIState>()(
         setOmnibarAsideDelayMs: (delayMs) => set({ omnibarAsideDelayMs: delayMs }),
         setMariConnectionId: (id) => set({ mariConnectionId: id }),
         setMariEditViewMode: (mode) => set({ mariEditViewMode: mode }),
+        setMariWindowHeightRem: (height) => set({ mariWindowHeightRem: normalizeMariWindowHeightRem(height) }),
         setMariAppearancePack: (packId) => set({ mariAppearancePackId: getMariAppearancePack(packId).id }),
         markMariPackUnlocked: (packId) =>
           set((state) =>
@@ -2943,6 +2965,7 @@ export const useUIStore = create<UIState>()(
         setShowTokenUsage: (v) => set({ showTokenUsage: v }),
         setShowContextUsage: (v) => set({ showContextUsage: v }),
         setShowMessageNumbers: (v) => set({ showMessageNumbers: v }),
+        setShowHistoryTrimNotice: (v) => set({ showHistoryTrimNotice: v }),
         setShowCharactersInPersonaPickers: (v) => set({ showCharactersInPersonaPickers: v }),
         setGuideGenerations: (v) => set({ guideGenerations: v }),
         setKeepGuidanceAfterRegenerate: (v) => set({ keepGuidanceAfterRegenerate: v }),
@@ -3104,6 +3127,7 @@ export const useUIStore = create<UIState>()(
             reduceAmbientEffects: false,
             mariPanelSortMode: "az",
             mariEditViewMode: "easy",
+            mariWindowHeightRem: MARI_WINDOW_HEIGHT_DEFAULT_REM,
             mariAppearancePackId: "basic",
             chatBackground: null,
             defaultRoleplayBackground: DEFAULT_ROLEPLAY_BACKGROUND_URL,
@@ -3936,6 +3960,7 @@ export const useUIStore = create<UIState>()(
         return {
           ...currentState,
           ...persisted,
+          mariWindowHeightRem: normalizeMariWindowHeightRem(persisted.mariWindowHeightRem),
           mariAppearancePackId: getMariAppearancePack(persisted.mariAppearancePackId).id,
           mariUnlockedPackIds: Array.isArray(persisted.mariUnlockedPackIds)
             ? persisted.mariUnlockedPackIds.filter((id): id is string => typeof id === "string")

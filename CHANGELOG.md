@@ -6,6 +6,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 - Names in Korean, Japanese, Chinese, Cyrillic and other non-Latin scripts now stay in the prompt's XML tags and Markdown headings, such as `<홍길동>`, and Peek Prompt shows those sections by name. Before, such a name became an empty `<>` tag and accented names lost letters (`Amélie` became `amlie`). A persona with such a name could also be left out of the prompt, and in a group chat set to Individual, other characters' cards could stay in each character's prompt.
 - In a group chat set to Individual with a preset that uses the Markdown wrap format, other characters no longer see the card of a character whose name has a symbol or emoji between words, such as `Tom & Jerry`.
+- The switch that adds a character's **Image Generation Instructions** to their Noodle images moved from the character editor's **Convo** tab into Noodle: open the character's Noodle profile and choose **Edit profile**. Update Noodle to 1.5.4 to get it; your current choice carries over. The help text for the instructions now says that Noodle and Slurp can use them. Packages can now open a character in the editor (capability API 1.67).
+- The omnibar stays responsive while quick answers stream, when opening their Mari row, and when moving between search results.
 - Character cards can now offer **interactive onboarding**: players answer onboarding questions to create a persona in the Roleplay chat wizard. Native and compatible PNG exports retain onboarding, while compatible JSON exports omit it (#7307).
 - In Roleplay group chats where characters reply one by one, **Decide who sees new messages** keeps hiding new messages from characters who are elsewhere, however long a scene runs. Before, once a scene had run for a few messages, it stopped hiding anyone. A character now counts as away when every earlier message of the scene was hidden from them, by the decision or by you, across at least four messages; a short cutaway or someone stepping out doesn't count (#7390).
 - In Roleplay chats, a message that is only a whisper is now left out of every other character's context. Before, they saw it as **[Private whisper]**, which told them you were there even when you were sneaking up on someone. The character it whispers to and the narrator still get it (#7388).
@@ -421,6 +423,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 - Quick answers cite only docs pages that really match your question. A page that matches one stray word is no longer a source.
 - Search for a question ranks the guides that match its content words. A page whose title holds more of your words comes first, and question words such as why or is no longer count. For a question, Ask Professor Mari comes above the docs and message results.
 - New **Add CYOA choices to the message box instead of sending them** setting in **Settings** > **General** > **Input & Editing**. When on, clicking a CYOA choice adds its text to your message box and the choices stay on screen, so you can combine several into one message and edit it before sending. It takes priority over **Use CYOA as direction**, so with both on, a clicked choice goes to your message box instead of starting an impersonated reply.
+- New **Show "older messages not sent" note** setting in **Settings** > **Advanced** > **Message Tools**. Turn it off to hide that note under replies in long chats; a cut-off or empty reply still shows its own note, and **Check the last reply** in Search still opens it (#7392).
 
 ## [2.5.0]
 
@@ -1504,6 +1507,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 - Added an opt-in setting to show character identities in Persona pickers, with collapsed folder navigation and identity transition notices.
 
 ### Changed
+
+- Professor Mari’s window is slightly taller by default on larger screens. Adjust its height with a slider in Search and Professor Mari settings; the previous height is the minimum.
 
 - Token estimates better account for Korean, Chinese, and Japanese text, and related prompt and context editors consistently show estimated token counts instead of character counts or no counter.
 

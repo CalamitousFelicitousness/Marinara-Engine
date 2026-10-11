@@ -4582,8 +4582,9 @@ export function ChatSettingsDrawer({
     if (!selectedChatPreset || selectedChatPreset.isDefault) return;
     const profileId = selectedChatPreset.id;
     const settings = snapshotCurrentPresetSettings();
-    // An unloaded list would hide the choice, so load it first.
-    const chatList = allChats ?? (await refetchAllChats()).data ?? [];
+    // Count from a fresh list so chats changed in another window are included. A failed
+    // refetch keeps the last loaded list.
+    const chatList = (await refetchAllChats()).data ?? [];
     const followerCount = chatList.filter(
       (other) =>
         other.id !== chat.id &&

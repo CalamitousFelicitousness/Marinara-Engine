@@ -86,6 +86,28 @@ try {
     return result.ok ? [] : result.issues;
   };
   const definition = parsed(fiveE());
+  // A catalog's Wind-Chime, whose effect only gives movers away, and Lantern of Dusk are read.
+  const valley = parsed(
+    fiveE((doc) => {
+      doc.items = { categories: [{ id: "gear", label: "Gear" }] };
+      doc.catalogs.push({
+        id: "valley",
+        label: "Valley",
+        holds: "items",
+        entries: [
+          { id: "wind-chime", label: "Wind-Chime", item: { category: "gear", carried: { alerts: 15 } } },
+          {
+            id: "lantern-of-dusk",
+            label: "Lantern of Dusk",
+            item: { category: "gear", carried: { light: { bright: 0, dim: 15, shade: true } } },
+          },
+        ],
+      });
+    }),
+  );
+  const valleyItems = valley.catalogs!.find((catalog) => catalog.id === "valley")!.entries!;
+  assert.equal(valleyItems[0]!.item?.carried?.alerts, 15);
+  assert.equal(valleyItems[1]!.item?.carried?.light?.shade, true);
   const gear = (name: string, carried: Record<string, unknown>): RulesetSheetItem =>
     ({ name, quantity: 1, worn: false, item: { category: "gear", carried } }) as never;
   const lantern = gear("Lantern of Dusk", { light: { bright: 0, dim: 15, shade: true } });

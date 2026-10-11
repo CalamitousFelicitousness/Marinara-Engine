@@ -7762,13 +7762,14 @@ export const rulesetItemEffectSchema = z
       abilities.length === 0 &&
       !hide &&
       !entry.senses &&
-      !entry.light
+      !entry.light &&
+      !entry.alerts
     ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["effects"],
         message:
-          "An item's effect does something: effects, modifiers, saves it fails, abilities it changes, senses it gives, light it sheds, or harm or conditions it keeps off",
+          "An item's effect does something: effects, modifiers, saves it fails, abilities it changes, senses it gives, light it sheds, movers it gives away, or harm or conditions it keeps off",
       });
     }
     if (abilities.length > 12) {

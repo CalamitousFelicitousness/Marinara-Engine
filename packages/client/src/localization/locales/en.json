@@ -7717,6 +7717,7 @@
   "ui.chibiProfessorMari.dismiss": "Dismiss Mini Professor Mari surprise visit toast",
   "ui.chibiProfessorMari.fortune": "Good luck and fortune will come to you very soon. Make sure to say “thank you, Professor!”",
   "ui.chibiProfessorMari.loved": "Remember, you are loved and appreciated. Cheers!",
+  "ui.chibiProfessorMari.shiny": "✨ SHINY Chibi Professor Mari! This is SO rare!! ✨",
   "ui.chibiProfessorMari.visit": "If you see this image while scrolling through Marinara Engine, you've been visited by the rare Chibi Professor Mari!",
   "ui.connections.choicesetting.backendDefault": "Backend default",
   "ui.connections.comfyuilorasettings.chooseUpToFiveLoras": "Choose up to five LoRAs returned by ComfyUI, or enter their filenames.",

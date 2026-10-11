@@ -287,6 +287,17 @@ try {
   assert(retried.includes("[Private whisper to Bob: USER_SECRET]"), retried);
   assert(inOrder(retried, "Plain.", "[Private whisper to Bob: LIVE_SECRET]"), retried);
 
+  // A reply that is only a whisper still reaches post-generation agents; a rewrite agent has nothing to edit.
+  await chats.patchMetadata(chat.id, { activeAgentIds: [pre.type, post.type, rewrite.type] });
+  const rewritesBefore = agentPrompts.get("REWRITE_AGENT_FIXTURE")!.length;
+  const postsBefore = agentPrompts.get("POST_AGENT_FIXTURE")!.length;
+  await generate('[whisper: character="Bob" text="ONLY_REPLY_SECRET"]', alice.id);
+  assert.equal(agentPrompts.get("POST_AGENT_FIXTURE")!.length, postsBefore + 1, "post-generation agents ran");
+  assert.equal(responseOf(latest("POST_AGENT_FIXTURE")), "[Private whisper to Bob: ONLY_REPLY_SECRET]");
+  assert.equal(agentPrompts.get("REWRITE_AGENT_FIXTURE")!.length, rewritesBefore, "no rewrite of an empty reply");
+  assert.equal((await chats.listMessages(chat.id)).at(-1)!.content, "");
+  await chats.patchMetadata(chat.id, { activeAgentIds: [pre.type, post.type] });
+
   // A hosted room shows agent output to every participant, so its agents get no whispers.
   replaceBuiltInAgentDefinitions([
     {

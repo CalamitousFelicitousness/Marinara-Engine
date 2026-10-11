@@ -1,5 +1,6 @@
 import { getRoleplayDocuments, getRoleplayWhispers, type WrapFormat } from "@marinara-engine/shared";
 
+import { isSentSelfieAttachment, type PromptAttachment } from "../../services/generation/prompt-attachments.js";
 import { parseRoleplayUserCommands } from "../../services/generation/roleplay-commands.js";
 import type { GenerationPromptMessage } from "../../services/generation/prompt-message-scope.js";
 import { wrapContent } from "../../services/prompt/format-engine.js";
@@ -114,4 +115,26 @@ export function conversationPromptHistoryContent(
     }
   }
   return typeof message.content === "string" ? message.content : "";
+}
+
+const SENT_SELFIE_DESCRIPTION_MAX_CHARS = 600;
+
+/**
+ * History notes for selfies a character sent, so the next reply knows a photo went out and what it
+ * shows. A saved caption describes the real image and wins, even after captioning is turned off;
+ * otherwise the image prompt's first paragraph (later ones are appearance and reference notes).
+ */
+export function formatSentSelfieNotes(attachments: PromptAttachment[] | undefined): string {
+  return (attachments ?? [])
+    .filter(isSentSelfieAttachment)
+    .map((attachment) => {
+      const description = (attachment.imageCaption?.trim() || (attachment.prompt ?? "").split(/\n\s*\n/)[0]!)
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, SENT_SELFIE_DESCRIPTION_MAX_CHARS);
+      // Selfies saved before the sender was recorded have no name; their note stays unattributed.
+      const sender = attachment.characterName?.trim();
+      return `\n[${sender ? `${sender} sent` : "Sent"} a selfie${description ? `: ${description}` : ""}]`;
+    })
+    .join("");
 }

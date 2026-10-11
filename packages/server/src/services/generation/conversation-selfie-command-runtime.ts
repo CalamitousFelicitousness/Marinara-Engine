@@ -406,6 +406,8 @@ async function generateSelfie(
         filename: `selfie_${args.charName.toLowerCase().replace(/\s+/g, "_")}_${variantIndex + 1}.${imageResult.ext}`,
         prompt: compiledSelfiePrompt.prompt,
         galleryId: galleryEntry?.id,
+        // Names the sender in later prompt history; a merged group reply can hold several speakers.
+        characterName: args.charName,
       };
       await args.chats.appendSwipeAttachment(args.messageId, generationSwipeIndex, attachment);
 

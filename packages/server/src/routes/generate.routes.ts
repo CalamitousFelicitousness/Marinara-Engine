@@ -76,7 +76,8 @@ import type { input as SchemaInput } from "zod";
 import { translateGeneratedMessage } from "../services/translation.service.js";
 import { randomInt, randomUUID } from "crypto";
 import { existsSync, mkdirSync, writeFileSync } from "fs";
-import { join } from "path";
+import { readFile } from "fs/promises";
+import { extname, join } from "path";
 import {
   DECISION_PROMPT_QUESTION_LIMIT_SETTINGS_KEY,
   parseDecisionPromptQuestionLimit,
@@ -259,6 +260,9 @@ import { createCustomEmojisStorage } from "../services/storage/custom-emojis.sto
 import { createCustomStickersStorage } from "../services/storage/custom-stickers.storage.js";
 import { createCharacterGalleryStorage } from "../services/storage/character-gallery.storage.js";
 import { createPersonaGalleryStorage } from "../services/storage/persona-gallery.storage.js";
+import { createGalleryStorage } from "../services/storage/gallery.storage.js";
+import { resolveGalleryImagePath } from "../services/image/gallery-image-path.js";
+import { isSentSelfieAttachment } from "../services/generation/prompt-attachments.js";
 import { createAppSettingsStorage } from "../services/storage/app-settings.storage.js";
 import { getCustomAgentImportPolicy } from "../services/agents/custom-agent-import-policy.service.js";
 import { buildLorebookSemanticEmbeddingsById, warmLorebookEntryEmbeddings } from "../services/lorebook/embeddings.js";
@@ -524,9 +528,11 @@ import {
   CONVERSATION_NO_REPEAT_INSTRUCTION,
   conversationPromptHistoryContent,
   formatConversationGroupOutputFormat,
+  formatSentSelfieNotes,
   resolvePresetModePrompt,
 } from "./generate/conversation-prompt-formatting.js";
 import {
+  captionSentSelfies,
   normalizePromptAttachments,
   resolveImageCaptioningRuntime,
   resolvePromptAttachmentInputs,
@@ -1035,6 +1041,14 @@ export type GenerationRunner = (
 export interface GenerateRouteOptions {
   onRunnerReady?: (runner: GenerationRunner) => void;
 }
+
+const SENT_SELFIE_MIME_TYPES: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  webp: "image/webp",
+  gif: "image/gif",
+};
 
 export async function generateRoutes(app: FastifyInstance, options: GenerateRouteOptions = {}) {
   const pendingTranslations = new Map<string, number>();
@@ -2064,6 +2078,29 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           return false;
         }
       };
+      // Selfies live in the chat gallery, not inline, so captioning reads the file.
+      const sentSelfieGallery = createGalleryStorage(app.db);
+      const readSentSelfieDataUrl = async (attachment: PromptAttachment): Promise<string | null> => {
+        if (!attachment.galleryId) return null;
+        const image = await sentSelfieGallery.getById(attachment.galleryId, input.chatId);
+        const filePath = image ? resolveGalleryImagePath(image) : null;
+        if (!filePath) return null;
+        const mimeType = SENT_SELFIE_MIME_TYPES[extname(filePath).slice(1).toLowerCase()];
+        if (!mimeType) return null;
+        return `data:${mimeType};base64,${(await readFile(filePath)).toString("base64")}`;
+      };
+      // ponytail: only the newest selfie messages are captioned, so a long chat (or a changed caption
+      // model) never queues a caption call per old selfie before the reply; older selfies keep a saved
+      // caption or use their image prompt. Raise the count or caption in the background if that falls short.
+      const selfieCaptionMessageIds = new Set(
+        chatMessages
+          .filter(
+            (message: any) =>
+              message.role === "assistant" && normalizePromptAttachments(message.extra)?.some(isSentSelfieAttachment),
+          )
+          .slice(-2)
+          .map((message: any) => message.id),
+      );
       const initialLatestUserMessageId = [...chatMessages].reverse().find((message) => message.role === "user")?.id;
       const mapChatHistoryMessageForPrompt = async (
         m: any,
@@ -2075,9 +2112,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         const providerMetadata = pastReasoning.get(m.id);
 
         // Annotate assistant messages that have user-uploaded image attachments
-        // so the model is aware it sent a photo in prior turns.
-        // Skip illustration/selfie attachments (type "image") — those are generated
-        // by agents and should be invisible to the main model.
+        // so the model is aware it sent a photo in prior turns. Generated images
+        // (type "image") stay invisible except the character's own selfies.
         const attachmentInputs = await resolvePromptAttachmentInputs({
           content: conversationPromptHistoryContent(m, chatMode),
           attachments,
@@ -2085,13 +2121,24 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           signal: generationSignal,
           debugMode: requestDebug,
         });
+        const selfieCaptionedAttachments =
+          m.role === "assistant" && selfieCaptionMessageIds.has(m.id)
+            ? await captionSentSelfies({
+                attachments: attachmentInputs.updatedAttachments ?? attachments,
+                imageCaptioning: imageCaptioningRuntime,
+                readImageDataUrl: readSentSelfieDataUrl,
+                signal: generationSignal,
+                debugMode: requestDebug,
+              })
+            : null;
+        const updatedAttachments = selfieCaptionedAttachments ?? attachmentInputs.updatedAttachments;
         const captionsPersisted = await persistPromptAttachmentCaptions(
           typeof m.id === "string" ? m.id : null,
-          attachmentInputs.updatedAttachments,
+          updatedAttachments,
         );
         if (advancedMemoryEnabled && captionsPersisted) {
           // Keep our own cache write in the prepared source snapshot; unrelated edits still fail revision checks.
-          m.extra = JSON.stringify({ ...extra, attachments: attachmentInputs.updatedAttachments });
+          m.extra = JSON.stringify({ ...extra, attachments: updatedAttachments });
         }
         let content = withLatestMessageReply(
           attachmentInputs.content,
@@ -2103,6 +2150,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           const photoName = userUploadedImages[0]?.filename ?? userUploadedImages[0]?.name;
           content += `\n[Sent a photo${photoName ? `: ${photoName}` : ""}]`;
         }
+        if (m.role === "assistant") content += formatSentSelfieNotes(updatedAttachments ?? attachments);
         const hiddenFromAICharacterIds = getMessageHiddenFromAICharacterIds(m);
         const conversationStartForCharacterIds = getMessageConversationStartCharacterIds(m);
 
@@ -13210,7 +13258,6 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                     try {
                       const imgConnFull = resolvedImageConnection;
                       const { generateImage, saveImageToDisk } = await import("../services/image/image-generation.js");
-                      const { createGalleryStorage } = await import("../services/storage/gallery.storage.js");
                       const galleryStore = createGalleryStorage(app.db);
 
                       const imgModel = imgConnFull.model || "";

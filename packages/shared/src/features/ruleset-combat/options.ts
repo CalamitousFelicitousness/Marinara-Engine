@@ -79,6 +79,7 @@ import {
   rulesetMovesOnly,
   rulesetMovementAllowance,
   rulesetLightMatches,
+  rulesetNearProp,
 } from "./encounter.js";
 import {
   rulesetAirborne,
@@ -117,6 +118,7 @@ import {
   rulesetStandsObscured,
 } from "./sight.js";
 import type {
+  RulesetBoardProp,
   RulesetAfterAttack,
   RulesetCombatAmount,
   RulesetCombatAgainst,
@@ -405,6 +407,19 @@ export const RULESET_ZONE_TURN_OPTION_PREFIX = "zone-turn:";
 export const RULESET_STAND_OPTION = "move:stand";
 /** A flier going up a level, or down one, where it stands (1.109). */
 export const RULESET_FLY_UP_OPTION = "move:fly-up";
+/** Lighting a prop again (1.327), followed by its id. */
+export const RULESET_RELIGHT_OPTION_PREFIX = "relight:";
+
+/** Every cell a prop that may be lit again lights (1.327): within its `squares` of it. */
+export function rulesetRelightCells(state: RulesetEncounterState, prop: RulesetBoardProp): RulesetCombatCell[] {
+  const grid = state.board?.grid;
+  if (!grid || !prop.relight) return [];
+  const cells: RulesetCombatCell[] = [];
+  for (let y = 0; y < grid.height; y++)
+    for (let x = 0; x < grid.width; x++)
+      if (prop.cells.some((cell) => rulesetCellDistance(cell, { x, y }) <= prop.relight!.squares)) cells.push({ x, y });
+  return cells;
+}
 export const RULESET_FLY_DOWN_OPTION = "move:fly-down";
 /** How high above the ground under it a flier may go, in levels. A board's own heights are a handful
  *  of levels, so this is well above anything worth being out of reach over. */
@@ -1822,6 +1837,9 @@ export function rulesetActionAvailable(
     if (!definition || !state || !at) return false;
     if (!action.usableIn.light.includes(rulesetLightAt(definition, state, at))) return false;
   }
+  // Only beside a prop (1.327): Fennick's Hymnal at the Year-Wheel.
+  if (action.usableNear && !(state && rulesetNearProp(state, actor, action.usableNear.prop, action.usableNear.within)))
+    return false;
   // A light only while they carry one, and for nothing once a turn (1.290).
   if (action.switches && "carried" in action.switches) {
     if (!definition || !rulesetCarriesLight(definition, actor, state)) return false;
@@ -3110,6 +3128,22 @@ export function rulesetUncompelledOptions(
         shakeOff: { holderId: holder.id, condition, name: holder.name, label },
       });
     }
+  }
+  // Lighting a prop again (1.327): somebody beside it, while anywhere it lights is not lit so.
+  for (const prop of state.board?.props ?? []) {
+    const relight = prop.relight;
+    if (!relight || prop.health <= 0 || (actor.budgets[relight.budget] ?? 0) < 1) continue;
+    if (!rulesetNearProp(state, actor, prop.id, 1)) continue;
+    if (rulesetRelightCells(state, prop).every((cell) => rulesetLightAt(definition, state, cell) === relight.light))
+      continue;
+    options.push({
+      id: `${RULESET_RELIGHT_OPTION_PREFIX}${prop.id}`,
+      kind: "standard",
+      label: `Light ${prop.label} again`,
+      budget: relight.budget,
+      targets: { side: "self", count: 0 },
+      relights: { propId: prop.id, label: prop.label },
+    });
   }
   // A sphere (1.309): rolled by the one shut in it, picked up or put down by somebody next to it.
   if (positioned(state)) {

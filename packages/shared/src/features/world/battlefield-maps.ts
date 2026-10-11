@@ -55,6 +55,15 @@ export const worldBattlefieldPropSchema = z
     blocks: z.object({ move: z.boolean().optional(), sight: z.boolean().optional() }).strict().optional(),
     /** Anything that hits it breaks it. */
     fragile: z.boolean().optional(),
+    /** Somebody beside it may light it again (1.327): `light` within `squares` of it. */
+    relight: z
+      .object({
+        light: z.enum(["bright", "dim", "sunlight"]),
+        squares: z.number().int().min(0).max(12),
+        budget: z.string().trim().min(1).max(40).optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 export type WorldBattlefieldProp = z.infer<typeof worldBattlefieldPropSchema>;

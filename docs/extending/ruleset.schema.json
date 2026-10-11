@@ -10336,6 +10336,27 @@
                       ],
                       "additionalProperties": false
                     },
+                    "usableNear": {
+                      "type": "object",
+                      "properties": {
+                        "prop": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 60
+                        },
+                        "within": {
+                          "type": "number",
+                          "exclusiveMinimum": 0,
+                          "maximum": 10000
+                        },
+                        "$comment": {}
+                      },
+                      "required": [
+                        "prop",
+                        "within"
+                      ],
+                      "additionalProperties": false
+                    },
                     "ignoresSurpriseWith": {
                       "type": "string",
                       "maxLength": 121,
@@ -20591,6 +20612,13 @@
                                 "minLength": 1,
                                 "maxLength": 200
                               },
+                              "occupants": {
+                                "type": "string",
+                                "enum": [
+                                  "stay",
+                                  "shove"
+                                ]
+                              },
                               "$comment": {}
                             },
                             "additionalProperties": false
@@ -29278,6 +29306,27 @@
                           ],
                           "additionalProperties": false
                         },
+                        "usableNear": {
+                          "type": "object",
+                          "properties": {
+                            "prop": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 60
+                            },
+                            "within": {
+                              "type": "number",
+                              "exclusiveMinimum": 0,
+                              "maximum": 10000
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "prop",
+                            "within"
+                          ],
+                          "additionalProperties": false
+                        },
                         "ignoresSurpriseWith": {
                           "type": "string",
                           "maxLength": 121,
@@ -37042,6 +37091,27 @@
                                 },
                                 "required": [
                                   "light"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "usableNear": {
+                                "type": "object",
+                                "properties": {
+                                  "prop": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 60
+                                  },
+                                  "within": {
+                                    "type": "number",
+                                    "exclusiveMinimum": 0,
+                                    "maximum": 10000
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "prop",
+                                  "within"
                                 ],
                                 "additionalProperties": false
                               },

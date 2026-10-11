@@ -1665,6 +1665,7 @@ export interface RulesetCreatureGround {
   growth?: boolean;
   season?: string | null;
   tell?: string;
+  occupants?: "stay" | "shove";
 }
 const creatureGroundSchema: z.ZodType<RulesetCreatureGround, z.ZodTypeDef, unknown> = z
   .object({
@@ -1675,9 +1676,19 @@ const creatureGroundSchema: z.ZodType<RulesetCreatureGround, z.ZodTypeDef, unkno
     growth: z.boolean().optional(),
     season: z.union([z.string().trim().min(1).max(40), z.null()]).optional(),
     tell: promptSafeText(200).optional(),
+    /** Whoever stands where its terrain turns to ground nobody stands on (Capability API 1.327):
+     *  `shove`d to the nearest open cell (the default), or left to `stay` in it, fallen through the
+     *  ice into the water. */
+    occupants: z.enum(["stay", "shove"]).optional(),
   })
   .strict()
-  .refine((change) => Object.keys(change).length > 0, { message: "A change to the ground changes something" });
+  .refine((change) => Object.keys(change).some((key) => key !== "occupants" && key !== "tell"), {
+    message: "A change to the ground changes something",
+  })
+  .refine((change) => change.occupants === undefined || change.terrain !== undefined, {
+    message: '"occupants" says what becomes of whoever stands where the terrain changes, so it needs a "terrain"',
+    path: ["occupants"],
+  });
 
 const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = z
   .object({
@@ -3305,6 +3316,13 @@ const catalogMechanicsObject = z
           .max(4)
           .refine((lights) => new Set(lights).size === lights.length, { message: "A light is named once" }),
       })
+      .strict()
+      .optional(),
+    /** Used only while its user stands within `within` (the ruleset's distance) of a standing prop of
+     *  the board named `prop`, by its id or its label (Capability API 1.327): Fennick's Hymnal, a
+     *  verse sung at the Year-Wheel. A fight with no board never offers it. */
+    usableNear: z
+      .object({ prop: z.string().trim().min(1).max(60), within: z.number().finite().gt(0).max(10000) })
       .strict()
       .optional(),
     /** Held on a sheet's list, surprise is shaken off by using this entry first on the surprised

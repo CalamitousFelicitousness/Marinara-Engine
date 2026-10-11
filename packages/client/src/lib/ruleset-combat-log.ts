@@ -666,6 +666,9 @@ export function rulesetCombatEventLine(
         health: event.health,
       });
     // Felled on Held Ground, and reaped (1.318).
+    // A prop lit again (1.327).
+    case "relit":
+      return key("relit", { actor: names.combatant(event.actorId), label: event.label });
     // Held Ground let go mid-fight (1.325), and the marks coming due.
     case "heldGroundReleased": {
       const line = key(event.label ? "heldGroundReleasedNamed" : "heldGroundReleased", { label: event.label ?? "" });

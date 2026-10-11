@@ -685,6 +685,8 @@ export interface RulesetCombatAction {
   endsCondition?: string;
   /** Used only while its user stands in one of these lights (1.298). */
   usableIn?: { light: RulesetBoardLight[] };
+  /** Only within `within` cells of a standing prop named `prop` by id or label (1.327). */
+  usableNear?: { prop: string; within: number };
   /** Whoever it lands on leaves the fight (1.231): for good, or only while they hold `while`, put on
    *  by the same use; with `gone`, one that is that stays gone if `while` ran its whole time. */
   dismisses?: true | { while: string; gone?: RulesetTargetIs; turns?: true };
@@ -1877,6 +1879,9 @@ export interface RulesetBoardProp {
   immune?: string[];
   blocks?: { move?: true; sight?: true };
   fragile?: true;
+  /** It may be lit again (1.327): somebody beside it spends `budget` and every cell within `squares`
+   *  of it is `light` once more. The Owed's bonfire after Bonfire Gutters. */
+  relight?: { light: "bright" | "dim" | "sunlight"; squares: number; budget: string };
 }
 
 /** Where a board event happens (1.313): listed cells, a block, a ring widening from a cell, a line
@@ -2283,6 +2288,8 @@ export type RulesetCombatEvent =
     }
   /** Left at 1 instead of dropping to 0 (1.315), and how many more times it may. */
   | { type: "hangsOn"; actorId: string; label?: string; left: number }
+  /** A prop lit again (1.327): who lit it, and how many cells it lights. */
+  | { type: "relit"; actorId: string; propId: string; label: string; cells: number }
   /** Held Ground let go mid-fight (1.325): who died of it, and who went down instead. */
   | { type: "heldGroundReleased"; label?: string; died: string[]; down?: string[] }
   /** Marks come due as Held Ground lets go (1.325): one dying save a mark, `bonus` on each. */
@@ -2719,6 +2726,8 @@ export interface RulesetCombatOption {
   rollsSealed?: { condition: string; label: string };
   /** Picking up somebody shut in a sphere (1.309), or putting them down (`down`). */
   lifts?: { holderId: string; name: string; down?: true };
+  /** The prop this lights again (1.327). */
+  relights?: { propId: string; label: string };
   /** The holder and condition named by an ally's shake-off option (1.120). */
   shakeOff?: { holderId: string; condition: string; name: string; label: string };
   /** The condition its holder spends this on a save against (1.259). */

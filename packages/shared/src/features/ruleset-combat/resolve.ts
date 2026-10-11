@@ -139,6 +139,7 @@ import {
   RULESET_STAND_OPTION,
   RULESET_FLY_DOWN_OPTION,
   RULESET_FLY_UP_OPTION,
+  rulesetRelightCells,
   planRulesetCombatCost,
   rulesetChosenUsesMax,
   rulesetAlterFits,
@@ -4135,6 +4136,17 @@ function applyChoice(
     return finish();
   }
 
+  // A prop lit again (1.327): the bonfire after Bonfire Gutters.
+  if (option.relights) {
+    const prop = ctx.state.board?.props?.find((one) => one.id === option.relights!.propId);
+    if (prop?.relight) {
+      const cells = rulesetRelightCells(ctx.state, prop);
+      rulesetChangeGround(ctx.state, cells, { light: prop.relight.light });
+      ctx.events.push({ type: "relit", actorId: working.id, propId: prop.id, label: prop.label, cells: cells.length });
+    }
+    noteOutcome(ctx);
+    return finish();
+  }
   if (option.shakeOff) {
     const holder = rulesetCombatant(ctx.state, option.shakeOff.holderId)!;
     removeCondition(ctx, holder, option.shakeOff.condition, "shaken");
@@ -6854,7 +6866,7 @@ function resumeAction(ctx: RulesetCombatContext, resume: RulesetActionResume): v
       ...(resume.also ? { also: resume.also } : {}),
       grow: areaGrowth(ctx.definition, actor, action.id, resume.payWith),
     });
-    const moved = rulesetChangeGround(ctx.state, cells, action.ground);
+    const moved = rulesetChangeGround(ctx.state, cells, action.ground, action.ground.occupants);
     ctx.events.push({
       type: "boardEvent",
       id: action.id,

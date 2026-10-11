@@ -327,11 +327,13 @@ export function rulesetChangeGround(
   state: RulesetEncounterState,
   cells: readonly RulesetCombatCell[],
   change: RulesetBoardEventChange,
+  /** Whoever stands on these cells stays there, fallen in (1.327), rather than being moved off. */
+  occupants: "stay" | "shove" = "shove",
 ): Array<{ id: string; to: RulesetCombatCell }> {
   const grid = state.board?.grid;
   if (!grid) return [];
   for (const cell of cells) changeCell(grid, cell, change);
-  return settle(state);
+  return settle(state, occupants === "stay" ? new Set(cells.map(key)) : undefined);
 }
 
 function changeCell(grid: TacticalGrid, cell: RulesetCombatCell, change: RulesetBoardEventChange): void {
@@ -410,7 +412,10 @@ function rotateBlock(
 }
 
 /** Whoever stands where nobody may stand now, set down at the nearest open cell. */
-function settle(state: RulesetEncounterState): Array<{ id: string; to: RulesetCombatCell }> {
+function settle(
+  state: RulesetEncounterState,
+  stay?: ReadonlySet<string>,
+): Array<{ id: string; to: RulesetCombatCell }> {
   const grid = state.board!.grid;
   const moved: Array<{ id: string; to: RulesetCombatCell }> = [];
   const taken = new Set<string>();
@@ -421,6 +426,7 @@ function settle(state: RulesetEncounterState): Array<{ id: string; to: RulesetCo
   for (const combatant of state.combatants) {
     if (combatant.defeated || !rulesetPositionOf(combatant)) continue;
     const footprint = rulesetFootprint(combatant);
+    if (stay && footprint.some((cell) => stay.has(key(cell)))) continue;
     const blocked = footprint.some((cell) => {
       const terrain = grid.tiles[cell.y]?.[cell.x];
       return terrain !== undefined && !!TERRAIN_DATA[terrain]?.impassable;

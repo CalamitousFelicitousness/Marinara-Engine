@@ -272,6 +272,8 @@ export {
   RULESET_STAND_OPTION,
   RULESET_FLY_DOWN_OPTION,
   RULESET_FLY_UP_OPTION,
+  RULESET_RELIGHT_OPTION_PREFIX,
+  rulesetRelightCells,
   RULESET_FLY_CEILING,
   type RulesetBonusDice,
   type RulesetCombatCost,

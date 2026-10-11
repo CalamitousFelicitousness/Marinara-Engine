@@ -405,13 +405,22 @@ function nearProp(
   gate: { prop: string; within: number },
 ): boolean {
   if (!state?.board || !combat.distance || !rulesetPositionOf(combatant)) return true;
-  const label = gate.prop.trim().toLowerCase();
-  const reach = rulesetInCells(gate.within, combat.distance.perCell);
-  const cells = (state.board.props ?? [])
-    .filter((prop) => prop.health > 0)
-    .filter((prop) => prop.label.trim().toLowerCase() === label)
-    .flatMap((prop) => prop.cells);
-  return rulesetFootprint(combatant).some((mine) => cells.some((cell) => rulesetCellDistance(mine, cell) <= reach));
+  return rulesetNearProp(state, combatant, gate.prop, rulesetInCells(gate.within, combat.distance.perCell));
+}
+
+/** Whether somebody stands within `cells` of a standing prop of the board named `prop`, by its id or
+ *  its label (1.326, 1.327). Never off a board. */
+export function rulesetNearProp(
+  state: RulesetEncounterState,
+  combatant: RulesetCombatant,
+  prop: string,
+  cells: number,
+): boolean {
+  const name = prop.trim().toLowerCase();
+  const near = (state.board?.props ?? [])
+    .filter((one) => one.health > 0 && (one.id === prop || one.label.trim().toLowerCase() === name))
+    .flatMap((one) => one.cells);
+  return rulesetFootprint(combatant).some((mine) => near.some((cell) => rulesetCellDistance(mine, cell) <= cells));
 }
 
 /**
@@ -2666,6 +2675,12 @@ function mechanicsAction(
   // Made again while concentrated on (1.305): Vampiric Touch.
   if ("repeats" in mechanics && mechanics.repeats) action.repeats = { ...mechanics.repeats };
   if (mechanics.usableIn) action.usableIn = { light: [...mechanics.usableIn.light] };
+  // Only beside a prop (1.327): a verse sung at the Year-Wheel.
+  if (mechanics.usableNear && perCell !== undefined)
+    action.usableNear = {
+      prop: mechanics.usableNear.prop,
+      within: rulesetInCells(mechanics.usableNear.within, perCell),
+    };
   // Sent out of the fight (1.231): Dismissal, Banishment.
   if (mechanics.dismisses) action.dismisses = structuredClone(mechanics.dismisses);
   if (mechanics.stabilizes) action.stabilizes = true;
@@ -3976,6 +3991,9 @@ export interface RulesetBoardPropInput {
   immune?: string[];
   blocks?: { move?: boolean; sight?: boolean };
   fragile?: boolean;
+  /** Lit again by somebody beside it (1.327): `light` on every cell within `squares` of it, for
+   *  `budget` ("action" when not said). */
+  relight?: { light: "bright" | "dim" | "sunlight"; squares: number; budget?: string };
 }
 
 /** The props a board is handed (1.311), as a fight keeps them: on the board, each with health. */
@@ -4028,6 +4046,21 @@ export function rulesetBoardProps(grid: TacticalGrid, props: RulesetBoardPropInp
             }
           : {}),
         ...(prop.fragile ? { fragile: true as const } : {}),
+        ...(prop.relight &&
+        ["bright", "dim", "sunlight"].includes(prop.relight.light) &&
+        Number.isInteger(prop.relight.squares) &&
+        prop.relight.squares >= 0
+          ? {
+              relight: {
+                light: prop.relight.light,
+                squares: Math.min(prop.relight.squares, 12),
+                budget:
+                  typeof prop.relight.budget === "string" && prop.relight.budget.trim()
+                    ? prop.relight.budget.trim()
+                    : "action",
+              },
+            }
+          : {}),
       },
     ];
   });

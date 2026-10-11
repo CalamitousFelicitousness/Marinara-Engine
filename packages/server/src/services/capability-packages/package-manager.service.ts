@@ -1574,6 +1574,17 @@ function carriesBossAsks(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesBossAsks(one, depth + 1));
 }
 
+/** A use only beside a prop, or a ground change whose occupants stay in it (1.327). */
+function carriesNearUseOrFall(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesNearUseOrFall(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.usableNear !== undefined) return true;
+  if (plainRecord(record.ground)?.occupants !== undefined) return true;
+  return Object.values(record).some((one) => carriesNearUseOrFall(one, depth + 1));
+}
+
 /** Props and felling in a condition or a creature action (1.326): a condition held only near a
  *  prop, an aura that feeds, an area around props. */
 function carriesPropsAndFeeding(value: unknown, depth = 0): boolean {
@@ -4436,6 +4447,14 @@ export function getCapabilityPackageInstallIssue(
     (carriesDraws(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesDraws(document)))
   ) {
     return "A ruleset with a creature action that draws whoever it lands on toward it requires schemaVersion 2 and capabilityApi 1.321 or newer";
+  }
+  // A use only beside a prop, or occupants that stay, 1.327.
+  if (
+    !declaresApi(327) &&
+    (carriesNearUseOrFall(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesNearUseOrFall(document)))
+  ) {
+    return "A ruleset with a use only beside a prop, or a change to the ground that leaves whoever stands there in it, requires schemaVersion 2 and capabilityApi 1.327 or newer";
   }
   // Near a prop, around props, an aura that feeds, 1.326.
   if (

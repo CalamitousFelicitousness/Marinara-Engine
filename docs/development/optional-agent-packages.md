@@ -247,9 +247,10 @@ const vectors = await embeddings.embed(texts, signal);
 // Store/compare embeddings.spaceId with persisted vectors; do not mix embedding spaces.
 ```
 
-The returned host has `spaceId`, `label`, and `embed(texts, signal?)`. Resolution uses the
-configured embedding source and falls back to the built-in local MiniLM embedder when
-none is available or configuration resolution fails. `embed` can return `null`; empty
+The returned host has `spaceId`, `label`, and `embed(texts, signal?, inputType?)` (see
+capability API 1.68 for the input type). Resolution uses the configured embedding source
+and falls back to the built-in local MiniLM embedder when none is available or
+configuration resolution fails. `embed` can return `null`; empty
 batches, more than 128 texts, or more than 200,000 combined characters are refused. A
 new host does not re-embed existing vectors, so a package must handle a changed `spaceId`
 before comparing new vectors with stored ones.
@@ -1105,6 +1106,26 @@ summary.
 Use the existing startup-readiness declaration independently when the world must
 be prepared before the opening turn. Declare API 1.18 as the package minimum;
 older hosts cannot interpret this setup declaration.
+
+### Capability API 1.68: embed search queries as queries
+
+`embeddings.embed(texts, signal?, inputType?)` takes a third argument: pass `"query"` for search
+text, such as a recall query. Texts default to `"document"`. Some embedding models expect a prefix
+on queries, and some also on documents: e5 and nomic-embed-text use one of each, and Snowflake
+Arctic Embed v2 prefixes only queries. The Engine adds the right one. Recall is weaker when a query
+is embedded as a document. Other models, including the built-in MiniLM embedder, get no prefix
+either way. The input type does not change `spaceId`, so stored vectors stay comparable and nothing
+needs re-embedding.
+
+```ts
+const embeddings = await api.runtime.resolveEmbeddings();
+const [queryVector] = (await embeddings.embed([query], signal, "query")) ?? [];
+const memoryVectors = await embeddings.embed(memoryTexts, signal); // documents
+```
+
+It is a soft seam: an older Engine ignores the third argument, so a package can always pass it and
+does not need to declare 1.68. Pass the input type as the third argument, never in an options
+object: an older Engine hands the second argument straight to the provider as an abort signal.
 
 ### Capability API 1.67: open a character in the editor
 

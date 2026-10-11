@@ -24,6 +24,7 @@ const { createConnectionsStorage } = await import("../../packages/server/src/ser
 const { createCharactersStorage } = await import("../../packages/server/src/services/storage/characters.storage.js");
 const { createPromptsStorage } = await import("../../packages/server/src/services/storage/prompts.storage.js");
 const { createAgentsStorage } = await import("../../packages/server/src/services/storage/agents.storage.js");
+const { roleplayAgentText } = await import("../../packages/server/src/services/generation/roleplay-commands.js");
 const { characterDataSchema, replaceBuiltInAgentDefinitions } = await import("../../packages/shared/dist/index.js");
 
 const SENTINELS = ["PRE_AGENT_FIXTURE", "POST_AGENT_FIXTURE", "ROOM_TRACKER_FIXTURE"] as const;
@@ -223,6 +224,20 @@ try {
   const afterEdits = latest("PRE_AGENT_FIXTURE");
   assert(inOrder(afterEdits, "Plain.", "[Private whisper to Bob: LIVE_SECRET]"), afterEdits);
   assert(!afterEdits.includes("DELETED_SECRET") && !afterEdits.includes("FAILED_SECRET"));
+
+  // A whisper-only body's whispers take the place of its own placeholder, not a later copy of that text.
+  const onlyWhisper = { role: "assistant", content: "", extra: { roleplayCommandActivity: [whisper("ONLY", {})] } };
+  const bobNames = new Map([[bob.id, "Bob"]]);
+  assert.equal(
+    roleplayAgentText("<Alice>\n[Private whisper]\n</Alice>", onlyWhisper, bobNames),
+    "<Alice>\n[Private whisper to Bob: ONLY]\n</Alice>",
+  );
+  assert.equal(
+    roleplayAgentText("[Private whisper]\n\nDocument: Quote\n[Private whisper]", onlyWhisper, bobNames),
+    "[Private whisper to Bob: ONLY]\n\nDocument: Quote\n[Private whisper]",
+  );
+  assert.equal(roleplayAgentText("", onlyWhisper, bobNames), "[Private whisper to Bob: ONLY]");
+  assert.equal(roleplayAgentText("[Private whisper]", onlyWhisper, null), "[Private whisper]");
 
   // Retried agents read them too.
   const retry = await app.inject({

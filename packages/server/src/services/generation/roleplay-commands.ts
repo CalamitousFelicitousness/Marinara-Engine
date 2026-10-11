@@ -517,14 +517,21 @@ export function roleplayAgentText(
   const whispers = getRoleplayWhispers(parseExtra(source.extra));
   if (!whispers.length) return text;
   let result = text;
-  for (const { command, recipient, offset } of placeRoleplayWhispers(text, source, whispers, standIn).reverse()) {
+  let positioned: Array<RoleplayWhisper & { offset: number }>;
+  if (standIn || !visibleBody(source).trim()) {
+    // The placeholder only stands in for these whispers, so they take its place: the first one, since the
+    // message's body comes before any document text, or the end when the text has none.
+    const start = text.indexOf(WHISPER_ONLY_PLACEHOLDER);
+    if (start >= 0) result = text.slice(0, start) + text.slice(start + WHISPER_ONLY_PLACEHOLDER.length);
+    positioned = whispers.map((whisper) => ({ ...whisper, offset: start >= 0 ? start : text.length }));
+  } else positioned = placeRoleplayWhispers(text, source, whispers, false);
+  for (const { command, recipient, offset } of positioned.reverse()) {
     const before = result.slice(0, offset);
     const after = result.slice(offset);
     const whisper = `[Private whisper to ${names.get(recipient.id) ?? command.character}: ${command.text}]`;
     result = `${before}${/\S$/u.test(before) ? " " : ""}${whisper}${/^\S/u.test(after) ? " " : ""}${after}`;
   }
-  // The placeholder only stood in for these whispers.
-  return standIn || !visibleBody(source).trim() ? result.replace(`${WHISPER_ONLY_PLACEHOLDER} `, "") : result;
+  return result;
 }
 
 /** Agents' copy of a prompt, each history message read as roleplayAgentText. The prompt itself is unchanged. */

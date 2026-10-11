@@ -105,8 +105,6 @@ const ownChoices = (tag: string) => ({
 // Chat Settings a profile update copies to its other chats.
 const sharedSettings = (tag: string) => ({
   contextMessageLimit: tag === "source" ? 40 : 15,
-  chatParameters: { temperature: tag === "source" ? 1.1 : 0.4 },
-  activeAgentIds: [`agent-${tag}`],
   roleplayCommandsEnabled: tag === "source",
   roleplayCommandToggles: { roll: tag === "source", document: tag === "source", whisper: tag === "source" },
   sceneVideoConnectionId: `video-connection-${tag}`,
@@ -123,6 +121,19 @@ const followerOnly = {
   translationDisplayOnly: true,
 };
 const ownKeys = Object.keys(ownChoices("x"));
+// Advanced Parameters are edited against the chat's connection, so they reach only chats on the
+// profile's connection. OpenRouter routing would make another provider reject every request.
+const chatParameters = (tag: string) => ({
+  temperature: tag === "source" ? 1.1 : 0.4,
+  customParameters: { provider: { order: [`provider-${tag}`] } },
+});
+// Agents set up for one chat (knowledge sources, a target lorebook, sprite characters) stay on or off
+// as each chat has them; the other agents follow the profile.
+const agents = {
+  source: ["agent-source", "knowledge-retrieval", "expression"],
+  follower: ["agent-follower", "lorebook-keeper", "knowledge-router"],
+  synced: ["agent-source", "lorebook-keeper", "knowledge-router"],
+};
 // Advanced Memory settings are shared, but its knowledge anchors and narrator belong to one chat.
 const memory = (tag: string, enabled: boolean) => ({
   enabled,
@@ -169,6 +180,8 @@ try {
       ...ownChoices("follower"),
       ...sharedSettings("follower"),
       ...followerOnly,
+      chatParameters: chatParameters("follower"),
+      activeAgentIds: agents.follower,
       advancedMemory: memory("follower", false),
       enableAgents: true,
     },
@@ -189,6 +202,8 @@ try {
     ...runningState("source"),
     ...ownChoices("source"),
     ...sharedSettings("source"),
+    chatParameters: chatParameters("source"),
+    activeAgentIds: agents.source,
     advancedMemory: memory("source", true),
     multiplayerSetup: false,
     multiplayerGameSetup: { preferences: "source" },
@@ -205,6 +220,8 @@ try {
     assert.deepEqual(savedMeta[key], value, `the profile saves ${key}`);
   }
   for (const key of Object.keys(followerOnly)) assert.equal(key in savedMeta, false, `the profile has no ${key}`);
+  assert.deepEqual(savedMeta.chatParameters, chatParameters("source"), "the profile saves Advanced Parameters");
+  assert.deepEqual(savedMeta.activeAgentIds, agents.source, "the profile saves every agent");
   for (const key of [...runningKeys, "multiplayerSetup", "multiplayerGameSetup"]) {
     assert.equal(key in savedMeta, false, `saving a profile leaves out the chat's own ${key}`);
   }
@@ -237,6 +254,16 @@ try {
     assert.deepEqual(updatedMeta[key], value, `the follower gets the profile's ${key}`);
   }
   assert.equal(updatedMeta.enableAgents, false, "the follower's own tweak to a profile setting is replaced");
+  assert.deepEqual(
+    updatedMeta.chatParameters,
+    chatParameters("follower"),
+    "a follower on another connection keeps its own Advanced Parameters",
+  );
+  assert.deepEqual(
+    updatedMeta.activeAgentIds,
+    agents.synced,
+    "the follower gets the profile's agents but keeps its own agents that need setup",
+  );
   for (const [key, value] of Object.entries(followerOnly)) {
     assert.deepEqual(updatedMeta[key], value, `the follower keeps its ${key}, which the profile has no value for`);
   }
@@ -271,6 +298,18 @@ try {
     assert.deepEqual(await readRow(id), row, "the saved chat, rooms, other profiles and other modes stay unchanged");
   }
 
+  // On the profile's connection, the follower gets the profile's Advanced Parameters too.
+  await writeRow(follower, { connectionId: "source-connection" });
+  assert.deepEqual(await presets.applyToFollowers(profile.id, source), { chatIds: [follower], failed: 0 });
+  const sameConnectionMeta = await readMeta(follower);
+  assert.deepEqual(sameConnectionMeta.chatParameters, chatParameters("source"), "same connection, same parameters");
+  assert.deepEqual(
+    sameConnectionMeta.activeAgentIds,
+    agents.synced,
+    "agents that need setup still stay the chat's own",
+  );
+  await writeRow(follower, { connectionId: "follower-connection" });
+
   // A chat that left the profile after the scan is skipped inside its own queue.
   assert.equal(await presets.applyToChat(profile.id, elsewhere, { asFollower: true }), null);
   assert.deepEqual(await readRow(elsewhere), before.get(elsewhere));
@@ -294,6 +333,12 @@ try {
     assert.deepEqual(appliedMeta[key], value, `applying a profile by hand sets its ${key}, as before`);
   }
   assert.equal(appliedMeta.sceneVideoConnectionId, "video-connection-source", "applying sets the video connection");
+  assert.deepEqual(
+    appliedMeta.chatParameters,
+    chatParameters("source"),
+    "applying sets the parameters with the connection",
+  );
+  assert.deepEqual(appliedMeta.activeAgentIds, agents.source, "applying a profile by hand sets every agent, as before");
 
   // A starred profile gives a new chat its background and turned-off lorebooks, as before.
   await presets.setActive(profile.id);
@@ -400,6 +445,27 @@ try {
     "unknown keys stay the chat's own",
   );
   assert.equal(customFollowerMeta.authorNotes, "Quiet library.", "a follower keeps its own Author's Note");
+
+  // An empty agent list runs every agent, so a profile whose only agents need setup leaves a chat's
+  // list alone instead of emptying it.
+  const setupProfile = (await presets.create({ name: "Setup agents", mode: "roleplay", settings: {} }))!;
+  const plainAgents = await createChat("Director only");
+  const keptAgents = await createChat("Has Expressions");
+  for (const [id, activeAgentIds] of [
+    [plainAgents, ["director"]],
+    [keptAgents, ["director", "expression"]],
+  ] as const) {
+    await app.inject({ method: "POST", url: `/api/chat-presets/${setupProfile.id}/apply/${id}` });
+    await writeRow(id, { metadata: { ...(await readMeta(id)), activeAgentIds } });
+  }
+  await app.inject({
+    method: "PUT",
+    url: `/api/chat-presets/${setupProfile.id}/settings`,
+    payload: { metadata: { activeAgentIds: ["knowledge-retrieval"] } },
+  });
+  assert.equal((await presets.applyToFollowers(setupProfile.id, null)).chatIds.length, 2);
+  assert.deepEqual((await readMeta(plainAgents)).activeAgentIds, ["director"], "no empty list that runs every agent");
+  assert.deepEqual((await readMeta(keptAgents)).activeAgentIds, ["expression"], "the chat keeps its own Expressions");
 
   const defaultProfile = (await presets.getDefault("roleplay"))!;
   assert.equal(

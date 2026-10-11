@@ -192,10 +192,15 @@ export const CHAT_PRESET_EXCLUDED_PACKAGE_METADATA_KEYS: readonly string[] = [
  *
  * Left off on purpose: who may use narrator-only Roleplay commands (it only works with the chat's own
  * narrator) and Noodle's permission to use the chat's messages (each chat gives that itself).
+ *
+ * Two keys copy only in part (see syncFollowerMetadata in chat-presets.storage.ts): Advanced
+ * Parameters reach only chats on the profile's connection, because they are edited against it, and
+ * the agents each chat sets up itself (knowledge sources, a target lorebook, sprite characters) stay
+ * on or off as the chat has them.
  */
 export const CHAT_PROFILE_FOLLOWER_SYNC_KEYS: readonly string[] = [
   // Generation and context
-  "chatParameters", // Advanced Parameters: this chat's generation parameter overrides
+  "chatParameters", // Advanced Parameters: only for chats on the profile's connection
   "contextMessageLimit", // How many messages go into the context
   "excludePastReasoning", // Leave earlier reasoning out of the context
   "pastReasoningLimit", // How many earlier reasoning blocks to keep
@@ -236,7 +241,7 @@ export const CHAT_PROFILE_FOLLOWER_SYNC_KEYS: readonly string[] = [
   "roleplaySoundConnectionId", // Connection for sound effects
   // Agents
   "enableAgents", // Agents on or off
-  "activeAgentIds", // Which agents run
+  "activeAgentIds", // Which agents run, except the agents each chat sets up itself
   "agentPromptTemplateIds", // Prompt template per agent
   "customAgentImageSettings", // Image connection and style per custom agent
   "agentWriteApprovalRequired", // Review agent changes before they are saved

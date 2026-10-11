@@ -33,6 +33,12 @@ const EXCLUDED_METADATA_SET = new Set([
 ]);
 /** Advanced Memory values tied to one chat's messages and characters; the rest are profile settings. */
 const ADVANCED_MEMORY_CHAT_KEYS = ["knowledgeStarts", "knowledgeConfirmed", "narratorCharacterId"];
+/**
+ * Agents set up for one chat when they are added: knowledge sources, a target lorebook, sprite
+ * characters. That setup is not copied to other chats, and without it these agents fall back to
+ * another chat's sources or books, so updating other chats leaves them on or off as each chat has them.
+ */
+const CHAT_SETUP_AGENT_IDS = new Set(["knowledge-retrieval", "knowledge-router", "lorebook-keeper", "expression"]);
 
 function isPresetExcludedMetadataKey(key: string) {
   return (
@@ -99,10 +105,26 @@ function sanitizePresetMetadataValue(key: string, value: unknown) {
  * A follower's metadata after its profile was saved: only CHAT_PROFILE_FOLLOWER_SYNC_KEYS the profile
  * has values for change, and the chat keeps its own Advanced Memory anchors. Nothing is removed.
  */
-function syncFollowerMetadata(current: Record<string, unknown>, profile: Record<string, unknown>) {
+function syncFollowerMetadata(
+  current: Record<string, unknown>,
+  profile: Record<string, unknown>,
+  onProfileConnection: boolean,
+) {
   const next = { ...current };
   for (const key of CHAT_PROFILE_FOLLOWER_SYNC_KEYS) {
+    // Advanced Parameters are edited against the profile's connection. On another connection they
+    // can send options that connection's provider rejects, such as OpenRouter routing.
+    if (key === "chatParameters" && !onProfileConnection) continue;
+    if (key === "activeAgentIds") continue;
     if (Object.prototype.hasOwnProperty.call(profile, key)) next[key] = profile[key];
+  }
+  if (Array.isArray(profile.activeAgentIds)) {
+    const agentIds = [
+      ...sanitizePresetAgentIds(profile.activeAgentIds).filter((id) => !CHAT_SETUP_AGENT_IDS.has(id)),
+      ...sanitizePresetAgentIds(current.activeAgentIds).filter((id) => CHAT_SETUP_AGENT_IDS.has(id)),
+    ];
+    // An empty list runs every agent, so a profile whose only agents need setup leaves the list alone.
+    if (agentIds.length > 0 || profile.activeAgentIds.length === 0) next.activeAgentIds = agentIds;
   }
   if (isRecord(profile.advancedMemory)) {
     next.advancedMemory = { ...profile.advancedMemory, ...pickAdvancedMemoryKeys(current.advancedMemory, true) };
@@ -317,7 +339,8 @@ export function createChatPresetsStorage(db: DB) {
      * profile-controlled settings to their system defaults.
      *
      * `asFollower` refreshes a chat after its profile was saved: it skips a chat that no longer
-     * follows the profile and copies only CHAT_PROFILE_FOLLOWER_SYNC_KEYS the profile has values for.
+     * follows the profile and copies only CHAT_PROFILE_FOLLOWER_SYNC_KEYS the profile has values for
+     * (Advanced Parameters only on the profile's connection, agents minus the ones each chat sets up).
      * Every other key, the connection, the prompt preset and the recent-chat order stay the chat's own.
      */
     async applyToChat(
@@ -388,7 +411,11 @@ export function createChatPresetsStorage(db: DB) {
         };
 
         const newMetadata: Record<string, unknown> = options.asFollower
-          ? syncFollowerMetadata(currentMetadata, { ...presetMetadata, ...translatorSettings })
+          ? syncFollowerMetadata(
+              currentMetadata,
+              { ...presetMetadata, ...translatorSettings },
+              (chatRow.connectionId ?? null) === (preset.settings.connectionId ?? null),
+            )
           : { ...baseDefaults, ...presetMetadata, ...translatorSettings, ...preserved, appliedChatPresetId: preset.id };
         const nextConnectionId =
           options.connectionId !== undefined ? options.connectionId : (preset.settings.connectionId ?? null);

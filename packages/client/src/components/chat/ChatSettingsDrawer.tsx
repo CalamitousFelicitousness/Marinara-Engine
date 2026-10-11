@@ -128,7 +128,7 @@ import {
   resolveScopedRegexMode,
 } from "@marinara-engine/shared";
 import { cn, getAvatarCropStyle } from "../../lib/utils";
-import { showAlertDialog, showConfirmDialog, showPromptDialog } from "../../lib/app-dialogs";
+import { showAlertDialog, showChoiceDialog, showConfirmDialog, showPromptDialog } from "../../lib/app-dialogs";
 import { HelpTooltip } from "../ui/HelpTooltip";
 import { MacroTextarea } from "../ui/MacroTextarea";
 import { Modal } from "../ui/Modal";
@@ -218,7 +218,7 @@ import {
   getChatExcludedLorebookIds,
   type ActiveLorebookView,
 } from "../../lib/chat-lorebooks";
-import { getConnectedChatDisplayName } from "../../lib/chat-display";
+import { getConnectedChatDisplayName, parseChatMetadata } from "../../lib/chat-display";
 import { getChatCharacterIds } from "../../lib/chat-macros";
 import { getTouchReorderDropIndex } from "../../lib/touch-reorder";
 import {
@@ -251,6 +251,7 @@ import {
   useUpdateChatPreset,
   useDeleteChatPreset,
   useApplyChatPreset,
+  useApplyChatPresetToFollowers,
   useImportChatPreset,
   useSetActiveChatPreset,
 } from "../../hooks/use-chat-presets";
@@ -276,6 +277,7 @@ import type {
 import {
   MAX_ILLUSTRATOR_IMAGES_PER_GENERATION,
   MAX_ILLUSTRATOR_RUN_INTERVAL,
+  chatFollowsChatPreset,
   customAgentHasCapability,
   normalizeIllustratorImagesPerGeneration,
   normalizeIllustratorRunInterval,
@@ -4024,6 +4026,7 @@ export function ChatSettingsDrawer({
   const renameChatPreset = useUpdateChatPreset();
   const deleteChatPreset = useDeleteChatPreset();
   const applyChatPreset = useApplyChatPreset();
+  const applyChatPresetToFollowers = useApplyChatPresetToFollowers();
   const importChatPreset = useImportChatPreset();
   const setActiveChatPreset = useSetActiveChatPreset();
   const presetList = useMemo(() => (chatPresets ?? []) as ChatPreset[], [chatPresets]);
@@ -4575,9 +4578,52 @@ export function ChatSettingsDrawer({
     setActiveChatPreset.mutate(selectedChatPreset.id);
   };
 
-  const handleSaveIntoPreset = () => {
+  const handleSaveIntoPreset = async () => {
     if (!selectedChatPreset || selectedChatPreset.isDefault) return;
-    saveChatPreset.mutate({ id: selectedChatPreset.id, settings: snapshotCurrentPresetSettings() });
+    const profileId = selectedChatPreset.id;
+    const settings = snapshotCurrentPresetSettings();
+    // Count from a fresh list so chats changed in another window are included. One try without
+    // retries, so a failing list falls back to the loaded one at once.
+    const chatList = await api.get<Chat[]>("/chats").catch(() => allChats ?? []);
+    const followerCount = chatList.filter(
+      (other) =>
+        other.id !== chat.id &&
+        other.mode === chat.mode &&
+        chatFollowsChatPreset(parseChatMetadata(other.metadata), profileId),
+    ).length;
+    const choice =
+      followerCount > 0
+        ? await showChoiceDialog({
+            title: localizeUi("chat.settingsProfile.saveChoice.title"),
+            message: localizeUi("chat.settingsProfile.saveChoice.message"),
+            choices: [
+              { key: "profile", label: localizeUi("chat.settingsProfile.saveChoice.profileOnly") },
+              {
+                key: "chats",
+                label: localizeUi("chat.settingsProfile.saveChoice.updateChats", { count: followerCount }),
+              },
+            ],
+            cancelLabel: localizeUi("chat.settingsProfile.saveChoice.cancel"),
+          })
+        : "profile";
+    if (choice !== "profile" && choice !== "chats") return;
+    try {
+      await saveChatPreset.mutateAsync({ id: profileId, settings });
+    } catch {
+      toast.error(localizeUi("chat.settingsProfile.saveFailed"));
+      return;
+    }
+    if (choice === "profile") return;
+    try {
+      const { updated, failed } = await applyChatPresetToFollowers.mutateAsync({
+        presetId: profileId,
+        exceptChatId: chat.id,
+      });
+      if (failed > 0) toast.error(localizeUi("chat.settingsProfile.saveChoice.updateFailed", { count: failed }));
+      else toast.success(localizeUi("chat.settingsProfile.saveChoice.updated", { count: updated }));
+    } catch {
+      toast.error(localizeUi("chat.settingsProfile.saveChoice.updateFailed", { count: followerCount }));
+    }
   };
 
   const handleStartRenamePreset = () => {

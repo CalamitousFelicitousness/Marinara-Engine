@@ -119,9 +119,11 @@ export interface TacticalMadeBattlefield {
     label?: string;
     in?: Array<"sunlight" | "bright" | "dim" | "dark">;
     rounds?: number;
-    tracks?: Array<{ track: string; by: number }>;
+    tracks?: Array<{ track: string; by: number; upTo?: number }>;
     applies?: string[];
     spares?: { types?: string[]; tags?: string[] };
+    /** A save that escapes it this time (1.316). */
+    save?: { save: string; difficulty: number; against?: { conditions?: string[]; damage?: string[] } };
   };
 }
 

@@ -288,6 +288,65 @@ try {
     // The dark is safe.
     const dusk = nextRound(fight({ light: "dim", lightRule: { applies: ["sunstruck"] } }));
     assert.equal(of(dusk.events, "lightRule").length, 0);
+    // Its save (1.316): made, nothing this time; a straw hat's advantage, against what it says it is
+    // against. Exhaustion two at a time, but 3 at most.
+    const hat = gear("Straw hat", {
+      modifiers: [{ to: "saves", mode: "advantage", against: { conditions: ["sunstruck"] } }],
+    });
+    const noonfield = (difficulty: number) =>
+      fight({
+        items: [hat],
+        light: "sunlight",
+        lightRule: {
+          label: "Noonfield",
+          tracks: [{ track: "exhaustion", by: 2, upTo: 3 }],
+          save: { save: "con_save", difficulty, against: { conditions: ["sunstruck", "nonsense"] } },
+        },
+      });
+    assert.deepEqual(noonfield(12).board?.lightRule?.save, {
+      save: "con_save",
+      difficulty: 12,
+      against: { conditions: ["sunstruck"] },
+    });
+    const shaded = nextRound(noonfield(12));
+    assert.deepEqual(
+      of(shaded.events, "save").map((event) => [event.actorId, event.mode, event.rolls.length, event.success]),
+      [
+        ["ada", "advantage", 2, true],
+        ["imp", undefined, 1, false],
+        ["rat", undefined, 1, false],
+      ],
+    );
+    assert.deepEqual(
+      of(shaded.events, "track").map((event) => [event.targetId, event.from, event.to]),
+      [
+        ["imp", 0, 2],
+        ["rat", 0, 2],
+      ],
+      "Ada made it",
+    );
+    const later = nextRound(shaded.state);
+    assert.deepEqual(
+      of(later.events, "track").map((event) => [event.targetId, event.from, event.to]),
+      [
+        ["imp", 2, 3],
+        ["rat", 2, 3],
+      ],
+      "to 3 and no further",
+    );
+    const most = nextRound(later.state);
+    assert.deepEqual(of(most.events, "track"), []);
+    // Already past its most, it takes nothing off.
+    const past = noonfield(12);
+    who(past, "imp").tracks = { exhaustion: 5 };
+    const stays = nextRound(past);
+    assert.equal(who(stays.state, "imp").tracks?.exhaustion, 5);
+    // Missed, the hat's advantage or not: the exhaustion all the same.
+    const missed = nextRound(noonfield(13));
+    assert.deepEqual(
+      of(missed.events, "track").map((event) => event.targetId),
+      ["ada", "imp", "rat"],
+    );
   }
 
   // ── Lantern-Shy: no moving in bright light ──
@@ -439,7 +498,12 @@ try {
       place: "p1",
       scene: "plains",
       rows: worldBattlefieldBlankRows("small"),
-      lightRule: { label: "Noonfield", rounds: 3, tracks: [{ track: "exhaustion", by: 1 }] },
+      lightRule: {
+        label: "Noonfield",
+        rounds: 3,
+        tracks: [{ track: "exhaustion", by: 1, upTo: 3 }],
+        save: { save: "con_save", difficulty: 12 },
+      },
     };
     const read = worldBattlefieldMapSchema.safeParse(map);
     assert.ok(read.success, JSON.stringify(read.error?.issues));
@@ -476,6 +540,8 @@ try {
     assert.ok(built.ok, built.ok ? "" : (built as { error: string }).error);
     const encounter = (built as { fight: { encounter: RulesetEncounterState } }).fight.encounter;
     assert.equal(encounter.board?.lightRule?.rounds, 3);
+    assert.deepEqual(encounter.board?.lightRule?.save, { save: "con_save", difficulty: 12 });
+    assert.equal(encounter.board?.lightRule?.tracks?.[0]?.upTo, 3);
   }
 
   console.log(

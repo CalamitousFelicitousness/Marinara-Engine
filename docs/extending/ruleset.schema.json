@@ -12757,6 +12757,11 @@
                               }
                             ]
                           },
+                          "heldAtMost": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 20
+                          },
                           "escapeChecks": {
                             "type": "array",
                             "items": {
@@ -13584,6 +13589,11 @@
                                 "const": "save"
                               }
                             ]
+                          },
+                          "heldAtMost": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 20
                           },
                           "escapeChecks": {
                             "type": "array",
@@ -16289,6 +16299,30 @@
                       "minimum": 1,
                       "maximum": 20
                     },
+                    "hangsOn": {
+                      "type": "object",
+                      "properties": {
+                        "uses": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 10
+                        },
+                        "extraTurn": {
+                          "type": "boolean",
+                          "const": true
+                        },
+                        "label": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 60
+                        },
+                        "$comment": {}
+                      },
+                      "required": [
+                        "uses"
+                      ],
+                      "additionalProperties": false
+                    },
                     "stillIn": {
                       "type": "array",
                       "items": {
@@ -17224,6 +17258,11 @@
                                       "const": "save"
                                     }
                                   ]
+                                },
+                                "heldAtMost": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 20
                                 },
                                 "escapeChecks": {
                                   "type": "array",
@@ -18349,6 +18388,11 @@
                                           "const": "save"
                                         }
                                       ]
+                                    },
+                                    "heldAtMost": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 20
                                     },
                                     "escapeChecks": {
                                       "type": "array",
@@ -25517,6 +25561,11 @@
                                         }
                                       ]
                                     },
+                                    "heldAtMost": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 20
+                                    },
                                     "escapeChecks": {
                                       "type": "array",
                                       "items": {
@@ -30026,6 +30075,11 @@
                                   }
                                 ]
                               },
+                              "heldAtMost": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 20
+                              },
                               "escapeChecks": {
                                 "type": "array",
                                 "items": {
@@ -30853,6 +30907,11 @@
                                     "const": "save"
                                   }
                                 ]
+                              },
+                              "heldAtMost": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 20
                               },
                               "escapeChecks": {
                                 "type": "array",
@@ -37099,6 +37158,11 @@
                                         }
                                       ]
                                     },
+                                    "heldAtMost": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 20
+                                    },
                                     "escapeChecks": {
                                       "type": "array",
                                       "items": {
@@ -37926,6 +37990,11 @@
                                           "const": "save"
                                         }
                                       ]
+                                    },
+                                    "heldAtMost": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 20
                                     },
                                     "escapeChecks": {
                                       "type": "array",
@@ -47917,6 +47986,10 @@
                     "exclusiveMinimum": 0,
                     "maximum": 10000
                   },
+                  "self": {
+                    "type": "boolean",
+                    "const": true
+                  },
                   "$comment": {}
                 },
                 "required": [
@@ -48635,6 +48708,11 @@
                               "const": "save"
                             }
                           ]
+                        },
+                        "heldAtMost": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 20
                         },
                         "escapeChecks": {
                           "type": "array",
@@ -49588,6 +49666,31 @@
                       "type": "boolean",
                       "const": true
                     },
+                    "grows": {
+                      "type": "object",
+                      "properties": {
+                        "by": {
+                          "type": "number",
+                          "exclusiveMinimum": 0,
+                          "maximum": 10000
+                        },
+                        "upTo": {
+                          "type": "number",
+                          "exclusiveMinimum": 0,
+                          "maximum": 10000
+                        },
+                        "$comment": {}
+                      },
+                      "required": [
+                        "by",
+                        "upTo"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "lingers": {
+                      "type": "boolean",
+                      "const": true
+                    },
                     "harms": {
                       "type": "object",
                       "properties": {
@@ -49606,25 +49709,16 @@
                           "minLength": 1,
                           "maxLength": 40
                         },
+                        "on": {
+                          "type": "string",
+                          "enum": [
+                            "holder-turn",
+                            "their-turn"
+                          ]
+                        },
                         "$comment": {}
                       },
-                      "additionalProperties": false,
-                      "allOf": [
-                        {
-                          "anyOf": [
-                            {
-                              "required": [
-                                "dice"
-                              ]
-                            },
-                            {
-                              "required": [
-                                "flat"
-                              ]
-                            }
-                          ]
-                        }
-                      ]
+                      "additionalProperties": false
                     },
                     "save": {
                       "type": "object",
@@ -49850,6 +49944,11 @@
                                     "const": "save"
                                   }
                                 ]
+                              },
+                              "heldAtMost": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 20
                               },
                               "escapeChecks": {
                                 "type": "array",
@@ -50699,6 +50798,11 @@
                                         "const": "save"
                                       }
                                     ]
+                                  },
+                                  "heldAtMost": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 20
                                   },
                                   "escapeChecks": {
                                     "type": "array",
@@ -51773,6 +51877,11 @@
                               "const": "save"
                             }
                           ]
+                        },
+                        "heldAtMost": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 20
                         },
                         "escapeChecks": {
                           "type": "array",

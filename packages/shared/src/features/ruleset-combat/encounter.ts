@@ -5065,12 +5065,43 @@ function lightRuleOf(
   );
   if (!inLight.length || (!tracks.length && !applies.length)) return null;
   const rounds = Number.isInteger(rule.rounds) && rule.rounds! >= 1 ? rule.rounds! : 1;
+  // Its save (1.316), against the conditions the fight knows and any damage it names.
+  const save =
+    rule.save && typeof rule.save.save === "string" && rule.save.save.trim() && Number.isInteger(rule.save.difficulty)
+      ? rule.save
+      : undefined;
+  const againstConditions = (save?.against?.conditions ?? []).filter((one) => conditions.has(one));
+  const againstDamage = (save?.against?.damage ?? []).filter((one) => typeof one === "string" && one.trim());
   return {
     ...(typeof rule.label === "string" && rule.label.trim() ? { label: rule.label.trim() } : {}),
     in: [...new Set(inLight)],
     rounds,
-    ...(tracks.length ? { tracks: tracks.map((one) => ({ track: one.track, by: one.by })) } : {}),
+    ...(tracks.length
+      ? {
+          tracks: tracks.map((one) => ({
+            track: one.track,
+            by: one.by,
+            ...(Number.isInteger(one.upTo) ? { upTo: one.upTo } : {}),
+          })),
+        }
+      : {}),
     ...(applies.length ? { applies } : {}),
     ...(rule.spares && (rule.spares.types?.length || rule.spares.tags?.length) ? { spares: rule.spares } : {}),
+    ...(save
+      ? {
+          save: {
+            save: save.save.trim(),
+            difficulty: save.difficulty,
+            ...(againstConditions.length || againstDamage.length
+              ? {
+                  against: {
+                    ...(againstConditions.length ? { conditions: againstConditions } : {}),
+                    ...(againstDamage.length ? { damage: againstDamage } : {}),
+                  },
+                }
+              : {}),
+          },
+        }
+      : {}),
   };
 }

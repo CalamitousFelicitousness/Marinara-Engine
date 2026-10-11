@@ -6910,8 +6910,27 @@ function lightRuleAtRoundEnd(ctx: RulesetCombatContext): void {
       light: lights[0]!,
       rounds: rule.rounds,
     });
+    // A made save escapes it this time (1.316): Noonfield's Constitution save, a straw hat's advantage.
+    if (
+      rule.save &&
+      rollSave(ctx, combatant, rule.save.save, rule.save.difficulty, undefined, null, rule.save.against)
+    ) {
+      continue;
+    }
     for (const moved of rule.tracks ?? []) {
-      if (!combatant.defeated) moveTrack(ctx, combatant, combatant, moved.track, moved.by);
+      if (combatant.defeated) continue;
+      // No further than its most (1.316): exhaustion 3 at most.
+      let by = moved.by;
+      if (moved.upTo !== undefined) {
+        const declared = ctx.definition.sheet.live.tracks.find((entry) => entry.id === moved.track);
+        const start = declared?.default ?? declared?.min ?? 0;
+        const now = combatant.sheet
+          ? trackValue(ctx, combatant, moved.track)
+          : (combatant.tracks?.[moved.track] ?? start);
+        by = by > 0 ? Math.min(by, moved.upTo - now) : Math.max(by, moved.upTo - now);
+        if ((moved.by > 0 && by <= 0) || (moved.by < 0 && by >= 0)) continue;
+      }
+      moveTrack(ctx, combatant, combatant, moved.track, by);
     }
     for (const condition of rule.applies ?? []) {
       if (!combatant.defeated) applyConditionId(ctx, combatant, condition, { condition, duration: "instant" });

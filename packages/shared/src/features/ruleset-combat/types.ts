@@ -1741,10 +1741,14 @@ export interface RulesetBoardLightRule {
   label?: string;
   in: RulesetBoardLight[];
   rounds: number;
-  tracks?: Array<{ track: string; by: number }>;
+  /** `upTo` is as far as it moves the track (1.316): Noonfield's exhaustion, 3 at most. */
+  tracks?: Array<{ track: string; by: number; upTo?: number }>;
   applies?: string[];
   /** Who it never touches: Noonfield's own creatures. */
   spares?: RulesetTargetIs;
+  /** A save that escapes it this time (1.316): Noonfield's DC 12 Constitution save. `against` is what
+   *  it counts as being against, for a save modifier's `against`: a straw hat's advantage. */
+  save?: { save: string; difficulty: number; against?: { conditions?: string[]; damage?: string[] } };
 }
 
 /** Ways of hiding and of finding the hidden that are its holder's own (1.287). Distances are in

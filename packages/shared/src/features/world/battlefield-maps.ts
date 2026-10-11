@@ -181,11 +181,36 @@ export const worldBattlefieldMapSchema = z
           .optional(),
         rounds: z.number().int().min(1).max(100).optional(),
         tracks: z
-          .array(z.object({ track: z.string().trim().min(1).max(40), by: z.number().int().min(-10).max(10) }).strict())
+          .array(
+            z
+              .object({
+                track: z.string().trim().min(1).max(40),
+                by: z.number().int().min(-10).max(10),
+                /** As far as it moves the track (Capability API 1.316): exhaustion 3 at most. */
+                upTo: z.number().int().min(-1000).max(1000).optional(),
+              })
+              .strict(),
+          )
           .min(1)
           .max(4)
           .optional(),
         applies: z.array(z.string().trim().min(1).max(40)).min(1).max(4).optional(),
+        /** A save that escapes it this time (Capability API 1.316), and what it counts as being
+         *  against for a save modifier's `against`: a straw hat's advantage on Noonfield's. */
+        save: z
+          .object({
+            save: z.string().trim().min(1).max(40),
+            difficulty: z.number().int().min(0).max(1000),
+            against: z
+              .object({
+                conditions: z.array(z.string().trim().min(1).max(40)).min(1).max(8).optional(),
+                damage: z.array(z.string().trim().min(1).max(40)).min(1).max(8).optional(),
+              })
+              .strict()
+              .optional(),
+          })
+          .strict()
+          .optional(),
         spares: z
           .object({
             types: z.array(z.string().trim().min(1).max(40)).min(1).max(12).optional(),

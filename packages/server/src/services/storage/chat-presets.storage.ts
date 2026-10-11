@@ -10,6 +10,7 @@ import { newId, now } from "../../utils/id-generator.js";
 import { withChatMetadataPatchQueue } from "./chats.storage.js";
 import {
   CHAT_PRESET_EXCLUDED_METADATA_KEYS,
+  chatFollowsChatPreset,
   TRANSLATOR_DEFAULTS_SETTINGS_KEY,
   TRANSLATOR_SETTINGS_KEYS,
   normalizeTranslatorSettings,
@@ -26,7 +27,7 @@ const CHAT_MODES: ChatMode[] = ["conversation", "roleplay"];
 const EXCLUDED_METADATA_SET = new Set(CHAT_PRESET_EXCLUDED_METADATA_KEYS);
 
 function isPresetExcludedMetadataKey(key: string) {
-  return EXCLUDED_METADATA_SET.has(key) || key.startsWith("scene");
+  return EXCLUDED_METADATA_SET.has(key) || key.startsWith("scene") || key.startsWith("multiplayer");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -278,8 +279,15 @@ export function createChatPresetsStorage(db: DB) {
      * snapshot, with system defaults filled in for keys the profile doesn't
      * specify. Selecting the Default profile therefore resets the chat's
      * profile-controlled settings to their system defaults.
+     *
+     * `asFollower` refreshes a chat after its profile was saved: it skips a chat that no longer
+     * follows the profile, and keeps the chat's own connection, prompt preset and recent-chat order.
      */
-    async applyToChat(presetId: string, chatId: string, options: { connectionId?: string | null } = {}) {
+    async applyToChat(
+      presetId: string,
+      chatId: string,
+      options: { connectionId?: string | null; asFollower?: boolean } = {},
+    ) {
       return withChatMetadataPatchQueue(chatId, async () => {
         const preset = await storage.getById(presetId);
         if (!preset) return null;
@@ -295,6 +303,7 @@ export function createChatPresetsStorage(db: DB) {
             return {};
           }
         })();
+        if (options.asFollower && !chatFollowsChatPreset(currentMetadata, preset.id)) return null;
 
         const presetMetadata = (sanitizePresetSettings(preset.settings).metadata ?? {}) as Record<string, unknown>;
         const translatorSettings = normalizeTranslatorSettings(presetMetadata);
@@ -345,20 +354,35 @@ export function createChatPresetsStorage(db: DB) {
         const nextConnectionId =
           options.connectionId !== undefined ? options.connectionId : (preset.settings.connectionId ?? null);
 
-        const ts = now();
         await db
           .update(chats)
           .set({
-            connectionId: nextConnectionId,
-            promptPresetId: preset.settings.promptPresetId ?? null,
+            ...(!options.asFollower && {
+              connectionId: nextConnectionId,
+              promptPresetId: preset.settings.promptPresetId ?? null,
+              updatedAt: now(),
+            }),
             metadata: JSON.stringify(newMetadata),
-            updatedAt: ts,
           })
           .where(eq(chats.id, chatId));
 
         const updatedRows = await db.select().from(chats).where(eq(chats.id, chatId));
         return updatedRows[0] ?? null;
       });
+    },
+
+    /** After a profile is saved, apply its chat settings to the other chats that follow it. Returns their ids. */
+    async applyToFollowers(presetId: string, exceptChatId: string | null) {
+      const preset = await storage.getById(presetId);
+      if (!preset) return [];
+      const rows = await db.select().from(chats).where(eq(chats.mode, preset.mode));
+      const updated: string[] = [];
+      for (const row of rows) {
+        if (row.id === exceptChatId || !chatFollowsChatPreset(parseStoredChatMetadata(row.metadata), preset.id))
+          continue;
+        if (await storage.applyToChat(preset.id, row.id, { asFollower: true })) updated.push(row.id);
+      }
+      return updated;
     },
 
     /** Ensure a Default profile exists for every chat mode and exactly one profile is active per mode. */

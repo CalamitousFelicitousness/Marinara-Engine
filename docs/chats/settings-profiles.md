@@ -27,7 +27,7 @@ A profile stores how the chat talks to the AI:
 - Whether the layout tips in Chat Settings are hidden. Applying **Default**, or an older profile without this choice, shows the tips again.
 - Other reusable chat options
 
-A profile does not replace chat-owned content such as characters, persona, lorebooks, sprites, summary, tags, or scene prompt. It also does not contain the conversation history.
+A profile does not replace chat-owned content such as characters, persona, lorebooks, sprites, summary, tags, or scene prompt. It also does not contain the conversation history, or a chat's running state such as its macro variables, the characters you disabled in it, or its multiplayer room.
 
 ## Applying a profile
 
@@ -54,6 +54,15 @@ The icon row below the dropdown contains these actions:
 | Delete | **Delete profile** | Permanently removes the selected profile |
 
 To create your first profile, configure a chat and choose **Save current chat settings as a new profile**. To update it later, apply the profile, change the chat, then choose **Save current chat settings into this profile**.
+
+### Updating other chats that use the profile
+
+Each chat keeps its own copy of the profile's settings, so saving a profile does not change other chats by itself. When other chats of the same mode use the profile, saving asks what to do:
+
+- **Save to this profile only** saves the profile and leaves the other chats as they are.
+- **Save and update** followed by the number of chats, such as **Save and update 3 other chats**, also gives those chats the profile's settings, as applying the profile would. Their own changes to those settings are replaced. Each chat keeps its own connection and prompt preset.
+
+Multiplayer rooms are never updated this way. When no other chat uses the profile, **Save** works without asking.
 
 ## Choosing the default profile
 

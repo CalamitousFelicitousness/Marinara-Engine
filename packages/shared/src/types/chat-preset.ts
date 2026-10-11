@@ -13,7 +13,8 @@
 // What profiles DO NOT carry: per-chat identity (name, characters,
 // persona, group, sprites, scene prompt, generated summaries, tags,
 // ephemeral lorebook overrides, generated schedules, scene lifecycle
-// state, connected chat link, hierarchical map state, folder/sort placement).
+// state, connected chat link, hierarchical map state, folder/sort placement,
+// or running state such as multiplayer rooms and macro variables).
 
 import type { ChatMode, ChatMetadata } from "./chat.js";
 
@@ -131,7 +132,40 @@ export const CHAT_PRESET_EXCLUDED_METADATA_KEYS: readonly string[] = [
   // chat's numbering; being excluded also means an apply PRESERVES the target chat's own mirror
   // instead of wiping the ordering its packages depend on.
   "metadataWriteOrdinals",
+  // Running state of this one chat (#7409): its multiplayer room, memory upkeep, macro variables,
+  // paused members, autonomous message counters, and its characters' statuses and about-me text.
+  "multiplayer",
+  "multiplayerSetup",
+  "multiplayerSetupComplete",
+  "multiplayerGameSetup",
+  "multiplayerCharacterMemories",
+  "multiplayerGameAppliedMessages",
+  "multiplayerGameTurn",
+  "advancedMemoryState",
+  "macroVariables",
+  "inactiveCharacterIds",
+  "intentCooldowns",
+  "autonomousDailyBudget",
+  "conversationCharacterStatuses",
+  "conversationStatusOverrides",
+  "conversationAboutMeOverrides",
 ] as const;
+
+/**
+ * Whether saving a profile may also update this chat: it still uses the profile and is not a
+ * multiplayer room, which keeps its own settings (Chat Settings is hidden there).
+ */
+export function chatFollowsChatPreset(
+  metadata: { appliedChatPresetId?: unknown; multiplayer?: unknown; multiplayerSetup?: unknown } | null | undefined,
+  presetId: string,
+): boolean {
+  return (
+    !!metadata &&
+    metadata.appliedChatPresetId === presetId &&
+    !metadata.multiplayer &&
+    metadata.multiplayerSetup !== true
+  );
+}
 
 /** Top-level chat keys that CAN be saved into a profile. */
 export const CHAT_PRESET_INCLUDED_CHAT_KEYS: readonly string[] = ["connectionId", "promptPresetId"] as const;

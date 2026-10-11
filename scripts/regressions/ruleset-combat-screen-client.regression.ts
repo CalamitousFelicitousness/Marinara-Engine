@@ -939,8 +939,27 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["revealed", say({ type: "revealed", actorId: "brenna", byIds: ["lurker"], reason: "attack" })],
     // Ready (1.283).
     ["ready", say({ type: "ready", actorId: "brenna", label: "Sword", on: "comes", outcome: "readied" })],
+    // Held Ground let go mid-fight, and a debt coming due (1.325).
+    ["heldGroundReleased", say({ type: "heldGroundReleased", label: "The Wheel", died: ["lurker"], down: ["brenna"] })],
+    [
+      "owing",
+      say({
+        type: "owing",
+        actorId: "brenna",
+        rolls: [4, 12],
+        bonus: 1,
+        successes: 1,
+        failures: 1,
+        result: "safe",
+      }),
+    ],
   ];
   const printed = new Map(table);
+  assert.equal(
+    printed.get("heldGroundReleased"),
+    "The Wheel lets go: death is held here no longer. The felled die: Thorn Lurker. Down and dying now: Brenna.",
+  );
+  assert.equal(printed.get("owing"), "Brenna's debt comes due, 2 saves (5, 13), and they live.");
   assert.equal(printed.get("search"), "Thorn Lurker uses Detect (12 + 3 = 15) and finds Brenna.");
   assert.equal(
     say({

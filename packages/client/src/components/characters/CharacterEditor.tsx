@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useCharacter,
+  useAllCharacterCatalog,
   useUpdateCharacter,
   useGenerateCharacterSummary,
   useGenerateCharacterConvoProfile,
@@ -398,6 +399,14 @@ export function CharacterEditor() {
   const characterId = useUIStore((s) => s.characterDetailId);
   const closeDetail = useUIStore((s) => s.closeCharacterDetail);
   const { data: rawCharacter, isLoading } = useCharacter(characterId);
+  const { data: allCharacters = [] } = useAllCharacterCatalog();
+  const existingTagCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const character of allCharacters) {
+      for (const tag of character.tags) counts.set(tag, (counts.get(tag) ?? 0) + 1);
+    }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  }, [allCharacters]);
   const updateCharacter = useUpdateCharacter();
   const uploadAvatar = useUploadAvatar();
   const removeAvatar = useRemoveAvatar();
@@ -1010,9 +1019,9 @@ export function CharacterEditor() {
     closeDetail();
   }, [avatarUploading, closeDetail, lorebookEmbedding, localizeUi]);
 
-  const addTag = () => {
+  const addTag = (value = newTag) => {
     if (!formData) return;
-    const nextTags = appendNewTags(formData.tags, newTag);
+    const nextTags = appendNewTags(formData.tags, value);
     if (nextTags === formData.tags) return;
     updateField("tags", nextTags);
     setNewTag("");
@@ -1345,6 +1354,7 @@ export function CharacterEditor() {
               <MetadataTab
                 characterId={characterId}
                 formData={formData}
+                existingTagCounts={existingTagCounts}
                 characterComment={characterComment}
                 updateCharacterComment={updateCharacterComment}
                 updateField={updateField}
@@ -2206,6 +2216,7 @@ function ConvoTab({
 function MetadataTab({
   characterId,
   formData,
+  existingTagCounts,
   characterComment,
   updateCharacterComment,
   updateField,
@@ -2226,13 +2237,14 @@ function MetadataTab({
 }: {
   characterId: string | null;
   formData: CharacterData;
+  existingTagCounts: Array<[string, number]>;
   characterComment: string;
   updateCharacterComment: (value: string) => void;
   updateField: <K extends keyof CharacterData>(key: K, value: CharacterData[K]) => void;
   updateExtension: (key: string, value: unknown) => void;
   newTag: string;
   setNewTag: (v: string) => void;
-  addTag: () => void;
+  addTag: (value?: string) => void;
   removeTag: (tag: string) => void;
   removeAllTags: () => void;
   avatarPreview: string | null;
@@ -2246,6 +2258,20 @@ function MetadataTab({
 }) {
   const { t: localizeUi } = useUiTranslation();
   const { t } = useTranslation();
+  const [tagSuggestionsOpen, setTagSuggestionsOpen] = useState(false);
+  const [activeTagSuggestionIndex, setActiveTagSuggestionIndex] = useState(-1);
+  const tagSuggestionsContainerRef = useRef<HTMLDivElement>(null);
+  const tagSuggestionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const existingTagSet = useMemo(() => new Set(formData.tags.map((tag) => tag.toLowerCase())), [formData.tags]);
+  const tagFilter = newTag.split(",").at(-1)?.trim().toLowerCase() ?? "";
+  const tagSuggestions = existingTagCounts.filter(
+    ([tag]) => !existingTagSet.has(tag.toLowerCase()) && tag.toLowerCase().includes(tagFilter),
+  );
+  const activeSuggestionIndex = activeTagSuggestionIndex < tagSuggestions.length ? activeTagSuggestionIndex : -1;
+  useEffect(() => {
+    if (!tagSuggestionsOpen || activeSuggestionIndex < 0) return;
+    tagSuggestionRefs.current[activeSuggestionIndex]?.scrollIntoView({ block: "nearest" });
+  }, [activeSuggestionIndex, tagSuggestionsOpen]);
   // Read existing crop in either current or legacy shape; the widget handles both
   // and writes back the current shape on first interaction.
   const savedCrop = normalizeAvatarCrop(formData.extensions.avatarCrop);
@@ -2441,21 +2467,104 @@ function MetadataTab({
           ))}
         </div>
         <div className="flex gap-1.5">
-          <input
-            value={newTag}
-            onChange={(e) => setNewTag(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                addTag();
+          <div ref={tagSuggestionsContainerRef} className="relative min-w-0 flex-1">
+            <input
+              value={newTag}
+              onFocus={() => {
+                setTagSuggestionsOpen(true);
+                setActiveTagSuggestionIndex(-1);
+              }}
+              onBlur={(event) => {
+                if (
+                  !(event.relatedTarget instanceof Node) ||
+                  !tagSuggestionsContainerRef.current?.contains(event.relatedTarget)
+                ) {
+                  setTagSuggestionsOpen(false);
+                  setActiveTagSuggestionIndex(-1);
+                }
+              }}
+              onChange={(event) => {
+                setNewTag(event.target.value);
+                setActiveTagSuggestionIndex(-1);
+                setTagSuggestionsOpen(true);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "ArrowDown" && tagSuggestions.length > 0) {
+                  event.preventDefault();
+                  setTagSuggestionsOpen(true);
+                  setActiveTagSuggestionIndex((current) => (current < 0 ? 0 : (current + 1) % tagSuggestions.length));
+                } else if (event.key === "ArrowUp" && tagSuggestions.length > 0) {
+                  event.preventDefault();
+                  setTagSuggestionsOpen(true);
+                  setActiveTagSuggestionIndex((current) =>
+                    current < 0
+                      ? tagSuggestions.length - 1
+                      : (current - 1 + tagSuggestions.length) % tagSuggestions.length,
+                  );
+                } else if (event.key === "Enter") {
+                  event.preventDefault();
+                  if (tagSuggestionsOpen && activeSuggestionIndex >= 0) {
+                    addTag(tagSuggestions[activeSuggestionIndex][0]);
+                    setTagSuggestionsOpen(false);
+                    setActiveTagSuggestionIndex(-1);
+                  } else {
+                    addTag();
+                  }
+                } else if (event.key === "Escape" && tagSuggestionsOpen) {
+                  event.preventDefault();
+                  setTagSuggestionsOpen(false);
+                  setActiveTagSuggestionIndex(-1);
+                }
+              }}
+              role="combobox"
+              aria-autocomplete="list"
+              aria-expanded={tagSuggestionsOpen && tagSuggestions.length > 0}
+              aria-controls="character-editor-tag-suggestions"
+              aria-activedescendant={
+                activeSuggestionIndex >= 0 ? `character-editor-tag-suggestion-${activeSuggestionIndex}` : undefined
               }
-            }}
-            placeholder={localizeUi("ui.characters.metadatatab.addTag")}
-            className="flex-1 rounded-xl border border-[var(--border)] bg-[var(--secondary)] px-3 py-1.5 text-xs outline-none focus:border-[var(--primary)]/40"
-          />
+              placeholder={localizeUi("ui.characters.metadatatab.addTag")}
+              className="w-full rounded-xl border border-[var(--border)] bg-[var(--secondary)] px-3 py-1.5 text-xs outline-none focus:border-[var(--primary)]/40"
+            />
+            {tagSuggestionsOpen && tagSuggestions.length > 0 && (
+              <div
+                id="character-editor-tag-suggestions"
+                role="listbox"
+                className="absolute z-30 mt-1 max-h-48 w-full overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] py-1 shadow-lg"
+              >
+                {tagSuggestions.map(([tag, count], index) => (
+                  <button
+                    key={tag}
+                    ref={(element) => {
+                      tagSuggestionRefs.current[index] = element;
+                    }}
+                    id={`character-editor-tag-suggestion-${index}`}
+                    type="button"
+                    role="option"
+                    aria-selected={index === activeSuggestionIndex}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => {
+                      addTag(tag);
+                      setTagSuggestionsOpen(false);
+                      setActiveTagSuggestionIndex(-1);
+                    }}
+                    className={cn(
+                      "flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs transition-colors",
+                      index === activeSuggestionIndex
+                        ? "bg-[var(--primary)]/10 text-[var(--primary)]"
+                        : "text-[var(--foreground)] hover:bg-[var(--secondary)]",
+                    )}
+                  >
+                    <span className="min-w-0 truncate">{tag}</span>
+                    <span className="shrink-0 text-[0.625rem] text-[var(--muted-foreground)]">{count}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <button
             type="button"
-            onClick={addTag}
+            onClick={() => addTag()}
             className="mari-chrome-control mari-chrome-control--compact mari-chrome-control--selected px-3 py-1.5"
           >
             {localizeUi("ui.characters.metadatatab.add")}

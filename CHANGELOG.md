@@ -4,7 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
-- Rulesets: a board prop may be lit again from beside it (`relight`), a creature's ground change may leave whoever stands there in it (`occupants: "stay"`, through the ice), and an entry or item use may be offered only beside a prop (`usableNear`, the Hymnal at the Wheel) (Capability API 1.327).
+- Rulesets: a board prop may be lit again from beside it (`relight`), a creature's ground change may leave whoever stands there in it (`occupants: "stay"`, through the ice), and an entry or item use may be offered only beside a prop (`usableNear`, the Hymnal at the Wheel); a prop is named by id or by its label read loosely ("Year-Wheel" finds "The Year-Wheel") (Capability API 1.327).
 - Rulesets: a condition held only near a prop (`whileNearProp`, the Wheel's Favour), a creature burst around props (`aroundProp`, Shelves Lean), and an aura that feeds its holder when somebody in it falls (`feeds`, Collector) (Capability API 1.326).
 - Rulesets: Held Ground can be let go in a running fight (`releaseRulesetHeldGround`): the felled die or go down, and marks of Owing come due as dying saves with a bonus (Capability API 1.325).
 - Rulesets: a board event can carry whoever stands on its cells toward an edge (`push`, the millrace) or blow what obscures them along (`drift`, the Leaffall's drifts) (Capability API 1.324).

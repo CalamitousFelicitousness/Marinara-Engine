@@ -396,7 +396,7 @@ function sourceWithin(
   return rulesetGap(combatant, source) <= rulesetInCells(distance, combat.distance.perCell);
 }
 
-/** Whether somebody stands within `within` of a standing prop labelled `prop` (1.326). A fight with
+/** Whether somebody stands within `within` of a standing prop named `prop`, by id or label (1.326). A fight with
  *  no board, or somebody off it, counts as near. */
 function nearProp(
   combatant: RulesetCombatant,
@@ -408,6 +408,22 @@ function nearProp(
   return rulesetNearProp(state, combatant, gate.prop, rulesetInCells(gate.within, combat.distance.perCell));
 }
 
+/** A prop's label or id loosely: lower case, a leading "the" dropped, and only letters and digits
+ *  kept, so "Year-Wheel", "year wheel" and "The Year-Wheel" are one prop (1.327). */
+function looseProp(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/^the\s+/, "")
+    .replace(/[^\p{L}\p{N}]+/gu, "");
+}
+
+/** Whether a board prop is the one a ruleset names: by its id, or by its label read loosely. */
+export function rulesetPropNamed(prop: { id: string; label: string }, name: string): boolean {
+  const loose = looseProp(name);
+  return prop.id === name.trim() || (loose.length > 0 && looseProp(prop.label) === loose);
+}
+
 /** Whether somebody stands within `cells` of a standing prop of the board named `prop`, by its id or
  *  its label (1.326, 1.327). Never off a board. */
 export function rulesetNearProp(
@@ -416,9 +432,8 @@ export function rulesetNearProp(
   prop: string,
   cells: number,
 ): boolean {
-  const name = prop.trim().toLowerCase();
   const near = (state.board?.props ?? [])
-    .filter((one) => one.health > 0 && (one.id === prop || one.label.trim().toLowerCase() === name))
+    .filter((one) => one.health > 0 && rulesetPropNamed(one, prop))
     .flatMap((one) => one.cells);
   return rulesetFootprint(combatant).some((mine) => near.some((cell) => rulesetCellDistance(mine, cell) <= cells));
 }

@@ -80,6 +80,7 @@ import {
   rulesetMovementAllowance,
   rulesetLightMatches,
   rulesetNearProp,
+  rulesetPropNamed,
 } from "./encounter.js";
 import {
   rulesetAirborne,
@@ -725,9 +726,9 @@ export function rulesetAimedCells(
   // Around the props with its label (1.326), wherever it was aimed: every cell within its size of
   // one, behind them too.
   if (area.aroundProp) {
-    const label = area.aroundProp.trim().toLowerCase();
+    const named = area.aroundProp;
     const props = (state.board?.props ?? [])
-      .filter((prop) => prop.health > 0 && prop.label.trim().toLowerCase() === label)
+      .filter((prop) => prop.health > 0 && rulesetPropNamed(prop, named))
       .flatMap((prop) => prop.cells);
     const reach = Math.max(1, Math.round(area.size));
     const cells: RulesetCombatCell[] = [];

@@ -2,7 +2,7 @@
  * Props in a boss's rules, and an aura that feeds (Capability API 1.326).
  *
  *   - A condition's `whileNearProp {prop, within}`: held only within that distance of a standing prop
- *     of that label (the Wheel's Favour by the Year-Wheel); held off elsewhere, or once it is broken.
+ *     named by id or loosely by label (the Wheel's Favour by The Year-Wheel); held off elsewhere, or once it is broken.
  *   - A creature area's `aroundProp`: a burst around every standing prop of that label, wherever it is
  *     aimed (Shelves Lean around the shelf rows).
  *   - An aura's `feeds`: its holder regains that much when somebody it reaches falls (The Owed's
@@ -132,6 +132,20 @@ try {
     state.board!.props![0]!.health = 0;
     assert.ok(!resists(state), "the Wheel broken");
     assert.ok(rulesetCombatEffects(definition, combat, who(state, "foe")).has("resist-all"), "no board, held");
+    // Named loosely, or by its id: b24's Wheel is p1, "The Year-Wheel".
+    const b24 = fight(at, [{ ...wheel, label: "The Year-Wheel" }]);
+    who(b24, "foe").tracked.push({ condition: "favour", rounds: null, kept: true });
+    assert.ok(resists(b24), "the label read loosely");
+    const other = fight(at, [{ ...wheel, label: "Wheel" }]);
+    who(other, "foe").tracked.push({ condition: "favour", rounds: null, kept: true });
+    assert.ok(!resists(other), "another prop");
+    const byId = parsed(
+      document((doc) => {
+        doc.combat.conditions.find((one: { condition: string }) => one.condition === "favour").whileNearProp.prop =
+          "p1";
+      }),
+    );
+    assert.ok(rulesetCombatEffects(byId, byId.combat!, who(other, "foe"), other).has("resist-all"), "by its id");
   }
 
   // ── Shelves Lean: around every shelf, wherever it is aimed ──

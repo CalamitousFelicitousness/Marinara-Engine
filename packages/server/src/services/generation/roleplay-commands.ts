@@ -510,6 +510,8 @@ export function roleplayAgentsSeeWhispers(chatMode: unknown, metadata: Record<st
  * A message as agents read it: `text`, the agent-facing body built from `source`, with each live whisper at its
  * saved place, marked as private with its recipient's name from `names`. A whisper-only message, or a `standIn`,
  * reads as its whispers alone. `names` is null where agents do not read whispers (see roleplayAgentsSeeWhispers).
+ * `limit` cuts the text and each whisper to that many characters on their own, so a long whisper cannot crowd the
+ * text out; a whisper whose place is cut off follows the cut text. A message with no whispers comes back uncut.
  * Character responders never get this text; their whispers come from appendRoleplayWhispers.
  */
 export function roleplayAgentText(
@@ -517,6 +519,7 @@ export function roleplayAgentText(
   source: HistoryMessage | null | undefined,
   names: ReadonlyMap<string, string> | null,
   standIn = false,
+  limit = Infinity,
 ): string {
   if (!names || (source?.role !== "user" && source?.role !== "assistant")) return text;
   const whispers = getRoleplayWhispers(parseExtra(source.extra));
@@ -530,10 +533,12 @@ export function roleplayAgentText(
     if (start >= 0) result = text.slice(0, start) + text.slice(start + WHISPER_ONLY_PLACEHOLDER.length);
     positioned = whispers.map((whisper) => ({ ...whisper, offset: start >= 0 ? start : text.length }));
   } else positioned = placeRoleplayWhispers(text, source, whispers, false);
+  result = result.slice(0, limit);
+  const end = result.length;
   for (const { command, recipient, offset } of positioned.reverse()) {
-    const before = result.slice(0, offset);
-    const after = result.slice(offset);
-    const whisper = `[Private whisper to ${names.get(recipient.id) ?? command.character}: ${command.text}]`;
+    const before = result.slice(0, Math.min(offset, end));
+    const after = result.slice(Math.min(offset, end));
+    const whisper = `[Private whisper to ${names.get(recipient.id) ?? command.character}: ${command.text.slice(0, limit)}]`;
     result = `${before}${/\S$/u.test(before) ? " " : ""}${whisper}${/^\S/u.test(after) ? " " : ""}${after}`;
   }
   return result;

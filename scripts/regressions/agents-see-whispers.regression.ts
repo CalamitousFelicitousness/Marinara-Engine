@@ -287,6 +287,16 @@ try {
   );
   assert.equal(roleplayAgentText("", onlyWhisper, bobNames), "[Private whisper to Bob: ONLY]");
   assert.equal(roleplayAgentText("[Private whisper]", onlyWhisper, null), "[Private whisper]");
+  // A limit cuts the text and each whisper on their own; whispers whose places are cut off follow it, in order.
+  const lateWhispers = {
+    role: "assistant",
+    content: "Plain.",
+    extra: { roleplayCommandActivity: [whisper("FIRST", {}), whisper("SECOND", {})] },
+  };
+  assert.equal(
+    roleplayAgentText("Plain.", lateWhispers, bobNames, false, 3),
+    "Pla [Private whisper to Bob: FIR] [Private whisper to Bob: SEC]",
+  );
   // A continue that added only a whisper reads as that whisper, without the message's earlier ones.
   const continuedOnlyWhisper = {
     role: "assistant",
@@ -460,6 +470,15 @@ try {
     assert(!smart.includes("[Private whisper]"), "a whisper-only message reads as its whisper, not a placeholder");
   }
   assert(!/SMART_(REPLY|USER)_SECRET/u.test(mainPrompts.at(-1)!), "Alice, not a recipient, gets neither whisper");
+  // The chat-model selector gives a turn's text and each whisper 900 characters apiece, so a long whisper, such as
+  // a vision, does not crowd the question asked aloud out of the line.
+  const vision = `LONG_VISION${"x".repeat(1_050)}`;
+  await generate("Alice answers.", undefined, {
+    userMessage: `[whisper: character="Bob" text="${vision}"] Alice, what do you think?`,
+  });
+  const longTurn = selectorPrompts.at(-1)!;
+  assert(longTurn.includes(`[Private whisper to Bob: ${vision.slice(0, 900)}] Alice, what do you think?`), longTurn);
+  assert(!longTurn.includes(vision.slice(0, 901)), "the whisper is cut to its own 900 characters");
   await chats.patchMetadata(chat.id, { groupResponseOrder: "manual" });
 
   // A hosted room shows agent output to every participant, so its agents get no whispers.

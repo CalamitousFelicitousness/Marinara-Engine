@@ -7291,13 +7291,12 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             .slice(-5)
             .map((message: any) => {
               const speaker = resolveMessageSpeakerName(message);
-              const content = stripConversationPromptTimestamps(
-                roleplayAgentText(conversationPromptHistoryContent(message, chatMode), message, agentWhisperNames),
-              )
-                .replace(/\s+/g, " ")
-                .trim()
-                .slice(0, 900);
-              return `${speaker}: ${content}`;
+              // A turn's text and each of its whispers get 900 characters apiece, so a long whisper cannot crowd
+              // out what was said aloud.
+              const text = conversationPromptHistoryContent(message, chatMode);
+              const whispered = roleplayAgentText(text, message, agentWhisperNames, false, 900);
+              const content = stripConversationPromptTimestamps(whispered).replace(/\s+/g, " ").trim();
+              return `${speaker}: ${whispered === text ? content.slice(0, 900) : content}`;
             })
             .filter(Boolean)
             .join("\n");

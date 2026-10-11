@@ -97,7 +97,7 @@ function showChibiProfessorMariToast() {
         >
           {translate(variant.title)}
         </p>
-        <div className="flex items-center justify-center gap-3">
+        <div className="flex flex-wrap items-center justify-center gap-3">
           <div className="relative shrink-0 self-center">
             <img
               src={variant.src}
@@ -120,7 +120,7 @@ function showChibiProfessorMariToast() {
               </>
             )}
           </div>
-          <div className="space-y-2 text-sm leading-relaxed">
+          <div className="min-w-[10rem] flex-1 space-y-2 text-sm leading-relaxed">
             {shiny && <p className="font-bold text-sky-200">{translate("ui.chibiProfessorMari.shiny")}</p>}
             <p>{translate("ui.chibiProfessorMari.visit")}</p>
             <p>{translate("ui.chibiProfessorMari.fortune")}</p>

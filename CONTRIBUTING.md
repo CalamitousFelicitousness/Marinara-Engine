@@ -252,6 +252,7 @@ The overlay is not a substitute for this guide. When instructions conflict, foll
 - Include screenshots or short recordings for UI changes.
 - Call out manual validation clearly, especially for launcher, installer, or Android wrapper changes.
 - Add a concise user-focused entry under the appropriate `CHANGELOG.md` `[Unreleased]` heading for every bug fix, behavior change, or new feature. Purely mechanical changes with no product or contributor-workflow impact may omit one.
+- Write that entry last, from the final diff, not from the issue or plan. If the change makes something stop working that worked before, say so in plain user words in the entry and at the top of "What changed" in the PR description.
 - Avoid version drift. If your PR intentionally bumps a release, update every version-bearing file in one pass.
 
 ## Documentation Rules

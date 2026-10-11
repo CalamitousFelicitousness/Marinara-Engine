@@ -60,7 +60,7 @@ To create your first profile, configure a chat and choose **Save current chat se
 Each chat keeps its own copy of the profile's settings, so saving a profile does not change other chats by itself. When other chats of the same mode use the profile, saving asks what to do:
 
 - **Save to this profile only** saves the profile and leaves the other chats as they are.
-- **Save and update** followed by the number of chats, such as **Save and update 3 other chats**, also gives those chats the profile's settings, as applying the profile would. Their own changes to those settings are replaced. Each chat keeps its own connection and prompt preset, including any custom prompt text. It also keeps its background, the lorebooks you turned off in it, its narrator character for roleplay commands, its Lorebook Keeper target lorebook, its knowledge sources, and whether it hides summarised messages.
+- **Save and update** followed by the number of chats, such as **Save and update 3 other chats**, also copies the profile's Chat Settings into those chats: generation and context options, group chat options, feature and command switches, agents and their options, memory and summary settings, translation, and the window layout. Their own changes to those settings are replaced. Everything else stays as each chat has it, including its connection, prompt preset and custom prompt, its story and characters, its lorebooks and background, its notes, and its progress.
 
 Multiplayer rooms are never updated this way. When no other chat uses the profile, **Save** works without asking.
 

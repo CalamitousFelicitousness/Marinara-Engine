@@ -1,7 +1,8 @@
 // Saving a settings profile can update the other chats that use it (#7409), and a profile never
 // carries one chat's running state (macro variables, disabled members, multiplayer room, …) to another.
-// Updating other chats also keeps their own per-chat choices, while applying a profile by hand still
-// carries every setting it carried before.
+// Updating other chats copies only the listed Chat Settings (CHAT_PROFILE_FOLLOWER_SYNC_KEYS) and leaves
+// every other key of those chats as it was, while applying a profile by hand still carries every
+// setting it carried before.
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -72,16 +73,46 @@ const runningState = (tag: string) => ({
   dmOriginMessageId: `origin-msg-${tag}`,
   dmSourceUserMessageId: `origin-user-${tag}`,
   dmTargetCharacterId: `char-${tag}`,
+  decisionTimers: { [`statement-${tag}`]: { stickyLeft: 2 } },
+  spatialSharedWorldLink: { version: 1, worldId: `world-${tag}`, linkedAt: "2026-10-11T00:00:00.000Z" },
+  pixelforge: { save: `save-${tag}` },
+  pixelforgeCorruptExcerpt: `damaged ${tag}`,
+  trackerFeaturedCharacterKeys: [`char-${tag}`],
+  conversationSetupComplete: tag === "source",
 });
-// Settings a profile saves and an explicit apply sets, but a chat keeps when the profile updates it.
+// Keys a profile saves and an explicit apply sets, but a chat keeps when the profile updates it,
+// because they are not in the follower list: its own story choices, notes, and state a package keeps.
 const ownChoices = (tag: string) => ({
   background: `${tag}-scene.png`,
   excludedLorebookIds: [`global-lore-${tag}`],
   roleplayCommandNarratorId: `narrator-char-${tag}`,
   lorebookKeeperTargetLorebookId: `story-lore-${tag}`,
-  knowledgeAgentSources: { "knowledge-retrieval": { sourceLorebookIds: [`kb-${tag}`], sourceFileIds: [`file-${tag}`] } },
+  knowledgeAgentSources: {
+    "knowledge-retrieval": { sourceLorebookIds: [`kb-${tag}`], sourceFileIds: [`file-${tag}`] },
+  },
   hideSummarisedMessages: tag === "source",
+  authorNotes: `Notes for ${tag}`,
+  authorNotesDepth: tag === "source" ? 2 : 6,
+  someFuturePackageState: { owner: tag },
 });
+// Chat Settings a profile update copies to its other chats.
+const sharedSettings = (tag: string) => ({
+  contextMessageLimit: tag === "source" ? 40 : 15,
+  chatParameters: { temperature: tag === "source" ? 1.1 : 0.4 },
+  activeAgentIds: [`agent-${tag}`],
+  roleplayCommandToggles: { roll: tag === "source" },
+  summaryConnectionId: `summary-connection-${tag}`,
+  translationProvider: tag === "source" ? "deepl" : "google",
+  windowLayout: { version: 1, windows: { [`window-${tag}`]: { x: 1 } } },
+});
+// Keys only the follower has. summaryMaxTokens and translationDisplayOnly are on the follower list,
+// but the profile has no value for them, so the follower keeps its own.
+const followerOnly = {
+  roleplayDisplayStyle: "visual-novel",
+  impersonatePrompt: "Write as me.",
+  summaryMaxTokens: 640,
+  translationDisplayOnly: true,
+};
 const ownKeys = Object.keys(ownChoices("x"));
 // Advanced Memory settings are shared, but its knowledge anchors and narrator belong to one chat.
 const memory = (tag: string, enabled: boolean) => ({
@@ -127,19 +158,20 @@ try {
       ...(await readMeta(follower)),
       ...runningState("follower"),
       ...ownChoices("follower"),
+      ...sharedSettings("follower"),
+      ...followerOnly,
       advancedMemory: memory("follower", false),
       enableAgents: true,
-      contextSize: 111,
     },
   });
   const hostedRoom = { version: 1, role: "host", roomId: "room-1", status: "active" };
   await writeRow(room, {
-    metadata: { ...(await readMeta(room)), multiplayer: hostedRoom, enableAgents: true, contextSize: 222 },
+    metadata: { ...(await readMeta(room)), multiplayer: hostedRoom, enableAgents: true, contextMessageLimit: 222 },
   });
   await writeRow(guest, {
     metadata: { ...(await readMeta(guest)), multiplayer: { version: 1, role: "guest", roomId: "room-2" } },
   });
-  await writeRow(elsewhere, { metadata: { ...(await readMeta(elsewhere)), contextSize: 333 } });
+  await writeRow(elsewhere, { metadata: { ...(await readMeta(elsewhere)), contextMessageLimit: 333 } });
   await writeRow(otherMode, { metadata: { ...(await readMeta(otherMode)), appliedChatPresetId: profile.id } });
 
   // Save the profile from the source chat, the way the Save button snapshots it.
@@ -147,11 +179,11 @@ try {
     ...(await readMeta(source)),
     ...runningState("source"),
     ...ownChoices("source"),
+    ...sharedSettings("source"),
     advancedMemory: memory("source", true),
     multiplayerSetup: false,
     multiplayerGameSetup: { preferences: "source" },
     enableAgents: false,
-    contextSize: 999,
   };
   const saved = await app.inject({
     method: "PUT",
@@ -160,7 +192,8 @@ try {
   });
   assert.equal(saved.statusCode, 200);
   const savedMeta = saved.json().settings.metadata as Record<string, unknown>;
-  assert.equal(savedMeta.contextSize, 999, "profile settings are saved");
+  assert.deepEqual(savedMeta.chatParameters, { temperature: 1.1 }, "profile settings are saved");
+  for (const key of Object.keys(followerOnly)) assert.equal(key in savedMeta, false, `the profile has no ${key}`);
   for (const key of [...runningKeys, "multiplayerSetup", "multiplayerGameSetup"]) {
     assert.equal(key in savedMeta, false, `saving a profile leaves out the chat's own ${key}`);
   }
@@ -189,8 +222,13 @@ try {
 
   const updated = await readRow(follower);
   const updatedMeta = JSON.parse(updated.metadata) as Record<string, unknown>;
-  assert.equal(updatedMeta.contextSize, 999, "the follower gets the profile's settings");
+  for (const [key, value] of Object.entries(sharedSettings("source"))) {
+    assert.deepEqual(updatedMeta[key], value, `the follower gets the profile's ${key}`);
+  }
   assert.equal(updatedMeta.enableAgents, false, "the follower's own tweak to a profile setting is replaced");
+  for (const [key, value] of Object.entries(followerOnly)) {
+    assert.deepEqual(updatedMeta[key], value, `the follower keeps its ${key}, which the profile has no value for`);
+  }
   assert.equal(updatedMeta.appliedChatPresetId, profile.id);
   for (const key of runningKeys) {
     assert.deepEqual(
@@ -226,6 +264,13 @@ try {
   const appliedMeta = JSON.parse(applied.json().metadata) as Record<string, unknown>;
   assert.deepEqual(appliedMeta.macroVariables, { counter: "follower" }, "applying keeps the chat's macro variables");
   assert.deepEqual(appliedMeta.inactiveCharacterIds, ["muted-follower"]);
+  for (const key of runningKeys) {
+    assert.deepEqual(
+      appliedMeta[key],
+      runningState("follower")[key as keyof ReturnType<typeof runningState>],
+      `applying a profile by hand keeps the chat's own ${key}`,
+    );
+  }
   for (const [key, value] of Object.entries(ownChoices("source"))) {
     assert.deepEqual(appliedMeta[key], value, `applying a profile by hand sets its ${key}, as before`);
   }
@@ -273,7 +318,12 @@ try {
   }
   await writeRow(presetFollower, { promptPresetId: "preset-x" });
   await writeRow(customFollower, {
-    metadata: { ...(await readMeta(customFollower)), customSystemPrompt: "You are a librarian." },
+    metadata: {
+      ...(await readMeta(customFollower)),
+      customSystemPrompt: "You are a librarian.",
+      someFuturePackageState: { owner: "librarian" },
+      authorNotes: "Quiet library.",
+    },
   });
   await app.inject({
     method: "PUT",
@@ -283,7 +333,7 @@ try {
         ...(await readMeta(convoSource)),
         ...ownChoices("source"),
         customSystemPrompt: "You are a pirate.",
-        contextSize: 77,
+        contextMessageLimit: 77,
       },
     },
   });
@@ -310,15 +360,21 @@ try {
   const presetFollowerRow = await readRow(presetFollower);
   const presetFollowerMeta = JSON.parse(presetFollowerRow.metadata) as Record<string, unknown>;
   assert.equal(presetFollowerRow.promptPresetId, "preset-x");
-  assert.equal(presetFollowerMeta.contextSize, 77);
+  assert.equal(presetFollowerMeta.contextMessageLimit, 77);
   assert.equal(presetFollowerMeta.customSystemPrompt ?? null, null, "the profile's custom prompt does not override X");
   for (const key of ownKeys) {
     assert.equal(key in presetFollowerMeta, key in presetFollowerBefore, `a follower without its own ${key} gets none`);
     assert.deepEqual(presetFollowerMeta[key], presetFollowerBefore[key]);
   }
   const customFollowerMeta = await readMeta(customFollower);
-  assert.equal(customFollowerMeta.contextSize, 77);
+  assert.equal(customFollowerMeta.contextMessageLimit, 77);
   assert.equal(customFollowerMeta.customSystemPrompt, "You are a librarian.", "a follower keeps its own prompt");
+  assert.deepEqual(
+    customFollowerMeta.someFuturePackageState,
+    { owner: "librarian" },
+    "unknown keys stay the chat's own",
+  );
+  assert.equal(customFollowerMeta.authorNotes, "Quiet library.", "a follower keeps its own Author's Note");
 
   const defaultProfile = (await presets.getDefault("roleplay"))!;
   assert.equal(

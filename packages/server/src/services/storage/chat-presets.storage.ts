@@ -11,6 +11,8 @@ import { logger } from "../../lib/logger.js";
 import { withChatMetadataPatchQueue } from "./chats.storage.js";
 import {
   CHAT_PRESET_EXCLUDED_METADATA_KEYS,
+  CHAT_PRESET_EXCLUDED_PACKAGE_METADATA_KEYS,
+  CHAT_PROFILE_FOLLOWER_SYNC_KEYS,
   chatFollowsChatPreset,
   TRANSLATOR_DEFAULTS_SETTINGS_KEY,
   TRANSLATOR_SETTINGS_KEYS,
@@ -25,23 +27,12 @@ import {
 import { createAppSettingsStorage } from "./app-settings.storage.js";
 
 const CHAT_MODES: ChatMode[] = ["conversation", "roleplay"];
-const EXCLUDED_METADATA_SET = new Set(CHAT_PRESET_EXCLUDED_METADATA_KEYS);
+const EXCLUDED_METADATA_SET = new Set([
+  ...CHAT_PRESET_EXCLUDED_METADATA_KEYS,
+  ...CHAT_PRESET_EXCLUDED_PACKAGE_METADATA_KEYS,
+]);
 /** Advanced Memory values tied to one chat's messages and characters; the rest are profile settings. */
 const ADVANCED_MEMORY_CHAT_KEYS = ["knowledgeStarts", "knowledgeConfirmed", "narratorCharacterId"];
-/**
- * Profile settings a chat keeps when the profile updates it as a follower: its custom prompt (it
- * keeps its prompt preset), background, turned-off lorebooks, choices bound to its own characters,
- * lorebooks and files, and the summary hiding that only Chat Settings applies to its messages.
- */
-const FOLLOWER_OWN_METADATA_KEYS = [
-  "customSystemPrompt",
-  "background",
-  "excludedLorebookIds",
-  "roleplayCommandNarratorId",
-  "lorebookKeeperTargetLorebookId",
-  "knowledgeAgentSources",
-  "hideSummarisedMessages",
-];
 
 function isPresetExcludedMetadataKey(key: string) {
   return EXCLUDED_METADATA_SET.has(key) || key.startsWith("scene") || key.startsWith("multiplayer");
@@ -97,6 +88,21 @@ function sanitizePresetMetadataValue(key: string, value: unknown) {
     return sanitizePresetAgentMap(value);
   }
   return value;
+}
+
+/**
+ * A follower's metadata after its profile was saved: only CHAT_PROFILE_FOLLOWER_SYNC_KEYS the profile
+ * has values for change, and the chat keeps its own Advanced Memory anchors. Nothing is removed.
+ */
+function syncFollowerMetadata(current: Record<string, unknown>, profile: Record<string, unknown>) {
+  const next = { ...current };
+  for (const key of CHAT_PROFILE_FOLLOWER_SYNC_KEYS) {
+    if (Object.prototype.hasOwnProperty.call(profile, key)) next[key] = profile[key];
+  }
+  if (isRecord(profile.advancedMemory)) {
+    next.advancedMemory = { ...profile.advancedMemory, ...pickAdvancedMemoryKeys(current.advancedMemory, true) };
+  }
+  return next;
 }
 
 interface ChatPresetRow {
@@ -306,8 +312,8 @@ export function createChatPresetsStorage(db: DB) {
      * profile-controlled settings to their system defaults.
      *
      * `asFollower` refreshes a chat after its profile was saved: it skips a chat that no longer
-     * follows the profile, and keeps the chat's own connection, prompt preset, recent-chat order and
-     * FOLLOWER_OWN_METADATA_KEYS.
+     * follows the profile and copies only CHAT_PROFILE_FOLLOWER_SYNC_KEYS the profile has values for.
+     * Every other key, the connection, the prompt preset and the recent-chat order stay the chat's own.
      */
     async applyToChat(
       presetId: string,
@@ -357,12 +363,6 @@ export function createChatPresetsStorage(db: DB) {
         if (Object.keys(ownMemory).length > 0) {
           preserved.advancedMemory = { ...pickAdvancedMemoryKeys(presetMetadata.advancedMemory, false), ...ownMemory };
         }
-        if (options.asFollower) {
-          for (const key of FOLLOWER_OWN_METADATA_KEYS) {
-            if (key in currentMetadata) preserved[key] = currentMetadata[key];
-            else delete presetMetadata[key];
-          }
-        }
         // Profiles saved before window layouts existed leave the chat's layout as it is.
         if (
           !Object.prototype.hasOwnProperty.call(presetMetadata, "windowLayout") &&
@@ -380,13 +380,9 @@ export function createChatPresetsStorage(db: DB) {
           chatSettingsHintDismissed: false,
         };
 
-        const newMetadata: Record<string, unknown> = {
-          ...baseDefaults,
-          ...presetMetadata,
-          ...translatorSettings,
-          ...preserved,
-          appliedChatPresetId: preset.id,
-        };
+        const newMetadata: Record<string, unknown> = options.asFollower
+          ? syncFollowerMetadata(currentMetadata, { ...presetMetadata, ...translatorSettings })
+          : { ...baseDefaults, ...presetMetadata, ...translatorSettings, ...preserved, appliedChatPresetId: preset.id };
         const nextConnectionId =
           options.connectionId !== undefined ? options.connectionId : (preset.settings.connectionId ?? null);
 

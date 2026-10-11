@@ -682,6 +682,7 @@ import {
   formatConversationGroupOutputFormat,
   formatSentSelfieNotes,
 } from "../../packages/server/src/routes/generate/conversation-prompt-formatting.js";
+import { captionSentSelfies } from "../../packages/server/src/services/generation/image-captioning-runtime.js";
 import {
   buildConversationCurrentContextBlock,
   replaceConversationContextBlockForTarget,
@@ -5182,6 +5183,84 @@ const cases: RegressionCase[] = [
         "\n[Maukie sent a selfie: A mirror selfie.]\n[Dottore sent a selfie: A lab selfie.]",
       );
       assert.equal(formatSentSelfieNotes(undefined), "");
+      assert.equal(
+        formatSentSelfieNotes([
+          {
+            type: "image",
+            filename: "selfie_maukie_3.png",
+            prompt: "Prompt text.",
+            imageCaption: "Maukie  in a\nred scarf.",
+            characterName: "Maukie",
+          },
+        ]),
+        "\n[Maukie sent a selfie: Maukie in a red scarf.]",
+      );
+    },
+  },
+  {
+    name: "Selfie captions are made once, cached, and never stop the turn",
+    async run() {
+      const calls: string[] = [];
+      const runtime = {
+        enabled: true,
+        connectionId: "cap-conn",
+        connection: { id: "cap-conn", provider: "openai", model: "vision-1" },
+        provider: {
+          chatComplete: async () => {
+            calls.push("caption");
+            return { content: "A smiling selfie." };
+          },
+        },
+        prompt: null,
+      } as any;
+      const readImageDataUrl = async () => "data:image/png;base64,AAAA";
+      const signal = new AbortController().signal;
+      const attachments = [
+        { type: "image", filename: "selfie_maukie_1.png", galleryId: "g1", prompt: "A selfie." },
+        { type: "image", filename: "illustration_1.png", galleryId: "g2" },
+      ];
+
+      const captioned = await captionSentSelfies({ attachments, imageCaptioning: runtime, readImageDataUrl, signal });
+      assert.ok(Array.isArray(captioned));
+      assert.equal(captioned[0]!.imageCaption, "A smiling selfie.");
+      assert.equal(captioned[0]!.imageCaptionConnectionId, "cap-conn");
+      assert.equal(captioned[1]!.imageCaption, undefined);
+      assert.equal(calls.length, 1);
+
+      assert.equal(
+        await captionSentSelfies({ attachments: captioned, imageCaptioning: runtime, readImageDataUrl, signal }),
+        null,
+      );
+      assert.equal(calls.length, 1);
+
+      const failingRuntime = {
+        ...runtime,
+        provider: {
+          chatComplete: async () => {
+            throw new Error("vision model down");
+          },
+        },
+      };
+      assert.equal(
+        await captionSentSelfies({ attachments, imageCaptioning: failingRuntime, readImageDataUrl, signal }),
+        null,
+      );
+
+      const disabledReads: string[] = [];
+      const disabledRuntime = { ...runtime, enabled: false };
+      assert.equal(
+        await captionSentSelfies({
+          attachments,
+          imageCaptioning: disabledRuntime,
+          readImageDataUrl: async () => {
+            disabledReads.push("read");
+            return null;
+          },
+          signal,
+        }),
+        null,
+      );
+      assert.equal(disabledReads.length, 0);
     },
   },
   {

@@ -76,7 +76,8 @@ import type { input as SchemaInput } from "zod";
 import { translateGeneratedMessage } from "../services/translation.service.js";
 import { randomInt, randomUUID } from "crypto";
 import { existsSync, mkdirSync, writeFileSync } from "fs";
-import { join } from "path";
+import { readFile } from "fs/promises";
+import { extname, join } from "path";
 import {
   DECISION_PROMPT_QUESTION_LIMIT_SETTINGS_KEY,
   parseDecisionPromptQuestionLimit,
@@ -259,6 +260,8 @@ import { createCustomEmojisStorage } from "../services/storage/custom-emojis.sto
 import { createCustomStickersStorage } from "../services/storage/custom-stickers.storage.js";
 import { createCharacterGalleryStorage } from "../services/storage/character-gallery.storage.js";
 import { createPersonaGalleryStorage } from "../services/storage/persona-gallery.storage.js";
+import { createGalleryStorage } from "../services/storage/gallery.storage.js";
+import { resolveGalleryImagePath } from "../services/image/gallery-image-path.js";
 import { createAppSettingsStorage } from "../services/storage/app-settings.storage.js";
 import { getCustomAgentImportPolicy } from "../services/agents/custom-agent-import-policy.service.js";
 import { buildLorebookSemanticEmbeddingsById, warmLorebookEntryEmbeddings } from "../services/lorebook/embeddings.js";
@@ -528,6 +531,7 @@ import {
   resolvePresetModePrompt,
 } from "./generate/conversation-prompt-formatting.js";
 import {
+  captionSentSelfies,
   normalizePromptAttachments,
   resolveImageCaptioningRuntime,
   resolvePromptAttachmentInputs,
@@ -2065,6 +2069,16 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           return false;
         }
       };
+      // Selfies live in the chat gallery, not inline, so captioning reads the file.
+      const sentSelfieGallery = createGalleryStorage(app.db);
+      const readSentSelfieDataUrl = async (attachment: PromptAttachment): Promise<string | null> => {
+        if (!attachment.galleryId) return null;
+        const image = await sentSelfieGallery.getById(attachment.galleryId, input.chatId);
+        const filePath = image ? resolveGalleryImagePath(image) : null;
+        if (!filePath) return null;
+        const ext = extname(filePath).slice(1).toLowerCase();
+        return `data:image/${ext === "jpg" ? "jpeg" : ext};base64,${(await readFile(filePath)).toString("base64")}`;
+      };
       const initialLatestUserMessageId = [...chatMessages].reverse().find((message) => message.role === "user")?.id;
       const mapChatHistoryMessageForPrompt = async (
         m: any,
@@ -2085,13 +2099,24 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           signal: generationSignal,
           debugMode: requestDebug,
         });
+        const selfieCaptionedAttachments =
+          m.role === "assistant"
+            ? await captionSentSelfies({
+                attachments: attachmentInputs.updatedAttachments ?? attachments,
+                imageCaptioning: imageCaptioningRuntime,
+                readImageDataUrl: readSentSelfieDataUrl,
+                signal: generationSignal,
+                debugMode: requestDebug,
+              })
+            : null;
+        const updatedAttachments = selfieCaptionedAttachments ?? attachmentInputs.updatedAttachments;
         const captionsPersisted = await persistPromptAttachmentCaptions(
           typeof m.id === "string" ? m.id : null,
-          attachmentInputs.updatedAttachments,
+          updatedAttachments,
         );
         if (advancedMemoryEnabled && captionsPersisted) {
           // Keep our own cache write in the prepared source snapshot; unrelated edits still fail revision checks.
-          m.extra = JSON.stringify({ ...extra, attachments: attachmentInputs.updatedAttachments });
+          m.extra = JSON.stringify({ ...extra, attachments: updatedAttachments });
         }
         let content = withLatestMessageReply(
           attachmentInputs.content,
@@ -2103,7 +2128,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           const photoName = userUploadedImages[0]?.filename ?? userUploadedImages[0]?.name;
           content += `\n[Sent a photo${photoName ? `: ${photoName}` : ""}]`;
         }
-        if (m.role === "assistant") content += formatSentSelfieNotes(attachments);
+        if (m.role === "assistant") content += formatSentSelfieNotes(updatedAttachments ?? attachments);
         const hiddenFromAICharacterIds = getMessageHiddenFromAICharacterIds(m);
         const conversationStartForCharacterIds = getMessageConversationStartCharacterIds(m);
 

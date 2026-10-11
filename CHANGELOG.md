@@ -4,7 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
-- In Conversation chats, a character now remembers the selfie they sent. Their later replies see a short note with what the photo shows, so they no longer answer "what photo?" when you react to it. Illustrator images stay hidden from the character.
+- In Conversation chats, a character now remembers the selfie they sent. Their later replies see a short note with what the photo shows, so they no longer answer "what photo?" when you react to it. When image captioning is on, the captioning model describes each selfie once and the caption is saved; otherwise the note uses the selfie's image prompt. In group chats the note names who sent it. Illustrator images stay hidden from the character.
 - The switch that adds a character's **Image Generation Instructions** to their Noodle images moved from the character editor's **Convo** tab into Noodle: open the character's Noodle profile and choose **Edit profile**. Update Noodle to 1.5.4 to get it; your current choice carries over. The help text for the instructions now says that Noodle and Slurp can use them. Packages can now open a character in the editor (capability API 1.67).
 - The omnibar stays responsive while quick answers stream, when opening their Mari row, and when moving between search results.
 - Character cards can now offer **interactive onboarding**: players answer onboarding questions to create a persona in the Roleplay chat wizard. Native and compatible PNG exports retain onboarding, while compatible JSON exports omit it (#7307).

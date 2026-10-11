@@ -852,16 +852,8 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["lair", say({ type: "lair", actorId: "lurker", optionId: "quake", label: "Tremor" })],
     ["legendaryResistance", say({ type: "legendaryResistance", actorId: "lurker", save: "dex_save", left: 2 })],
     ["boardEvent", say({ type: "boardEvent", id: "e1", label: "The tide", cells: 2 })],
-    ["boardEventTell", say({ type: "boardEvent", id: "e2", tell: "The shelves lean.", cells: 1 })],
-    [
-      "revealedAlerted",
-      say({ type: "revealed", actorId: "lurker", byIds: ["brenna"], reason: "alerted", alertedBy: "brenna" }),
-    ],
     ["lightRule", say({ type: "lightRule", actorId: "lurker", light: "sunlight", rounds: 2 })],
-    ["lightRuleNamed", say({ type: "lightRule", actorId: "lurker", label: "Noonfield", light: "sunlight", rounds: 2 })],
-    ["growthCut", say({ type: "growth", actorId: "brenna", label: "Shears", cells: 1, by: "cut" })],
-    ["growthBurnt", say({ type: "growth", cells: 3, by: "burnt" })],
-    ["growthCleared", say({ type: "growth", actorId: "brenna", label: "Prune", cells: 9, by: "cleared" })],
+    ["growth", say({ type: "growth", actorId: "brenna", label: "Shears", cells: 1, by: "cut" })],
     ["left", say({ type: "left", actorId: "lurker", label: "Teleport" })],
     ["surprised", say({ type: "surprised", actorIds: ["brenna", "lurker"] })],
     ["surpriseOver", say({ type: "surpriseOver", actorId: "lurker" })],
@@ -1247,13 +1239,22 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   );
   assert.equal(printed.get("prop"), "Brenna's Mace strikes Oil Jar for 3; it has 2 left.");
   assert.equal(printed.get("boardEvent"), "The board changes: The tide (2 squares).");
-  assert.equal(printed.get("boardEventTell"), "The shelves lean.");
-  assert.equal(printed.get("revealedAlerted"), "Thorn Lurker moves near Brenna, and is given away.");
+  assert.equal(say({ type: "boardEvent", id: "e2", tell: "The shelves lean.", cells: 1 }), "The shelves lean.");
+  assert.equal(
+    say({ type: "revealed", actorId: "lurker", byIds: ["brenna"], reason: "alerted", alertedBy: "brenna" }),
+    "Thorn Lurker moves near Brenna, and is given away.",
+  );
   assert.equal(printed.get("lightRule"), "Thorn Lurker has stood in that light too long.");
-  assert.equal(printed.get("lightRuleNamed"), "Noonfield: Thorn Lurker has stood in that light too long.");
-  assert.equal(printed.get("growthCut"), "Brenna's Shears cuts the growth back.");
-  assert.equal(printed.get("growthBurnt"), "The growth burns away from 3 squares.");
-  assert.equal(printed.get("growthCleared"), "Brenna's Prune clears the growth from 9 squares.");
+  assert.equal(
+    say({ type: "lightRule", actorId: "lurker", label: "Noonfield", light: "sunlight", rounds: 2 }),
+    "Noonfield: Thorn Lurker has stood in that light too long.",
+  );
+  assert.equal(printed.get("growth"), "Brenna's Shears cuts the growth back.");
+  assert.equal(say({ type: "growth", cells: 3, by: "burnt" }), "The growth burns away from 3 squares.");
+  assert.equal(
+    say({ type: "growth", actorId: "brenna", label: "Prune", cells: 9, by: "cleared" }),
+    "Brenna's Prune clears the growth from 9 squares.",
+  );
   const broke = (outcome: "hit" | "miss" | "critical" | "area", dealt: number, health: number, broken?: true) =>
     say({
       type: "prop",

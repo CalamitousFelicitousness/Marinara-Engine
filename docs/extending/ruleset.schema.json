@@ -9815,6 +9815,10 @@
                               "type": "boolean",
                               "const": true
                             },
+                            "shade": {
+                              "type": "boolean",
+                              "const": true
+                            },
                             "$comment": {}
                           },
                           "required": [
@@ -14902,6 +14906,10 @@
                       "maxLength": 40,
                       "pattern": "^[a-z][a-z0-9_]*$"
                     },
+                    "clears": {
+                      "type": "string",
+                      "const": "growth"
+                    },
                     "oncePerTarget": {
                       "type": "object",
                       "properties": {
@@ -15872,6 +15880,10 @@
                           "type": "boolean",
                           "const": true
                         },
+                        "shade": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "$comment": {}
                       },
                       "required": [
@@ -16276,6 +16288,20 @@
                       "type": "integer",
                       "minimum": 1,
                       "maximum": 20
+                    },
+                    "stillIn": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "sunlight",
+                          "bright",
+                          "dim",
+                          "dark"
+                        ]
+                      },
+                      "minItems": 1,
+                      "maxItems": 4
                     },
                     "actions": {
                       "type": "array",
@@ -19738,6 +19764,10 @@
                                     "type": "boolean",
                                     "const": true
                                   },
+                                  "shade": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
                                   "$comment": {}
                                 },
                                 "required": [
@@ -21366,6 +21396,10 @@
                               "type": "boolean",
                               "const": true
                             },
+                            "shade": {
+                              "type": "boolean",
+                              "const": true
+                            },
                             "$comment": {}
                           },
                           "required": [
@@ -21373,6 +21407,11 @@
                             "dim"
                           ],
                           "additionalProperties": false
+                        },
+                        "alerts": {
+                          "type": "number",
+                          "exclusiveMinimum": 0,
+                          "maximum": 10000
                         },
                         "$comment": {}
                       },
@@ -22263,6 +22302,10 @@
                               "type": "boolean",
                               "const": true
                             },
+                            "shade": {
+                              "type": "boolean",
+                              "const": true
+                            },
                             "$comment": {}
                           },
                           "required": [
@@ -22270,6 +22313,11 @@
                             "dim"
                           ],
                           "additionalProperties": false
+                        },
+                        "alerts": {
+                          "type": "number",
+                          "exclusiveMinimum": 0,
+                          "maximum": 10000
                         },
                         "$comment": {}
                       },
@@ -23314,6 +23362,10 @@
                                     "type": "boolean",
                                     "const": true
                                   },
+                                  "shade": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
                                   "$comment": {}
                                 },
                                 "required": [
@@ -23321,6 +23373,11 @@
                                   "dim"
                                 ],
                                 "additionalProperties": false
+                              },
+                              "alerts": {
+                                "type": "number",
+                                "exclusiveMinimum": 0,
+                                "maximum": 10000
                               },
                               "$comment": {}
                             },
@@ -27806,6 +27863,10 @@
                                   "type": "boolean",
                                   "const": true
                                 },
+                                "shade": {
+                                  "type": "boolean",
+                                  "const": true
+                                },
                                 "$comment": {}
                               },
                               "required": [
@@ -31907,6 +31968,10 @@
                           "maxLength": 40,
                           "pattern": "^[a-z][a-z0-9_]*$"
                         },
+                        "clears": {
+                          "type": "string",
+                          "const": "growth"
+                        },
                         "oncePerTarget": {
                           "type": "object",
                           "properties": {
@@ -34868,6 +34933,10 @@
                                         "const": true
                                       },
                                       "magical": {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
+                                      "shade": {
                                         "type": "boolean",
                                         "const": true
                                       },
@@ -38972,6 +39041,10 @@
                                 "maxLength": 40,
                                 "pattern": "^[a-z][a-z0-9_]*$"
                               },
+                              "clears": {
+                                "type": "string",
+                                "const": "growth"
+                              },
                               "oncePerTarget": {
                                 "type": "object",
                                 "properties": {
@@ -40726,6 +40799,10 @@
                               "const": true
                             },
                             "magical": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "shade": {
                               "type": "boolean",
                               "const": true
                             },
@@ -47168,6 +47245,10 @@
                     "type": "boolean",
                     "const": true
                   },
+                  "shade": {
+                    "type": "boolean",
+                    "const": true
+                  },
                   "$comment": {}
                 },
                 "required": [
@@ -47175,6 +47256,11 @@
                   "dim"
                 ],
                 "additionalProperties": false
+              },
+              "alerts": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 10000
               },
               "cancelsUnseen": {
                 "type": "boolean",

@@ -221,6 +221,10 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
     ...(action.applies?.length ? { applies: action.applies.map((entry) => ({ ...entry })) } : {}),
     // Held by the creature's concentration (1.302).
     ...(action.concentration ? { concentration: true as const } : {}),
+    // At the dying, and deadly to them (1.306): a will-o'-wisp's Consume Life.
+    ...(action.dyingOnly ? { dyingOnly: true as const } : {}),
+    ...(action.slaysOnFailedSave ? { slaysOnFailedSave: true as const } : {}),
+    ...(action.healsOnSlay && amountOf(action.healsOnSlay) ? { healsOnSlay: amountOf(action.healsOnSlay)! } : {}),
     ...(action.targetCount !== undefined ? { targetCount: action.targetCount } : {}),
     ...(action.reach !== undefined ? { reach: action.reach } : {}),
     // In the ruleset's distance, as reach is: the encounter turns both into cells (1.179).

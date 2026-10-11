@@ -3063,6 +3063,10 @@ function blockActions(
     ...(action.applies?.length ? { applies: action.applies.map((entry) => ({ ...entry })) } : {}),
     // Held by its maker's concentration (1.302): an imp's Invisibility.
     ...(action.concentration ? { concentration: true } : {}),
+    // Consume Life (1.306).
+    ...(action.dyingOnly ? { dyingOnly: true as const } : {}),
+    ...(action.slaysOnFailedSave ? { slaysOnFailedSave: true as const } : {}),
+    ...(action.healsOnSlay ? { healsOnSlay: { ...action.healsOnSlay } } : {}),
     ...(action.uses ? { uses: { ...action.uses } } : {}),
     ...(action.recharge
       ? {

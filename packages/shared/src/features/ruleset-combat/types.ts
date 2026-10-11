@@ -390,6 +390,11 @@ export interface RulesetStatBlockAction {
   applies?: RulesetCombatApplies[];
   /** Held by its maker's concentration (1.302). */
   concentration?: true;
+  /** Only at somebody at no health and still alive; a failed save kills them, and its maker gains
+   *  `healsOnSlay` for each (1.306): Consume Life. */
+  dyingOnly?: true;
+  slaysOnFailedSave?: true;
+  healsOnSlay?: RulesetCombatAmount;
   targetCount?: number;
   reach?: number;
   range?: number | RulesetCombatRange;
@@ -689,6 +694,11 @@ export interface RulesetCombatAction {
   itemTags?: string[];
   /** A failed save drops its target to 0 health instead of the amount (1.240). */
   dropsOnFailedSave?: true;
+  /** Only at somebody at no health and still alive (1.306). */
+  dyingOnly?: true;
+  /** A failed save kills its target, and its user regains this for each one (1.306): Consume Life. */
+  slaysOnFailedSave?: true;
+  healsOnSlay?: RulesetCombatAmount;
   /** Offered only once the attack action has been taken this turn (1.237): Flurry of Blows. */
   afterAttack?: RulesetAfterAttack;
   /** Offered only on its holder's own turn before they have attacked in it (1.242): Reckless Attack. */

@@ -1559,6 +1559,28 @@ function carriesHidingTraits(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesHidingTraits(one, depth + 1));
 }
 
+/** An item use that puts conditions on its reader, creature actions that slay the dying, and a
+ *  condition's rule that ends it on moving or acting (1.306). */
+function carriesLeftovers306(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesLeftovers306(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.dyingOnly !== undefined || record.slaysOnFailedSave !== undefined || record.healsOnSlay !== undefined)
+    return true;
+  const selfOn = (use: unknown) => plainRecord(use)?.appliesSelf !== undefined;
+  const item = plainRecord(record.item);
+  if (
+    item &&
+    (selfOn(item.use) || (Array.isArray(item.moreUses) && item.moreUses.some((more) => selfOn(plainRecord(more)?.use))))
+  )
+    return true;
+  const conditions = plainRecord(record.combat)?.conditions;
+  if (Array.isArray(conditions) && conditions.some((rule) => plainRecord(rule)?.endsWhenHolder !== undefined))
+    return true;
+  return Object.values(record).some((one) => carriesLeftovers306(one, depth + 1));
+}
+
 /** A concentration entry's effect made again, and a condition ended by distance from its putter
  *  (1.305). */
 function carriesRepeats(value: unknown, depth = 0): boolean {
@@ -4179,6 +4201,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Scroll motes, Consume Life and camouflage that wears off, 1.306.
+  if (
+    !declaresApi(306) &&
+    (carriesLeftovers306(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesLeftovers306(document)))
+  ) {
+    return "A ruleset with an item use that puts conditions on its reader, creature actions that slay the dying, or conditions a rule ends when their holder moves or acts requires schemaVersion 2 and capabilityApi 1.306 or newer";
   }
   // Repeats of a concentration entry, and conditions that end at a distance, 1.305.
   if (

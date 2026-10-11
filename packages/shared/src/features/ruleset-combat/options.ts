@@ -1578,6 +1578,8 @@ export function rulesetOptionTargets(
         if (cure && !rulesetCureReaches(definition, cure, combatant, state)) return false;
         if (!rulesetTargetHasSenses(definition, state, combatant, needs, actionOf(actor, option.id)?.needsAny))
           return false;
+        // Only somebody at no health and still alive (1.306): Consume Life.
+        if (cure?.dyingOnly && !(combatant.down && !combatant.defeated)) return false;
         // "A creature you can see" (1.173).
         if (cure?.seen && !rulesetCanSee(definition, state, actor, combatant)) return false;
         // Only on somebody holding what it names (1.230): grappled by its maker, or restrained.

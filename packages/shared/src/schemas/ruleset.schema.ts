@@ -4362,9 +4362,30 @@ const creatureActionSchema = z
       })
       .strict()
       .optional(),
+    /** Only a creature at no health that is still alive may be picked (Capability API 1.306): a
+     *  will-o'-wisp's Consume Life, at a dying or stable character. */
+    dyingOnly: z.literal(true).optional(),
+    /** A target that fails its save dies (Capability API 1.306), and with `healsOnSlay` the creature
+     *  regains that much for each one that does: Consume Life's "or die ... regains 10 (3d6)". */
+    slaysOnFailedSave: z.literal(true).optional(),
+    healsOnSlay: z.object(catalogAmountShape).strict().optional(),
   })
   .strict()
   .superRefine((action, ctx) => {
+    if (action.slaysOnFailedSave && !action.save) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["slaysOnFailedSave"],
+        message: '"slaysOnFailedSave" follows the action\'s own save, so it has one',
+      });
+    }
+    if (action.healsOnSlay && !action.slaysOnFailedSave) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["healsOnSlay"],
+        message: '"healsOnSlay" is given back for a target slain, so it goes with "slaysOnFailedSave"',
+      });
+    }
     // A light switched (1.291) is nothing else.
     if (action.sheds !== undefined) {
       const extras = (
@@ -5815,7 +5836,6 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     reaction: true,
     scales: true,
     conjures: true,
-    appliesSelf: true,
     repeats: true,
     gives: true,
     standard: true,
@@ -7459,6 +7479,14 @@ const combatConditionSchema = z
      *  1.256): an aboleth's Tentacle disease after its minute. Ended any other way, it does not. A
      *  fight that ends first lets the clock run out. */
     expires: z.object({ becomes: sheetId }).strict().optional(),
+    /** It comes off its holder, and off their sheet, once they move (`moves`) or do anything at all,
+     *  reactions included (`acts`), however it was put on (Capability API 1.306): a ranger's
+     *  camouflage for Hide in Plain Sight, made before the fight, gone on the first step. */
+    endsWhenHolder: z
+      .object({ moves: z.literal(true).optional(), acts: z.literal(true).optional() })
+      .strict()
+      .refine((ends) => ends.moves || ends.acts, { message: 'Say what ends it: "moves", "acts" or both' })
+      .optional(),
     /** Only a cure from one of these catalogs, at this level or higher as it is paid, ends it
      *  (Capability API 1.256): the aboleth's later disease, only by a 6th-level spell. */
     curedOnlyBy: z
@@ -12263,6 +12291,12 @@ function useIssues(
   componentIssues(definition, use.components, [...at, "components"], add);
   if (use.casts !== undefined)
     castsIssues(definition, [use.casts], at, (_path, message) => add([...at, "casts"], message));
+  // What it puts on its own reader (1.306): a scroll of Sunbeam's mote.
+  use.appliesSelf?.forEach((applies, index) => {
+    if (!conditions.has(applies.condition)) {
+      add([...at, "appliesSelf", index, "condition"], `Unknown condition "${applies.condition}"`);
+    }
+  });
   use.applies?.forEach((applies, index) => {
     if (!conditions.has(applies.condition)) {
       add([...at, "applies", index, "condition"], `Unknown condition "${applies.condition}"`);

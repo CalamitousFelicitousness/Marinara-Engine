@@ -6438,6 +6438,11 @@ function stirs(ctx: RulesetCombatContext, actor: RulesetCombatant, how: "moved" 
   )) {
     if (actor.tracked.includes(entry)) removeCondition(ctx, actor, entry.condition, "spent");
   }
+  // And what its rule says moving or acting ends, however it was put on (1.306): camouflage.
+  for (const condition of rulesetCombatConditions(ctx.definition, actor)) {
+    const ends = ctx.combat.conditions?.find((rule) => rule.condition === condition)?.endsWhenHolder;
+    if (how === "moved" ? ends?.moves : ends?.acts) removeCondition(ctx, actor, condition, "spent");
+  }
   const hiding = actor.hiding;
   if (!hiding) return;
   if (hiding.plain && how === "moved") {
@@ -7809,6 +7814,16 @@ function resolveActionBody(
       );
       if (saved) noteSaved(actor, action, target);
       if (saved && action.save.onSuccess === "negates") {
+        spendUsed();
+        continue;
+      }
+      // Failed, it dies (1.306), and its slayer gains what it says: Consume Life.
+      if (!saved && action.slaysOnFailedSave) {
+        slay(ctx, target, actor.id, action.label);
+        if (action.healsOnSlay && target.defeated) {
+          const thrown = rollAmount(ctx, action.healsOnSlay);
+          dealHeal(ctx, actor, { sourceId: actor.id, rolls: thrown.rolls, flat: thrown.flat, amount: thrown.total });
+        }
         spendUsed();
         continue;
       }

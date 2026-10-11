@@ -680,6 +680,7 @@ import {
 import {
   formatConversationDateHistoryMessages,
   formatConversationGroupOutputFormat,
+  formatSentSelfieNotes,
 } from "../../packages/server/src/routes/generate/conversation-prompt-formatting.js";
 import {
   buildConversationCurrentContextBlock,
@@ -5154,6 +5155,25 @@ const cases: RegressionCase[] = [
         }),
         ["Maukie"],
       );
+    },
+  },
+  {
+    name: "A character's sent selfie reaches later prompt history, Illustrator images do not",
+    run() {
+      assert.equal(
+        formatSentSelfieNotes([
+          {
+            type: "image",
+            filename: "selfie_maukie_1.png",
+            prompt: "Maukie grins at the camera,\n  holding a coffee\n\nAppearance notes: auburn hair",
+          },
+          { type: "image", filename: "illustration_1.png", prompt: "A dark forest." },
+          { type: "image/png", filename: "selfie_upload.png", prompt: null },
+        ]),
+        "\n[Sent a selfie: Maukie grins at the camera, holding a coffee]",
+      );
+      assert.equal(formatSentSelfieNotes([{ type: "image", filename: "selfie_maukie_2.png" }]), "\n[Sent a selfie]");
+      assert.equal(formatSentSelfieNotes(undefined), "");
     },
   },
   {

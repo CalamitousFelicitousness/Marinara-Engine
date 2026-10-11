@@ -115,3 +115,27 @@ export function conversationPromptHistoryContent(
   }
   return typeof message.content === "string" ? message.content : "";
 }
+
+const SENT_SELFIE_DESCRIPTION_MAX_CHARS = 400;
+
+/**
+ * History notes for selfies a character sent, so the next reply knows a photo went out and roughly
+ * what it shows. Selfies are the only generated images saved as `selfie_*` with type "image";
+ * Illustrator images share that type but stay hidden, since the character did not send them.
+ */
+export function formatSentSelfieNotes(
+  attachments: ReadonlyArray<{ type?: string | null; filename?: string | null; prompt?: string | null }> | undefined,
+): string {
+  return (attachments ?? [])
+    .filter((attachment) => attachment.type === "image" && attachment.filename?.startsWith("selfie_"))
+    .map((attachment) => {
+      // The saved prompt's first paragraph is the scene; later ones are appearance and reference notes.
+      const description = (attachment.prompt ?? "")
+        .split(/\n\s*\n/)[0]!
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, SENT_SELFIE_DESCRIPTION_MAX_CHARS);
+      return `\n[Sent a selfie${description ? `: ${description}` : ""}]`;
+    })
+    .join("");
+}

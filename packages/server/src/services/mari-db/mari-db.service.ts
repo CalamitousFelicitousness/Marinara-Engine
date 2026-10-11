@@ -2372,6 +2372,10 @@ function summarizeLorebookRow(row: Row): Row {
 // so one entry always fits a lorebook.entries page with its id visible (#7407).
 function summarizeLorebookEntryRow(row: Row): Row {
   const parsed = parseRow("lorebook_entries", row);
+  const allKeys: unknown[] | null = Array.isArray(parsed.keys) ? parsed.keys : null;
+  // A shortened key list is flagged, so a keys edit reads the whole list with lorebook.getEntry first.
+  const keysTruncated =
+    !!allKeys && (allKeys.length > 50 || allKeys.some((key) => typeof key === "string" && key.length > 100));
   return {
     id: parsed.id,
     lorebookId: parsed.lorebookId,
@@ -2380,9 +2384,10 @@ function summarizeLorebookEntryRow(row: Row): Row {
     tag: typeof parsed.tag === "string" ? truncateStr(parsed.tag, 100) : "",
     enabled: parsed.enabled,
     constant: parsed.constant,
-    keys: Array.isArray(parsed.keys)
-      ? parsed.keys.slice(0, 50).map((key) => (typeof key === "string" ? truncateStr(key, 100) : key))
+    keys: allKeys
+      ? allKeys.slice(0, 50).map((key) => (typeof key === "string" ? truncateStr(key, 100) : key))
       : parsed.keys,
+    ...(keysTruncated ? { keysTruncated: true } : {}),
     content: typeof parsed.content === "string" ? truncateStr(parsed.content, 200) : "",
     order: parsed.order,
     createdAt: parsed.createdAt,
@@ -9815,7 +9820,7 @@ export class MariDbService {
       "Usage: mari lorebooks <command>",
       "Read:  list [--limit <n>] [--global] [--character <id>]",
       "Read:  get <id>",
-      "Read:  entries <lorebook-id> [--limit <n>] [--entry-id <entry-id>]",
+      "Read:  entries <lorebook-id> [--limit <n>] [--offset <n>] [--entry-id <entry-id>]",
       "Read:  get-entry <entry-id>",
       "Read:  search <query> [--limit <n>]",
       "Write: create --name <name> [--description <text>] [--category <text>] [--global] [--apply] [--reason <text>]",

@@ -18,7 +18,7 @@ const { collectMariReferencedResources, countMariListOutput } =
 const READ_BUDGET = 24_000;
 const TOTAL = 190;
 type EntryPage = {
-  items: Array<{ id: string; name: string; description: string; keys: string[] }>;
+  items: Array<{ id: string; name: string; description: string; keys: string[]; keysTruncated?: boolean }>;
   total: number;
   offset: number;
   nextOffset: number | null;
@@ -62,6 +62,10 @@ try {
   assert.equal(first.items[0]?.name, "Session 1", "the first page starts at the first entry");
   assert.ok(first.items.length > 1 && first.items.length < TOTAL, "a big lorebook needs more than one page");
   assert.equal(first.nextOffset, first.items.length, "a partial first page names where the next one starts");
+  assert.ok(
+    first.items.every((item) => !("keysTruncated" in item)),
+    "an entry whose keys fit the index is not flagged",
+  );
 
   // The chat's work card and entry links read the page's items.
   const step = {
@@ -129,6 +133,8 @@ try {
   assert.equal(cliTail.items[0]?.name, "Session 151", "the shell command honors --offset");
   assert.equal(cliTail.items.at(-1)?.name, `Session ${TOTAL}`, "the shell command reaches the last entry");
   assert.equal(cliTail.nextOffset, null, "the shell command's last page reports no next offset");
+  const cliHelp = await mari.executeCli({ argv: ["lorebooks", "help"] });
+  assert.match(String(cliHelp.output), /entries <lorebook-id> [^\n]*--offset <n>/, "the shell help lists --offset");
 
   // One entry with a huge description still fits the page: the index keeps a short preview.
   const heavy = await mari.executeAction({
@@ -143,6 +149,13 @@ try {
           keys: Array.from({ length: 400 }, (_, i) => `key ${i} `.padEnd(120, "x")),
           content: "Body.",
           order: 1,
+        },
+        { name: "Long key", keys: ["k".repeat(140)], content: "Body.", order: 2 },
+        {
+          name: "Keys that fit",
+          keys: Array.from({ length: 50 }, (_, i) => `${i}`.padEnd(100, "y")),
+          content: "Body.",
+          order: 3,
         },
       ],
     },
@@ -159,6 +172,15 @@ try {
   assert.equal(keyed?.name, "Many keys", "an entry with a huge key list is listed with its name");
   assert.ok(keyed!.id, "an entry with a huge key list keeps its id");
   assert.ok(keyed!.keys.length <= 50, "the index shows a short preview of a long key list");
+  assert.equal(keyed!.keysTruncated, true, "a key list cut short in the index is flagged");
+  const [longKey, fitting] = (
+    (await mari.executeAction({ action: "lorebook.entries", lorebookId: "heavy", offset: 2 })).output as EntryPage
+  ).items;
+  assert.equal(longKey?.name, "Long key");
+  assert.equal(longKey!.keysTruncated, true, "a key shortened in the index is flagged");
+  assert.equal(fitting?.name, "Keys that fit");
+  assert.equal(fitting!.keys.length, 50, "50 keys of 100 characters are all shown");
+  assert.ok(!("keysTruncated" in fitting!), "a key list shown in full is not flagged");
   const lastKey = await mari.executeAction({ action: "lorebook.getEntry", entryId: keyed!.id, field: "keys[399]" });
   assert.match(String(lastKey.output), /^key 399 /, "lorebook.getEntry still returns every key");
 } finally {

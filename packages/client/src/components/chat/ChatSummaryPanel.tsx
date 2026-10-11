@@ -1321,14 +1321,14 @@ export function ChatSummaryPanel({
         setEditingEntryId(null);
         setDraftEntry(null);
       } catch (error) {
-        // The server refuses a range it can't cover (say, every message in it is hidden); say why, as Generate does.
+        // The server refuses a range it can't cover (say, every message in it is already hidden); say why.
+        const refusal = error instanceof ApiError ? (error.payload as { code?: unknown } | undefined)?.code : undefined;
         toast.error(
-          !existingEntry &&
-            writeScope.coverage.sourceMode === "range" &&
-            error instanceof ApiError &&
-            error.status === 400
-            ? error.message
-            : localizeUi("ui.chat.summarypopover.couldNotSaveSummaryEntry"),
+          refusal === "hidden"
+            ? localizeUi("ui.chat.summarypopover.batchRangeAllHidden")
+            : refusal === "outside" || refusal === "tooLarge"
+              ? summaryBatchRangeErrorMessage(refusal, localizeUi)
+              : localizeUi("ui.chat.summarypopover.couldNotSaveSummaryEntry"),
         );
       }
     },

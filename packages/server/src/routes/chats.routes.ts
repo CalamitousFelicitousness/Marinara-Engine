@@ -781,6 +781,13 @@ export async function chatsRoutes(app: FastifyInstance) {
       if (!latestChat) return null;
       checkAborted();
       const latestMeta = parseExtra(latestChat.metadata) as Record<string, unknown>;
+      // A repeated save of the same new entry (say, a retried request) finds it already written.
+      const alreadySaved =
+        !!entry.id &&
+        normalizeChatSummaryEntries(latestMeta.summaryEntries, {
+          legacySummary: typeof latestMeta.summary === "string" ? latestMeta.summary : null,
+        }).some((existing) => existing.id === entry.id);
+      if (alreadySaved) return latestChat;
       const eligibleToHide =
         latestMeta.hideSummarisedMessages === true
           ? computeSummaryHideIds({
@@ -1822,7 +1829,7 @@ export async function chatsRoutes(app: FastifyInstance) {
           rangeEntry.rangeStartIndex! - 1,
           rangeEntry.rangeEndIndex! - 1,
         );
-        if ("error" in selection) return reply.status(400).send({ error: selection.error });
+        if ("error" in selection) return reply.status(400).send({ error: selection.error, code: selection.code });
         const { hiddenMessageIds: _hiddenMessageIds, ...entry } = rangeEntry;
         const { updatedChat } = await appendSummaryEntryHidingMessages(req, {
           ...entry,

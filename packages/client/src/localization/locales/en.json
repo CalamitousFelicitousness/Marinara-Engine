@@ -7378,6 +7378,7 @@
   "ui.chat.summarypopover.batchPending": "Pending",
   "ui.chat.summarypopover.batchProgress": "{{completed}}/{{total}} ranges",
   "ui.chat.summarypopover.batchProgressRange": "Summarizing messages {{start}}–{{end}} ({{completed}}/{{total}})",
+  "ui.chat.summarypopover.batchRangeAllHidden": "Every message in this range is already hidden.",
   "ui.chat.summarypopover.batchRangeCount_one": "1 range",
   "ui.chat.summarypopover.batchRangeCount_other": "{{count}} ranges",
   "ui.chat.summarypopover.batchRangeFrom": "Range {{number}} from message",

@@ -15,7 +15,8 @@ process.env.LOG_LEVEL = "silent";
 const { default: Fastify } = await import("../../packages/server/node_modules/fastify/fastify.js");
 const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
 const { chatsRoutes } = await import("../../packages/server/src/routes/chats.routes.js");
-const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
+const { createChatsStorage, withChatMetadataPatchQueue } =
+  await import("../../packages/server/src/services/storage/chats.storage.js");
 const { createConnectionsStorage } = await import("../../packages/server/src/services/storage/connections.storage.js");
 const { isMessageHiddenFromAI } = await import("../../packages/server/src/routes/generate/generate-route-utils.js");
 const { inspectChatSummaryBatchRanges, resolveChatSummaryWriteCoverage } =
@@ -185,9 +186,9 @@ try {
   assert.deepEqual(await hiddenIds(written.chatId), written.ids.slice(0, 4));
 
   // A range Generate would refuse is refused for Write too, and nothing is saved.
-  for (const [start, end, error] of [
-    [1, 3, "No non-hidden messages available for the requested summary range"],
-    [5, 9, "Summary range is outside this chat's message history"],
+  for (const [start, end, error, code] of [
+    [1, 3, "No non-hidden messages available for the requested summary range", "hidden"],
+    [5, 9, "Summary range is outside this chat's message history", "outside"],
   ] as const) {
     const generateRefusal = await app.inject({
       method: "POST",
@@ -199,6 +200,7 @@ try {
     const writeRefusal = await write(written.chatId, manualDraft(`refused-${start}`, start, end));
     assert.equal(writeRefusal.statusCode, 400, writeRefusal.body);
     assert.equal(writeRefusal.json().error, error);
+    assert.equal(writeRefusal.json().code, code, "The client says why in the user's language");
   }
   assert.deepEqual(
     (await entries(written.chatId)).map((entry) => entry.id),
@@ -243,6 +245,31 @@ try {
     hidden: undefined,
   });
 
+  // Two saves of the same new draft at once (say, a retried request) keep one entry.
+  // Holding the chat's queue lets both saves pass the route's first check before either is written.
+  const raced = await createChat();
+  let releaseQueue = () => {};
+  const queueHeld = withChatMetadataPatchQueue(
+    raced.chatId,
+    () => new Promise<void>((resolve) => (releaseQueue = resolve)),
+  );
+  const racedWrites = [
+    write(raced.chatId, manualDraft("manual-race", 1, 3)),
+    write(raced.chatId, manualDraft("manual-race", 1, 3)),
+  ];
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  releaseQueue();
+  await queueHeld;
+  const racedResponses = await Promise.all(racedWrites);
+  for (const response of racedResponses) assert.equal(response.statusCode, 200, response.body);
+  const racedEntries = await entries(raced.chatId);
+  assert.deepEqual(
+    racedEntries.map((entry) => entry.id),
+    ["manual-race"],
+  );
+  assert.deepEqual(coverage(racedEntries[0]!, raced.ids), expected);
+  assert.deepEqual(await hiddenIds(raced.chatId), raced.ids.slice(0, 3));
+
   // The panel wires that up: the open draft and its save use the current scope, and a refusal says why.
   const panelSource = readFileSync(
     new URL("../../packages/client/src/components/chat/ChatSummaryPanel.tsx", import.meta.url),
@@ -256,8 +283,8 @@ try {
   assert.match(panelSource, /\.\.\.entry,\s*\.\.\.writeScope\.coverage,/u, "A new draft saves with the current scope");
   assert.match(
     panelSource,
-    /error instanceof ApiError &&\s*error\.status === 400\s*\?\s*error\.message/u,
-    "A refused range shows the server's reason",
+    /refusal === "hidden"\s*\?\s*localizeUi\("ui\.chat\.summarypopover\.batchRangeAllHidden"\)/u,
+    "A refused range says why",
   );
 } finally {
   await new Promise<void>((resolve) => provider.close(() => resolve()));

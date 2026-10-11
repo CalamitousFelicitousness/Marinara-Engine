@@ -4739,6 +4739,7 @@ export async function chatsRoutes(app: FastifyInstance) {
       }),
     ];
 
+    const swipesByMessageId = await storage.getSwipesByMessageId(exportedMessages.map((msg) => msg.id));
     for (const msg of exportedMessages) {
       const rawMessageExtra = parseExportMetadata(msg.extra);
       const normalizeInterruptionExtra = (extra: Record<string, unknown>) =>
@@ -4749,7 +4750,7 @@ export async function chatsRoutes(app: FastifyInstance) {
         exportNoteExtra(sanitizeJsonlMessageExtra(rawMessageExtra)),
       );
       const thinking = includeReasoning ? getExportThinking(rawMessageExtra) : null;
-      const swipes = await storage.getSwipes(msg.id);
+      const swipes = swipesByMessageId.get(msg.id) ?? [];
       const activeContent = msg.content;
       const exportSwipes =
         swipes.length > 0
@@ -5048,8 +5049,9 @@ export async function chatsRoutes(app: FastifyInstance) {
     const copiedSourceMessages: typeof msgs = [];
     const copiedMessageInputs: Parameters<typeof storage.createMessagesBatch>[1] = [];
 
+    const swipesByMessageId = await storage.getSwipesByMessageId(sourceMessagesToCopy.map((msg) => msg.id));
     for (const msg of msgs) {
-      const swipes = await storage.getSwipes(msg.id);
+      const swipes = swipesByMessageId.get(msg.id) ?? [];
       const messageExtra = await storage.prepareRoleplayInterruptionExtraForCopy(
         sanitizeBranchedMessageExtra(parseExportMetadata(msg.extra)),
       );

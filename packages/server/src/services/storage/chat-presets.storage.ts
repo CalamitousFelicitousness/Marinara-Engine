@@ -35,7 +35,12 @@ const EXCLUDED_METADATA_SET = new Set([
 const ADVANCED_MEMORY_CHAT_KEYS = ["knowledgeStarts", "knowledgeConfirmed", "narratorCharacterId"];
 
 function isPresetExcludedMetadataKey(key: string) {
-  return EXCLUDED_METADATA_SET.has(key) || key.startsWith("scene") || key.startsWith("multiplayer");
+  return (
+    EXCLUDED_METADATA_SET.has(key) ||
+    // The Illustrator's scene video connection is a setting, not part of one chat's scene.
+    (key.startsWith("scene") && key !== "sceneVideoConnectionId") ||
+    key.startsWith("multiplayer")
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -363,12 +368,14 @@ export function createChatPresetsStorage(db: DB) {
         if (Object.keys(ownMemory).length > 0) {
           preserved.advancedMemory = { ...pickAdvancedMemoryKeys(presetMetadata.advancedMemory, false), ...ownMemory };
         }
-        // Profiles saved before window layouts existed leave the chat's layout as it is.
-        if (
-          !Object.prototype.hasOwnProperty.call(presetMetadata, "windowLayout") &&
-          Object.prototype.hasOwnProperty.call(currentMetadata, "windowLayout")
-        ) {
-          preserved.windowLayout = currentMetadata.windowLayout;
+        // Profiles saved before they held window layouts or the scene video connection leave the chat's own.
+        for (const key of ["windowLayout", "sceneVideoConnectionId"]) {
+          if (
+            !Object.prototype.hasOwnProperty.call(presetMetadata, key) &&
+            Object.prototype.hasOwnProperty.call(currentMetadata, key)
+          ) {
+            preserved[key] = currentMetadata[key];
+          }
         }
 
         const baseDefaults: Record<string, unknown> = {

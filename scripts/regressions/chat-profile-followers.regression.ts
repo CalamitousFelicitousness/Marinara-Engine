@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { chatFollowsChatPreset } from "../../packages/shared/src/index.js";
+import { chatFollowsChatPreset, isRoleplayCommandAllowed } from "../../packages/shared/src/index.js";
 
 const dataDir = mkdtempSync(join(tmpdir(), "marinara-chat-profile-followers-"));
 process.env.DATA_DIR = dataDir;
@@ -81,7 +81,9 @@ const runningState = (tag: string) => ({
   conversationSetupComplete: tag === "source",
 });
 // Keys a profile saves and an explicit apply sets, but a chat keeps when the profile updates it,
-// because they are not in the follower list: its own story choices, notes, and state a package keeps.
+// because they are not in the follower list: its own story choices, notes, who may use narrator-only
+// commands (they need the chat's own narrator), Noodle's permission to use its messages, and state a
+// package keeps.
 const ownChoices = (tag: string) => ({
   background: `${tag}-scene.png`,
   excludedLorebookIds: [`global-lore-${tag}`],
@@ -94,13 +96,20 @@ const ownChoices = (tag: string) => ({
   authorNotes: `Notes for ${tag}`,
   authorNotesDepth: tag === "source" ? 2 : 6,
   someFuturePackageState: { owner: tag },
+  roleplayRollAudience: tag === "source" ? "narrator" : "all",
+  roleplayDocumentAudience: tag === "source" ? "narrator" : "all",
+  roleplayWhisperAudience: tag === "source" ? "narrator" : "all",
+  roleplayCombatAudience: tag === "source" ? "narrator" : "all",
+  noodleTimelineContextEnabled: tag === "source",
 });
 // Chat Settings a profile update copies to its other chats.
 const sharedSettings = (tag: string) => ({
   contextMessageLimit: tag === "source" ? 40 : 15,
   chatParameters: { temperature: tag === "source" ? 1.1 : 0.4 },
   activeAgentIds: [`agent-${tag}`],
-  roleplayCommandToggles: { roll: tag === "source" },
+  roleplayCommandsEnabled: tag === "source",
+  roleplayCommandToggles: { roll: tag === "source", document: tag === "source", whisper: tag === "source" },
+  sceneVideoConnectionId: `video-connection-${tag}`,
   summaryConnectionId: `summary-connection-${tag}`,
   translationProvider: tag === "source" ? "deepl" : "google",
   windowLayout: { version: 1, windows: { [`window-${tag}`]: { x: 1 } } },
@@ -192,7 +201,9 @@ try {
   });
   assert.equal(saved.statusCode, 200);
   const savedMeta = saved.json().settings.metadata as Record<string, unknown>;
-  assert.deepEqual(savedMeta.chatParameters, { temperature: 1.1 }, "profile settings are saved");
+  for (const [key, value] of Object.entries(sharedSettings("source"))) {
+    assert.deepEqual(savedMeta[key], value, `the profile saves ${key}`);
+  }
   for (const key of Object.keys(followerOnly)) assert.equal(key in savedMeta, false, `the profile has no ${key}`);
   for (const key of [...runningKeys, "multiplayerSetup", "multiplayerGameSetup"]) {
     assert.equal(key in savedMeta, false, `saving a profile leaves out the chat's own ${key}`);
@@ -240,6 +251,14 @@ try {
   for (const [key, value] of Object.entries(ownChoices("follower"))) {
     assert.deepEqual(updatedMeta[key], value, `the follower keeps its own ${key}`);
   }
+  // char-follower is not the follower's narrator, so copying "narrator only" would turn these off for it.
+  for (const key of ["roll", "document", "whisper"] as const) {
+    assert.equal(
+      isRoleplayCommandAllowed(updatedMeta, key, "char-follower"),
+      true,
+      `the follower's ${key} command stays open to its characters`,
+    );
+  }
   assert.deepEqual(
     updatedMeta.advancedMemory,
     { ...memory("follower", false), enabled: true, maxContextTokens: 12000 },
@@ -274,6 +293,7 @@ try {
   for (const [key, value] of Object.entries(ownChoices("source"))) {
     assert.deepEqual(appliedMeta[key], value, `applying a profile by hand sets its ${key}, as before`);
   }
+  assert.equal(appliedMeta.sceneVideoConnectionId, "video-connection-source", "applying sets the video connection");
 
   // A starred profile gives a new chat its background and turned-off lorebooks, as before.
   await presets.setActive(profile.id);
@@ -305,6 +325,11 @@ try {
   assert.equal(oldAppliedMeta.background, "old-scene.png");
   assert.deepEqual(oldAppliedMeta.excludedLorebookIds, ["lb-old"]);
   assert.equal("macroVariables" in oldAppliedMeta, false, "an old profile's macro variables stay out");
+  assert.equal(
+    oldAppliedMeta.sceneVideoConnectionId,
+    "video-connection-source",
+    "a profile saved without a video connection leaves the chat's own",
+  );
   const roomApplied = await app.inject({ method: "POST", url: `/api/chat-presets/${profile.id}/apply/${room}` });
   assert.deepEqual(JSON.parse(roomApplied.json().metadata).multiplayer, hostedRoom, "applying keeps a room");
 

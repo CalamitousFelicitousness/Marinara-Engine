@@ -189,6 +189,9 @@ export const CHAT_PRESET_EXCLUDED_PACKAGE_METADATA_KEYS: readonly string[] = [
  * lorebooks, files, background, notes, progress, and anything agents or packages keep in it. A key
  * the profile has no value for keeps the chat's own value. Applying a profile by hand still sets
  * everything the profile holds. Game mode has no profiles, so its keys are not listed.
+ *
+ * Left off on purpose: who may use narrator-only Roleplay commands (it only works with the chat's own
+ * narrator) and Noodle's permission to use the chat's messages (each chat gives that itself).
  */
 export const CHAT_PROFILE_FOLLOWER_SYNC_KEYS: readonly string[] = [
   // Generation and context
@@ -226,15 +229,10 @@ export const CHAT_PROFILE_FOLLOWER_SYNC_KEYS: readonly string[] = [
   "conversationCallsEnabled", // Calls: the call button
   "conversationCallVoiceCues", // Calls: voice cues in replies
   "conversationCallSummaryConnectionId", // Calls: connection that summarises calls
-  "noodleTimelineContextEnabled", // Noodle may use recent messages from the chat
   "slurp2ActivityContextEnabled", // Characters remember their Slurp activity
   // Roleplay commands
   "roleplayCommandsEnabled", // Roleplay commands on or off
   "roleplayCommandToggles", // Which Roleplay commands are on
-  "roleplayRollAudience", // Who sees rolls
-  "roleplayDocumentAudience", // Who sees documents
-  "roleplayWhisperAudience", // Who hears whispers
-  "roleplayCombatAudience", // Who sees combat
   "roleplaySoundConnectionId", // Connection for sound effects
   // Agents
   "enableAgents", // Agents on or off
@@ -253,6 +251,7 @@ export const CHAT_PROFILE_FOLLOWER_SYNC_KEYS: readonly string[] = [
   "illustratorAutoBackgroundsEnabled", // Illustrator: make a background when the scene moves
   "illustratorImagesPerGeneration", // Illustrator: images per run
   "illustratorRunInterval", // Illustrator: run interval
+  "sceneVideoConnectionId", // Illustrator: connection for scene videos
   "imageStyleProfileId", // Illustrator: image style
   "narrativeDirectorSecretPlotEnabled", // Director: secret plot
   "narrativeDirectorSecretPlotRunInterval", // Director: secret plot interval

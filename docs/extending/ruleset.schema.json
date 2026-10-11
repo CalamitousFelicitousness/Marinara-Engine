@@ -29859,6 +29859,678 @@
                         "concentration": {
                           "type": "boolean"
                         },
+                        "reaction": {
+                          "anyOf": [
+                            {
+                              "type": "boolean",
+                              "const": false
+                            },
+                            {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "on": {
+                                  "type": "string",
+                                  "enum": [
+                                    "aimed",
+                                    "hit",
+                                    "harmed",
+                                    "used",
+                                    "falls",
+                                    "turn-start"
+                                  ]
+                                },
+                                "at": {
+                                  "type": "string",
+                                  "enum": [
+                                    "source",
+                                    "chosen",
+                                    "target"
+                                  ],
+                                  "default": "source"
+                                },
+                                "for": {
+                                  "type": "string",
+                                  "enum": [
+                                    "self",
+                                    "ally",
+                                    "any"
+                                  ]
+                                },
+                                "within": {
+                                  "type": "number",
+                                  "minimum": 0
+                                },
+                                "blow": {
+                                  "type": "string",
+                                  "enum": [
+                                    "melee",
+                                    "ranged"
+                                  ]
+                                },
+                                "seesSource": {
+                                  "type": "boolean",
+                                  "const": true
+                                },
+                                "by": {
+                                  "type": "string",
+                                  "const": "self"
+                                },
+                                "weapon": {
+                                  "type": "boolean",
+                                  "const": true
+                                },
+                                "names": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 80
+                                  },
+                                  "minItems": 1,
+                                  "maxItems": 30
+                                },
+                                "budget": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "cancels": {
+                                  "type": "boolean",
+                                  "const": true
+                                },
+                                "cancelSave": {
+                                  "type": "object",
+                                  "properties": {
+                                    "save": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "dc": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 1000
+                                    },
+                                    "$comment": {}
+                                  },
+                                  "required": [
+                                    "save",
+                                    "dc"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                "against": {
+                                  "type": "object",
+                                  "properties": {
+                                    "catalogs": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "minItems": 1,
+                                      "maxItems": 12
+                                    },
+                                    "entries": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "maxLength": 121,
+                                        "pattern": "^[a-z][a-z0-9_]*\\/[a-z0-9]+(?:-[a-z0-9]+)*$"
+                                      },
+                                      "minItems": 1,
+                                      "maxItems": 12
+                                    },
+                                    "actions": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 80
+                                      },
+                                      "minItems": 1,
+                                      "maxItems": 12
+                                    },
+                                    "$comment": {}
+                                  },
+                                  "additionalProperties": false
+                                },
+                                "also": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "on": {
+                                        "type": "string",
+                                        "enum": [
+                                          "aimed",
+                                          "hit",
+                                          "harmed",
+                                          "used",
+                                          "falls",
+                                          "turn-start"
+                                        ]
+                                      },
+                                      "against": {
+                                        "type": "object",
+                                        "properties": {
+                                          "catalogs": {
+                                            "type": "array",
+                                            "items": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
+                                            },
+                                            "minItems": 1,
+                                            "maxItems": 12
+                                          },
+                                          "entries": {
+                                            "type": "array",
+                                            "items": {
+                                              "type": "string",
+                                              "maxLength": 121,
+                                              "pattern": "^[a-z][a-z0-9_]*\\/[a-z0-9]+(?:-[a-z0-9]+)*$"
+                                            },
+                                            "minItems": 1,
+                                            "maxItems": 12
+                                          },
+                                          "actions": {
+                                            "type": "array",
+                                            "items": {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 80
+                                            },
+                                            "minItems": 1,
+                                            "maxItems": 12
+                                          },
+                                          "$comment": {}
+                                        },
+                                        "additionalProperties": false
+                                      },
+                                      "for": {
+                                        "type": "string",
+                                        "enum": [
+                                          "self",
+                                          "ally",
+                                          "any"
+                                        ]
+                                      },
+                                      "within": {
+                                        "type": "number",
+                                        "minimum": 0
+                                      },
+                                      "blow": {
+                                        "type": "string",
+                                        "enum": [
+                                          "melee",
+                                          "ranged"
+                                        ]
+                                      },
+                                      "seesSource": {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
+                                      "by": {
+                                        "type": "string",
+                                        "const": "self"
+                                      },
+                                      "weapon": {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
+                                      "names": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 80
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 30
+                                      },
+                                      "budget": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "required": [
+                                      "on"
+                                    ],
+                                    "additionalProperties": false,
+                                    "allOf": [
+                                      {
+                                        "if": {
+                                          "properties": {
+                                            "on": {
+                                              "const": "falls"
+                                            }
+                                          },
+                                          "required": [
+                                            "on"
+                                          ]
+                                        },
+                                        "then": {
+                                          "not": {
+                                            "anyOf": [
+                                              {
+                                                "required": [
+                                                  "cancels"
+                                                ]
+                                              },
+                                              {
+                                                "required": [
+                                                  "blow"
+                                                ]
+                                              },
+                                              {
+                                                "required": [
+                                                  "seesSource"
+                                                ]
+                                              },
+                                              {
+                                                "required": [
+                                                  "against"
+                                                ]
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      },
+                                      {
+                                        "if": {
+                                          "properties": {
+                                            "for": {
+                                              "enum": [
+                                                "ally",
+                                                "any"
+                                              ]
+                                            }
+                                          },
+                                          "required": [
+                                            "for"
+                                          ]
+                                        },
+                                        "then": {
+                                          "required": [
+                                            "within"
+                                          ],
+                                          "properties": {
+                                            "on": {
+                                              "enum": [
+                                                "aimed",
+                                                "hit"
+                                              ]
+                                            }
+                                          }
+                                        }
+                                      },
+                                      {
+                                        "if": {
+                                          "properties": {
+                                            "on": {
+                                              "const": "turn-start"
+                                            }
+                                          },
+                                          "required": [
+                                            "on"
+                                          ]
+                                        },
+                                        "then": {
+                                          "not": {
+                                            "anyOf": [
+                                              {
+                                                "required": [
+                                                  "cancels"
+                                                ]
+                                              },
+                                              {
+                                                "required": [
+                                                  "blow"
+                                                ]
+                                              },
+                                              {
+                                                "required": [
+                                                  "against"
+                                                ]
+                                              },
+                                              {
+                                                "required": [
+                                                  "upTo"
+                                                ]
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      }
+                                    ]
+                                  },
+                                  "minItems": 1,
+                                  "maxItems": 3
+                                },
+                                "upTo": {
+                                  "type": "string",
+                                  "const": "paid"
+                                },
+                                "oneOf": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 60
+                                },
+                                "above": {
+                                  "type": "object",
+                                  "properties": {
+                                    "check": {
+                                      "type": "object",
+                                      "properties": {
+                                        "const": {
+                                          "type": "number"
+                                        },
+                                        "field": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "derived": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "abilityScore": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "abilityMod": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "abilityModFromField": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "skillMod": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "saveMod": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "liveTrack": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "read": {
+                                          "type": "string",
+                                          "enum": [
+                                            "value",
+                                            "filled",
+                                            "remaining",
+                                            "penalty"
+                                          ]
+                                        },
+                                        "livePool": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "listSum": {
+                                          "type": "object",
+                                          "properties": {
+                                            "list": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
+                                            },
+                                            "column": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
+                                            },
+                                            "onlyWhen": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
+                                            },
+                                            "$comment": {}
+                                          },
+                                          "required": [
+                                            "list",
+                                            "column"
+                                          ],
+                                          "additionalProperties": false
+                                        },
+                                        "itemStat": {
+                                          "type": "object",
+                                          "properties": {
+                                            "stat": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
+                                            },
+                                            "from": {
+                                              "type": "string",
+                                              "enum": [
+                                                "worn",
+                                                "carried",
+                                                "all"
+                                              ]
+                                            },
+                                            "pick": {
+                                              "type": "string",
+                                              "enum": [
+                                                "sum",
+                                                "max",
+                                                "min",
+                                                "count"
+                                              ]
+                                            },
+                                            "slot": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
+                                            },
+                                            "category": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
+                                            },
+                                            "tag": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
+                                            },
+                                            "default": {
+                                              "type": "number"
+                                            },
+                                            "$comment": {}
+                                          },
+                                          "required": [
+                                            "from",
+                                            "pick"
+                                          ],
+                                          "additionalProperties": false
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "additionalProperties": false,
+                                      "dependencies": {
+                                        "read": [
+                                          "liveTrack"
+                                        ]
+                                      }
+                                    },
+                                    "dc": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "maximum": 1000
+                                    },
+                                    "$comment": {}
+                                  },
+                                  "required": [
+                                    "check",
+                                    "dc"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                "$comment": {}
+                              },
+                              "required": [
+                                "on"
+                              ],
+                              "additionalProperties": false,
+                              "allOf": [
+                                {
+                                  "if": {
+                                    "properties": {
+                                      "on": {
+                                        "const": "falls"
+                                      }
+                                    },
+                                    "required": [
+                                      "on"
+                                    ]
+                                  },
+                                  "then": {
+                                    "not": {
+                                      "anyOf": [
+                                        {
+                                          "required": [
+                                            "cancels"
+                                          ]
+                                        },
+                                        {
+                                          "required": [
+                                            "blow"
+                                          ]
+                                        },
+                                        {
+                                          "required": [
+                                            "seesSource"
+                                          ]
+                                        },
+                                        {
+                                          "required": [
+                                            "against"
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                {
+                                  "if": {
+                                    "properties": {
+                                      "for": {
+                                        "enum": [
+                                          "ally",
+                                          "any"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "for"
+                                    ]
+                                  },
+                                  "then": {
+                                    "required": [
+                                      "within"
+                                    ],
+                                    "properties": {
+                                      "on": {
+                                        "enum": [
+                                          "aimed",
+                                          "hit"
+                                        ]
+                                      }
+                                    }
+                                  }
+                                },
+                                {
+                                  "if": {
+                                    "properties": {
+                                      "on": {
+                                        "const": "turn-start"
+                                      }
+                                    },
+                                    "required": [
+                                      "on"
+                                    ]
+                                  },
+                                  "then": {
+                                    "not": {
+                                      "anyOf": [
+                                        {
+                                          "required": [
+                                            "cancels"
+                                          ]
+                                        },
+                                        {
+                                          "required": [
+                                            "blow"
+                                          ]
+                                        },
+                                        {
+                                          "required": [
+                                            "against"
+                                          ]
+                                        },
+                                        {
+                                          "required": [
+                                            "upTo"
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                {
+                                  "if": {
+                                    "required": [
+                                      "cancelSave"
+                                    ]
+                                  },
+                                  "then": {
+                                    "required": [
+                                      "cancels"
+                                    ]
+                                  }
+                                }
+                              ],
+                              "if": {
+                                "required": [
+                                  "cancels"
+                                ]
+                              },
+                              "then": {
+                                "properties": {
+                                  "on": {
+                                    "enum": [
+                                      "aimed",
+                                      "used"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "on"
+                                ]
+                              }
+                            }
+                          ]
+                        },
                         "targetCount": {
                           "type": "integer",
                           "minimum": 1,
@@ -36941,6 +37613,678 @@
                               },
                               "concentration": {
                                 "type": "boolean"
+                              },
+                              "reaction": {
+                                "anyOf": [
+                                  {
+                                    "type": "boolean",
+                                    "const": false
+                                  },
+                                  {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "on": {
+                                        "type": "string",
+                                        "enum": [
+                                          "aimed",
+                                          "hit",
+                                          "harmed",
+                                          "used",
+                                          "falls",
+                                          "turn-start"
+                                        ]
+                                      },
+                                      "at": {
+                                        "type": "string",
+                                        "enum": [
+                                          "source",
+                                          "chosen",
+                                          "target"
+                                        ],
+                                        "default": "source"
+                                      },
+                                      "for": {
+                                        "type": "string",
+                                        "enum": [
+                                          "self",
+                                          "ally",
+                                          "any"
+                                        ]
+                                      },
+                                      "within": {
+                                        "type": "number",
+                                        "minimum": 0
+                                      },
+                                      "blow": {
+                                        "type": "string",
+                                        "enum": [
+                                          "melee",
+                                          "ranged"
+                                        ]
+                                      },
+                                      "seesSource": {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
+                                      "by": {
+                                        "type": "string",
+                                        "const": "self"
+                                      },
+                                      "weapon": {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
+                                      "names": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 80
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 30
+                                      },
+                                      "budget": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "cancels": {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
+                                      "cancelSave": {
+                                        "type": "object",
+                                        "properties": {
+                                          "save": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "dc": {
+                                            "type": "integer",
+                                            "minimum": 1,
+                                            "maximum": 1000
+                                          },
+                                          "$comment": {}
+                                        },
+                                        "required": [
+                                          "save",
+                                          "dc"
+                                        ],
+                                        "additionalProperties": false
+                                      },
+                                      "against": {
+                                        "type": "object",
+                                        "properties": {
+                                          "catalogs": {
+                                            "type": "array",
+                                            "items": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
+                                            },
+                                            "minItems": 1,
+                                            "maxItems": 12
+                                          },
+                                          "entries": {
+                                            "type": "array",
+                                            "items": {
+                                              "type": "string",
+                                              "maxLength": 121,
+                                              "pattern": "^[a-z][a-z0-9_]*\\/[a-z0-9]+(?:-[a-z0-9]+)*$"
+                                            },
+                                            "minItems": 1,
+                                            "maxItems": 12
+                                          },
+                                          "actions": {
+                                            "type": "array",
+                                            "items": {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 80
+                                            },
+                                            "minItems": 1,
+                                            "maxItems": 12
+                                          },
+                                          "$comment": {}
+                                        },
+                                        "additionalProperties": false
+                                      },
+                                      "also": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "object",
+                                          "properties": {
+                                            "on": {
+                                              "type": "string",
+                                              "enum": [
+                                                "aimed",
+                                                "hit",
+                                                "harmed",
+                                                "used",
+                                                "falls",
+                                                "turn-start"
+                                              ]
+                                            },
+                                            "against": {
+                                              "type": "object",
+                                              "properties": {
+                                                "catalogs": {
+                                                  "type": "array",
+                                                  "items": {
+                                                    "type": "string",
+                                                    "maxLength": 40,
+                                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                                  },
+                                                  "minItems": 1,
+                                                  "maxItems": 12
+                                                },
+                                                "entries": {
+                                                  "type": "array",
+                                                  "items": {
+                                                    "type": "string",
+                                                    "maxLength": 121,
+                                                    "pattern": "^[a-z][a-z0-9_]*\\/[a-z0-9]+(?:-[a-z0-9]+)*$"
+                                                  },
+                                                  "minItems": 1,
+                                                  "maxItems": 12
+                                                },
+                                                "actions": {
+                                                  "type": "array",
+                                                  "items": {
+                                                    "type": "string",
+                                                    "minLength": 1,
+                                                    "maxLength": 80
+                                                  },
+                                                  "minItems": 1,
+                                                  "maxItems": 12
+                                                },
+                                                "$comment": {}
+                                              },
+                                              "additionalProperties": false
+                                            },
+                                            "for": {
+                                              "type": "string",
+                                              "enum": [
+                                                "self",
+                                                "ally",
+                                                "any"
+                                              ]
+                                            },
+                                            "within": {
+                                              "type": "number",
+                                              "minimum": 0
+                                            },
+                                            "blow": {
+                                              "type": "string",
+                                              "enum": [
+                                                "melee",
+                                                "ranged"
+                                              ]
+                                            },
+                                            "seesSource": {
+                                              "type": "boolean",
+                                              "const": true
+                                            },
+                                            "by": {
+                                              "type": "string",
+                                              "const": "self"
+                                            },
+                                            "weapon": {
+                                              "type": "boolean",
+                                              "const": true
+                                            },
+                                            "names": {
+                                              "type": "array",
+                                              "items": {
+                                                "type": "string",
+                                                "minLength": 1,
+                                                "maxLength": 80
+                                              },
+                                              "minItems": 1,
+                                              "maxItems": 30
+                                            },
+                                            "budget": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
+                                            },
+                                            "$comment": {}
+                                          },
+                                          "required": [
+                                            "on"
+                                          ],
+                                          "additionalProperties": false,
+                                          "allOf": [
+                                            {
+                                              "if": {
+                                                "properties": {
+                                                  "on": {
+                                                    "const": "falls"
+                                                  }
+                                                },
+                                                "required": [
+                                                  "on"
+                                                ]
+                                              },
+                                              "then": {
+                                                "not": {
+                                                  "anyOf": [
+                                                    {
+                                                      "required": [
+                                                        "cancels"
+                                                      ]
+                                                    },
+                                                    {
+                                                      "required": [
+                                                        "blow"
+                                                      ]
+                                                    },
+                                                    {
+                                                      "required": [
+                                                        "seesSource"
+                                                      ]
+                                                    },
+                                                    {
+                                                      "required": [
+                                                        "against"
+                                                      ]
+                                                    }
+                                                  ]
+                                                }
+                                              }
+                                            },
+                                            {
+                                              "if": {
+                                                "properties": {
+                                                  "for": {
+                                                    "enum": [
+                                                      "ally",
+                                                      "any"
+                                                    ]
+                                                  }
+                                                },
+                                                "required": [
+                                                  "for"
+                                                ]
+                                              },
+                                              "then": {
+                                                "required": [
+                                                  "within"
+                                                ],
+                                                "properties": {
+                                                  "on": {
+                                                    "enum": [
+                                                      "aimed",
+                                                      "hit"
+                                                    ]
+                                                  }
+                                                }
+                                              }
+                                            },
+                                            {
+                                              "if": {
+                                                "properties": {
+                                                  "on": {
+                                                    "const": "turn-start"
+                                                  }
+                                                },
+                                                "required": [
+                                                  "on"
+                                                ]
+                                              },
+                                              "then": {
+                                                "not": {
+                                                  "anyOf": [
+                                                    {
+                                                      "required": [
+                                                        "cancels"
+                                                      ]
+                                                    },
+                                                    {
+                                                      "required": [
+                                                        "blow"
+                                                      ]
+                                                    },
+                                                    {
+                                                      "required": [
+                                                        "against"
+                                                      ]
+                                                    },
+                                                    {
+                                                      "required": [
+                                                        "upTo"
+                                                      ]
+                                                    }
+                                                  ]
+                                                }
+                                              }
+                                            }
+                                          ]
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 3
+                                      },
+                                      "upTo": {
+                                        "type": "string",
+                                        "const": "paid"
+                                      },
+                                      "oneOf": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 60
+                                      },
+                                      "above": {
+                                        "type": "object",
+                                        "properties": {
+                                          "check": {
+                                            "type": "object",
+                                            "properties": {
+                                              "const": {
+                                                "type": "number"
+                                              },
+                                              "field": {
+                                                "type": "string",
+                                                "maxLength": 40,
+                                                "pattern": "^[a-z][a-z0-9_]*$"
+                                              },
+                                              "derived": {
+                                                "type": "string",
+                                                "maxLength": 40,
+                                                "pattern": "^[a-z][a-z0-9_]*$"
+                                              },
+                                              "abilityScore": {
+                                                "type": "string",
+                                                "maxLength": 40,
+                                                "pattern": "^[a-z][a-z0-9_]*$"
+                                              },
+                                              "abilityMod": {
+                                                "type": "string",
+                                                "maxLength": 40,
+                                                "pattern": "^[a-z][a-z0-9_]*$"
+                                              },
+                                              "abilityModFromField": {
+                                                "type": "string",
+                                                "maxLength": 40,
+                                                "pattern": "^[a-z][a-z0-9_]*$"
+                                              },
+                                              "skillMod": {
+                                                "type": "string",
+                                                "maxLength": 40,
+                                                "pattern": "^[a-z][a-z0-9_]*$"
+                                              },
+                                              "saveMod": {
+                                                "type": "string",
+                                                "maxLength": 40,
+                                                "pattern": "^[a-z][a-z0-9_]*$"
+                                              },
+                                              "liveTrack": {
+                                                "type": "string",
+                                                "maxLength": 40,
+                                                "pattern": "^[a-z][a-z0-9_]*$"
+                                              },
+                                              "read": {
+                                                "type": "string",
+                                                "enum": [
+                                                  "value",
+                                                  "filled",
+                                                  "remaining",
+                                                  "penalty"
+                                                ]
+                                              },
+                                              "livePool": {
+                                                "type": "string",
+                                                "maxLength": 40,
+                                                "pattern": "^[a-z][a-z0-9_]*$"
+                                              },
+                                              "listSum": {
+                                                "type": "object",
+                                                "properties": {
+                                                  "list": {
+                                                    "type": "string",
+                                                    "maxLength": 40,
+                                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                                  },
+                                                  "column": {
+                                                    "type": "string",
+                                                    "maxLength": 40,
+                                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                                  },
+                                                  "onlyWhen": {
+                                                    "type": "string",
+                                                    "maxLength": 40,
+                                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                                  },
+                                                  "$comment": {}
+                                                },
+                                                "required": [
+                                                  "list",
+                                                  "column"
+                                                ],
+                                                "additionalProperties": false
+                                              },
+                                              "itemStat": {
+                                                "type": "object",
+                                                "properties": {
+                                                  "stat": {
+                                                    "type": "string",
+                                                    "maxLength": 40,
+                                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                                  },
+                                                  "from": {
+                                                    "type": "string",
+                                                    "enum": [
+                                                      "worn",
+                                                      "carried",
+                                                      "all"
+                                                    ]
+                                                  },
+                                                  "pick": {
+                                                    "type": "string",
+                                                    "enum": [
+                                                      "sum",
+                                                      "max",
+                                                      "min",
+                                                      "count"
+                                                    ]
+                                                  },
+                                                  "slot": {
+                                                    "type": "string",
+                                                    "maxLength": 40,
+                                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                                  },
+                                                  "category": {
+                                                    "type": "string",
+                                                    "maxLength": 40,
+                                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                                  },
+                                                  "tag": {
+                                                    "type": "string",
+                                                    "maxLength": 40,
+                                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                                  },
+                                                  "default": {
+                                                    "type": "number"
+                                                  },
+                                                  "$comment": {}
+                                                },
+                                                "required": [
+                                                  "from",
+                                                  "pick"
+                                                ],
+                                                "additionalProperties": false
+                                              },
+                                              "$comment": {}
+                                            },
+                                            "additionalProperties": false,
+                                            "dependencies": {
+                                              "read": [
+                                                "liveTrack"
+                                              ]
+                                            }
+                                          },
+                                          "dc": {
+                                            "type": "integer",
+                                            "minimum": 0,
+                                            "maximum": 1000
+                                          },
+                                          "$comment": {}
+                                        },
+                                        "required": [
+                                          "check",
+                                          "dc"
+                                        ],
+                                        "additionalProperties": false
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "required": [
+                                      "on"
+                                    ],
+                                    "additionalProperties": false,
+                                    "allOf": [
+                                      {
+                                        "if": {
+                                          "properties": {
+                                            "on": {
+                                              "const": "falls"
+                                            }
+                                          },
+                                          "required": [
+                                            "on"
+                                          ]
+                                        },
+                                        "then": {
+                                          "not": {
+                                            "anyOf": [
+                                              {
+                                                "required": [
+                                                  "cancels"
+                                                ]
+                                              },
+                                              {
+                                                "required": [
+                                                  "blow"
+                                                ]
+                                              },
+                                              {
+                                                "required": [
+                                                  "seesSource"
+                                                ]
+                                              },
+                                              {
+                                                "required": [
+                                                  "against"
+                                                ]
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      },
+                                      {
+                                        "if": {
+                                          "properties": {
+                                            "for": {
+                                              "enum": [
+                                                "ally",
+                                                "any"
+                                              ]
+                                            }
+                                          },
+                                          "required": [
+                                            "for"
+                                          ]
+                                        },
+                                        "then": {
+                                          "required": [
+                                            "within"
+                                          ],
+                                          "properties": {
+                                            "on": {
+                                              "enum": [
+                                                "aimed",
+                                                "hit"
+                                              ]
+                                            }
+                                          }
+                                        }
+                                      },
+                                      {
+                                        "if": {
+                                          "properties": {
+                                            "on": {
+                                              "const": "turn-start"
+                                            }
+                                          },
+                                          "required": [
+                                            "on"
+                                          ]
+                                        },
+                                        "then": {
+                                          "not": {
+                                            "anyOf": [
+                                              {
+                                                "required": [
+                                                  "cancels"
+                                                ]
+                                              },
+                                              {
+                                                "required": [
+                                                  "blow"
+                                                ]
+                                              },
+                                              {
+                                                "required": [
+                                                  "against"
+                                                ]
+                                              },
+                                              {
+                                                "required": [
+                                                  "upTo"
+                                                ]
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      },
+                                      {
+                                        "if": {
+                                          "required": [
+                                            "cancelSave"
+                                          ]
+                                        },
+                                        "then": {
+                                          "required": [
+                                            "cancels"
+                                          ]
+                                        }
+                                      }
+                                    ],
+                                    "if": {
+                                      "required": [
+                                        "cancels"
+                                      ]
+                                    },
+                                    "then": {
+                                      "properties": {
+                                        "on": {
+                                          "enum": [
+                                            "aimed",
+                                            "used"
+                                          ]
+                                        }
+                                      },
+                                      "required": [
+                                        "on"
+                                      ]
+                                    }
+                                  }
+                                ]
                               },
                               "targetCount": {
                                 "type": "integer",

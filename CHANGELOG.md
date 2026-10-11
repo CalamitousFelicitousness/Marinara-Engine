@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: an item's use can be taken as a reaction, at the moment it names: Liesl's Coffin's +5 AC for someone beside its bearer as they are hit, once a day, and the Straw Proxy that takes an attack aimed at its owner and burns (Capability API 1.317).
 - Rulesets: a fight board's light rule can ask a save that escapes it this time, which a save modifier against what it names can help (Noonfield's Constitution save, with a straw hat's advantage), and can stop a track at a most (exhaustion 3 at most) (Capability API 1.316).
 - Rulesets: the showcase bosses' rules: an aura can grow each turn, harm whoever it reaches as their own turn starts, and leave its condition on them until their next turn (Frost Debt); a hold can be capped at so many creatures (The Owed's Grasps, two at most); a creature can hang on at 1 hit point instead of falling, with an extra turn straight after (the Hourglass); and a creature can tear itself free of a hold with an action and no check (the Seed Hopper) (Capability API 1.315).
 - Rulesets: a light can shed shade, dimming the sun around it (a Lantern of Dusk); a fight board can have a light rule, so standing too long in bright light tires you out (Noonfield); something carried can give away whoever sneaks close (a Wind-Chime); and a creature can be held still by light (Lantern-Shy). Sight now also reads a square's own darkness on a bright board (Capability API 1.314).

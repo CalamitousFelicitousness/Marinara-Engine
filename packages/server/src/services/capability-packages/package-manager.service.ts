@@ -1574,6 +1574,18 @@ function carriesBossAsks(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesBossAsks(one, depth + 1));
 }
 
+/** An item's use taken as a reaction (1.317): Liesl's Coffin, the Straw Proxy. */
+function carriesItemReactions(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesItemReactions(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  // A use's, or one of its `moreUses`' as the walk reaches each.
+  const reaction = plainRecord(record.use)?.reaction;
+  if (reaction !== undefined && reaction !== false) return true;
+  return Object.values(record).some((one) => carriesItemReactions(one, depth + 1));
+}
+
 /** A light that sheds shade, something that gives the unseen away, or a creature light holds still
  *  (1.314). */
 function carriesShadeOrAlerts(value: unknown, depth = 0): boolean {
@@ -4307,7 +4319,14 @@ export function getCapabilityPackageInstallIssue(
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
   }
-  // Clearing growth, 1.313.
+  // Item uses taken as reactions, 1.317.
+  if (
+    !declaresApi(317) &&
+    (carriesItemReactions(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesItemReactions(document)))
+  ) {
+    return "A ruleset with an item use taken as a reaction requires schemaVersion 2 and capabilityApi 1.317 or newer";
+  }
   // Growing auras, holds with a most, tearing free and hanging on, 1.315.
   if (
     !declaresApi(315) &&
@@ -4323,6 +4342,7 @@ export function getCapabilityPackageInstallIssue(
   ) {
     return "A ruleset with a light that sheds shade, something that alerts or a creature held still by light requires schemaVersion 2 and capabilityApi 1.314 or newer";
   }
+  // Clearing growth, 1.313.
   if (
     !declaresApi(313) &&
     (carriesClears(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesClears(document)))

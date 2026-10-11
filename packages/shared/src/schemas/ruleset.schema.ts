@@ -5968,7 +5968,6 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     targetsPerCostStep: true,
     check: true,
     summons: true,
-    reaction: true,
     scales: true,
     conjures: true,
     repeats: true,
@@ -6067,6 +6066,8 @@ export const rulesetItemUseSchema = catalogMechanicsObject
       issue("halfOnMiss", '"halfOnMiss" is on a use that rolls to hit ("attackRoll") and deals an "amount"');
     }
     if (use.free && use.budget !== undefined) issue("free", "Something free spends no budget, so it names none");
+    // Taken as a reaction (Capability API 1.317): Liesl's Coffin, the Straw Proxy. It says what it answers.
+    if (use.reaction === true) issue("reaction", "An item's use taken as a reaction says the moment it answers");
     if (use.consumes && use.charges !== undefined) {
       issue("charges", "A use that uses the item up spends no charges of it");
     }

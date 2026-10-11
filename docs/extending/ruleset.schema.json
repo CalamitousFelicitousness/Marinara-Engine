@@ -24604,6 +24604,58 @@
                                 "minimum": 1,
                                 "maximum": 100
                               },
+                              "aroundHit": {
+                                "type": "object",
+                                "properties": {
+                                  "within": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 10000
+                                  },
+                                  "save": {
+                                    "type": "object",
+                                    "properties": {
+                                      "save": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "difficulty": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "maximum": 1000
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "required": [
+                                      "save",
+                                      "difficulty"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  "condition": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "rounds": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 10000
+                                  },
+                                  "of": {
+                                    "type": "string",
+                                    "const": "source"
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "within",
+                                  "save",
+                                  "condition"
+                                ],
+                                "additionalProperties": false
+                              },
                               "$comment": {}
                             },
                             "required": [

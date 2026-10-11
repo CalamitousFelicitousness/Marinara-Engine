@@ -1812,7 +1812,7 @@ function itemAttackActions(
     // count is never offered; a reach or a bolt needs a board's cells.
     const modeOf = (mode: NonNullable<typeof attack.modes>[number]): RulesetCombatMode[] => {
       if (mode.charges !== undefined && !(chargesMax !== undefined && chargesMax >= 1)) return [];
-      const { range, plus: modePlus, line, charges, ...rest } = mode;
+      const { range, plus: modePlus, line, charges, aroundHit, ...rest } = mode;
       const modeNormal = range ? cells(range.normal) : undefined;
       const modeLong = range?.long !== undefined ? cells(range.long) : undefined;
       const lineDice = line?.dice ? parseRulesetCombatDice(line.dice) : null;
@@ -1841,6 +1841,16 @@ function itemAttackActions(
             }
           : {}),
         ...(charges !== undefined ? { charges: { cost: charges, max: chargesMax!, item: index } } : {}),
+        // Around the one it hit (1.307), measured in cells.
+        ...(aroundHit
+          ? {
+              aroundHit: {
+                ...aroundHit,
+                save: { ...aroundHit.save },
+                within: Math.round(aroundHit.within / (perCell ?? 1)),
+              },
+            }
+          : {}),
       };
       return [moded];
     };

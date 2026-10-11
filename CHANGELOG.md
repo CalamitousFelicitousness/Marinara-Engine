@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: a Hammer of Thunderbolts hurled for a charge stuns everyone within 30 feet of the creature it hits who fails the save (Capability API 1.307).
 - Rulesets: a scroll of Sunbeam leaves its mote in the reader's hand, a will-o'-wisp's Consume Life kills a dying creature that fails its save and heals the wisp, and a ranger's camouflage wears off once they move or act (Capability API 1.306).
 - Rulesets: Vampiric Touch, Eyebite and Heat Metal can be used again each turn while concentrated on, at the level they were cast and never at a creature that saved, and Eyebite's panic ends once its target is far away and out of sight (Capability API 1.305).
 - Rulesets: Hide in Plain Sight can need camouflage and a wall to press against, Feral Senses lets a ranger attack unseen foes without disadvantage, a gelatinous cube surprises those who don't notice it, and a pact weapon can be bound by a ritual outside the fight (Capability API 1.304).

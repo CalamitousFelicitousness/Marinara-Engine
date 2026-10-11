@@ -871,6 +871,8 @@ export interface RulesetCombatAction {
   /** The second attack, on the off-hand budget, made with the weapon at this place in `sheet.items`
    *  after its holder attacked with another off-hand weapon this turn. */
   offHandOf?: number;
+  /** What a hit sets off around whoever it hit (1.307), from the mode it was made in. */
+  aroundHit?: RulesetCombatAroundHit;
   /** Conditions the target takes when the harm this blow dealt reached a number. */
   onHit?: Array<{
     condition: string;
@@ -962,6 +964,18 @@ export interface RulesetCombatMode {
   cure?: { ends?: string; track?: { track: string; by: number }; unseals?: true };
   /** The creature type named in this mode (1.265), remembered by what it puts on. */
   kind?: string;
+  /** What a hit in this mode sets off around whoever it hit (1.307), `within` in cells. */
+  aroundHit?: RulesetCombatAroundHit;
+}
+
+/** A Hammer of Thunderbolts' clap (1.307): everybody within `within` cells of the one hit saves or
+ *  takes `condition`. */
+export interface RulesetCombatAroundHit {
+  within: number;
+  save: { save: string; difficulty: number };
+  condition: string;
+  rounds?: number;
+  of?: "source";
 }
 
 /** A bolt on the way to a mode's target (1.185). */

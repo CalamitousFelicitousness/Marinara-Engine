@@ -5416,6 +5416,15 @@ export interface RulesetItemAttackMode {
     save: { save: string; difficulty: number; onSuccess: "none" | "half" };
   };
   charges?: number;
+  aroundHit?: RulesetItemAroundHit;
+}
+/** What a hit in a mode sets off around whoever it hit (1.307): a Hammer of Thunderbolts' clap. */
+export interface RulesetItemAroundHit {
+  within: number;
+  save: { save: string; difficulty: number };
+  condition: string;
+  rounds?: number;
+  of?: "source";
 }
 const itemAttackModeSchema: z.ZodType<RulesetItemAttackMode, z.ZodTypeDef, unknown> = z
   .object({
@@ -5459,6 +5468,24 @@ const itemAttackModeSchema: z.ZodType<RulesetItemAttackMode, z.ZodTypeDef, unkno
     /** The item's own charges one attack in this mode spends (Capability API 1.185); with
      *  fewer left the mode is not offered. */
     charges: z.number().int().min(1).max(100).optional(),
+    /** A hit in this mode makes the one it hit, and everybody within `within` of them (the ruleset's
+     *  own distance), wielder included, save or take `condition` for `rounds` of their own turns,
+     *  or with `of: "source"` of the wielder's (Capability API 1.307): a Hammer of Thunderbolts
+     *  hurled, "every creature within 30 feet of it ... or be stunned until the end of your next
+     *  turn". */
+    aroundHit: z
+      .object({
+        within: z.number().finite().min(0).max(10000),
+        save: z.object({ save: sheetId, difficulty: z.number().int().min(0).max(1000) }).strict(),
+        condition: sheetId,
+        rounds: z.number().int().min(1).max(10000).optional(),
+        of: z.literal("source").optional(),
+      })
+      .strict()
+      .refine((around) => around.of === undefined || around.rounds !== undefined, {
+        message: '"of" says whose turns its "rounds" count, so it goes with "rounds"',
+      })
+      .optional(),
   })
   .strict();
 

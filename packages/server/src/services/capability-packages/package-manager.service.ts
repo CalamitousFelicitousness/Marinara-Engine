@@ -1559,6 +1559,17 @@ function carriesHidingTraits(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesHidingTraits(one, depth + 1));
 }
 
+/** A weapon mode whose hit claps around the one it hit (1.307). */
+function carriesThunderclap(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesThunderclap(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (Array.isArray(record.modes) && record.modes.some((mode) => plainRecord(mode)?.aroundHit !== undefined))
+    return true;
+  return Object.values(record).some((one) => carriesThunderclap(one, depth + 1));
+}
+
 /** An item use that puts conditions on its reader, creature actions that slay the dying, and a
  *  condition's rule that ends it on moving or acting (1.306). */
 function carriesLeftovers306(value: unknown, depth = 0): boolean {
@@ -4201,6 +4212,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // A hammer's thunderclap, 1.307.
+  if (
+    !declaresApi(307) &&
+    (carriesThunderclap(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesThunderclap(document)))
+  ) {
+    return "A ruleset with a weapon mode whose hit claps around the one it hit requires schemaVersion 2 and capabilityApi 1.307 or newer";
   }
   // Scroll motes, Consume Life and camouflage that wears off, 1.306.
   if (

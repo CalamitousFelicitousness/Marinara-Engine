@@ -204,6 +204,7 @@ import type {
   RulesetCombatDamageClause,
   RulesetCombatModeLine,
   RulesetCombatAmount,
+  RulesetCombatAroundHit,
   RulesetCombatApplies,
   RulesetCombatCell,
   RulesetCombatChoice,
@@ -7212,6 +7213,43 @@ function destroyedByTier(
   return reached.length > 0 && at <= Math.max(...reached);
 }
 
+/** Everybody within its reach of the one a blow hit, that one too and its maker where it reaches
+ *  them, saves or takes its condition (1.307): a Hammer of Thunderbolts' clap. Off a board, only
+ *  the one hit. */
+function clapAround(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  hit: RulesetCombatant,
+  around: RulesetCombatAroundHit,
+  against: RulesetSaveAgainst,
+): void {
+  const caught = ctx.state.board?.grid
+    ? ctx.state.combatants.filter(
+        (one) => rulesetCombatStanding(one) && (one.id === hit.id || rulesetGap(hit, one) <= around.within),
+      )
+    : [hit];
+  for (const one of caught) {
+    if (!rulesetCombatStanding(one)) continue;
+    if (
+      rollSave(ctx, one, around.save.save, around.save.difficulty, actor.id, undefined, {
+        ...against,
+        conditions: [...(against.conditions ?? []), around.condition],
+      })
+    )
+      continue;
+    applyConditionId(
+      ctx,
+      one,
+      around.condition,
+      {
+        condition: around.condition,
+        duration: around.rounds ? { rounds: around.rounds, ...(around.of ? { of: around.of } : {}) } : "instant",
+      },
+      { sourceId: actor.id, action: against.action },
+    );
+  }
+}
+
 function slay(ctx: RulesetCombatContext, target: RulesetCombatant, sourceId: string, label: string): void {
   emptyHealth(ctx, target);
   ctx.events.push({ type: "slain", actorId: sourceId, targetId: target.id, label });
@@ -8259,6 +8297,8 @@ function resolveActionBody(
         },
       );
     }
+    // A hit in a mode that claps around whoever it hit (1.307): a Hammer of Thunderbolts hurled.
+    if (action.aroundHit) clapAround(ctx, actor, target, action.aroundHit, against);
     // What a taking blow took goes to its maker, with what landing one is worth on top; and taking
     // somebody down to the line crashes them, which is worth the crash's own bonus.
     if (takes) {

@@ -19880,6 +19880,10 @@
                             },
                             "additionalProperties": false
                           },
+                          "reaps": {
+                            "type": "boolean",
+                            "const": true
+                          },
                           "$comment": {}
                         },
                         "required": [
@@ -26195,6 +26199,10 @@
                           "maxItems": 3
                         },
                         "ignoresResistance": {
+                          "type": "boolean",
+                          "const": true
+                        },
+                        "reaps": {
                           "type": "boolean",
                           "const": true
                         },

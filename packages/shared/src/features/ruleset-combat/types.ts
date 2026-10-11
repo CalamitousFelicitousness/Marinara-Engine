@@ -399,6 +399,8 @@ export interface RulesetStatBlockAction {
   dyingOnly?: true;
   slaysOnFailedSave?: true;
   healsOnSlay?: RulesetCombatAmount;
+  /** Who it fells on Held Ground is reaped (1.318). */
+  reaps?: true;
   targetCount?: number;
   reach?: number;
   range?: number | RulesetCombatRange;
@@ -714,6 +716,8 @@ export interface RulesetCombatAction {
   /** A failed save kills its target, and its user regains this for each one (1.306): Consume Life. */
   slaysOnFailedSave?: true;
   healsOnSlay?: RulesetCombatAmount;
+  /** Who it fells on Held Ground is reaped there and then (1.318): a Reaping Hook. */
+  reaps?: true;
   /** Offered only once the attack action has been taken this turn (1.237): Flurry of Blows. */
   afterAttack?: RulesetAfterAttack;
   /** Offered only on its holder's own turn before they have attacked in it (1.242): Reckless Attack. */
@@ -1184,6 +1188,9 @@ export interface RulesetCombatant {
   legendaryResisted?: number;
   /** How many times it has hung on at 1 instead of dropping (1.315). */
   hungOn?: number;
+  /** Felled on Held Ground (1.318): out of the fight, never dying, up again later unless `reaped`. */
+  felled?: true;
+  reaped?: true;
   /** Strikes in hand: what is left of a spend that bought several. Absent when there are none, and
    *  cleared at the end of the turn they were bought on, so nothing carries into the next one. */
   strikesLeft?: number;
@@ -1440,6 +1447,18 @@ export interface RulesetEncounterState {
   windows?: number;
   /** Remaining uses shared by a coven, keyed by coven id and spell entry (1.118). */
   covenUses?: Record<string, number>;
+  /** Held Ground (1.318): nobody here dies at no health; they are felled. */
+  heldGround?: RulesetHeldGround;
+}
+
+/** A place where death is held (1.318), the showcase's valley: whoever reaches no health is felled
+ *  instead, out of the fight but never dying and never dead, and gets up again later unless it was
+ *  reaped. `condition` goes on the felled, and each one with a sheet moves its `marks` tracks: a
+ *  mark of Owing. */
+export interface RulesetHeldGround {
+  label?: string;
+  condition?: string;
+  marks?: Array<{ track: string; by: number }>;
 }
 
 /** A fight held open between one step and the next, so somebody who is not the current actor may
@@ -2204,6 +2223,10 @@ export type RulesetCombatEvent =
     }
   /** Left at 1 instead of dropping to 0 (1.315), and how many more times it may. */
   | { type: "hangsOn"; actorId: string; label?: string; left: number }
+  /** Felled on Held Ground instead of dying or going down (1.318). */
+  | { type: "felled"; actorId: string; label?: string }
+  /** Reaped as it was felled, by a blow that reaps (1.318): it stays down. */
+  | { type: "reaped"; actorId: string; sourceId?: string }
   /** An aura grown as its holder's turn starts (1.315), and how far it reaches now. */
   | { type: "auraGrows"; actorId: string; condition: string; distance: number }
   /** A board's light rule catching somebody (1.314), after this many round ends in its light. */

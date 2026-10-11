@@ -665,7 +665,17 @@ export function rulesetCombatEventLine(
         dealt: event.dealt,
         health: event.health,
       });
-    // The board doing something on its own (1.313), and growth taken off it.
+    // Felled on Held Ground, and reaped (1.318).
+    case "felled":
+      return key(event.label ? "felledNamed" : "felled", {
+        actor: names.combatant(event.actorId),
+        label: event.label ?? "",
+      });
+    case "reaped":
+      return key("reaped", {
+        actor: names.combatant(event.actorId),
+        source: event.sourceId ? names.combatant(event.sourceId) : "",
+      });
     // Hanging on at 1 (1.315): the Hourglass.
     case "hangsOn":
       return key(event.label ? "hangsOnNamed" : "hangsOn", {
@@ -687,6 +697,7 @@ export function rulesetCombatEventLine(
         label: event.label ?? "",
         rounds: event.rounds,
       });
+    // The board doing something on its own (1.313), and growth taken off it.
     case "boardEvent":
       return event.tell
         ? key("boardEventTell", { tell: event.tell })

@@ -103,6 +103,7 @@ import {
   type RulesetCombatantInput,
   type RulesetDefinition,
   type RulesetEncounterState,
+  type RulesetHeldGround,
   type RulesetLiveState,
   type RulesetLiveStates,
   type TacticalBattlefieldBrief,
@@ -221,6 +222,9 @@ export interface RulesetFightSeed {
   surprised?: string[];
   /** Who fights in its own lair (1.310), by id: its lair actions are taken on its lair's count. */
   inLair?: string[];
+  /** Held Ground (1.318): whoever reaches no health in this fight is felled instead. The story's
+   *  region rule decides it; the fight only keeps it. */
+  heldGround?: RulesetHeldGround;
   /** The scene's time of day as the game tracks it (1.286), which sets the light outdoors. */
   time?: string | null;
 }
@@ -389,6 +393,7 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
     ...(board ? { board } : {}),
     ...(input.surprised?.length ? { surprised: input.surprised } : {}),
     ...(input.inLair?.length ? { inLair: input.inLair } : {}),
+    ...(input.heldGround ? { heldGround: input.heldGround } : {}),
   });
   for (const [id, tier] of heldToTier) {
     const built = rulesetCombatant(encounter, id);

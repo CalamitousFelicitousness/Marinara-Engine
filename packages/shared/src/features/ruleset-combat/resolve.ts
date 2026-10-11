@@ -239,6 +239,7 @@ import type {
   RulesetEncounterState,
   RulesetEncounterSummary,
   RulesetHeldAttack,
+  RulesetHeldGround,
   RulesetTrackedCondition,
   RulesetWalkResume,
   RulesetWindowResume,
@@ -297,6 +298,8 @@ interface RulesetCombatContext {
   chosenAmount?: number;
   /** How many more of an item's charges its user spends on the action being resolved (1.264). */
   moreCharges?: number;
+  /** Who is making a blow that reaps (1.318): whoever it fells on Held Ground is reaped. */
+  reaping?: string;
   /** Where the teleport being resolved goes, and who goes along (1.271); nowhere is out of the
    *  fight (1.274). */
   teleport?: { to?: RulesetCombatCell; carries: string[] };
@@ -1107,6 +1110,12 @@ function dropToZero(ctx: RulesetCombatContext, target: RulesetCombatant, slain =
     return;
   }
   target.down = true;
+  // Held Ground (1.318): felled, out of the fight but never dying, unless the blow reaps.
+  const held = ctx.state.heldGround;
+  if (held && !target.object) {
+    fell(ctx, target, held);
+    return;
+  }
   // Defeated before its concentration ends, so what a spell it held leaves behind as it ends (Haste's
   // lethargy) is not put on somebody already out of the fight.
   if (target.side === "enemy") {
@@ -1128,6 +1137,41 @@ function dropToZero(ctx: RulesetCombatContext, target: RulesetCombatant, slain =
   if (dying?.condition)
     applyConditionId(ctx, target, dying.condition, { condition: dying.condition, duration: "instant" });
   ctx.events.push({ type: "down", actorId: target.id, dying: !!dying });
+}
+
+/** Felled on Held Ground (1.318): out of the fight, stable and never dying, with its condition and a
+ *  mark on its sheet; reaped instead where the blow that felled it reaps. */
+function fell(ctx: RulesetCombatContext, target: RulesetCombatant, held: RulesetHeldGround): void {
+  target.felled = true;
+  target.dying = false;
+  target.stable = true;
+  // An opponent is out of the fight; a character lies stable where they fell, to be healed up.
+  if (target.side === "enemy") {
+    target.defeated = true;
+    target.diedRound = ctx.state.round;
+    endSummons(ctx, target);
+    endZones(ctx, target);
+    unconjureAll(ctx, target);
+  }
+  endConcentration(ctx, target, "down");
+  endConditionsFromSource(ctx, target);
+  ctx.events.push({ type: "felled", actorId: target.id, ...(held.label ? { label: held.label } : {}) });
+  // Reaped as it falls, it stays down: a character so, for good.
+  if (ctx.reaping) {
+    target.reaped = true;
+    ctx.events.push({ type: "reaped", actorId: target.id, sourceId: ctx.reaping });
+    if (!target.defeated) {
+      target.defeated = true;
+      target.stable = false;
+      target.diedRound = ctx.state.round;
+    }
+  }
+  const down = target.side === "enemy" ? undefined : ctx.combat.dying?.condition;
+  for (const condition of new Set([down, target.reaped ? undefined : held.condition])) {
+    if (condition) applyConditionId(ctx, target, condition, { condition, duration: "instant" });
+  }
+  if (target.reaped) return;
+  for (const mark of held.marks ?? []) moveTrack(ctx, target, target, mark.track, mark.by);
 }
 
 function trackValue(ctx: RulesetCombatContext, combatant: RulesetCombatant, track: string): number {
@@ -1159,6 +1203,7 @@ function clearDyingTracks(ctx: RulesetCombatContext, target: RulesetCombatant): 
 
 function revive(ctx: RulesetCombatContext, target: RulesetCombatant): void {
   target.down = false;
+  delete target.felled;
   target.dying = false;
   target.stable = false;
   const dying = ctx.combat.dying;
@@ -6583,7 +6628,17 @@ function harmedBy(
   // The uses its user chose, read as it heals (1.246).
   if (resume.amount) ctx.chosenAmount = resume.amount;
   else delete ctx.chosenAmount;
-  const hold = resolve();
+  // A blow that reaps (1.318), held or resumed alike.
+  const reaping = ctx.reaping;
+  if (action.reaps) ctx.reaping = actor.id;
+  else delete ctx.reaping;
+  let hold: RulesetHitHold | null;
+  try {
+    hold = resolve();
+  } finally {
+    if (reaping) ctx.reaping = reaping;
+    else delete ctx.reaping;
+  }
   const hurt = new Set([
     ...(resume.held?.hurt ?? []),
     ...ctx.events
@@ -7797,6 +7852,11 @@ function clapAround(
 
 function slay(ctx: RulesetCombatContext, target: RulesetCombatant, sourceId: string, label: string): void {
   emptyHealth(ctx, target);
+  // Nobody dies on Held Ground (1.318): felled, not slain.
+  if (ctx.state.heldGround && !target.object) {
+    if (!target.down) dropToZero(ctx, target, true);
+    return;
+  }
   ctx.events.push({ type: "slain", actorId: sourceId, targetId: target.id, label });
   if (!target.down) dropToZero(ctx, target, true);
   if (target.defeated) return;

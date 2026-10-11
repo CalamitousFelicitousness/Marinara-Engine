@@ -855,6 +855,8 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["lightRule", say({ type: "lightRule", actorId: "lurker", light: "sunlight", rounds: 2 })],
     ["hangsOn", say({ type: "hangsOn", actorId: "lurker", label: "Hourglass", left: 0 })],
     ["auraGrows", say({ type: "auraGrows", actorId: "lurker", condition: "poisoned", distance: 30 })],
+    ["felled", say({ type: "felled", actorId: "lurker", label: "Held Ground" })],
+    ["reaped", say({ type: "reaped", actorId: "lurker", sourceId: "brenna" })],
     ["growth", say({ type: "growth", actorId: "brenna", label: "Shears", cells: 1, by: "cut" })],
     ["left", say({ type: "left", actorId: "lurker", label: "Teleport" })],
     ["surprised", say({ type: "surprised", actorIds: ["brenna", "lurker"] })],
@@ -1252,6 +1254,9 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     "Thorn Lurker hangs on at 1 instead of falling (1 left).",
   );
   assert.equal(printed.get("auraGrows"), "Thorn Lurker's Poisoned spreads further, reaching 30 now.");
+  assert.equal(printed.get("felled"), "Held Ground: Thorn Lurker is felled, down but held back from dying.");
+  assert.equal(say({ type: "felled", actorId: "lurker" }), "Thorn Lurker is felled: down, but held back from dying.");
+  assert.equal(printed.get("reaped"), "Thorn Lurker is reaped by Brenna, and stays down.");
   assert.equal(
     say({ type: "condition", targetId: "lurker", condition: "grappled", active: false, reason: "full" }),
     "Grappled does not go on Thorn Lurker: whoever puts it on holds as many as they can.",

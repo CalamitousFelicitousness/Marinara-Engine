@@ -4434,6 +4434,8 @@ const creatureActionSchema = z
      *  regains that much for each one that does: Consume Life's "or die ... regains 10 (3d6)". */
     slaysOnFailedSave: z.literal(true).optional(),
     healsOnSlay: z.object(catalogAmountShape).strict().optional(),
+    /** Who it fells on Held Ground is reaped there and then (Capability API 1.318), and stays down. */
+    reaps: z.literal(true).optional(),
   })
   .strict()
   .superRefine((action, ctx) => {
@@ -5837,6 +5839,9 @@ export const rulesetItemAttackSchema = z
     /** Its damage ignores the target's resistance to its own damage type (Capability API 1.187),
      *  resistance to every kind of harm included: a vorpal sword's slashing. */
     ignoresResistance: z.literal(true).optional(),
+    /** Who it fells on Held Ground is reaped there and then (Capability API 1.318): the showcase's
+     *  Reaping Hook. */
+    reaps: z.literal(true).optional(),
     /** What its damage takes off the target's health comes back only with a rest, never from a heal
      *  (Capability API 1.188): a sword of wounding. Written to a sheet's pool, so it holds after the
      *  fight until any rest. */

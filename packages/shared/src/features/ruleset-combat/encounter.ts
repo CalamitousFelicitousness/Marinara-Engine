@@ -84,6 +84,7 @@ import { RULESET_MOVE_MODES } from "./types.js";
 import type {
   RulesetBoardLight,
   RulesetBoardLightRule,
+  RulesetHeldGround,
   RulesetBoardProp,
   RulesetCheckModeRule,
   RulesetMoveMode,
@@ -1975,6 +1976,7 @@ function itemAttackActions(
         : {}),
       ...(attack.against?.length ? { against: structuredClone(attack.against) } : {}),
       ...(slay.length ? { slay } : {}),
+      ...(attack.reaps ? { reaps: true as const } : {}),
       ...(attack.ignoresResistance ? { ignoresResistance: true as const } : {}),
       ...(attack.healedOnlyByRest ? { healedOnlyByRest: true as const } : {}),
       ...(attack.othersWhileMarked ? { othersWhileMarked: { ...attack.othersWhileMarked, item: index } } : {}),
@@ -3179,6 +3181,7 @@ function blockActions(
     // Consume Life (1.306).
     ...(action.dyingOnly ? { dyingOnly: true as const } : {}),
     ...(action.slaysOnFailedSave ? { slaysOnFailedSave: true as const } : {}),
+    ...(action.reaps ? { reaps: true as const } : {}),
     ...(action.healsOnSlay ? { healsOnSlay: { ...action.healsOnSlay } } : {}),
     ...(action.uses ? { uses: { ...action.uses } } : {}),
     ...(action.recharge
@@ -3914,6 +3917,9 @@ export interface RulesetEncounterInput {
   surprised?: string[];
   /** Who fights in its own lair (1.310): its lair actions are taken on its lair count. */
   inLair?: string[];
+  /** Held Ground (1.318): whoever reaches no health here is felled instead. A `condition` the fight
+   *  does not know and `marks` on a track the sheet does not have are dropped. */
+  heldGround?: RulesetHeldGround;
 }
 
 /** A prop as a fight is handed it (1.311): its health is what it starts with, and at most. */
@@ -4241,6 +4247,9 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
     if (!combatant?.actions.some((action) => action.lair)) continue;
     combatant.lair = { at: combatant.block?.lairInitiative ?? 20 };
   }
+  // Held Ground (1.318): nobody dies here.
+  const held = heldGroundOf(definition, input.heldGround);
+  if (held) state.heldGround = held;
 
   // Everybody's contests, last, so one that takes the place of a strike can see what strikes the
   // actor's own actions buy. A ruleset with none adds nothing, and its fights are what they were.
@@ -5039,6 +5048,26 @@ function readStoredLive(stored: unknown): RulesetLiveState {
 /** A copy of what disperses a fog (1.281, 1.284): at once, or after it stands in a wind a while. */
 export function rulesetCopyDispersed(dispersed: true | { after: number }): true | { after: number } {
   return dispersed === true ? true : { after: dispersed.after };
+}
+
+/** Held Ground as a fight keeps it (1.318): its condition when the fight knows it, and its marks on
+ *  tracks the sheet has. */
+function heldGroundOf(definition: RulesetDefinition, held: RulesetHeldGround | undefined): RulesetHeldGround | null {
+  if (!held || typeof held !== "object") return null;
+  const known = new Set(definition.combat?.conditions?.map((one) => one.condition) ?? []);
+  const condition = typeof held.condition === "string" && known.has(held.condition) ? held.condition : undefined;
+  const marks = (Array.isArray(held.marks) ? held.marks : []).filter(
+    (one) =>
+      !!one &&
+      Number.isInteger(one.by) &&
+      one.by !== 0 &&
+      definition.sheet.live.tracks.some((track) => track.id === one.track && !track.kinds),
+  );
+  return {
+    ...(typeof held.label === "string" && held.label.trim() ? { label: held.label.trim() } : {}),
+    ...(condition ? { condition } : {}),
+    ...(marks.length ? { marks: marks.map((one) => ({ track: one.track, by: one.by })) } : {}),
+  };
 }
 
 /** A board's light rule as a fight keeps it (1.314): one that does something, to the tracks and

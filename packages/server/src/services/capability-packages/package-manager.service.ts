@@ -1575,6 +1575,17 @@ function carriesBossAsks(value: unknown, depth = 0): boolean {
 }
 
 /** A use only beside a prop, or a ground change whose occupants stay in it (1.327). */
+/** An item's use that gives its user more of the turn (1.329): the Time-Flour Loaf. */
+function carriesItemGives(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesItemGives(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  // A use's, or one of its `moreUses`' as the walk reaches each.
+  if (plainRecord(record.use)?.gives !== undefined) return true;
+  return Object.values(record).some((one) => carriesItemGives(one, depth + 1));
+}
+
 /** A lasting area with a look of its own on a fight's board (1.328). */
 function carriesBoardArt(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -4457,6 +4468,14 @@ export function getCapabilityPackageInstallIssue(
     (carriesDraws(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesDraws(document)))
   ) {
     return "A ruleset with a creature action that draws whoever it lands on toward it requires schemaVersion 2 and capabilityApi 1.321 or newer";
+  }
+  // An item use that gives more of the turn, 1.329.
+  if (
+    !declaresApi(329) &&
+    (carriesItemGives(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesItemGives(document)))
+  ) {
+    return "A ruleset with an item use that gives its user more of the turn requires schemaVersion 2 and capabilityApi 1.329 or newer";
   }
   // A lasting area with its own art on the board, 1.328.
   if (

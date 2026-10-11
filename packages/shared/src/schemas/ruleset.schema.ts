@@ -6093,7 +6093,6 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     scales: true,
     conjures: true,
     repeats: true,
-    gives: true,
     standard: true,
     rider: true,
   })

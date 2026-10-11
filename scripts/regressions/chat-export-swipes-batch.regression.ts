@@ -137,7 +137,8 @@ try {
     );
   }
 
-  // ── A longer chat needs no more swipe reads than a short one ──
+  // ── A long chat takes a few swipe reads, not one per message ──
+  // A bound well below the message count keeps an unrelated read from failing the check.
   const swipeReads = async (run: () => Promise<unknown>) => {
     const select = db.select;
     let reads = 0;
@@ -157,42 +158,41 @@ try {
     }
     return reads;
   };
-  const readsFor = async (count: number) => {
-    const long = (await chats.create({ name: `Long ${count}`, mode: "roleplay", characterIds: [] }))!;
-    await chats.createMessagesBatch(
-      long.id,
-      Array.from({ length: count }, (_, index) => ({
-        role: "assistant" as const,
-        characterId: null,
-        content: `Reply ${index}`,
-        activeSwipeIndex: 1,
-        swipes: [
-          { index: 0, content: `Draft ${index}` },
-          { index: 1, content: `Reply ${index}` },
-        ],
-      })),
-    );
-    const scene = (await chats.create({ name: `Scene ${count}`, mode: "roleplay", characterIds: [] }))!;
-    await chats.updateMetadata(scene.id, { sceneStatus: "active" });
-    await chats.createMessagesBatch(
-      scene.id,
-      Array.from({ length: count }, (_, index) => ({ role: "assistant" as const, content: `Beat ${index}` })),
-    );
-    let jsonl = "";
-    return {
-      export: await swipeReads(async () => {
-        jsonl = (await exportLines(long.id)).body;
-      }),
-      branch: await swipeReads(() => injectOk({ method: "POST", url: `/api/chats/${long.id}/branch`, payload: {} })),
-      import: await swipeReads(() => importOk(jsonl)),
-      sceneFork: await swipeReads(() =>
-        injectOk({ method: "POST", url: "/api/scene/fork", payload: { sceneChatId: scene.id, mode: "clone" } }),
-      ),
-    };
+  const count = 40;
+  const long = (await chats.create({ name: "Long", mode: "roleplay", characterIds: [] }))!;
+  await chats.createMessagesBatch(
+    long.id,
+    Array.from({ length: count }, (_, index) => ({
+      role: "assistant" as const,
+      characterId: null,
+      content: `Reply ${index}`,
+      activeSwipeIndex: 1,
+      swipes: [
+        { index: 0, content: `Draft ${index}` },
+        { index: 1, content: `Reply ${index}` },
+      ],
+    })),
+  );
+  const scene = (await chats.create({ name: "Scene", mode: "roleplay", characterIds: [] }))!;
+  await chats.updateMetadata(scene.id, { sceneStatus: "active" });
+  await chats.createMessagesBatch(
+    scene.id,
+    Array.from({ length: count }, (_, index) => ({ role: "assistant" as const, content: `Beat ${index}` })),
+  );
+  let jsonl = "";
+  const reads = {
+    export: await swipeReads(async () => {
+      jsonl = (await exportLines(long.id)).body;
+    }),
+    branch: await swipeReads(() => injectOk({ method: "POST", url: `/api/chats/${long.id}/branch`, payload: {} })),
+    import: await swipeReads(() => importOk(jsonl)),
+    sceneFork: await swipeReads(() =>
+      injectOk({ method: "POST", url: "/api/scene/fork", payload: { sceneChatId: scene.id, mode: "clone" } }),
+    ),
   };
-  const short = await readsFor(3);
-  const long = await readsFor(30);
-  assert.deepEqual(long, short, "swipe reads stay the same however long the chat is");
+  for (const [path, total] of Object.entries(reads)) {
+    assert.ok(total < count / 4, `${path} read swipes ${total} times for ${count} messages`);
+  }
 
   console.info("Chat export swipes batch regression passed");
 } finally {

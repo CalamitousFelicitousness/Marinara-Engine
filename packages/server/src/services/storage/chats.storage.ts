@@ -2625,7 +2625,7 @@ export function createChatsStorage(db: DB) {
             changed = true;
             const targetId = messageIdMap.get(receipt.targetMessageId);
             const targetSwipe = targetId
-              ? (await readSwipes(targetId)).find((row) => row.index === receipt.targetSwipeIndex)
+              ? swipesByMessageId.get(targetId)?.find((row) => row.index === receipt.targetSwipeIndex)
               : null;
             item.interruption = {
               ...receipt,

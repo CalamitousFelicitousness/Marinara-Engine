@@ -5050,7 +5050,7 @@ export async function chatsRoutes(app: FastifyInstance) {
     const copiedMessageInputs: Parameters<typeof storage.createMessagesBatch>[1] = [];
 
     const swipesByMessageId = await storage.getSwipesByMessageId(sourceMessagesToCopy.map((msg) => msg.id));
-    for (const msg of msgs) {
+    for (const msg of sourceMessagesToCopy) {
       const swipes = swipesByMessageId.get(msg.id) ?? [];
       const messageExtra = await storage.prepareRoleplayInterruptionExtraForCopy(
         sanitizeBranchedMessageExtra(parseExportMetadata(msg.extra)),
@@ -5105,9 +5105,6 @@ export async function chatsRoutes(app: FastifyInstance) {
         msg.id,
         copiedSwipes.map((swipe) => swipe.index),
       );
-
-      // Stop if we hit the specified message
-      if (upToMessageId && msg.id === upToMessageId) break;
     }
 
     // A branch ending before the interrupting response keeps the full preceding message.

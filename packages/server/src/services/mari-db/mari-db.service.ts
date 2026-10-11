@@ -883,9 +883,10 @@ function rowId(meta: TableMeta, row: Row): string {
 }
 
 function normalizeLimit(value: unknown, fallback: number, max: number) {
-  const parsed = Number(value);
+  // Floor first, so a fraction below 1 falls back instead of becoming an empty page (#7407).
+  const parsed = Math.floor(Number(value));
   if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
-  return Math.min(max, Math.floor(parsed));
+  return Math.min(max, parsed);
 }
 
 function normalizeOffset(value: unknown) {
@@ -2367,17 +2368,26 @@ function summarizeLorebookRow(row: Row): Row {
   };
 }
 
+// An index row is a preview (lorebook.getEntry returns the whole entry). Every field is bounded,
+// so one entry always fits a lorebook.entries page with its id visible (#7407).
 function summarizeLorebookEntryRow(row: Row): Row {
   const parsed = parseRow("lorebook_entries", row);
+  const allKeys: unknown[] | null = Array.isArray(parsed.keys) ? parsed.keys : null;
+  // A shortened key list is flagged, so a keys edit reads the whole list with lorebook.getEntry first.
+  const keysTruncated =
+    !!allKeys && (allKeys.length > 50 || allKeys.some((key) => typeof key === "string" && key.length > 100));
   return {
     id: parsed.id,
     lorebookId: parsed.lorebookId,
-    name: parsed.name,
-    description: typeof parsed.description === "string" ? parsed.description : "",
-    tag: typeof parsed.tag === "string" ? parsed.tag : "",
+    name: typeof parsed.name === "string" ? truncateStr(parsed.name, 200) : parsed.name,
+    description: typeof parsed.description === "string" ? truncateStr(parsed.description, 200) : "",
+    tag: typeof parsed.tag === "string" ? truncateStr(parsed.tag, 100) : "",
     enabled: parsed.enabled,
     constant: parsed.constant,
-    keys: parsed.keys,
+    keys: allKeys
+      ? allKeys.slice(0, 50).map((key) => (typeof key === "string" ? truncateStr(key, 100) : key))
+      : parsed.keys,
+    ...(keysTruncated ? { keysTruncated: true } : {}),
     content: typeof parsed.content === "string" ? truncateStr(parsed.content, 200) : "",
     order: parsed.order,
     createdAt: parsed.createdAt,
@@ -3716,16 +3726,13 @@ export class MariDbService {
         };
       }
       case "entries": {
-        const lorebookId = requiredString(args, ["lorebookId", "id"], "lorebook id");
-        const entryId = firstString(args, ["entryId"]);
-        const limit = normalizeLimit(firstNumber(args, ["limit"]), 100, 2000);
-        const entries = (await this.rawRows("lorebook_entries"))
-          .filter((entry) => entry.lorebookId === lorebookId)
-          .filter((entry) => !entryId || entry.id === entryId)
-          .sort((a, b) => Number(a.order ?? 100) - Number(b.order ?? 100))
-          .slice(0, limit)
-          .map(summarizeLorebookEntryRow);
-        return { ok: true, mode: "read", command: context.command, output: entries };
+        const output = await this.pageLorebookEntries(
+          requiredString(args, ["lorebookId", "id"], "lorebook id"),
+          firstString(args, ["entryId"]),
+          firstNumber(args, ["offset"]),
+          firstNumber(args, ["limit"]),
+        );
+        return { ok: true, mode: "read", command: context.command, output };
       }
       case "getentry": {
         const entryId = requiredString(args, ["entryId", "id"], "lorebook entry id");
@@ -6693,16 +6700,16 @@ export class MariDbService {
       case "entries": {
         const lorebookId = parsed.positionals[0];
         if (!lorebookId)
-          throw new Error("Usage: mari lorebooks entries <lorebook-id> [--limit <n>] [--entry-id <entry-id>]");
-        const limit = normalizeLimit(flagString(flags, "limit"), 100, 2000);
-        const entryId = flagString(flags, "entry-id") ?? flagString(flags, "entryId");
-        const entries = (await this.rawRows("lorebook_entries"))
-          .filter((e) => e.lorebookId === lorebookId)
-          .filter((e) => !entryId || e.id === entryId)
-          .sort((a, b) => Number(a.order ?? 100) - Number(b.order ?? 100))
-          .slice(0, limit)
-          .map(summarizeLorebookEntryRow);
-        return { ok: true, mode: "read", command: context.command, output: entries };
+          throw new Error(
+            "Usage: mari lorebooks entries <lorebook-id> [--limit <n>] [--offset <n>] [--entry-id <entry-id>]",
+          );
+        const output = await this.pageLorebookEntries(
+          lorebookId,
+          flagString(flags, "entry-id") ?? flagString(flags, "entryId"),
+          flagString(flags, "offset"),
+          flagString(flags, "limit"),
+        );
+        return { ok: true, mode: "read", command: context.command, output };
       }
       case "get-entry": {
         const entryId = parsed.positionals[0] ?? flagString(flags, "entry-id") ?? flagString(flags, "entryId");
@@ -9701,6 +9708,39 @@ export class MariDbService {
     }
   }
 
+  // lorebook.entries and `mari lorebooks entries` page like instruction.list (#7407): a bare
+  // array ignored offset, so entries past the first page were unreachable, and boundReadObject
+  // would elide an oversized `items` array as a unit. Entries are added until the next one
+  // would push the pretty-printed page past MARI_READ_OUTPUT_BUDGET; the first is always
+  // kept so paging moves forward.
+  private async pageLorebookEntries(
+    lorebookId: string,
+    entryId: string | undefined,
+    offsetArg: unknown,
+    limitArg: unknown,
+  ) {
+    const offset = normalizeOffset(offsetArg);
+    const limit = normalizeLimit(limitArg, 100, 2000);
+    const rows = (await this.rawRows("lorebook_entries"))
+      .filter((entry) => entry.lorebookId === lorebookId)
+      .filter((entry) => !entryId || entry.id === entryId)
+      .sort((a, b) => Number(a.order ?? 100) - Number(b.order ?? 100));
+    const total = rows.length;
+    const items: Row[] = [];
+    const page = () => {
+      const nextOffset = offset + items.length < total ? offset + items.length : null;
+      return { items, total, offset, nextOffset };
+    };
+    for (const row of rows.slice(offset, offset + limit)) {
+      items.push(summarizeLorebookEntryRow(row));
+      if (items.length > 1 && prettyLength(page()) > MARI_READ_OUTPUT_BUDGET) {
+        items.pop();
+        break;
+      }
+    }
+    return page();
+  }
+
   private async rawRows(table: string): Promise<Row[]> {
     const meta = getMeta(table);
     const rows = (await this.db.select().from(meta.table as any)) as Row[];
@@ -9780,7 +9820,7 @@ export class MariDbService {
       "Usage: mari lorebooks <command>",
       "Read:  list [--limit <n>] [--global] [--character <id>]",
       "Read:  get <id>",
-      "Read:  entries <lorebook-id> [--limit <n>] [--entry-id <entry-id>]",
+      "Read:  entries <lorebook-id> [--limit <n>] [--offset <n>] [--entry-id <entry-id>]",
       "Read:  get-entry <entry-id>",
       "Read:  search <query> [--limit <n>]",
       "Write: create --name <name> [--description <text>] [--category <text>] [--global] [--apply] [--reason <text>]",

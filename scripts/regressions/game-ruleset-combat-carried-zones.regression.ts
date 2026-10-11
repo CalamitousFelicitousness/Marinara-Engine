@@ -270,6 +270,38 @@ try {
     );
   }
 
+  // ── A scroll of Dancing Lights spaces its lights out too ──
+  {
+    const scroll = (area: Record<string, unknown>) =>
+      fiveE((doc) => {
+        doc.items = { categories: [{ id: "gear", label: "Gear" }] };
+        doc.catalogs.push({
+          id: "gear",
+          label: "Gear",
+          holds: "items",
+          entries: [
+            {
+              id: "scroll",
+              label: "Scroll",
+              item: {
+                category: "gear",
+                use: {
+                  kind: "utility",
+                  budget: "action",
+                  range: 120,
+                  area,
+                  zone: { rounds: 10, triggers: [], lights: { bright: 0, dim: 10 } },
+                  consumes: true,
+                },
+              },
+            },
+          ],
+        });
+      });
+    parsed(scroll({ shape: "burst", size: 10, copies: 4, copiesWithin: 20 }));
+    refusedDoc(scroll({ shape: "burst", size: 10, copiesWithin: 20 }), /copiesWithin/);
+  }
+
   // ── The gate ──
   {
     const manifest = (minor: number) => ({

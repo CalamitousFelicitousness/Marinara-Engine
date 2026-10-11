@@ -5655,8 +5655,14 @@ export const rulesetItemUseSchema = catalogMechanicsObject
         width: z.number().finite().gt(0).optional(),
         ring: z.number().finite().gt(0).optional(),
         copies: z.number().int().min(2).max(10).optional(),
+        // Its copies spaced out (1.296): a scroll of Dancing Lights.
+        copiesWithin: z.number().finite().gt(0).max(10000).optional(),
       })
       .strict()
+      .refine((area) => area.copiesWithin === undefined || area.copies !== undefined, {
+        message: '"copiesWithin" spaces out its copies, so it has "copies"',
+        path: ["copiesWithin"],
+      })
       .refine((area) => area.copies === undefined || area.shape === "burst" || area.shape === "box", {
         message: "Only a burst or a box is set down several times",
         path: ["copies"],

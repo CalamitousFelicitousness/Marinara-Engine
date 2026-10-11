@@ -6,6 +6,8 @@ export type PromptAttachment = {
   name?: string | null;
   prompt?: string | null;
   galleryId?: string | null;
+  /** Character who sent a Conversation selfie; older selfies lack it. */
+  characterName?: string | null;
   imageCaption?: string | null;
   imageCaptionConnectionId?: string | null;
   imageCaptionModel?: string | null;

@@ -124,7 +124,14 @@ const SENT_SELFIE_DESCRIPTION_MAX_CHARS = 400;
  * Illustrator images share that type but stay hidden, since the character did not send them.
  */
 export function formatSentSelfieNotes(
-  attachments: ReadonlyArray<{ type?: string | null; filename?: string | null; prompt?: string | null }> | undefined,
+  attachments:
+    | ReadonlyArray<{
+        type?: string | null;
+        filename?: string | null;
+        prompt?: string | null;
+        characterName?: string | null;
+      }>
+    | undefined,
 ): string {
   return (attachments ?? [])
     .filter((attachment) => attachment.type === "image" && attachment.filename?.startsWith("selfie_"))
@@ -135,7 +142,9 @@ export function formatSentSelfieNotes(
         .replace(/\s+/g, " ")
         .trim()
         .slice(0, SENT_SELFIE_DESCRIPTION_MAX_CHARS);
-      return `\n[Sent a selfie${description ? `: ${description}` : ""}]`;
+      // Selfies saved before the sender was recorded have no name; their note stays unattributed.
+      const sender = attachment.characterName?.trim();
+      return `\n[${sender ? `${sender} sent` : "Sent"} a selfie${description ? `: ${description}` : ""}]`;
     })
     .join("");
 }

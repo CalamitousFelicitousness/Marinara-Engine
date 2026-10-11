@@ -230,13 +230,13 @@ const CHARACTER_CARD_SECTIONS = [
 ] as const;
 
 const CHARACTER_ONBOARDING_SECTIONS = [
-  { id: "character-onboarding-questions", label: "Onboarding Questions" },
+  { id: "character-onboarding-card-questions", label: "Character Questions" },
   { id: "character-onboarding-description", label: "Description" },
   { id: "character-onboarding-personality", label: "Personality" },
   { id: "character-onboarding-backstory", label: "Backstory" },
   { id: "character-onboarding-appearance", label: "Appearance" },
   { id: "character-onboarding-scenario", label: "Scenario" },
-  { id: "character-onboarding-card-questions", label: "Card Questions" },
+  { id: "character-onboarding-questions", label: "Persona Questions" },
   { id: "character-onboarding-preview", label: "Rendered preview" },
 ] as const;
 
@@ -1826,9 +1826,13 @@ function OnboardingTab({
           {!hasOnboardingContent(onboarding) && (
             <p
               role="status"
-              className="mt-3 flex flex-wrap items-center gap-1.5 rounded-xl border border-[var(--border)] bg-[var(--card)] p-3 text-[0.6875rem] text-[var(--muted-foreground)]"
+              className="mt-3 rounded-xl border border-[var(--border)] bg-[var(--card)] p-3 text-[0.6875rem] text-[var(--muted-foreground)]"
             >
-              <AlertTriangle size="0.75rem" className="shrink-0 text-[var(--marinara-app-accent-static)]" aria-hidden />
+              <AlertTriangle
+                size="0.75rem"
+                className="mr-1.5 -mt-0.5 inline-block shrink-0 text-[var(--marinara-app-accent-static)]"
+                aria-hidden
+              />
               {localizeUi("ui.characters.onboarding.emptyOnboarding")}
             </p>
           )}
@@ -1858,7 +1862,7 @@ function OnboardingTab({
                 {localizeUi("ui.characters.onboarding.tutorialIfAfter")}
               </li>
             </ol>
-            <p className="flex flex-wrap items-center gap-1 text-[var(--muted-foreground)]">
+            <p className="text-[var(--muted-foreground)]">
               {localizeUi("ui.characters.onboarding.tutorialResultBefore")}{" "}
               <code className={codeClass}>{localizeUi("ui.characters.onboarding.modalTitle")}</code>{" "}
               {localizeUi("ui.characters.onboarding.tutorialResultAfter")}
@@ -1868,6 +1872,55 @@ function OnboardingTab({
             <EditorSectionJumps items={CHARACTER_ONBOARDING_SECTIONS} />
           </div>
           <div className="space-y-10">
+            <EditorSectionAnchor id="character-onboarding-card-questions">
+              <p className="mb-2 text-xs text-[var(--muted-foreground)]">
+                {localizeUi("ui.characters.onboarding.cardQuestionsHelp")}
+              </p>
+              <PresetVariablesEditor
+                variant="onboarding-card"
+                variables={onboarding.cardVariables}
+                issues={cardVariableIssues}
+                maxCount={MAX_CARD_VARIABLES}
+                onCreate={() =>
+                  setCardVariables((variables) =>
+                    variables.length >= MAX_CARD_VARIABLES
+                      ? variables
+                      : [...variables, createOnboardingVariable(variables, latestRef.current.variables)],
+                  )
+                }
+                onUpdate={(variableId, patch) =>
+                  setCardVariables((variables) =>
+                    variables.map((variable) => (variable.id === variableId ? { ...variable, ...patch } : variable)),
+                  )
+                }
+                onDelete={(variableId) =>
+                  setCardVariables((variables) => variables.filter((variable) => variable.id !== variableId))
+                }
+                onReorder={(variableIds) =>
+                  setCardVariables((variables) => {
+                    const pool = new Map(variables.map((variable) => [variable.id, variable]));
+                    const ordered = variableIds.flatMap((id) => {
+                      const variable = pool.get(id);
+                      pool.delete(id);
+                      return variable ? [variable] : [];
+                    });
+                    return [...ordered, ...pool.values()];
+                  })
+                }
+              />
+              {greetingUses.size > 0 && (
+                <p role="status" className="mt-1.5 text-[0.625rem] text-[var(--foreground)]">
+                  <AlertTriangle
+                    size="0.625rem"
+                    className="mr-1 -mt-0.5 inline-block shrink-0 text-[var(--marinara-app-accent-static)]"
+                    aria-hidden
+                  />
+                  {localizeUi("ui.characters.onboarding.cardVariableInGreeting", {
+                    value1: [...greetingUses].join(", "),
+                  })}
+                </p>
+              )}
+            </EditorSectionAnchor>
             <EditorSectionAnchor id="character-onboarding-questions">
               <PresetVariablesEditor
                 variant="onboarding"
@@ -1977,58 +2030,6 @@ function OnboardingTab({
                 </EditorSectionAnchor>
               );
             })}
-            <EditorSectionAnchor id="character-onboarding-card-questions">
-              <p className="mb-2 text-xs text-[var(--muted-foreground)]">
-                {localizeUi("ui.characters.onboarding.cardQuestionsHelp")}
-              </p>
-              <PresetVariablesEditor
-                variant="onboarding-card"
-                variables={onboarding.cardVariables}
-                issues={cardVariableIssues}
-                maxCount={MAX_CARD_VARIABLES}
-                onCreate={() =>
-                  setCardVariables((variables) =>
-                    variables.length >= MAX_CARD_VARIABLES
-                      ? variables
-                      : [...variables, createOnboardingVariable(variables, latestRef.current.variables)],
-                  )
-                }
-                onUpdate={(variableId, patch) =>
-                  setCardVariables((variables) =>
-                    variables.map((variable) => (variable.id === variableId ? { ...variable, ...patch } : variable)),
-                  )
-                }
-                onDelete={(variableId) =>
-                  setCardVariables((variables) => variables.filter((variable) => variable.id !== variableId))
-                }
-                onReorder={(variableIds) =>
-                  setCardVariables((variables) => {
-                    const pool = new Map(variables.map((variable) => [variable.id, variable]));
-                    const ordered = variableIds.flatMap((id) => {
-                      const variable = pool.get(id);
-                      pool.delete(id);
-                      return variable ? [variable] : [];
-                    });
-                    return [...ordered, ...pool.values()];
-                  })
-                }
-              />
-              {greetingUses.size > 0 && (
-                <p
-                  role="status"
-                  className="mt-1.5 flex flex-wrap items-center gap-1 text-[0.625rem] text-[var(--foreground)]"
-                >
-                  <AlertTriangle
-                    size="0.625rem"
-                    className="shrink-0 text-[var(--marinara-app-accent-static)]"
-                    aria-hidden
-                  />
-                  {localizeUi("ui.characters.onboarding.cardVariableInGreeting", {
-                    value1: [...greetingUses].join(", "),
-                  })}
-                </p>
-              )}
-            </EditorSectionAnchor>
             <EditorSectionAnchor id="character-onboarding-preview">
               <div className="mari-editor-panel space-y-2 p-3">
                 <div className="flex items-center justify-between gap-2">

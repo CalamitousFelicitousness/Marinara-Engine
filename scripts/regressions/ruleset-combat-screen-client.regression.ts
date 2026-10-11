@@ -1457,6 +1457,16 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.deepEqual(rulesetPickTarget(sword, [], "lurker"), ["lurker"]);
   assert.deepEqual(rulesetPickTarget(sword, [], "brenna"), [], "an id the option does not list cannot be picked");
   assert.deepEqual(rulesetPickTarget(sword, ["lurker"], "lurker"), [], "picking it again takes it off");
+  // One that may be pointed at the same one again (1.300) adds another while there is room, and
+  // once full a click on a picked one takes one of theirs off.
+  const beams = {
+    ...sword,
+    targets: { ...sword.targets, count: 3, repeat: true as const },
+    targetIds: ["lurker", "brenna"],
+  };
+  assert.deepEqual(rulesetPickTarget(beams, ["lurker"], "lurker"), ["lurker", "lurker"]);
+  assert.deepEqual(rulesetPickTarget(beams, ["lurker", "brenna", "lurker"], "lurker"), ["lurker", "brenna"]);
+  assert.deepEqual(rulesetPickTarget(beams, ["lurker", "lurker", "lurker"], "brenna"), ["lurker", "lurker", "lurker"]);
 
   // A heal is offered the allies the server said it may be pointed at, and never the other side.
   assert.equal(heal.targets.side, "ally");

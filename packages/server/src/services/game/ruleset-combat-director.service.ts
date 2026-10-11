@@ -1354,8 +1354,16 @@ function rulesetCandidatesFrom(
               .filter((other): other is RulesetCombatant => !!other && other.side !== actor.side && !other.down)
               .slice(0, option.targets.count - 1)
           : [];
-        if (!lands) candidate.action.choice.targetIds = [targetId, ...others.map((other) => other.id)];
-        candidate.damage = Math.min(2, (average / pool) * (1 + others.length)) * chance;
+        // What is left of one that may be pointed at the same one again (1.300) goes at this one:
+        // eldritch blast's every beam.
+        const again = option.targets.repeat ? Math.max(0, option.targets.count - 1 - others.length) : 0;
+        if (!lands)
+          candidate.action.choice.targetIds = [
+            targetId,
+            ...others.map((other) => other.id),
+            ...Array.from({ length: again }, () => targetId),
+          ];
+        candidate.damage = Math.min(2, (average / pool) * (1 + others.length + again)) * chance;
         if (average >= pool) candidate.finish = chance;
       } else if (ally) {
         // Giving back a pool that is already full, or one somebody without a sheet does not have,

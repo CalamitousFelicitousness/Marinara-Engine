@@ -1559,6 +1559,16 @@ function carriesHidingTraits(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesHidingTraits(one, depth + 1));
 }
 
+/** Targets that grow with the sheet, and the same target more than once (1.300). */
+function carriesBeams(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesBeams(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.targetsScale !== undefined || record.targetsRepeat !== undefined) return true;
+  return Object.values(record).some((one) => carriesBeams(one, depth + 1));
+}
+
 /** Uses once a creature until a rest (1.299). */
 function carriesOncePerTarget(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -4094,6 +4104,13 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Targets that grow with the sheet, or the same target again, 1.300.
+  if (
+    !declaresApi(300) &&
+    (carriesBeams(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesBeams(document)))
+  ) {
+    return "A ruleset with targets that grow with the sheet, or the same target more than once, requires schemaVersion 2 and capabilityApi 1.300 or newer";
   }
   // Uses once a creature until a rest, 1.299.
   if (

@@ -1600,6 +1600,8 @@
   "game.combat.ruleset.target.confirm": "Confirm {{count}}",
   "game.combat.ruleset.target.prompt": "Choose a target for {{label}}.",
   "game.combat.ruleset.target.promptMany": "Choose up to {{count}} targets for {{label}}, then confirm.",
+  "game.combat.ruleset.target.promptRepeat": "Choose {{count}} targets for {{label}}, the same one again if you like, then confirm.",
+  "game.combat.ruleset.target.times": "×{{count}}",
   "game.combat.ruleset.target.wall": "{{wall}} section",
   "game.combat.ruleset.upcast.charges_one": "Spend {{count}} more charge",
   "game.combat.ruleset.upcast.charges_other": "Spend {{count}} more charges",

@@ -3369,6 +3369,14 @@ const catalogMechanicsObject = z
     /** An amount that grows with the sheet: the table gives the EXTRA dice at each step of the
      *  value it reads, so a trick that grows with a level needs no second entry. */
     scales: z.object({ from: rulesetValueRefSchema, table: stepTableSchema }).strict().optional(),
+    /** More targets as the sheet grows (Capability API 1.300): the table gives the EXTRA targets at
+     *  each step of the value it reads, as `scales` does dice. 5e's eldritch blast, a second beam at
+     *  5th level, a third at 11th, a fourth at 17th. */
+    targetsScale: z.object({ from: rulesetValueRefSchema, table: stepTableSchema }).strict().optional(),
+    /** The same target may be picked more than once, each its own attack with its own roll, and
+     *  everything that changes the entry (`amends`) applies to each (Capability API 1.300): eldritch
+     *  blast's beams "at the same target or at different ones". */
+    targetsRepeat: z.literal(true).optional(),
     /** Spends the uses of the row with this name instead of its own (Capability API 1.234): a
      *  Berserker's Frenzied Rage spends a use of Rage, its counter row. */
     usesOf: promptSafeText(80).optional(),
@@ -3649,6 +3657,15 @@ const catalogMechanicsSchema: z.ZodType<
         code: z.ZodIssueCode.custom,
         path: ["alters"],
         message: '"alters" is on a "utility" entry that is no reaction: it is chosen with what it changes',
+      });
+    }
+  }
+  for (const key of ["targetsScale", "targetsRepeat"] as const) {
+    if (mechanics[key] && (mechanics.targets === "self" || mechanics.area)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [key],
+        message: `"${key}" is on an entry pointed at creatures, not an area or its user`,
       });
     }
   }
@@ -5669,6 +5686,8 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     summons: true,
     reaction: true,
     scales: true,
+    targetsScale: true,
+    targetsRepeat: true,
     gives: true,
     standard: true,
     rider: true,
@@ -13235,6 +13254,11 @@ export function rulesetCatalogEntryIssues(
       if (!mechanics.amount) add([index, "mechanics", "amountAdd"], "amountAdd adds to an amount: give the amount too");
       for (const refIssue of rulesetValueRefIssues(mechanics.amountAdd, names, names.derived, false)) {
         add([index, "mechanics", "amountAdd", refIssue.key], refIssue.message);
+      }
+    }
+    if (mechanics?.targetsScale) {
+      for (const refIssue of rulesetValueRefIssues(mechanics.targetsScale.from, names, names.derived, false)) {
+        add([index, "mechanics", "targetsScale", "from", refIssue.key], refIssue.message);
       }
     }
     if (mechanics?.scales) {

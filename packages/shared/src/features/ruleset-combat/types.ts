@@ -565,7 +565,8 @@ export interface RulesetCombatAction {
   label: string;
   budget: string;
   /** Who it may be pointed at, relative to the actor: "enemy" is the other side. */
-  targets: { side: "enemy" | "ally" | "self" | "any"; count: number };
+  /** `repeat`: the same target may be named more than once, each its own attack (1.300). */
+  targets: { side: "enemy" | "ally" | "self" | "any"; count: number; repeat?: true };
   /** The ability actually used for the attack roll (Capability API 1.128). A plain stat-block
    *  action has none; a weapon offering several keeps the first best one, as its roll does. */
   ability?: string;
@@ -2353,7 +2354,8 @@ export interface RulesetCombatOption {
   budget?: string;
   /** Strikes in hand this one would be taken out of. Present only while it costs no budget. */
   strikes?: number;
-  targets: { side: "enemy" | "ally" | "self" | "any"; count: number };
+  /** `repeat`: the same target may be named more than once, each its own attack (1.300). */
+  targets: { side: "enemy" | "ally" | "self" | "any"; count: number; repeat?: true };
   cost?: Array<{ pool: string; label: string; amount: number }>;
   /** Other pools of the same family this could be paid from instead, in declaration order. */
   payWith?: string[];

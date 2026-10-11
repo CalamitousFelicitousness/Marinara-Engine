@@ -281,6 +281,13 @@ export function rulesetOptionNeedsTargets(option: DirectedRulesetOption): boolea
  *  be picked, clicking a picked one takes it off again, and the option's own count is the ceiling. */
 export function rulesetPickTarget(option: DirectedRulesetOption, picked: string[], id: string): string[] {
   if (!option.targetIds.includes(id)) return picked;
+  // One that may be pointed at the same one again (1.300) adds another while there is room, and
+  // once full a click on one already picked takes one of theirs off.
+  if (option.targets.repeat) {
+    if (picked.length < option.targets.count) return [...picked, id];
+    const at = picked.lastIndexOf(id);
+    return at < 0 ? picked : [...picked.slice(0, at), ...picked.slice(at + 1)];
+  }
   if (picked.includes(id)) return picked.filter((entry) => entry !== id);
   if (picked.length >= option.targets.count) return picked;
   return [...picked, id];

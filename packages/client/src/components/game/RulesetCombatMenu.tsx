@@ -823,15 +823,22 @@ export function RulesetCombatMenu({
       <div className="flex flex-col gap-2 p-3">
         <p className="text-xs text-amber-200" id="ruleset-target-prompt">
           {many
-            ? t("game.combat.ruleset.target.promptMany", {
-                label: rulesetOptionLabel(option, t),
-                count: option.targets.count,
-              })
+            ? t(
+                option.targets.repeat
+                  ? "game.combat.ruleset.target.promptRepeat"
+                  : "game.combat.ruleset.target.promptMany",
+                {
+                  label: rulesetOptionLabel(option, t),
+                  count: option.targets.count,
+                },
+              )
             : t("game.combat.ruleset.target.prompt", { label: rulesetOptionLabel(option, t) })}
         </p>
         <div className="flex flex-wrap gap-2" role="group" aria-labelledby="ruleset-target-prompt">
           {targets.map((combatant, index) => {
             const picked = step.targets.includes(combatant.id);
+            // Picked more than once (1.300): eldritch blast's beams at one target.
+            const times = step.targets.filter((id) => id === combatant.id).length;
             return (
               <button
                 ref={index === 0 ? first : undefined}
@@ -856,6 +863,11 @@ export function RulesetCombatMenu({
                     max: combatant.health.max,
                   })}
                 </span>
+                {times > 1 && (
+                  <span className="mt-0.5 block text-[0.65rem] font-semibold tabular-nums text-white/80">
+                    {t("game.combat.ruleset.target.times", { count: times })}
+                  </span>
+                )}
               </button>
             );
           })}

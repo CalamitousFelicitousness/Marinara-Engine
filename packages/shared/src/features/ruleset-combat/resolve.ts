@@ -3175,7 +3175,8 @@ function pickTargets(
 ): RulesetCombatant[] | RulesetCombatRefusal {
   // One that lands on its user, taken on their turn as much as in a reaction, lands on them.
   if (option.targets.count <= 0) return option.targets.side === "self" ? [actor] : [];
-  const ids = [...new Set(targetIds)];
+  // The same one more than once, each its own attack (1.300): eldritch blast's beams.
+  const ids = option.targets.repeat ? [...targetIds] : [...new Set(targetIds)];
   if (ids.length < 1 || ids.length > option.targets.count) return "bad-target";
   const legal = new Set(rulesetOptionTargets(definition, state, actor.id, option));
   const targets: RulesetCombatant[] = [];

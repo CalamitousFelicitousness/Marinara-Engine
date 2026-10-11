@@ -1998,6 +1998,19 @@ function clausesOf(
   return clauses.length > 0 ? clauses : null;
 }
 
+/** More of them as the sheet grows, and the same one more than once (1.300): eldritch blast's beams. */
+function grownTargets(
+  targets: RulesetCombatAction["targets"],
+  mechanics: Pick<RulesetCatalogMechanics, "targetsScale" | "targetsRepeat">,
+  resolve: (ref: RulesetValueRef) => number,
+): RulesetCombatAction["targets"] {
+  const more = mechanics.targetsScale
+    ? Math.max(0, Math.trunc(lookupStepTable(mechanics.targetsScale.table, resolve(mechanics.targetsScale.from))))
+    : 0;
+  if (!more && !mechanics.targetsRepeat) return targets;
+  return { ...targets, count: targets.count + more, ...(mechanics.targetsRepeat ? { repeat: true as const } : {}) };
+}
+
 /** Who a catalog entry may be pointed at. What it does decides it when the entry says nothing: a
  *  heal or a buff goes to the actor's own side, anything else to the other one. */
 function targetsOf(mechanics: RulesetCatalogMechanics): RulesetCombatAction["targets"] {
@@ -2161,7 +2174,7 @@ function mechanicsAction(
     ...(mechanics.kind === "attack" || mechanics.kind === "debuff" ? { harmful: true as const } : {}),
     label: from.label,
     budget: from.budget,
-    targets: targetsOf(mechanics as RulesetCatalogMechanics),
+    targets: grownTargets(targetsOf(mechanics as RulesetCatalogMechanics), mechanics, resolve),
     ...(moment
       ? {
           reaction: {

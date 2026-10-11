@@ -123,7 +123,8 @@ export interface RulesetCombatApplies {
   condition: string;
   /** The creature type its user named as they used it (1.265), remembered by what it puts on. */
   kind?: string;
-  duration: "instant" | "until-save" | "this-action" | { rounds: number; at?: "turn-start"; of?: "source"; untilLair?: true };
+  duration:
+    "instant" | "until-save" | "this-action" | { rounds: number; at?: "turn-start"; of?: "source"; untilLair?: true };
   /** Its source holds no more than this many with it at once (1.315). */
   heldAtMost?: number;
   saveEnds?: RulesetCombatSaveEnds;

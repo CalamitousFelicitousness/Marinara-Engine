@@ -200,7 +200,8 @@ export function rulesetLightOf(
   // A condition's light is a spell's (1.294), and magical.
   const spelled = active.flatMap((source) => (source.light && !source.item ? [source.light] : []));
   const all = [...(hidden ? [] : ownLight(who)), ...spelled, ...itemLights(who)];
-  if (darkness.carried && !who.doused && rulesetCarriesLight(definition, who, state)) all.push(darkness.carried);
+  if (darkness.carried && !who.doused && !daylit(who, state) && rulesetCarriesLight(definition, who, state))
+    all.push(darkness.carried);
   // Shade (1.314) is its own: it darkens what the rest lights.
   const shades = all.filter((one) => one.shade);
   const shade = shades.length
@@ -234,6 +235,17 @@ export function rulesetLightOf(
     ...(sunlight !== undefined ? { sunlight } : {}),
     ...(shade ? { shade } : {}),
   };
+}
+
+/** Whether somebody stands where nobody would light a torch: in bright light or sunlight of the
+ *  ground's own, or in shade on a board fought in sunlight, a barn at noon. Dark of the ground's own
+ *  is lit whatever the board's. */
+function daylit(who: RulesetCombatant, state: RulesetEncounterState | undefined): boolean {
+  const at = rulesetPositionOf(who);
+  if (!state?.board || !at) return false;
+  const ambient = state.board.light ?? "bright";
+  const own = state.board.grid.ground?.[`${at.x},${at.y}`]?.light ?? ambient;
+  return own === "bright" || own === "sunlight" || (own === "dim" && ambient === "sunlight");
 }
 
 /** A creature's own light (1.289): as its block says, out while it begins `unlit`, and as its own

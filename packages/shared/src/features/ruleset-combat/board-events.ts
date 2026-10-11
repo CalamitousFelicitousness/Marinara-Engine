@@ -141,9 +141,11 @@ export function rulesetBoardEventCells(
   const where = event.where;
   const all: RulesetCombatCell[] = [];
   const inside = (cell: RulesetCombatCell) => cell.x >= 0 && cell.y >= 0 && cell.x < grid.width && cell.y < grid.height;
+  // Only the newest band, a cell or `step` cells deep, unless it is `filled`: the first time too, so
+  // a ring that starts away from its middle leaves the middle be.
   const band = (distance: number, start: number, step: number, filled?: true) => {
     const reach = start + time * step;
-    return distance <= reach && (filled || time === 0 || distance > reach - step);
+    return distance <= reach && (filled || distance > reach - Math.max(1, step));
   };
   if ("cells" in where) all.push(...where.cells.filter(inside));
   else if ("block" in where) {

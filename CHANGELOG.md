@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: fixes from the showcase playthrough: a board event at round 1's start now happens as the fight begins, so a board can open dark, lit or fogged; nobody lights a carried torch in daylight, so a barn's shade at noon stays shade; a ring or sweep reaches only its newest band the first time too, so a ring starting away from its middle leaves the middle be (`filled` reaches everything inside).
 - Rulesets: creature actions can leave an area standing (`zone`), one that lasts until the next lair action (`untilLair`: The Owed's Freezing Fog), or change the ground they cover for good (`ground`: the bonfire gutters, the ice cracks) (Capability API 1.319).
 - Rulesets: Held Ground: a fight can hold death, so whoever reaches no health is felled instead, out of the fight or lying stable with a mark of Owing, and nothing slays; a weapon or creature action that reaps keeps whoever it fells down for good (the Reaping Hook) (Capability API 1.318).
 - Rulesets: an item's use can be taken as a reaction, at the moment it names: Liesl's Coffin's +5 AC for someone beside its bearer as they are hit, once a day, and the Straw Proxy that takes an attack aimed at its owner and burns (Capability API 1.317).

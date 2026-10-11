@@ -30,7 +30,7 @@ import {
   type RulesetValueRef,
 } from "../../schemas/ruleset.schema.js";
 import type { TacticalGrid, TacticalGroundCell } from "../tactical-combat/types.js";
-import { rulesetBoardEvents, type RulesetBoardEventInput } from "./board-events.js";
+import { rulesetBoardEvents, rulesetRunBoardEvents, type RulesetBoardEventInput } from "./board-events.js";
 import {
   applyRulesetSheetOp,
   evaluateRulesetSheetLive,
@@ -4405,6 +4405,8 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
     ...(surprised.length ? ([{ type: "surprised", actorIds: surprised }] as RulesetCombatEvent[]) : []),
     ...extraTurns,
     { type: "round", round: 1 },
+    // A board event at round 1's start (1.313) happens as the fight begins: a board opening dark.
+    ...rulesetRunBoardEvents(state, "round-start", 1),
     ...(state.order[state.turn]
       ? ([{ type: "turn", actorId: state.order[state.turn], round: 1 }] as RulesetCombatEvent[])
       : []),

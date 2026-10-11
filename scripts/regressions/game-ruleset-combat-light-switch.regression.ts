@@ -6,6 +6,8 @@
  *   - Put out, it sheds no light: its holder may go unseen in the dark. Lit again, they are seen,
  *     and found if they were hiding.
  *   - An item with a `toggle` sheds its `light` only while it is on: a lantern.
+ *   - Nobody lights one in daylight: in bright light or sunlight, or in shade on a board fought in
+ *     sunlight (a barn at noon), though dark ground is lit whatever the board's light.
  *   - Import refusals and the install gate.
  */
 import assert from "node:assert/strict";
@@ -20,6 +22,7 @@ import {
   rulesetCanSee,
   rulesetCombatant,
   rulesetCombatOptions,
+  rulesetLightAt,
   rulesetLightOf,
   rulesetSheetBuildSchema,
   supportedCapabilityApi,
@@ -181,6 +184,25 @@ try {
       () => 10,
     );
     assert.ok(refused.events.some((one) => one.type === "refused"));
+  }
+
+  // ── Not lit in daylight: the barn at noon stays shade ──
+  {
+    const noon = fight();
+    noon.board!.light = "sunlight";
+    noon.board!.grid.ground = { "2,5": { light: "dim" }, "3,5": { light: "dim" }, "14,5": { light: "dark" } };
+    assert.equal(rulesetLightOf(definition, who(noon, "hero"), noon), null, "in the barn's shade at noon");
+    assert.equal(rulesetLightAt(definition, noon, { x: 3, y: 5 }), "dim", "the barn stays shade");
+    who(noon, "hero").x = 6;
+    assert.equal(rulesetLightOf(definition, who(noon, "hero"), noon), null, "out in the sun");
+    who(noon, "hero").x = 14;
+    who(noon, "orc").x = 20;
+    assert.equal(rulesetLightOf(definition, who(noon, "hero"), noon)?.bright, 4, "a cellar dark at noon is lit");
+    const day = fight();
+    day.board!.light = "bright";
+    assert.equal(rulesetLightOf(definition, who(day, "hero"), day), null, "a bright day");
+    day.board!.grid.ground = { "2,5": { light: "dim" } };
+    assert.equal(rulesetLightOf(definition, who(day, "hero"), day)?.bright, 4, "dusk on a bright board is lit");
   }
 
   // ── On a budget ──

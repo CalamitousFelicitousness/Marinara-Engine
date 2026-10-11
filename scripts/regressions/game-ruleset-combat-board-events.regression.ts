@@ -3,7 +3,7 @@
  *
  *   - `board.events`: checked as handed (where, what, when); the cells a ring, a sweep, a block, a
  *     list or a spread of growth reaches each time; when each happens.
- *   - Run as the round turns: terrain, height, light, fog, growth, a season, a block turned with
+ *   - Run as the round turns, and round 1's start as the fight begins: terrain, height, light, fog, growth, a season, a block turned with
  *     whoever and whatever stands in it, a line told; whoever is left on ground nobody stands on is
  *     moved off it.
  *   - Growth is hard going and lightly obscures; a slashing blow cuts a square back with no roll,
@@ -241,7 +241,21 @@ try {
   {
     const board = grid();
     const ring = { where: { ring: { x: 5, y: 5, start: 1, step: 1 } } } as const;
-    assert.equal(rulesetBoardEventCells(board, ring, 0).length, 9, "the cell and those beside it");
+    assert.equal(rulesetBoardEventCells(board, ring, 0).length, 8, "those beside the cell, not the cell");
+    const far = { where: { ring: { x: 5, y: 5, start: 3, step: 1 } } } as const;
+    assert.equal(rulesetBoardEventCells(board, far, 0).length, 24, "only the band 3 out");
+    assert.ok(!keys(rulesetBoardEventCells(board, far, 0)).includes("5,5"), "the heart left be");
+    const still = { where: { ring: { x: 5, y: 5, start: 2, step: 0 } } } as const;
+    assert.deepEqual(
+      [0, 1].map((time) => rulesetBoardEventCells(board, still, time).length),
+      [16, 16],
+      "a ring that never grows is the band 2 out each time",
+    );
+    assert.equal(
+      rulesetBoardEventCells(board, { where: { ring: { ...far.where.ring, filled: true } } }, 0).length,
+      49,
+      "filled is everything inside, the first time too",
+    );
     assert.equal(rulesetBoardEventCells(board, ring, 1).length, 16, "the next band out");
     assert.equal(
       rulesetBoardEventCells(board, { where: { ring: { x: 5, y: 5, start: 1, step: 1, filled: true } } }, 1).length,
@@ -339,6 +353,26 @@ try {
 
   // ── Ground nobody stands on, and a block turned ──
   {
+    // Round 1's start is the fight's own: a board opening dark, once, and not again as round 2 starts.
+    const dusk = {
+      id: "dusk",
+      at: "round-start" as const,
+      from: 1,
+      until: 1,
+      where: { block: { x: 0, y: 0, w: 12, h: 10 } },
+      change: { light: "dark" as const },
+    };
+    const opened = fight([dusk, { ...dusk, id: "later", from: undefined, until: undefined, change: { light: "dim" } }]);
+    assert.equal(ground(opened)["5,5"]?.light, "dark");
+    assert.deepEqual(
+      of(opened.opening, "boardEvent").map((one) => one.id),
+      ["dusk"],
+      "a round-start event left at its default waits for round 2",
+    );
+    assert.deepEqual(opened.board?.happened, { dusk: 1 });
+    const second = nextRound(opened);
+    assert.deepEqual(second.state.board?.happened, { dusk: 1, later: 1 });
+    assert.equal(ground(second.state)["5,5"]?.light, "dim");
     // Ice cracks under the brute: it is moved to the nearest open cell.
     const cracked = nextRound(
       fight([{ id: "crack", at: "round-start", where: { cells: [{ x: 5, y: 5 }] }, change: { terrain: "water" } }]),

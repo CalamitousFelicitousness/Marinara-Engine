@@ -2299,6 +2299,7 @@ export interface RulesetHolderEnding {
   casts?: string[];
   moves?: true;
   acts?: true;
+  uses?: string[];
 }
 const holderEndingSchema: z.ZodType<RulesetHolderEnding, z.ZodTypeDef, unknown> = z
   .object({
@@ -2313,10 +2314,18 @@ const holderEndingSchema: z.ZodType<RulesetHolderEnding, z.ZodTypeDef, unknown> 
     moves: z.literal(true).optional(),
     /** Its holder taking any action or reaction after the one that put it on (Capability API 1.298). */
     acts: z.literal(true).optional(),
+    /** Its holder using one of these (Capability API 1.302): a creature's own actions by id, or catalog
+     *  entries as `<catalog>/<entry>`. A quasit's invisibility ends when it uses its Scare. */
+    uses: z
+      .array(z.union([catalogEntryRef, sheetId]))
+      .min(1)
+      .max(8)
+      .refine((uses) => new Set(uses).size === uses.length, { message: "An action is named once" })
+      .optional(),
   })
   .strict()
-  .refine((ends) => ends.attacks || ends.casts || ends.moves || ends.acts, {
-    message: "Say what ends it: attacking, casting, moving or acting",
+  .refine((ends) => ends.attacks || ends.casts || ends.moves || ends.acts || ends.uses, {
+    message: "Say what ends it: attacking, casting, moving, acting or using one of its actions",
   });
 
 /** Who passes a save without rolling, and what else it counts as being against (1.176). */
@@ -3384,6 +3393,10 @@ const catalogMechanicsObject = z
     /** Conditions a use puts on the targets it affects: up to 6 (Capability API 1.272; 4 before),
      *  for a rage whose path adds its own (Mindless Rage beside Rage's and Frenzy's). */
     applies: z.array(catalogAppliesSchema).max(6).superRefine(linkedApplies).optional(),
+    /** Conditions a use puts on its own user as it is made (Capability API 1.302), whatever happens to
+     *  its targets, held by its concentration when it has one: Sunbeam's mote of radiance, which
+     *  sheds light and gives the later beams as an action. */
+    appliesSelf: z.array(catalogAppliesSchema).min(1).max(4).superRefine(linkedApplies).optional(),
     /** An amount granted as temporary points on the health pool, which damage drains first. */
     temporary: z.object(catalogAmountShape).strict().optional(),
     /** Health to share out among its targets (Capability API 1.191): the one with the least health
@@ -4143,6 +4156,9 @@ const creatureActionSchema = z
     saveDifficulty: z.number().int().min(0).max(1000).optional(),
     /** Up to 6 (Capability API 1.272; 4 before). */
     applies: z.array(catalogAppliesSchema).max(6).superRefine(linkedApplies).optional(),
+    /** It is held by the creature's concentration (Capability API 1.302), as a catalog entry's is:
+     *  what it puts on ends when that concentration does. An imp's Invisibility. */
+    concentration: z.literal(true).optional(),
     targetCount: z.number().int().min(1).max(20).optional(),
     /** In the ruleset's own distance unit, read once a fight has positions. */
     reach: z.number().finite().min(0).max(10000).optional(),
@@ -5730,6 +5746,7 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     reaction: true,
     scales: true,
     conjures: true,
+    appliesSelf: true,
     targetsScale: true,
     targetsRepeat: true,
     gives: true,
@@ -13010,6 +13027,12 @@ export function rulesetCatalogEntryIssues(
     // A condition an entry applies is one of the sheet's own, so a fight and the sheet keep one
     // record of what is wrong with a character.
     if (mechanics) targetTestIssues(definition, mechanics, [index, "mechanics"], add);
+    // What it puts on its own user (1.302) is one of the sheet's conditions too.
+    mechanics?.appliesSelf?.forEach((applies, appliesIndex) => {
+      if (!liveConditions.has(applies.condition)) {
+        add([index, "mechanics", "appliesSelf", appliesIndex, "condition"], `Unknown condition "${applies.condition}"`);
+      }
+    });
     mechanics?.applies?.forEach((applies, appliesIndex) => {
       const path = [index, "mechanics", "applies", appliesIndex];
       if (!liveConditions.has(applies.condition)) {

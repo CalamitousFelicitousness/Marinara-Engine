@@ -125,7 +125,7 @@ export interface RulesetCombatApplies {
   saveEnds?: RulesetCombatSaveEnds;
   endsAfter?: RulesetConditionEnding;
   /** It comes off once its holder attacks, or casts from one of these catalogs (1.175). */
-  endsWhenHolder?: { attacks?: true; casts?: string[]; moves?: true; acts?: true };
+  endsWhenHolder?: { attacks?: true; casts?: string[]; moves?: true; acts?: true; uses?: string[] };
   /** What breaking free of it is rolled against, in place of the holder's own side of the contest
    *  (1.98): 5e's "grappled (escape DC 13)"; `"save"` is the applier's save difficulty (1.169). */
   escapeDc?: number | "save";
@@ -385,6 +385,8 @@ export interface RulesetStatBlockAction {
    *  own to borrow the number from. */
   saveDifficulty?: number;
   applies?: RulesetCombatApplies[];
+  /** Held by its maker's concentration (1.302). */
+  concentration?: true;
   targetCount?: number;
   reach?: number;
   range?: number | RulesetCombatRange;
@@ -705,6 +707,8 @@ export interface RulesetCombatAction {
   /** The source's own save difficulty, for a save-ends on an action with no save of its own. */
   saveDifficulty?: number;
   applies?: RulesetCombatApplies[];
+  /** What it puts on its own user as it is made (1.302): Sunbeam's mote. */
+  appliesSelf?: RulesetCombatApplies[];
   concentration?: boolean;
   /** How the price is paid. The name is what the sheet's own `use` command knows the row by, and
    *  the pool and its family are what a higher-pool payment is measured against. */
@@ -1038,7 +1042,7 @@ export interface RulesetTrackedCondition {
   /** What takes it off after one use, whatever its clock says. */
   endsAfter?: RulesetConditionEnding;
   /** What its holder does that takes it off (1.175): attacking, or casting from these catalogs. */
-  endsWhenHolder?: { attacks?: true; casts?: string[]; moves?: true; acts?: true };
+  endsWhenHolder?: { attacks?: true; casts?: string[]; moves?: true; acts?: true; uses?: string[] };
   /** The difficulty the repeated save is rolled against: the one that applied it. */
   difficulty?: number;
   /** The saves that ended it made and failed so far, where they are counted (1.253). */

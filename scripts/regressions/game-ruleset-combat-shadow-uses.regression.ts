@@ -250,7 +250,7 @@ try {
         targets: "self",
         applies: [{ condition: "calm", duration: { rounds: 1 }, endsWhenHolder: {} }],
       }),
-      /moving or acting/,
+      /moving, acting or using/,
     );
   }
 

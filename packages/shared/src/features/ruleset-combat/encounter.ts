@@ -2358,6 +2358,8 @@ function mechanicsAction(
   }
   if (from.saveDifficulty !== undefined) action.saveDifficulty = sourceDifficulty;
   if (mechanics.applies?.length) action.applies = mechanics.applies.map((entry2) => ({ ...entry2 }));
+  // What it puts on its own user (1.302): Sunbeam's mote.
+  if (mechanics.appliesSelf?.length) action.appliesSelf = mechanics.appliesSelf.map((entry2) => ({ ...entry2 }));
   if (mechanics.concentration) action.concentration = true;
   if (mechanics.ends) {
     action.ends = {
@@ -3057,6 +3059,8 @@ function blockActions(
     ...(action.save ? { save: { ...action.save } } : {}),
     ...(action.saveDifficulty !== undefined ? { saveDifficulty: action.saveDifficulty } : {}),
     ...(action.applies?.length ? { applies: action.applies.map((entry) => ({ ...entry })) } : {}),
+    // Held by its maker's concentration (1.302): an imp's Invisibility.
+    ...(action.concentration ? { concentration: true } : {}),
     ...(action.uses ? { uses: { ...action.uses } } : {}),
     ...(action.recharge
       ? {

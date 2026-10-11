@@ -1559,6 +1559,21 @@ function carriesHidingTraits(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesHidingTraits(one, depth + 1));
 }
 
+/** A creature's own action held by its concentration, ends on using a named action, and what a use
+ *  puts on its own user (1.302). */
+function carriesSelfHeld(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesSelfHeld(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.appliesSelf !== undefined) return true;
+  if (plainRecord(record.endsWhenHolder)?.uses !== undefined) return true;
+  // A creature's action is named and budgeted; a catalog entry's concentration sits in its mechanics.
+  if (record.concentration !== undefined && typeof record.name === "string" && typeof record.budget === "string")
+    return true;
+  return Object.values(record).some((one) => carriesSelfHeld(one, depth + 1));
+}
+
 /** Weapons put in hand, and amends that add typed damage or strikes (1.301). */
 function carriesConjures(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -4117,6 +4132,13 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Creature concentration, ending on a named action, and conditions on a use's own user, 1.302.
+  if (
+    !declaresApi(302) &&
+    (carriesSelfHeld(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesSelfHeld(document)))
+  ) {
+    return "A ruleset with creature actions held by concentration, conditions ended by using a named action, or uses that put conditions on their own user requires schemaVersion 2 and capabilityApi 1.302 or newer";
   }
   // Weapons put in hand, and amends that add typed damage or strikes, 1.301.
   if (

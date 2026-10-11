@@ -1759,6 +1759,7 @@ function applyConditionId(
             ...(applies.endsWhenHolder.casts ? { casts: [...applies.endsWhenHolder.casts] } : {}),
             ...(applies.endsWhenHolder.moves ? { moves: true as const } : {}),
             ...(applies.endsWhenHolder.acts ? { acts: true as const } : {}),
+            ...(applies.endsWhenHolder.uses ? { uses: [...applies.endsWhenHolder.uses] } : {}),
           },
         }
       : {}),
@@ -6596,7 +6597,9 @@ function holderActed(
     (entry) =>
       (!before || before.has(entry)) &&
       ((entry.endsWhenHolder?.attacks && attacks) ||
-        (casts !== undefined && !!entry.endsWhenHolder?.casts?.includes(casts))),
+        (casts !== undefined && !!entry.endsWhenHolder?.casts?.includes(casts)) ||
+        // One of its holder's own actions or entries by name (1.302): a quasit's Scare.
+        !!entry.endsWhenHolder?.uses?.some((used) => used === action.id || used === action.entry)),
   );
   for (const entry of ended) {
     if (actor.tracked.includes(entry)) removeCondition(ctx, actor, entry.condition, "spent");
@@ -7184,6 +7187,22 @@ function resolveActionBody(
     : payWith
       ? rulesetCostSteps(ctx.definition, action, payWith, actor)
       : 0;
+  // What it puts on its own user as it is made (1.302), whatever its targets do: Sunbeam's mote,
+  // held by the same concentration and given the level it was cast at.
+  if (!held) {
+    for (const applies of action.appliesSelf ?? []) {
+      if (!rulesetSheetWithin(ctx.definition, actor, applies.when)) continue;
+      const value = applies.value ? rulesetSheetValue(ctx.definition, actor, applies.value) : undefined;
+      applyConditionId(ctx, actor, applies.condition, applies, {
+        ...(value !== undefined ? { value } : {}),
+        ...(rulesetIsSpell(action) ? { level: rulesetPaidLevel(ctx.definition, actor, action, payWith) } : {}),
+        ...(rulesetIsSpell(action) && steps > 0 ? { steps } : {}),
+        sourceId: actor.id,
+        action: [action.id, action.label],
+        ...(action.concentration ? { concentration: true } : {}),
+      });
+    }
+  }
   // A higher cost's more, or more charges' (1.264); once for every so many steps (1.295).
   const per = action.use?.perCostStep ?? action.itemUse?.charges?.step?.amount;
   const every = action.use?.stepsEvery ?? 1;

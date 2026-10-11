@@ -853,6 +853,8 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["legendaryResistance", say({ type: "legendaryResistance", actorId: "lurker", save: "dex_save", left: 2 })],
     ["boardEvent", say({ type: "boardEvent", id: "e1", label: "The tide", cells: 2 })],
     ["lightRule", say({ type: "lightRule", actorId: "lurker", light: "sunlight", rounds: 2 })],
+    ["hangsOn", say({ type: "hangsOn", actorId: "lurker", label: "Hourglass", left: 0 })],
+    ["auraGrows", say({ type: "auraGrows", actorId: "lurker", condition: "poisoned", distance: 30 })],
     ["growth", say({ type: "growth", actorId: "brenna", label: "Shears", cells: 1, by: "cut" })],
     ["left", say({ type: "left", actorId: "lurker", label: "Teleport" })],
     ["surprised", say({ type: "surprised", actorIds: ["brenna", "lurker"] })],
@@ -1243,6 +1245,16 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.equal(
     say({ type: "revealed", actorId: "lurker", byIds: ["brenna"], reason: "alerted", alertedBy: "brenna" }),
     "Thorn Lurker moves near Brenna, and is given away.",
+  );
+  assert.equal(printed.get("hangsOn"), "Hourglass: Thorn Lurker hangs on at 1 instead of falling (0 left).");
+  assert.equal(
+    say({ type: "hangsOn", actorId: "lurker", left: 1 }),
+    "Thorn Lurker hangs on at 1 instead of falling (1 left).",
+  );
+  assert.equal(printed.get("auraGrows"), "Thorn Lurker's Poisoned spreads further, reaching 30 now.");
+  assert.equal(
+    say({ type: "condition", targetId: "lurker", condition: "grappled", active: false, reason: "full" }),
+    "Grappled does not go on Thorn Lurker: whoever puts it on holds as many as they can.",
   );
   assert.equal(printed.get("lightRule"), "Thorn Lurker has stood in that light too long.");
   assert.equal(

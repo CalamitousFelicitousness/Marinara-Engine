@@ -666,6 +666,20 @@ export function rulesetCombatEventLine(
         health: event.health,
       });
     // The board doing something on its own (1.313), and growth taken off it.
+    // Hanging on at 1 (1.315): the Hourglass.
+    case "hangsOn":
+      return key(event.label ? "hangsOnNamed" : "hangsOn", {
+        actor: names.combatant(event.actorId),
+        label: event.label ?? "",
+        left: event.left,
+      });
+    // An aura grown (1.315).
+    case "auraGrows":
+      return key("auraGrows", {
+        actor: names.combatant(event.actorId),
+        condition: names.condition(event.condition),
+        distance: event.distance,
+      });
     // A board's light rule catching somebody (1.314).
     case "lightRule":
       return key(event.label ? "lightRuleNamed" : "lightRule", {

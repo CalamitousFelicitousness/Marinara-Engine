@@ -51,6 +51,7 @@ import {
   rulesetCombatant,
   rulesetCopyDispersed,
   rulesetActiveConditions,
+  rulesetAuraDistance,
   rulesetTargetHasSenses,
   rulesetTargetIs,
   rulesetTargetTypesAllow,
@@ -1079,7 +1080,32 @@ function endConditionsFromSource(ctx: RulesetCombatContext, source: RulesetComba
   }
 }
 
-function dropToZero(ctx: RulesetCombatContext, target: RulesetCombatant): void {
+function dropToZero(ctx: RulesetCombatContext, target: RulesetCombatant, slain = false): void {
+  // Hanging on at 1 instead (1.315): the Miller's Hourglass, once, with a turn of its own straight
+  // after this one.
+  const hangs = target.block?.hangsOn;
+  if (hangs && !slain && target.health && (target.hungOn ?? 0) < hangs.uses) {
+    target.hungOn = (target.hungOn ?? 0) + 1;
+    target.health.value = 1;
+    ctx.events.push({
+      type: "hangsOn",
+      actorId: target.id,
+      ...(hangs.label ? { label: hangs.label } : {}),
+      left: hangs.uses - target.hungOn,
+    });
+    if (hangs.extraTurn) {
+      const at = ctx.state.turn + 1;
+      ctx.state.order.splice(at, 0, target.id);
+      ctx.state.interjected = at;
+      ctx.events.push({
+        type: "extraTurn",
+        actorId: target.id,
+        initiative: target.initiative,
+        label: hangs.label ?? "",
+      });
+    }
+    return;
+  }
   target.down = true;
   // Defeated before its concentration ends, so what a spell it held leaves behind as it ends (Haste's
   // lethargy) is not put on somebody already out of the fight.
@@ -1767,6 +1793,21 @@ function applyConditionId(
     )
   ) {
     ctx.events.push({ type: "condition", targetId: target.id, condition, active: false, reason: "already" });
+    return;
+  }
+  // Its source holding as many with it as it may (1.315): the Owed's Grasps, two at most.
+  if (
+    applies.heldAtMost !== undefined &&
+    extra.sourceId &&
+    !target.tracked.some((entry) => entry.condition === condition && entry.source === extra.sourceId) &&
+    ctx.state.combatants.filter(
+      (other) =>
+        other.id !== target.id &&
+        !other.defeated &&
+        other.tracked.some((entry) => entry.condition === condition && entry.source === extra.sourceId),
+    ).length >= applies.heldAtMost
+  ) {
+    ctx.events.push({ type: "condition", targetId: target.id, condition, active: false, reason: "full" });
     return;
   }
   if (target.sheet) writeRulesetSheet(ctx.definition, target, { op: "condition", condition, active: true });
@@ -7739,7 +7780,7 @@ function clapAround(
 function slay(ctx: RulesetCombatContext, target: RulesetCombatant, sourceId: string, label: string): void {
   emptyHealth(ctx, target);
   ctx.events.push({ type: "slain", actorId: sourceId, targetId: target.id, label });
-  if (!target.down) dropToZero(ctx, target);
+  if (!target.down) dropToZero(ctx, target, true);
   if (target.defeated) return;
   target.defeated = true;
   target.dying = false;
@@ -9150,12 +9191,24 @@ function nextTurnActor(state: RulesetEncounterState): { combatant: RulesetCombat
  *  so the window between the two can hold it: the turn-end books are closed either way, and this
  *  runs once, after the window rather than before it. */
 function beginNextTurn(definition: RulesetDefinition, combat: RulesetCombat, ctx: RulesetCombatContext): void {
+  // A turn put in after another (1.315), the Hourglass's, is taken once and leaves the order again.
+  // Taken, or passed over by somebody who could not take it.
+  if (ctx.state.interjected !== undefined && ctx.state.turn >= ctx.state.interjected) {
+    ctx.state.order.splice(ctx.state.interjected, 1);
+    ctx.state.turn -= 1;
+    delete ctx.state.interjected;
+  }
   let turn = ctx.state.turn;
   let round = ctx.state.round;
   let fresh = false;
   for (let step = 0; step < ctx.state.order.length; step++) {
     turn += 1;
     if (turn >= ctx.state.order.length) {
+      // Passed over on the way round (1.315): out of the order before the next round.
+      if (ctx.state.interjected !== undefined) {
+        ctx.state.order.splice(ctx.state.interjected, 1);
+        delete ctx.state.interjected;
+      }
       turn = 0;
       round += 1;
       fresh = true;
@@ -9255,8 +9308,30 @@ function beginNextTurn(definition: RulesetDefinition, combat: RulesetCombat, ctx
  */
 function aurasAtTurn(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
   const spreading = rulesetAuraSpreaders(ctx.definition, ctx.state);
+  // Its own auras grow as its turn starts (1.315): Frost Debt. Who it now reaches it spreads to as
+  // this step ends, as every aura does.
   for (const { holder, aura, condition } of spreading) {
-    if (holder.id !== actor.id || !aura.harms) continue;
+    if (holder.id !== actor.id || !aura.grows) continue;
+    const before = rulesetAuraDistance(holder, aura, condition);
+    if (before >= aura.grows.upTo) continue;
+    holder.auraGrown = { ...holder.auraGrown, [condition]: (holder.auraGrown?.[condition] ?? 0) + 1 };
+    ctx.events.push({
+      type: "auraGrows",
+      actorId: holder.id,
+      condition,
+      distance: rulesetAuraDistance(holder, aura, condition),
+    });
+  }
+  for (const { holder, aura, condition } of spreading) {
+    if (!aura.harms) continue;
+    // As the turn of whoever it reaches starts (1.315), or its holder's own.
+    if (aura.harms.on === "their-turn") {
+      if (!actor.defeated && rulesetAuraReaches(ctx.definition, ctx.state, holder, aura, actor, condition)) {
+        conditionHarm(ctx, actor, condition, holder.id, aura.harms, 1);
+      }
+      continue;
+    }
+    if (holder.id !== actor.id) continue;
     for (const target of [...ctx.state.combatants]) {
       if (target.defeated || !rulesetAuraReaches(ctx.definition, ctx.state, holder, aura, target, condition)) continue;
       conditionHarm(ctx, target, condition, holder.id, aura.harms, 1);

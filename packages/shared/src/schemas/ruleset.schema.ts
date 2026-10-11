@@ -2484,6 +2484,7 @@ export interface RulesetCatalogApplies {
   endsAway?: { beyond: number; unseen?: true };
   escapeDc?: number | "save";
   escapeChecks?: string[];
+  heldAtMost?: number;
   when?: z.infer<ReturnType<typeof sheetBoundsSchema>>;
   targetIs?: RulesetTargetIs;
   endsWith?: string;
@@ -2561,6 +2562,9 @@ const catalogAppliesSchema: z.ZodType<RulesetCatalogApplies, z.ZodTypeDef, unkno
      *  that breaks free of it (Capability API 1.98): 5e's "the target is grappled (escape DC 13)".
      *  `"save"` is the save difficulty of whatever applied it (1.169): Web and Black Tentacles. */
     escapeDc: z.union([z.number().int().min(1).max(1000), z.literal("save")]).optional(),
+    /** Its source holds no more than this many with it at once (Capability API 1.315): a third does
+     *  not take it. The showcase's Owed, whose Grasps hold two at most. */
+    heldAtMost: z.number().int().min(1).max(20).optional(),
     /** The contest checks that may break it, in place of the breaking-free contest's own attacker
      *  checks (Capability API 1.170): 5e's Black Tentacles allows Strength or Dexterity, Web only
      *  Strength. */
@@ -4905,6 +4909,17 @@ const creatureFields = {
   /** How many failed saves it may turn into successes (Capability API 1.312), each fight: 5e's
    *  Legendary Resistance (3/Day). */
   legendaryResistance: z.number().int().min(1).max(20).optional(),
+  /** Dropping to 0 hit points, it is left at 1 instead, `uses` times a fight, and with `extraTurn`
+   *  takes a turn of its own straight after the one it happened in (Capability API 1.315): the
+   *  showcase's Miller of Hours and its Hourglass. Not against what slays outright. */
+  hangsOn: z
+    .object({
+      uses: z.number().int().min(1).max(10),
+      extraTurn: z.literal(true).optional(),
+      label: promptSafeText(60).optional(),
+    })
+    .strict()
+    .optional(),
   /** It does not move while any of its cells is in one of these lights (Capability API 1.314): the
    *  showcase's Lantern-Shy, `["bright", "sunlight"]`. */
   stillIn: z
@@ -7243,7 +7258,9 @@ export interface RulesetConditionAura {
   sourcesOf?: string[];
   chosenKind?: true;
   orSeen?: true;
-  harms?: { dice?: string; flat?: number; type?: string };
+  harms?: { dice?: string; flat?: number; type?: string; on?: "holder-turn" | "their-turn" };
+  grows?: { by: number; upTo: number };
+  lingers?: true;
   save?: {
     save: string;
     difficulty: number;
@@ -7284,6 +7301,15 @@ const conditionAuraSchema: z.ZodType<RulesetConditionAura, z.ZodTypeDef, unknown
     /** Also to whoever can see its holder, however far off (Capability API 1.265): Antipathy's
      *  "can see the target or comes within 60 feet". */
     orSeen: z.literal(true).optional(),
+    /** It reaches `by` further as each of its holder's turns starts, to no more than `upTo`, in the
+     *  ruleset's distance (Capability API 1.315): Frost Debt, 20 feet growing by 10 to 40. */
+    grows: z
+      .object({ by: z.number().finite().gt(0).max(10000), upTo: z.number().finite().gt(0).max(10000) })
+      .strict()
+      .optional(),
+    /** What it spreads stays on whoever it no longer reaches until their next turn starts
+     *  (Capability API 1.315): Frost Debt's no healing. */
+    lingers: z.literal(true).optional(),
     /** Dealt by the holder to everybody it reaches as each of the holder's own turns starts
      *  (Capability API 1.260): a balor's Fire Aura, 3d6 fire. */
     harms: z
@@ -7291,6 +7317,9 @@ const conditionAuraSchema: z.ZodType<RulesetConditionAura, z.ZodTypeDef, unknown
         dice: catalogDice.optional(),
         flat: z.number().int().min(0).max(1000).optional(),
         type: promptSafeText(40).optional(),
+        /** As each of the holder's own turns starts (the default), or as each turn of whoever it
+         *  reaches starts (Capability API 1.315): The Owed's Frost Debt. */
+        on: z.enum(["holder-turn", "their-turn"]).optional(),
       })
       .strict()
       .refine((harm) => harm.dice !== undefined || harm.flat !== undefined, {
@@ -7340,6 +7369,14 @@ const conditionAuraSchema: z.ZodType<RulesetConditionAura, z.ZodTypeDef, unknown
   .strict()
   .refine((aura) => !!aura.conditions || !!aura.harms || !!aura.save, {
     message: "An aura spreads conditions, harms, or asks for a save",
+  })
+  .refine((aura) => !aura.grows || aura.grows.upTo > aura.distance, {
+    message: "An aura grows to more than its distance",
+    path: ["grows", "upTo"],
+  })
+  .refine((aura) => !aura.lingers || !!aura.conditions, {
+    message: "Only what an aura spreads lingers",
+    path: ["lingers"],
   });
 
 /** What a condition does on the rests it names (1.255). */
@@ -7493,9 +7530,15 @@ const combatConditionSchema = z
      *  A holder with no saveEnds or DC has nothing to roll. */
     saveWhenDamaged: z.literal(true).optional(),
     /** Another combatant on the holder's side can spend this budget on their turn to end it
-     *  (Capability API 1.120). Reach is in the ruleset's unit; omitted, it is one cell. */
+     *  (Capability API 1.120). Reach is in the ruleset's unit; omitted, it is one cell. `self`: its
+     *  holder may too (Capability API 1.315), with no check: the showcase's Seed Hopper, torn free
+     *  with an action by the held or an ally. */
     shakeOff: z
-      .object({ budget: sheetId, reach: z.number().finite().gt(0).max(10000).optional() })
+      .object({
+        budget: sheetId,
+        reach: z.number().finite().gt(0).max(10000).optional(),
+        self: z.literal(true).optional(),
+      })
       .strict()
       .optional(),
     /** What its holder uses out of these catalogs, paid with this budget, may be held over to their

@@ -4727,7 +4727,7 @@ export function rulesetAuraReaches(
   if (state.board?.grid && perCell !== undefined && holder.id !== target.id) {
     // Past its distance, it still reaches whoever can see its holder where it says so (1.265).
     if (
-      rulesetGap(holder, target) > rulesetInCells(aura.distance, perCell) &&
+      rulesetGap(holder, target) > rulesetInCells(rulesetAuraDistance(holder, aura, condition), perCell) &&
       !(aura.orSeen && rulesetCanSee(definition, state, target, holder))
     )
       return false;
@@ -4750,6 +4750,17 @@ export function rulesetAuraReaches(
     if (!holder.tracked.some((entry) => entry.source === target.id && named.includes(entry.condition))) return false;
   }
   return true;
+}
+
+/** How far an aura reaches now (1.315), in the ruleset's distance: grown as its holder's turns
+ *  started, to no more than it grows to. */
+export function rulesetAuraDistance(
+  holder: RulesetCombatant,
+  aura: RulesetConditionAura,
+  condition: string | undefined,
+): number {
+  if (!aura.grows || condition === undefined) return aura.distance;
+  return Math.min(aura.grows.upTo, aura.distance + aura.grows.by * (holder.auraGrown?.[condition] ?? 0));
 }
 
 /** Whether a zone this combatant stands in puts on a condition that takes one of these senses away. */
@@ -4783,19 +4794,39 @@ export function rulesetSyncAuras(
   const spreading = rulesetAuraSpreaders(definition, state);
   for (const target of state.combatants) {
     const want = new Map<string, string>();
+    // What lingers once its holder parts (1.315), by condition.
+    const lingers = new Set<string>();
     if (!target.defeated) {
       for (const { holder, aura, condition: spreads } of spreading) {
+        if (aura.lingers) for (const condition of aura.conditions ?? []) lingers.add(condition);
         if (!rulesetAuraReaches(definition, state, holder, aura, target, spreads)) continue;
         for (const condition of aura.conditions ?? []) if (!want.has(condition)) want.set(condition, holder.id);
       }
     }
     for (const entry of [...target.tracked]) {
+      // Reached again while it lingers: the aura holds it once more.
+      if (entry.lingering && want.has(entry.condition)) {
+        delete entry.lingering;
+        delete entry.clock;
+        entry.rounds = null;
+        entry.aura = want.get(entry.condition)!;
+        entry.source = entry.aura;
+        continue;
+      }
       if (!entry.aura || want.get(entry.condition) === entry.aura) continue;
       // Spread by somebody else now, it simply changes hands.
       const by = want.get(entry.condition);
       if (by) {
         entry.aura = by;
         entry.source = by;
+        continue;
+      }
+      // Left on until their next turn starts (1.315): Frost Debt's no healing.
+      if (lingers.has(entry.condition) && !target.defeated) {
+        delete entry.aura;
+        entry.lingering = true;
+        entry.rounds = 1;
+        entry.clock = "turn-start";
         continue;
       }
       target.tracked = target.tracked.filter((one) => one !== entry);

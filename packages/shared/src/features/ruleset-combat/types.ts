@@ -122,6 +122,8 @@ export interface RulesetCombatApplies {
   /** The creature type its user named as they used it (1.265), remembered by what it puts on. */
   kind?: string;
   duration: "instant" | "until-save" | "this-action" | { rounds: number; at?: "turn-start"; of?: "source" };
+  /** Its source holds no more than this many with it at once (1.315). */
+  heldAtMost?: number;
   saveEnds?: RulesetCombatSaveEnds;
   endsAfter?: RulesetConditionEnding;
   /** It comes off once its holder attacks, or casts from one of these catalogs (1.175). */
@@ -524,6 +526,9 @@ export interface RulesetStatBlock {
   lairInitiative?: number;
   /** How many failed saves it may turn into successes (1.312): 5e's Legendary Resistance (3/Day). */
   legendaryResistance?: number;
+  /** Dropping to 0, it is left at 1 instead this many times (1.315), with a turn straight after where
+   *  it says: the Miller's Hourglass. */
+  hangsOn?: { uses: number; extraTurn?: true; label?: string };
   /** It does not move while any of its cells is in one of these lights (1.314): Lantern-Shy. */
   stillIn?: RulesetBoardLight[];
   /** What this creature adds to the first qualifying hit of a period, all by itself. */
@@ -1106,6 +1111,8 @@ export interface RulesetTrackedCondition {
   source?: string;
   /** Spread by this combatant's aura (1.258): on while they are near, off as they part. */
   aura?: string;
+  /** Left on by an aura that lingers (1.315) after its holder parted: off as their next turn starts. */
+  lingering?: true;
   /** The aura (`<holder id>/<condition>`) its holder is kept clear of once this ends (1.264). */
   auraSafeOnEnd?: string;
   /** The creature type named as it was put on (1.265): an aura with `chosenKind` reaches only it. */
@@ -1175,6 +1182,8 @@ export interface RulesetCombatant {
   lair?: { at: number; last?: { round: number; id: string } };
   /** How many of its block's legendary resistances it has spent (1.312). */
   legendaryResisted?: number;
+  /** How many times it has hung on at 1 instead of dropping (1.315). */
+  hungOn?: number;
   /** Strikes in hand: what is left of a spend that bought several. Absent when there are none, and
    *  cleared at the end of the turn they were bought on, so nothing carries into the next one. */
   strikesLeft?: number;
@@ -1264,6 +1273,8 @@ export interface RulesetCombatant {
   surpriseOut?: string[];
   /** Auras whose save they made and are now proof against for the fight (1.260), as
    *  `<holder>/<condition>`. */
+  /** How many times each of its auras has grown (1.315), by the condition that spreads it. */
+  auraGrown?: Record<string, number>;
   auraSafe?: string[];
   /** Whose gaze they keep their eyes from (1.263): they skip its save and cannot see them. */
   averted?: string[];
@@ -1410,6 +1421,8 @@ export interface RulesetEncounterState {
   round: number;
   /** Where in `order` the turn is. */
   turn: number;
+  /** Where in `order` a turn put in after another stands (1.315), taken out once it is over. */
+  interjected?: number;
   order: string[];
   combatants: RulesetCombatant[];
   /** The events the fight opened with, so a caller printing a log never rebuilds them. */
@@ -2081,7 +2094,9 @@ export type RulesetCombatEvent =
         /** Gone because its holder is out of the aura that spread it, or it stopped (1.258). */
         | "parted"
         /** Its spell's light put out by magical darkness (1.294). */
-        | "dispelled";
+        | "dispelled"
+        /** Not put on: its source holds as many with it as it may (1.315). */
+        | "full";
       stacks?: number;
     }
   /** A number that attacks move: what came off it or went on it, why, and what it is now. A style
@@ -2183,6 +2198,10 @@ export type RulesetCombatEvent =
       cells: number;
       moved?: Array<{ id: string; to: RulesetCombatCell }>;
     }
+  /** Left at 1 instead of dropping to 0 (1.315), and how many more times it may. */
+  | { type: "hangsOn"; actorId: string; label?: string; left: number }
+  /** An aura grown as its holder's turn starts (1.315), and how far it reaches now. */
+  | { type: "auraGrows"; actorId: string; condition: string; distance: number }
   /** A board's light rule catching somebody (1.314), after this many round ends in its light. */
   | { type: "lightRule"; actorId: string; label?: string; light: RulesetBoardLight; rounds: number }
   /** Growth taken off cells (1.313): cut back, burnt, or cleared by something made for it. */

@@ -3061,10 +3061,24 @@ export function rulesetUncompelledOptions(
     });
   }
   for (const holder of state.combatants) {
-    if (holder.id === actor.id || holder.side !== actor.side || holder.defeated) continue;
+    if (holder.side !== actor.side || holder.defeated) continue;
     for (const condition of rulesetCombatConditions(definition, holder)) {
       const shake = combat.conditions?.find((entry) => entry.condition === condition)?.shakeOff;
       if (!shake || (actor.budgets[shake.budget] ?? 0) < 1) continue;
+      // Its holder tears free of it themselves where it says so (1.315): the Seed Hopper.
+      if (holder.id === actor.id) {
+        if (!shake.self) continue;
+        const label = definition.sheet.live.conditions.find((entry) => entry.id === condition)?.label ?? condition;
+        options.push({
+          id: `shake:${condition}@${holder.id}`,
+          kind: "standard",
+          label: `Tear free of ${label}`,
+          budget: shake.budget,
+          targets: { side: "self", count: 0 },
+          shakeOff: { holderId: holder.id, condition, name: holder.name, label },
+        });
+        continue;
+      }
       const reach = shake.reach === undefined ? 1 : shake.reach / (combat.distance?.perCell ?? 1);
       if (positioned(state) && rulesetCombatantDistance(state, actor, holder) > reach) continue;
       const label = definition.sheet.live.conditions.find((entry) => entry.id === condition)?.label ?? condition;

@@ -1559,6 +1559,21 @@ function carriesHidingTraits(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesHidingTraits(one, depth + 1));
 }
 
+/** An aura that grows, lingers or harms on its targets' turns, a holder who tears free, a hold with a
+ *  most, or a creature that hangs on at 1 (1.315). */
+function carriesBossAsks(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesBossAsks(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  // An aura's own `grows`, not a delayed blast's (1.178).
+  if ((record.grows !== undefined && record.side !== undefined) || record.lingers !== undefined) return true;
+  if (record.heldAtMost !== undefined) return true;
+  if (record.hangsOn !== undefined) return true;
+  if (plainRecord(record.harms)?.on !== undefined || plainRecord(record.shakeOff)?.self !== undefined) return true;
+  return Object.values(record).some((one) => carriesBossAsks(one, depth + 1));
+}
+
 /** A light that sheds shade, something that gives the unseen away, or a creature light holds still
  *  (1.314). */
 function carriesShadeOrAlerts(value: unknown, depth = 0): boolean {
@@ -4293,6 +4308,13 @@ export function getCapabilityPackageInstallIssue(
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
   }
   // Clearing growth, 1.313.
+  // Growing auras, holds with a most, tearing free and hanging on, 1.315.
+  if (
+    !declaresApi(315) &&
+    (carriesBossAsks(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesBossAsks(document)))
+  ) {
+    return "A ruleset with an aura that grows, lingers or harms on its targets' turns, a hold with a most, tearing free or hanging on requires schemaVersion 2 and capabilityApi 1.315 or newer";
+  }
   // Shade and chimes, 1.314.
   if (
     !declaresApi(314) &&

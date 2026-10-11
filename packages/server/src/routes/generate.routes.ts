@@ -11505,9 +11505,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           }
         };
 
-        // Agents also process a reply that is only a whisper (#7430); rewrite agents need public text to edit.
-        const publicPostWork = !!completedResponse.trim() || roleplayMediaRequests.length > 0;
-        if (hasPostWork && (publicPostWork || !!agentCompletedResponse) && !generationSignal.aborted) {
+        // Agents also process a reply that is only a whisper (#7430).
+        if (hasPostWork && (agentCompletedResponse || roleplayMediaRequests.length > 0) && !generationSignal.aborted) {
           // A tracker the user gave its own request does not take on the scene check (#6977);
           // Advanced Memory then checks the scene in a request of its own.
           const sceneCheckTrackers = pipelineAgents.filter(
@@ -13728,7 +13727,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           // ── Text rewrite/editing agents: run after ALL other agents ──
           const originalResponseBeforeRewrite = completedResponse;
           let textRewriteApplied = false;
-          if (activatedTextRewriteRunAgents.length > 0 && messageId && publicPostWork && !generationSignal.aborted) {
+          // Rewrite agents edit the public text, so a reply without any is left alone.
+          const hasPublicReply = !!completedResponse.trim();
+          if (activatedTextRewriteRunAgents.length > 0 && messageId && hasPublicReply && !generationSignal.aborted) {
             let currentResponseForRewrite = originalResponseBeforeRewrite;
 
             for (const textRewriteAgent of activatedTextRewriteRunAgents) {

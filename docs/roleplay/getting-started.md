@@ -105,7 +105,7 @@ In **Chat Settings → Agents → Roleplay Commands**, enable **Whisper** to all
 
 The command is `[whisper: character="name" text="the secret"]`. Name exactly one character in the chat or your selected persona. Of the characters, only that recipient and the appointed narrator receive the text in their prompts. An unknown or ambiguous name is ignored without exposing the secret.
 
-Agents read whispers too, including Echo Chamber, trackers, Lorebook Keeper and Long-Term Memory. Each whisper is marked as private and names its recipient, but what an agent writes, such as a lorebook entry, a tracker note or a rewritten reply, can still reach characters the whisper wasn't meant for. In a hosted multiplayer room, agents get no whispers, because everyone in the room sees what agents write.
+Agents read whispers too, including Echo Chamber, trackers, Lorebook Keeper, Long-Term Memory and, in group chats, **Smart** response order, so a whisper to a character can make that character the one who replies. Each whisper is marked as private and names its recipient, but what an agent writes, such as a lorebook entry, a tracker note or a rewritten reply, can still reach characters the whisper wasn't meant for. In a hosted multiplayer room, agents get no whispers, because everyone in the room sees what agents write.
 
 A whisper stays at its place in the message. Whispers addressed to your persona are visible immediately; otherwise, choose **Reveal a secret** to read one. Revealing only changes your screen, not what any character knows. Secrets follow their message and active swipe, and leave the prompt when that message is hidden from everyone or falls outside the selected history.
 

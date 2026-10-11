@@ -26,19 +26,47 @@ const { createCharactersStorage } = await import("../../packages/server/src/serv
 const { createPromptsStorage } = await import("../../packages/server/src/services/storage/prompts.storage.js");
 const { createAgentsStorage } = await import("../../packages/server/src/services/storage/agents.storage.js");
 const { createCustomToolsStorage } = await import("../../packages/server/src/services/storage/custom-tools.storage.js");
+const { createAppSettingsStorage } = await import("../../packages/server/src/services/storage/app-settings.storage.js");
 const { roleplayAgentContinuation, roleplayAgentsSeeWhispers, roleplayAgentText } =
   await import("../../packages/server/src/services/generation/roleplay-commands.js");
-const { characterDataSchema, replaceBuiltInAgentDefinitions } = await import("../../packages/shared/dist/index.js");
+const { characterDataSchema, DECISION_SMART_ORDER_SETTINGS_KEY, replaceBuiltInAgentDefinitions } =
+  await import("../../packages/shared/dist/index.js");
 
 const SENTINELS = ["PRE_AGENT_FIXTURE", "POST_AGENT_FIXTURE", "REWRITE_AGENT_FIXTURE", "ROOM_TRACKER_FIXTURE"] as const;
 const agentPrompts = new Map<string, string[]>(SENTINELS.map((sentinel) => [sentinel, []]));
 const mainPrompts: string[] = [];
+// What Smart speaker selection read: the Decision model's state and the chat-model selector's prompt.
+const decisionStates: string[] = [];
+const selectorPrompts: string[] = [];
+let decisionAnswers: Record<string, number> = {};
+let selectorAnswer: string[] = [];
 let outputs: string[] = [];
 const provider = createServer(async (request, response) => {
   const chunks: Buffer[] = [];
   for await (const chunk of request) chunks.push(Buffer.from(chunk));
   const body = JSON.parse(Buffer.concat(chunks).toString());
+  if (request.url?.endsWith("/systemone")) {
+    decisionStates.push(JSON.stringify(body.state));
+    const answers = Object.fromEntries(
+      Object.keys(body.questions ?? {}).map((id) => [id, { type: "noul", noul: decisionAnswers[id] ?? 0 }]),
+    );
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ answers }));
+    return;
+  }
   const prompt = JSON.stringify(body.messages);
+  if (prompt.includes("hidden response orchestrator")) {
+    selectorPrompts.push(prompt);
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(
+      JSON.stringify({
+        choices: [
+          { index: 0, message: { role: "assistant", content: JSON.stringify(selectorAnswer) }, finish_reason: "stop" },
+        ],
+      }),
+    );
+    return;
+  }
   const sentinel = SENTINELS.find((candidate) => prompt.includes(candidate));
   if (sentinel) agentPrompts.get(sentinel)!.push(prompt);
   else mainPrompts.push(prompt);
@@ -161,7 +189,11 @@ try {
     groupResponseOrder: "manual",
   });
   await chats.createMessage({ chatId: chat.id, role: "user", content: "Opening line." });
-  const generate = async (output: string, forCharacterId: string, options: Record<string, unknown> = {}) => {
+  const generate = async (
+    output: string,
+    forCharacterId: string | undefined,
+    options: Record<string, unknown> = {},
+  ) => {
     outputs = [output];
     const response = await app.inject({
       method: "POST",
@@ -397,6 +429,39 @@ try {
   assert(toolPrompts.at(-1)!.includes("lastInput") && toolPrompts.at(-1)!.includes("Hello there."), toolPrompts.at(-1));
   for (const toolPrompt of toolPrompts) assert(!toolPrompt.includes("TOOL_SECRET"), toolPrompt);
 
+  // Smart speaker selection reads whispers like every agent, since a whisper to Bob can make Bob the one who replies.
+  // The Decision model's transcript and the chat-model selector's both mark each one as private to its recipient,
+  // and a whisper-only message reads as its whisper. Only a speaker comes back, so the responder still gets none.
+  await generate('Alice smiles. [whisper: character="Bob" text="SMART_REPLY_SECRET"] Then waits.', alice.id);
+  const settings = createAppSettingsStorage(db);
+  const decision = await createConnectionsStorage(db).create({
+    name: "Agent whisper decision fixture",
+    provider: "decision",
+    decisionSource: "custom",
+    baseUrl: `http://127.0.0.1:${address.port}/v1`,
+    model: "jev-latest",
+    maxStateTokens: 3500,
+    defaultForAgents: true,
+  });
+  assert(decision);
+  await settings.set(DECISION_SMART_ORDER_SETTINGS_KEY, "true");
+  await chats.patchMetadata(chat.id, { groupResponseOrder: "smart" });
+  decisionAnswers = { [bob.id]: 0.9 };
+  await generate("Bob leans in.", undefined, { userMessage: '[whisper: character="Bob" text="SMART_USER_SECRET"]' });
+  assert.equal(selectorPrompts.length, 0, "the Decision model chose the speaker");
+  assert.equal((await chats.listMessages(chat.id)).at(-1)!.characterId, bob.id, "the whisper's recipient replies");
+  await settings.remove(DECISION_SMART_ORDER_SETTINGS_KEY);
+  selectorAnswer = [alice.id];
+  await generate("Alice answers.", undefined, { userMessage: "Who goes next?" });
+  assert.equal((await chats.listMessages(chat.id)).at(-1)!.characterId, alice.id);
+  for (const smart of [decisionStates.at(-1) ?? "", selectorPrompts.at(-1) ?? ""]) {
+    assert(inOrder(smart, "Alice smiles.", "[Private whisper to Bob: SMART_REPLY_SECRET]", "Then waits."), smart);
+    assert(smart.includes("[Private whisper to Bob: SMART_USER_SECRET]"), smart);
+    assert(!smart.includes("[Private whisper]"), "a whisper-only message reads as its whisper, not a placeholder");
+  }
+  assert(!/SMART_(REPLY|USER)_SECRET/u.test(mainPrompts.at(-1)!), "Alice, not a recipient, gets neither whisper");
+  await chats.patchMetadata(chat.id, { groupResponseOrder: "manual" });
+
   // A hosted room shows agent output to every participant, so its agents get no whispers.
   replaceBuiltInAgentDefinitions([
     {
@@ -457,26 +522,38 @@ try {
     content: 'The door creaks. [whisper: character="Alice" text="ROOM_SECRET"]',
   });
   await chats.patchMetadata(roomChat.id, { multiplayer: room });
-  let roomStatus = 0;
-  const roomErrors: unknown[] = [];
-  outputs = ["Bob looks up."];
-  await runner!(
-    { chatId: roomChat.id, forCharacterId: bob.id, streaming: false },
-    createGenerationEventSink({
-      onEvent: (event) => {
-        if (event.type === "error") roomErrors.push(event);
-      },
-      onFinish: ({ statusCode }) => {
-        roomStatus = statusCode;
-      },
-    }),
-    authority,
-  );
-  assert.equal(roomStatus, 200);
-  assert.deepEqual(roomErrors, []);
+  const runRoom = async (output: string, forCharacterId?: string) => {
+    let roomStatus = 0;
+    const roomErrors: unknown[] = [];
+    outputs = [output];
+    await runner!(
+      { chatId: roomChat.id, forCharacterId, streaming: false },
+      createGenerationEventSink({
+        onEvent: (event) => {
+          if (event.type === "error") roomErrors.push(event);
+        },
+        onFinish: ({ statusCode }) => {
+          roomStatus = statusCode;
+        },
+      }),
+      authority,
+    );
+    assert.equal(roomStatus, 200);
+    assert.deepEqual(roomErrors, []);
+    assert.equal(outputs.length, 0);
+  };
+  await runRoom("Bob looks up.", bob.id);
   const roomTracker = latest("ROOM_TRACKER_FIXTURE");
   assert(roomTracker.includes("The door creaks."), "the room's tracker ran on the room's history");
   assert(!roomTracker.includes("ROOM_SECRET"), "a room's agents never read a whisper");
+  // Nor does the room's Smart speaker selection.
+  await chats.patchMetadata(roomChat.id, { groupResponseOrder: "smart" });
+  selectorAnswer = [bob.id];
+  const roomSelectorsBefore = selectorPrompts.length;
+  await runRoom("Bob listens.");
+  assert.equal(selectorPrompts.length, roomSelectorsBefore + 1, "the room asked the chat-model selector");
+  const roomSelector = selectorPrompts.at(-1)!;
+  assert(roomSelector.includes("The door creaks.") && !roomSelector.includes("ROOM_SECRET"), roomSelector);
   // Runs started outside room generation, such as retries, treat any room data but an ended room as a room.
   for (const multiplayer of [room, { role: "guest", status: "active" }, { ...room, status: undefined }, "{"])
     assert.equal(roleplayAgentsSeeWhispers("roleplay", { multiplayer }), false, JSON.stringify(multiplayer));
@@ -495,7 +572,7 @@ try {
   assert(latest("ROOM_TRACKER_FIXTURE").includes("[Private whisper to Alice: ROOM_SECRET]"));
   assert(!mainPrompts.at(-1)!.includes("ROOM_SECRET"), "Bob is still not a recipient");
   console.log(
-    "Agents see whispers passed: post-generation reply whispers, whisper-only user turns, history placement, preview without double insertion, responder privacy, dead whispers, retries, continued group replies, responder tools and hosted rooms.",
+    "Agents see whispers passed: post-generation reply whispers, whisper-only user turns, history placement, preview without double insertion, responder privacy, dead whispers, retries, continued group replies, responder tools, Smart speaker selection and hosted rooms.",
   );
 } finally {
   await app.close();

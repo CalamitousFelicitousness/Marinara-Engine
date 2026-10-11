@@ -7239,12 +7239,15 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 about: character.personality || character.description || undefined,
               };
             });
+            // Smart order reads whispers like every agent: a whisper to Bob can make Bob the one who replies (#7430).
             const transcript = chatMessages
               .filter((message: any) => message.role === "user" || message.role === "assistant")
               .map((message: any) => ({
                 role: message.role as string,
                 name: resolveMessageSpeakerName(message),
-                content: stripConversationPromptTimestamps(conversationPromptHistoryContent(message, chatMode)),
+                content: stripConversationPromptTimestamps(
+                  roleplayAgentText(conversationPromptHistoryContent(message, chatMode), message, agentWhisperNames),
+                ),
               }));
             const answers = await backend.ask(
               smartOrderState(transcript, candidates, backend.maxStateTokens),
@@ -7288,7 +7291,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             .slice(-5)
             .map((message: any) => {
               const speaker = resolveMessageSpeakerName(message);
-              const content = stripConversationPromptTimestamps(conversationPromptHistoryContent(message, chatMode))
+              const content = stripConversationPromptTimestamps(
+                roleplayAgentText(conversationPromptHistoryContent(message, chatMode), message, agentWhisperNames),
+              )
                 .replace(/\s+/g, " ")
                 .trim()
                 .slice(0, 900);

@@ -277,7 +277,12 @@ try {
   const smartPrompts = prompts.slice(beforeSmart);
   const selector = smartPrompts.find((prompt) => prompt.includes("hidden response orchestrator"));
   assert(selector, "real Smart selector was invoked");
-  assert(!selector.includes("SECRET"), "speaker selection never receives private activity");
+  // Speaker selection reads whispers like every agent (#7430): a whisper to Bob can make Bob the one who replies.
+  assert(
+    selector.includes("Public Smart turn. [Private whisper to Bob: SMART_WHISPER_SECRET]"),
+    "speaker selection reads a whisper at its place, marked as private to its recipient",
+  );
+  assert(!/PLAN_SECRET|INTENT_SECRET/u.test(selector), "speaker selection never receives private notes");
 
   await generate('[notes: content="ALICE_PLAN_SECRET"] Alice speaks.', alice.id);
   await generate('[notes: content="BOB_PLAN_SECRET"] Bob speaks.', bob.id);

@@ -262,6 +262,7 @@ import { createCharacterGalleryStorage } from "../services/storage/character-gal
 import { createPersonaGalleryStorage } from "../services/storage/persona-gallery.storage.js";
 import { createGalleryStorage } from "../services/storage/gallery.storage.js";
 import { resolveGalleryImagePath } from "../services/image/gallery-image-path.js";
+import { isSentSelfieAttachment } from "../services/generation/prompt-attachments.js";
 import { createAppSettingsStorage } from "../services/storage/app-settings.storage.js";
 import { getCustomAgentImportPolicy } from "../services/agents/custom-agent-import-policy.service.js";
 import { buildLorebookSemanticEmbeddingsById, warmLorebookEntryEmbeddings } from "../services/lorebook/embeddings.js";
@@ -2079,6 +2080,18 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         const ext = extname(filePath).slice(1).toLowerCase();
         return `data:image/${ext === "jpg" ? "jpeg" : ext};base64,${(await readFile(filePath)).toString("base64")}`;
       };
+      // ponytail: only the newest selfie messages are captioned, so a long chat (or a changed caption
+      // model) never queues a caption call per old selfie before the reply; older selfies keep a saved
+      // caption or use their image prompt. Raise the count or caption in the background if that falls short.
+      const selfieCaptionMessageIds = new Set(
+        chatMessages
+          .filter(
+            (message: any) =>
+              message.role === "assistant" && normalizePromptAttachments(message.extra)?.some(isSentSelfieAttachment),
+          )
+          .slice(-2)
+          .map((message: any) => message.id),
+      );
       const initialLatestUserMessageId = [...chatMessages].reverse().find((message) => message.role === "user")?.id;
       const mapChatHistoryMessageForPrompt = async (
         m: any,
@@ -2100,7 +2113,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           debugMode: requestDebug,
         });
         const selfieCaptionedAttachments =
-          m.role === "assistant"
+          m.role === "assistant" && selfieCaptionMessageIds.has(m.id)
             ? await captionSentSelfies({
                 attachments: attachmentInputs.updatedAttachments ?? attachments,
                 imageCaptioning: imageCaptioningRuntime,

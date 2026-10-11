@@ -4479,6 +4479,14 @@ export function getCapabilityPackageInstallIssue(
   ) {
     return "A ruleset with a creature action that draws whoever it lands on toward it requires schemaVersion 2 and capabilityApi 1.321 or newer";
   }
+  // Rest dice over several pools, 1.332.
+  if (
+    !declaresApi(332) &&
+    Array.isArray(plainRecord(ruleset)?.rests) &&
+    (plainRecord(ruleset)!.rests as unknown[]).some((rest) => Array.isArray(plainRecord(rest)?.dice))
+  ) {
+    return "A ruleset with a rest that spends dice from several pools requires schemaVersion 2 and capabilityApi 1.332 or newer";
+  }
   // A broken concentration that picks one of a list of lair actions, 1.331.
   if (!declaresApi(331) && carriesBrokenLairList(ruleset)) {
     return "A ruleset with a broken concentration that picks one of a list of lair actions requires schemaVersion 2 and capabilityApi 1.331 or newer";

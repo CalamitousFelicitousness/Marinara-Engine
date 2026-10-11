@@ -7,6 +7,8 @@
  *   - The party's best extra die is added once to everybody who spends any, with its holder's bonus.
  *   - Too few dice, or a rest without dice, is refused and changes nothing.
  *   - The tag is written back with its dice; the GM is told about them; the install gate.
+ *   - Over several pools (1.332), each its own die: from the pool named, else the first listed that
+ *     has any, then the next; the extra die still once.
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -142,6 +144,80 @@ try {
   assert.equal(getCapabilityPackageInstallIssue(manifest(329) as never, document()), gate);
   assert.notEqual(getCapabilityPackageInstallIssue(manifest(330) as never, document()), gate);
   assert.notEqual(getCapabilityPackageInstallIssue(manifest(329) as never, document(false)), gate);
+
+  // ── Several pools, each its own die (1.332): a fighter 1 / wizard 1 has one d10 and one d6 ──
+  {
+    const multi = (() => {
+      const doc = document(false);
+      doc.sheet.live.pools.push(
+        { id: "hit_dice_d10", label: "Hit dice (d10)", group: "hit_dice_group", max: { const: 1 } },
+        { id: "hit_dice_d6", label: "Hit dice (d6)", group: "hit_dice_group", max: { const: 1 } },
+      );
+      const entry = (pool: string, sides: number) => ({
+        pool,
+        die: { const: sides },
+        add: { abilityMod: "con" },
+        heals: "hp",
+        extra: { die: { field: "song_die" }, add: { field: "song_bonus" } },
+      });
+      doc.rests.find((rest: { id: string }) => rest.id === "short").dice = [
+        entry("hit_dice_d10", 10),
+        entry("hit_dice_d6", 6),
+      ];
+      return doc;
+    })();
+    const read = parseRulesetDefinition(multi);
+    assert.ok(read.ok, read.ok ? "" : read.issues.join("; "));
+    const several: RulesetDefinition = read.definition;
+    const rest = (who: typeof ada, dice: number, pool?: string) =>
+      applyRulesetSheetOp(several, who, hurt, { op: "rest", rest: "short", dice, ...(pool ? { pool } : {}) }, roll);
+    // Both, the first listed first: d10 of 7 + 2, d6 of 4 + 2: 15.
+    const both = rest(ada, 2);
+    assert.ok(both.ok, JSON.stringify(both));
+    assert.equal(both.live.pools?.hp?.value, 25);
+    assert.equal(both.live.pools?.hit_dice_d10?.value, 0);
+    assert.equal(both.live.pools?.hit_dice_d6?.value, 0);
+    assert.ok(both.now.startsWith("2 spent (7, 4): "), both.now);
+    // One, from the first pool that has any.
+    const one = rest(ada, 1);
+    assert.ok(one.ok);
+    assert.equal(one.live.pools?.hp?.value, 19);
+    assert.equal(one.live.pools?.hit_dice_d10?.value, 0);
+    assert.equal(one.live.pools?.hit_dice_d6?.value, undefined, "untouched, still full");
+    // Named: the d6.
+    const named = rest(ada, 1, "hit_dice_d6");
+    assert.ok(named.ok);
+    assert.equal(named.live.pools?.hp?.value, 16);
+    assert.equal(named.live.pools?.hit_dice_d10?.value, undefined, "untouched, still full");
+    assert.deepEqual(rest(ada, 2, "hit_dice_d6"), { ok: false, reason: "insufficient" });
+    assert.deepEqual(rest(ada, 3), { ok: false, reason: "insufficient" });
+    assert.deepEqual(rest(ada, 1, "hit_dice_d12"), { ok: false, reason: "bad-pool" });
+    // Pell's song once, not once a pool: d10 of 7 - 2, d6 of 4 - 2, + d6 of 4 + 1: 12.
+    const sung = rest(pell, 2);
+    assert.ok(sung.ok);
+    assert.equal(sung.live.pools?.hp?.value, 22);
+    // The tag says which pool, and is written back with it.
+    assert.deepEqual(parseSheetCommandTagBody('op="rest" rest="short" dice="1" pool="hit_dice_d6"').op, {
+      op: "rest",
+      rest: "short",
+      dice: 1,
+      pool: "hit_dice_d6",
+    });
+    const tagged = applySheetCommandTags('[sheet: who="Ada" op="rest" rest="short" dice="1" pool="hit_dice_d6"]', {
+      definition: several,
+      cards: [{ name: "Ada", build: ada }],
+      playerName: "Ada",
+      live: { ada: hurt },
+      roll,
+    });
+    assert.equal(tagged.live.ada?.pools?.hp?.value, 16, JSON.stringify(tagged.outcomes));
+    assert.ok(tagged.content.includes('pool="hit_dice_d6"'), tagged.content);
+    const severalGate =
+      "A ruleset with a rest that spends dice from several pools requires schemaVersion 2 and capabilityApi 1.332 or newer";
+    assert.equal(getCapabilityPackageInstallIssue(manifest(331) as never, multi), severalGate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(332) as never, multi), severalGate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(331) as never, document()), severalGate);
+  }
 
   console.log("Rest dice: hit dice spent on a short rest heal, with the party's Song of Rest and the Teapot's +1.");
 } finally {

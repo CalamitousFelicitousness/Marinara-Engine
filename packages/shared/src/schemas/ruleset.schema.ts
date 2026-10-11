@@ -1253,7 +1253,9 @@ const restSchema = z
     id: sheetId,
     label,
     restore: z.array(restRestoreSchema).max(40).default([]),
-    dice: restDiceSchema.optional(),
+    /** Dice it may spend to heal (1.330); a list draws from several pools, each its own die (1.332):
+     *  5e's hit dice of a multiclass character, a d10 pool and a d6 pool. */
+    dice: z.union([restDiceSchema, z.array(restDiceSchema).min(1).max(12)]).optional(),
     clear: z
       .object({
         text: z.array(sheetId).max(12).default([]),

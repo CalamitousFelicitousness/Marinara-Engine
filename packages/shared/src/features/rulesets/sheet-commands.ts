@@ -17,6 +17,7 @@ import {
 } from "../../utils/sheet-command-tag.js";
 import {
   applyRulesetSheetOp,
+  rulesetRestDiceEntries,
   rulesetRestExtraDie,
   planRulesetUse,
   type RulesetLiveState,
@@ -148,7 +149,7 @@ export function applySheetCommandTags(
       (entry) => entry.id === restId || entry.label.trim().toLowerCase() === restId.trim().toLowerCase(),
     );
     let best: { sides: number; add: number } | null = null;
-    for (const member of rest?.dice?.extra ? ctx.cards : []) {
+    for (const member of rulesetRestDiceEntries(rest?.dice).some((entry) => entry.extra) ? ctx.cards : []) {
       const extra = rulesetRestExtraDie(ctx.definition, member.build, rest!.id);
       if (extra && (!best || extra.sides > best.sides || (extra.sides === best.sides && extra.add > best.add)))
         best = extra;

@@ -17,6 +17,7 @@ import {
 } from "../../utils/sheet-command-tag.js";
 import {
   applyRulesetSheetOp,
+  rulesetRestExtraDie,
   planRulesetUse,
   type RulesetLiveState,
   type RulesetLiveStates,
@@ -142,11 +143,26 @@ export function applySheetCommandTags(
     return { ok: true, live: state, now: paid.join(", ") } as const;
   };
 
+  const partyExtra = (restId: string): { extra?: { sides: number; add: number } } => {
+    const rest = ctx.definition.rests.find(
+      (entry) => entry.id === restId || entry.label.trim().toLowerCase() === restId.trim().toLowerCase(),
+    );
+    let best: { sides: number; add: number } | null = null;
+    for (const member of rest?.dice?.extra ? ctx.cards : []) {
+      const extra = rulesetRestExtraDie(ctx.definition, member.build, rest!.id);
+      if (extra && (!best || extra.sides > best.sides || (extra.sides === best.sides && extra.add > best.add)))
+        best = extra;
+    }
+    return best ? { extra: best } : {};
+  };
+
   const applyTo = (card: SheetCommandCard, op: RulesetSheetOp): RulesetSheetOpResult => {
     const key = normalizeCharacterLookupName(card.name);
     try {
       if (op.op === "use") return useOn(card, key, op);
-      const result = applyRulesetSheetOp(ctx.definition, card.build, live[key], op, ctx.roll);
+      // Dice spent on a rest (1.330) take the party's best extra die (Song of Rest), whoever has it.
+      const given = op.op === "rest" && op.dice && !op.extra ? { ...op, ...partyExtra(op.rest) } : op;
+      const result = applyRulesetSheetOp(ctx.definition, card.build, live[key], given, ctx.roll);
       if (result.ok) store(key, result.live);
       if (result.ok && op.op === "rest") rests.push({ who: card.name, rest: op.rest });
       return result;

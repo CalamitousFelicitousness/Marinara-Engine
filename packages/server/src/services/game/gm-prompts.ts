@@ -1133,6 +1133,12 @@ function renderRulesetSheetSection(
     ...(ruleset.rests.length > 0
       ? [`- [sheet: who="Name" op="rest" rest="Rest"] - rests: ${names(ruleset.rests)}.`]
       : []),
+    // Dice a rest may spend to heal (1.330): 5e's Hit Dice, as many as the player chooses.
+    ...(ruleset.rests.some((rest) => rest.dice)
+      ? [
+          `- [sheet: who="Name" op="rest" rest="Rest" dice="N"] - on ${names(ruleset.rests.filter((rest) => rest.dice))}, spends N of their dice to heal first, as many as the player chooses; the Engine rolls them.`,
+        ]
+      : []),
     // Only a ruleset with catalogs of ROWS has entries to use: a bestiary or an item catalog writes
     // nothing onto a sheet, so without one of those nothing on a sheet carries a price the Engine
     // could pay, and the line would describe a command that always refuses.

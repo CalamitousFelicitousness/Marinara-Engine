@@ -4469,6 +4469,14 @@ export function getCapabilityPackageInstallIssue(
   ) {
     return "A ruleset with a creature action that draws whoever it lands on toward it requires schemaVersion 2 and capabilityApi 1.321 or newer";
   }
+  // Dice a rest spends to heal, 1.330.
+  if (
+    !declaresApi(330) &&
+    Array.isArray(plainRecord(ruleset)?.rests) &&
+    (plainRecord(ruleset)!.rests as unknown[]).some((rest) => plainRecord(rest)?.dice !== undefined)
+  ) {
+    return "A ruleset with a rest that spends dice to heal requires schemaVersion 2 and capabilityApi 1.330 or newer";
+  }
   // An item use that gives more of the turn, 1.329.
   if (
     !declaresApi(329) &&

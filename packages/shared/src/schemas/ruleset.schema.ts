@@ -1234,11 +1234,26 @@ const restRestoreSchema = z
     }
   });
 
+/** Dice a rest may spend to heal (Capability API 1.330): 5e's Hit Dice on a short rest. `pool` is spent a
+ *  die at a time; each die has `die` sides (a number, or an enum field whose value reads "d8") and adds
+ *  `add` (Constitution), never below 0, to `heals`. `extra` is a die more for whoever spends any, from the
+ *  party member with the most sides of it, plus their `add` on it: Song of Rest, and Pell's Teapot's +1. */
+const restDiceSchema = z
+  .object({
+    pool: sheetId,
+    die: rulesetValueRefSchema,
+    add: rulesetValueRefSchema.optional(),
+    heals: sheetId,
+    extra: z.object({ die: rulesetValueRefSchema, add: rulesetValueRefSchema.optional() }).strict().optional(),
+  })
+  .strict();
+
 const restSchema = z
   .object({
     id: sheetId,
     label,
     restore: z.array(restRestoreSchema).max(40).default([]),
+    dice: restDiceSchema.optional(),
     clear: z
       .object({
         text: z.array(sheetId).max(12).default([]),

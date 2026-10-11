@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: a rest may spend dice to heal (`dice`, 5e's Hit Dice on a short rest, `[sheet: op="rest" dice="N"]`), with an extra die from the party's best (Song of Rest) and its holder's bonus on it (Pell's Teapot) (Capability API 1.330).
 - Rulesets: an item's use may give its user more of the turn at once (`gives`, the Time-Flour Loaf) (Capability API 1.329).
 - Fight boards drawn from board packs: terrain, edges, rims, light and fog, props and lasting areas, each falling back to today's drawing; a board or painted battlefield names its pack, else its environment's; a catalog zone may name its look (`art: "bz_fog"`) (Capability API 1.328).
 - Rulesets: a board prop may be lit again from beside it (`relight`), a creature's ground change may leave whoever stands there in it (`occupants: "stay"`, through the ice), and an entry or item use may be offered only beside a prop (`usableNear`, the Hymnal at the Wheel); a prop is named by id or by its label read loosely ("Year-Wheel" finds "The Year-Wheel") (Capability API 1.327).

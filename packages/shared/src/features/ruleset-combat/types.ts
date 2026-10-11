@@ -376,8 +376,9 @@ export interface RulesetStatBlockAction {
   draws?: { spends: string };
   /** Only at somebody who has taken their turn this round (1.322): the Hour Bell. */
   actedOnly?: true;
-  /** Its concentration broken, this lair action is its next (1.322): the Litany of Keeping. */
-  brokenNextLair?: string;
+  /** Its concentration broken, this lair action is its next (1.322): the Litany of Keeping. One of a
+   *  list, its runner picking (1.331). */
+  brokenNextLair?: string | string[];
   /** Creatures it calls into the fight (1.320), by bestiary entry, `count` of them. */
   calls?: { creature: string; count: RulesetCombatAmount; initiative?: "roll" | "after" };
   /** A permission (1.286): these standard actions taken with this action's budget, only while it
@@ -888,8 +889,9 @@ export interface RulesetCombatAction {
   draws?: { spends: string };
   /** Only at somebody who has taken their turn this round (1.322). */
   actedOnly?: true;
-  /** Its concentration broken, this lair action of its user's is the next they take (1.322). */
-  brokenNextLair?: string;
+  /** Its concentration broken, this lair action of its user's is the next they take (1.322), or one of
+   *  a list (1.331). */
+  brokenNextLair?: string | string[];
   /** Creatures it calls into the fight on its user's side (1.320), their block found as the fight
    *  began: Jars Burst's zombies. */
   calls?: {
@@ -1226,8 +1228,8 @@ export interface RulesetCombatant {
   lair?: {
     at: number;
     last?: { round: number; id: string };
-    /** The lair action it must take next (1.322): its Litany broken. */
-    next?: string;
+    /** The lair action it must take next (1.322): its Litany broken. A list is one of those (1.331). */
+    next?: string | string[];
   };
   /** How many of its block's legendary resistances it has spent (1.312). */
   legendaryResisted?: number;

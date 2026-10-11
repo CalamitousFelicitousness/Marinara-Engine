@@ -442,7 +442,12 @@ export interface RulesetOptionReach {
 
 /** The actor's own action behind an option id, when the option is one of theirs. */
 function actionOf(actor: RulesetCombatant, optionId: string): RulesetCombatAction | undefined {
-  return actor.actions.find((entry) => entry.id === optionId);
+  // A lair action as its window offers it (1.310) is aimed as the action itself: without this an area
+  // lair action had nowhere to be aimed, and an opponent the Engine runs let every one go by.
+  const id = optionId.startsWith(RULESET_LAIR_OPTION_PREFIX)
+    ? optionId.slice(RULESET_LAIR_OPTION_PREFIX.length)
+    : optionId;
+  return actor.actions.find((entry) => entry.id === id);
 }
 
 /**
@@ -3391,10 +3396,12 @@ export function rulesetLairOptions(
   if (!rulesetCombatStanding(actor)) return [];
   // Not the one it took the round before; only the one it must take next, when one is (1.322).
   const last = actor.lair.last?.round === round - 1 ? actor.lair.last.id : undefined;
-  const forced = actor.actions.some((action) => action.lair && action.id === actor.lair!.next)
-    ? actor.lair.next
-    : undefined;
-  const lairs = actor.actions.filter((action) => action.lair && (forced ? action.id === forced : action.id !== last));
+  const next = actor.lair.next;
+  const wanted = next === undefined ? [] : typeof next === "string" ? [next] : next;
+  const forced = wanted.filter((id) => actor.actions.some((action) => action.lair && action.id === id));
+  const lairs = actor.actions.filter(
+    (action) => action.lair && (forced.length ? forced.includes(action.id) : action.id !== last),
+  );
   const options: RulesetCombatOption[] = [];
   for (const budget of new Set(lairs.map((action) => action.budget))) {
     const view = rulesetBorrowedTurn(state, actor.id, budget);

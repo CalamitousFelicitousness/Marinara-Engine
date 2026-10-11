@@ -1628,6 +1628,16 @@ function carriesSaveDifficulty(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesSaveDifficulty(one, depth + 1));
 }
 
+/** Whether anything names a list of lair actions for a broken concentration to pick from (1.331). */
+function carriesBrokenLairList(value: unknown, depth = 0): boolean {
+  if (depth > 8) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesBrokenLairList(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (Array.isArray(record.brokenNextLair)) return true;
+  return Object.values(record).some((one) => carriesBrokenLairList(one, depth + 1));
+}
+
 /** Lair timing (1.322): a creature action only at whoever has acted this round, one whose broken
  *  concentration picks the next lair action, or a condition lasting until the next lair action. */
 function carriesLairTiming(value: unknown, depth = 0): boolean {
@@ -4468,6 +4478,10 @@ export function getCapabilityPackageInstallIssue(
     (carriesDraws(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesDraws(document)))
   ) {
     return "A ruleset with a creature action that draws whoever it lands on toward it requires schemaVersion 2 and capabilityApi 1.321 or newer";
+  }
+  // A broken concentration that picks one of a list of lair actions, 1.331.
+  if (!declaresApi(331) && carriesBrokenLairList(ruleset)) {
+    return "A ruleset with a broken concentration that picks one of a list of lair actions requires schemaVersion 2 and capabilityApi 1.331 or newer";
   }
   // Dice a rest spends to heal, 1.330.
   if (

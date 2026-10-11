@@ -1910,13 +1910,50 @@ function pickRulesetChoice(
   menu?: RulesetCombatOption[],
 ): RulesetCandidate | null {
   const candidates = menu
-    ? rulesetCandidatesFrom(definition, encounter, actorId, null, menu)
+    ? rulesetCandidatesFrom(definition, encounter, actorId, null, brokenLairMenu(definition, encounter, actorId, menu))
     : rulesetCandidates(definition, encounter, actorId);
   if (candidates.length === 0) return null;
   const unit = [...state.party, ...state.enemies].find((entry) => entry.id === actorId);
   if (!unit) return candidates[0]!.action;
   unit.tactics ??= assignCombatTactics(unit, state.seed);
   return chooseCombatCandidate(unit, candidates, encounter.round, normalizeGameDifficulty(state.difficulty));
+}
+
+/**
+ * A concentration broken into one of a list of lair actions (1.331): the one taken is whichever would
+ * catch the most foes, the shelves leaning onto the side of the room the party stands in. The others
+ * leave the menu; equal ones, and letting the moment go, stay for the usual picker to weigh.
+ */
+function brokenLairMenu(
+  definition: RulesetDefinition,
+  encounter: RulesetEncounterState,
+  actorId: string,
+  menu: RulesetCombatOption[],
+): RulesetCombatOption[] {
+  const actor = rulesetCombatant(encounter, actorId);
+  const lairs = menu.filter((option) => option.lairOf);
+  if (!actor || !Array.isArray(actor.lair?.next) || lairs.length < 2) return menu;
+  const foes = (ids: string[]) =>
+    new Set(
+      ids.filter((id) => {
+        const one = rulesetCombatant(encounter, id);
+        return !!one && one.side !== actor.side && !one.down;
+      }),
+    ).size;
+  const catches = new Map(
+    lairs.map((option) => {
+      const aims = rulesetAimCells(encounter, actorId, option.id);
+      let best = 0;
+      for (const candidate of rulesetCandidatesFrom(definition, encounter, actorId, null, [option])) {
+        const { at, targetIds } = candidate.action.choice;
+        const caught = at ? (aims.find((aim) => aim.x === at.x && aim.y === at.y)?.targetIds ?? []) : targetIds;
+        best = Math.max(best, foes(caught));
+      }
+      return [option.id, best] as const;
+    }),
+  );
+  const most = Math.max(...catches.values());
+  return menu.filter((option) => !option.lairOf || catches.get(option.id) === most);
 }
 
 // ── One step ──

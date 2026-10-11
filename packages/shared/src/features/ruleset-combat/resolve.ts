@@ -3305,9 +3305,10 @@ function endConcentration(
   }
   endSummons(ctx, actor, held.actionId);
   endZones(ctx, actor, held.actionId);
-  // Broken, it makes its lair's next action this one (1.322): the Litany of Keeping.
+  // Broken, it makes its lair's next action this one (1.322), or one of these (1.331): the Litany of Keeping.
   const next = actor.actions.find((action) => action.id === held.actionId)?.brokenNextLair;
-  if (next && actor.lair && (reason === "damage" || reason === "down" || reason === "zone")) actor.lair.next = next;
+  if (next && actor.lair && (reason === "damage" || reason === "down" || reason === "zone"))
+    actor.lair.next = typeof next === "string" ? next : [...next];
   const concentration = ctx.combat.concentration;
   if (concentration) writeRulesetSheet(ctx.definition, actor, { op: "note", field: concentration.text, value: "" });
   // Whatever the concentration was holding up goes with it, wherever it landed.

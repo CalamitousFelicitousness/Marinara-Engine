@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: a broken concentration may leave one of a list of lair actions to take next (`brokenNextLair` as a list, the shelves leaning north or south), whoever runs the creature picking; the Engine picks the one catching the most foes. Fixed: an area lair action taken by a creature the Engine runs had nowhere to be aimed, so the moment was always let go (Capability API 1.331).
 - Rulesets: a rest may spend dice to heal (`dice`, 5e's Hit Dice on a short rest, `[sheet: op="rest" dice="N"]`), with an extra die from the party's best (Song of Rest) and its holder's bonus on it (Pell's Teapot) (Capability API 1.330).
 - Rulesets: an item's use may give its user more of the turn at once (`gives`, the Time-Flour Loaf) (Capability API 1.329).
 - Fight boards drawn from board packs: terrain, edges, rims, light and fog, props and lasting areas, each falling back to today's drawing; a board or painted battlefield names its pack, else its environment's; a catalog zone may name its look (`art: "bz_fog"`) (Capability API 1.328).

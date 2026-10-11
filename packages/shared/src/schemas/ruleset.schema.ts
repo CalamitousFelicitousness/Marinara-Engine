@@ -4556,8 +4556,9 @@ const creatureActionSchema = z
     actedOnly: z.literal(true).optional(),
     /** Held by its `concentration`, which once broken (by harm, by going down, or by what a zone
      *  does) makes this lair action of its own the next it takes (Capability API 1.322): Father
-     *  Ivo's Litany of Keeping, the shelves leaning. */
-    brokenNextLair: sheetId.optional(),
+     *  Ivo's Litany of Keeping, the shelves leaning. A list (Capability API 1.331) makes the next one of
+     *  those, whoever runs it picking: the shelves leaning north or south. */
+    brokenNextLair: z.union([sheetId, z.array(sheetId).min(1).max(8)]).optional(),
   })
   .strict()
   .superRefine((action, ctx) => {
@@ -12111,8 +12112,13 @@ function creatureIssues(
     if (action.brokenNextLair !== undefined) {
       if (!action.concentration)
         add([...path, "brokenNextLair"], "Only a creature action held by its concentration is broken");
-      else if (!byId.get(action.brokenNextLair)?.lair) {
-        add([...path, "brokenNextLair"], `"${action.brokenNextLair}" is not one of its lair actions`);
+      else {
+        const ids = typeof action.brokenNextLair === "string" ? [action.brokenNextLair] : action.brokenNextLair;
+        ids.forEach((id, entry) => {
+          const at = typeof action.brokenNextLair === "string" ? [] : [entry];
+          if (!byId.get(id)?.lair) add([...path, "brokenNextLair", ...at], `"${id}" is not one of its lair actions`);
+          else if (ids.indexOf(id) !== entry) add([...path, "brokenNextLair", ...at], `"${id}" is listed twice`);
+        });
       }
     }
     if (action.draws && !budgets.has(action.draws.spends)) {

@@ -18,10 +18,19 @@ const { createConfiguredCapabilityEmbeddingHost } =
 
 const db = await createFileNativeDB();
 const inputs: unknown[] = [];
+// A fixed cap, never taken from the request.
+const MAX_FIXTURE_BODY = 64_000;
 const embeddingServer = createServer((request, response) => {
   let body = "";
-  request.on("data", (chunk) => (body += chunk));
+  request.on("data", (chunk) => {
+    body += chunk;
+    if (body.length > MAX_FIXTURE_BODY) {
+      response.writeHead(413).end();
+      request.destroy();
+    }
+  });
   request.on("end", () => {
+    if (response.writableEnded) return;
     const { input } = JSON.parse(body) as { input: string[] };
     inputs.push(input);
     response.setHeader("content-type", "application/json");

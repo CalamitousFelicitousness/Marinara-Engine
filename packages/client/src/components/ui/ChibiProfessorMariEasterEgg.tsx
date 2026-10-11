@@ -57,11 +57,13 @@ function showChibiProfessorMariToast() {
   const shiny = variant.id === "shiny";
   toast.custom(
     (toastId) => (
-      <div className={`relative flex gap-3 pr-8 ${shiny ? "max-w-[560px]" : "max-w-[360px]"} text-[var(--foreground)]`}>
+      <div
+        className={`relative flex gap-3 p-3 pr-9 ${shiny ? "max-w-[560px]" : "max-w-[360px]"} text-[var(--foreground)]`}
+      >
         <button
           type="button"
           onClick={() => toast.dismiss(toastId)}
-          className="absolute right-0 top-0 rounded-full p-1 text-foreground/45 transition-colors hover:bg-foreground/10 hover:text-foreground focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/60"
+          className="absolute right-2 top-2 rounded-full p-1 text-foreground/45 transition-colors hover:bg-foreground/10 hover:text-foreground focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/60"
           aria-label={translate("ui.chibiProfessorMari.dismiss")}
         >
           <X className="h-3.5 w-3.5" aria-hidden="true" />

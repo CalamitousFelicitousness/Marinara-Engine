@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: creatures fighting in their lair now take lair actions: one a round on initiative count 20 (losing ties), never the same one two rounds running, and the Game Master can say which enemy is in its lair (Capability API 1.310).
 - Rulesets: the fight board now shows the light on each square (dim, dark, or sunlight) and any fog or haze over it, and says so when a square is read aloud.
 - Rulesets: Resilient Sphere shuts a creature away from everybody else; nothing gets in or out, the creature inside can roll it at half speed, others can pick it up and carry it, and Disintegrate breaks it. Spells can also be limited to creatures up to a size, such as Large or smaller (Capability API 1.309).
 - Rulesets: Maze keeps its prisoner taking turns to find the way out with an Intelligence check, Expeditious Retreat Dashes as it is cast, Eyebite can pick a different effect on each later turn, and a Hammer of Thunderbolts can only be attuned while a giant strength belt and ogre power gauntlets are worn, then gives +4 Strength up to 30 (Capability API 1.308).

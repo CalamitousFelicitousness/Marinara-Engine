@@ -1559,6 +1559,16 @@ function carriesHidingTraits(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesHidingTraits(one, depth + 1));
 }
 
+/** Lair actions and a lair's count (1.310). */
+function carriesLair(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesLair(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.lair !== undefined || record.lairInitiative !== undefined) return true;
+  return Object.values(record).some((one) => carriesLair(one, depth + 1));
+}
+
 /** A sphere that shuts its holder away, and an entry aimed only at creatures up to a size (1.309). */
 function carriesSphere(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -4245,6 +4255,13 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Lair actions, 1.310.
+  if (
+    !declaresApi(310) &&
+    (carriesLair(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesLair(document)))
+  ) {
+    return "A ruleset with a creature's lair actions requires schemaVersion 2 and capabilityApi 1.310 or newer";
   }
   // Resilient Sphere, 1.309.
   if (

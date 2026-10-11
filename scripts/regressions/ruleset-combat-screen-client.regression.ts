@@ -845,6 +845,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["sphere", say({ type: "sphere", actorId: "lurker", how: "rolled", cells: 3 })],
     ["sphere", say({ type: "sphere", actorId: "brenna", how: "lifted", targetId: "lurker" })],
     ["sphere", say({ type: "sphere", actorId: "brenna", how: "put-down", targetId: "lurker" })],
+    ["lair", say({ type: "lair", actorId: "lurker", optionId: "quake", label: "Tremor" })],
     ["left", say({ type: "left", actorId: "lurker", label: "Teleport" })],
     ["surprised", say({ type: "surprised", actorIds: ["brenna", "lurker"] })],
     ["surpriseOver", say({ type: "surpriseOver", actorId: "lurker" })],

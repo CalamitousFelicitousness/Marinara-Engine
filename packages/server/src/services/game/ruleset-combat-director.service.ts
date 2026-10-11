@@ -77,6 +77,7 @@ import {
   rulesetWindowMoment,
   rulesetZonesShown,
   rulesetBoardShading,
+  rulesetOpenLairWindow,
   rulesetWindowOptions,
   rulesetAreaCells,
   rulesetZoneCatches,
@@ -218,6 +219,8 @@ export interface RulesetFightSeed {
   bestiary: RulesetCatalogEntriesById;
   /** Who is caught unaware as it begins (1.232), by id, as the Game Master set the scene. */
   surprised?: string[];
+  /** Who fights in its own lair (1.310), by id: its lair actions are taken on its lair's count. */
+  inLair?: string[];
   /** The scene's time of day as the game tracks it (1.286), which sets the light outdoors. */
   time?: string | null;
 }
@@ -378,19 +381,22 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
 
   const board = buildRulesetBoard(input, combatants);
   if (board && "error" in board) return { ok: false, error: board.error };
-  const encounter = createRulesetEncounter({
+  let encounter = createRulesetEncounter({
     definition,
     seed: input.seed,
     combatants,
     bestiary: input.bestiary,
     ...(board ? { board } : {}),
     ...(input.surprised?.length ? { surprised: input.surprised } : {}),
+    ...(input.inLair?.length ? { inLair: input.inLair } : {}),
   });
   for (const [id, tier] of heldToTier) {
     const built = rulesetCombatant(encounter, id);
     if (!built) continue;
     for (const line of holdRulesetCombatant(definition, built, tier)) adjustments.push(`${built.name}: ${line}`);
   }
+  // A lair whose count comes before everybody's acts before the first turn (1.310).
+  encounter = rulesetOpenLairWindow(definition, encounter);
   const fight: RulesetFightState = {
     encounter,
     eventSeq: 0,

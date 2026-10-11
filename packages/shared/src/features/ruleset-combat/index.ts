@@ -146,6 +146,7 @@ export {
   rulesetInitiativeOrder,
   rulesetMovementAllowance,
   rulesetSealed,
+  rulesetLairRound,
   rulesetSealedApart,
   grantRulesetMovement,
   rulesetFastestSpeed,
@@ -241,6 +242,9 @@ export {
   rulesetPoolPaysFor,
   rulesetProneCondition,
   rulesetSignatureOptions,
+  rulesetLairOptions,
+  rulesetLentLairTurn,
+  RULESET_LAIR_OPTION_PREFIX,
   rulesetStandCost,
   rulesetStandardBudget,
   rulesetStandardName,
@@ -269,6 +273,7 @@ export {
 } from "./options.js";
 export {
   advanceRulesetTurn,
+  rulesetOpenLairWindow,
   applyRulesetCombatChoice,
   liftRulesetFightEffects,
   settleRulesetFledFight,

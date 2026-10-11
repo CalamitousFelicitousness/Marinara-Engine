@@ -59,6 +59,7 @@ import {
   rulesetMovementAllowance,
   rulesetSealed,
   rulesetSealedApart,
+  rulesetLairRound,
   rulesetCombatFailsSave,
   rulesetCombatDamageKind,
   rulesetCombatHealth,
@@ -178,6 +179,7 @@ import {
   rulesetSequenceCanHappen,
   rulesetSequencePartAvailable,
   rulesetSignatureOptions,
+  rulesetLentLairTurn,
   rulesetStandCost,
   rulesetStandardBudget,
   rulesetStandardName,
@@ -4881,6 +4883,10 @@ function applyInWindow(
 
   const option = rulesetWindowOptions(definition, state, actor.id).find((entry) => entry.id === choice.optionId);
   if (!option) return refusal(state, choice.actorId, "unknown-option", choice.optionId);
+  // A lair action (1.310), resolved as its maker's own turn would resolve it.
+  if (window.kind === "signature" && option.lairOf) {
+    return takeLairAction(definition, combat, state, window, actor, option.lairOf, choice, roller);
+  }
   // A spell cast with points (1.279), resolved as its maker's own turn would resolve it.
   if (window.kind === "signature" && option.castOf) {
     return castWithPoints(definition, combat, state, window, actor, option.castOf, choice, roller);
@@ -5304,7 +5310,15 @@ function windowClosed(
     }
     return;
   }
-  if (!over && trigger.kind === "between-turns") beginNextTurn(definition, combat, ctx);
+  // Before the very first turn (1.310), that turn goes on as it was handed out: only what its start
+  // asks is asked now.
+  if (!over && trigger.kind === "between-turns" && trigger.opening) {
+    const first = currentRulesetActor(ctx.state);
+    if (first) {
+      openMoment(ctx, { kind: "turn-start", sourceId: first.id, label: first.name }, ctx.state.combatants);
+      if (!ctx.state.window) completeDelayed(ctx, first);
+    }
+  } else if (!over && trigger.kind === "between-turns") beginNextTurn(definition, combat, ctx);
   if (!over && trigger.kind === "turn-start") {
     const actor = rulesetCombatant(ctx.state, trigger.sourceId);
     if (actor) completeDelayed(ctx, actor);
@@ -5453,6 +5467,101 @@ function castWithPoints(
       ...after.events,
     ],
   };
+}
+
+/**
+ * A lair action (1.310): chosen, aimed and resolved exactly as on its maker's own turn, with the
+ * budget it is taken with lent for it, and nothing of its maker's own turn spent. It is this
+ * round's, and the next round's may not be the same one. Anything it opens holds the window it was
+ * taken in, which is asked on from once all of it has closed.
+ */
+function takeLairAction(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  state: RulesetEncounterState,
+  window: RulesetCombatWindow,
+  actor: RulesetCombatant,
+  optionId: string,
+  choice: RulesetCombatChoice,
+  roller: RulesetCombatRoller,
+): RulesetCombatStep {
+  const action = actor.actions.find((entry) => entry.id === optionId && entry.lair);
+  const round = rulesetLairRound(definition, state, actor);
+  if (!action || round === null) return refusal(state, choice.actorId, "unknown-option", choice.optionId);
+  const outer = structuredClone(window);
+  outer.waiting.shift();
+  const view = rulesetBorrowedTurn(state, actor.id, action.budget);
+  const { window: _window, ...plain } = choice;
+  let taken: RulesetCombatStep;
+  borrowedOuter = outer;
+  try {
+    taken = rulesetLentLairTurn(() =>
+      applyRulesetCombatChoice(definition, view, { ...plain, optionId: action.id }, roller),
+    );
+  } finally {
+    borrowedOuter = undefined;
+  }
+  if (taken.state === view) {
+    return {
+      state,
+      events: taken.events.map((event) => (event.type === "refused" ? { ...event, optionId: choice.optionId } : event)),
+    };
+  }
+  const { ctx, finish } = begin(definition, combat, taken.state, roller);
+  // Back to the turn it really is, with the budgets that turn left.
+  ctx.state.turn = state.turn;
+  const working = rulesetCombatant(ctx.state, actor.id)!;
+  working.budgets = { ...actor.budgets };
+  if (working.lair) working.lair.last = { round, id: action.id };
+  if (!ctx.state.window) {
+    ctx.state.window = outer;
+    goOn(definition, combat, ctx, false);
+  }
+  if (!taken.events.some((event) => event.type === "outcome")) noteOutcome(ctx);
+  const after = finish();
+  return {
+    state: after.state,
+    events: [
+      { type: "lair", actorId: actor.id, optionId: action.id, label: action.label },
+      ...taken.events,
+      ...after.events,
+    ],
+  };
+}
+
+/**
+ * The window before the fight's very first turn (Capability API 1.310), opened when somebody's
+ * lair's count comes before everybody's: their lair actions are taken in it, and the first turn
+ * goes on as it was handed out once it closes. Anything that turn's start was asking waits behind
+ * it. The fight as it was when nobody's lair is due.
+ */
+export function rulesetOpenLairWindow(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+): RulesetEncounterState {
+  const combat = definition.combat;
+  const first = currentRulesetActor(state);
+  if (!combat || !first || state.round !== 1 || !state.combatants.some((one) => one.lair)) return state;
+  if (state.window && state.window.trigger.kind !== "turn-start") return state;
+  const next = structuredClone(state);
+  next.window = {
+    id: `w${(next.windows ?? 0) + 1}`,
+    kind: "signature",
+    trigger: { kind: "between-turns", nextActorId: first.id, opening: true },
+    waiting: [],
+  };
+  const waiting = [...new Set(next.order)].filter((id) =>
+    rulesetSignatureOptions(definition, next, id).some((option) => option.lairOf),
+  );
+  if (waiting.length === 0) return state;
+  next.windows = (next.windows ?? 0) + 1;
+  next.window.waiting = waiting;
+  // Said as the fight opens, the turn-start window it holds back no longer.
+  next.opening = [
+    ...(next.opening ?? []).filter((event) => event.type !== "window"),
+    { type: "window", window: next.window.id, kind: "signature", waiting: [...waiting] },
+  ];
+  return next;
 }
 
 /**

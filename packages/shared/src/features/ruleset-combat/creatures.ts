@@ -250,6 +250,7 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
     ...(action.charge ? { charge: chargeOf(action, action.charge) } : {}),
     ...(action.sequence ? { sequence: action.sequence.map((step) => ({ ...step })) } : {}),
     ...(action.signature ? { signature: { ...action.signature } } : {}),
+    ...(action.lair ? { lair: true as const } : {}),
     ...(action.reaction
       ? {
           reaction: {
@@ -452,6 +453,7 @@ function blockFromCreature(creature: RulesetCreature, budgets: ReadonlySet<strin
     tier: creature.tier,
     ...(creature.traits ? { traits: creature.traits.map((trait) => ({ ...trait })) } : {}),
     ...(creature.signaturePoints !== undefined ? { signaturePoints: creature.signaturePoints } : {}),
+    ...(creature.lairInitiative !== undefined ? { lairInitiative: creature.lairInitiative } : {}),
     ...(creature.riders?.length ? { riders: creature.riders.flatMap((rider) => riderOf(rider, ids)) } : {}),
   };
 }

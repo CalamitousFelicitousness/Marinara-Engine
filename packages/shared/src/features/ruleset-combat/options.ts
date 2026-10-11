@@ -63,6 +63,7 @@ import {
   rulesetCheckMode,
   rulesetConditionModifiers,
   rulesetDamageInEffect,
+  rulesetLairRound,
   rulesetSealed,
   rulesetSealedApart,
   rulesetSizeRank,
@@ -2159,6 +2160,8 @@ function optionFrom(
   // A signature action is bought with points at the end of somebody else's turn, so it is never on
   // the actor's own menu. `rulesetSignatureOptions` is where it is offered.
   if (action.signature) return null;
+  // Nor a lair action (1.310), but on the turn lent for it.
+  if (action.lair && !lairLent) return null;
   // A reaction waits for its moment, which is never a turn. `rulesetWindowOptions` is where the
   // moment offers it.
   if (action.reaction && !atItsMoment) return null;
@@ -3217,10 +3220,12 @@ export function rulesetSignatureOptions(
   const combat = definition.combat;
   const actor = rulesetCombatant(state, actorId);
   const points = actor?.signature?.points;
-  if (!combat || !actor || points === undefined) return [];
-  if (currentRulesetActor(state)?.id === actorId) return [];
-  if (!rulesetCombatStanding(actor) || actor.surprised || blocked(definition, combat, state, actor)) return [];
-  const options: RulesetCombatOption[] = [];
+  // Its lair's actions first (1.310), on the lair's own count, whosever turn has just ended.
+  const lair = rulesetLairOptions(definition, state, actorId);
+  if (!combat || !actor || points === undefined) return lair;
+  if (currentRulesetActor(state)?.id === actorId) return lair;
+  if (!rulesetCombatStanding(actor) || actor.surprised || blocked(definition, combat, state, actor)) return lair;
+  const options: RulesetCombatOption[] = [...lair];
   for (const action of actor.actions) {
     if (!action.signature || action.signature.cost > points) continue;
     if (!rulesetActionAvailable(actor, action, state, definition) || !rulesetSequenceCanHappen(actor, action)) continue;
@@ -3253,6 +3258,55 @@ export function rulesetSignatureOptions(
   }
   return options;
 }
+
+/** Set while a lair's turn is lent (1.310), the only menu its lair actions are on. */
+let lairLent = false;
+
+/** The menu as a turn lent for a lair action shows it (1.310): its lair actions on it. */
+export function rulesetLentLairTurn<T>(read: () => T): T {
+  const was = lairLent;
+  lairLent = true;
+  try {
+    return read();
+  } finally {
+    lairLent = was;
+  }
+}
+
+/**
+ * The lair actions this combatant may take right now (Capability API 1.310): on its lair's count,
+ * once a round, not the one it took the round before, each aimed as it would be on its own turn with the budget
+ * it is taken with lent for it. None while it is down or cannot act.
+ */
+export function rulesetLairOptions(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  actorId: string,
+): RulesetCombatOption[] {
+  const combat = definition.combat;
+  const actor = rulesetCombatant(state, actorId);
+  const round = actor?.lair ? rulesetLairRound(definition, state, actor) : null;
+  if (!combat || !actor?.lair || round === null) return [];
+  // Down, it takes none; held from acting, its lent turn's menu offers none.
+  if (!rulesetCombatStanding(actor)) return [];
+  // Not the one it took the round before.
+  const last = actor.lair.last?.round === round - 1 ? actor.lair.last.id : undefined;
+  const lairs = actor.actions.filter((action) => action.lair && action.id !== last);
+  const options: RulesetCombatOption[] = [];
+  for (const budget of new Set(lairs.map((action) => action.budget))) {
+    const view = rulesetBorrowedTurn(state, actor.id, budget);
+    for (const option of rulesetLentLairTurn(() => rulesetCombatOptions(definition, view, actor.id))) {
+      const own = lairs.find((action) => action.id === option.id);
+      if (!own || option.budget !== budget) continue;
+      const { budget: _budget, ...rest } = option;
+      options.push({ ...rest, id: `${RULESET_LAIR_OPTION_PREFIX}${option.id}`, lairOf: option.id });
+    }
+  }
+  return options;
+}
+
+/** What a lair action's option id starts with (1.310), before the option it takes. */
+export const RULESET_LAIR_OPTION_PREFIX = "lair>";
 
 /**
  * The fight as its maker's own turn would show it, for a legendary cast (1.279): no window open,

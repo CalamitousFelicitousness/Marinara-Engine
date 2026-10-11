@@ -119,6 +119,55 @@ function amountOf(amount: RulesetCatalogMechanics["amount"]): RulesetCombatAmoun
 
 // ── Reading a combatant ──
 
+/**
+ * The round whose lair action this combatant may take right now (Capability API 1.310), or null.
+ * Its lair's count comes once a round, after everybody at that count or above it and before
+ * anybody below it: between the two turns it falls between, before the very first turn when
+ * everybody is below it, or after the last when nobody is. A round that throws initiative again
+ * has no order yet as it begins, so its lair's count comes as it does. Never twice in a round.
+ */
+export function rulesetLairRound(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  combatant: RulesetCombatant,
+): number | null {
+  const lair = combatant.lair;
+  if (!lair) return null;
+  const trigger = state.window?.trigger;
+  let round: number | null = null;
+  if (trigger?.kind === "between-turns" && trigger.opening) {
+    const first = rulesetCombatant(state, state.order[state.turn] ?? "");
+    if (first && first.initiative < lair.at) round = state.round;
+  } else {
+    const current = rulesetCombatant(state, state.order[state.turn] ?? "");
+    let turn = state.turn;
+    let wraps = false;
+    let next: RulesetCombatant | undefined;
+    for (let step = 0; step < state.order.length; step++) {
+      if (turn + 1 >= state.order.length) wraps = true;
+      turn = turn + 1 >= state.order.length ? 0 : turn + 1;
+      const candidate = rulesetCombatant(state, state.order[turn]!);
+      if (candidate && lairTurnTaker(candidate)) {
+        next = candidate;
+        break;
+      }
+    }
+    if (!current || !next) return null;
+    if (!wraps) {
+      if (current.initiative >= lair.at && next.initiative < lair.at) round = state.round;
+    } else if (definition.combat?.initiative.each === "round" || definition.combat?.initiative.resource) {
+      round = state.round + 1;
+    } else if (current.initiative >= lair.at) round = state.round;
+    else if (next.initiative < lair.at) round = state.round + 1;
+  }
+  return round === null || lair.last?.round === round ? null : round;
+}
+
+function lairTurnTaker(combatant: RulesetCombatant): boolean {
+  if (combatant.defeated) return !!(combatant.away?.turns && combatant.away.while);
+  return !combatant.down || (combatant.dying && !combatant.stable);
+}
+
 export function rulesetCombatant(state: RulesetEncounterState, id: string): RulesetCombatant | undefined {
   return state.combatants.find((combatant) => combatant.id === id);
 }
@@ -3138,6 +3187,7 @@ function blockActions(
         }
       : {}),
     ...(action.signature ? { signature: { cost: action.signature.cost } } : {}),
+    ...(action.lair ? { lair: true as const } : {}),
     ...(action.reaction
       ? {
           reaction: {
@@ -3840,6 +3890,8 @@ export interface RulesetEncounterInput {
   /** Who is caught unaware as it begins (1.232): no move or action on their first turn, and no
    *  reaction until it ends. One whose conditions say they cannot be surprised is not. */
   surprised?: string[];
+  /** Who fights in its own lair (1.310): its lair actions are taken on its lair count. */
+  inLair?: string[];
 }
 
 /**
@@ -4092,6 +4144,12 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
     if (out.length) combatant.surpriseOut = [...new Set(out)];
   };
   for (const id of input.surprised ?? []) surprise(id);
+  // In its lair (1.310), a creature with lair actions takes them on its lair's count.
+  for (const id of new Set(input.inLair ?? [])) {
+    const combatant = rulesetCombatant(state, id);
+    if (!combatant?.actions.some((action) => action.lair)) continue;
+    combatant.lair = { at: combatant.block?.lairInitiative ?? 20 };
+  }
 
   // Everybody's contests, last, so one that takes the place of a strike can see what strikes the
   // actor's own actions buy. A ruleset with none adds nothing, and its fights are what they were.

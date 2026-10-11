@@ -4351,6 +4351,11 @@ const creatureActionSchema = z
       .object({ cost: z.number().int().min(1).max(20) })
       .strict()
       .optional(),
+    /** A lair action (Capability API 1.310): taken, while the creature fights in its lair, once a
+     *  round as the fight's count passes its `lairInitiative` (losing ties), never the same one two
+     *  rounds running. Aimed and resolved as on its own turn, with its `budget` lent for it and
+     *  nothing of its own turn spent. 5e's dragons' lair actions on initiative count 20. */
+    lair: z.literal(true).optional(),
     /** Taken at a moment rather than on a turn, exactly as a catalog entry's reaction is. */
     reaction: rulesetReactionMomentSchema.optional(),
     /** It lands on the creature itself rather than on somebody else: a parry, a guard, a hardening. */
@@ -4612,6 +4617,14 @@ const creatureActionSchema = z
         message: "A reaction is taken at its moment, so it is not bought between turns as well",
       });
     }
+    // A lair action is the lair's, on its own count (1.310): not a reaction, not bought with points.
+    if (action.lair && (action.reaction || action.signature)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["lair"],
+        message: "A lair action is taken on its own count, so it is neither a reaction nor bought with points",
+      });
+    }
     if (action.save && action.saveDifficulty !== undefined) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -4869,6 +4882,9 @@ const creatureFields = {
     .optional(),
   /** Points given back at the start of its own turn, spent on `signature` actions. */
   signaturePoints: z.number().int().min(1).max(20).optional(),
+  /** The count its `lair` actions are taken on (Capability API 1.310), losing ties: 20 when left
+   *  out. */
+  lairInitiative: z.number().int().min(-100).max(1000).optional(),
   actions: z.array(creatureActionSchema).min(1).max(RULESET_CREATURE_MAX_ACTIONS),
   /** Catalog spells cast without spending anything off a sheet (Capability API 1.118). Omitted
    *  uses means at will; a coven spell shares its uses while enough members stand nearby. */
@@ -4878,9 +4894,20 @@ const creatureFields = {
 };
 
 function creatureSignatureIssues(
-  creature: { signaturePoints?: number; actions: Array<{ signature?: { cost: number } }> },
+  creature: {
+    signaturePoints?: number;
+    lairInitiative?: number;
+    actions: Array<{ signature?: { cost: number }; lair?: true }>;
+  },
   ctx: z.RefinementCtx,
 ): void {
+  if (creature.lairInitiative !== undefined && !creature.actions.some((action) => action.lair)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["lairInitiative"],
+      message: "A lair's count is for its lair actions, so the creature has one",
+    });
+  }
   if (creature.signaturePoints === undefined && creature.actions.some((action) => action.signature)) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -11976,6 +12003,8 @@ function creatureIssues(
       // A signature action is bought with points while somebody else is acting. Inside a sequence it
       // would be had for a budget on the creature's own turn, which is neither.
       if (named.signature) add(where, `"${step.action}" is bought with points, so a sequence cannot name it`);
+      // Nor a lair's (1.310), taken on its own count.
+      if (named.lair) add(where, `"${step.action}" is a lair action, so a sequence cannot name it`);
     });
     // A blink dog's bite before or after its teleport (1.275): one of its other plain actions.
     const strike = action.teleport?.strike;
@@ -11984,7 +12013,7 @@ function creatureIssues(
       const named = byId.get(strike);
       if (!named) add(where, `Unknown action "${strike}"`);
       else if (named.id === action.id) add(where, "A teleport's strike is another action, not the teleport itself");
-      else if (named.reaction || named.sequence || named.teleport || named.signature)
+      else if (named.reaction || named.sequence || named.teleport || named.signature || named.lair)
         add(
           where,
           `"${strike}" is a reaction, a sequence, a teleport or bought with points, so it is no teleport's strike`,

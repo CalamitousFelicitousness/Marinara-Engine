@@ -416,6 +416,8 @@ export interface RulesetStatBlockAction {
   sequence?: Array<{ action: string; times: number }>;
   /** Bought out of the block's own `signaturePoints` instead of a budget. */
   signature?: { cost: number };
+  /** A lair action (1.310), taken on the block's `lairInitiative` while it fights in its lair. */
+  lair?: true;
   /** Taken at a moment rather than on a turn, as a catalog entry's reaction is. */
   reaction?: {
     on: RulesetReactionMoment;
@@ -518,6 +520,8 @@ export interface RulesetStatBlock {
   traits?: Array<{ name: string; text: string }>;
   /** Points given back at the start of its own turn, spent on `signature` actions. */
   signaturePoints?: number;
+  /** The count its lair actions are taken on (1.310), losing ties; 20 when left out. */
+  lairInitiative?: number;
   /** What this creature adds to the first qualifying hit of a period, all by itself. */
   riders?: RulesetCombatRider[];
 }
@@ -774,6 +778,8 @@ export interface RulesetCombatAction {
   sequence?: RulesetCombatSequenceStep[];
   /** Bought with the actor's own points at the end of somebody else's turn, not with a budget. */
   signature?: { cost: number };
+  /** A lair action (1.310): on its maker's lair count, once a round, while it fights in its lair. */
+  lair?: true;
   /** Taken at a MOMENT rather than on a turn: which moment, whom it may be aimed at, and whether
    *  taking it stops what opened the window. On no turn's menu, ever. */
   reaction?: {
@@ -1159,6 +1165,8 @@ export interface RulesetCombatant {
   oncePerTurn?: { at: string; keys: string[] };
   /** The points a signature action is bought with, when this combatant has any. */
   signature?: { points: number; max: number };
+  /** It fights in its lair (1.310): its lair actions are taken, on `lairAt`, losing ties. */
+  lair?: { at: number; last?: { round: number; id: string } };
   /** Strikes in hand: what is left of a spend that bought several. Absent when there are none, and
    *  cleared at the end of the turn they were bought on, so nothing carries into the next one. */
   strikesLeft?: number;
@@ -1448,7 +1456,8 @@ export type RulesetWindowTrigger =
   /** A walk left this one's reach. `from` and `to` are the step that did it, not the whole walk. */
   | { kind: "leaves-reach"; moverId: string; from: RulesetCombatCell; to: RulesetCombatCell }
   /** One turn has ended and the next has not begun. */
-  | { kind: "between-turns"; nextActorId: string }
+  /** `opening` (1.310): before the fight's very first turn, which has already been handed out. */
+  | { kind: "between-turns"; nextActorId: string; opening?: true }
   /** Something is ABOUT to land on the ones being asked. It is already paid for and is held here
    *  until they have answered, and an answer that cancels stops it from happening at all.
    *  `catalog` is where the entry behind it came from, when there is one. */
@@ -2060,6 +2069,8 @@ export type RulesetCombatEvent =
       back: boolean;
     }
   | { type: "signature"; actorId: string; optionId: string; label: string; cost: number; left: number }
+  /** A lair action taken on its lair's count (1.310); what it does follows. */
+  | { type: "lair"; actorId: string; optionId: string; label: string }
   /** A spend that bought several strikes, and what is left of it after this one. */
   | { type: "strikes"; actorId: string; optionId: string; label: string; left: number }
   /** A budget something handed its user, and what they hold of it now. */
@@ -2489,6 +2500,8 @@ export interface RulesetCombatOption {
   /** A spell a legendary cast offers (1.279): the cast bought, and the option of its maker's own it
    *  casts, as it would be on its turn. */
   castOf?: { actionId: string; optionId: string };
+  /** A lair action (1.310): the option of its maker's own it takes, as it would be on its turn. */
+  lairOf?: string;
   /** Readying another option (1.283): which, and what it waits for. */
   ready?: { optionId: string; label: string; on: RulesetReadyOn };
   /** What its holder readied, offered when it happens (1.283). */

@@ -826,6 +826,8 @@ export function rulesetCombatEventLine(
         roll: rulesetRollText({ ...event, modifier: 0, total: event.kept }, t),
         from: event.from,
       });
+    case "lair":
+      return key("lair", { actor: names.combatant(event.actorId), label: event.label });
     case "signature":
       return key("signature", {
         actor: names.combatant(event.actorId),

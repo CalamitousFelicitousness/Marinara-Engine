@@ -1883,6 +1883,10 @@ function applyConditionId(
     ...(clock ? { clock } : {}),
     ...(applies.duration === "this-action" ? { thisAction: true as const } : {}),
     ...(sourced ? { clockOf: "source" as const } : {}),
+    // Or until its putter's lair count (1.322).
+    ...(typeof applies.duration === "object" && applies.duration.untilLair && extra.sourceId
+      ? { untilLair: true as const }
+      : {}),
     ...(applies.endsAfter ? { endsAfter: applies.endsAfter } : {}),
     ...(applies.endsWhenHolder
       ? {
@@ -3269,6 +3273,9 @@ function endConcentration(
   }
   endSummons(ctx, actor, held.actionId);
   endZones(ctx, actor, held.actionId);
+  // Broken, it makes its lair's next action this one (1.322): the Litany of Keeping.
+  const next = actor.actions.find((action) => action.id === held.actionId)?.brokenNextLair;
+  if (next && actor.lair && (reason === "damage" || reason === "down" || reason === "zone")) actor.lair.next = next;
   const concentration = ctx.combat.concentration;
   if (concentration) writeRulesetSheet(ctx.definition, actor, { op: "note", field: concentration.text, value: "" });
   // Whatever the concentration was holding up goes with it, wherever it landed.
@@ -5565,6 +5572,7 @@ function windowClosed(
   if (!over && trigger.kind === "between-turns" && trigger.opening) {
     const first = currentRulesetActor(ctx.state);
     if (first) {
+      if (!ctx.state.acted?.includes(first.id)) (ctx.state.acted ??= []).push(first.id);
       openMoment(ctx, { kind: "turn-start", sourceId: first.id, label: first.name }, ctx.state.combatants);
       if (!ctx.state.window) completeDelayed(ctx, first);
     }
@@ -5762,7 +5770,10 @@ function takeLairAction(
   ctx.state.turn = rulesetTurnAfterCalls(state, ctx.state);
   const working = rulesetCombatant(ctx.state, actor.id)!;
   working.budgets = { ...actor.budgets };
-  if (working.lair) working.lair.last = { round, id: action.id };
+  if (working.lair) {
+    working.lair.last = { round, id: action.id };
+    delete working.lair.next;
+  }
   if (!ctx.state.window) {
     ctx.state.window = outer;
     goOn(definition, combat, ctx, false);
@@ -5813,6 +5824,8 @@ export function rulesetOpenLairWindow(
     trigger: { kind: "between-turns", nextActorId: first.id, opening: true },
     waiting: [],
   };
+  // Nobody's turn has begun yet (1.322): the first one's begins as this window closes.
+  next.acted = [];
   const waiting = [...new Set(next.order)].filter((id) =>
     rulesetSignatureOptions(definition, next, id).some((option) => option.lairOf),
   );
@@ -9351,8 +9364,14 @@ export function advanceRulesetTurn(
 function openSignatureWindow(ctx: RulesetCombatContext): boolean {
   // What lasts until the next lair action ends as its maker's lair count comes round (1.319).
   for (const maker of ctx.state.combatants) {
-    if (!maker.lair || !maker.zones?.some((zone) => zone.untilLair)) continue;
-    if (rulesetLairRound(ctx.definition, ctx.state, maker) === null) continue;
+    if (!maker.lair || rulesetLairRound(ctx.definition, ctx.state, maker) === null) continue;
+    // And what it put on anybody until then (1.322): the Hour Bell's.
+    for (const holder of ctx.state.combatants) {
+      for (const entry of [...holder.tracked]) {
+        if (entry.untilLair && entry.source === maker.id) removeCondition(ctx, holder, entry.condition, "expired");
+      }
+    }
+    if (!maker.zones?.some((zone) => zone.untilLair)) continue;
     // Its count is due and not yet taken this round, so whatever lasts until it ends now.
     for (const actionId of new Set(maker.zones.filter((zone) => zone.untilLair).map((zone) => zone.actionId)))
       endZones(ctx, maker, actionId);
@@ -9418,6 +9437,8 @@ function beginNextTurn(definition: RulesetDefinition, combat: RulesetCombat, ctx
   }
   ctx.state.turn = turn;
   ctx.state.round = round;
+  // Who has begun a turn this round (1.322), afresh as it turns over.
+  if (fresh) ctx.state.acted = [];
   if (fresh) {
     for (const combatant of ctx.state.combatants) {
       refreshRulesetBudgets(combat, combatant.budgets, "round");
@@ -9466,6 +9487,7 @@ function beginNextTurn(definition: RulesetDefinition, combat: RulesetCombat, ctx
     refreshRulesetMovement(definition, combat, actor, ctx.state);
     delete actor.trail;
     ctx.events.push({ type: "turn", actorId: actor.id, round });
+    if (!ctx.state.acted?.includes(actor.id)) (ctx.state.acted ??= []).push(actor.id);
     refreshRulesetSignature(actor);
     rollRulesetRecharges(ctx, actor);
     recoverFromCrash(ctx, actor);

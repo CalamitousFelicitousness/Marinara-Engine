@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: lair timing: a creature action only at whoever has already acted this round (`actedOnly`, the Hour Bell), a condition that lasts until its putter's next lair action (`untilLair` on a duration), and a concentration that, broken, makes a given lair action the next (`brokenNextLair`, the Litany of Keeping) (Capability API 1.322).
 - Rulesets: a creature action can draw whoever it lands on toward it (`draws`): they spend their reaction to walk their speed its way there and then, the open way round (the Owed's Whisper a Name) (Capability API 1.321).
 - Rulesets: a creature action can call creatures into the fight (`calls`: a bestiary creature and a count), on its user's side, set down where its area is aimed or beside it, at their own initiative or right after their caller's: the Owed's Jars Burst, Shelves Lean (Capability API 1.320).
 - Rulesets: a light rule's save is said with it: its `lightRule` event carries `save: {total, saved}` and the log says who held out and who did not.

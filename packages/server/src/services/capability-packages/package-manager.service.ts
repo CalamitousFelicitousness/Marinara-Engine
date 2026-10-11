@@ -1574,6 +1574,26 @@ function carriesBossAsks(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesBossAsks(one, depth + 1));
 }
 
+/** Lair timing (1.322): a creature action only at whoever has acted this round, one whose broken
+ *  concentration picks the next lair action, or a condition lasting until the next lair action. */
+function carriesLairTiming(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesLairTiming(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.duration)?.untilLair !== undefined) return true;
+  const creature = plainRecord(record.creature);
+  if (
+    Array.isArray(creature?.actions) &&
+    creature.actions.some((one) => {
+      const action = plainRecord(one);
+      return action?.actedOnly !== undefined || action?.brokenNextLair !== undefined;
+    })
+  )
+    return true;
+  return Object.values(record).some((one) => carriesLairTiming(one, depth + 1));
+}
+
 /** A creature's action that draws whoever it lands on toward it (1.321). */
 function carriesDraws(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -4394,6 +4414,14 @@ export function getCapabilityPackageInstallIssue(
     (carriesDraws(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesDraws(document)))
   ) {
     return "A ruleset with a creature action that draws whoever it lands on toward it requires schemaVersion 2 and capabilityApi 1.321 or newer";
+  }
+  // Lair timing, 1.322.
+  if (
+    !declaresApi(322) &&
+    (carriesLairTiming(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesLairTiming(document)))
+  ) {
+    return "A ruleset with a creature action only at whoever has acted this round, a broken concentration that picks the next lair action, or a condition lasting until the next lair action requires schemaVersion 2 and capabilityApi 1.322 or newer";
   }
   // Blows that reap, 1.318.
   if (

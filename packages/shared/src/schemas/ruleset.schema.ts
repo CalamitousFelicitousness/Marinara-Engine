@@ -2356,6 +2356,9 @@ const catalogDurationSchema = z.union([
       /** Counted on the turns of whoever put it on, from their next one (Capability API 1.114):
        *  "until the end of your next turn", as Guiding Bolt's advantage lasts. */
       of: z.literal("source").optional(),
+      /** Or until whoever put it on next comes to their lair's count, if that is sooner (Capability
+       *  API 1.322): the Hour Bell's "until the next lair action". */
+      untilLair: z.literal(true).optional(),
     })
     .strict(),
 ]);
@@ -4498,6 +4501,13 @@ const creatureActionSchema = z
      *  open way and drawing no strikes; with a save, only on a failed one. The Owed's Whisper a
      *  Name: `{ "spends": "reaction" }`. */
     draws: z.object({ spends: sheetId }).strict().optional(),
+    /** Only somebody who has already taken their turn this round may be picked (Capability API
+     *  1.322): the Hour Bell's "one creature that has already acted this round". */
+    actedOnly: z.literal(true).optional(),
+    /** Held by its `concentration`, which once broken (by harm, by going down, or by what a zone
+     *  does) makes this lair action of its own the next it takes (Capability API 1.322): Father
+     *  Ivo's Litany of Keeping, the shelves leaning. */
+    brokenNextLair: sheetId.optional(),
   })
   .strict()
   .superRefine((action, ctx) => {
@@ -12029,6 +12039,13 @@ function creatureIssues(
   creature.actions.forEach((action, index) => {
     const path = [...at, "actions", index];
     if (!budgets.has(action.budget)) add([...path, "budget"], `Unknown budget "${action.budget}"`);
+    if (action.brokenNextLair !== undefined) {
+      if (!action.concentration)
+        add([...path, "brokenNextLair"], "Only a creature action held by its concentration is broken");
+      else if (!byId.get(action.brokenNextLair)?.lair) {
+        add([...path, "brokenNextLair"], `"${action.brokenNextLair}" is not one of its lair actions`);
+      }
+    }
     if (action.draws && !budgets.has(action.draws.spends)) {
       add([...path, "draws", "spends"], `Unknown budget "${action.draws.spends}"`);
     }

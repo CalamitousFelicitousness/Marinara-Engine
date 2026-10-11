@@ -47,6 +47,7 @@ import {
 } from "./pool.js";
 import {
   currentRulesetActor,
+  rulesetActedThisRound,
   rulesetActiveConditions,
   rulesetWardsOn,
   rulesetTargetHasSenses,
@@ -1604,6 +1605,8 @@ export function rulesetOptionTargets(
           return false;
         // Only somebody at no health and still alive (1.306): Consume Life.
         if (cure?.dyingOnly && !(combatant.down && !combatant.defeated)) return false;
+        // Only somebody who has taken their turn this round (1.322): the Hour Bell.
+        if (cure?.actedOnly && !rulesetActedThisRound(state, combatant.id)) return false;
         // "A creature you can see" (1.173).
         if (cure?.seen && !rulesetCanSee(definition, state, actor, combatant)) return false;
         // Only on somebody holding what it names (1.230): grappled by its maker, or restrained.
@@ -3335,9 +3338,12 @@ export function rulesetLairOptions(
   if (!combat || !actor?.lair || round === null) return [];
   // Down, it takes none; held from acting, its lent turn's menu offers none.
   if (!rulesetCombatStanding(actor)) return [];
-  // Not the one it took the round before.
+  // Not the one it took the round before; only the one it must take next, when one is (1.322).
   const last = actor.lair.last?.round === round - 1 ? actor.lair.last.id : undefined;
-  const lairs = actor.actions.filter((action) => action.lair && action.id !== last);
+  const forced = actor.actions.some((action) => action.lair && action.id === actor.lair!.next)
+    ? actor.lair.next
+    : undefined;
+  const lairs = actor.actions.filter((action) => action.lair && (forced ? action.id === forced : action.id !== last));
   const options: RulesetCombatOption[] = [];
   for (const budget of new Set(lairs.map((action) => action.budget))) {
     const view = rulesetBorrowedTurn(state, actor.id, budget);

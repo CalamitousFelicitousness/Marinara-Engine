@@ -12593,6 +12593,10 @@
                                     "type": "string",
                                     "const": "source"
                                   },
+                                  "untilLair": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
                                   "$comment": {}
                                 },
                                 "required": [
@@ -13425,6 +13429,10 @@
                                   "of": {
                                     "type": "string",
                                     "const": "source"
+                                  },
+                                  "untilLair": {
+                                    "type": "boolean",
+                                    "const": true
                                   },
                                   "$comment": {}
                                 },
@@ -17095,6 +17103,10 @@
                                           "type": "string",
                                           "const": "source"
                                         },
+                                        "untilLair": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
                                         "$comment": {}
                                       },
                                       "required": [
@@ -18224,6 +18236,10 @@
                                             "of": {
                                               "type": "string",
                                               "const": "source"
+                                            },
+                                            "untilLair": {
+                                              "type": "boolean",
+                                              "const": true
                                             },
                                             "$comment": {}
                                           },
@@ -20683,6 +20699,15 @@
                               "spends"
                             ],
                             "additionalProperties": false
+                          },
+                          "actedOnly": {
+                            "type": "boolean",
+                            "const": true
+                          },
+                          "brokenNextLair": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
                           },
                           "$comment": {}
                         },
@@ -26197,6 +26222,10 @@
                                               "type": "string",
                                               "const": "source"
                                             },
+                                            "untilLair": {
+                                              "type": "boolean",
+                                              "const": true
+                                            },
                                             "$comment": {}
                                           },
                                           "required": [
@@ -31391,6 +31420,10 @@
                                         "type": "string",
                                         "const": "source"
                                       },
+                                      "untilLair": {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
                                       "$comment": {}
                                     },
                                     "required": [
@@ -32223,6 +32256,10 @@
                                       "of": {
                                         "type": "string",
                                         "const": "source"
+                                      },
+                                      "untilLair": {
+                                        "type": "boolean",
+                                        "const": true
                                       },
                                       "$comment": {}
                                     },
@@ -39150,6 +39187,10 @@
                                               "type": "string",
                                               "const": "source"
                                             },
+                                            "untilLair": {
+                                              "type": "boolean",
+                                              "const": true
+                                            },
                                             "$comment": {}
                                           },
                                           "required": [
@@ -39982,6 +40023,10 @@
                                             "of": {
                                               "type": "string",
                                               "const": "source"
+                                            },
+                                            "untilLair": {
+                                              "type": "boolean",
+                                              "const": true
                                             },
                                             "$comment": {}
                                           },
@@ -50701,6 +50746,10 @@
                                   "type": "string",
                                   "const": "source"
                                 },
+                                "untilLair": {
+                                  "type": "boolean",
+                                  "const": true
+                                },
                                 "$comment": {}
                               },
                               "required": [
@@ -51937,6 +51986,10 @@
                                         "type": "string",
                                         "const": "source"
                                       },
+                                      "untilLair": {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
                                       "$comment": {}
                                     },
                                     "required": [
@@ -52790,6 +52843,10 @@
                                           "of": {
                                             "type": "string",
                                             "const": "source"
+                                          },
+                                          "untilLair": {
+                                            "type": "boolean",
+                                            "const": true
                                           },
                                           "$comment": {}
                                         },
@@ -53869,6 +53926,10 @@
                                 "of": {
                                   "type": "string",
                                   "const": "source"
+                                },
+                                "untilLair": {
+                                  "type": "boolean",
+                                  "const": true
                                 },
                                 "$comment": {}
                               },

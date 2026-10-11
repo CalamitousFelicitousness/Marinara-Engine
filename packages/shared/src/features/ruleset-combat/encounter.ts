@@ -585,6 +585,11 @@ export function rulesetTargetIs(
   );
 }
 
+/** Whether somebody has begun their turn this round (1.322), the one going on included. */
+export function rulesetActedThisRound(state: RulesetEncounterState, id: string): boolean {
+  return !!state.acted?.includes(id);
+}
+
 /** Whether an action may be pointed at or catch this combatant, by what it is (1.163). */
 export function rulesetTargetTypesAllow(
   definition: RulesetDefinition,
@@ -3195,6 +3200,9 @@ function blockActions(
     ...(action.ground ? { ground: structuredClone(action.ground) } : {}),
     // Whisper a Name (1.321).
     ...(action.draws ? { draws: { ...action.draws } } : {}),
+    // The Hour Bell, and the Litany broken (1.322).
+    ...(action.actedOnly ? { actedOnly: true as const } : {}),
+    ...(action.brokenNextLair ? { brokenNextLair: action.brokenNextLair } : {}),
     ...(action.healsOnSlay ? { healsOnSlay: { ...action.healsOnSlay } } : {}),
     ...(action.uses ? { uses: { ...action.uses } } : {}),
     ...(action.recharge
@@ -4446,6 +4454,8 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
       : []),
   ];
   const first = currentRulesetActor(state);
+  // Whose turn has begun this round (1.322): the first one's, as the fight begins.
+  if (first) state.acted = [first.id];
   if (first) {
     const waiting = [...new Set(state.order)].filter((id) => {
       const holder = rulesetCombatant(state, id);

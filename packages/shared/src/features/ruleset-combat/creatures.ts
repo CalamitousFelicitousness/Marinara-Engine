@@ -278,6 +278,9 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
     ...(action.ground ? { ground: structuredClone(action.ground) } : {}),
     // Whoever it lands on walks toward it (1.321).
     ...(action.draws ? { draws: { ...action.draws } } : {}),
+    // The Hour Bell, and the Litany broken (1.322).
+    ...(action.actedOnly ? { actedOnly: true as const } : {}),
+    ...(action.brokenNextLair ? { brokenNextLair: action.brokenNextLair } : {}),
     // Who it calls into the fight (1.320), found in the bestiary as the fight begins.
     ...(action.calls && amountOf(action.calls.count)
       ? {

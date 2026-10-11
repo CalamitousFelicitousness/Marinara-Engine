@@ -123,7 +123,7 @@ export interface RulesetCombatApplies {
   condition: string;
   /** The creature type its user named as they used it (1.265), remembered by what it puts on. */
   kind?: string;
-  duration: "instant" | "until-save" | "this-action" | { rounds: number; at?: "turn-start"; of?: "source" };
+  duration: "instant" | "until-save" | "this-action" | { rounds: number; at?: "turn-start"; of?: "source"; untilLair?: true };
   /** Its source holds no more than this many with it at once (1.315). */
   heldAtMost?: number;
   saveEnds?: RulesetCombatSaveEnds;
@@ -373,6 +373,10 @@ export interface RulesetStatBlockAction {
   ground?: RulesetCreatureGround;
   /** Whoever it lands on walks toward it on their own budget (1.321): Whisper a Name. */
   draws?: { spends: string };
+  /** Only at somebody who has taken their turn this round (1.322): the Hour Bell. */
+  actedOnly?: true;
+  /** Its concentration broken, this lair action is its next (1.322): the Litany of Keeping. */
+  brokenNextLair?: string;
   /** Creatures it calls into the fight (1.320), by bestiary entry, `count` of them. */
   calls?: { creature: string; count: RulesetCombatAmount; initiative?: "roll" | "after" };
   /** A permission (1.286): these standard actions taken with this action's budget, only while it
@@ -878,6 +882,10 @@ export interface RulesetCombatAction {
   ground?: RulesetCreatureGround;
   /** Whoever it lands on spends `spends` to walk up to their speed toward its user (1.321). */
   draws?: { spends: string };
+  /** Only at somebody who has taken their turn this round (1.322). */
+  actedOnly?: true;
+  /** Its concentration broken, this lair action of its user's is the next they take (1.322). */
+  brokenNextLair?: string;
   /** Creatures it calls into the fight on its user's side (1.320), their block found as the fight
    *  began: Jars Burst's zombies. */
   calls?: {
@@ -1137,6 +1145,8 @@ export interface RulesetTrackedCondition {
   fails?: number;
   /** Who applied it, and whether their concentration is what holds it. */
   source?: string;
+  /** Off as whoever put it on next comes to their lair's count (1.322): the Hour Bell's. */
+  untilLair?: true;
   /** Spread by this combatant's aura (1.258): on while they are near, off as they part. */
   aura?: string;
   /** Left on by an aura that lingers (1.315) after its holder parted: off as their next turn starts. */
@@ -1207,7 +1217,12 @@ export interface RulesetCombatant {
   /** The points a signature action is bought with, when this combatant has any. */
   signature?: { points: number; max: number };
   /** It fights in its lair (1.310): its lair actions are taken, on `lairAt`, losing ties. */
-  lair?: { at: number; last?: { round: number; id: string } };
+  lair?: {
+    at: number;
+    last?: { round: number; id: string };
+    /** The lair action it must take next (1.322): its Litany broken. */
+    next?: string;
+  };
   /** How many of its block's legendary resistances it has spent (1.312). */
   legendaryResisted?: number;
   /** How many times it has hung on at 1 instead of dropping (1.315). */
@@ -1475,6 +1490,8 @@ export interface RulesetEncounterState {
   covenUses?: Record<string, number>;
   /** Held Ground (1.318): nobody here dies at no health; they are felled. */
   heldGround?: RulesetHeldGround;
+  /** Who has begun a turn this round (1.322), the one going on included. */
+  acted?: string[];
   /** How many creatures have been called into the fight (1.320), for their ids. */
   called?: number;
 }

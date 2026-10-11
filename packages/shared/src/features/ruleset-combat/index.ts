@@ -150,6 +150,7 @@ export {
   rulesetMovementAllowance,
   rulesetSealed,
   rulesetLairRound,
+  rulesetActedThisRound,
   rulesetSealedApart,
   grantRulesetMovement,
   rulesetFastestSpeed,

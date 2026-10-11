@@ -204,6 +204,10 @@ export interface DirectedRulesetView {
     distance: { label: string; perCell: number };
     /** The scene a board painted for the place (worldgen W9g) looks like, drawn instead of the fight's own. */
     scene?: TacticalEnvironment;
+    /** The light on each cell that is not bright, by "x,y"; absent when the whole board is bright. */
+    light?: Record<string, "sunlight" | "dim" | "dark">;
+    /** The cells a fog or haze covers, by "x,y": heavy unless it only lightly obscures. */
+    fog?: Record<string, "light" | "heavy">;
   };
   actorId?: string;
   /** Who plays the actor whose turn it is. */

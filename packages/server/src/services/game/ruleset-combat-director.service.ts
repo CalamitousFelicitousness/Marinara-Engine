@@ -76,6 +76,7 @@ import {
   rulesetTierStatBlock,
   rulesetWindowMoment,
   rulesetZonesShown,
+  rulesetBoardShading,
   rulesetWindowOptions,
   rulesetAreaCells,
   rulesetZoneCatches,
@@ -747,6 +748,16 @@ export function directedRulesetView(
   const distance = definition.combat.distance;
   const grid = encounter.board?.grid;
   const made = encounter.board?.battlefield?.kind === "hand-made" ? encounter.board.battlefield : null;
+  // Light and fog drawn on the board: only cells that are not bright and clear.
+  const shading = grid && distance ? rulesetBoardShading(definition, encounter) : null;
+  const shaded = shading
+    ? {
+        ...(Object.keys(shading.light).length > 0
+          ? { light: shading.light as Record<string, "sunlight" | "dim" | "dark"> }
+          : {}),
+        ...(Object.keys(shading.fog).length > 0 ? { fog: shading.fog } : {}),
+      }
+    : {};
   return {
     ruleset: { ...encounter.ruleset },
     round: encounter.round,
@@ -761,6 +772,7 @@ export function directedRulesetView(
             ...(grid.walls ? { walls: { ...grid.walls } } : {}),
             distance: { ...distance },
             ...(made ? { scene: made.scene } : {}),
+            ...shaded,
           },
         }
       : {}),

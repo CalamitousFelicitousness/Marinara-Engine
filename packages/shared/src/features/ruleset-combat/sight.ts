@@ -359,6 +359,46 @@ export function rulesetLightAt(
 }
 
 /**
+ * What the fight board shows of light and fog now, cell by cell ("x,y"): the light on each cell
+ * that is not bright, and each cell a fog or haze covers, `heavy` unless it only lightly obscures.
+ * Cells in bright light and clear air are left out; a board without a grid shows nothing.
+ */
+export function rulesetBoardShading(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+): { light: Record<string, RulesetBoardLight>; fog: Record<string, "light" | "heavy"> } {
+  const light: Record<string, RulesetBoardLight> = {};
+  const fog: Record<string, "light" | "heavy"> = {};
+  const grid = state.board?.grid;
+  if (!grid) return { light, fog };
+  const base = state.board?.light ?? "bright";
+  const real = !!definition.combat?.sight?.darkness;
+  const sources = real ? lightSources(definition, state) : [];
+  const sunlit = sources.filter((source) => source.sunlight !== undefined);
+  const dark = real ? magicalDarkness(state) : new Set<string>();
+  for (let y = 0; y < grid.height; y += 1) {
+    for (let x = 0; x < grid.width; x += 1) {
+      const key = `${x},${y}`;
+      const cell = { x, y };
+      let here: RulesetBoardLight = base;
+      if (real) {
+        if (dark.has(key)) here = lightFrom(sources, grid, cell, "dark", true);
+        else if (base === "bright") here = sunlit.length ? lightFrom(sunlit, grid, cell, base) : base;
+        else if (base !== "sunlight") here = lightFrom(sources, grid, cell, base);
+      }
+      if (here !== "bright") light[key] = here;
+    }
+  }
+  for (const one of obscured(state)) {
+    for (const key of one.cells) {
+      if (one.light) fog[key] ??= "light";
+      else fog[key] = "heavy";
+    }
+  }
+  return { light, fog };
+}
+
+/**
  * Whether `viewer` sees `seen` now. Yourself you always see. Off a board, or without anybody's
  * position, everybody sees everybody: nothing measures anything there.
  */

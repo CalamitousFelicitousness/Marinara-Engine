@@ -37,6 +37,8 @@ import {
   rulesetAimTurning,
   rulesetBoardCells,
   type RulesetCellChoice,
+  RULESET_BOARD_FOG_KEYS,
+  RULESET_BOARD_LIGHT_KEYS,
   rulesetCellKey,
   rulesetCellSentences,
   rulesetDistanceText,
@@ -443,6 +445,27 @@ export function RulesetCombatBoard({
                     <span className="pointer-events-none absolute bottom-0 right-0 bg-black/60 px-[2px] text-[0.5rem] font-bold leading-tight tabular-nums text-white/90">
                       {rulesetDistanceText(cell.reach.cost, grid.distance, t)}
                     </span>
+                  )}
+                  {/* The light on the square when it is not bright, and a fog or haze over it. */}
+                  {cell.light && (
+                    <span
+                      className={cn(
+                        "pointer-events-none absolute inset-0",
+                        cell.light === "dark" && "bg-black/60",
+                        cell.light === "dim" && "bg-black/30",
+                        cell.light === "sunlight" && "bg-yellow-200/20",
+                      )}
+                      title={t(RULESET_BOARD_LIGHT_KEYS[cell.light])}
+                    />
+                  )}
+                  {cell.fog && (
+                    <span
+                      className={cn(
+                        "pointer-events-none absolute inset-0",
+                        cell.fog === "heavy" ? "bg-slate-200/50" : "bg-slate-200/25",
+                      )}
+                      title={t(RULESET_BOARD_FOG_KEYS[cell.fog])}
+                    />
                   )}
                   {/* A lasting area (1.167): tinted, with its name in the tooltip of the square. */}
                   {cell.zones && (

@@ -52,7 +52,22 @@ export interface RulesetBoardCell {
   section?: { wall: string; health: number; max: number };
   /** Set while a target is being chosen and the attack may strike the section here (1.195). */
   strikable?: true;
+  /** The light here when it is not bright: sunlight, dim light or darkness. */
+  light?: "sunlight" | "dim" | "dark";
+  /** A fog or haze covering it: heavy unless it only lightly obscures. */
+  fog?: "light" | "heavy";
 }
+
+/** What a square's light and fog are called, said aloud and in its tooltip. */
+export const RULESET_BOARD_LIGHT_KEYS = {
+  sunlight: "game.combat.ruleset.board.light.sunlight",
+  dim: "game.combat.ruleset.board.light.dim",
+  dark: "game.combat.ruleset.board.light.dark",
+} as const;
+export const RULESET_BOARD_FOG_KEYS = {
+  light: "game.combat.ruleset.board.fog.light",
+  heavy: "game.combat.ruleset.board.fog.heavy",
+} as const;
 
 export const rulesetCellKey = (cell: { x: number; y: number }): string => `${cell.x},${cell.y}`;
 
@@ -223,6 +238,8 @@ export function rulesetBoardCells(view: DirectedRulesetView, step: RulesetMenuSt
         ...(zoned.has(key) ? { zones: zoned.get(key)! } : {}),
         ...(sections.has(key) ? { section: sections.get(key)! } : {}),
         ...(strikable.has(key) ? { strikable: true as const } : {}),
+        ...(grid.light?.[key] ? { light: grid.light[key] } : {}),
+        ...(grid.fog?.[key] ? { fog: grid.fog[key] } : {}),
       });
     }
   }
@@ -331,6 +348,8 @@ export function rulesetCellSentences(cell: RulesetBoardCell, view: DirectedRules
         : t("game.combat.ruleset.board.sectionBroken", { wall: cell.section.wall }),
     );
   }
+  if (cell.light) said.push(t(RULESET_BOARD_LIGHT_KEYS[cell.light]));
+  if (cell.fog) said.push(t(RULESET_BOARD_FOG_KEYS[cell.fog]));
   if (cell.targetable) said.push(t("game.combat.ruleset.board.targetable"));
   if (cell.strikable) said.push(t("game.combat.ruleset.board.strikable"));
   if (cell.aim?.teleport) said.push(t("game.combat.ruleset.board.teleportable"));

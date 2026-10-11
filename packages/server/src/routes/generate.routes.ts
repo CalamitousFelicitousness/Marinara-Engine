@@ -11506,7 +11506,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         };
 
         // Agents also process a reply that is only a whisper (#7430); rewrite agents need public text to edit.
-        const publicPostWork = !!completedResponse || roleplayMediaRequests.length > 0;
+        const publicPostWork = !!completedResponse.trim() || roleplayMediaRequests.length > 0;
         if (hasPostWork && (publicPostWork || !!agentCompletedResponse) && !generationSignal.aborted) {
           // A tracker the user gave its own request does not take on the scene check (#6977);
           // Advanced Memory then checks the scene in a request of its own.

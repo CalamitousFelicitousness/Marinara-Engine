@@ -136,7 +136,7 @@ try {
     phase: "post_processing",
     connectionId: connection.id,
     promptTemplate: "POST_AGENT_FIXTURE Note what happened.",
-    settings: { resultType: "context_injection", contextSize: 10 },
+    settings: { resultType: "context_injection", contextSize: 10, capabilities: { edit_main_prompt: true } },
   });
   assert(pre && post);
   const chat = await chats.create({
@@ -204,6 +204,8 @@ try {
   );
   // The responder in that same request is not a recipient and still gets none of them.
   const aliceView = mainPrompts.at(-1)!;
+  // After the reply, the preview is Alice's own prompt, which still holds the whisper-only turn meant for Bob.
+  assert.equal(count(latest("POST_AGENT_FIXTURE"), "[Private whisper to Bob: USER_SECRET]"), 2);
   for (const secret of ["USER_SECRET", "REPLY_SECRET", "PERSONA_SECRET"])
     assert(!aliceView.includes(secret), `${secret} stays out of a non-recipient's prompt`);
   await generate("Bob nods.", bob.id);
@@ -297,7 +299,24 @@ try {
   assert.equal(responseOf(latest("POST_AGENT_FIXTURE")), "[Private whisper to Bob: ONLY_REPLY_SECRET]");
   assert.equal(agentPrompts.get("REWRITE_AGENT_FIXTURE")!.length, rewritesBefore, "no rewrite of an empty reply");
   assert.equal((await chats.listMessages(chat.id)).at(-1)!.content, "");
-  await chats.patchMetadata(chat.id, { activeAgentIds: [pre.type, post.type] });
+  // Two whisper-only replies in one group turn join into blank lines, which are no public text either.
+  await chats.patchMetadata(chat.id, { groupResponseOrder: "sequential" });
+  outputs = [
+    '[whisper: character="Bob" text="TURN_ONE_SECRET"]',
+    '[whisper: character="Alice" text="TURN_TWO_SECRET"]',
+  ];
+  const groupTurn = await app.inject({ method: "POST", url: "/api/generate/", payload: { chatId: chat.id } });
+  assert.equal(groupTurn.statusCode, 200, groupTurn.body);
+  assert.equal(outputs.length, 0);
+  assert(
+    inOrder(
+      responseOf(latest("POST_AGENT_FIXTURE")),
+      "[Private whisper to Bob: TURN_ONE_SECRET]",
+      "[Private whisper to Alice: TURN_TWO_SECRET]",
+    ),
+  );
+  assert.equal(agentPrompts.get("REWRITE_AGENT_FIXTURE")!.length, rewritesBefore, "no rewrite of blank replies");
+  await chats.patchMetadata(chat.id, { activeAgentIds: [pre.type, post.type], groupResponseOrder: "manual" });
 
   // A hosted room shows agent output to every participant, so its agents get no whispers.
   replaceBuiltInAgentDefinitions([

@@ -8,8 +8,30 @@ const CHIBI_PROFESSOR_MARI_IMAGE = "/sprites/mari/chibi-professor-mari.webp";
 const SHINY_CHIBI_PROFESSOR_MARI_IMAGE = "/sprites/mari/chibi-professor-mari-shiny.webp";
 const CHIBI_PROFESSOR_MARI_SEEN_KEY = "marinara:chibi-professor-mari-toast-seen";
 const CHIBI_PROFESSOR_MARI_ROLL_CHANCE = 0.001;
-/** Of the rare visits, 1 in 27 is the shiny one. */
-const SHINY_CHIBI_PROFESSOR_MARI_CHANCE = 1 / 27;
+/** Which look a rare visit gets; weights add up to 100. Pixel poses are 94x128, so they stay crisp. */
+const CHIBI_PROFESSOR_MARI_VARIANTS = [
+  { id: "normal", weight: 60, src: CHIBI_PROFESSOR_MARI_IMAGE, className: "h-24 w-20" },
+  { id: "mirrored", weight: 15, src: CHIBI_PROFESSOR_MARI_IMAGE, className: "h-24 w-20 -scale-x-100" },
+  { id: "upsideDown", weight: 10, src: CHIBI_PROFESSOR_MARI_IMAGE, className: "h-24 w-20 rotate-180" },
+  {
+    id: "dottore",
+    weight: 7,
+    src: "/sprites/mari/dottore/pose-chibi.webp",
+    className: "h-32 w-24 [image-rendering:pixelated]",
+  },
+  {
+    id: "gold",
+    weight: 5,
+    src: "/sprites/mari/golden/pose-chibi.webp",
+    className: "h-32 w-24 [image-rendering:pixelated]",
+  },
+  { id: "shiny", weight: 3, src: SHINY_CHIBI_PROFESSOR_MARI_IMAGE, className: "h-32 w-24" },
+] as const;
+
+function pickChibiProfessorMariVariant() {
+  let roll = Math.random() * 100;
+  return CHIBI_PROFESSOR_MARI_VARIANTS.find((v) => (roll -= v.weight) < 0) ?? CHIBI_PROFESSOR_MARI_VARIANTS[0];
+}
 const CHIBI_PROFESSOR_MARI_ROLL_COOLDOWN_MS = 3_000;
 const CHIBI_PROFESSOR_MARI_TOAST_DURATION_MS = 18_000;
 
@@ -31,7 +53,8 @@ function rememberChibiProfessorMari() {
 
 function showChibiProfessorMariToast() {
   rememberChibiProfessorMari();
-  const shiny = Math.random() < SHINY_CHIBI_PROFESSOR_MARI_CHANCE;
+  const variant = pickChibiProfessorMariVariant();
+  const shiny = variant.id === "shiny";
   toast.custom(
     (toastId) => (
       <div className={`relative flex gap-3 pr-8 ${shiny ? "max-w-[560px]" : "max-w-[360px]"} text-[var(--foreground)]`}>
@@ -45,9 +68,9 @@ function showChibiProfessorMariToast() {
         </button>
         <div className="relative shrink-0 self-center">
           <img
-            src={shiny ? SHINY_CHIBI_PROFESSOR_MARI_IMAGE : CHIBI_PROFESSOR_MARI_IMAGE}
+            src={variant.src}
             alt={translate("ui.chibiProfessorMari.alt")}
-            className={`${shiny ? "h-32 w-24" : "h-24 w-20"} object-contain drop-shadow-[0_4px_10px_rgb(0_0_0/0.25)]`}
+            className={`${variant.className} object-contain drop-shadow-[0_4px_10px_rgb(0_0_0/0.25)]`}
             onError={(event) => {
               event.currentTarget.hidden = true;
             }}

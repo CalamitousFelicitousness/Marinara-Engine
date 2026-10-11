@@ -4,7 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
-- The rare Chibi Professor Mari scroll toast shows her painted chibi again, and about 1 in 27 visits is a rare shiny silver chibi with sparkles.
+- The rare Chibi Professor Mari scroll toast shows her painted chibi again, and she now comes in other looks too: mirrored, upside down, Dottore, Gold and a rare shiny silver chibi with sparkles.
 - In Conversation chats, a character now remembers the selfie they sent. Their later replies see a short note with what the photo shows, so they no longer answer "what photo?" when you react to it. When image captioning is on, the captioning model describes the selfies in the two newest messages that have one, once each, and the caption is saved; other selfies use a saved caption or the selfie's image prompt. In group chats the note names who sent new selfies. Illustrator images stay hidden from the character.
 - Names in Korean, Japanese, Chinese, Cyrillic and other non-Latin scripts now stay in the prompt's XML tags and Markdown headings, such as `<홍길동>`, and Peek Prompt shows those sections by name. Before, such a name became an empty `<>` tag and accented names lost letters (`Amélie` became `amlie`). A persona with such a name could also be left out of the prompt, and in a group chat set to Individual, other characters' cards could stay in each character's prompt.
 - Creating a Game works again on staging. Since replies started being compressed, Game setup and some other large replies could arrive empty, so the game never started (#7440).

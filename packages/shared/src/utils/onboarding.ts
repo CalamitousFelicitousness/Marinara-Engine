@@ -9,7 +9,7 @@
 // ──────────────────────────────────────────────
 import { characterOnboardingSchema } from "../schemas/character.schema.js";
 import type { CharacterOnboarding, CharacterOnboardingVariable } from "../types/character.js";
-import { isReservedMacroName } from "./chat-variables.js";
+import { CHAT_VARIABLE_NAME_RE, isReservedMacroName } from "./chat-variables.js";
 import { resolveMacros } from "./macro-engine.js";
 
 /**
@@ -33,9 +33,11 @@ export function dropUnreadableOnboarding<T extends Record<string, unknown>>(
     const { onboarding: _dropped, ...rest } = extensions;
     return { extensions: rest as T, dropped: true, truncated: false };
   }
-  const truncated = parsed.data.variables.length > ONBOARDING_MAX_QUESTIONS;
+  const overCap = (variables: typeof parsed.data.variables) => variables.length > ONBOARDING_MAX_QUESTIONS;
+  const truncated = overCap(parsed.data.variables) || overCap(parsed.data.cardVariables);
+  const cap = (variables: typeof parsed.data.variables) => variables.slice(0, ONBOARDING_MAX_QUESTIONS);
   const capped = truncated
-    ? { ...parsed.data, variables: parsed.data.variables.slice(0, ONBOARDING_MAX_QUESTIONS) }
+    ? { ...parsed.data, variables: cap(parsed.data.variables), cardVariables: cap(parsed.data.cardVariables) }
     : parsed.data;
   const onboarding = withUniqueOnboardingIds(capped);
   if (onboarding === parsed.data) return { extensions, dropped: false, truncated: false };
@@ -89,27 +91,35 @@ export function withUniqueOnboardingIds<T extends CharacterOnboarding>(onboardin
       return next;
     };
   };
-  const variables = onboarding.variables ?? [];
-  const questionId = uniquer(
-    variables.map((variable) => variable.id),
-    "question",
-  );
-  const fixed = variables.map((variable) => {
-    const optionId = uniquer(
-      variable.options.map((option) => option.id),
-      "option",
+  const unique = (variables: CharacterOnboardingVariable[], prefix: string) => {
+    const questionId = uniquer(
+      variables.map((variable) => variable.id),
+      `${prefix}question`,
     );
-    const options = variable.options.map((option) => {
-      const id = optionId(option.id);
-      return id === option.id ? option : { ...option, id };
+    return variables.map((variable) => {
+      const optionId = uniquer(
+        variable.options.map((option) => option.id),
+        `${prefix}option`,
+      );
+      const options = variable.options.map((option) => {
+        const id = optionId(option.id);
+        return id === option.id ? option : { ...option, id };
+      });
+      const id = questionId(variable.id);
+      const same = id === variable.id && options.every((option, index) => option === variable.options[index]);
+      return same ? variable : { ...variable, id, options };
     });
-    const id = questionId(variable.id);
-    const same = id === variable.id && options.every((option, index) => option === variable.options[index]);
-    return same ? variable : { ...variable, id, options };
-  });
-  return fixed.some((variable, index) => variable !== variables[index])
-    ? { ...onboarding, variables: fixed }
-    : onboarding;
+  };
+  const variables = onboarding.variables ?? [];
+  const cardVariables = onboarding.cardVariables ?? [];
+  // The two lists are separate: an id may repeat across them, because they are
+  // never rendered or answered together. Within a list ids must be unique.
+  const fixed = unique(variables, "");
+  const fixedCard = unique(cardVariables, "card");
+  const changed =
+    fixed.some((variable, index) => variable !== variables[index]) ||
+    fixedCard.some((variable, index) => variable !== cardVariables[index]);
+  return changed ? { ...onboarding, variables: fixed, cardVariables: fixedCard } : onboarding;
 }
 
 /** A variable with this name supplies the created persona's name. */
@@ -184,9 +194,9 @@ function resolveFields(
   return out;
 }
 
-/** A macro context whose variables are the answers so far. */
-function answerContext(
-  onboarding: CharacterOnboarding,
+/** A macro context whose variables are the answers to `variables` so far. */
+function answerContextFor(
+  variables: CharacterOnboardingVariable[],
   answers: OnboardingAnswers,
   names: { user: string; char: string },
   read?: (name: string) => void,
@@ -199,7 +209,7 @@ function answerContext(
   // exactly like a missing one: verbatim in text, and in a bare `{{#if name}}`
   // the engine reads the leftover name as a truthy literal. That only shows a
   // follow-up early; Create stays disabled until it is answered anyway.
-  for (const variable of getOnboardingVariables(onboarding)) {
+  for (const variable of variables) {
     const name = variable.variableName;
     if (!name || Object.prototype.hasOwnProperty.call(values, name)) continue;
     let cached: string | undefined;
@@ -226,6 +236,16 @@ function answerContext(
     });
   }
   return ctx;
+}
+
+/** The persona answers, including the synthesized `player` question. */
+function answerContext(
+  onboarding: CharacterOnboarding,
+  answers: OnboardingAnswers,
+  names: { user: string; char: string },
+  read?: (name: string) => void,
+) {
+  return answerContextFor(getOnboardingVariables(onboarding), answers, names, read);
 }
 
 /** Replace any onboarding variable still left as `{{name}}` with `fill`. */
@@ -307,6 +327,171 @@ export function resolveOnboardingPersona(
   return result;
 }
 
+// ──────────────────────────────────────────────
+// Card variables (#7434)
+//
+// A second list of questions whose answers become CHAT variables instead of
+// persona text. A card field can then carry a permanent `{{relationshipToUser}}`
+// that each chat fills in during setup, so the card stays modular and is never
+// modified. The prompt path needs nothing new: a card field already resolves a
+// chat variable (measured 2026-10-11).
+// ──────────────────────────────────────────────
+
+/** True when the block has any question or field text to work from. */
+function hasQuestion(variables: CharacterOnboardingVariable[] | undefined): boolean {
+  return (variables ?? []).some((variable) => variable.variableName.trim() !== "");
+}
+
+/**
+ * The card text a `{{name}}` can reach, for deciding which card questions are
+ * worth asking. The prompt resolves these fields from the card (see the
+ * character marker in the server), so text here is what the model would read.
+ */
+export interface OnboardingCardFields {
+  description?: string;
+  personality?: string;
+  backstory?: string;
+  appearance?: string;
+  scenario?: string;
+}
+
+/**
+ * The fields the prompt actually macro-resolves for a character. Kept in step
+ * with the Character Info marker's default field list; a name used only outside
+ * these (a greeting, say) is not offered as a question, because the prompt would
+ * never resolve it.
+ */
+export const ONBOARDING_CARD_FIELDS = [
+  "description",
+  "personality",
+  "backstory",
+  "appearance",
+  "scenario",
+] as const satisfies readonly (keyof OnboardingCardFields)[];
+
+function onboardingCardFieldTexts(card: OnboardingCardFields | null | undefined): string[] {
+  if (!card) return [];
+  return ONBOARDING_CARD_FIELDS.map((field) => card[field] ?? "");
+}
+
+/**
+ * Card texts that reference a card variable but would NOT be resolved in the
+ * prompt, so an author can be told. The greeting is the notable one: it is
+ * displayed from the client's own macro context, which does not read chat
+ * variables, so a `{{name}}` there shows literally (deferred, see the PR).
+ * ponytail: a text scan, not the engine — these fields are never macro-resolved
+ * on the cards path, so there is nothing to measure against.
+ */
+export function findUnresolvedCardVariableUses(
+  onboarding: CharacterOnboarding,
+  greetings: readonly string[] = [],
+): Set<string> {
+  const names = new Set((onboarding.cardVariables ?? []).map((variable) => variable.variableName));
+  const found = new Set<string>();
+  if (names.size === 0) return found;
+  for (const text of greetings) {
+    for (const match of text.matchAll(/\{\{([A-Za-z_]\w*)\}\}/g)) {
+      if (names.has(match[1]!)) found.add(match[1]!);
+    }
+  }
+  return found;
+}
+
+/**
+ * Whether this card's onboarding offers the player anything, used to suppress
+ * the wizard's marker and trigger for an enabled-but-empty block. A card with no
+ * questions is still meaningful when its fields carry text: it ships a
+ * ready-made persona, exactly like the answer path produces ("empty" must not
+ * mean "no questions" alone).
+ */
+export function hasOnboardingContent(onboarding: CharacterOnboarding): boolean {
+  if (ONBOARDING_PERSONA_FIELDS.some((field) => (onboarding[field] ?? "").trim() !== "")) return true;
+  return hasQuestion(onboarding.variables) || hasQuestion(onboarding.cardVariables);
+}
+
+/** The card questions the answers make relevant, in card order. */
+export function getRelevantCardVariables(
+  onboarding: CharacterOnboarding,
+  card: OnboardingCardFields,
+  answers: OnboardingAnswers,
+): CharacterOnboardingVariable[] {
+  const variables = onboarding.cardVariables ?? [];
+  if (variables.length === 0) return [];
+  const used = new Set<string>();
+  // Resolve the card's own fields with the answers so far, exactly like the
+  // persona path: whatever the engine reads is what gets asked.
+  const ctx = answerContextFor(variables, answers, { user: "{{user}}", char: "{{char}}" }, (name) => used.add(name));
+  for (const text of onboardingCardFieldTexts(card)) resolveMacros(text, ctx, { trimResult: false });
+  return variables.filter((variable) => used.has(variable.variableName));
+}
+
+/** The next card question without an answer, or null when they are all answered. */
+export function getNextCardVariable(
+  onboarding: CharacterOnboarding,
+  card: OnboardingCardFields,
+  answers: OnboardingAnswers,
+): CharacterOnboardingVariable | null {
+  return (
+    getRelevantCardVariables(onboarding, card, answers).find(
+      (variable) => !isAnswered(ownAnswer(answers, variable.variableName)),
+    ) ?? null
+  );
+}
+
+/**
+ * How many card variables one chat may receive from onboarding. Far below the
+ * server's own `MAX_CHAT_VARIABLES` (500), because these are written as one
+ * patch and a chat also holds whatever the player and `{{setvar}}` put there.
+ */
+export const MAX_CARD_VARIABLES = 100;
+
+/**
+ * A name the chat route will accept for a NEW chat variable. The stored-name
+ * pattern is broader on purpose (it also carries `{{setvar}}` names), but a
+ * name created here has to be addressable as a bare `{{name}}`.
+ */
+function isStorableCardVariableName(name: string): boolean {
+  return CHAT_VARIABLE_NAME_RE.test(name) && !isReservedMacroName(name);
+}
+
+/**
+ * The chat variables the card questions resolve to: `name` → value, ready to be
+ * written into the chat's `macroVariables`.
+ *
+ * Only answered questions are included, and a value that still holds a bare
+ * `{{name}}` is dropped rather than stored, so a half-finished answer can never
+ * write a raw tag into the prompt. Names the server would refuse are skipped for
+ * the same reason: `PATCH /chats/:id/metadata` rejects the whole `macroVariables`
+ * patch on one invalid name, which would lose every answer in it.
+ */
+export function resolveCardVariables(
+  onboarding: CharacterOnboarding,
+  answers: OnboardingAnswers,
+): Record<string, string> {
+  const variables = onboarding.cardVariables ?? [];
+  if (variables.length === 0) return {};
+  const ctx = answerContextFor(variables, answers, { user: "{{user}}", char: "{{char}}" });
+  const names = new Set(variables.map((variable) => variable.variableName));
+  const entries: Array<[string, string]> = [];
+  const taken = new Set<string>();
+  let stored = 0;
+  for (const variable of variables) {
+    const name = variable.variableName;
+    if (!name || taken.has(name) || !isStorableCardVariableName(name)) continue;
+    if (stored >= MAX_CARD_VARIABLES) break;
+    if (!isAnswered(ownAnswer(answers, name))) continue;
+    taken.add(name);
+    const value = blankOnboardingNames(names, ctx.variables[name] ?? "").trim();
+    // An unresolved leftover means the answer is not usable yet; writing it
+    // would put a literal `{{tag}}` in the prompt.
+    if (!value || /\{\{\w+\}\}/.test(value)) continue;
+    entries.push([name, value]);
+    stored += 1;
+  }
+  // Built by entries, not assignment: a "__proto__" name must stay an own key.
+  return Object.fromEntries(entries);
+}
+
 export type OnboardingIssue =
   | {
       code: "emptyName" | "invalidName" | "reservedName" | "duplicateName" | "unused" | "unknownOptionName";
@@ -340,8 +525,12 @@ function readNames(text: string): Set<string> {
  * Problems an author should fix. `unused` is a warning; the rest stop a
  * question from working. Names follow chat variables: a letter or `_`, then
  * letters, digits or `_` (the field scan only reads names shaped like that).
+ *
+ * `card` is the card's own text, so card questions are checked against the
+ * fields they actually feed. Without it, card questions are checked only for
+ * naming rules (an unused question is not reported).
  */
-export function validateOnboarding(onboarding: CharacterOnboarding): OnboardingIssue[] {
+export function validateOnboarding(onboarding: CharacterOnboarding, card?: OnboardingCardFields): OnboardingIssue[] {
   const issues: OnboardingIssue[] = [];
   // A question is used when a field or another question's option value reads it
   // (an option value like `{{customClass}}` asks that follow-up too).
@@ -351,21 +540,34 @@ export function validateOnboarding(onboarding: CharacterOnboarding): OnboardingI
       ...(onboarding.variables ?? []).flatMap((variable) => variable.options.map((option) => option.value)),
     ].join("\n"),
   );
+  // `seen` is shared across both lists: the two are answered in one window, so
+  // the same name twice would show `{{name}}` on two questions at once.
   const seen = new Set<string>();
-  for (const variable of onboarding.variables ?? []) {
-    const { id: variableId, variableName: name } = variable;
-    if (!name) issues.push({ code: "emptyName", variableId, name });
-    else if (!/^[A-Za-z_]\w*$/.test(name)) issues.push({ code: "invalidName", variableId, name });
-    else if (seen.has(name)) issues.push({ code: "duplicateName", variableId, name });
-    else if (name !== ONBOARDING_PLAYER_VARIABLE && isReservedMacroName(name))
-      issues.push({ code: "reservedName", variableId, name });
-    else if (name !== ONBOARDING_PLAYER_VARIABLE && !used.has(name)) issues.push({ code: "unused", variableId, name });
-    if (name) seen.add(name);
-  }
+  /** `usedNames` null = the caller gave no card text, so `unused` cannot be judged. */
+  const checkNames = (variables: CharacterOnboardingVariable[], usedNames: Set<string> | null) => {
+    for (const variable of variables) {
+      const { id: variableId, variableName: name } = variable;
+      if (!name) issues.push({ code: "emptyName", variableId, name });
+      else if (!/^[A-Za-z_]\w*$/.test(name)) issues.push({ code: "invalidName", variableId, name });
+      else if (seen.has(name)) issues.push({ code: "duplicateName", variableId, name });
+      else if (name !== ONBOARDING_PLAYER_VARIABLE && isReservedMacroName(name))
+        issues.push({ code: "reservedName", variableId, name });
+      else if (name !== ONBOARDING_PLAYER_VARIABLE && usedNames && !usedNames.has(name))
+        issues.push({ code: "unused", variableId, name });
+      if (name) seen.add(name);
+    }
+  };
+  checkNames(onboarding.variables ?? [], used);
+  // `player` names the persona, so it is only meaningful for the persona list;
+  // as a card variable it is an ordinary chat-variable name.
+  checkNames(
+    onboarding.cardVariables ?? [],
+    card === undefined ? null : readNames(onboardingCardFieldTexts(card).join("\n")),
+  );
   const known = new Set([ONBOARDING_PLAYER_VARIABLE, ...seen]);
   const isUnknown = (name: string) => !known.has(name) && !isReservedMacroName(name);
   // An option value like `{{hometown}}` with no such question would reach the persona raw.
-  for (const { id: variableId, options } of onboarding.variables ?? []) {
+  for (const { id: variableId, options } of [...(onboarding.variables ?? []), ...(onboarding.cardVariables ?? [])]) {
     for (const name of readNames(options.map((option) => option.value).join("\n"))) {
       if (isUnknown(name)) issues.push({ code: "unknownOptionName", variableId, name });
     }

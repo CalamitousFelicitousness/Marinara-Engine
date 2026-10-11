@@ -1236,7 +1236,7 @@ export function ChatSettingsDrawer({
   const { data: agentConfigs } = useAgentConfigs();
   const { data: customTools } = useCustomTools();
   const { data: customToolCapabilities } = useCustomToolCapabilities();
-  const { data: allChats } = useChats({ refetchOnMount: false });
+  const { data: allChats, refetch: refetchAllChats } = useChats({ refetchOnMount: false });
   const personas = useMemo(() => allPersonas ?? [], [allPersonas]);
   const showCharacterIdentities = useUIStore((state) => state.showCharactersInPersonaPickers);
 
@@ -4582,7 +4582,9 @@ export function ChatSettingsDrawer({
     if (!selectedChatPreset || selectedChatPreset.isDefault) return;
     const profileId = selectedChatPreset.id;
     const settings = snapshotCurrentPresetSettings();
-    const followerCount = ((allChats ?? []) as Chat[]).filter(
+    // An unloaded list would hide the choice, so load it first.
+    const chatList = allChats ?? (await refetchAllChats()).data ?? [];
+    const followerCount = chatList.filter(
       (other) =>
         other.id !== chat.id &&
         other.mode === chat.mode &&

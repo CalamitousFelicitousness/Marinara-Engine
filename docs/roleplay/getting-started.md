@@ -103,7 +103,9 @@ The Narrative Director has a **Push Story** button above the chat box. It arms t
 
 In **Chat Settings → Agents → Roleplay Commands**, enable **Whisper** to allow private asides, secrets, or visions inside a reply. It starts off. Choose whether **All** characters or only the appointed **Narrator** can use it. Like Personal Notes, it requires a solo chat or **Individual** group generation.
 
-The command is `[whisper: character="name" text="the secret"]`. Name exactly one character in the chat or your selected persona. Only that recipient and the appointed narrator receive the text in their prompts. An unknown or ambiguous name is ignored without exposing the secret. Shared agents do not receive whispers.
+The command is `[whisper: character="name" text="the secret"]`. Name exactly one character in the chat or your selected persona. Of the characters, only that recipient and the appointed narrator receive the text in their prompts. An unknown or ambiguous name is ignored without exposing the secret.
+
+Agents read whispers too, including Echo Chamber, trackers, Lorebook Keeper, Long-Term Memory and, in group chats, **Smart** response order, so a whisper to a character can make that character the one who replies. Each whisper is marked as private and names its recipient. Even so, what an agent writes, such as a lorebook entry, a tracker note or a rewritten reply, can reach characters the whisper wasn't meant for. In a hosted multiplayer room, agents and **Smart** response order get no whispers, because everyone in the room sees what agents write. Relationship Tracker and Memory Nag read the chat themselves and don't see whispers yet.
 
 A whisper stays at its place in the message. Whispers addressed to your persona are visible immediately; otherwise, choose **Reveal a secret** to read one. Revealing only changes your screen, not what any character knows. Secrets follow their message and active swipe, and leave the prompt when that message is hidden from everyone or falls outside the selected history.
 

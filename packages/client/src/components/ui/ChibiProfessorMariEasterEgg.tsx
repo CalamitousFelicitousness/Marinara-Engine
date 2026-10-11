@@ -10,22 +10,48 @@ const CHIBI_PROFESSOR_MARI_SEEN_KEY = "marinara:chibi-professor-mari-toast-seen"
 const CHIBI_PROFESSOR_MARI_ROLL_CHANCE = 0.001;
 /** Which look a rare visit gets; weights add up to 100. Pixel poses are 94x128, so they stay crisp. */
 const CHIBI_PROFESSOR_MARI_VARIANTS = [
-  { id: "normal", weight: 60, src: CHIBI_PROFESSOR_MARI_IMAGE, className: "h-24 w-20" },
-  { id: "mirrored", weight: 15, src: CHIBI_PROFESSOR_MARI_IMAGE, className: "h-24 w-20 -scale-x-100" },
-  { id: "upsideDown", weight: 10, src: CHIBI_PROFESSOR_MARI_IMAGE, className: "h-24 w-20 rotate-180" },
+  {
+    id: "normal",
+    weight: 60,
+    title: "ui.chibiProfessorMari.found.normal",
+    src: CHIBI_PROFESSOR_MARI_IMAGE,
+    className: "h-24 w-20",
+  },
+  {
+    id: "mirrored",
+    weight: 15,
+    title: "ui.chibiProfessorMari.found.mirrored",
+    src: CHIBI_PROFESSOR_MARI_IMAGE,
+    className: "h-24 w-20 -scale-x-100",
+  },
+  {
+    id: "upsideDown",
+    weight: 10,
+    title: "ui.chibiProfessorMari.found.upsideDown",
+    src: CHIBI_PROFESSOR_MARI_IMAGE,
+    className: "h-24 w-20 rotate-180",
+  },
   {
     id: "dottore",
     weight: 7,
+    title: "ui.chibiProfessorMari.found.dottore",
     src: "/sprites/mari/dottore/pose-chibi.webp",
     className: "h-32 w-24 [image-rendering:pixelated]",
   },
   {
     id: "gold",
     weight: 5,
+    title: "ui.chibiProfessorMari.found.gold",
     src: "/sprites/mari/golden/pose-chibi.webp",
     className: "h-32 w-24 [image-rendering:pixelated]",
   },
-  { id: "shiny", weight: 3, src: SHINY_CHIBI_PROFESSOR_MARI_IMAGE, className: "h-32 w-24" },
+  {
+    id: "shiny",
+    weight: 3,
+    title: "ui.chibiProfessorMari.found.shiny",
+    src: SHINY_CHIBI_PROFESSOR_MARI_IMAGE,
+    className: "h-32 w-24",
+  },
 ] as const;
 
 function pickChibiProfessorMariVariant() {
@@ -57,9 +83,7 @@ function showChibiProfessorMariToast() {
   const shiny = variant.id === "shiny";
   toast.custom(
     (toastId) => (
-      <div
-        className={`relative flex gap-3 p-3 pr-9 ${shiny ? "max-w-[560px]" : "max-w-[360px]"} text-[var(--foreground)]`}
-      >
+      <div className={`relative flex max-w-[520px] flex-col gap-2 p-3 text-[var(--foreground)]`}>
         <button
           type="button"
           onClick={() => toast.dismiss(toastId)}
@@ -68,43 +92,46 @@ function showChibiProfessorMariToast() {
         >
           <X className="h-3.5 w-3.5" aria-hidden="true" />
         </button>
-        <div className="relative shrink-0 self-center">
-          <img
-            src={variant.src}
-            alt={translate("ui.chibiProfessorMari.alt")}
-            className={`${variant.className} object-contain drop-shadow-[0_4px_10px_rgb(0_0_0/0.25)]`}
-            onError={(event) => {
-              event.currentTarget.hidden = true;
-            }}
-          />
-          {shiny && (
-            <>
-              <Sparkles
-                className="absolute -right-1 top-0 h-4 w-4 text-sky-200 motion-safe:animate-pulse"
-                aria-hidden="true"
-              />
-              <Sparkles
-                className="absolute -left-1 bottom-6 h-3 w-3 text-amber-200 motion-safe:animate-pulse"
-                aria-hidden="true"
-              />
-            </>
-          )}
-        </div>
-        <div className="space-y-2 text-sm leading-relaxed">
-          {shiny && (
-            <p className="bg-gradient-to-r from-slate-300 via-white to-sky-300 bg-clip-text text-base font-bold text-transparent">
-              {translate("ui.chibiProfessorMari.shiny")}
-            </p>
-          )}
-          <p>{translate("ui.chibiProfessorMari.visit")}</p>
-          <p>{translate("ui.chibiProfessorMari.fortune")}</p>
-          <p>{translate("ui.chibiProfessorMari.loved")}</p>
+        <p
+          className={`px-8 text-center text-base font-bold ${shiny ? "bg-gradient-to-r from-slate-300 via-white to-sky-300 bg-clip-text text-transparent" : ""}`}
+        >
+          {translate(variant.title)}
+        </p>
+        <div className="flex items-center justify-center gap-3">
+          <div className="relative shrink-0 self-center">
+            <img
+              src={variant.src}
+              alt={translate("ui.chibiProfessorMari.alt")}
+              className={`${variant.className} object-contain drop-shadow-[0_4px_10px_rgb(0_0_0/0.25)]`}
+              onError={(event) => {
+                event.currentTarget.hidden = true;
+              }}
+            />
+            {shiny && (
+              <>
+                <Sparkles
+                  className="absolute -right-1 top-0 h-4 w-4 text-sky-200 motion-safe:animate-pulse"
+                  aria-hidden="true"
+                />
+                <Sparkles
+                  className="absolute -left-1 bottom-6 h-3 w-3 text-amber-200 motion-safe:animate-pulse"
+                  aria-hidden="true"
+                />
+              </>
+            )}
+          </div>
+          <div className="space-y-2 text-sm leading-relaxed">
+            {shiny && <p className="font-bold text-sky-200">{translate("ui.chibiProfessorMari.shiny")}</p>}
+            <p>{translate("ui.chibiProfessorMari.visit")}</p>
+            <p>{translate("ui.chibiProfessorMari.fortune")}</p>
+            <p>{translate("ui.chibiProfessorMari.loved")}</p>
+          </div>
         </div>
       </div>
     ),
     {
       duration: CHIBI_PROFESSOR_MARI_TOAST_DURATION_MS,
-      style: shiny ? { width: "min(560px, calc(100vw - 32px))" } : undefined,
+      style: { width: "min(520px, calc(100vw - 32px))" },
     },
   );
 }

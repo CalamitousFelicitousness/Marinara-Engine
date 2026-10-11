@@ -864,6 +864,37 @@ export function computeSummaryMessageRange(
 }
 
 /**
+ * Resolve a summary range between two zero-based chat positions (either order, -1 when a message was not
+ * found) to the messages it covers, skipping hidden-from-AI ones, plus its one-based range for the entry.
+ * Returns an error (with a stable code for the client) instead when the range is unusable or every message in it
+ * is hidden.
+ */
+export function selectSummaryRangeMessages<T extends { id: string; extra?: unknown }>(
+  allMessages: T[],
+  startIndex: number,
+  endIndex: number,
+):
+  | { messages: T[]; rangeStartIndex: number; rangeEndIndex: number }
+  | { error: string; code: "notFound" | "outside" | "tooLarge" | "hidden" } {
+  if (startIndex === -1 || endIndex === -1) {
+    return { error: "Summary range messages were not found in this chat", code: "notFound" };
+  }
+  if (startIndex < 0 || endIndex < 0 || startIndex >= allMessages.length || endIndex >= allMessages.length) {
+    return { error: "Summary range is outside this chat's message history", code: "outside" };
+  }
+  const from = Math.min(startIndex, endIndex);
+  const to = Math.max(startIndex, endIndex);
+  if (to - from + 1 > 500) {
+    return { error: "Summary ranges cannot include more than 500 messages", code: "tooLarge" };
+  }
+  const messages = allMessages.slice(from, to + 1).filter((message) => !isMessageHiddenFromAI(message));
+  if (messages.length === 0) {
+    return { error: "No non-hidden messages available for the requested summary range", code: "hidden" };
+  }
+  return { messages, rangeStartIndex: from + 1, rangeEndIndex: to + 1 };
+}
+
+/**
  * Select the messages a non-range rolling summary should cover. Normally the most
  * recent `contextSize` *visible* messages (the historical `visible.slice(-contextSize)`
  * behavior). When a previous summary has already hidden earlier messages, the window is

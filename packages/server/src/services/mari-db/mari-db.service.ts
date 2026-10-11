@@ -883,9 +883,10 @@ function rowId(meta: TableMeta, row: Row): string {
 }
 
 function normalizeLimit(value: unknown, fallback: number, max: number) {
-  const parsed = Number(value);
+  // Floor first, so a fraction below 1 falls back instead of becoming an empty page (#7407).
+  const parsed = Math.floor(Number(value));
   if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
-  return Math.min(max, Math.floor(parsed));
+  return Math.min(max, parsed);
 }
 
 function normalizeOffset(value: unknown) {
@@ -2367,17 +2368,21 @@ function summarizeLorebookRow(row: Row): Row {
   };
 }
 
+// An index row is a preview (lorebook.getEntry returns the whole entry). Every field is bounded,
+// so one entry always fits a lorebook.entries page with its id visible (#7407).
 function summarizeLorebookEntryRow(row: Row): Row {
   const parsed = parseRow("lorebook_entries", row);
   return {
     id: parsed.id,
     lorebookId: parsed.lorebookId,
-    name: parsed.name,
+    name: typeof parsed.name === "string" ? truncateStr(parsed.name, 200) : parsed.name,
     description: typeof parsed.description === "string" ? truncateStr(parsed.description, 200) : "",
-    tag: typeof parsed.tag === "string" ? parsed.tag : "",
+    tag: typeof parsed.tag === "string" ? truncateStr(parsed.tag, 100) : "",
     enabled: parsed.enabled,
     constant: parsed.constant,
-    keys: parsed.keys,
+    keys: Array.isArray(parsed.keys)
+      ? parsed.keys.slice(0, 50).map((key) => (typeof key === "string" ? truncateStr(key, 100) : key))
+      : parsed.keys,
     content: typeof parsed.content === "string" ? truncateStr(parsed.content, 200) : "",
     order: parsed.order,
     createdAt: parsed.createdAt,

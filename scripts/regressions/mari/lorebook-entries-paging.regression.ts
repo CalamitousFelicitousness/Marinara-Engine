@@ -18,7 +18,7 @@ const { collectMariReferencedResources, countMariListOutput } =
 const READ_BUDGET = 24_000;
 const TOTAL = 190;
 type EntryPage = {
-  items: Array<{ id: string; name: string; description: string }>;
+  items: Array<{ id: string; name: string; description: string; keys: string[] }>;
   total: number;
   offset: number;
   nextOffset: number | null;
@@ -112,6 +112,10 @@ try {
     "a small limit returns exactly that many entries from the offset",
   );
   assert.equal(window.nextOffset, 15, "a limited page names where the next one starts");
+  // A fraction below 1 used to floor to an empty page whose nextOffset pointed back at itself.
+  const fractional = await read({ limit: 0.5, offset: 10 });
+  assert.equal(fractional.items[0]?.name, "Session 11", "a fractional limit still returns entries");
+  assert.ok((fractional.nextOffset ?? TOTAL) > 10, "a fractional limit still moves paging forward");
   const pastEnd = await read({ offset: TOTAL + 10 });
   assert.deepEqual(pastEnd.items, [], "an offset past the end returns no entries");
   assert.equal(pastEnd.nextOffset, null, "an offset past the end reports no next offset");
@@ -132,7 +136,15 @@ try {
     lorebookId: "heavy",
     data: {
       name: "Heavy",
-      entries: [{ name: "Long notes", description: "Notes. ".repeat(6_000), content: "Body." }],
+      entries: [
+        { name: "Long notes", description: "Notes. ".repeat(6_000), content: "Body.", order: 0 },
+        {
+          name: "Many keys",
+          keys: Array.from({ length: 400 }, (_, i) => `key ${i} `.padEnd(120, "x")),
+          content: "Body.",
+          order: 1,
+        },
+      ],
     },
     apply: true,
   });
@@ -141,6 +153,14 @@ try {
   assert.equal(heavyPage.items[0]?.name, "Long notes", "the heavy entry is listed with its name");
   assert.ok(heavyPage.items[0]!.description.length <= 200, "the index shortens a long description");
   assert.ok(JSON.stringify(heavyPage, null, 2).length <= READ_BUDGET, "a heavy entry's page stays under budget");
+  const keyed = (
+    (await mari.executeAction({ action: "lorebook.entries", lorebookId: "heavy", offset: 1 })).output as EntryPage
+  ).items[0];
+  assert.equal(keyed?.name, "Many keys", "an entry with a huge key list is listed with its name");
+  assert.ok(keyed!.id, "an entry with a huge key list keeps its id");
+  assert.ok(keyed!.keys.length <= 50, "the index shows a short preview of a long key list");
+  const lastKey = await mari.executeAction({ action: "lorebook.getEntry", entryId: keyed!.id, field: "keys[399]" });
+  assert.match(String(lastKey.output), /^key 399 /, "lorebook.getEntry still returns every key");
 } finally {
   await db._fileStore.close();
   if (previousFileStorageDir === undefined) delete process.env.FILE_STORAGE_DIR;

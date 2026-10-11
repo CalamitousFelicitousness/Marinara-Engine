@@ -139,7 +139,11 @@ type InitializationOptions = AdvancedMemoryOperationOptions & {
 };
 type SceneCheckOptions = AdvancedMemoryOperationOptions & {
   asOfMessageId?: string;
-  /** Largest provider-reported input in this main turn, including cache, excluding output and summed tool usage. */
+  /**
+   * Largest provider-reported input of an outgoing prompt in this turn: the first main-model request of each
+   * responder, including cache. Output, summed usage, tool rounds and roll or Game follow-ups never count.
+   * Reaching the cap (>=) moves the context start.
+   */
   maxRequestInputTokens?: number | null;
   batchedCheck?: { request: AdvancedMemorySceneCheck; result: unknown };
 };
@@ -3220,7 +3224,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       missingKnowledge(ctx).length ||
       typeof request.maxRequestInputTokens !== "number" ||
       !Number.isFinite(request.maxRequestInputTokens) ||
-      request.maxRequestInputTokens <= ctx.settings.maxContextTokens ||
+      request.maxRequestInputTokens < ctx.settings.maxContextTokens ||
       !request.asOfMessageId ||
       ctx.messages.at(-1)?.id !== request.asOfMessageId
     )

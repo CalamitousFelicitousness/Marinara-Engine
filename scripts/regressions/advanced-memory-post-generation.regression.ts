@@ -44,6 +44,12 @@ let closeLatestScene = false;
 let mainInputTokens = 40;
 let mainOutputTokens = 20;
 let mainToolCall = false;
+// A follow-up reports mainFollowupInputTokens; the first request reports mainInputTokens (or no usage).
+let mainFollowupInputTokens: number | undefined;
+let mainFirstUsage = true;
+// The first reply asks for a roll in text instead of a native tool call, and can be padded.
+let mainTextRoll = false;
+let mainFirstReplyPadding = "";
 const decisionRequests: Array<{ state: Record<string, any>; questions: Record<string, { instructions: string }> }> = [];
 const sceneDecision = (transcript: Array<{ messageNumber: number; content: string; alreadyChecked?: boolean }>) => ({
   ends: closeLatestScene
@@ -111,6 +117,13 @@ const provider = createServer(async (req, res) => {
     maxTokens: body.max_output_tokens ?? body.max_completion_tokens ?? body.max_tokens,
   });
   if (kind === "summary" && summaryGate) await summaryGate;
+  // A tool round or roll follow-up resends the outgoing prompt with the first reply and the result.
+  const followup =
+    kind === "main" &&
+    (messages.some((message: { role: string }) => message.role === "tool") ||
+      prompt.includes("The engine resolved your roll request"));
+  const firstMainReply = kind === "main" && !followup;
+  const inputTokens = followup ? (mainFollowupInputTokens ?? mainInputTokens) : mainInputTokens;
   const bundledSceneCheck = messages.find((message: { content: string }) => message.content.includes("Transcript:\n"));
   const content =
     kind === "tracker"
@@ -142,15 +155,20 @@ const provider = createServer(async (req, res) => {
                 summaryResponse ??
                 "ARCHIVED_RECAP: The silver compass promise guided the travelers.",
             })
-          : "The character continues the silver compass journey.";
+          : firstMainReply
+            ? mainFirstReplyPadding +
+              (mainTextRoll
+                ? 'The guard lunges. [roll: notation="1d1", reason="dodge"]'
+                : "The character continues the silver compass journey.")
+            : "The character continues the silver compass journey.";
   const response = {
     id: "fixture",
     status: "completed",
     output: [{ type: "message", role: "assistant", content: [{ type: "output_text", text: content }] }],
     usage: {
-      input_tokens: mainInputTokens,
+      input_tokens: inputTokens,
       output_tokens: mainOutputTokens,
-      total_tokens: mainInputTokens + mainOutputTokens,
+      total_tokens: inputTokens + mainOutputTokens,
     },
   };
   if (body.stream) {
@@ -201,11 +219,15 @@ const provider = createServer(async (req, res) => {
                   finish_reason: kind === "summary" ? summaryFinishReason : "stop",
                 },
               ],
-              usage: {
-                prompt_tokens: mainInputTokens,
-                completion_tokens: mainOutputTokens,
-                total_tokens: mainInputTokens + mainOutputTokens,
-              },
+              ...(firstMainReply && !mainFirstUsage
+                ? {}
+                : {
+                    usage: {
+                      prompt_tokens: inputTokens,
+                      completion_tokens: mainOutputTokens,
+                      total_tokens: inputTokens + mainOutputTokens,
+                    },
+                  }),
             },
       ),
     );
@@ -903,12 +925,12 @@ try {
     "neither tool-turn totals nor output may trigger a cutoff",
   );
   mainToolCall = false;
-  mainInputTokens = 65000;
+  mainInputTokens = 64999;
   await generateUsage();
   assert.equal(
     (await memory.status(actualUsageChat.id)).job.contextStarts,
     undefined,
-    "input at the threshold still fits",
+    "input one token under the threshold still fits",
   );
   mainInputTokens = 65001;
   latestUsageReply = (await chats.listMessages(actualUsageChat.id)).at(-1)!;
@@ -938,6 +960,113 @@ try {
         entry.enabled && entry.rangeStartIndex === 1 && entry.rangeEndIndex === 4,
     ),
     "the cutoff reuses the closed scene recap in Chat Summaries",
+  );
+
+  // Only the outgoing prompt counts (#7455). A roll or tool follow-up resends it with the
+  // model's own reply and the result, so it never cuts and never fails on the cap.
+  const followupChat = await chats.create({
+    name: "Follow-up input cutoff",
+    mode: "roleplay",
+    characterIds: [character.id],
+    connectionId: connection.id,
+  });
+  assert(followupChat);
+  chatIds.push(followupChat.id);
+  const followupSettings = {
+    ...DEFAULT_ADVANCED_MEMORY_SETTINGS,
+    enabled: true,
+    maxContextTokens: 65_000,
+    sceneCheckInterval: 100,
+  };
+  await chats.patchMetadata(followupChat.id, {
+    enableAgents: false,
+    roleplayCommandsEnabled: true,
+    roleplayCommandToggles: { roll: true },
+    advancedMemory: followupSettings,
+  });
+  await chats.createMessagesBatch(
+    followupChat.id,
+    Array.from({ length: 9 }, (_, index) => ({
+      role: "user" as const,
+      content: `${index === 4 ? "SCENE_CHANGE " : ""}The silver compass journey continues.`,
+    })),
+  );
+  await memory.initialize(followupChat.id);
+  const followupSource = await chats.listMessages(followupChat.id);
+  const generateFollowup = () =>
+    app.inject({
+      method: "POST",
+      url: "/api/generate/",
+      payload: { chatId: followupChat.id, forCharacterId: character.id, streaming: false },
+    });
+  const sentFollowups = (since: number) =>
+    calls
+      .slice(since)
+      .filter(
+        (call) =>
+          call.kind === "main" &&
+          (call.messages.some((message) => message.role === "tool") ||
+            JSON.stringify(call.messages).includes("The engine resolved your roll request")),
+      ).length;
+  const expectFollowupWithoutCutoff = async (label: string) => {
+    const before = calls.length;
+    const result = await generateFollowup();
+    assert.equal(result.statusCode, 200, result.body);
+    assert.ok(!result.body.includes('"type":"error"'), `${label}: ${result.body}`);
+    assert.equal(sentFollowups(before), 1, `${label}: the follow-up was sent`);
+    const info = JSON.parse((await chats.listMessages(followupChat.id)).at(-1)!.extra).generationInfo;
+    assert.equal(info.tokensLastRequestInput, 66_600, `${label}: the follow-up reported input over the cap`);
+    assert.equal((await memory.status(followupChat.id)).job.contextStarts, undefined, label);
+  };
+  mainInputTokens = 64_000;
+  mainFollowupInputTokens = 66_600;
+  mainTextRoll = true;
+  await expectFollowupWithoutCutoff("a roll follow-up over the cap does not cut when the outgoing prompt fit");
+  mainTextRoll = false;
+  mainToolCall = true;
+  await expectFollowupWithoutCutoff("a native tool round over the cap does not cut when the outgoing prompt fit");
+  mainFirstUsage = false;
+  await expectFollowupWithoutCutoff("a follow-up never stands in for a first request that reported no usage");
+  mainFirstUsage = true;
+
+  // The model's own window, not the cap, bounds a follow-up before it is sent.
+  mainInputTokens = 40;
+  mainFollowupInputTokens = undefined;
+  await chats.patchMetadata(followupChat.id, { advancedMemory: { ...followupSettings, maxContextTokens: 1_500 } });
+  mainFirstReplyPadding = "The guard circles slowly. ".repeat(3000); // ~19,500 tokens: past the 16,384 window.
+  const oversizedBefore = calls.length;
+  const oversizedFollowup = await generateFollowup();
+  assert.match(
+    oversizedFollowup.body,
+    /"type":"error"[^\n]*exceeds the model's context window/u,
+    "a follow-up past the model's own window still fails clearly",
+  );
+  assert.equal(sentFollowups(oversizedBefore), 0, "the oversized follow-up is never sent");
+  mainFirstReplyPadding = "The guard circles slowly. ".repeat(400); // ~2,600 tokens: past the cap, inside the window.
+  const roomyBefore = calls.length;
+  const roomyFollowup = await generateFollowup();
+  assert.equal(roomyFollowup.statusCode, 200, roomyFollowup.body);
+  assert.ok(
+    !roomyFollowup.body.includes('"type":"error"'),
+    `a follow-up past the cap but inside the model's window is sent: ${roomyFollowup.body}`,
+  );
+  assert.equal(sentFollowups(roomyBefore), 1, "the follow-up past the cap reached the model");
+  assert.equal((await memory.status(followupChat.id)).job.contextStarts, undefined);
+  mainFirstReplyPadding = "";
+  mainToolCall = false;
+
+  // Reaching the cap exactly cuts (one token under is checked above).
+  await chats.patchMetadata(followupChat.id, { advancedMemory: followupSettings });
+  mainInputTokens = 65_000;
+  const exactResult = await generateFollowup();
+  assert.equal(exactResult.statusCode, 200, exactResult.body);
+  assert.deepEqual(
+    (await memory.status(followupChat.id)).job.contextStarts?.map((start) => [
+      start.messageId,
+      start.audienceCharacterIds,
+    ]),
+    [[followupSource[4]!.id, []]],
+    "an outgoing prompt that reaches the cap exactly resets everyone to the latest scene",
   );
   mainInputTokens = 40;
   mainOutputTokens = 20;

@@ -4,7 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
-- Rulesets: a rest's `dice` may be a list over several pools, each with its own die (a multiclass character's hit dice); `[sheet: op="rest" dice="N" pool="Pool"]` spends from one, and without it they come from the first listed pool that has any, then the next; the extra die is still added once (Capability API 1.332).
+- Rulesets: a rest's `dice` may be a list over several pools, each with its own die (a multiclass character's hit dice); `[sheet: op="rest" dice="N" pool="Pool"]` spends from one, and without it they come from the first listed pool that has any, then the next; the extra die is still added once, even when only a later pool pays; a rest's dice now read what each character carries, so an `itemStat` in `add` or the extra die's `add` counts (Pell's Teapot) (Capability API 1.332).
 - Rulesets: a broken concentration may leave one of a list of lair actions to take next (`brokenNextLair` as a list, the shelves leaning north or south), whoever runs the creature picking; the Engine picks the one catching the most foes. Fixed: an area lair action taken by a creature the Engine runs had nowhere to be aimed, so the moment was always let go (Capability API 1.331).
 - Rulesets: a rest may spend dice to heal (`dice`, 5e's Hit Dice on a short rest, `[sheet: op="rest" dice="N"]`), with an extra die from the party's best (Song of Rest) and its holder's bonus on it (Pell's Teapot) (Capability API 1.330).
 - Rulesets: an item's use may give its user more of the turn at once (`gives`, the Time-Flour Loaf) (Capability API 1.329).

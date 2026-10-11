@@ -192,6 +192,20 @@ try {
     assert.deepEqual(rest(ada, 2, "hit_dice_d6"), { ok: false, reason: "insufficient" });
     assert.deepEqual(rest(ada, 3), { ok: false, reason: "insufficient" });
     assert.deepEqual(rest(ada, 1, "hit_dice_d12"), { ok: false, reason: "bad-pool" });
+    // Song of Rest still comes when only a later pool pays: the d6 named, or the d10 already spent.
+    const later = rest(pell, 1, "hit_dice_d6");
+    assert.ok(later.ok);
+    assert.equal(later.live.pools?.hp?.value, 17, "d6 of 4 - 2, + d6 of 4 + 1");
+    const emptied = applyRulesetSheetOp(
+      several,
+      pell,
+      { pools: { hp: { value: 10 }, hit_dice_d10: { value: 0 } } },
+      { op: "rest", rest: "short", dice: 1 },
+      roll,
+    );
+    assert.ok(emptied.ok);
+    assert.equal(emptied.live.pools?.hp?.value, 17);
+    assert.equal(emptied.live.pools?.hit_dice_d6?.value, 0);
     // Pell's song once, not once a pool: d10 of 7 - 2, d6 of 4 - 2, + d6 of 4 + 1: 12.
     const sung = rest(pell, 2);
     assert.ok(sung.ok);
@@ -217,6 +231,48 @@ try {
     assert.equal(getCapabilityPackageInstallIssue(manifest(331) as never, multi), severalGate);
     assert.notEqual(getCapabilityPackageInstallIssue(manifest(332) as never, multi), severalGate);
     assert.notEqual(getCapabilityPackageInstallIssue(manifest(331) as never, document()), severalGate);
+  }
+
+  // ── The Teapot carried (1.332): an `itemStat` in the extra die's add reads what its holder carries ──
+  {
+    const doc = document();
+    doc.items = {
+      categories: [{ id: "gear", label: "Gear" }],
+      stats: [{ id: "song_of_rest_add", label: "Song of Rest bonus", type: "number", min: 0, max: 5 }],
+    };
+    doc.rests.find((rest: { id: string }) => rest.id === "short").dice.extra.add = {
+      itemStat: { stat: "song_of_rest_add", from: "carried", pick: "max", default: 0 },
+    };
+    const read = parseRulesetDefinition(doc);
+    assert.ok(read.ok, read.ok ? "" : read.issues.join("; "));
+    const teapotRuleset: RulesetDefinition = read.definition;
+    const teapot = {
+      item: { category: "gear", stats: { song_of_rest_add: 1 } },
+      quantity: 1,
+      worn: false,
+      name: "Teapot",
+    };
+    const singer = build({ hit_die: "d8", song_die: 6 }, 6);
+    const party = (items: unknown[]) =>
+      applySheetCommandTags('[sheet: who="party" op="rest" rest="short" dice="1"]', {
+        definition: teapotRuleset,
+        cards: [
+          { name: "Ada", build: ada },
+          { name: "Pell", build: singer, items: items as never },
+        ],
+        playerName: "Ada",
+        live: { ada: hurt, pell: hurt },
+        roll,
+      });
+    // Ada: d10 of 7 + 2, + Pell's d6 of 4 + the Teapot's 1: 14 -> 24. Without it, 23.
+    assert.equal(party([teapot]).live.ada?.pools?.hp?.value, 24);
+    assert.equal(party([]).live.ada?.pools?.hp?.value, 23);
+    // On Pell's own sheet too.
+    const own = applyRulesetSheetOp(teapotRuleset, singer, hurt, { op: "rest", rest: "short", dice: 1 }, roll, [
+      teapot as never,
+    ]);
+    assert.ok(own.ok);
+    assert.equal(own.live.pools?.hp?.value, 18, "d8 of 5 - 2, + d6 of 4 + 1");
   }
 
   console.log("Rest dice: hit dice spent on a short rest heal, with the party's Song of Rest and the Teapot's +1.");

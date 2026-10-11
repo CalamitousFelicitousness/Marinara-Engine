@@ -22,6 +22,7 @@ import {
   type SheetCommandCard,
   type SheetCommandOutcome,
   rulesetCardItems,
+  normalizeGameInventoryStacks,
   rulesetReadsItems,
   type GameInventoryStack,
   type RulesetItemBook,
@@ -135,11 +136,29 @@ export async function loadGameRulesetSheetContext(
   const setupConfig = meta.gameSetupConfig as { personaId?: string | null } | null | undefined;
   const personaId = chat.personaId || setupConfig?.personaId || null;
   const persona = roomHostIdentity() ?? (personaId ? await createCharactersStorage(db).getPersona(personaId) : null);
+  const playerName = persona?.name?.trim() || null;
+  const built = sheetCommandCards(pinned.definition, cards);
+  // What each one carries, where the ruleset reads items (1.332): a rest's dice read Pell's Teapot.
+  const stacks = normalizeGameInventoryStacks(meta.gameInventory);
+  if (rulesetReadsItems(pinned.definition) && stacks.some((stack) => stack.item)) {
+    // Imported here: the inventory service reads this module's cards.
+    const { loadGameInventoryItemBook } = await import("./game-inventory.service.js");
+    const book = await loadGameInventoryItemBook(db, { metadata: meta, resolved: pinned, playerName }, "game-master");
+    if (book) {
+      const itemsOf = rulesetCardItems(
+        book,
+        stacks,
+        built.map((card) => card.name),
+        playerName,
+      );
+      for (const card of built) card.items = itemsOf(card.name);
+    }
+  }
   return {
     definition: pinned.definition,
     packageId: pinned.packageId,
-    cards: sheetCommandCards(pinned.definition, cards),
-    playerName: persona?.name?.trim() || null,
+    cards: built,
+    playerName,
   };
 }
 

@@ -6,6 +6,7 @@
 // able to see that the spell was never cast.
 
 import type { RulesetCatalogEntriesById, RulesetDefinition, RulesetSheetBuild } from "../../schemas/ruleset.schema.js";
+import type { RulesetSheetItem } from "./sheet-math.js";
 import { normalizeCharacterLookupName } from "../../utils/character-lookup-name.js";
 import {
   createSheetCommandTagRegex,
@@ -29,6 +30,8 @@ import {
 export interface SheetCommandCard {
   name: string;
   build: RulesetSheetBuild;
+  /** What they carry, which a rest's dice read for an `itemStat` (1.332): Pell's Teapot. */
+  items?: ReadonlyArray<RulesetSheetItem>;
 }
 
 export interface SheetCommandContext {
@@ -150,7 +153,13 @@ export function applySheetCommandTags(
     );
     let best: { sides: number; add: number } | null = null;
     for (const member of rulesetRestDiceEntries(rest?.dice).some((entry) => entry.extra) ? ctx.cards : []) {
-      const extra = rulesetRestExtraDie(ctx.definition, member.build, rest!.id);
+      const extra = rulesetRestExtraDie(
+        ctx.definition,
+        member.build,
+        rest!.id,
+        member.items,
+        live[normalizeCharacterLookupName(member.name)],
+      );
       if (extra && (!best || extra.sides > best.sides || (extra.sides === best.sides && extra.add > best.add)))
         best = extra;
     }
@@ -163,7 +172,7 @@ export function applySheetCommandTags(
       if (op.op === "use") return useOn(card, key, op);
       // Dice spent on a rest (1.330) take the party's best extra die (Song of Rest), whoever has it.
       const given = op.op === "rest" && op.dice && !op.extra ? { ...op, ...partyExtra(op.rest) } : op;
-      const result = applyRulesetSheetOp(ctx.definition, card.build, live[key], given, ctx.roll);
+      const result = applyRulesetSheetOp(ctx.definition, card.build, live[key], given, ctx.roll, card.items);
       if (result.ok) store(key, result.live);
       if (result.ok && op.op === "rest") rests.push({ who: card.name, rest: op.rest });
       return result;

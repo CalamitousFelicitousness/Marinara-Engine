@@ -980,6 +980,8 @@ export function applyRulesetSheetOp(
   /** What a rest rolls for a condition that lowers health's maximum (1.255). Without one, each die
    *  counts its average, rounded down over them all. */
   roll?: (sides: number) => number,
+  /** The items the character carries, which a rest's dice read for an `itemStat` (1.332). */
+  items?: ReadonlyArray<RulesetSheetItem>,
 ): RulesetSheetOpResult {
   // `use` is turned into plain spends by `planRulesetUse` before it gets here: it needs the
   // ruleset's catalogs, which this function deliberately does not take.
@@ -1220,7 +1222,18 @@ export function applyRulesetSheetOp(
   // Dice spent to heal first (1.330), then the rest itself.
   if (op.dice !== undefined && op.dice !== 0) {
     if (!rest.dice || !isAmount(op.dice)) return { ok: false, reason: "bad-amount" };
-    const spent = rulesetSpendRestDice(definition, build, stored, rest.id, rest.dice, op.dice, op.pool, op.extra, roll);
+    const spent = rulesetSpendRestDice(
+      definition,
+      build,
+      stored,
+      rest.id,
+      rest.dice,
+      op.dice,
+      op.pool,
+      op.extra,
+      roll,
+      items,
+    );
     if (!spent.ok) return spent;
     const after = applyRulesetSheetOp(definition, build, spent.live, { op: "rest", rest: rest.id }, roll);
     return after.ok ? { ...after, now: `${spent.now}; ${after.now}`.slice(0, MAX_NOW_LENGTH) } : after;
@@ -1667,12 +1680,15 @@ export function rulesetRestExtraDie(
   definition: RulesetDefinition,
   build: RulesetSheetBuild,
   restId: string,
+  /** What the character carries, for an `itemStat` in it (1.332): Pell's Teapot. */
+  items?: ReadonlyArray<RulesetSheetItem>,
+  stored?: unknown,
 ): { sides: number; add: number } | null {
   const extra = rulesetRestDiceEntries(definition.rests.find((rest) => rest.id === restId)?.dice).find(
     (entry) => entry.extra,
   )?.extra;
   if (!extra) return null;
-  const evaluated = evaluateRulesetSheet(definition, build);
+  const evaluated = evaluateRulesetSheetLive(definition, build, stored, items);
   const sides = rulesetRestDieSides(definition, build, extra.die, evaluated);
   if (sides < 1) return null;
   const add = extra.add ? resolveRulesetValueRef(definition, build, extra.add, evaluated) : 0;
@@ -1693,8 +1709,9 @@ function rulesetSpendRestDice(
   pool: string | undefined,
   given: { sides: number; add: number } | undefined,
   roll: ((sides: number) => number) | undefined,
+  items: ReadonlyArray<RulesetSheetItem> | undefined,
 ): RulesetSheetOpResult {
-  const evaluated = evaluateRulesetSheet(definition, build);
+  const evaluated = evaluateRulesetSheetLive(definition, build, stored, items);
   const entries = rulesetRestDiceEntries(dice).filter((entry) => pool === undefined || sameName(entry.pool, pool));
   if (entries.length === 0) return { ok: false, reason: "bad-pool" };
   // How many each pool gives, in order, before anything is spent: too few in all is refused whole.
@@ -1733,7 +1750,7 @@ function rulesetSpendRestDice(
     healing.set(step.entry.heals, (healing.get(step.entry.heals) ?? 0) + each.reduce((sum, one) => sum + one, 0));
   }
   // The extra die once, whatever pools paid (Song of Rest), onto what the first of them heals.
-  const extra = given ?? rulesetRestExtraDie(definition, build, restId);
+  const extra = given ?? rulesetRestExtraDie(definition, build, restId, items, stored);
   let extraSaid = "";
   if (extra && extra.sides >= 1) {
     const rolled = throwOne(extra.sides);

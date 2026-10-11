@@ -1326,7 +1326,7 @@ export function ChatSummaryPanel({
         toast.error(
           refusal === "hidden"
             ? localizeUi("ui.chat.summarypopover.batchRangeAllHidden")
-            : refusal === "outside" || refusal === "tooLarge"
+            : refusal === "invalid" || refusal === "outside" || refusal === "tooLarge"
               ? summaryBatchRangeErrorMessage(refusal, localizeUi)
               : localizeUi("ui.chat.summarypopover.couldNotSaveSummaryEntry"),
         );

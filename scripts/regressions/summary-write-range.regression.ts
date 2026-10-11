@@ -202,6 +202,20 @@ try {
     assert.equal(writeRefusal.json().error, error);
     assert.equal(writeRefusal.json().code, code, "The client says why in the user's language");
   }
+  // A new range entry needs two positive whole message numbers; anything else is refused, not saved uncovered.
+  for (const [start, end] of [
+    [0, 2],
+    [1.5, 3],
+    [undefined, 3],
+  ]) {
+    const invalidRefusal = await write(written.chatId, {
+      ...manualDraft(`invalid-${start}`, 1, 3),
+      rangeStartIndex: start,
+      rangeEndIndex: end,
+    });
+    assert.equal(invalidRefusal.statusCode, 400, invalidRefusal.body);
+    assert.equal(invalidRefusal.json().code, "invalid");
+  }
   assert.deepEqual(
     (await entries(written.chatId)).map((entry) => entry.id),
     ["manual-range", "manual-tail"],

@@ -1816,7 +1816,7 @@ export async function chatsRoutes(app: FastifyInstance) {
 
     // A new entry written for a message range covers and hides that range exactly as Generate does.
     const rangeEntry = body.operation === "replace" && body.entry.sourceMode === "range" ? body.entry : null;
-    if (rangeEntry && Number.isInteger(rangeEntry.rangeStartIndex) && Number.isInteger(rangeEntry.rangeEndIndex)) {
+    if (rangeEntry) {
       const chat = await storage.getById(req.params.id);
       if (!chat) return reply.status(404).send({ error: "Chat not found" });
       const meta = parseExtra(chat.metadata) as Record<string, unknown>;
@@ -1824,10 +1824,21 @@ export async function chatsRoutes(app: FastifyInstance) {
         legacySummary: typeof meta.summary === "string" ? meta.summary : null,
       });
       if (!existingEntries.some((entry) => entry.id === rangeEntry.id)) {
+        const { rangeStartIndex, rangeEndIndex } = rangeEntry;
+        if (
+          !Number.isInteger(rangeStartIndex) ||
+          !Number.isInteger(rangeEndIndex) ||
+          rangeStartIndex! < 1 ||
+          rangeEndIndex! < 1
+        ) {
+          return reply
+            .status(400)
+            .send({ error: "Summary ranges need positive whole message numbers", code: "invalid" });
+        }
         const selection = selectSummaryRangeMessages(
           await storage.listMessages(req.params.id),
-          rangeEntry.rangeStartIndex! - 1,
-          rangeEntry.rangeEndIndex! - 1,
+          rangeStartIndex! - 1,
+          rangeEndIndex! - 1,
         );
         if ("error" in selection) return reply.status(400).send({ error: selection.error, code: selection.code });
         const { hiddenMessageIds: _hiddenMessageIds, ...entry } = rangeEntry;

@@ -1753,8 +1753,32 @@ export interface RulesetCheckModeRule {
  *  holds: 5e's Sunlight Sensitivity (seeing, in sunlight). */
 export type RulesetAttackModeRule = Omit<RulesetCheckModeRule, "skills">;
 
+/**
+ * A thing standing on the board that may be broken (Capability API 1.311): a jar, a lantern, a
+ * barrel, a door. Struck as a wall's section is, or caught in an area; `fragile`, anything that hits
+ * it breaks it. While it stands it closes its cells as `blocks` says. Broken, its `label` is what the
+ * fight's summary tells the story.
+ */
+export interface RulesetBoardProp {
+  id: string;
+  label: string;
+  cells: RulesetCombatCell[];
+  health: number;
+  max: number;
+  defense: number;
+  resist?: string[];
+  vulnerable?: string[];
+  immune?: string[];
+  blocks?: { move?: true; sight?: true };
+  fragile?: true;
+}
+
 export interface RulesetCombatBoard {
   grid: TacticalGrid;
+  /** What stands on it that may be broken (1.311), broken ones at 0. */
+  props?: RulesetBoardProp[];
+  /** The labels of what has been broken (1.311), in the order it broke. */
+  broken?: string[];
   /** The light the fight is fought in (1.286), all over the board; obscuring zones dim it where
    *  they stand. Bright light when it is not said. */
   light?: RulesetBoardLight;
@@ -2069,6 +2093,17 @@ export type RulesetCombatEvent =
       back: boolean;
     }
   | { type: "signature"; actorId: string; optionId: string; label: string; cost: number; left: number }
+  /** A prop struck, caught in an area, or broken (1.311): `dealt` of it, `health` left. */
+  | {
+      type: "prop";
+      actorId: string;
+      label: string;
+      prop: string;
+      outcome: "hit" | "miss" | "critical" | "area";
+      dealt: number;
+      health: number;
+      broken?: true;
+    }
   /** A lair action taken on its lair's count (1.310); what it does follows. */
   | { type: "lair"; actorId: string; optionId: string; label: string }
   /** A spend that bought several strikes, and what is left of it after this one. */
@@ -2655,6 +2690,8 @@ export interface RulesetEncounterSummary {
     left?: true;
   }>;
   enemies: Array<{ id: string; name: string; health: number; maxHealth: number; defeated: boolean; left?: true }>;
+  /** What was broken on the board (1.311), by label, in the order it broke. */
+  broken?: string[];
 }
 
 /** How a lasting area behaves (1.167), as the catalog entry said it. */

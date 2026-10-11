@@ -82,6 +82,7 @@ import { rulesetCanSee, rulesetHidingTraits, rulesetLightAt, rulesetStaysHidden 
 import { RULESET_MOVE_MODES } from "./types.js";
 import type {
   RulesetBoardLight,
+  RulesetBoardProp,
   RulesetCheckModeRule,
   RulesetMoveMode,
   RulesetMoveSpeeds,
@@ -3886,12 +3887,84 @@ export interface RulesetEncounterInput {
     /** The light it is fought in, and the kind of place it is (1.286). */
     light?: RulesetBoardLight;
     environment?: string;
+    /** What stands on it that may be broken (1.311): a jar, a lantern, a door. Its cells off the
+     *  board are dropped, and one with none on it is left out; its `defense` is 10 when not said. */
+    props?: RulesetBoardPropInput[];
   };
   /** Who is caught unaware as it begins (1.232): no move or action on their first turn, and no
    *  reaction until it ends. One whose conditions say they cannot be surprised is not. */
   surprised?: string[];
   /** Who fights in its own lair (1.310): its lair actions are taken on its lair count. */
   inLair?: string[];
+}
+
+/** A prop as a fight is handed it (1.311): its health is what it starts with, and at most. */
+export interface RulesetBoardPropInput {
+  id?: string;
+  label: string;
+  cells: Array<{ x: number; y: number }>;
+  health: number;
+  defense?: number;
+  resist?: string[];
+  vulnerable?: string[];
+  immune?: string[];
+  blocks?: { move?: boolean; sight?: boolean };
+  fragile?: boolean;
+}
+
+/** The props a board is handed (1.311), as a fight keeps them: on the board, each with health. */
+export function rulesetBoardProps(grid: TacticalGrid, props: RulesetBoardPropInput[] | undefined): RulesetBoardProp[] {
+  const used = new Set<string>();
+  const words = (list: string[] | undefined) =>
+    Array.isArray(list) ? list.filter((one) => typeof one === "string" && one.trim()) : [];
+  return (props ?? []).flatMap((prop, index) => {
+    if (!prop || typeof prop.label !== "string" || !prop.label.trim() || !Array.isArray(prop.cells)) return [];
+    const seen = new Set<string>();
+    const cells = prop.cells.flatMap((cell) => {
+      const ok =
+        !!cell &&
+        Number.isInteger(cell.x) &&
+        Number.isInteger(cell.y) &&
+        cell.x >= 0 &&
+        cell.y >= 0 &&
+        cell.x < grid.width &&
+        cell.y < grid.height &&
+        !seen.has(`${cell.x},${cell.y}`);
+      if (ok) seen.add(`${cell.x},${cell.y}`);
+      return ok ? [{ x: cell.x, y: cell.y }] : [];
+    });
+    const health = Math.floor(Number(prop.health));
+    if (cells.length === 0 || !Number.isFinite(health) || health < 1) return [];
+    let id = typeof prop.id === "string" && prop.id.trim() ? prop.id.trim() : `prop-${index + 1}`;
+    while (used.has(id)) id = `${id}-${index + 1}`;
+    used.add(id);
+    const defense = Number.isFinite(Number(prop.defense)) ? Math.floor(Number(prop.defense)) : 10;
+    const resist = words(prop.resist);
+    const vulnerable = words(prop.vulnerable);
+    const immune = words(prop.immune);
+    return [
+      {
+        id,
+        label: prop.label.trim(),
+        cells,
+        health,
+        max: health,
+        defense,
+        ...(resist.length ? { resist } : {}),
+        ...(vulnerable.length ? { vulnerable } : {}),
+        ...(immune.length ? { immune } : {}),
+        ...(prop.blocks?.move || prop.blocks?.sight
+          ? {
+              blocks: {
+                ...(prop.blocks.move ? { move: true as const } : {}),
+                ...(prop.blocks.sight ? { sight: true as const } : {}),
+              },
+            }
+          : {}),
+        ...(prop.fragile ? { fragile: true as const } : {}),
+      },
+    ];
+  });
 }
 
 /**
@@ -4825,8 +4898,12 @@ function placeRulesetCombatants(
   // nearest such place to where they were asked to stand.
   // The big are set down first, and anybody of one cell asked to stand inside one of them steps
   // aside to the nearest open cell; nobody else moves from where they were asked to stand.
-  const taken = new Set<string>();
-  const big = new Set<string>();
+  // Nobody stands inside a prop that closes its cells (1.311): asked to, they step aside.
+  const props = rulesetBoardProps(grid, board.props);
+  const taken = new Set<string>(
+    props.filter((prop) => prop.blocks?.move).flatMap((prop) => prop.cells.map((cell) => `${cell.x},${cell.y}`)),
+  );
+  const big = new Set<string>(taken);
   const spans = new Map(placed.map((entry) => [entry, rulesetSizeSpan(combat, entry.combatant)]));
   for (const entry of [...placed].sort((a, b) => spans.get(b)! - spans.get(a)!)) {
     const span = spans.get(entry)!;
@@ -4848,6 +4925,7 @@ function placeRulesetCombatants(
   }
   state.board = {
     grid,
+    ...(props.length ? { props } : {}),
     ...(board.battlefield ? { battlefield: board.battlefield as RulesetCombatBoard["battlefield"] } : {}),
     ...(board.light ? { light: board.light } : {}),
     ...(board.environment ? { environment: board.environment } : {}),
@@ -4858,6 +4936,14 @@ function placeRulesetCombatants(
       ? { levelCells: rulesetInCells(combat.elevation.levelHeight, combat.distance.perCell) }
       : {}),
   };
+  // What the props close, closed from the start (1.311); a wall cast later is added to it.
+  const walls: Record<string, number> = {};
+  for (const prop of props) {
+    const bits = (prop.blocks?.move ? 1 : 0) | (prop.blocks?.sight ? 2 : 0);
+    for (const cell of bits ? prop.cells : [])
+      walls[`${cell.x},${cell.y}`] = (walls[`${cell.x},${cell.y}`] ?? 0) | bits;
+  }
+  if (Object.keys(walls).length > 0) state.board.grid = { ...grid, walls };
 }
 
 /** The stored live blob as the encounter keeps it. `applyRulesetSheetOp` already reads a stored

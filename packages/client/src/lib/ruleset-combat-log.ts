@@ -658,6 +658,26 @@ export function rulesetCombatEventLine(
         dealt: event.dealt,
         health: event.health,
       });
+    // A prop struck or caught in an area (1.311).
+    case "prop":
+      return key(
+        event.outcome === "miss"
+          ? "propMiss"
+          : event.broken
+            ? event.outcome === "area"
+              ? "propAreaBroken"
+              : "propBroken"
+            : event.outcome === "area"
+              ? "propArea"
+              : "prop",
+        {
+          actor: names.combatant(event.actorId),
+          label: event.label,
+          prop: event.prop,
+          dealt: event.dealt,
+          health: event.health,
+        },
+      );
     case "pushed":
       return key("pushed", {
         actor: names.combatant(event.actorId),

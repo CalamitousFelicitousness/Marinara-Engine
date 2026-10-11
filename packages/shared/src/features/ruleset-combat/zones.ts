@@ -14,6 +14,7 @@ import {
   rulesetZoneCells,
 } from "./grid.js";
 import type {
+  RulesetBoardProp,
   RulesetCombatAction,
   RulesetCombatant,
   RulesetCombatCell,
@@ -99,6 +100,15 @@ export function rulesetSyncZoneWalls(state: RulesetEncounterState): void {
       walls[key] = (walls[key] ?? 0) | bits;
     }
   }
+  // A prop closes its cells while it stands (1.311).
+  for (const prop of rulesetStandingProps(state)) {
+    const bits = (prop.blocks?.move ? 1 : 0) | (prop.blocks?.sight ? 2 : 0);
+    if (!bits) continue;
+    for (const cell of prop.cells) {
+      const key = `${cell.x},${cell.y}`;
+      walls[key] = (walls[key] ?? 0) | bits;
+    }
+  }
   if (Object.keys(walls).length > 0) grid.walls = walls;
   else delete grid.walls;
 }
@@ -129,6 +139,11 @@ export function rulesetZonesShown(state: RulesetEncounterState): Array<{
         }
       : {}),
   }));
+}
+
+/** What still stands on the board that may be broken (1.311). */
+export function rulesetStandingProps(state: RulesetEncounterState): RulesetBoardProp[] {
+  return (state.board?.props ?? []).filter((prop) => prop.health > 0);
 }
 
 /** The standing sections of walls that may be struck (1.195), each with its zone. */

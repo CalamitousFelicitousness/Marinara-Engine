@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Game Mode: fight boards can have props that break: struck like a wall's section or caught in an area, a fragile one at a touch. Breaking one tells the story, so a story event can fire on it, and a world battlefield can paint them (Capability API 1.311).
 - Rulesets: creatures fighting in their lair now take lair actions: one a round on initiative count 20 (losing ties), never the same one two rounds running, and the Game Master can say which enemy is in its lair (Capability API 1.310).
 - Rulesets: the fight board now shows the light on each square (dim, dark, or sunlight) and any fog or haze over it, and says so when a square is read aloud.
 - Rulesets: Resilient Sphere shuts a creature away from everybody else; nothing gets in or out, the creature inside can roll it at half speed, others can pick it up and carry it, and Disintegrate breaks it. Spells can also be limited to creatures up to a size, such as Large or smaller (Capability API 1.309).

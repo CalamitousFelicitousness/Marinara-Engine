@@ -104,7 +104,7 @@ import {
   rulesetFills,
 } from "./grid.js";
 import { coverTier, elevationAt } from "../tactical-combat/math.js";
-import { rulesetStandingSections, rulesetZoneMoveCells, rulesetZoneTurnCells } from "./zones.js";
+import { rulesetStandingProps, rulesetStandingSections, rulesetZoneMoveCells, rulesetZoneTurnCells } from "./zones.js";
 import {
   rulesetCanSee,
   rulesetCarriesLight,
@@ -520,7 +520,8 @@ export function rulesetTargetRefusal(
 }
 
 /**
- * The cells of standing wall sections an attack may be pointed at instead of a creature (1.195):
+ * The cells of standing wall sections, and of props (1.311), an attack may be pointed at instead of a
+ * creature (1.195):
  * one aimed at a single foe or anybody, dealing damage, not an area, a contest or a sequence, with the
  * section within its reach and seen from where its maker stands.
  */
@@ -533,21 +534,23 @@ export function rulesetWallTargets(
   if (!grid || !rulesetPositionOf(actor)) return [];
   if (action.toHit === undefined || !action.damage || action.area || action.contest || action.sequence) return [];
   if (action.targets.count < 1 || (action.targets.side !== "enemy" && action.targets.side !== "any")) return [];
-  const sections = rulesetStandingSections(state);
-  if (sections.length === 0) return [];
+  // And what stands on the board that may be broken (1.311).
+  const cells = [
+    ...rulesetStandingSections(state).flatMap(({ section }) => section.cells),
+    ...rulesetStandingProps(state).flatMap((prop) => prop.cells),
+  ];
+  if (cells.length === 0) return [];
   const reach = rulesetOptionReach(state, actor.id, action.id);
   if (!reach) return [];
-  return sections.flatMap(({ section }) =>
-    section.cells
-      .filter(
-        (cell) =>
-          rulesetDistanceTo(cell, actor) <= reach.max &&
-          rulesetFootprint(actor).some(
-            (from) => rulesetCellDistance(from, cell) <= 1 || rulesetLineOfSight(grid, from, cell),
-          ),
-      )
-      .map((cell) => ({ x: cell.x, y: cell.y })),
-  );
+  return cells
+    .filter(
+      (cell) =>
+        rulesetDistanceTo(cell, actor) <= reach.max &&
+        rulesetFootprint(actor).some(
+          (from) => rulesetCellDistance(from, cell) <= 1 || rulesetLineOfSight(grid, from, cell),
+        ),
+    )
+    .map((cell) => ({ x: cell.x, y: cell.y }));
 }
 
 /** Whether an area option may be aimed at this cell: on the board, within the distance it carries,

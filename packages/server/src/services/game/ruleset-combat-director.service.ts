@@ -433,6 +433,7 @@ function buildRulesetBoard(
       battlefield?: unknown;
       light?: RulesetBoardLight;
       environment?: string;
+      props?: NonNullable<TacticalMadeBattlefield["props"]>;
     }
   | { error: string }
   | null {
@@ -479,6 +480,8 @@ function buildRulesetBoard(
     battlefield: generated.battlefield,
     ...(light ? { light } : {}),
     ...(environment ? { environment } : {}),
+    // What its painter stood on it that may be broken (1.311).
+    ...(input.made?.props?.length ? { props: input.made.props } : {}),
   };
 }
 
@@ -787,6 +790,18 @@ export function directedRulesetView(
     combatants: encounter.combatants.map((combatant) => projectCombatant(definition, combatant, encounter)),
     // The areas spells left standing (1.167), drawn on the board and listed beside it.
     ...(rulesetZonesShown(encounter).length > 0 ? { zones: rulesetZonesShown(encounter) } : {}),
+    // What stands on the board that may be broken (1.311), broken ones too.
+    ...(grid && distance && encounter.board?.props?.length
+      ? {
+          props: encounter.board.props.map((prop) => ({
+            id: prop.id,
+            label: prop.label,
+            cells: prop.cells.map((cell) => ({ x: cell.x, y: cell.y })),
+            health: prop.health,
+            max: prop.max,
+          })),
+        }
+      : {}),
     // A window is answered by the one it asks, so while it is open the menu on screen is THEIRS.
     // The actor's own turn is standing still behind it and has nothing to offer until it closes.
     ...(held && !over

@@ -225,6 +225,9 @@ export interface DirectedRulesetView {
     /** A wall's sections (1.195): their cells and the health each has left; one at 0 is broken. */
     sections?: Array<{ cells: Array<{ x: number; y: number }>; health: number; max: number }>;
   }>;
+  /** What stands on the board that may be broken (1.311): its cells, and what it has left of what;
+   *  one at 0 is broken. */
+  props?: Array<{ id: string; label: string; cells: Array<{ x: number; y: number }>; health: number; max: number }>;
   /** The legal menu, present only while a human controls the one being asked: the actor whose turn
    *  it is, or, while a window holds the fight open, whoever that window is asking. */
   options?: DirectedRulesetOption[];

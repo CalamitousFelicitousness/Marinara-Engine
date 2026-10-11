@@ -824,6 +824,10 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
       }),
     ],
     [
+      "prop",
+      say({ type: "prop", actorId: "brenna", label: "Mace", prop: "Oil Jar", outcome: "hit", dealt: 3, health: 2 }),
+    ],
+    [
       "track",
       say({
         type: "track",
@@ -1225,6 +1229,22 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     struck("critical", 30, 0, true),
     "Brenna's Mace strikes the Wall of Ice for 30 and breaks that section.",
   );
+  assert.equal(printed.get("prop"), "Brenna's Mace strikes Oil Jar for 3; it has 2 left.");
+  const broke = (outcome: "hit" | "miss" | "critical" | "area", dealt: number, health: number, broken?: true) =>
+    say({
+      type: "prop",
+      actorId: "brenna",
+      label: "Mace",
+      prop: "Oil Jar",
+      outcome,
+      dealt,
+      health,
+      ...(broken ? { broken } : {}),
+    });
+  assert.equal(broke("miss", 0, 5), "Brenna's Mace misses Oil Jar.");
+  assert.equal(broke("critical", 9, 0, true), "Brenna's Mace strikes Oil Jar for 9 and breaks it.");
+  assert.equal(broke("area", 2, 3), "Brenna's Mace catches Oil Jar for 2; it has 3 left.");
+  assert.equal(broke("area", 8, 0, true), "Brenna's Mace catches Oil Jar for 8 and breaks it.");
   assert.equal(printed.get("track"), "Brenna takes Thorn Lurker's Exhaustion down from 2 to 1.");
   assert.equal(
     say({ type: "condition", targetId: "lurker", condition: "incapacitated", active: false, reason: "linked" }),

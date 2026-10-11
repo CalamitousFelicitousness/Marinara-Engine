@@ -65,6 +65,8 @@ const trigger = z.discriminatedUnion("on", [
   z.object({ on: z.literal("day"), day: z.number().int().min(0).max(1_000_000) }).strict(),
   z.object({ on: z.literal("turn"), turn: z.number().int().min(1).max(1_000_000) }).strict(),
   z.object({ on: z.literal("fight"), outcome: z.enum(STORY_FIGHT_OUTCOMES) }).strict(),
+  /** A fight broke this prop (Capability API 1.311), by its label: an oil jar, the mill's sluice gate. */
+  z.object({ on: z.literal("broke"), prop: z.string().trim().min(1).max(40) }).strict(),
   z
     .object({
       on: z.literal("deed"),
@@ -297,6 +299,14 @@ export function checkStoryScript(
     if (when.on === "arrive") placeOk(when.place, where);
     if (when.on === "meet") personOk(when.person, where);
     if (when.on === "deed" && when.place) placeOk(when.place, where);
+    // Only what stands on one of the world's battlefields can be broken (1.311).
+    if (when.on === "broke") {
+      const label = when.prop.trim().toLowerCase();
+      const painted = (game.edits?.battlefields ?? []).some((map) =>
+        (map.props ?? []).some((prop) => prop.label.trim().toLowerCase() === label),
+      );
+      if (!painted) issues.push(`${where}: no battlefield of this world has a prop called "${when.prop}".`);
+    }
     for (const action of event.do) {
       if ("set" in action) {
         const flag = flagOf(action.set, where);
@@ -528,6 +538,16 @@ export function storyFightOutcome(playerMessage: string | null | undefined): Sto
 }
 export type StoryFightOutcome = (typeof STORY_FIGHT_OUTCOMES)[number];
 
+/** What a fight broke (1.311), read off the combat recap the player's message carries: its labels. */
+export function storyFightBroken(playerMessage: string | null | undefined): string[] {
+  if (!playerMessage || !/\[combat_result\]/i.test(playerMessage)) return [];
+  const line = /^Broken:\s*(.+)$/im.exec(playerMessage)?.[1] ?? "";
+  return line
+    .split(";")
+    .map((label) => label.trim())
+    .filter(Boolean);
+}
+
 /** The world as a story turn reads it. */
 export interface StoryTurnWorld {
   game: GameWorld;
@@ -547,6 +567,8 @@ export interface StoryTurnWorld {
   day: number;
   /** What this turn's player message says a fight ended in. */
   fight: StoryFightOutcome | null;
+  /** What this turn's player message says a fight broke (1.311), by label. */
+  broke?: readonly string[];
   /** The player's name, for a page the player speaks. */
   playerName?: string;
 }
@@ -794,6 +816,11 @@ export function storyTurn(story: StoryScript, world: StoryTurnWorld): StoryTurn 
           : event.repeat === true && latestDeeds.some((entry) => deedMatches(entry, when.deed, when.place));
       case "fight":
         return world.fight === when.outcome && (event.repeat || times === 0);
+      case "broke":
+        return (
+          (world.broke ?? []).some((label) => label.trim().toLowerCase() === when.prop.trim().toLowerCase()) &&
+          (event.repeat === true || times === 0)
+        );
       case "flags":
         return times === 0 || (event.repeat === true && risen.get(event.id) === true);
       case "gm":

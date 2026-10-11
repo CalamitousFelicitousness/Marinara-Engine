@@ -157,6 +157,8 @@ export {
   type RulesetActiveCondition,
   type RulesetConditionModifier,
   type RulesetEncounterInput,
+  type RulesetBoardPropInput,
+  rulesetBoardProps,
 } from "./encounter.js";
 export {
   rulesetAreaCells,

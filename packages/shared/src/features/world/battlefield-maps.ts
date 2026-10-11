@@ -26,6 +26,39 @@ export const WORLD_BATTLEFIELD_TILE_CHARS: Readonly<Record<TacticalTerrain, stri
 });
 const TERRAIN_OF = new Map(TACTICAL_TERRAINS.map((terrain) => [WORLD_BATTLEFIELD_TILE_CHARS[terrain], terrain]));
 
+/** The most props one battlefield has. */
+export const WORLD_BATTLEFIELD_PROPS_MAX = 24;
+
+const damageWords = z.array(z.string().trim().min(1).max(40)).max(16).optional();
+
+/** A thing standing on a painted board that may be broken (1.311), on the tiles it fills. Broken in a
+ *  fight, its label is told to the story as what was broken. */
+export const worldBattlefieldPropSchema = z
+  .object({
+    /** `p<n>`, as the editor numbers them. */
+    id: z.string().regex(/^p\d{1,4}$/, "A prop's id is p and a number"),
+    label: promptSafeText(40)
+      .refine((value) => value.trim().length > 0, "A prop's label needs more than spaces")
+      // The recap lists what broke split by semicolons, and a story reads it back that way.
+      .refine((value) => !value.includes(";"), "A prop's label cannot contain a semicolon"),
+    cells: z
+      .array(z.object({ x: z.number().int().min(0).max(13), y: z.number().int().min(0).max(9) }).strict())
+      .min(1)
+      .max(16),
+    health: z.number().int().min(1).max(1000),
+    /** What a blow must reach to hit it; 10 when not said. */
+    defense: z.number().int().min(0).max(40).optional(),
+    resist: damageWords,
+    vulnerable: damageWords,
+    immune: damageWords,
+    /** Whether it closes its tiles while it stands: to walking, to seeing through, or both. */
+    blocks: z.object({ move: z.boolean().optional(), sight: z.boolean().optional() }).strict().optional(),
+    /** Anything that hits it breaks it. */
+    fragile: z.boolean().optional(),
+  })
+  .strict();
+export type WorldBattlefieldProp = z.infer<typeof worldBattlefieldPropSchema>;
+
 export const worldBattlefieldMapSchema = z
   .object({
     /** `b<n>`, as the editor numbers them. */
@@ -48,6 +81,8 @@ export const worldBattlefieldMapSchema = z
       .min(1)
       .max(10)
       .optional(),
+    /** What stands on it that may be broken (Capability API 1.311): a jar, a lantern, a door. */
+    props: z.array(worldBattlefieldPropSchema).max(WORLD_BATTLEFIELD_PROPS_MAX).optional(),
   })
   .strict();
 export type WorldBattlefieldMap = z.infer<typeof worldBattlefieldMapSchema>;
@@ -67,7 +102,18 @@ export function worldBattlefieldGrid(map: Pick<WorldBattlefieldMap, "rows" | "he
 
 /** Why a painted board cannot be fought on, or nothing (`tacticalMadeBoardIssues`). */
 export function worldBattlefieldIssues(map: WorldBattlefieldMap): string[] {
-  return tacticalMadeBoardIssues(map.size, worldBattlefieldGrid(map));
+  const grid = worldBattlefieldGrid(map);
+  const issues = tacticalMadeBoardIssues(map.size, grid);
+  // Each prop on the board (1.311), and no two with one id.
+  const ids = new Set<string>();
+  for (const prop of map.props ?? []) {
+    if (ids.has(prop.id)) issues.push(`Two props are numbered ${prop.id}`);
+    ids.add(prop.id);
+    if (prop.cells.some((cell) => cell.x >= grid.width || cell.y >= grid.height)) {
+      issues.push(`${prop.label} stands off the board`);
+    }
+  }
+  return issues;
 }
 
 /**
@@ -106,7 +152,14 @@ export function worldBattlefieldHere(
     const here = maps.filter((map) => map.place === at);
     if (!here.length) continue;
     const map = here[(seed >>> 0) % here.length]!;
-    return { id: map.id, name: map.name, size: map.size, scene: map.scene, grid: worldBattlefieldGrid(map) };
+    return {
+      id: map.id,
+      name: map.name,
+      size: map.size,
+      scene: map.scene,
+      grid: worldBattlefieldGrid(map),
+      ...(map.props?.length ? { props: map.props.map((prop) => structuredClone(prop)) } : {}),
+    };
   }
   return null;
 }

@@ -480,6 +480,28 @@ export function RulesetCombatBoard({
                       {cell.section.health}
                     </span>
                   )}
+                  {/* A prop (1.311): drawn as a crate standing in the square, its health in the corner;
+                      broken, as its rubble. */}
+                  {cell.prop && (
+                    <span
+                      className={cn(
+                        "pointer-events-none absolute inset-[18%] rounded-[2px] border",
+                        cell.prop.health > 0
+                          ? "border-amber-900/80 bg-amber-700/70"
+                          : "border-dashed border-amber-900/50 bg-transparent",
+                      )}
+                      title={
+                        cell.prop.health > 0
+                          ? t("game.combat.ruleset.board.prop", cell.prop)
+                          : t("game.combat.ruleset.board.propBroken", { label: cell.prop.label })
+                      }
+                    />
+                  )}
+                  {cell.prop && cell.prop.health > 0 && (
+                    <span className="pointer-events-none absolute bottom-0 right-0 bg-black/60 px-[2px] text-[0.5rem] font-bold leading-tight tabular-nums text-amber-100">
+                      {cell.prop.health}
+                    </span>
+                  )}
                   {cell.strikable && (
                     <span className="pointer-events-none absolute inset-0 ring-2 ring-inset ring-[var(--destructive)]" />
                   )}

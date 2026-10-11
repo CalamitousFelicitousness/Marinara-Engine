@@ -50,6 +50,8 @@ export interface RulesetBoardCell {
   zones?: string[];
   /** A wall's section standing here (1.195): whose wall, and what it has left of what; 0 is broken. */
   section?: { wall: string; health: number; max: number };
+  /** A prop standing here (1.311): what it is, and what it has left of what; 0 is broken. */
+  prop?: { label: string; health: number; max: number };
   /** Set while a target is being chosen and the attack may strike the section here (1.195). */
   strikable?: true;
   /** The light here when it is not bright: sunlight, dim light or darkness. */
@@ -196,6 +198,11 @@ export function rulesetBoardCells(view: DirectedRulesetView, step: RulesetMenuSt
   const targets = new Set(step?.stage === "target" ? step.option.targetIds : []);
   const strikable = new Set(step?.stage === "target" ? (step.option.walls ?? []).map(rulesetCellKey) : []);
   const sections = new Map<string, { wall: string; health: number; max: number }>();
+  const props = new Map<string, { label: string; health: number; max: number }>();
+  for (const prop of view.props ?? []) {
+    for (const cell of prop.cells)
+      props.set(rulesetCellKey(cell), { label: prop.label, health: prop.health, max: prop.max });
+  }
   const zoned = new Map<string, string[]>();
   for (const zone of view.zones ?? []) {
     for (const section of zone.sections ?? []) {
@@ -237,6 +244,7 @@ export function rulesetBoardCells(view: DirectedRulesetView, step: RulesetMenuSt
         ...(laid.has(key) ? { laid: true as const } : {}),
         ...(zoned.has(key) ? { zones: zoned.get(key)! } : {}),
         ...(sections.has(key) ? { section: sections.get(key)! } : {}),
+        ...(props.has(key) ? { prop: props.get(key)! } : {}),
         ...(strikable.has(key) ? { strikable: true as const } : {}),
         ...(grid.light?.[key] ? { light: grid.light[key] } : {}),
         ...(grid.fog?.[key] ? { fog: grid.fog[key] } : {}),
@@ -346,6 +354,13 @@ export function rulesetCellSentences(cell: RulesetBoardCell, view: DirectedRules
       cell.section.health > 0
         ? t("game.combat.ruleset.board.section", cell.section)
         : t("game.combat.ruleset.board.sectionBroken", { wall: cell.section.wall }),
+    );
+  }
+  if (cell.prop) {
+    said.push(
+      cell.prop.health > 0
+        ? t("game.combat.ruleset.board.prop", cell.prop)
+        : t("game.combat.ruleset.board.propBroken", { label: cell.prop.label }),
     );
   }
   if (cell.light) said.push(t(RULESET_BOARD_LIGHT_KEYS[cell.light]));

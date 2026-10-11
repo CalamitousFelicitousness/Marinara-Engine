@@ -71,6 +71,19 @@ export interface TacticalMadeBattlefield {
   /** The battlefield it looks like: its colours, and the weather's reach. */
   scene: TacticalEnvironment;
   grid: TacticalGrid;
+  /** What stands on it that may be broken (Capability API 1.311), as painted. */
+  props?: Array<{
+    id: string;
+    label: string;
+    cells: Array<{ x: number; y: number }>;
+    health: number;
+    defense?: number;
+    resist?: string[];
+    vulnerable?: string[];
+    immune?: string[];
+    blocks?: { move?: boolean; sight?: boolean };
+    fragile?: boolean;
+  }>;
 }
 
 export interface TerrainInfo {

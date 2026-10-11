@@ -1,6 +1,6 @@
 // A summary written by hand with Summary Scope set to Range keeps and applies that range, like Generate (#7410).
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -18,6 +18,8 @@ const { chatsRoutes } = await import("../../packages/server/src/routes/chats.rou
 const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
 const { createConnectionsStorage } = await import("../../packages/server/src/services/storage/connections.storage.js");
 const { isMessageHiddenFromAI } = await import("../../packages/server/src/routes/generate/generate-route-utils.js");
+const { inspectChatSummaryBatchRanges, resolveChatSummaryWriteCoverage } =
+  await import("../../packages/client/src/lib/chat-summary-batch.ts");
 const db = await getDB();
 const chats = createChatsStorage(db);
 const app = Fastify();
@@ -201,6 +203,61 @@ try {
   assert.deepEqual(
     (await entries(written.chatId)).map((entry) => entry.id),
     ["manual-range", "manual-tail"],
+  );
+
+  // A refused draft stays open and follows the Summary Scope, so picking another range and saving again works
+  // without losing the text.
+  const firstRange = (start: string, end: string) => inspectChatSummaryBatchRanges([{ id: "first", start, end }], 6)[0];
+  assert.equal(resolveChatSummaryWriteCoverage("range", firstRange("5", "9")).error, "outside");
+  const nextRange = resolveChatSummaryWriteCoverage("range", firstRange("6", "5"));
+  assert.deepEqual(nextRange, { error: null, coverage: { sourceMode: "range", rangeStartIndex: 5, rangeEndIndex: 6 } });
+  const retryResponse = await write(written.chatId, { ...manualDraft("refused-1", 1, 3), ...nextRange.coverage });
+  assert.equal(retryResponse.statusCode, 200, retryResponse.body);
+  const retriedEntry = (await entries(written.chatId)).find((entry) => entry.id === "refused-1");
+  assert(retriedEntry);
+  assert.equal(retriedEntry.content, "Manual summary test");
+  assert.deepEqual(coverage(retriedEntry, written.ids), {
+    sourceMode: "range",
+    rangeStartIndex: 5,
+    rangeEndIndex: 6,
+    messageCount: 2,
+    messages: [5, 6],
+    hidden: undefined,
+  });
+  // Switching to Last before saving drops the range, and the entry is saved without coverage as before.
+  const lastScope = resolveChatSummaryWriteCoverage("last", firstRange("1", "3"));
+  assert.deepEqual(lastScope, {
+    error: null,
+    coverage: { sourceMode: "last", rangeStartIndex: undefined, rangeEndIndex: undefined },
+  });
+  const lastResponse = await write(written.chatId, { ...manualDraft("refused-5", 5, 9), ...lastScope.coverage });
+  assert.equal(lastResponse.statusCode, 200, lastResponse.body);
+  const lastEntry = (await entries(written.chatId)).find((entry) => entry.id === "refused-5");
+  assert(lastEntry);
+  assert.deepEqual(coverage(lastEntry, written.ids), {
+    sourceMode: "last",
+    rangeStartIndex: undefined,
+    rangeEndIndex: undefined,
+    messageCount: undefined,
+    messages: undefined,
+    hidden: undefined,
+  });
+
+  // The panel wires that up: the open draft and its save use the current scope, and a refusal says why.
+  const panelSource = readFileSync(
+    new URL("../../packages/client/src/components/chat/ChatSummaryPanel.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    panelSource,
+    /\{ \.\.\.draftEntry, \.\.\.writeScope\.coverage \}/u,
+    "The open draft shows the current scope",
+  );
+  assert.match(panelSource, /\.\.\.entry,\s*\.\.\.writeScope\.coverage,/u, "A new draft saves with the current scope");
+  assert.match(
+    panelSource,
+    /error instanceof ApiError &&\s*error\.status === 400\s*\?\s*error\.message/u,
+    "A refused range shows the server's reason",
   );
 } finally {
   await new Promise<void>((resolve) => provider.close(() => resolve()));

@@ -759,10 +759,11 @@ export async function chatsRoutes(app: FastifyInstance) {
    * Append a summary entry and recompile the prompt-facing summary without replacing concurrent metadata
    * changes. When the chat hides summarized messages, the entry's messages (minus the protected tail) are
    * hidden first. Hiding and the entry write share the per-chat queue with deletion, so neither can
-   * interleave between them, and a failed write unhides again.
+   * interleave between them, and a failed write unhides again. `req` is the summarizing route's request, whose
+   * chat id keys that queue.
    */
   const appendSummaryEntryHidingMessages = async (
-    chatId: string,
+    req: { params: { id: string } },
     entry: Partial<ChatSummaryEntry> & { content: string; messageIds: string[] },
     options: { signal?: AbortSignal; metadata?: Record<string, unknown> } = {},
   ) => {
@@ -771,9 +772,12 @@ export async function chatsRoutes(app: FastifyInstance) {
     };
     let hideMessageIds: string[] = [];
     let appended = null as ReturnType<typeof appendChatSummaryEntryToMetadata> | null;
-    const updatedChat = await withChatMetadataPatchQueue(chatId, async () => {
+    const updatedChat = await withChatMetadataPatchQueue(req.params.id, async () => {
       checkAborted();
-      const [latestChat, latestMessages] = await Promise.all([storage.getById(chatId), storage.listMessages(chatId)]);
+      const [latestChat, latestMessages] = await Promise.all([
+        storage.getById(req.params.id),
+        storage.listMessages(req.params.id),
+      ]);
       if (!latestChat) return null;
       checkAborted();
       const latestMeta = parseExtra(latestChat.metadata) as Record<string, unknown>;
@@ -786,11 +790,12 @@ export async function chatsRoutes(app: FastifyInstance) {
             })
           : [];
       checkAborted();
-      hideMessageIds = eligibleToHide.length > 0 ? await storage.bulkSetHiddenFromAI(chatId, eligibleToHide, true) : [];
+      hideMessageIds =
+        eligibleToHide.length > 0 ? await storage.bulkSetHiddenFromAI(req.params.id, eligibleToHide, true) : [];
 
       try {
         const updated = await storage.patchMetadata(
-          chatId,
+          req.params.id,
           (freshMeta) => {
             checkAborted();
             const now = new Date().toISOString();
@@ -809,12 +814,12 @@ export async function chatsRoutes(app: FastifyInstance) {
           { metadataQueueHeld: true },
         );
         if (!updated && hideMessageIds.length > 0) {
-          await storage.bulkSetHiddenFromAI(chatId, hideMessageIds, false);
+          await storage.bulkSetHiddenFromAI(req.params.id, hideMessageIds, false);
         }
         return updated;
       } catch (err) {
         if (hideMessageIds.length > 0) {
-          await storage.bulkSetHiddenFromAI(chatId, hideMessageIds, false);
+          await storage.bulkSetHiddenFromAI(req.params.id, hideMessageIds, false);
         }
         throw err;
       }
@@ -1819,7 +1824,7 @@ export async function chatsRoutes(app: FastifyInstance) {
         );
         if ("error" in selection) return reply.status(400).send({ error: selection.error });
         const { hiddenMessageIds: _hiddenMessageIds, ...entry } = rangeEntry;
-        const { updatedChat } = await appendSummaryEntryHidingMessages(req.params.id, {
+        const { updatedChat } = await appendSummaryEntryHidingMessages(req, {
           ...entry,
           messageCount: selection.messages.length,
           rangeStartIndex: selection.rangeStartIndex,
@@ -5676,7 +5681,7 @@ export async function chatsRoutes(app: FastifyInstance) {
 
     const messageIds = selectedMessages.map((message) => message.id);
     const { updatedChat, hideMessageIds, appended } = await appendSummaryEntryHidingMessages(
-      req.params.id,
+      req,
       {
         kind: "rolling",
         origin: "manual",

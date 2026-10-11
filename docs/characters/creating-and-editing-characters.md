@@ -73,8 +73,8 @@ The **Card** tab is the main writing workspace. It holds the fields the AI reads
 
 The **Dialogue & Greetings** section sets how a chat opens and how the character sounds:
 
-- **First Message**. The opening message shown when a new chat starts.
-- **Alternate Greetings**. Extra opening messages. When you start a chat you can pick which one to use. Use the up and down controls to reorder them, and the X to remove one.
+- **First Message**. The opening message shown when a new Roleplay chat starts. Conversation and Game chats do not start with a greeting.
+- **Alternate Greetings**. Extra opening messages. When you start a Roleplay chat you can pick which one to use. Use the up and down controls to reorder them, and the X to remove one.
 - **Example Dialogue**. Sample exchanges that teach the character's voice. Use `<START>` to separate exchanges. Use `{{user}}` and `{{char}}` as placeholders.
 
 Greetings and example messages can also display images from the character's Gallery; see [Character galleries → Reuse a gallery image in messages and greetings](galleries.md#reuse-a-gallery-image-in-messages-and-greetings).

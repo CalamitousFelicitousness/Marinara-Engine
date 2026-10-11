@@ -24,6 +24,7 @@ import {
   rulesetLineOfSight,
   rulesetPositionOf,
   rulesetZoneCells,
+  rulesetZoneMiddles,
   rulesetFootprint,
   rulesetGap,
 } from "./grid.js";
@@ -268,7 +269,7 @@ function lightSources(definition: RulesetDefinition, state: RulesetEncounterStat
   const zones = rulesetStandingZones(state).flatMap(({ caster, zone, action }): LightSource[] => {
     const lights = action.zone?.lights;
     if (!lights) return [];
-    const middle = zone.anchor === "point" ? (zone.at ? [zone.at] : []) : rulesetFootprint(caster);
+    const middle = rulesetZoneMiddles(state, caster, zone);
     const only = new Set(rulesetZoneCells(state, caster, zone).map((cell) => `${cell.x},${cell.y}`));
     if (middle.length === 0 || only.size === 0) return [];
     return [

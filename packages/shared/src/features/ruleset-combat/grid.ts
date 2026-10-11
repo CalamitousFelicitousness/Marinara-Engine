@@ -1105,9 +1105,11 @@ export function rulesetZoneCells(
 ): RulesetCombatCell[] {
   const grid = state.board?.grid;
   if (!grid) return [];
-  if (zone.anchor === "point") return zone.cells ?? [];
+  // Carried by somebody (1.296): around them, wherever they are now.
+  const holder = zone.on ? rulesetCombatant(state, zone.on) : undefined;
+  if (zone.anchor === "point" && !(holder && rulesetPositionOf(holder))) return zone.cells ?? [];
   const action = caster.actions.find((entry) => entry.id === zone.actionId);
-  const at = rulesetPositionOf(caster);
+  const at = rulesetPositionOf(holder ?? caster);
   if (!action?.area || !at) return [];
   // A line or cone held by its caster points the way it was cast, or last turned (1.177).
   if (action.area.shape === "line" || action.area.shape === "cone") {
@@ -1115,13 +1117,26 @@ export function rulesetZoneCells(
     const toward = { x: at.x + zone.facing.dx, y: at.y + zone.facing.dy };
     return rulesetAreaCells(action.area.shape, action.area.size, at, toward, grid, action.area.width);
   }
-  // Around every cell its caster fills (1.189), each cell once.
+  // Around every cell its caster (or holder) fills (1.189), each cell once.
   const cells = new Map<string, RulesetCombatCell>();
-  for (const from of rulesetFootprint(caster)) {
+  for (const from of rulesetFootprint(holder ?? caster)) {
     for (const cell of rulesetAreaCells("burst", action.area.size, from, from, grid))
       cells.set(`${cell.x},${cell.y}`, cell);
   }
   return [...cells.values()];
+}
+
+/** Where a zone's light and reach are measured from (1.292): the point it was put at and its copies'
+ *  (1.296), whoever carries it (1.296), or its caster. */
+export function rulesetZoneMiddles(
+  state: RulesetEncounterState,
+  caster: RulesetCombatant,
+  zone: RulesetCombatZone,
+): RulesetCombatCell[] {
+  const holder = zone.on ? rulesetCombatant(state, zone.on) : undefined;
+  if (holder && rulesetPositionOf(holder)) return rulesetFootprint(holder);
+  if (zone.anchor === "point") return zone.at ? [zone.at, ...(zone.also ?? [])] : [];
+  return rulesetFootprint(caster);
 }
 
 /** Whether a zone's area may catch this combatant at all, as the cast's own area would have: its

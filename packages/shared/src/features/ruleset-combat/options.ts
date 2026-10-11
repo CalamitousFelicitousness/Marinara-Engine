@@ -716,7 +716,11 @@ export function rulesetCopiesLegal(
     if (aims.has(key)) return false;
     aims.add(key);
     const cells = rulesetAimedCells(state, actorId, optionId, aim);
-    if (!cells.some((cell) => placed.some((other) => rulesetCellDistance(cell, other) <= 1))) return false;
+    // Near enough another's middle (1.296), or touching the cells of those before it.
+    if (area.copiesWithin !== undefined) {
+      const near = [at, ...also.slice(0, also.indexOf(aim))];
+      if (!near.some((other) => rulesetCellDistance(aim, other) <= area.copiesWithin!)) return false;
+    } else if (!cells.some((cell) => placed.some((other) => rulesetCellDistance(cell, other) <= 1))) return false;
     placed = [...placed, ...cells];
   }
   return true;

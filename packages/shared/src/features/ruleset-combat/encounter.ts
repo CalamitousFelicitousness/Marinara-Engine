@@ -2416,6 +2416,7 @@ function mechanicsAction(
     action.zone = {
       rounds: mechanics.zone.rounds,
       anchor: mechanics.zone.anchor ?? "point",
+      ...(mechanics.zone.carried ? { carried: mechanics.zone.carried } : {}),
       triggers: [...mechanics.zone.triggers],
       atCast: mechanics.zone.atCast !== false,
     };
@@ -2594,6 +2595,9 @@ function mechanicsAction(
         ...(mechanics.area.width !== undefined ? { width: rulesetInCells(mechanics.area.width, perCell) } : {}),
         ...(mechanics.area.ring !== undefined ? { ring: rulesetInCells(mechanics.area.ring, perCell) } : {}),
         ...(mechanics.area.copies !== undefined ? { copies: mechanics.area.copies } : {}),
+        ...(mechanics.area.copiesWithin !== undefined
+          ? { copiesWithin: rulesetInCells(mechanics.area.copiesWithin, perCell) }
+          : {}),
         ...(mechanics.area.sizePerCostStep !== undefined
           ? { sizePerCostStep: rulesetInCells(mechanics.area.sizePerCostStep, perCell) }
           : {}),

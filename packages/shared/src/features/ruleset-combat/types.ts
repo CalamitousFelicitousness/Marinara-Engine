@@ -981,6 +981,8 @@ export interface RulesetCombatArea {
   ring?: number;
   /** How many of it may be set down at once, each touching another (1.173): Fire Storm's cubes. */
   copies?: number;
+  /** Its copies' middles each within this many CELLS of another's, rather than touching (1.296). */
+  copiesWithin?: number;
   /** Cells it grows by for each step of a higher cost it is paid with (1.262): Confusion. */
   sizePerCostStep?: number;
   friendlyFire?: boolean;
@@ -2534,6 +2536,8 @@ export interface RulesetCombatZoneRule {
   dispelsDark?: { upTo: number; within?: number };
   rounds: number;
   anchor: "point" | "caster";
+  /** Put on a cell somebody stands on, carried with them (1.296): only its caster (`own`), or anybody. */
+  carried?: "own" | "any";
   triggers: Array<"enter" | "turn-start" | "turn-end">;
   atCast: boolean;
   /** Its caster may move it on their turn, spending `budget`, up to `distance` cells (1.168); `ram`
@@ -2616,6 +2620,10 @@ export interface RulesetCombatZone {
   triggers: RulesetCombatZoneRule["triggers"];
   /** Where it was centred, for a zone held at a point. */
   at?: RulesetCombatCell;
+  /** The middles of its further copies (1.296), which move with it. */
+  also?: RulesetCombatCell[];
+  /** Whoever carries it (1.296): it is centred on them wherever they go. */
+  on?: string;
   /** The way a line or cone held by its caster points from them, a step of -1, 0 or 1 each way
    *  (1.177). */
   facing?: { dx: number; dy: number };

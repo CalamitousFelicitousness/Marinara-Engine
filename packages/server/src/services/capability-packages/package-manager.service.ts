@@ -1559,6 +1559,16 @@ function carriesHidingTraits(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesHidingTraits(one, depth + 1));
 }
 
+/** Zones carried with somebody, and copies set down apart (1.296). */
+function carriesHeldZones(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesHeldZones(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.carried === "own" || record.carried === "any" || record.copiesWithin !== undefined) return true;
+  return Object.values(record).some((one) => carriesHeldZones(one, depth + 1));
+}
+
 /** What a higher cost adds only every so many steps, and on what a condition gives (1.295). */
 function carriesStepsEvery(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -4052,6 +4062,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Zones carried with somebody, and copies set down apart, 1.296.
+  if (
+    !declaresApi(296) &&
+    (carriesHeldZones(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesHeldZones(document)))
+  ) {
+    return "A ruleset with zones carried with somebody, or copies set down apart, requires schemaVersion 2 and capabilityApi 1.296 or newer";
   }
   // A higher cost's more only every so many steps, 1.295.
   if (

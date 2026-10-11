@@ -1614,6 +1614,7 @@ const zoneSectionsSchema: z.ZodType<RulesetZoneSections, z.ZodTypeDef, unknown> 
 export interface RulesetCatalogZone {
   rounds: number;
   anchor?: "point" | "caster";
+  carried?: "own" | "any";
   triggers: Array<"enter" | "turn-start" | "turn-end">;
   atCast?: boolean;
   move?: { budget: string; distance: number; ram?: true };
@@ -1649,6 +1650,10 @@ const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = 
   .object({
     rounds: z.number().int().min(1).max(1000),
     anchor: z.enum(["point", "caster"]).optional(),
+    /** Cast on a thing somebody holds (Capability API 1.296), it is carried with them: a burst put on
+     *  a cell its caster stands on (`own`), or on anybody's (`any`), moves with whoever stands
+     *  there. Put on an empty cell, it stays there. 5e's Darkness and Daylight on an object. */
+    carried: z.enum(["own", "any"]).optional(),
     triggers: z
       .array(z.enum(["enter", "turn-start", "turn-end"]))
       .max(3)
@@ -2662,6 +2667,7 @@ export interface RulesetCatalogArea {
   width?: number;
   ring?: number;
   copies?: number;
+  copiesWithin?: number;
   sizePerCostStep?: number;
   around?: true;
   throughWalls?: true;
@@ -2678,6 +2684,10 @@ const catalogAreaSchema: z.ZodType<RulesetCatalogArea, z.ZodTypeDef, unknown> = 
     /** How many of it its maker sets down at once (1.173), each touching another: 5e's Fire Storm,
      *  ten 10-ft cubes. Only a burst or a box. */
     copies: z.number().int().min(2).max(10).optional(),
+    /** Its copies' middles each within this far of another's (Capability API 1.296), in the
+     *  ruleset's distance, rather than touching: 5e's Dancing Lights, four lights each within 20 feet
+     *  of another. */
+    copiesWithin: z.number().finite().gt(0).max(10000).optional(),
     /** It grows by this much for each step of a higher cost it is paid with (Capability API 1.262):
      *  5e's Confusion, 5 feet more radius a slot level above 4th. Not a wall. */
     sizePerCostStep: z.number().finite().gt(0).optional(),
@@ -2712,6 +2722,10 @@ const catalogAreaSchema: z.ZodType<RulesetCatalogArea, z.ZodTypeDef, unknown> = 
   .refine((area) => area.copies === undefined || area.shape === "burst" || area.shape === "box", {
     message: "Only a burst or a box is set down several times",
     path: ["copies"],
+  })
+  .refine((area) => area.copiesWithin === undefined || area.copies !== undefined, {
+    message: '"copiesWithin" spaces out its copies, so it has "copies"',
+    path: ["copiesWithin"],
   });
 
 /** What an entry DOES. The Engine does not act on it in this slice: it validates it and the client
@@ -3403,11 +3417,19 @@ function zoneIssue(mechanics: {
     return "A broken section's save is rolled against the entry's own difficulty, so it has a save";
   }
   if (wall && (zone.anchor === "caster" || zone.move || zone.drift)) return "A wall stays where it is cast";
+  if ((mechanics.area as { copies?: number } | undefined)?.copies && (zone.anchor === "caster" || zone.drift)) {
+    return "A zone set down several times stays where it is cast, or is moved all together";
+  }
+  // Carried with whoever holds it (1.296).
   if (
-    (mechanics.area as { copies?: number } | undefined)?.copies &&
-    (zone.anchor === "caster" || zone.move || zone.drift)
+    zone.carried &&
+    (zone.anchor === "caster" ||
+      zone.move ||
+      zone.drift ||
+      mechanics.area?.shape !== "burst" ||
+      (mechanics.area as { copies?: number }).copies)
   ) {
-    return "A zone set down several times stays where it is cast";
+    return "A zone carried with somebody is a single burst put on a point, never moved of its own";
   }
   // Going off later and burning away (1.178).
   if (zone.detonates && (zone.anchor === "caster" || zone.move || zone.drift || wall)) {

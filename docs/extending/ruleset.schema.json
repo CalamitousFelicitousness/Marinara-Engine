@@ -8604,6 +8604,11 @@
                           "minimum": 2,
                           "maximum": 10
                         },
+                        "copiesWithin": {
+                          "type": "number",
+                          "exclusiveMinimum": 0,
+                          "maximum": 10000
+                        },
                         "sizePerCostStep": {
                           "type": "number",
                           "exclusiveMinimum": 0
@@ -9485,6 +9490,13 @@
                           "enum": [
                             "point",
                             "caster"
+                          ]
+                        },
+                        "carried": {
+                          "type": "string",
+                          "enum": [
+                            "own",
+                            "any"
                           ]
                         },
                         "triggers": {
@@ -25389,6 +25401,13 @@
                                 "caster"
                               ]
                             },
+                            "carried": {
+                              "type": "string",
+                              "enum": [
+                                "own",
+                                "any"
+                              ]
+                            },
                             "triggers": {
                               "type": "array",
                               "items": {
@@ -30906,6 +30925,13 @@
                                     "enum": [
                                       "point",
                                       "caster"
+                                    ]
+                                  },
+                                  "carried": {
+                                    "type": "string",
+                                    "enum": [
+                                      "own",
+                                      "any"
                                     ]
                                   },
                                   "triggers": {

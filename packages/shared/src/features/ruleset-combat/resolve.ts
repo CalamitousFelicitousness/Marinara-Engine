@@ -235,6 +235,7 @@ import {
   rulesetStandingZones,
   rulesetZoneCatches,
   rulesetZoneCells,
+  rulesetZoneMiddles,
   rulesetZoneHolds,
   rulesetZoneHoldsOne,
   rulesetZoneDriftCell,
@@ -2461,7 +2462,7 @@ function dispelDarkness(ctx: RulesetCombatContext): void {
       const dispels = light.action.zone!.dispelsDark!;
       if (level > dispels.upTo || !light.caster.zones?.includes(light.zone)) return false;
       // Only as near its middle as it says (1.294): Daylight's bright sphere, not its dim light.
-      const middle = zoneMiddle(light.caster, light.zone);
+      const middle = zoneMiddle(ctx, light.caster, light.zone);
       return rulesetZoneCells(ctx.state, light.caster, light.zone).some(
         (cell) =>
           dark.has(key(cell)) &&
@@ -2517,8 +2518,8 @@ function dispelDarkness(ctx: RulesetCombatContext): void {
 }
 
 /** Where a zone's light and reach are measured from (1.292): the point it was put at, or its caster. */
-function zoneMiddle(caster: RulesetCombatant, zone: RulesetCombatZone): RulesetCombatCell[] {
-  return zone.anchor === "point" ? (zone.at ? [zone.at] : []) : rulesetFootprint(caster);
+function zoneMiddle(ctx: RulesetCombatContext, caster: RulesetCombatant, zone: RulesetCombatZone): RulesetCombatCell[] {
+  return rulesetZoneMiddles(ctx.state, caster, zone);
 }
 
 /** How many whole rounds have passed since a turn stamped "round:turn": one once the same turn of
@@ -2621,6 +2622,15 @@ function placeZone(
       : undefined;
   const stamp = turnStamp(ctx);
   const caught = rule.atCast ? resume.targetIds : [];
+  // Put on what somebody standing there holds (1.296): carried with them.
+  const holder =
+    rule.carried && at && grid
+      ? ctx.state.combatants.find(
+          (one) => !one.defeated && rulesetFills(one, at) && (rule.carried === "any" || one.id === actor.id),
+        )
+      : undefined;
+  // Copies set down with it (1.296), moved with it.
+  const also = rule.anchor === "point" && at && resume.also?.length ? resume.also.map((cell) => ({ ...cell })) : [];
   // A line or cone its caster carries points the way it was cast (1.177).
   const shape = action.area?.shape;
   const facing =
@@ -2634,6 +2644,8 @@ function placeZone(
     anchor: rule.anchor,
     triggers: [...rule.triggers],
     ...(at && rule.anchor === "point" ? { at: { x: at.x, y: at.y } } : {}),
+    ...(also.length ? { also } : {}),
+    ...(holder ? { on: holder.id } : {}),
     ...(facing && (facing.dx || facing.dy) ? { facing } : {}),
     ...(cells ? { cells } : {}),
     ...(wall?.side.length ? { sideCells: wall.side } : {}),
@@ -2921,8 +2933,21 @@ function moveZone(
   if (!action?.area || !grid) return;
   const before = new Set(rulesetZoneOccupants(ctx.state, caster, zone, action));
   const place = (at: RulesetCombatCell) => {
+    // Its copies go with it, the same way (1.296), so far as the board reaches.
+    const dx = at.x - (zone.at?.x ?? at.x);
+    const dy = at.y - (zone.at?.y ?? at.y);
+    if (zone.also) {
+      zone.also = zone.also
+        .map((cell) => ({ x: cell.x + dx, y: cell.y + dy }))
+        .filter((cell) => cell.x >= 0 && cell.y >= 0 && cell.x < grid.width && cell.y < grid.height);
+    }
     zone.at = { x: at.x, y: at.y };
-    zone.cells = rulesetAreaCells("burst", action.area!.size, zone.at, zone.at, grid);
+    const cells = new Map<string, RulesetCombatCell>();
+    for (const middle of [zone.at, ...(zone.also ?? [])]) {
+      for (const cell of rulesetAreaCells("burst", action.area!.size, middle, middle, grid))
+        cells.set(`${cell.x},${cell.y}`, cell);
+    }
+    zone.cells = [...cells.values()];
   };
   // Rammed (1.170): it goes a cell at a time, straight for where it was sent, and stops on the
   // first cell that reaches somebody new; they are caught by that, not by moving in.

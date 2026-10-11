@@ -28,6 +28,20 @@ const CHAT_MODES: ChatMode[] = ["conversation", "roleplay"];
 const EXCLUDED_METADATA_SET = new Set(CHAT_PRESET_EXCLUDED_METADATA_KEYS);
 /** Advanced Memory values tied to one chat's messages and characters; the rest are profile settings. */
 const ADVANCED_MEMORY_CHAT_KEYS = ["knowledgeStarts", "knowledgeConfirmed", "narratorCharacterId"];
+/**
+ * Profile settings a chat keeps when the profile updates it as a follower: its custom prompt (it
+ * keeps its prompt preset), background, turned-off lorebooks, choices bound to its own characters,
+ * lorebooks and files, and the summary hiding that only Chat Settings applies to its messages.
+ */
+const FOLLOWER_OWN_METADATA_KEYS = [
+  "customSystemPrompt",
+  "background",
+  "excludedLorebookIds",
+  "roleplayCommandNarratorId",
+  "lorebookKeeperTargetLorebookId",
+  "knowledgeAgentSources",
+  "hideSummarisedMessages",
+];
 
 function isPresetExcludedMetadataKey(key: string) {
   return EXCLUDED_METADATA_SET.has(key) || key.startsWith("scene") || key.startsWith("multiplayer");
@@ -292,7 +306,8 @@ export function createChatPresetsStorage(db: DB) {
      * profile-controlled settings to their system defaults.
      *
      * `asFollower` refreshes a chat after its profile was saved: it skips a chat that no longer
-     * follows the profile, and keeps the chat's own connection, prompt preset and recent-chat order.
+     * follows the profile, and keeps the chat's own connection, prompt preset, recent-chat order and
+     * FOLLOWER_OWN_METADATA_KEYS.
      */
     async applyToChat(
       presetId: string,
@@ -342,9 +357,11 @@ export function createChatPresetsStorage(db: DB) {
         if (Object.keys(ownMemory).length > 0) {
           preserved.advancedMemory = { ...pickAdvancedMemoryKeys(presetMetadata.advancedMemory, false), ...ownMemory };
         }
-        // A follower keeps its prompt preset, so it keeps the prompt text written over that preset too.
-        if (options.asFollower && ("customSystemPrompt" in currentMetadata || "customSystemPrompt" in presetMetadata)) {
-          preserved.customSystemPrompt = currentMetadata.customSystemPrompt ?? null;
+        if (options.asFollower) {
+          for (const key of FOLLOWER_OWN_METADATA_KEYS) {
+            if (key in currentMetadata) preserved[key] = currentMetadata[key];
+            else delete presetMetadata[key];
+          }
         }
         // Profiles saved before window layouts existed leave the chat's layout as it is.
         if (

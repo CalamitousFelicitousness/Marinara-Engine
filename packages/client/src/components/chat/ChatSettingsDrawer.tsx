@@ -1236,7 +1236,7 @@ export function ChatSettingsDrawer({
   const { data: agentConfigs } = useAgentConfigs();
   const { data: customTools } = useCustomTools();
   const { data: customToolCapabilities } = useCustomToolCapabilities();
-  const { data: allChats, refetch: refetchAllChats } = useChats({ refetchOnMount: false });
+  const { data: allChats } = useChats({ refetchOnMount: false });
   const personas = useMemo(() => allPersonas ?? [], [allPersonas]);
   const showCharacterIdentities = useUIStore((state) => state.showCharactersInPersonaPickers);
 
@@ -4582,9 +4582,9 @@ export function ChatSettingsDrawer({
     if (!selectedChatPreset || selectedChatPreset.isDefault) return;
     const profileId = selectedChatPreset.id;
     const settings = snapshotCurrentPresetSettings();
-    // Count from a fresh list so chats changed in another window are included. A failed
-    // refetch keeps the last loaded list.
-    const chatList = (await refetchAllChats()).data ?? [];
+    // Count from a fresh list so chats changed in another window are included. One try without
+    // retries, so a failing list falls back to the loaded one at once.
+    const chatList = await api.get<Chat[]>("/chats").catch(() => allChats ?? []);
     const followerCount = chatList.filter(
       (other) =>
         other.id !== chat.id &&

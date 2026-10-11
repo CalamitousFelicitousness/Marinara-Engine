@@ -89,7 +89,6 @@ export const CHAT_PRESET_EXCLUDED_METADATA_KEYS: readonly string[] = [
   "sceneBusyCharIds",
   // Lorebooks are owned by the chat, never by the profile.
   "activeLorebookIds",
-  "excludedLorebookIds",
   // Hierarchical Maps definitions and per-chat editing choices stay with the chat.
   "spatialContext",
   "spatialContextHierarchyProfile",
@@ -150,10 +149,9 @@ export const CHAT_PRESET_EXCLUDED_METADATA_KEYS: readonly string[] = [
   "conversationCharacterStatuses",
   "conversationStatusOverrides",
   "conversationAboutMeOverrides",
-  // Also this chat's own: its scene background, Advanced Memory roster events (message ids), a
-  // running encounter, removed members' names, summary retries, current sprite expressions, and the
-  // link a Roleplay DM thread keeps to the chat it came from.
-  "background",
+  // Also this chat's own: Advanced Memory roster events (message ids), a running encounter, removed
+  // members' names, summary retries, current sprite expressions, and the link a Roleplay DM thread
+  // keeps to the chat it came from.
   "advancedMemoryRosterChanges",
   "encounterActive",
   "archivedCharacterSnapshots",

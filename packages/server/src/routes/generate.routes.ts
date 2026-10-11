@@ -1042,6 +1042,14 @@ export interface GenerateRouteOptions {
   onRunnerReady?: (runner: GenerationRunner) => void;
 }
 
+const SENT_SELFIE_MIME_TYPES: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  webp: "image/webp",
+  gif: "image/gif",
+};
+
 export async function generateRoutes(app: FastifyInstance, options: GenerateRouteOptions = {}) {
   const pendingTranslations = new Map<string, number>();
   registerSequentialGameTasks(app, ["/", "/retry-agents"]);
@@ -2077,8 +2085,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         const image = await sentSelfieGallery.getById(attachment.galleryId, input.chatId);
         const filePath = image ? resolveGalleryImagePath(image) : null;
         if (!filePath) return null;
-        const ext = extname(filePath).slice(1).toLowerCase();
-        return `data:image/${ext === "jpg" ? "jpeg" : ext};base64,${(await readFile(filePath)).toString("base64")}`;
+        const mimeType = SENT_SELFIE_MIME_TYPES[extname(filePath).slice(1).toLowerCase()];
+        if (!mimeType) return null;
+        return `data:${mimeType};base64,${(await readFile(filePath)).toString("base64")}`;
       };
       // ponytail: only the newest selfie messages are captioned, so a long chat (or a changed caption
       // model) never queues a caption call per old selfie before the reply; older selfies keep a saved

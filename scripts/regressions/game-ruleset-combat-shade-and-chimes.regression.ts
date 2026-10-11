@@ -26,6 +26,7 @@ import {
   rulesetCanSee,
   rulesetCombatOptions,
   rulesetCombatant,
+  rulesetCreatureBlock,
   rulesetLightAt,
   rulesetLightOf,
   rulesetSheetBuildSchema,
@@ -68,10 +69,15 @@ try {
       types: ["humanoid", "elemental"].map((id) => ({ id, label: id })),
       default: "humanoid",
     };
-    doc.sheet.live.conditions.push({ id: "sunstruck", label: "Sunstruck" }, { id: "dusky", label: "Dusky" });
+    doc.sheet.live.conditions.push(
+      { id: "sunstruck", label: "Sunstruck" },
+      { id: "dusky", label: "Dusky" },
+      { id: "alarmed", label: "Alarmed" },
+    );
     doc.combat.conditions.push(
       { condition: "sunstruck" },
       { condition: "dusky", light: { bright: 0, dim: 10, shade: true, magical: true } },
+      { condition: "alarmed", alerts: 15 },
     );
     edit(doc);
     return doc;
@@ -215,7 +221,7 @@ try {
     const seen = fight({ light: "bright", ground: { "12,2": { light: "dark" } } });
     assert.equal(rulesetCanSee(definition, seen, who(seen, "ada"), who(seen, "imp")), false, "standing in a dark cell");
     assert.equal(rulesetCanSee(definition, seen, who(seen, "ada"), who(seen, "rat")), true);
-    // A condition's shade is a spell's: magical, it shades a cell of magical darkness too.
+    // A condition's shade works as an item's.
     const spelled = fight({ light: "sunlight" });
     who(spelled, "ada").tracked.push({ condition: "dusky", rounds: null } as never);
     assert.equal(light(spelled, 3, 3), "dim");
@@ -293,6 +299,14 @@ try {
     assert.equal(moves(shy), false, "sunlight is bright light");
     who(shy, "imp").x = 4;
     assert.equal(moves(shy), true, "in the lantern's shade");
+    // Read off a bestiary creature as its block.
+    const shyDoc = fiveE((doc) => {
+      const creatures = doc.catalogs.find((catalog: { holds?: string }) => catalog.holds === "creatures");
+      creatures.entries[0].creature.stillIn = ["bright"];
+    });
+    const shyDef = parsed(shyDoc);
+    const creatures = shyDef.catalogs!.find((catalog) => catalog.holds === "creatures")!.entries![0]!;
+    assert.deepEqual(rulesetCreatureBlock(shyDef, creatures)?.stillIn, ["bright"]);
     const dusk = fight({ light: "dim", enemy: { stillIn: ["bright"] } });
     dusk.turn = 1;
     assert.equal(moves(dusk), true);
@@ -351,6 +365,30 @@ try {
       () => 10,
     );
     assert.equal(of(silent.events, "revealed").length, 0);
+    // Nor does one its own side holds: an alarm on the rat, by the imp's way.
+    const own = fight({ light: "dark", at: { ada: { x: 2, y: 2 }, imp: { x: 9, y: 2 }, rat: { x: 6, y: 4 } } });
+    who(own, "rat").tracked.push({ condition: "alarmed", rounds: null } as never);
+    who(own, "imp").hiding = { from: ["ada"], total: 30 } as never;
+    own.turn = 1;
+    const friendly = applyRulesetCombatChoice(
+      definition,
+      own,
+      { actorId: "imp", optionId: RULESET_MOVE_OPTION, targetIds: [], to: { x: 7, y: 2 } },
+      () => 10,
+    );
+    assert.equal(of(friendly.events, "revealed").length, 0, "an alarm on its own side");
+    // A condition that alerts, on Ada's side, rings as an item does.
+    const spell = fight({ light: "dark", at: { ada: { x: 2, y: 2 }, imp: { x: 9, y: 2 }, rat: { x: 14, y: 8 } } });
+    who(spell, "ada").tracked.push({ condition: "alarmed", rounds: null } as never);
+    who(spell, "imp").hiding = { from: ["ada"], total: 30 } as never;
+    spell.turn = 1;
+    const rung = applyRulesetCombatChoice(
+      definition,
+      spell,
+      { actorId: "imp", optionId: RULESET_MOVE_OPTION, targetIds: [], to: { x: 5, y: 2 } },
+      () => 10,
+    );
+    assert.equal(of(rung.events, "revealed")[0]?.reason, "alerted");
   }
 
   // ── The install gate ──

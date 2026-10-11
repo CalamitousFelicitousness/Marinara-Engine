@@ -13,7 +13,6 @@ import {
 import { TACTICAL_TERRAINS } from "../tactical-combat/environments.js";
 import { rulesetFitCell } from "./encounter.js";
 import { rulesetFootprint, rulesetPositionOf } from "./grid.js";
-import { rulesetSyncZoneWalls } from "./zones.js";
 import type {
   RulesetBoardEvent,
   RulesetBoardEventChange,
@@ -215,11 +214,8 @@ export function rulesetRunBoardEvents(
     if (time === null) continue;
     const cells = rulesetBoardEventCells(board.grid, event, time);
     board.happened = { ...board.happened, [event.id]: (board.happened?.[event.id] ?? 0) + 1 };
-    if (event.change.rotate && "block" in event.where) {
-      rotateBlock(state, event.where.block, event.change.rotate);
-      // A prop turned closes the cells it stands on now.
-      rulesetSyncZoneWalls(state);
-    }
+    // A prop turned closes the cells it stands on now as the step ends, as every wall does.
+    if (event.change.rotate && "block" in event.where) rotateBlock(state, event.where.block, event.change.rotate);
     for (const cell of cells) changeCell(board.grid, cell, event.change);
     const moved = settle(state);
     said.push({

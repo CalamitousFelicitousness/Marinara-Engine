@@ -220,6 +220,14 @@ try {
       "a rotation of no square, a terrain nobody knows, a time nobody knows and nowhere on the board are left out",
     );
     assert.deepEqual(keys((kept[0]!.where as { cells: RulesetCombatCell[] }).cells), ["1,1"]);
+    assert.deepEqual(
+      rulesetBoardEvents(grid(), [
+        { id: "y", at: "round-start", where: { spread: "growth" }, change: { growth: true } },
+        { id: "y", at: "round-end", where: { spread: "growth" }, change: { growth: true } },
+      ]).map((event) => event.id),
+      ["y", "y-2"],
+      "a second id the same is told apart",
+    );
     // When each happens.
     const every = kept[2]!;
     assert.deepEqual(
@@ -275,6 +283,14 @@ try {
           change: { light: "dark", obscured: "heavy", season: "winter" },
         },
         {
+          id: "dawn",
+          at: "round-start",
+          from: 3,
+          until: 3,
+          where: { cells: [{ x: 8, y: 8 }] },
+          change: { light: "clear", obscured: "clear", season: null },
+        },
+        {
           id: "rise",
           at: "round-start",
           from: 3,
@@ -306,6 +322,11 @@ try {
     assert.deepEqual(one.state.board?.happened, { dusk: 1, spread: 1 });
     assert.equal(rulesetLightAt(definition, one.state, { x: 8, y: 8 }), "dark");
     assert.equal(rulesetBoardShading(definition, one.state).fog["8,8"], "heavy");
+    assert.equal(
+      rulesetBoardShading(definition, one.state).light["8,8"],
+      "dark",
+      "the board shows the cell's own light",
+    );
     assert.equal(rulesetBoardShading(definition, one.state).fog["0,4"], "light", "growth lightly obscures");
     const two = nextRound(one.state);
     assert.deepEqual(
@@ -313,6 +334,7 @@ try {
       { type: "boardEvent", id: "rise", tell: "The ground heaves.", cells: 1 },
     );
     assert.equal(two.state.board?.grid.elevation?.[9]?.[9], 2);
+    assert.equal(ground(two.state)["8,8"], undefined, "light, fog and season cleared at dawn");
   }
 
   // ── Ground nobody stands on, and a block turned ──
@@ -542,6 +564,8 @@ try {
           change: { growth: true },
         },
       ],
+      // What standing in its light does (1.314) is carried along too.
+      lightRule: { rounds: 2, tracks: [{ track: "exhaustion", by: 1 }] },
     });
     assert.deepEqual(worldBattlefieldIssues(map), []);
     assert.deepEqual(worldBattlefieldIssues({ ...map, growth: ["g"] }), [
@@ -568,6 +592,7 @@ try {
     );
     const made = worldBattlefieldHere({ ...bare, edits: { battlefields: [map] } as GameWorld["edits"] }, start, 1)!;
     assert.deepEqual(made.growth, [{ x: 0, y: 2 }]);
+    assert.deepEqual(made.lightRule, { rounds: 2, tracks: [{ track: "exhaustion", by: 1 }] });
     assert.equal(made.events?.[0]?.id, "e1");
     const built = createRulesetFight({
       definition,

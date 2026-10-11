@@ -22,6 +22,9 @@ import {
   rulesetCombatant,
   rulesetCombatConditions,
   rulesetCombatOptions,
+  rulesetAuraDistance,
+  rulesetCreatureBlock,
+  rulesetSyncAuras,
   rulesetSheetBuildSchema,
   supportedCapabilityApi,
   type RulesetCombatChoice,
@@ -175,6 +178,15 @@ try {
     const most = pass(step.state, "cat");
     assert.deepEqual(of(most.events, "auraGrows"), [], "40 feet is its most");
     assert.ok(has(most.state, "bard", "no_heal"), "35 feet is within 40");
+    // Growing by more than is left, it stops at its most.
+    assert.equal(
+      rulesetAuraDistance(
+        { auraGrown: { frost_debt: 2 } } as never,
+        { ...frostDebt, grows: { by: 15, upTo: 40 } } as never,
+        "frost_debt",
+      ),
+      40,
+    );
     // The ally walks away (put down 60 feet off): the no-healing stays until their next turn starts.
     const lingering = pass(step.state, "cat");
     who(lingering.state, "foe").auraGrown = { frost_debt: 0 };
@@ -195,6 +207,16 @@ try {
     const again = who(held.state, "ally").tracked.find((entry) => entry.condition === "no_heal");
     assert.equal(again?.aura, "foe");
     assert.equal(again?.lingering, undefined);
+    // Mid-turn too, before their own turn would have taken it off: the lingering entry is the aura's again.
+    const midway = structuredClone(back.state);
+    who(midway, "ally").x = 6;
+    who(midway, "ally").y = 7;
+    assert.ok(who(midway, "ally").tracked.find((entry) => entry.condition === "no_heal")?.lingering);
+    rulesetSyncAuras(definition, midway);
+    const reclaimed = who(midway, "ally").tracked.filter((entry) => entry.condition === "no_heal");
+    assert.equal(reclaimed.length, 1);
+    assert.equal(reclaimed[0]?.aura, "foe");
+    assert.equal(reclaimed[0]?.lingering, undefined);
   }
 
   // ── The Owed's Grasps hold two at most ──
@@ -234,6 +256,24 @@ try {
     who(step.state, "foe").budgets.action = 1;
     step = act(step.state, { actorId: "foe", optionId: "grasp", targetIds: ["cat"] });
     assert.ok(has(step.state, "cat", "grappled"));
+    assert.deepEqual(
+      of(step.events, "condition")
+        .filter((one) => one.reason === "full")
+        .map((one) => one.targetId),
+      [],
+    );
+    // One of the two held falls: they no longer count, so the bard is held again.
+    who(step.state, "ally").defeated = true;
+    who(step.state, "foe").budgets.action = 1;
+    step = act(step.state, { actorId: "foe", optionId: "grasp", targetIds: ["bard"] });
+    assert.ok(
+      who(step.state, "bard").tracked.some((entry) => entry.condition === "grappled" && entry.source === "foe"),
+      "the fallen one's hold does not count",
+    );
+    assert.deepEqual(
+      of(step.events, "condition").map((one) => one.reason),
+      ["applied"],
+    );
   }
 
   // ── The Hourglass: at 1 instead, and a turn straight after ──
@@ -268,6 +308,15 @@ try {
     const again = act(after.state, { actorId: "cat", optionId: dagger(after.state), targetIds: ["foe"] });
     assert.deepEqual(of(again.events, "hangsOn"), []);
     assert.ok(who(again.state, "foe").defeated);
+    // Read off a bestiary creature as its block.
+    const hourDef = parsed(
+      document((doc) => {
+        const creatures = doc.catalogs.find((catalog: { holds?: string }) => catalog.holds === "creatures");
+        creatures.entries[0].creature.hangsOn = { uses: 1, extraTurn: true };
+      }),
+    );
+    const entry = hourDef.catalogs!.find((catalog) => catalog.holds === "creatures")!.entries![0]!;
+    assert.deepEqual(rulesetCreatureBlock(hourDef, entry)?.hangsOn, { uses: 1, extraTurn: true });
     // Without extraTurn, at 1 and nothing more.
     const plain = fight(
       { health: 3, hangsOn: { uses: 2 } },
@@ -277,6 +326,50 @@ try {
     const hit = act(plain, { actorId: "cat", optionId: dagger(plain), targetIds: ["foe"] });
     assert.deepEqual(of(hit.events, "hangsOn")[0]?.left, 1);
     assert.deepEqual(hit.state.order, ["bard", "ally", "cat", "foe"]);
+    // What slays outright is not hung on through.
+    const slain = createRulesetEncounter({
+      definition,
+      seed: 1,
+      roller: roll,
+      combatants: [
+        { id: "cat", name: "Cat", side: "party", build: fighter, live: {} },
+        { id: "foe", name: "Foe", side: "enemy", block: block({ health: 30, hangsOn: { uses: 1, extraTurn: true } }) },
+        {
+          id: "reaper",
+          name: "Reaper",
+          side: "enemy",
+          block: block({
+            actions: [
+              {
+                id: "reap",
+                name: "Reap",
+                budget: "action",
+                reach: 5,
+                autoHit: true,
+                save: { save: "con_save", difficulty: 30, onSuccess: "negates" },
+                slaysOnFailedSave: true,
+              },
+            ] as never,
+          }),
+        },
+      ],
+      board: {
+        grid: { width: 24, height: 15, tiles: Array.from({ length: 15 }, () => Array(24).fill("plains")) },
+        placements: { cat: { x: 2, y: 2 }, foe: { x: 10, y: 7 }, reaper: { x: 11, y: 7 } },
+      },
+    });
+    // Turned against its own (as a charm would): the reaper fights for the party now.
+    who(slain, "reaper").side = "party";
+    slain.order = ["reaper", "cat", "foe"];
+    slain.turn = 0;
+    const reaped = act(slain, { actorId: "reaper", optionId: "reap", targetIds: ["foe"] });
+    assert.deepEqual(
+      of(reaped.events, "slain").map((one) => one.targetId),
+      ["foe"],
+    );
+    assert.deepEqual(of(reaped.events, "hangsOn"), []);
+    assert.ok(who(reaped.state, "foe").defeated);
+    assert.deepEqual(reaped.state.order, ["reaper", "cat", "foe"]);
   }
 
   // ── The Seed Hopper: torn free with an action, no check, by the held or an ally ──

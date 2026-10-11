@@ -187,8 +187,8 @@ export function rulesetLightOf(
   sunlight?: number;
   /** The part of it that is magical (1.294), which alone lights magical darkness. */
   magic?: { bright: number; dim: number };
-  /** How far the shade it sheds reaches (1.314), in cells, and whether that shade is magical. */
-  shade?: { reach: number; magical?: true };
+  /** How far the shade it sheds reaches (1.314), in cells. */
+  shade?: { reach: number };
 } | null {
   const combat = definition.combat;
   const darkness = combat?.sight?.darkness;
@@ -204,10 +204,7 @@ export function rulesetLightOf(
   // Shade (1.314) is its own: it darkens what the rest lights.
   const shades = all.filter((one) => one.shade);
   const shade = shades.length
-    ? {
-        reach: Math.max(...shades.map((one) => rulesetInCells(one.dim, perCell))),
-        ...(shades.some((one) => one.magical || spelled.includes(one)) ? { magical: true as const } : {}),
-      }
+    ? { reach: Math.max(...shades.map((one) => rulesetInCells(one.dim, perCell))) }
     : undefined;
   const radii = all.filter((one) => !one.shade);
   if (radii.length === 0) return shade ? { bright: 0, dim: 0, shade } : null;
@@ -287,7 +284,6 @@ function lightSources(definition: RulesetDefinition, state: RulesetEncounterStat
             bright: 0,
             edge: light.shade.reach,
             shade: true,
-            ...(light.shade.magical ? { magic: { bright: 0, edge: light.shade.reach } } : {}),
           },
         ]
       : [];
@@ -361,7 +357,6 @@ function lightFrom(
 ): RulesetBoardLight {
   let light = base;
   for (const source of sources) {
-    if (source.shade) continue;
     if (source.only && !source.only.has(`${cell.x},${cell.y}`)) continue;
     const reach = magicDark ? source.magic : source;
     if (!reach) continue;
@@ -377,19 +372,17 @@ function lightFrom(
   return light;
 }
 
-/** The light on a cell where shade reaches it (1.314): dim, however bright or dark it was; in
- *  magical darkness, only a magical shade's. */
+/** The light on a cell where shade reaches it (1.314): dim, however bright or dark it was. Magical
+ *  darkness it never reaches. */
 function shadedLight(
   sources: LightSource[],
   grid: TacticalGrid,
   cell: RulesetCombatCell,
   light: RulesetBoardLight,
-  magicDark = false,
 ): RulesetBoardLight {
   const shaded = sources.some(
     (source) =>
       source.shade &&
-      (!magicDark || source.magic) &&
       (!source.only || source.only.has(`${cell.x},${cell.y}`)) &&
       source.cells.some(
         (from) =>
@@ -416,7 +409,7 @@ export function rulesetLightAt(
   const sources = lightSources(definition, state);
   // Magical darkness (1.294): dark whatever the fight is fought in, lit only by magical light.
   if (magicalDarkness(state).has(`${cell.x},${cell.y}`)) {
-    return shadedLight(sources, grid, cell, lightFrom(sources, grid, cell, "dark", true), true);
+    return lightFrom(sources, grid, cell, "dark", true);
   }
   if (base === "sunlight") return shadedLight(sources, grid, cell, base);
   // Bright light already: only a light that is sunlight changes it (1.293).
@@ -453,7 +446,7 @@ export function rulesetBoardShading(
       const own = grid.ground?.[key]?.light ?? base;
       let here: RulesetBoardLight = own;
       if (real) {
-        if (dark.has(key)) here = shadedLight(sources, grid, cell, lightFrom(sources, grid, cell, "dark", true), true);
+        if (dark.has(key)) here = lightFrom(sources, grid, cell, "dark", true);
         else if (own === "bright") here = sunlit.length ? lightFrom(sunlit, grid, cell, own) : own;
         else if (own !== "sunlight") here = lightFrom(sources, grid, cell, own);
         if (!dark.has(key)) here = shadedLight(sources, grid, cell, here);

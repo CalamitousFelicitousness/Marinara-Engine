@@ -1799,7 +1799,6 @@ function applyConditionId(
   if (
     applies.heldAtMost !== undefined &&
     extra.sourceId &&
-    !target.tracked.some((entry) => entry.condition === condition && entry.source === extra.sourceId) &&
     ctx.state.combatants.filter(
       (other) =>
         other.id !== target.id &&

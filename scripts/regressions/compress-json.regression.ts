@@ -18,6 +18,11 @@ const json = JSON.stringify(big);
 const app = Fastify();
 app.addHook("onSend", compressJsonHook);
 app.get("/api/big", async () => big);
+// Game setup's shape: an async handler that sends, then returns nothing.
+app.get("/api/sent", async (_req, reply) => {
+  await new Promise((resolve) => setTimeout(resolve, 1));
+  reply.send(big);
+});
 app.get("/api/small", async () => ({ ok: true }));
 app.get("/big", async () => big);
 app.get("/api/stream", async (_req, reply) => reply.type("application/json").send(Readable.from([json])));
@@ -51,6 +56,10 @@ try {
   assert.equal(brotliDecompressSync(br.body).toString(), json);
   assert.ok(br.body.length < json.length / 5, "the body shrinks");
   assert.equal(Number(br.headers["content-length"]), br.body.length);
+
+  const sent = await get("/api/sent", "gzip, deflate, br");
+  assert.equal(sent.headers["content-encoding"], "br", "a handler that sends without returning reply gets its body");
+  assert.equal(brotliDecompressSync(sent.body).toString(), json);
 
   const gz = await get("/api/big", "br;q=0, gzip");
   assert.equal(gz.headers["content-encoding"], "gzip", "q=0 turns an encoding off");

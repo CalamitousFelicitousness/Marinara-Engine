@@ -1,10 +1,6 @@
 import { IncomingMessage } from "node:http";
-import { promisify } from "node:util";
-import { brotliCompress, constants, gzip } from "node:zlib";
+import { brotliCompressSync, constants, gzipSync } from "node:zlib";
 import type { FastifyReply, FastifyRequest } from "fastify";
-
-const brotli = promisify(brotliCompress);
-const gzipAsync = promisify(gzip);
 
 /** Below this a compressed body saves less than the headers cost. */
 const MIN_BYTES = 1024;
@@ -27,8 +23,20 @@ function acceptedEncoding(header: string | string[] | undefined): "br" | "gzip" 
  * or a phone connection is most of the wait. Streams never get here as a string or Buffer: SSE writes to
  * `reply.raw`, and file sends pass a stream, so both go out untouched. Replies to `app.inject()` stay plain:
  * the server reads those itself (prompt preview forwards the browser's own Accept-Encoding).
+ *
+ * Synchronous on purpose: while an async hook waits, a handler that sent without `return reply` resolves,
+ * and Fastify sends again with an empty body before this one is written (#7440).
  */
-export async function compressJsonHook(req: FastifyRequest, reply: FastifyReply, payload: unknown) {
+export function compressJsonHook(
+  req: FastifyRequest,
+  reply: FastifyReply,
+  payload: unknown,
+  done: (err: null, value: unknown) => void,
+) {
+  done(null, compressJson(req, reply, payload));
+}
+
+function compressJson(req: FastifyRequest, reply: FastifyReply, payload: unknown) {
   if (typeof payload !== "string" && !Buffer.isBuffer(payload)) return payload;
   if (!(req.raw instanceof IncomingMessage)) return payload;
   if (!req.url.startsWith("/api/") || reply.hasHeader("content-encoding")) return payload;
@@ -41,8 +49,8 @@ export async function compressJsonHook(req: FastifyRequest, reply: FastifyReply,
   // Quality 4 / level 6: most of the saving at a few ms for a 300 KB body; brotli's default 11 is far slower.
   const body =
     encoding === "br"
-      ? await brotli(payload, { params: { [constants.BROTLI_PARAM_QUALITY]: 4 } })
-      : await gzipAsync(payload, { level: 6 });
+      ? brotliCompressSync(payload, { params: { [constants.BROTLI_PARAM_QUALITY]: 4 } })
+      : gzipSync(payload, { level: 6 });
   reply.header("content-encoding", encoding);
   reply.removeHeader("content-length");
   return body;

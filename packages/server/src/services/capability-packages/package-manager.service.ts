@@ -1559,6 +1559,16 @@ function carriesHidingTraits(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesHidingTraits(one, depth + 1));
 }
 
+/** Entries that change another of their holder's each time it is used (1.297). */
+function carriesAmends(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesAmends(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.amends !== undefined) return true;
+  return Object.values(record).some((one) => carriesAmends(one, depth + 1));
+}
+
 /** Zones carried with somebody, and copies set down apart (1.296). */
 function carriesHeldZones(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -4062,6 +4072,13 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // What changes another entry each time it is used, 1.297.
+  if (
+    !declaresApi(297) &&
+    (carriesAmends(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesAmends(document)))
+  ) {
+    return "A ruleset with entries that change another entry each time it is used requires schemaVersion 2 and capabilityApi 1.297 or newer";
   }
   // Zones carried with somebody, and copies set down apart, 1.296.
   if (

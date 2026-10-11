@@ -3196,6 +3196,33 @@ const catalogMechanicsObject = z
      *  API 1.258), as long as nothing they are immune to: 5e's Aura of Protection, whose condition
      *  spreads the aura. Never written to the sheet; the fight ends, they are gone with it. */
     keepsOn: uniqueIds(4).optional(),
+    /** Held on a sheet's list, how it changes one named entry of its holder's every time they use it
+     *  (Capability API 1.297), stacking with every other such: 5e's Agonizing Blast adds the
+     *  Charisma modifier to eldritch blast's damage on a hit (`damageAdd`), Eldritch Spear makes its
+     *  range 300 feet (`range`), Repelling Blast pushes whoever it hits up to 10 feet (`push`, with
+     *  `pushOptional` offering it without the push too). */
+    amends: z
+      .array(
+        z
+          .object({
+            entry: catalogEntryRef,
+            damageAdd: rulesetValueRefSchema.optional(),
+            range: z.number().finite().gt(0).max(10000).optional(),
+            push: z.number().finite().gt(0).max(10000).optional(),
+            pushOptional: z.literal(true).optional(),
+          })
+          .strict()
+          .refine((amend) => amend.damageAdd !== undefined || amend.range !== undefined || amend.push !== undefined, {
+            message: 'An amend changes something: "damageAdd", "range" or "push"',
+          })
+          .refine((amend) => !amend.pushOptional || amend.push !== undefined, {
+            message: '"pushOptional" offers its "push" or none, so it has one',
+            path: ["pushOptional"],
+          }),
+      )
+      .min(1)
+      .max(4)
+      .optional(),
     /** Held on a sheet's list, its holder's initiative dice are thrown twice (Capability API 1.235),
      *  the better (`advantage`) or the worse kept: 5e's Feral Instinct. */
     initiativeMode: z.enum(["advantage", "disadvantage"]).optional(),
@@ -13031,6 +13058,17 @@ export function rulesetCatalogEntryIssues(
     if (mechanics?.endsCondition && !liveConditions.has(mechanics.endsCondition)) {
       add([index, "mechanics", "endsCondition"], `Unknown condition "${mechanics.endsCondition}"`);
     }
+    mechanics?.amends?.forEach((amend, amendIndex) => {
+      const catalogId = amend.entry.slice(0, amend.entry.indexOf("/"));
+      const catalog = definition.catalogs?.find((one) => one.id === catalogId);
+      if (!catalog?.entries?.some((one) => `${catalogId}/${one.id}` === amend.entry))
+        add([index, "mechanics", "amends", amendIndex, "entry"], `Unknown entry "${amend.entry}"`);
+      if ((amend.range !== undefined || amend.push !== undefined) && !definition.combat?.distance)
+        add(
+          [index, "mechanics", "amends", amendIndex],
+          'A range or a push is measured in cells, so the combat block declares "distance" too',
+        );
+    });
     if (mechanics?.ignoresSurpriseWith) {
       const catalogId = mechanics.ignoresSurpriseWith.slice(0, mechanics.ignoresSurpriseWith.indexOf("/"));
       if (!definition.catalogs?.some((catalog) => catalog.id === catalogId)) {

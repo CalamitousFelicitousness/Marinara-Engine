@@ -3277,6 +3277,38 @@ function sheetCombatant(
     ...itemUseActions(definition, combat, input.items, build, evaluated, perCell),
     ...abilities.flatMap((entry) => entry.actions),
   ];
+  // Held, what changes one named entry of theirs each time they use it (1.297): 5e's invocations.
+  const amends = held.flatMap((mechanics) => mechanics.amends ?? []);
+  for (const amend of amends) {
+    for (const action of actions) {
+      if (action.entry !== amend.entry) continue;
+      if (amend.damageAdd && action.damage) {
+        action.damage.flat += Math.round(resolveRulesetValueRef(definition, build, amend.damageAdd, evaluated));
+      }
+      if (amend.range !== undefined && perCell !== undefined) {
+        const range = rulesetInCells(amend.range, perCell);
+        action.range = action.range
+          ? { ...action.range, normal: Math.max(action.range.normal, range) }
+          : { normal: range };
+      }
+    }
+  }
+  // Pushes last, so one offered without its push carries everything else.
+  for (const amend of amends) {
+    for (const action of [...actions]) {
+      if (action.entry !== amend.entry || action.id.endsWith(":still")) continue;
+      if (amend.push !== undefined && perCell !== undefined) {
+        // Offered without it too where it says the push is its user's choice.
+        if (amend.pushOptional) {
+          const still = structuredClone(action);
+          still.id = `${action.id}:still`;
+          still.label = `${action.label} (no push)`;
+          actions.splice(actions.indexOf(action) + 1, 0, still);
+        }
+        action.push = (action.push ?? 0) + rulesetInCells(amend.push, perCell);
+      }
+    }
+  }
   const riders = abilities.flatMap((entry) => entry.riders);
   // What an item becomes on its last charge (1.267), read now with what it would do then.
   const becomes: NonNullable<RulesetCombatant["becomes"]> = {};

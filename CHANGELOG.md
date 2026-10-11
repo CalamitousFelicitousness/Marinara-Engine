@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: features can change one named spell every time it is cast, so Agonizing Blast, Eldritch Spear and Repelling Blast work on eldritch blast and stack (Capability API 1.297).
 - Rulesets: Darkness or Daylight cast on something a creature holds now moves with them, and Dancing Lights makes four separate lights that move together (Capability API 1.296).
 - Rulesets: spells can grow every two slot levels rather than every one, and Flame Blade's strike grows with the slot it was cast with (Capability API 1.295).
 - Rulesets: Darkness puts out lesser spell light such as Flame Blade or Light, torches no longer light the inside of magical darkness, and Daylight only ends darkness its bright light reaches (Capability API 1.294).

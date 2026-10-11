@@ -316,7 +316,7 @@ function getSummaryEntryMetaLine(entry: ChatSummaryEntry, t: TFunction): string 
     .join(" · ");
 }
 
-function createBlankManualSummaryEntry(t: TFunction): ChatSummaryEntry {
+function createBlankManualSummaryEntry(t: TFunction, range: { start: number; end: number } | null): ChatSummaryEntry {
   const now = new Date().toISOString();
   return {
     id: generateClientId(),
@@ -325,7 +325,10 @@ function createBlankManualSummaryEntry(t: TFunction): ChatSummaryEntry {
     title: t("chat.summary.manual"),
     content: "",
     enabled: true,
-    sourceMode: "last",
+    // The server covers (and, when the chat hides summarized messages, hides) a new range entry like Generate.
+    ...(range
+      ? { sourceMode: "range", rangeStartIndex: range.start, rangeEndIndex: range.end }
+      : { sourceMode: "last" }),
     tokenEstimate: 0,
     createdAt: now,
     updatedAt: now,
@@ -1255,11 +1258,21 @@ export function ChatSummaryPanel({
   }, []);
 
   const handleCreateManualEntry = useCallback(() => {
-    const entry = createBlankManualSummaryEntry(localizeUi);
+    // In Range scope a written summary covers the first range; an invalid range stops it, as it stops Generate.
+    if (sourceMode === "range" && firstBatchRange?.error) {
+      toast.error(summaryBatchRangeErrorMessage(firstBatchRange.error, localizeUi));
+      return;
+    }
+    const entry = createBlankManualSummaryEntry(
+      localizeUi,
+      sourceMode === "range" && firstBatchRange?.normalizedStart && firstBatchRange.normalizedEnd
+        ? { start: firstBatchRange.normalizedStart, end: firstBatchRange.normalizedEnd }
+        : null,
+    );
     setEditingEntryId(entry.id);
     setDraftEntry(entry);
     setExpandedEntryIds((current) => new Set(current).add(entry.id));
-  }, [localizeUi]);
+  }, [firstBatchRange, localizeUi, sourceMode]);
 
   const handleCancelEditEntry = useCallback(() => {
     setEditingEntryId(null);

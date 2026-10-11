@@ -1620,6 +1620,8 @@ const zoneSectionsSchema: z.ZodType<RulesetZoneSections, z.ZodTypeDef, unknown> 
   .strict();
 
 export interface RulesetCatalogZone {
+  /** How it looks on a fight's board (1.328): `bz_<name>` in the board's pack. */
+  art?: string;
   rounds: number;
   untilLair?: true;
   anchor?: "point" | "caster";
@@ -1692,6 +1694,13 @@ const creatureGroundSchema: z.ZodType<RulesetCreatureGround, z.ZodTypeDef, unkno
 
 const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = z
   .object({
+    /** How it looks on a fight's board (Capability API 1.328): a tile of the board's pack, `bz_` and
+     *  lowercase words joined by _ (`bz_fog`, `bz_wall_of_fire`), drawn on every cell it covers. */
+    art: z
+      .string()
+      .max(60)
+      .regex(/^bz_[a-z0-9]+(?:_[a-z0-9]+)*$/, "A zone's art is bz_ then lowercase words joined by _")
+      .optional(),
     rounds: z.number().int().min(1).max(1000),
     /** It ends as its maker's lair count next comes round (Capability API 1.319), if `rounds` has
      *  not ended it first: "until the next lair action", The Owed's Freezing Fog. */

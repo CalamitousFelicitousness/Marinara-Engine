@@ -94,8 +94,8 @@ export const CREATURE_PACK_MAX_BYTES = 32_000_000;
 
 export type CreaturePackRead = { ok: true; pack: CreaturePack; notes: string[] } | { ok: false; issues: string[] };
 
-/** A PNG data URL's size from its header, or why it is not a PNG. */
-function pngSize(dataUrl: string): { width: number; height: number } | null {
+/** A PNG data URL's size from its header, or null when it is not a PNG (board packs read sheets the same way). */
+export function sheetPngSize(dataUrl: string): { width: number; height: number } | null {
   const head = dataUrl.slice(PNG_DATA_URL.length, PNG_DATA_URL.length + 44);
   let bytes: Uint8Array;
   try {
@@ -140,7 +140,7 @@ export function parseCreaturePack(input: unknown): CreaturePackRead {
   for (const sheet of pack.sheets) {
     if (sheets.has(sheet.id)) issues.push(`Two sheets are called "${sheet.id}".`);
     sheets.set(sheet.id, sheet);
-    const size = pngSize(sheet.png);
+    const size = sheetPngSize(sheet.png);
     if (!size) issues.push(`The sheet "${sheet.id}" is not a PNG.`);
     else if (size.width !== sheet.width || size.height !== sheet.height)
       issues.push(

@@ -30,6 +30,7 @@ import {
   type RulesetValueRef,
 } from "../../schemas/ruleset.schema.js";
 import type { TacticalGrid, TacticalGroundCell } from "../tactical-combat/types.js";
+import { BOARD_PROP_ART } from "../world/board-pack.js";
 import { rulesetBoardEvents, rulesetRunBoardEvents, type RulesetBoardEventInput } from "./board-events.js";
 import {
   applyRulesetSheetOp,
@@ -1664,6 +1665,7 @@ export function rulesetZoneAction(
   perCell: number | undefined,
 ): NonNullable<RulesetCombatAction["zone"]> {
   const out: NonNullable<RulesetCombatAction["zone"]> = {
+    ...(zone.art ? { art: zone.art } : {}),
     rounds: zone.rounds,
     ...(zone.untilLair ? { untilLair: true as const } : {}),
     anchor: zone.anchor ?? "point",
@@ -3972,6 +3974,8 @@ export interface RulesetEncounterInput {
     /** The light it is fought in, and the kind of place it is (1.286). */
     light?: RulesetBoardLight;
     environment?: string;
+    /** The board pack it is drawn with (1.328), by library id; none for its environment's. */
+    pack?: string;
     /** What stands on it that may be broken (1.311): a jar, a lantern, a door. Its cells off the
      *  board are dropped, and one with none on it is left out; its `defense` is 10 when not said. */
     props?: RulesetBoardPropInput[];
@@ -4009,6 +4013,8 @@ export interface RulesetBoardPropInput {
   /** Lit again by somebody beside it (1.327): `light` on every cell within `squares` of it, for
    *  `budget` ("action" when not said). */
   relight?: { light: "bright" | "dim" | "sunlight"; squares: number; budget?: string };
+  /** Its sprite in the board's pack (1.328), `bp_<name>`; `bp_<name>_broken` once broken. */
+  art?: string;
 }
 
 /** The props a board is handed (1.311), as a fight keeps them: on the board, each with health. */
@@ -4076,6 +4082,7 @@ export function rulesetBoardProps(grid: TacticalGrid, props: RulesetBoardPropInp
               },
             }
           : {}),
+        ...(typeof prop.art === "string" && BOARD_PROP_ART.test(prop.art) ? { art: prop.art } : {}),
       },
     ];
   });
@@ -5121,6 +5128,7 @@ function placeRulesetCombatants(
     ...(board.battlefield ? { battlefield: board.battlefield as RulesetCombatBoard["battlefield"] } : {}),
     ...(board.light ? { light: board.light } : {}),
     ...(board.environment ? { environment: board.environment } : {}),
+    ...(typeof board.pack === "string" && board.pack.trim() ? { pack: board.pack.trim().slice(0, 80) } : {}),
     // What a shot gains from higher ground, as the ruleset said at the start (combat C6b).
     ...(combat.elevation?.rangeBonus ? { rangeBonus: combat.elevation.rangeBonus } : {}),
     // What one level is worth in cells, which is what a flier pays to rise one (1.109).

@@ -712,6 +712,8 @@ export async function combatDirectorRoutes(
         environment: z.string().max(80).optional(),
         formation: z.string().max(80).optional(),
         battlefield: z.unknown().optional(),
+        /** The board pack a ruleset fight is drawn with (1.328), by library id. */
+        boardPack: z.string().max(80).optional(),
         /** Whether a ruleset fight is fought on a board, which is what the game's Tactical combat
          *  preference asks for. The ruleset still has to say what a cell is worth. */
         positioned: z.boolean().optional(),
@@ -888,6 +890,7 @@ export async function combatDirectorRoutes(
             positioned: input.positioned === true,
             environment: environment ?? null,
             formation: input.formation ?? null,
+            ...(input.boardPack ? { pack: input.boardPack } : {}),
             ...(here ? { made: here } : battlefield.battlefield ? { battlefield: battlefield.battlefield } : {}),
             party: input.party.map((member) => ({ id: member.id, name: member.name })),
             enemies: input.enemies.map((enemy) => ({

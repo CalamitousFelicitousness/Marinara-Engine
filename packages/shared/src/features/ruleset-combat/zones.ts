@@ -121,11 +121,14 @@ export function rulesetZonesShown(state: RulesetEncounterState): Array<{
   cells: RulesetCombatCell[];
   side?: RulesetCombatCell[];
   sections?: Array<{ cells: RulesetCombatCell[]; health: number; max: number }>;
+  /** How it looks (1.328): a `bz_` tile of the board's pack. */
+  art?: string;
 }> {
   return rulesetStandingZones(state).map(({ caster, zone, action }) => ({
     casterId: caster.id,
     label: zone.label,
     rounds: zone.rounds,
+    ...(action.zone?.art ? { art: action.zone.art } : {}),
     cells: rulesetZoneCells(state, rulesetCombatant(state, caster.id) ?? caster, zone).map((cell) => ({ ...cell })),
     ...(zone.sideCells?.length ? { side: zone.sideCells.map((cell) => ({ ...cell })) } : {}),
     // Each section and what it has left (1.195).

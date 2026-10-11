@@ -94,6 +94,7 @@ export * from "./features/world/town.js";
 export * from "./features/world/snapshot.js";
 export * from "./features/world/tile-pack.js";
 export * from "./features/world/creature-pack.js";
+export * from "./features/world/board-pack.js";
 export * from "./features/world/edits.js";
 export * from "./features/world/battlefield-maps.js";
 export * from "./features/world/share-files.js";

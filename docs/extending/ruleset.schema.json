@@ -9480,6 +9480,11 @@
                     "zone": {
                       "type": "object",
                       "properties": {
+                        "art": {
+                          "type": "string",
+                          "maxLength": 60,
+                          "pattern": "^bz_[a-z0-9]+(?:_[a-z0-9]+)*$"
+                        },
                         "rounds": {
                           "type": "integer",
                           "minimum": 1,
@@ -19875,6 +19880,11 @@
                           "zone": {
                             "type": "object",
                             "properties": {
+                              "art": {
+                                "type": "string",
+                                "maxLength": 60,
+                                "pattern": "^bz_[a-z0-9]+(?:_[a-z0-9]+)*$"
+                              },
                               "rounds": {
                                 "type": "integer",
                                 "minimum": 1,
@@ -28450,6 +28460,11 @@
                         "zone": {
                           "type": "object",
                           "properties": {
+                            "art": {
+                              "type": "string",
+                              "maxLength": 60,
+                              "pattern": "^bz_[a-z0-9]+(?:_[a-z0-9]+)*$"
+                            },
                             "rounds": {
                               "type": "integer",
                               "minimum": 1,
@@ -36238,6 +36253,11 @@
                               "zone": {
                                 "type": "object",
                                 "properties": {
+                                  "art": {
+                                    "type": "string",
+                                    "maxLength": 60,
+                                    "pattern": "^bz_[a-z0-9]+(?:_[a-z0-9]+)*$"
+                                  },
                                   "rounds": {
                                     "type": "integer",
                                     "minimum": 1,

@@ -10,6 +10,7 @@ import { promptSafeText } from "../../schemas/ruleset.schema.js";
 import { TACTICAL_ENVIRONMENTS, TACTICAL_TERRAINS } from "../tactical-combat/environments.js";
 import { gridDimensions, tacticalMadeBoardIssues } from "../tactical-combat/grid-gen.js";
 import type { TacticalGrid, TacticalMadeBattlefield, TacticalTerrain } from "../tactical-combat/types.js";
+import { BOARD_PROP_ART } from "./board-pack.js";
 import type { GameWorld } from "./game-world.js";
 
 /** The most battlefields a world has. */
@@ -64,6 +65,8 @@ export const worldBattlefieldPropSchema = z
       })
       .strict()
       .optional(),
+    /** Its sprite in the board's pack (1.328): `bp_<name>`, and `bp_<name>_broken` once broken. */
+    art: z.string().max(60).regex(BOARD_PROP_ART, "A prop's art is bp_ then lowercase words joined by _").optional(),
   })
   .strict();
 export type WorldBattlefieldProp = z.infer<typeof worldBattlefieldPropSchema>;
@@ -160,6 +163,16 @@ export const worldBattlefieldMapSchema = z
     size: z.enum(["small", "medium", "large"]),
     /** The battlefield it looks like: its colours, and the weather's reach. */
     scene: z.enum(TACTICAL_ENVIRONMENTS),
+    /** The board pack it is drawn with (Capability API 1.328), by its library id; none for its
+     *  scene's own (the library's pack for that environment, then the built-in one). */
+    pack: z
+      .string()
+      .max(80)
+      .regex(
+        /^(?:[a-z0-9][a-z0-9_-]{0,15}\/)?[a-z0-9][a-z0-9_-]{0,63}$/,
+        "A pack's id is lowercase letters, digits, _ and -",
+      )
+      .optional(),
     /** Its tiles, a row of characters each (p plains, f forest, m mountain, r ruin, w water, # wall). */
     rows: z
       .array(z.string().regex(/^[pfmrw#]{1,14}$/, "A battlefield row is p, f, m, r, w or # per tile"))
@@ -329,6 +342,7 @@ export function worldBattlefieldHere(
       name: map.name,
       size: map.size,
       scene: map.scene,
+      ...(map.pack ? { pack: map.pack } : {}),
       grid: worldBattlefieldGrid(map),
       ...(map.props?.length ? { props: map.props.map((prop) => structuredClone(prop)) } : {}),
       ...(map.events?.length ? { events: map.events.map((event) => structuredClone(event)) } : {}),

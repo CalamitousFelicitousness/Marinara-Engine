@@ -1882,6 +1882,8 @@ export interface RulesetBoardProp {
   /** It may be lit again (1.327): somebody beside it spends `budget` and every cell within `squares`
    *  of it is `light` once more. The Owed's bonfire after Bonfire Gutters. */
   relight?: { light: "bright" | "dim" | "sunlight"; squares: number; budget: string };
+  /** Its sprite in the board's pack (1.328): `bp_<name>`, and `bp_<name>_broken` once broken. */
+  art?: string;
 }
 
 /** Where a board event happens (1.313): listed cells, a block, a ring widening from a cell, a line
@@ -1953,6 +1955,8 @@ export interface RulesetCombatBoard {
   light?: RulesetBoardLight;
   /** The kind of place it is (1.286), as the tactical generator names it: snow, cave, mountains. */
   environment?: string;
+  /** The board pack it is drawn with (1.328), by library id. */
+  pack?: string;
   battlefield?: TacticalBattlefieldProvenance;
   /** Cells a shot carries further down from higher ground (combat C6b), as the ruleset said when the
    *  fight began. */
@@ -2934,6 +2938,8 @@ export interface RulesetEncounterSummary {
 
 /** How a lasting area behaves (1.167), as the catalog entry said it. */
 export interface RulesetCombatZoneRule {
+  /** How it looks on the board (1.328): a `bz_` tile of the board's pack. */
+  art?: string;
   /** The light it sheds over its own cells, in CELLS from its middle (1.292). */
   lights?: { bright: number; dim: number; reveals?: true; sunlight?: true; shade?: true };
   /** Spell light of this level or lower it puts out where they meet (1.294): 5e's Darkness. */

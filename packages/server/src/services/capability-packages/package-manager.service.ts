@@ -1575,6 +1575,16 @@ function carriesBossAsks(value: unknown, depth = 0): boolean {
 }
 
 /** A use only beside a prop, or a ground change whose occupants stay in it (1.327). */
+/** A lasting area with a look of its own on a fight's board (1.328). */
+function carriesBoardArt(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesBoardArt(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (typeof plainRecord(record.zone)?.art === "string") return true;
+  return Object.values(record).some((one) => carriesBoardArt(one, depth + 1));
+}
+
 function carriesNearUseOrFall(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesNearUseOrFall(one, depth + 1));
@@ -4447,6 +4457,13 @@ export function getCapabilityPackageInstallIssue(
     (carriesDraws(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesDraws(document)))
   ) {
     return "A ruleset with a creature action that draws whoever it lands on toward it requires schemaVersion 2 and capabilityApi 1.321 or newer";
+  }
+  // A lasting area with its own art on the board, 1.328.
+  if (
+    !declaresApi(328) &&
+    (carriesBoardArt(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesBoardArt(document)))
+  ) {
+    return "A ruleset with a lasting area drawn with its own art on a fight's board requires schemaVersion 2 and capabilityApi 1.328 or newer";
   }
   // A use only beside a prop, or occupants that stay, 1.327.
   if (

@@ -83,7 +83,12 @@ export interface TacticalMadeBattlefield {
     immune?: string[];
     blocks?: { move?: boolean; sight?: boolean };
     fragile?: boolean;
+    relight?: { light: "bright" | "dim" | "sunlight"; squares: number; budget?: string };
+    /** Its sprite in the board's pack (1.328). */
+    art?: string;
   }>;
+  /** The board pack it is drawn with (1.328), by id; none for its scene's. */
+  pack?: string;
   /** What it does on its own each round (Capability API 1.313), as painted. */
   events?: Array<{
     id: string;

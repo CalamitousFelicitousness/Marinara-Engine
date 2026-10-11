@@ -209,6 +209,8 @@ export interface RulesetFightSeed {
   battlefield?: TacticalBattlefieldBrief;
   /** A board painted for the fight's place (worldgen W9g), fought on as painted: the brief is not used. */
   made?: TacticalMadeBattlefield;
+  /** The board pack it is drawn with (1.328), by library id: this one, else the painted board's. */
+  pack?: string;
   /** The chat's own party cards, which is where a sheet build lives. */
   cards: unknown;
   playerName: string | null;
@@ -490,6 +492,8 @@ function buildRulesetBoard(
     battlefield: generated.battlefield,
     ...(light ? { light } : {}),
     ...(environment ? { environment } : {}),
+    // The art it is drawn with (1.328).
+    ...((input.pack ?? input.made?.pack) ? { pack: (input.pack ?? input.made?.pack)! } : {}),
     // What its painter stood on it that may be broken (1.311).
     ...(input.made?.props?.length ? { props: input.made.props } : {}),
     // What it does each round, and the growth and seasons on its cells (1.313).
@@ -830,6 +834,9 @@ export function directedRulesetView(
               : {}),
             distance: { ...distance },
             ...(made ? { scene: made.scene } : {}),
+            // The board pack it is drawn with (1.328), and its environment's when it names none.
+            ...(encounter.board?.pack ? { pack: encounter.board.pack } : {}),
+            ...(encounter.board?.environment ? { environment: encounter.board.environment } : {}),
             ...shaded,
           },
         }
@@ -848,6 +855,7 @@ export function directedRulesetView(
             cells: prop.cells.map((cell) => ({ x: cell.x, y: cell.y })),
             health: prop.health,
             max: prop.max,
+            ...(prop.art ? { art: prop.art } : {}),
           })),
         }
       : {}),

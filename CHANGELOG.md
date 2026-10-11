@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: a condition can move the difficulty of the saves its holder calls for (`"to": "save-difficulty"`, the Miller's Un-age, a spell save DC 2 lower) (Capability API 1.323).
 - Rulesets: lair timing: a creature action only at whoever has already acted this round (`actedOnly`, the Hour Bell), a condition that lasts until its putter's next lair action (`untilLair` on a duration), and a concentration that, broken, makes a given lair action the next (`brokenNextLair`, the Litany of Keeping) (Capability API 1.322).
 - Fixed: a creature that fights with a sheet (every 5e creature) now hangs on at 1 hit point too; it dropped and was defeated instead (1.315).
 - Rulesets: a creature action can draw whoever it lands on toward it (`draws`): they spend their reaction to walk their speed its way there and then, the open way round (the Owed's Whisper a Name) (Capability API 1.321).

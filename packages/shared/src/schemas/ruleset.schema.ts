@@ -6804,6 +6804,9 @@ export const RULESET_COMBAT_MODIFIER_TARGETS = [
    *  `skills` to the skill rolled: an opponent's Search for them and its passive Perception
    *  against their hiding. 5e's Cloak of Elvenkind, disadvantage on Perception to see its wearer. */
   "checks-taken",
+  /** The difficulty of the saves the holder makes others roll (Capability API 1.323), by a flat
+   *  amount: the Miller of Hours' Un-age, a spell save DC 2 lower. */
+  "save-difficulty",
 ] as const;
 /** The ones that are ROLLED, so dice may be added to them and are rolled every time. */
 export const RULESET_ROLLED_MODIFIER_TARGETS: readonly string[] = [
@@ -6937,6 +6940,12 @@ const combatModifierSchema = z
       (modifier.mode === undefined || modifier.flat !== undefined || modifier.dice !== undefined)
     ) {
       add("to", '"checks-taken" rolls checks to find the holder twice, so it takes a "mode" and nothing else');
+    }
+    if (
+      modifier.to === "save-difficulty" &&
+      (modifier.flat === undefined || modifier.dice !== undefined || modifier.times !== undefined)
+    ) {
+      add("to", '"save-difficulty" moves the difficulty of the saves the holder calls for by a flat amount only');
     }
     if (modifier.from !== undefined && modifier.to !== "attacks-taken")
       add("from", '"from" narrows attacks-taken only');

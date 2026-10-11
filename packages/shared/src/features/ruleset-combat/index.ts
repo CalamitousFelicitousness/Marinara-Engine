@@ -281,6 +281,7 @@ export {
   advanceRulesetTurn,
   rulesetOpenLairWindow,
   applyRulesetCombatChoice,
+  rulesetSaveDifficultyShift,
   liftRulesetFightEffects,
   settleRulesetFledFight,
   rulesetEncounterOutcome,

@@ -1574,6 +1574,16 @@ function carriesBossAsks(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesBossAsks(one, depth + 1));
 }
 
+/** A condition that moves the difficulty of the saves its holder calls for (1.323). */
+function carriesSaveDifficulty(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesSaveDifficulty(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.to === "save-difficulty") return true;
+  return Object.values(record).some((one) => carriesSaveDifficulty(one, depth + 1));
+}
+
 /** Lair timing (1.322): a creature action only at whoever has acted this round, one whose broken
  *  concentration picks the next lair action, or a condition lasting until the next lair action. */
 function carriesLairTiming(value: unknown, depth = 0): boolean {
@@ -4414,6 +4424,14 @@ export function getCapabilityPackageInstallIssue(
     (carriesDraws(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesDraws(document)))
   ) {
     return "A ruleset with a creature action that draws whoever it lands on toward it requires schemaVersion 2 and capabilityApi 1.321 or newer";
+  }
+  // Save difficulty moved by a condition, 1.323.
+  if (
+    !declaresApi(323) &&
+    (carriesSaveDifficulty(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesSaveDifficulty(document)))
+  ) {
+    return "A ruleset with a condition that moves the difficulty of the saves its holder calls for requires schemaVersion 2 and capabilityApi 1.323 or newer";
   }
   // Lair timing, 1.322.
   if (

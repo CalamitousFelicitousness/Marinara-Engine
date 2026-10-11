@@ -342,6 +342,7 @@ export function rulesetEffectPhrase(fact: RulesetItemEffectFact, t: TFunction): 
   }
   if (fact.to === "attacks") return t("ui.game.gameinventory.effectOnAttacks", { change });
   if (fact.to === "attacks-taken") return t("ui.game.gameinventory.effectOnAttacksTaken", { change });
+  if (fact.to === "save-difficulty") return t("ui.game.gameinventory.effectSaveDifficulty", { change });
   if (fact.to === "checks-taken") {
     return names
       ? t("ui.game.gameinventory.effectOnNamedChecksTaken", { change, names })

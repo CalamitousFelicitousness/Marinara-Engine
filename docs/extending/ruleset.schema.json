@@ -21561,7 +21561,8 @@
                                   "damage",
                                   "damage-taken",
                                   "attacks-taken",
-                                  "checks-taken"
+                                  "checks-taken",
+                                  "save-difficulty"
                                 ]
                               },
                               "attacks": {
@@ -22467,7 +22468,8 @@
                                   "damage",
                                   "damage-taken",
                                   "attacks-taken",
-                                  "checks-taken"
+                                  "checks-taken",
+                                  "save-difficulty"
                                 ]
                               },
                               "attacks": {
@@ -23527,7 +23529,8 @@
                                         "damage",
                                         "damage-taken",
                                         "attacks-taken",
-                                        "checks-taken"
+                                        "checks-taken",
+                                        "save-difficulty"
                                       ]
                                     },
                                     "attacks": {
@@ -49589,7 +49592,8 @@
                         "damage",
                         "damage-taken",
                         "attacks-taken",
-                        "checks-taken"
+                        "checks-taken",
+                        "save-difficulty"
                       ]
                     },
                     "attacks": {
@@ -55063,7 +55067,8 @@
                         "damage",
                         "damage-taken",
                         "attacks-taken",
-                        "checks-taken"
+                        "checks-taken",
+                        "save-difficulty"
                       ]
                     },
                     "attacks": {

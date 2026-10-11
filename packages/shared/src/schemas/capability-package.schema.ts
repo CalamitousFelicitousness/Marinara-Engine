@@ -1050,7 +1050,7 @@ const capabilityPackageManifestBaseSchema = z
 //        and refusal.
 // 1.260: an aura's `needs`, `harms` and `save` (Countercharm, a balor's Fire Aura, a pit fiend's Fear
 //        Aura); a save modifier's `against.casts` (Holy Nimbus).
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 322 } as const);
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 323 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

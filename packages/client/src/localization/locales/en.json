@@ -7943,6 +7943,7 @@
   "ui.game.gameinventory.effectOnSaves": "{{change}} on saves",
   "ui.game.gameinventory.effectResist": "resists {{names}}",
   "ui.game.gameinventory.effectResistAll": "takes half of every harm",
+  "ui.game.gameinventory.effectSaveDifficulty": "{{change}} to the difficulty of the saves they call for",
   "ui.game.gameinventory.effectSpeed": "{{change}} speed",
   "ui.game.gameinventory.effectSpeedDouble": "double speed",
   "ui.game.gameinventory.effectSpeedHalf": "half speed",

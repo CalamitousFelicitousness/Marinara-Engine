@@ -3580,6 +3580,73 @@ export function applyRulesetCombatChoice(
   choice: RulesetCombatChoice,
   roller: RulesetCombatRoller,
 ): RulesetCombatStep {
+  // What its user makes others save against, lowered or raised by what they hold (1.323): the
+  // Miller's Un-age, a spell save DC 2 lower. Set on their actions for this step only.
+  const actor = rulesetCombatant(state, choice.actorId);
+  const by = actor ? rulesetSaveDifficultyShift(definition, actor, state) : 0;
+  if (!actor || by === 0) return applyAlteredChoice(definition, state, choice, roller);
+  const view = withRulesetActions(state, actor.id, (actions) => shiftedDifficulties(actions, by));
+  const step = applyAlteredChoice(definition, view, choice, roller);
+  if (step.state === view) return { ...step, state };
+  return { ...step, state: withRulesetActions(step.state, actor.id, (actions) => shiftedDifficulties(actions, -by)) };
+}
+
+/** How much what a combatant holds (a condition, an item, a level) moves the difficulty of the saves
+ *  they call for (1.323). */
+export function rulesetSaveDifficultyShift(
+  definition: RulesetDefinition,
+  combatant: RulesetCombatant,
+  state?: RulesetEncounterState,
+): number {
+  const combat = definition.combat;
+  if (!combat) return 0;
+  return rulesetConditionModifiers(definition, combat, combatant, "save-difficulty", state).reduce(
+    (total, entry) => total + (entry.modifier.flat ?? 0),
+    0,
+  );
+}
+
+/** The fight with one combatant's actions changed (1.323). */
+function withRulesetActions(
+  state: RulesetEncounterState,
+  actorId: string,
+  change: (actions: RulesetCombatAction[]) => RulesetCombatAction[],
+): RulesetEncounterState {
+  return {
+    ...state,
+    combatants: state.combatants.map((combatant) =>
+      combatant.id === actorId ? { ...combatant, actions: change(combatant.actions) } : combatant,
+    ),
+  };
+}
+
+/** Actions with every save they call for moved `by`: a save's own difficulty, wherever it is written
+ *  on them, and a save difficulty given for saves that end what they put on. Never a check's, and
+ *  never inside a stat block they call up (1.320), whose creatures are their own. */
+function shiftedDifficulties(actions: RulesetCombatAction[], by: number): RulesetCombatAction[] {
+  const walk = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(walk);
+    if (!value || typeof value !== "object") return value;
+    const out: Record<string, unknown> = {};
+    const record = value as Record<string, unknown>;
+    for (const [key, entry] of Object.entries(record)) {
+      if (key === "block") out[key] = entry;
+      else if (key === "saveDifficulty" && typeof entry === "number") out[key] = entry + by;
+      else if (key === "difficulty" && typeof entry === "number" && typeof record.save === "string")
+        out[key] = entry + by;
+      else out[key] = walk(entry);
+    }
+    return out;
+  };
+  return actions.map((action) => walk(action) as RulesetCombatAction);
+}
+
+function applyAlteredChoice(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  choice: RulesetCombatChoice,
+  roller: RulesetCombatRoller,
+): RulesetCombatStep {
   if (choice.alters === undefined || (Array.isArray(choice.alters) && choice.alters.length === 0)) {
     // Who it spares or heightens is for an alteration that does (1.249, 1.250), which it is not used with.
     if (choice.spares !== undefined || choice.heightens !== undefined) {

@@ -74,6 +74,7 @@ export interface RulesetItemEffectFact {
     | "attacks"
     | "attacks-taken"
     | "checks-taken"
+    | "save-difficulty"
     | "defense"
     | "speed"
     | "health-max"
@@ -859,7 +860,13 @@ export function rulesetItemEffectText(fact: RulesetItemEffectFact): string {
     ? ` against ${[...fact.against.names, ...(fact.against.magic ? ["magic"] : [])].join(" or ")}`
     : "";
   const to =
-    fact.to === "attacks-taken" ? "attacks against them" : fact.to === "checks-taken" ? "checks to find them" : fact.to;
+    fact.to === "attacks-taken"
+      ? "attacks against them"
+      : fact.to === "checks-taken"
+        ? "checks to find them"
+        : fact.to === "save-difficulty"
+          ? "the difficulty of their saves"
+          : fact.to;
   const which = `${to}${fact.names.length ? ` (${fact.names.join(", ")})` : ""}${against}`;
   if ("fails" in change) return `fails ${which}`;
   return `${"mode" in change ? change.mode : "value" in change ? change.value : ""} on ${which}`;

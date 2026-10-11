@@ -108,6 +108,7 @@ interface ConversationViewProps {
     variant: "origin" | "scene";
     sceneChatId?: string;
     sceneChatName?: string;
+    repliesAllowed?: boolean;
     originChatId?: string;
     packageOrigin?: ScenePackageOrigin | null;
     description?: string;
@@ -1559,7 +1560,12 @@ export function ConversationView({
 
         {/* Scene banner — inline at bottom of messages (origin variant only); hidden during a turn-game */}
         {sceneInfo?.variant === "origin" && (
-          <SceneBanner variant="origin" sceneChatId={sceneInfo.sceneChatId} sceneChatName={sceneInfo.sceneChatName} />
+          <SceneBanner
+            variant="origin"
+            sceneChatId={sceneInfo.sceneChatId}
+            sceneChatName={sceneInfo.sceneChatName}
+            repliesAllowed={sceneInfo.repliesAllowed}
+          />
         )}
 
         <div ref={messagesEndRef} className="h-1" />

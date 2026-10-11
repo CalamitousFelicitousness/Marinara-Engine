@@ -7521,7 +7521,11 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             targetCharId &&
             !input.regenerateMessageId &&
             !input.impersonate &&
-            (await resolveSceneBusyCharacterIds(chats, input.chatId)).includes(targetCharId)
+            (
+              await resolveSceneBusyCharacterIds(chats, input.chatId, undefined, {
+                userReply: input.autonomous !== true,
+              })
+            ).includes(targetCharId)
           ) {
             sendSseEvent(reply, {
               type: "offline",
@@ -8960,7 +8964,11 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             if (blockedSpeakers.length) {
               fullResponse = "";
               if (!holdForTextRewrite) sendSseEvent(reply, { type: "content_replace", data: "" });
-              const sceneBusyIds = new Set(await resolveSceneBusyCharacterIds(chats, input.chatId));
+              const sceneBusyIds = new Set(
+                await resolveSceneBusyCharacterIds(chats, input.chatId, undefined, {
+                  userReply: input.autonomous !== true,
+                }),
+              );
               const sceneBusyNames = new Set(
                 charInfo.filter((character) => sceneBusyIds.has(character.id)).flatMap(speakerNames),
               );

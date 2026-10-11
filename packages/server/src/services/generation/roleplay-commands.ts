@@ -539,6 +539,31 @@ export function roleplayAgentText(
   return result;
 }
 
+/**
+ * The text a continue just added to `source`, as agents read it: only the whispers written with it, the ones after
+ * the message's `earlier` activity records, each at its saved place. They are placed in the whole message, since
+ * their saved places point into it, and the earlier text is then cut off.
+ */
+export function roleplayAgentContinuation(
+  continuation: string,
+  source: HistoryMessage | null | undefined,
+  earlier: number,
+  names: ReadonlyMap<string, string> | null,
+): string {
+  if (!names || !source) return continuation;
+  const extra = parseExtra(source.extra);
+  const added = {
+    ...source,
+    extra: { ...extra, roleplayCommandActivity: getRoleplayCommandActivity(extra).slice(earlier) },
+  };
+  const body = typeof source.content === "string" ? source.content : "";
+  const start = continuation.trim() ? body.lastIndexOf(continuation.trim()) : -1;
+  const whole = start >= 0 ? roleplayAgentText(body, added, names) : "";
+  return start >= 0 && whole.startsWith(body.slice(0, start))
+    ? whole.slice(start).trim()
+    : roleplayAgentText(continuation, added, names);
+}
+
 /** Agents' copy of a prompt, each history message read as roleplayAgentText. The prompt itself is unchanged. */
 export function roleplayAgentPrompt<T extends GenerationPromptMessage>(
   prompt: T[],

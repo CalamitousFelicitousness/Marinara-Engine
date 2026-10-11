@@ -223,6 +223,7 @@ import {
   buildRoleplayPersonalContext,
   parseRoleplayCommands,
   parseRoleplayUserCommands,
+  roleplayAgentContinuation,
   roleplayAgentPrompt,
   roleplayAgentsSeeWhispers,
   roleplayAgentText,
@@ -5212,6 +5213,16 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           }
           return msg;
         });
+        // The main reply's custom tools act for the character responding, so their {{input}} is the latest user
+        // message's public text, without the whispers agents read (#7430).
+        const responderToolInput = agentWhisperNames
+          ? ([...resolvedAgentSlice]
+              .reverse()
+              .find(
+                (message) =>
+                  message.role === "user" && (!advancedAgentSourceIds || advancedAgentSourceIds.has(message.id)),
+              )?.content ?? "")
+          : undefined;
         const customAgentsWithLorebookTriggers = resolvedAgents.filter(
           (agent) => !builtInAgentTypes.has(agent.type) && agent.settings.triggerLorebooksForAgentCalls === true,
         );
@@ -6264,6 +6275,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           gameState,
           gameSpotifyMusicEnabled,
           agentContext,
+          responderInput: responderToolInput,
           getLorebookSourceMessageRefs,
           emitMetadataPatch: (patch) => sendSseEvent(reply, { type: "metadata_patch", data: patch }),
           // Game Mode rolls its dice for real. This does not turn the chat's tool toggle on —
@@ -11273,11 +11285,23 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
 
         await finalizeLorebookWrites();
         const hasPostProcessingAgents = resolvedAgents.some((a) => a.phase === "post_processing");
+        // A continued reply's segment is only the added text, so it reads only the whispers written with it.
         agentContext.mainResponseSegments = shouldPrefixGroupHistorySpeakers
-          ? allResponseSegments.map((segment, index) => ({
-              ...segment,
-              content: agentReplyText(segment.content, responseMessageIds.get(index)),
-            }))
+          ? allResponseSegments.map((segment, index) => {
+              const id = responseMessageIds.get(index);
+              return {
+                ...segment,
+                content:
+                  continuedMessageRewriteSource !== null && id === input.continueMessageId
+                    ? roleplayAgentContinuation(
+                        segment.content,
+                        roleplayTimeline.find((message) => message.id === id),
+                        getRoleplayCommandActivity(parseExtra(continueTargetMessage?.extra)).length,
+                        agentWhisperNames,
+                      )
+                    : agentReplyText(segment.content, id),
+              };
+            })
           : undefined;
         let lorebookKeeperProcessedMessageId = "";
         // Illustration runs asynchronously so it doesn't block other agents.

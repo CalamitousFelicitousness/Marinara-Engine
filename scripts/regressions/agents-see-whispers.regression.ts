@@ -14,6 +14,7 @@ process.env.FILE_STORAGE_DIR = join(dir, "storage");
 process.env.NODE_ENV = "test";
 process.env.MARINARA_LITE = "true";
 process.env.LOG_LEVEL = "silent";
+process.env.CUSTOM_TOOL_SCRIPT_ENABLED = "true";
 const requireServer = createRequire(new URL("../../packages/server/package.json", import.meta.url));
 const Fastify = requireServer("fastify") as typeof import("fastify").default;
 const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
@@ -24,7 +25,8 @@ const { createConnectionsStorage } = await import("../../packages/server/src/ser
 const { createCharactersStorage } = await import("../../packages/server/src/services/storage/characters.storage.js");
 const { createPromptsStorage } = await import("../../packages/server/src/services/storage/prompts.storage.js");
 const { createAgentsStorage } = await import("../../packages/server/src/services/storage/agents.storage.js");
-const { roleplayAgentsSeeWhispers, roleplayAgentText } =
+const { createCustomToolsStorage } = await import("../../packages/server/src/services/storage/custom-tools.storage.js");
+const { roleplayAgentContinuation, roleplayAgentsSeeWhispers, roleplayAgentText } =
   await import("../../packages/server/src/services/generation/roleplay-commands.js");
 const { characterDataSchema, replaceBuiltInAgentDefinitions } = await import("../../packages/shared/dist/index.js");
 
@@ -253,6 +255,13 @@ try {
   );
   assert.equal(roleplayAgentText("", onlyWhisper, bobNames), "[Private whisper to Bob: ONLY]");
   assert.equal(roleplayAgentText("[Private whisper]", onlyWhisper, null), "[Private whisper]");
+  // A continue that added only a whisper reads as that whisper, without the message's earlier ones.
+  const continuedOnlyWhisper = {
+    role: "assistant",
+    content: "Plain.",
+    extra: { roleplayCommandActivity: [whisper("EARLIER", {}), whisper("ADDED", {})] },
+  };
+  assert.equal(roleplayAgentContinuation("", continuedOnlyWhisper, 1, bobNames), "[Private whisper to Bob: ADDED]");
 
   // A retried agent reads the retried reply with its whispers; a rewrite agent edits only its public text.
   const rewrite = await agents.create({
@@ -317,6 +326,76 @@ try {
   );
   assert.equal(agentPrompts.get("REWRITE_AGENT_FIXTURE")!.length, rewritesBefore, "no rewrite of blank replies");
   await chats.patchMetadata(chat.id, { activeAgentIds: [pre.type, post.type], groupResponseOrder: "manual" });
+
+  // Continuing a reply with speaker names in history: the agents' segment is only the added text, with only
+  // the whispers written in it, at their places.
+  await chats.patchMetadata(chat.id, { groupSpeakerNamesInHistory: true });
+  await generate('First. [whisper: character="Bob" text="OLD_SECRET"] Part.', alice.id);
+  const continued = (await chats.listMessages(chat.id)).at(-1)!;
+  await generate(' Second. [whisper: character="Bob" text="NEW_SECRET"] End.', alice.id, {
+    continueMessageId: continued.id,
+  });
+  const continuation = responseOf(latest("POST_AGENT_FIXTURE"));
+  assert(inOrder(continuation, "Second.", "[Private whisper to Bob: NEW_SECRET]", "End."), continuation);
+  assert(!continuation.includes("OLD_SECRET") && !continuation.includes("First."), continuation);
+  await chats.patchMetadata(chat.id, { groupSpeakerNamesInHistory: false });
+
+  // A character's own custom tool call acts for that character, so a whisper for someone else stays out of it.
+  await createCustomToolsStorage(db).create({
+    name: "recall_input",
+    description: "Recall what the player last said.",
+    parametersSchema: { type: "object", properties: {}, required: [] },
+    executionType: "script",
+    scriptBody: "return { lastInput: context.macros.input };",
+    includeHiddenContext: true,
+  });
+  const toolConnection = await createConnectionsStorage(db).create({
+    name: "Agent whisper tool fixture",
+    provider: "custom",
+    baseUrl: `http://127.0.0.1:${address.port}/v1`,
+    model: "gemma",
+    apiKey: "fixture",
+    maxContext: 32768,
+    maxTokensOverride: 512,
+    treatAsLocalEndpoint: true,
+  });
+  assert(toolConnection);
+  const toolChat = await chats.create({
+    name: "Tool whisper",
+    mode: "roleplay",
+    characterIds: [alice.id, bob.id],
+    personaId: persona.id,
+    connectionId: toolConnection.id,
+    promptPresetId: preset.id,
+  });
+  assert(toolChat);
+  await chats.patchMetadata(toolChat.id, {
+    enableAgents: false,
+    enableMemoryRecall: false,
+    enableTools: true,
+    activeToolIds: ["recall_input"],
+    roleplayCommandsEnabled: true,
+    roleplayCommandToggles: { whisper: true },
+    groupChatMode: "individual",
+    groupResponseOrder: "manual",
+  });
+  await chats.createMessage({ chatId: toolChat.id, role: "user", content: "Opening." });
+  const toolPromptsBefore = mainPrompts.length;
+  outputs = ['<tool_call>{"name": "recall_input", "arguments": {}}</tool_call>', "Alice answers."];
+  const toolTurn = await app.inject({
+    method: "POST",
+    url: "/api/generate/",
+    payload: {
+      chatId: toolChat.id,
+      forCharacterId: alice.id,
+      userMessage: 'Hello there. [whisper: character="Bob" text="TOOL_SECRET"]',
+    },
+  });
+  assert.equal(toolTurn.statusCode, 200, toolTurn.body);
+  assert.equal(outputs.length, 0);
+  const toolPrompts = mainPrompts.slice(toolPromptsBefore);
+  assert(toolPrompts.at(-1)!.includes("lastInput") && toolPrompts.at(-1)!.includes("Hello there."), toolPrompts.at(-1));
+  for (const toolPrompt of toolPrompts) assert(!toolPrompt.includes("TOOL_SECRET"), toolPrompt);
 
   // A hosted room shows agent output to every participant, so its agents get no whispers.
   replaceBuiltInAgentDefinitions([
@@ -416,7 +495,7 @@ try {
   assert(latest("ROOM_TRACKER_FIXTURE").includes("[Private whisper to Alice: ROOM_SECRET]"));
   assert(!mainPrompts.at(-1)!.includes("ROOM_SECRET"), "Bob is still not a recipient");
   console.log(
-    "Agents see whispers passed: post-generation reply whispers, whisper-only user turns, history placement, preview without double insertion, responder privacy, dead whispers, retries and hosted rooms.",
+    "Agents see whispers passed: post-generation reply whispers, whisper-only user turns, history placement, preview without double insertion, responder privacy, dead whispers, retries, continued group replies, responder tools and hosted rooms.",
   );
 } finally {
   await app.close();

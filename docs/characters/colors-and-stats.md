@@ -34,7 +34,7 @@ Each color affects a different part of the chat:
 
 - The name color colors the display name in chat messages. For a character it also colors the name in the sidebar tabs. For a persona it also colors the name in the persona pickers.
 - The dialogue color colors text inside dialogue quotation marks. It works with straight quotes and other quote styles. You can also make this text bold from **Settings**. Conversation chats do not use it.
-- The message box color sets the background of that character or persona's chat message bubbles in Roleplay chats. Conversation chats do not use it.
+- The message box color sets the background of that character or persona's chat message bubbles in Roleplay chats. Conversation and Game chats do not use it.
 
 ## The Stats tab
 

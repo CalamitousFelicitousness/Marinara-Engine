@@ -5110,6 +5110,7 @@
   "ui.characters.colorstab.nameAliasesRemove": "Remove alias {{alias}}",
   "ui.characters.colorstab.nameDisplayColor": "Name Display Color",
   "ui.characters.colorstab.notUsedInConversation": "Conversation chats don't use this color.",
+  "ui.characters.colorstab.roleplayOnly": "Only Roleplay chats use this color.",
   "ui.characters.colorstab.theyJumpDownLandingBehindYouAndStraightenUp": "They jump down, landing behind you, and straighten up.",
   "ui.characters.colorstab.uploadAnAvatarFirst": "Upload an avatar first",
   "ui.characters.colorstab.value1AvatarPreview": "{{value1}} avatar preview",

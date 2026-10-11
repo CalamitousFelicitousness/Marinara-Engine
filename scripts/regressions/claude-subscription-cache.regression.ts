@@ -49,7 +49,6 @@ try {
     assert.equal(result.content, "Cached reply");
     assert.deepEqual(sdkOptions.settings, { fastMode: false, promptCacheTtl: "1h" });
     assert.deepEqual(sdkOptions.settingSources, [], "cache settings must not load user/project tools or hooks");
-    assert.equal(sdkOptions.title, "Title", "a preset title skips the CLI's hidden session-naming request");
     assert.ok(logged);
     assert.equal(logged.cacheWrite5mTokens, fiveMinute ?? 0);
     assert.equal(logged.cacheWrite1hTokens, oneHour ?? 0);

@@ -19,7 +19,7 @@ export interface ChatWizardDefaults {
 // defaults are a wizard snapshot, not a profile or a copy of a running chat.
 const excluded = new Set([
   ...CHAT_PRESET_EXCLUDED_METADATA_KEYS.filter(
-    (key) => !["activeLorebookIds", "presetChoices", "spriteCharacterIds"].includes(key),
+    (key) => !["activeLorebookIds", "excludedLorebookIds", "presetChoices", "spriteCharacterIds"].includes(key),
   ),
   "conversationSetupComplete",
   "advancedMemoryState",

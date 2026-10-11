@@ -58,7 +58,29 @@ const runningState = (tag: string) => ({
   conversationCharacterStatuses: { [`char-${tag}`]: { status: "online", activity: tag } },
   conversationStatusOverrides: { [`char-${tag}`]: { status: "busy" } },
   conversationAboutMeOverrides: { [`char-${tag}`]: `about ${tag}` },
+  excludedLorebookIds: [`spoiler-${tag}`],
+  background: `${tag}-scene.png`,
+  advancedMemoryRosterChanges: [{ characterId: `char-${tag}`, action: "joined", afterMessageId: `msg-${tag}` }],
+  encounterActive: tag === "follower",
+  archivedCharacterSnapshots: { [`char-${tag}`]: { name: `Removed ${tag}` } },
+  conversationSummaryFailures: { [`range-${tag}`]: 2 },
+  spriteExpressions: { [`char-${tag}`]: "happy" },
+  roleplayDmThread: true,
+  dmOriginChatId: `origin-${tag}`,
+  dmOriginChatName: `Origin ${tag}`,
+  dmOriginMessageId: `origin-msg-${tag}`,
+  dmSourceUserMessageId: `origin-user-${tag}`,
+  dmTargetCharacterId: `char-${tag}`,
 });
+// Advanced Memory settings are shared, but its knowledge anchors and narrator belong to one chat.
+const memory = (tag: string, enabled: boolean) => ({
+  enabled,
+  maxContextTokens: enabled ? 12000 : 65000,
+  knowledgeStarts: { [`char-${tag}`]: `msg-${tag}` },
+  knowledgeConfirmed: true,
+  narratorCharacterId: `narrator-${tag}`,
+});
+const memoryChatKeys = ["knowledgeStarts", "knowledgeConfirmed", "narratorCharacterId"];
 const runningKeys = Object.keys(runningState("x"));
 
 try {
@@ -90,7 +112,13 @@ try {
   await writeRow(follower, {
     connectionId: "follower-connection",
     promptPresetId: "follower-prompt",
-    metadata: { ...(await readMeta(follower)), ...runningState("follower"), enableAgents: true, contextSize: 111 },
+    metadata: {
+      ...(await readMeta(follower)),
+      ...runningState("follower"),
+      advancedMemory: memory("follower", false),
+      enableAgents: true,
+      contextSize: 111,
+    },
   });
   const hostedRoom = { version: 1, role: "host", roomId: "room-1", status: "active" };
   await writeRow(room, {
@@ -106,6 +134,7 @@ try {
   const sourceMeta = {
     ...(await readMeta(source)),
     ...runningState("source"),
+    advancedMemory: memory("source", true),
     multiplayerSetup: false,
     multiplayerGameSetup: { preferences: "source" },
     enableAgents: false,
@@ -122,6 +151,9 @@ try {
   for (const key of [...runningKeys, "multiplayerSetup", "multiplayerGameSetup"]) {
     assert.equal(key in savedMeta, false, `saving a profile leaves out the chat's own ${key}`);
   }
+  const savedMemory = savedMeta.advancedMemory as Record<string, unknown>;
+  assert.equal(savedMemory.enabled, true, "the profile keeps the Advanced Memory settings");
+  for (const key of memoryChatKeys) assert.equal(key in savedMemory, false, `the profile leaves out ${key}`);
 
   const before = new Map(
     await Promise.all([source, room, guest, elsewhere, otherMode].map(async (id) => [id, await readRow(id)] as const)),
@@ -133,7 +165,11 @@ try {
     payload: { exceptChatId: source },
   });
   assert.equal(response.statusCode, 200);
-  assert.deepEqual(response.json(), { updated: 1, chatIds: [follower] }, "only the plain follower is updated");
+  assert.deepEqual(
+    response.json(),
+    { updated: 1, chatIds: [follower], failed: 0 },
+    "only the plain follower is updated",
+  );
 
   const updated = await readRow(follower);
   const updatedMeta = JSON.parse(updated.metadata) as Record<string, unknown>;
@@ -141,8 +177,17 @@ try {
   assert.equal(updatedMeta.enableAgents, false, "the follower's own tweak to a profile setting is replaced");
   assert.equal(updatedMeta.appliedChatPresetId, profile.id);
   for (const key of runningKeys) {
-    assert.deepEqual(updatedMeta[key], runningState("follower")[key as keyof ReturnType<typeof runningState>]);
+    assert.deepEqual(
+      updatedMeta[key],
+      runningState("follower")[key as keyof ReturnType<typeof runningState>],
+      `the follower keeps its own ${key}`,
+    );
   }
+  assert.deepEqual(
+    updatedMeta.advancedMemory,
+    { ...memory("follower", false), enabled: true, maxContextTokens: 12000 },
+    "the follower gets the memory settings but keeps its own knowledge anchors and narrator",
+  );
   assert.equal(updated.connectionId, "follower-connection", "the follower keeps its connection");
   assert.equal(updated.promptPresetId, "follower-prompt", "the follower keeps its prompt preset");
   assert.equal(updated.updatedAt, followerBefore.updatedAt, "a background update does not reorder recent chats");
@@ -164,6 +209,53 @@ try {
   assert.deepEqual(appliedMeta.inactiveCharacterIds, ["muted-follower"]);
   const roomApplied = await app.inject({ method: "POST", url: `/api/chat-presets/${profile.id}/apply/${room}` });
   assert.deepEqual(JSON.parse(roomApplied.json().metadata).multiplayer, hostedRoom, "applying keeps a room");
+
+  // A Conversation follower keeps its prompt preset, so it keeps its own custom prompt text too.
+  const convoProfile = (await presets.create({ name: "Convo", mode: "conversation", settings: {} }))!;
+  const convoSource = await createChat("Pirate source", "conversation");
+  const presetFollower = await createChat("Uses a prompt preset", "conversation");
+  const customFollower = await createChat("Has its own prompt", "conversation");
+  for (const id of [convoSource, presetFollower, customFollower]) {
+    await app.inject({ method: "POST", url: `/api/chat-presets/${convoProfile.id}/apply/${id}` });
+  }
+  await writeRow(presetFollower, { promptPresetId: "preset-x" });
+  await writeRow(customFollower, {
+    metadata: { ...(await readMeta(customFollower)), customSystemPrompt: "You are a librarian." },
+  });
+  await app.inject({
+    method: "PUT",
+    url: `/api/chat-presets/${convoProfile.id}/settings`,
+    payload: {
+      metadata: { ...(await readMeta(convoSource)), customSystemPrompt: "You are a pirate.", contextSize: 77 },
+    },
+  });
+
+  // One chat failing to update is counted, and the others are still updated.
+  const realApply = presets.applyToChat;
+  presets.applyToChat = async (presetId, chatId, options) => {
+    if (chatId === customFollower) throw new Error("disk full");
+    return realApply(presetId, chatId, options);
+  };
+  assert.deepEqual(await presets.applyToFollowers(convoProfile.id, convoSource), {
+    chatIds: [presetFollower],
+    failed: 1,
+  });
+  presets.applyToChat = realApply;
+  const convoResponse = await app.inject({
+    method: "POST",
+    url: followersUrl(convoProfile.id),
+    payload: { exceptChatId: convoSource },
+  });
+  assert.equal(convoResponse.json().updated, 2);
+  assert.equal(convoResponse.json().failed, 0);
+  const presetFollowerRow = await readRow(presetFollower);
+  const presetFollowerMeta = JSON.parse(presetFollowerRow.metadata) as Record<string, unknown>;
+  assert.equal(presetFollowerRow.promptPresetId, "preset-x");
+  assert.equal(presetFollowerMeta.contextSize, 77);
+  assert.equal(presetFollowerMeta.customSystemPrompt ?? null, null, "the profile's custom prompt does not override X");
+  const customFollowerMeta = await readMeta(customFollower);
+  assert.equal(customFollowerMeta.contextSize, 77);
+  assert.equal(customFollowerMeta.customSystemPrompt, "You are a librarian.", "a follower keeps its own prompt");
 
   const defaultProfile = (await presets.getDefault("roleplay"))!;
   assert.equal(

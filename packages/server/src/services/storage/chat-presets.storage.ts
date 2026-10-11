@@ -7,6 +7,7 @@ import { eq, and, ne, asc } from "../../db/file-query.js";
 import type { DB } from "../../db/connection.js";
 import { chats, chatPresets } from "../../db/schema/index.js";
 import { newId, now } from "../../utils/id-generator.js";
+import { logger } from "../../lib/logger.js";
 import { withChatMetadataPatchQueue } from "./chats.storage.js";
 import {
   CHAT_PRESET_EXCLUDED_METADATA_KEYS,
@@ -25,6 +26,8 @@ import { createAppSettingsStorage } from "./app-settings.storage.js";
 
 const CHAT_MODES: ChatMode[] = ["conversation", "roleplay"];
 const EXCLUDED_METADATA_SET = new Set(CHAT_PRESET_EXCLUDED_METADATA_KEYS);
+/** Advanced Memory values tied to one chat's messages and characters; the rest are profile settings. */
+const ADVANCED_MEMORY_CHAT_KEYS = ["knowledgeStarts", "knowledgeConfirmed", "narratorCharacterId"];
 
 function isPresetExcludedMetadataKey(key: string) {
   return EXCLUDED_METADATA_SET.has(key) || key.startsWith("scene") || key.startsWith("multiplayer");
@@ -65,8 +68,16 @@ function sanitizePresetAgentMap(value: unknown) {
   return out;
 }
 
+function pickAdvancedMemoryKeys(value: unknown, chatOwned: boolean) {
+  if (!isRecord(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).filter(([key]) => ADVANCED_MEMORY_CHAT_KEYS.includes(key) === chatOwned),
+  );
+}
+
 function sanitizePresetMetadataValue(key: string, value: unknown) {
   if (key === "chatSettingsHintDismissed") return value === true;
+  if (key === "advancedMemory" && isRecord(value)) return pickAdvancedMemoryKeys(value, false);
   if (key === "activeAgentIds") return sanitizePresetAgentIds(value);
   if (key === "agentOverrides" || key === "agentPromptTemplateIds" || key === "customAgentImageSettings") {
     return sanitizePresetAgentMap(value);
@@ -327,6 +338,14 @@ export function createChatPresetsStorage(db: DB) {
         if (!Object.prototype.hasOwnProperty.call(presetMetadata, "customAgentImageSettings")) {
           preserved.customAgentImageSettings = sanitizePresetAgentMap(currentMetadata.customAgentImageSettings);
         }
+        const ownMemory = pickAdvancedMemoryKeys(currentMetadata.advancedMemory, true);
+        if (Object.keys(ownMemory).length > 0) {
+          preserved.advancedMemory = { ...pickAdvancedMemoryKeys(presetMetadata.advancedMemory, false), ...ownMemory };
+        }
+        // A follower keeps its prompt preset, so it keeps the prompt text written over that preset too.
+        if (options.asFollower && ("customSystemPrompt" in currentMetadata || "customSystemPrompt" in presetMetadata)) {
+          preserved.customSystemPrompt = currentMetadata.customSystemPrompt ?? null;
+        }
         // Profiles saved before window layouts existed leave the chat's layout as it is.
         if (
           !Object.prototype.hasOwnProperty.call(presetMetadata, "windowLayout") &&
@@ -371,18 +390,25 @@ export function createChatPresetsStorage(db: DB) {
       });
     },
 
-    /** After a profile is saved, apply its chat settings to the other chats that follow it. Returns their ids. */
+    /** After a profile is saved, apply its chat settings to the other chats that follow it. */
     async applyToFollowers(presetId: string, exceptChatId: string | null) {
+      const chatIds: string[] = [];
+      let failed = 0;
       const preset = await storage.getById(presetId);
-      if (!preset) return [];
+      if (!preset) return { chatIds, failed };
       const rows = await db.select().from(chats).where(eq(chats.mode, preset.mode));
-      const updated: string[] = [];
       for (const row of rows) {
         if (row.id === exceptChatId || !chatFollowsChatPreset(parseStoredChatMetadata(row.metadata), preset.id))
           continue;
-        if (await storage.applyToChat(preset.id, row.id, { asFollower: true })) updated.push(row.id);
+        try {
+          if (await storage.applyToChat(preset.id, row.id, { asFollower: true })) chatIds.push(row.id);
+        } catch (err) {
+          // One chat failing must not hide the chats already updated.
+          failed += 1;
+          logger.warn(err, "Could not update chat %s from settings profile %s", row.id, preset.id);
+        }
       }
-      return updated;
+      return { chatIds, failed };
     },
 
     /** Ensure a Default profile exists for every chat mode and exactly one profile is active per mode. */

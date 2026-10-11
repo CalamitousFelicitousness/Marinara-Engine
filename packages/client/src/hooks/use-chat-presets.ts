@@ -102,7 +102,7 @@ export function useApplyChatPresetToFollowers() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ presetId, exceptChatId }: { presetId: string; exceptChatId: string }) =>
-      api.post<{ updated: number; chatIds: string[] }>(`/chat-presets/${presetId}/apply-to-followers`, {
+      api.post<{ updated: number; chatIds: string[]; failed: number }>(`/chat-presets/${presetId}/apply-to-followers`, {
         exceptChatId,
       }),
     onSuccess: ({ chatIds }) => {

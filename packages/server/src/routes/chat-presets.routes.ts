@@ -121,12 +121,12 @@ export async function chatPresetsRoutes(app: FastifyInstance) {
     if (!preset) return reply.status(404).send({ error: "Settings profile not found" });
     if (preset.isDefault) return reply.status(400).send({ error: "Cannot save into the Default settings profile" });
     const body = (req.body ?? {}) as { exceptChatId?: unknown };
-    const chatIds = await storage.applyToFollowers(
+    const { chatIds, failed } = await storage.applyToFollowers(
       preset.id,
       typeof body.exceptChatId === "string" ? body.exceptChatId : null,
     );
-    logger.info("Updated %d chats that use settings profile %s", chatIds.length, preset.id);
-    return { updated: chatIds.length, chatIds };
+    logger.info("Updated %d chats that use settings profile %s (%d failed)", chatIds.length, preset.id, failed);
+    return { updated: chatIds.length, chatIds, failed };
   });
 
   // ── Delete ──

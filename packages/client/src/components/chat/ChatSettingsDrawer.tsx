@@ -4605,17 +4605,23 @@ export function ChatSettingsDrawer({
             cancelLabel: localizeUi("chat.settingsProfile.saveChoice.cancel"),
           })
         : "profile";
-    if (choice === "profile") {
-      saveChatPreset.mutate({ id: profileId, settings });
-      return;
-    }
-    if (choice !== "chats") return;
+    if (choice !== "profile" && choice !== "chats") return;
     try {
       await saveChatPreset.mutateAsync({ id: profileId, settings });
-      const { updated } = await applyChatPresetToFollowers.mutateAsync({ presetId: profileId, exceptChatId: chat.id });
-      toast.success(localizeUi("chat.settingsProfile.saveChoice.updated", { count: updated }));
     } catch {
-      toast.error(localizeUi("chat.settingsProfile.saveChoice.updateFailed"));
+      toast.error(localizeUi("chat.settingsProfile.saveFailed"));
+      return;
+    }
+    if (choice === "profile") return;
+    try {
+      const { updated, failed } = await applyChatPresetToFollowers.mutateAsync({
+        presetId: profileId,
+        exceptChatId: chat.id,
+      });
+      if (failed > 0) toast.error(localizeUi("chat.settingsProfile.saveChoice.updateFailed", { count: failed }));
+      else toast.success(localizeUi("chat.settingsProfile.saveChoice.updated", { count: updated }));
+    } catch {
+      toast.error(localizeUi("chat.settingsProfile.saveChoice.updateFailed", { count: followerCount }));
     }
   };
 

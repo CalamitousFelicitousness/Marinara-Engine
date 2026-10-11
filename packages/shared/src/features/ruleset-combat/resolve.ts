@@ -3831,7 +3831,14 @@ function applyChoice(
         success,
         ...(automatic ? { automatic: true as const } : {}),
       });
-      if (success) removeCondition(ctx, working, entry.condition, "save");
+      if (success) {
+        removeCondition(ctx, working, entry.condition, "save");
+        // The spell ends with it: its concentration too, where that is what held it.
+        const source = entry.source ? rulesetCombatant(ctx.state, entry.source) : undefined;
+        if (entry.concentration && source?.concentrating && entry.action?.includes(source.concentrating.actionId)) {
+          endConcentration(ctx, source, "spent");
+        }
+      }
     }
     noteOutcome(ctx);
     return finish();

@@ -241,6 +241,9 @@ try {
     assert.equal(holds(out.state, "a", "mazed"), false);
     assert.equal(rulesetCombatant(out.state, "a")!.defeated, false, "back in the fight");
     assert.equal(rulesetCombatant(out.state, "a")!.away, undefined);
+    assert.equal(rulesetCombatant(step.state, "mage")!.concentrating?.label, "Maze", "held while it is lost");
+    assert.equal(rulesetCombatant(lost.state, "mage")!.concentrating?.label, "Maze", "still held after a failed try");
+    assert.equal(rulesetCombatant(out.state, "mage")!.concentrating, null, "out of the maze, the spell ends");
     // A minotaur finds its way without a roll.
     d20 = 1;
     const bull = cast(fight([foe("m", "monstrosity"), foe("b")]), "Maze", ["m"]).state;
@@ -255,6 +258,7 @@ try {
     );
     assert.equal(of(free.events, "checkEnded")[0]!.automatic, true);
     assert.equal(rulesetCombatant(free.state, "m")!.defeated, false);
+    assert.equal(rulesetCombatant(free.state, "mage")!.concentrating, null, "a minotaur's way out ends it too");
     // A banishment without turns is still stepped over.
     const banished = cast(fight(), "Maze", ["a"]).state;
     delete rulesetCombatant(banished, "a")!.away!.turns;

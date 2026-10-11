@@ -40,6 +40,12 @@ const ADVANCED_MEMORY_CHAT_KEYS = ["knowledgeStarts", "knowledgeConfirmed", "nar
  * their prompt templates, as each chat has them.
  */
 const CHAT_SETUP_AGENT_IDS = new Set(["knowledge-retrieval", "knowledge-router", "lorebook-keeper", "expression"]);
+/**
+ * Settings edited against the chat's connection. Advanced Parameters can send options another provider
+ * rejects, such as OpenRouter routing, and image captioning without a value uses the chat's own
+ * connection's defaults, so updating other chats changes these only in chats on the profile's connection.
+ */
+const CONNECTION_SETTING_KEYS = new Set(["chatParameters", "imageCaptioningEnabled", "imageCaptioningConnectionId"]);
 
 function isPresetExcludedMetadataKey(key: string) {
   return (
@@ -111,7 +117,8 @@ function pickSetUpAgentEntries(value: unknown, setUp: boolean) {
 /**
  * A follower's metadata after its profile was saved. Each of CHAT_PROFILE_FOLLOWER_SYNC_KEYS becomes what
  * applying the profile by hand (`applied`) gives it, so a setting the profile has no value for goes back
- * to its default. Every other key stays the chat's own.
+ * to its default, except where that default comes from the chat's own connection or characters, and
+ * except the agents each chat sets up. Every other key stays the chat's own.
  */
 function syncFollowerMetadata(
   current: Record<string, unknown>,
@@ -120,9 +127,10 @@ function syncFollowerMetadata(
 ) {
   const next = { ...current };
   for (const key of CHAT_PROFILE_FOLLOWER_SYNC_KEYS) {
-    // Advanced Parameters are edited against the profile's connection. On another connection they
-    // can send options that connection's provider rejects, such as OpenRouter routing.
-    if (key === "chatParameters" && !onProfileConnection) continue;
+    if (CONNECTION_SETTING_KEYS.has(key) && !onProfileConnection) continue;
+    // Without a value, schedules run whenever the chat's own characters have one, so a profile without
+    // a value leaves the chat's own choice. Removing a chat's "off" would turn its schedules back on.
+    if (key === "conversationSchedulesEnabled" && typeof applied[key] !== "boolean") continue;
     if (Object.prototype.hasOwnProperty.call(applied, key)) next[key] = applied[key];
     else delete next[key];
   }
@@ -346,7 +354,8 @@ export function createChatPresetsStorage(db: DB) {
      *
      * `asFollower` refreshes a chat after its profile was saved: it skips a chat that no longer
      * follows the profile and sets only CHAT_PROFILE_FOLLOWER_SYNC_KEYS, as an apply by hand would
-     * (Advanced Parameters only on the profile's connection, agents minus the ones each chat sets up).
+     * (Advanced Parameters and image captioning only on the profile's connection, schedules only when
+     * the profile has a value, agents minus the ones each chat sets up).
      * Every other key, the connection, the prompt preset and the recent-chat order stay the chat's own.
      */
     async applyToChat(

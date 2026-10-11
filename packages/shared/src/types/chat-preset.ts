@@ -194,10 +194,13 @@ export const CHAT_PRESET_EXCLUDED_PACKAGE_METADATA_KEYS: readonly string[] = [
  * Left off on purpose: who may use narrator-only Roleplay commands (it only works with the chat's own
  * narrator) and Noodle's permission to use the chat's messages (each chat gives that itself).
  *
- * Three keys copy only in part (see syncFollowerMetadata in chat-presets.storage.ts): Advanced
- * Parameters reach only chats on the profile's connection, because they are edited against it, and
- * the agents each chat sets up itself (knowledge sources, a target lorebook, sprite characters) stay
- * on or off, with their prompt templates, as the chat has them.
+ * Some keys copy only in part (see syncFollowerMetadata in chat-presets.storage.ts). Advanced
+ * Parameters and image captioning's switch and connection reach only chats on the profile's
+ * connection, because they are edited against it and otherwise use each chat's own connection's
+ * defaults. Character schedules change only when the profile has a value, because without one they
+ * follow each chat's own characters. The agents each chat sets up itself (knowledge sources, a target
+ * lorebook, sprite characters) stay on or off, with their prompt templates, as the chat has them.
+ * Older names of listed settings are listed too, so a chat's old value cannot come back.
  */
 export const CHAT_PROFILE_FOLLOWER_SYNC_KEYS: readonly string[] = [
   // Generation and context
@@ -206,8 +209,8 @@ export const CHAT_PROFILE_FOLLOWER_SYNC_KEYS: readonly string[] = [
   "excludePastReasoning", // Leave earlier reasoning out of the context
   "pastReasoningLimit", // How many earlier reasoning blocks to keep
   "lorebookTokenBudget", // Token budget for lorebook entries
-  "imageCaptioningEnabled", // Describe attached images for the model
-  "imageCaptioningConnectionId", // Connection that describes images
+  "imageCaptioningEnabled", // Describe attached images for the model: only on the profile's connection
+  "imageCaptioningConnectionId", // Connection that describes images: only on the profile's connection
   "imageCaptioningPrompt", // Instructions for image descriptions
   "enableTools", // Function calling on or off
   "forceToolCall", // Make the model call a tool
@@ -225,7 +228,7 @@ export const CHAT_PROFILE_FOLLOWER_SYNC_KEYS: readonly string[] = [
   "autonomousMessages", // Characters message on their own
   "autonomousDailyCapOverride", // Daily cap for those messages
   "characterExchanges", // Characters talk to each other
-  "conversationSchedulesEnabled", // Character schedules on or off
+  "conversationSchedulesEnabled", // Character schedules on or off: only when the profile has a value
   "characterCommands", // Conversation commands on or off
   "conversationCommandToggles", // Which Conversation commands are on
   "imageGenConnectionId", // Selfie image connection
@@ -238,6 +241,7 @@ export const CHAT_PROFILE_FOLLOWER_SYNC_KEYS: readonly string[] = [
   "slurp2ActivityContextEnabled", // Characters remember their Slurp activity
   // Roleplay commands
   "roleplayCommandsEnabled", // Roleplay commands on or off
+  "roleplayDmCommandsEnabled", // Older switch for character DMs, read when roleplayCommandsEnabled is missing
   "roleplayCommandToggles", // Which Roleplay commands are on
   "roleplaySoundConnectionId", // Connection for sound effects
   // Agents
@@ -321,10 +325,12 @@ export const CHAT_PROFILE_FOLLOWER_SYNC_KEYS: readonly string[] = [
   // Translation
   "translationProvider", // Translator service
   "translationConnectionId", // Translator connection
+  "translationTargetLang", // Older language for both directions, read when one of the next two is missing
   "translationInputTargetLang", // Language your messages are translated to
   "translationOutputTargetLang", // Language replies are translated to
   "translationDeeplApiKey", // DeepL key
   "translationDeeplxUrl", // DeepLX address
+  "translationPrompt", // Older instructions for both directions, read when one of the next two is missing
   "translationInputPrompt", // Instructions for translating your messages
   "translationOutputPrompt", // Instructions for translating replies
   "autoTranslate", // Translate replies on their own

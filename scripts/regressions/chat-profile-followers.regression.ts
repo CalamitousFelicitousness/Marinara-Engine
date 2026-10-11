@@ -11,7 +11,9 @@ import {
   CHAT_PROFILE_FOLLOWER_SYNC_KEYS,
   TRANSLATOR_DEFAULTS_SETTINGS_KEY,
   chatFollowsChatPreset,
+  getChatTranslationConfig,
   isRoleplayCommandAllowed,
+  isRoleplayCommandEnabled,
 } from "../../packages/shared/src/index.js";
 
 const dataDir = mkdtempSync(join(tmpdir(), "marinara-chat-profile-followers-"));
@@ -131,6 +133,19 @@ const followerOnlySettings = {
   summaryMaxTokens: 640,
   translationDisplayOnly: true,
 };
+// Older names of listed settings, still read when the new name is missing. They go too, so the
+// follower's old DM switch and translation language cannot come back.
+const followerOlderNames = {
+  roleplayDmCommandsEnabled: true,
+  translationTargetLang: "de",
+  translationPrompt: "Translate like a poet.",
+};
+// Image captioning without a value uses the chat's own connection's defaults, so like Advanced
+// Parameters it reaches only chats on the profile's connection.
+const captioning = (tag: string) =>
+  tag === "source"
+    ? { imageCaptioningEnabled: true }
+    : { imageCaptioningEnabled: false, imageCaptioningConnectionId: "captioner-follower" };
 const ownKeys = Object.keys(ownChoices("x"));
 // Advanced Parameters are edited against the chat's connection, so they reach only chats on the
 // profile's connection. OpenRouter routing would make another provider reject every request.
@@ -198,6 +213,8 @@ try {
       ...sharedSettings("follower"),
       ...followerOnly,
       ...followerOnlySettings,
+      ...followerOlderNames,
+      ...captioning("follower"),
       chatParameters: chatParameters("follower"),
       activeAgentIds: agents.follower,
       agentPromptTemplateIds: templates.follower,
@@ -221,6 +238,7 @@ try {
     ...runningState("source"),
     ...ownChoices("source"),
     ...sharedSettings("source"),
+    ...captioning("source"),
     chatParameters: chatParameters("source"),
     activeAgentIds: agents.source,
     agentPromptTemplateIds: templates.source,
@@ -239,7 +257,7 @@ try {
   for (const [key, value] of Object.entries(sharedSettings("source"))) {
     assert.deepEqual(savedMeta[key], value, `the profile saves ${key}`);
   }
-  for (const key of Object.keys({ ...followerOnly, ...followerOnlySettings })) {
+  for (const key of Object.keys({ ...followerOnly, ...followerOnlySettings, ...followerOlderNames })) {
     assert.equal(key in savedMeta, false, `the profile has no ${key}`);
   }
   assert.deepEqual(savedMeta.chatParameters, chatParameters("source"), "the profile saves Advanced Parameters");
@@ -296,9 +314,20 @@ try {
   for (const [key, value] of Object.entries(followerOnly)) {
     assert.deepEqual(updatedMeta[key], value, `the follower keeps its ${key}, which is not a listed setting`);
   }
-  for (const key of Object.keys(followerOnlySettings)) {
+  for (const key of Object.keys({ ...followerOnlySettings, ...followerOlderNames })) {
     assert.equal(key in updatedMeta, false, `the follower's own ${key} goes back to the default the saving chat uses`);
   }
+  assert.equal(isRoleplayCommandEnabled(updatedMeta, "dm"), false, "DM commands stay off, as in the saving chat");
+  assert.equal(
+    getChatTranslationConfig(follower, updatedMeta).inputTargetLanguage,
+    "en",
+    "the follower's old translation language does not come back",
+  );
+  assert.deepEqual(
+    Object.fromEntries(Object.keys(captioning("follower")).map((key) => [key, updatedMeta[key]])),
+    captioning("follower"),
+    "a follower on another connection keeps its own image captioning",
+  );
   assert.equal(updatedMeta.translateInput, true, "the follower gets the app's translator default");
   assert.equal(updatedMeta.appliedChatPresetId, profile.id);
   for (const key of runningKeys) {
@@ -336,6 +365,12 @@ try {
   assert.deepEqual(await presets.applyToFollowers(profile.id, source), { chatIds: [follower], failed: 0 });
   const sameConnectionMeta = await readMeta(follower);
   assert.deepEqual(sameConnectionMeta.chatParameters, chatParameters("source"), "same connection, same parameters");
+  assert.equal(sameConnectionMeta.imageCaptioningEnabled, true, "and the same image captioning");
+  assert.equal(
+    "imageCaptioningConnectionId" in sameConnectionMeta,
+    false,
+    "a captioning connection the profile leaves to the connection goes back to that connection's default",
+  );
   assert.deepEqual(
     sameConnectionMeta.activeAgentIds,
     agents.synced,
@@ -379,8 +414,9 @@ try {
     { ...memory("follower", false), enabled: true, maxContextTokens: 12000 },
     "applying a profile by hand keeps the chat's own knowledge anchors and narrator",
   );
-  // Save and update gives each listed setting what picking the profile again gives it (#7409),
-  // apart from the agents each chat sets up.
+  // On the profile's connection, Save and update gives each listed setting what picking the profile
+  // again gives it (#7409), apart from the agents each chat sets up. (Schedules the profile has no
+  // value for stay each chat's own; see the Conversation part below.)
   for (const key of CHAT_PROFILE_FOLLOWER_SYNC_KEYS) {
     if (key === "activeAgentIds" || key === "agentPromptTemplateIds") continue;
     assert.equal(key in sameConnectionMeta, key in appliedMeta, `Save and update and applying agree on ${key}`);
@@ -440,6 +476,8 @@ try {
       customSystemPrompt: "You are a librarian.",
       someFuturePackageState: { owner: "librarian" },
       authorNotes: "Quiet library.",
+      // Switched off by hand. Without a value, schedules would run again from the characters' cards.
+      conversationSchedulesEnabled: false,
     },
   });
   await app.inject({
@@ -492,6 +530,21 @@ try {
     "unknown keys stay the chat's own",
   );
   assert.equal(customFollowerMeta.authorNotes, "Quiet library.", "a follower keeps its own Author's Note");
+  assert.equal(
+    customFollowerMeta.conversationSchedulesEnabled,
+    false,
+    "a profile with no schedule choice leaves a chat's schedules off",
+  );
+  assert.equal("conversationSchedulesEnabled" in presetFollowerMeta, false, "and a chat without a choice gets none");
+  // A profile that has a schedule choice gives it to its other chats.
+  await app.inject({
+    method: "PUT",
+    url: `/api/chat-presets/${convoProfile.id}/settings`,
+    payload: { metadata: { ...(await readMeta(convoSource)), conversationSchedulesEnabled: true } },
+  });
+  assert.equal((await presets.applyToFollowers(convoProfile.id, convoSource)).chatIds.length, 2);
+  assert.equal((await readMeta(customFollower)).conversationSchedulesEnabled, true, "the profile's schedule choice");
+  assert.equal((await readMeta(presetFollower)).conversationSchedulesEnabled, true);
 
   // An empty agent list runs no agents, so a profile whose only agents need setup turns a chat's other
   // agents off. Settings the profile has no value for go back to their defaults, except the window
@@ -509,6 +562,7 @@ try {
         ...(await readMeta(id)),
         activeAgentIds,
         agentPromptTemplateIds: { director: "director-own", expression: "expr-own" },
+        customAgentImageSettings: { "custom-painter": { connectionId: "own-image" } },
         contextMessageLimit: 9,
         windowLayout: { version: 1, windows: { own: { x: 2 } } },
         sceneVideoConnectionId: "own-video",
@@ -531,6 +585,11 @@ try {
     plainAgentsMeta.agentPromptTemplateIds,
     { director: "director-own", expression: "expr-own" },
     "a profile without prompt templates leaves the chat's own, as applying it by hand does",
+  );
+  assert.deepEqual(
+    plainAgentsMeta.customAgentImageSettings,
+    { "custom-painter": { connectionId: "own-image" } },
+    "and so does a profile without custom agent image settings",
   );
 
   const defaultProfile = (await presets.getDefault("roleplay"))!;

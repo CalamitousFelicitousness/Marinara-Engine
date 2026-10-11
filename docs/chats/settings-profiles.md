@@ -81,7 +81,7 @@ Everything else stays as each chat has it, including:
 - Which Roleplay commands only its narrator may use
 - Whether Noodle may use its messages
 
-Advanced Parameters change only in chats that use the profile's connection, because they are set for that connection. Knowledge Retrieval, Knowledge Router, Lorebook Keeper and Expression Engine stay on or off, with their prompt templates, as each chat has them. Each chat picks their sources, lorebook or sprites itself.
+Advanced Parameters and image captioning (on or off, and which connection describes images) change only in chats that use the profile's connection, because they are set for that connection. Character schedules change only if they were turned on or off in the chat you save from; otherwise each chat keeps its own choice. Knowledge Retrieval, Knowledge Router, Lorebook Keeper and Expression Engine stay on or off, with their prompt templates, as each chat has them. Each chat picks their sources, lorebook or sprites itself.
 
 Multiplayer rooms are never updated this way. When no other chat uses the profile, **Save** works without asking.
 

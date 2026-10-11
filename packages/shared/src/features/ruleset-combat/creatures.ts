@@ -276,6 +276,16 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
     // The area it leaves standing, and the ground it changes (1.319).
     ...(action.zone ? { zone: structuredClone(action.zone) } : {}),
     ...(action.ground ? { ground: structuredClone(action.ground) } : {}),
+    // Who it calls into the fight (1.320), found in the bestiary as the fight begins.
+    ...(action.calls && amountOf(action.calls.count)
+      ? {
+          calls: {
+            creature: action.calls.creature,
+            count: amountOf(action.calls.count)!,
+            ...(action.calls.initiative ? { initiative: action.calls.initiative } : {}),
+          },
+        }
+      : {}),
   };
 }
 

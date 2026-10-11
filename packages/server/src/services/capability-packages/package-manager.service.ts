@@ -1574,6 +1574,18 @@ function carriesBossAsks(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesBossAsks(one, depth + 1));
 }
 
+/** A creature's action that calls creatures into the fight (1.320). */
+function carriesCalls(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCalls(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const creature = plainRecord(record.creature);
+  if (Array.isArray(creature?.actions) && creature.actions.some((one) => plainRecord(one)?.calls !== undefined))
+    return true;
+  return Object.values(record).some((one) => carriesCalls(one, depth + 1));
+}
+
 /** A creature's action that leaves an area standing or changes the ground, or an area that lasts
  *  until the next lair action (1.319). */
 function carriesCreatureZones(value: unknown, depth = 0): boolean {
@@ -4356,6 +4368,13 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesCreatureZones(document)))
   ) {
     return "A ruleset with a creature action that leaves an area standing or changes the ground, or an area that lasts until the next lair action, requires schemaVersion 2 and capabilityApi 1.319 or newer";
+  }
+  // Creatures called into the fight, 1.320.
+  if (
+    !declaresApi(320) &&
+    (carriesCalls(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesCalls(document)))
+  ) {
+    return "A ruleset with a creature action that calls creatures into the fight requires schemaVersion 2 and capabilityApi 1.320 or newer";
   }
   // Blows that reap, 1.318.
   if (

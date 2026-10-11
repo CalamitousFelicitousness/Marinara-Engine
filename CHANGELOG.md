@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: a creature action can call creatures into the fight (`calls`: a bestiary creature and a count), on its user's side, set down where its area is aimed or beside it, at their own initiative or right after their caller's: the Owed's Jars Burst, Shelves Lean (Capability API 1.320).
+- Rulesets: a light rule's save is said with it: its `lightRule` event carries `save: {total, saved}` and the log says who held out and who did not.
 - Rulesets: fixes from the showcase playthrough: a board event at round 1's start now happens as the fight begins, so a board can open dark, lit or fogged; nobody lights a carried torch in daylight, so a barn's shade at noon stays shade; a ring or sweep reaches only its newest band the first time too, so a ring starting away from its middle leaves the middle be (`filled` reaches everything inside).
 - Rulesets: creature actions can leave an area standing (`zone`), one that lasts until the next lair action (`untilLair`: The Owed's Freezing Fog), or change the ground they cover for good (`ground`: the bonfire gutters, the ice cracks) (Capability API 1.319).
 - Rulesets: Held Ground: a fight can hold death, so whoever reaches no health is felled instead, out of the fight or lying stable with a mark of Owing, and nothing slays; a weapon or creature action that reaps keeps whoever it fells down for good (the Reaping Hook) (Capability API 1.318).

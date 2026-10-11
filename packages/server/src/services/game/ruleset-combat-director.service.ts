@@ -561,8 +561,12 @@ export function rulesetController(
   combatant: RulesetCombatant | undefined,
 ): "manual" | "ai" | "gm" {
   if (!combatant) return "ai";
-  // A party member is the player's to play unless they handed them over.
-  if (combatant.side === "party") return fight.controllers[combatant.id] === "ai" ? "ai" : "manual";
+  // A party member is the player's to play unless they handed them over. Whoever was called to the
+  // party's side (1.320) is the Engine's unless the player took them.
+  if (combatant.side === "party") {
+    const chosen = fight.controllers[combatant.id];
+    return chosen === "ai" || (combatant.calledBy && chosen !== "manual") ? "ai" : "manual";
+  }
   return state.gm && fight.bosses.includes(combatant.id) ? "gm" : "ai";
 }
 

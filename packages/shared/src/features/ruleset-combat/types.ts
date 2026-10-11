@@ -371,6 +371,8 @@ export interface RulesetStatBlockAction {
   zone?: RulesetCatalogZone;
   /** What it does to the ground its area covers, for good (1.319). */
   ground?: RulesetCreatureGround;
+  /** Creatures it calls into the fight (1.320), by bestiary entry, `count` of them. */
+  calls?: { creature: string; count: RulesetCombatAmount; initiative?: "roll" | "after" };
   /** A permission (1.286): these standard actions taken with this action's budget, only while it
    *  stands obscured where it says so. 5e's Nimble Escape, Cunning Action, Shadow Stealth. */
   standard?: { actions: string[]; while?: "obscured" };
@@ -872,6 +874,16 @@ export interface RulesetCombatAction {
   sheds?: RulesetLightRadius | "out";
   /** What it does to the ground its area covers, for good (1.319): a bonfire guttering, ice cracking. */
   ground?: RulesetCreatureGround;
+  /** Creatures it calls into the fight on its user's side (1.320), their block found as the fight
+   *  began: Jars Burst's zombies. */
+  calls?: {
+    block: RulesetStatBlock;
+    name: string;
+    /** Its bestiary entry, which a called one is drawn as. */
+    creature: { catalogId: string; entryId: string };
+    count: RulesetCombatAmount;
+    after?: true;
+  };
   /** A burst centred on its user, never aimed (1.277): everybody within `size` cells of them is
    *  caught, they are not, behind walls too with `throughWalls`, their own side not with
    *  `friendlyFire: false`. Off a board, everybody. */
@@ -1199,6 +1211,8 @@ export interface RulesetCombatant {
   /** Felled on Held Ground (1.318): out of the fight, never dying, up again later unless `reaped`. */
   felled?: true;
   reaped?: true;
+  /** Who called it into the fight (1.320). */
+  calledBy?: string;
   /** Strikes in hand: what is left of a spend that bought several. Absent when there are none, and
    *  cleared at the end of the turn they were bought on, so nothing carries into the next one. */
   strikesLeft?: number;
@@ -1457,6 +1471,8 @@ export interface RulesetEncounterState {
   covenUses?: Record<string, number>;
   /** Held Ground (1.318): nobody here dies at no health; they are felled. */
   heldGround?: RulesetHeldGround;
+  /** How many creatures have been called into the fight (1.320), for their ids. */
+  called?: number;
 }
 
 /** A place where death is held (1.318), the showcase's valley: whoever reaches no health is felled
@@ -2235,10 +2251,20 @@ export type RulesetCombatEvent =
   | { type: "felled"; actorId: string; label?: string }
   /** Reaped as it was felled, by a blow that reaps (1.318): it stays down. */
   | { type: "reaped"; actorId: string; sourceId?: string }
+  /** Creatures called into the fight (1.320), by whom and with what. */
+  | { type: "called"; actorId: string; label: string; ids: string[] }
   /** An aura grown as its holder's turn starts (1.315), and how far it reaches now. */
   | { type: "auraGrows"; actorId: string; condition: string; distance: number }
   /** A board's light rule catching somebody (1.314), after this many round ends in its light. */
-  | { type: "lightRule"; actorId: string; label?: string; light: RulesetBoardLight; rounds: number }
+  | {
+      type: "lightRule";
+      actorId: string;
+      label?: string;
+      light: RulesetBoardLight;
+      rounds: number;
+      /** The save it allows (1.316), as it went: its total, and whether it was made. */
+      save?: { total: number; saved: boolean };
+    }
   /** Growth taken off cells (1.313): cut back, burnt, or cleared by something made for it. */
   | { type: "growth"; actorId?: string; label?: string; cells: number; by: "cut" | "burnt" | "cleared" }
   /** A failed save turned into a success by a legendary resistance (1.312), and how many are left. */

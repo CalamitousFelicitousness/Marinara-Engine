@@ -676,6 +676,13 @@ export function rulesetCombatEventLine(
         actor: names.combatant(event.actorId),
         source: event.sourceId ? names.combatant(event.sourceId) : "",
       });
+    // Creatures called into the fight (1.320): Jars Burst.
+    case "called":
+      return key(event.ids.length ? "called" : "calledNone", {
+        actor: names.combatant(event.actorId),
+        label: event.label,
+        names: event.ids.map((id) => names.combatant(id)).join(", "),
+      });
     // Hanging on at 1 (1.315): the Hourglass.
     case "hangsOn":
       return key(event.label ? "hangsOnNamed" : "hangsOn", {
@@ -691,12 +698,27 @@ export function rulesetCombatEventLine(
         distance: event.distance,
       });
     // A board's light rule catching somebody (1.314).
-    case "lightRule":
-      return key(event.label ? "lightRuleNamed" : "lightRule", {
+    case "lightRule": {
+      // With its save (1.316), whether it was made.
+      const named = !!event.label;
+      const name = !event.save
+        ? named
+          ? "lightRuleNamed"
+          : "lightRule"
+        : event.save.saved
+          ? named
+            ? "lightRuleSavedNamed"
+            : "lightRuleSaved"
+          : named
+            ? "lightRuleFailedNamed"
+            : "lightRuleFailed";
+      return key(name, {
         actor: names.combatant(event.actorId),
         label: event.label ?? "",
         rounds: event.rounds,
+        total: event.save?.total ?? 0,
       });
+    }
     // The board doing something on its own (1.313), and growth taken off it.
     case "boardEvent":
       return event.tell

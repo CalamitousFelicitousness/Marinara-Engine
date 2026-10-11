@@ -325,6 +325,15 @@ try {
       ],
       "Ada made it",
     );
+    // Said with the light rule, each save as it went.
+    assert.deepEqual(
+      of(shaded.events, "lightRule").map((event) => [event.actorId, event.save?.saved, event.save?.total]),
+      of(shaded.events, "save").map((event) => [event.actorId, event.success, event.total]),
+    );
+    assert.ok(
+      of(shaded.events, "lightRule").every((event) => event.save),
+      "every one with its save",
+    );
     const later = nextRound(shaded.state);
     assert.deepEqual(
       of(later.events, "track").map((event) => [event.targetId, event.from, event.to]),

@@ -857,6 +857,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["auraGrows", say({ type: "auraGrows", actorId: "lurker", condition: "poisoned", distance: 30 })],
     ["felled", say({ type: "felled", actorId: "lurker", label: "Held Ground" })],
     ["reaped", say({ type: "reaped", actorId: "lurker", sourceId: "brenna" })],
+    ["called", say({ type: "called", actorId: "lurker", label: "Jars Burst", ids: ["brenna"] })],
     ["growth", say({ type: "growth", actorId: "brenna", label: "Shears", cells: 1, by: "cut" })],
     ["left", say({ type: "left", actorId: "lurker", label: "Teleport" })],
     ["surprised", say({ type: "surprised", actorIds: ["brenna", "lurker"] })],
@@ -1257,11 +1258,31 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.equal(printed.get("felled"), "Held Ground: Thorn Lurker is felled, down but held back from dying.");
   assert.equal(say({ type: "felled", actorId: "lurker" }), "Thorn Lurker is felled: down, but held back from dying.");
   assert.equal(printed.get("reaped"), "Thorn Lurker is reaped by Brenna, and stays down.");
+  assert.equal(printed.get("called"), "Jars Burst: Thorn Lurker calls Brenna into the fight.");
+  assert.equal(
+    say({ type: "called", actorId: "lurker", label: "Jars Burst", ids: [] }),
+    "Jars Burst: Thorn Lurker calls, and nobody comes.",
+  );
   assert.equal(
     say({ type: "condition", targetId: "lurker", condition: "grappled", active: false, reason: "full" }),
     "Grappled does not go on Thorn Lurker: whoever puts it on holds as many as they can.",
   );
   assert.equal(printed.get("lightRule"), "Thorn Lurker has stood in that light too long.");
+  assert.equal(
+    say({
+      type: "lightRule",
+      actorId: "lurker",
+      label: "Noonfield",
+      light: "sunlight",
+      rounds: 2,
+      save: { total: 14, saved: true },
+    }),
+    "Noonfield: Thorn Lurker has stood in that light too long, but holds out (save 14).",
+  );
+  assert.equal(
+    say({ type: "lightRule", actorId: "lurker", light: "sunlight", rounds: 2, save: { total: 7, saved: false } }),
+    "Thorn Lurker has stood in that light too long, and it tells (save 7, failed).",
+  );
   assert.equal(
     say({ type: "lightRule", actorId: "lurker", label: "Noonfield", light: "sunlight", rounds: 2 }),
     "Noonfield: Thorn Lurker has stood in that light too long.",

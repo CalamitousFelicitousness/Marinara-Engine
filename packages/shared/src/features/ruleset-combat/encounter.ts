@@ -3137,7 +3137,9 @@ function blockActions(
       action.casting ||
       action.search ||
       action.standard ||
-      action.sheds !== undefined
+      action.sheds !== undefined ||
+      // Calling creatures, and nothing aimed (1.320).
+      (action.calls && !action.area && !action.damage)
         ? { side: "self" as const, count: 0 }
         : {
             // An area catches each creature in it, the creature's allies too (1.187): off a board it may
@@ -4255,6 +4257,36 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
     const combatant = rulesetCombatant(state, id);
     if (!combatant?.actions.some((action) => action.lair)) continue;
     combatant.lair = { at: combatant.block?.lairInitiative ?? 20 };
+  }
+  // Who a creature's action calls (1.320), found now in the ruleset's catalogs or the fight's
+  // bestiary: one nobody can find calls nobody.
+  const callable = (): RulesetCatalogEntriesById => {
+    const all: RulesetCatalogEntriesById = {};
+    for (const catalog of definition.catalogs ?? []) all[catalog.id] = [...(catalog.entries ?? [])];
+    for (const [catalogId, entries] of Object.entries(input.bestiary ?? {})) {
+      all[catalogId] = [...entries, ...(all[catalogId] ?? [])];
+    }
+    return all;
+  };
+  for (const combatant of state.combatants) {
+    combatant.block?.actions.forEach((source, index) => {
+      if (!source.calls) return;
+      const action = combatant.actions.find(
+        (one) => one.kind === "block" && one.id === (source.id ?? `block:${index}`),
+      );
+      const [catalogId, entryId] = source.calls.creature.split("/");
+      const catalogs = callable();
+      const entry = catalogId && entryId ? findRulesetCreatureEntry(catalogs, { catalogId, entryId }) : null;
+      const block = rulesetCreatureBlock(definition, entry);
+      if (!action || !entry || !block) return;
+      action.calls = {
+        block,
+        name: entry.label,
+        creature: { catalogId: catalogId!, entryId: entryId! },
+        count: { ...source.calls.count },
+        ...(source.calls.initiative === "after" ? { after: true as const } : {}),
+      };
+    });
   }
   // Held Ground (1.318): nobody dies here.
   const held = heldGroundOf(definition, input.heldGround);

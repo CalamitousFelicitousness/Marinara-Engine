@@ -260,6 +260,7 @@ import {
   rulesetSyncZoneWalls,
 } from "./zones.js";
 import { rulesetChangeGround, rulesetClearGrowth, rulesetGrowthRule, rulesetRunBoardEvents } from "./board-events.js";
+import { rulesetCallCreatures, rulesetTurnAfterCalls } from "./calls.js";
 
 /** Everything one step of the fight needs: the rules, the state it is changing, its dice and the
  *  events it has produced so far. */
@@ -5641,7 +5642,7 @@ function castWithPoints(
   }
   const { ctx, finish } = begin(definition, combat, cast.state, roller);
   // Back to the turn it really is, with the budgets that turn left.
-  ctx.state.turn = state.turn;
+  ctx.state.turn = rulesetTurnAfterCalls(state, ctx.state);
   const working = rulesetCombatant(ctx.state, actor.id)!;
   working.budgets = { ...actor.budgets };
   const left = Math.max(0, (actor.signature?.points ?? 0) - cost);
@@ -5709,7 +5710,7 @@ function takeLairAction(
   }
   const { ctx, finish } = begin(definition, combat, taken.state, roller);
   // Back to the turn it really is, with the budgets that turn left.
-  ctx.state.turn = state.turn;
+  ctx.state.turn = rulesetTurnAfterCalls(state, ctx.state);
   const working = rulesetCombatant(ctx.state, actor.id)!;
   working.budgets = { ...actor.budgets };
   if (working.lair) working.lair.last = { round, id: action.id };
@@ -5727,6 +5728,19 @@ function takeLairAction(
       ...after.events,
     ],
   };
+}
+
+/** Calls an action's creatures into the fight (1.320), as many as its count throws, and says so. */
+function callCreatures(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  cells?: RulesetCombatCell[],
+): void {
+  if (!action.calls) return;
+  const count = rollAmount(ctx, action.calls.count).total;
+  const ids = rulesetCallCreatures(ctx.definition, ctx.state, actor, action, count, ctx.roll, cells);
+  ctx.events.push({ type: "called", actorId: actor.id, label: action.label, ids });
 }
 
 /**
@@ -5865,7 +5879,7 @@ function releaseReadied(
   }
   const { ctx, finish } = begin(definition, combat, step.state, roller);
   // Back to the turn it really is, with the budgets that turn left, less the one it was taken with.
-  ctx.state.turn = state.turn;
+  ctx.state.turn = rulesetTurnAfterCalls(state, ctx.state);
   const working = rulesetCombatant(ctx.state, actor.id)!;
   working.budgets = { ...actor.budgets };
   spendBudget(ctx, working, budget);
@@ -6577,6 +6591,20 @@ function resumeAction(ctx: RulesetCombatContext, resume: RulesetActionResume): v
       ...(moved.length ? { moved } : {}),
     });
   }
+  // Creatures called into the area (1.320): Shelves Lean's specters among the fallen jars.
+  if (action.area && action.calls && !resume.held) {
+    callCreatures(
+      ctx,
+      actor,
+      action,
+      grid && at
+        ? areaCellsFor(ctx.state, actor, action.id, at, {
+            ...(resume.also ? { also: resume.also } : {}),
+            grow: areaGrowth(ctx.definition, actor, action.id, resume.payWith),
+          })
+        : undefined,
+    );
+  }
   // Fire landing on a web with nobody in it sets it alight all the same (1.178).
   if (grid && at && action.area && action.damage && !action.zone?.detonates) {
     igniteZones(
@@ -6976,19 +7004,27 @@ function lightRuleAtRoundEnd(ctx: RulesetCombatContext): void {
       exposed[combatant.id] = count;
       continue;
     }
-    ctx.events.push({
+    const caught: Extract<RulesetCombatEvent, { type: "lightRule" }> = {
       type: "lightRule",
       actorId: combatant.id,
       ...(rule.label ? { label: rule.label } : {}),
       light: lights[0]!,
       rounds: rule.rounds,
-    });
+    };
+    ctx.events.push(caught);
     // A made save escapes it this time (1.316): Noonfield's Constitution save, a straw hat's advantage.
-    if (
-      rule.save &&
-      rollSave(ctx, combatant, rule.save.save, rule.save.difficulty, undefined, null, rule.save.against)
-    ) {
-      continue;
+    if (rule.save) {
+      const from = ctx.events.length;
+      const saved = rollSave(ctx, combatant, rule.save.save, rule.save.difficulty, undefined, null, rule.save.against);
+      // Said with it, as it went (its total, legendary resistance or not).
+      const thrown = ctx.events
+        .slice(from)
+        .find(
+          (event): event is Extract<RulesetCombatEvent, { type: "save" }> =>
+            event.type === "save" && event.actorId === combatant.id,
+        );
+      caught.save = { total: thrown?.total ?? 0, saved };
+      if (saved) continue;
     }
     for (const moved of rule.tracks ?? []) {
       if (combatant.defeated) continue;
@@ -7357,6 +7393,11 @@ function resolveAction(
       label: action.label,
       on: action.sheds !== "out",
     });
+    return null;
+  }
+  // Creatures called beside it (1.320), and nothing else: Jars Burst.
+  if (action.calls && !action.area && !action.damage) {
+    callCreatures(ctx, actor, action);
     return null;
   }
   // A legendary Detect (1.282): the looking, and nothing else.

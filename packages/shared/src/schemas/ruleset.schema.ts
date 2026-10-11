@@ -4471,6 +4471,28 @@ const creatureActionSchema = z
     healsOnSlay: z.object(catalogAmountShape).strict().optional(),
     /** Who it fells on Held Ground is reaped there and then (Capability API 1.318), and stays down. */
     reaps: z.literal(true).optional(),
+    /** Creatures it calls into the fight (Capability API 1.320), on its side: `creature` names a
+     *  bestiary entry as `"<catalogId>/<entryId>"`, from this ruleset's catalogs or the fight's
+     *  bestiary, and `count` how many (`{"dice": "1d4"}`, or `{"flat": 2}`), eight at most. They
+     *  appear in the action's `area` where it is aimed, or beside it without one, and roll their
+     *  own initiative, or with `"initiative": "after"` act right after it. The Owed's Jars Burst,
+     *  Shelves Lean's specters. */
+    calls: z
+      .object({
+        creature: z
+          .string()
+          .trim()
+          .regex(/^[^/\s]{1,80}\/[^/\s]{1,120}$/, 'A called creature is named "<catalogId>/<entryId>"'),
+        count: z
+          .object(catalogAmountShape)
+          .strict()
+          .refine((count) => count.dice !== undefined || (count.flat ?? 0) >= 1, {
+            message: "A call brings at least one creature",
+          }),
+        initiative: z.enum(["roll", "after"]).optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .superRefine((action, ctx) => {

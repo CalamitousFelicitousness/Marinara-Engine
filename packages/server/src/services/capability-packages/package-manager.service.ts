@@ -1568,7 +1568,7 @@ function carriesLegendaryResistance(value: unknown, depth = 0): boolean {
   if (record.legendaryResistance !== undefined) return true;
   // An item's use no bigger than it reaches (1.312); an entry's own came with 1.309.
   const use = plainRecord(record.use);
-
+  if (use?.targetsUpTo !== undefined) return true;
   if (Array.isArray(record.moreUses) && record.moreUses.some((one) => plainRecord(one)?.targetsUpTo !== undefined))
     return true;
   return Object.values(record).some((one) => carriesLegendaryResistance(one, depth + 1));

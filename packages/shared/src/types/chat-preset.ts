@@ -81,6 +81,7 @@ export const CHAT_PRESET_EXCLUDED_METADATA_KEYS: readonly string[] = [
   "sceneSystemPrompt",
   "sceneRating",
   "sceneStatus",
+  "sceneOriginRepliesAllowed",
   "sceneConversationContext",
   "sceneRelationshipHistory",
   "sceneBackground",

@@ -165,7 +165,11 @@ export async function resolveConversationPresenceRuntime(args: {
   }
 
   const requestedResponders = respondingConvoCharInfo;
-  const sceneBusyCharIds = new Set(await resolveSceneBusyCharacterIds(args.chats, args.chatId, args.chatMeta));
+  const sceneBusyCharIds = new Set(
+    await resolveSceneBusyCharacterIds(args.chats, args.chatId, args.chatMeta, {
+      userReply: !args.shouldAccountAutonomousGeneration,
+    }),
+  );
   const seatedGameCharIds = await resolveSeatedTurnGameCharacterIds(args.db, args.chatId);
   const effectiveStatus = (character: { charId: string; status: string }): string =>
     sceneBusyCharIds.has(character.charId)
@@ -261,7 +265,11 @@ export async function resolveConversationPresenceRuntime(args: {
       }
 
       const delayedResponderNames = respondingConvoCharNames;
-      const currentSceneParticipants = new Set(await resolveSceneBusyCharacterIds(args.chats, args.chatId));
+      const currentSceneParticipants = new Set(
+        await resolveSceneBusyCharacterIds(args.chats, args.chatId, undefined, {
+          userReply: !args.shouldAccountAutonomousGeneration,
+        }),
+      );
       respondingConvoCharInfo = respondingConvoCharInfo.filter(
         (character) => !currentSceneParticipants.has(character.charId),
       );

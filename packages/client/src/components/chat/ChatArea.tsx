@@ -3363,6 +3363,7 @@ const LocalChatArea = memo(function LocalChatArea({
           variant: "origin" as const,
           sceneChatId: chatMeta.activeSceneChatId,
           sceneChatName: getChatDisplayName(activeSceneChat),
+          repliesAllowed: activeSceneMeta.sceneOriginRepliesAllowed === true,
         }
       : chatMeta.sceneStatus === "active"
         ? {

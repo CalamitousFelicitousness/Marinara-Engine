@@ -3,6 +3,9 @@ import type { ChatMessage } from "../../services/llm/base-provider.js";
 import {
   GENERATION_PARAMETER_SEND_KEYS,
   SUMMARY_TAIL_MESSAGES,
+  compileChatSummaryEntries,
+  normalizeChatSummaryEntries,
+  type ChatSummaryEntry,
   applyTrackerFieldLocksToGameStatePatch,
   characterTrackerLockPrefix,
   customTrackerFieldLockPrefix,
@@ -845,6 +848,65 @@ export function computeSummaryHideIds(args: {
   return messages
     .filter((message) => entryIdSet.has(message.id) && !tailIdSet.has(message.id))
     .map((message) => message.id);
+}
+
+/**
+ * Hide or show a chat's summarised messages when `next` turns "Hide summarised messages" on or off
+ * compared with `current`. Turning it on hides each enabled entry's messages, except the recent tail,
+ * and records them in the entry's `hiddenMessageIds`; turning it off shows only those again. Returns
+ * the summary keys to save with `next`, or nothing when the setting does not change. The caller holds
+ * the chat's metadata queue and saves the result in the same write.
+ */
+export async function summaryHidingPatch(
+  storage: {
+    listMessages(chatId: string): Promise<Array<{ id: string; extra?: unknown }>>;
+    bulkSetHiddenFromAI(chatId: string, messageIds: string[], hidden: boolean): Promise<string[]>;
+  },
+  chatId: string,
+  current: Record<string, unknown>,
+  next: Record<string, unknown>,
+): Promise<{ summaryEntries?: ChatSummaryEntry[]; summary?: string | null }> {
+  const hide = next.hideSummarisedMessages === true;
+  if ((current.hideSummarisedMessages === true) === hide) return {};
+
+  const entries = normalizeChatSummaryEntries(next.summaryEntries, {
+    legacySummary: typeof next.summary === "string" ? next.summary : null,
+  });
+  const now = new Date().toISOString();
+  let nextEntries: ChatSummaryEntry[];
+
+  if (hide) {
+    const allMessages = await storage.listMessages(chatId);
+    const tail = resolveRoleplaySummaryTail(next.summaryTailMessages);
+    nextEntries = [];
+    for (const entry of entries) {
+      if (!entry.enabled || !entry.messageIds?.length) {
+        nextEntries.push(entry);
+        continue;
+      }
+      const eligibleToHide = computeSummaryHideIds({ messages: allMessages, entryMessageIds: entry.messageIds, tail });
+      const hiddenMessageIds =
+        eligibleToHide.length > 0 ? await storage.bulkSetHiddenFromAI(chatId, eligibleToHide, true) : [];
+      const ownedHiddenMessageIds = Array.from(new Set([...(entry.hiddenMessageIds ?? []), ...hiddenMessageIds]));
+      nextEntries.push(
+        ownedHiddenMessageIds.length > 0
+          ? { ...entry, hiddenMessageIds: ownedHiddenMessageIds, updatedAt: now }
+          : entry,
+      );
+    }
+  } else {
+    const summaryOwnedHiddenIds = Array.from(new Set(entries.flatMap((entry) => entry.hiddenMessageIds ?? [])));
+    if (summaryOwnedHiddenIds.length > 0) {
+      await storage.bulkSetHiddenFromAI(chatId, summaryOwnedHiddenIds, false);
+    }
+    nextEntries = entries.map((entry) => {
+      if (!entry.hiddenMessageIds?.length) return entry;
+      const { hiddenMessageIds: _hiddenMessageIds, ...rest } = entry;
+      return { ...rest, updatedAt: now };
+    });
+  }
+
+  return { summaryEntries: nextEntries, summary: compileChatSummaryEntries(nextEntries) };
 }
 
 /** Return the one-based range covered by selected messages in the full chat order. */

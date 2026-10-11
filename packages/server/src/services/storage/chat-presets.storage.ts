@@ -8,7 +8,8 @@ import type { DB } from "../../db/connection.js";
 import { chats, chatPresets } from "../../db/schema/index.js";
 import { newId, now } from "../../utils/id-generator.js";
 import { logger } from "../../lib/logger.js";
-import { withChatMetadataPatchQueue } from "./chats.storage.js";
+import { createChatsStorage, withChatMetadataPatchQueue } from "./chats.storage.js";
+import { summaryHidingPatch } from "../../routes/generate/generate-route-utils.js";
 import {
   CHAT_PRESET_EXCLUDED_METADATA_KEYS,
   CHAT_PRESET_EXCLUDED_PACKAGE_METADATA_KEYS,
@@ -439,6 +440,11 @@ export function createChatPresetsStorage(db: DB) {
               (chatRow.connectionId ?? null) === (preset.settings.connectionId ?? null),
             )
           : appliedMetadata;
+        // A profile that turns "Hide summarised messages" on or off hides or shows those messages too.
+        Object.assign(
+          newMetadata,
+          await summaryHidingPatch(createChatsStorage(db), chatId, currentMetadata, newMetadata),
+        );
         const nextConnectionId =
           options.connectionId !== undefined ? options.connectionId : (preset.settings.connectionId ?? null);
 

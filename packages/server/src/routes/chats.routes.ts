@@ -172,6 +172,7 @@ import {
   parseExtra,
   resolveRoleplayChatSummary,
   resolveRoleplaySummaryTail,
+  summaryHidingPatch,
   isMessageHiddenFromAI,
   resolveBaseUrl,
   resolveActiveCharacterIds,
@@ -1599,64 +1600,10 @@ export async function chatsRoutes(app: FastifyInstance) {
     ) {
       const updated = await storage.patchMetadata(
         req.params.id,
-        async (freshMeta) => {
-          const previousHideEnabled = freshMeta.hideSummarisedMessages === true;
-          if (previousHideEnabled === incoming.hideSummarisedMessages) {
-            return incoming;
-          }
-
-          const allMessages = await storage.listMessages(req.params.id);
-          const currentEntries = normalizeChatSummaryEntries(freshMeta.summaryEntries, {
-            legacySummary: typeof freshMeta.summary === "string" ? freshMeta.summary : null,
-          });
-          const now = new Date().toISOString();
-          let nextEntries: ChatSummaryEntry[];
-
-          if (incoming.hideSummarisedMessages) {
-            const tail = resolveRoleplaySummaryTail(freshMeta.summaryTailMessages);
-            nextEntries = [];
-            for (const entry of currentEntries) {
-              if (!entry.enabled || !entry.messageIds?.length) {
-                nextEntries.push(entry);
-                continue;
-              }
-
-              const eligibleToHide = computeSummaryHideIds({
-                messages: allMessages,
-                entryMessageIds: entry.messageIds,
-                tail,
-              });
-              const hiddenMessageIds =
-                eligibleToHide.length > 0 ? await storage.bulkSetHiddenFromAI(req.params.id, eligibleToHide, true) : [];
-              const ownedHiddenMessageIds = Array.from(
-                new Set([...(entry.hiddenMessageIds ?? []), ...hiddenMessageIds]),
-              );
-              nextEntries.push(
-                ownedHiddenMessageIds.length > 0
-                  ? { ...entry, hiddenMessageIds: ownedHiddenMessageIds, updatedAt: now }
-                  : entry,
-              );
-            }
-          } else {
-            const summaryOwnedHiddenIds = Array.from(
-              new Set(currentEntries.flatMap((entry) => entry.hiddenMessageIds ?? [])),
-            );
-            if (summaryOwnedHiddenIds.length > 0) {
-              await storage.bulkSetHiddenFromAI(req.params.id, summaryOwnedHiddenIds, false);
-            }
-            nextEntries = currentEntries.map((entry) => {
-              if (!entry.hiddenMessageIds?.length) return entry;
-              const { hiddenMessageIds: _hiddenMessageIds, ...rest } = entry;
-              return { ...rest, updatedAt: now };
-            });
-          }
-
-          return {
-            ...incoming,
-            summaryEntries: nextEntries,
-            summary: compileChatSummaryEntries(nextEntries),
-          };
-        },
+        async (freshMeta) => ({
+          ...incoming,
+          ...(await summaryHidingPatch(storage, req.params.id, freshMeta, { ...freshMeta, ...incoming })),
+        }),
         { afterWrite: cancelReplacedAdvancedMemory },
       );
       return updated ? normalizeChatForResponse(updated) : updated;

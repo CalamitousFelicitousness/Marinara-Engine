@@ -2630,6 +2630,7 @@ const RIDER_ENTRY_FORBIDS = [
   "save",
   "cost",
   "perCostStep",
+  "perCostStepsEvery",
   "targetsPerCostStep",
   "concentration",
   "reaction",
@@ -3099,6 +3100,10 @@ const catalogMechanicsObject = z
     /** The most steps of a higher cost that count (Capability API 1.236): paying more than this
      *  adds nothing more. 5e's Divine Smite, 2d8 and 1d8 a slot level above 1st, to 5d8 at most: 3. */
     perCostStepsMax: z.number().int().min(1).max(20).optional(),
+    /** `perCostStep` adds once for every this many steps (Capability API 1.295): 5e's Flame Blade,
+     *  1d6 more for every two slot levels above 2nd, is 2. An action a condition gives (1.231)
+     *  reads its steps off the cost the spell that put the condition on was paid at. */
+    perCostStepsEvery: z.number().int().min(2).max(9).optional(),
     /** Taken as its holder's own attack hits (a `"hit"` reaction with `"by": "self"`), its amount is
      *  added to that blow instead of dealt on its own (Capability API 1.236): rolled with it, doubled
      *  by its critical, and taken as part of it. 5e's Divine Smite. */
@@ -3655,6 +3660,13 @@ const catalogMechanicsSchema: z.ZodType<
       code: z.ZodIssueCode.custom,
       path: ["perCostStepsMax"],
       message: '"perCostStepsMax" caps what "perCostStep" or "targetsPerCostStep" adds, so it has one',
+    });
+  }
+  if (mechanics.perCostStepsEvery !== undefined && !mechanics.perCostStep) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["perCostStepsEvery"],
+      message: '"perCostStepsEvery" spaces out what "perCostStep" adds, so it has one',
     });
   }
   if (mechanics.healthPoolSkips && !mechanics.healthPool) {

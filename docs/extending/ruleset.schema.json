@@ -9139,6 +9139,11 @@
                       "minimum": 1,
                       "maximum": 20
                     },
+                    "perCostStepsEvery": {
+                      "type": "integer",
+                      "minimum": 2,
+                      "maximum": 9
+                    },
                     "addsToBlow": {
                       "type": "boolean",
                       "const": true
@@ -25161,6 +25166,11 @@
                           "minimum": 1,
                           "maximum": 20
                         },
+                        "perCostStepsEvery": {
+                          "type": "integer",
+                          "minimum": 2,
+                          "maximum": 9
+                        },
                         "addsToBlow": {
                           "type": "boolean",
                           "const": true
@@ -30674,6 +30684,11 @@
                                 "type": "integer",
                                 "minimum": 1,
                                 "maximum": 20
+                              },
+                              "perCostStepsEvery": {
+                                "type": "integer",
+                                "minimum": 2,
+                                "maximum": 9
                               },
                               "addsToBlow": {
                                 "type": "boolean",

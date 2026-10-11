@@ -1700,6 +1700,8 @@ function applyConditionId(
     value?: number;
     /** The level of the spell that put it on (1.294). */
     level?: number;
+    /** The steps above its base cost that spell was paid at (1.295). */
+    steps?: number;
   } = {},
 ): void {
   const putter = extra.sourceId ? rulesetCombatant(ctx.state, extra.sourceId) : undefined;
@@ -1776,6 +1778,7 @@ function applyConditionId(
     ...(extra.harmsMore ? { harmsMore: { ...extra.harmsMore } } : {}),
     ...(extra.value !== undefined ? { value: extra.value } : {}),
     ...(extra.level !== undefined ? { level: extra.level } : {}),
+    ...(extra.steps !== undefined ? { steps: extra.steps } : {}),
   });
   ctx.events.push(
     stacks !== undefined
@@ -7105,9 +7108,26 @@ function resolveActionBody(
     : payWith
       ? rulesetCostSteps(ctx.definition, action, payWith, actor)
       : 0;
-  // A higher cost's more, or more charges' (1.264).
+  // A higher cost's more, or more charges' (1.264); once for every so many steps (1.295).
   const per = action.use?.perCostStep ?? action.itemUse?.charges?.step?.amount;
-  const extra = per && steps > 0 ? { amount: per, times: steps } : undefined;
+  const every = action.use?.stepsEvery ?? 1;
+  // What a condition gives grows by the cost that condition was put on with (1.295).
+  const heldSteps = action.heldSteps
+    ? Math.min(
+        action.heldSteps.max ?? Infinity,
+        Math.floor(
+          (actor.tracked.find((entry) => entry.condition === action.whileHolds)?.steps ?? 0) /
+            (action.heldSteps.every ?? 1),
+        ),
+      )
+    : 0;
+  const extra = action.heldSteps
+    ? heldSteps > 0
+      ? { amount: action.heldSteps.amount, times: heldSteps }
+      : undefined
+    : per && Math.floor(steps / every) > 0
+      ? { amount: per, times: Math.floor(steps / every) }
+      : undefined;
   // Where the action's own saves take cover from: a burst from where it landed, anything else (a cone,
   // a line, a spell aimed at somebody) from its maker.
   // Set down somewhere rather than coming off its maker: a burst, a box or a wall (1.172).
@@ -8100,6 +8120,8 @@ function resolveActionBody(
           ...(value !== undefined ? { value } : {}),
           // A spell's, the level it was cast at (1.294): what magical darkness puts its light out by.
           ...(rulesetIsSpell(action) ? { level: rulesetPaidLevel(ctx.definition, actor, action, payWith) } : {}),
+          // And how far above its base cost (1.295): what an action the condition gives grows by.
+          ...(rulesetIsSpell(action) && steps > 0 ? { steps } : {}),
           // What it harms with grows with the higher cost it was put on with (1.250): Acid Arrow.
           ...(applies.harmsPerCostStep && steps > 0
             ? { harmsMore: harmsPerSteps(applies.harmsPerCostStep, steps) }

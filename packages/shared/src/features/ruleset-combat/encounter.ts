@@ -2201,6 +2201,8 @@ function mechanicsAction(
             ...(mechanics.targetsPerCostStep ? { targetsPerStep: mechanics.targetsPerCostStep } : {}),
             // No more steps count than this (1.236): Divine Smite stops at 5d8.
             ...(mechanics.perCostStepsMax ? { stepsMax: mechanics.perCostStepsMax } : {}),
+            // Once for every this many steps (1.295): Flame Blade's two slot levels.
+            ...(mechanics.perCostStepsEvery ? { stepsEvery: mechanics.perCostStepsEvery } : {}),
             // More than one of them at once (1.240): Quivering Palm's 3 ki.
             ...(mechanics.usesSpent ? { count: mechanics.usesSpent } : {}),
           },
@@ -2881,6 +2883,15 @@ function conditionActions(
       action.catalog = catalogId;
       action.entry = ref;
       action.whileHolds = condition.condition;
+      // Grown by the cost the condition was put on with (1.295), not one of its own.
+      const per = action.use?.perCostStep;
+      if (per) {
+        action.heldSteps = {
+          amount: per,
+          ...(action.use!.stepsEvery ? { every: action.use!.stepsEvery } : {}),
+          ...(action.use!.stepsMax ? { max: action.use!.stepsMax } : {}),
+        };
+      }
       // Paid for by the condition that gives it: nothing off the sheet.
       delete action.use;
       return [action];

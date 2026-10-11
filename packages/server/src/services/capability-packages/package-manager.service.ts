@@ -1559,6 +1559,16 @@ function carriesHidingTraits(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesHidingTraits(one, depth + 1));
 }
 
+/** What a higher cost adds only every so many steps, and on what a condition gives (1.295). */
+function carriesStepsEvery(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesStepsEvery(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.perCostStepsEvery !== undefined) return true;
+  return Object.values(record).some((one) => carriesStepsEvery(one, depth + 1));
+}
+
 /** Darkness that puts out spell light, magical light, and Daylight's dispelling reach (1.294). */
 function carriesDarkAgainstLight(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -4042,6 +4052,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // A higher cost's more only every so many steps, 1.295.
+  if (
+    !declaresApi(295) &&
+    (carriesStepsEvery(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesStepsEvery(document)))
+  ) {
+    return "A ruleset with what a higher cost adds only every so many steps requires schemaVersion 2 and capabilityApi 1.295 or newer";
   }
   // Darkness against spell light, magical light, and a dispelling reach, 1.294.
   if (

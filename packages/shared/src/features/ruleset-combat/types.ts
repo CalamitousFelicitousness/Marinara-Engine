@@ -633,6 +633,9 @@ export interface RulesetCombatAction {
   ends?: { conditions: string[]; count?: number; from?: RulesetTargetIs };
   /** Offered only while its user holds this condition, which gave it to them (1.231). */
   whileHolds?: string;
+  /** What it adds for each step of the cost the condition giving it was put on with (1.295), once
+   *  for every `every` steps: Flame Blade's 1d6 for every two slot levels above 2nd. */
+  heldSteps?: { amount: RulesetCombatAmount; every?: number; max?: number };
   /** Used, it ends this condition on its user (1.231): Dispel Evil and Good's Dismissal ends the
    *  spell. */
   endsCondition?: string;
@@ -706,6 +709,8 @@ export interface RulesetCombatAction {
     targetsPerStep?: number;
     /** The most steps of a higher cost that count (1.236). */
     stepsMax?: number;
+    /** `perCostStep` once for every this many steps (1.295). */
+    stepsEvery?: number;
     /** How many of the row's uses one use spends (1.240). */
     count?: number;
     /** `name` is another entry's counter (1.234 `usesOf`): only that counter is spent, and the price
@@ -1058,6 +1063,9 @@ export interface RulesetTrackedCondition {
   /** The level of the spell that put it on, as it was paid for (1.294): what magical darkness of
    *  that level or more puts its light out by. */
   level?: number;
+  /** How many steps above its base cost that spell was paid at (1.295): what an action the condition
+   *  gives grows by. */
+  steps?: number;
   /** The temporary points it last gave that its holder still had the most of (1.269), lost as it
    *  ends where its rule says so. */
   gaveTemp?: number;

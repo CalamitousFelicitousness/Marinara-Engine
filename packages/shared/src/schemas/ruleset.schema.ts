@@ -2297,6 +2297,8 @@ const catalogDurationSchema = z.union([
 export interface RulesetHolderEnding {
   attacks?: true;
   casts?: string[];
+  moves?: true;
+  acts?: true;
 }
 const holderEndingSchema: z.ZodType<RulesetHolderEnding, z.ZodTypeDef, unknown> = z
   .object({
@@ -2307,9 +2309,15 @@ const holderEndingSchema: z.ZodType<RulesetHolderEnding, z.ZodTypeDef, unknown> 
       .max(8)
       .refine((catalogs) => new Set(catalogs).size === catalogs.length, { message: "A catalog is named once" })
       .optional(),
+    /** Its holder moving (Capability API 1.298): 5e's One with Shadows. */
+    moves: z.literal(true).optional(),
+    /** Its holder taking any action or reaction after the one that put it on (Capability API 1.298). */
+    acts: z.literal(true).optional(),
   })
   .strict()
-  .refine((ends) => ends.attacks || ends.casts, { message: "Say what ends it: attacking, casting, or both" });
+  .refine((ends) => ends.attacks || ends.casts || ends.moves || ends.acts, {
+    message: "Say what ends it: attacking, casting, moving or acting",
+  });
 
 /** Who passes a save without rolling, and what else it counts as being against (1.176). */
 export interface RulesetSaveExtras {
@@ -3182,6 +3190,18 @@ const catalogMechanicsObject = z
      *  holds it when that is theirs: Dispel Evil and Good's Break Enchantment and Dismissal end the
      *  spell. */
     endsCondition: sheetId.optional(),
+    /** Used only while its user stands in one of these lights (Capability API 1.298), as the fight
+     *  reads it where they stand: 5e's One with Shadows, `{ "light": ["dim", "dark"] }`. */
+    usableIn: z
+      .object({
+        light: z
+          .array(z.enum(["sunlight", "bright", "dim", "dark"]))
+          .min(1)
+          .max(4)
+          .refine((lights) => new Set(lights).size === lights.length, { message: "A light is named once" }),
+      })
+      .strict()
+      .optional(),
     /** Held on a sheet's list, surprise is shaken off by using this entry first on the surprised
      *  turn (Capability API 1.232), when nothing keeps its holder from acting: 5e's Feral Instinct
      *  with Rage. The entry is otherwise passive. */

@@ -10304,6 +10304,30 @@
                       "maxLength": 40,
                       "pattern": "^[a-z][a-z0-9_]*$"
                     },
+                    "usableIn": {
+                      "type": "object",
+                      "properties": {
+                        "light": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": [
+                              "sunlight",
+                              "bright",
+                              "dim",
+                              "dark"
+                            ]
+                          },
+                          "minItems": 1,
+                          "maxItems": 4
+                        },
+                        "$comment": {}
+                      },
+                      "required": [
+                        "light"
+                      ],
+                      "additionalProperties": false
+                    },
                     "ignoresSurpriseWith": {
                       "type": "string",
                       "maxLength": 121,
@@ -12386,6 +12410,14 @@
                                 },
                                 "minItems": 1,
                                 "maxItems": 8
+                              },
+                              "moves": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "acts": {
+                                "type": "boolean",
+                                "const": true
                               },
                               "$comment": {}
                             },
@@ -15644,6 +15676,14 @@
                                       "minItems": 1,
                                       "maxItems": 8
                                     },
+                                    "moves": {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
+                                    "acts": {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
                                     "$comment": {}
                                   },
                                   "additionalProperties": false
@@ -16670,6 +16710,14 @@
                                           },
                                           "minItems": 1,
                                           "maxItems": 8
+                                        },
+                                        "moves": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
+                                        "acts": {
+                                          "type": "boolean",
+                                          "const": true
                                         },
                                         "$comment": {}
                                       },
@@ -23594,6 +23642,14 @@
                                           "minItems": 1,
                                           "maxItems": 8
                                         },
+                                        "moves": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
+                                        "acts": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
                                         "$comment": {}
                                       },
                                       "additionalProperties": false
@@ -24873,6 +24929,11 @@
                               "type": "integer",
                               "minimum": 2,
                               "maximum": 10
+                            },
+                            "copiesWithin": {
+                              "type": "number",
+                              "exclusiveMinimum": 0,
+                              "maximum": 10000
                             },
                             "$comment": {}
                           },
@@ -26393,6 +26454,30 @@
                           "maxLength": 40,
                           "pattern": "^[a-z][a-z0-9_]*$"
                         },
+                        "usableIn": {
+                          "type": "object",
+                          "properties": {
+                            "light": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "enum": [
+                                  "sunlight",
+                                  "bright",
+                                  "dim",
+                                  "dark"
+                                ]
+                              },
+                              "minItems": 1,
+                              "maxItems": 4
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "light"
+                          ],
+                          "additionalProperties": false
+                        },
                         "ignoresSurpriseWith": {
                           "type": "string",
                           "maxLength": 121,
@@ -27800,6 +27885,14 @@
                                     },
                                     "minItems": 1,
                                     "maxItems": 8
+                                  },
+                                  "moves": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "acts": {
+                                    "type": "boolean",
+                                    "const": true
                                   },
                                   "$comment": {}
                                 },
@@ -30580,6 +30673,11 @@
                                     "minimum": 2,
                                     "maximum": 10
                                   },
+                                  "copiesWithin": {
+                                    "type": "number",
+                                    "exclusiveMinimum": 0,
+                                    "maximum": 10000
+                                  },
                                   "$comment": {}
                                 },
                                 "required": [
@@ -32099,6 +32197,30 @@
                                 "maxLength": 40,
                                 "pattern": "^[a-z][a-z0-9_]*$"
                               },
+                              "usableIn": {
+                                "type": "object",
+                                "properties": {
+                                  "light": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "enum": [
+                                        "sunlight",
+                                        "bright",
+                                        "dim",
+                                        "dark"
+                                      ]
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 4
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "light"
+                                ],
+                                "additionalProperties": false
+                              },
                               "ignoresSurpriseWith": {
                                 "type": "string",
                                 "maxLength": 121,
@@ -33506,6 +33628,14 @@
                                           },
                                           "minItems": 1,
                                           "maxItems": 8
+                                        },
+                                        "moves": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
+                                        "acts": {
+                                          "type": "boolean",
+                                          "const": true
                                         },
                                         "$comment": {}
                                       },
@@ -43819,6 +43949,14 @@
                               "minItems": 1,
                               "maxItems": 8
                             },
+                            "moves": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "acts": {
+                              "type": "boolean",
+                              "const": true
+                            },
                             "$comment": {}
                           },
                           "additionalProperties": false
@@ -44940,6 +45078,14 @@
                                     "minItems": 1,
                                     "maxItems": 8
                                   },
+                                  "moves": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "acts": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
                                   "$comment": {}
                                 },
                                 "additionalProperties": false
@@ -45694,6 +45840,14 @@
                                         },
                                         "minItems": 1,
                                         "maxItems": 8
+                                      },
+                                      "moves": {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
+                                      "acts": {
+                                        "type": "boolean",
+                                        "const": true
                                       },
                                       "$comment": {}
                                     },
@@ -46659,6 +46813,14 @@
                               },
                               "minItems": 1,
                               "maxItems": 8
+                            },
+                            "moves": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "acts": {
+                              "type": "boolean",
+                              "const": true
                             },
                             "$comment": {}
                           },

@@ -125,7 +125,7 @@ export interface RulesetCombatApplies {
   saveEnds?: RulesetCombatSaveEnds;
   endsAfter?: RulesetConditionEnding;
   /** It comes off once its holder attacks, or casts from one of these catalogs (1.175). */
-  endsWhenHolder?: { attacks?: true; casts?: string[] };
+  endsWhenHolder?: { attacks?: true; casts?: string[]; moves?: true; acts?: true };
   /** What breaking free of it is rolled against, in place of the holder's own side of the contest
    *  (1.98): 5e's "grappled (escape DC 13)"; `"save"` is the applier's save difficulty (1.169). */
   escapeDc?: number | "save";
@@ -639,6 +639,8 @@ export interface RulesetCombatAction {
   /** Used, it ends this condition on its user (1.231): Dispel Evil and Good's Dismissal ends the
    *  spell. */
   endsCondition?: string;
+  /** Used only while its user stands in one of these lights (1.298). */
+  usableIn?: { light: RulesetBoardLight[] };
   /** Whoever it lands on leaves the fight (1.231): for good, or only while they hold `while`, put on
    *  by the same use; with `gone`, one that is that stays gone if `while` ran its whole time. */
   dismisses?: true | { while: string; gone?: RulesetTargetIs };
@@ -1030,7 +1032,7 @@ export interface RulesetTrackedCondition {
   /** What takes it off after one use, whatever its clock says. */
   endsAfter?: RulesetConditionEnding;
   /** What its holder does that takes it off (1.175): attacking, or casting from these catalogs. */
-  endsWhenHolder?: { attacks?: true; casts?: string[] };
+  endsWhenHolder?: { attacks?: true; casts?: string[]; moves?: true; acts?: true };
   /** The difficulty the repeated save is rolled against: the one that applied it. */
   difficulty?: number;
   /** The saves that ended it made and failed so far, where they are counted (1.253). */

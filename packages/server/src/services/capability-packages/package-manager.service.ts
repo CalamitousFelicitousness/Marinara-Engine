@@ -1559,6 +1559,18 @@ function carriesHidingTraits(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesHidingTraits(one, depth + 1));
 }
 
+/** Uses only in some light, and conditions that moving or acting ends (1.298). */
+function carriesShadowUses(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesShadowUses(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.usableIn !== undefined) return true;
+  const ends = plainRecord(record.endsWhenHolder);
+  if (ends && (ends.moves !== undefined || ends.acts !== undefined)) return true;
+  return Object.values(record).some((one) => carriesShadowUses(one, depth + 1));
+}
+
 /** Entries that change another of their holder's each time it is used (1.297). */
 function carriesAmends(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -4072,6 +4084,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Uses only in some light, and endings on moving or acting, 1.298.
+  if (
+    !declaresApi(298) &&
+    (carriesShadowUses(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesShadowUses(document)))
+  ) {
+    return "A ruleset with uses only in some light, or conditions that moving or acting ends, requires schemaVersion 2 and capabilityApi 1.298 or newer";
   }
   // What changes another entry each time it is used, 1.297.
   if (

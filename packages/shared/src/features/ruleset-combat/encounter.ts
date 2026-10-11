@@ -2354,6 +2354,7 @@ function mechanicsAction(
   }
   // Used, it ends a condition on its user (1.231): the spell that gave it.
   if (mechanics.endsCondition) action.endsCondition = mechanics.endsCondition;
+  if (mechanics.usableIn) action.usableIn = { light: [...mechanics.usableIn.light] };
   // Sent out of the fight (1.231): Dismissal, Banishment.
   if (mechanics.dismisses) action.dismisses = structuredClone(mechanics.dismisses);
   if (mechanics.stabilizes) action.stabilizes = true;

@@ -105,6 +105,7 @@ import {
   rulesetCanSee,
   rulesetCarriesLight,
   rulesetHiddenFrom,
+  rulesetLightAt,
   rulesetSeesCell,
   rulesetStandsObscured,
 } from "./sight.js";
@@ -1703,6 +1704,12 @@ export function rulesetActionAvailable(
     return false;
   // What it is made with lies where it was dropped (1.261).
   if (rulesetActionDropped(actor, action)) return false;
+  // Only in the light it says, where they stand (1.298): One with Shadows in dim light or darkness.
+  if (action.usableIn) {
+    const at = rulesetPositionOf(actor);
+    if (!definition || !state || !at) return false;
+    if (!action.usableIn.light.includes(rulesetLightAt(definition, state, at))) return false;
+  }
   // A light only while they carry one, and for nothing once a turn (1.290).
   if (action.switches && "carried" in action.switches) {
     if (!definition || !rulesetCarriesLight(definition, actor, state)) return false;

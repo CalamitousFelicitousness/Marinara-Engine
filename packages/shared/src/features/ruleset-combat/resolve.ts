@@ -1753,6 +1753,8 @@ function applyConditionId(
           endsWhenHolder: {
             ...(applies.endsWhenHolder.attacks ? { attacks: true as const } : {}),
             ...(applies.endsWhenHolder.casts ? { casts: [...applies.endsWhenHolder.casts] } : {}),
+            ...(applies.endsWhenHolder.moves ? { moves: true as const } : {}),
+            ...(applies.endsWhenHolder.acts ? { acts: true as const } : {}),
           },
         }
       : {}),
@@ -6310,6 +6312,12 @@ function search(
  * asked as every step ends, and on every cell of a walk.
  */
 function stirs(ctx: RulesetCombatContext, actor: RulesetCombatant, how: "moved" | "acted"): void {
+  // What moving, or doing anything at all, takes off them (1.298): One with Shadows.
+  for (const entry of actor.tracked.filter((one) =>
+    how === "moved" ? one.endsWhenHolder?.moves : one.endsWhenHolder?.acts,
+  )) {
+    if (actor.tracked.includes(entry)) removeCondition(ctx, actor, entry.condition, "spent");
+  }
   const hiding = actor.hiding;
   if (!hiding) return;
   if (hiding.plain && how === "moved") {

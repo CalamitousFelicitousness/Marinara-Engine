@@ -1826,14 +1826,14 @@ function OnboardingTab({
           {!hasOnboardingContent(onboarding) && (
             <p
               role="status"
-              className="mt-3 rounded-xl border border-[var(--border)] bg-[var(--card)] p-3 text-[0.6875rem] text-[var(--muted-foreground)]"
+              className="mt-3 flex items-start gap-1.5 rounded-xl border border-[var(--border)] bg-[var(--card)] p-3 text-[0.6875rem] text-[var(--muted-foreground)]"
             >
               <AlertTriangle
                 size="0.75rem"
-                className="mr-1.5 -mt-0.5 inline-block shrink-0 text-[var(--marinara-app-accent-static)]"
+                className="mt-0.5 shrink-0 text-[var(--marinara-app-accent-static)]"
                 aria-hidden
               />
-              {localizeUi("ui.characters.onboarding.emptyOnboarding")}
+              <span>{localizeUi("ui.characters.onboarding.emptyOnboarding")}</span>
             </p>
           )}
           <div className="mari-editor-panel mt-4 space-y-2 p-3 text-xs">
@@ -1909,15 +1909,17 @@ function OnboardingTab({
                 }
               />
               {greetingUses.size > 0 && (
-                <p role="status" className="mt-1.5 text-[0.625rem] text-[var(--foreground)]">
+                <p role="status" className="mt-1.5 flex items-start gap-1 text-[0.625rem] text-[var(--foreground)]">
                   <AlertTriangle
                     size="0.625rem"
-                    className="mr-1 -mt-0.5 inline-block shrink-0 text-[var(--marinara-app-accent-static)]"
+                    className="mt-0.5 shrink-0 text-[var(--marinara-app-accent-static)]"
                     aria-hidden
                   />
-                  {localizeUi("ui.characters.onboarding.cardVariableInGreeting", {
-                    value1: [...greetingUses].join(", "),
-                  })}
+                  <span>
+                    {localizeUi("ui.characters.onboarding.cardVariableInGreeting", {
+                      value1: [...greetingUses].join(", "),
+                    })}
+                  </span>
                 </p>
               )}
             </EditorSectionAnchor>

@@ -7252,7 +7252,7 @@
   "ui.chat.roleplaysetupwizard.thisLetsCharactersInitiateTheDownloadedFeatureInThis": "This lets characters initiate the downloaded feature in this chat. Manual controls supplied by the installed package remain available independently, and no separate agent model call is used.",
   "ui.chat.roleplaysetupwizard.value1Value2": "{{value1}}/{{value2}}",
   "ui.chat.scenebanner.allowRepliesHere": "Allow replies here",
-  "ui.chat.scenebanner.allowRepliesHereHint": "Characters in the Scene answer your messages in this conversation while the Scene runs. They do not send messages on their own.",
+  "ui.chat.scenebanner.allowRepliesHereHint": "Scene characters answer you here while the Scene runs, but they do not message on their own.",
   "ui.chat.scenebanner.aSceneIsInProgress": "A scene is in progress",
   "ui.chat.scenebanner.backToConversation": "Back to conversation",
   "ui.chat.scenebanner.backToPackage": "Back to {{name}}",

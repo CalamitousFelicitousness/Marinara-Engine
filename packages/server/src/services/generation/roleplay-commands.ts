@@ -492,13 +492,18 @@ export function appendRoleplayWhispers(
 }
 
 /**
- * Agents read every live whisper in Roleplay (#7430), but not in a hosted multiplayer room: there every human
+ * Agents read every live whisper in Roleplay (#7430), but not in a multiplayer room: there every human
  * participant sees agent output, and a whisper to one of them must stay theirs. Room generation runs inside
- * currentRoomGeneration(); an active hosted room's metadata covers agent runs started outside it.
+ * currentRoomGeneration(). For agent runs started outside it, any room data that is not an ended room, including
+ * data that can't be read, counts as a room.
  */
 export function roleplayAgentsSeeWhispers(chatMode: unknown, metadata: Record<string, unknown>): boolean {
-  const room = parseExtra(metadata.multiplayer);
-  return chatMode === "roleplay" && !currentRoomGeneration() && !(room.role === "host" && room.status !== "ended");
+  const room = metadata.multiplayer;
+  return (
+    chatMode === "roleplay" &&
+    !currentRoomGeneration() &&
+    (room === undefined || room === null || parseExtra(room).status === "ended")
+  );
 }
 
 /**

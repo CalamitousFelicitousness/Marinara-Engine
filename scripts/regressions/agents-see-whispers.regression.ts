@@ -24,7 +24,8 @@ const { createConnectionsStorage } = await import("../../packages/server/src/ser
 const { createCharactersStorage } = await import("../../packages/server/src/services/storage/characters.storage.js");
 const { createPromptsStorage } = await import("../../packages/server/src/services/storage/prompts.storage.js");
 const { createAgentsStorage } = await import("../../packages/server/src/services/storage/agents.storage.js");
-const { roleplayAgentText } = await import("../../packages/server/src/services/generation/roleplay-commands.js");
+const { roleplayAgentsSeeWhispers, roleplayAgentText } =
+  await import("../../packages/server/src/services/generation/roleplay-commands.js");
 const { characterDataSchema, replaceBuiltInAgentDefinitions } = await import("../../packages/shared/dist/index.js");
 
 const SENTINELS = ["PRE_AGENT_FIXTURE", "POST_AGENT_FIXTURE", "REWRITE_AGENT_FIXTURE", "ROOM_TRACKER_FIXTURE"] as const;
@@ -378,6 +379,12 @@ try {
   const roomTracker = latest("ROOM_TRACKER_FIXTURE");
   assert(roomTracker.includes("The door creaks."), "the room's tracker ran on the room's history");
   assert(!roomTracker.includes("ROOM_SECRET"), "a room's agents never read a whisper");
+  // Runs started outside room generation, such as retries, treat any room data but an ended room as a room.
+  for (const multiplayer of [room, { role: "guest", status: "active" }, { ...room, status: undefined }, "{"])
+    assert.equal(roleplayAgentsSeeWhispers("roleplay", { multiplayer }), false, JSON.stringify(multiplayer));
+  for (const multiplayer of [undefined, null, { ...room, status: "ended" }])
+    assert.equal(roleplayAgentsSeeWhispers("roleplay", { multiplayer }), true, JSON.stringify(multiplayer));
+  assert.equal(roleplayAgentsSeeWhispers("conversation", {}), false);
   // The same chat as a private chat again: its agents read the whisper.
   await chats.patchMetadata(roomChat.id, { multiplayer: { ...room, status: "ended" } });
   outputs = ["Bob looks away."];

@@ -17976,6 +17976,11 @@
                                 "type": "boolean",
                                 "const": true
                               },
+                              "aroundProp": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 60
+                              },
                               "$comment": {}
                             },
                             "required": [
@@ -50140,6 +50145,27 @@
                 "exclusiveMinimum": 0,
                 "maximum": 10000
               },
+              "whileNearProp": {
+                "type": "object",
+                "properties": {
+                  "prop": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 60
+                  },
+                  "within": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 10000
+                  },
+                  "$comment": {}
+                },
+                "required": [
+                  "prop",
+                  "within"
+                ],
+                "additionalProperties": false
+              },
               "suppresses": {
                 "type": "array",
                 "items": {
@@ -51899,6 +51925,11 @@
                         "upTo"
                       ],
                       "additionalProperties": false
+                    },
+                    "feeds": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 10000
                     },
                     "lingers": {
                       "type": "boolean",

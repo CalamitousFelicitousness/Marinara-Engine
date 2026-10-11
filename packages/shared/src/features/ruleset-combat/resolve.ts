@@ -1121,6 +1121,7 @@ function dropToZero(ctx: RulesetCombatContext, target: RulesetCombatant, slain =
     }
     return;
   }
+  feedAuras(ctx, target);
   target.down = true;
   // Held Ground (1.318): felled, out of the fight but never dying, unless the blow reaps.
   const held = ctx.state.heldGround;
@@ -1149,6 +1150,27 @@ function dropToZero(ctx: RulesetCombatContext, target: RulesetCombatant, slain =
   if (dying?.condition)
     applyConditionId(ctx, target, dying.condition, { condition: dying.condition, duration: "instant" });
   ctx.events.push({ type: "down", actorId: target.id, dying: !!dying });
+}
+
+/** Whoever holds an aura that feeds (1.326) and reaches somebody now falling regains what it says:
+ *  The Owed's Collector. Read before the one falling is out of the fight, so the aura still reaches
+ *  them. */
+function feedAuras(ctx: RulesetCombatContext, target: RulesetCombatant): void {
+  const feeding = (ctx.combat.conditions ?? []).filter((entry) => entry.auras?.some((aura) => aura.feeds));
+  if (feeding.length === 0) return;
+  for (const holder of ctx.state.combatants) {
+    if (holder.id === target.id || !rulesetCombatStanding(holder)) continue;
+    const held = new Set(rulesetCombatConditions(ctx.definition, holder));
+    let gain = 0;
+    for (const entry of feeding) {
+      if (!held.has(entry.condition)) continue;
+      for (const aura of entry.auras ?? []) {
+        if (aura.feeds && rulesetAuraReaches(ctx.definition, ctx.state, holder, aura, target, entry.condition))
+          gain += aura.feeds;
+      }
+    }
+    if (gain > 0) dealHeal(ctx, holder, { sourceId: holder.id, rolls: [], flat: gain, amount: gain, magical: true });
+  }
 }
 
 /** Felled on Held Ground (1.318): out of the fight, stable and never dying, with its condition and a

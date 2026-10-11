@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: a condition held only near a prop (`whileNearProp`, the Wheel's Favour), a creature burst around props (`aroundProp`, Shelves Lean), and an aura that feeds its holder when somebody in it falls (`feeds`, Collector) (Capability API 1.326).
 - Rulesets: Held Ground can be let go in a running fight (`releaseRulesetHeldGround`): the felled die or go down, and marks of Owing come due as dying saves with a bonus (Capability API 1.325).
 - Rulesets: a board event can carry whoever stands on its cells toward an edge (`push`, the millrace) or blow what obscures them along (`drift`, the Leaffall's drifts) (Capability API 1.324).
 - Rulesets: a condition can move the difficulty of the saves its holder calls for (`"to": "save-difficulty"`, the Miller's Un-age, a spell save DC 2 lower) (Capability API 1.323).

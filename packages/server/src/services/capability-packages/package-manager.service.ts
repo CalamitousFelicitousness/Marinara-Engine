@@ -1574,6 +1574,18 @@ function carriesBossAsks(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesBossAsks(one, depth + 1));
 }
 
+/** Props and felling in a condition or a creature action (1.326): a condition held only near a
+ *  prop, an aura that feeds, an area around props. */
+function carriesPropsAndFeeding(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesPropsAndFeeding(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.whileNearProp !== undefined || record.aroundProp !== undefined || typeof record.feeds === "number")
+    return true;
+  return Object.values(record).some((one) => carriesPropsAndFeeding(one, depth + 1));
+}
+
 /** A condition that moves the difficulty of the saves its holder calls for (1.323). */
 function carriesSaveDifficulty(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -4424,6 +4436,14 @@ export function getCapabilityPackageInstallIssue(
     (carriesDraws(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesDraws(document)))
   ) {
     return "A ruleset with a creature action that draws whoever it lands on toward it requires schemaVersion 2 and capabilityApi 1.321 or newer";
+  }
+  // Near a prop, around props, an aura that feeds, 1.326.
+  if (
+    !declaresApi(326) &&
+    (carriesPropsAndFeeding(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesPropsAndFeeding(document)))
+  ) {
+    return "A ruleset with a condition held only near a prop, an area around props, or an aura that feeds on the felled requires schemaVersion 2 and capabilityApi 1.326 or newer";
   }
   // Save difficulty moved by a condition, 1.323.
   if (

@@ -67,6 +67,7 @@ import {
 import { parseRulesetCombatDice, rollRulesetDice, rulesetAverageDamage, rulesetCombatRoller, sumOf } from "./dice.js";
 import {
   rulesetCellBlocked,
+  rulesetCellDistance,
   rulesetFills,
   rulesetFootprint,
   rulesetFootprintAt,
@@ -395,6 +396,24 @@ function sourceWithin(
   return rulesetGap(combatant, source) <= rulesetInCells(distance, combat.distance.perCell);
 }
 
+/** Whether somebody stands within `within` of a standing prop labelled `prop` (1.326). A fight with
+ *  no board, or somebody off it, counts as near. */
+function nearProp(
+  combatant: RulesetCombatant,
+  state: RulesetEncounterState | undefined,
+  combat: RulesetCombat,
+  gate: { prop: string; within: number },
+): boolean {
+  if (!state?.board || !combat.distance || !rulesetPositionOf(combatant)) return true;
+  const label = gate.prop.trim().toLowerCase();
+  const reach = rulesetInCells(gate.within, combat.distance.perCell);
+  const cells = (state.board.props ?? [])
+    .filter((prop) => prop.health > 0)
+    .filter((prop) => prop.label.trim().toLowerCase() === label)
+    .flatMap((prop) => prop.cells);
+  return rulesetFootprint(combatant).some((mine) => cells.some((cell) => rulesetCellDistance(mine, cell) <= reach));
+}
+
 /**
  * The condition entries that are ON this combatant right now, with their gates read.
  *
@@ -437,6 +456,7 @@ export function rulesetActiveConditions(
   );
   const conditions = (combat.conditions ?? []).flatMap((entry): RulesetActiveCondition[] => {
     if (!active.has(entry.condition)) return [];
+    if (entry.whileNearProp && !nearProp(combatant, state, combat, entry.whileNearProp)) return [];
     const gate = entry.whileSourceInSight;
     if (!gate || sourceInSight(definition, combatant, entry.condition, state)) return [entry];
     // Or near enough, seen or not (1.270): Antipathy's 60 feet.
@@ -3306,6 +3326,7 @@ function blockActions(
             size: rulesetInCells(action.area.size, perCell),
             ...(action.area.width !== undefined ? { width: rulesetInCells(action.area.width, perCell) } : {}),
             ...(action.area.friendlyFire === false ? { friendlyFire: false } : {}),
+            ...(action.area.aroundProp ? { aroundProp: action.area.aroundProp } : {}),
           },
         }
       : {}),

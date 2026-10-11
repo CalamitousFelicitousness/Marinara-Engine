@@ -427,6 +427,7 @@ export interface RulesetStatBlockAction {
     friendlyFire?: boolean;
     around?: true;
     throughWalls?: true;
+    aroundProp?: string;
   };
   uses?: RulesetCombatUses;
   recharge?: RulesetCombatRecharge;
@@ -1092,6 +1093,8 @@ export interface RulesetCombatArea {
   /** Cells it grows by for each step of a higher cost it is paid with (1.262): Confusion. */
   sizePerCostStep?: number;
   friendlyFire?: boolean;
+  /** Around the standing props with this label instead of where it is aimed (1.326). */
+  aroundProp?: string;
 }
 
 /** One cell of a board, as a fight counts them. */

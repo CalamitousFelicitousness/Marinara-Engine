@@ -707,6 +707,22 @@ export function rulesetAimedCells(
   const from = rulesetPositionOf(actor);
   if (!grid || !actor || !action?.area || !from) return [];
   const area = action.area;
+  // Around the props with its label (1.326), wherever it was aimed: every cell within its size of
+  // one, behind them too.
+  if (area.aroundProp) {
+    const label = area.aroundProp.trim().toLowerCase();
+    const props = (state.board?.props ?? [])
+      .filter((prop) => prop.health > 0 && prop.label.trim().toLowerCase() === label)
+      .flatMap((prop) => prop.cells);
+    const reach = Math.max(1, Math.round(area.size));
+    const cells: RulesetCombatCell[] = [];
+    for (let y = 0; y < grid.height; y++) {
+      for (let x = 0; x < grid.width; x++) {
+        if (props.some((cell) => rulesetCellDistance(cell, { x, y }) <= reach)) cells.push({ x, y });
+      }
+    }
+    return cells;
+  }
   // Laid from whichever cell the actor fills nearest the aim (1.189).
   const one = (aim: RulesetCombatCell) => {
     const origin = rulesetNearestCell(actor, aim) ?? from;

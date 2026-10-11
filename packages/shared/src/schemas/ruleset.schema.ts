@@ -4342,8 +4342,16 @@ const creatureActionSchema = z
         /** Walls and corners do not stop it (Capability API 1.277): "including ones behind barriers and
          *  around corners". Only with `around`. */
         throughWalls: z.literal(true).optional(),
+        /** Everybody within `size` of a standing prop of the board with this label (Capability API
+         *  1.326), wherever it is aimed: Shelves Lean, around the Granary's shelf rows. Only a burst,
+         *  never `around`. */
+        aroundProp: z.string().trim().min(1).max(60).optional(),
       })
       .strict()
+      .refine((area) => !area.aroundProp || (area.shape === "burst" && !area.around), {
+        message: '"aroundProp" is a burst around the props, never centred on its user',
+        path: ["aroundProp"],
+      })
       .refine((area) => area.width === undefined || area.shape === "line", {
         message: "Only a line area may carry width",
         path: ["width"],
@@ -7358,6 +7366,7 @@ export interface RulesetConditionAura {
   harms?: { dice?: string; flat?: number; type?: string; on?: "holder-turn" | "their-turn" };
   grows?: { by: number; upTo: number };
   lingers?: true;
+  feeds?: number;
   save?: {
     save: string;
     difficulty: number;
@@ -7404,6 +7413,9 @@ const conditionAuraSchema: z.ZodType<RulesetConditionAura, z.ZodTypeDef, unknown
       .object({ by: z.number().finite().gt(0).max(10000), upTo: z.number().finite().gt(0).max(10000) })
       .strict()
       .optional(),
+    /** Its holder regains this many hit points whenever somebody it reaches is felled, goes down or
+     *  is slain (Capability API 1.326): The Owed's Collector, 15. */
+    feeds: z.number().int().min(1).max(10000).optional(),
     /** What it spreads stays on whoever it no longer reaches until their next turn starts
      *  (Capability API 1.315): Frost Debt's no healing. */
     lingers: z.literal(true).optional(),
@@ -7464,8 +7476,8 @@ const conditionAuraSchema: z.ZodType<RulesetConditionAura, z.ZodTypeDef, unknown
       .optional(),
   })
   .strict()
-  .refine((aura) => !!aura.conditions || !!aura.harms || !!aura.save, {
-    message: "An aura spreads conditions, harms, or asks for a save",
+  .refine((aura) => !!aura.conditions || !!aura.harms || !!aura.save || !!aura.feeds, {
+    message: "An aura spreads conditions, harms, asks for a save, or feeds",
   })
   .refine((aura) => !aura.grows || aura.grows.upTo > aura.distance, {
     message: "An aura grows to more than its distance",
@@ -7603,6 +7615,13 @@ const combatConditionSchema = z
      *  distance, seen or not (Capability API 1.270). Out of both it is held off, not ended, and it
      *  holds again the moment either is true: Antipathy's fright, within 60 feet or in sight. */
     orSourceWithin: z.number().finite().gt(0).max(10000).optional(),
+    /** Only while its holder stands within `within` (the ruleset's own distance) of a standing prop
+     *  of the board whose label is `prop` (Capability API 1.326); held off, not ended, anywhere else.
+     *  A fight with no board holds it. The Wheel's Favour, within 10 feet of the Year-Wheel. */
+    whileNearProp: z
+      .object({ prop: z.string().trim().min(1).max(60), within: z.number().finite().gt(0).max(10000) })
+      .strict()
+      .optional(),
     /** While this holds, these conditions on its holder are held off, not ended (Capability API
      *  1.270): what they do stops and their clocks run on, and they hold again once this ends.
      *  Calm Emotions' charm and fright, Mindless Rage's. */

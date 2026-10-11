@@ -1110,11 +1110,12 @@ older hosts cannot interpret this setup declaration.
 ### Capability API 1.68: embed search queries as queries
 
 `embeddings.embed(texts, signal?, inputType?)` takes a third argument: pass `"query"` for search
-text, such as a recall query. Texts default to `"document"`. Some embedding models, such as e5 and
-nomic-embed-text, expect one prefix on queries and another on documents, and the Engine adds the
-right one. Recall is weaker when a query gets the document prefix. Other models, including the
-built-in MiniLM embedder, get no prefix either way. The input type does not change `spaceId`, so
-stored vectors stay comparable and nothing needs re-embedding.
+text, such as a recall query. Texts default to `"document"`. Some embedding models expect a prefix
+on queries, and some also on documents: e5 and nomic-embed-text use one of each, and Snowflake
+Arctic Embed v2 prefixes only queries. The Engine adds the right one. Recall is weaker when a query
+is embedded as a document. Other models, including the built-in MiniLM embedder, get no prefix
+either way. The input type does not change `spaceId`, so stored vectors stay comparable and nothing
+needs re-embedding.
 
 ```ts
 const embeddings = await api.runtime.resolveEmbeddings();

@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: Resilient Sphere shuts a creature away from everybody else; nothing gets in or out, the creature inside can roll it at half speed, others can pick it up and carry it, and Disintegrate breaks it. Spells can also be limited to creatures up to a size, such as Large or smaller (Capability API 1.309).
 - Rulesets: Maze keeps its prisoner taking turns to find the way out with an Intelligence check, Expeditious Retreat Dashes as it is cast, Eyebite can pick a different effect on each later turn, and a Hammer of Thunderbolts can only be attuned while a giant strength belt and ogre power gauntlets are worn, then gives +4 Strength up to 30 (Capability API 1.308).
 - Rulesets: a Hammer of Thunderbolts hurled for a charge stuns everyone within 30 feet of the creature it hits who fails the save (Capability API 1.307).
 - Rulesets: a scroll of Sunbeam leaves its mote in the reader's hand, a will-o'-wisp's Consume Life kills a dying creature that fails its save and heals the wisp, and a ranger's camouflage wears off once they move or act (Capability API 1.306).

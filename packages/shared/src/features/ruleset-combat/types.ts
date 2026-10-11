@@ -709,6 +709,9 @@ export interface RulesetCombatAction {
   rescue?: RulesetCombatRescue;
   /** Never pointed at its own user (1.251): Bardic Inspiration's "one creature other than you". */
   notSelf?: true;
+  /** Pointed only at a creature no bigger than this size (1.309): Resilient Sphere's "Large or
+   *  smaller". */
+  targetsUpTo?: string;
   /** Puts a weapon in its user's hand, the one its mode names (1.301): Pact of the Blade. What each
    *  mode makes is the combatant's `conjurable`. */
   conjures?: true;
@@ -1270,6 +1273,9 @@ export interface RulesetCombatant {
   /** Their own size while a condition makes them bigger or smaller (1.190); `size` is the one they
    *  are now. Absent while nothing changes it. */
   baseSize?: string;
+  /** Who has picked them up while a `sealed` condition holds them (1.309): they go where that one
+   *  goes. */
+  carriedBy?: string;
   /** How far they sense with each of `combat.senses`, in CELLS, read once as the fight began
    *  (1.173). A creature's comes off its block. Absent when none. */
   senses?: Record<string, number>;
@@ -2270,6 +2276,9 @@ export type RulesetCombatEvent =
       success: boolean;
       automatic?: true;
     }
+  /** A sphere rolled by the one inside, or picked up or put down by somebody else (1.309). `cells` is
+   *  how far rolling it lets them go. */
+  | { type: "sphere"; actorId: string; how: "rolled" | "lifted" | "put-down"; targetId?: string; cells?: number }
   /** Caught unaware as the fight began (1.232). */
   | { type: "surprised"; actorIds: string[] }
   /** No longer surprised (1.232): their first turn is over, or `label` shook it off. */
@@ -2431,6 +2440,10 @@ export interface RulesetCombatAlterOffer {
 export interface RulesetCombatOption {
   /** The holder must pass this save to cancel (1.126). */
   cancelSave?: { save: string; dc: number; label: string };
+  /** Rolling the sphere its actor is shut in (1.309): `condition` is the sphere's. */
+  rollsSealed?: { condition: string; label: string };
+  /** Picking up somebody shut in a sphere (1.309), or putting them down (`down`). */
+  lifts?: { holderId: string; name: string; down?: true };
   /** The holder and condition named by an ally's shake-off option (1.120). */
   shakeOff?: { holderId: string; condition: string; name: string; label: string };
   /** The condition its holder spends this on a save against (1.259). */

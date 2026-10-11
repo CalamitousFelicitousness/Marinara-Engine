@@ -3531,6 +3531,9 @@ const catalogMechanicsObject = z
     /** Never pointed at its own user (Capability API 1.251): Bardic Inspiration's "one creature
      *  other than you". Only on an entry that may be pointed at its user's side. */
     notSelf: z.literal(true).optional(),
+    /** Pointed only at a creature no bigger than this one of `combat.sizes` (Capability API 1.309):
+     *  Resilient Sphere's "a creature of Large size or smaller". Not on an area or its user. */
+    targetsUpTo: sheetId.optional(),
     /** Used on a creature, not used on that one again until its user takes this rest (Capability API
      *  1.299), however many fights come between: Chains of Carceri's "You must finish a long rest
      *  before you can use this invocation on the same creature again". Not on an area or on its user. */
@@ -3828,6 +3831,13 @@ const catalogMechanicsSchema: z.ZodType<
       code: z.ZodIssueCode.custom,
       path: ["oncePerTarget"],
       message: '"oncePerTarget" is on an entry pointed at a creature, not an area or its user',
+    });
+  }
+  if (mechanics.targetsUpTo && (mechanics.targets === "self" || mechanics.area)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["targetsUpTo"],
+      message: '"targetsUpTo" is on an entry pointed at a creature, not an area or its user',
     });
   }
   if (mechanics.notSelf && mechanics.targets !== "ally" && mechanics.targets !== "any") {
@@ -7430,6 +7440,25 @@ const combatConditionSchema = z
     /** Its holder takes no damage from these entries while it holds (Capability API 1.112), whatever
      *  kind of harm they deal: 5e's Shield, under which Magic Missile does nothing. */
     noDamageFrom: z.array(catalogEntryRef).min(1).max(12).optional(),
+    /** Its holder is shut away from everybody else while it holds (Capability API 1.309): 5e's
+     *  Resilient Sphere. Nobody else aims anything at its holder or catches them in an area, nothing
+     *  from anybody else harms, heals or puts a condition on them, and nothing of theirs reaches
+     *  anybody else. Their own movement is none, but for `rolls`: spending that budget moves them up
+     *  to `share` of their speed. With `lifted`, somebody standing next to them may spend that budget
+     *  to pick them up, and then they go wherever their bearer goes until put down. `brokenBy` are
+     *  the entries that may still be aimed at them, and end it instead of doing what they do:
+     *  Disintegrate. */
+    sealed: z
+      .object({
+        rolls: z
+          .object({ budget: sheetId, share: z.number().finite().gt(0).max(1) })
+          .strict()
+          .optional(),
+        lifted: z.object({ budget: sheetId }).strict().optional(),
+        brokenBy: z.array(catalogEntryRef).min(1).max(8).optional(),
+      })
+      .strict()
+      .optional(),
     /** Catalog entries its holder may use while it holds (Capability API 1.231), paying nothing for
      *  them but the budget each spends, with their own numbers as their spells': 5e's Dispel Evil and
      *  Good, whose caster may Break Enchantment or Dismiss. */
@@ -10581,6 +10610,15 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
           issue([...path, "noDamageFrom", refIndex], `Unknown catalog "${catalogId}"`);
         }
       });
+      // What moves or lifts it is a budget of the fight's, and what breaks it the ruleset's own (1.309).
+      if (entry.sealed?.rolls) checkBudget(entry.sealed.rolls.budget, [...path, "sealed", "rolls", "budget"]);
+      if (entry.sealed?.lifted) checkBudget(entry.sealed.lifted.budget, [...path, "sealed", "lifted", "budget"]);
+      entry.sealed?.brokenBy?.forEach((ref, refIndex) => {
+        const catalogId = ref.slice(0, ref.indexOf("/"));
+        if (!def.catalogs?.some((catalog) => catalog.id === catalogId)) {
+          issue([...path, "sealed", "brokenBy", refIndex], `Unknown catalog "${catalogId}"`);
+        }
+      });
       entry.actions?.forEach((ref, refIndex) => {
         const catalogId = ref.slice(0, ref.indexOf("/"));
         if (!def.catalogs?.some((catalog) => catalog.id === catalogId)) {
@@ -13405,6 +13443,15 @@ export function rulesetCatalogEntryIssues(
       !definition.combat.economy.budgets.some((one) => one.id === mechanics.repeats!.budget)
     ) {
       add([index, "mechanics", "repeats", "budget"], `Unknown budget "${mechanics.repeats.budget}"`);
+    }
+    // The biggest it reaches is one of the fight's sizes (1.309).
+    if (mechanics?.targetsUpTo && !definition.combat?.sizes?.order.some((one) => one.id === mechanics.targetsUpTo)) {
+      add(
+        [index, "mechanics", "targetsUpTo"],
+        definition.combat?.sizes
+          ? `Unknown size "${mechanics.targetsUpTo}"`
+          : '"targetsUpTo" reads combat.sizes, so the block declares "sizes" too',
+      );
     }
     if (mechanics?.oncePerTarget && !definition.rests.some((one) => one.id === mechanics.oncePerTarget!.until)) {
       add([index, "mechanics", "oncePerTarget", "until"], `Unknown rest "${mechanics.oncePerTarget.until}"`);

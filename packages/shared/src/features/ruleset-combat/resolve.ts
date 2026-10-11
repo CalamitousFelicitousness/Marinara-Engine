@@ -56,6 +56,9 @@ import {
   rulesetTargetTypesAllow,
   rulesetCombatConditions,
   rulesetCombatEffects,
+  rulesetMovementAllowance,
+  rulesetSealed,
+  rulesetSealedApart,
   rulesetCombatFailsSave,
   rulesetCombatDamageKind,
   rulesetCombatHealth,
@@ -608,7 +611,12 @@ function applyDamage(
   const hide = type ? rulesetCombatHide(ctx.definition, target, ctx.state) : undefined;
   // A condition that keeps this very entry off (1.112) does, whatever kind of harm it is.
   const entry = input.entry;
-  if (
+  const from = input.sourceId ? rulesetCombatant(ctx.state, input.sourceId) : undefined;
+  // Nothing passes a sphere (1.309), in or out.
+  if (from && rulesetSealedApart(ctx.definition, ctx.state, from, target)) {
+    dealt = 0;
+    adjust = "immune";
+  } else if (
     entry &&
     rulesetActiveConditions(ctx.definition, ctx.combat, target, ctx.state).some((one) =>
       one.noDamageFrom?.includes(entry),
@@ -1714,7 +1722,11 @@ function applyConditionId(
   } = {},
 ): void {
   const putter = extra.sourceId ? rulesetCombatant(ctx.state, extra.sourceId) : undefined;
-  if (rulesetImmuneToCondition(target, condition, ctx.definition, ctx.state, putter)) {
+  if (
+    rulesetImmuneToCondition(target, condition, ctx.definition, ctx.state, putter) ||
+    // Nothing reaches through a sphere (1.309): a zone's, or a harm's.
+    (!!putter && rulesetSealedApart(ctx.definition, ctx.state, putter, target))
+  ) {
     ctx.events.push({ type: "condition", targetId: target.id, condition, active: false, reason: "immune" });
     return;
   }
@@ -1900,6 +1912,8 @@ function removeCondition(
   // told twice.
   if (!removed && !rulesetCombatConditions(ctx.definition, target).includes(condition)) return;
   target.tracked = target.tracked.filter((entry) => entry.condition !== condition);
+  // Out of the sphere, nobody is carrying them (1.309).
+  if (target.carriedBy && !rulesetSealed(ctx.definition, target, ctx.state)) delete target.carriedBy;
   // What an aura put on, ended, keeps that aura off them where it says so (1.264).
   if (removed?.auraSafeOnEnd && !target.auraSafe?.includes(removed.auraSafeOnEnd)) {
     target.auraSafe = [...(target.auraSafe ?? []), removed.auraSafeOnEnd];
@@ -3144,6 +3158,14 @@ function endConcentration(
   ctx.events.push({ type: "concentration", actorId: actor.id, label: held.label, state: "ended", reason });
 }
 
+/** The concentration that held this condition, ended with it: the spell is over (1.308, 1.309). */
+function endHoldingConcentration(ctx: RulesetCombatContext, entry: RulesetTrackedCondition): void {
+  const source = entry.source ? rulesetCombatant(ctx.state, entry.source) : undefined;
+  if (entry.concentration && source?.concentrating && entry.action?.includes(source.concentrating.actionId)) {
+    endConcentration(ctx, source, "spent");
+  }
+}
+
 function startConcentration(ctx: RulesetCombatContext, actor: RulesetCombatant, action: RulesetCombatAction): void {
   if (actor.concentrating) endConcentration(ctx, actor, "replaced");
   actor.concentrating = { actionId: action.id, label: action.label };
@@ -3743,14 +3765,17 @@ function applyChoice(
   // A burst centred on its user (1.277) catches whom it reaches, and is pointed at nobody.
   const around = actor.actions.find((entry) => entry.id === option.id && entry.around);
   const targets = around
-    ? rulesetAroundTargets(state, actor, around)
+    ? rulesetAroundTargets(state, actor, around).filter((one) => !rulesetSealedApart(definition, state, actor, one))
     : area
       ? rulesetAreaTargets(state, actor.id, option.id, choice.at!, {
           toward: choice.toward,
           ring: choice.ring,
           also,
           ...(grow ? { grow } : {}),
-        }).map((id) => rulesetCombatant(state, id)!)
+        })
+          .map((id) => rulesetCombatant(state, id)!)
+          // A sphere keeps an area out, and in (1.309).
+          .filter((one) => !rulesetSealedApart(definition, state, actor, one))
       : pickTargets(
           definition,
           state,
@@ -3794,6 +3819,18 @@ function applyChoice(
   const budget = option.budget;
   if (budget) spendBudget(ctx, working, budget);
 
+  // What breaks a sphere, aimed at the one inside (1.309), breaks it and does nothing else to them:
+  // Disintegrate on a Resilient Sphere.
+  const breaking = working.actions.find((entry) => entry.id === option.id)?.entry;
+  for (const target of [...workingTargets]) {
+    const sealed = breaking ? rulesetSealed(definition, target, ctx.state) : undefined;
+    if (!sealed?.brokenBy?.includes(breaking!)) continue;
+    const held = target.tracked.find((entry) => entry.condition === sealed.condition);
+    removeCondition(ctx, target, sealed.condition, "dispelled");
+    if (held) endHoldingConcentration(ctx, held);
+    workingTargets.splice(workingTargets.indexOf(target), 1);
+  }
+
   // A save spent an action on (1.259): Irresistible Dance.
   if (option.resave) {
     const entry = working.tracked.find((one) => one.condition === option.resave!.condition);
@@ -3834,12 +3871,37 @@ function applyChoice(
       if (success) {
         removeCondition(ctx, working, entry.condition, "save");
         // The spell ends with it: its concentration too, where that is what held it.
-        const source = entry.source ? rulesetCombatant(ctx.state, entry.source) : undefined;
-        if (entry.concentration && source?.concentrating && entry.action?.includes(source.concentrating.actionId)) {
-          endConcentration(ctx, source, "spent");
-        }
+        endHoldingConcentration(ctx, entry);
       }
     }
+    noteOutcome(ctx);
+    return finish();
+  }
+
+  // Rolling the sphere one is shut in (1.309): its share of their speed, to walk.
+  if (option.rollsSealed) {
+    const sealed = rulesetSealed(definition, working, ctx.state);
+    if (sealed?.rolls) {
+      const allowance = rulesetMovementAllowance(definition, combat, working, ctx.state, undefined, true);
+      const cells = Math.floor(allowance * sealed.rolls.share);
+      working.movementLeft = (working.movementLeft ?? 0) + cells;
+      delete working.carriedBy;
+      ctx.events.push({ type: "sphere", actorId: working.id, how: "rolled", cells });
+    }
+    noteOutcome(ctx);
+    return finish();
+  }
+  // Picking a sphere up, or putting it down (1.309).
+  if (option.lifts) {
+    const held = rulesetCombatant(ctx.state, option.lifts.holderId)!;
+    if (option.lifts.down) delete held.carriedBy;
+    else held.carriedBy = working.id;
+    ctx.events.push({
+      type: "sphere",
+      actorId: working.id,
+      how: option.lifts.down ? "put-down" : "lifted",
+      targetId: held.id,
+    });
     noteOutcome(ctx);
     return finish();
   }
@@ -5292,7 +5354,7 @@ function applySignature(
   const targets = only
     ? []
     : action.around
-      ? rulesetAroundTargets(state, actor, action)
+      ? rulesetAroundTargets(state, actor, action).filter((one) => !rulesetSealedApart(definition, state, actor, one))
       : pickTargets(definition, state, actor, action, choice.targetIds);
   if (!Array.isArray(targets)) return refusal(state, choice.actorId, targets, action.id);
 
@@ -5881,6 +5943,12 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
     if (!legendary) {
       if (!actor.trail?.length) actor.trail = [{ ...at }];
       actor.trail.push({ ...cell });
+    }
+    // Whoever they carry shut in a sphere (1.309) comes along, into the cell they left.
+    for (const carried of ctx.state.combatants) {
+      if (carried.carriedBy !== actor.id || !rulesetSealed(ctx.definition, carried, ctx.state)) continue;
+      carried.x = at.x;
+      carried.y = at.y;
     }
     at = cell;
     actor.x = cell.x;

@@ -145,6 +145,8 @@ export {
   rulesetImmuneToCondition,
   rulesetInitiativeOrder,
   rulesetMovementAllowance,
+  rulesetSealed,
+  rulesetSealedApart,
   grantRulesetMovement,
   rulesetFastestSpeed,
   rulesetModeAllowances,

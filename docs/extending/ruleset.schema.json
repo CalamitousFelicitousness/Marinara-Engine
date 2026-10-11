@@ -14897,6 +14897,11 @@
                       "type": "boolean",
                       "const": true
                     },
+                    "targetsUpTo": {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
                     "oncePerTarget": {
                       "type": "object",
                       "properties": {
@@ -31883,6 +31888,11 @@
                           "type": "boolean",
                           "const": true
                         },
+                        "targetsUpTo": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
                         "oncePerTarget": {
                           "type": "object",
                           "properties": {
@@ -38942,6 +38952,11 @@
                               "notSelf": {
                                 "type": "boolean",
                                 "const": true
+                              },
+                              "targetsUpTo": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
                               },
                               "oncePerTarget": {
                                 "type": "object",
@@ -47866,6 +47881,59 @@
                 },
                 "minItems": 1,
                 "maxItems": 12
+              },
+              "sealed": {
+                "type": "object",
+                "properties": {
+                  "rolls": {
+                    "type": "object",
+                    "properties": {
+                      "budget": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "share": {
+                        "type": "number",
+                        "exclusiveMinimum": 0,
+                        "maximum": 1
+                      },
+                      "$comment": {}
+                    },
+                    "required": [
+                      "budget",
+                      "share"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "lifted": {
+                    "type": "object",
+                    "properties": {
+                      "budget": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "$comment": {}
+                    },
+                    "required": [
+                      "budget"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "brokenBy": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 121,
+                      "pattern": "^[a-z][a-z0-9_]*\\/[a-z0-9]+(?:-[a-z0-9]+)*$"
+                    },
+                    "minItems": 1,
+                    "maxItems": 8
+                  },
+                  "$comment": {}
+                },
+                "additionalProperties": false
               },
               "actions": {
                 "type": "array",

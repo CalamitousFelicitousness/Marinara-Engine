@@ -358,7 +358,15 @@ export function rulesetActiveConditions(
   const active = new Set(rulesetCombatConditions(definition, combatant));
   // Standing in a zone that says so (1.174): its conditions are on whoever is there, and what it
   // keeps off or stops reads as one more source, named for the zone.
-  const inside = state ? zonesStoodIn(state, combatant) : [];
+  // Nor through a sphere (1.309), into it or out of it: read off what holds each of them, as a zone's
+  // own conditions could never seal anybody.
+  const inside = state
+    ? zonesStoodIn(state, combatant).filter(
+        ({ caster }) =>
+          caster.id === combatant.id ||
+          (!sealedByOwn(definition, combat, combatant) && !sealedByOwn(definition, combat, caster)),
+      )
+    : [];
   for (const { rule } of inside) for (const condition of rule.inside?.conditions ?? []) active.add(condition);
   const zoned = inside.flatMap(({ label, rule }): RulesetActiveCondition[] =>
     rule.inside?.immune || rule.forbids
@@ -419,6 +427,13 @@ export function rulesetActiveConditions(
 }
 
 /** The standing zones whose cells this combatant is in now, or that hold them off a board (1.174). */
+/** Whether a condition of this combatant's own seals them (1.309), zones aside. */
+function sealedByOwn(definition: RulesetDefinition, combat: RulesetCombat, combatant: RulesetCombatant): boolean {
+  if (!combat.conditions?.some((entry) => entry.sealed)) return false;
+  const own = new Set(rulesetCombatConditions(definition, combatant));
+  return combat.conditions.some((entry) => entry.sealed && own.has(entry.condition));
+}
+
 function zonesStoodIn(
   state: RulesetEncounterState,
   combatant: RulesetCombatant,
@@ -768,6 +783,31 @@ export function rulesetCombatEffects(
   // Caught unaware (1.232): no reaction until their first turn ends.
   if (combatant.surprised) effects.add("cannot-react");
   return effects;
+}
+
+/** What shuts this combatant away from everybody else (1.309): the `sealed` of a condition that holds
+ *  on them, with that condition's name. */
+export function rulesetSealed(
+  definition: RulesetDefinition,
+  combatant: RulesetCombatant,
+  state?: RulesetEncounterState,
+): (NonNullable<RulesetCombatCondition["sealed"]> & { condition: string }) | undefined {
+  const combat = definition.combat;
+  if (!combat?.conditions?.some((entry) => entry.sealed)) return undefined;
+  const entry = rulesetActiveConditions(definition, combat, combatant, state).find((one) => one.sealed);
+  return entry?.sealed ? { ...entry.sealed, condition: entry.condition } : undefined;
+}
+
+/** Whether a sphere stands between these two (1.309): either is sealed, and they are not the same.
+ *  Nothing of one reaches the other. */
+export function rulesetSealedApart(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  one: RulesetCombatant,
+  other: RulesetCombatant,
+): boolean {
+  if (one.id === other.id) return false;
+  return !!rulesetSealed(definition, one, state) || !!rulesetSealed(definition, other, state);
 }
 
 /** Whether a condition makes this save fail without rolling. */
@@ -2338,6 +2378,7 @@ function mechanicsAction(
   }
   // Never on its own user (1.251).
   if (mechanics.notSelf) action.notSelf = true;
+  if (mechanics.targetsUpTo) action.targetsUpTo = mechanics.targetsUpTo;
   if (mechanics.oncePerTarget) action.oncePerTarget = { until: mechanics.oncePerTarget.until };
   // Leaving `toHit` unset here would send it down the no-roll path and land it automatically.
   if (mechanics.attackRoll) action.toHit = from.toHit;
@@ -3685,10 +3726,14 @@ export function rulesetMovementAllowance(
   state?: RulesetEncounterState,
   /** One way of moving's own speed (1.108). Their fastest when left out. */
   base: number = rulesetFastestSpeed(combatant),
+  /** As though nothing sealed them (1.309): how far rolling a sphere is measured from. */
+  unsealed = false,
 ): number {
   const perCell = combat.distance?.perCell;
   if (perCell === undefined || !(perCell > 0)) return 0;
   if (rulesetCombatEffects(definition, combat, combatant, state).has("speed-zero")) return 0;
+  // Shut in a sphere (1.309): it goes only where it is rolled or carried.
+  if (!unsealed && rulesetSealed(definition, combatant, state)) return 0;
   // What a condition does to speed: every flat change first, then halving or doubling, so "10 feet
   // slower, and half speed" is half of what is left.
   const changes = rulesetConditionModifiers(definition, combat, combatant, "speed", state);
@@ -4525,6 +4570,8 @@ export function rulesetAuraReaches(
   condition?: string,
 ): boolean {
   if (target.defeated) return false;
+  // Nor through a sphere (1.309), either way.
+  if (rulesetSealedApart(definition, state, holder, target)) return false;
   const same = holder.side === target.side;
   if (holder.id === target.id ? !aura.self : aura.side === (same ? "enemies" : "allies")) return false;
   const perCell = definition.combat?.distance?.perCell;

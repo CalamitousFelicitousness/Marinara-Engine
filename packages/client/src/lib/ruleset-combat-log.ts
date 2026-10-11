@@ -603,6 +603,13 @@ export function rulesetCombatEventLine(
         total: event.total ?? 0,
         difficulty: event.difficulty,
       });
+    case "sphere":
+      return event.how === "rolled"
+        ? key("sphereRolled", { actor: names.combatant(event.actorId), cells: event.cells ?? 0 })
+        : key(event.how === "lifted" ? "sphereLifted" : "spherePutDown", {
+            actor: names.combatant(event.actorId),
+            target: names.combatant(event.targetId ?? ""),
+          });
     case "charged":
       return key("charged", {
         actor: names.combatant(event.actorId),

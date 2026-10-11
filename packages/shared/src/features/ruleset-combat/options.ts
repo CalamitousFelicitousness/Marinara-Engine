@@ -63,6 +63,8 @@ import {
   rulesetCheckMode,
   rulesetConditionModifiers,
   rulesetDamageInEffect,
+  rulesetSealed,
+  rulesetSealedApart,
   rulesetSizeRank,
   type RulesetConditionModifier,
   rulesetConditionEconomy,
@@ -1588,6 +1590,17 @@ export function rulesetOptionTargets(
         // payment decides when it is used.
         if (cure && !cure.use?.group && rulesetWarded(definition, state, actor, cure, combatant)) return false;
         if (!rulesetTargetTypesAllow(definition, combatant, targetTypes)) return false;
+        // No bigger than it holds (1.309).
+        if (cure?.targetsUpTo && combat?.sizes) {
+          const most = combat.sizes.order.findIndex((size) => size.id === cure.targetsUpTo);
+          const size = rulesetSizeRank(combat, combatant);
+          if (size !== undefined && size > most) return false;
+        }
+        // A sphere between them (1.309), but for what breaks it, aimed at the one inside.
+        if (rulesetSealedApart(definition, state, actor, combatant)) {
+          const sealed = rulesetSealed(definition, combatant, state);
+          if (!(sealed && cure?.entry && sealed.brokenBy?.includes(cure.entry))) return false;
+        }
         if (option.id.startsWith("summon:") && !rulesetCombatStanding(combatant)) return false;
         // Breaking free is aimed at whoever holds on, on either side: a web an ally spun catches
         // friends too, and the hold is what is broken, not the one who made it.
@@ -3027,6 +3040,50 @@ export function rulesetUncompelledOptions(
         budget: shake.budget,
         targets: { side: "self", count: 0 },
         shakeOff: { holderId: holder.id, condition, name: holder.name, label },
+      });
+    }
+  }
+  // A sphere (1.309): rolled by the one shut in it, picked up or put down by somebody next to it.
+  if (positioned(state)) {
+    const own = rulesetSealed(definition, actor, state);
+    if (own?.rolls && (actor.budgets[own.rolls.budget] ?? 0) >= 1) {
+      const label =
+        definition.sheet.live.conditions.find((entry) => entry.id === own.condition)?.label ?? own.condition;
+      options.push({
+        id: "sphere:roll",
+        kind: "standard",
+        label: `Roll ${label}`,
+        budget: own.rolls.budget,
+        targets: { side: "self", count: 0 },
+        rollsSealed: { condition: own.condition, label },
+      });
+    }
+    for (const held of state.combatants) {
+      if (held.id === actor.id || held.defeated) continue;
+      const sealed = rulesetSealed(definition, held, state);
+      if (!sealed?.lifted) continue;
+      if (held.carriedBy === actor.id) {
+        options.push({
+          id: `sphere:down@${held.id}`,
+          kind: "standard",
+          label: `Put down ${held.name}`,
+          targets: { side: "self", count: 0 },
+          lifts: { holderId: held.id, name: held.name, down: true },
+        });
+        continue;
+      }
+      // Already carried by somebody still standing.
+      const bearer = held.carriedBy ? rulesetCombatant(state, held.carriedBy) : undefined;
+      if (bearer && rulesetCombatStanding(bearer)) continue;
+      if ((actor.budgets[sealed.lifted.budget] ?? 0) < 1) continue;
+      if (rulesetCombatantDistance(state, actor, held) > 1) continue;
+      options.push({
+        id: `sphere:lift@${held.id}`,
+        kind: "standard",
+        label: `Pick up ${held.name}`,
+        budget: sealed.lifted.budget,
+        targets: { side: "self", count: 0 },
+        lifts: { holderId: held.id, name: held.name },
       });
     }
   }

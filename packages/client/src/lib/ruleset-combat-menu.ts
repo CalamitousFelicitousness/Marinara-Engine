@@ -116,6 +116,12 @@ export function rulesetOptionLabel(option: DirectedRulesetOption, t: TFunction):
       name: option.shakeOff.name,
       condition: option.shakeOff.label,
     });
+  // A sphere rolled, picked up or put down (1.309).
+  if (option.rollsSealed) return t("game.combat.ruleset.menu.rollSphere", { condition: option.rollsSealed.label });
+  if (option.lifts)
+    return t(option.lifts.down ? "game.combat.ruleset.menu.putDownSphere" : "game.combat.ruleset.menu.liftSphere", {
+      name: option.lifts.name,
+    });
   if (option.kind === "end-turn") return t("game.combat.ruleset.menu.endTurn", { defaultValue: option.label });
   // Walking and getting back up are the board's own two moves, named by this Engine for the same
   // reason the standard actions are: the closed list is the Engine's vocabulary, not the file's.

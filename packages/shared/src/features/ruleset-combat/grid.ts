@@ -12,7 +12,13 @@ import { TERRAIN_DATA, type TacticalGrid } from "../tactical-combat/types.js";
 import { blocksSight, climbCost, elevationAt, hasLineOfSight } from "../tactical-combat/math.js";
 import type { RulesetCombat, RulesetDefinition } from "../../schemas/ruleset.schema.js";
 import { rulesetActionDropped, rulesetShotsAvailable } from "./ammo.js";
-import { rulesetActiveConditions, rulesetCombatant, rulesetCombatEffects, rulesetCombatStanding } from "./encounter.js";
+import {
+  rulesetActiveConditions,
+  rulesetCombatant,
+  rulesetCombatEffects,
+  rulesetCombatStanding,
+  rulesetSealedApart,
+} from "./encounter.js";
 import type {
   RulesetBlowKind,
   RulesetMoveMode,
@@ -701,6 +707,8 @@ export function rulesetThreateningEnemies(
   for (const combatant of state.combatants) {
     if (combatant.side === mover.side || !rulesetCombatStanding(combatant)) continue;
     if ((combatant.budgets[opportunity.budget] ?? 0) < 1) continue;
+    // Nobody strikes through a sphere (1.309).
+    if (rulesetSealedApart(definition, state, combatant, mover)) continue;
     const effects = rulesetCombatEffects(definition, combat, combatant, state);
     if (effects.has("cannot-act") || effects.has("cannot-react")) continue;
     const at = rulesetPositionOf(combatant);

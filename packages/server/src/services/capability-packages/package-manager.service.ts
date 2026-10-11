@@ -1559,6 +1559,16 @@ function carriesHidingTraits(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesHidingTraits(one, depth + 1));
 }
 
+/** A sphere that shuts its holder away, and an entry aimed only at creatures up to a size (1.309). */
+function carriesSphere(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesSphere(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.sealed !== undefined || record.targetsUpTo !== undefined) return true;
+  return Object.values(record).some((one) => carriesSphere(one, depth + 1));
+}
+
 /** Maze, Expeditious Retreat's Dash, a casting's choices made again, an ability add on top of sets,
  *  and a binding that needs other items worn (1.308). */
 function carriesLeftovers308(value: unknown, depth = 0): boolean {
@@ -4235,6 +4245,13 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Resilient Sphere, 1.309.
+  if (
+    !declaresApi(309) &&
+    (carriesSphere(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesSphere(document)))
+  ) {
+    return "A ruleset with a condition that shuts its holder away from everybody else, or an entry aimed only at creatures up to a size, requires schemaVersion 2 and capabilityApi 1.309 or newer";
   }
   // Maze, Expeditious Retreat, Eyebite's choices again, and the hammer's +4, 1.308.
   if (

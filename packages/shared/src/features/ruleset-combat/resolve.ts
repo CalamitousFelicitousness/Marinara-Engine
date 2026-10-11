@@ -123,6 +123,7 @@ import {
   rulesetNearestCell,
   rulesetReachableCells,
   rulesetSpanOf,
+  rulesetWalkingDistances,
 } from "./grid.js";
 import {
   rulesetAttackModifierReaches,
@@ -216,6 +217,7 @@ import type {
   RulesetCombatAroundHit,
   RulesetCombatApplies,
   RulesetCombatCell,
+  RulesetReachableCell,
   RulesetCombatChoice,
   RulesetCombatEvent,
   RulesetCombatOption,
@@ -4831,6 +4833,53 @@ function pushTarget(ctx: RulesetCombatContext, actor: RulesetCombatant, target: 
   if (levels >= 2) fall(ctx, actor, target, levels);
 }
 
+/** Somebody spending `spends` to walk up to their speed toward `actor` (1.321), by the shortest
+ *  open way to the cell that brings them nearest, drawing no strikes: The Owed's Whisper a Name.
+ *  Nothing is spent by somebody who has none of it left, or who could come no nearer. */
+function drawTarget(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  target: RulesetCombatant,
+  spends: string,
+): void {
+  const grid = ctx.state.board?.grid;
+  const from = rulesetPositionOf(target);
+  if (!grid || !from || (target.budgets[spends] ?? 0) < 1) return;
+  const left = target.movementLeft;
+  target.movementLeft = rulesetMovementAllowance(ctx.definition, ctx.combat, target);
+  const ways = rulesetReachableCells(ctx.definition, ctx.state, target.id);
+  if (left === undefined) delete target.movementLeft;
+  else target.movementLeft = left;
+  const near = rulesetWalkingDistances(grid, rulesetFootprint(actor));
+  const distance = (cell: RulesetCombatCell) => near.get(`${cell.x},${cell.y}`) ?? Number.POSITIVE_INFINITY;
+  // Nearest by the walk, then as the crow flies, then the cheaper way there.
+  const centre = rulesetPositionOf(actor)!;
+  const crow = (cell: RulesetCombatCell) => (cell.x - centre.x) ** 2 + (cell.y - centre.y) ** 2;
+  let best: RulesetReachableCell | undefined;
+  for (const way of ways) {
+    if (
+      !best ||
+      distance(way) < distance(best) ||
+      (distance(way) === distance(best) &&
+        (crow(way) < crow(best) || (crow(way) === crow(best) && way.cost < best.cost)))
+    ) {
+      best = way;
+    }
+  }
+  if (!best || distance(best) >= distance(from)) return;
+  target.budgets[spends] = (target.budgets[spends] ?? 0) - 1;
+  target.x = best.x;
+  target.y = best.y;
+  ctx.events.push({
+    type: "drawn",
+    actorId: actor.id,
+    targetId: target.id,
+    from,
+    to: { x: best.x, y: best.y },
+    path: best.path.map((cell) => ({ x: cell.x, y: cell.y })),
+  });
+}
+
 /**
  * A fall of `levels` levels (combat C6b), by the ruleset's `elevation.falling`: its dice for every `per`
  * of the drop, at most `max` of them, of its type, and its prone condition after. A ruleset that says
@@ -9084,6 +9133,10 @@ function resolveActionBody(
       const pushBy = action.push !== undefined || pushedMore > 0 ? (action.push ?? 0) + pushedMore : undefined;
       if (pushBy !== undefined && target.id !== actor.id && rulesetCombatStanding(target)) {
         pushTarget(ctx, actor, target, pushBy);
+      }
+      // Drawn toward its maker on their own budget (1.321): Whisper a Name.
+      if (action.draws && target.id !== actor.id && rulesetCombatStanding(target)) {
+        drawTarget(ctx, actor, target, action.draws.spends);
       }
       // Sent out of the fight (1.231), last of all.
       if (action.dismisses && target.id !== actor.id) dismiss(ctx, actor, action, target);

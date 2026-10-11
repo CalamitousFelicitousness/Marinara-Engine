@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: a creature action can draw whoever it lands on toward it (`draws`): they spend their reaction to walk their speed its way there and then, the open way round (the Owed's Whisper a Name) (Capability API 1.321).
 - Rulesets: a creature action can call creatures into the fight (`calls`: a bestiary creature and a count), on its user's side, set down where its area is aimed or beside it, at their own initiative or right after their caller's: the Owed's Jars Burst, Shelves Lean (Capability API 1.320).
 - Rulesets: a light rule's save is said with it: its `lightRule` event carries `save: {total, saved}` and the log says who held out and who did not.
 - Rulesets: fixes from the showcase playthrough: a board event at round 1's start now happens as the fight begins, so a board can open dark, lit or fogged; nobody lights a carried torch in daylight, so a barn's shade at noon stays shade; a ring or sweep reaches only its newest band the first time too, so a ring starting away from its middle leaves the middle be (`filled` reaches everything inside).

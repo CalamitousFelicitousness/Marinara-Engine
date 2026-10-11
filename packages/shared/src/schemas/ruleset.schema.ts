@@ -4493,6 +4493,11 @@ const creatureActionSchema = z
       })
       .strict()
       .optional(),
+    /** Whoever it lands on spends `spends` from their own budgets, if they have it left, to walk up
+     *  to their speed toward the creature there and then (Capability API 1.321), by the shortest
+     *  open way and drawing no strikes; with a save, only on a failed one. The Owed's Whisper a
+     *  Name: `{ "spends": "reaction" }`. */
+    draws: z.object({ spends: sheetId }).strict().optional(),
   })
   .strict()
   .superRefine((action, ctx) => {
@@ -12024,6 +12029,9 @@ function creatureIssues(
   creature.actions.forEach((action, index) => {
     const path = [...at, "actions", index];
     if (!budgets.has(action.budget)) add([...path, "budget"], `Unknown budget "${action.budget}"`);
+    if (action.draws && !budgets.has(action.draws.spends)) {
+      add([...path, "draws", "spends"], `Unknown budget "${action.draws.spends}"`);
+    }
     if (action.ability !== undefined && !definition.sheet.abilities.some((one) => one.id === action.ability)) {
       add([...path, "ability"], `Unknown ability "${action.ability}"`);
     }

@@ -676,6 +676,9 @@ export function rulesetCombatEventLine(
         actor: names.combatant(event.actorId),
         source: event.sourceId ? names.combatant(event.sourceId) : "",
       });
+    // Drawn toward whoever spoke to them (1.321): Whisper a Name.
+    case "drawn":
+      return key("drawn", { actor: names.combatant(event.actorId), target: names.combatant(event.targetId) });
     // Creatures called into the fight (1.320): Jars Burst.
     case "called":
       return key(event.ids.length ? "called" : "calledNone", {

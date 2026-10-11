@@ -858,6 +858,20 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["felled", say({ type: "felled", actorId: "lurker", label: "Held Ground" })],
     ["reaped", say({ type: "reaped", actorId: "lurker", sourceId: "brenna" })],
     ["called", say({ type: "called", actorId: "lurker", label: "Jars Burst", ids: ["brenna"] })],
+    [
+      "drawn",
+      say({
+        type: "drawn",
+        actorId: "lurker",
+        targetId: "brenna",
+        from: { x: 1, y: 1 },
+        to: { x: 3, y: 1 },
+        path: [
+          { x: 2, y: 1 },
+          { x: 3, y: 1 },
+        ],
+      }),
+    ],
     ["growth", say({ type: "growth", actorId: "brenna", label: "Shears", cells: 1, by: "cut" })],
     ["left", say({ type: "left", actorId: "lurker", label: "Teleport" })],
     ["surprised", say({ type: "surprised", actorIds: ["brenna", "lurker"] })],
@@ -1259,6 +1273,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.equal(say({ type: "felled", actorId: "lurker" }), "Thorn Lurker is felled: down, but held back from dying.");
   assert.equal(printed.get("reaped"), "Thorn Lurker is reaped by Brenna, and stays down.");
   assert.equal(printed.get("called"), "Jars Burst: Thorn Lurker calls Brenna into the fight.");
+  assert.equal(printed.get("drawn"), "Brenna is drawn toward Thorn Lurker, spending their reaction to go.");
   assert.equal(
     say({ type: "called", actorId: "lurker", label: "Jars Burst", ids: [] }),
     "Jars Burst: Thorn Lurker calls, and nobody comes.",

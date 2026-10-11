@@ -3193,6 +3193,8 @@ function blockActions(
     // An area that stays, and the ground changed (1.319): The Owed's Freezing Fog, a bonfire guttering.
     ...(action.zone ? { zone: rulesetZoneAction(action.zone, perCell) } : {}),
     ...(action.ground ? { ground: structuredClone(action.ground) } : {}),
+    // Whisper a Name (1.321).
+    ...(action.draws ? { draws: { ...action.draws } } : {}),
     ...(action.healsOnSlay ? { healsOnSlay: { ...action.healsOnSlay } } : {}),
     ...(action.uses ? { uses: { ...action.uses } } : {}),
     ...(action.recharge

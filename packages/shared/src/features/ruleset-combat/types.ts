@@ -371,6 +371,8 @@ export interface RulesetStatBlockAction {
   zone?: RulesetCatalogZone;
   /** What it does to the ground its area covers, for good (1.319). */
   ground?: RulesetCreatureGround;
+  /** Whoever it lands on walks toward it on their own budget (1.321): Whisper a Name. */
+  draws?: { spends: string };
   /** Creatures it calls into the fight (1.320), by bestiary entry, `count` of them. */
   calls?: { creature: string; count: RulesetCombatAmount; initiative?: "roll" | "after" };
   /** A permission (1.286): these standard actions taken with this action's budget, only while it
@@ -874,6 +876,8 @@ export interface RulesetCombatAction {
   sheds?: RulesetLightRadius | "out";
   /** What it does to the ground its area covers, for good (1.319): a bonfire guttering, ice cracking. */
   ground?: RulesetCreatureGround;
+  /** Whoever it lands on spends `spends` to walk up to their speed toward its user (1.321). */
+  draws?: { spends: string };
   /** Creatures it calls into the fight on its user's side (1.320), their block found as the fight
    *  began: Jars Burst's zombies. */
   calls?: {
@@ -2251,6 +2255,15 @@ export type RulesetCombatEvent =
   | { type: "felled"; actorId: string; label?: string }
   /** Reaped as it was felled, by a blow that reaps (1.318): it stays down. */
   | { type: "reaped"; actorId: string; sourceId?: string }
+  /** Somebody drawn toward whoever spoke to them (1.321), on their own budget: Whisper a Name. */
+  | {
+      type: "drawn";
+      actorId: string;
+      targetId: string;
+      from: RulesetCombatCell;
+      to: RulesetCombatCell;
+      path: RulesetCombatCell[];
+    }
   /** Creatures called into the fight (1.320), by whom and with what. */
   | { type: "called"; actorId: string; label: string; ids: string[] }
   /** An aura grown as its holder's turn starts (1.315), and how far it reaches now. */

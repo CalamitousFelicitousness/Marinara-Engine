@@ -212,12 +212,16 @@ export function parseRoleplayUserCommands(text: string) {
   return parseCommands(text, true);
 }
 
-/** Preserve per-swipe activities; new user tags can only write notes or whisper to a current character. */
+/**
+ * Preserve per-swipe activities; new user tags can only write notes or whisper to a current character, or, with
+ * `persona` (a character's or narrator's message being edited), to the persona as that message's own whispers can.
+ */
 export function prepareUserRoleplayCommands(args: {
   content: string;
   extra: Record<string, unknown>;
   metadata: Record<string, unknown>;
   characters: readonly { id: string; name: string }[];
+  persona?: { id: string; name: string };
 }): { content: string; extra: Record<string, unknown> } {
   const parsed = parseRoleplayUserCommands(args.content);
   if (!parsed.activity.length) return { content: parsed.content, extra: args.extra };
@@ -230,8 +234,13 @@ export function prepareUserRoleplayCommands(args: {
       const matches = args.characters.filter(
         (character) => normalizeCharacterLookupName(character.name) === recipientName,
       );
-      if (matches.length !== 1) activity.error = "roleplay.commands.errors.whisperRecipient";
-      else activity.whisperRecipient = { id: matches[0]!.id, kind: "character" };
+      const recipient = args.persona
+        ? resolveRoleplayWhisperRecipient(activity.command.character, args.characters, args.persona)
+        : matches.length === 1
+          ? ({ id: matches[0]!.id, kind: "character" } as const)
+          : null;
+      if (recipient) activity.whisperRecipient = recipient;
+      else activity.error = "roleplay.commands.errors.whisperRecipient";
     }
     if (activity.command.type === "whisper") {
       const offset = activity.contentOffset ?? parsed.content.length;

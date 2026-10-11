@@ -24,6 +24,9 @@ app.get("/api/sent", async (_req, reply) => {
   reply.send(big);
 });
 app.get("/api/small", async () => ({ ok: true }));
+// Above the cap, compressing on the main thread would stall other requests.
+const huge = { blob: "x".repeat(4 * 1024 * 1024 + 1) };
+app.get("/api/huge", async () => huge);
 app.get("/big", async () => big);
 app.get("/api/stream", async (_req, reply) => reply.type("application/json").send(Readable.from([json])));
 app.get("/api/sse", (_req, reply) => {
@@ -75,6 +78,9 @@ try {
     assert.equal(response.headers["content-encoding"], undefined, `${path} stays uncompressed`);
   }
   assert.match((await get("/api/sse", "br")).body.toString(), /^data: /);
+  const huge4 = await get("/api/huge", "gzip, deflate, br");
+  assert.equal(huge4.headers["content-encoding"], undefined, "a body above the cap stays uncompressed");
+  assert.equal(huge4.body.toString(), JSON.stringify(huge));
 
   // Prompt preview forwards the browser's headers into app.inject() and parses the reply itself.
   const injected = await app.inject({ url: "/api/big", headers: { "accept-encoding": "br, gzip" } });

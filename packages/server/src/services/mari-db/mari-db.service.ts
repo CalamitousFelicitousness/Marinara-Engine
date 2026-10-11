@@ -2373,7 +2373,7 @@ function summarizeLorebookEntryRow(row: Row): Row {
     id: parsed.id,
     lorebookId: parsed.lorebookId,
     name: parsed.name,
-    description: typeof parsed.description === "string" ? parsed.description : "",
+    description: typeof parsed.description === "string" ? truncateStr(parsed.description, 200) : "",
     tag: typeof parsed.tag === "string" ? parsed.tag : "",
     enabled: parsed.enabled,
     constant: parsed.constant,
@@ -3716,16 +3716,32 @@ export class MariDbService {
         };
       }
       case "entries": {
+        // Paged like instruction.list (#7407): a bare array ignored offset, so entries past the
+        // first page were unreachable, and boundReadObject would elide an oversized `items`
+        // array as a unit. Entries are added until the next one would push the pretty-printed
+        // page past MARI_READ_OUTPUT_BUDGET; the first is always kept so paging moves forward.
         const lorebookId = requiredString(args, ["lorebookId", "id"], "lorebook id");
         const entryId = firstString(args, ["entryId"]);
+        const offset = normalizeOffset(firstNumber(args, ["offset"]));
         const limit = normalizeLimit(firstNumber(args, ["limit"]), 100, 2000);
-        const entries = (await this.rawRows("lorebook_entries"))
+        const rows = (await this.rawRows("lorebook_entries"))
           .filter((entry) => entry.lorebookId === lorebookId)
           .filter((entry) => !entryId || entry.id === entryId)
-          .sort((a, b) => Number(a.order ?? 100) - Number(b.order ?? 100))
-          .slice(0, limit)
-          .map(summarizeLorebookEntryRow);
-        return { ok: true, mode: "read", command: context.command, output: entries };
+          .sort((a, b) => Number(a.order ?? 100) - Number(b.order ?? 100));
+        const total = rows.length;
+        const items: Row[] = [];
+        const page = () => {
+          const nextOffset = offset + items.length < total ? offset + items.length : null;
+          return { items, total, offset, nextOffset };
+        };
+        for (const row of rows.slice(offset, offset + limit)) {
+          items.push(summarizeLorebookEntryRow(row));
+          if (items.length > 1 && prettyLength(page()) > MARI_READ_OUTPUT_BUDGET) {
+            items.pop();
+            break;
+          }
+        }
+        return { ok: true, mode: "read", command: context.command, output: page() };
       }
       case "getentry": {
         const entryId = requiredString(args, ["entryId", "id"], "lorebook entry id");

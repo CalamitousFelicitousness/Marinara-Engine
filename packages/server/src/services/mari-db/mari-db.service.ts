@@ -3716,32 +3716,13 @@ export class MariDbService {
         };
       }
       case "entries": {
-        // Paged like instruction.list (#7407): a bare array ignored offset, so entries past the
-        // first page were unreachable, and boundReadObject would elide an oversized `items`
-        // array as a unit. Entries are added until the next one would push the pretty-printed
-        // page past MARI_READ_OUTPUT_BUDGET; the first is always kept so paging moves forward.
-        const lorebookId = requiredString(args, ["lorebookId", "id"], "lorebook id");
-        const entryId = firstString(args, ["entryId"]);
-        const offset = normalizeOffset(firstNumber(args, ["offset"]));
-        const limit = normalizeLimit(firstNumber(args, ["limit"]), 100, 2000);
-        const rows = (await this.rawRows("lorebook_entries"))
-          .filter((entry) => entry.lorebookId === lorebookId)
-          .filter((entry) => !entryId || entry.id === entryId)
-          .sort((a, b) => Number(a.order ?? 100) - Number(b.order ?? 100));
-        const total = rows.length;
-        const items: Row[] = [];
-        const page = () => {
-          const nextOffset = offset + items.length < total ? offset + items.length : null;
-          return { items, total, offset, nextOffset };
-        };
-        for (const row of rows.slice(offset, offset + limit)) {
-          items.push(summarizeLorebookEntryRow(row));
-          if (items.length > 1 && prettyLength(page()) > MARI_READ_OUTPUT_BUDGET) {
-            items.pop();
-            break;
-          }
-        }
-        return { ok: true, mode: "read", command: context.command, output: page() };
+        const output = await this.pageLorebookEntries(
+          requiredString(args, ["lorebookId", "id"], "lorebook id"),
+          firstString(args, ["entryId"]),
+          firstNumber(args, ["offset"]),
+          firstNumber(args, ["limit"]),
+        );
+        return { ok: true, mode: "read", command: context.command, output };
       }
       case "getentry": {
         const entryId = requiredString(args, ["entryId", "id"], "lorebook entry id");
@@ -6709,16 +6690,16 @@ export class MariDbService {
       case "entries": {
         const lorebookId = parsed.positionals[0];
         if (!lorebookId)
-          throw new Error("Usage: mari lorebooks entries <lorebook-id> [--limit <n>] [--entry-id <entry-id>]");
-        const limit = normalizeLimit(flagString(flags, "limit"), 100, 2000);
-        const entryId = flagString(flags, "entry-id") ?? flagString(flags, "entryId");
-        const entries = (await this.rawRows("lorebook_entries"))
-          .filter((e) => e.lorebookId === lorebookId)
-          .filter((e) => !entryId || e.id === entryId)
-          .sort((a, b) => Number(a.order ?? 100) - Number(b.order ?? 100))
-          .slice(0, limit)
-          .map(summarizeLorebookEntryRow);
-        return { ok: true, mode: "read", command: context.command, output: entries };
+          throw new Error(
+            "Usage: mari lorebooks entries <lorebook-id> [--limit <n>] [--offset <n>] [--entry-id <entry-id>]",
+          );
+        const output = await this.pageLorebookEntries(
+          lorebookId,
+          flagString(flags, "entry-id") ?? flagString(flags, "entryId"),
+          flagString(flags, "offset"),
+          flagString(flags, "limit"),
+        );
+        return { ok: true, mode: "read", command: context.command, output };
       }
       case "get-entry": {
         const entryId = parsed.positionals[0] ?? flagString(flags, "entry-id") ?? flagString(flags, "entryId");
@@ -9715,6 +9696,39 @@ export class MariDbService {
       logger.warn(err, "[mari-db] post-apply read-back unavailable");
       return { status: "unavailable", checkedRows: 0, error: err instanceof Error ? err.message : String(err) };
     }
+  }
+
+  // lorebook.entries and `mari lorebooks entries` page like instruction.list (#7407): a bare
+  // array ignored offset, so entries past the first page were unreachable, and boundReadObject
+  // would elide an oversized `items` array as a unit. Entries are added until the next one
+  // would push the pretty-printed page past MARI_READ_OUTPUT_BUDGET; the first is always
+  // kept so paging moves forward.
+  private async pageLorebookEntries(
+    lorebookId: string,
+    entryId: string | undefined,
+    offsetArg: unknown,
+    limitArg: unknown,
+  ) {
+    const offset = normalizeOffset(offsetArg);
+    const limit = normalizeLimit(limitArg, 100, 2000);
+    const rows = (await this.rawRows("lorebook_entries"))
+      .filter((entry) => entry.lorebookId === lorebookId)
+      .filter((entry) => !entryId || entry.id === entryId)
+      .sort((a, b) => Number(a.order ?? 100) - Number(b.order ?? 100));
+    const total = rows.length;
+    const items: Row[] = [];
+    const page = () => {
+      const nextOffset = offset + items.length < total ? offset + items.length : null;
+      return { items, total, offset, nextOffset };
+    };
+    for (const row of rows.slice(offset, offset + limit)) {
+      items.push(summarizeLorebookEntryRow(row));
+      if (items.length > 1 && prettyLength(page()) > MARI_READ_OUTPUT_BUDGET) {
+        items.pop();
+        break;
+      }
+    }
+    return page();
   }
 
   private async rawRows(table: string): Promise<Row[]> {

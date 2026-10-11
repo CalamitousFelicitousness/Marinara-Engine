@@ -116,6 +116,16 @@ try {
   assert.deepEqual(pastEnd.items, [], "an offset past the end returns no entries");
   assert.equal(pastEnd.nextOffset, null, "an offset past the end reports no next offset");
 
+  // The shell command `mari lorebooks entries` pages the same way.
+  const cliFirst = await mari.executeCli({ argv: ["lorebooks", "entries", "book"] });
+  assert.deepEqual(cliFirst.output, first, "the shell command returns the same first page");
+  const cliTail = (
+    await mari.executeCli({ argv: ["lorebooks", "entries", "book", "--offset", "150", "--limit", "50"] })
+  ).output as EntryPage;
+  assert.equal(cliTail.items[0]?.name, "Session 151", "the shell command honors --offset");
+  assert.equal(cliTail.items.at(-1)?.name, `Session ${TOTAL}`, "the shell command reaches the last entry");
+  assert.equal(cliTail.nextOffset, null, "the shell command's last page reports no next offset");
+
   // One entry with a huge description still fits the page: the index keeps a short preview.
   const heavy = await mari.executeAction({
     action: "lorebook.create",
@@ -127,8 +137,7 @@ try {
     apply: true,
   });
   await mari.keepAppliedReview(heavy.approval?.id ?? "");
-  const heavyPage = (await mari.executeAction({ action: "lorebook.entries", lorebookId: "heavy" }))
-    .output as EntryPage;
+  const heavyPage = (await mari.executeAction({ action: "lorebook.entries", lorebookId: "heavy" })).output as EntryPage;
   assert.equal(heavyPage.items[0]?.name, "Long notes", "the heavy entry is listed with its name");
   assert.ok(heavyPage.items[0]!.description.length <= 200, "the index shortens a long description");
   assert.ok(JSON.stringify(heavyPage, null, 2).length <= READ_BUDGET, "a heavy entry's page stays under budget");

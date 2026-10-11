@@ -1090,9 +1090,18 @@ function dropToZero(ctx: RulesetCombatContext, target: RulesetCombatant, slain =
   // Hanging on at 1 instead (1.315): the Miller's Hourglass, once, with a turn of its own straight
   // after this one.
   const hangs = target.block?.hangsOn;
-  if (hangs && !slain && target.health && (target.hungOn ?? 0) < hangs.uses) {
+  // A creature that fights with a sheet hangs on in its hit point pool; a wound track has no 1 to hang
+  // on at.
+  const health = ctx.combat.health;
+  const pool = target.sheet && !target.health && !("track" in health) ? health.pool : undefined;
+  if (hangs && !slain && (target.health || pool) && (target.hungOn ?? 0) < hangs.uses) {
     target.hungOn = (target.hungOn ?? 0) + 1;
-    target.health.value = 1;
+    if (target.health) target.health.value = 1;
+    else {
+      const now = healthOf(ctx, target).value;
+      if (now < 1)
+        writeRulesetSheet(ctx.definition, target, { op: "restore", pool: pool!, amount: 1 - now, magical: true });
+    }
     ctx.events.push({
       type: "hangsOn",
       actorId: target.id,

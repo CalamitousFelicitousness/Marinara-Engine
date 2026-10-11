@@ -28,6 +28,7 @@ import {
   rulesetSheetBuildSchema,
   supportedCapabilityApi,
   type RulesetCombatChoice,
+  rulesetCombatHealth,
   type RulesetCombatEvent,
   type RulesetDefinition,
   type RulesetEncounterState,
@@ -326,6 +327,29 @@ try {
     const hit = act(plain, { actorId: "cat", optionId: dagger(plain), targetIds: ["foe"] });
     assert.deepEqual(of(hit.events, "hangsOn")[0]?.left, 1);
     assert.deepEqual(hit.state.order, ["bard", "ally", "cat", "foe"]);
+    // A creature that fights with a sheet hangs on in its hit point pool, as 5e-2014's do.
+    const sheeted = fight(
+      { health: 3, hangsOn: { uses: 1, label: "Hourglass" } },
+      { bard: { x: 2, y: 2 }, ally: { x: 2, y: 4 }, cat: { x: 9, y: 7 }, foe: { x: 10, y: 7 } },
+    );
+    const foe = who(sheeted, "foe");
+    foe.sheet = structuredClone(who(sheeted, "ally").sheet);
+    delete foe.health;
+    const hp = (state: RulesetEncounterState) =>
+      rulesetCombatHealth(definition, definition.combat!, who(state, "foe")).value;
+    const full = hp(sheeted);
+    const pool = (definition.combat!.health as { pool: string }).pool;
+    foe.sheet!.live = { ...foe.sheet!.live, pools: { ...foe.sheet!.live.pools, [pool]: { value: 1 } } };
+    assert.equal(hp(sheeted), 1);
+    sheeted.order = ["cat", "bard", "foe", "ally"];
+    sheeted.turn = 0;
+    const struckSheet = act(sheeted, { actorId: "cat", optionId: dagger(sheeted), targetIds: ["foe"] });
+    const worn = struckSheet.state;
+    assert.ok(full > 1);
+    assert.equal(of(struckSheet.events, "hangsOn")[0]?.label, "Hourglass");
+    assert.ok(!who(worn, "foe").defeated, "hung on, never defeated");
+    assert.equal(hp(worn), 1, "the sheet's hit points at 1");
+    assert.ok(!who(worn, "foe").down);
     // What slays outright is not hung on through.
     const slain = createRulesetEncounter({
       definition,

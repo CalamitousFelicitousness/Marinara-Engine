@@ -2382,7 +2382,7 @@ try {
     lorebookId: professorMariLorebookId,
   });
   assert.equal(
-    (professorMariEntryIndex.output as Array<{ content: string }>)[0]?.content.endsWith("…"),
+    (professorMariEntryIndex.output as { items: Array<{ content: string }> }).items[0]?.content.endsWith("…"),
     true,
     "the lorebook entry index should remain compact",
   );

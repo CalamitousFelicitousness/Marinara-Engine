@@ -842,6 +842,8 @@ export interface MessageAttachment {
   name?: string;
   prompt?: string;
   galleryId?: string;
+  /** Character who sent a Conversation selfie; older selfies lack it. */
+  characterName?: string;
 }
 
 /** A reaction on a Conversation message: an emoji token + who reacted. */

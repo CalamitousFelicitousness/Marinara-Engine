@@ -58,6 +58,8 @@ import {
 } from "@marinara-engine/shared";
 import { prepareRoleplayInterruption } from "../generation/roleplay-interrupt.js";
 import { prepareUserRoleplayCommands } from "../generation/roleplay-commands.js";
+import { resolveChatUserIdentity } from "../chat-user-identity.js";
+import { createCharactersStorage } from "./characters.storage.js";
 import {
   ensureTimestampAfter,
   latestTrustedTimestamp,
@@ -843,7 +845,8 @@ export function createChatsStorage(db: DB) {
   const newestFirst = (a: VariableChanges, b: VariableChanges) =>
     b.createdAt.localeCompare(a.createdAt) || b.index - a.index;
 
-  async function userRoleplayPreparer(chatId: string) {
+  /** `persona`: a character's or narrator's message, whose own whispers may go to the chat's persona. */
+  async function userRoleplayPreparer(chatId: string, persona = false) {
     const [chat] = await db.select().from(chats).where(eq(chats.id, chatId)).limit(1);
     if (chat?.mode !== "roleplay") return null;
     const ids = parseCharacterIds(chat.characterIds);
@@ -858,8 +861,17 @@ export function createChatsStorage(db: DB) {
       return typeof name === "string" ? [{ id: row.id, name }] : [];
     });
     const metadata = parseExtraRecord(chat.metadata);
+    // The same identity and "User" fallback a generated reply's whispers resolve against.
+    const identity = persona ? await resolveChatUserIdentity(createCharactersStorage(db), chat) : null;
+    const recipientPersona = persona ? { id: identity?.id ?? "user", name: identity?.name ?? "User" } : undefined;
     return (content: string, extra: unknown) =>
-      prepareUserRoleplayCommands({ content, extra: parseExtraRecord(extra), metadata, characters: roster });
+      prepareUserRoleplayCommands({
+        content,
+        extra: parseExtraRecord(extra),
+        metadata,
+        characters: roster,
+        persona: recipientPersona,
+      });
   }
 
   let scanCompactionByChat = lorebookScanCompactionStates.get(db);
@@ -2639,7 +2651,8 @@ export function createChatsStorage(db: DB) {
         const existing = await this.getMessage(id);
         const prepare =
           existing && (existing.role === "user" || options.authored)
-            ? await userRoleplayPreparer(existing.chatId)
+            ? // Only a typed whisper needs the persona, so other edits skip its lookup.
+              await userRoleplayPreparer(existing.chatId, existing.role !== "user" && /\[whisper/iu.test(content))
             : null;
         const prepared = prepare?.(content, existing?.extra);
         content = prepared?.content ?? content;

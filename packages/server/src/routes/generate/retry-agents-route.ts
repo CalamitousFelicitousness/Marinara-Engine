@@ -180,12 +180,14 @@ import {
   parseSnapshotPlayerStats,
   preserveTrackerCharacterUiFields,
   resolveActiveCharacterIds,
+  resolveCharacterNameMap,
   resolveGroupGenerationMode,
   resolveBaseUrl,
   resolveRoleplayChatSummaryForPrompt,
   resolveVisibleGameStateAnchor,
 } from "./generate-route-utils.js";
 import { shouldAttachSummariesToAgents } from "../../services/generation/roleplay-summary-retrieval.js";
+import { roleplayAgentsSeeWhispers, roleplayAgentText } from "../../services/generation/roleplay-commands.js";
 import {
   buildHistoricalLorebookKeeperContext,
   CUSTOM_LOREBOOK_BACKFILL_CURSOR_KEY,
@@ -1002,6 +1004,13 @@ async function buildRetryAgentContext(args: {
   }
   const contextPolicy = resolveRetryAgentContextPolicy(resolvedAgents);
   const agentSlice = recentMessages.slice(-contextPolicy.contextSize);
+  // Every agent reads Roleplay whispers, each with its recipient's name (#7430). Null where they don't.
+  const agentWhisperNames = roleplayAgentsSeeWhispers(chat.mode, chatMeta)
+    ? new Map<string, string>([
+        ...(await resolveCharacterNameMap(allCharacterIds, (id) => chars.getById(id))),
+        [personaContext.identityId ?? "user", personaContext.personaName],
+      ])
+    : null;
   const resolvedAgentSlice = resolveHistoryMessageMacros(
     agentSlice.map((message: any) => ({
       ...message,
@@ -1161,7 +1170,7 @@ async function buildRetryAgentContext(args: {
       const nextMessage: AgentContext["recentMessages"][number] = {
         id: typeof message.id === "string" ? message.id : undefined,
         role: message.role,
-        content: resolved?.content ?? message.content,
+        content: roleplayAgentText(resolved?.content ?? message.content, message, agentWhisperNames),
         characterId: message.characterId ?? undefined,
       };
       if (message.role === "assistant") {
@@ -1544,7 +1553,7 @@ async function buildRetryAgentContext(args: {
     };
   }
 
-  return { agentContext, initialMacroVariables, macroVariables: retryMacroVariables };
+  return { agentContext, initialMacroVariables, macroVariables: retryMacroVariables, agentWhisperNames };
 }
 
 async function persistRetryMacroVariables(
@@ -4835,6 +4844,14 @@ export async function registerRetryAgentsRoute(
       );
       const agentContext = agentContextResult.agentContext;
       agentContext.signal = abortController.signal;
+      // Lorebook Keeper and read-behind runs read whispers too (#7430).
+      const agentWhisperNames = agentContextResult.agentWhisperNames;
+      const agentHistory = agentWhisperNames
+        ? recentMessages.map((message: any) => ({
+            ...message,
+            content: roleplayAgentText(message.content, message, agentWhisperNames),
+          }))
+        : recentMessages;
       const hasPreGenerationRetries = resolvedAgents.some((entry) => entry.resolved.phase === "pre_generation");
       const preGenerationAgentContextResult =
         hasPreGenerationRetries && preGenerationRecentMessages
@@ -5264,7 +5281,7 @@ export async function registerRetryAgentsRoute(
         if (customLorebookBackfillTarget) {
           const context = buildHistoricalLorebookKeeperContext(
             agentContext,
-            recentMessages,
+            agentHistory,
             customLorebookBackfillTarget.messageId,
           );
           if (!context || entry.resolved.id !== customLorebookBackfillTarget.agentConfigId) return false;
@@ -5281,7 +5298,7 @@ export async function registerRetryAgentsRoute(
 
         const target = getLorebookKeeperBackfillTargets(recentMessages, readBehindMessages, null).at(-1);
         if (!target) return false;
-        const context = buildHistoricalLorebookKeeperContext(agentContext, recentMessages, target.id);
+        const context = buildHistoricalLorebookKeeperContext(agentContext, agentHistory, target.id);
         if (!context) return false;
         const runKey = customLorebookReadBehindRunKey(chatId, entry.resolved.id, target.id);
         if (!tryClaimCustomLorebookReadBehindRun(activeCustomLorebookReadBehindRuns, runKey)) return false;
@@ -5397,7 +5414,7 @@ export async function registerRetryAgentsRoute(
           rawLorebookKeeperRunEntries = await executeLorebookKeeperRetries({
             lorebookKeeperAgent,
             baseContext: agentContext,
-            messages: recentMessages,
+            messages: agentHistory,
             readBehindMessages: getLorebookKeeperSettings(chatMeta).readBehindMessages,
             lastProcessedMessageId:
               (await agentsStore.getLastSuccessfulRunByType("lorebook-keeper", chatId))?.messageId ?? null,

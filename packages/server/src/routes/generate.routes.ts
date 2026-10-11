@@ -223,6 +223,9 @@ import {
   buildRoleplayPersonalContext,
   parseRoleplayCommands,
   parseRoleplayUserCommands,
+  roleplayAgentPrompt,
+  roleplayAgentsSeeWhispers,
+  roleplayAgentText,
   roleplayCommandKey,
   roleplayHiddenWhisperMessageIds,
   latestRoleplayUserInput,
@@ -2316,6 +2319,19 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         chatPresetChoices: (chatMeta.presetChoices ?? {}) as Record<string, string | string[]>,
       });
 
+      let groupHistoryCharacterNamesByIdPromise: Promise<Map<string, string>> | null = null;
+      const getGroupHistoryCharacterNamesById = () => {
+        groupHistoryCharacterNamesByIdPromise ??= resolveCharacterNameMap(allCharacterIds, (id) => chars.getById(id));
+        return groupHistoryCharacterNamesByIdPromise;
+      };
+      // Every agent reads Roleplay whispers, each with its recipient's name (#7430). Null where they don't.
+      const agentWhisperNames = roleplayAgentsSeeWhispers(chatMode, chatMeta)
+        ? new Map<string, string>([
+            ...(await getGroupHistoryCharacterNamesById()),
+            [userIdentityId ?? "user", personaName],
+          ])
+        : null;
+
       const eligibleCharacterActivityConfigs: typeof characterActivityAgentConfigs = [];
       if (
         shouldRunCharacterActivityAgents({
@@ -2434,7 +2450,11 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             recentMessages: chatMessages.slice(-routingContextSize).map((message: any) => ({
               id: typeof message.id === "string" ? message.id : undefined,
               role: message.role as string,
-              content: conversationPromptHistoryContent(message, chatMode),
+              content: roleplayAgentText(
+                conversationPromptHistoryContent(message, chatMode),
+                message,
+                agentWhisperNames,
+              ),
               characterId:
                 typeof message.characterId === "string" && message.characterId ? message.characterId : undefined,
             })),
@@ -2574,12 +2594,6 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         !input.continueMessageId &&
         !input.impersonate;
       const effectiveGroupResponseOrder = smartResponseRequested ? "smart" : savedGroupResponseOrder;
-
-      let groupHistoryCharacterNamesByIdPromise: Promise<Map<string, string>> | null = null;
-      const getGroupHistoryCharacterNamesById = () => {
-        groupHistoryCharacterNamesByIdPromise ??= resolveCharacterNameMap(allCharacterIds, (id) => chars.getById(id));
-        return groupHistoryCharacterNamesByIdPromise;
-      };
 
       // ── Professor Mari fetch follow-up loop ──
       // After Mari executes a [fetch:], the fetched data is persisted to
@@ -3187,13 +3201,17 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           if (regenerateUserSourceMessage) {
             regenerateUserSourceMessage = resolveHistoryMessageMacros([regenerateUserSourceMessage])[0] ?? null;
           }
+          const lorebookKeeperSources = lorebookKeeperMessages;
           lorebookKeeperMessages = resolveHistoryMessageMacros(
-            lorebookKeeperMessages.map((message: any) => ({
+            lorebookKeeperSources.map((message: any) => ({
               ...message,
               content: conversationPromptHistoryContent(message, chatMode),
               characterId: typeof message.characterId === "string" && message.characterId ? message.characterId : null,
             })),
-          );
+          ).map((message, index) => ({
+            ...message,
+            content: roleplayAgentText(message.content, lorebookKeeperSources[index], agentWhisperNames),
+          }));
           if (shouldPrefixGroupHistorySpeakers && !deferGroupPromptRegex) {
             const characterNamesById = await getGroupHistoryCharacterNamesById();
             mappedMessages.splice(
@@ -5116,9 +5134,14 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           resolvedAgents.length > 0
             ? Math.max(...resolvedAgents.map((a) => normalizeAgentContextSize(a.settings.contextSize)))
             : 5;
+        // Advanced Memory's live view keeps no empty message; agents still read a whisper-only one as its whispers.
         const agentSlice = (
           advancedAgentSourceIds
-            ? chatMessages.filter((message) => advancedAgentSourceIds.has(message.id))
+            ? chatMessages.filter(
+                (message) =>
+                  advancedAgentSourceIds.has(message.id) ||
+                  (!!agentWhisperNames && !!advancedAgentWhisperOnlyIds?.has(message.id)),
+              )
             : chatMessages
         ).slice(-agentContextSize);
         const resolvedAgentSlice = resolveHistoryMessageMacros(
@@ -5168,7 +5191,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           const msg: AgentContext["recentMessages"][number] = {
             id: typeof m.id === "string" ? m.id : undefined,
             role: m.role as string,
-            content: resolved?.content ?? (m.content as string),
+            content: roleplayAgentText(resolved?.content ?? (m.content as string), m, agentWhisperNames),
             characterId: m.characterId ?? undefined,
             ...(speakerName ? { speakerName } : {}),
           };
@@ -6317,7 +6340,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         if (chatMode !== "roleplay" && !gameToolConnection) appendLocalEndpointTools(finalMessages, toolDefs);
         // Pre-generation prompt-patch agents read the assembled prompt here; this is overwritten
         // with the fitted provider prompt before each main model call.
-        agentContext.memory._mainPromptPreview = promptPreviewForAgents(sharedPromptForAgents(finalMessages));
+        agentContext.memory._mainPromptPreview = promptPreviewForAgents(
+          roleplayAgentPrompt(sharedPromptForAgents(finalMessages), roleplayTimeline, agentWhisperNames),
+        );
         const resolveAgentContext = async (agent: AgentExecConfig, context: AgentContext): Promise<AgentContext> => {
           const resolvedContext = customLorebookReadBehindTargets.get(agent.id)?.context ?? context;
           const trackerContext = applyTrackerLorebookContextPolicy({
@@ -6897,7 +6922,13 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             chatId: input.chatId,
             chatMode,
             characterIds: promptCharacterIds,
-            messages: selectHistoryMessagesForRecall(sharedPromptForAgents(conversationRecallHistory ?? finalMessages)),
+            messages: selectHistoryMessagesForRecall(
+              roleplayAgentPrompt(
+                sharedPromptForAgents(conversationRecallHistory ?? finalMessages),
+                roleplayTimeline,
+                agentWhisperNames,
+              ),
+            ),
             signal: agentSignal,
             debugMode: requestDebug || isDebug,
           });
@@ -7883,9 +7914,18 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               ...(message.providerMetadata ? { providerMetadata: message.providerMetadata } : {}),
             }));
 
-          // Private state enters only the final responder request, after shared agent context.
-          const publicRoleplayPrompt =
-            chatMode === "roleplay" ? toProviderMessages(sharedPromptForAgents(preparedMessagesForGen)) : null;
+          // Agents get their own copy, with every whisper (#7430). The responder's whispers, notes and personal
+          // state enter only its own request, after that copy is made.
+          const agentRoleplayPrompt =
+            chatMode === "roleplay"
+              ? toProviderMessages(
+                  roleplayAgentPrompt(
+                    sharedPromptForAgents(preparedMessagesForGen),
+                    roleplayTimeline,
+                    agentWhisperNames,
+                  ),
+                )
+              : null;
           const roleplayWhisperContext =
             chatMode === "roleplay" &&
             appendRoleplayWhispers(
@@ -8062,7 +8102,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           }
           let finalPromptSent: ChatMessage[] = [];
           const rememberMainPromptPreviewForAgents = (messages: ChatMessage[]) => {
-            agentContext.memory._mainPromptPreview = promptPreviewForAgents(publicRoleplayPrompt ?? messages);
+            agentContext.memory._mainPromptPreview = promptPreviewForAgents(agentRoleplayPrompt ?? messages);
           };
           let effectiveMaxTokensForSend: number | undefined = maxTokens;
           let lastContextFit: ReturnType<typeof fitMessagesForModelAccess>["contextFit"] | undefined;
@@ -11065,11 +11105,26 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               content: genResult.response,
             });
           }
+          if (genResult?.savedMsg?.id) roleplayResponseIndexes.set(genResult.savedMsg.id, allResponses.length);
           allResponses.push(fullResponse);
         }
 
         const combinedResponse = allResponses.join("\n\n");
         const completedResponse = continuedMessageRewriteSource ?? combinedResponse;
+        // Agents read the new reply with its whispers (#7430). Text rewrite agents still edit the public text.
+        const responseMessageIds = new Map([...roleplayResponseIndexes].map(([id, index]) => [index, id]));
+        const agentReplyText = (text: string, id: unknown) =>
+          roleplayAgentText(
+            text,
+            roleplayTimeline.find((message) => message.id === id),
+            agentWhisperNames,
+          );
+        const agentCompletedResponse =
+          continuedMessageRewriteSource !== null
+            ? agentReplyText(continuedMessageRewriteSource, input.continueMessageId)
+            : allResponses
+                .map((response, index) => agentReplyText(response, responseMessageIds.get(index)))
+                .join("\n\n");
         const continuedTargetIndex = input.continueMessageId
           ? chatMessages.findIndex((message) => message.id === input.continueMessageId)
           : -1;
@@ -11218,7 +11273,12 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
 
         await finalizeLorebookWrites();
         const hasPostProcessingAgents = resolvedAgents.some((a) => a.phase === "post_processing");
-        agentContext.mainResponseSegments = shouldPrefixGroupHistorySpeakers ? allResponseSegments : undefined;
+        agentContext.mainResponseSegments = shouldPrefixGroupHistorySpeakers
+          ? allResponseSegments.map((segment, index) => ({
+              ...segment,
+              content: agentReplyText(segment.content, responseMessageIds.get(index)),
+            }))
+          : undefined;
         let lorebookKeeperProcessedMessageId = "";
         // Illustration runs asynchronously so it doesn't block other agents.
         // (pendingIllustration is hoisted above the follow-up loop.)
@@ -11490,7 +11550,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               {
                 id: latestAssistantMessageId || undefined,
                 role: "assistant",
-                content: completedResponse,
+                content: agentCompletedResponse,
               },
             ]);
           }
@@ -11580,7 +11640,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           const postAgentContext: AgentContext = {
             ...agentContext,
             ...postReplyDecisionContext,
-            mainResponse: completedResponse,
+            mainResponse: agentCompletedResponse,
             preGenInjections: contextInjections,
             parallelResults,
           };
@@ -11639,7 +11699,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
 
           let postResults = hasPostProcessingAgents
             ? [
-                ...(await pipeline.postGenerate(completedResponse, {
+                ...(await pipeline.postGenerate(agentCompletedResponse, {
                   preGenInjections: contextInjections,
                   parallelResults,
                   ...postReplyDecisionContext,
@@ -11655,7 +11715,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             );
             const lorebookKeeperContext = historicalLorebookTarget
               ? buildHistoricalLorebookKeeperContext(agentContext, lorebookKeeperMessages, historicalLorebookTarget.id)
-              : { ...agentContext, ...postReplyDecisionContext, mainResponse: completedResponse };
+              : { ...agentContext, ...postReplyDecisionContext, mainResponse: agentCompletedResponse };
             const processedMessageId = historicalLorebookTarget?.id ?? (lastSavedMsg as any)?.id ?? "";
 
             if (lorebookKeeperContext && processedMessageId) {
@@ -11717,7 +11777,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   agentCfg.phase === "post_processing"
                     ? {
                         ...(preparedCapabilityPostContext ?? postAgentContext),
-                        mainResponse: completedResponse,
+                        mainResponse: agentCompletedResponse,
                       }
                     : agentContext;
                 const retryCtx: AgentContext = historicalLorebookTarget
@@ -11877,7 +11937,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               : undefined;
             const context = await resolveAgentContext(agent, {
               ...postAgentContext,
-              mainResponse: `${sourceName ? `${sourceName}: ` : ""}${sourceMessage?.content ?? completedResponse}\n\nExplicit scene request: ${command.type === "illustrate" ? `${command.subject}${command.characters?.length ? `\nInvolved characters: ${command.characters.join(", ")}. Depict these participants.` : ""}` : command.type === "combat" ? "Combat starts now. Establish and track the encounter from the current scene." : command.mood}`,
+              mainResponse: `${sourceName ? `${sourceName}: ` : ""}${sourceMessage ? roleplayAgentText(sourceMessage.content, sourceMessage, agentWhisperNames) : agentCompletedResponse}\n\nExplicit scene request: ${command.type === "illustrate" ? `${command.subject}${command.characters?.length ? `\nInvolved characters: ${command.characters.join(", ")}. Depict these participants.` : ""}` : command.type === "combat" ? "Combat starts now. Establish and track the encounter from the current scene." : command.mood}`,
             });
             try {
               let result: AgentResult;
@@ -13159,7 +13219,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                       chatMetadata: freshMeta,
                       currentBackground: backgroundBeforeGeneration ?? currentBackground,
                       illustratorAgent: illustratorBackgroundAgent,
-                      assistantResponse: completedResponse,
+                      assistantResponse: agentCompletedResponse,
                       decisionReason: backgroundDecisionReason,
                       gameState: latestGameState,
                       recentMessages: agentContext.recentMessages,

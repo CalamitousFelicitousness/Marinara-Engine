@@ -20,7 +20,8 @@ const { createChatsStorage } = await import("../../packages/server/src/services/
 const { createConnectionsStorage } = await import("../../packages/server/src/services/storage/connections.storage.js");
 const { createCharactersStorage } = await import("../../packages/server/src/services/storage/characters.storage.js");
 const { createPromptsStorage } = await import("../../packages/server/src/services/storage/prompts.storage.js");
-const { characterDataSchema, getRoleplayWhispers } = await import("../../packages/shared/dist/index.js");
+const { characterDataSchema, getRoleplayCommandActivity, getRoleplayWhispers } =
+  await import("../../packages/shared/dist/index.js");
 const { latestRoleplayUserInput } = await import("../../packages/server/src/services/generation/roleplay-commands.js");
 const { dropPromptHistoryMessages } =
   await import("../../packages/server/src/services/generation/prompt-message-scope.js");
@@ -399,6 +400,41 @@ try {
   );
   assert((await preview(bob.id)).includes("EDITED_SECRET"));
   assert(!(await preview(alice.id)).includes("EDITED_SECRET"));
+  // A reply's whisper can go to the persona, so one typed into an edit can too, with typographic quotes (#7411).
+  const personaReply = await chats.createMessage({
+    chatId: chat.id,
+    role: "assistant",
+    characterId: narrator.id,
+    content: "The fog lifts. [whisper character=Mari PERSONA_SECRET] The bells ring.",
+  });
+  assert(personaReply);
+  const personaEdit = await app.inject({
+    method: "PATCH",
+    url: `/api/chats/${chat.id}/messages/${personaReply.id}`,
+    payload: { content: "The fog lifts. [whisper: character=”Mari” text=”PERSONA_SECRET”] The bells ring." },
+  });
+  assert.equal(personaEdit.statusCode, 200, personaEdit.body);
+  const personaMessage = personaEdit.json() as { content: string; extra: unknown };
+  assert.equal(personaMessage.content, "The fog lifts.  The bells ring.");
+  const personaExtra =
+    typeof personaMessage.extra === "string" ? JSON.parse(personaMessage.extra) : (personaMessage.extra as object);
+  assert.deepEqual(
+    getRoleplayWhispers(personaExtra).map(({ recipient, command }) => [recipient, command.text]),
+    [[{ id: persona.id, kind: "persona" }, "PERSONA_SECRET"]],
+  );
+  for (const id of [alice.id, bob.id]) assert(!(await preview(id)).includes("PERSONA_SECRET"));
+  // Your own message still whispers only to characters.
+  const selfWhisper = await chats.createMessage({
+    chatId: chat.id,
+    role: "user",
+    characterId: null,
+    content: '[whisper: character="Mari" text="SELF_SECRET"]',
+  });
+  assert.deepEqual(
+    getRoleplayCommandActivity(JSON.parse(String(selfWhisper!.extra))).map((item) => item.error),
+    ["roleplay.commands.errors.whisperRecipient"],
+  );
+  await chats.removeMessage(selfWhisper!.id);
   // Generated rewrites keep bracketed prose; only typed edits are read as commands.
   await chats.updateMessageContent(narratorReply.id, "A rewrite keeps [notes about the harbor] as prose.");
   assert.equal(

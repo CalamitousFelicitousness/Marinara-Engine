@@ -19,6 +19,7 @@ import {
   parseRulesetDefinition,
   rulesetCombatant,
   rulesetCombatOptions,
+  rulesetCreatureBlock,
   rulesetSheetBuildSchema,
   rulesetWindowOptions,
   RULESET_PASS_OPTION,
@@ -149,6 +150,12 @@ try {
     creatures.entries[0].creature.actions.push(structuredClone(fog), structuredClone(gutter));
     const read = parseRulesetDefinition(doc);
     assert.ok(read.ok, read.ok ? "" : read.issues.join("; "));
+    {
+      const entry = read.definition.catalogs!.find((catalog) => catalog.holds === "creatures")!.entries![0]!;
+      const actions = rulesetCreatureBlock(read.definition, entry)?.actions ?? [];
+      assert.equal(actions.find((one) => one.id === "fog")?.zone?.untilLair, true, "the fog read off the bestiary");
+      assert.equal(actions.find((one) => one.id === "gutter")?.ground?.light, "dark", "the ground read off it");
+    }
     const { area: _area, ...noArea } = gutter;
     creatures.entries[0].creature.actions.push({ ...noArea, id: "bare" });
     const bare = parseRulesetDefinition(doc);

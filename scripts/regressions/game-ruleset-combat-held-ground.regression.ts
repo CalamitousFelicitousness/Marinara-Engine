@@ -21,6 +21,7 @@ import {
   rulesetCombatant,
   rulesetCombatConditions,
   rulesetCombatOptions,
+  rulesetCreatureBlock,
   rulesetSheetBuildSchema,
   supportedCapabilityApi,
   type RulesetCombatChoice,
@@ -271,7 +272,10 @@ try {
       const creatures = doc.catalogs.find((catalog: { holds?: string }) => catalog.holds === "creatures");
       creatures.entries[0].creature.actions[0].reaps = true;
     });
-    parsed(reaper);
+    // A bestiary creature's blow reaps as its block's does.
+    const reading = parsed(reaper);
+    const entry = reading.catalogs!.find((catalog) => catalog.holds === "creatures")!.entries![0]!;
+    assert.equal(rulesetCreatureBlock(reading, entry)?.actions[0]?.reaps, true, "read off the bestiary");
     assert.equal(getCapabilityPackageInstallIssue(manifest(317) as never, reaper), gate);
     assert.notEqual(getCapabilityPackageInstallIssue(manifest(318) as never, reaper), gate);
     assert.notEqual(getCapabilityPackageInstallIssue(manifest(317) as never, document()), gate);

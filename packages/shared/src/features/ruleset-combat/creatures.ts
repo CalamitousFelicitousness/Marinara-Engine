@@ -225,6 +225,8 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
     ...(action.dyingOnly ? { dyingOnly: true as const } : {}),
     ...(action.slaysOnFailedSave ? { slaysOnFailedSave: true as const } : {}),
     ...(action.healsOnSlay && amountOf(action.healsOnSlay) ? { healsOnSlay: amountOf(action.healsOnSlay)! } : {}),
+    // Who it fells on Held Ground stays down (1.318).
+    ...(action.reaps ? { reaps: true as const } : {}),
     ...(action.targetCount !== undefined ? { targetCount: action.targetCount } : {}),
     ...(action.reach !== undefined ? { reach: action.reach } : {}),
     // In the ruleset's distance, as reach is: the encounter turns both into cells (1.179).
@@ -271,6 +273,9 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
     ...(action.sheds !== undefined ? { sheds: action.sheds === "out" ? ("out" as const) : { ...action.sheds } } : {}),
     // Standard actions with its own budget (1.286): Nimble Escape.
     ...(action.standard ? { standard: structuredClone(action.standard) } : {}),
+    // The area it leaves standing, and the ground it changes (1.319).
+    ...(action.zone ? { zone: structuredClone(action.zone) } : {}),
+    ...(action.ground ? { ground: structuredClone(action.ground) } : {}),
   };
 }
 

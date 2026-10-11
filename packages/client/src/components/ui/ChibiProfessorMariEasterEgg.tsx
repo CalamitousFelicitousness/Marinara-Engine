@@ -34,7 +34,7 @@ function showChibiProfessorMariToast() {
   const shiny = Math.random() < SHINY_CHIBI_PROFESSOR_MARI_CHANCE;
   toast.custom(
     (toastId) => (
-      <div className="relative flex max-w-[360px] gap-3 pr-8 text-[var(--foreground)]">
+      <div className={`relative flex gap-3 pr-8 ${shiny ? "max-w-[560px]" : "max-w-[360px]"} text-[var(--foreground)]`}>
         <button
           type="button"
           onClick={() => toast.dismiss(toastId)}
@@ -43,32 +43,32 @@ function showChibiProfessorMariToast() {
         >
           <X className="h-3.5 w-3.5" aria-hidden="true" />
         </button>
-        {shiny && (
-          <>
-            <Sparkles
-              className="pointer-events-none absolute left-0 top-1 h-4 w-4 text-[var(--primary)] motion-safe:animate-pulse"
-              aria-hidden="true"
-            />
-            <Sparkles
-              className="pointer-events-none absolute bottom-2 left-16 h-3 w-3 text-[var(--primary)] motion-safe:animate-pulse"
-              aria-hidden="true"
-            />
-          </>
-        )}
-        <img
-          src={shiny ? SHINY_CHIBI_PROFESSOR_MARI_IMAGE : CHIBI_PROFESSOR_MARI_IMAGE}
-          alt={translate("ui.chibiProfessorMari.alt")}
-          className="h-24 w-20 shrink-0 self-center object-contain drop-shadow-[0_4px_10px_rgb(0_0_0/0.25)]"
-          onError={(event) => {
-            event.currentTarget.hidden = true;
-          }}
-        />
+        <div className="relative shrink-0 self-center">
+          <img
+            src={shiny ? SHINY_CHIBI_PROFESSOR_MARI_IMAGE : CHIBI_PROFESSOR_MARI_IMAGE}
+            alt={translate("ui.chibiProfessorMari.alt")}
+            className={`${shiny ? "h-32 w-24" : "h-24 w-20"} object-contain drop-shadow-[0_4px_10px_rgb(0_0_0/0.25)]`}
+            onError={(event) => {
+              event.currentTarget.hidden = true;
+            }}
+          />
+          {shiny && (
+            <>
+              <Sparkles
+                className="absolute -right-1 top-0 h-4 w-4 text-sky-200 motion-safe:animate-pulse"
+                aria-hidden="true"
+              />
+              <Sparkles
+                className="absolute -left-1 bottom-6 h-3 w-3 text-amber-200 motion-safe:animate-pulse"
+                aria-hidden="true"
+              />
+            </>
+          )}
+        </div>
         <div className="space-y-2 text-sm leading-relaxed">
           {shiny && (
-            <p className="flex items-center gap-1.5 font-bold text-[var(--primary)]">
-              <Sparkles className="h-4 w-4 shrink-0 motion-safe:animate-pulse" aria-hidden="true" />
+            <p className="bg-gradient-to-r from-slate-300 via-white to-sky-300 bg-clip-text text-base font-bold text-transparent">
               {translate("ui.chibiProfessorMari.shiny")}
-              <Sparkles className="h-4 w-4 shrink-0 motion-safe:animate-pulse" aria-hidden="true" />
             </p>
           )}
           <p>{translate("ui.chibiProfessorMari.visit")}</p>
@@ -77,7 +77,10 @@ function showChibiProfessorMariToast() {
         </div>
       </div>
     ),
-    { duration: CHIBI_PROFESSOR_MARI_TOAST_DURATION_MS },
+    {
+      duration: CHIBI_PROFESSOR_MARI_TOAST_DURATION_MS,
+      style: shiny ? { width: "min(560px, calc(100vw - 32px))" } : undefined,
+    },
   );
 }
 

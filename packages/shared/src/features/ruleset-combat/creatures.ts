@@ -455,6 +455,7 @@ function blockFromCreature(creature: RulesetCreature, budgets: ReadonlySet<strin
     ...(creature.signaturePoints !== undefined ? { signaturePoints: creature.signaturePoints } : {}),
     ...(creature.lairInitiative !== undefined ? { lairInitiative: creature.lairInitiative } : {}),
     ...(creature.legendaryResistance !== undefined ? { legendaryResistance: creature.legendaryResistance } : {}),
+    ...(creature.stillIn ? { stillIn: [...creature.stillIn] } : {}),
     ...(creature.riders?.length ? { riders: creature.riders.flatMap((rider) => riderOf(rider, ids)) } : {}),
   };
 }

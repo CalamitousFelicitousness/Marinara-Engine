@@ -1559,6 +1559,17 @@ function carriesHidingTraits(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesHidingTraits(one, depth + 1));
 }
 
+/** A light that sheds shade, something that gives the unseen away, or a creature light holds still
+ *  (1.314). */
+function carriesShadeOrAlerts(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesShadeOrAlerts(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.shade !== undefined || record.alerts !== undefined || record.stillIn !== undefined) return true;
+  return Object.values(record).some((one) => carriesShadeOrAlerts(one, depth + 1));
+}
+
 /** An entry or an item's use that clears growth (1.313). */
 function carriesClears(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -4282,6 +4293,14 @@ export function getCapabilityPackageInstallIssue(
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
   }
   // Clearing growth, 1.313.
+  // Shade and chimes, 1.314.
+  if (
+    !declaresApi(314) &&
+    (carriesShadeOrAlerts(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesShadeOrAlerts(document)))
+  ) {
+    return "A ruleset with a light that sheds shade, something that alerts or a creature held still by light requires schemaVersion 2 and capabilityApi 1.314 or newer";
+  }
   if (
     !declaresApi(313) &&
     (carriesClears(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesClears(document)))

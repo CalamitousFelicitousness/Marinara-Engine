@@ -1481,6 +1481,7 @@ export interface RulesetLightRadius {
   reveals?: true;
   sunlight?: true;
   magical?: true;
+  shade?: true;
 }
 const lightRadiusSchema: z.ZodType<RulesetLightRadius, z.ZodTypeDef, unknown> = z
   .object({
@@ -1495,9 +1496,16 @@ const lightRadiusSchema: z.ZodType<RulesetLightRadius, z.ZodTypeDef, unknown> = 
     /** Magical light (Capability API 1.294), which shines into magical darkness where other light
      *  does not: a sun blade's. A spell's light, on a zone or a condition, always is. */
     magical: z.literal(true).optional(),
+    /** It sheds shade (Capability API 1.314): dim light as far as it reaches, and bright light or
+     *  sunlight there is dim too. The showcase's Lantern of Dusk, `{ "bright": 0, "dim": 15,
+     *  "shade": true }`, against Noonfield's light rule. */
+    shade: z.literal(true).optional(),
   })
   .strict()
-  .refine((light) => light.bright + light.dim > 0, { message: "A light reaches somewhere" });
+  .refine((light) => light.bright + light.dim > 0, { message: "A light reaches somewhere" })
+  .refine((light) => !light.shade || (light.bright === 0 && !light.reveals && !light.sunlight), {
+    message: "A shade sheds no bright light: its reach is all dim",
+  });
 
 const senseRangesSchema: z.ZodType<Record<string, RulesetSenseGrant>, z.ZodTypeDef, unknown> = z.record(
   sheetId,
@@ -4897,6 +4905,13 @@ const creatureFields = {
   /** How many failed saves it may turn into successes (Capability API 1.312), each fight: 5e's
    *  Legendary Resistance (3/Day). */
   legendaryResistance: z.number().int().min(1).max(20).optional(),
+  /** It does not move while any of its cells is in one of these lights (Capability API 1.314): the
+   *  showcase's Lantern-Shy, `["bright", "sunlight"]`. */
+  stillIn: z
+    .array(z.enum(["sunlight", "bright", "dim", "dark"]))
+    .min(1)
+    .max(4)
+    .optional(),
   actions: z.array(creatureActionSchema).min(1).max(RULESET_CREATURE_MAX_ACTIONS),
   /** Catalog spells cast without spending anything off a sheet (Capability API 1.118). Omitted
    *  uses means at will; a coven spell shares its uses while enough members stand nearby. */
@@ -7427,6 +7442,9 @@ const combatConditionSchema = z
     /** The light its holder sheds while it holds (Capability API 1.289): 5e's Light cantrip, a lit
      *  torch. Read where `combat.sight.darkness` makes the dark real. */
     light: lightRadiusSchema.optional(),
+    /** Whoever moves unseen this near its holder is given away while it holds (Capability API 1.314),
+     *  in the ruleset's distance: an alarm, a wind-chime. */
+    alerts: z.number().finite().gt(0).max(10000).optional(),
     /** A condition's `unseen` hides its holder from nobody while this holds (Capability API 1.175):
      *  5e's Faerie Fire, under which the invisible are outlined. */
     cancelsUnseen: z.literal(true).optional(),
@@ -7729,6 +7747,9 @@ export const rulesetItemEffectSchema = z
     senses: senseRangesSchema.optional(),
     /** The light it sheds for its holder (Capability API 1.289): a lantern, a sun blade. */
     light: lightRadiusSchema.optional(),
+    /** It gives away whoever moves unseen this near its holder (Capability API 1.314), in the
+     *  ruleset's distance: the showcase's Wind-Chime, `15`. */
+    alerts: z.number().finite().gt(0).max(10000).optional(),
   })
   .strict()
   .superRefine((entry, ctx) => {

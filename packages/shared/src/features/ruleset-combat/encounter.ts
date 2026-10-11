@@ -83,6 +83,7 @@ import { rulesetCanSee, rulesetHidingTraits, rulesetLightAt, rulesetStaysHidden 
 import { RULESET_MOVE_MODES } from "./types.js";
 import type {
   RulesetBoardLight,
+  RulesetBoardLightRule,
   RulesetBoardProp,
   RulesetCheckModeRule,
   RulesetMoveMode,
@@ -473,6 +474,7 @@ export function rulesetActiveConditions(
     ...(source.conditionImmunities ? { conditionImmunities: [...source.conditionImmunities] } : {}),
     ...(source.senses ? { senses: { ...source.senses } } : {}),
     ...(source.light ? { light: { ...source.light } } : {}),
+    ...(source.alerts ? { alerts: source.alerts } : {}),
   }));
   return [...conditions, ...levels, ...items, ...zoned];
 }
@@ -2645,6 +2647,7 @@ function mechanicsAction(
         ),
         ...(lights.reveals ? { reveals: true as const } : {}),
         ...(lights.sunlight ? { sunlight: true as const } : {}),
+        ...(lights.shade ? { shade: true as const } : {}),
       };
     }
     const dispels = mechanics.zone.dispelsDark;
@@ -3902,6 +3905,9 @@ export interface RulesetEncounterInput {
     growth?: { burnedBy?: string[]; cutBy?: string[] };
     /** What lies on its cells from the start (1.313), by "x,y": growth, light, fog, a season. */
     ground?: Record<string, TacticalGroundCell>;
+    /** What standing in some light does here (1.314): Noonfield's. Bright light and sunlight, every
+     *  round end, when it does not say. */
+    lightRule?: Partial<RulesetBoardLightRule>;
   };
   /** Who is caught unaware as it begins (1.232): no move or action on their first turn, and no
    *  reaction until it ends. One whose conditions say they cannot be surprised is not. */
@@ -4947,6 +4953,7 @@ function placeRulesetCombatants(
     ...(board.growth
       ? { growth: { burnedBy: words(board.growth.burnedBy, ["fire"]), cutBy: words(board.growth.cutBy, ["slashing"]) } }
       : {}),
+    ...(lightRuleOf(definition, board.lightRule) ? { lightRule: lightRuleOf(definition, board.lightRule)! } : {}),
     ...(board.battlefield ? { battlefield: board.battlefield as RulesetCombatBoard["battlefield"] } : {}),
     ...(board.light ? { light: board.light } : {}),
     ...(board.environment ? { environment: board.environment } : {}),
@@ -5001,4 +5008,38 @@ function readStoredLive(stored: unknown): RulesetLiveState {
 /** A copy of what disperses a fog (1.281, 1.284): at once, or after it stands in a wind a while. */
 export function rulesetCopyDispersed(dispersed: true | { after: number }): true | { after: number } {
   return dispersed === true ? true : { after: dispersed.after };
+}
+
+/** A board's light rule as a fight keeps it (1.314): one that does something, to the tracks and
+ *  conditions the ruleset has. Bright light and sunlight, every round end, when it does not say. */
+function lightRuleOf(
+  definition: RulesetDefinition,
+  rule: Partial<RulesetBoardLightRule> | undefined,
+): RulesetBoardLightRule | null {
+  if (!rule || typeof rule !== "object") return null;
+  const lights = new Set<RulesetBoardLight>(["sunlight", "bright", "dim", "dark"]);
+  const inLight = (Array.isArray(rule.in) ? rule.in : ["bright", "sunlight"]).filter((one): one is RulesetBoardLight =>
+    lights.has(one as RulesetBoardLight),
+  );
+  const tracks = (Array.isArray(rule.tracks) ? rule.tracks : []).filter(
+    (one) =>
+      !!one &&
+      Number.isInteger(one.by) &&
+      one.by !== 0 &&
+      definition.sheet.live.tracks.some((track) => track.id === one.track && !track.kinds),
+  );
+  const conditions = new Set(definition.combat?.conditions?.map((one) => one.condition) ?? []);
+  const applies = (Array.isArray(rule.applies) ? rule.applies : []).filter(
+    (one) => typeof one === "string" && conditions.has(one),
+  );
+  if (!inLight.length || (!tracks.length && !applies.length)) return null;
+  const rounds = Number.isInteger(rule.rounds) && rule.rounds! >= 1 ? rule.rounds! : 1;
+  return {
+    ...(typeof rule.label === "string" && rule.label.trim() ? { label: rule.label.trim() } : {}),
+    in: [...new Set(inLight)],
+    rounds,
+    ...(tracks.length ? { tracks: tracks.map((one) => ({ track: one.track, by: one.by })) } : {}),
+    ...(applies.length ? { applies } : {}),
+    ...(rule.spares && (rule.spares.types?.length || rule.spares.tags?.length) ? { spares: rule.spares } : {}),
+  };
 }

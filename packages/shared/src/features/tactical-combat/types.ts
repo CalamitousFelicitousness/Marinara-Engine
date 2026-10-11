@@ -114,6 +114,15 @@ export interface TacticalMadeBattlefield {
   growth?: Array<{ x: number; y: number }>;
   /** The season on each cell, by "x,y" (shared with the season work of 1.359). */
   seasons?: Record<string, string>;
+  /** What standing in some light does here (Capability API 1.314): Noonfield's bright light. */
+  lightRule?: {
+    label?: string;
+    in?: Array<"sunlight" | "bright" | "dim" | "dark">;
+    rounds?: number;
+    tracks?: Array<{ track: string; by: number }>;
+    applies?: string[];
+    spares?: { types?: string[]; tags?: string[] };
+  };
 }
 
 export interface TerrainInfo {

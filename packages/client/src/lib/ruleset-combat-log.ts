@@ -476,6 +476,13 @@ export function rulesetCombatEventLine(
     }
     // Hiding given away (1.282).
     case "revealed":
+      // Given away by a chime (1.314).
+      if (event.reason === "alerted") {
+        return key("revealedAlerted", {
+          actor: names.combatant(event.actorId),
+          holder: names.combatant(event.alertedBy ?? ""),
+        });
+      }
       return key(
         event.reason === "attack"
           ? "revealedAttack"
@@ -659,6 +666,13 @@ export function rulesetCombatEventLine(
         health: event.health,
       });
     // The board doing something on its own (1.313), and growth taken off it.
+    // A board's light rule catching somebody (1.314).
+    case "lightRule":
+      return key(event.label ? "lightRuleNamed" : "lightRule", {
+        actor: names.combatant(event.actorId),
+        label: event.label ?? "",
+        rounds: event.rounds,
+      });
     case "boardEvent":
       return event.tell
         ? key("boardEventTell", { tell: event.tell })

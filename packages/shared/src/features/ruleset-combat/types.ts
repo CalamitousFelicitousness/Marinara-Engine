@@ -524,6 +524,8 @@ export interface RulesetStatBlock {
   lairInitiative?: number;
   /** How many failed saves it may turn into successes (1.312): 5e's Legendary Resistance (3/Day). */
   legendaryResistance?: number;
+  /** It does not move while any of its cells is in one of these lights (1.314): Lantern-Shy. */
+  stillIn?: RulesetBoardLight[];
   /** What this creature adds to the first qualifying hit of a period, all by itself. */
   riders?: RulesetCombatRider[];
 }
@@ -1719,6 +1721,19 @@ export interface RulesetWalkResume {
 /** The light a fight is fought in (1.286): sunlight is bright light that is also the sun's. */
 export type RulesetBoardLight = "sunlight" | "bright" | "dim" | "dark";
 
+/** What standing in some light does on a board (1.314): every `rounds` round ends a creature spends
+ *  wholly in one of these lights, its tracks move and these conditions go on it. Shade (1.314) is dim
+ *  light, so a Lantern of Dusk keeps it off whoever stands in its shade. */
+export interface RulesetBoardLightRule {
+  label?: string;
+  in: RulesetBoardLight[];
+  rounds: number;
+  tracks?: Array<{ track: string; by: number }>;
+  applies?: string[];
+  /** Who it never touches: Noonfield's own creatures. */
+  spares?: RulesetTargetIs;
+}
+
 /** Ways of hiding and of finding the hidden that are its holder's own (1.287). Distances are in
  *  the ruleset's own unit where a ruleset writes them, and in cells on a combatant's action. */
 export interface RulesetHidingTraits {
@@ -1826,6 +1841,10 @@ export interface RulesetCombatBoard {
   happened?: Record<string, number>;
   /** What burns growth away and what cuts it back (1.313): fire, and slashing, when not said. */
   growth?: { burnedBy: string[]; cutBy: string[] };
+  /** What standing in some light does here (1.314): Noonfield's bright light, a level of exhaustion
+   *  for every `rounds` round ends spent in it; and how many each has spent in it so far. */
+  lightRule?: RulesetBoardLightRule;
+  exposed?: Record<string, number>;
   /** What stands on it that may be broken (1.311), broken ones at 0. */
   props?: RulesetBoardProp[];
   /** The labels of what has been broken (1.311), in the order it broke. */
@@ -2164,6 +2183,8 @@ export type RulesetCombatEvent =
       cells: number;
       moved?: Array<{ id: string; to: RulesetCombatCell }>;
     }
+  /** A board's light rule catching somebody (1.314), after this many round ends in its light. */
+  | { type: "lightRule"; actorId: string; label?: string; light: RulesetBoardLight; rounds: number }
   /** Growth taken off cells (1.313): cut back, burnt, or cleared by something made for it. */
   | { type: "growth"; actorId?: string; label?: string; cells: number; by: "cut" | "burnt" | "cleared" }
   /** A failed save turned into a success by a legendary resistance (1.312), and how many are left. */
@@ -2216,7 +2237,14 @@ export type RulesetCombatEvent =
       apart?: RulesetSearchApart[];
     }
   /** Somebody hiding given away to these opponents (1.282): by attacking, by noise, or seen clearly. */
-  | { type: "revealed"; actorId: string; byIds: string[]; reason: "attack" | "noise" | "seen" | "moved" }
+  | {
+      type: "revealed";
+      actorId: string;
+      byIds: string[];
+      /** `alerted`: they moved near something that gives the unseen away (1.314), `alertedBy`'s. */
+      reason: "attack" | "noise" | "seen" | "moved" | "alerted";
+      alertedBy?: string;
+    }
   | {
       type: "move";
       actorId: string;
@@ -2761,7 +2789,7 @@ export interface RulesetEncounterSummary {
 /** How a lasting area behaves (1.167), as the catalog entry said it. */
 export interface RulesetCombatZoneRule {
   /** The light it sheds over its own cells, in CELLS from its middle (1.292). */
-  lights?: { bright: number; dim: number; reveals?: true; sunlight?: true };
+  lights?: { bright: number; dim: number; reveals?: true; sunlight?: true; shade?: true };
   /** Spell light of this level or lower it puts out where they meet (1.294): 5e's Darkness. */
   dispelsLight?: { upTo: number };
   /** Magical darkness of this level or lower ends where it meets it (1.292), within this many CELLS

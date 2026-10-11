@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Rulesets: a light can shed shade, dimming the sun around it (a Lantern of Dusk); a fight board can have a light rule, so standing too long in bright light tires you out (Noonfield); something carried can give away whoever sneaks close (a Wind-Chime); and a creature can be held still by light (Lantern-Shy). Sight now also reads a square's own darkness on a bright board (Capability API 1.314).
 - Game Mode: fight boards can change on their own each round: growth spreads, ice cracks under a creature and moves it, a wheel turns its square of the board, rings and sweeps of light, fog, terrain, height or season close in. Growth is hard going and lightly obscuring; a slashing blow cuts a square back, fire burns it away, and a spell or tool that clears growth (pruning shears) clears its area. A world battlefield can paint growth and its events (Capability API 1.313).
 - Rulesets: creatures with Legendary Resistance now use it: a failed save becomes a success while they have uses left, as 5e's dragons and liches do; and a scroll can hold to a size limit, as Resilient Sphere's does (Capability API 1.312).
 - Game Mode: fight boards can have props that break: struck like a wall's section or caught in an area, a fragile one at a touch. Breaking one tells the story, so a story event can fire on it, and a world battlefield can paint them (Capability API 1.311).

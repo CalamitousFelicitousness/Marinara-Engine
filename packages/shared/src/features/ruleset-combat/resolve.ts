@@ -32,7 +32,7 @@ import {
 } from "./ammo.js";
 import { parseRulesetCombatDice, rollRulesetDice, sumOf } from "./dice.js";
 import { blocksSight, elevationAt } from "../tactical-combat/math.js";
-import { rulesetCanSee, rulesetHiddenFrom, rulesetHidingTraits, rulesetStaysHidden } from "./sight.js";
+import { rulesetCanSee, rulesetHiddenFrom, rulesetHidingTraits, rulesetLightAt, rulesetStaysHidden } from "./sight.js";
 import {
   rulesetCombatIsPool,
   rulesetCombatPenalty,
@@ -91,6 +91,7 @@ import {
   rulesetSyncAuras,
   rulesetSyncSizes,
   rulesetMovesOnly,
+  rulesetLightMatches,
 } from "./encounter.js";
 import {
   rulesetAreaCells,
@@ -6177,6 +6178,7 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
     // Seen on the way, out in the open (1.282), even where the walk ends back in hiding; and no
     // longer still (1.287).
     stirs(ctx, actor, "moved");
+    chimes(ctx, actor);
     recheckHiding(ctx, actor);
     endsAway(ctx);
     // Come where something readied for it reaches it (1.283): taken now, the rest of the walk after.
@@ -6842,6 +6844,44 @@ function search(
 }
 
 /**
+ * A board's light rule as a round ends (1.314): everybody standing wholly in one of its lights counts
+ * one more round end there, and on every `rounds`th their tracks move and its conditions go on them.
+ * Out of it, even in one cell's shade, the count starts again.
+ */
+function lightRuleAtRoundEnd(ctx: RulesetCombatContext): void {
+  const board = ctx.state.board;
+  const rule = board?.lightRule;
+  if (!board || !rule) return;
+  const exposed: Record<string, number> = {};
+  for (const combatant of ctx.state.combatants) {
+    if (combatant.defeated || !rulesetPositionOf(combatant)) continue;
+    if (rule.spares && rulesetTargetIs(ctx.definition, combatant, rule.spares)) continue;
+    const lights = rulesetFootprint(combatant).map((cell) => rulesetLightAt(ctx.definition, ctx.state, cell));
+    if (!lights.every((light) => rule.in.some((wanted) => rulesetLightMatches(light, wanted)))) continue;
+    const count = (board.exposed?.[combatant.id] ?? 0) + 1;
+    if (count < rule.rounds) {
+      exposed[combatant.id] = count;
+      continue;
+    }
+    ctx.events.push({
+      type: "lightRule",
+      actorId: combatant.id,
+      ...(rule.label ? { label: rule.label } : {}),
+      light: lights[0]!,
+      rounds: rule.rounds,
+    });
+    for (const moved of rule.tracks ?? []) {
+      if (!combatant.defeated) moveTrack(ctx, combatant, combatant, moved.track, moved.by);
+    }
+    for (const condition of rule.applies ?? []) {
+      if (!combatant.defeated) applyConditionId(ctx, combatant, condition, { condition, duration: "instant" });
+    }
+  }
+  if (Object.keys(exposed).length) board.exposed = exposed;
+  else delete board.exposed;
+}
+
+/**
  * A hider moving or acting (1.287): what standing still added to its total is gone, and somebody
  * hidden in plain sight that moves is hidden no more. Whether the smaller total still hides it is
  * asked as every step ends, and on every cell of a walk.
@@ -6869,6 +6909,31 @@ function stirs(ctx: RulesetCombatContext, actor: RulesetCombatant, how: "moved" 
     hiding.total -= hiding.still;
     delete hiding.still;
   }
+}
+
+/** A hider moving near something that `alerts` (1.314): a Wind-Chime held by an opponent rings,
+ *  and they are hidden from nobody. */
+function chimes(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
+  const hiding = actor.hiding;
+  const perCell = ctx.combat.distance?.perCell;
+  if (!hiding || perCell === undefined) return;
+  const holder = ctx.state.combatants.find((one) => {
+    if (one.id === actor.id || one.side === actor.side || one.defeated || !rulesetPositionOf(one)) return false;
+    const reach = Math.max(
+      0,
+      ...rulesetActiveConditions(ctx.definition, ctx.combat, one, ctx.state).map((source) => source.alerts ?? 0),
+    );
+    return reach > 0 && rulesetGap(actor, one) <= rulesetInCells(reach, perCell);
+  });
+  if (!holder) return;
+  ctx.events.push({
+    type: "revealed",
+    actorId: actor.id,
+    byIds: [...hiding.from],
+    reason: "alerted",
+    alertedBy: holder.id,
+  });
+  delete actor.hiding;
 }
 
 /** What Hide in Plain Sight needs (1.304): the condition its camouflage is, and something solid
@@ -9107,6 +9172,8 @@ function beginNextTurn(definition: RulesetDefinition, combat: RulesetCombat, ctx
       refreshRulesetBudgets(combat, combatant.budgets, "round");
       refreshSpendLimits(combatant, "round");
     }
+    // What standing in the board's light does as the round ends (1.314): Noonfield's.
+    lightRuleAtRoundEnd(ctx);
     // What the board does as the round ends, and as the next begins (1.313).
     ctx.events.push(...rulesetRunBoardEvents(ctx.state, "round-end", round - 1));
     ctx.events.push({ type: "round", round });

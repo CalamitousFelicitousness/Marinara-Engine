@@ -168,6 +168,37 @@ export const worldBattlefieldMapSchema = z
       .optional(),
     /** What it does on its own each round (Capability API 1.313). */
     events: z.array(worldBattlefieldEventSchema).max(16).optional(),
+    /** What standing in some light does on it (Capability API 1.314): every `rounds` round ends
+     *  wholly in one of these lights (bright light and sunlight when not said), its tracks move and
+     *  these conditions go on, except on whoever `spares` names. Noonfield's exhaustion. */
+    lightRule: z
+      .object({
+        label: z.string().trim().min(1).max(60).optional(),
+        in: z
+          .array(z.enum(["sunlight", "bright", "dim", "dark"]))
+          .min(1)
+          .max(4)
+          .optional(),
+        rounds: z.number().int().min(1).max(100).optional(),
+        tracks: z
+          .array(z.object({ track: z.string().trim().min(1).max(40), by: z.number().int().min(-10).max(10) }).strict())
+          .min(1)
+          .max(4)
+          .optional(),
+        applies: z.array(z.string().trim().min(1).max(40)).min(1).max(4).optional(),
+        spares: z
+          .object({
+            types: z.array(z.string().trim().min(1).max(40)).min(1).max(12).optional(),
+            tags: z.array(z.string().trim().min(1).max(40)).min(1).max(12).optional(),
+          })
+          .strict()
+          .optional(),
+      })
+      .strict()
+      .refine((rule) => !!rule.tracks || !!rule.applies, {
+        message: "A light rule moves a track or puts a condition on",
+      })
+      .optional(),
   })
   .strict();
 export type WorldBattlefieldMap = z.infer<typeof worldBattlefieldMapSchema>;
@@ -262,6 +293,7 @@ export function worldBattlefieldHere(
       ...(map.props?.length ? { props: map.props.map((prop) => structuredClone(prop)) } : {}),
       ...(map.events?.length ? { events: map.events.map((event) => structuredClone(event)) } : {}),
       ...(map.growth ? worldBattlefieldGrowth(map.growth) : {}),
+      ...(map.lightRule ? { lightRule: structuredClone(map.lightRule) } : {}),
     };
   }
   return null;

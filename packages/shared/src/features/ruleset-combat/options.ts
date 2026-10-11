@@ -77,6 +77,7 @@ import {
   rulesetModeRuleHolds,
   rulesetMovesOnly,
   rulesetMovementAllowance,
+  rulesetLightMatches,
 } from "./encounter.js";
 import {
   rulesetAirborne,
@@ -2793,6 +2794,17 @@ function movementOptions(
   // A condition that pins somebody takes their movement away the moment it lands, not at the start
   // of their next turn.
   if (rulesetCombatEffects(definition, combat, actor, state).has("speed-zero")) return [];
+  // Held where it stands by the light it is in (1.314): Lantern-Shy in bright light.
+  const still = actor.block?.stillIn;
+  if (
+    still &&
+    rulesetFootprint(actor).some((cell) => {
+      const light = rulesetLightAt(definition, state, cell);
+      return still.some((wanted) => rulesetLightMatches(light, wanted));
+    })
+  ) {
+    return [];
+  }
   const left = Math.max(0, Math.floor(actor.movementLeft ?? 0));
   const prone = rulesetProneCondition(definition, combat, actor);
   if (prone) {

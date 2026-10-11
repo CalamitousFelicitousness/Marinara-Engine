@@ -436,6 +436,7 @@ function buildRulesetBoard(
       props?: NonNullable<TacticalMadeBattlefield["props"]>;
       events?: NonNullable<TacticalMadeBattlefield["events"]>;
       ground?: Record<string, { growth?: true; season?: string }>;
+      lightRule?: NonNullable<TacticalMadeBattlefield["lightRule"]>;
     }
   | { error: string }
   | null {
@@ -487,6 +488,8 @@ function buildRulesetBoard(
     // What it does each round, and the growth and seasons on its cells (1.313).
     ...(input.made?.events?.length ? { events: input.made.events } : {}),
     ...(madeGround(input.made) ? { ground: madeGround(input.made)! } : {}),
+    // What standing in its light does (1.314).
+    ...(input.made?.lightRule ? { lightRule: input.made.lightRule } : {}),
   };
 }
 

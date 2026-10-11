@@ -1559,6 +1559,23 @@ function carriesHidingTraits(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesHidingTraits(one, depth + 1));
 }
 
+/** Hide in Plain Sight's needs, Feral Senses, surprise from a hidden start, and a weapon bound out
+ *  of the fight (1.304). */
+function carriesHidingNeeds(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesHidingNeeds(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const hiding = plainRecord(record.hiding);
+  if (
+    hiding &&
+    (hiding.stillWhile !== undefined || hiding.unseenStrikes !== undefined || hiding.surprises !== undefined)
+  )
+    return true;
+  if (plainRecord(record.conjures)?.boundIn !== undefined) return true;
+  return Object.values(record).some((one) => carriesHidingNeeds(one, depth + 1));
+}
+
 /** An item's use whose targets grow with the sheet, or that takes the same target again (1.303). */
 function carriesItemBeams(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -4151,6 +4168,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Hide in Plain Sight's needs, Feral Senses, surprise from a hidden start, a ritual-bound weapon, 1.304.
+  if (
+    !declaresApi(304) &&
+    (carriesHidingNeeds(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesHidingNeeds(document)))
+  ) {
+    return "A ruleset with hiding that needs camouflage or a wall, attacks unhindered by not seeing, surprise from a hidden start, or a weapon bound out of the fight requires schemaVersion 2 and capabilityApi 1.304 or newer";
   }
   // Beams and darts on an item's use, 1.303.
   if (

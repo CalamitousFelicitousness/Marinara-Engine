@@ -315,6 +315,83 @@ try {
     assert.equal(actionOf(killed.state, "Longsword"), undefined, "gone with its maker");
   }
 
+  // ── Bound out of the fight, by the weapon a sheet note names (1.304) ──
+  {
+    const ritualDoc = fiveE((doc) => {
+      doc.sheet.live.text.push({ id: "pact_bound", label: "Pact weapon", maxLength: 80 });
+      doc.catalogs.find((one: { id: string }) => one.id === "features").entries[0].mechanics.conjures.boundIn =
+        "pact_bound";
+    });
+    const ritual = parsed(ritualDoc);
+    const ritualFeatures = ritual.catalogs!.find((one) => one.id === "features")!.entries!;
+    const second: RulesetSheetItem = { ...flameTongue, name: "Frost Brand" };
+    const modes = (note: string | undefined) => {
+      const state = createRulesetEncounter({
+        definition: ritual,
+        seed: 1,
+        roller: () => 15,
+        combatants: [
+          {
+            id: "lock",
+            name: "Lock",
+            side: "party",
+            build: rulesetSheetBuildSchema.parse({
+              abilities: { str: 14, dex: 10, con: 14, int: 10, wis: 10, cha: 16 },
+              fields: { level: 5, ac: 12, speed: 30, hp_max: 40, spellcasting_ability: "cha" },
+              lists: { features: rowsFromCatalogEntry("features", pact).map((row) => row.row) },
+            }),
+            live: note === undefined ? {} : { text: { pact_bound: note } },
+            items: [flameTongue, second],
+            catalogs: { features: ritualFeatures },
+          },
+          { id: "a", name: "A", side: "enemy", block: { health: 30, defense: 5, initiativeModifier: 0, actions: [] } },
+        ],
+      });
+      state.order = ["lock", "a"];
+      state.turn = 0;
+      return rulesetCombatOptions(ritual, state, "lock")
+        .find((one) => one.label === "Pact")!
+        .modes!.map((one) => one.label);
+    };
+    assert.deepEqual(modes(undefined), ["Longsword", "Greataxe"], "nothing bound yet");
+    assert.deepEqual(modes(" FROST brand "), ["Longsword", "Greataxe", "Frost Brand"], "only the one named");
+    assert.deepEqual(modes("Rope"), ["Longsword", "Greataxe"], "a name it does not hold binds nothing");
+    refusedDoc(
+      fiveE((doc) => {
+        doc.catalogs.find((one: { id: string }) => one.id === "features").entries[0].mechanics.conjures.boundIn =
+          "nowhere";
+      }),
+      /Unknown live text "nowhere"/,
+    );
+    refusedDoc(
+      fiveE((doc) => {
+        const conjures = doc.catalogs.find((one: { id: string }) => one.id === "features").entries[0].mechanics
+          .conjures;
+        delete conjures.binds;
+        conjures.boundIn = "concentration";
+      }),
+      /"boundIn" names the weapon "binds" binds/,
+    );
+    const gate =
+      "A ruleset with hiding that needs camouflage or a wall, attacks unhindered by not seeing, surprise from a hidden start, or a weapon bound out of the fight requires schemaVersion 2 and capabilityApi 1.304 or newer";
+    const manifest = (minor: number) =>
+      ({
+        schemaVersion: 2,
+        capabilityApi: { major: 1, minor },
+        id: "fivee",
+        name: "5e",
+        version: "1.0.0",
+        kind: ["ruleset"],
+        entrypoints: {},
+        contributions: { assets: { paths: ["ruleset.json"] } },
+        files: [{ path: "ruleset.json", sha256: "0".repeat(64), bytes: 10 }],
+        permissions: [],
+        restartRequired: false,
+      }) as never;
+    assert.equal(getCapabilityPackageInstallIssue(manifest(303), ritualDoc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(304), ritualDoc), gate);
+  }
+
   // ── Lifedrinker and Thirsting Blade ride on it ──
   {
     const sword = (held: RulesetCatalogEntry[], cha?: number) =>

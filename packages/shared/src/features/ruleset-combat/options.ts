@@ -106,6 +106,7 @@ import {
   rulesetCanSee,
   rulesetCarriesLight,
   rulesetHiddenFrom,
+  rulesetHidingTraits,
   rulesetLightAt,
   rulesetSeesCell,
   rulesetStandsObscured,
@@ -2587,7 +2588,11 @@ export function rulesetAttackMode(
   // Not seeing (1.173): striking at somebody you cannot see is harder, at somebody who cannot see
   // you easier.
   const unseen = combat.sight?.unseenAttacks && where;
-  const blindStrike = !!unseen && !rulesetCanSee(definition, where.state, actor, target);
+  // Unless not seeing is nothing to its attacks (1.304): Feral Senses.
+  const blindStrike =
+    !!unseen &&
+    !rulesetHidingTraits(definition, actor).unseenStrikes &&
+    !rulesetCanSee(definition, where.state, actor, target);
   const blindSide = !!unseen && !rulesetCanSee(definition, where.state, target, actor);
   const advantage =
     own.has("own-attacks-advantage") ||

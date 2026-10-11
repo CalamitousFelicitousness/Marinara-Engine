@@ -417,16 +417,26 @@ export function rulesetHidingTraits(
 ): {
   behindLarger?: true;
   still?: number;
+  stillWhile?: { holds?: string; wall?: true };
+  unseenStrikes?: true;
   slow?: "advantage";
   aware: Array<{ within: number; lostWith?: string[] }>;
   starts?: number;
+  surprises?: true;
 } {
   const traits: ReturnType<typeof rulesetHidingTraits> = { aware: [] };
   const perCell = definition.combat?.distance?.perCell ?? 1;
   const add = (one: RulesetHidingTraits | undefined, inCells: boolean) => {
     if (!one) return;
     if (one.behindLarger) traits.behindLarger = true;
-    if (one.still) traits.still = Math.max(traits.still ?? 0, one.still);
+    // The best still, with what that one needs (1.304).
+    if (one.still && one.still >= (traits.still ?? 0)) {
+      traits.still = one.still;
+      if (one.stillWhile) traits.stillWhile = { ...one.stillWhile };
+      else delete traits.stillWhile;
+    }
+    if (one.unseenStrikes) traits.unseenStrikes = true;
+    if (one.surprises) traits.surprises = true;
     if (one.slow) traits.slow = one.slow;
     if (one.starts) traits.starts = Math.max(traits.starts ?? 0, one.starts);
     if (one.aware) {

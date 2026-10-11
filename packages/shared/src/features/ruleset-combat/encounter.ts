@@ -3346,9 +3346,13 @@ function sheetCombatant(
     });
     if (conjures.binds) {
       const items = input.items ?? [];
+      // Bound out of the fight (1.304): only the weapon its live text names, and none while it is empty.
+      const boundName =
+        conjures.boundIn !== undefined ? (input.live.text?.[conjures.boundIn] ?? "").trim().toLowerCase() : undefined;
       items.forEach((held, index) => {
         if (!held.worn || !held.item.attack) return;
         if (!rulesetItemMatches(held.item, itemAttackLabel(definition, held), conjures.binds!)) return;
+        if (boundName !== undefined && itemAttackLabel(definition, held).trim().toLowerCase() !== boundName) return;
         const made = itemAttackActions(definition, combat, items, build, evaluated, perCell, rowRules).filter(
           (one) => rulesetActionItemIndex(one) === index,
         );
@@ -4010,11 +4014,11 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
   // Caught unaware (1.232), unless what they hold says they never are: 5e's Foresight. What shakes it
   // off is read off their own rows: Feral Instinct's rage.
   const surprised: string[] = [];
-  for (const id of input.surprised ?? []) {
+  const surprise = (id: string) => {
     const combatant = rulesetCombatant(state, id);
-    if (!combatant || combatant.surprised) continue;
+    if (!combatant || combatant.surprised) return;
     if (rulesetActiveConditions(definition, combat, combatant, state).some((entry) => entry.cannotBeSurprised)) {
-      continue;
+      return;
     }
     combatant.surprised = true;
     surprised.push(id);
@@ -4023,7 +4027,8 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
       return by ? combatant.actions.filter((action) => action.entry === by).map((action) => action.id) : [];
     });
     if (out.length) combatant.surpriseOut = [...new Set(out)];
-  }
+  };
+  for (const id of input.surprised ?? []) surprise(id);
 
   // Everybody's contests, last, so one that takes the place of a strike can see what strikes the
   // actor's own actions buy. A ruleset with none adds nothing, and its fights are what they were.
@@ -4056,12 +4061,15 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
   // it: a gelatinous cube's Transparent.
   if (combat.hiding) {
     for (const combatant of state.combatants) {
-      const total = rulesetHidingTraits(definition, combatant).starts;
+      const traits = rulesetHidingTraits(definition, combatant);
+      const total = traits.starts;
       if (!total) continue;
       const from = state.combatants
         .filter((viewer) => rulesetStaysHidden(definition, state, viewer, combatant, total, true))
         .map((viewer) => viewer.id);
       if (from.length > 0) combatant.hiding = { total, from, plain: true };
+      // Unaware of it, caught by surprise (1.304): a gelatinous cube's Transparent.
+      if (traits.surprises) for (const id of from) surprise(id);
     }
   }
   // A turn's budgets as conditions held from before the fight change them (combat C6d): the first

@@ -2246,6 +2246,19 @@ const hidingTraitFields = {
   /** Added to its Stealth total as it hides, and taken off again once it moves or takes an action:
    *  a ranger's Hide in Plain Sight, `10`. */
   still: z.number().int().min(1).max(20).optional(),
+  /** `still` counts only while its holder holds `holds` (a camouflage made beforehand) and, with
+   *  `wall`, stands pressed against something that blocks sight (Capability API 1.304): a ranger's
+   *  Hide in Plain Sight, "against a solid surface, such as a tree or wall". */
+  stillWhile: z
+    .object({ holds: sheetId.optional(), wall: z.literal(true).optional() })
+    .strict()
+    .refine((rule) => rule.holds !== undefined || rule.wall, {
+      message: 'Say what "stillWhile" needs: "holds" or "wall"',
+    })
+    .optional(),
+  /** Not seeing whom it attacks puts no disadvantage on its attacks (Capability API 1.304): a
+   *  ranger's Feral Senses. */
+  unseenStrikes: z.literal(true).optional(),
   /** Its Hide is rolled so when it has moved no more than half its speed this turn: a thief's
    *  Supreme Sneak, `"advantage"`. */
   slow: z.literal("advantage").optional(),
@@ -2264,14 +2277,32 @@ const hidingTraitFields = {
 const hidingTraitsSchema = z
   .object(hidingTraitFields)
   .strict()
-  .refine((traits) => Object.keys(traits).length > 0, { message: "hiding names at least one way of hiding" });
+  .refine((traits) => Object.keys(traits).length > 0, { message: "hiding names at least one way of hiding" })
+  .refine((traits) => !traits.stillWhile || traits.still !== undefined, {
+    message: '"stillWhile" goes with "still"',
+    path: ["stillWhile"],
+  });
 /** A creature's, which may also begin the fight hidden (`starts`, the total it hides with until it
  *  moves or gives itself away, from whoever's passive Perception does not beat it, seen clearly or
  *  not: a gelatinous cube's Transparent, `15`). */
 const creatureHidingTraitsSchema = z
-  .object({ ...hidingTraitFields, starts: z.number().int().min(1).max(60).optional() })
+  .object({
+    ...hidingTraitFields,
+    starts: z.number().int().min(1).max(60).optional(),
+    /** Whoever it begins the fight hidden from begins it surprised (Capability API 1.304): a gelatinous
+     *  cube's Transparent, which surprises a creature unaware of it. */
+    surprises: z.literal(true).optional(),
+  })
   .strict()
-  .refine((traits) => Object.keys(traits).length > 0, { message: "hiding names at least one way of hiding" });
+  .refine((traits) => Object.keys(traits).length > 0, { message: "hiding names at least one way of hiding" })
+  .refine((traits) => !traits.stillWhile || traits.still !== undefined, {
+    message: '"stillWhile" goes with "still"',
+    path: ["stillWhile"],
+  })
+  .refine((traits) => !traits.surprises || traits.starts !== undefined, {
+    message: '"surprises" goes with "starts"',
+    path: ["surprises"],
+  });
 export const RULESET_COMBAT_STANDARD_ACTIONS = combatStandardActionSchema.options;
 
 /** How long a condition an entry applies lasts. `until-save` has no clock of its own, so it needs
@@ -3236,8 +3267,16 @@ const catalogMechanicsObject = z
         proficient: z.literal(true).optional(),
         qualities: z.array(sheetId).min(1).max(8).optional(),
         binds: itemMatchSchema.optional(),
+        /** A live text field naming the one held weapon `binds` may bind (Capability API 1.304): bound
+         *  out of the fight, as 5e's hour-long ritual during a short rest is, by writing its name
+         *  there. Empty, nothing is bound. */
+        boundIn: sheetId.optional(),
       })
       .strict()
+      .refine((conjures) => conjures.boundIn === undefined || conjures.binds !== undefined, {
+        message: '"boundIn" names the weapon "binds" binds, so it goes with "binds"',
+        path: ["boundIn"],
+      })
       .optional(),
     /** Held on a sheet's list, how it changes one named entry of its holder's every time they use it
      *  (Capability API 1.297), stacking with every other such: 5e's Agonizing Blast adds the
@@ -13189,6 +13228,11 @@ export function rulesetCatalogEntryIssues(
     mechanics?.keepsOn?.forEach((kept, keptIndex) => {
       if (!liveConditions.has(kept)) add([index, "mechanics", "keepsOn", keptIndex], `Unknown condition "${kept}"`);
     });
+    // The weapon bound out of the fight is named in a live text field (1.304).
+    const boundIn = mechanics?.conjures?.boundIn;
+    if (boundIn !== undefined && !definition.sheet.live.text.some((one) => one.id === boundIn)) {
+      add([index, "mechanics", "conjures", "boundIn"], `Unknown live text "${boundIn}"`);
+    }
     mechanics?.conjures?.items.forEach((ref, refIndex) => {
       const catalogId = ref.slice(0, ref.indexOf("/"));
       const catalog = definition.catalogs?.find((one) => one.id === catalogId);
@@ -13516,7 +13560,7 @@ export function capImportedRulesetSheets(value: unknown): {
  *  somebody larger only where there are sizes, and lost only with conditions the sheet has. */
 function hidingTraitsIssues(
   definition: RulesetDefinition,
-  traits: { behindLarger?: true; aware?: { lostWith?: string[] } },
+  traits: { behindLarger?: true; aware?: { lostWith?: string[] }; stillWhile?: { holds?: string } },
   path: Array<string | number>,
   add: (path: Array<string | number>, message: string) => void,
 ): void {
@@ -13528,6 +13572,10 @@ function hidingTraitsIssues(
     add([...path, "behindLarger"], "Hiding behind somebody larger reads combat.sizes");
   }
   const conditions = new Set(definition.sheet.live.conditions.map((condition) => condition.id));
+  // The camouflage Hide in Plain Sight needs (1.304) is one of the sheet's conditions.
+  const holds = traits.stillWhile?.holds;
+  if (holds !== undefined && !conditions.has(holds))
+    add([...path, "stillWhile", "holds"], `Unknown condition "${holds}"`);
   traits.aware?.lostWith?.forEach((condition, conditionIndex) => {
     if (!conditions.has(condition)) {
       add([...path, "aware", "lostWith", conditionIndex], `Unknown condition "${condition}"`);

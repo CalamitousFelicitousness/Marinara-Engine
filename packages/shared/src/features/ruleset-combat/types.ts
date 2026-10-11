@@ -1655,6 +1655,11 @@ export interface RulesetHidingTraits {
   behindLarger?: true;
   /** Added to its Stealth total while it neither moves nor acts: Hide in Plain Sight's +10. */
   still?: number;
+  /** `still` only while it holds this condition and, with `wall`, stands against something that
+   *  blocks sight (1.304). */
+  stillWhile?: { holds?: string; wall?: true };
+  /** Its attacks at whom it cannot see are made as any others (1.304): Feral Senses. */
+  unseenStrikes?: true;
   /** Its Hide rolled so, when it has moved no more than half its speed this turn: Supreme Sneak. */
   slow?: "advantage";
   /** Nobody within this distance hides from it, unless it has one of these conditions: Blindsense. */
@@ -1662,6 +1667,8 @@ export interface RulesetHidingTraits {
   /** A creature's (only): it begins the fight hidden with this total, from whoever does not beat it,
    *  until it moves or gives itself away. A gelatinous cube's Transparent, DC 15. */
   starts?: number;
+  /** A creature's (only): whoever it starts hidden from begins surprised (1.304). */
+  surprises?: true;
 }
 
 /** A creature's own roll twice on checks with these skills (1.286), only where it says: 5e's Keen

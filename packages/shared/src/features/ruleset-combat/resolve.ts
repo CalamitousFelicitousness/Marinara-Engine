@@ -31,7 +31,7 @@ import {
   spendRulesetShots,
 } from "./ammo.js";
 import { parseRulesetCombatDice, rollRulesetDice, sumOf } from "./dice.js";
-import { elevationAt } from "../tactical-combat/math.js";
+import { blocksSight, elevationAt } from "../tactical-combat/math.js";
 import { rulesetCanSee, rulesetHiddenFrom, rulesetHidingTraits, rulesetStaysHidden } from "./sight.js";
 import {
   rulesetCombatIsPool,
@@ -6322,7 +6322,10 @@ function resolveStandard(
       ctx.combat.hiding.stealth,
       slow ? { advantage: true, disadvantage: false } : undefined,
     );
-    if (traits.still) check.total += traits.still;
+    // Standing still is worth something only where what it needs holds (1.304): camouflage made
+    // beforehand, and a wall or a tree to press against.
+    const still = traits.still && stillHolds(ctx, actor, traits.stillWhile) ? traits.still : 0;
+    if (still) check.total += still;
     // Something that begins the fight hidden in plain sight hides that way again (1.287).
     const plain = !!traits.starts;
     const from = ctx.state.combatants
@@ -6332,7 +6335,7 @@ function resolveStandard(
       actor.hiding = {
         total: check.total,
         from,
-        ...(traits.still ? { still: traits.still } : {}),
+        ...(still ? { still } : {}),
         ...(plain ? { plain: true as const } : {}),
       };
     } else delete actor.hiding;
@@ -6421,6 +6424,38 @@ function stirs(ctx: RulesetCombatContext, actor: RulesetCombatant, how: "moved" 
     hiding.total -= hiding.still;
     delete hiding.still;
   }
+}
+
+/** What Hide in Plain Sight needs (1.304): the condition its camouflage is, and something solid
+ *  beside its holder that blocks sight. */
+function stillHolds(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  rule: { holds?: string; wall?: true } | undefined,
+): boolean {
+  if (!rule) return true;
+  if (rule.holds !== undefined && !rulesetCombatConditions(ctx.definition, actor).includes(rule.holds)) return false;
+  if (rule.wall) {
+    const grid = ctx.state.board?.grid;
+    if (!grid) return false;
+    const own = rulesetFootprint(actor);
+    const mine = new Set(own.map((cell) => `${cell.x},${cell.y}`));
+    const beside = own.some((cell) =>
+      [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ].some(([dx, dy]) => {
+        const x = cell.x + dx!;
+        const y = cell.y + dy!;
+        if (mine.has(`${x},${y}`) || x < 0 || y < 0 || x >= grid.width || y >= grid.height) return false;
+        return blocksSight(grid, x, y);
+      }),
+    );
+    if (!beside) return false;
+  }
+  return true;
 }
 
 /** No longer hidden from these opponents (1.282), and no longer hiding once that is nobody. */

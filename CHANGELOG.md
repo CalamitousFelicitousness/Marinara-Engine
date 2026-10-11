@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Names in Korean, Japanese, Chinese, Cyrillic and other non-Latin scripts now stay in the prompt's XML tags and Markdown headings, such as `<홍길동>`, and Peek Prompt shows those sections by name. Before, such a name became an empty `<>` tag and accented names lost letters (`Amélie` became `amlie`). A persona with such a name could also be left out of the prompt, and in a group chat set to Individual, other characters' cards could stay in each character's prompt.
+- In a group chat set to Individual with a preset that uses the Markdown wrap format, other characters no longer see the card of a character whose name has a symbol or emoji between words, such as `Tom & Jerry`.
 - The switch that adds a character's **Image Generation Instructions** to their Noodle images moved from the character editor's **Convo** tab into Noodle: open the character's Noodle profile and choose **Edit profile**. Update Noodle to 1.5.4 to get it; your current choice carries over. The help text for the instructions now says that Noodle and Slurp can use them. Packages can now open a character in the editor (capability API 1.67).
 - **DeepSeek** is now a built-in connection type: pick it, paste your key, and its models and **Reasoning Effort** levels are ready to use. Its thinking shows in the reply like any other thinking model, and the settings it ignores stay hidden instead of pretending to work (#7401).
 - The omnibar stays responsive while quick answers stream, when opening their Mari row, and when moving between search results.

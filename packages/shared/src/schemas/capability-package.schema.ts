@@ -124,7 +124,7 @@ const capabilityPackageManifestBaseSchema = z
             /** A map pack (worldgen W9e): the Experience's own setting kit, ready-made worlds built with it
              *  and its own tile pack, as the kit, world and tile pack share files among its assets. A new
              *  game with the Experience on is locked to its kit, and to one of its worlds when it ships
-             *  any; its overworld and towns are drawn with its tiles. Requires Capability API 1.71. */
+             *  any; its overworld and towns are drawn with its tiles. Requires Capability API 1.72. */
             mapPack: z
               .object({
                 kit: z
@@ -601,10 +601,13 @@ const capabilityPackageManifestBaseSchema = z
 // 1.70: a catalog entry's rider may name `weapons` by item tag, so it fires on a held weapon as it
 //        does on an attack row (Sneak Attack with a rapier held from the bag). A new key on the strict
 //        rider, so a package whose entries carry one declares 1.70.
-// 1.71: an Experience may ship a map pack (`contributions.gameSurface.mapPack`, worldgen W9e): its
+// 1.71: `listMessages` records carry `agentContent` in Roleplay outside hosted rooms: the message as Engine
+//        agents read it, with its whispers. Soft seam: a package reads `agentContent ?? content`, so it does not
+//        need to declare 1.71. Requires `chat-read`, like `listMessages`.
+// 1.72: an Experience may ship a map pack (`contributions.gameSurface.mapPack`, worldgen W9e): its
 //        setting kit, ready-made worlds and tile pack as kit, world and tile pack share files among
 //        its declared assets. A new game with the Experience on is locked to them.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 71 } as const);
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 72 } as const);
 
 const capabilityApiVersionSchema = z
   .object({
@@ -640,11 +643,11 @@ export const capabilityPackageManifestSchema = z
     const mapPack = manifest.contributions?.gameSurface?.mapPack;
     if (mapPack) {
       const api = manifest.schemaVersion === 2 ? manifest.capabilityApi : null;
-      if (!api || api.major !== 1 || api.minor < 71) {
+      if (!api || api.major !== 1 || api.minor < 72) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["contributions", "gameSurface", "mapPack"],
-          message: "A map pack requires schemaVersion 2 and capabilityApi 1.71 or newer",
+          message: "A map pack requires schemaVersion 2 and capabilityApi 1.72 or newer",
         });
       }
       // The lock lives in the Engine's own setup, so an Experience with a map pack sets up through it
@@ -1079,9 +1082,10 @@ export interface CapabilityPackageUpdate {
   version: string;
   artifactSha256: string;
   restartRequired: boolean;
-  /** Release notes published for `version`, when the catalog ships a notes sidecar. */
-  releaseNotes?: string;
-  /** Whether the publisher marked `version` as a change the user will notice. */
+  /** Notes published for every version after `installedVersion` up to `version`, newest first,
+   *  when the catalog ships a notes sidecar. */
+  releaseNotes?: CapabilityPackageVersionNote[];
+  /** Whether the publisher marked any of those versions as a change the user will notice. */
   releaseHighlight?: boolean;
 }
 
@@ -1105,10 +1109,9 @@ const capabilityPackageVersionNoteSchema = z
     //   * numeric prerelease identifiers must be canonical, or "01" and "1"
     //     compare as different versions while meaning the same one.
     // Leading zeros matter for the same reason: 01.2.3 and 1.2.3 compare equal
-    // numerically but differ as strings, so the duplicate check and the lookup in
-    // attachCapabilityReleaseNotes would disagree with the ordering — two notes
-    // for one version, or a note that never attaches because the catalog spells
-    // the version differently.
+    // numerically but differ as strings, so the duplicate check and the range
+    // filter in attachCapabilityReleaseNotes would disagree with the ordering —
+    // two notes listed for what the comparator treats as one version.
     // Nine digits is far beyond any real version, and this is canonical SemVer
     // otherwise.
     version: z
@@ -1146,8 +1149,8 @@ export const capabilityReleaseNotesSchema = z
           versions: z
             .array(capabilityPackageVersionNoteSchema)
             .max(MAX_RELEASE_NOTE_VERSIONS)
-            // A repeated version would make the two readers disagree: the update
-            // prompt takes the first match, the history sheet shows every one.
+            // A repeated version would list the same release twice in the update
+            // prompt and the history sheet, and collide on their per-version list key.
             .refine((versions) => new Set(versions.map((note) => note.version)).size === versions.length, {
               message: "must not list the same version twice",
             }),

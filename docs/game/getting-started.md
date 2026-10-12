@@ -109,7 +109,6 @@ A world can travel as a file. **Download this world** (under **Make a world**) s
 
 A game with a world opens on the **overworld**, the world drawn as a pixel map where you can walk the party from settlement to settlement along the world's ways and enter the town it is in; the scene view is a switch away. See [The overworld](map-time-weather.md#the-overworld).
 
-
 ### Defaults worth knowing
 
 These are the starting values in the **World**, **Party**, and **Features** steps. You can change any of them.

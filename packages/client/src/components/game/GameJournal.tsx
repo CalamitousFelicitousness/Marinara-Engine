@@ -25,6 +25,7 @@ import {
 import { cn } from "../../lib/utils";
 import { api } from "../../lib/api-client";
 import { downloadJsonFile } from "../../lib/download-json";
+import { useWorldJournal } from "../../hooks/use-game";
 import { toast } from "sonner";
 import { cleanNpcAvatarDisplayName, normalizeNpcAvatarName } from "../../lib/game-npc-avatar";
 import { applyInlineMarkdown, renderMarkdownBlocks } from "../../lib/markdown";
@@ -754,24 +755,10 @@ function NpcsView({
 }
 
 /** The world as the party knows it (worldgen W7): read from the replies when the tab opens and after
- *  each turn, and only ever for the game it was asked for. */
+ *  each turn, and only ever for the game and turn it was asked for. */
 function WorldView({ chatId, turnKey }: { chatId: string; turnKey: string | null }) {
   const { t: localizeUi } = useUiTranslation();
-  const [world, setWorld] = useState<{ chatId: string; journal: WorldJournal | null } | undefined>(undefined);
-  useEffect(() => {
-    let superseded = false;
-    api
-      .get<{ journal: WorldJournal | null }>(`/game/${chatId}/world-journal`)
-      .then((res) => {
-        if (!superseded) setWorld({ chatId, journal: res.journal });
-      })
-      .catch(() => {
-        if (!superseded) setWorld({ chatId, journal: null });
-      });
-    return () => {
-      superseded = true;
-    };
-  }, [chatId, turnKey]);
+  const world = useWorldJournal(chatId, turnKey);
   // The game's world as a share file (worldgen W9d): its kit, and its world with its hand edits.
   const downloadWorld = async () => {
     try {
@@ -781,8 +768,8 @@ function WorldView({ chatId, turnKey }: { chatId: string; turnKey: string | null
       toast.error(localizeUi("ui.game.worldview.downloadFailed"));
     }
   };
-  // Another game's world is never shown while this one's is read.
-  const shown = world?.chatId === chatId ? world.journal : undefined;
+  // Another game's or turn's world is never shown while this one's is read.
+  const shown: WorldJournal | null | undefined = world.isError ? null : world.data;
   if (shown === undefined) {
     return (
       <div className="flex justify-center py-6 text-white/40">
@@ -827,7 +814,11 @@ function WorldView({ chatId, turnKey }: { chatId: string; turnKey: string | null
           ? shown.news.map((each, index) => (
               <div key={index} className={row}>
                 <div className="flex gap-2 text-white/45">
-                  <span>{each.when}</span>
+                  <span>
+                    {each.ago <= 0
+                      ? localizeUi("ui.game.worldview.newsToday")
+                      : localizeUi("ui.game.worldview.newsAgo", { count: each.ago, day: each.day, days: each.days })}
+                  </span>
                   {each.rumour ? <span className="italic">{localizeUi("ui.game.worldview.rumour")}</span> : null}
                 </div>
                 <div>{each.text}</div>

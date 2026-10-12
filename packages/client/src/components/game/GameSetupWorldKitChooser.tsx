@@ -995,6 +995,7 @@ export function GameSetupWorldKitChooser({
                         <NumberField
                           value={unit.value}
                           min={1}
+                          max={1_000_000}
                           onChange={(value) => edit((draft) => (draft.money!.units[index]!.value = value))}
                           label={t("game.worldKit.setup.coinWorth", { coin: unit.label })}
                           className={cn(INPUT, "w-28 shrink-0")}
@@ -1030,6 +1031,7 @@ export function GameSetupWorldKitChooser({
                         <NumberField
                           value={thing.price}
                           min={0}
+                          max={1_000_000_000}
                           onChange={(value) => edit((draft) => (draft.shop![index]!.price = value))}
                           label={t("game.worldKit.setup.shopPrice", { name: thing.name })}
                           className={cn(INPUT, "w-28 shrink-0")}

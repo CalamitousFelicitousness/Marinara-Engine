@@ -62,8 +62,13 @@ async function metadataOf(request: APIRequestContext, chatId: string) {
 /** A button in the Game controls window, opened from its bubble (or the phone's Chat tools menu). */
 async function toolbarButton(page: Page, name: string) {
   const controls = page.locator('.mari-window[data-window="control:game"]');
+  // The window may already be open from an earlier click, and then its bubble is not shown.
   await expect(
-    page.locator('.mari-window-bubble[data-window="control:game"], [data-chat-tools-menu-button]').first(),
+    page
+      .locator(
+        '.mari-window[data-window="control:game"], .mari-window-bubble[data-window="control:game"], [data-chat-tools-menu-button]',
+      )
+      .first(),
   ).toBeVisible({ timeout: 40_000 });
   if (!(await controls.isVisible())) await openChatTool(page, "control:game");
   return controls.getByRole("button", { name, exact: true });

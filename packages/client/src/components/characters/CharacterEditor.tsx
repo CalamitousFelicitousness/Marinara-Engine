@@ -8,6 +8,7 @@ import {
   useEffect,
   useRef,
   useCallback,
+  useId,
   useMemo,
   type ChangeEvent,
   type ReactNode,
@@ -18,6 +19,7 @@ import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useCharacter,
+  useAllCharacterCatalog,
   useUpdateCharacter,
   useGenerateCharacterSummary,
   useGenerateCharacterConvoProfile,
@@ -132,6 +134,7 @@ import { cn, copyToClipboard, generateClientId, getAvatarCropStyle } from "../..
 import {
   applyBakedGreetingImages,
   findGreetingImageUrls,
+  getCardVariableChipNames,
   normalizeAvatarCrop,
   readBakedGreetingImages,
   restoreBakedGreetingImages,
@@ -162,8 +165,11 @@ import { SETTINGS_BUTTON_CLASS, SettingsSwitch } from "../panels/settings/Settin
 import {
   characterOnboardingSchema,
   createDefaultRpgStatPools,
+  findUnresolvedCardVariableUses,
   getOnboardingVariables,
   getRelevantOnboardingVariables,
+  hasOnboardingContent,
+  MAX_CARD_VARIABLES,
   normalizeSpriteExpressionLabel,
   normalizeRpgStatPools,
   ONBOARDING_MAX_QUESTIONS,
@@ -179,6 +185,7 @@ import {
   type CharacterOnboarding,
   type CharacterOnboardingVariable,
   type OnboardingAnswers,
+  type OnboardingCardFields,
   type OnboardingIssue,
   type OnboardingPersonaField,
   type CharacterTrackerCustomFieldDefault,
@@ -226,14 +233,33 @@ const CHARACTER_CARD_SECTIONS = [
 ] as const;
 
 const CHARACTER_ONBOARDING_SECTIONS = [
-  { id: "character-onboarding-questions", label: "Onboarding Questions" },
-  { id: "character-onboarding-description", label: "Description" },
-  { id: "character-onboarding-personality", label: "Personality" },
-  { id: "character-onboarding-backstory", label: "Backstory" },
-  { id: "character-onboarding-appearance", label: "Appearance" },
-  { id: "character-onboarding-scenario", label: "Scenario" },
+  {
+    id: "character-onboarding-card-questions",
+    label: "Character Questions",
+    labelKey: "ui.characters.onboarding.cardQuestions",
+  },
+  // Persona questions come second in the tab, not last: the persona FIELDS they
+  // fill are rendered after them, so listing this after Scenario made the nav
+  // disagree with the page it scrolls.
+  { id: "character-onboarding-questions", label: "Persona Questions", labelKey: "ui.characters.onboarding.questions" },
+  // One entry for the whole group, the way "Dialogue" covers Dialogue &
+  // Greetings. The five fields it holds are a single template, so five chips
+  // repeated the same thing five times.
+  {
+    id: "character-onboarding-template",
+    label: "Persona Template",
+    labelKey: "ui.characters.onboarding.personaTemplate",
+  },
   { id: "character-onboarding-preview", label: "Rendered preview" },
 ] as const;
+
+/**
+ * The Card-tab fields that offer card-variable chips. `description`,
+ * `personality` and `scenario` are top-level character fields; `backstory` and
+ * `appearance` live under `extensions`, which is why inserting into those two
+ * goes through `updateExtension` instead of `updateField`.
+ */
+type CardVariableField = "description" | "personality" | "backstory" | "appearance" | "scenario";
 
 /**
  * The onboarding fields reuse the persona editor's Card copy: what the author
@@ -289,6 +315,15 @@ const CHARACTER_METADATA_HELP =
 
 const CHARACTER_CARD_HELP =
   "Write the fields that define how the model sees and plays the character. Description, personality, backstory, appearance, scenario, and dialogue are kept together here so you can treat the card as one writing document.";
+
+// The Onboarding tab's own help. It lives in the catalog rather than beside the
+// other CHARACTER_*_HELP constants: those are grandfathered English, and this one
+// is new text, so the localization rule applies to it. Converting the whole set
+// is tracked as its own follow-up, together with the Colors-tab help texts.
+//
+// Its wording names the lists rather than saying "the questions above": Character
+// Questions render first, and their answers are the ones that never become a
+// persona, so a positional phrase here would say the opposite of the truth.
 
 const CHARACTER_DESCRIPTION_HELP =
   "The character's general identity and role. This is sent in every prompt as part of who the character is.";
@@ -356,6 +391,8 @@ function appendNewTags(existingTags: string[], rawInput: string) {
 
   return additions.length > 0 ? [...existingTags, ...additions] : existingTags;
 }
+
+const MAX_TAG_SUGGESTIONS = 50;
 
 const CHARACTER_QUOTE_FIELD_KEYS = new Set<string>([
   "description",
@@ -606,6 +643,19 @@ export function CharacterEditor() {
       markDirty();
     },
     [formatQuotes, markDirty, setExtensionValue],
+  );
+
+  // Same write, WITHOUT the quote normalisation. `formatQuotes` converts a field
+  // to the user's preferred quote style, which is right when they type into it
+  // but wrong for a chip click: inserting `{{name}}` would also rewrite every
+  // quote already in the author's backstory or appearance, an edit they did not
+  // ask for and cannot see why they got. The chip only appends a tag.
+  const updateExtensionVerbatim = useCallback(
+    (key: string, value: unknown) => {
+      setExtensionValue(key, value);
+      markDirty();
+    },
+    [markDirty, setExtensionValue],
   );
 
   const handleGeneratedCharacterSheet = useCallback(
@@ -1010,9 +1060,9 @@ export function CharacterEditor() {
     closeDetail();
   }, [avatarUploading, closeDetail, lorebookEmbedding, localizeUi]);
 
-  const addTag = () => {
+  const addTag = (value = newTag) => {
     if (!formData) return;
-    const nextTags = appendNewTags(formData.tags, newTag);
+    const nextTags = appendNewTags(formData.tags, value);
     if (nextTags === formData.tags) return;
     updateField("tags", nextTags);
     setNewTag("");
@@ -1369,6 +1419,7 @@ export function CharacterEditor() {
                 formData={formData}
                 updateField={updateField}
                 updateExtension={updateExtension}
+                updateExtensionVerbatim={updateExtensionVerbatim}
                 updateFormData={updateFormData}
               />
             </section>
@@ -1464,14 +1515,17 @@ function SectionHeader({
   subtitle,
   helpText,
   helpWide = true,
+  className,
 }: {
   title: string;
   subtitle?: string;
   helpText?: ReactNode;
   helpWide?: boolean;
+  /** Extra classes on the wrapper, e.g. spacing for a mid-tab group heading. */
+  className?: string;
 }) {
   return (
-    <div className="mb-4">
+    <div className={cn("mb-4", className)}>
       <h2 className="inline-flex items-center gap-1.5 text-lg font-bold">
         {title}
         {helpText && <HelpTooltip text={helpText} side="bottom" wide={helpWide} size="0.875rem" />}
@@ -1485,14 +1539,86 @@ function CharacterCardTab({
   formData,
   updateField,
   updateExtension,
+  updateExtensionVerbatim,
   updateFormData,
 }: {
   formData: CharacterData;
   updateField: <K extends keyof CharacterData>(key: K, value: CharacterData[K]) => void;
   updateExtension: (key: string, value: unknown) => void;
+  /** `updateExtension` without quote normalisation, for chip inserts. */
+  updateExtensionVerbatim: (key: string, value: unknown) => void;
   updateFormData: (update: (data: CharacterData) => CharacterData) => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
+  // Read from this tab's own draft: the onboarding block is edited on a sibling
+  // tab, and `safeParse` (not `parse`) is what keeps a malformed or null block
+  // from throwing during render — the Onboarding tab reads it the same way, so
+  // the two cannot disagree about what is readable.
+  const parsedOnboarding = useMemo(
+    () => characterOnboardingSchema.safeParse(formData.extensions.onboarding ?? {}),
+    [formData.extensions.onboarding],
+  );
+  const onboarding = parsedOnboarding.success ? parsedOnboarding.data : null;
+  // Shared with the regression, so the "which names are offered" rule has one
+  // home: a question may legitimately be inserted in more than one field, and the
+  // unused warning already reports the "nothing reads this" case on the
+  // Onboarding tab. Offering every declared name is what makes a freshly written
+  // question insertable at all.
+  const chipNames = useMemo(() => getCardVariableChipNames(onboarding), [onboarding]);
+  // Which field last had the caret, so its chips are the ones on screen — the
+  // Onboarding tab's fields behave this way, and the Card tab should not differ.
+  const [activeField, setActiveField] = useState<CardVariableField | null>(null);
+  const fieldRefs = useRef<Partial<Record<CardVariableField, HTMLTextAreaElement | null>>>({});
+
+  const insertVariable = (field: CardVariableField, name: string) => {
+    const token = "{{" + name + "}}";
+    const textarea = fieldRefs.current[field];
+    const current =
+      field === "backstory" || field === "appearance"
+        ? ((formData.extensions[field] as string) ?? "")
+        : String(formData[field] ?? "");
+    const start = textarea?.selectionStart ?? current.length;
+    const end = textarea?.selectionEnd ?? current.length;
+    const next = current.slice(0, start) + token + current.slice(end);
+    // Written WITHOUT quote normalisation: `description`, `personality` and
+    // `scenario` normalise through `updateField`, and `backstory` / `appearance`
+    // through the extension setter, so both paths would otherwise rewrite every
+    // quote already in the author's text as a side effect of inserting one tag.
+    if (field === "backstory" || field === "appearance") updateExtensionVerbatim(field, next);
+    else updateFormData((data) => ({ ...data, [field]: next }));
+    requestAnimationFrame(() => {
+      textarea?.focus();
+      textarea?.setSelectionRange(start + token.length, start + token.length);
+    });
+  };
+
+  const chipsFor = (field: CardVariableField) =>
+    activeField === field && chipNames.length > 0 ? (
+      <div className="flex flex-col gap-1">
+        <span className="text-[0.625rem] font-medium text-[var(--muted-foreground)]">
+          {localizeUi("ui.panels.promptoverrideseditorbody.availableVariables")}
+        </span>
+        <div className="flex flex-wrap gap-1.5">
+          {chipNames.map((name) => (
+            <button
+              type="button"
+              key={name}
+              onClick={() => insertVariable(field, name)}
+              title={name}
+              aria-label={localizeUi("ui.characters.onboarding.insertCardVariable", { value1: `{{${name}}}` })}
+              className={cn(
+                SETTINGS_BUTTON_CLASS,
+                "mari-chrome-control--chip mari-chrome-control--regular-label font-mono text-[0.6rem]",
+              )}
+            >
+              <Code2 size="0.625rem" />
+              {"{{" + name + "}}"}
+            </button>
+          ))}
+        </div>
+      </div>
+    ) : undefined;
+
   return (
     <div>
       <SectionHeader
@@ -1506,7 +1632,15 @@ function CharacterCardTab({
           <CharacterSummaryField formData={formData} updateField={updateField} />
         </EditorSectionAnchor>
         <EditorSectionAnchor id="character-card-description">
-          <CharacterDescriptionTab formData={formData} updateField={updateField} />
+          <CharacterDescriptionTab
+            formData={formData}
+            updateField={updateField}
+            descriptionFooter={chipsFor("description")}
+            descriptionRef={(element) => {
+              fieldRefs.current.description = element;
+            }}
+            onDescriptionFocus={() => setActiveField("description")}
+          />
         </EditorSectionAnchor>
         <EditorSectionAnchor id="character-card-personality">
           <TextareaTab
@@ -1519,6 +1653,11 @@ function CharacterCardTab({
               "ui.characters.charactercardtab.energeticCuriousAndFiercelyLoyalSpeaksInShortBursts",
             )}
             rows={8}
+            textareaRef={(element) => {
+              fieldRefs.current.personality = element;
+            }}
+            onFocus={() => setActiveField("personality")}
+            footer={chipsFor("personality")}
           />
         </EditorSectionAnchor>
         <EditorSectionAnchor id="character-card-backstory">
@@ -1530,6 +1669,11 @@ function CharacterCardTab({
             onChange={(v) => updateExtension("backstory", v)}
             placeholder={localizeUi("ui.characters.charactercardtab.bornInASmallVillageOnTheOutskirtsOf")}
             rows={12}
+            textareaRef={(element) => {
+              fieldRefs.current.backstory = element;
+            }}
+            onFocus={() => setActiveField("backstory")}
+            footer={chipsFor("backstory")}
           />
         </EditorSectionAnchor>
         <EditorSectionAnchor id="character-card-appearance">
@@ -1543,6 +1687,11 @@ function CharacterCardTab({
             onChange={(v) => updateExtension("appearance", v)}
             placeholder={localizeUi("ui.characters.charactercardtab.tallAndWillowyWithSilverStreakedDarkHairWears")}
             rows={8}
+            textareaRef={(element) => {
+              fieldRefs.current.appearance = element;
+            }}
+            onFocus={() => setActiveField("appearance")}
+            footer={chipsFor("appearance")}
           />
           <div className="mt-3">
             <SettingsSwitch
@@ -1582,6 +1731,11 @@ function CharacterCardTab({
             onChange={(v) => updateField("scenario", v)}
             placeholder={localizeUi("ui.characters.charactercardtab.aBustlingPortCityDuringATradeFestivalThe")}
             rows={8}
+            textareaRef={(element) => {
+              fieldRefs.current.scenario = element;
+            }}
+            onFocus={() => setActiveField("scenario")}
+            footer={chipsFor("scenario")}
           />
         </EditorSectionAnchor>
         <EditorSectionAnchor id="character-card-dialogue">
@@ -1592,9 +1746,17 @@ function CharacterCardTab({
   );
 }
 
-/** A new onboarding question: free text until the author adds options. */
-function createOnboardingVariable(existing: CharacterOnboardingVariable[]): CharacterOnboardingVariable {
-  const names = new Set(existing.map((variable) => variable.variableName));
+/**
+ * A new onboarding question: free text until the author adds options.
+ * Both lists share one name space — the validator rejects a name used twice
+ * across them, because the two are answered in one window — so the suggestion
+ * has to consider the other list's names too.
+ */
+function createOnboardingVariable(
+  existing: CharacterOnboardingVariable[],
+  otherList: CharacterOnboardingVariable[] = [],
+): CharacterOnboardingVariable {
+  const names = new Set([...existing, ...otherList].map((variable) => variable.variableName));
   let index = existing.length + 1;
   while (names.has(`question_${index}`)) index++;
   return {
@@ -1660,18 +1822,73 @@ function OnboardingTab({
   };
   const setVariables = (change: (variables: CharacterOnboardingVariable[]) => CharacterOnboardingVariable[]) =>
     update((latest) => ({ variables: change(latest.variables) }));
+  const setCardVariables = (change: (variables: CharacterOnboardingVariable[]) => CharacterOnboardingVariable[]) =>
+    update((latest) => ({ cardVariables: change(latest.cardVariables) }));
 
-  const issues = useMemo(() => validateOnboarding(onboarding), [onboarding]);
-  const variableIssues: Record<string, string> = {};
+  // The text a card question's `{{name}}` has to appear in to be asked: what the
+  // prompt macro-resolves for this character. Passing it lets the validator say
+  // which card questions nothing uses yet.
+  const cardFields: OnboardingCardFields = useMemo(
+    () => ({
+      description: formData.description,
+      personality: formData.personality,
+      backstory: (formData.extensions.backstory as string) ?? "",
+      appearance: (formData.extensions.appearance as string) ?? "",
+      scenario: formData.scenario,
+    }),
+    [
+      formData.description,
+      formData.personality,
+      formData.scenario,
+      formData.extensions.backstory,
+      formData.extensions.appearance,
+    ],
+  );
+  const issues = useMemo(() => validateOnboarding(onboarding, cardFields), [onboarding, cardFields]);
   const plainIfFields = new Set<OnboardingPersonaField>();
   const unknownNames: Partial<Record<OnboardingPersonaField, string[]>> = {};
-  // One message per question, and a real problem wins over the "unused" warning.
-  const byPriority = [...issues].sort((a, b) => Number(a.code === "unused") - Number(b.code === "unused"));
-  for (const issue of byPriority) {
+  for (const issue of issues) {
     if (issue.code === "plainIf") plainIfFields.add(issue.field);
     else if (issue.code === "unknownName") (unknownNames[issue.field] ??= []).push(issue.name);
-    else variableIssues[issue.variableId] ??= localizeUi(ONBOARDING_ISSUE_KEYS[issue.code], { value1: issue.name });
   }
+  // An issue carries its question's id and name but no list tag, and the two
+  // lists may repeat an id (withUniqueOnboardingIds keeps ids unique per list, not
+  // across them). The pair is therefore what says which list an issue is about,
+  // bar a question typed identically into both — same id, same name, which
+  // `duplicateName` reports anyway. ponytail: a `list` on OnboardingIssue would
+  // make this exact, but that changes a shared result shape every caller reads.
+  const questionKey = (variableId: string, name: string) => `${variableId}\u0000${name}`;
+  const issuesByQuestion = (
+    variables: CharacterOnboardingVariable[],
+    unusedKey: string | undefined,
+  ): Record<string, string> => {
+    const keys = new Set(variables.map((variable) => questionKey(variable.id, variable.variableName)));
+    const messages: Record<string, string> = {};
+    // One message per question, and a real problem wins over the "unused" warning.
+    for (const issue of [...issues].sort((a, b) => Number(a.code === "unused") - Number(b.code === "unused"))) {
+      if (issue.code === "plainIf" || issue.code === "unknownName") continue;
+      if (!keys.has(questionKey(issue.variableId, issue.name))) continue;
+      const key = issue.code === "unused" && unusedKey ? unusedKey : ONBOARDING_ISSUE_KEYS[issue.code];
+      messages[issue.variableId] ??= localizeUi(key, { value1: issue.name });
+    }
+    return messages;
+  };
+  const variableIssues = issuesByQuestion(onboarding.variables, undefined);
+  // `unused` is the one code whose text differs: each list names its own fields.
+  const cardVariableIssues = issuesByQuestion(
+    onboarding.cardVariables ?? [],
+    "ui.characters.onboarding.issueUnusedCard",
+  );
+  // A greeting is shown from the chat's own text, which does not read chat
+  // variables, so a card question's tag there would reach the player as typed.
+  const greetingUses = useMemo(
+    () =>
+      findUnresolvedCardVariableUses(onboarding, [
+        formData.first_mes,
+        ...((formData.alternate_greetings as string[] | undefined) ?? []),
+      ]),
+    [onboarding, formData.first_mes, formData.alternate_greetings],
+  );
 
   // Example answers, like the prompt-override preview: the first option of a
   // choice, the variable's own name for free text.
@@ -1727,6 +1944,7 @@ function OnboardingTab({
       <SectionHeader
         title={localizeUi("editor.tabs.onboarding")}
         subtitle={localizeUi("ui.characters.onboarding.subtitle")}
+        helpText={localizeUi("ui.characters.onboarding.tabHelp")}
       />
       {unreadable && (
         <div
@@ -1755,6 +1973,19 @@ function OnboardingTab({
       />
       {onboarding.enabled && (
         <>
+          {!hasOnboardingContent(onboarding) && (
+            <p
+              role="status"
+              className="mt-3 flex items-start gap-1.5 rounded-xl border border-[var(--border)] bg-[var(--card)] p-3 text-[0.6875rem] text-[var(--muted-foreground)]"
+            >
+              <AlertTriangle
+                size="0.75rem"
+                className="mt-0.5 shrink-0 text-[var(--marinara-app-accent-static)]"
+                aria-hidden
+              />
+              <span>{localizeUi("ui.characters.onboarding.emptyOnboarding")}</span>
+            </p>
+          )}
           <div className="mari-editor-panel mt-4 space-y-2 p-3 text-xs">
             <p className="flex items-center gap-1.5 font-semibold">
               <Sparkles size="0.875rem" className="mari-chrome-accent-icon mari-accent-animated" />
@@ -1769,6 +2000,7 @@ function OnboardingTab({
                 {localizeUi("ui.characters.onboarding.tutorialQuestionsAfter")}
               </li>
               <li>{localizeUi("ui.characters.onboarding.tutorialFields")}</li>
+              <li>{localizeUi("ui.characters.onboarding.tutorialCardQuestions")}</li>
               <li>
                 {localizeUi("ui.characters.onboarding.tutorialPlayerBefore")}{" "}
                 <code className={codeClass}>{ONBOARDING_PLAYER_VARIABLE}</code>{" "}
@@ -1780,12 +2012,79 @@ function OnboardingTab({
                 {localizeUi("ui.characters.onboarding.tutorialIfAfter")}
               </li>
             </ol>
-            <p className="text-[var(--muted-foreground)]">{localizeUi("ui.characters.onboarding.tutorialResult")}</p>
+            <p className="text-[var(--muted-foreground)]">
+              {localizeUi("ui.characters.onboarding.tutorialResultBefore")}{" "}
+              <code className={codeClass}>{localizeUi("ui.characters.onboarding.modalTitle")}</code>{" "}
+              {localizeUi("ui.characters.onboarding.tutorialResultAfter")}
+            </p>
           </div>
           <div className="mt-4">
-            <EditorSectionJumps items={CHARACTER_ONBOARDING_SECTIONS} />
+            <EditorSectionJumps
+              items={CHARACTER_ONBOARDING_SECTIONS.map((section) => ({
+                id: section.id,
+                // These two are new sections, so they name their key directly
+                // instead of relying on `EditorSectionJumps`' English reverse
+                // lookup. The older entries keep that bridge: their labels
+                // ("Description", "Scenario", …) each match several unrelated
+                // keys, but every candidate is the same word in every locale, so
+                // resolving to the first is harmless. Tidy-up candidate, not a
+                // bug — leave the shared primitive's contract alone.
+                label: "labelKey" in section ? localizeUi(section.labelKey) : section.label,
+              }))}
+            />
           </div>
           <div className="space-y-10">
+            <EditorSectionAnchor id="character-onboarding-card-questions">
+              <p className="mb-2 text-xs text-[var(--muted-foreground)]">
+                {localizeUi("ui.characters.onboarding.cardQuestionsHelp")}
+              </p>
+              <PresetVariablesEditor
+                variant="onboarding-card"
+                variables={onboarding.cardVariables}
+                issues={cardVariableIssues}
+                maxCount={MAX_CARD_VARIABLES}
+                onCreate={() =>
+                  setCardVariables((variables) =>
+                    variables.length >= MAX_CARD_VARIABLES
+                      ? variables
+                      : [...variables, createOnboardingVariable(variables, latestRef.current.variables)],
+                  )
+                }
+                onUpdate={(variableId, patch) =>
+                  setCardVariables((variables) =>
+                    variables.map((variable) => (variable.id === variableId ? { ...variable, ...patch } : variable)),
+                  )
+                }
+                onDelete={(variableId) =>
+                  setCardVariables((variables) => variables.filter((variable) => variable.id !== variableId))
+                }
+                onReorder={(variableIds) =>
+                  setCardVariables((variables) => {
+                    const pool = new Map(variables.map((variable) => [variable.id, variable]));
+                    const ordered = variableIds.flatMap((id) => {
+                      const variable = pool.get(id);
+                      pool.delete(id);
+                      return variable ? [variable] : [];
+                    });
+                    return [...ordered, ...pool.values()];
+                  })
+                }
+              />
+              {greetingUses.size > 0 && (
+                <p role="status" className="mt-1.5 flex items-start gap-1 text-[0.625rem] text-[var(--foreground)]">
+                  <AlertTriangle
+                    size="0.625rem"
+                    className="mt-0.5 shrink-0 text-[var(--marinara-app-accent-static)]"
+                    aria-hidden
+                  />
+                  <span>
+                    {localizeUi("ui.characters.onboarding.cardVariableInGreeting", {
+                      value1: [...greetingUses].join(", "),
+                    })}
+                  </span>
+                </p>
+              )}
+            </EditorSectionAnchor>
             <EditorSectionAnchor id="character-onboarding-questions">
               <PresetVariablesEditor
                 variant="onboarding"
@@ -1796,7 +2095,7 @@ function OnboardingTab({
                   setVariables((variables) =>
                     variables.length >= ONBOARDING_MAX_QUESTIONS
                       ? variables
-                      : [...variables, createOnboardingVariable(variables)],
+                      : [...variables, createOnboardingVariable(variables, latestRef.current.cardVariables)],
                   )
                 }
                 onUpdate={(variableId, patch) =>
@@ -1821,10 +2120,21 @@ function OnboardingTab({
                 }
               />
             </EditorSectionAnchor>
+            {/* One anchor and one nav chip for the whole group: the five fields
+                below are a single template a card provides, so listing five
+                separate chips said the same thing five times. This mirrors
+                Dialogue & Greetings, which is one chip over several fields. */}
+            <EditorSectionAnchor id="character-onboarding-template">
+              <SectionHeader
+                className="mt-6"
+                title={localizeUi("ui.characters.onboarding.personaTemplate")}
+                subtitle={localizeUi("ui.characters.onboarding.personaTemplateHelp")}
+              />
+            </EditorSectionAnchor>
             {ONBOARDING_PERSONA_FIELDS.map((field) => {
               const copy = ONBOARDING_FIELD_COPY[field];
               return (
-                <EditorSectionAnchor key={field} id={`character-onboarding-${field}`}>
+                <div key={field}>
                   <TextareaTab
                     title={localizeUi(copy.title)}
                     subtitle={localizeUi(copy.subtitle)}
@@ -1892,7 +2202,7 @@ function OnboardingTab({
                       })}
                     </p>
                   )}
-                </EditorSectionAnchor>
+                </div>
               );
             })}
             <EditorSectionAnchor id="character-onboarding-preview">
@@ -2007,9 +2317,16 @@ function CharacterSummaryField({
 function CharacterDescriptionTab({
   formData,
   updateField,
+  descriptionFooter,
+  descriptionRef,
+  onDescriptionFocus,
 }: {
   formData: CharacterData;
   updateField: <K extends keyof CharacterData>(key: K, value: CharacterData[K]) => void;
+  /** Card-variable chips for this field, empty when the card declares none. */
+  descriptionFooter?: ReactNode;
+  descriptionRef?: Ref<HTMLTextAreaElement>;
+  onDescriptionFocus?: () => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
   const selfCharacterId = useUIStore((s) => s.characterDetailId);
@@ -2021,6 +2338,8 @@ function CharacterDescriptionTab({
         helpText={CHARACTER_DESCRIPTION_HELP}
       />
       <MacroTextarea
+        textareaRef={descriptionRef}
+        onFocus={onDescriptionFocus}
         showTokenCount
         value={formData.description}
         onChange={(value) => updateField("description", value)}
@@ -2031,6 +2350,7 @@ function CharacterDescriptionTab({
         selfCharacterId={selfCharacterId}
         className="w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--secondary)] p-4 text-sm leading-relaxed outline-none transition-colors placeholder:text-[var(--muted-foreground)]/40 focus:border-[var(--primary)]/40 focus:ring-1 focus:ring-[var(--primary)]/20"
       />
+      {descriptionFooter}
     </div>
   );
 }
@@ -2232,7 +2552,7 @@ function MetadataTab({
   updateExtension: (key: string, value: unknown) => void;
   newTag: string;
   setNewTag: (v: string) => void;
-  addTag: () => void;
+  addTag: (value?: string) => void;
   removeTag: (tag: string) => void;
   removeAllTags: () => void;
   avatarPreview: string | null;
@@ -2246,6 +2566,38 @@ function MetadataTab({
 }) {
   const { t: localizeUi } = useUiTranslation();
   const { t } = useTranslation();
+  const [tagSuggestionsOpen, setTagSuggestionsOpen] = useState(false);
+  const [activeTagSuggestionIndex, setActiveTagSuggestionIndex] = useState(-1);
+  // The whole library is only downloaded once the tag field is first focused.
+  const [tagCatalogRequested, setTagCatalogRequested] = useState(false);
+  const { data: allCharacters } = useAllCharacterCatalog(tagCatalogRequested);
+  const tagListboxId = useId();
+  const tagSuggestionsContainerRef = useRef<HTMLDivElement>(null);
+  const tagSuggestionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const existingTagCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const character of allCharacters ?? []) {
+      for (const tag of character.tags) counts.set(tag, (counts.get(tag) ?? 0) + 1);
+    }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  }, [allCharacters]);
+  const existingTagSet = useMemo(() => new Set(formData.tags.map((tag) => tag.toLowerCase())), [formData.tags]);
+  const tagFilter = newTag.split(",").at(-1)?.trim().toLowerCase() ?? "";
+  const tagSuggestions = existingTagCounts
+    .filter(([tag]) => !existingTagSet.has(tag.toLowerCase()) && tag.toLowerCase().includes(tagFilter))
+    .slice(0, MAX_TAG_SUGGESTIONS);
+  const tagSuggestionsShown = tagSuggestionsOpen && tagSuggestions.length > 0;
+  const activeSuggestionIndex = activeTagSuggestionIndex < tagSuggestions.length ? activeTagSuggestionIndex : -1;
+  const pickTagSuggestion = (tag: string) => {
+    // Replace only the part being typed, so earlier comma-separated tags in the draft are kept.
+    addTag([...newTag.split(",").slice(0, -1), tag].join(","));
+    setTagSuggestionsOpen(false);
+    setActiveTagSuggestionIndex(-1);
+  };
+  useEffect(() => {
+    if (!tagSuggestionsOpen || activeSuggestionIndex < 0) return;
+    tagSuggestionRefs.current[activeSuggestionIndex]?.scrollIntoView({ block: "nearest" });
+  }, [activeSuggestionIndex, tagSuggestionsOpen]);
   // Read existing crop in either current or legacy shape; the widget handles both
   // and writes back the current shape on first interaction.
   const savedCrop = normalizeAvatarCrop(formData.extensions.avatarCrop);
@@ -2441,21 +2793,106 @@ function MetadataTab({
           ))}
         </div>
         <div className="flex gap-1.5">
-          <input
-            value={newTag}
-            onChange={(e) => setNewTag(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                addTag();
+          <div ref={tagSuggestionsContainerRef} className="relative min-w-0 flex-1">
+            <input
+              value={newTag}
+              onFocus={() => {
+                setTagCatalogRequested(true);
+                setTagSuggestionsOpen(true);
+                setActiveTagSuggestionIndex(-1);
+              }}
+              onBlur={(event) => {
+                if (
+                  !(event.relatedTarget instanceof Node) ||
+                  !tagSuggestionsContainerRef.current?.contains(event.relatedTarget)
+                ) {
+                  setTagSuggestionsOpen(false);
+                  setActiveTagSuggestionIndex(-1);
+                }
+              }}
+              onChange={(event) => {
+                setNewTag(event.target.value);
+                setActiveTagSuggestionIndex(-1);
+                setTagSuggestionsOpen(true);
+              }}
+              onKeyDown={(event) => {
+                // Keys pressed while an input method is composing belong to the composition.
+                if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+                if (event.key === "ArrowDown" && tagSuggestions.length > 0) {
+                  event.preventDefault();
+                  setTagSuggestionsOpen(true);
+                  setActiveTagSuggestionIndex((current) => (current < 0 ? 0 : (current + 1) % tagSuggestions.length));
+                } else if (event.key === "ArrowUp" && tagSuggestions.length > 0) {
+                  event.preventDefault();
+                  setTagSuggestionsOpen(true);
+                  setActiveTagSuggestionIndex((current) =>
+                    current < 0
+                      ? tagSuggestions.length - 1
+                      : (current - 1 + tagSuggestions.length) % tagSuggestions.length,
+                  );
+                } else if (event.key === "Enter") {
+                  event.preventDefault();
+                  if (tagSuggestionsOpen && activeSuggestionIndex >= 0) {
+                    pickTagSuggestion(tagSuggestions[activeSuggestionIndex][0]);
+                  } else {
+                    addTag();
+                  }
+                } else if (event.key === "Escape" && tagSuggestionsOpen) {
+                  event.preventDefault();
+                  setTagSuggestionsOpen(false);
+                  setActiveTagSuggestionIndex(-1);
+                }
+              }}
+              role="combobox"
+              aria-label={localizeUi("ui.characters.metadatatab.tags")}
+              aria-autocomplete="list"
+              aria-expanded={tagSuggestionsShown}
+              aria-controls={tagSuggestionsShown ? tagListboxId : undefined}
+              aria-activedescendant={
+                tagSuggestionsShown && activeSuggestionIndex >= 0
+                  ? `${tagListboxId}-${activeSuggestionIndex}`
+                  : undefined
               }
-            }}
-            placeholder={localizeUi("ui.characters.metadatatab.addTag")}
-            className="flex-1 rounded-xl border border-[var(--border)] bg-[var(--secondary)] px-3 py-1.5 text-xs outline-none focus:border-[var(--primary)]/40"
-          />
+              placeholder={localizeUi("ui.characters.metadatatab.addTag")}
+              className="w-full rounded-xl border border-[var(--border)] bg-[var(--secondary)] px-3 py-1.5 text-xs outline-none focus:border-[var(--primary)]/40"
+            />
+            {tagSuggestionsShown && (
+              <div
+                id={tagListboxId}
+                role="listbox"
+                aria-label={localizeUi("ui.characters.metadatatab.tags")}
+                className="absolute z-30 mt-1 max-h-48 w-full overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] py-1 shadow-lg"
+              >
+                {tagSuggestions.map(([tag, count], index) => (
+                  <button
+                    key={tag}
+                    ref={(element) => {
+                      tagSuggestionRefs.current[index] = element;
+                    }}
+                    id={`${tagListboxId}-${index}`}
+                    type="button"
+                    role="option"
+                    tabIndex={-1}
+                    aria-selected={index === activeSuggestionIndex}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => pickTagSuggestion(tag)}
+                    className={cn(
+                      "flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs transition-colors",
+                      index === activeSuggestionIndex
+                        ? "bg-[var(--primary)]/10 text-[var(--primary)]"
+                        : "text-[var(--foreground)] hover:bg-[var(--secondary)]",
+                    )}
+                  >
+                    <span className="min-w-0 truncate">{tag}</span>
+                    <span className="shrink-0 text-[0.625rem] text-[var(--muted-foreground)]">{count}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <button
             type="button"
-            onClick={addTag}
+            onClick={() => addTag()}
             className="mari-chrome-control mari-chrome-control--compact mari-chrome-control--selected px-3 py-1.5"
           >
             {localizeUi("ui.characters.metadatatab.add")}

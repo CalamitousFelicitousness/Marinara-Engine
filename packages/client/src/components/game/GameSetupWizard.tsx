@@ -137,6 +137,9 @@ import {
 } from "../../lib/game-setup-suggestions";
 import { restoredRulesetLayers, rulesetLayerOptions, toggleRulesetLayer } from "../../lib/ruleset-layers";
 
+/** The "Surprise me!" chip, told apart from the localized ideas by this value, never by its text. */
+const SURPRISE_SUGGESTION = "__surprise__";
+
 const GameAssetsBrowserView = lazy(() =>
   import("../game-assets/GameAssetsBrowserView").then((module) => ({ default: module.GameAssetsBrowserView })),
 );
@@ -930,7 +933,7 @@ export function GameSetupWizard({
     [learnedGameSetupOptions?.tones, tones],
   );
   const suggestionText = useCallback(
-    (keys: string[]) => ["Surprise me!", ...keys.map((key) => localizeUi(key))],
+    (keys: string[]) => [SURPRISE_SUGGESTION, ...keys.map((key) => localizeUi(key))],
     [localizeUi],
   );
   const settingSuggestions = suggestionText(setupSuggestionKeys("setting", effectiveWorldKit?.id, suggestionOffset));
@@ -1031,7 +1034,7 @@ export function GameSetupWizard({
   );
 
   const applySuggestion = useCallback((setter: (v: string) => void, value: string) => {
-    if (value === "Surprise me!") {
+    if (value === SURPRISE_SUGGESTION) {
       setter("Surprise me, go wild!");
     } else {
       setter(value);
@@ -2025,8 +2028,8 @@ export function GameSetupWizard({
                             onClick={() => applySuggestion(setSetting, s)}
                             className="flex items-center gap-1 rounded-md bg-[var(--secondary)] px-2 py-0.5 text-[0.625rem] text-[var(--muted-foreground)] transition-colors hover:text-[var(--primary)] hover:bg-[var(--primary)]/10"
                           >
-                            {s === "Surprise me!" && <Sparkles size={9} />}
-                            {s}
+                            {s === SURPRISE_SUGGESTION && <Sparkles size={9} />}
+                            {s === SURPRISE_SUGGESTION ? localizeUi("game.setup.suggestions.surprise") : s}
                           </button>
                         ))}
                       </div>
@@ -3324,8 +3327,8 @@ export function GameSetupWizard({
                             onClick={() => applySuggestion(setPlayerGoals, s)}
                             className="flex items-center gap-1 rounded-md bg-[var(--secondary)] px-2 py-0.5 text-[0.625rem] text-[var(--muted-foreground)] transition-colors hover:text-[var(--primary)] hover:bg-[var(--primary)]/10"
                           >
-                            {s === "Surprise me!" && <Sparkles size={9} />}
-                            {s}
+                            {s === SURPRISE_SUGGESTION && <Sparkles size={9} />}
+                            {s === SURPRISE_SUGGESTION ? localizeUi("game.setup.suggestions.surprise") : s}
                           </button>
                         ))}
                       </div>

@@ -5,7 +5,7 @@
 // not heard of, pending ids, holds). The world's own words are given as the Game Master reads them;
 // the bands are for the screen to name in its own language.
 // ──────────────────────────────────────────────
-import { worldDaysAgo, worldPlaceByName, type GameWorld } from "./game-world.js";
+import { worldDayPlural, worldPlaceByName, type GameWorld } from "./game-world.js";
 import { worldHistory, worldHistoryLine, worldNotablePast } from "./history.js";
 import {
   worldAddedPlace,
@@ -26,10 +26,11 @@ export interface WorldJournal {
   renown: WorldRenownBand;
   /** The groups the party has dealt with, the strongest feelings first. */
   standing: Array<{ group: string; band: WorldStandingBand }>;
-  /** What the party has done, by place, latest last. */
+  /** What the party has done, latest last. */
   deeds: Array<{ place: string; text: string }>;
-  /** The news that has reached the party, newest first, with when in the setting's own words. */
-  news: Array<{ when: string; text: string; rumour: boolean }>;
+  /** The news that has reached the party, newest first: how many of the setting's days ago (`day`, `days`:
+   *  its own word for one and for several), for the screen to say in its own language. */
+  news: Array<{ ago: number; day: string; days: string; text: string; rumour: boolean }>;
   /** Trouble brewing that the party has heard of: who, for how many weeks, and whether it could come to
    *  blows any week now. */
   brewing: Array<{ groups: [string, string]; weeks: number; close: boolean }>;
@@ -63,14 +64,16 @@ export function worldJournal(game: GameWorld, present: WorldPresent, at: { name?
       .filter(([group]) => !present.gone.includes(group))
       .sort(([, a], [, b]) => Math.abs(b) - Math.abs(a))
       .map(([group, value]) => ({ group, band: worldStandingBand(value) })),
-    deeds: Object.entries(present.done)
-      .flatMap(([id, done]) => {
-        const where = nameOf(id);
-        return where ? done.map((text) => ({ place: where, text })) : [];
+    deeds: present.deeds
+      .flatMap(({ placeId, text }) => {
+        const where = nameOf(placeId);
+        return where ? [{ place: where, text }] : [];
       })
       .slice(-DEEDS),
     news: worldNewsHere(game, present, home?.id, NEWS).map(({ news, ago, rumour }) => ({
-      when: worldDaysAgo(kit, ago),
+      ago,
+      day: kit.calendar.day,
+      days: worldDayPlural(kit.calendar.day),
       text: news.text,
       rumour,
     })),

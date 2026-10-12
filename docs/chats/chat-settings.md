@@ -81,7 +81,7 @@ Each chat saves the menu's position, lock and order. Favorite layouts and settin
 
 ## Control windows and their buttons
 
-Some tools open their own small windows: a Game's **Game controls**, **Session**, **Volume** and **Game Assets**; **Connected chat**; and controls added by installed packages.
+Some tools open their own small windows: a Game's **Game controls**, **Session**, **Volume** and **Game Assets**; **Connected chat**; the **Lorebook Reader** in Roleplay and Conversation chats that use a lorebook (see [Reading entries while you chat](../lorebooks/overview.md#reading-entries-while-you-chat)); and controls added by installed packages.
 
 On a computer, these buttons start near the top right of the chat. Click one to open its window; closing the window brings its button back. On a phone, find these tools in the **Chat tools** three-dot menu. They open as full-width panels.
 

@@ -64,7 +64,7 @@ const experience = {
     id: "mapfixture",
     name: "River Experience",
     version: "1.0.0",
-    capabilityApi: { major: 1, minor: 71 },
+    capabilityApi: { major: 1, minor: 72 },
     kind: ["agent"],
     entrypoints: { client: "client.mjs" },
     contributions: {

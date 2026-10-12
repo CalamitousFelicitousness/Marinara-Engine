@@ -172,8 +172,9 @@ export function worldKitSize(kit: WorldKit, word: string): { id: string } | unde
 const labelOf = (entries: ReadonlyArray<{ id: string; label: string }>, id: string | undefined) =>
   entries.find((entry) => entry.id === id)?.label ?? id ?? "";
 const plural = (word: string) => (/s$/i.test(word) ? word : `${word}s`);
+/** The kit's word for a day, for several days. */
+export const worldDayPlural = plural;
 
-/** How long ago, in the kit's days. */
 /** How long ago, in the kit's own word for a day. */
 export function worldDaysAgo(kit: WorldKit, count: number): string {
   if (count <= 0) return "Today";

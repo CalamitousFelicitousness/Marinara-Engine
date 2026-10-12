@@ -243,6 +243,7 @@ import {
   gameWorldBattlefields,
   worldSceneLike,
   gameArtFamily,
+  WORLD_ART_FAMILIES,
   worldAssetsForFamily,
   gameWorldSchema,
   gameWorldFromMetadata,
@@ -932,16 +933,28 @@ function formatIllustrationAssetDebug(assets: IllustrationCharacterAssets): stri
     .join(", ");
 }
 
-function generatedBackgroundSlug(value: string): string {
+// A full tag such as backgrounds:wuxia:teahouse names an existing background: every art family's
+// folder, and the game's own family when its kit names one, is stripped like the folders before it,
+// so its slug is never doubled.
+const GENERATED_BACKGROUND_PREFIX = new RegExp(
+  `^(?:backgrounds|${WORLD_ART_FAMILIES.map((family) => family.replace(/_/g, "-")).join("|")}|user|generated|illustrations|q-[a-z0-9]{6,})-+`,
+);
+
+function generatedBackgroundSlug(value: string, family?: string): string {
+  const ownFamily = family
+    ?.toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
   let slug = value
     .trim()
     .toLowerCase()
     .replace(/:/g, "-")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
-  const prefixPattern = /^(?:backgrounds|fantasy|modern|scifi|user|generated|illustrations|q-[a-z0-9]{6,})-+/;
-  while (prefixPattern.test(slug)) {
-    slug = slug.replace(prefixPattern, "");
+  for (;;) {
+    if (GENERATED_BACKGROUND_PREFIX.test(slug)) slug = slug.replace(GENERATED_BACKGROUND_PREFIX, "");
+    else if (ownFamily && slug.startsWith(`${ownFamily}-`)) slug = slug.slice(ownFamily.length + 1);
+    else break;
   }
   return slug || "scene";
 }
@@ -10046,14 +10059,23 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
   app.post("/world-canon", async (req, reply) => {
     const input = worldCanonReadSchema.parse(req.body);
     const wanted = input.entryIds ? new Set(input.entryIds) : null;
-    const rows = (await createLorebooksStorage(app.db).listEntriesByLorebooks(input.lorebookIds)) as unknown as Array<{
+    const lorebooks = createLorebooksStorage(app.db);
+    const rows = (await lorebooks.listEntriesByLorebooks(input.lorebookIds)) as unknown as Array<{
       id: string;
       name?: string | null;
       content?: string | null;
-      enabled: boolean;
     }>;
+    // Only what play would read: an off lorebook, folder or entry states nothing.
+    const eligible = new Set(
+      (
+        await lorebooks.listEligibleEntriesByIds(
+          rows.map((entry) => entry.id),
+          { unlimited: true },
+        )
+      ).map((entry) => entry.id),
+    );
     const entries = rows
-      .filter((entry) => entry.enabled && (!wanted || wanted.has(entry.id)) && (entry.content ?? "").trim())
+      .filter((entry) => eligible.has(entry.id) && (!wanted || wanted.has(entry.id)) && (entry.content ?? "").trim())
       .map((entry) => ({ id: entry.id, name: entry.name ?? "", content: entry.content ?? "" }));
     if (entries.length === 0) {
       return reply.status(400).send({ error: "These lorebooks have no entries to read.", issues: [] });
@@ -11073,8 +11095,12 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     let visit: WorldTownVisit | undefined;
     let time: GameTime | undefined;
     const updated = await chats.patchMetadata(chatId, (fresh) => {
-      // A turn told the visit, or another visit landed, since the town was read.
-      if ((worldTownVisitFromMetadata(fresh)?.id ?? null) !== (found.pending?.id ?? null)) {
+      // A turn told the visit, another visit landed, or the party walked to another settlement, since the
+      // town was read.
+      if (
+        (worldTownVisitFromMetadata(fresh)?.id ?? null) !== (found.pending?.id ?? null) ||
+        (worldWalkFromMetadata(fresh)?.id ?? null) !== (worldWalkFromMetadata(meta)?.id ?? null)
+      ) {
         throw Object.assign(new Error("The party has moved since; try again."), { statusCode: 409 });
       }
       visit = {
@@ -14827,7 +14853,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     let resolvedIllustration: Pick<SceneIllustrationRequest, "prompt" | "characters"> | undefined;
 
     if (backgroundGenerationEnabled && input.backgroundTag) {
-      const slug = generatedBackgroundSlug(input.backgroundTag);
+      const slug = generatedBackgroundSlug(input.backgroundTag, gameArtFamily(meta));
       const backgroundDescription =
         input.backgroundDescription?.trim() || input.backgroundTag.replace(/:/g, " ").replace(/-/g, " ");
       const promptOverride = promptOverrideById.get(gameImagePromptReviewId("background", slug));
@@ -15241,7 +15267,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
 
       // ── Generate background ──
       if (!assetAbortSignal.aborted && backgroundGenerationEnabled && input.backgroundTag) {
-        const slug = generatedBackgroundSlug(input.backgroundTag);
+        const slug = generatedBackgroundSlug(input.backgroundTag, gameArtFamily(meta));
         const backgroundDescription =
           input.backgroundDescription?.trim() || input.backgroundTag.replace(/:/g, " ").replace(/-/g, " ");
         const promptOverride = promptOverrideById.get(gameImagePromptReviewId("background", slug));

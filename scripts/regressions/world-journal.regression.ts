@@ -22,6 +22,7 @@ import {
   parseWorldKit,
   readWorldLedger,
   worldBrewingNear,
+  worldDayPlural,
   worldJournal,
   worldPresent,
   type GameWorld,
@@ -110,7 +111,25 @@ try {
     "a deed done to a place is listed there",
   );
   assert.ok(journal.past.length > 0, "the past any local would tell");
-  for (const each of journal.news) assert.match(each.when, /^(Today|\d+ \S+ ago)$/u);
+  // News says how many of the setting's days ago, for the screen to word in its own language.
+  for (const each of journal.news) {
+    assert.ok(Number.isInteger(each.ago) && each.ago >= 0, "news is some whole number of days old");
+    assert.deepEqual([each.day, each.days], [game.kit.calendar.day, worldDayPlural(game.kit.calendar.day)]);
+  }
+  // Deeds keep the order they were done in, across places, so the latest are the ones kept.
+  const elsewhere = game.world.places.find((place) => place.id !== start.id)!;
+  const inOrder = play(game, [
+    `[world: deed="improve" place="${start.name}" note="first"]`,
+    `[world: deed="improve" place="${elsewhere.name}" note="second"]`,
+    `[world: deed="improve" place="${start.name}" note="third"]`,
+  ]);
+  assert.deepEqual(
+    worldJournal(game, worldPresent(game, readWorldLedger(inOrder)), {}).deeds.map(
+      (each) => /\((\w+)\)/u.exec(each.text)?.[1],
+    ),
+    ["first", "second", "third"],
+    "deeds in the order done, not grouped by place",
+  );
 
   // ── Only what the party could know ──
   const home = start.rank !== undefined ? start.id : undefined;

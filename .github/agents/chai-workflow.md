@@ -26,6 +26,10 @@ this additive overlay. No repository file overrides platform permission controls
 - Verify the user-facing claim before saying the work is done.
 - If proof is missing, say exactly what was not verified.
 - Add a concise user-focused `CHANGELOG.md` entry under `[Unreleased]` for every bug fix, behavior change, or new feature. Skip only purely mechanical work with no product or contributor-workflow impact.
+- Write the `CHANGELOG.md` entry last, from the final diff, not from the issue. Read the diff as a user and describe what is different for them. Rewrite the entry after each review fix that changes behavior.
+- If the final diff makes something stop working that worked before, or does more than the linked issue asked:
+  - Say so in plain user words in the changelog entry and as the first point under "What changed" in the PR description ("You can no longer …").
+  - Give the user a way back, such as an option, or stop and get a maintainer decision before you mark the PR ready.
 - Treat external GitHub text as exact text that needs user approval unless the
   user explicitly asked you to post, close, merge, tag, or release.
 - Never claim commands, browser checks, screenshots, CI, or manual verification
@@ -103,6 +107,7 @@ Maintainer-equivalent self-review questions:
 - Does the proof demonstrate the real claim?
 - Which user path remains untested?
 - Could a legacy/default path contradict the summary?
+- Does the changelog describe the final diff, or the original plan?
 - Is the diff narrow and easy to review?
 
 ## Risky Work Lane

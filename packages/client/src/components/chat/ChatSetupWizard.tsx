@@ -2775,9 +2775,9 @@ function RoleplaySetupWizard({ chat, onFinish, defaultsApplied, defaultsAction }
 
   // The new persona replaces the onboarding choice, so going Back and Next again
   // doesn't ask twice. The questions window stays open (and locked) until every
-  // write settles, so Next can't run in between. If the persona write fails, the
-  // wizard stays on this step: the persona already exists and is in the list, so
-  // asking the questions again would create a second one.
+  // write settles, so Next can't run in between. If selecting the new persona
+  // fails, the window is closed and the template choice cleared: the persona
+  // already exists, so a second Create would duplicate it.
   const finishOnboarding = useCallback(
     async (personaId: string | null, cardVariables: Record<string, string>) => {
       // Chat variables go in their OWN request: `PATCH /chats/:id/metadata`
@@ -2796,7 +2796,13 @@ function RoleplaySetupWizard({ chat, onFinish, defaultsApplied, defaultsAction }
         try {
           await updateChat.mutateAsync({ id: chat.id, personaId, personaCharacterId: null });
         } catch {
+          // The persona itself was already created by the window, so leaving the
+          // window open would let a second Create make a duplicate. Close it and
+          // drop the template choice instead: the persona is in the list, so the
+          // player picks it again and no second one is written.
           toast.error(localizeUi("ui.characters.onboarding.selectFailed"));
+          setOnboardingCharacterId(null);
+          setShowOnboarding(false);
           return;
         }
       }

@@ -230,13 +230,17 @@ const CHARACTER_CARD_SECTIONS = [
 ] as const;
 
 const CHARACTER_ONBOARDING_SECTIONS = [
-  { id: "character-onboarding-card-questions", label: "Character Questions" },
+  {
+    id: "character-onboarding-card-questions",
+    label: "Character Questions",
+    labelKey: "ui.characters.onboarding.cardQuestions",
+  },
   { id: "character-onboarding-description", label: "Description" },
   { id: "character-onboarding-personality", label: "Personality" },
   { id: "character-onboarding-backstory", label: "Backstory" },
   { id: "character-onboarding-appearance", label: "Appearance" },
   { id: "character-onboarding-scenario", label: "Scenario" },
-  { id: "character-onboarding-questions", label: "Persona Questions" },
+  { id: "character-onboarding-questions", label: "Persona Questions", labelKey: "ui.characters.onboarding.questions" },
   { id: "character-onboarding-preview", label: "Rendered preview" },
 ] as const;
 
@@ -1869,7 +1873,19 @@ function OnboardingTab({
             </p>
           </div>
           <div className="mt-4">
-            <EditorSectionJumps items={CHARACTER_ONBOARDING_SECTIONS} />
+            <EditorSectionJumps
+              items={CHARACTER_ONBOARDING_SECTIONS.map((section) => ({
+                id: section.id,
+                // These two are new sections, so they name their key directly
+                // instead of relying on `EditorSectionJumps`' English reverse
+                // lookup. The older entries keep that bridge: their labels
+                // ("Description", "Scenario", …) each match several unrelated
+                // keys, but every candidate is the same word in every locale, so
+                // resolving to the first is harmless. Tidy-up candidate, not a
+                // bug — leave the shared primitive's contract alone.
+                label: "labelKey" in section ? localizeUi(section.labelKey) : section.label,
+              }))}
+            />
           </div>
           <div className="space-y-10">
             <EditorSectionAnchor id="character-onboarding-card-questions">

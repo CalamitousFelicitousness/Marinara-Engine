@@ -145,6 +145,9 @@ function regressionEnvironment(scratchDir) {
     MARINARA_ENV_FILE: path.join(scratchDir, '.env'),
     DATA_DIR: dataDir,
     FILE_STORAGE_DIR: path.join(dataDir, 'storage'),
+    // Overworld games are locked by default; the lanes that make worlds run with them on, and the lock's own
+    // checks turn them off themselves.
+    MARINARA_OVERWORLD_GAMES: process.env.MARINARA_OVERWORLD_GAMES ?? 'true',
   };
 }
 

@@ -1616,6 +1616,8 @@ export function HomeProfessorMariChat({
       suppressNextScrollEventRef.current = false;
       return;
     }
+    // A hidden window resets its scroll to the top. That is not the reader scrolling away.
+    if (node.clientHeight === 0) return;
     const decision = transcriptScrollAction({
       event: "user-scroll",
       nearBottom: isProfessorMariTranscriptNearBottom(node),

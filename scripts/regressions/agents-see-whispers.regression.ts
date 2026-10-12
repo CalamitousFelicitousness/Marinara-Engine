@@ -31,6 +31,7 @@ const { roleplayAgentContinuation, roleplayAgentsSeeWhispers, roleplayAgentText 
   await import("../../packages/server/src/services/generation/roleplay-commands.js");
 const { createCapabilityPersistenceHost } =
   await import("../../packages/server/src/services/capability-packages/capability-persistence.service.js");
+const { personas: personasTable } = await import("../../packages/server/src/db/schema/index.js");
 const { characterDataSchema, DECISION_SMART_ORDER_SETTINGS_KEY, replaceBuiltInAgentDefinitions } =
   await import("../../packages/shared/dist/index.js");
 
@@ -362,6 +363,37 @@ try {
       "[Private whisper to Mari: PERSONA_SECRET]",
     ),
     packageReply,
+  );
+  // A failed persona read costs only the agent view: the messages and their public text still list.
+  const personaFailingDb = new Proxy(db, {
+    get(target, property) {
+      if (property === "select")
+        return (...args: Parameters<typeof target.select>) => {
+          const query = target.select(...args);
+          return new Proxy(query, {
+            get(builder, key) {
+              if (key === "from")
+                return (table: Parameters<typeof query.from>[0]) => {
+                  if (table === personasTable) throw new Error("Forced persona read failure");
+                  return builder.from(table);
+                };
+              const value = Reflect.get(builder, key);
+              return typeof value === "function" ? value.bind(builder) : value;
+            },
+          });
+        };
+      const value = Reflect.get(target, property);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+  const unnamedView = await createCapabilityPersistenceHost(personaFailingDb).listMessages(chat.id);
+  assert.deepEqual(
+    unnamedView.map((message) => message.content),
+    packageView.map((message) => message.content),
+  );
+  assert(
+    unnamedView.every((message) => !("agentContent" in message)),
+    JSON.stringify(unnamedView),
   );
   // Outside Roleplay there is no agent view, even for a message that carries a whisper.
   const conversation = await chats.create({

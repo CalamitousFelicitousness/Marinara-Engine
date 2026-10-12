@@ -16,6 +16,7 @@ import {
   type SpatialSnapshotSource,
 } from "@marinara-engine/shared";
 import type { DB } from "../../db/connection.js";
+import { logger } from "../../lib/logger.js";
 import { and, desc, eq, inArray, ne, or } from "../../db/file-query.js";
 import { IMPORTED_GAME_ENGINE_ANCHOR_PREFIX } from "../../db/file-backed-store.js";
 import { FileUniqueConstraintError } from "../../db/file-schema.js";
@@ -456,7 +457,11 @@ function createPersistenceSession(db: DB, assertPermission: PersistencePermissio
         .from(messages)
         .where(eq(messages.chatId, chatId))
         .orderBy(messages.createdAt, messages.id);
-      const names = await agentWhisperNames(db, chatId);
+      // A failed name lookup costs the agent view, never the messages.
+      const names = await agentWhisperNames(db, chatId).catch((err) => {
+        logger.warn(err, "Agent whisper names unavailable for chat %s; listing messages without agentContent", chatId);
+        return null;
+      });
       return rows.map((row) => mapMessage(row, names));
     },
     async getGameState(chatId) {

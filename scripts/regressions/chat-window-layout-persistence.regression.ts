@@ -66,18 +66,6 @@ try {
     for (const [key, value] of Object.entries(viewUpdate)) assert.deepEqual(metadata[key], value);
   }
 
-  // #7464: Lorebook Reader pins are a view preference too, saved as a deduplicated list of ids.
-  const pins = await patch({ lorebookPinnedEntryIds: ["entry-b", "entry-a", "entry-b"] });
-  assert.equal(pins.statusCode, 200);
-  assert.equal(pins.json().updatedAt, originalTime, "pinning a Reader entry preserves response recency");
-  const pinned = await chats.getById(chat.id);
-  assert.equal(pinned?.updatedAt, originalTime, "pinning a Reader entry preserves stored recency");
-  assert.deepEqual(JSON.parse(pinned!.metadata).lorebookPinnedEntryIds, ["entry-b", "entry-a"], "pins keep order");
-  for (const lorebookPinnedEntryIds of ["entry-a", [1], null]) {
-    assert.equal((await patch({ lorebookPinnedEntryIds })).statusCode, 400, "pins must be a list of ids");
-  }
-  assert.deepEqual(JSON.parse((await chats.getById(chat.id))!.metadata).lorebookPinnedEntryIds, ["entry-b", "entry-a"]);
-
   const mixed = await patch({
     windowLayout: layout,
     chatSettingsHintDismissed: false,

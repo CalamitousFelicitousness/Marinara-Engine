@@ -31,21 +31,6 @@ export function getLegacyChatWindowLayout(
   };
 }
 
-/**
- * Chat metadata that only changes how the chat looks to the person reading it: window layout, the
- * Chat Settings tips and the Lorebook Reader's pins. Saving only these is not new chat activity, so
- * it keeps the chat's last-updated time and does not rerun the lorebook scan.
- */
-export const VIEW_ONLY_CHAT_METADATA_KEYS: readonly string[] = [
-  "windowLayout",
-  "chatSettingsHintDismissed",
-  "lorebookPinnedEntryIds",
-];
-
-export function isViewOnlyChatMetadataPatch(keys: readonly string[]): boolean {
-  return keys.length > 0 && keys.every((key) => VIEW_ONLY_CHAT_METADATA_KEYS.includes(key));
-}
-
 export interface ChatWindowDefault {
   windowLayout: unknown | null;
   chatSettingsHintDismissed: boolean;

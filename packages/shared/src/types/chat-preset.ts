@@ -170,8 +170,6 @@ export const CHAT_PRESET_EXCLUDED_METADATA_KEYS: readonly string[] = [
   "spatialSharedWorldLink",
   "trackerFeaturedCharacterKeys",
   "conversationSetupComplete",
-  // The Lorebook Reader's pins name this chat's own lorebook entries.
-  "lorebookPinnedEntryIds",
 ] as const;
 
 /**

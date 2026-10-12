@@ -1,16 +1,8 @@
 // ──────────────────────────────────────────────
 // React Query: Lorebook hooks
 // ──────────────────────────────────────────────
-import {
-  useInfiniteQuery,
-  useQuery,
-  useQueries,
-  useMutation,
-  useQueryClient,
-  type UseQueryResult,
-} from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useQueries, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../lib/api-client";
-import { collectEffectivelyDisabledFolderIds } from "@marinara-engine/shared";
 import type {
   BulkUpdateLorebookEntriesInput,
   Lorebook,
@@ -318,56 +310,26 @@ export function useEntriesAcrossLorebooks(lorebookIds: string[]): {
   refetch: () => Promise<unknown>;
 } {
   const uniqueIds = Array.from(new Set(lorebookIds));
-  // A module-level combine runs only when a query result changes, so `entries`
-  // keeps its identity across unrelated renders and consumers can memoize on it.
-  return useQueries({
+  const queries = useQueries({
     queries: uniqueIds.map((id) => ({
       queryKey: lorebookKeys.entries(id),
       queryFn: () => api.get<LorebookEntry[]>(`/lorebooks/${id}/entries`),
     })),
-    combine: combineLorebookEntryQueries,
   });
-}
-
-function combineLorebookEntryQueries(queries: UseQueryResult<LorebookEntry[]>[]) {
+  const isLoading = queries.some((q) => q.isLoading);
+  const isError = queries.some((q) => q.isError);
+  const error = queries.find((q) => q.isError)?.error ?? null;
   // Empty input is trivially "complete" — return [] so consumers can treat
   // "no selection" as a valid known state instead of an unresolved one.
   const allSucceeded = queries.length === 0 || queries.every((q) => q.isSuccess);
+  const entries = allSucceeded ? queries.flatMap((q) => q.data ?? []) : undefined;
   return {
-    entries: allSucceeded ? queries.flatMap((q) => q.data ?? []) : undefined,
-    isLoading: queries.some((q) => q.isLoading),
+    entries,
+    isLoading,
     isFetching: queries.some((query) => query.isFetching),
-    isError: queries.some((q) => q.isError),
-    error: queries.find((q) => q.isError)?.error ?? null,
+    isError,
+    error,
     refetch: () => Promise.all(queries.map((query) => query.refetch())),
-  };
-}
-
-/**
- * Ids of the folders, across several lorebooks, whose entries never activate: folders switched
- * off themselves or inside a switched-off folder. Each lorebook's folders share
- * useLorebookFolders' cache.
- */
-export function useDisabledFolderIdsAcrossLorebooks(lorebookIds: string[]): {
-  disabledFolderIds: ReadonlySet<string>;
-  isLoading: boolean;
-  /** A lorebook's folders failed to load and none are cached, so the set may miss folders. */
-  isError: boolean;
-} {
-  return useQueries({
-    queries: Array.from(new Set(lorebookIds)).map((id) => ({
-      queryKey: lorebookKeys.folders(id),
-      queryFn: () => api.get<LorebookFolder[]>(`/lorebooks/${id}/folders`),
-    })),
-    combine: combineDisabledFolderQueries,
-  });
-}
-
-function combineDisabledFolderQueries(queries: UseQueryResult<LorebookFolder[]>[]) {
-  return {
-    disabledFolderIds: collectEffectivelyDisabledFolderIds(queries.flatMap((q) => q.data ?? [])),
-    isLoading: queries.some((q) => q.isLoading),
-    isError: queries.some((q) => q.isError && q.data === undefined),
   };
 }
 

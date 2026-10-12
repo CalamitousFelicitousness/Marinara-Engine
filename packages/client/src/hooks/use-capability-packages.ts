@@ -141,20 +141,6 @@ export function selectVisibleTrackerCapabilityAgents(
   return (agents ?? []).filter((agent) => agent.category === "tracker" && !agent.libraryHidden);
 }
 
-/** Installed tracker packages the chat runs that draw in the Roleplay HUD. */
-export function selectRoleplayTrackerPackages(
-  installed: readonly InstalledCapabilityPackage[],
-  enabledAgentTypes: Set<string>,
-) {
-  return installed.filter(
-    (item) =>
-      item.status === "active" &&
-      enabledAgentTypes.has(item.id) &&
-      Boolean(item.manifest.entrypoints.client) &&
-      item.manifest.contributions?.slots?.includes("roleplay-tracker"),
-  );
-}
-
 /** Keep special tracker packages at their canonical edges in every tracker surface. */
 export function partitionTrackerCapabilityPackages(packages: readonly InstalledCapabilityPackage[]) {
   const memoryNag: InstalledCapabilityPackage[] = [];

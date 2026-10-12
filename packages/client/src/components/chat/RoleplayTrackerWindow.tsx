@@ -35,7 +35,6 @@ import { TrackerLockProvider } from "../../features/tracker-panel/components/Tra
 import { TrackerWindowCharacters } from "../../features/tracker-panel/components/TrackerWindowCharacters";
 import {
   partitionTrackerCapabilityPackages,
-  selectRoleplayTrackerPackages,
   useInstalledCapabilityPackages,
 } from "../../hooks/use-capability-packages";
 import { useMatchMedia } from "../../hooks/use-match-media";
@@ -67,6 +66,7 @@ import {
   WorldStateMiniature,
   getWorldMiniatureTileClass,
   getWorldTrackerDisplay,
+  selectRoleplayTrackerPackages,
   useRoleplayTrackerState,
 } from "./RoleplayHUD";
 

@@ -62,7 +62,6 @@ import {
   MESSAGE_MARK_EXTRA_KEYS,
   MAX_PINNED_CONTEXT_MESSAGES,
   semanticSummaryRetrievalSettingsSchema,
-  isViewOnlyChatMetadataPatch,
 } from "@marinara-engine/shared";
 import type {
   CharacterData,
@@ -1591,15 +1590,6 @@ export async function chatsRoutes(app: FastifyInstance) {
       }
       incoming.excludedLorebookIds = Array.from(new Set(incoming.excludedLorebookIds as string[]));
     }
-    if (incoming.lorebookPinnedEntryIds !== undefined) {
-      if (
-        !Array.isArray(incoming.lorebookPinnedEntryIds) ||
-        !incoming.lorebookPinnedEntryIds.every((id) => typeof id === "string")
-      ) {
-        return reply.status(400).send({ error: "lorebookPinnedEntryIds must be an array of strings" });
-      }
-      incoming.lorebookPinnedEntryIds = Array.from(new Set(incoming.lorebookPinnedEntryIds as string[]));
-    }
     if (Object.prototype.hasOwnProperty.call(incoming, "macroVariables")) {
       // Chat variables are merged, never replaced: a generation running right
       // now persists its own {{setvar}} writes into this same map, and metadata
@@ -1720,9 +1710,11 @@ export async function chatsRoutes(app: FastifyInstance) {
       );
       return updated ? normalizeChatForResponse(updated) : updated;
     }
-    // Rearranging windows, dismissing their hint or pinning Lorebook Reader entries is a view
-    // preference, not new chat activity.
-    const viewOnly = isViewOnlyChatMetadataPatch(Object.keys(incoming));
+    // Rearranging windows or dismissing their hint is a view preference, not new chat activity.
+    const changedKeys = Object.keys(incoming);
+    const viewOnly =
+      changedKeys.length > 0 &&
+      changedKeys.every((key) => key === "windowLayout" || key === "chatSettingsHintDismissed");
     const updated = await storage.patchMetadata(req.params.id, incoming, {
       touchUpdatedAt: !viewOnly,
       afterWrite: cancelReplacedAdvancedMemory,

@@ -2670,6 +2670,20 @@ export function useGenerate() {
             case "message_saved": {
               flushLeadingSpeakerPrefix();
               const savedMessage = event.data as Message;
+              if (typeof event.remainingContent === "string") {
+                // An earlier part of a reply split at a scene break (#7481). It joins the chat above the live
+                // reply, which goes on with the rest and keeps the stream, so nothing shows twice.
+                await waitForTypewriterDrain();
+                await qc.cancelQueries({ queryKey: chatKeys.messages(params.chatId), exact: true });
+                persistedMessages.set(savedMessage.id, savedMessage);
+                // The part keeps the reasoning, so the live reply stops showing it.
+                clearThinkingBuffer(params.chatId);
+                leadingSpeakerPrefixFilter.discard();
+                thinkingStreamFilter.reset();
+                upsertPersistedMessages(qc, params.chatId, [savedMessage]);
+                replaceGeneratedContentWithTypewriter(event.remainingContent);
+                break;
+              }
               if (savedMessage.role === "assistant") {
                 completeQueuedResponse(params.chatId, savedMessage.characterId);
                 currentGroupTurnSavedMessage = savedMessage;

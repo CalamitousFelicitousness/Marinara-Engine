@@ -17,6 +17,7 @@ import {
   buildRoleplayCommandsReminder,
   buildRoleplayPersonalContext,
   parseRoleplayCommands,
+  placeRoleplayActivityInParts,
   readRoleplayPersonalState,
   RoleplayCommandStreamFilter,
   resolveRoleplayWhisperRecipient,
@@ -31,6 +32,7 @@ import { buildCommittedTrackerContextBlock } from "../../packages/server/src/ser
 import { isDiceRollResult, readRoleplayDiceRolls } from "../../packages/client/src/lib/dice-roll-result.js";
 import { executeToolCalls } from "../../packages/server/src/services/tools/tool-executor.js";
 import { parseRollDiceToolResult } from "../../packages/server/src/services/game/dice.service.js";
+import { splitAtSceneBreaks } from "../../packages/shared/src/utils/scene-breaks.js";
 
 const rollResult = JSON.stringify({ notation: "2d1+3", rolls: [1, 1], modifier: 3, total: 5 });
 const inlineRoll = {
@@ -852,5 +854,61 @@ try {
   }
 } finally {
   Math.random = random;
+}
+// #7481: with Advanced Memory, a new Roleplay reply is saved as one message per scene or POV break.
+assert.deepEqual(
+  splitAtSceneBreaks("CYNO waits alone.\n\n***\n\nMARI and MAUKIE run."),
+  ["CYNO waits alone.", "***\n\nMARI and MAUKIE run."],
+  "the break line opens the next part",
+);
+for (const line of ["---", "___", "* * *", "- - -", "_ _ _\t", "*****", "   ***"])
+  assert.deepEqual(
+    splitAtSceneBreaks(`A\n${line}\nB`),
+    ["A", `${line.trimStart()}\nB`],
+    `${JSON.stringify(line)} is a break`,
+  );
+for (const line of ["**", "    ***", "*-*", "***bold***", "— — —", "--- and more"])
+  assert.deepEqual(splitAtSceneBreaks(`A\n${line}\nB`), [`A\n${line}\nB`], `${JSON.stringify(line)} is not a break`);
+assert.deepEqual(
+  splitAtSceneBreaks("A\n```\n***\n```\nB\n~~~md\n---\n~~~"),
+  ["A\n```\n***\n```\nB\n~~~md\n---\n~~~"],
+  "breaks inside code fences are code",
+);
+assert.deepEqual(splitAtSceneBreaks("A\n````\n***\n```\n---\n````\n***\nB"), [
+  "A\n````\n***\n```\n---\n````",
+  "***\nB",
+]);
+assert.deepEqual(splitAtSceneBreaks("  Only text.\n"), ["  Only text.\n"], "text without a break is unchanged");
+assert.deepEqual(splitAtSceneBreaks("***\nA"), ["***\nA"], "a leading break makes no empty part");
+assert.deepEqual(splitAtSceneBreaks("A\n\n***\n"), ["A\n\n***\n"], "nor does a trailing one");
+assert.deepEqual(
+  splitAtSceneBreaks("***\nA\n\n---\n\n***\nB\n***\n"),
+  ["***\nA", "---\n\n***\nB\n***"],
+  "adjacent breaks open the part after them; a trailing one stays with the last part",
+);
+assert.deepEqual(splitAtSceneBreaks("A\r\n***\r\nB\r\n---\r\nC"), ["A", "***\r\nB", "---\r\nC"]);
+
+// Each command stays with the part its text was in, so it keeps that part's audience.
+{
+  const parts = [
+    { content: "CYNO alone.", start: 0 },
+    { content: "***\nMARI arrives.", start: 13 },
+  ];
+  const document = { command: { type: "document", title: "Map", content: "x" }, raw: "[document]" };
+  const lateWhisper = { command: { type: "whisper", character: "Mari", text: "here" }, raw: "[w1]", contentOffset: 30 };
+  const gapWhisper = { command: { type: "whisper", character: "Cyno", text: "wait" }, raw: "[w2]", contentOffset: 12 };
+  const interruption = { command: { type: "interrupt", part: "no" }, raw: "[interrupt]" };
+  const unplaced = { command: { type: "combat" }, raw: "[combat]" };
+  const placed = placeRoleplayActivityInParts(
+    parts,
+    [document, lateWhisper, gapWhisper, interruption, unplaced] as never,
+    (item: { contentOffset?: number }) => (item === document ? 4 : (item.contentOffset ?? null)),
+  );
+  assert.deepEqual(placed[0], [document, { ...gapWhisper, contentOffset: 11, contentAnchor: "CYNO alone." }]);
+  assert.deepEqual(placed[1], [
+    { ...lateWhisper, contentOffset: 17, contentAnchor: "***\nMARI arrives." },
+    interruption,
+    unplaced,
+  ]);
 }
 process.stdout.write("Roleplay commands regression passed.\n");

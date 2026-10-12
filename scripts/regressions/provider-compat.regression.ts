@@ -4010,7 +4010,7 @@ try {
 // #7457: strict Mistral-family templates on llama.cpp reject consecutive same-role turns. The request is retried once
 // with the turns merged; endpoints that accept the original request never see a change.
 {
-  type WireMessage = { role: string; content: unknown; tool_calls?: unknown };
+  type WireMessage = { role: string; content: unknown; tool_calls?: unknown; prefix?: boolean };
   const strictTemplateBodies: Array<{ messages: WireMessage[]; stream?: boolean }> = [];
   let enforceAlternation = true;
   const strictTemplateServer = createServer(async (request, response) => {
@@ -4018,31 +4018,36 @@ try {
     for await (const chunk of request) chunks.push(Buffer.from(chunk));
     const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as (typeof strictTemplateBodies)[number];
     strictTemplateBodies.push(body);
+    const reject = (message: string) => {
+      response.writeHead(400, { "content-type": "application/json" });
+      response.end(JSON.stringify({ error: { code: 400, message, type: "invalid_request_error" } }));
+    };
+    // llama.cpp's order: its prefill check runs first and takes a final assistant message off as the prefill.
+    const last = body.messages.at(-1);
+    const rendered = last?.role === "assistant" ? body.messages.slice(0, -1) : body.messages;
+    if (enforceAlternation && last?.role === "assistant" && rendered.at(-1)?.role === "assistant") {
+      reject("Cannot have 2 or more assistant messages at the end of the list.");
+      return;
+    }
     // The Mistral v3 Tekken template check: optional leading system, then user/assistant from user; tool turns skipped.
-    const turns = body.messages
-      .slice(body.messages[0]?.role === "system" ? 1 : 0)
+    const turns = rendered
+      .slice(rendered[0]?.role === "system" ? 1 : 0)
       .filter((message) => message.role !== "tool" && !message.tool_calls);
     if (enforceAlternation && !turns.every((message, index) => (message.role === "user") === (index % 2 === 0))) {
-      response.writeHead(400, { "content-type": "application/json" });
-      response.end(
-        JSON.stringify({
-          error: {
-            code: 400,
-            message:
-              'Unable to generate parser for this template. Automatic parser generation failed: While executing CallExpression at line 18, column 32 raise_exception("After the optional system message, con... Error: Jinja Exception: After the optional system message, conversation roles must alternate user/assistant/user/assistant/...',
-            type: "invalid_request_error",
-          },
-        }),
+      reject(
+        'Unable to generate parser for this template. Automatic parser generation failed: While executing CallExpression at line 18, column 32 raise_exception("After the optional system message, con... Error: Jinja Exception: After the optional system message, conversation roles must alternate user/assistant/user/assistant/...',
       );
       return;
     }
+    // Mistral repeats a `prefix: true` assistant message at the start of its reply.
+    const reply = `${last?.prefix === true ? String(last.content) : ""}merged`;
     if (body.stream) {
       response.writeHead(200, { "content-type": "text/event-stream" });
-      response.end('data: {"choices":[{"delta":{"content":"merged"}}]}\n\ndata: [DONE]\n\n');
+      response.end(`data: ${JSON.stringify({ choices: [{ delta: { content: reply } }] })}\n\ndata: [DONE]\n\n`);
       return;
     }
     response.writeHead(200, { "content-type": "application/json" });
-    response.end(JSON.stringify({ choices: [{ message: { content: "merged" }, finish_reason: "stop" }] }));
+    response.end(JSON.stringify({ choices: [{ message: { content: reply }, finish_reason: "stop" }] }));
   });
   await new Promise<void>((resolve) => strictTemplateServer.listen(0, "127.0.0.1", resolve));
   try {
@@ -4061,6 +4066,7 @@ try {
       { role: "assistant", content: "Prefill" },
     ];
 
+    // Ending on assistant plus a prefill (continue, swipe) first hits llama.cpp's own two-assistant check.
     const result = await provider.chatComplete(nonAlternating, { model: "rocinante", stream: false });
     assert.equal(result.content, "merged");
     assert.equal(strictTemplateBodies.length, 2, "a rejected request is retried exactly once");
@@ -4079,18 +4085,31 @@ try {
       { role: "assistant", content: "Previous reply.\n\nPrefill" },
     ]);
 
-    // Streaming generation (impersonate pushes a second user turn after the history).
+    // Streaming generation (impersonate pushes a second user turn after the history). In UI debug mode the retried
+    // messages are logged, since they are what the model receives.
     strictTemplateBodies.length = 0;
     const tokens: string[] = [];
-    for await (const token of provider.chat(
-      [
-        { role: "system", content: "Rules." },
-        { role: "user", content: "Hello." },
-        { role: "user", content: "Write my next reply." },
-      ],
-      { model: "rocinante", stream: true },
-    )) {
-      tokens.push(token);
+    const priorWarn = logger.warn;
+    const priorLevel = logger.level;
+    const warnLogs: unknown[][] = [];
+    try {
+      logger.level = "warn";
+      logger.warn = ((...args: unknown[]) => {
+        warnLogs.push(args);
+      }) as typeof logger.warn;
+      for await (const token of provider.chat(
+        [
+          { role: "system", content: "Rules." },
+          { role: "user", content: "Hello." },
+          { role: "user", content: "Write my next reply." },
+        ],
+        { model: "rocinante", stream: true, debugMode: true },
+      )) {
+        tokens.push(token);
+      }
+    } finally {
+      logger.warn = priorWarn;
+      logger.level = priorLevel;
     }
     assert.deepEqual(tokens, ["merged"]);
     assert.equal(strictTemplateBodies.length, 2);
@@ -4098,6 +4117,30 @@ try {
       { role: "system", content: "Rules." },
       { role: "user", content: "Hello.\n\nWrite my next reply." },
     ]);
+    assert.ok(
+      warnLogs.some((args) => JSON.stringify(args[1]) === JSON.stringify(strictTemplateBodies[1]!.messages)),
+      "debug mode logs the retried messages",
+    );
+
+    // Mistral repeats its prefix; after a retry merges the prefill into the turn before it, the whole merged prefix is
+    // dropped from the reply.
+    strictTemplateBodies.length = 0;
+    const mistral = new OpenAIProvider(`http://127.0.0.1:${address.port}/v1`, "", undefined, null, null, "mistral");
+    const mistralResult = await mistral.chatComplete(
+      [
+        { role: "user", content: "Hello." },
+        { role: "assistant", content: "Previous reply." },
+        { role: "assistant", content: "Prefill" },
+      ],
+      { model: "rocinante", stream: false },
+    );
+    assert.equal(strictTemplateBodies.length, 2);
+    assert.deepEqual(strictTemplateBodies[1]!.messages.at(-1), {
+      role: "assistant",
+      content: "Previous reply.\n\nPrefill",
+      prefix: true,
+    });
+    assert.equal(mistralResult.content, "merged");
 
     // When merging cannot satisfy the template (a user turn after tool results), retry once, then explain.
     strictTemplateBodies.length = 0;

@@ -32,7 +32,8 @@ import {
   shouldSuppressUnknownModelParameters,
   supportsXhighReasoningEffort,
 } from "@marinara-engine/shared";
-import { logger } from "../../../lib/logger.js";
+import { logger, logDebugOverride } from "../../../lib/logger.js";
+import { isDebugAgentsEnabled } from "../../../config/runtime-config.js";
 import { isLocalInferenceBaseUrl } from "../../../middleware/ip-allowlist.js";
 import {
   applyGlmThinkingParameters,
@@ -104,6 +105,13 @@ export function extractOpenAICompatibleContentBlocks(
   return { text, thinking, toolCalls, anonymousToolCallIds };
 }
 
+/** The text of the final `prefix: true` assistant message actually sent, after any role-alternation retry merged it. */
+function mistralPrefixText(body: Record<string, unknown>): string | undefined {
+  const last = Array.isArray(body.messages) ? body.messages.at(-1) : undefined;
+  // ponytail: a prefix with image parts keeps any repeat in the reply; read its text parts if Mistral repeats those.
+  return last?.prefix === true && typeof last.content === "string" ? last.content : undefined;
+}
+
 /**
  * Mistral starts its reply with the text of a final `prefix: true` assistant message
  * (https://docs.mistral.ai/guides/prefix). This drops that repeat so callers get only the continuation, as they do from
@@ -132,8 +140,11 @@ function createPrefixEchoFilter(prefix: string | undefined): { push(text: string
 /**
  * The error strict chat templates raise for consecutive same-role messages, e.g. Mistral's "After the optional system
  * message, conversation roles must alternate user/assistant/..." (llama.cpp and vLLM pass it through), or Gemma's.
+ * llama.cpp also rejects an Assistant Prefill after an assistant turn ("Cannot have 2 or more assistant messages at the
+ * end of the list.") before it renders any template.
  */
-const ROLE_ALTERNATION_ERROR = /\b(?:roles?|messages?|turns?)\b[^\n]{0,80}?\bmust\s+(?:strictly\s+)?alternate\b/i;
+const ROLE_ALTERNATION_ERROR =
+  /\b(?:roles?|messages?|turns?)\b[^\n]{0,80}?\bmust\s+(?:strictly\s+)?alternate\b|\bcannot have 2 or more assistant messages\b/i;
 const ROLE_ALTERNATION_HINT =
   " This model's chat template needs user and assistant messages to take turns, and Marinara could not make this request fit. Set Post-Processing Messages to Single User Message, or serve the model with a less strict chat template.";
 
@@ -716,7 +727,7 @@ export class OpenAIProvider extends BaseLLMProvider {
     url: string,
     body: Record<string, unknown>,
     stream: boolean,
-    signal: AbortSignal | undefined,
+    options: ChatOptions,
   ): Promise<Response> {
     const send = () =>
       llmFetch(url, {
@@ -724,7 +735,7 @@ export class OpenAIProvider extends BaseLLMProvider {
         headers: this.buildHeaders(),
         body: JSON.stringify(body),
         bufferResponse: !stream,
-        ...(signal ? { signal } : {}),
+        ...(options.signal ? { signal: options.signal } : {}),
       });
     let response = await send();
     if (response.ok) return response;
@@ -736,7 +747,11 @@ export class OpenAIProvider extends BaseLLMProvider {
           "[OpenAI] %s requires alternating roles; retrying once with consecutive same-role messages merged",
           this.chatCompletionsErrorLabel(),
         );
-        logger.debug("[OpenAI] Role-alternation retry messages: %j", messages);
+        logDebugOverride(
+          options.debugMode === true || isDebugAgentsEnabled(),
+          "[debug/openai] role-alternation retry messages:\n%j",
+          messages,
+        );
         body.messages = messages;
         response = await send();
         if (response.ok) return response;
@@ -1177,15 +1192,12 @@ export class OpenAIProvider extends BaseLLMProvider {
     }
   }
 
-  /**
-   * Mistral request rules, applied after Custom Parameters. Returns the text of a final assistant message sent as a
-   * prefix, which Mistral repeats at the start of its reply.
-   */
-  private normalizeMistralRequest(body: Record<string, unknown>): string | undefined {
-    if (this.providerKind !== "mistral") return undefined;
+  /** Mistral request rules, applied after Custom Parameters. */
+  private normalizeMistralRequest(body: Record<string, unknown>): void {
+    if (this.providerKind !== "mistral") return;
     // Mistral rejects prompt_mode together with reasoning_effort; a prompt_mode from Custom Parameters wins.
     if (body.prompt_mode !== undefined) delete body.reasoning_effort;
-    if (!Array.isArray(body.messages)) return undefined;
+    if (!Array.isArray(body.messages)) return;
     // Mistral rejects a system message right after an assistant turn, so a mid-chat instruction there goes as user.
     for (let index = 1; index < body.messages.length; index++) {
       if (body.messages[index]?.role === "system" && body.messages[index - 1]?.role === "assistant") {
@@ -1194,10 +1206,8 @@ export class OpenAIProvider extends BaseLLMProvider {
     }
     // Mistral continues a final assistant message (Assistant Prefill, depth-0 injections) only when it is a prefix.
     const last = body.messages.at(-1);
-    if (last?.role !== "assistant" || last.tool_calls?.length) return undefined;
+    if (last?.role !== "assistant" || last.tool_calls?.length) return;
     last.prefix = true;
-    // ponytail: a prefix with image parts keeps any repeat in the reply; read its text parts if Mistral repeats those.
-    return typeof last.content === "string" ? last.content : undefined;
   }
 
   private applyResponsesReasoning(body: Record<string, unknown>, options: ChatOptions): void {
@@ -1565,7 +1575,7 @@ export class OpenAIProvider extends BaseLLMProvider {
     this.enforceLocalInferenceThinkingDisable(body, options, suppressModelParameters);
     this.stripUnsupportedSamplerParameters(body, options);
     this.normalizeStrictClaudeRequest(body, options);
-    const prefixEcho = createPrefixEchoFilter(this.normalizeMistralRequest(body));
+    this.normalizeMistralRequest(body);
 
     logger.debug(
       "[OpenAI chat()] stream=%s model=%s reasoning=%s enableThinking=%s verbosity=%s max_completion_tokens=%s max_tokens=%s temperature=%s top_p=%s tools=%s",
@@ -1581,7 +1591,8 @@ export class OpenAIProvider extends BaseLLMProvider {
       Array.isArray(body.tools) ? body.tools.length : 0,
     );
 
-    const response = await this.postChatCompletions(url, body, effectiveStream, options.signal);
+    const response = await this.postChatCompletions(url, body, effectiveStream, options);
+    const prefixEcho = createPrefixEchoFilter(mistralPrefixText(body));
 
     if (!effectiveStream) {
       const json = await OpenAIProvider.parseJsonBody<Record<string, unknown>>(
@@ -1843,7 +1854,7 @@ export class OpenAIProvider extends BaseLLMProvider {
     this.enforceLocalInferenceThinkingDisable(body, options, suppressModelParameters);
     this.stripUnsupportedSamplerParameters(body, options);
     this.normalizeStrictClaudeRequest(body, options);
-    const prefixEcho = createPrefixEchoFilter(this.normalizeMistralRequest(body));
+    this.normalizeMistralRequest(body);
 
     logger.debug(
       "[OpenAI chatComplete()] stream=%s model=%s reasoning=%s enableThinking=%s verbosity=%s onToken=%s",
@@ -1855,7 +1866,8 @@ export class OpenAIProvider extends BaseLLMProvider {
       !!options.onToken,
     );
 
-    const response = await this.postChatCompletions(url, body, useStream, options.signal);
+    const response = await this.postChatCompletions(url, body, useStream, options);
+    const prefixEcho = createPrefixEchoFilter(mistralPrefixText(body));
 
     if (!useStream) {
       // Non-streaming path (no onToken callback)

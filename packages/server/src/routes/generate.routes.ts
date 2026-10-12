@@ -220,6 +220,7 @@ import {
   worldTownVisitText,
   type WorldTownVisit,
   lastGamePlace,
+  type GamePlace,
   rulesetMarketPlace,
   rulesetMarketPromptText,
   type GameInventoryMarket,

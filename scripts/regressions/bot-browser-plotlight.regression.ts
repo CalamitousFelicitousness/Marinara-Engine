@@ -18,6 +18,21 @@ const PERSONA_ID = "33333333-3333-4333-8333-333333333333";
 const requests: URL[] = [];
 const credentialModes: Array<RequestCredentials | undefined> = [];
 let rateLimited = false;
+let searchExhausted = false;
+let slowSearch: Promise<void> | null = null;
+
+// The tag catalog, served 100 per page like PlotLight. Names and slugs differ, one name has
+// two slugs, and two tags are adult ("After Dark") labels.
+const TAG_CATALOG = [
+  { name: "Fantasy", slug: "genre-fantasy", rating: "all_hours", requires_after_dark: false },
+  { name: "Horror", slug: "genre-horror", rating: "late_night", requires_after_dark: false },
+  { name: "Elf", slug: "species_elf", rating: "all_hours", requires_after_dark: false },
+  { name: "Superhero", slug: "genre-superhero", rating: "all_hours", requires_after_dark: false },
+  { name: "Superhero", slug: "occupation_superhero", rating: "all_hours", requires_after_dark: false },
+  { name: "Erotic", slug: "genre-erotic", rating: "after_dark", requires_after_dark: true },
+  ...Array.from({ length: 150 }, (_, i) => ({ name: `Filler ${i}`, slug: `filler_${i}`, rating: "all_hours" })),
+  { name: "Bondage", slug: "kink_bondage", rating: "after_dark", requires_after_dark: true },
+];
 
 function item(id: string, extra: Record<string, unknown> = {}) {
   return {
@@ -42,13 +57,55 @@ function send(res: ServerResponse, status: number, body: unknown, headers: Recor
   res.end(JSON.stringify(body));
 }
 
-const server = createServer((req: IncomingMessage, res: ServerResponse) => {
+const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
   const url = new URL(req.url ?? "/", "http://fake.test");
   requests.push(url);
   if (rateLimited) return send(res, 429, { error: "Rate limited" }, { "Retry-After": "7" });
 
-  if (url.pathname === "/api/v1/content/cards") {
+  if (url.pathname === "/api/v1/content/tags") {
+    assert.equal(url.searchParams.get("include_after_dark"), "true", "the catalog lists adult tag labels");
     const offset = Number(url.searchParams.get("offset"));
+    const limit = Number(url.searchParams.get("limit"));
+    const end = offset + limit < TAG_CATALOG.length;
+    return send(res, 200, {
+      data: TAG_CATALOG.slice(offset, offset + limit),
+      pagination: { limit, offset, has_more: end, next_offset: end ? offset + limit : null },
+    });
+  }
+
+  if (url.pathname === "/api/v1/content/cards") {
+    // Searching and exporting are limited separately.
+    const searchHeaders: Record<string, string> = searchExhausted
+      ? { "X-RateLimit-Remaining": "0", "X-RateLimit-Reset": String(Math.ceil((clock + 60_000) / 1000)) }
+      : {};
+    const query = url.searchParams.get("q");
+    const offset = Number(url.searchParams.get("offset"));
+    if (query === "slow") {
+      await slowSearch;
+      return send(res, 200, { data: [item(SECOND_ID)], pagination: { limit: 48, offset, next_offset: 500 } });
+    }
+    if (query === "fast") {
+      return send(res, 200, { data: [item(CARD_ID)], pagination: { limit: 48, offset, next_offset: 48 } });
+    }
+    if (query === "empty") {
+      // Empty pages past the automatic skips: paging must not end.
+      return send(res, 200, { data: [], pagination: { limit: 48, offset, next_offset: offset + 48 } });
+    }
+    if (query === "adult") {
+      return send(
+        res,
+        200,
+        {
+          data: [
+            item(CARD_ID, { tags: [{ name: "Erotic", slug: "genre-erotic" }] }),
+            item(SECOND_ID, { tags: [{ name: "Bondage", slug: "kink_bondage" }] }),
+            item(PERSONA_ID, { tags: [{ name: "Horror", slug: "genre-horror" }] }),
+          ],
+          pagination: { limit: 48, offset: 0, next_offset: null },
+        },
+        searchHeaders,
+      );
+    }
     if (offset === 0) {
       return send(res, 200, {
         data: [
@@ -114,8 +171,9 @@ try {
     includeTags: [],
     excludeTags: [],
   };
+  const searches = () => requests.filter((url) => url.pathname !== "/api/v1/content/tags");
   const first = await client.searchPage(search, 1);
-  const firstRequest = requests.at(-1)!;
+  const firstRequest = searches().at(-1)!;
   assert.equal(firstRequest.searchParams.get("q"), "forest");
   assert.equal(firstRequest.searchParams.get("sort"), "popular");
   assert.equal(firstRequest.searchParams.get("limit"), String(PLOTLIGHT_PAGE_SIZE));
@@ -152,7 +210,9 @@ try {
   // Page 2 starts at page 1's next_offset, and an empty page is skipped while more remain.
   const second = await client.searchPage(search, 2);
   assert.deepEqual(
-    requests.slice(-2).map((url) => url.searchParams.get("offset")),
+    searches()
+      .slice(-2)
+      .map((url) => url.searchParams.get("offset")),
     ["60", "108"],
   );
   assert.deepEqual(
@@ -161,10 +221,58 @@ try {
   );
   assert.equal(second.hasMore, false, "a null next_offset ends paging");
 
-  // Tag names from results are sent as PlotLight's own slugs; unknown names pass through unchanged.
-  await client.searchPage({ ...search, includeTags: ["fantasy"], excludeTags: ["Horror"] }, 1);
-  assert.equal(requests.at(-1)!.searchParams.get("tags"), "genre-fantasy");
-  assert.equal(requests.at(-1)!.searchParams.get("exclude_tags"), "Horror");
+  // Empty pages beyond the automatic skips still report more, so the pager stays.
+  assert.deepEqual(await client.searchPage({ ...search, query: "empty" }, 1), { items: [], hasMore: true });
+
+  // Tag names, typed or from results, are sent as the catalog's slugs.
+  await client.searchPage(
+    { ...search, includeTags: ["fantasy", "elf"], excludeTags: ["Horror", "superhero", "kink_bondage"] },
+    1,
+  );
+  assert.equal(searches().at(-1)!.searchParams.get("tags"), "genre-fantasy,species_elf");
+  assert.equal(
+    searches().at(-1)!.searchParams.get("exclude_tags"),
+    "genre-horror,genre-superhero,occupation_superhero,kink_bondage",
+    "an excluded name removes every slug it names",
+  );
+  // PlotLight has no "any of" filter, so a shared name includes one slug; unknown names match nothing.
+  await client.searchPage({ ...search, includeTags: ["Superhero", "made-up"] }, 1);
+  assert.equal(searches().at(-1)!.searchParams.get("tags"), "genre-superhero,made-up");
+
+  // Results carrying an adult (After Dark) tag are marked; late-night tags are not adult.
+  const adult = await client.searchPage({ ...search, query: "adult" }, 1);
+  assert.deepEqual(
+    adult.items.map((card) => card.adult),
+    [true, true, false],
+  );
+  assert.equal(
+    first.items.some((card) => card.adult),
+    false,
+  );
+
+  // A slower, older search can't set the newer search's next page.
+  let releaseSlow = () => {};
+  slowSearch = new Promise<void>((resolve) => {
+    releaseSlow = () => resolve();
+  });
+  const slow = client.searchPage({ ...search, query: "slow" }, 1);
+  await client.searchPage({ ...search, query: "fast" }, 1);
+  releaseSlow();
+  await slow;
+  await client.searchPage({ ...search, query: "fast" }, 2);
+  assert.equal(searches().at(-1)!.searchParams.get("offset"), "48");
+
+  // The catalog loads once per content type, a few pages at a time.
+  assert.equal(requests.length - searches().length, 4);
+
+  // An exhausted search allowance pauses searching but not downloads: PlotLight limits them separately.
+  searchExhausted = true;
+  await client.searchPage({ ...search, query: "adult" }, 1);
+  searchExhausted = false;
+  await assert.rejects(
+    client.searchPage(search, 1),
+    (error) => error instanceof PlotLightError && error.status === 429 && error.retryAfterSeconds === 60,
+  );
 
   // Import prefers png3, falls back to JSON, and keeps the listing's attribution.
   const card = await client.downloadCard(mapped, ["png3", "json3", "json"]);
@@ -190,6 +298,7 @@ try {
   );
 
   // A 429 reports Retry-After and blocks further calls until it passes, without touching the network.
+  clock += 60_000;
   rateLimited = true;
   await assert.rejects(
     client.searchPage(search, 1),

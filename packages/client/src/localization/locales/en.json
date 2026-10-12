@@ -4864,7 +4864,7 @@
   "ui.botBrowser.plotlight.busy_one": "PlotLight is busy. Try again in {{count}} second.",
   "ui.botBrowser.plotlight.busy_other": "PlotLight is busy. Try again in {{count}} seconds.",
   "ui.botBrowser.plotlight.failed": "Couldn't load from PlotLight. Try again later.",
-  "ui.botBrowser.plotlight.noAdultContent": "PlotLight doesn't share adult content here.",
+  "ui.botBrowser.plotlight.nsfwHint": "PlotLight decides what you can see without an account, and adult-tagged results are marked NSFW.",
   "ui.botBrowser.plotlight.personasSource": "PlotLight Personas",
   "ui.botBrowser.plotlight.sortPopular": "🔥 Popular",
   "ui.botBrowser.plotlight.sortRating": "⭐ Top Rated",

@@ -1506,10 +1506,11 @@ function createPlotlightProvider(type: PlotLightContentType): ProviderConfig {
     hasSortDirection: false,
     hasTokenFilters: false,
     extraToggles: [],
-    // Guests get only what PlotLight's After Dark rules allow, so there is no adult content to switch on.
+    // PlotLight's guest (After Dark) rules decide what is shown, so there is nothing to switch;
+    // results with an adult tag get the NSFW badge.
     nsfwAvailable: false,
     nsfwMode: "wyvern",
-    nsfwHintKey: "ui.botBrowser.plotlight.noAdultContent",
+    nsfwHintKey: "ui.botBrowser.plotlight.nsfwHint",
     search: async (p) => {
       try {
         const { items, hasMore } = await plotlightClient.searchPage(
@@ -1541,7 +1542,7 @@ function createPlotlightProvider(type: PlotLightContentType): ProviderConfig {
             stat3: 0,
             stat3Label: "",
             stat3Icon: "star" as const,
-            nsfw: false,
+            nsfw: item.adult,
             externalUrl: item.detailUrl,
             _raw: item,
           })),
@@ -1906,8 +1907,12 @@ export function BotBrowserView() {
       const d = await provider.fetchDetail(card);
       setDetail(d);
     } catch (err) {
+      if (err instanceof BrowserSourceError) {
+        // Keep the page open: its picture, creator and site link come from the listing.
+        toast.error(err.message);
+        return;
+      }
       if (err instanceof PygmalionSessionExpiredError) expirePygmalionSession();
-      else if (err instanceof BrowserSourceError) toast.error(err.message);
       else toast.error(localizeUi("ui.botBrowser.botbrowserview.failedToLoadCharacterDetails"));
       restoreResultsScrollRef.current = true;
       setSelectedCard(null);
@@ -2843,17 +2848,20 @@ export function BotBrowserView() {
                     <RefreshCw size="0.75rem" /> {localizeUi("ui.game.gamesurfacecomponent.retry")}
                   </button>
                 </div>
-              ) : results.length === 0 ? (
-                <div className="mari-chrome-text-muted flex flex-1 items-center justify-center py-12 text-sm">
-                  {localizeUi("ui.botBrowser.botbrowserview.noCharactersFound")}
-                </div>
               ) : (
                 <>
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-                    {results.map((card) => (
-                      <CardTile key={card.id} card={card} onClick={() => openDetail(card)} />
-                    ))}
-                  </div>
+                  {results.length === 0 ? (
+                    <div className="mari-chrome-text-muted flex flex-1 items-center justify-center py-12 text-sm">
+                      {localizeUi("ui.botBrowser.botbrowserview.noCharactersFound")}
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+                      {results.map((card) => (
+                        <CardTile key={card.id} card={card} onClick={() => openDetail(card)} />
+                      ))}
+                    </div>
+                  )}
+                  {/* An empty page can still have pages around it (PlotLight drops items after paging). */}
                   {(totalPages > 1 || page > 1) && (
                     <div className="flex items-center justify-center gap-2 pt-2 pb-4">
                       <button

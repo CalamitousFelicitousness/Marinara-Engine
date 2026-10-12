@@ -52,9 +52,9 @@ You don't need a PlotLight account. Each result keeps its creator's name, and th
 
 When you import from PlotLight, Marinara downloads the file PlotLight offers for it. A character card usually comes as a PNG with its portrait and any lorebook the creator allows inside. A persona comes as a text file, and Marinara copies its picture separately. You can import either kind as a character or as a persona.
 
-PlotLight limits how often apps can ask it for things. If you search or import too quickly, Marinara says **PlotLight is busy** and how many seconds to wait. It doesn't ask PlotLight again until that time has passed.
+PlotLight limits how often apps can ask it for things. If you search or import too quickly, Marinara says **PlotLight is busy** and how many seconds to wait. It waits that long before asking again. Searching and importing have separate limits, so one doesn't hold up the other.
 
-Some cards and personas can't be downloaded, for example when the creator doesn't allow it. Marinara then says **PlotLight doesn't offer this for download.**, and you can't preview or import that one.
+Some cards and personas can't be downloaded, for example when the creator doesn't allow it. Marinara then says **PlotLight doesn't offer this for download.** You can't import that one or see its full details, but its picture, creator, and **View on PlotLight** link stay on screen.
 
 ## Searching, sorting, and pages
 
@@ -73,7 +73,7 @@ Next to the search box is a sort dropdown. The options are different on each sou
 
 Click the **Refresh** button (the circular-arrow icon) to run the current search again.
 
-Below the results are **Previous** and **Next** buttons with a page label such as **Page 2**. When the source cannot report an exact total, only the current page number is shown. **PlotLight** never reports a total, so the header reads **Browsing PlotLight**, and **Next** turns off on the last page. A PlotLight page can hold fewer cards than usual and still have more pages after it.
+Below the results are **Previous** and **Next** buttons with a page label such as **Page 2**. When the source cannot report an exact total, only the current page number is shown. **PlotLight** never reports a total, so the header reads **Browsing PlotLight**, and **Next** turns off on the last page. A PlotLight page can hold fewer cards than usual, or none, and still have more pages after it. **Next** then stays on, so you can keep going.
 
 One note on **DataCat**: its **Fresh** sort only shows fresh results when you have no tag filter and no search text. As soon as you type a search or pick a tag, **DataCat** falls back to normal relevance results.
 
@@ -90,7 +90,7 @@ On most sources the tag list is built from the characters in your recent searche
 
 **DataCat** works differently. It loads the most popular tags right away, because it has a very large tag list. You can still type any other tag name by hand.
 
-On **PlotLight**, pick tags from the list. Marinara sends PlotLight's own name for each listed tag. A tag you type by hand only matches when PlotLight knows it by exactly that name.
+On **PlotLight**, pick tags from the list or type one by hand, such as **Elf**. Marinara looks each tag up in PlotLight's own tag list. A typed tag that PlotLight doesn't have matches nothing.
 
 ## More filters
 
@@ -113,7 +113,7 @@ Adult content is labeled **NSFW** in the app. There is a single **NSFW** checkbo
 - **Pygmalion**: the **NSFW** checkbox is greyed out until you log in. Its tooltip tells you to log in first. After you log in, the app follows your account settings on Pygmalion. The checkbox then reads **NSFW depends on your account settings**. There is no separate on and off switch after login.
 - **Wyvern**: the **NSFW** checkbox is always greyed out. A notice reads **Use "🔞 Popular NSFW" sort for NSFW content**. To see adult content on **Wyvern**, pick the **🔞 Popular NSFW** option in the sort dropdown.
 - **DataCat**: every character is adult-tagged, so the checkbox is locked on. The first time you pick **DataCat**, a dialog titled **DataCat is NSFW only** appears. Click **Continue to DataCat** to browse it, or **Don't continue to DataCat** to go back.
-- **PlotLight** and **PlotLight Personas**: the **NSFW** checkbox is always greyed out. Its tooltip reads **PlotLight doesn't share adult content here.** PlotLight only shares what a visitor without an account can see, which leaves out its adult ("After Dark") content.
+- **PlotLight** and **PlotLight Personas**: the **NSFW** checkbox is always greyed out. Its tooltip reads **PlotLight decides what you can see without an account, and adult-tagged results are marked NSFW.** PlotLight applies its own rules for visitors without an account. Some results it shares are still tagged as adult content, and those get the **NSFW** badge.
 
 Adult characters show a small red **NSFW** badge in the corner of their thumbnail.
 

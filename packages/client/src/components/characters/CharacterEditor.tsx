@@ -240,11 +240,14 @@ const CHARACTER_ONBOARDING_SECTIONS = [
   // fill are rendered after them, so listing this after Scenario made the nav
   // disagree with the page it scrolls.
   { id: "character-onboarding-questions", label: "Persona Questions", labelKey: "ui.characters.onboarding.questions" },
-  { id: "character-onboarding-description", label: "Description" },
-  { id: "character-onboarding-personality", label: "Personality" },
-  { id: "character-onboarding-backstory", label: "Backstory" },
-  { id: "character-onboarding-appearance", label: "Appearance" },
-  { id: "character-onboarding-scenario", label: "Scenario" },
+  // One entry for the whole group, the way "Dialogue" covers Dialogue &
+  // Greetings. The five fields it holds are a single template, so five chips
+  // repeated the same thing five times.
+  {
+    id: "character-onboarding-template",
+    label: "Persona Template",
+    labelKey: "ui.characters.onboarding.personaTemplate",
+  },
   { id: "character-onboarding-preview", label: "Rendered preview" },
 ] as const;
 
@@ -310,6 +313,12 @@ const CHARACTER_METADATA_HELP =
 
 const CHARACTER_CARD_HELP =
   "Write the fields that define how the model sees and plays the character. Description, personality, backstory, appearance, scenario, and dialogue are kept together here so you can treat the card as one writing document.";
+
+// The Onboarding tab's own help, matching the Card tab's per-section pattern. It
+// answers a different question from `enableHelp` beside the switch: that one is
+// about the switch, this one about what the tab holds and where answers land.
+const CHARACTER_ONBOARDING_HELP =
+  "Two lists of questions, and the persona fields they fill. The questions above are asked in the Roleplay setup wizard; the fields below are what the player's answers become. Answers are saved per chat unless a persona is created, which is permanent.";
 
 const CHARACTER_DESCRIPTION_HELP =
   "The character's general identity and role. This is sent in every prompt as part of who the character is.";
@@ -1499,14 +1508,17 @@ function SectionHeader({
   subtitle,
   helpText,
   helpWide = true,
+  className,
 }: {
   title: string;
   subtitle?: string;
   helpText?: ReactNode;
   helpWide?: boolean;
+  /** Extra classes on the wrapper, e.g. spacing for a mid-tab group heading. */
+  className?: string;
 }) {
   return (
-    <div className="mb-4">
+    <div className={cn("mb-4", className)}>
       <h2 className="inline-flex items-center gap-1.5 text-lg font-bold">
         {title}
         {helpText && <HelpTooltip text={helpText} side="bottom" wide={helpWide} size="0.875rem" />}
@@ -1925,6 +1937,7 @@ function OnboardingTab({
       <SectionHeader
         title={localizeUi("editor.tabs.onboarding")}
         subtitle={localizeUi("ui.characters.onboarding.subtitle")}
+        helpText={CHARACTER_ONBOARDING_HELP}
       />
       {unreadable && (
         <div
@@ -2100,10 +2113,21 @@ function OnboardingTab({
                 }
               />
             </EditorSectionAnchor>
+            {/* One anchor and one nav chip for the whole group: the five fields
+                below are a single template a card provides, so listing five
+                separate chips said the same thing five times. This mirrors
+                Dialogue & Greetings, which is one chip over several fields. */}
+            <EditorSectionAnchor id="character-onboarding-template">
+              <SectionHeader
+                className="mt-6"
+                title={localizeUi("ui.characters.onboarding.personaTemplate")}
+                subtitle={localizeUi("ui.characters.onboarding.personaTemplateHelp")}
+              />
+            </EditorSectionAnchor>
             {ONBOARDING_PERSONA_FIELDS.map((field) => {
               const copy = ONBOARDING_FIELD_COPY[field];
               return (
-                <EditorSectionAnchor key={field} id={`character-onboarding-${field}`}>
+                <div key={field}>
                   <TextareaTab
                     title={localizeUi(copy.title)}
                     subtitle={localizeUi(copy.subtitle)}
@@ -2171,7 +2195,7 @@ function OnboardingTab({
                       })}
                     </p>
                   )}
-                </EditorSectionAnchor>
+                </div>
               );
             })}
             <EditorSectionAnchor id="character-onboarding-preview">

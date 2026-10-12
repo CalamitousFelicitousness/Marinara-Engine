@@ -1347,6 +1347,7 @@ function mergeSceneAssetNpcCandidates(
       case "user":
         return 4;
       case "model":
+      case "world":
         return 3;
       case "library":
         return 2;
@@ -3386,6 +3387,12 @@ function GameSurfaceComponent({
             ? localizeUi("ui.game.gamesurfacecomponent.inventoryWhoPaid", { who: update.who, item })
             : localizeUi("ui.game.gamesurfacecomponent.inventoryYouPaid", { item });
         }
+        if (update.action === "sell") {
+          const price = update.price ?? "";
+          return update.who
+            ? localizeUi("ui.game.gamesurfacecomponent.inventoryWhoSold", { who: update.who, item, price })
+            : localizeUi("ui.game.gamesurfacecomponent.inventoryYouSold", { item, price });
+        }
         if (update.action === "buy") {
           const price = update.price ?? "";
           return update.who
@@ -3416,6 +3423,7 @@ function GameSurfaceComponent({
                   update.action === "add" ||
                   update.action === "earn" ||
                   update.action === "buy" ||
+                  update.action === "sell" ||
                   update.action === "equip" ||
                   update.action === "bind",
                 text: describe(update, inventoryLabel(update.item, update.count)),
@@ -5086,7 +5094,7 @@ function GameSurfaceComponent({
     // NPC reputation actions from inline [reputation:] tags
     if (tags.reputationActions.length > 0) {
       const repActions = tags.reputationActions.map((ra) => ({
-        npcId: ra.npcName,
+        npcId: ra.id ?? ra.npcName,
         action: ra.action,
       }));
       _updateReputation.mutate({ chatId: activeChatId, actions: repActions });

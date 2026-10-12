@@ -163,8 +163,9 @@ export interface GameNpc {
   name: string;
   emoji: string;
   description: string;
-  /** Origin of the description. "model", "library", and "user" descriptions are canonical profile text. */
-  descriptionSource?: "model" | "library" | "narration" | "user";
+  /** Origin of the description. "model", "library", "user" and "world" descriptions are canonical profile
+   *  text; "world" is a person the game's world drew (worldgen W2), described by their sheet. */
+  descriptionSource?: "model" | "library" | "narration" | "user" | "world";
   /** Optional presentation hint used for systems like NPC voice matching. */
   gender?: string | null;
   /** Optional pronoun hint used for systems like NPC voice matching. */
@@ -176,6 +177,10 @@ export interface GameNpc {
   notes: string[];
   /** Optional avatar URL (generated or uploaded) */
   avatarUrl?: string | null;
+  /** The world's id for this person, when the game's world drew them (worldgen W2). */
+  worldId?: string;
+  /** What they do, for a person the world drew. */
+  role?: string;
 }
 
 // ── Sessions ──
@@ -251,6 +256,13 @@ export interface GameSetupConfig {
   /** The Game Mode ruleset chosen for a NEW game. The server pins it as `chat.metadata.gameRuleset`
    *  from its own registry, so only `id` is trusted. Absent means Marinara's own rules. */
   ruleset?: import("../schemas/ruleset.schema.js").RulesetRef;
+  /** The setting kit chosen or written for a NEW game (worldgen W0): the world's own words and the
+   *  kinds of change it allows. The server stores it as `chat.metadata.gameWorldKit`. Absent means
+   *  no kit: the Game Master works from genre, setting and tone alone, as before. */
+  worldKit?: import("../schemas/world-kit.schema.js").WorldKit;
+  /** The generated world for a NEW game (worldgen W1): its seed, generator version, grounding and
+   *  brief, stored as `chat.metadata.gameWorld`. Needs `worldKit`; absent means no world. */
+  world?: import("../features/world/game-world.js").GameWorldInput;
   /** Whatever the experience's own setup collected, stored verbatim and never interpreted by the host, so
    *  it can always recover the options the game was created with. */
   experienceConfig?: Record<string, unknown>;

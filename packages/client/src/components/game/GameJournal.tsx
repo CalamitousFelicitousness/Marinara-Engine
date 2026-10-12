@@ -56,7 +56,7 @@ interface Journal {
   npcLog: Array<{ npcName: string; interactions: string[] }>;
   inventoryLog: Array<{
     item: string;
-    action: "acquired" | "used" | "lost" | "removed";
+    action: "acquired" | "used" | "lost" | "removed" | "sold";
     quantity: number;
     timestamp: string;
   }>;
@@ -139,14 +139,15 @@ function pruneJournalNpc(journal: Journal, npcName: string): Journal {
 }
 
 function shouldShowNpcDescription(npc: GameNpc): boolean {
-  return (npc as GameNpc & { descriptionSource?: string }).descriptionSource === "model" && !!npc.description?.trim();
+  const source = (npc as GameNpc & { descriptionSource?: string }).descriptionSource;
+  return (source === "model" || source === "world") && !!npc.description?.trim();
 }
 
 function shouldShowJournalNpc(npc: GameNpc): boolean {
   const source = (npc as GameNpc & { descriptionSource?: string }).descriptionSource;
   const hasReputationChange = Number.isFinite(npc.reputation) && npc.reputation !== 0;
   const hasRelationshipNotes = Array.isArray(npc.notes) && npc.notes.some((note) => !!note.trim());
-  return source === "model" || hasReputationChange || hasRelationshipNotes;
+  return source === "model" || source === "world" || hasReputationChange || hasRelationshipNotes;
 }
 
 function isDuplicateInventoryEntry(
@@ -768,7 +769,7 @@ function InventoryView({
 }: {
   items: Array<{
     item: string;
-    action: "acquired" | "used" | "lost" | "removed";
+    action: "acquired" | "used" | "lost" | "removed" | "sold";
     quantity: number;
     timestamp: string;
   }>;
@@ -789,6 +790,7 @@ function InventoryView({
     used: "text-amber-400",
     lost: "text-red-400",
     removed: "text-red-300",
+    sold: "text-amber-300",
   };
 
   return (

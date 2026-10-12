@@ -58,7 +58,13 @@ export type GameInventoryMarketRefusal =
   | "not-for-sale"
   | "not-here"
   | "no-seller"
-  | "not-to-you";
+  | "not-to-you"
+  /** None left today of what the place or a seller's stock keeps (#6934). */
+  | "sold-out"
+  /** Nobody here buys it back, or the market buys nothing back. */
+  | "not-bought"
+  /** The place's sellers have paid out today's purse. */
+  | "purse-spent";
 
 /** What a buy costs at the place the party is in, worked out by the Engine; the server builds it from
  *  the ruleset's market, the place and the buyers' sheets. */
@@ -86,8 +92,36 @@ export interface GameInventoryMarket {
         price: string;
         level: string;
         seller?: string;
+        /** Out of the seller's stock today. */
+        stock?: true;
       }
     | { ok: false; reason: GameInventoryMarketRefusal };
+  /** What a seller here pays for `count` of an item (#6934). Without it nothing is sold back. */
+  sale?(request: {
+    item: string;
+    count: number;
+    seller?: string;
+    who?: string;
+    stacks: readonly GameInventoryStack[];
+  }):
+    | {
+        ok: true;
+        item: string;
+        name: string;
+        /** The coins of the family it is paid in, which one, and how much, in its smallest coin. */
+        family: readonly GameInventoryCoin[];
+        familyId: string;
+        worth: number;
+        price: string;
+        seller?: string;
+      }
+    | { ok: false; reason: GameInventoryMarketRefusal };
+  /** Counts what the reply bought or sold, so its later tags see what is left today. */
+  record?(
+    done:
+      | { buy: { name: string; count: number; seller?: string; stock?: boolean } }
+      | { sell: { familyId: string; worth: number } },
+  ): void;
 }
 
 export interface GameInventoryParty {
@@ -414,12 +448,66 @@ export function applyGameInventoryTags(
             ...paid.change.map((each) => ({ item: each.name, action: "acquired" as const, quantity: each.count })),
             ...bought,
           );
+          market.record?.({
+            buy: {
+              name: quote.name,
+              count: request.count,
+              ...(quote.seller ? { seller: quote.seller } : {}),
+              ...(quote.stock ? { stock: true } : {}),
+            },
+          });
           // Something free takes no coin at all.
           const note = paid.paid.length ? paymentNote(paid) : undefined;
           return serializeInventoryTag(
-            { ...answered, price: quote.price },
+            { ...answered, price: quote.price, ...(quote.stock ? { stock: true as const } : {}) },
             { ok: true, count: request.count, now },
             note,
+          );
+        }
+        if (request.action === "sell") {
+          // A seller here pays for it in its own coins, up to what the place pays out in a day: it
+          // leaves the seller's bag and the coins come in, largest first, or nothing happens (#6934).
+          if (!market?.sale) return serializeInventoryTag(shown, { ok: false, reason: "no-market" });
+          const asked = { ...shown, ...(request.seller ? { seller: request.seller } : {}) };
+          const sale = market.sale({
+            item,
+            count: request.count,
+            ...(request.seller ? { seller: request.seller } : {}),
+            ...(request.who ? { who: request.who } : {}),
+            stacks: current,
+          });
+          if (!sale.ok) return serializeInventoryTag(asked, { ok: false, reason: sale.reason });
+          const answered = { ...asked, item: sale.name, ...(sale.seller ? { seller: sale.seller } : {}) };
+          const holder = who.bag?.holder;
+          const taken = applyGameInventoryOps(
+            current,
+            [{ op: "take", name: sale.name, count: request.count, from: who.bag ?? {}, as: "sold" }],
+            newId,
+            rules,
+          );
+          const [took] = taken.results;
+          if (!took?.ok) return serializeInventoryTag(answered, outcomeOf(took));
+          if (took.count !== request.count) return serializeInventoryTag(answered, { ok: false, reason: "none-held" });
+          let left = sale.worth;
+          const coinOps: GameInventoryOp[] = [];
+          for (const coin of sale.family) {
+            const count = Math.floor(left / coin.value);
+            if (count < 1) continue;
+            left -= count * coin.value;
+            coinOps.push({ op: "add", name: coin.name, item: coin.item, count, holder, log: true });
+          }
+          // Never pay less than the purse is charged.
+          if (left > 0) return serializeInventoryTag(answered, { ok: false, reason: "not-for-sale" });
+          const paid = applyGameInventoryOps(taken.stacks, coinOps, newId, rules);
+          if (paid.results.some((result) => !result.ok || (result.left ?? 0) > 0)) {
+            return serializeInventoryTag(answered, { ok: false, reason: "too-heavy" });
+          }
+          current = paid.stacks;
+          journal.push(...taken.journal, ...paid.journal);
+          market.record?.({ sell: { familyId: sale.familyId, worth: sale.worth } });
+          return serializeInventoryTag(
+            { ...answered, price: sale.price },
+            { ok: true, count: request.count, now: took.now ?? 0 },
           );
         }
         if (request.action === "remove") {

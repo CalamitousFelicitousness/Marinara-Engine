@@ -110,7 +110,7 @@ export function createRoomGameRuntime(db: DB, operations: GameOperations) {
           const npcs = Array.isArray(metadata.gameNpcs) ? (metadata.gameNpcs as GameNpc[]) : [];
           const reputation = processReputationActions(
             npcs,
-            tags.reputationActions.map((action) => ({ npcId: action.npcName, action: action.action })),
+            tags.reputationActions.map((action) => ({ npcId: action.id ?? action.npcName, action: action.action })),
           );
           let widgets = Array.isArray(metadata.gameWidgetState) ? (metadata.gameWidgetState as HudWidget[]) : [];
           for (const update of tags.widgetUpdates) widgets = applyGameWidgetUpdate(widgets, update);

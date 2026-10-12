@@ -7319,6 +7319,26 @@
                           ],
                           "additionalProperties": false
                         },
+                        "weapons": {
+                          "type": "object",
+                          "properties": {
+                            "tags": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 8
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "tags"
+                          ],
+                          "additionalProperties": false
+                        },
                         "$comment": {}
                       },
                       "required": [
@@ -8596,11 +8616,22 @@
                           "maxLength": 40,
                           "pattern": "^[a-z][a-z0-9_]*$"
                         },
+                        "limited": {
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 999
+                            },
+                            {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                            }
+                          ]
+                        },
                         "$comment": {}
                       },
-                      "required": [
-                        "place"
-                      ],
                       "additionalProperties": false
                     },
                     "service": {
@@ -13272,6 +13303,27 @@
                     "minLength": 1,
                     "maxLength": 80
                   },
+                  "purse": {
+                    "type": "object",
+                    "properties": {
+                      "amount": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 1000000000
+                      },
+                      "unit": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "$comment": {}
+                    },
+                    "required": [
+                      "amount",
+                      "unit"
+                    ],
+                    "additionalProperties": false
+                  },
                   "$comment": {}
                 },
                 "required": [
@@ -13315,15 +13367,33 @@
                     "maxLength": 40,
                     "pattern": "^[a-z][a-z0-9_]*$"
                   },
+                  "limited": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 999
+                      },
+                      {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                      }
+                    ]
+                  },
                   "$comment": {}
                 },
                 "required": [
-                  "filter",
-                  "place"
+                  "filter"
                 ],
                 "additionalProperties": false
               },
               "maxItems": 48
+            },
+            "buyBack": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 1
             },
             "sellers": {
               "type": "array",
@@ -13371,6 +13441,21 @@
                     "type": "string",
                     "maxLength": 40,
                     "pattern": "^[a-z][a-z0-9_]*$"
+                  },
+                  "stock": {
+                    "type": "object",
+                    "properties": {
+                      "table": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "$comment": {}
+                    },
+                    "required": [
+                      "table"
+                    ],
+                    "additionalProperties": false
                   },
                   "only": {
                     "type": "object",

@@ -157,6 +157,8 @@ import type {
   DiceRollResult,
   ResolvedSpatialTravel,
   ThinkingTagPair,
+  GameWorld,
+  WorldPerson,
 } from "@marinara-engine/shared";
 import {
   createChatsStorage,
@@ -190,10 +192,25 @@ import {
   getRoleplayCommandActivity,
   applyGameInventoryTags,
   applyGamePlaceTags,
+  gameWorldFromMetadata,
+  worldKitSize,
+  worldPlaceByName,
+  worldPlaceForTag,
+  worldWhereYouAreText,
+  worldPeopleNamed,
+  worldPersonNpc,
+  applyWorldHistoryTags,
+  worldHistoryAnswerText,
+  applyWorldTags,
+  readWorldLedger,
+  worldPresent,
+  worldAddedPlace,
+  type WorldPresent,
+  lastGamePlace,
+  type GamePlace,
   rulesetMarketPlace,
   rulesetMarketPromptText,
   type GameInventoryMarket,
-  type GamePlace,
   createInventoryTagRegex,
   gameInventoryBags,
   gameInventoryTellingStart,
@@ -251,7 +268,7 @@ import {
 } from "../services/game/ruleset-sheet-turn.service.js";
 import { gameInventoryItemUser, gameInventoryRestRecharge } from "../services/game/game-item-use.service.js";
 import { gameLootTagRoller } from "../services/game/game-loot.service.js";
-import { gamePlaceBefore, loadGameMarket } from "../services/game/game-market.service.js";
+import { gameMarketDayFor, gameRepliesBefore, loadGameMarket } from "../services/game/game-market.service.js";
 import {
   commitGameInventoryChange,
   followGameInventoryOnRow,
@@ -4787,20 +4804,73 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   "game-master",
                 )
               : undefined;
-          // The market where the scene is, where the ruleset has one (#6917): the place the visible
-          // messages last said (not the telling a regeneration replaces) and what its sellers sell.
-          const promptMarket =
+          // Where the scene is: the place the visible messages last said (not the telling a
+          // regeneration replaces), read once for the market and the world.
+          let promptRepliesRead: ReturnType<typeof gameRepliesBefore> | undefined;
+          const promptRepliesAll = () =>
+            (promptRepliesRead ??= gameRepliesBefore(app.db, input.chatId, input.regenerateMessageId ?? null));
+          const promptReplies = async () => (await promptRepliesAll()).scoped;
+          const promptPlace = async () => lastGamePlace(await promptReplies());
+          // Where the party is in the game's world (worldgen W1): the place last said, when the world
+          // lists it, else where the world starts the party until the Game Master says.
+          const promptWorld = gameWorldFromMetadata(chatMeta);
+          // The people the party has already met (worldgen W2), so the block offers only new ones.
+          const promptMet = new Set(
+            (Array.isArray(chatMeta.gameNpcs) ? (chatMeta.gameNpcs as GameNpc[]) : []).flatMap((npc) =>
+              typeof npc.worldId === "string" ? [npc.worldId] : [],
+            ),
+          );
+          const promptWhereYouAre = promptWorld
+            ? await (async () => {
+                // The world as the story has left it (worldgen W4): the ledger in all the replies.
+                const present = worldPresent(promptWorld, readWorldLedger((await promptRepliesAll()).all));
+                const before = await promptPlace();
+                if (!before?.name) {
+                  const start = promptWorld.world.places.find((place) => place.id === promptWorld.world.startId);
+                  return worldWhereYouAreText(promptWorld, { place: start, met: promptMet, present });
+                }
+                return worldWhereYouAreText(promptWorld, {
+                  place: worldPlaceByName(promptWorld.world, before.name),
+                  name: before.name,
+                  met: promptMet,
+                  present,
+                });
+              })()
+            : undefined;
+          // The past the Game Master asked for in its last reply (worldgen W3).
+          const promptHistoryAsked = promptWorld
+            ? worldHistoryAnswerText(promptWorld, (await promptReplies()).at(-1) ?? "")
+            : undefined;
+          // The market where the scene is, where the ruleset has one (#6917, #6934): the place the Game
+          // Master's replies last said (not the telling a regeneration replaces), what its sellers sell,
+          // and what the market day has left.
+          const promptMarketBook =
             pinnedGameRuleset?.status === "ok" && pinnedGameRuleset.definition.items?.market
+              ? (promptItemBook ??
+                (await loadGameInventoryItemBook(
+                  app.db,
+                  { metadata: chatMeta, resolved: pinnedGameRuleset, playerName: personaName || null },
+                  "game-master",
+                )))
+              : undefined;
+          const promptMarketDay =
+            promptMarketBook && pinnedGameRuleset?.status === "ok"
+              ? await gameMarketDayFor(
+                  app.db,
+                  input.chatId,
+                  input.regenerateMessageId ?? null,
+                  undefined,
+                  promptMarketBook,
+                )
+              : undefined;
+          const promptMarket =
+            promptMarketBook && promptMarketDay && pinnedGameRuleset?.status === "ok"
               ? rulesetMarketPromptText(
                   pinnedGameRuleset.definition,
-                  promptItemBook ??
-                    (await loadGameInventoryItemBook(
-                      app.db,
-                      { metadata: chatMeta, resolved: pinnedGameRuleset, playerName: personaName || null },
-                      "game-master",
-                    )) ?? { entries: [] },
-                  await gamePlaceBefore(app.db, input.chatId, input.regenerateMessageId ?? null),
+                  promptMarketBook,
+                  promptMarketDay.place,
                   gameRulesetLayerOptions(pinnedGameRuleset),
+                  promptMarketDay.day,
                 )
               : undefined;
           // What each character carries, binds and wears against what they can, when the ruleset says.
@@ -4918,6 +4988,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               ...(promptItemFacts ? { inventoryItemFacts: promptItemFacts } : {}),
               ...(promptBearers ? { inventoryBearers: promptBearers } : {}),
               ...(promptPurses ? { inventoryPurses: promptPurses } : {}),
+              ...(promptWhereYouAre
+                ? { whereYouAre: [promptWhereYouAre, promptHistoryAsked].filter(Boolean).join("\n\n") }
+                : {}),
               ...(promptMarket ? { market: promptMarket } : {}),
               ...(pinnedGameRuleset?.status === "ok" && pinnedGameRuleset.layers.length > 0
                 ? {
@@ -9701,6 +9774,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           // add up. The answers are worked out here, on the stacks as they are, so the reply is saved
           // with them; the stacks themselves only change once the reply is saved (below), so a reply
           // that is never saved changes nothing.
+          // The world's people this reply named, tracked once it is saved.
+          let worldNpcsNamed: { world: GameWorld; people: WorldPerson[] } | undefined;
           let inventoryTurn: {
             requested: string;
             preview: string;
@@ -9723,28 +9798,77 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             };
             /** What a `[loot:]` rolls: the ruleset its tables are in, and the dice's seed. */
             loot?: { definition: RulesetDefinition; seed: number };
-            /** Where the reply's buys are priced (#6917): the place in force, and the market there. */
-            market?: GameInventoryMarket;
+            /** Makes the market the reply's buys and sales are priced at (#6917, #6934): a fresh one for
+             *  each reading, since a market counts what the reply buys and sells. */
+            market?: () => GameInventoryMarket;
           } | null = null;
           // ── Place tags (#6917) ──
-          // Where the scene is, for a ruleset with a market: the last place the player's visible
-          // messages said (not the telling a regeneration replaces), then the reply's own, each
-          // answered in place. The reply's buys are priced at the place it leaves the party in.
+          // Where the scene is, for a ruleset with a market or a game with a world: the last place the
+          // player's visible messages said (not the telling a regeneration replaces), then the reply's
+          // own, each answered in place. The reply's buys are priced at the place it leaves the party
+          // in. A name the world lists takes its size from the world (worldgen W1).
           let turnPlace: GamePlace | null = null;
+          let turnPlaceBefore: GamePlace | null = null;
           const turnMarket =
             chatMode === "game" && !input.impersonate && turnGameRuleset?.status === "ok"
               ? turnGameRuleset.definition.items?.market
               : undefined;
-          if (turnMarket) {
-            turnPlace = await gamePlaceBefore(app.db, input.chatId, input.regenerateMessageId ?? null);
+          const turnWorld = chatMode === "game" && !input.impersonate ? gameWorldFromMetadata(chatMeta) : null;
+          let turnPresent: WorldPresent | undefined;
+          if (turnMarket || turnWorld) {
+            const replies = await gameRepliesBefore(app.db, input.chatId, input.regenerateMessageId ?? null);
+            turnPlace = lastGamePlace(replies.scoped);
+            turnPlaceBefore = turnPlace;
+            // What the reply does to the world (worldgen W4): each world tag answered in place against
+            // the world as the replies before it left it, before its place tags, so a place it adds is
+            // a place it can go.
+            if (turnWorld) {
+              const ledger = readWorldLedger(replies.all);
+              if (/\[world:/i.test(fullResponse)) {
+                const answered = applyWorldTags(fullResponse, turnWorld, ledger);
+                if (answered !== fullResponse) {
+                  fullResponse = answered;
+                  contentReplaced = true;
+                }
+              }
+              turnPresent = worldPresent(turnWorld, [...ledger, ...readWorldLedger([fullResponse])]);
+            }
             if (/\[place:/i.test(fullResponse)) {
-              const placed = applyGamePlaceTags(fullResponse, (word) => rulesetMarketPlace(turnMarket, word));
+              const placed = applyGamePlaceTags(
+                fullResponse,
+                (word) => (turnMarket ? rulesetMarketPlace(turnMarket, word) : worldKitSize(turnWorld!.kit, word)),
+                turnWorld ? (name) => worldPlaceForTag(turnWorld, name, turnMarket?.places, turnPresent) : undefined,
+              );
               if (placed.content !== fullResponse) {
                 fullResponse = placed.content;
                 contentReplaced = true;
               }
               if (placed.place) turnPlace = placed.place;
             }
+          }
+          // The past the reply asks for (worldgen W3): answered in place, carried on the next turn.
+          if (turnWorld && /\[history:/i.test(fullResponse)) {
+            const asked = applyWorldHistoryTags(fullResponse, turnWorld);
+            if (asked !== fullResponse) {
+              fullResponse = asked;
+              contentReplaced = true;
+            }
+          }
+          // People the reply brings in (worldgen W2): one of the people of the place the scene was in,
+          // or moved to, named in full, becomes a tracked NPC with the world's id and sheet, once.
+          if (turnWorld) {
+            const startPlace = turnWorld.world.places.find((place) => place.id === turnWorld.world.startId);
+            // Where the scene is now first, so a name both places have is the person here.
+            const placeIds = [turnPlace, turnPlaceBefore].flatMap((place) => {
+              const found = place?.name
+                ? (worldPlaceByName(turnWorld.world, place.name) ??
+                  (turnPresent ? worldAddedPlace(turnWorld, turnPresent, place.name)?.within : undefined))
+                : startPlace;
+              return found ? [found.id] : [];
+            });
+            const named = worldPeopleNamed(turnWorld, placeIds, fullResponse);
+            // Tracked once the reply is saved (below), so a discarded or stopped reply adds nobody.
+            if (named.length > 0) worldNpcsNamed = { world: turnWorld, people: named };
           }
           const tellsInventory = /\[(?:inventory|loot):/i.test(fullResponse);
           // A rest the sheet commands took may bring charges back to what the rested carry.
@@ -9802,18 +9926,23 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   ? { definition: turnGameRuleset.definition, seed: randomInt(0, 2 ** 31 - 1) }
                   : undefined;
               // A seller's `only` reads the turn's own live state, as the items this reply uses do.
-              const market =
+              const marketDay =
                 rules && turnMarket
+                  ? await gameMarketDayFor(app.db, input.chatId, input.regenerateMessageId ?? null, requested, rules)
+                  : undefined;
+              const market =
+                rules && marketDay
                   ? await loadGameMarket(
                       app.db,
                       input.chatId,
                       turnGameRuleset,
                       rules,
-                      turnPlace,
+                      marketDay.place,
                       rulesetSheetTurn?.live ?? {
                         ...((await turnStartRulesetLive()) ?? {}),
                         ...(checkSpendLive ?? {}),
                       },
+                      marketDay.day,
                     )
                   : undefined;
               const preview = tellsInventory
@@ -9827,7 +9956,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                       ? gameInventoryItemUser(uses.context, rules.itemOf, uses.live, uses.seed).useItem
                       : undefined,
                     loot ? gameLootTagRoller(loot.definition, rules, loot.seed) : undefined,
-                    market,
+                    market?.(),
                   ).content
                 : requested;
               if (preview !== fullResponse) {
@@ -10209,6 +10338,18 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             });
             savedSwipeIndex = 0;
           }
+          // The world's people the saved reply named become tracked NPCs (worldgen W2).
+          if (worldNpcsNamed && savedMsg?.id && !generationSignal.aborted) {
+            const { world: namedWorld, people: named } = worldNpcsNamed;
+            await chats.patchMetadata(input.chatId, (current) => {
+              const npcs = Array.isArray(current.gameNpcs) ? (current.gameNpcs as GameNpc[]) : [];
+              const known = new Set(npcs.flatMap((npc) => (npc.worldId ? [npc.worldId] : [])));
+              const added = named
+                .filter((person) => !known.has(person.id))
+                .map((person) => worldPersonNpc(namedWorld, person));
+              return added.length > 0 ? { gameNpcs: [...npcs, ...added] } : {};
+            });
+          }
           // Empty messageId on the paths that save no message; that costs the claim, never the effect.
           // ── Inventory tags: the stacks, the turn's record, and the detailed inventory on its row ──
           // Now that the reply is saved, its tags are carried out on the stacks as they are, in one
@@ -10252,7 +10393,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                         pending.loot
                           ? gameLootTagRoller(pending.loot.definition, pending.rules, pending.loot.seed)
                           : undefined,
-                        pending.market,
+                        pending.market?.(),
                       )
                     : { content: pending.requested, stacks: plan.start, journal: [] };
                   // The turn's rests bring charges back on top of what its tags did, from the same start.

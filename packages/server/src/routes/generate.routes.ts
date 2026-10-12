@@ -213,7 +213,6 @@ import {
   storyState,
   storyTurn,
   storyTurnPromptText,
-  type GameWorld,
   type StoryScript,
   type StoryTurn,
   readWorldLedger,

@@ -89,6 +89,8 @@ const provider = createServer(async (request, response) => {
       response.end(
         envelope({ taskId: "task-1", state: "failed", errorCode: "content_rejected", errorMessage: "Refused" }),
       );
+    } else if (mode === "no-url") {
+      response.end(envelope({ ...done, output: { assets: [{ unavailable: true }] } }));
     } else if (mode === "poll") {
       response.statusCode = 202;
       response.end(envelope({ taskId: "task-1", state: "queued" }));
@@ -98,6 +100,8 @@ const provider = createServer(async (request, response) => {
     if (polls === 1) {
       response.statusCode = 503;
       response.end(envelope(undefined, 503, "Busy"));
+    } else if (polls === 2) {
+      response.end(envelope({ ...done, output: { assets: [{ pending: true }] } }));
     } else response.end(envelope(done));
   } else {
     response.statusCode = 404;
@@ -130,7 +134,7 @@ try {
     IMAGE_GENERATION_SOURCES.find((source) => source.id === "spicyapi")?.defaultBaseUrl,
     "https://api.spicyapi.ai/api/v1",
   );
-  // A connection made before this provider existed (Custom/OpenAI source, SpicyAPI URL) now routes here.
+  // The host wins over model-name guesses: a FLUX model ID here must not fall through to Together AI.
   assert.equal(
     inferImageSource("black-forest-labs/flux-2-pro/text-to-image", "https://api.spicyapi.ai/api/v1"),
     "spicyapi",
@@ -194,16 +198,18 @@ try {
   });
   assert.ok(!JSON.stringify(logs).includes(png), "Reference image bytes stay out of debug logs");
 
-  // Queued tasks are polled, and a busy status reply does not abandon the paid task.
+  // Queued tasks are polled; a busy status reply or a result still being stored does not abandon the paid task.
   mode = "poll";
   requests.length = 0;
   assert.equal((await generate("alibaba/z-image-spicy-pro/text-to-image")).base64, png);
-  assert.equal(polls, 2);
+  assert.equal(polls, 3);
   assert.deepEqual(
     requests.filter((entry) => entry.url.startsWith("/api/v1/jobs/recordInfo")).map((entry) => entry.url),
-    ["/api/v1/jobs/recordInfo?taskId=task-1", "/api/v1/jobs/recordInfo?taskId=task-1"],
+    Array(3).fill("/api/v1/jobs/recordInfo?taskId=task-1"),
   );
 
+  mode = "no-url";
+  await assert.rejects(generate("alibaba/z-image-spicy-pro/text-to-image"), /finished without an image URL/);
   mode = "failed";
   await assert.rejects(generate("alibaba/z-image-spicy-pro/text-to-image"), /failed: content_rejected: Refused/);
   mode = "error";

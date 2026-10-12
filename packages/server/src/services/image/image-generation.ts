@@ -1623,7 +1623,7 @@ async function generateSpicyApi(baseUrl: string, apiKey: string, request: ImageG
   let task = parseSpicyApiTask(await readSpicyApiJson(created, "image generation"));
   if (!task.taskId) throw new Error("SpicyAPI image generation response did not include a task ID");
   const pollUrl = buildSpicyApiUrl(baseUrl, "jobs/recordInfo", { taskId: task.taskId });
-  while (task.state !== "succeeded") {
+  while (task.state !== "succeeded" || (!task.imageUrl && task.pending)) {
     if (task.state && SPICYAPI_FAILED_STATES.has(task.state)) {
       throw new Error(`SpicyAPI image generation ${task.state}${task.error ? `: ${task.error}` : ""}`);
     }

@@ -702,34 +702,37 @@ export function ConnectionEditor() {
           ? { label: t("connections.mediaSources.zai.apiKeyLink"), url: "https://z.ai/manage-apikey/apikey-list" }
           : localProvider === "image_generation" && selectedImageService === "fal"
             ? { label: t("connections.mediaSources.fal.apiKeyLink"), url: "https://fal.ai/dashboard/keys" }
-            : localProvider === "image_generation" && selectedImageService === "spicyapi"
-              ? { label: t("connections.mediaSources.spicyapi.apiKeyLink"), url: "https://spicyapi.ai/console/keys" }
-              : (localProvider === "image_generation" && selectedImageService === "atlas") ||
-                  (localProvider === "video_generation" && selectedVideoDefaultsService === "atlas")
-                ? {
-                    label: t("connections.mediaSources.atlas.apiKeyLink"),
-                    url: "https://www.atlascloud.ai/user/api-keys",
-                  }
-                : localProvider === "video_generation" && selectedVideoDefaultsService === "xai"
-                  ? API_KEY_LINKS.xai
-                  : localProvider === "video_generation" && selectedVideoDefaultsService === "openrouter"
-                    ? selectedVideoProvider === "nanogpt"
-                      ? API_KEY_LINKS.nanogpt
-                      : API_KEY_LINKS.openrouter
-                    : localProvider === "video_generation" && selectedVideoDefaultsService === "seedance"
-                      ? { label: "Open Seedance API docs", url: "https://seedance2.ai/api-docs" }
-                      : localProvider === "video_generation" &&
-                          (selectedVideoProvider === "comfyui" || selectedVideoProvider === "swarmui")
-                        ? undefined
-                        : localProvider === "zai"
+            : (localProvider === "image_generation" && selectedImageService === "atlas") ||
+                (localProvider === "video_generation" && selectedVideoDefaultsService === "atlas")
+              ? {
+                  label: t("connections.mediaSources.atlas.apiKeyLink"),
+                  url: "https://www.atlascloud.ai/user/api-keys",
+                }
+              : localProvider === "video_generation" && selectedVideoDefaultsService === "xai"
+                ? API_KEY_LINKS.xai
+                : localProvider === "video_generation" && selectedVideoDefaultsService === "openrouter"
+                  ? selectedVideoProvider === "nanogpt"
+                    ? API_KEY_LINKS.nanogpt
+                    : API_KEY_LINKS.openrouter
+                  : localProvider === "video_generation" && selectedVideoDefaultsService === "seedance"
+                    ? { label: "Open Seedance API docs", url: "https://seedance2.ai/api-docs" }
+                    : localProvider === "video_generation" &&
+                        (selectedVideoProvider === "comfyui" || selectedVideoProvider === "swarmui")
+                      ? undefined
+                      : localProvider === "zai"
+                        ? {
+                            label: t("connections.mediaSources.zai.apiKeyLink"),
+                            url: "https://z.ai/manage-apikey/apikey-list",
+                          }
+                        : localProvider === "deepseek"
                           ? {
-                              label: t("connections.mediaSources.zai.apiKeyLink"),
-                              url: "https://z.ai/manage-apikey/apikey-list",
+                              label: t("connections.mediaSources.deepseek.apiKeyLink"),
+                              url: "https://platform.deepseek.com/api_keys",
                             }
-                          : localProvider === "deepseek"
+                          : localProvider === "image_generation" && selectedImageService === "spicyapi"
                             ? {
-                                label: t("connections.mediaSources.deepseek.apiKeyLink"),
-                                url: "https://platform.deepseek.com/api_keys",
+                                label: t("connections.mediaSources.spicyapi.apiKeyLink"),
+                                url: "https://spicyapi.ai/console/keys",
                               }
                             : API_KEY_LINKS[localProvider];
 
@@ -2254,18 +2257,18 @@ export function ConnectionEditor() {
                   const sourceDescription =
                     src.id === "fal"
                       ? t("connections.mediaSources.fal.imageDescription")
-                      : src.id === "spicyapi"
-                        ? t("connections.mediaSources.spicyapi.imageDescription")
-                        : src.id === "atlas"
-                          ? t("connections.mediaSources.atlas.imageDescription")
-                          : src.id === "swarmui"
-                            ? t("connections.mediaSources.swarmui.imageDescription")
-                            : src.id === "zai"
-                              ? t("connections.mediaSources.zai.imageDescription")
-                              : src.id === "arli"
-                                ? t("connections.mediaSources.arli.imageDescription")
-                                : src.id === "codex_chatgpt"
-                                  ? t("connections.mediaSources.codexChatgpt.imageDescription")
+                      : src.id === "atlas"
+                        ? t("connections.mediaSources.atlas.imageDescription")
+                        : src.id === "swarmui"
+                          ? t("connections.mediaSources.swarmui.imageDescription")
+                          : src.id === "zai"
+                            ? t("connections.mediaSources.zai.imageDescription")
+                            : src.id === "arli"
+                              ? t("connections.mediaSources.arli.imageDescription")
+                              : src.id === "codex_chatgpt"
+                                ? t("connections.mediaSources.codexChatgpt.imageDescription")
+                                : src.id === "spicyapi"
+                                  ? t("connections.mediaSources.spicyapi.imageDescription")
                                   : src.description;
                   return (
                     <button

@@ -112,7 +112,7 @@ Marinara sends the prompt and requested dimensions, then downloads the first ret
 
 Cloud service with the default **Base URL** `https://api.spicyapi.ai/api/v1`. Create an API key in the [SpicyAPI console](https://spicyapi.ai/console/keys), then select **SpicyAPI** in the image service grid. Marinara fills in the model `alibaba/z-image-spicy-pro/text-to-image`. Click **Fetch Models from API** to load every SpicyAPI text-to-image and edit model, or type a model ID such as `bytedance/seedream-5.0-pro/text-to-image`. **Test Connection** checks your key by reading the model list, so it costs nothing. **Test Image** makes a real image and uses your SpicyAPI balance.
 
-Pick the SpicyAPI service rather than **Custom**. SpicyAPI's OpenAI-style address only handles text, so a Custom connection can't make images. Older image connections that already use a SpicyAPI Base URL switch to this service on their own.
+Pick the **SpicyAPI** service. Don't use **OpenAI (DALL-E)** or a **Custom (OAI-Compatible)** connection with a SpicyAPI address. SpicyAPI's OpenAI-style address only handles text, so those can't make images.
 
 Each SpicyAPI model takes its own settings. Marinara asks SpicyAPI which ones the chosen model accepts and sends only those. It picks the closest shape the model offers, such as an aspect ratio, a width and height, or a fixed size. If the model has no negative prompt field, the negative prompt is added to the end of the prompt as text. Use **Custom Parameters** for other model options, such as `seed`, `resolution`, or `loras`.
 

@@ -9,6 +9,8 @@ export interface SpicyApiTask {
   taskId: string | null;
   state: string | null;
   imageUrl: string | null;
+  /** True while a result is still being stored, even after the task succeeded. */
+  pending: boolean;
   error: string | null;
 }
 
@@ -139,6 +141,7 @@ export function parseSpicyApiTask(value: unknown): SpicyApiTask {
     taskId: readString(data.taskId),
     state: readString(data.state)?.toLowerCase() ?? null,
     imageUrl: isRecord(ready) ? readString(ready.url) : null,
+    pending: assets.some((asset) => isRecord(asset) && asset.pending === true),
     error: error ? error.slice(0, 500) : null,
   };
 }

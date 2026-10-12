@@ -314,18 +314,14 @@ const CHARACTER_METADATA_HELP =
 const CHARACTER_CARD_HELP =
   "Write the fields that define how the model sees and plays the character. Description, personality, backstory, appearance, scenario, and dialogue are kept together here so you can treat the card as one writing document.";
 
-// The Onboarding tab's own help, matching the Card tab's per-section pattern. It
-// answers a different question from `enableHelp` beside the switch: that one is
-// about the switch, this one about what the tab holds and where answers land.
-// It names the lists rather than saying "the questions above": Character
-// Questions render first, and their answers are the ones that never become a
-// persona, so a positional phrase here says the opposite of the truth.
+// The Onboarding tab's own help. It lives in the catalog rather than beside the
+// other CHARACTER_*_HELP constants: those are grandfathered English, and this one
+// is new text, so the localization rule applies to it. Converting the whole set
+// is tracked as its own follow-up, together with the Colors-tab help texts.
 //
-// English, like the other fourteen CHARACTER_*_HELP constants. Localizing only
-// this one would leave two conventions for the same thing; the whole set is
-// tracked as its own follow-up, together with the Colors-tab help texts.
-const CHARACTER_ONBOARDING_HELP =
-  "Persona Questions become a new persona. Character Questions are saved on the chat. The five fields below are the persona's starting text.";
+// Its wording names the lists rather than saying "the questions above": Character
+// Questions render first, and their answers are the ones that never become a
+// persona, so a positional phrase here would say the opposite of the truth.
 
 const CHARACTER_DESCRIPTION_HELP =
   "The character's general identity and role. This is sent in every prompt as part of who the character is.";
@@ -1944,7 +1940,7 @@ function OnboardingTab({
       <SectionHeader
         title={localizeUi("editor.tabs.onboarding")}
         subtitle={localizeUi("ui.characters.onboarding.subtitle")}
-        helpText={CHARACTER_ONBOARDING_HELP}
+        helpText={localizeUi("ui.characters.onboarding.tabHelp")}
       />
       {unreadable && (
         <div

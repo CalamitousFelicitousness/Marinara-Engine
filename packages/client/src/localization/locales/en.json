@@ -5295,6 +5295,7 @@
   "ui.characters.onboarding.selectFailed": "Your persona was created. Pick it under Your Persona to use it in this chat.",
   "ui.characters.onboarding.startOver": "Start over",
   "ui.characters.onboarding.subtitle": "Questions players answer when a Roleplay chat starts: persona questions build them a persona, character questions are saved on the chat.",
+  "ui.characters.onboarding.tabHelp": "Persona Questions become a new persona. Character Questions are saved on the chat. The five fields below are the persona's starting text.",
   "ui.characters.onboarding.templateSource": "Answer {{value1}}'s questions",
   "ui.characters.onboarding.tutorialCardQuestions": "Character Questions are separate: players answer them once per chat, the answers are saved on that chat, and the card's own fields read them.",
   "ui.characters.onboarding.tutorialFields": "The rest of your text goes into the persona as written. The user and char macros keep working there; other macros, such as random or time, are filled in once when the persona is created, or left empty.",

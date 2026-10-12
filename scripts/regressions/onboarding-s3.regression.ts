@@ -18,6 +18,7 @@ import {
   hasOnboardingContent,
   listNames,
   MAX_CARD_VARIABLES,
+  MAX_CHAT_VARIABLE_VALUE_LENGTH,
   ONBOARDING_MAX_QUESTIONS,
   resolveCardVariables,
   resolveCardQuestions,
@@ -167,6 +168,45 @@ assert.deepEqual(
   ),
   {},
   "a base macro does not excuse a second, unresolvable tag in the same value",
+);
+
+// The metadata route 400s a value above MAX_CHAT_VARIABLE_VALUE_LENGTH, and the
+// rejection takes the WHOLE macroVariables patch with it, so one over-long answer
+// would silently lose every other answer the player gave. Skipped here instead,
+// exactly like an unusable name.
+const overLong = "x".repeat(MAX_CHAT_VARIABLE_VALUE_LENGTH + 1);
+assert.deepEqual(
+  resolveCardVariables(
+    onboarding({
+      cardVariables: [
+        { id: "long", variableName: "essay", question: "?" },
+        { id: "ok", variableName: "kept", question: "?" },
+      ],
+    }),
+    answers({ essay: { text: overLong }, kept: { text: "short" } }),
+  ),
+  { kept: "short" },
+  "an over-long answer is dropped so it cannot reject the whole patch",
+);
+// The boundary itself is allowed: only longer than the cap is refused.
+assert.deepEqual(
+  resolveCardVariables(
+    onboarding({ cardVariables: [{ id: "max", variableName: "atCap", question: "?" }] }),
+    answers({ atCap: { text: "y".repeat(MAX_CHAT_VARIABLE_VALUE_LENGTH) } }),
+  ),
+  { atCap: "y".repeat(MAX_CHAT_VARIABLE_VALUE_LENGTH) },
+  "a value exactly at the cap is still stored",
+);
+// The seeding path writes through patchMetadata rather than the route, so it
+// needs the same guard or a long default would be stored anyway.
+assert.deepEqual(
+  seedCardVariables(
+    onboarding({
+      cardVariables: [{ id: "d", variableName: "defaulted", question: "?", options: [option("o", overLong)] }],
+    }),
+  ),
+  {},
+  "an over-long seeded default is skipped on the write-through path too",
 );
 
 // The server rejects a whole `macroVariables` patch over one bad name, which

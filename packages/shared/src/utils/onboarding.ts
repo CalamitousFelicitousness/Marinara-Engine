@@ -9,7 +9,7 @@
 // ──────────────────────────────────────────────
 import { characterOnboardingSchema } from "../schemas/character.schema.js";
 import type { CharacterOnboarding, CharacterOnboardingVariable } from "../types/character.js";
-import { CHAT_VARIABLE_NAME_RE, isReservedMacroName } from "./chat-variables.js";
+import { CHAT_VARIABLE_NAME_RE, MAX_CHAT_VARIABLE_VALUE_LENGTH, isReservedMacroName } from "./chat-variables.js";
 import { resolveMacros } from "./macro-engine.js";
 
 /**
@@ -591,7 +591,11 @@ export function resolveCardVariables(
     // reference to a sibling question is already substituted or emptied by the
     // time this runs, and the guard covers what it leaves. A value that blanks
     // down to nothing fails the `!value` test rather than being stored empty.
-    if (!value || unresolvedNonMacroName(value) !== null) continue;
+    //
+    // Length is capped to the route's limit too: a longer answer makes
+    // PATCH /chats/:id/metadata reject the WHOLE macroVariables patch, so one
+    // long answer would lose every other answer with it.
+    if (!value || value.length > MAX_CHAT_VARIABLE_VALUE_LENGTH || unresolvedNonMacroName(value) !== null) continue;
     entries.push([name, value]);
     stored += 1;
   }
@@ -653,7 +657,11 @@ export function seedCardVariables(onboarding: CharacterOnboarding | null | undef
       // friend"` per-user instead of baking in one name. Any OTHER leftover tag
       // names a question, which nothing resolves once this map is written, so
       // the prompt would show it raw and this question stays unseeded.
-      if (!value || unresolvedNonMacroName(value) !== null) continue;
+      //
+      // Capped like the answered path: this one writes straight through
+      // patchMetadata, so an over-long default would be stored even though the
+      // same value would be rejected by the metadata route.
+      if (!value || value.length > MAX_CHAT_VARIABLE_VALUE_LENGTH || unresolvedNonMacroName(value) !== null) continue;
       taken.add(name);
       seedValues[name] = value;
       entries.push([name, value]);

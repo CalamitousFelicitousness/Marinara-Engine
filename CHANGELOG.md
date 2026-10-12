@@ -4,12 +4,6 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
-- The Game Mode setup wizard's setting and goal ideas now come from many kinds of setting, a new mix each time, starting with the picked setting kit's own; picking a kit sets the genre that fits it, and a Wuxia genre joins the list.
-- Game Mode's art, music and sounds now follow the setting: a setting kit names its art family, and its game uses that family's folders and the shared ones, so a cyberpunk fight no longer plays the fantasy battle track.
-- Game Mode's battlefields now belong to the setting: a setting kit names the kinds of place its fights happen in and its own words for the board's tiles.
-- Game Mode's elements now belong to the setting: a setting kit names its own (the five phases in wuxia, none at all in modern day) with their reactions, and every part of a fight reads that set. Games without a kit keep the classic six.
-- A Game Mode game without a ruleset now has money and a market from its setting kit: each starter kit has its own coins and a shop of everyday things, both editable, and the Game Master trades through the same checks a ruleset market uses.
-- In Game Mode, what a won fight drops now belongs to the setting: each setting kit names its own loot by rarity, so a modern-day game no longer finds enchanted swords.
 - Overworld games, with a setting kit and a generated world, are off unless the server sets `MARINARA_OVERWORLD_GAMES=true`; until then new games start as Classic games and the wizard says why the world choices are greyed out.
 - A Game Mode world now goes on without the party: as time passes it takes its own steps (fortunes, newcomers, rivalries, and where allowed, trouble and wars), news travels to the party, and the party's deeds count for more as it becomes known.
 - In a Game Mode world, what the party does now stays done: the Game Master records the party's dealings with groups and places and the places the story brings in, and a swipe or regeneration takes a change back with its reply.

@@ -1,6 +1,14 @@
 import {
   assignCombatTactics,
   combatTacticsSchema,
+  gameWorldKitFromMetadata,
+  worldAssetsForFamily,
+  worldBattlefields,
+  worldElementId,
+  worldElementSet,
+  worldKitArtFamily,
+  worldSceneLike,
+  type WorldElementSet,
   gameInventoryBags,
   gameInventoryBagKey,
   gameInventoryFightEffects,
@@ -1952,15 +1960,14 @@ function applyCombatStatusTagsToCombatants(
   return { party: nextParty, enemies: nextEnemies, appliedCount };
 }
 
-function normalizeCombatElement(value: string): string {
+/** An element word as the game's own element (worldgen W6c): one of its set by id, label or a classic
+ *  alias ("pyro" is fire), so the screen and the fight read one element; another word keeps the
+ *  older aliases it always had. */
+function normalizeCombatElement(value: string, elements: WorldElementSet): string {
+  const own = worldElementId(elements, value);
+  if (own) return own;
   const normalized = value.trim().toLowerCase();
   const aliases: Record<string, string> = {
-    fire: "pyro",
-    flame: "pyro",
-    ice: "cryo",
-    frost: "cryo",
-    lightning: "electro",
-    thunder: "electro",
     water: "hydro",
     wind: "anemo",
     earth: "geo",
@@ -1975,14 +1982,15 @@ function applyElementAttackTagsToCombatants(
   party: Combatant[],
   enemies: Combatant[],
   tags: ElementAttackTag[],
+  elements: WorldElementSet,
 ): { party: Combatant[]; enemies: Combatant[]; appliedCount: number } {
   let appliedCount = 0;
   const applyTag = (combatant: Combatant, tag: ElementAttackTag): Combatant => ({
     ...combatant,
     elementAura: {
-      element: normalizeCombatElement(tag.element),
+      element: normalizeCombatElement(tag.element, elements),
       gauge: 1,
-      sourceId: `gm:${normalizeCombatStatusKey(tag.target)}:${normalizeCombatElement(tag.element)}`,
+      sourceId: `gm:${normalizeCombatStatusKey(tag.target)}:${normalizeCombatElement(tag.element, elements)}`,
     },
   });
 
@@ -2207,6 +2215,20 @@ function GameSurfaceComponent({
   const backgroundIllustration = useChatStore((state) => state.backgroundIllustrationChatIds.has(activeChatId));
   const agentsProcessing = useAgentStore((state) => state.processingChatIds.includes(activeChatId));
   const gameSequentialAgents = chatMeta.gameSequentialAgents === true;
+  // The setting kit the game was made with, and the elements its fights use (worldgen W6b, W6c).
+  const gameKit = useMemo(
+    () => gameWorldKitFromMetadata({ gameWorldKit: chatMeta.gameWorldKit }),
+    [chatMeta.gameWorldKit],
+  );
+  const gameElements = useMemo(() => worldElementSet(gameKit), [gameKit]);
+  // The setting's art family (worldgen W6f): another family's art, music and sounds are left out.
+  const artFamily = worldKitArtFamily(gameKit);
+  const artFamilyRef = useRef(artFamily);
+  artFamilyRef.current = artFamily;
+  useEffect(() => {
+    audioManager.setArtFamily(artFamily);
+    return () => audioManager.setArtFamily(undefined);
+  }, [artFamily]);
   const gameInputGenerationBlocked = isGenerationSendBlocked({
     streamActive: isStreaming,
     agentsProcessing,
@@ -2595,18 +2617,25 @@ function GameSurfaceComponent({
   // manifest — merging them unfiltered re-injected excluded context tracks
   // ahead of the blacklist (review-found).
   const scopedAssetMap = useMemo(
-    () => ({
-      ...(filterGameAssetMap(assetManifest?.assets ?? null, gameAssetExcludedFolders) ?? {}),
-      ...(filterGameAssetMap(generatedAudioAssetsRef.current, gameAssetExcludedFolders) ?? {}),
-    }),
-    [assetManifest?.assets, gameAssetExcludedFolders],
+    () =>
+      worldAssetsForFamily(
+        {
+          ...(filterGameAssetMap(assetManifest?.assets ?? null, gameAssetExcludedFolders) ?? {}),
+          ...(filterGameAssetMap(generatedAudioAssetsRef.current, gameAssetExcludedFolders) ?? {}),
+        },
+        artFamily,
+      )!,
+    [assetManifest?.assets, gameAssetExcludedFolders, artFamily],
   );
   const getScopedAssetMap = useCallback(() => {
     const manifest = queryClient.getQueryData<GameAssetManifest>(gameAssetKeys.manifest());
-    return {
-      ...(filterGameAssetMap(manifest?.assets ?? null, gameAssetExcludedFolders) ?? {}),
-      ...(filterGameAssetMap(generatedAudioAssetsRef.current, gameAssetExcludedFolders) ?? {}),
-    };
+    return worldAssetsForFamily(
+      {
+        ...(filterGameAssetMap(manifest?.assets ?? null, gameAssetExcludedFolders) ?? {}),
+        ...(filterGameAssetMap(generatedAudioAssetsRef.current, gameAssetExcludedFolders) ?? {}),
+      },
+      artFamilyRef.current,
+    )!;
   }, [gameAssetExcludedFolders, queryClient]);
   // Once the served manifest carries a session-generated tag, the manifest is
   // authoritative — dropping our shadow copy lets later renames/deletes in
@@ -2696,6 +2725,7 @@ function GameSurfaceComponent({
         currentMusic: useGameAssetStore.getState().currentMusic,
         recentMusic: recentMusicHistoryRef.current,
         availableMusic: Object.keys(assetMap ?? {}).filter((tag) => tag.startsWith("music:")),
+        family: artFamilyRef.current,
       });
       if (scored) {
         audioManager.playMusic(scored, assetMap);
@@ -5020,7 +5050,12 @@ function GameSurfaceComponent({
       });
       const canApplyToActiveCombat = gameState === "combat" && !!combatParty && !!combatEnemies;
       if (canApplyToActiveCombat && !appliedCombatElementMessageIdsRef.current.has(msg.id)) {
-        const applied = applyElementAttackTagsToCombatants(combatParty, combatEnemies, tags.elementAttacks);
+        const applied = applyElementAttackTagsToCombatants(
+          combatParty,
+          combatEnemies,
+          tags.elementAttacks,
+          gameElements,
+        );
         if (applied.appliedCount > 0) {
           setCombatParty(applied.party);
           setCombatEnemies(applied.enemies);
@@ -5155,6 +5190,7 @@ function GameSurfaceComponent({
       currentWeather: gameSnapshot?.weather ?? null,
       currentTimeOfDay: gameSnapshot?.time ?? metaTime ?? null,
       genre: ((chatMeta.gameSetupConfig as Record<string, unknown> | undefined)?.genre as string | undefined) ?? null,
+      artFamily: artFamilyRef.current ?? null,
       setting:
         ((chatMeta.gameSetupConfig as Record<string, unknown> | undefined)?.setting as string | undefined) ?? null,
       worldOverview: (chatMeta.gameWorldOverview as string | undefined) ?? null,
@@ -5326,6 +5362,7 @@ function GameSurfaceComponent({
       currentMusic: useGameAssetStore.getState().currentMusic,
       recentMusic: recentMusicHistoryRef.current,
       availableMusic: musicTags,
+      family: artFamilyRef.current,
     });
     if (scoredMusic && !useMusicDjPlayerMusic) {
       audioManager.playMusic(scoredMusic, assetMap);
@@ -6796,6 +6833,7 @@ function GameSurfaceComponent({
       currentTimeOfDay: gameSnapshot?.time ?? metaTime ?? null,
       genre: (setupConfig?.genre as string | undefined) ?? null,
       setting: (setupConfig?.setting as string | undefined) ?? null,
+      artFamily: artFamilyRef.current ?? null,
       worldOverview: (chatMeta.gameWorldOverview as string | undefined) ?? null,
       canGenerateBackgrounds: gameBackgroundAutoGenerationEnabled,
       canGenerateIllustrations: gameImageAutoGenerationEnabled,
@@ -8701,7 +8739,9 @@ function GameSurfaceComponent({
       }),
     };
   }, [chatMeta.gameCharacterCards, gameRuleset, inventoryPlayerName]);
-  const inventoryItemBook = useRulesetItemBook(gameRuleset, inventorySheets, chatMeta.gameInventedItems);
+  // A game with no ruleset buys and pays in its setting kit's money (worldgen W6b).
+  const inventoryKit = gameKit;
+  const inventoryItemBook = useRulesetItemBook(gameRuleset, inventorySheets, chatMeta.gameInventedItems, inventoryKit);
   /** The Use button. One of the ruleset's items with a `use` is used by the Engine first: what it does
    *  to whoever carries it lands on their sheet, it is spent, and the Game Master is told what happened
    *  in an `[item_used]` block. Anything else is simply said, and the Game Master decides. */
@@ -10287,13 +10327,13 @@ function GameSurfaceComponent({
         [
           `I attempt a special combat maneuver: ${cleanInstruction}`,
           ``,
-          `GM combat adjudication: Resolve this in your GM role using the current fiction and tactical state. If the maneuver creates a real combat condition, emit [status: target="Exact Name" effect="Effect Name" turns=1-3 stat="hp|attack|defense|speed" modifier="+/-N"]. If it applies an element, emit [element_attack: element="pyro|hydro|cryo|electro|anemo|geo|dendro|physical" target="Exact Name"]. Keep [state: combat] unless this action truly ends the fight.`,
+          `GM combat adjudication: Resolve this in your GM role using the current fiction and tactical state. If the maneuver creates a real combat condition, emit [status: target="Exact Name" effect="Effect Name" turns=1-3 stat="hp|attack|defense|speed" modifier="+/-N"]. ${gameElements.elements.length ? `If it applies an element, emit [element_attack: element="${gameElements.elements.map((element) => element.id).join("|")}" target="Exact Name"]. ` : ""}Keep [state: combat] unless this action truly ends the fight.`,
           ``,
           `Current combat snapshot: Party: ${partySnapshot}. Enemies: ${enemySnapshot}.`,
         ].join("\n"),
       );
     },
-    [combatEnemies, combatParty, isStreaming, sendMessage, sessionInteractive, localizeUi],
+    [combatEnemies, combatParty, gameElements, isStreaming, sendMessage, sessionInteractive, localizeUi],
   );
   const sessionSummaries = Array.isArray(chatMeta.gamePreviousSessionSummaries)
     ? (chatMeta.gamePreviousSessionSummaries as SessionSummary[])
@@ -11201,6 +11241,7 @@ function GameSurfaceComponent({
       currentTimeOfDay: gameSnapshot?.time ?? metaTime ?? null,
       genre: (setupConfig?.genre as string | undefined) ?? null,
       setting: (setupConfig?.setting as string | undefined) ?? null,
+      artFamily: artFamilyRef.current ?? null,
       worldOverview: (chatMeta.gameWorldOverview as string | undefined) ?? null,
       canGenerateBackgrounds: gameBackgroundAutoGenerationEnabled,
       canGenerateIllustrations: gameImageAutoGenerationEnabled,
@@ -12426,7 +12467,11 @@ function GameSurfaceComponent({
               </div>
 
               {!replayActive && pendingReaction && (
-                <GameElementReaction reaction={pendingReaction} onDismiss={() => setPendingReaction(null)} />
+                <GameElementReaction
+                  reaction={pendingReaction}
+                  elements={gameElements}
+                  onDismiss={() => setPendingReaction(null)}
+                />
               )}
 
               {/* Main content area */}
@@ -12772,6 +12817,12 @@ function GameSurfaceComponent({
                               combatItemEffects={fightItemEffects}
                               combatMechanics={combatMechanics}
                               environment={combatSceneMeta?.environmentType ?? undefined}
+                              environmentLike={
+                                gameKit?.scenes
+                                  ? worldSceneLike(worldBattlefields(gameKit), combatSceneMeta?.environmentType)
+                                  : undefined
+                              }
+                              tileWords={gameKit?.tiles}
                               formation={combatSceneMeta?.formation ?? undefined}
                               onCombatEnd={handleCombatEnd}
                               onInventoryItemUsed={handleUseCombatInventoryItem}
@@ -12779,6 +12830,7 @@ function GameSurfaceComponent({
                             />
                           ) : effectiveCombatStyle === "tactical" ? (
                             <TacticalCombatUI
+                              tileWords={gameKit?.tiles}
                               key={activeChatId}
                               chatId={activeChatId}
                               party={combatParty}
@@ -12798,6 +12850,7 @@ function GameSurfaceComponent({
                             />
                           ) : (
                             <GameCombatUI
+                              elements={gameElements}
                               chatId={activeChatId}
                               party={combatParty}
                               enemies={combatEnemies}

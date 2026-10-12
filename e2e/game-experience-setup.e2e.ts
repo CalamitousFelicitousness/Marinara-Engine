@@ -817,7 +817,8 @@ test("A setting kit is off by default, can be picked, written for the setting, e
   await expect(wizard.getByLabel("Name", { exact: true })).toHaveValue("Harbor town life");
   await expect(wizard.getByRole("alert")).toHaveCount(0);
   expect(writes).toHaveLength(3);
-  expect(writes[2]).toMatchObject({ connectionId: "wizard-connection", genre: "Fantasy", tone: "Heroic" });
+  // The modern day kit brought its own genre, since none was chosen (worldgen W6g).
+  expect(writes[2]).toMatchObject({ connectionId: "wizard-connection", genre: "Modern", tone: "Heroic" });
   expect(writes[2]!.start.id).toBe("modern_day");
 
   // Every word can be changed; a list is typed as one line, and a trailing comma survives typing.
@@ -827,6 +828,25 @@ test("A setting kit is off by default, can be picked, written for the setting, e
   await sizes.pressSequentially(" city");
   await wizard.getByRole("checkbox", { name: "Crime", exact: true }).check();
   await wizard.getByLabel("What Crime looks like here", { exact: true }).fill("smuggling on the docks");
+  // What a won fight drops, in the kit's own words (worldgen W6a).
+  await wizard.getByLabel("Common", { exact: true }).fill("Fishing net, Tide table,");
+  // Its money and what it sells (worldgen W6b).
+  await wizard.getByLabel("Coin", { exact: true }).nth(1).fill("buck");
+  await wizard.getByLabel("Price of Coffee, in the smallest coin", { exact: true }).fill("350");
+  // Its elements (worldgen W6c): modern day has none, and one can be added.
+  await expect(wizard.getByText("This setting has no elemental attacks.", { exact: true })).toBeVisible();
+  // Back to the classic six as words to change: a renamed element is renamed where the kit names it.
+  await wizard.getByRole("button", { name: "Back to the classic six", exact: true }).click();
+  await wizard.getByRole("button", { name: "Change them", exact: true }).click();
+  await wizard.getByLabel("Element", { exact: true }).first().fill("Flame");
+  await wizard.getByRole("button", { name: "Add an element", exact: true }).click();
+  await wizard.getByLabel("Element", { exact: true }).last().fill("Tide");
+  // Its battlefields (worldgen W6d): a scene renamed and a tile word of its own.
+  await wizard.getByLabel("Scene", { exact: true }).first().fill("Harbor road");
+  await wizard.getByLabel("Open tiles", { exact: true }).fill("Quay");
+  // Its art and music (worldgen W6f): the modern day's own family, changed to the jazz age's.
+  await expect(wizard.getByLabel("Art and music", { exact: true })).toHaveValue("modern");
+  await wizard.getByLabel("Art and music", { exact: true }).selectOption({ label: "Jazz age" });
   // Retyping the places keeps the settlements on the layer of that name.
   const settlements = wizard.getByLabel("Which of them holds the settlements", { exact: true });
   await expect(settlements.locator("option:checked")).toHaveText("city");
@@ -866,11 +886,96 @@ test("A setting kit is off by default, can be picked, written for the setting, e
   ]);
   expect(result.config.worldKit.change.kinds.crime).toEqual({ label: "smuggling on the docks", on: true });
   expect(result.config.worldKit.change.kinds.conflict.on).toBe(false);
+  expect(result.config.worldKit.loot.common).toEqual(["Fishing net", "Tide table"]);
+  expect(result.config.worldKit.scenes[0]).toEqual({ label: "Harbor road", like: "city" });
+  expect(result.config.worldKit.tiles.plains).toBe("Quay");
+  expect(result.config.worldKit.family).toBe("jazz_age");
+  const elements = result.config.worldKit.elements as Array<{ label: string; beats?: string[] }>;
+  expect(elements.map((element) => element.label)).toEqual([
+    "Flame",
+    "Ice",
+    "Lightning",
+    "Poison",
+    "Holy",
+    "Shadow",
+    "Tide",
+  ]);
+  expect(elements.find((element) => element.label === "Lightning")!.beats).toEqual(["Flame"]);
+  expect(
+    (result.config.worldKit.reactions as Array<{ on: string; with: string; label: string }>).find(
+      (reaction) => reaction.label === "Melt",
+    ),
+  ).toMatchObject({ on: "Flame", with: "Ice" });
+  expect(result.config.worldKit.money.units.map((unit: { label: string }) => unit.label)).toEqual(["cent", "buck"]);
+  expect(result.config.worldKit.shop.find((thing: { name: string }) => thing.name === "Coffee").price).toBe(350);
+  // The ladder lost a size; what the shop sold from the biggest keeps its rank (the market reads it as
+  // the largest size left), so the kit still holds together.
+  expect(result.config.worldKit.shop.find((thing: { name: string }) => thing.name === "Concert Tickets").from).toBe(3);
   expect(result.config.worldKit.layers).toEqual([
     { id: "country", label: "country" },
     { id: "city", label: "city" },
     { id: "quarter", label: "quarter", settlements: true },
   ]);
+});
+
+test("The wizard suggests settings from across settings, and a picked kit brings its own and its genre", async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(120_000);
+  await page.route("**/api/capability-packages/installed", (route) => route.fulfill({ json: [] }));
+  await page.route("**/api/capability-packages/agents", (route) => route.fulfill({ json: [] }));
+  await page.route("**/api/connections", (route) => route.fulfill({ json: wizardConnections }));
+  await page.route("**/api/lorebooks", (route) => route.fulfill({ json: [] }));
+  // Which starter setting each suggested setting comes from (worldgen W6g).
+  const english = JSON.parse(
+    readFileSync(new URL("../packages/client/src/localization/locales/en.json", import.meta.url), "utf8"),
+  ) as Record<string, string>;
+  const settingOf = new Map(
+    Object.entries(english)
+      .filter(([key]) => /^game\.setup\.suggestions\.[a-z0-9_]+\.setting\d$/.test(key))
+      .map(([key, text]) => [text, key.split(".")[3]!]),
+  );
+  const wizard = await mountWizard(page, testInfo, { isNewGame: true });
+  const suggested = async () =>
+    (await wizard.getByRole("button").allInnerTexts()).map((text) => text.trim()).filter((text) => settingOf.has(text));
+  await wizard
+    .locator("select")
+    .filter({ has: page.locator('option[value="wizard-connection"]') })
+    .first()
+    .selectOption("wizard-connection");
+  const { next } = stepNavigation(wizard);
+  await next();
+
+  // Without a kit: three ideas from three different settings, beside "Surprise me!".
+  const first = await suggested();
+  expect(first).toHaveLength(3);
+  expect(new Set(first.map((text) => settingOf.get(text))).size).toBe(3);
+  await expect(wizard.getByRole("button", { name: "Surprise me!", exact: true }).first()).toBeVisible();
+  await expect(wizard.getByRole("button", { name: "Fantasy", exact: true })).toHaveAttribute("aria-pressed", "true");
+
+  // A picked cyberpunk kit brings its own two ideas first, and its genre while none was chosen.
+  await wizard.getByRole("button", { name: /A megacity of districts and stacked blocks/u }).click();
+  const cyberpunk = await suggested();
+  expect(cyberpunk.slice(0, 2)).toEqual([
+    english["game.setup.suggestions.cyberpunk.setting1"],
+    english["game.setup.suggestions.cyberpunk.setting2"],
+  ]);
+  expect(settingOf.get(cyberpunk[2]!)).not.toBe("cyberpunk");
+  await expect(wizard.getByRole("button", { name: "Cyberpunk", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(wizard.getByRole("button", { name: "Fantasy", exact: true })).toHaveAttribute("aria-pressed", "false");
+  await wizard
+    .getByRole("button", { name: english["game.setup.suggestions.cyberpunk.setting2"]!, exact: true })
+    .click();
+  await expect(wizard.getByPlaceholder(english["ui.game.gamesetupwizard.describeYourWorld"]!)).toHaveValue(
+    english["game.setup.suggestions.cyberpunk.setting2"]!,
+  );
+
+  // Once the player chooses a genre, a kit never changes it.
+  await wizard.getByRole("button", { name: "Horror", exact: true }).click();
+  await wizard.getByRole("button", { name: /A sector of star systems joined by jump lanes/u }).click();
+  await expect(wizard.getByRole("button", { name: "Horror", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(wizard.getByRole("button", { name: "Cyberpunk", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(wizard.getByRole("button", { name: "Sci-Fi", exact: true })).toHaveAttribute("aria-pressed", "false");
 });
 
 test("A shared setup brings its setting kit to a new game and refuses one that does not hold together", async ({

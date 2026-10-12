@@ -120,6 +120,12 @@ import { CapabilityElement } from "../capabilities/CapabilityElement";
 import { NewGameExperienceChooser } from "./NewGameExperienceChooser";
 import { LegacyExperienceSetupDialog } from "./LegacyExperienceSetupDialog";
 import { MAX_EXPERIENCE_SEED, buildExperienceSetup, parseExperienceSeed } from "../../lib/game-experience-setup";
+import {
+  SETTING_GENRE,
+  SUGGESTION_SETTINGS,
+  allSetupSuggestionKeys,
+  setupSuggestionKeys,
+} from "../../lib/game-setup-suggestions";
 import { restoredRulesetLayers, rulesetLayerOptions, toggleRulesetLayer } from "../../lib/ruleset-layers";
 
 const GameAssetsBrowserView = lazy(() =>
@@ -234,25 +240,21 @@ function getPersonaTitle(persona: Persona): string | null {
   return title ? title : null;
 }
 
-const GENRES = ["Fantasy", "Sci-Fi", "Horror", "Modern", "Post-Apocalyptic", "Cyberpunk", "Steampunk", "Historical"];
+const GENRES = [
+  "Fantasy",
+  "Sci-Fi",
+  "Horror",
+  "Modern",
+  "Post-Apocalyptic",
+  "Cyberpunk",
+  "Steampunk",
+  "Historical",
+  "Wuxia",
+];
 const TONES = ["Heroic", "Dark", "Comedic", "Gritty", "Whimsical", "Serious", "Campy"];
 const DIFFICULTIES = ["Casual", "Normal", "Hard", "Brutal"];
 const LEARNED_OPTION_PREVIEW_LIMIT = 8;
 const GAME_SETUP_IMPORT_MAX_BYTES = 1_000_000;
-
-const SETTING_SUGGESTIONS = [
-  "Surprise me!",
-  "A war-torn kingdom with ancient ruins",
-  "A neon-lit city of hackers and megacorps",
-  "A cursed forest hiding a forgotten god",
-];
-
-const GOAL_SUGGESTIONS = [
-  "Surprise me!",
-  "Find the lost artifact",
-  "Survive and uncover the truth",
-  "Become the ruler of the land",
-];
 
 const PREFERENCE_SUGGESTIONS = [
   "Include romance subplot",
@@ -557,6 +559,10 @@ export function GameSetupWizard({
   const [generationElapsedSeconds, setGenerationElapsedSeconds] = useState(0);
   const [gameName, setGameName] = useState("");
   const [genres, setGenres] = useState<string[]>(["Fantasy"]);
+  // Whether the player chose the genres: until they do, a picked setting kit sets its own (worldgen W6g).
+  const genresChosenRef = useRef(false);
+  // The suggestions' rotation, drawn once each time the wizard opens.
+  const [suggestionOffset] = useState(() => Math.floor(Math.random() * SUGGESTION_SETTINGS.length * 2));
   const [customGenre, setCustomGenre] = useState("");
   const [setting, setSetting] = useState("");
   const [tones, setTones] = useState<string[]>(["Heroic"]);
@@ -895,13 +901,21 @@ export function GameSetupWizard({
     () => filterLearnedOptions(learnedGameSetupOptions?.tones, [...TONES, ...tones]),
     [learnedGameSetupOptions?.tones, tones],
   );
+  const suggestionText = useCallback(
+    (keys: string[]) => ["Surprise me!", ...keys.map((key) => localizeUi(key))],
+    [localizeUi],
+  );
+  const settingSuggestions = suggestionText(setupSuggestionKeys("setting", worldKit?.id, suggestionOffset));
+  const goalSuggestions = suggestionText(setupSuggestionKeys("goal", worldKit?.id, suggestionOffset));
+  const allSettingSuggestions = useMemo(() => suggestionText(allSetupSuggestionKeys("setting")), [suggestionText]);
+  const allGoalSuggestions = useMemo(() => suggestionText(allSetupSuggestionKeys("goal")), [suggestionText]);
   const learnedSettings = useMemo(
-    () => filterLearnedOptions(learnedGameSetupOptions?.settings, [...SETTING_SUGGESTIONS, setting]),
-    [learnedGameSetupOptions?.settings, setting],
+    () => filterLearnedOptions(learnedGameSetupOptions?.settings, [...allSettingSuggestions, setting]),
+    [learnedGameSetupOptions?.settings, setting, allSettingSuggestions],
   );
   const learnedGoals = useMemo(
-    () => filterLearnedOptions(learnedGameSetupOptions?.goals, [...GOAL_SUGGESTIONS, playerGoals]),
-    [learnedGameSetupOptions?.goals, playerGoals],
+    () => filterLearnedOptions(learnedGameSetupOptions?.goals, [...allGoalSuggestions, playerGoals]),
+    [learnedGameSetupOptions?.goals, playerGoals, allGoalSuggestions],
   );
   const learnedPreferences = useMemo(
     () => filterLearnedOptions(learnedGameSetupOptions?.preferences, [...PREFERENCE_SUGGESTIONS, preferences]),
@@ -913,12 +927,22 @@ export function GameSetupWizard({
   };
 
   const toggleGenre = (g: string) => {
+    genresChosenRef.current = true;
     setGenres((prev) => (prev.includes(g) ? prev.filter((x) => x !== g) : [...prev, g]));
+  };
+
+  // A picked starter kit brings its genre while the player has not chosen one (no cyberpunk kit told
+  // the Game Master it is "Fantasy").
+  const chooseWorldKit = (kit: WorldKitInput | null) => {
+    setWorldKit(kit);
+    const genre = kit ? SETTING_GENRE[kit.id] : undefined;
+    if (genre && !genresChosenRef.current) setGenres([genre]);
   };
 
   const addCustomGenre = () => {
     const trimmed = customGenre.trim();
     if (trimmed && !genres.includes(trimmed)) {
+      genresChosenRef.current = true;
       setGenres((prev) => [...prev, trimmed]);
     }
     setCustomGenre("");
@@ -1252,6 +1276,7 @@ export function GameSetupWizard({
 
       setStep(0);
       setGameName(imported.gameName);
+      genresChosenRef.current = true;
       setGenres(importedGenres.length > 0 ? importedGenres : ["Fantasy"]);
       setCustomGenre("");
       setSetting(config.setting);
@@ -1561,8 +1586,8 @@ export function GameSetupWizard({
       {
         genres: filterCustomLearnedValues(genres, GENRES),
         tones: filterCustomLearnedValues(tones, TONES),
-        settings: filterCustomLearnedValues(setting ? [setting] : [], SETTING_SUGGESTIONS),
-        goals: filterCustomLearnedValues(playerGoals ? [playerGoals] : [], GOAL_SUGGESTIONS),
+        settings: filterCustomLearnedValues(setting ? [setting] : [], allSettingSuggestions),
+        goals: filterCustomLearnedValues(playerGoals ? [playerGoals] : [], allGoalSuggestions),
         preferences: filterCustomLearnedValues(preferences ? [preferences] : [], PREFERENCE_SUGGESTIONS),
       },
       {
@@ -1964,7 +1989,7 @@ export function GameSetupWizard({
                         className="w-full rounded-lg bg-[var(--secondary)] px-3 py-2 text-xs text-[var(--foreground)] outline-none ring-1 ring-transparent transition-all placeholder:text-[var(--muted-foreground)] focus:ring-[var(--primary)]/40"
                       />
                       <div className="mt-1.5 flex flex-wrap gap-1">
-                        {SETTING_SUGGESTIONS.map((s) => (
+                        {settingSuggestions.map((s) => (
                           <button
                             key={s}
                             onClick={() => applySuggestion(setSetting, s)}
@@ -2189,7 +2214,7 @@ export function GameSetupWizard({
                       {isNewGame && (
                         <GameSetupWorldKitChooser
                           kit={worldKit}
-                          onChange={setWorldKit}
+                          onChange={chooseWorldKit}
                           writeRequest={worldWriteRequest}
                         />
                       )}
@@ -3248,7 +3273,7 @@ export function GameSetupWizard({
                         className="w-full resize-none rounded-lg bg-[var(--secondary)] px-3 py-2 text-xs text-[var(--foreground)] outline-none ring-1 ring-transparent transition-all placeholder:text-[var(--muted-foreground)] focus:ring-[var(--primary)]/40"
                       />
                       <div className="mt-1.5 flex flex-wrap gap-1">
-                        {GOAL_SUGGESTIONS.map((s) => (
+                        {goalSuggestions.map((s) => (
                           <button
                             key={s}
                             onClick={() => applySuggestion(setPlayerGoals, s)}

@@ -1215,6 +1215,9 @@ export function buildGmFormatReminder(
      *  difficulty ladder replace the built-in skill-check lines. Absent is the Engine's own rules
      *  and renders today's reminder byte for byte. */
     ruleset?: import("@marinara-engine/shared").RulesetDefinition;
+    /** A game with no ruleset's money and market, built from its setting kit (worldgen W6b,
+     *  `worldKitItems`): taught as a ruleset's coins and market are, and nothing else of a ruleset. */
+    kitItems?: import("@marinara-engine/shared").RulesetDefinition;
     /** One rendered sheet block per party member (`renderRulesetSheetBlock`), current as of this
      *  turn. They live in this late reminder and never in the system prompt, because live state
      *  changes every turn and the system prompt is what a provider caches. Only read with `ruleset`. */
@@ -1309,7 +1312,13 @@ export function buildGmFormatReminder(
     ].join(", ");
     return worn ? { worn } : {};
   };
-  const coins = ctx.ruleset ? rulesetLayeredCurrencies(ctx.ruleset, ctx.rulesetLayerOptions) : [];
+  const coins = ctx.ruleset
+    ? rulesetLayeredCurrencies(ctx.ruleset, ctx.rulesetLayerOptions)
+    : ctx.kitItems
+      ? rulesetLayeredCurrencies(ctx.kitItems, undefined)
+      : [];
+  // The market the Game Master buys at: its ruleset's, or a game without one its setting kit's.
+  const market = ctx.ruleset ? ctx.ruleset.items?.market : ctx.kitItems?.items?.market;
   const bearerFor = (holder: string | undefined) =>
     [
       bearerNote(ctx.inventoryBearers?.[gameInventoryBagKey(holder)], bindingName),
@@ -1519,14 +1528,14 @@ export function buildGmFormatReminder(
             : []),
           ...(coins.length
             ? [
-                `- [inventory: action="pay" amount="5 ${coins[0]!.units.at(-1)!.label}" who="Name"] and [inventory: action="earn" amount="12 ${coins[0]!.units[0]!.label}" who="Name"] - when a character pays for something or is paid, in the ruleset's coins (${promptCoins(coins)}). Coins are items in each character's purse: a payment comes out of that character's purse (the player's with who left out), inside the coin's own family, with change in its smaller coins, and one they cannot afford is refused; an earning goes into the bags as an add does. The answer says what was paid and what is left: narrate exactly that. ${ctx.ruleset?.items?.market ? "Buying is a buy (below)" : "Buying is a payment and then an add"}; never add or remove coins any other way.`,
+                `- [inventory: action="pay" amount="5 ${coins[0]!.units.at(-1)!.label}" who="Name"] and [inventory: action="earn" amount="12 ${coins[0]!.units[0]!.label}" who="Name"] - when a character pays for something or is paid, in the ${ctx.ruleset ? "ruleset's coins" : "setting's money"} (${promptCoins(coins)}). Coins are items in each character's purse: a payment comes out of that character's purse (the player's with who left out), inside the coin's own family, with change in its smaller coins, and one they cannot afford is refused; an earning goes into the bags as an add does. The answer says what was paid and what is left: narrate exactly that. ${market ? "Buying is a buy (below)" : "Buying is a payment and then an add"}; never add or remove coins any other way.`,
               ]
             : []),
-          ...(ctx.ruleset?.items?.market
+          ...(market
             ? [
-                `- [place: name="Name" size="${ctx.ruleset.items.market.places.at(-1)!.label}"] - whenever the scene moves to a new place, with its size, one of: ${ctx.ruleset.items.market.places.map((place) => place.label).join(", ")} (smallest first). Leave size out for somewhere with no market (a road, the wilds). The Engine keeps the last place said until you say another, and the MARKET block below shows what it sells. When a new day begins where the party is staying, say the place again with day="new": what the sellers have in stock and what they will pay out start over.`,
-                `- [inventory: action="buy" item="Name" count="1" level="${ctx.ruleset.items.market.prices.find((level) => level.default)!.label}" seller="Seller" who="Name"] - when a character buys something, instead of paying and adding it yourself. Levels: ${ctx.ruleset.items.market.prices.map((level) => `${level.label} ×${level.times}${level.default ? " (the default)" : ""}`).join(", ")}; haggling or a seller's mood moves the level, never the price. The Engine checks the place and the seller sell it, prices it, takes the price from the buyer's purse (the player's with who left out) and puts it in their bag (a service only pays), and the answer says what it cost or why not: narrate exactly that.`,
-                ...(ctx.ruleset.items.market.buyBack !== undefined
+                `- [place: name="Name" size="${market.places.at(-1)!.label}"] - whenever the scene moves to a new place, with its size, one of: ${market.places.map((place) => place.label).join(", ")} (smallest first). Leave size out for somewhere with no market (a road, the wilds). The Engine keeps the last place said until you say another, and the MARKET block below shows what it sells. When a new day begins where the party is staying, say the place again with day="new": what the sellers have in stock and what they will pay out start over.`,
+                `- [inventory: action="buy" item="Name" count="1" level="${market.prices.find((level) => level.default)!.label}" seller="Seller" who="Name"] - when a character buys something, instead of paying and adding it yourself. Levels: ${market.prices.map((level) => `${level.label} ×${level.times}${level.default ? " (the default)" : ""}`).join(", ")}; haggling or a seller's mood moves the level, never the price. The Engine checks the place and the seller sell it, prices it, takes the price from the buyer's purse (the player's with who left out) and puts it in their bag (a service only pays), and the answer says what it cost or why not: narrate exactly that.`,
+                ...(market.buyBack !== undefined
                   ? [
                       `- [inventory: action="sell" item="Name" count="1" seller="Seller" who="Name"] - when a character sells something here, instead of removing it and earning coins yourself. The Engine checks someone here buys that kind of thing and still has money today, takes it out of the seller's bag (the player's with who left out) and pays its coins in, and the answer says what it fetched or why not: narrate exactly that.`,
                     ]

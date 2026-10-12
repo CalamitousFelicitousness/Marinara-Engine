@@ -31,7 +31,7 @@ When you create a Game Mode chat, a **setup wizard** opens. It has seven steps. 
 The seven steps are:
 
 1. **Connection.** Set the game name, pick the GM connection, and optionally set a scene-effects connection. Scene effects default to **Local Model (Gemma)**.
-2. **World.** Set the genre, setting, tone, difficulty, content rating, and language. Choose **Classic** or **Tactical** under **Combat Preference**. Tactical games also offer optional battlefield seed, size and terrain guidance. When a Game Mode ruleset is installed, a **Rules** choice appears below it: keep **Marinara's own rules**, or pick the ruleset. See [Choosing rules](#choosing-rules). Below that is an optional **Setting kit**, and with one chosen, **Make a world**. See [Choosing a setting kit](#choosing-a-setting-kit) and [Making a world](#making-a-world).
+2. **World.** Set the genre, setting, tone, difficulty, content rating, and language. The ideas offered under the setting, and later under the goals, come from different kinds of setting, a new mix each time the wizard opens. Choose **Classic** or **Tactical** under **Combat Preference**. Tactical games also offer optional battlefield seed, size and terrain guidance. When a Game Mode ruleset is installed, a **Rules** choice appears below it: keep **Marinara's own rules**, or pick the ruleset. See [Choosing rules](#choosing-rules). Below that is an optional **Setting kit**, and with one chosen, **Make a world**. See [Choosing a setting kit](#choosing-a-setting-kit) and [Making a world](#making-a-world).
 3. **Party.** Pick your persona (the character you play), the **Game Master Mode**, and any party members.
 4. **Goals.** Tell the GM what you want from the adventure.
 5. **Lorebooks.** Attach any lorebooks whose facts the GM should treat as canon. A lorebook is a set of background world facts. See [Lorebooks](../lorebooks/overview.md).
@@ -63,9 +63,11 @@ A shared setup file remembers its ruleset. If you import one and do not have tha
 
 ### Choosing a setting kit
 
-A **Setting kit** gives the Game Master the words your kind of world is written in: what its places are called and how big a settlement can be, its kinds of group, what a place may be known for, how people travel, what a year and a day are called, and how its peoples name themselves. It also says which kinds of change the world has, such as rivalries, crime, wars or disasters, and how fast it changes on its own. A kind that is off is never brought in as a background event, and a scene does not escalate into it, so a quarrel can stay a quarrel.
+A **Setting kit** gives the Game Master the words your kind of world is written in: what its places are called and how big a settlement can be, its kinds of group, what a place may be known for, how people travel, what a year and a day are called, how its peoples name themselves, what a won fight can drop, its money and the everyday things it sells, its elements, the places its fights happen in, and which family of art, music and sounds it uses (see [Game Assets](game-assets.md#a-settings-own-art-and-music)). It also says which kinds of change the world has, such as rivalries, crime, wars or disasters, and how fast it changes on its own. A kind that is off is never brought in as a background event, and a scene does not escalate into it, so a quarrel can stay a quarrel.
 
 It is off by default (**No setting kit**), and only offered for a new game. There are eight to start from: high fantasy, wuxia and xianxia, modern day, modern supernatural, the 1920s, cyberpunk, space opera and post-apocalyptic. Modern day is gentle by default, with no crime, conflict or catastrophe, at a slow pace, for slice of life.
+
+Picking a kit before you have chosen a genre sets the genre that fits it, such as **Cyberpunk** for cyberpunk or **Wuxia** for wuxia and xianxia, and the setting and goal ideas then start with the kit's own. A genre you chose yourself stays as it is.
 
 After you pick one, **Write it for my setting** asks your Game Master connection to rewrite it for the genre, setting and tone you chose. If what the model writes does not hold together, it is asked once more with the reasons, and then the wizard tells you what was wrong and keeps the kit you had. **Change its words** opens every word of the kit for editing. A list is typed on one line, separated by commas. A kit with a problem, such as an empty name or no settlements, says what is wrong, and the game cannot start until it is fixed.
 
@@ -101,7 +103,7 @@ These are the starting values in the **World**, **Party**, and **Features** step
 
 | Setting            | Default       | Notes                                                                                                                                      |
 | ------------------ | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| Genre              | Fantasy       | Multi-select, plus your own custom entries                                                                                                 |
+| Genre              | Fantasy       | Multi-select, plus your own custom entries; a setting kit picked first sets its own                                                        |
 | Tone               | Heroic        | Multi-select                                                                                                                               |
 | Difficulty         | Normal        | Casual, Normal, Hard, or Brutal; higher settings make combat more punishing                                                                |
 | Content Rating     | SFW           | SFW or NSFW; NSFW only permits adult content, it does not force it                                                                         |

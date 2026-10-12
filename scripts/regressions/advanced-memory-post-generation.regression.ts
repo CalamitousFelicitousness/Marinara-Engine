@@ -55,6 +55,8 @@ let mainTextRoll = false;
 let mainFirstReplyPadding = "";
 // When set, the first main reply says this instead.
 let mainReply: string | undefined;
+// When set, the first main reply is this, given the prompt it answers.
+let mainReplyFor: ((prompt: string) => string) | undefined;
 // The text each rewrite agent call was given. A call given text containing rewriteFailsFor fails.
 const rewriteSources: string[] = [];
 let rewriteFailsFor: string | undefined;
@@ -191,7 +193,7 @@ const provider = createServer(async (req, res) => {
             ? mainFirstReplyPadding +
               (mainTextRoll
                 ? 'The guard lunges. [roll: notation="1d1", reason="dodge"]'
-                : (mainReply ?? "The character continues the silver compass journey."))
+                : (mainReplyFor?.(prompt) ?? mainReply ?? "The character continues the silver compass journey."))
             : followup && mainTextRoll && resolvedRolls <= mainFollowupRolls
               ? 'The guard swings again. [roll: notation="1d1", reason="parry"]'
               : kind === "rewrite"
@@ -3223,6 +3225,37 @@ try {
       [lastResponderLast.id, `***\n\nREWRITTEN ${laterScene}`, true],
     ],
   );
+  // A last reply that is not split is rewritten alone too: the earlier responder's reply never ends up in it.
+  mainReplyFor = (prompt) => `REPLY_FROM_${[...prompt.matchAll(/Respond ONLY as (\w+)\./gu)].at(-1)?.[1]}.`;
+  const groupReplyOf = (message: { characterId?: string | null }) =>
+    `REPLY_FROM_${message.characterId === character.id ? "Dottore" : "Cyno"}.`;
+  for (const [hold, fail] of [
+    [true, false],
+    [false, false],
+    [true, true],
+  ] as const) {
+    const label = `group, ${hold ? "held" : "not held"}${fail ? ", rewrite failing" : ""}`;
+    await chats.patchMetadata(groupRewriteChat.id, { proseGuardianHoldForRewrite: hold });
+    await chats.createMessage({ chatId: groupRewriteChat.id, role: "user", content: "Again?" });
+    rewriteSources.length = 0;
+    rewriteFailsFor = fail ? "REPLY_FROM_" : undefined;
+    const events = await splitGenerate(groupRewriteChat.id, { forCharacterId: undefined });
+    const [earlier, last] = (await chats.listMessages(groupRewriteChat.id)).slice(-2);
+    assert(earlier && last);
+    assert.notEqual(earlier.characterId, last.characterId, label);
+    assert.deepEqual(rewriteSources, [groupReplyOf(last)], `${label}: only the last reply is rewritten`);
+    assert.equal(earlier.content, groupReplyOf(earlier), label);
+    assert.equal(last.content, fail ? groupReplyOf(last) : `REWRITTEN ${groupReplyOf(last)}`, label);
+    assert.deepEqual(
+      events
+        .filter((event) => event.type === "text_rewrite")
+        .map((event) => [event.data.messageId, event.data.editedText, event.data.rewriteApplied]),
+      [[last.id, last.content, !fail]],
+      `${label}: the rewrite, or the held text a failed one releases, is the last reply's own`,
+    );
+  }
+  rewriteFailsFor = undefined;
+  mainReplyFor = undefined;
   mainReply = undefined;
 } finally {
   finishStream?.();

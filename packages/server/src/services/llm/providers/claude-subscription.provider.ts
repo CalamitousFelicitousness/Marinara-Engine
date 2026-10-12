@@ -154,8 +154,13 @@ export function stopIfClaudeCodeExposesMcp(
     "[claude-subscription] Claude Code exposed MCP servers/tools (likely claude.ai connectors) with permission checks off; request stopped",
   );
   const names = init.mcp_servers.length > 0 ? init.mcp_servers.map((server) => server.name) : mcpTools;
+  // Android has no bundled copy to fall back to.
+  const bundledFallback =
+    process.platform === "android"
+      ? ""
+      : ", or set CLAUDE_SUBSCRIPTION_USE_INSTALLED_CLI=false to use the copy bundled with Marinara";
   throw new Error(
-    `Claude Code turned on claude.ai connectors (${names.join(", ")}). Marinara runs Claude Code with permission checks off, so it stopped the request. The installed Claude Code is likely too old to turn connectors off: update it, or set CLAUDE_SUBSCRIPTION_USE_INSTALLED_CLI=false to use the copy bundled with Marinara.`,
+    `Claude Code turned on claude.ai connectors (${names.join(", ")}). Marinara runs Claude Code with permission checks off, so it stopped the request. The installed Claude Code is likely too old to turn connectors off: update it${bundledFallback}.`,
   );
 }
 

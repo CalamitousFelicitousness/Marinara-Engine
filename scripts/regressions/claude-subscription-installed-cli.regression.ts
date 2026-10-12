@@ -154,18 +154,30 @@ try {
     return text;
   };
   try {
-    for (const [stream, reported] of [
-      [true, { mcp_servers: [{ name: "claude.ai Gmail", status: "connected" }] }],
-      [false, { tools: ["mcp__claude_ai_Gmail__search_threads"], claude_code_version: "2.1.200" }],
+    const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+    for (const [stream, reported, android] of [
+      [true, { mcp_servers: [{ name: "claude.ai Gmail", status: "connected" }] }, false],
+      [false, { tools: ["mcp__claude_ai_Gmail__search_threads"], claude_code_version: "2.1.200" }, false],
+      [true, { mcp_servers: [{ name: "claude.ai Gmail", status: "connected" }] }, true],
     ] as const) {
       init = reported;
       modelTurnRead = false;
       stopLogs.length = 0;
-      await assert.rejects(run(stream), (err: Error) => {
-        assert.match(err.message, /claude\.ai connectors \((claude\.ai Gmail|mcp__claude_ai_Gmail__search_threads)\)/);
-        assert.match(err.message, /update it, or set CLAUDE_SUBSCRIPTION_USE_INSTALLED_CLI=false/);
-        return true;
-      });
+      if (android) Object.defineProperty(process, "platform", { ...platform, value: "android" });
+      try {
+        await assert.rejects(run(stream), (err: Error) => {
+          assert.match(
+            err.message,
+            /claude\.ai connectors \((claude\.ai Gmail|mcp__claude_ai_Gmail__search_threads)\)/,
+          );
+          // Android has no bundled copy, so it is only told to update.
+          if (android) assert.match(err.message, /update it\.$/);
+          else assert.match(err.message, /update it, or set CLAUDE_SUBSCRIPTION_USE_INSTALLED_CLI=false/);
+          return true;
+        });
+      } finally {
+        Object.defineProperty(process, "platform", platform);
+      }
       assert.equal(modelTurnRead, false, "the model turn is never read once connectors are reported");
       assert.equal(controller?.signal.aborted, true, "Claude Code is aborted");
       assert.equal(stopLogs.length, 1, "the stop is logged");

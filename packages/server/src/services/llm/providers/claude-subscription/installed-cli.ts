@@ -81,19 +81,23 @@ async function probeVersion(path: string): Promise<string | null> {
 
 export async function findClaudeCodeInstall(
   bundledVersion: string | null = BUNDLED_CLAUDE_CODE_VERSION,
-  { env = process.env, home = homedir(), probe = probeVersion } = {},
+  { env = process.env, home = homedir(), probe = probeVersion, platform = process.platform } = {},
 ): Promise<ClaudeCodeInstall | null> {
   if (!isClaudeSubscriptionInstalledCliEnabled(env.CLAUDE_SUBSCRIPTION_USE_INSTALLED_CLI)) return null;
+  // The SDK ships no build for Android (Termux), so any host install beats none there.
+  const bundledRuns = platform !== "android";
   // Without the bundled version there is no safe floor, so keep the bundled build.
-  if (!bundledVersion) return null;
+  if (!bundledVersion && bundledRuns) return null;
+  let fallback: ClaudeCodeInstall | null = null;
   for (const path of candidatePaths(env, home)) {
     const version = await probe(path);
     if (!version) continue;
-    // An older host install could lack options this SDK sends; keep looking, then use the bundled build.
-    if (!(compareVersions(version, bundledVersion) >= 0)) continue;
-    return { path, version };
+    if (bundledVersion && compareVersions(version, bundledVersion) >= 0) return { path, version };
+    // An older host install could lack options this SDK sends; keep looking, then use the bundled build,
+    // or on Android the first older install, since there is no bundled build to use.
+    if (!bundledRuns) fallback ??= { path, version };
   }
-  return null;
+  return fallback;
 }
 
 let cachedInstall: { at: number; value: Promise<ClaudeCodeInstall | null> } | null = null;

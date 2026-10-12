@@ -31,7 +31,12 @@ import {
   spatialContextSnapshots,
 } from "../../db/schema/index.js";
 import { withChatMetadataPatchQueue } from "../storage/chats.storage.js";
+import { createCharactersStorage } from "../storage/characters.storage.js";
 import { withNewGlobalGalleryCapabilityReferences } from "../image/global-gallery-capability-references.js";
+import { resolveChatUserIdentity } from "../chat-user-identity.js";
+import { parseExtra } from "../generation/prompt-attachments.js";
+import { roleplayAgentsSeeWhispers, roleplayAgentText } from "../generation/roleplay-commands.js";
+import { resolveCharacterNameMap } from "../../routes/generate/generate-route-utils.js";
 
 function parseStringArray(value: unknown): string[] {
   if (Array.isArray(value)) return value.filter((entry): entry is string => typeof entry === "string");
@@ -106,7 +111,11 @@ function mapChat(row: typeof chats.$inferSelect): CapabilityChatRecord {
   };
 }
 
-function mapMessage(row: typeof messages.$inferSelect): CapabilityMessageRecord {
+/** `names` gives each message its agent view, as roleplayAgentText; null leaves `agentContent` out. */
+function mapMessage(
+  row: typeof messages.$inferSelect,
+  names: ReadonlyMap<string, string> | null = null,
+): CapabilityMessageRecord {
   return {
     id: row.id,
     chatId: row.chatId,
@@ -116,7 +125,23 @@ function mapMessage(row: typeof messages.$inferSelect): CapabilityMessageRecord 
     activeSwipeIndex: row.activeSwipeIndex,
     extra: row.extra,
     createdAt: row.createdAt,
+    ...(names ? { agentContent: roleplayAgentText(row.content, row, names) } : {}),
   };
+}
+
+/**
+ * Whisper recipients' names for agents reading this chat, as Engine-run agents get them (#7443), or null where
+ * agents do not read whispers (see roleplayAgentsSeeWhispers).
+ */
+async function agentWhisperNames(db: DB, chatId: string): Promise<ReadonlyMap<string, string> | null> {
+  const chat = (await db.select().from(chats).where(eq(chats.id, chatId)).limit(1))[0];
+  if (!chat || !roleplayAgentsSeeWhispers(chat.mode, parseExtra(chat.metadata))) return null;
+  const characters = createCharactersStorage(db);
+  const identity = await resolveChatUserIdentity(characters, chat);
+  return new Map([
+    ...(await resolveCharacterNameMap(parseStringArray(chat.characterIds), (id) => characters.getById(id))),
+    [identity?.id ?? "user", identity?.name ?? "User"],
+  ]);
 }
 
 function parsePresentCharacterIds(value: unknown): string[] {
@@ -417,7 +442,8 @@ function createPersistenceSession(db: DB, assertPermission: PersistencePermissio
         .from(messages)
         .where(eq(messages.chatId, chatId))
         .orderBy(messages.createdAt, messages.id);
-      return rows.map(mapMessage);
+      const names = await agentWhisperNames(db, chatId);
+      return rows.map((row) => mapMessage(row, names));
     },
     async getGameState(chatId) {
       assertPermission("chat-read");

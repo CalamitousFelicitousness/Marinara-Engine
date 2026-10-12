@@ -29,6 +29,8 @@ const { createCustomToolsStorage } = await import("../../packages/server/src/ser
 const { createAppSettingsStorage } = await import("../../packages/server/src/services/storage/app-settings.storage.js");
 const { roleplayAgentContinuation, roleplayAgentsSeeWhispers, roleplayAgentText } =
   await import("../../packages/server/src/services/generation/roleplay-commands.js");
+const { createCapabilityPersistenceHost } =
+  await import("../../packages/server/src/services/capability-packages/capability-persistence.service.js");
 const { characterDataSchema, DECISION_SMART_ORDER_SETTINGS_KEY, replaceBuiltInAgentDefinitions } =
   await import("../../packages/shared/dist/index.js");
 
@@ -341,6 +343,46 @@ try {
   assert(retried.includes("[Private whisper to Bob: USER_SECRET]"), retried);
   assert(inOrder(retried, "Plain.", "[Private whisper to Bob: LIVE_SECRET]"), retried);
 
+  // Packages read the same text through the capability API's agentContent (#7443); content stays public.
+  const persistence = createCapabilityPersistenceHost(db);
+  const packageView = await persistence.listMessages(chat.id);
+  const packageMessage = (secret: string) => packageView.find((message) => message.extra.includes(secret))!;
+  assert.equal(packageView[0]!.agentContent, "Opening line.", "a message with no whisper reads as itself");
+  assert.equal(packageMessage("LIVE_SECRET").content, "Plain.");
+  assert.equal(packageMessage("LIVE_SECRET").agentContent, "Plain. [Private whisper to Bob: LIVE_SECRET]");
+  assert.equal(packageMessage("USER_SECRET").content, "");
+  assert.equal(packageMessage("USER_SECRET").agentContent, "[Private whisper to Bob: USER_SECRET]");
+  const packageReply = packageMessage("PERSONA_SECRET").agentContent!;
+  assert(
+    inOrder(
+      packageReply,
+      "Before.",
+      "[Private whisper to Bob: REPLY_SECRET]",
+      "After.",
+      "[Private whisper to Mari: PERSONA_SECRET]",
+    ),
+    packageReply,
+  );
+  // Outside Roleplay there is no agent view, even for a message that carries a whisper.
+  const conversation = await chats.create({
+    name: "Conversation whisper",
+    mode: "conversation",
+    characterIds: [alice.id, bob.id],
+    personaId: persona.id,
+    promptPresetId: null,
+  });
+  assert(conversation);
+  await chats.createMessage({
+    chatId: conversation.id,
+    role: "assistant",
+    characterId: alice.id,
+    content: "Plain.",
+    extra: { roleplayCommandActivity: [whisper("CONVERSATION_SECRET", {})] },
+  });
+  const conversationView = await persistence.listMessages(conversation.id);
+  assert.equal(conversationView.length, 1);
+  assert(!("agentContent" in conversationView[0]!), JSON.stringify(conversationView[0]));
+
   // A reply that is only a whisper still reaches post-generation agents; a rewrite agent has nothing to edit.
   await chats.patchMetadata(chat.id, { activeAgentIds: [pre.type, post.type, rewrite.type] });
   const rewritesBefore = agentPrompts.get("REWRITE_AGENT_FIXTURE")!.length;
@@ -579,6 +621,9 @@ try {
   for (const multiplayer of [undefined, null, { ...room, status: "ended" }])
     assert.equal(roleplayAgentsSeeWhispers("roleplay", { multiplayer }), true, JSON.stringify(multiplayer));
   assert.equal(roleplayAgentsSeeWhispers("conversation", {}), false);
+  // Nor do a room's packages.
+  const roomView = await persistence.listMessages(roomChat.id);
+  assert(roomView.length && roomView.every((message) => !("agentContent" in message)), JSON.stringify(roomView));
   // The same chat as a private chat again: its agents read the whisper.
   await chats.patchMetadata(roomChat.id, { multiplayer: { ...room, status: "ended" } });
   outputs = ["Bob looks away."];
@@ -589,9 +634,14 @@ try {
   });
   assert.equal(ended.statusCode, 200, ended.body);
   assert(latest("ROOM_TRACKER_FIXTURE").includes("[Private whisper to Alice: ROOM_SECRET]"));
+  const endedView = await persistence.listMessages(roomChat.id);
+  assert(
+    endedView.some((message) => message.agentContent === "The door creaks. [Private whisper to Alice: ROOM_SECRET]"),
+    JSON.stringify(endedView),
+  );
   assert(!mainPrompts.at(-1)!.includes("ROOM_SECRET"), "Bob is still not a recipient");
   console.log(
-    "Agents see whispers passed: post-generation reply whispers, whisper-only user turns, history placement, preview without double insertion, responder privacy, dead whispers, retries, continued group replies, responder tools, Smart speaker selection and hosted rooms.",
+    "Agents see whispers passed: post-generation reply whispers, whisper-only user turns, history placement, preview without double insertion, responder privacy, dead whispers, retries, continued group replies, responder tools, Smart speaker selection, hosted rooms and the package agent view.",
   );
 } finally {
   await app.close();

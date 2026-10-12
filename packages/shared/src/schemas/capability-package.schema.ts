@@ -561,7 +561,10 @@ const capabilityPackageManifestBaseSchema = z
 // 1.68: `embeddings.embed(texts, signal, inputType)` takes `"query"` or `"document"` (the default), so a
 //        model with query and document prefixes embeds a search query as a query. Soft seam: an older
 //        Engine ignores the third argument, so a package does not need to declare 1.68. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 68 } as const);
+// 1.69: `listMessages` records carry `agentContent` in Roleplay outside hosted rooms: the message as Engine
+//        agents read it, with its whispers. Soft seam: a package reads `agentContent ?? content`, so it does not
+//        need to declare 1.69. Requires `chat-read`, like `listMessages`.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 69 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

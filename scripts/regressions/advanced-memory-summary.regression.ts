@@ -534,8 +534,10 @@ try {
     // message hidden from the borrower, so his constants don't show it, though his recalled scene above does.
     assert.equal(/June 12/u.test(prepared.chatSummary!), id !== borrower.id);
     // An entry with nothing for this reader keeps its range header only for a story date they can see: Pantalone
-    // gets no bare "#1–#1" header from the borrower's entry (#7250). The narrator reads that entry (#7454).
-    assert.equal(prepared.chatSummary!.includes("Messages #1–#1;"), id !== otherPov.id);
+    // gets no bare "#1–#1" header from the borrower's entry (#7250). The narrator reads every section (#7454),
+    // but the borrower's copy of the scene repeats its own, so it reads the scene once.
+    assert.equal(prepared.chatSummary!.includes("Messages #1–#1;"), id === borrower.id);
+    assert.equal(prepared.chatSummary!.split("brass compass promise").length, 2, "each reader reads the scene once");
     if (id === borrower.id) assert(!prepared.receipt.recalledMessageIds.includes(partialSource[1]!.id));
     // The recap's private section no longer withholds the excerpt (#7269): each reader quotes exactly
     // the scene messages they saw, so the ledger message hidden from the borrower stays out of his.

@@ -473,6 +473,41 @@ function mergedReaders(ctx: Context, audience: string[]): string[] {
   return readers.length > 1 ? readers : [];
 }
 
+/**
+ * The narrator alone reads each character's copy of a scene's summary next to its own (#7454). A summary whose
+ * sentences all appear, in the same order, in another one covering the same or more messages tells it nothing
+ * new, so it is left out; of two identical summaries, the later one stays. ponytail: once the Helper rewrites
+ * the copies, apart or as sections of one combined summary, they no longer match and the narrator reads each;
+ * upgrade by letting a combined answer write text several characters already read once, for all of them,
+ * which needs a privacy check per reader in place of the one per group of readers.
+ */
+function repeatedSummaries(entries: ReadonlyArray<{ id: string; messageIds: readonly string[]; text: string }>) {
+  const pieces = new Map(
+    entries.map((entry) => [
+      entry.id,
+      entry.text
+        .split(/(?<=[\p{Sentence_Terminal}\n])/u)
+        .map((piece) => piece.replace(/\s+/gu, " ").trim())
+        .filter(Boolean),
+    ]),
+  );
+  const covered = new Map(entries.map((entry) => [entry.id, new Set(entry.messageIds)]));
+  const repeated = new Set<string>();
+  for (const entry of entries) {
+    const own = pieces.get(entry.id)!;
+    if (!own.length || !entry.messageIds.length) continue;
+    const held = entries.some((other) => {
+      if (other === entry || repeated.has(other.id)) return false;
+      if (!entry.messageIds.every((id) => covered.get(other.id)!.has(id))) return false;
+      let found = 0;
+      for (const piece of pieces.get(other.id)!) if (piece === own[found]) found++;
+      return found === own.length;
+    });
+    if (held) repeated.add(entry.id);
+  }
+  return repeated;
+}
+
 // The single scene archive follows the narrator; its character access is a separate list.
 function audienceView(ctx: Context, audience: string[]): string[] {
   return !audience.length && ctx.settings.narratorCharacterId ? [ctx.settings.narratorCharacterId] : audience;
@@ -1831,9 +1866,10 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     return names.length ? scopeCharacterSummary(content, names) : content;
   }
 
-  function renderEntry(ctx: Context, text: string, audience: string[]): string {
+  /** With `everySection` off, the narrator reads only the sections written for it. */
+  function renderEntry(ctx: Context, text: string, audience: string[], everySection = true): string {
     // The narrator alone reads every character's section, plain and once, whoever its condition names.
-    if (audience.length === 1 && audience[0] === ctx.settings.narratorCharacterId)
+    if (everySection && audience.length === 1 && audience[0] === ctx.settings.narratorCharacterId)
       text = flattenCharacterConditions(text);
     const names = (audience.length ? audience : ctx.characterIds).map((id) => ctx.names.get(id) ?? "Character");
     // Narrator privilege needs the narrator as the only reader, even in a merged chat with one character (#7237).
@@ -3342,9 +3378,12 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
         )
           continue;
         // Disabled entries also represent deliberate choices. Reuse each range
-        // only for characters whose section actually contains that summary.
+        // only for characters whose section actually contains that summary. Another
+        // character's copy of a scene doesn't cover it for the narrator (#7454).
         const covered = new Set(
-          previousEntries.filter((entry) => renderEntry(ctx, entry.content, id ? [id] : []).trim()).flatMap(coverage),
+          previousEntries
+            .filter((entry) => renderEntry(ctx, entry.content, id ? [id] : [], false).trim())
+            .flatMap(coverage),
         );
         const source = ctx.messages.filter(
           (message) =>
@@ -3474,6 +3513,16 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     );
     const outsideLive = (entry: (typeof eligible)[number], id: string) =>
       coverage(entry).every((messageId) => !liveIds.get(id)!.has(messageId));
+    // The narrator's prompt leaves out other characters' copies of its own summaries; so does its share.
+    const narratorId = ctx.settings.narratorCharacterId;
+    const narratorTexts = narratorId ? rendered.get(narratorId) : undefined;
+    if (narratorId && narratorTexts)
+      for (const id of repeatedSummaries(
+        eligible
+          .filter((entry) => outsideLive(entry, narratorId))
+          .map((entry) => ({ id: entry.id, messageIds: coverage(entry), text: narratorTexts.get(entry.id)! })),
+      ))
+        narratorTexts.set(id, "");
     const viewSize = (id: string, entries: typeof eligible) =>
       tokenSize(
         entries
@@ -3516,71 +3565,55 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
         );
       return found;
     };
-    // A private sentence of four or more words newly found in a section someone else can also read; one that
-    // section's readers could already read in the inputs is no leak. Both sides are normalized sections and
-    // are searched for the same sentence spans. Text with other macros counts as read by everyone.
+    // A run of four words from a private section newly found in a section someone else can also read, also
+    // when the Helper shortened the sentence around it; a run that section's readers could already read in
+    // the inputs is no leak. Both sides are normalized sections, so quote marks, list marks, line breaks, a
+    // decimal or an abbreviation can't hide a copied run. Text with other macros counts as read by everyone.
     // Segmenting counts words in languages without spaces too.
-    // A line break ends a sentence too, as in a list. A piece up to a sentence end with under four words is
-    // checked with the pieces after it, so a decimal or an abbreviation, as in "meet at 3.5 now." or "mr. fox
-    // hid it.", cannot hide a sentence; a piece without words, such as "!", joins the one before it. Sentence
-    // segmenting can't do this: on this lowercase text it joins every sentence, and it splits "Mr. Fox".
-    // Quote marks, brackets and list marks around a sentence are left out, so a copy without them is found.
     const words = new Intl.Segmenter(undefined, { granularity: "word" });
-    const count = (text: string) => [...words.segment(text)].filter((word) => word.isWordLike).length;
-    const sentences = (text: string) => {
-      const pieces: string[] = [];
-      for (const piece of text.split(/(?<=[\p{Sentence_Terminal}\n])/u))
-        if (pieces.length && !count(piece)) pieces[pieces.length - 1] += piece;
-        else pieces.push(piece);
-      // ponytail: joining at most 8 pieces keeps this fast on a run like "1.2.3.4.5.6.7.8.9", one word however
-      // long, so a short sentence starting with one may go unchecked. Upgrade by counting each piece's words
-      // once and summing them.
-      return pieces.flatMap((_, start) => {
-        let sentence = "";
-        for (const piece of pieces.slice(start, start + 8)) {
-          sentence += piece;
-          if (count(sentence) >= 4) return [sentence.replace(/^[^\p{L}\p{N}\p{M}]+|[^\p{L}\p{N}\p{M}]+$/gu, "")];
-        }
-        return [];
+    const runs = (text: string) => {
+      const found = [...words.segment(text)].filter((word) => word.isWordLike).map((word) => word.segment);
+      return new Set(found.slice(3).map((_, index) => found.slice(index, index + 4).join(" ")));
+    };
+    const leaks = (before: Map<string, string>, after: Map<string, string>) => {
+      const read = new Map([...before].map(([key, text]) => [key, runs(text)]));
+      return [...after].some(([wider, output]) => {
+        const written = runs(output);
+        return [...read].some(
+          ([key, own]) =>
+            key !== "{{" &&
+            (wider === "{{" ||
+              (JSON.parse(wider) as string[]).some((name) => !(JSON.parse(key) as string[]).includes(name))) &&
+            [...own].some((run) => written.has(run) && !read.get(wider)?.has(run)),
+        );
       });
     };
-    const leaks = (before: Map<string, string>, after: Map<string, string>) =>
-      [...before].some(
-        ([key, text]) =>
-          key !== "{{" &&
-          [...after].some(
-            ([wider, output]) =>
-              (wider === "{{" ||
-                (JSON.parse(wider) as string[]).some((name) => !(JSON.parse(key) as string[]).includes(name))) &&
-              sentences(text).some((sentence) => output.includes(sentence) && !before.get(wider)?.includes(sentence)),
-          ),
-      );
     // Who reads each summary that may be combined. One whose text differs by character goes to the Helper
     // with its conditions kept, also when you wrote or edited it (#7270, #7454).
-    const flat = (text: string) => flattenCharacterConditions(text).replace(/\s+/gu, "");
+    const flat = (text: string) => flattenCharacterConditions(text, false).replace(/\s+/gu, "");
     const combinable = new Map<string, { readers: string[]; text: string; conditional: boolean }>();
     for (const entry of eligible) {
       const texts = ctx.characterIds.map((id) => renderEntry(ctx, entry.content, [id]));
       const readers = ctx.characterIds.filter((_, index) => texts[index]!.trim());
       if (!readers.length) continue;
-      // Keep shared entries intact until their range is archived for every
-      // reader; replacing only one character's section would lose the others.
-      if (!(ctx.individual ? readers : [""]).every((id) => outsideLive(entry, id))) continue;
+      // Keep entries intact until their range is archived for every character: a combined summary covers
+      // all its sources' messages, and a reader's prompt leaves it out while any of them is still live.
+      if (!views.every((id) => outsideLive(entry, id))) continue;
       const read = texts.filter((text) => text.trim());
       const conditional = new Set(read).size > 1;
       // ponytail: the privacy check can't tell who reads text next to another macro, and a section only for a
-      // character who left the chat has no reader to keep it for, so those summaries stay as they are.
-      // Upgrade by checking each macro's rendering per reader, and by counting characters named in conditions.
+      // character who left the chat has no reader to keep it for, so those summaries stay as they are, also
+      // when only the narrator reads them. Upgrade by checking each macro's rendering per reader, and by
+      // counting characters named in conditions.
       if (
-        conditional &&
-        (sections([entry.content]).has("{{") ||
-          flat(scopeConstantSummary(ctx, entry.content, readers)) !== flat(entry.content))
+        (conditional && sections([entry.content]).has("{{")) ||
+        flat(scopeConstantSummary(ctx, entry.content, readers)) !== flat(entry.content)
       )
         continue;
       combinable.set(entry.id, { readers, text: read[0]!, conditional });
     }
-    // Shrink only for views over the share that shrinking can bring under it: the room is what summaries that
-    // can't be combined leave. A view they already fill is left alone, so it isn't shortened on every reply.
+    // Shrink only for views over the share with room left by the summaries that can't be combined. A view they
+    // already fill is left alone, so it isn't shortened on every reply.
     const fixedTokens = new Map(
       views.map((id) => [
         id,
@@ -3590,13 +3623,11 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
         ),
       ]),
     );
-    const room = (id: string) => constantBudget - fixedTokens.get(id)!;
-    const over = views.filter((id) => viewTokens.get(id)! > constantBudget && room(id) > 0);
+    const over = views.filter((id) => viewTokens.get(id)! > constantBudget && fixedTokens.get(id)! < constantBudget);
     const shows = (id: string, entry: (typeof eligible)[number]) => !!rendered.get(id)!.get(entry.id)!.trim();
     // Every summary someone over the share reads is combined, whoever else reads it (#7454). Ranged and legacy
     // unranged summaries stay apart, and ranged ones go in chat order.
     const shrinkable = eligible.filter((entry) => combinable.has(entry.id) && over.some((id) => shows(id, entry)));
-    const shrinkTokens = new Map(over.map((id) => [id, viewSize(id, shrinkable)]));
     const first = (entry: (typeof eligible)[number]) =>
       Math.min(...coverage(entry).map((id) => indexes.get(id) ?? Infinity));
     const queue = [
@@ -3618,15 +3649,17 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       });
       const groupTokens = tokenSize(inputs.join("\n\n"));
       if (!groupTokens) continue;
-      // Each view these summaries show in gets this group's share of its room.
+      // Each view these summaries show in shrinks them in proportion to the share, never to a tiny target
+      // (#6512). Views count text without its conditions, so the target does too.
+      const textTokens = tokenSize(flattenCharacterConditions(inputs.join("\n\n"), false));
       const target = Math.floor(
         Math.min(
           ...over
             .filter((id) => entries.some((entry) => shows(id, entry)))
-            .map((id) => (room(id) * groupTokens) / shrinkTokens.get(id)!),
+            .map((id) => (constantBudget * textTokens) / viewTokens.get(id)!),
         ),
       );
-      if (target < 1 || groupTokens <= target) continue;
+      if (target < 1 || textTokens <= target) continue;
       const ids = new Set(entries.flatMap(coverage));
       // Legacy unranged constants stay unranged, rather than acquiring invented coverage.
       const source = ranged ? ctx.messages.filter((message) => ids.has(message.id)) : ctx.messages;
@@ -3653,7 +3686,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       if (tokenSize(combine ? scoped : content) >= groupTokens) continue;
       const before = combine ? sections(inputs) : new Map<string, string>();
       const after = combine ? sections([scoped]) : before;
-      // Every group of readers must keep its section, none may be added, and no private sentence
+      // Every group of readers must keep its section, none may be added, and no private run of words
       // may reach more readers. ponytail: a reworded private fact in a wider section still passes;
       // upgrade by asking a second model to compare the facts in each section.
       if (after.size !== before.size || [...after.keys()].some((key) => !before.has(key)) || leaks(before, after)) {
@@ -3662,12 +3695,19 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
           chatId,
           entries.length,
         );
-        // Try again in two halves, in chat order, down to single summaries. ponytail: a single summary the
-        // Helper can't shorten without changing who reads what stays as it is, and a rejected set is asked
-        // again once its share of the room changes; upgrade by remembering rejected sets and by asking again
-        // with the reason it was rejected.
+        // Try again with the summaries each set of characters reads, which combine without conditions unless
+        // they have private parts, and a set that is still rejected in two halves, in chat order, down to
+        // single summaries. ponytail: a single summary the Helper can't shorten without changing who reads
+        // what stays as it is, and a rejected set is asked again once its share of the budget changes; upgrade
+        // by remembering rejected sets and by asking again with the reason it was rejected.
+        const sets = new Map<string, typeof entries>();
+        for (const [index, entry] of entries.entries()) {
+          const key = info[index]!.readers.join("\0");
+          sets.set(key, [...(sets.get(key) ?? []), entry]);
+        }
         const half = Math.ceil(entries.length / 2);
-        if (entries.length > 1) queue.push(entries.slice(0, half), entries.slice(half));
+        if (sets.size > 1) queue.push(...sets.values());
+        else if (entries.length > 1) queue.push(entries.slice(0, half), entries.slice(half));
         continue;
       }
       await validateSnapshot(ctx, source, options);
@@ -3890,20 +3930,26 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     );
     const constants = sourceEntries(ctx, sources, historical)
       .map((entry) => {
+        const text = renderEntry(ctx, entry.content, audience);
         // One summary can combine what different characters read: its range and story dates come only
         // from the messages this prompt's readers can see, so no reader learns of a message hidden from them.
+        // A merged prompt shows them above text several characters read, so only messages every one of
+        // them can see count; with no text, every character present.
+        const textReaders = readers.filter((id) => renderEntry(ctx, entry.content, [id]).trim());
+        const headerReaders = textReaders.length ? textReaders : readers;
+        const sees = (id: string) =>
+          headerReaders.length ? headerReaders.every((reader) => readerIds.get(reader)!.has(id)) : recallIds.has(id);
         const covered = (
           entry.messageIds?.length
             ? sources.filter((message) => entry.messageIds!.includes(message.id))
             : entry.rangeStartIndex && entry.rangeEndIndex
               ? sources.slice(entry.rangeStartIndex - 1, entry.rangeEndIndex)
               : []
-        ).filter((message) => recallIds.has(message.id));
-        const text = renderEntry(ctx, entry.content, audience);
+        ).filter((message) => sees(message.id));
         // Nothing for this reader: leave the entry out, unless it covers a scene they took part in
         // (read any of its messages) that has a story date, which participants share (#7250).
         if (!text.trim() && !(covered.length && sourceTimeline(covered)))
-          return { messageIds: [], text: "", timelineRecords: [] };
+          return { id: entry.id, messageIds: [], text: "", body: "", timelineRecords: [] };
         const coveredIds = new Set(covered.map((message) => message.id));
         const timelineRecords = text.trim()
           ? constantScenes.filter((record) => record.messageIds.some((id) => coveredIds.has(id)))
@@ -3919,14 +3965,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
           ? ""
           : correctedTimelines
               .map((record) =>
-                renderMemoryText(
-                  indexes,
-                  record.messageIds.filter((id) => recallIds.has(id)),
-                  "",
-                  record.timeline,
-                  false,
-                  true,
-                ).trim(),
+                renderMemoryText(indexes, record.messageIds.filter(sees), "", record.timeline, false, true).trim(),
               )
               .join("\n");
         const rendered = covered.length
@@ -3939,15 +3978,26 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
               !!wholeTimeline,
             )
           : text;
-        return { messageIds: covered.map((message) => message.id), text: rendered, timelineRecords };
+        return {
+          id: entry.id,
+          messageIds: covered.map((message) => message.id),
+          text: rendered,
+          body: text,
+          timelineRecords,
+        };
       })
       .filter((entry) => entry.text);
     const constantTimelineRecords = new Map<string, StoredRecord>();
+    const narratorAlone = audience.length === 1 && audience[0] === ctx.settings.narratorCharacterId;
     const constantText = () => {
       constantTimelineRecords.clear();
       const liveIds = new Set(live.map((message) => message.id));
-      return constants
-        .filter((entry) => entry.messageIds.every((id) => !liveIds.has(id)))
+      const shown = constants.filter((entry) => entry.messageIds.every((id) => !liveIds.has(id)));
+      const repeated = narratorAlone
+        ? repeatedSummaries(shown.map(({ id, messageIds, body }) => ({ id, messageIds, text: body })))
+        : new Set<string>();
+      return shown
+        .filter((entry) => !repeated.has(entry.id))
         .map((entry) => {
           for (const record of entry.timelineRecords) constantTimelineRecords.set(record.id, record);
           return entry.text;

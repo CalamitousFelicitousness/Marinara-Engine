@@ -889,6 +889,20 @@ try {
     (await groupRecall(["maukie"])).chatSummary!,
     /PANTALONE_ONLY_NOTE|LEFT_CHAT_NOTE|CONST_NARRATOR/u,
   );
+  // {{char}} in a character's section names that character for the narrator, and branches no reader got
+  // together are not glued together.
+  const charNote = createChatSummaryEntry({
+    content:
+      '{{#if char == "Maukie"}}{{char}} buried the brass key.{{/if}} {{#if char == "Pantalone"}}{{char}} sold the ledger.{{/if}} {{#if char == "Maukie"}}EMPTY_SIDE.{{else}}FULL_SIDE.{{/if}}',
+    enabled: true,
+    messageIds: groupSource.slice(4, 6).map((message) => message.id),
+  });
+  await chats.patchMetadata(group.id, { summaryEntries: [...groupEntries, narratorNote, othersNote, charNote] });
+  assert.match(
+    (await groupRecall(["narrator"])).chatSummary!,
+    /\nMaukie buried the brass key\. Pantalone sold the ledger\. EMPTY_SIDE\. FULL_SIDE\.$/u,
+  );
+  assert.match((await groupRecall(["maukie"])).chatSummary!, /\nMaukie buried the brass key\. {2}EMPTY_SIDE\.$/u);
   // A merged prompt the narrator shares with the characters keeps marking who knows what (#7237).
   await chats.patchMetadata(group.id, { groupChatMode: "merged" });
   const sharedView = (await groupRecall(["maukie", "pantalone", "narrator"])).chatSummary!;

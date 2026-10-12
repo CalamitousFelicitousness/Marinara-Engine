@@ -2,6 +2,11 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { logger } from "../../packages/server/src/lib/logger.js";
+import {
+  __setSdkForTesting,
+  ClaudeSubscriptionProvider,
+} from "../../packages/server/src/services/llm/providers/claude-subscription.provider.js";
 import {
   compareVersions,
   findClaudeCodeInstall,
@@ -109,6 +114,73 @@ try {
   );
 } finally {
   await rm(home, { recursive: true, force: true });
+}
+
+// Claude Code runs with permission checks off, so claude.ai connectors (MCP servers or tools) reported at
+// startup stop the request before the model turn is read, for chat and the connection test alike.
+{
+  let init: Record<string, unknown> = {};
+  let controller: AbortController | undefined;
+  let modelTurnRead = false;
+  const stopLogs: Array<Record<string, unknown>> = [];
+  const originalError = logger.error;
+  logger.error = ((data: Record<string, unknown>) => {
+    stopLogs.push(data);
+  }) as typeof logger.error;
+  __setSdkForTesting({
+    query: ((args: { options: { abortController: AbortController } }) => {
+      controller = args.options.abortController;
+      return (async function* () {
+        yield { type: "system", subtype: "init", tools: [], mcp_servers: [], skills: [], slash_commands: [], ...init };
+        modelTurnRead = true;
+        yield {
+          type: "stream_event",
+          event: { type: "content_block_delta", delta: { type: "text_delta", text: "OK" } },
+        };
+        yield { type: "result", subtype: "success", result: "OK", usage: { input_tokens: 3, output_tokens: 1 } };
+      })();
+    }) as never,
+  });
+  const provider = new ClaudeSubscriptionProvider("", "");
+  const run = async (stream: boolean) => {
+    let text = "";
+    for await (const chunk of provider.chat([{ role: "user", content: "Reply with OK." }], {
+      model: "claude-opus-5",
+      maxTokens: 32,
+      stream,
+    })) {
+      text += chunk;
+    }
+    return text;
+  };
+  try {
+    for (const [stream, reported] of [
+      [true, { mcp_servers: [{ name: "claude.ai Gmail", status: "connected" }] }],
+      [false, { tools: ["mcp__claude_ai_Gmail__search_threads"], claude_code_version: "2.1.200" }],
+    ] as const) {
+      init = reported;
+      modelTurnRead = false;
+      stopLogs.length = 0;
+      await assert.rejects(run(stream), (err: Error) => {
+        assert.match(err.message, /claude\.ai connectors \((claude\.ai Gmail|mcp__claude_ai_Gmail__search_threads)\)/);
+        assert.match(err.message, /update it, or set CLAUDE_SUBSCRIPTION_USE_INSTALLED_CLI=false/);
+        return true;
+      });
+      assert.equal(modelTurnRead, false, "the model turn is never read once connectors are reported");
+      assert.equal(controller?.signal.aborted, true, "Claude Code is aborted");
+      assert.equal(stopLogs.length, 1, "the stop is logged");
+    }
+    init = {};
+    modelTurnRead = false;
+    stopLogs.length = 0;
+    assert.equal(await run(true), "OK", "no connectors reported: the request runs normally");
+    assert.equal(modelTurnRead, true);
+    assert.equal(controller?.signal.aborted, false);
+    assert.deepEqual(stopLogs, []);
+  } finally {
+    logger.error = originalError;
+    __setSdkForTesting(null);
+  }
 }
 
 console.log("claude-subscription installed CLI regression passed");

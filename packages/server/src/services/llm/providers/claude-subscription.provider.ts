@@ -132,6 +132,33 @@ function formatClaudeSdkError(err: unknown): string {
   return message;
 }
 
+/**
+ * Hard stop for Claude Code's startup (`init`) message. Marinara runs Claude Code with no tools and
+ * permission checks off, so any MCP server or tool listed there (usually the account's claude.ai
+ * connectors, which a Claude Code that ignores `ENABLE_CLAUDEAI_MCP_SERVERS=false` still loads) aborts
+ * the request before the model turn is used.
+ */
+export function stopIfClaudeCodeExposesMcp(
+  init: { mcp_servers: Array<{ name: string; status: string }>; tools: string[]; claude_code_version?: string },
+  abortController: AbortController,
+): void {
+  const mcpTools = init.tools.filter((tool) => tool.startsWith("mcp__"));
+  if (init.mcp_servers.length === 0 && mcpTools.length === 0) return;
+  abortController.abort();
+  logger.error(
+    {
+      mcpServers: init.mcp_servers.map((server) => `${server.name} (${server.status})`),
+      mcpTools,
+      claudeCodeVersion: init.claude_code_version,
+    },
+    "[claude-subscription] Claude Code exposed MCP servers/tools (likely claude.ai connectors) with permission checks off; request stopped",
+  );
+  const names = init.mcp_servers.length > 0 ? init.mcp_servers.map((server) => server.name) : mcpTools;
+  throw new Error(
+    `Claude Code turned on claude.ai connectors (${names.join(", ")}). Marinara runs Claude Code with permission checks off, so it stopped the request. The installed Claude Code is likely too old to turn connectors off: update it, or set CLAUDE_SUBSCRIPTION_USE_INSTALLED_CLI=false to use the copy bundled with Marinara.`,
+  );
+}
+
 /** @internal Test-only seam. Replaces the cached SDK module with a fake or clears it. */
 export function __setSdkForTesting(mod: Pick<SdkModule, "query"> | null): void {
   cachedSdk = mod ? (Promise.resolve(mod as SdkModule) as Promise<SdkModule>) : null;
@@ -461,7 +488,7 @@ export class ClaudeSubscriptionProvider extends BaseLLMProvider {
     // connectors only load under subscription auth, not when ANTHROPIC_API_KEY
     // is set — so the flag is harmlessly redundant on the API-key path below,
     // but set unconditionally so the subscription path is always covered. The
-    // `init`-message guard above warns if a future CLI stops honoring it.
+    // `init`-message guard below stops the request if a CLI does not honor it.
     //
     // `ANTHROPIC_API_KEY` is the opt-in API-billing fallback when the
     // connection sets an explicit key.
@@ -540,17 +567,15 @@ export class ClaudeSubscriptionProvider extends BaseLLMProvider {
         } else if (message.type === "system" && message.subtype === "init") {
           // Isolation guard — the SDK's `init` message enumerates every tool,
           // MCP server, and skill it is exposing to the model. This provider is
-          // a zero-tool, text-only surface, so any non-empty set here means
+          // a zero-tool, text-only surface, so any MCP server or tool here means
           // something slipped past the isolation options (`tools: []`,
-          // `settingSources: []`, `ENABLE_CLAUDEAI_MCP_SERVERS=false`). The
-          // `warn` below fires if that regresses — e.g. a CLI predating the
-          // opt-out flag, or a future change to connector defaults.
-          const mcpServers = message.mcp_servers;
-          const mcpTools = message.tools.filter((t) => t.startsWith("mcp__"));
+          // `settingSources: []`, `ENABLE_CLAUDEAI_MCP_SERVERS=false`) — e.g. a
+          // CLI predating the opt-out flag, or a future change to connector
+          // defaults — and the request stops before the model turn is used.
           logger.debug(
             {
               tools: message.tools,
-              mcpServers,
+              mcpServers: message.mcp_servers,
               skills: message.skills,
               slashCommandCount: message.slash_commands.length,
               claudeCodeVersion: message.claude_code_version,
@@ -558,15 +583,7 @@ export class ClaudeSubscriptionProvider extends BaseLLMProvider {
             },
             "[claude-subscription] SDK init surface",
           );
-          if (mcpServers.length > 0 || mcpTools.length > 0) {
-            logger.warn(
-              {
-                mcpServers: mcpServers.map((s) => `${s.name} (${s.status})`),
-                mcpTools,
-              },
-              "[claude-subscription] SDK exposed MCP servers/tools to the model despite zero-tool config — likely account-level claude.ai connectors",
-            );
-          }
+          stopIfClaudeCodeExposesMcp(message, abortController);
         } else if (message.type === "assistant" && !(options.stream ?? true)) {
           // Non-streaming path: the SDK still yields the full assistant
           // message at the end; emit the text blocks once.

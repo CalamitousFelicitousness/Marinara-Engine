@@ -5995,6 +5995,11 @@ async function serializeGameTurnStoryboard(args: {
 const ITEM_NOT_IN_FIGHT = "That item does nothing in this fight.";
 
 export function parseRoomGameConfig(value: unknown): GameSetupConfig {
+  // Overworld games locked (MARINARA_OVERWORLD_GAMES): a room game with a setting kit or a world is refused.
+  const asked = value && typeof value === "object" ? (value as { worldKit?: unknown; world?: unknown }) : {};
+  if (!isOverworldGamesEnabled() && (asked.worldKit || asked.world)) {
+    throw new Error("Overworld games are not available on this server yet.");
+  }
   const config = gameSetupConfigSchema.parse(value);
   if (config.gameExperienceId) throw new Error("Package Game Experiences are unavailable in shared rooms.");
   return config;

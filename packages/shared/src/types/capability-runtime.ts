@@ -365,7 +365,11 @@ export interface CapabilityPersistenceHost extends CapabilityPersistenceSession 
 export interface CapabilityEmbeddingHost {
   spaceId: string;
   label: string;
-  embed(texts: string[], signal?: AbortSignal): Promise<number[][] | null>;
+  /**
+   * Pass `"query"` for search text; texts default to `"document"`. Some models (e5, nomic) add a
+   * different prefix to each. Capability API 1.68: older Engines ignore the third argument.
+   */
+  embed(texts: string[], signal?: AbortSignal, inputType?: "query" | "document"): Promise<number[][] | null>;
 }
 
 /** One bounded question for the user's Decision model. */

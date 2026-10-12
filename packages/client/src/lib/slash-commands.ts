@@ -91,6 +91,8 @@ export interface SlashCommandContext {
   illustrate?: (prompt?: string, messageRange?: [string, string]) => void | Promise<void>;
   /** Trigger the same Conversation selfie action exposed in the chat Gallery. */
   selfie?: (characterId?: string) => void | Promise<void>;
+  /** Have a Conversation character send a video message, as the chat Gallery's Video button does. */
+  video?: (characterId?: string) => void | Promise<void>;
   /** Active downloadable capability packages available to this composer. */
   availableCapabilityIds?: ReadonlySet<string>;
   /** Installed Conversation games that contribute manual slash launchers. */
@@ -1385,6 +1387,48 @@ const COMMANDS: SlashCommand[] = [
         toast.error(error instanceof Error ? error.message : "Selfie generation failed.");
       } finally {
         useGalleryStore.getState().setChatGeneratingSelfie(ctx.chatId, false);
+      }
+      return { handled: true };
+    },
+  },
+  {
+    name: "video",
+    description: "Have a character send you a short video message",
+    usage: "/video [name (optional)]",
+    requiredCapabilityId: "illustrator",
+    modes: ["conversation"],
+    local: true,
+    async execute(args, ctx) {
+      if (!ctx.video) {
+        return { handled: true, feedback: await translateSlash("ui.chat.slash.video.unavailable") };
+      }
+      if (useGalleryStore.getState().videoGeneratingChatIds.has(ctx.chatId)) {
+        return { handled: true, feedback: await translateSlash("ui.chat.slash.video.alreadyRunning") };
+      }
+
+      const requestedCharacter = args.trim();
+      const target = requestedCharacter ? findSceneCharacter(ctx.characters ?? [], requestedCharacter) : null;
+      if (requestedCharacter && !target) {
+        const available = formatAvailableCharacterList(ctx.characters ?? []);
+        return {
+          handled: true,
+          feedback: available
+            ? await translateSlash("ui.chat.slash.video.characterNotFound", { name: requestedCharacter, available })
+            : await translateSlash("ui.chat.slash.video.noCharacters"),
+        };
+      }
+
+      useGalleryStore.getState().setChatGeneratingVideo(ctx.chatId, true);
+      try {
+        await withSlashCommandTimeout(
+          Promise.resolve(ctx.video(target?.id)),
+          ILLUSTRATE_SLASH_TIMEOUT_MS,
+          await translateSlash("ui.chat.slash.video.timedOut"),
+        );
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : await translateSlash("ui.chat.slash.video.failed"));
+      } finally {
+        useGalleryStore.getState().setChatGeneratingVideo(ctx.chatId, false);
       }
       return { handled: true };
     },

@@ -623,6 +623,7 @@ import {
   conversationPromptHistoryContent,
   formatConversationGroupOutputFormat,
   formatSentSelfieNotes,
+  formatSentVideoNotes,
   resolvePresetModePrompt,
 } from "./generate/conversation-prompt-formatting.js";
 import {
@@ -2384,7 +2385,12 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           const photoName = userUploadedImages[0]?.filename ?? userUploadedImages[0]?.name;
           content += `\n[Sent a photo${photoName ? `: ${photoName}` : ""}]`;
         }
-        if (m.role === "assistant") content += formatSentSelfieNotes(updatedAttachments ?? attachments);
+        if (m.role === "assistant") {
+          content += formatSentSelfieNotes(updatedAttachments ?? attachments);
+          const videoNotes = formatSentVideoNotes(attachments);
+          // A video-only message has no text of its own; its note then starts the turn without a blank line.
+          if (videoNotes) content = content.trim() ? content + videoNotes : videoNotes.trimStart();
+        }
         const hiddenFromAICharacterIds = getMessageHiddenFromAICharacterIds(m);
         const conversationStartForCharacterIds = getMessageConversationStartCharacterIds(m);
 

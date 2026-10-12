@@ -66,8 +66,8 @@ interface ChatGalleryProps {
   onGenerateStoryboard?: () => void | Promise<void>;
   /** Show the latest Game Mode storyboard viewer. */
   onViewStoryboard?: () => void;
-  /** Generate a scene video from the latest illustration. */
-  onGenerateVideo?: () => void | Promise<void>;
+  /** Generate a scene video from the latest illustration, or a Conversation character's video message. */
+  onGenerateVideo?: (characterId?: string) => void | Promise<void>;
   /** Generate a scene video from a specific gallery illustration. */
   onAnimateImage?: (image: ChatImage) => void | Promise<void>;
 }
@@ -109,7 +109,7 @@ export function ChatGallery({
 }: ChatGalleryProps) {
   const { t: localizeUi } = useUiTranslation();
   const { data: images, isLoading } = useGalleryImages(chatId);
-  const sceneVideosEnabled = mode === "game" || mode === "roleplay";
+  const sceneVideosEnabled = mode === "game" || mode === "roleplay" || mode === "conversation";
   const sceneVideosQuery = useSceneVideos(chatId, sceneVideosEnabled);
   const sceneVideos = sceneVideosEnabled ? (sceneVideosQuery.data ?? EMPTY_SCENE_VIDEOS) : EMPTY_SCENE_VIDEOS;
   const upload = useUploadGalleryImage(chatId);
@@ -441,7 +441,8 @@ export function ChatGallery({
 
     setChatGeneratingVideo(chatId, true);
     try {
-      await onGenerateVideo();
+      // In Conversation the clip is a video message from the character picked for selfies.
+      await onGenerateVideo(selfieCharacters.length > 1 ? selectedSelfieCharacterId : selfieCharacters[0]?.id);
       await sceneVideosQuery.refetch();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : localizeUi("ui.chat.chatgallery.videoGenerationFailed"));

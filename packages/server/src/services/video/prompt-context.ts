@@ -244,3 +244,36 @@ function parseExtraRecord(extra: unknown): Record<string, unknown> {
     return {};
   }
 }
+
+/**
+ * The recent chat a new video should know about, the way Illustrator reads it for a picture: the last `count`
+ * user and assistant messages with text, up to `endMessageId` (else the newest), each labelled with who said it.
+ * Messages hidden from the AI are left out; over `maxLength`, the oldest text goes first so the latest moment is kept.
+ */
+export function formatRecentVideoContext(
+  messages: ReadonlyArray<{ id: string; role?: string | null; content?: string | null; extra?: unknown }>,
+  options: {
+    count: number;
+    endMessageId?: string | null;
+    speaker?: (message: { role?: string | null; extra?: unknown } & Record<string, unknown>) => string;
+    maxLength?: number;
+  },
+): string {
+  const end = options.endMessageId ? messages.findIndex((message) => message.id === options.endMessageId) : -1;
+  const upTo = end >= 0 ? messages.slice(0, end + 1) : messages;
+  const text = upTo
+    .filter((message) => message.role === "user" || message.role === "assistant")
+    .filter((message) => parseExtraRecord(message.extra).hiddenFromAI !== true)
+    // A message with no text (a video message, for one) says nothing here and would use up the count.
+    .filter((message) => (message.content ?? "").trim().length > 0)
+    .slice(-Math.max(1, options.count))
+    .map((message) => {
+      const speaker =
+        options.speaker?.(message as Parameters<NonNullable<typeof options.speaker>>[0]) ??
+        (message.role === "user" ? "User" : "Assistant");
+      return `${speaker}:\n${(message.content ?? "").trim()}`;
+    })
+    .join("\n\n");
+  const maxLength = options.maxLength ?? 12_000;
+  return text.length > maxLength ? text.slice(-maxLength) : text;
+}

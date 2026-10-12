@@ -12,7 +12,10 @@ import { isDebugAgentsEnabled } from "../../config/runtime-config.js";
 import { logger, logDebugOverride } from "../../lib/logger.js";
 import { removeCopiedPromptGuidance } from "../image/image-prompt-compiler.js";
 import { resolveGalleryImagePath } from "../image/gallery-image-path.js";
-import { readPreferredCharacterReferenceImage } from "../image/illustrator-references.js";
+import {
+  readPreferredCharacterReferenceImage,
+  resolveIllustratorCharacterReferences,
+} from "../image/illustrator-references.js";
 import { CONVERSATION_VIDEO, loadPrompt } from "../prompt-overrides/index.js";
 import { createCharacterGalleryStorage } from "../storage/character-gallery.storage.js";
 import { createCharactersStorage } from "../storage/characters.storage.js";
@@ -31,7 +34,10 @@ import { createAgentsStorage } from "../storage/agents.storage.js";
 import { normalizeAgentContextSize } from "../agents/agent-executor.js";
 import { resolveSceneVideoPrompt } from "../video/scene-video-prompt-review.js";
 import { resolveBaseUrl } from "./connection-base-url.js";
-import { handleConversationSelfieCommand } from "./conversation-selfie-command-runtime.js";
+import {
+  handleConversationSelfieCommand,
+  resolveConversationSelfieRequestedNames,
+} from "./conversation-selfie-command-runtime.js";
 import { appendVideoPromptInstructions } from "./image-prompt-instructions.js";
 import { resolveIllustratorPromptRuntime, type IllustratorPromptConnection } from "./illustrator-prompt-runtime.js";
 
@@ -48,6 +54,8 @@ export interface ConversationVideoPreview {
 export interface ConversationVideoResult {
   video: GeneratedSceneVideo;
   characterName: string;
+  /** The characters the clip shows: the sender, plus anyone it names or a group request includes. */
+  characterIds: string[];
   /** What the clip started from. */
   firstFrame: "gallery" | "selfie" | "avatar" | "none";
 }
@@ -240,6 +248,7 @@ export async function generateConversationVideo(args: {
       : await takeSelfieFrame(selfieArgs, plan.avatarFallback, () =>
           readAvatarFrame({ ...args, characterName, avatarPath: characterRow.avatarPath ?? null }),
         );
+  const characterIds = await resolveVideoCharacterIds({ ...args, characterName, prompt });
 
   const video = await generateAndSaveChatVideo(args.db, setup, {
     chatId: args.chatId,
@@ -247,12 +256,13 @@ export async function generateConversationVideo(args: {
     referenceImage: firstFrame.image,
     sourceTag: firstFrame.tag,
     sourcePath: firstFrame.path,
+    characterIds,
     queue: args.queue,
     signal: args.signal,
     debugMode: args.debugMode,
   });
   logger.info("[conversation/video] %s sent video %s in chat %s", characterName, video.id, args.chatId);
-  return { video, characterName, firstFrame: firstFrame.kind };
+  return { video, characterName, characterIds, firstFrame: firstFrame.kind };
 }
 
 async function planFirstFrame(
@@ -303,6 +313,34 @@ async function readAvatarFrame(
     );
   }
   return { kind: "avatar", image: reference, tag: `avatar:${args.characterId}`, path: null };
+}
+
+/** The same character matching a selfie uses to file itself into character galleries. */
+async function resolveVideoCharacterIds(
+  args: Parameters<typeof generateConversationVideo>[0] & { characterName: string; prompt: string },
+): Promise<string[]> {
+  const requestedNames = resolveConversationSelfieRequestedNames({
+    speakerName: args.characterName,
+    chatCharacters: args.charInfo,
+    commandContext: args.context,
+    imagePrompt: args.prompt,
+  });
+  const resolution = await resolveIllustratorCharacterReferences({
+    charactersStore: createCharactersStorage(args.db),
+    chatCharacters: args.charInfo.map((character) => ({
+      id: character.id,
+      name: character.name,
+      avatarPath: character.avatarPath,
+      appearance: character.appearance,
+    })),
+    persona: null,
+    requestedNames,
+    promptText: [args.characterName, args.context ?? "", args.prompt].join("\n"),
+    fallbackToChatCharacters: false,
+    includeReferenceImages: false,
+    maxReferences: 12,
+  });
+  return Array.from(new Set([args.characterId, ...resolution.characterIds]));
 }
 
 type SelfieArgs = Parameters<typeof generateConversationVideo>[0] & { selfieContext: string };

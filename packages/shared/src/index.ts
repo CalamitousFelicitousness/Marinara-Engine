@@ -200,6 +200,7 @@ export * from "./utils/chat-window-defaults.js";
 export * from "./utils/translator-defaults.js";
 export * from "./utils/chat-persona.js";
 export * from "./utils/message-continuation.js";
+export * from "./utils/scene-breaks.js";
 export * from "./utils/quest-state.js";
 export * from "./utils/quote-format.js";
 export * from "./utils/image-prompt-compiler.js";

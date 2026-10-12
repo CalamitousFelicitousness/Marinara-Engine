@@ -1,4 +1,11 @@
-import { normalizeGameDifficulty, parseWorldKit, type WorldKitInput } from "@marinara-engine/shared";
+import {
+  compileGameWorld,
+  normalizeGameDifficulty,
+  parseWorldKit,
+  worldSpatialDraft,
+  type GenerateSpatialMapDraftResponse,
+  type WorldKitInput,
+} from "@marinara-engine/shared";
 // ──────────────────────────────────────────────
 // Game: Setup Wizard (initial game setup modal)
 // ──────────────────────────────────────────────
@@ -28,6 +35,7 @@ import {
   Map as MapIcon,
   RotateCcw,
   FolderOpen,
+  Globe2,
   FileUp,
   Download,
   CheckCircle2,
@@ -161,6 +169,8 @@ export interface GameSetupWizardProps {
       | { mode: "manual" }
       | { mode: "template"; selection: CapabilitySetupSelection }
       | { mode: "shared-world"; selection: CapabilitySetupSelection }
+      /** The atlas made from the game's world (worldgen W7), reviewed and saved like a drafted map. */
+      | { mode: "world"; draft: GenerateSpatialMapDraftResponse }
       | {
           mode: "ai";
           size: SpatialMapDraftSize;
@@ -645,6 +655,7 @@ export function GameSetupWizard({
   const [draftSpatialMap, setDraftSpatialMap] = useState(false);
   const [manualSpatialMap, setManualSpatialMap] = useState(false);
   const [templateSpatialMap, setTemplateSpatialMap] = useState(false);
+  const [worldSpatialMap, setWorldSpatialMap] = useState(false);
   const [spatialTemplatePickerOpen, setSpatialTemplatePickerOpen] = useState(false);
   const [spatialTemplateSelection, setSpatialTemplateSelection] = useState<CapabilitySetupSelection | null>(null);
   const [spatialMapDraftSize, setSpatialMapDraftSize] = useState<SpatialMapDraftSize>("medium");
@@ -1045,6 +1056,7 @@ export function GameSetupWizard({
       setDraftSpatialMap(false);
       setManualSpatialMap(false);
       setTemplateSpatialMap(false);
+      setWorldSpatialMap(false);
       setSpatialTemplateSelection(null);
       setSpatialTemplatePickerOpen(false);
     }
@@ -1089,6 +1101,7 @@ export function GameSetupWizard({
       setTemplateSpatialMap(true);
       setDraftSpatialMap(false);
       setManualSpatialMap(false);
+      setWorldSpatialMap(false);
       setSpatialTemplatePickerOpen(false);
     },
     [localizeUi],
@@ -1376,6 +1389,7 @@ export function GameSetupWizard({
       );
       setManualSpatialMap(false);
       setTemplateSpatialMap(false);
+      setWorldSpatialMap(false);
       setSpatialTemplateSelection(null);
       setSpatialTemplatePickerOpen(false);
       setSpatialMapDraftSize(importedSpatialMapDraftOptions.size);
@@ -1448,7 +1462,9 @@ export function GameSetupWizard({
           ? spatialMapInstructions.trim() || undefined
           : undefined,
       gameWorldMapMode:
-        enableAgents && hierarchicalMapsInstalled && (draftSpatialMap || manualSpatialMap || templateSpatialMap)
+        enableAgents &&
+        hierarchicalMapsInstalled &&
+        (draftSpatialMap || manualSpatialMap || templateSpatialMap || (worldSpatialMap && checkedWorld?.ok))
           ? "hierarchical"
           : "standard",
       spatialMapDraftSize:
@@ -1603,24 +1619,33 @@ export function GameSetupWizard({
         shareLabels: buildSetupShareLabels(),
       },
       gameName.trim() || undefined,
-      enableAgents && hierarchicalMapsInstalled && draftSpatialMap
+      enableAgents && hierarchicalMapsInstalled && worldSpatialMap && checkedWorld?.ok && checkedWorldKit?.ok
         ? {
-            mode: "ai" as const,
-            size: spatialMapDraftSize,
-            targetLocationCount: spatialMapTargetLocationCount,
-            groundingMode: spatialMapGroundingMode,
-            sourceLorebookIds: spatialMapGroundingMode === "setup" ? [] : activeLorebookIds,
-            instructions: spatialMapInstructions.trim() || undefined,
+            mode: "world" as const,
+            draft: worldSpatialDraft({
+              kit: checkedWorldKit.kit,
+              ...checkedWorld.world,
+              world: compileGameWorld({ kit: checkedWorldKit.kit, ...checkedWorld.world }),
+            }),
           }
-        : enableAgents && hierarchicalMapsInstalled && manualSpatialMap
-          ? { mode: "manual" as const }
-          : enableAgents && hierarchicalMapsInstalled && templateSpatialMap
-            ? spatialTemplateSelection
-              ? spatialTemplateSelection.kind === "shared-world"
-                ? { mode: "shared-world" as const, selection: spatialTemplateSelection }
-                : { mode: "template" as const, selection: spatialTemplateSelection }
-              : undefined
-            : undefined,
+        : enableAgents && hierarchicalMapsInstalled && draftSpatialMap
+          ? {
+              mode: "ai" as const,
+              size: spatialMapDraftSize,
+              targetLocationCount: spatialMapTargetLocationCount,
+              groundingMode: spatialMapGroundingMode,
+              sourceLorebookIds: spatialMapGroundingMode === "setup" ? [] : activeLorebookIds,
+              instructions: spatialMapInstructions.trim() || undefined,
+            }
+          : enableAgents && hierarchicalMapsInstalled && manualSpatialMap
+            ? { mode: "manual" as const }
+            : enableAgents && hierarchicalMapsInstalled && templateSpatialMap
+              ? spatialTemplateSelection
+                ? spatialTemplateSelection.kind === "shared-world"
+                  ? { mode: "shared-world" as const, selection: spatialTemplateSelection }
+                  : { mode: "template" as const, selection: spatialTemplateSelection }
+                : undefined
+              : undefined,
     );
   };
 
@@ -3484,6 +3509,41 @@ export function GameSetupWizard({
                       <MapIcon size={12} className="mr-1 inline" />
                       {localizeUi("ui.game.gamesetupwizard.hierarchicalWorldMap")}
                     </label>
+                    {checkedWorld?.ok && (
+                      <button
+                        type="button"
+                        aria-pressed={worldSpatialMap}
+                        onClick={() => {
+                          setWorldSpatialMap((enabled) => !enabled);
+                          setDraftSpatialMap(false);
+                          setManualSpatialMap(false);
+                          setTemplateSpatialMap(false);
+                          setSpatialTemplateSelection(null);
+                        }}
+                        className={cn(
+                          "mb-2 flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left transition-all",
+                          worldSpatialMap
+                            ? "bg-[var(--primary)]/10 ring-1 ring-[var(--primary)]/30"
+                            : "bg-[var(--secondary)] ring-1 ring-transparent hover:ring-[var(--border)]",
+                        )}
+                      >
+                        <span className="flex min-w-0 flex-1 items-center gap-2.5">
+                          <Globe2
+                            size={14}
+                            className={worldSpatialMap ? "text-[var(--primary)]" : "text-[var(--muted-foreground)]"}
+                          />
+                          <span className="min-w-0">
+                            <span className="block text-xs font-medium text-[var(--foreground)]">
+                              {localizeUi("game.world.atlas.fromTheWorld")}
+                            </span>
+                            <span className="block text-[0.575rem] leading-relaxed text-[var(--muted-foreground)]">
+                              {localizeUi("game.world.atlas.fromTheWorldHelp")}
+                            </span>
+                          </span>
+                        </span>
+                        <SettingsSwitchTrack checked={worldSpatialMap} />
+                      </button>
+                    )}
                     <button
                       type="button"
                       aria-pressed={draftSpatialMap}
@@ -3491,6 +3551,7 @@ export function GameSetupWizard({
                         setDraftSpatialMap((enabled) => !enabled);
                         setManualSpatialMap(false);
                         setTemplateSpatialMap(false);
+                        setWorldSpatialMap(false);
                         setSpatialTemplateSelection(null);
                       }}
                       className={cn(
@@ -3524,6 +3585,7 @@ export function GameSetupWizard({
                         setManualSpatialMap((enabled) => !enabled);
                         setDraftSpatialMap(false);
                         setTemplateSpatialMap(false);
+                        setWorldSpatialMap(false);
                         setSpatialTemplateSelection(null);
                       }}
                       className={cn(

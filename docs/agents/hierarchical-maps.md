@@ -135,6 +135,16 @@ During Game setup, choose World Maps and then select one of its setup routes:
 - **Create with AI** prepares a generated hierarchy for review.
 - **Use template** opens the world library before the Game is created.
 - **Build manually** starts with an editable blank hierarchy.
+- **From the world**, offered when the Game makes a world (see
+  [Making a world](../game/getting-started.md#making-a-world)), lays that world
+  out as the map: its regions, settlements and places in their own tree, and the
+  ways between them with their travel times, for review before it is saved. It
+  needs no model call, and the map's places are the world's, so the two agree.
+  In play the two stay one: where the map has the party is the place the
+  Game Master's world block and markets use, and a world place the Game Master
+  names moves the map there: by the shortest route with World Maps 1.6.0 or
+  later, and only when it is one step away (a place inside, the place around it,
+  or a place a way links to) with earlier versions.
 
 After choosing **Use template**, the picker shows **Shared worlds** first and
 **Independent templates** second:

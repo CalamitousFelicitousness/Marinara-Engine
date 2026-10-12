@@ -54,6 +54,7 @@ import { combatDirectorRoutes } from "./combat-director.routes.js";
 import { gameInventoryRoutes } from "./game-inventory.routes.js";
 import { gameAssetsRoutes } from "./game-assets.routes.js";
 import { gameRulesetsRoutes } from "./game-rulesets.routes.js";
+import { gameTilePacksRoutes } from "./game-tile-packs.routes.js";
 import { turnGamesRoutes } from "./turn-games.routes.js";
 import { sidecarRoutes } from "./sidecar.routes.js";
 import { ttsRoutes } from "./tts.routes.js";
@@ -153,6 +154,7 @@ export async function registerRoutes(app: FastifyInstance) {
   await app.register(gameInventoryRoutes, { prefix: "/api/game/inventory" });
   await app.register(gameAssetsRoutes, { prefix: "/api/game-assets" });
   await app.register(gameRulesetsRoutes, { prefix: "/api/game-rulesets" });
+  await app.register(gameTilePacksRoutes, { prefix: "/api/game-tile-packs" });
   await app.register(turnGamesRoutes, { prefix: "/api/turn-games" });
   await app.register(ttsRoutes, { prefix: "/api/tts" });
   await app.register(speechToTextRoutes, { prefix: "/api/speech-to-text" });

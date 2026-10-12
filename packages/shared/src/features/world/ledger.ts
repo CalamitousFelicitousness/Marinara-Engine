@@ -491,11 +491,14 @@ export function worldLedgerInstructions(game: GameWorld): string {
   ].join("\n");
 }
 
-const RENOWN_WORDS: Array<[number, string]> = [
-  [20, "famous"],
-  [8, "known in the region"],
-  [3, "known locally"],
-  [0, "unknown"],
+/** How widely the party is known, as bands the screen names in its own language (worldgen W7). */
+export const WORLD_RENOWN_BANDS = Object.freeze(["famous", "regional", "local", "unknown"] as const);
+export type WorldRenownBand = (typeof WORLD_RENOWN_BANDS)[number];
+const RENOWN_WORDS: Array<[number, WorldRenownBand, string]> = [
+  [20, "famous", "famous"],
+  [8, "regional", "known in the region"],
+  [3, "local", "known locally"],
+  [0, "unknown", "unknown"],
 ];
 
 /** How widely the party is known: its deeds, and three for each place it took for a group that still
@@ -509,6 +512,11 @@ export function worldRenown(present: WorldPresent): number {
 
 /** How widely the party is known, in words. */
 export function worldRenownWord(renown: number): string {
+  return RENOWN_WORDS.find(([floor]) => renown >= floor)![2];
+}
+
+/** How widely the party is known, as a band. */
+export function worldRenownBand(renown: number): WorldRenownBand {
   return RENOWN_WORDS.find(([floor]) => renown >= floor)![1];
 }
 
@@ -557,16 +565,24 @@ export function worldBrewingNear(
   });
 }
 
-const STANDING_WORDS: Array<[number, string]> = [
-  [50, "trusted"],
-  [15, "on good terms"],
-  [-14, "neither"],
-  [-49, "on bad terms"],
-  [-100, "enemies"],
+/** The party's standing with a group, as bands the screen names in its own language (worldgen W7). */
+export const WORLD_STANDING_BANDS = Object.freeze(["trusted", "good", "neither", "bad", "enemies"] as const);
+export type WorldStandingBand = (typeof WORLD_STANDING_BANDS)[number];
+const STANDING_WORDS: Array<[number, WorldStandingBand, string]> = [
+  [50, "trusted", "trusted"],
+  [15, "good", "on good terms"],
+  [-14, "neither", "neither"],
+  [-49, "bad", "on bad terms"],
+  [-100, "enemies", "enemies"],
 ];
 
 /** The party's standing with a group, in words. */
 export function worldStandingWord(standing: number): string {
+  return STANDING_WORDS.find(([floor]) => standing >= floor)![2];
+}
+
+/** The party's standing with a group, as a band. */
+export function worldStandingBand(standing: number): WorldStandingBand {
   return STANDING_WORDS.find(([floor]) => standing >= floor)![1];
 }
 

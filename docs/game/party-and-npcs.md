@@ -143,6 +143,7 @@ Open **Session** (see [Opening Session](sessions-and-saves.md#opening-session)),
 - **Items**: a log of items you acquired, used, lost, or removed.
 - **Library**: in-world notes and books the Game Master has shown you, saved so you can read them again.
 - **Notes**: your own free-text notepad.
+- **World**: in a game with a generated world, the world as your party knows it: where you are, how well known the party is, its standing with each group it has dealt with, what it has done, the news that has reached it (rumours marked), trouble brewing that it has heard of, and the past any local would tell. It shows only what the party could know, never what only the Game Master knows, and follows the story through swipes and branches.
 
 ### Player notes
 

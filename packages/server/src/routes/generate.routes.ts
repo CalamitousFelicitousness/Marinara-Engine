@@ -180,6 +180,7 @@ import { isHierarchicalMapsEnabledForChat } from "../services/spatial-context/ac
 import {
   createAssistantSpatialDirectiveStreamFilter,
   extractAssistantSpatialDirective,
+  parseStoredSpatialDefinition,
   materializeAssistantSpatialState,
 } from "../services/spatial-context/state-resolution.js";
 import { createConnectionsStorage } from "../services/storage/connections.storage.js";
@@ -193,6 +194,7 @@ import {
   gameWorldFromMetadata,
   worldKitSize,
   worldPlaceByName,
+  worldPlaceInForce,
   worldPlaceForTag,
   worldWhereYouAreText,
   worldPeopleNamed,
@@ -206,6 +208,17 @@ import {
   worldPresent,
   worldAddedPlace,
   type WorldPresent,
+  worldWalkFromMetadata,
+  worldWalkSchema,
+  worldWalkTags,
+  worldWalkText,
+  type WorldWalk,
+  worldTown,
+  worldTownVisitFromMetadata,
+  worldTownVisitSchema,
+  worldTownVisitTags,
+  worldTownVisitText,
+  type WorldTownVisit,
   lastGamePlace,
   rulesetMarketPlace,
   rulesetMarketPromptText,
@@ -613,6 +626,7 @@ import {
   shouldSuppressAssistantSpatialMutation,
   validateSpatialGenerationRequest,
 } from "./generate/spatial-transition-request.js";
+import { addMinutes, createInitialTime, formatGameTime, type GameTime } from "../services/game/time.service.js";
 import { runTurnGameBotTurns } from "../services/turn-games/turn-game-bot-runner.service.js";
 import { getTurnGameContextBuilder } from "../services/turn-games/turn-game-runner.service.js";
 import { getCapabilityService } from "../services/capability-packages/capability-service-registry.service.js";
@@ -1937,6 +1951,32 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             : { acceptedTravel: acceptedSpatialTravel },
         chatMeta,
       );
+      // The walk this turn tells (worldgen W8): a regeneration tells its reply's own again, else a new
+      // turn tells the walk the game has pending. A continuation and the player's own turn tell none.
+      const turnWalkPromise: Promise<WorldWalk | null> =
+        chatMode === "game" && !input.impersonate && !input.continueMessageId
+          ? (async () => {
+              if (input.regenerateMessageId) {
+                const replaced = await chats.getMessage(input.regenerateMessageId);
+                const own = worldWalkSchema.safeParse(parseExtra(replaced?.extra).worldWalk);
+                if (own.success) return own.data;
+              }
+              return worldWalkFromMetadata(chatMeta);
+            })()
+          : Promise.resolve(null);
+      // The visit in town this turn tells (worldgen W8b), as the walk is told.
+      const turnVisitPromise: Promise<WorldTownVisit | null> =
+        chatMode === "game" && !input.impersonate && !input.continueMessageId
+          ? (async () => {
+              if (input.regenerateMessageId) {
+                const replaced = await chats.getMessage(input.regenerateMessageId);
+                const own = worldTownVisitSchema.safeParse(parseExtra(replaced?.extra).worldTownVisit);
+                if (own.success) return own.data;
+              }
+              return worldTownVisitFromMetadata(chatMeta);
+            })()
+          : Promise.resolve(null);
+      const turnHour = Number((chatMeta.gameTime as { hour?: unknown } | undefined)?.hour ?? 8) || 0;
       const rawSelectedGameStateSnapshotPromise = gameStateStore.getForGeneration(
         input.chatId,
         gameStateGenerationOptions,
@@ -4802,7 +4842,39 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           const promptRepliesAll = () =>
             (promptRepliesRead ??= gameRepliesBefore(app.db, input.chatId, input.regenerateMessageId ?? null));
           const promptReplies = async () => (await promptRepliesAll()).scoped;
-          const promptPlace = async () => lastGamePlace(await promptReplies());
+          // The place in force: the map's location when the game's atlas puts the party at a world place
+          // (worldgen W7), else the place the replies last named.
+          const promptPlace = async () => {
+            const ladder = (
+              pinnedGameRuleset?.status === "ok"
+                ? pinnedGameRuleset.definition.items?.market
+                : promptKitItems?.definition.items?.market
+            )?.places;
+            // A walk this turn tells has taken the party where it walked (worldgen W8).
+            const walk = promptWorld ? await turnWalkPromise : null;
+            // A visit in town to a named place there, or else a walk, has taken the party where it went; a
+            // visit in a town the party has since walked away from does not.
+            const visit = promptWorld ? await turnVisitPromise : null;
+            const visited =
+              visit && (!walk || visit.settlementId === walk.to)
+                ? worldTown(
+                    promptWorld!,
+                    visit.settlementId,
+                    worldPresent(promptWorld!, readWorldLedger((await promptRepliesAll()).all)),
+                  )?.buildings.find((building) => building.id === visit.to)
+                : undefined;
+            if (visited?.placeId && visited.name) {
+              return worldPlaceForTag(promptWorld!, visited.name, ladder) ?? { name: visited.name };
+            }
+            const walkedTo = walk ? promptWorld!.world.places.find((place) => place.id === walk.to) : undefined;
+            if (walkedTo) return worldPlaceForTag(promptWorld!, walkedTo.name, ladder) ?? { name: walkedTo.name };
+            return worldPlaceInForce(
+              promptWorld,
+              lastGamePlace(await promptReplies()),
+              (await ownerSpatialProjectionPromise)?.currentLocationId,
+              ladder,
+            );
+          };
           // Where the party is in the game's world (worldgen W1): the place last said, when the world
           // lists it, else where the world starts the party until the Game Master says.
           const promptWorld = gameWorldFromMetadata(chatMeta);
@@ -4817,16 +4889,28 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 // The world as the story has left it (worldgen W4): the ledger in all the replies.
                 const present = worldPresent(promptWorld, readWorldLedger((await promptRepliesAll()).all));
                 const before = await promptPlace();
+                const walk = await turnWalkPromise;
+                const visit = await turnVisitPromise;
+                const visitTown = visit ? worldTown(promptWorld, visit.settlementId, present) : null;
+                // In the order they happened: a visit in a town the party then walked away from comes first.
+                const walkLine = walk ? `${worldWalkText(promptWorld, walk)}\n` : "";
+                const visitLine =
+                  visit && visitTown ? `${worldTownVisitText(promptWorld, visitTown, visit, turnHour)}\n` : "";
+                const walked =
+                  walk && visit && visit.settlementId !== walk.to ? visitLine + walkLine : walkLine + visitLine;
                 if (!before?.name) {
                   const start = promptWorld.world.places.find((place) => place.id === promptWorld.world.startId);
-                  return worldWhereYouAreText(promptWorld, { place: start, met: promptMet, present });
+                  return walked + worldWhereYouAreText(promptWorld, { place: start, met: promptMet, present });
                 }
-                return worldWhereYouAreText(promptWorld, {
-                  place: worldPlaceByName(promptWorld.world, before.name),
-                  name: before.name,
-                  met: promptMet,
-                  present,
-                });
+                return (
+                  walked +
+                  worldWhereYouAreText(promptWorld, {
+                    place: worldPlaceByName(promptWorld.world, before.name),
+                    name: before.name,
+                    met: promptMet,
+                    present,
+                  })
+                );
               })()
             : undefined;
           // The past the Game Master asked for in its last reply (worldgen W3).
@@ -9803,6 +9887,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           // in. A name the world lists takes its size from the world (worldgen W1).
           let turnPlace: GamePlace | null = null;
           let turnPlaceBefore: GamePlace | null = null;
+          let turnToldWalk: WorldWalk | null = null;
+          let turnToldVisit: WorldTownVisit | null = null;
+          let turnClockDays = 0;
           // A game with no ruleset has its setting kit's market (worldgen W6b).
           const turnKitItems =
             chatMode === "game" && !input.impersonate && chatMeta.gameRuleset == null
@@ -9816,12 +9903,43 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           let turnPresent: WorldPresent | undefined;
           if (turnMarket || turnWorld) {
             const replies = await gameRepliesBefore(app.db, input.chatId, input.regenerateMessageId ?? null);
-            turnPlace = lastGamePlace(replies.scoped);
+            turnPlace = worldPlaceInForce(
+              turnWorld,
+              lastGamePlace(replies.scoped),
+              (await ownerSpatialProjectionPromise)?.currentLocationId,
+              turnMarket?.places,
+            );
             turnPlaceBefore = turnPlace;
             // What the reply does to the world (worldgen W4): each world tag answered in place against
             // the world as the replies before it left it, before its place tags, so a place it adds is
             // a place it can go.
             if (turnWorld) {
+              // The walk this turn tells (worldgen W8), its days and where it ended, then the visit in town
+              // (W8b), answered with the reply, so the world, the place and the map follow: a named place
+              // visited is where the reply leaves the party unless the Game Master's own place tags say
+              // otherwise. Never on a reply with nothing to tell.
+              const walk = await turnWalkPromise;
+              const visit = await turnVisitPromise;
+              const visitTown = visit
+                ? worldTown(turnWorld, visit.settlementId, worldPresent(turnWorld, readWorldLedger(replies.all)))
+                : null;
+              let walkTags = "";
+              let visitTags = "";
+              if (walk && fullResponse.trim()) {
+                walkTags = worldWalkTags(turnWorld, walk);
+                turnToldWalk = walk;
+              }
+              if (visit && visitTown && fullResponse.trim()) {
+                visitTags = worldTownVisitTags(visitTown, visit);
+                turnToldVisit = visit;
+              }
+              // In the order they happened, so the place the reply leaves the party in is the last one.
+              const told =
+                walk && visit && visit.settlementId !== walk.to ? visitTags + walkTags : walkTags + visitTags;
+              if (told) {
+                fullResponse = `${told}${fullResponse}`;
+                contentReplaced = true;
+              }
               const ledger = readWorldLedger(replies.all);
               if (/\[world:/i.test(fullResponse)) {
                 const answered = applyWorldTags(fullResponse, turnWorld, ledger);
@@ -9831,6 +9949,14 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 }
               }
               turnPresent = worldPresent(turnWorld, [...ledger, ...readWorldLedger([fullResponse])]);
+              // The days the Game Master's telling passed (not the walk's, already on the clock) move the
+              // game's clock, on a new turn: a regeneration does not move it again.
+              // ponytail: a regeneration that tells other days leaves the clock as the first telling set
+              // it (the HUD's day editor corrects it); per-reply clock deltas would undo and redo it.
+              if (!input.regenerateMessageId) {
+                const told = readWorldLedger([fullResponse]).reduce((sum, entry) => sum + (Number(entry.days) || 0), 0);
+                turnClockDays = Math.max(0, told - (turnToldWalk ? Math.round(turnToldWalk.days) : 0));
+              }
             }
             if (/\[place:/i.test(fullResponse)) {
               const placed = applyGamePlaceTags(
@@ -9843,6 +9969,21 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 contentReplaced = true;
               }
               if (placed.place) turnPlace = placed.place;
+              // The map follows the story (worldgen W7): a world place the reply names, when the game's
+              // atlas has it, is the reply's move on the map unless the reply made one of its own.
+              // A market game without a world answers place tags too, and has no world places to map.
+              const mapped =
+                turnWorld && placed.place?.name ? worldPlaceByName(turnWorld.world, placed.place.name) : undefined;
+              if (
+                mapped &&
+                hierarchicalMapsEnabledForChat &&
+                !assistantSpatialDirective &&
+                !shouldSuppressAssistantSpatialMutation(input) &&
+                // By id alone, as the place in force reads the map: the player may rename it.
+                parseStoredSpatialDefinition(chatMeta)?.locations.some((location) => location.id === mapped.id)
+              ) {
+                assistantSpatialDirective = { type: "move", destinationId: mapped.id };
+              }
             }
           }
           // The past the reply asks for (worldgen W3): answered in place, carried on the next turn.
@@ -10349,6 +10490,49 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 : {}),
             });
             savedSwipeIndex = 0;
+          }
+          // The walk the reply told (worldgen W8) stays with it, so a regeneration tells it again, and is
+          // no longer pending; the days the Game Master's telling passed go on the game's clock.
+          if (savedMsg?.id && (turnToldWalk || turnToldVisit || turnClockDays > 0)) {
+            try {
+              // Cleared first, so a failed write never leaves a told walk pending to be told twice.
+              let clock: GameTime | undefined;
+              await chats.patchMetadata(input.chatId, (fresh) => ({
+                ...(turnToldWalk && worldWalkFromMetadata(fresh)?.id === turnToldWalk.id
+                  ? { gameWorldWalk: null }
+                  : {}),
+                ...(turnToldVisit && worldTownVisitFromMetadata(fresh)?.id === turnToldVisit.id
+                  ? { gameTownVisit: null }
+                  : {}),
+                ...(turnClockDays > 0
+                  ? {
+                      gameTime: (clock = addMinutes(
+                        (fresh.gameTime as GameTime) ?? createInitialTime(),
+                        turnClockDays * 24 * 60,
+                      )),
+                    }
+                  : {}),
+              }));
+              if (turnToldWalk || turnToldVisit) {
+                await chats.updateMessageExtra(savedMsg.id, {
+                  ...(turnToldWalk ? { worldWalk: turnToldWalk } : {}),
+                  ...(turnToldVisit ? { worldTownVisit: turnToldVisit } : {}),
+                });
+              }
+              const latest = clock ? await gameStateStore.getLatest(input.chatId) : null;
+              if (clock && latest) {
+                await gameStateStore.updateLatest(
+                  input.chatId,
+                  applyTrackerFieldLocksToGameStatePatch(
+                    { time: formatGameTime(clock) },
+                    parseGameStateRow(latest as Record<string, unknown>),
+                  ) as any,
+                );
+              }
+            } catch (err) {
+              // The reply is saved either way: a failed write is logged, never the turn's failure.
+              logger.error(err, "[generate] Overworld walk and clock update failed for chat %s", input.chatId);
+            }
           }
           // Empty messageId on the paths that save no message; that costs the claim, never the effect.
           // ── Inventory tags: the stacks, the turn's record, and the detailed inventory on its row ──

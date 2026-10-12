@@ -126,6 +126,7 @@ import {
 } from "../services/game/world-map-mode.js";
 import { resolveCombatRound, type CombatantStats } from "../services/game/combat.service.js";
 import {
+  addMinutes,
   advanceTime,
   formatGameTime,
   createInitialTime,
@@ -226,6 +227,25 @@ import {
   worldAssetsForFamily,
   gameWorldSchema,
   gameWorldFromMetadata,
+  lastGamePlace,
+  readWorldLedger,
+  worldJournal,
+  worldPlaceInForce,
+  worldPresent,
+  worldOverworldHere,
+  worldRoute,
+  worldWalkFromMetadata,
+  worldWalkJoined,
+  worldTown,
+  worldTownDoor,
+  worldTownMinutes,
+  worldTownSpotFromMetadata,
+  worldTownVisitFromMetadata,
+  worldPlaceByName,
+  worldAddedPlace,
+  type WorldTownVisit,
+  type GameWorld,
+  type WorldWalk,
   worldBriefSchema,
   WORLD_GROUNDINGS,
   readReputationTags,
@@ -406,6 +426,7 @@ import {
   playGameSpotifyTrack,
 } from "../services/spotify/game-spotify-music.service.js";
 import { loadGameFightItems, loadGameInventoryItemBook } from "../services/game/game-inventory.service.js";
+import { gameRepliesBefore } from "../services/game/game-market.service.js";
 import { rollGameFightItemGate } from "../services/game/game-item-use.service.js";
 import {
   normalizeIllustratorAppearance,
@@ -10622,11 +10643,20 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
 
   // ── POST /game/time/advance ──
   app.post("/time/advance", async (req) => {
-    const schema = z.object({
-      chatId: z.string().min(1),
-      action: z.string().min(1).max(50),
-    });
-    const { chatId, action } = schema.parse(req.body);
+    // An action's span, or (the overworld's real time, worldgen W8) a number of minutes.
+    const schema = z.union([
+      z.object({ chatId: z.string().min(1), action: z.string().min(1).max(50) }),
+      z.object({
+        chatId: z.string().min(1),
+        minutes: z
+          .number()
+          .int()
+          .min(1)
+          .max(24 * 60),
+      }),
+    ]);
+    const body = schema.parse(req.body);
+    const { chatId } = body;
     const chats = createChatsStorage(app.db);
     const chat = await chats.getById(chatId);
     if (!chat) throw new Error("Chat not found");
@@ -10639,7 +10669,12 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     let newTime: GameTime | undefined;
     const updated = await chats.patchMetadata(chatId, (freshMeta) => {
       const currentTime = (freshMeta.gameTime as GameTime) ?? createInitialTime();
-      newTime = isTimeOfDayLabel(action) ? setTimeOfDay(currentTime, action) : advanceTime(currentTime, action);
+      newTime =
+        "minutes" in body
+          ? addMinutes(currentTime, body.minutes)
+          : isTimeOfDayLabel(body.action)
+            ? setTimeOfDay(currentTime, body.action)
+            : advanceTime(currentTime, body.action);
       return { gameTime: newTime };
     });
     if (!updated || !newTime) throw new Error("Chat not found");
@@ -10833,6 +10868,160 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
   // Whether this server lets players make Overworld games (MARINARA_OVERWORLD_GAMES); the wizard greys the
   // setting kit and world out when it does not.
   app.get("/overworld", async () => ({ enabled: isOverworldGamesEnabled() }));
+
+  // ── GET /game/:chatId/world-journal ──
+  // The world as the party knows it (worldgen W7), folded from the replies exactly as a turn folds it:
+  // the ledger from all of them, the party's place from the ones the Game Master last read.
+  app.get<{ Params: { chatId: string } }>("/:chatId/world-journal", async (req, reply) => {
+    const chat = await createChatsStorage(app.db).getById(req.params.chatId);
+    if (!chat) return reply.status(404).send({ error: "Chat not found" });
+    const meta = parseMeta(chat.metadata);
+    const world = gameWorldFromMetadata(meta);
+    if (!world) return { journal: null };
+    const replies = await gameRepliesBefore(app.db, req.params.chatId);
+    // The place in force, as a turn reads it: the map's location when it is a world place (worldgen W7).
+    const place = worldPlaceInForce(
+      world,
+      lastGamePlace(replies.scoped),
+      (await resolveOwnerSpatialProjection(req.params.chatId, {}, meta))?.currentLocationId,
+    );
+    return {
+      journal: worldJournal(world, worldPresent(world, readWorldLedger(replies.all)), { name: place?.name }),
+    };
+  });
+
+  // ── The overworld (worldgen W8) ──
+  // Where the party is on it: where a walk it has pending took it, else the settlement of the place in
+  // force, as a turn reads it.
+  const overworldPlace = async (chatId: string, meta: Record<string, unknown>, world: GameWorld) => {
+    const replies = await gameRepliesBefore(app.db, chatId);
+    const present = worldPresent(world, readWorldLedger(replies.all));
+    const walk = worldWalkFromMetadata(meta);
+    if (walk) return { here: walk.to, walk, present, placeName: undefined };
+    const place = worldPlaceInForce(
+      world,
+      lastGamePlace(replies.scoped),
+      (await resolveOwnerSpatialProjection(chatId, {}, meta))?.currentLocationId,
+    );
+    return {
+      here: worldOverworldHere(world, present, place?.name)?.id ?? null,
+      walk: null,
+      present,
+      placeName: place?.name,
+    };
+  };
+
+  // ── The town the party is in (worldgen W8b) ──
+  // Laid out from the world, with where in it the party stands: where it last walked to there, else the
+  // building of the place in force when that is a place in town, else the square.
+  const townOf = async (chatId: string, meta: Record<string, unknown>, world: GameWorld) => {
+    const { here, present, placeName } = await overworldPlace(chatId, meta, world);
+    const town = here ? worldTown(world, here, present) : null;
+    if (!town) return null;
+    const spot = worldTownSpotFromMetadata(meta);
+    const named = placeName
+      ? (worldPlaceByName(world.world, placeName)?.id ?? worldAddedPlace(world, present, placeName)?.place.id)
+      : undefined;
+    const at =
+      (spot?.settlementId === town.settlementId && worldTownDoor(town, spot.at) ? spot.at : undefined) ??
+      town.buildings.find((building) => named && building.placeId === named)?.id ??
+      "square";
+    const visit = worldTownVisitFromMetadata(meta);
+    return { town, at, visit: visit?.settlementId === town.settlementId ? visit : null, pending: visit };
+  };
+
+  // ── GET /game/:chatId/town ──
+  app.get<{ Params: { chatId: string } }>("/:chatId/town", async (req, reply) => {
+    const chat = await createChatsStorage(app.db).getById(req.params.chatId);
+    if (!chat) return reply.status(404).send({ error: "Chat not found" });
+    const meta = parseMeta(chat.metadata);
+    const world = chat.mode === "game" ? gameWorldFromMetadata(meta) : null;
+    const found = world ? await townOf(req.params.chatId, meta, world) : null;
+    return { town: found ? { ...found.town, at: found.at, visit: found.visit } : null };
+  });
+
+  // ── POST /game/:chatId/town/visit ──
+  // A walk across town to a building or the square: its minutes on the game's clock, where the party
+  // stands kept, and the visit kept for the next turn to tell the Game Master.
+  app.post<{ Params: { chatId: string } }>("/:chatId/town/visit", async (req, reply) => {
+    const { chatId } = req.params;
+    const { to } = z.object({ to: z.string().min(1).max(16) }).parse(req.body);
+    const chats = createChatsStorage(app.db);
+    const chat = await chats.getById(chatId);
+    if (!chat) return reply.status(404).send({ error: "Chat not found" });
+    const meta = parseMeta(chat.metadata);
+    const world = chat.mode === "game" ? gameWorldFromMetadata(meta) : null;
+    const found = world ? await townOf(chatId, meta, world) : null;
+    if (!found) return reply.status(400).send({ error: "The party is not in a town." });
+    if (!worldTownDoor(found.town, to)) return reply.status(400).send({ error: "No such place in this town." });
+    if (to === found.at) return reply.status(400).send({ error: "The party is already there." });
+    const minutes = worldTownMinutes(found.town, found.at, to);
+    let visit: WorldTownVisit | undefined;
+    let time: GameTime | undefined;
+    const updated = await chats.patchMetadata(chatId, (fresh) => {
+      // A turn told the visit, or another visit landed, since the town was read.
+      if ((worldTownVisitFromMetadata(fresh)?.id ?? null) !== (found.pending?.id ?? null)) {
+        throw Object.assign(new Error("The party has moved since; try again."), { statusCode: 409 });
+      }
+      visit = {
+        id: randomUUID(),
+        settlementId: found.town.settlementId,
+        to,
+        minutes: (found.visit?.minutes ?? 0) + minutes,
+      };
+      time = addMinutes((fresh.gameTime as GameTime) ?? createInitialTime(), minutes);
+      return { gameTownVisit: visit, gameTownSpot: { settlementId: found.town.settlementId, at: to }, gameTime: time };
+    });
+    if (!updated || !visit || !time) return reply.status(404).send({ error: "Chat not found" });
+    await updateLatestGameStateWithTrackerLocks(createGameStateStorage(app.db), chatId, {
+      time: formatGameTime(time),
+    });
+    return { visit, at: to, minutes, time, formatted: formatGameTime(time) };
+  });
+
+  // ── GET /game/:chatId/overworld ──
+  app.get<{ Params: { chatId: string } }>("/:chatId/overworld", async (req, reply) => {
+    const chat = await createChatsStorage(app.db).getById(req.params.chatId);
+    if (!chat) return reply.status(404).send({ error: "Chat not found" });
+    const meta = parseMeta(chat.metadata);
+    const world = chat.mode === "game" ? gameWorldFromMetadata(meta) : null;
+    if (!world) return { overworld: null };
+    const { here, walk, present } = await overworldPlace(req.params.chatId, meta, world);
+    return { overworld: { here, walk, ruined: present.ruined } };
+  });
+
+  // ── POST /game/:chatId/overworld/walk ──
+  // A walk to a settlement along the world's ways: its route and days read here, never the client's, the
+  // days passed on the game's clock, and the walk kept for the next turn to tell the Game Master.
+  app.post<{ Params: { chatId: string } }>("/:chatId/overworld/walk", async (req, reply) => {
+    const { chatId } = req.params;
+    const { to } = z.object({ to: z.string().min(1).max(16) }).parse(req.body);
+    const chats = createChatsStorage(app.db);
+    const chat = await chats.getById(chatId);
+    if (!chat) return reply.status(404).send({ error: "Chat not found" });
+    const meta = parseMeta(chat.metadata);
+    const world = chat.mode === "game" ? gameWorldFromMetadata(meta) : null;
+    if (!world) return reply.status(400).send({ error: "This game has no world." });
+    const { here, walk } = await overworldPlace(chatId, meta, world);
+    const route = here ? worldRoute(world.world, here, to) : null;
+    if (!route) return reply.status(400).send({ error: "No way leads there from where the party is." });
+    let walked: WorldWalk | undefined;
+    let time: GameTime | undefined;
+    const updated = await chats.patchMetadata(chatId, (fresh) => {
+      // A turn told the walk, or another walk landed, since the route was read: the party is elsewhere.
+      if ((worldWalkFromMetadata(fresh)?.id ?? null) !== (walk?.id ?? null)) {
+        throw Object.assign(new Error("The party has moved since; try again."), { statusCode: 409 });
+      }
+      walked = worldWalkJoined(walk, route, randomUUID());
+      time = addMinutes((fresh.gameTime as GameTime) ?? createInitialTime(), Math.round(route.days * 24 * 60));
+      return { gameWorldWalk: walked, gameTime: time };
+    });
+    if (!updated || !walked || !time) return reply.status(404).send({ error: "Chat not found" });
+    await updateLatestGameStateWithTrackerLocks(createGameStateStorage(app.db), chatId, {
+      time: formatGameTime(time),
+    });
+    return { walk: walked, route, time, formatted: formatGameTime(time) };
+  });
 
   // ── PUT /game/:chatId/journal/entries/:entryIndex ──
   app.put<{ Params: { chatId: string; entryIndex: string } }>(

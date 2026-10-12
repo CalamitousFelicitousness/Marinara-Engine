@@ -420,6 +420,7 @@ const BUILT_IN_FILE_BACKED_TABLES = [
   "game_turn_storyboard_keyframes",
   "game_dice_pools",
   "game_rulesets",
+  "game_tile_packs",
   "regex_scripts",
   "chat_images",
   "character_images",

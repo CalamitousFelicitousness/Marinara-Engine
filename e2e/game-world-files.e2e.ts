@@ -10,6 +10,7 @@ import {
   worldFile,
   worldKitFile,
 } from "@marinara-engine/shared";
+import { openChatTool } from "./chat-settings-tools.js";
 import { openGame } from "./game-ruleset-fight-fixture.js";
 import { seedUIState } from "./ui-state-fixture.js";
 import { prepareViteFixtureDependencies } from "./vite-fixture-dependencies.js";
@@ -186,12 +187,12 @@ test("a game's world downloads from its World tab, hand edits and all", async ({
     });
     expect(meta.ok(), await meta.text()).toBeTruthy();
     await openGame(page, chatId);
-    const actions = page.getByRole("button", { name: "Game actions", exact: true });
-    const session = page.getByRole("button", { name: "Session", exact: true });
-    await expect(actions.or(session).first()).toBeVisible({ timeout: 40_000 });
-    if (await actions.isVisible()) await actions.click();
-    await session.click();
-    await page.getByRole("button", { name: "Journal", exact: true }).click();
+    // The Session window's journal, opened from its bubble (or the phone's Chat tools menu).
+    await expect(
+      page.locator('.mari-window-bubble[data-window="control:session"], [data-chat-tools-menu-button]').first(),
+    ).toBeVisible({ timeout: 40_000 });
+    const session = await openChatTool(page, "control:session");
+    await session.getByRole("button", { name: "Journal", exact: true }).click();
     await page.getByRole("button", { name: "World", exact: true }).click();
     const downloaded = await download(page, () =>
       page.getByRole("button", { name: "Download the world", exact: true }).click(),

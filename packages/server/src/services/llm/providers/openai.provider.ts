@@ -129,6 +129,51 @@ function createPrefixEchoFilter(prefix: string | undefined): { push(text: string
   };
 }
 
+/**
+ * The error strict chat templates raise for consecutive same-role messages, e.g. Mistral's "After the optional system
+ * message, conversation roles must alternate user/assistant/..." (llama.cpp and vLLM pass it through), or Gemma's.
+ */
+const ROLE_ALTERNATION_ERROR = /\b(?:roles?|messages?|turns?)\b[^\n]{0,80}?\bmust\s+(?:strictly\s+)?alternate\b/i;
+const ROLE_ALTERNATION_HINT =
+  " This model's chat template needs user and assistant messages to take turns, and Marinara could not make this request fit. Set Post-Processing Messages to Single User Message, or serve the model with a less strict chat template.";
+
+type ChatCompletionsWireMessage = Record<string, unknown> & { role?: unknown; content?: unknown };
+
+function joinWireContent(first: unknown, second: unknown): unknown {
+  if (typeof first === "string" && typeof second === "string") return [first, second].filter(Boolean).join("\n\n");
+  const parts = (content: unknown) =>
+    Array.isArray(content) ? content : typeof content === "string" && content ? [{ type: "text", text: content }] : [];
+  return [...parts(first), ...parts(second)];
+}
+
+/**
+ * Reshape Chat Completions messages for a strict chat template: one leading system message, then user and assistant
+ * turns that alternate, starting with user. Later system messages join the user turn around them; tool results and
+ * assistant tool calls are left as they are.
+ */
+function alternateWireMessageRoles(messages: ChatCompletionsWireMessage[]): ChatCompletionsWireMessage[] {
+  const isSystem = (message: ChatCompletionsWireMessage) => message.role === "system" || message.role === "developer";
+  const mergeable = (message: ChatCompletionsWireMessage) => message.role !== "tool" && !message.tool_calls;
+  const result: ChatCompletionsWireMessage[] = [];
+  for (const message of messages) {
+    const role = isSystem(message) && !result.every(isSystem) ? "user" : message.role;
+    const previous = result.at(-1);
+    if (previous?.role === role && mergeable(previous) && mergeable(message)) {
+      result[result.length - 1] = {
+        ...previous,
+        ...message,
+        role,
+        content: joinWireContent(previous.content, message.content),
+      };
+    } else {
+      result.push({ ...message, role });
+    }
+  }
+  const firstTurn = result.findIndex((message) => !isSystem(message));
+  if (result[firstTurn]?.role === "assistant") result.splice(firstTurn, 0, { role: "user", content: "[Start]" });
+  return result;
+}
+
 type ResponsesUsagePayload = {
   input_tokens?: number;
   output_tokens?: number;
@@ -660,6 +705,49 @@ export class OpenAIProvider extends BaseLLMProvider {
         ? " This custom endpoint rejected token streaming; disable token streaming and retry, or choose a model that supports streaming."
         : "";
     return `${this.chatCompletionsErrorLabel()} error ${status}: ${detail}${streamingHint}`;
+  }
+
+  /**
+   * POST a Chat Completions body and throw on an HTTP error. A strict chat template's rejection of consecutive
+   * same-role messages is retried once with them merged, so endpoints that accept the original request never see a
+   * change.
+   */
+  private async postChatCompletions(
+    url: string,
+    body: Record<string, unknown>,
+    stream: boolean,
+    signal: AbortSignal | undefined,
+  ): Promise<Response> {
+    const send = () =>
+      llmFetch(url, {
+        method: "POST",
+        headers: this.buildHeaders(),
+        body: JSON.stringify(body),
+        bufferResponse: !stream,
+        ...(signal ? { signal } : {}),
+      });
+    let response = await send();
+    if (response.ok) return response;
+    let errorText = await response.text();
+    if (ROLE_ALTERNATION_ERROR.test(errorText) && Array.isArray(body.messages)) {
+      const messages = alternateWireMessageRoles(body.messages);
+      if (JSON.stringify(messages) !== JSON.stringify(body.messages)) {
+        logger.warn(
+          "[OpenAI] %s requires alternating roles; retrying once with consecutive same-role messages merged",
+          this.chatCompletionsErrorLabel(),
+        );
+        logger.debug("[OpenAI] Role-alternation retry messages: %j", messages);
+        body.messages = messages;
+        response = await send();
+        if (response.ok) return response;
+        errorText = await response.text();
+      }
+    }
+    const hint = ROLE_ALTERNATION_ERROR.test(errorText) ? ROLE_ALTERNATION_HINT : "";
+    throw llmHttpErrorFromResponse(
+      `${this.formatChatCompletionsHttpError(response.status, errorText, stream)}${hint}`,
+      response,
+    );
   }
 
   private isGpt55Model(model: string): boolean {
@@ -1493,21 +1581,7 @@ export class OpenAIProvider extends BaseLLMProvider {
       Array.isArray(body.tools) ? body.tools.length : 0,
     );
 
-    const response = await llmFetch(url, {
-      method: "POST",
-      headers: this.buildHeaders(),
-      body: JSON.stringify(body),
-      bufferResponse: !effectiveStream,
-      ...(options.signal ? { signal: options.signal } : {}),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw llmHttpErrorFromResponse(
-        this.formatChatCompletionsHttpError(response.status, errorText, effectiveStream),
-        response,
-      );
-    }
+    const response = await this.postChatCompletions(url, body, effectiveStream, options.signal);
 
     if (!effectiveStream) {
       const json = await OpenAIProvider.parseJsonBody<Record<string, unknown>>(
@@ -1781,21 +1855,7 @@ export class OpenAIProvider extends BaseLLMProvider {
       !!options.onToken,
     );
 
-    const response = await llmFetch(url, {
-      method: "POST",
-      headers: this.buildHeaders(),
-      body: JSON.stringify(body),
-      bufferResponse: !useStream,
-      ...(options.signal ? { signal: options.signal } : {}),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw llmHttpErrorFromResponse(
-        this.formatChatCompletionsHttpError(response.status, errorText, useStream),
-        response,
-      );
-    }
+    const response = await this.postChatCompletions(url, body, useStream, options.signal);
 
     if (!useStream) {
       // Non-streaming path (no onToken callback)

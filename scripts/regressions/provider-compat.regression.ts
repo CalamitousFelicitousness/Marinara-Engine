@@ -4007,4 +4007,135 @@ try {
   }
 }
 
+// #7457: strict Mistral-family templates on llama.cpp reject consecutive same-role turns. The request is retried once
+// with the turns merged; endpoints that accept the original request never see a change.
+{
+  type WireMessage = { role: string; content: unknown; tool_calls?: unknown };
+  const strictTemplateBodies: Array<{ messages: WireMessage[]; stream?: boolean }> = [];
+  let enforceAlternation = true;
+  const strictTemplateServer = createServer(async (request, response) => {
+    const chunks: Buffer[] = [];
+    for await (const chunk of request) chunks.push(Buffer.from(chunk));
+    const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as (typeof strictTemplateBodies)[number];
+    strictTemplateBodies.push(body);
+    // The Mistral v3 Tekken template check: optional leading system, then user/assistant from user; tool turns skipped.
+    const turns = body.messages
+      .slice(body.messages[0]?.role === "system" ? 1 : 0)
+      .filter((message) => message.role !== "tool" && !message.tool_calls);
+    if (enforceAlternation && !turns.every((message, index) => (message.role === "user") === (index % 2 === 0))) {
+      response.writeHead(400, { "content-type": "application/json" });
+      response.end(
+        JSON.stringify({
+          error: {
+            code: 400,
+            message:
+              'Unable to generate parser for this template. Automatic parser generation failed: While executing CallExpression at line 18, column 32 raise_exception("After the optional system message, con... Error: Jinja Exception: After the optional system message, conversation roles must alternate user/assistant/user/assistant/...',
+            type: "invalid_request_error",
+          },
+        }),
+      );
+      return;
+    }
+    if (body.stream) {
+      response.writeHead(200, { "content-type": "text/event-stream" });
+      response.end('data: {"choices":[{"delta":{"content":"merged"}}]}\n\ndata: [DONE]\n\n');
+      return;
+    }
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ choices: [{ message: { content: "merged" }, finish_reason: "stop" }] }));
+  });
+  await new Promise<void>((resolve) => strictTemplateServer.listen(0, "127.0.0.1", resolve));
+  try {
+    const address = strictTemplateServer.address();
+    assert.ok(address && typeof address === "object");
+    const provider = new OpenAIProvider(`http://127.0.0.1:${address.port}/v1`, "", undefined, null, null, "custom");
+    const image = "data:image/png;base64,AAAA";
+    const nonAlternating: ChatMessage[] = [
+      { role: "system", content: "Rules." },
+      { role: "system", content: "Character card." },
+      { role: "assistant", content: "Greeting." },
+      { role: "user", content: "Hello." },
+      { role: "system", content: "Depth note." },
+      { role: "user", content: "Look.", images: [image] },
+      { role: "assistant", content: "Previous reply." },
+      { role: "assistant", content: "Prefill" },
+    ];
+
+    const result = await provider.chatComplete(nonAlternating, { model: "rocinante", stream: false });
+    assert.equal(result.content, "merged");
+    assert.equal(strictTemplateBodies.length, 2, "a rejected request is retried exactly once");
+    assert.deepEqual(strictTemplateBodies[1]!.messages, [
+      { role: "system", content: "Rules.\n\nCharacter card." },
+      { role: "user", content: "[Start]" },
+      { role: "assistant", content: "Greeting." },
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "Hello.\n\nDepth note." },
+          { type: "text", text: "Look." },
+          { type: "image_url", image_url: { url: image } },
+        ],
+      },
+      { role: "assistant", content: "Previous reply.\n\nPrefill" },
+    ]);
+
+    // Streaming generation (impersonate pushes a second user turn after the history).
+    strictTemplateBodies.length = 0;
+    const tokens: string[] = [];
+    for await (const token of provider.chat(
+      [
+        { role: "system", content: "Rules." },
+        { role: "user", content: "Hello." },
+        { role: "user", content: "Write my next reply." },
+      ],
+      { model: "rocinante", stream: true },
+    )) {
+      tokens.push(token);
+    }
+    assert.deepEqual(tokens, ["merged"]);
+    assert.equal(strictTemplateBodies.length, 2);
+    assert.deepEqual(strictTemplateBodies[1]!.messages, [
+      { role: "system", content: "Rules." },
+      { role: "user", content: "Hello.\n\nWrite my next reply." },
+    ]);
+
+    // When merging cannot satisfy the template (a user turn after tool results), retry once, then explain.
+    strictTemplateBodies.length = 0;
+    const toolCall = { id: "call_1", type: "function" as const, function: { name: "roll", arguments: "{}" } };
+    await assert.rejects(
+      provider.chatComplete(
+        [
+          { role: "user", content: "Roll." },
+          { role: "user", content: "Now." },
+          { role: "assistant", content: "", tool_calls: [toolCall] },
+          { role: "tool", content: "4", tool_call_id: "call_1" },
+          { role: "user", content: "Command results." },
+        ],
+        { model: "rocinante", stream: false },
+      ),
+      (error: Error) =>
+        error.message.startsWith("Custom OpenAI-compatible endpoint error 400:") &&
+        error.message.includes("Set Post-Processing Messages to Single User Message"),
+    );
+    assert.equal(strictTemplateBodies.length, 2, "a second rejection is surfaced, not retried again");
+    assert.deepEqual(
+      strictTemplateBodies[1]!.messages.map((message) => message.role),
+      ["user", "assistant", "tool", "user"],
+      "tool results and tool calls are never merged",
+    );
+
+    // An endpoint that accepts consecutive same-role turns receives them unchanged, in one request.
+    enforceAlternation = false;
+    strictTemplateBodies.length = 0;
+    await provider.chatComplete(nonAlternating, { model: "rocinante", stream: false });
+    assert.equal(strictTemplateBodies.length, 1);
+    assert.deepEqual(
+      strictTemplateBodies[0]!.messages.map((message) => message.role),
+      nonAlternating.map((message) => message.role),
+    );
+  } finally {
+    await new Promise<void>((resolve) => strictTemplateServer.close(() => resolve()));
+  }
+}
+
 process.stdout.write("Provider compatibility regression passed.\n");

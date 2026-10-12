@@ -97,6 +97,7 @@ export const createConnectionSchema = z.object({
   imageGenerationQuality: imageGenerationQualitySchema.default("auto"),
   videoGenerationSource: z.string().nullable().default(null),
   videoService: z.string().nullable().default(null),
+  videoPromptInstructions: z.string().trim().max(MAX_IMAGE_PROMPT_INSTRUCTIONS_LENGTH).nullable().default(null),
   audioSource: audioGenerationSourceSchema.nullable().default(null),
   decisionSource: z.enum(DECISION_SOURCES).nullable().default(null),
   credentialsFromConnectionId: z.string().trim().min(1).nullable().default(null),

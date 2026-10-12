@@ -130,6 +130,7 @@ import {
   suggestImageStyleProfileIdForModel,
   MAX_IMAGE_PROMPT_INSTRUCTIONS_LENGTH,
   normalizeImagePromptInstructions,
+  normalizeVideoPromptInstructions,
   parseConnectionImageCaptioningDefaults,
   type APIProvider,
   type AudioGenerationSource,
@@ -396,6 +397,7 @@ export function ConnectionEditor() {
   const [localImageGenerationQuality, setLocalImageGenerationQuality] = useState<ImageGenerationQuality>("auto");
   const [localVideoGenerationSource, setLocalVideoGenerationSource] = useState("");
   const [localVideoService, setLocalVideoService] = useState<string | null>(null);
+  const [localVideoPromptInstructions, setLocalVideoPromptInstructions] = useState("");
   const [localDecisionSource, setLocalDecisionSource] = useState<DecisionSource>("typesafe");
   const [localCredentialsFrom, setLocalCredentialsFrom] = useState("");
   const [localMaxStateTokens, setLocalMaxStateTokens] = useState(30000);
@@ -534,6 +536,7 @@ export function ConnectionEditor() {
     setLocalImageGenerationQuality(resolveOpenAIImageQuality(c.imageGenerationQuality, model));
     setLocalVideoGenerationSource(videoProviderSource);
     setLocalVideoService(videoDefaultsService);
+    setLocalVideoPromptInstructions((c.videoPromptInstructions as string) ?? "");
     setLocalDecisionSource((c.decisionSource as DecisionSource) ?? "typesafe");
     setLocalCredentialsFrom((c.credentialsFromConnectionId as string) ?? "");
     setLocalMaxStateTokens(Number(c.maxStateTokens ?? defaultDecisionStateTokens(c.decisionSource as string)));
@@ -886,6 +889,7 @@ export function ConnectionEditor() {
       imageEndpointId:
         isImageProvider && selectedImageService === "runpod_comfyui" ? localImageEndpointId || null : null,
       imagePromptInstructions: isImageProvider ? normalizeImagePromptInstructions(localImagePromptInstructions) : null,
+      videoPromptInstructions: isVideoProvider ? normalizeVideoPromptInstructions(localVideoPromptInstructions) : null,
       imageGenerationQuality: isImageProvider ? effectiveImageGenerationQuality : "auto",
       videoGenerationSource: isVideoProvider ? selectedVideoProvider || null : null,
       videoService: isVideoProvider
@@ -1021,6 +1025,7 @@ export function ConnectionEditor() {
     localImageService,
     localImageEndpointId,
     localImagePromptInstructions,
+    localVideoPromptInstructions,
     effectiveImageGenerationQuality,
     localMaxTokensOverride,
     localClaudeFastMode,
@@ -1158,6 +1163,7 @@ export function ConnectionEditor() {
       imageEndpointId:
         isImageProvider && selectedImageService === "runpod_comfyui" ? localImageEndpointId || null : null,
       imagePromptInstructions: isImageProvider ? normalizeImagePromptInstructions(localImagePromptInstructions) : null,
+      videoPromptInstructions: isVideoProvider ? normalizeVideoPromptInstructions(localVideoPromptInstructions) : null,
       imageGenerationQuality: isImageProvider ? effectiveImageGenerationQuality : "auto",
       comfyuiWorkflow:
         isImageProvider || (isVideoProvider && (videoProvider === "comfyui" || videoProvider === "swarmui"))
@@ -1210,6 +1216,7 @@ export function ConnectionEditor() {
     selectedImageService,
     localImageEndpointId,
     localImagePromptInstructions,
+    localVideoPromptInstructions,
     effectiveImageGenerationQuality,
     localComfyuiWorkflow,
     localClaudeFastMode,
@@ -2889,6 +2896,25 @@ export function ConnectionEditor() {
                   markDirty();
                 }}
                 placeholder={localizeUi("ui.connections.connectioneditor.imagePromptingInstructionsPlaceholder")}
+                className="w-full min-h-[96px] resize-y rounded-xl bg-[var(--secondary)] px-3 py-2.5 text-sm outline-none ring-1 ring-[var(--border)] transition-shadow placeholder:text-[var(--muted-foreground)]/50 focus:ring-sky-400/50"
+              />
+            </FieldGroup>
+          )}
+
+          {isVideoGenerationProvider && (
+            <FieldGroup
+              label={localizeUi("ui.connections.connectioneditor.videoPromptingInstructions")}
+              icon={<Sparkles size="0.875rem" className="text-sky-400" />}
+              help={localizeUi("ui.connections.connectioneditor.videoPromptingInstructionsHelp")}
+            >
+              <textarea
+                value={localVideoPromptInstructions}
+                maxLength={MAX_IMAGE_PROMPT_INSTRUCTIONS_LENGTH}
+                onChange={(event) => {
+                  setLocalVideoPromptInstructions(event.target.value);
+                  markDirty();
+                }}
+                placeholder={localizeUi("ui.connections.connectioneditor.videoPromptingInstructionsPlaceholder")}
                 className="w-full min-h-[96px] resize-y rounded-xl bg-[var(--secondary)] px-3 py-2.5 text-sm outline-none ring-1 ring-[var(--border)] transition-shadow placeholder:text-[var(--muted-foreground)]/50 focus:ring-sky-400/50"
               />
             </FieldGroup>

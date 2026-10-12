@@ -14131,6 +14131,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       );
 
       let videoRuntime: GameVideoRuntime | null = null;
+      let videoPromptInstructions: string | null = null;
       let videoFallback: Awaited<ReturnType<typeof resolveVideoConnectionFallback>> = undefined;
       if (generateStoryboardVideos && !usedFallbackStoryboardPlanner) {
         const videoConnectionId =
@@ -14139,6 +14140,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         const videoConn = videoConnectionId ? await connections.getWithKey(videoConnectionId) : null;
         if (videoConn?.provider === "video_generation") {
           videoRuntime = resolveGameVideoRuntime(videoConn);
+          videoPromptInstructions = videoConn.videoPromptInstructions;
           videoFallback = await resolveVideoConnectionFallback(connections, videoConn.id);
         }
       }
@@ -14280,6 +14282,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
                     durationSeconds: plannedFrame.durationSeconds,
                     aspectRatio: plannedFrame.aspectRatio,
                     referenceImage: exactReferenceImage,
+                    videoPromptInstructions,
                   });
                   if (debugLogsEnabled) {
                     debugLog(
@@ -14313,6 +14316,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
                   const refinement = resolveStoryboardAnimationRefinement(
                     extraction.content,
                     plannedFrame.narrationBeat,
+                    [videoPromptInstructions],
                   );
                   if (!refinement) {
                     throw new Error("Animation Planner returned no usable image-aware motion beat");

@@ -9927,7 +9927,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         maxTokens: args.maxTokens ?? 8192,
         maxTokensOverride: conn.maxTokensOverride,
       }),
-      signal: createResponseAbortSignal(args.reply, GAME_GENERATION_TIMEOUT_MS, args.title),
+      signal: createResponseAbortSignal(args.reply, getChatGenerationTimeoutMs(), args.title),
     };
     if (!defaultGenerationParameters?.reasoningEffort) {
       overrides.reasoningEffort = undefined;

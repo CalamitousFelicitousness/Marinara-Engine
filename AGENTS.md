@@ -52,8 +52,8 @@ References: [OpenAI agent instructions](https://learn.chatgpt.com/docs/agent-con
 - Run `pnpm check` as the baseline validation command.
 - Before pushing, follow the local validation and reporting requirements in `CONTRIBUTING.md § Validation`.
 - Run `pnpm version:check` when you touch release metadata, version-bearing files, or README release references.
-- For every bug fix, behavior change, or new feature, add a concise user-focused entry under the appropriate `CHANGELOG.md` `[Unreleased]` heading. Purely mechanical changes with no product or contributor-workflow impact do not need an entry.
-- Write that entry last, from the final diff, not from the issue, and say plainly when something that worked before no longer does. See `.github/agents/chai-workflow.md § Universal Operating Rules`.
+- Do not add or edit `CHANGELOG.md` entries in feature or fix PRs. When every PR added a line under `[Unreleased]`, each merge made the other open PRs conflict on that file, and resolving the conflict reran all their checks. The changelog is now compiled from the PRs merged to `staging` before each main release (see `CONTRIBUTING.md § Standard release flow`), so the PR description's "What changed" is what release notes are written from.
+- Write the PR description's "What changed" from the final diff, not from the issue, and say plainly when something that worked before no longer does. See `.github/agents/chai-workflow.md § Universal Operating Rules`.
 
 ## Temporary Tests
 
@@ -72,7 +72,7 @@ References: [OpenAI agent instructions](https://learn.chatgpt.com/docs/agent-con
 - Agent-specific coordination rule: when implementation effort starts for an issue, open a draft PR immediately so the project Kanban board shows the work in progress.
 - Agent-specific coordination rule: when starting work on an issue, tag or identify the GitHub user or agent owning that issue/PR on the single issue so ownership is visible before implementation proceeds.
 - When preparing a PR, make the why explicit in the description so reviewers can see the user problem or rationale, not just the file changes.
-- Check `README.md`, `android/README.md`, `CONTRIBUTING.md`, `CHANGELOG.md`, `docs/CONFIGURATION.md`, `docs/TROUBLESHOOTING.md`, and `docs/FAQ.md` together when install, update, or release behavior changes.
+- Check `README.md`, `android/README.md`, `CONTRIBUTING.md`, `docs/CONFIGURATION.md`, `docs/TROUBLESHOOTING.md`, and `docs/FAQ.md` together when install, update, or release behavior changes.
 - When a change adds, renames, or edits user-facing docs under `docs/`, also update every translated language pack on the `docs-i18n` branch to match — or open a `[docs-i18n] <paths>` follow-up issue. Renames/deletions must be mirrored there or the translation is silently orphaned. See `CONTRIBUTING.md § Translated documentation`.
 
 ## AI-Generated Pull Request

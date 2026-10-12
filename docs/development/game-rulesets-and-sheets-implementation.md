@@ -2145,7 +2145,7 @@ Status: the format, the route, Capability API 1.21 and the sheet editor's picker
 
 ## Slices and exit evidence
 
-Each slice is one PR against `staging`, with a draft PR opened when work starts, a `CHANGELOG.md` `[Unreleased]` entry, localized copy, docs, a `[docs-i18n]` follow-up, and unchecked manual-verification boxes. Proofs are `*.regression.ts`; no `.test.ts` stays in the tree.
+Each slice is one PR against `staging`, with a draft PR opened when work starts, localized copy, docs, a `[docs-i18n]` follow-up, and unchecked manual-verification boxes. Proofs are `*.regression.ts`; no `.test.ts` stays in the tree.
 
 | #   | Repo            | Work                                                                                                                                                                | Smallest useful proof                                                                                                                                                                                                                                                                                     |
 | --- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

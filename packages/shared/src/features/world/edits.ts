@@ -156,9 +156,16 @@ export function checkWorldEdits(
   }
   // Every place keeps a name of its own: the Game Master and the ledger find places by name.
   const taken = new Map<string, string>();
+  // A renamed place still answers to its old name, so no other place may take it.
+  for (const edit of edits.places ?? []) {
+    const original = byId.get(edit.id);
+    if (edit.name && original && nameKey(edit.name) !== nameKey(original.name)) {
+      taken.set(nameKey(original.name), edit.id);
+    }
+  }
   for (const [id, name] of names) {
     const key = nameKey(name);
-    if (taken.has(key)) issues.push(`Two places would be called "${name}".`);
+    if (taken.has(key) && taken.get(key) !== id) issues.push(`Two places would be called "${name}".`);
     taken.set(key, id);
   }
   const peopleSeen = new Set<string>();

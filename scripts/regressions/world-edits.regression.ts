@@ -295,6 +295,16 @@ try {
       issues({ places: [{ id: city.id, name: village.name }] })[0]!.includes("Two places"),
       "a name another place has",
     );
+    assert.ok(
+      issues({
+        places: [
+          { id: city.id, name: "Newhaven" },
+          { id: village.id, name: city.name },
+        ],
+      }).some((issue) => issue.includes("Two places")),
+      "a renamed place keeps its old name, so no other place may take it",
+    );
+    assert.deepEqual(issues({ places: [{ id: city.id, name: "Newhaven" }] }), [], "a rename alone is fine");
     const bad = (add: Partial<NonNullable<WorldEdits["added"]>[number]>) =>
       issues({
         added: [{ id: "e1", name: "Q", layer: kit.layers[settlementsDepth]!.id, parentId: top.id, at: corner, ...add }],

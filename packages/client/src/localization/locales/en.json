@@ -1954,6 +1954,7 @@
   "game.input.startNewSession": "New Session",
   "game.mapPack.fixBeforeStart": "This Experience's map pack does not read, so it cannot start a game.",
   "game.mapPack.kitSetBy": "{{name}} sets this setting kit with its map pack.",
+  "game.mapPack.loading": "Reading this Experience's map pack…",
   "game.mapPack.maps": "Map",
   "game.mapPack.mapsHelp": "{{name}} ships these maps; the game is played on the one you pick.",
   "game.mapPack.unreadable": "{{name}} cannot start a game: {{reason}}",

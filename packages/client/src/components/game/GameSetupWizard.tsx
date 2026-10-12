@@ -568,6 +568,8 @@ export function GameSetupWizard({
   );
   const mapPack = mapPackQuery.data ?? null;
   const mapPackUnreadable = mapPackQuery.isError;
+  // While the pack is read, neither the player's own kit nor a start goes ahead: the server would refuse it.
+  const mapPackPending = mapPackQuery.isLoading;
   // The map picked, for the Experience it was picked for: another Experience starts on its own first map.
   const [mapPackPick, setMapPackPick] = useState<{ experienceId: string; path: string } | null>(null);
   const mapPackWorldPath = mapPackPick && mapPackPick.experienceId === activeExperience?.id ? mapPackPick.path : null;
@@ -1141,6 +1143,7 @@ export function GameSetupWizard({
     (!multiplayerPlayers || multiplayerPlayers.every((player) => player.personaName?.trim())) &&
     !experienceSeedInvalid &&
     !mapPackUnreadable &&
+    !mapPackPending &&
     !(checkedWorldKit && !checkedWorldKit.ok) &&
     !(checkedWorld && !checkedWorld.ok) &&
     (!activeLorebookEntryIds.length || Boolean(eligibleEntries)) &&
@@ -1152,21 +1155,23 @@ export function GameSetupWizard({
       ? localizeUi("game.experienceSetup.invalidSeed", { max: MAX_EXPERIENCE_SEED })
       : mapPackUnreadable
         ? localizeUi("game.mapPack.fixBeforeStart")
-        : checkedWorldKit && !checkedWorldKit.ok
-          ? localizeUi("game.worldKit.setup.fixBeforeStart")
-          : checkedWorld && !checkedWorld.ok
-            ? localizeUi("game.world.setup.fixBeforeStart")
-            : activeLorebookEntryIds.length && !eligibleEntries
-              ? localizeUi(
-                  entryQuery.isError && !entryQuery.isFetching ? "game.setupLore.error" : "game.setupLore.loading",
-                )
-              : !gmConnectionId
-                ? localizeUi("ui.game.gamesetupwizard.selectAConnectionOnTheFirstStepBeforeStarting")
-                : !spatialMapTargetLocationCountValid && enableAgents && hierarchicalMapsInstalled && draftSpatialMap
-                  ? localizeUi("ui.game.gamesetupwizard.chooseAnyWholeNumberFrom1ToValue1Places", {
-                      value1: SPATIAL_CUSTOM_TARGET_LOCATION_LIMIT,
-                    })
-                  : null;
+        : mapPackPending
+          ? localizeUi("game.mapPack.loading")
+          : checkedWorldKit && !checkedWorldKit.ok
+            ? localizeUi("game.worldKit.setup.fixBeforeStart")
+            : checkedWorld && !checkedWorld.ok
+              ? localizeUi("game.world.setup.fixBeforeStart")
+              : activeLorebookEntryIds.length && !eligibleEntries
+                ? localizeUi(
+                    entryQuery.isError && !entryQuery.isFetching ? "game.setupLore.error" : "game.setupLore.loading",
+                  )
+                : !gmConnectionId
+                  ? localizeUi("ui.game.gamesetupwizard.selectAConnectionOnTheFirstStepBeforeStarting")
+                  : !spatialMapTargetLocationCountValid && enableAgents && hierarchicalMapsInstalled && draftSpatialMap
+                    ? localizeUi("ui.game.gamesetupwizard.chooseAnyWholeNumberFrom1ToValue1Places", {
+                        value1: SPATIAL_CUSTOM_TARGET_LOCATION_LIMIT,
+                      })
+                    : null;
   const normalizedLanguage = normalizeGameLanguage(language);
   // What the model writes a setting kit or a world's brief for: the World step's own choices.
   const worldWriteRequest = gmConnectionId
@@ -2255,7 +2260,7 @@ export function GameSetupWizard({
                           }
                         />
                       )}
-                      {isNewGame && !mapPack && !mapPackUnreadable && (
+                      {isNewGame && !mapPack && !mapPackUnreadable && !mapPackPending && (
                         <GameSetupWorldKitChooser
                           kit={worldKit}
                           onChange={chooseWorldKit}
@@ -2266,7 +2271,7 @@ export function GameSetupWizard({
                           writeRequest={worldWriteRequest}
                         />
                       )}
-                      {checkedWorldKit?.ok && !mapPackWorld && !mapPackUnreadable && (
+                      {checkedWorldKit?.ok && !mapPackWorld && !mapPackUnreadable && !mapPackPending && (
                         <GameSetupWorldChooser
                           kit={checkedWorldKit.kit}
                           draft={worldDraft}

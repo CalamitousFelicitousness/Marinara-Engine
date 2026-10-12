@@ -168,7 +168,17 @@ export function GameSetupWorldKitChooser({
     input.value = "";
     if (!file) return;
     const turn = ++lastRead.current;
-    const text = await file.text();
+    let text: string;
+    try {
+      text = await file.text();
+    } catch (error) {
+      // A file removed or locked after it was picked: say so rather than nothing.
+      if (turn !== lastRead.current) return;
+      return setFileNote({
+        error: true,
+        text: t("game.worldKit.setup.fileRefused", { reason: error instanceof Error ? error.message : String(error) }),
+      });
+    }
     if (turn !== lastRead.current) return;
     if (kind === "kit") {
       const read = readWorldKitFile(text);

@@ -65,11 +65,14 @@ import { buildVeniceApiUrl, buildVeniceImageRequest, parseVeniceImageResponse } 
 import { buildZaiImageRequest, buildZaiImageUrl, parseZaiImageUrl } from "./zai-image.js";
 import { buildFalImageUrl } from "./fal-image.js";
 import {
+  SPICYAPI_MAX_INLINE_IMAGE_BYTES,
   assertSpicyApiModelId,
   buildSpicyApiImageInput,
   buildSpicyApiUrl,
+  fitsSpicyApiInlineLimit,
   parseSpicyApiTask,
   readSpicyApiMessage,
+  trimSpicyApiReferences,
 } from "./spicyapi-image.js";
 import { buildAtlasCloudImageRequest, runAtlasCloudPrediction } from "../media/atlas-cloud.js";
 import {
@@ -1566,6 +1569,73 @@ const SPICYAPI_POLL_INTERVAL_MS = 2_000;
 /** About two minutes of busy or unavailable status replies in a row before giving up on the task. */
 const SPICYAPI_MAX_TRANSIENT_POLL_FAILURES = 60;
 const SPICYAPI_FAILED_STATES = new Set(["failed", "canceled", "expired"]);
+const SPICYAPI_CREATE_ATTEMPTS = 3;
+
+/** Re-encode a reference SpicyAPI would refuse inline as a smaller WebP; null when that is not possible. */
+async function fitSpicyApiReference(reference: unknown): Promise<unknown> {
+  if (typeof reference !== "string" || fitsSpicyApiInlineLimit(reference)) return reference;
+  // ponytail: checks type and bytes only, so an under-1 MB reference over SpicyAPI's 8 MP pixel cap still gets
+  // its 400 reply. Upgrade: read the size with sharp metadata and shrink those references too.
+  const sharpFn = await tryLoadSharp();
+  if (sharpFn) {
+    try {
+      const source = Buffer.from(reference.slice(reference.indexOf(",") + 1), "base64");
+      for (const [edge, quality] of [
+        [2048, 85],
+        [1536, 80],
+        [1024, 75],
+        [768, 70],
+      ] as const) {
+        const shrunk: Buffer = await sharpFn(source)
+          .resize(edge, edge, { fit: "inside", withoutEnlargement: true })
+          .webp({ quality })
+          .toBuffer();
+        if (shrunk.length <= SPICYAPI_MAX_INLINE_IMAGE_BYTES) {
+          return `data:image/webp;base64,${shrunk.toString("base64")}`;
+        }
+      }
+    } catch (err) {
+      logger.warn(err, "[image-gen/spicyapi] Could not shrink a reference image");
+    }
+  }
+  logger.warn("[image-gen/spicyapi] Skipped a reference image over SpicyAPI's 1 MB inline limit");
+  return null;
+}
+
+/** Shrink or drop inline references so the task meets SpicyAPI's per-image and per-request limits. */
+async function fitSpicyApiReferences(body: { input: Record<string, unknown> }): Promise<void> {
+  const { input } = body;
+  if (Array.isArray(input.image_urls)) {
+    input.image_urls = (await Promise.all(input.image_urls.map(fitSpicyApiReference))).filter((ref) => ref !== null);
+  } else if (input.image_url !== undefined) {
+    input.image_url = await fitSpicyApiReference(input.image_url);
+    if (input.image_url === null) delete input.image_url;
+  }
+  const dropped = trimSpicyApiReferences(body);
+  if (dropped) {
+    logger.warn("[image-gen/spicyapi] Dropped %d reference image(s) to stay within the 2 MB request limit", dropped);
+  }
+}
+
+/**
+ * A dropped connection leaves it unknown whether SpicyAPI accepted the task. Resending with the same
+ * Idempotency-Key returns the original task instead of creating and billing a second one.
+ */
+async function createSpicyApiTask(
+  url: string,
+  init: RequestInit & { signal: AbortSignal },
+  fetchPolicy: ImageFetchOptions,
+): Promise<Response> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await imageFetch(url, init, fetchPolicy);
+    } catch (err) {
+      if (init.signal.aborted || attempt >= SPICYAPI_CREATE_ATTEMPTS) throw err;
+      logger.warn(err, "[image-gen/spicyapi] Task request lost its connection; resending with the same key");
+      await sleepWithAbort(SPICYAPI_POLL_INTERVAL_MS, init.signal);
+    }
+  }
+}
 
 async function readSpicyApiJson(resp: Response, operation: string): Promise<unknown> {
   const text = await resp.text();
@@ -1605,6 +1675,7 @@ async function generateSpicyApi(baseUrl: string, apiKey: string, request: ImageG
     }),
   );
   const body = { model, input };
+  await fitSpicyApiReferences(body);
   logDebugOverride(
     request.debugMode === true,
     "[debug/image/spicyapi] final request payload:\n%s",
@@ -1612,7 +1683,7 @@ async function generateSpicyApi(baseUrl: string, apiKey: string, request: ImageG
   );
 
   // `wait` holds the request open until the task finishes (up to 50 seconds), so most images need no polling.
-  const created = await imageFetch(
+  const created = await createSpicyApiTask(
     buildSpicyApiUrl(baseUrl, "jobs/createTask", { wait: "50" }),
     {
       method: "POST",
@@ -1632,12 +1703,17 @@ async function generateSpicyApi(baseUrl: string, apiKey: string, request: ImageG
       throw new Error(`SpicyAPI image generation ${task.state}${task.error ? `: ${task.error}` : ""}`);
     }
     await sleepWithAbort(SPICYAPI_POLL_INTERVAL_MS, signal);
-    const polled = await imageFetch(pollUrl, { headers, signal }, fetchPolicy);
-    // A busy or briefly unavailable API must not abandon a task that is already paid for.
-    if (polled.status === 429 || polled.status >= 500) {
-      await polled.body?.cancel().catch(() => undefined);
+    const polled = await imageFetch(pollUrl, { headers, signal }, fetchPolicy).catch((err: unknown) => {
+      if (signal.aborted) throw err;
+      return null;
+    });
+    // A busy, briefly unavailable or dropped connection must not abandon a task that is already paid for.
+    if (!polled || polled.status === 429 || polled.status >= 500) {
+      await polled?.body?.cancel().catch(() => undefined);
       if (++transientFailures >= SPICYAPI_MAX_TRANSIENT_POLL_FAILURES) {
-        throw new Error(`SpicyAPI task status kept failing (${polled.status}); task ${task.taskId}`);
+        throw new Error(
+          `SpicyAPI task status kept failing (${polled?.status ?? "connection lost"}); task ${task.taskId}`,
+        );
       }
       continue;
     }

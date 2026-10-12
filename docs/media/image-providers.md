@@ -116,7 +116,7 @@ Pick the **SpicyAPI** service. Don't use **OpenAI (DALL-E)** or a **Custom (OAI-
 
 Each SpicyAPI model takes its own settings. Marinara asks SpicyAPI which ones the chosen model accepts and sends only those. It picks the closest shape the model offers, such as an aspect ratio, a width and height, or a fixed size. If the model has no negative prompt field, the negative prompt is added to the end of the prompt as text. Use **Custom Parameters** for other model options, such as `seed`, `resolution`, or `loras`.
 
-SpicyAPI runs each image as a task. Marinara waits for the task to finish, checks back if it takes more than about a minute, and then downloads the result. Edit models (IDs that end in `/edit`) receive your reference images. SpicyAPI accepts reference images up to 1 MB each.
+SpicyAPI runs each image as a task. Marinara waits for the task to finish, checks back if it takes more than about a minute, and then downloads the result. If the connection drops, Marinara picks up the same task instead of paying for a new one. Edit models (IDs that end in `/edit`) receive your reference images. SpicyAPI takes reference images up to 1 MB each and 2 MB per request, so Marinara shrinks larger images and leaves out extra ones that don't fit.
 
 ## NanoGPT
 
@@ -219,7 +219,7 @@ A **reference image** is an existing picture you send along with your prompt. It
 | Venice.ai | Not supported for text-to-image generation |
 | Z.AI | Not supported in the current text-to-image integration |
 | Atlas Cloud | First image for compatible image-to-image, edit, or Kontext model IDs |
-| SpicyAPI | Edit models only, up to the model's limit, 1 MB each |
+| SpicyAPI | Edit models only, up to the model's limit; larger images are shrunk to fit |
 | NanoGPT | Up to 3 |
 | Stability AI | First image only, used as image to image |
 | Arli AI | First image only, used as image to image |

@@ -4,6 +4,10 @@
 
 const MODEL_ID = /^[a-zA-Z0-9][a-zA-Z0-9._-]*(?:\/[a-zA-Z0-9][a-zA-Z0-9._-]*)+$/;
 const DEFAULT_ASPECT_RATIOS = ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"];
+/** createTask limits from SpicyAPI's OpenAPI contract: per decoded inline image, and for the whole JSON body. */
+export const SPICYAPI_MAX_INLINE_IMAGE_BYTES = 1024 * 1024;
+const SPICYAPI_MAX_REQUEST_BYTES = 2 * 1024 * 1024;
+const INLINE_IMAGE_PREFIX = /^data:image\/(?:jpeg|png|webp|gif);base64,/i;
 
 export interface SpicyApiTask {
   taskId: string | null;
@@ -126,6 +130,28 @@ export function buildSpicyApiImageInput(
     }
   }
   return input;
+}
+
+/** True when SpicyAPI takes this reference as it is: not inline, or an inline type and size it accepts. */
+export function fitsSpicyApiInlineLimit(reference: string): boolean {
+  if (!reference.startsWith("data:")) return true;
+  const prefix = INLINE_IMAGE_PREFIX.exec(reference)?.[0];
+  return !!prefix && Buffer.byteLength(reference.slice(prefix.length), "base64") <= SPICYAPI_MAX_INLINE_IMAGE_BYTES;
+}
+
+/** Drop trailing `image_urls` until the request fits SpicyAPI's body limit; returns how many were dropped. */
+export function trimSpicyApiReferences(body: { input: Record<string, unknown> }): number {
+  const references = body.input.image_urls;
+  let dropped = 0;
+  while (
+    Array.isArray(references) &&
+    references.length > 1 &&
+    Buffer.byteLength(JSON.stringify(body), "utf8") > SPICYAPI_MAX_REQUEST_BYTES
+  ) {
+    references.pop();
+    dropped++;
+  }
+  return dropped;
 }
 
 /** Read a task record or createTask reply from the `{code,msg,data,request_id}` envelope. */

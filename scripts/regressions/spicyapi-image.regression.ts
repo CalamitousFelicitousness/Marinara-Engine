@@ -11,6 +11,7 @@ import { createConnectionsStorage } from "../../packages/server/src/services/sto
 import { generateImage } from "../../packages/server/src/services/image/image-generation.js";
 import { resolveConnectionImageDefaults } from "../../packages/server/src/services/image/image-generation-defaults.js";
 import { buildSpicyApiUrl } from "../../packages/server/src/services/image/spicyapi-image.js";
+import { getSharp } from "../../packages/server/src/utils/sharp.js";
 
 const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 const key = "sk-spicy-fixture-key";
@@ -33,12 +34,14 @@ const schemas: Record<string, unknown> = {
       image_urls: { maxItems: 1 },
     },
   },
+  "acme/multi/edit": { properties: { prompt: {}, image_urls: { maxItems: 10 } } },
 };
 type Seen = { method: string; url: string; authorization?: string; idempotency?: string; body: any };
 const requests: Seen[] = [];
 let baseUrl = "";
 let mode = "sync";
 let polls = 0;
+let creates = 0;
 const envelope = (data: unknown, code = 200, msg = "success") => JSON.stringify({ code, msg, data, request_id: "r" });
 const provider = createServer(async (request, response) => {
   const chunks: Buffer[] = [];
@@ -59,6 +62,28 @@ const provider = createServer(async (request, response) => {
   }
   response.setHeader("content-type", "application/json");
   const done = { taskId: "task-1", state: "succeeded", output: { assets: [{ url: `${baseUrl}/image.png` }] } };
+  // SpicyAPI's documented limits: 1 MiB per decoded inline image and 2 MiB for the whole JSON body.
+  if (url.pathname === "/api/v1/jobs/createTask") {
+    const inline = [raw ? JSON.parse(raw).input?.image_urls : []].flat().filter((value) => typeof value === "string");
+    if (
+      Buffer.byteLength(raw) > 2_097_152 ||
+      inline.some((value) => Buffer.byteLength(value.split(",")[1] ?? "", "base64") > 1_048_576)
+    ) {
+      response.writeHead(413, { "content-type": "application/json" });
+      response.end(envelope(undefined, 413, "Request body too large"));
+      return;
+    }
+  }
+  // A dropped connection: the first createTask and the first poll lose their socket mid-request.
+  const dropped =
+    mode === "reset" &&
+    (url.pathname === "/api/v1/jobs/createTask"
+      ? ++creates === 1
+      : url.pathname === "/api/v1/jobs/recordInfo" && polls++ === 0);
+  if (dropped) {
+    request.socket.destroy();
+    return;
+  }
   if (url.pathname === "/api/v1/models") {
     response.end(
       envelope({
@@ -93,11 +118,15 @@ const provider = createServer(async (request, response) => {
       response.end(envelope({ taskId: "task-1" }));
     } else if (mode === "no-url") {
       response.end(envelope({ ...done, output: { assets: [{ unavailable: true }] } }));
-    } else if (mode === "poll") {
+    } else if (mode === "poll" || mode === "reset") {
       response.statusCode = 202;
       response.end(envelope({ taskId: "task-1", state: "queued" }));
     } else response.end(envelope(done));
   } else if (url.pathname === "/api/v1/jobs/recordInfo") {
+    if (mode === "reset") {
+      response.end(envelope(done));
+      return;
+    }
     polls += 1;
     if (polls === 1) {
       response.statusCode = 503;
@@ -209,6 +238,39 @@ try {
     requests.filter((entry) => entry.url.startsWith("/api/v1/jobs/recordInfo")).map((entry) => entry.url),
     Array(3).fill("/api/v1/jobs/recordInfo?taskId=task-1"),
   );
+
+  // A dropped connection never abandons the paid task: createTask is resent with the same Idempotency-Key,
+  // which SpicyAPI answers with the original task, and polling carries on as after a busy reply.
+  mode = "reset";
+  polls = 0;
+  requests.length = 0;
+  assert.equal((await generate("alibaba/z-image-spicy-pro/text-to-image")).base64, png);
+  const creations = requests.filter((entry) => entry.url.startsWith("/api/v1/jobs/createTask"));
+  assert.equal(creations.length, 2);
+  assert.equal(creations[1]!.idempotency, creations[0]!.idempotency, "A resend reuses the task's Idempotency-Key");
+  assert.deepEqual(creations[1]!.body, creations[0]!.body);
+  assert.equal(requests.filter((entry) => entry.url.startsWith("/api/v1/jobs/recordInfo")).length, 2);
+
+  // References are fitted to SpicyAPI's inline limits instead of failing the whole generation.
+  mode = "sync";
+  const sharp = await getSharp();
+  assert.ok(sharp, "sharp is installed for the regression run");
+  const avatar = Buffer.concat([Buffer.from(png, "base64"), Buffer.alloc(800_000, 1)]).toString("base64");
+  const noise = Buffer.from(Array.from({ length: 900 * 700 * 3 }, (_, index) => (index * 7919) % 251));
+  const sheet = (
+    await sharp(noise, { raw: { width: 900, height: 700, channels: 3 } })
+      .png({ compressionLevel: 0 })
+      .toBuffer()
+  ).toString("base64");
+  assert.ok(Buffer.byteLength(sheet, "base64") > 1_048_576, "The character sheet starts over the 1 MiB inline limit");
+  requests.length = 0;
+  assert.equal((await generate("acme/multi/edit", { referenceImages: [avatar, avatar] })).base64, png);
+  assert.deepEqual(requests[1]!.body.input.image_urls, [`data:image/png;base64,${avatar}`], "Extras are dropped");
+  requests.length = 0;
+  assert.equal((await generate("acme/multi/edit", { referenceImages: [sheet] })).base64, png);
+  const [shrunk] = requests[1]!.body.input.image_urls as string[];
+  assert.match(shrunk!, /^data:image\/webp;base64,/);
+  assert.ok(Buffer.byteLength(shrunk!.split(",")[1]!, "base64") <= 1_048_576, "Oversize references are shrunk");
 
   mode = "no-state";
   await assert.rejects(generate("alibaba/z-image-spicy-pro/text-to-image"), /did not include a state/);

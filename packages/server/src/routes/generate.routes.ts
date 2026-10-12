@@ -8130,10 +8130,10 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           let lastContextFit: ReturnType<typeof fitMessagesForModelAccess>["contextFit"] | undefined;
           // Advanced Memory holds the outgoing prompt to its cap. A follow-up (tool round, roll or
           // Game continuation) resends that prompt with the reply so far and the results, so only
-          // the model's own window bounds it.
+          // the model's own window bounds it, and it reserves room only for the tools it sends.
           const fitPromptForSend = async (
             candidateMessages: ChatMessage[],
-            followUp = false,
+            followUp?: { tools: ChatOptions["tools"] },
           ): Promise<ChatMessage[]> => {
             if (advancedMemoryEnabled) {
               if (advancedMemoryReceipt)
@@ -8144,7 +8144,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 ? measureContextBudget(messages, {
                     maxContext: maxContextForSend,
                     maxTokens,
-                    tools: gameToolConnection ? undefined : responderToolDefs,
+                    tools: followUp ? followUp.tools : gameToolConnection ? undefined : responderToolDefs,
                   })
                 : undefined;
               if (budget && !budget.fits)
@@ -8373,6 +8373,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           if (responderToolsAttached && (gameToolPlan || (!gameToolConnection && provider.chatComplete))) {
             const maxToolRounds = gameToolPlan ? 1 : getMaxToolRounds();
             let loopMessages: ChatMessage[] = [...initialProviderMessages];
+            const loopTools = supportsNativeToolCalls(conn.provider) ? responderToolDefs : undefined;
             let rollRequestAbort: AbortController | null = null;
             // Length of the outgoing prompt when cutting its stream at a roll lost its usage. It stays
             // set while each later round is also cut at a roll without usage, since those rounds add
@@ -8416,7 +8417,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   // usage, signatures and encrypted reasoning belong to this pass only.
                   result = { content: null, toolCalls: gameToolPlan.toolCalls, finishReason: "tool_calls" };
                 } else {
-                  loopMessages = await fitPromptForSend(loopMessages, round > 0);
+                  loopMessages = await fitPromptForSend(loopMessages, round > 0 ? { tools: loopTools } : undefined);
                   rememberMainPromptPreviewForAgents(loopMessages);
                   logPromptSentToModel(
                     loopMessages,
@@ -8435,7 +8436,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                       presencePenalty: presencePenalty || undefined,
                       minP: minP || undefined,
                       stop: stopSequences.length ? stopSequences : undefined,
-                      tools: supportsNativeToolCalls(conn.provider) ? responderToolDefs : undefined,
+                      tools: loopTools,
                       toolChoice: supportsNativeToolCalls(conn.provider)
                         ? resolveMainGenerationToolChoice({ chatMetadata: chatMeta, enableChatTools, round })
                         : undefined,
@@ -8736,7 +8737,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                     toolResults.map(formatToolExecutionResultForModel).join("\n") +
                     "\nWrite the narration using these results. Do not reroll these actions or claim a failed tool succeeded.",
                 });
-                narratorMessages = await fitPromptForSend(withToolResults, true);
+                narratorMessages = await fitPromptForSend(withToolResults, { tools: undefined });
                 break;
               }
 
@@ -8761,7 +8762,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               if (round === maxToolRounds - 1) {
                 // Reset per-character accumulator for final round content
                 const prevLen = fullResponse.length;
-                loopMessages = await fitPromptForSend(loopMessages, true);
+                loopMessages = await fitPromptForSend(loopMessages, { tools: undefined });
                 rememberMainPromptPreviewForAgents(loopMessages);
                 logPromptSentToModel(loopMessages, "Prompt sent to model (final tool follow-up)");
                 const finalResult = await withLlmRequestTimeout(chatGenerationTimeoutMs, () =>
@@ -9560,7 +9561,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                     content: `${resolvedSummary ? `The engine has now rolled the requested dice:\n${resolvedSummary}` : "The engine has now read the requested checks:\nNo dice were rolled."}${generalRolls.unresolved.length ? `\nUnresolved requests:\n${generalRolls.unresolved.join("\n")}` : ""}${rolled.sparse - (rolled.untrained ?? 0) > 0 ? "\nSome checks could not be rolled and remain unresolved." : ""}${rolled.untrained ? "\nSome checks were not rolled because the character has no training in them: narrate that they could not attempt them." : ""}\nRewrite your entire last narration using these real results, correcting any contradictory outcome before or after a check. Narrate the consequences now. Do not repeat this player's action, invent numbers, request more rolls, or include dice/check tags: the engine keeps their records. For unresolved requests, leave the outcome open and explain what the player needs to clarify in supported notation. Re-emit every original movement or package command still justified by these outcomes; omit commands invalidated by them. Only commands in your revised output will execute. Return only the complete revised GM narration in the game's language.`,
                   },
                 ],
-                true,
+                { tools: undefined },
               );
               logPromptSentToModel(continuationMessages, "Game narration after engine rolls");
               rememberMainPromptPreviewForAgents(continuationMessages);

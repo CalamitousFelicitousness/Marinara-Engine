@@ -22,6 +22,8 @@ const { createAgentsStorage } = await import("../../packages/server/src/services
 const { createConnectionsStorage } = await import("../../packages/server/src/services/storage/connections.storage.js");
 const { createCharactersStorage } = await import("../../packages/server/src/services/storage/characters.storage.js");
 const { createAdvancedMemoryService } = await import("../../packages/server/src/services/advanced-memory.js");
+const { estimateTextTokens, measureContextBudget } =
+  await import("../../packages/server/src/services/llm/base-provider.js");
 const {
   DEFAULT_ADVANCED_MEMORY_SETTINGS,
   characterDataSchema,
@@ -35,6 +37,7 @@ const calls: Array<{
   streaming?: boolean;
   path?: string;
   maxTokens?: number;
+  tools?: unknown[];
 }> = [];
 let summaryGate: Promise<void> | undefined;
 let summaryResponse: string | undefined;
@@ -121,6 +124,7 @@ const provider = createServer(async (req, res) => {
     streaming: body.stream,
     path: req.url,
     maxTokens: body.max_output_tokens ?? body.max_completion_tokens ?? body.max_tokens,
+    tools: body.tools,
   });
   if (kind === "summary" && summaryGate) await summaryGate;
   // A tool round or roll follow-up resends the outgoing prompt with the first reply and the result.
@@ -197,8 +201,19 @@ const provider = createServer(async (req, res) => {
     }
     const usageLast = !responses && kind === "main" && mainStreamUsageLast;
     if (usageLast) {
-      await delay(150);
-      if (res.destroyed) mainStreamsCutBeforeUsage++;
+      // The route cuts a reply at its roll by closing the stream. Wait for that close, with a fixed
+      // fallback in case it never comes, rather than a fixed sleep a slow runner could outlast.
+      let closed = false;
+      if (content.includes("[roll:") && !res.destroyed)
+        await new Promise<void>((resolve) => {
+          const fallback = setTimeout(resolve, 5_000);
+          res.once("close", () => {
+            closed = true;
+            clearTimeout(fallback);
+            resolve();
+          });
+        });
+      if (closed || res.destroyed) mainStreamsCutBeforeUsage++;
     }
     res.end(
       responses
@@ -997,12 +1012,12 @@ try {
     maxContextTokens: 65_000,
     sceneCheckInterval: 100,
   };
-  const createFollowupChat = async (name: string) => {
+  const createFollowupChat = async (name: string, connectionId = connection.id) => {
     const created = await chats.create({
       name,
       mode: "roleplay",
       characterIds: [character.id],
-      connectionId: connection.id,
+      connectionId,
     });
     assert(created);
     chatIds.push(created.id);
@@ -1083,6 +1098,75 @@ try {
   );
   assert.equal(sentFollowups(roomyBefore), 1, "the follow-up past the cap reached the model");
   assert.equal((await memory.status(followupChat.id)).job.contextStarts, undefined);
+
+  // A follow-up reserves room only for the tool definitions it sends. The final follow-up of the
+  // last allowed tool round sends none, so one that fits the window only without them is sent,
+  // while a tool round of the same size, which sends them, fails before it is sent.
+  const reservePadding = "The guard circles slowly. ";
+  // Without an output override, each request carries the reply reserve its fit used.
+  const reserveConnection = await createConnectionsStorage(db).create({
+    name: "Tool reserve fixture",
+    provider: "custom",
+    model: "fixture",
+    apiKey: "fixture",
+    baseUrl: `http://127.0.0.1:${address.port}/v1`,
+    maxContext: 16_384,
+    embeddingModel: "fixture-embedding",
+  });
+  const generateWithToolRounds = async (repeats: number, maxToolRounds?: string) => {
+    const reserveChat = await createFollowupChat("Follow-up tool reserve", reserveConnection.id);
+    await chats.patchMetadata(reserveChat.id, { advancedMemory: { ...followupSettings, maxContextTokens: 1_500 } });
+    mainFirstReplyPadding = reservePadding.repeat(repeats);
+    const previousMaxToolRounds = process.env.MAX_TOOL_ROUNDS;
+    if (maxToolRounds) process.env.MAX_TOOL_ROUNDS = maxToolRounds;
+    const before = calls.length;
+    try {
+      const result = await generateFollowup(reserveChat.id);
+      assert.equal(result.statusCode, 200, result.body);
+      return { body: result.body, before, main: calls.slice(before).filter((call) => call.kind === "main") };
+    } finally {
+      if (previousMaxToolRounds === undefined) delete process.env.MAX_TOOL_ROUNDS;
+      else process.env.MAX_TOOL_ROUNDS = previousMaxToolRounds;
+    }
+  };
+  const windowFit = (call: (typeof calls)[number], tools?: unknown[]) =>
+    measureContextBudget(call.messages as Parameters<typeof measureContextBudget>[0], {
+      maxContext: 16_384,
+      maxTokens: call.maxTokens,
+      tools: tools as Parameters<typeof measureContextBudget>[1]["tools"],
+    });
+  // Place the follow-up halfway into the room the tool definitions take, measured on a small one.
+  const reserveSample = await generateWithToolRounds(0, "1");
+  assert.ok(!reserveSample.body.includes('"type":"error"'), reserveSample.body);
+  const [sampleOutgoing, sampleFinal] = reserveSample.main;
+  assert.ok(sampleOutgoing?.tools?.length, "the outgoing request sends the responder's tools");
+  assert.ok(sampleFinal && sentFollowups(reserveSample.before) === 1, "the final follow-up was sent");
+  assert.equal(sampleFinal.tools, undefined, "the final follow-up sends no tools");
+  const toolReserve =
+    windowFit(sampleFinal, sampleOutgoing.tools).reservedTokens - windowFit(sampleFinal).reservedTokens;
+  const tokensPerRepeat = estimateTextTokens(reservePadding.repeat(1000)) / 1000;
+  const reserveRepeats = Math.round(
+    (windowFit(sampleFinal).inputBudget - toolReserve / 2 - windowFit(sampleFinal).estimatedTokens) / tokensPerRepeat,
+  );
+  const finalWithoutTools = await generateWithToolRounds(reserveRepeats, "1");
+  assert.ok(
+    !finalWithoutTools.body.includes('"type":"error"'),
+    `a final follow-up that sends no tools reserves no room for them: ${finalWithoutTools.body}`,
+  );
+  assert.equal(sentFollowups(finalWithoutTools.before), 1, "the final follow-up without tools reached the model");
+  const sentFinal = finalWithoutTools.main.at(-1)!;
+  assert.equal(sentFinal.tools, undefined, "the final follow-up past the tool reserve sends no tools");
+  assert.ok(
+    windowFit(sentFinal).fits && !windowFit(sentFinal, sampleOutgoing.tools).fits,
+    "the follow-up fits the model's window only without the tool definitions",
+  );
+  const roundWithTools = await generateWithToolRounds(reserveRepeats);
+  assert.match(
+    roundWithTools.body,
+    /"type":"error"[^\n]*exceeds the model's context window/u,
+    "a tool round of the same size still reserves room for the tools it sends",
+  );
+  assert.equal(sentFollowups(roundWithTools.before), 0, "the tool round past the window is never sent");
   mainFirstReplyPadding = "";
   mainToolCall = false;
 

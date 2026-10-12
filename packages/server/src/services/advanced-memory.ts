@@ -18,6 +18,7 @@ import {
   compileChatSummaryEntries,
   resolveMacros,
   scopeCharacterSummary,
+  characterConditionNames,
   markReaderVersions,
   flattenCharacterConditions,
   parseTrackerHiddenFields,
@@ -1866,9 +1867,14 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     });
   }
 
-  /** Keep generated constants editable with the same character conditions as manual summaries. */
-  function scopeConstantSummary(ctx: Context, content: string, audience: string[]): string {
-    const names = [...new Set(audience.map((id) => ctx.names.get(id) ?? "Character"))];
+  /**
+   * Keep generated constants editable with the same character conditions as manual summaries. A part for a
+   * character the conditions in `named` name stays too, also when that character has left the chat.
+   */
+  function scopeConstantSummary(ctx: Context, content: string, audience: string[], named = ""): string {
+    const names = [
+      ...new Set([...audience.map((id) => ctx.names.get(id) ?? "Character"), ...characterConditionNames(named)]),
+    ];
     return names.length ? scopeCharacterSummary(content, names) : content;
   }
 
@@ -3406,18 +3412,23 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       }
       // Readers who get the scene recap itself share one summary. Prompts show its range and story dates per
       // reader, so a message hidden from one of them needs no copy of its own, and the narrator, who reads
-      // every section, doesn't read the same scene twice (#7454).
-      const whole = [...additions].filter(([, addition]) => !addition.partiallyCovered);
-      if (whole.length > 1) {
-        const ids = new Set(whole.flatMap(([, addition]) => addition.source.map((message) => message.id)));
-        for (const [key] of whole) additions.delete(key);
-        additions.set("whole", {
-          audience: whole.flatMap(([, addition]) => addition.audience),
-          source: ctx.messages.filter((message) => ids.has(message.id)),
-          partiallyCovered: false,
-        });
-      }
-      for (const { audience, source, partiallyCovered } of additions.values()) {
+      // every section, doesn't read the same scene twice (#7454). It needs no Helper call, so it is saved first
+      // and a failed re-summary of a partly covered copy can't hold it back.
+      const whole = [...additions.values()].filter((addition) => !addition.partiallyCovered);
+      const ids = new Set(whole.flatMap((addition) => addition.source.map((message) => message.id)));
+      const pending = [
+        ...(whole.length
+          ? [
+              {
+                audience: whole.flatMap((addition) => addition.audience),
+                source: ctx.messages.filter((message) => ids.has(message.id)),
+                partiallyCovered: false,
+              },
+            ]
+          : []),
+        ...[...additions.values()].filter((addition) => addition.partiallyCovered),
+      ];
+      for (const { audience, source, partiallyCovered } of pending) {
         abortIfNeeded(options.signal);
         const previousEntries = entriesFor(ctx.metadata);
         const start = ctx.messages.findIndex((message) => message.id === source[0]!.id);
@@ -3559,15 +3570,19 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     }
     const names = ctx.characterIds.map((id) => ctx.names.get(id) ?? "Character");
     const narrator = ctx.settings.narratorCharacterId ? ctx.names.get(ctx.settings.narratorCharacterId) : undefined;
-    // The text of each group of readers in these texts; "{{" stands for any other macro. It is lowercased,
+    // The text of each group of readers in these texts, also of characters who left the chat that a condition
+    // names; "{{" stands for any macro but {{user}}, which reads the same for everyone. It is lowercased,
     // with plain quote marks and one space or line break between words, also where a condition splits a
     // sentence, so spacing, a condition or a curly apostrophe can't hide a copied sentence. The narrator
     // reads every section, so a condition that names or leaves out the narrator changes no reader.
     const sections = (texts: string[]) => {
       const found = new Map<string, string>();
+      const known = [...new Set([...names, ...texts.flatMap((text) => characterConditionNames(text))])];
       for (const text of texts)
-        scopeCharacterSummary(text, names, 0, (part, readers) => {
-          const key = part.includes("{{") ? "{{" : JSON.stringify(readers.filter((name) => name !== narrator).sort());
+        scopeCharacterSummary(text, known, 0, (part, readers) => {
+          const key = part.replace(/\{\{user\}\}/giu, "").includes("{{")
+            ? "{{"
+            : JSON.stringify(readers.filter((name) => name !== narrator).sort());
           if (part.trim()) found.set(key, `${found.get(key) ?? ""} ${part}`);
           return part;
         });
@@ -3587,7 +3602,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     // A run of four words from a private section newly found in a section someone else can also read, also
     // when the Helper shortened the sentence around it; a run that section's readers could already read in
     // the inputs is no leak. Both sides are normalized sections, so quote marks, list marks, line breaks, a
-    // decimal or an abbreviation can't hide a copied run. Text with other macros counts as read by everyone.
+    // decimal or an abbreviation can't hide a copied run. Text with macros but {{user}} counts as read by everyone.
     // Segmenting counts words in languages without spaces too.
     const words = new Intl.Segmenter(undefined, { granularity: "word" });
     const runs = (text: string) => {
@@ -3610,7 +3625,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     // Who reads each summary that may be combined. One whose text differs by character goes to the Helper
     // with its conditions kept, also when you wrote or edited it (#7270, #7454).
     const flat = (text: string) => flattenCharacterConditions(text, false).replace(/\s+/gu, "");
-    const combinable = new Map<string, { readers: string[]; text: string; conditional: boolean }>();
+    const combinable = new Map<string, { readers: string[]; text: string; conditional: boolean; named: string }>();
     for (const entry of eligible) {
       const texts = ctx.characterIds.map((id) => renderEntry(ctx, entry.content, [id]));
       const readers = ctx.characterIds.filter((_, index) => texts[index]!.trim());
@@ -3619,17 +3634,19 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       // all its sources' messages, and a reader's prompt leaves it out while any of them is still live.
       if (!views.every((id) => outsideLive(entry, id))) continue;
       const read = texts.filter((text) => text.trim());
-      const conditional = new Set(read).size > 1;
-      // ponytail: the privacy check can't tell who reads text next to another macro, and a section only for a
-      // character who left the chat has no reader to keep it for, so those summaries stay as they are, also
-      // when only the narrator reads them. Upgrade by checking each macro's rendering per reader, and by
-      // counting characters named in conditions.
-      if (
-        (conditional && sections([entry.content]).has("{{")) ||
-        flat(scopeConstantSummary(ctx, entry.content, readers)) !== flat(entry.content)
-      )
-        continue;
-      combinable.set(entry.id, { readers, text: read[0]!, conditional });
+      // A part only for a character who left the chat keeps its condition, so it is still theirs if they come
+      // back, while someone besides the narrator still reads the summary.
+      const lost = (named: string) =>
+        flat(scopeConstantSummary(ctx, entry.content, readers, named)) !== flat(entry.content);
+      const departed = lost("");
+      const named = departed && readers.some((id) => id !== narratorId) ? entry.content : "";
+      const conditional = new Set(read).size > 1 || departed;
+      // ponytail: the privacy check can't tell who reads text next to a macro other than {{user}}, so a summary
+      // with such a macro and a private part stays as it is. So does one whose part for a character who left
+      // no condition names (an {{else}}), or that only the narrator still reads: no reader keeps that part.
+      // Upgrade by checking each macro's rendering per reader.
+      if ((conditional && sections([entry.content]).has("{{")) || (departed && lost(named))) continue;
+      combinable.set(entry.id, { readers, text: read[0]!, conditional, named });
     }
     // Shrink only for views over the share with room left by the summaries that can't be combined. A view they
     // already fill is left alone, so it isn't shortened on every reply.
@@ -3663,8 +3680,8 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       const combine =
         info.some((item) => item.conditional) || new Set(info.map((item) => item.readers.join("\0"))).size > 1;
       const inputs = entries.map((entry, index) => {
-        const { readers: own, text, conditional } = info[index]!;
-        return combine ? scopeConstantSummary(ctx, conditional ? entry.content : text, own) : text;
+        const { readers: own, text, conditional, named } = info[index]!;
+        return combine ? scopeConstantSummary(ctx, conditional ? entry.content : text, own, named) : text;
       });
       const groupTokens = tokenSize(inputs.join("\n\n"));
       if (!groupTokens) continue;
@@ -3698,7 +3715,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
         options,
       );
       const content = (await summarize(ctx, inputs, target, options, cache, false, combine)).summary;
-      const scoped = scopeConstantSummary(ctx, content, readers);
+      const scoped = scopeConstantSummary(ctx, content, readers, inputs.join("\n\n"));
       // Keep originals if the helper did not shorten them. The completed work
       // stays cached so unchanged inputs do not repeat the same paid attempt.
       // A combined group's inputs carry their conditions, so measure the result with its conditions too.

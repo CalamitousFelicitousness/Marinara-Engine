@@ -2306,7 +2306,7 @@ try {
     ),
   });
   summaryReply = (prompt) => {
-    const target = Number(/Aim for approximately (\d+) tokens/u.exec(prompt)?.[1]);
+    const target = Math.min(5000, Number(/Aim for approximately (\d+) tokens/u.exec(prompt)?.[1]) || 0);
     let pad = "PAD ";
     const answer = () => `{{#if char == "Maukie"}}${pad}{{/if}}{{#if char == "Pantalone"}}${pad}{{/if}}`;
     while (estimateChatSummaryTokens(answer()) < target) pad += "PAD ";

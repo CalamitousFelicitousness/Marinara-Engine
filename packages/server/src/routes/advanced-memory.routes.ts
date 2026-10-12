@@ -8,10 +8,18 @@ const operationSchema = z.object({
   settings: advancedMemorySettingsSchema.partial().optional(),
   debugMode: z.boolean().optional(),
   sceneId: z.string().min(1).optional(),
+  /** Repair every flagged scene in one run instead of stopping at the first one that needs review. */
+  fixAll: z.boolean().optional(),
+  /** Find scenes again between these message numbers (1-based, inclusive). */
+  range: z
+    .object({ start: z.number().int().min(1), end: z.number().int().min(1) })
+    .refine((range) => range.start <= range.end, "The first message must come before the last one")
+    .optional(),
 });
 const recordPatchSchema = z
   .object({
     content: z.string().min(1).max(500_000).optional(),
+    timeline: z.string().max(2000).optional(),
     enabled: z.boolean().optional(),
     audienceCharacterIds: z.array(z.string().min(1)).max(100).optional(),
   })
@@ -23,9 +31,12 @@ const validationErrors = new Set([
   "The continuity summary budget must be smaller than the total context limit",
   "Select a narrator from this chat's characters",
   "Select a saved Decision connection for Advanced Memory",
+  "That local model cannot answer decisions right now",
   "A character knowledge range points to a message that no longer exists",
   "Memory text must contain between 1 and 500000 characters",
-  "Memory update must include content, enabled or audience",
+  "Memory update must include content, timeframe, enabled or audience",
+  "Memory timeframe must contain at most 2000 characters",
+  "Only saved scenes have editable timeframes",
   "Only saved scenes in Individual mode have editable character access",
   "Choose characters from this chat; the narrator already has access",
   "Scene sources are hidden from a selected character or precede their knowledge start",
@@ -76,6 +87,11 @@ export async function advancedMemoryRoutes(app: FastifyInstance) {
         .initialize(req.params.id, {
           debugMode: options.debugMode,
           sceneId: options.sceneId,
+          fixAll: options.sceneId ? undefined : options.fixAll,
+          range:
+            options.range && !options.sceneId
+              ? { start: options.range.start - 1, end: options.range.end - 1 }
+              : undefined,
           blocking: true,
           onProgress: acknowledgeStart,
         })

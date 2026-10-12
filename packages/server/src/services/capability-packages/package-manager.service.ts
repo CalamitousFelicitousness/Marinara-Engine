@@ -1021,9 +1021,9 @@ function entriesCarryItemGate(entries: unknown): boolean {
 }
 
 const HELD_RIDER_ISSUE =
-  "A ruleset whose riders fire on held weapons requires schemaVersion 2 and capabilityApi 1.67 or newer";
+  "A ruleset whose riders fire on held weapons requires schemaVersion 2 and capabilityApi 1.70 or newer";
 
-/** A rider that names held `weapons`, which is 1.67: a new key on the strict rider. */
+/** A rider that names held `weapons`, which is 1.70: a new key on the strict rider. */
 function entriesCarryHeldRider(entries: unknown): boolean {
   return (
     Array.isArray(entries) &&
@@ -1063,13 +1063,13 @@ function entriesCarryMarket(entries: unknown): boolean {
 }
 
 const MARKET_DAY_ISSUE =
-  "A ruleset whose market keeps stock, limits what a place keeps, buys back or has a purse requires schemaVersion 2 and capabilityApi 1.66 or newer";
+  "A ruleset whose market keeps stock, limits what a place keeps, buys back or has a purse requires schemaVersion 2 and capabilityApi 1.69 or newer";
 
-/** A `sold` (a rule's or an item's) of 1.66: one with a limit. (One naming neither a place nor a
+/** A `sold` (a rule's or an item's) of 1.69: one with a limit. (One naming neither a place nor a
  *  limit is refused at import.) */
 const soldOfMarketDay = (sold: unknown): boolean => plainRecord(sold)?.limited !== undefined;
 
-/** An item's `sold` that keeps a limit, which is 1.66. */
+/** An item's `sold` that keeps a limit, which is 1.69. */
 function entriesCarryMarketDay(entries: unknown): boolean {
   return (
     Array.isArray(entries) &&
@@ -1080,7 +1080,7 @@ function entriesCarryMarketDay(entries: unknown): boolean {
   );
 }
 
-/** The market's 1.66 keys: a purse, a buy-back share, a seller's stock, a rule's limit. */
+/** The market's 1.69 keys: a purse, a buy-back share, a seller's stock, a rule's limit. */
 function rulesetCarriesMarketDay166(ruleset: { items?: unknown } | undefined): boolean {
   const market = plainRecord(plainRecord(ruleset?.items)?.market);
   if (!market) return false;
@@ -2666,16 +2666,23 @@ export const capabilityPackageManager = {
   },
 
   async declineUpdate(packageId: string, version: string) {
-    const installedPackages = await this.installed();
-    const catalog = await this.catalog();
-    const candidate = findCompatibleCapabilityPackageUpdates(installedPackages, catalog).find(
-      ({ installed, entry }) => installed.id === packageId && entry.manifest.version === version,
+    return (await this.declineUpdates([{ id: packageId, version }])).length > 0;
+  },
+
+  /** "Not now" on the updates dialog: every listed update in one catalog read and one decisions write, so a
+   *  reload right after it cannot bring back updates a one-by-one loop had not reached yet. Returns the ids
+   *  declined; an update that is no longer offered is skipped. */
+  async declineUpdates(updates: Array<{ id: string; version: string }>) {
+    const candidates = findCompatibleCapabilityPackageUpdates(await this.installed(), await this.catalog());
+    const declined = updates.filter(({ id, version }) =>
+      candidates.some(({ installed, entry }) => installed.id === id && entry.manifest.version === version),
     );
-    if (!candidate) return false;
+    if (declined.length === 0) return [];
     const decisions = await readUpdateDecisions();
-    decisions.declined[packageId] = { version, declinedAt: new Date().toISOString() };
+    const declinedAt = new Date().toISOString();
+    for (const { id, version } of declined) decisions.declined[id] = { version, declinedAt };
     await writeUpdateDecisions(decisions);
-    return true;
+    return declined.map(({ id }) => id);
   },
 
   async install(packageId: string, expectedVersion: string, expectedArtifactSha256: string) {

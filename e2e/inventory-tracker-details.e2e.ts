@@ -12,6 +12,7 @@ for (const theme of ["light", "dark"] as const) {
   test(`Inventory descriptions and locations persist with item locks (${theme})`, async ({
     page,
     request,
+    isMobile,
   }, testInfo) => {
     const created = await request.post("/api/chats", {
       data: { name: "Detailed inventory fixture", mode: "roleplay", characterIds: [] },
@@ -73,7 +74,12 @@ for (const theme of ["light", "dark"] as const) {
         },
         { chatId: chat.id, version },
       );
+      // Phones begin at the Trackers button; computers open the selected panel on load.
+      const openTrackerPanel = async () => {
+        if (isMobile) await page.locator('.mari-window-bubble[data-tracker-panel-toggle="bubble"]').click();
+      };
       await page.goto("/");
+      await openTrackerPanel();
       const state = async () => (await request.get(`/api/chats/${chat.id}/game-state`)).json();
       const items = async () => (await state()).playerStats.inventoryTrackerInventory;
       const location = page.getByRole("button", { name: "Location for Painkillers", exact: true });
@@ -118,6 +124,7 @@ for (const theme of ["light", "dark"] as const) {
         )
         .toBe(true);
       await page.reload();
+      await openTrackerPanel();
       await expect(location).toHaveText("Bedside table");
       await expect(description).toHaveText("Small white tablets");
       await expect(page.getByRole("button", { name: "Description for Brass key", exact: true })).toHaveText(

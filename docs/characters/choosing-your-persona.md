@@ -16,7 +16,7 @@ Every chat can store its own persona. You can use different personas in differen
 
 ### From Chat Settings
 
-1. Open **Chat Settings** (the gear near the chat).
+1. Open **Chat Settings** (the **Chat Settings** button in the chat, at the top right unless you moved it).
 2. Find the **Persona** section. Its help text starts with "Your persona defines who you are in this chat."
 3. When no persona is set, you see "No persona selected."
 4. Click **Choose Persona**. This button reads **Change Persona** once a persona is set.
@@ -29,6 +29,8 @@ In Game Mode this section is framed as your in-game party, but it still uses the
 ### When you create a chat
 
 The New Chat setup wizard has a **Your Persona** field. It uses the same searchable picker and a **None** option. In the New Game Setup wizard, this field is labeled **Player's Persona** instead.
+
+In a Roleplay chat, a character card can offer **Create your persona** at the top of this picker. Pick it to answer the card's questions and get a new persona. See [Interactive Onboarding](interactive-onboarding.md).
 
 ## The Quick Persona Switcher
 
@@ -53,4 +55,5 @@ Switching your persona in the middle of a chat does not rewrite earlier messages
 ## Related guides
 
 - [User Personas: Creating and Editing](personas.md)
+- [Interactive Onboarding](interactive-onboarding.md)
 - [Chat Settings Overview](../chats/chat-settings.md)

@@ -276,6 +276,7 @@ export async function promptsRoutes(app: FastifyInstance) {
     }
 
     const zip = new AdmZip();
+    const usedSegments = new Set<string>();
     let exportedCount = 0;
     for (const id of ids) {
       const result = await buildPresetExportEnvelope(storage, id);
@@ -286,6 +287,7 @@ export async function promptsRoutes(app: FastifyInstance) {
         itemKind: "marinara.preset",
         config: result.envelope,
         fallbackName: `preset-${exportedCount + 1}`,
+        usedSegments,
       });
       zip.addFile(entry.path, Buffer.from(JSON.stringify(entry.manifest, null, 2), "utf-8"));
       exportedCount++;

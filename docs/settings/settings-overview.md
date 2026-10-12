@@ -50,7 +50,7 @@ This section is at **Settings** > **General** > **App Behavior**. It controls da
 - **Confirm before deleting**: on by default. When on, Marinara asks before it permanently deletes a chat, a character, or another item. Keep it on to avoid accidental deletes.
 - **Achievements**: on by default. When on, the Home screen shows the achievements button and unlock notices. When off, tracking stays silent. See [Achievements](../home/achievements.md).
 - **Music Player**: on by default. When on, the compact Music Player is shown. See [Music](../media/music.md).
-- **Mini Mari surprise visits**: on by default. When on, a rare Chibi Professor Mari message can appear while you scroll. Turn it off if it gets in the way.
+- **Search and Professor Mari settings**: select **Open** to go to their settings page. Every Search and Professor Mari setting lives there, in five groups: **Search** (offer to improve a field, search history), **Quick answers** (**Quick answers in Search**, **Answer with**, **Wait after typing**), **Professor Mari** (Ask Professor Mari from Search, permissions mode, reply chips, how change cards open, Enter sends to Professor Mari), **Around the app** (Mini Professor Mari visits) and **Appearance** (her look: each pack shows her portrait, the one in use says **In use**, and a locked pack shows your play time toward unlocking it). The gear in Search opens the same page, and searching for any of these settings, by its new or old name, takes you straight to it.
 
 ## Text Rules
 
@@ -93,6 +93,7 @@ Read more in [Sending and Streaming Messages](../chats/sending-and-streaming.md)
 The **Input & Editing** section controls:
 
 - **Send on Enter**: pick which modes send when you press Enter.
+- **Keep guidance after regenerating**: leave your direction in the message box after a guided regenerate. On by default.
 - **Speech-to-text microphone**: show a microphone button in chat inputs.
 - **Intuitive swipe navigation**: use arrow keys or touch swipes to move between alternate replies.
 - **Reroll past the newest swipe**: make a new reply when you swipe past the newest one.
@@ -103,7 +104,7 @@ Read more in [Message Actions](../chats/messages.md).
 
 ## Message Tools
 
-The **Message Tools** section is at **Settings** > **Advanced** > **Message Tools**. It is a hub of display and repair toggles. Each toggle below is off by default. The table shows what each one does and where to read more.
+The **Message Tools** section is at **Settings** > **Advanced** > **Message Tools**. It is a hub of display and repair toggles. Each toggle below is off by default, except **Show "older messages not sent" note**, which is on. The table shows what each one does and where to read more.
 
 | Toggle | What it does | Full guide |
 | --- | --- | --- |
@@ -111,6 +112,7 @@ The **Message Tools** section is at **Settings** > **Advanced** > **Message Tool
 | **Show model name on messages** | Shows which AI model wrote each reply. | [Message Actions](../chats/messages.md) |
 | **Show token usage on messages** | Shows prompt and completion token counts per message. | [Message Actions](../chats/messages.md) |
 | **Show message numbers** | Shows a number on each message in the chat. | [Message Actions](../chats/messages.md) |
+| **Show "older messages not sent" note** | Shows a note under the newest reply when older messages did not fit the prompt. Turn it off to hide that note in long chats. A cut-off or empty reply still shows its own note. | [Peek Prompt](../chats/peek-prompt.md) |
 | **Guide swipes/regens with chat input** | Uses your current draft as direction when you regenerate. | [Guided Generation and Impersonate](../chats/guided-and-impersonate.md) |
 | **Quick replies** | Adds alternate draft actions beside the Send button. | [Guided Generation and Impersonate](../chats/guided-and-impersonate.md) |
 | **Include reasoning in exports** | Adds hidden thinking to chat exports. | [Exporting and Importing Chats](../chats/export-import.md) |

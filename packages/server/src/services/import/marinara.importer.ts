@@ -14,6 +14,8 @@ import {
   isJsonRecord,
   capImportedRulesetSheets,
   characterDataSchema,
+  dropUnreadableOnboarding,
+  ONBOARDING_MAX_QUESTIONS,
   canonicalizeLegacyPersonaInput,
   normalizeAvatarCrop,
   normalizeConvoBehavior,
@@ -418,8 +420,19 @@ function unwrapFolderManifestEnvelope(value: unknown): ExportEnvelope | null {
 
 /** Validate and default a native character payload before it reaches storage. */
 export function normalizeNativeCharacterData(data: unknown): CharacterData | null {
-  const parsed = characterDataSchema.safeParse(withCappedRulesetSheets(data));
+  const parsed = characterDataSchema.safeParse(withReadableOnboarding(withCappedRulesetSheets(data)));
   return parsed.success ? parsed.data : null;
+}
+
+/** Onboarding the boundary would refuse costs the import its onboarding, never the whole card. */
+function withReadableOnboarding(data: unknown): unknown {
+  if (!isJsonRecord(data) || !isJsonRecord(data.extensions)) return data;
+  const { extensions, dropped, truncated } = dropUnreadableOnboarding(data.extensions);
+  if (dropped) logger.warn("[import] Dropped unreadable interactive onboarding from an imported character");
+  if (truncated)
+    logger.warn("[import] Kept the first %d onboarding questions of an imported character", ONBOARDING_MAX_QUESTIONS);
+  // Also when only ids were made unique (neither flag set).
+  return extensions === data.extensions ? data : { ...data, extensions };
 }
 
 /** A ruleset sheet the boundary would refuse costs the import that sheet, never the whole card.
@@ -628,6 +641,11 @@ async function importPersona(data: unknown, db: DB) {
     ...(d.savedStatusOptions === undefined ? {} : { savedStatusOptions: d.savedStatusOptions }),
     ...(d.convoBehavior === undefined ? {} : { convoBehavior: d.convoBehavior }),
     ...(typeof d.versioningEnabled === "boolean" ? { versioningEnabled: d.versioningEnabled } : {}),
+    // #7053: the export writes the public boolean contract for the image-appearance
+    // toggle. Without these the exported override was silently dropped on import,
+    // so a persona round-trip lost the switch and the text.
+    ...(typeof d.imageAppearanceEnabled === "boolean" ? { imageAppearanceEnabled: d.imageAppearanceEnabled } : {}),
+    ...(typeof d.imageAppearance === "string" ? { imageAppearance: d.imageAppearance } : {}),
   };
   for (const field of [
     "comment",

@@ -1,9 +1,11 @@
 // Admin runtime diagnostics: GET /api/admin/runtime-diagnostics is privileged,
 // never cached, carries counts and states only (no row content, no stored
 // secrets) and adds what /api/health leaves out: storage residency and whether
-// each capability package runtime is actually live.
+// each capability package runtime is actually live. /api/health itself stays
+// public for probes, but its local model and GPU section only goes to callers
+// who could open the app.
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -21,6 +23,13 @@ delete process.env.BASIC_AUTH_PASS;
 
 const SECRET = "sk-regression-diagnostics-secret-0000";
 const ROW_TEXT = "diagnostics fixture value that must never leave the store";
+const MODEL_FILE = "marker-private-model.gguf";
+mkdirSync(join(dataDir, "models"), { recursive: true });
+writeFileSync(join(dataDir, MODEL_FILE), Buffer.alloc(1024));
+writeFileSync(
+  join(dataDir, "models", "sidecar-config.json"),
+  JSON.stringify({ externalModelPath: join(dataDir, MODEL_FILE), backend: "llama_cpp" }),
+);
 
 try {
   const diagnostics = await import("../../packages/server/src/lib/runtime-diagnostics.js");
@@ -94,7 +103,40 @@ try {
     });
     assert.ok(remote.statusCode >= 400, `remote diagnostics must be refused (got ${remote.statusCode})`);
 
-    // 6. A package whose activation failed shows as failed, with the time of
+    // 6. /api/health answers everyone, but the local model file names and GPU details only reach this machine
+    //    or a signed-in caller.
+    const health = async (headers: Record<string, string> = {}, remoteAddress = "127.0.0.1") => {
+      const reply = await app.inject({ method: "GET", url: "/api/health", remoteAddress, headers });
+      assert.equal(reply.statusCode, 200, reply.body);
+      const parsed = reply.json();
+      assert.equal(parsed.status, "ok");
+      assert.equal(typeof parsed.version, "string");
+      assert.equal(typeof parsed.build, "string");
+      return { raw: reply.body, sidecars: parsed.sidecars };
+    };
+    const local = await health();
+    assert.equal(local.sidecars?.slots?.[0]?.model, MODEL_FILE, "this machine sees its own model slots");
+    for (const [label, auth] of [
+      ["no sign-in configured", null],
+      ["sign-in configured", { BASIC_AUTH_USER: "owner", BASIC_AUTH_PASS: "correct-horse-battery" }],
+    ] as const) {
+      if (auth) Object.assign(process.env, auth);
+      try {
+        const stranger = await health({}, "203.0.113.7");
+        assert.equal(stranger.sidecars, null, `${label}: a stranger gets no model or GPU section`);
+        assert.ok(!stranger.raw.includes("marker-private-model"), `${label}: no model file name leaks`);
+        if (auth) {
+          const basic = `Basic ${Buffer.from(`${auth.BASIC_AUTH_USER}:${auth.BASIC_AUTH_PASS}`).toString("base64")}`;
+          const signedIn = await health({ authorization: basic }, "203.0.113.7");
+          assert.equal(signedIn.sidecars?.slots?.[0]?.model, MODEL_FILE, "a signed-in browser keeps its diagnostics");
+        }
+      } finally {
+        delete process.env.BASIC_AUTH_USER;
+        delete process.env.BASIC_AUTH_PASS;
+      }
+    }
+
+    // 7. A package whose activation failed shows as failed, with the time of
     //    the failure, even when the registry still reads "active".
     const manager = capabilityPackageManager as unknown as Record<string, unknown>;
     const runtime = capabilityModuleRuntime as unknown as {

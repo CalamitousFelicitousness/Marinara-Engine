@@ -1,10 +1,11 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { existsSync, realpathSync, statSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { lstat, mkdir, mkdtemp, readdir, readlink, rename, rm, symlink } from "node:fs/promises";
 import type { Stats } from "node:fs";
 import { basename, delimiter, dirname, join, relative, resolve, sep } from "node:path";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
+import { promisify } from "node:util";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import {
@@ -14,6 +15,7 @@ import {
   workspacePathAccessPolicy,
 } from "./workspace-change-review.service.js";
 import { getBubblewrapRuntimeStatus } from "../sandbox/bubblewrap-runtime.js";
+import { getFileStorageDir } from "../../config/runtime-config.js";
 import { logger } from "../../lib/logger.js";
 
 export type WorkspaceShellSandboxBackend = "macos-seatbelt" | "linux-bubblewrap";
@@ -32,6 +34,7 @@ type SpawnWorkspaceShellInput = {
   command: string;
   workspaceRoot: string;
   env: NodeJS.ProcessEnv;
+  codeCheck?: boolean;
 };
 
 export type SpawnWorkspaceProcessInput = {
@@ -41,6 +44,11 @@ export type SpawnWorkspaceProcessInput = {
   env: NodeJS.ProcessEnv;
   writableWorkspace?: boolean;
   allowChildProcesses?: boolean;
+  /**
+   * Only `mari code check`: its pnpm check ends in a real build, which has to write every package's dist, and pnpm
+   * needs to read its own files.
+   */
+  codeCheck?: boolean;
 };
 
 const MACOS_SANDBOX_EXEC = "/usr/bin/sandbox-exec";
@@ -253,9 +261,15 @@ export async function workspacePolicyPaths(workspaceRoot: string) {
       }
     }
   }
+  // Saved data (DATA_DIR/storage) sits inside the workspace by default. It changes only through mari db, so the
+  // shell may read it but never write it, matching the write tool.
+  const [storageDir] = uniqueExistingPaths([getFileStorageDir()]).filter((path) =>
+    path.startsWith(workspaceRoot + sep),
+  );
   return {
     forbidden: uniqueExistingPaths(forbidden),
     sensitive: uniqueExistingPaths(sensitive),
+    storageDir: storageDir ?? null,
     packageStores: uniqueExistingPaths(packageStores),
     nodeModulesStores: uniqueExistingPaths(nodeModulesStores),
     storeLinks,
@@ -626,7 +640,53 @@ export async function detectUnreviewedSensitiveChanges(
   return { hits, unscannable, entryCapExceeded: capState.entryCapExceeded };
 }
 
-function macosReadRoots(workspaceRoot: string, env: NodeJS.ProcessEnv, sandboxTemp: string) {
+/** pnpm's home, whose .tools folder keeps the pnpm version a project pins; pnpm's own default when unset. */
+function pnpmHomeDir(env: NodeJS.ProcessEnv) {
+  if (env.PNPM_HOME) return resolve(env.PNPM_HOME);
+  if (process.platform === "darwin") return join(homedir(), "Library", "pnpm");
+  return join(env.XDG_DATA_HOME || join(homedir(), ".local", "share"), "pnpm");
+}
+
+/**
+ * `mari code check` runs pnpm, so its sandbox may also read pnpm's own files: the .tools folder in pnpm's home, where
+ * the pinned version waits (fetching it would need the network), and the pnpm package that PATH leads to. Only a
+ * folder holding a package named pnpm counts, so a stray pnpm binary cannot open up the folder around it.
+ */
+function pnpmReadRoots(env: NodeJS.ProcessEnv) {
+  const roots = env.PNPM_HOME ? [join(env.PNPM_HOME, ".tools")] : [];
+  for (const dir of (env.PATH ?? "").split(delimiter).filter(Boolean)) {
+    const candidate = join(dir, "pnpm");
+    if (!existsSync(candidate)) continue;
+    try {
+      const pkg = dirname(dirname(realpathSync(candidate)));
+      const { name } = JSON.parse(readFileSync(join(pkg, "package.json"), "utf8")) as { name?: unknown };
+      if ((name === "pnpm" || name === "@pnpm/exe") && pkg !== "/" && pkg !== homedir()) roots.push(pkg);
+    } catch {
+      /* not an npm-installed pnpm */
+    }
+    break;
+  }
+  return roots;
+}
+
+/**
+ * The sandbox cannot read .git, so the check's build gets its commit from here. A build without one is redone at the
+ * next start.
+ */
+async function workspaceHeadCommit(workspaceRoot: string) {
+  try {
+    const { stdout } = await promisify(execFile)("git", ["rev-parse", "HEAD"], {
+      cwd: workspaceRoot,
+      env: sanitizeWorkspaceShellEnv(process.env),
+      timeout: 5_000,
+    });
+    return stdout.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+function macosReadRoots(workspaceRoot: string, env: NodeJS.ProcessEnv, sandboxTemp: string, codeCheck: boolean) {
   const pathRoots = (env.PATH ?? "").split(delimiter).filter(Boolean);
   return uniqueExistingPaths([
     workspaceRoot,
@@ -645,6 +705,7 @@ function macosReadRoots(workspaceRoot: string, env: NodeJS.ProcessEnv, sandboxTe
     "/usr/local",
     dirname(process.execPath),
     ...pathRoots,
+    ...(codeCheck ? pnpmReadRoots(env) : []),
   ]);
 }
 
@@ -655,10 +716,11 @@ export async function buildMacosWorkspaceShellProfile(
   writableWorkspace = true,
   executable = "/bin/bash",
   allowChildProcesses = true,
+  codeCheck = false,
 ) {
   const policyPaths = await workspacePolicyPaths(workspaceRoot);
   const storeCaches = writableWorkspace ? await packageStoreCacheCarveouts(policyPaths.nodeModulesStores) : [];
-  const readable = macosReadRoots(workspaceRoot, env, sandboxTemp)
+  const readable = macosReadRoots(workspaceRoot, env, sandboxTemp, codeCheck)
     .map((path) => `    (subpath ${sandboxLiteral(path)})`)
     .join("\n");
   const forbiddenReads = policyPaths.forbidden.map((path) => `    (subpath ${sandboxLiteral(path)})`).join("\n");
@@ -667,6 +729,10 @@ export async function buildMacosWorkspaceShellProfile(
   const sensitiveWriteRule = writableWorkspace && sensitiveWrites ? `(deny file-write*\n${sensitiveWrites})` : "";
   const storeWrites = policyPaths.packageStores.map((path) => `    (subpath ${sandboxLiteral(path)})`).join("\n");
   const storeWriteRule = writableWorkspace && storeWrites ? `(deny file-write*\n${storeWrites})` : "";
+  const storageWriteRule =
+    writableWorkspace && policyPaths.storageDir
+      ? `(deny file-write*\n    (subpath ${sandboxLiteral(policyPaths.storageDir)}))`
+      : "";
   const storeCacheAllows = storeCaches.map((path) => `    (subpath ${sandboxLiteral(path)})`).join("\n");
   // Placed AFTER the store deny: seatbelt's last matching rule wins, so the
   // cache subpaths stay writable inside the otherwise read-only store.
@@ -674,12 +740,13 @@ export async function buildMacosWorkspaceShellProfile(
   // #6984: build output stays read-only. The pattern also covers folders that do not exist yet, new packages
   // and dist-* builds; seatbelt matched DIST to dist on a case-insensitive volume when this was tested.
   const buildOutputPattern = `^${escapeRegExp(policyPaths.packagesDir)}/[^/]+/dist(-[^/]*)?(/|$)`;
-  const buildOutputRule = writableWorkspace
-    ? `(deny file-write*\n    (regex ${JSON.stringify(buildOutputPattern)})\n${[
-        ...policyPaths.buildOutputs.map((path) => `    (subpath ${sandboxLiteral(path)})`),
-        ...policyPaths.buildOutputHolders.map((path) => `    (literal ${sandboxLiteral(path)})`),
-      ].join("\n")})`
-    : "";
+  const buildOutputRule =
+    writableWorkspace && !codeCheck
+      ? `(deny file-write*\n    (regex ${JSON.stringify(buildOutputPattern)})\n${[
+          ...policyPaths.buildOutputs.map((path) => `    (subpath ${sandboxLiteral(path)})`),
+          ...policyPaths.buildOutputHolders.map((path) => `    (literal ${sandboxLiteral(path)})`),
+        ].join("\n")})`
+      : "";
   const workspaceWriteRule = writableWorkspace ? `    (subpath ${sandboxLiteral(workspaceRoot)})\n` : "";
   const processRules = allowChildProcesses
     ? `(allow process*)\n(allow signal)`
@@ -702,13 +769,14 @@ ${workspaceWriteRule}
 ${forbiddenReadRule}
 ${sensitiveWriteRule}
 ${storeWriteRule}
+${storageWriteRule}
 ${storeCacheRule}
 ${buildOutputRule}
 (deny network*)
 `;
 }
 
-function linuxReadRoots(workspaceRoot: string, env: NodeJS.ProcessEnv) {
+function linuxReadRoots(workspaceRoot: string, env: NodeJS.ProcessEnv, codeCheck: boolean) {
   const pathRoots = (env.PATH ?? "").split(delimiter).filter(Boolean);
   // Preserve paths such as /bin and /lib even when the host exposes them as
   // symlinks into /usr. Bubblewrap starts with an empty root, so canonicalizing
@@ -725,6 +793,7 @@ function linuxReadRoots(workspaceRoot: string, env: NodeJS.ProcessEnv) {
     dirname(process.execPath),
     workspaceRoot,
     ...pathRoots,
+    ...(codeCheck ? pnpmReadRoots(env) : []),
   ]);
 }
 
@@ -735,6 +804,7 @@ export async function linuxBubblewrapArgs(
   executable: string,
   commandArgs: string[],
   writableWorkspace: boolean,
+  codeCheck = false,
 ) {
   const policyPaths = await workspacePolicyPaths(workspaceRoot);
   const args = [
@@ -748,7 +818,7 @@ export async function linuxBubblewrapArgs(
     "--tmpfs",
     "/tmp",
   ];
-  for (const root of linuxReadRoots(workspaceRoot, env)) {
+  for (const root of linuxReadRoots(workspaceRoot, env, codeCheck)) {
     if (root === workspaceRoot) continue;
     args.push("--ro-bind", root, root);
   }
@@ -772,7 +842,8 @@ export async function linuxBubblewrapArgs(
     }
     // #6984: build output stays read-only. A mount needs an existing folder, so a dist a command creates in a
     // package that has none yet is not covered here; the pre-run shell check refuses the usual ways to create one.
-    for (const output of policyPaths.buildOutputs) args.push("--ro-bind", output, output);
+    if (!codeCheck) for (const output of policyPaths.buildOutputs) args.push("--ro-bind", output, output);
+    if (policyPaths.storageDir) args.push("--ro-bind", policyPaths.storageDir, policyPaths.storageDir);
   }
   for (const path of policyPaths.forbidden) {
     if ((await lstat(path)).isDirectory()) args.push("--tmpfs", path);
@@ -800,8 +871,11 @@ export async function spawnWorkspaceSandboxedProcess(
   const workspaceRoot = existsSync(resolvedRoot) ? realpathSync(resolvedRoot) : resolvedRoot;
   const writableWorkspace = input.writableWorkspace !== false;
   const allowChildProcesses = input.allowChildProcesses !== false;
+  const codeCheck = input.codeCheck === true;
   const sandboxTemp = await mkdtemp(join(tmpdir(), "marinara-mari-shell-"));
   const safeEnv = sanitizeWorkspaceShellEnv(input.env);
+  const pnpmHome = codeCheck ? pnpmHomeDir(input.env) : null;
+  const commit = codeCheck ? input.env.MARINARA_GIT_COMMIT || (await workspaceHeadCommit(workspaceRoot)) : null;
   const env: NodeJS.ProcessEnv = {
     ...safeEnv,
     HOME: workspaceRoot,
@@ -811,6 +885,8 @@ export async function spawnWorkspaceSandboxedProcess(
     XDG_CACHE_HOME: sandboxTemp,
     XDG_CONFIG_HOME: sandboxTemp,
     XDG_DATA_HOME: sandboxTemp,
+    ...(pnpmHome && existsSync(pnpmHome) ? { PNPM_HOME: pnpmHome } : {}),
+    ...(commit ? { MARINARA_GIT_COMMIT: commit } : {}),
   };
   let child: ChildProcess;
   try {
@@ -826,6 +902,7 @@ export async function spawnWorkspaceSandboxedProcess(
             writableWorkspace,
             input.executable,
             allowChildProcesses,
+            codeCheck,
           ),
           input.executable,
           ...input.args,
@@ -835,7 +912,15 @@ export async function spawnWorkspaceSandboxedProcess(
     } else {
       child = spawn(
         findBubblewrap()!,
-        await linuxBubblewrapArgs(workspaceRoot, env, sandboxTemp, input.executable, input.args, writableWorkspace),
+        await linuxBubblewrapArgs(
+          workspaceRoot,
+          env,
+          sandboxTemp,
+          input.executable,
+          input.args,
+          writableWorkspace,
+          codeCheck,
+        ),
         { cwd: workspaceRoot, env, windowsHide: true, detached: true, stdio: ["pipe", "pipe", "pipe"] },
       );
     }
@@ -884,6 +969,7 @@ export async function spawnWorkspaceSandboxedShell(input: SpawnWorkspaceShellInp
       args: ["--noprofile", "--norc", "-c", input.command],
       workspaceRoot: input.workspaceRoot,
       env: input.env,
+      codeCheck: input.codeCheck,
     });
     sandboxed.child.stdin?.end();
     return sandboxed;

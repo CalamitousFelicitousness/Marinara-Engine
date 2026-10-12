@@ -20,6 +20,7 @@ import {
   extractFileAttachmentInputs,
   extractImageAttachmentDataUrls,
   getAttachmentFilename,
+  isSentSelfieAttachment,
   parseExtra,
   type PromptAttachment,
 } from "./prompt-attachments.js";
@@ -349,6 +350,55 @@ export async function generateImageCaptionsForDataUrls<T extends { filename: str
   });
   await Promise.all(workers);
   return results;
+}
+
+/**
+ * Caption the selfies a character sent, so their history note describes the image rather than the
+ * prompt that asked for it. Captions are cached on the attachment like uploads. Unlike uploads, a
+ * missing file or failed caption does not stop the turn: the note falls back to the image prompt.
+ * Returns the updated attachments when a new caption was made.
+ */
+export async function captionSentSelfies(args: {
+  attachments: PromptAttachment[] | undefined;
+  imageCaptioning: ImageCaptioningRuntime;
+  readImageDataUrl: (attachment: PromptAttachment) => Promise<string | null>;
+  signal: AbortSignal;
+  debugMode?: boolean;
+}): Promise<PromptAttachment[] | null> {
+  const { attachments, imageCaptioning } = args;
+  const connection = imageCaptioning.connection;
+  if (!attachments?.length || !imageCaptioning.enabled || !imageCaptioning.provider || !connection) return null;
+  let updatedAttachments: PromptAttachment[] | null = null;
+  for (const [index, attachment] of attachments.entries()) {
+    if (!isSentSelfieAttachment(attachment) || readCachedImageCaption(attachment, imageCaptioning)) continue;
+    try {
+      const imageDataUrl = await args.readImageDataUrl(attachment);
+      if (!imageDataUrl) continue;
+      const filename = getAttachmentFilename(attachment);
+      const caption = await generateImageCaptionForDataUrl(
+        filename,
+        imageDataUrl,
+        imageCaptioning,
+        args.signal,
+        args.debugMode,
+      );
+      if (!caption) continue;
+      updatedAttachments ??= attachments.map((item) => ({ ...item }));
+      updatedAttachments[index] = {
+        ...attachment,
+        imageCaption: caption,
+        imageCaptionConnectionId: imageCaptioning.connectionId,
+        imageCaptionModel: connection.model,
+        imageCaptionProvider: connection.provider,
+        imageCaptionPromptKey: captionPromptKey(effectiveCaptionPrompt(imageCaptioning)),
+        imageCaptionedAt: new Date().toISOString(),
+      };
+    } catch (error) {
+      if (args.signal.aborted) throw error;
+      logger.warn(error, "[image-captioning] Selfie caption failed; using its image prompt instead");
+    }
+  }
+  return updatedAttachments;
 }
 
 export async function resolvePromptAttachmentInputs(args: {

@@ -34,10 +34,16 @@ import {
   buildRoleplayPersonalContext,
   parseRoleplayUserCommands,
   prepareUserRoleplayCommands,
+  roleplayHiddenWhisperMessageIds,
+  latestRoleplayUserInput,
 } from "../../services/generation/roleplay-commands.js";
 import { randomUUID } from "crypto";
 import { createChatsStorage } from "../../services/storage/chats.storage.js";
-import { createAdvancedMemoryService, selectAdvancedMemoryMessages } from "../../services/advanced-memory.js";
+import {
+  createAdvancedMemoryService,
+  selectAdvancedMemoryMessages,
+  selectAdvancedMemoryWhisperOnlyIds,
+} from "../../services/advanced-memory.js";
 import { prepareAdvancedMemoryContext } from "../../services/generation/advanced-memory-context.js";
 import {
   ADVANCED_MEMORY_MARKER_TYPES,
@@ -126,11 +132,13 @@ import {
 } from "../../services/generation/model-access-policy.js";
 import {
   collectPastReasoningMetadata,
+  keepsCodexDefaultEffort,
   limitPastReasoningMetadata,
   normalizeChatTopP,
 } from "../../services/generation/generation-parameters.js";
 import {
   filterPromptMessagesForCharacterAudience,
+  keptWindowStart,
   scopeIndividualGroupMessagesForTarget,
 } from "../../services/generation/prompt-message-scope.js";
 import { applyAllSegmentEdits } from "../../services/game/segment-edits.js";
@@ -157,6 +165,7 @@ import {
   readPersonaSnapshotName,
   resolveActiveCharacterIds,
   resolvePromptCharacterIdsForTarget,
+  mergedChatSummaryReaders,
   resolveCharacterNameMap,
   resolveGroupGenerationMode,
   resolveRegenerationGameStateAnchor,
@@ -205,6 +214,7 @@ type DryRunPromptMessage = {
   personaSnapshotName?: string | null;
   hiddenFromAICharacterIds?: string[];
   conversationStartForCharacterIds?: string[];
+  whisperSourceId?: string;
   providerMetadata?: Record<string, unknown>;
 };
 
@@ -893,21 +903,64 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       (promptGroupResponseOrder !== "manual" || chatMode === "conversation") &&
       !impersonate;
     const audienceCharacterIds = impersonate ? [] : promptTargetCharacterId ? [promptTargetCharacterId] : characterIds;
+    // The character who receives whispers in this preview, matching the live route.
+    const whisperTargetId = promptTargetCharacterId ?? (allCharacterIds.length === 1 ? allCharacterIds[0]! : null);
+    const whisperViewerId =
+      chatMode === "roleplay" &&
+      !impersonate &&
+      whisperTargetId &&
+      (allCharacterIds.length === 1 || dryRunGroupChatMode === "individual")
+        ? whisperTargetId
+        : null;
+    // Like the live route, only messages from the latest conversation start on can keep a whisper.
+    const conversationStart = chatMessages
+      .map((message) => parseExtra(message.extra).isConversationStart === true)
+      .lastIndexOf(true);
+    const hiddenWhisperIds =
+      whisperViewerId && audienceCharacterIds.length === 1 && audienceCharacterIds[0] === whisperViewerId
+        ? roleplayHiddenWhisperMessageIds(chatMessages.slice(Math.max(0, conversationStart)), whisperViewerId)
+        : new Set<string>();
     if (advancedMemoryEnabled) {
-      const allowedIds = new Set(
-        selectAdvancedMemoryMessages(
+      // Impersonation reads memory as its owner, without one character's knowledge range, as the live route does.
+      const individualMemoryReader = dryRunGroupChatMode === "individual" && audienceCharacterIds.length > 0;
+      // Memory's own preparation below narrows whisper-only messages to its window, as in the live route.
+      const allowedIds = new Set([
+        ...selectAdvancedMemoryMessages(
           advancedMemorySourceMessages,
           advancedMemorySettings,
           audienceCharacterIds.length ? audienceCharacterIds : characterIds,
-          dryRunGroupChatMode === "individual",
+          individualMemoryReader,
         ).map((message) => message.id),
+        ...selectAdvancedMemoryWhisperOnlyIds(
+          advancedMemorySourceMessages,
+          advancedMemorySettings,
+          audienceCharacterIds.length ? audienceCharacterIds : characterIds,
+          individualMemoryReader,
+        ),
+      ]);
+      // A hidden message keeps its whisper inside the same window as in the live prompt,
+      // where only messages shown before memory selection can end it.
+      const globallyHidden = new Set(chatMessages.filter(isMessageHiddenFromAI).map((message) => message.id));
+      const windowStart = keptWindowStart(
+        mappedMessages,
+        (message) => !!message.id && allowedIds.has(message.id),
+        (message) =>
+          !!message.id &&
+          message.id !== "__dryrun_user__" &&
+          !allowedIds.has(message.id) &&
+          !globallyHidden.has(message.id) &&
+          !message.hiddenFromAICharacterIds?.some((id) => audienceCharacterIds.includes(id)),
       );
       mappedMessages = mappedMessages.filter(
-        (message) => message.id === "__dryrun_user__" || (message.id && allowedIds.has(message.id)),
+        (message, index) =>
+          message.id === "__dryrun_user__" ||
+          (message.id &&
+            (allowedIds.has(message.id) ||
+              (hiddenWhisperIds.has(message.id) && windowStart >= 0 && index >= windowStart))),
       );
     }
     if (audienceCharacterIds.length > 0) {
-      mappedMessages = filterPromptMessagesForCharacterAudience(mappedMessages, audienceCharacterIds);
+      mappedMessages = filterPromptMessagesForCharacterAudience(mappedMessages, audienceCharacterIds, hiddenWhisperIds);
     }
 
     let summaryEmbeddingSource: Awaited<ReturnType<typeof resolveMemoryRecallEmbeddingSource>> | null = null;
@@ -1065,7 +1118,10 @@ export async function registerDryRunRoute(app: FastifyInstance) {
         typeof chatMeta.groupScenarioText === "string" && (chatMeta.groupScenarioText as string).trim()
           ? (chatMeta.groupScenarioText as string).trim()
           : null,
-      lastInput: [...mappedMessages].reverse().find((message) => message.role === "user")?.content,
+      lastInput:
+        chatMode === "roleplay"
+          ? latestRoleplayUserInput(mappedMessages, chatMessages)
+          : [...mappedMessages].reverse().find((message) => message.role === "user")?.content,
       chatId,
       model: conn.model,
       lastGenerationType: promptLastGenerationType,
@@ -1085,7 +1141,18 @@ export async function registerDryRunRoute(app: FastifyInstance) {
         chatMode !== "game"
       ),
     });
-    const historyMacroProfilesById = (await resolveCharacterMacroData(app.db, allCharacterIds)).profilesById;
+    const { profilesById: historyMacroProfilesById, unreadableIds } = await resolveCharacterMacroData(
+      app.db,
+      allCharacterIds,
+    );
+    const chatSummaryReaders = mergedChatSummaryReaders({
+      characterIds,
+      individual: dryRunGroupChatMode === "individual",
+      impersonate,
+      narratorCharacterId: advancedMemorySettings.narratorCharacterId,
+      profilesById: historyMacroProfilesById,
+      unreadableIds,
+    });
 
     // Normal previews only read live answers. An explicit diagnostic request uses its
     // own cache; only run mode sends Decision requests, never the main generation.
@@ -1283,7 +1350,10 @@ export async function registerDryRunRoute(app: FastifyInstance) {
         characterNamesById,
       });
     }
-    promptMacroContext.lastInput = [...mappedMessages].reverse().find((message) => message.role === "user")?.content;
+    promptMacroContext.lastInput =
+      chatMode === "roleplay"
+        ? latestRoleplayUserInput(mappedMessages, chatMessages)
+        : [...mappedMessages].reverse().find((message) => message.role === "user")?.content;
 
     const usePromptParts = !!promptParts;
     if (!usePromptParts && chatMode === "conversation" && effectivePreset) {
@@ -1519,6 +1589,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
             content: m.content,
             contextKind: "history" as const,
             characterId: m.characterId ?? null,
+            ...(m.whisperSourceId ? { whisperSourceId: m.whisperSourceId } : {}),
             ...(m.images ? { images: m.images } : {}),
             ...(m.files ? { files: m.files } : {}),
             ...(m.providerMetadata ? { providerMetadata: m.providerMetadata } : {}),
@@ -1721,6 +1792,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
         })(),
         chatMessages: mappedMessages,
         chatSummary: resolvedInjectChatSummary ? activeChatSummary : null,
+        chatSummaryReaders,
         ...(advancedMemoryEnabled ? { advancedMemory: {}, deferAdvancedMemory: true } : {}),
         runtimeAgentData,
         enableAgents: false,
@@ -1819,6 +1891,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
         content: m.content,
         characterId: m.characterId,
         ...(m.contextKind ? { contextKind: m.contextKind } : {}),
+        ...(m.whisperSourceId ? { whisperSourceId: m.whisperSourceId } : {}),
         ...(m.providerMetadata ? { providerMetadata: m.providerMetadata } : {}),
         ...(m.images ? { images: m.images } : {}),
         ...(m.files ? { files: m.files } : {}),
@@ -2110,14 +2183,13 @@ export async function registerDryRunRoute(app: FastifyInstance) {
     }
 
     if (chatMode === "roleplay") {
-      const target = promptTargetCharacterId ?? (allCharacterIds.length === 1 ? allCharacterIds[0]! : null);
       appendRoleplayWhispers(
         finalMessages,
         chatMessages,
         impersonate
           ? { id: persona?.id ?? "user", kind: "persona" }
-          : target && (allCharacterIds.length === 1 || dryRunGroupChatMode === "individual")
-            ? { id: target, kind: "character" }
+          : whisperViewerId
+            ? { id: whisperViewerId, kind: "character" }
             : null,
         characterIds.includes(chatMeta.roleplayCommandNarratorId as string)
           ? (chatMeta.roleplayCommandNarratorId as string)
@@ -2127,9 +2199,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
         appendRoleplayMessageNotes(
           finalMessages,
           chatMessages,
-          target && (allCharacterIds.length === 1 || dryRunGroupChatMode === "individual")
-            ? { id: target, kind: "character" }
-            : null,
+          whisperViewerId ? { id: whisperViewerId, kind: "character" } : null,
         );
       }
     }
@@ -2179,6 +2249,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
     // ── Parameter normalization (mirror /api/generate) ──
     const modelLower = (conn.model ?? "").toLowerCase();
     const providerLower = (conn.provider ?? "").toLowerCase();
+    if (keepsCodexDefaultEffort(providerLower, connectionParams, chatParams)) reasoningEffort = null;
 
     const resolvedEffort = resolveProviderReasoningEffort({
       provider: providerLower,
@@ -2197,7 +2268,9 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       enabledParameters?.reasoningEffort === false
         ? undefined
         : reasoningEffort === null
-          ? "none"
+          ? providerLower === "openai_chatgpt"
+            ? undefined
+            : "none"
           : (resolvedEffort ?? undefined);
 
     // ── Claude 4.5+ sampling parameter restrictions ──
@@ -2324,7 +2397,11 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       return reply.status(500).send({ error: message });
     }
     const fit = advancedContext
-      ? { messages: advancedContext.providerMessages, maxTokensForSend: advancedContext.maxTokens }
+      ? {
+          messages: advancedContext.providerMessages,
+          maxTokensForSend: advancedContext.maxTokens,
+          contextFit: undefined,
+        }
       : fitMessagesForModelAccess({
           messages: limitPastReasoningMetadata(toProviderMessages(finalMessages as any), chatMeta),
           policy: { ...modelAccessPolicy, effectiveMaxContext },
@@ -2339,7 +2416,15 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       if (decisionDebug && advancedMemoryService && advancedMemorySettings.decisionEnabled) {
         // These are historical observations, not proof that a saved prompt can be reused today.
         let recall: AdvancedMemoryDecisionDiagnostics | undefined;
+        // Characters who reply one by one each recall alone, so show only the inspected character's own (#7264),
+        // also for an inactive character, whose prompt preview falls back to an active one.
+        const inspectedCharacterId =
+          typeof body.forCharacterId === "string" && body.forCharacterId
+            ? body.forCharacterId
+            : promptTargetCharacterId;
+        const recallOwner = dryRunGroupChatMode === "individual" ? inspectedCharacterId : null;
         for (const message of [...allChatMessages].reverse()) {
+          if (recallOwner && message.characterId !== recallOwner) continue;
           const saved = advancedMemoryDecisionDiagnosticsSchema.safeParse(
             parseExtra(parseExtra(message.extra).advancedMemoryReceipt).decisionRecall,
           );
@@ -2372,6 +2457,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
             ...(message.providerMetadata ? { providerMetadata: message.providerMetadata } : {}),
           })),
           wrapFormat,
+          contextFit: fit.contextFit ?? null,
           ...(decisionUnanswered.size > 0 || decisionDropped.size > 0
             ? {
                 decisions: {

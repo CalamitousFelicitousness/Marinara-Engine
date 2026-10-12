@@ -1845,7 +1845,10 @@ export const ChatInput = memo(function ChatInput({
     <div className="mari-chat-input chat-input-container px-3 pb-3">
       {/* Slash command autocomplete popup */}
       {completions.length > 0 && (
-        <div className="mb-2 max-h-[min(18rem,45dvh)] overflow-y-auto rounded-xl border border-foreground/10 bg-[var(--card)] shadow-xl backdrop-blur-xl [-webkit-overflow-scrolling:touch]">
+        <div
+          data-chat-input-popup="commands"
+          className="mari-chat-style-surface mari-chat-input-popup mb-2 max-h-[min(18rem,45dvh)] overflow-y-auto rounded-xl border border-foreground/10 bg-[var(--card)] shadow-xl backdrop-blur-xl [-webkit-overflow-scrolling:touch]"
+        >
           {completions.map((cmd, i) => (
             <button
               key={cmd.name}
@@ -1939,7 +1942,8 @@ export const ChatInput = memo(function ChatInput({
               {pushStoryMenuOpen && (
                 <div
                   role="menu"
-                  className="absolute bottom-full left-1/2 z-50 mb-2 w-64 -translate-x-1/2 rounded-xl border border-[var(--marinara-chat-chrome-panel-border)] bg-[var(--card)] p-1 shadow-2xl"
+                  data-chat-input-popup="story"
+                  className="mari-chat-style-surface mari-chat-input-popup absolute bottom-full left-1/2 z-50 mb-2 w-64 -translate-x-1/2 rounded-xl border border-[var(--marinara-chat-chrome-panel-border)] bg-[var(--card)] p-1 shadow-2xl"
                 >
                   <button
                     type="button"
@@ -2060,6 +2064,7 @@ export const ChatInput = memo(function ChatInput({
           dragging: isDragging,
           hasContent: hasInput || attachments.length > 0,
           layout: "roleplay",
+          className: isProfessorMariChat ? "mari-professor-composer" : undefined,
         })}
       >
         {/* Attachment button */}
@@ -2072,6 +2077,7 @@ export const ChatInput = memo(function ChatInput({
           onChange={handleFileUpload}
         />
         <button
+          type="button"
           onClick={() => fileInputRef.current?.click()}
           disabled={!activeChatId || isInputBusy}
           className={cn(
@@ -2081,6 +2087,7 @@ export const ChatInput = memo(function ChatInput({
               : "text-foreground/40 hover:bg-foreground/10 hover:text-foreground/70",
           )}
           title={t("chat.input.attachFiles")}
+          aria-label={t("chat.input.attachFiles")}
         >
           <Paperclip size="1rem" />
         </button>
@@ -2134,6 +2141,7 @@ export const ChatInput = memo(function ChatInput({
             <Smile size="1.125rem" />
           </button>
           <EmojiPicker
+            popupClassName="mari-chat-style-surface mari-chat-input-popup"
             open={emojiOpen}
             onClose={() => setEmojiOpen(false)}
             onSelect={handleEmojiSelect}
@@ -2194,11 +2202,26 @@ export const ChatInput = memo(function ChatInput({
         {/* Send / Stop button */}
 
         <button
+          type="button"
           onClick={isStreaming ? () => useChatStore.getState().stopGeneration(activeChatId ?? undefined) : handleSend}
           disabled={
             (!isStreaming && (isInputBusy || isReadingAttachments)) ||
             (!hasInput && !attachments.length && !canSubmitSpatialMove && !isStreaming && !canRetry && !canContinue) ||
             !activeChatId
+          }
+          aria-label={
+            isStreaming
+              ? t("chat.input.stopGenerating")
+              : isInputBusy
+                ? t("chat.input.waitForAgents")
+                : t("chat.input.send")
+          }
+          title={
+            isStreaming
+              ? t("chat.input.stopGenerating")
+              : isInputBusy
+                ? t("chat.input.waitForAgents")
+                : t("chat.input.send")
           }
           className={cn(
             "mari-chat-send-btn flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-all duration-200 sm:h-8 sm:w-8",
@@ -2228,7 +2251,8 @@ export const ChatInput = memo(function ChatInput({
         createPortal(
           <div
             ref={charPickerMenuRef}
-            className="fixed z-[9999] flex min-w-[220px] max-w-[280px] max-h-[320px] flex-col overflow-hidden rounded-xl border border-foreground/10 bg-[var(--card)] shadow-2xl"
+            data-chat-input-popup="character"
+            className="mari-chat-style-surface mari-chat-input-popup fixed z-[9999] flex min-w-[220px] max-w-[280px] max-h-[320px] flex-col overflow-hidden rounded-xl border border-foreground/10 bg-[var(--card)] shadow-2xl"
             style={
               charPickerPos ? { left: charPickerPos.left, top: charPickerPos.top } : { visibility: "hidden" as const }
             }

@@ -34,8 +34,9 @@ export function DecisionStatementNote({
   const options = useDecisionOptions(usesDecisions);
   if (!usesDecisions || options.isPending || options.data?.selected) return null;
   return (
-    <p role="status" className="mt-1 flex items-start gap-1.5 text-[0.625rem] text-amber-400">
-      <AlertTriangle size="0.75rem" className="mt-px shrink-0" aria-hidden />
+    <p role="status" className="mt-1 flex items-start gap-1.5 text-[0.625rem] text-[var(--foreground)]">
+      {/* The theme's accent held steady marks the warning; the text stays readable in every theme. */}
+      <AlertTriangle size="0.75rem" className="mt-px shrink-0 text-[var(--marinara-app-accent-static)]" aria-hidden />
       {message ?? t("ui.ui.decisionstatementnote.decisionModelMissing")}
     </p>
   );

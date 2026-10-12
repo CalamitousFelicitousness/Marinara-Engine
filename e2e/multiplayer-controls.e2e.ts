@@ -1005,3 +1005,148 @@ test("stopped rooms remain escapable when multiplayer endpoints are disabled", a
   expect(pageErrors).toEqual([]);
   expect(multiplayerRequests.every((path) => path === "/api/multiplayer/status")).toBe(true);
 });
+
+test("multiplayer turned off in Settings points to the switch, not the server file", async ({ page }, info) => {
+  let available = true;
+  await page.route("**/api/**", (route) =>
+    route.fulfill({
+      json:
+        new URL(route.request().url()).pathname === "/api/multiplayer/status"
+          ? { available, enabled: false, hosting: false, joined: false, tlsAvailable: true }
+          : [],
+    }),
+  );
+  for (const surface of ["host", "guest"] as const) {
+    await mountControls(page, info, surface);
+    await expect(page.getByText("Turn on multiplayer in Settings", { exact: false })).toBeVisible();
+    await expect(page.getByText("MULTIPLAYER_ENABLED", { exact: false })).toHaveCount(0);
+  }
+  available = false;
+  await mountControls(page, info, "host");
+  await expect(page.getByText("MULTIPLAYER_ENABLED", { exact: false })).toBeVisible();
+});
+
+test("Leave in an old joined chat only ends the session that chat owns", async ({ page }, info) => {
+  const deletes: string[] = [];
+  await page.route("**/api/**", (route) => {
+    const url = new URL(route.request().url());
+    if (route.request().method() === "DELETE") {
+      deletes.push(`${url.pathname}${url.search}`);
+      return route.fulfill({ json: { left: true } });
+    }
+    if (url.pathname === "/api/multiplayer/status")
+      return route.fulfill({
+        json: { available: true, enabled: true, hosting: false, joined: true, tlsAvailable: true },
+      });
+    if (url.pathname === "/api/multiplayer/guest")
+      return route.fulfill({
+        json: { localChatId: "newer_room_chat", state: { phase: "connected", snapshot: null, error: null } },
+      });
+    return route.fulfill({ json: [] });
+  });
+  await mountControls(page, info, "guest");
+  await page.getByRole("button", { name: "Leave", exact: true }).first().click();
+  await expect(page.locator("#fixture")).toHaveAttribute("data-active-chat", "none");
+  await expect.poll(() => deletes.length).toBeGreaterThan(0);
+  expect(new Set(deletes)).toEqual(new Set(["/api/multiplayer/guest?chatId=stopped_room_chat"]));
+});
+
+test("Players labels offline players and explains a name already in use", async ({ page }, info) => {
+  await page.route("**/api/**", (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === "/api/multiplayer/status")
+      return route.fulfill({
+        json: { available: true, enabled: true, hosting: true, joined: false, tlsAvailable: true },
+      });
+    if (path === "/api/multiplayer/host/actions")
+      return route.fulfill({ status: 400, json: { error: "identity-conflict" } });
+    if (path === "/api/multiplayer/host")
+      return route.fulfill({
+        json: {
+          chatId: "shared_chat_123",
+          snapshot: {
+            version: 1,
+            roomId: "room_123456",
+            revision: 1,
+            selfId: "host_123456",
+            nextSequence: 0,
+            name: "Moonlit Harbor",
+            mode: "roleplay",
+            status: "active",
+            generation: "idle",
+            usage: { generations: 0, maxGenerations: 100, automaticReplies: true },
+            players: [
+              {
+                id: "host_123456",
+                displayName: "Mari",
+                personaName: "Mira",
+                isHost: true,
+                connected: true,
+                ready: false,
+                joinsNextRound: false,
+              },
+              {
+                id: "guest_123456",
+                displayName: "Ari",
+                personaName: "Lyra",
+                isHost: false,
+                connected: false,
+                ready: false,
+                joinsNextRound: false,
+              },
+            ],
+            characters: [],
+            messages: [],
+            round: null,
+          },
+          pendingRequests: [{ id: "request_123", displayName: "Rose", persona: { name: "Lyra", description: "" } }],
+          proposals: [],
+          invite: null,
+        },
+      });
+    return route.fulfill({ json: [] });
+  });
+  await mountControls(page, info, "players");
+  await expect(page.getByText("Playing Lyra · Offline", { exact: true })).toBeVisible();
+  await expect(page.getByText("Reconnecting. Your draft is kept here.", { exact: false })).toHaveCount(0);
+  await page.getByRole("button", { name: "Approve", exact: true }).click();
+  await expect(page.getByText("This character name is already in use.", { exact: false })).toBeVisible();
+});
+
+test("joining while another shared chat is open says to leave it first", async ({ page }, info) => {
+  await page.route("**/api/**", (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === "/api/multiplayer/status")
+      return route.fulfill({
+        json: { available: true, enabled: true, hosting: false, joined: true, tlsAvailable: true },
+      });
+    if (path === "/api/multiplayer/preview")
+      return route.fulfill({
+        json: {
+          name: "Moonlit Harbor",
+          mode: "roleplay",
+          fingerprint: "a".repeat(64),
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        },
+      });
+    if (path === "/api/characters/personas/list")
+      return route.fulfill({ json: [{ id: "persona_123", name: "Mira", description: "An astronomer." }] });
+    if (path === "/api/multiplayer/join") return route.fulfill({ status: 409, json: { error: "busy" } });
+    return route.fulfill({ json: path === "/api/app-settings/ui" ? { value: "" } : [] });
+  });
+  await mountControls(page, info, "settings");
+  await page.getByRole("button", { name: "Join session", exact: true }).click();
+  await page.getByLabel("Invite code", { exact: true }).fill("fixture-code");
+  await page.getByRole("button", { name: "Review invitation" }).click();
+  await page.getByLabel("Room password (at least 12 characters)").fill("separate-password");
+  await page.getByLabel("Your display name").fill("Mari");
+  await page.getByLabel("Choose your persona").selectOption("persona_123");
+  await page
+    .getByLabel("I verified the host and agree to share only the display name and persona text shown above.")
+    .check();
+  await page.getByRole("button", { name: "Request to join" }).click();
+  await expect(
+    page.getByText("Leave your current shared chat before joining or hosting another one.", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("Could not join.", { exact: false })).toHaveCount(0);
+});

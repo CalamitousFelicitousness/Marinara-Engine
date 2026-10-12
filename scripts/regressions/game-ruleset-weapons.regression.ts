@@ -14,7 +14,7 @@
  *     weapon's tags are what its blows carry.
  *   - Item facts and the Game Master's line say the attack, and an item invented like a weapon fights
  *     with its own stats.
- *   - A rider may name held weapons by item tag (1.67), so a held weapon carries it as a row does.
+ *   - A rider may name held weapons by item tag (1.70), so a held weapon carries it as a row does.
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -665,7 +665,7 @@ try {
     assert.equal(tearing(plainNail, immune), "immune");
   }
 
-  // ── A rider on held weapons (1.67) ──
+  // ── A rider on held weapons (1.70) ──
   {
     // Ember Roads with a knack that adds a die to the first hit of a turn made with a thrown weapon:
     // the knacks list's rows know nothing of the outfitter's items, so the rider names their tag.
@@ -737,7 +737,7 @@ try {
       ).events.filter((event) => event.type === "rider").length;
     assert.equal(riders(riderFight(withAmbush, [held(axe, "Hand axe")])), 1);
     assert.equal(riders(riderFight(withAmbush, [held(bow, "Hunting bow")])), 0);
-    // A rider that names rows fires on no held weapon, as before 1.67; one that names both, on both.
+    // A rider that names rows fires on no held weapon, as before 1.70; one that names both, on both.
     const onRows = parsedOrThrow(variant(emberText, ambush({ sources: ["gear"] })), "a rider on gear rows");
     assert.deepEqual(ridersOf(riderFight(onRows, [held(axe, "Hand axe")], ["Knife"])), [["attack:0:0"]]);
     const onBoth = parsedOrThrow(variant(emberText, ambush({ sources: ["gear"], ...thrown })), "a rider on both");
@@ -745,7 +745,7 @@ try {
     // One that names nothing still fires on any hit.
     assert.deepEqual(ridersOf(riderFight(parsedOrThrow(variant(emberText, ambush({})), "any hit"), [])), [undefined]);
 
-    // The install gate: 1.67, in the ruleset file and in a catalog file.
+    // The install gate: 1.70, in the ruleset file and in a catalog file.
     const manifest = (minor: number, paths = ["ruleset.json"]) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -762,7 +762,7 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    const heldIssue = /riders fire on held weapons.*capabilityApi 1\.67/;
+    const heldIssue = /riders fire on held weapons.*capabilityApi 1\.70/;
     const document = variant(emberText, ambush(thrown));
     assert.match(getCapabilityPackageInstallIssue(manifest(66) as any, document) ?? "", heldIssue);
     assert.equal(getCapabilityPackageInstallIssue(manifest(67) as any, document), null);

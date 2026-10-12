@@ -383,6 +383,58 @@ for (const output of [
   assert.deepEqual(result.data, output, "explicit fields and invalid/empty envelopes retain their meaning");
 }
 
+// #7208: Character Tracker accepts its incremental envelope at the root too,
+// alone and inside a batch, and keeps the explicit presentCharacters shapes.
+const trackedCharacters = [
+  { characterId: "alice", name: "Alice", mood: "calm", outfit: "coat", avatarPath: "/alice.png" },
+  { characterId: "bob", name: "Bob", mood: "tired" },
+];
+const aliceUpdate = {
+  characterId: "alice",
+  name: "Alice",
+  emoji: "*",
+  mood: "elated",
+  thoughts: "Finally.",
+  outfit: "gown",
+};
+const mergedAlice = { ...trackedCharacters[0], ...aliceUpdate };
+for (const [output, expected] of [
+  [{ updates: [aliceUpdate], removed: ["bob"] }, [mergedAlice]],
+  [{ updates: [aliceUpdate] }, [mergedAlice, trackedCharacters[1]]],
+  [{ presentCharacters: { updates: [aliceUpdate], removed: ["bob"] } }, [mergedAlice]],
+  [{ presentCharacters: [aliceUpdate] }, [aliceUpdate]],
+] as const) {
+  const characterTracker = makeAgent("character-tracker", "character_tracker_update");
+  const single = await executeAgent(
+    characterTracker,
+    context,
+    new RecordingProvider(JSON.stringify(output)),
+    "agent-model",
+  );
+  const batchProvider = new RecordingProvider(
+    JSON.stringify({ "world-state": { weather: "rain" }, "character-tracker": output }),
+  );
+  const batched = (
+    await executeAgentBatch(
+      [characterTracker, makeAgent("world-state", "game_state_update")],
+      context,
+      batchProvider,
+      "agent-model",
+    )
+  ).find((result) => result.agentType === "character-tracker");
+  assert.equal(batchProvider.calls, 1, "Character Tracker must be parsed from the shared batch response");
+  for (const result of [single, batched]) {
+    assert.equal(result?.success, true);
+    const merged = resolveTrackerGroupUpdate(
+      (result?.data as Record<string, unknown>).presentCharacters,
+      trackedCharacters,
+      null,
+      "presentCharacters",
+    );
+    assert.deepEqual(merged, expected, `Character Tracker output ${JSON.stringify(output)} must change the snapshot`);
+  }
+}
+
 const invalidJsonProvider = new RecordingProvider("not JSON at all");
 const invalidJsonResult = await executeAgent(
   makeAgent("world-state", "game_state_update"),

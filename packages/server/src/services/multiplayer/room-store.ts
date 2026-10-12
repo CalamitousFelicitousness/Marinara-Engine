@@ -45,16 +45,21 @@ export function nextRound(room: MultiplayerStoredRoom): MultiplayerStoredRound {
   };
 }
 
+/** Invisible characters (zero-width space, soft hyphen) are dropped, so a name cannot pass for another one. */
+export function roomNameKey(name: string) {
+  return normalizeCharacterLookupName(name.replace(/\p{Default_Ignorable_Code_Point}/gu, ""));
+}
+
 export function assertRoomPersonaName(room: MultiplayerStoredRoom, name: string, participantId?: string) {
-  const normalized = normalizeCharacterLookupName(name);
+  const normalized = roomNameKey(name);
   if (
     !normalized ||
     room.participants.some(
       (p) =>
         p.id !== participantId &&
-        [p.persona.name, p.pendingPersona?.name].some((n) => n && normalizeCharacterLookupName(n) === normalized),
+        [p.persona.name, p.pendingPersona?.name].some((n) => n && roomNameKey(n) === normalized),
     ) ||
-    room.characters.some((c) => normalizeCharacterLookupName(c.name) === normalized)
+    room.characters.some((c) => roomNameKey(c.name) === normalized)
   )
     throw new MultiplayerError("identity-conflict");
 }

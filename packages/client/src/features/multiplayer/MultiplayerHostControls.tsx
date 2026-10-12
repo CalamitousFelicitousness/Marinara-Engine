@@ -1,14 +1,15 @@
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { Users } from "lucide-react";
+import { Joystick } from "lucide-react";
 import type { MultiplayerHostAction, MultiplayerHostState } from "@marinara-engine/shared";
-import { useMultiplayerHost, useMultiplayerMutation } from "../../hooks/use-multiplayer";
+import { multiplayerActionError, useMultiplayerHost, useMultiplayerMutation } from "../../hooks/use-multiplayer";
 import { characterKeys } from "../../hooks/use-characters";
 import { ChatSettingsSection } from "../chat-settings/ChatSettingsSection";
 import { copyToClipboard } from "../../lib/utils";
 import { showConfirmDialog } from "../../lib/app-dialogs";
 import { MULTIPLAYER_BUTTON_CLASS, MULTIPLAYER_INPUT_CLASS } from "./MultiplayerFields";
+import { multiplayerGuestErrorLabelKey } from "./multiplayer-guest-labels";
 
 export type MultiplayerGameStart = Extract<MultiplayerHostAction, { type: "startGame" }>;
 
@@ -58,7 +59,7 @@ export function MultiplayerHostControls({
               {player.personaName
                 ? t("multiplayer.guest.playing", { name: player.personaName })
                 : t("multiplayer.guest.noPersona")}{" "}
-              · {t(player.connected ? "multiplayer.guest.connected" : "multiplayer.guest.reconnecting")}
+              · {t(player.connected ? "multiplayer.guest.connected" : "multiplayer.guest.offline")}
             </p>
             {host.snapshot.mode === "game" && (
               <p>
@@ -324,7 +325,11 @@ export function MultiplayerHostControls({
       )}
       {action.isError && (
         <p role="alert" className="text-xs text-[var(--destructive)]">
-          {t("multiplayer.actionFailed")}
+          {t(
+            multiplayerActionError(action.error) === "identity-conflict"
+              ? multiplayerGuestErrorLabelKey("identity-conflict")
+              : "multiplayer.actionFailed",
+          )}
         </p>
       )}
     </div>
@@ -347,7 +352,7 @@ export function MultiplayerPlayersSection({
     <ChatSettingsSection
       id="multiplayer"
       label={t("multiplayer.title")}
-      icon={<Users size={16} />}
+      icon={<Joystick size={16} />}
       count={host.snapshot.players.length}
       forceOpen={forceOpen}
       style={{ order: -1450 }}

@@ -1706,7 +1706,7 @@ Capability API 1.65: slice I9-1 of the ruleset items plan (#6917).
   mark for something bought and never carried. `market.ts` works everything out: a place by id or
   label, the rank an item is sold from, the sellers at a rank, the price (worked out in the smallest
   coin, rounded there and said in the coin its cost is written in where that pays it exactly, else
-  in the largest coin the layers leave that does (1.66 added the first half; before it, a 5e potion
+  in the largest coin the layers leave that does (1.69 added the first half; before it, a 5e potion
   of 50 gp read as 5 platinum pieces), as
   `itemPrice` says a cost), the quoter a buy is answered with, and the Game Master's block.
 - **The place comes from the chat, not from stored state.** The Game Master's `[place:]` tag is
@@ -1718,7 +1718,7 @@ Capability API 1.65: slice I9-1 of the ruleset items plan (#6917).
   `payGameInventoryCoins` out of the buyer's bag, then adds on the paid stacks; a refused add, or one
   that fits only some of what was bought, leaves the stacks as they were. A service is refused by the
   add itself (`service`), so nothing puts one in a bag, and the picker leaves services out. The market's maker is built once per turn (`loadGameMarket`) and kept on the
-  inventory turn, and makes a fresh market for the preview and another for the save (1.66: a market
+  inventory turn, and makes a fresh market for the preview and another for the save (1.69: a market
   counts what the reply buys and sells), so the two answer alike. `only` is checked against the buyer's own
   card (the player's for no name or the player's own; a blank sheet for a member with none), with
   what they carry at that tag (the stacks the reply's earlier tags left) and the turn's own live state, the one its items are used with (never a replaced
@@ -1730,7 +1730,7 @@ Capability API 1.65: slice I9-1 of the ruleset items plan (#6917).
 
 ### What market days settled
 
-Capability API 1.66: slice I9-2 of the ruleset items plan (#6934).
+Capability API 1.69: slice I9-2 of the ruleset items plan (#6934).
 
 - **A day is read off the chat, like the place.** `answeredGamePlaces` lists every place tag the
   Engine answered, with where it stands; `gameMarketDayStart` finds the one that began the day the
@@ -1762,7 +1762,7 @@ Capability API 1.66: slice I9-2 of the ruleset items plan (#6934).
 
 ### What riders on held weapons settled
 
-Capability API 1.67, ahead of the 5e package's weapons as items (P1).
+Capability API 1.70, ahead of the 5e package's weapons as items (P1).
 
 - **A rider reads rows, so a held weapon never qualified.** `riderActionIds` turned `sources` and
   `requires` into the ids of the attack rows that qualify, and a weapon held from the bag is an
@@ -1770,7 +1770,7 @@ Capability API 1.67, ahead of the 5e package's weapons as items (P1).
   became items. A rider's `weapons: { tags }` adds the held weapons carrying any of those tags, and
   their off-hand strike where they have one; a rider naming only rows still fires on no held weapon,
   and one naming nothing on any hit, as before.
-- **Checked at import** (each tag is one the items block declares) and **gated at 1.67**, inline and
+- **Checked at import** (each tag is one the items block declares) and **gated at 1.70**, inline and
   in a catalog file.
 - **Proven** by the rider section of `scripts/regressions/game-ruleset-weapons.regression.ts`, with 11
   deliberate breaks each caught.

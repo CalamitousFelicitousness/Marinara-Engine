@@ -1164,7 +1164,7 @@ const riderAmountIssue = (rider: { amount: { dice?: string; flat?: number } }, c
 /** A rider a party member carries, from a catalog entry. `sources` names the attack lists it fires
  *  on and `requires` one truthy column of those lists' rows, so a rider that only comes off certain
  *  weapons says which without the Engine knowing one word of what a weapon is. `weapons` (Capability
- *  API 1.67) says the same of held weapons: one carrying any of these item tags. */
+ *  API 1.70) says the same of held weapons: one carrying any of these item tags. */
 const catalogRiderSchema = z
   .object({
     ...riderCoreShape,
@@ -1969,7 +1969,7 @@ const soldNamesSomething = (sold: { place?: string; limited?: unknown }) =>
   sold.place !== undefined || sold.limited !== undefined;
 
 /** What a place sells and at what price (#6917, Capability API 1.65). Buying is the Game Master's
- *  `buy`, answered with the price the Engine works out. A market day (#6934, 1.66) adds rare stock,
+ *  `buy`, answered with the price the Engine works out. A market day (#6934, 1.69) adds rare stock,
  *  limited items, and selling back up to a place's purse. */
 const marketSchema = z
   .object({

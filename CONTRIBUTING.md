@@ -244,6 +244,7 @@ The overlay is not a substitute for this guide. When instructions conflict, foll
 
 - Target the `staging` branch. The GitHub UI defaults to `main`; change the base before submitting. See [Branches](#branches).
 - Wait for every required check and the CodeRabbit review to complete. Outside and first-time contributors must also obtain an approving review from `SpicyMarinara`.
+- CodeRabbit can fix common review findings on your PR when you comment `@coderabbitai run changelog` (adds the `CHANGELOG.md` entry), `@coderabbitai run localize` (moves new UI text into `en.json`), `@coderabbitai run theme colours` (swaps hard-coded colours for theme tokens) or `@coderabbitai resolve merge conflict`. Check what it pushes before you ask for review.
 - Link the issue or feature request your PR addresses. If there isn't one yet, open one first (see [Before You Open a Pull Request](#before-you-open-a-pull-request)).
 - Keep PRs focused. Separate unrelated refactors from user-facing fixes or documentation work.
 - Explain the why clearly in the PR description. Reviewers should understand the user problem, regression, or tradeoff being addressed, not just the implementation summary.
@@ -251,6 +252,7 @@ The overlay is not a substitute for this guide. When instructions conflict, foll
 - Include screenshots or short recordings for UI changes.
 - Call out manual validation clearly, especially for launcher, installer, or Android wrapper changes.
 - Add a concise user-focused entry under the appropriate `CHANGELOG.md` `[Unreleased]` heading for every bug fix, behavior change, or new feature. Purely mechanical changes with no product or contributor-workflow impact may omit one.
+- Write that entry last, from the final diff, not from the issue or plan. If the change makes something stop working that worked before, say so in plain user words in the entry and at the top of "What changed" in the PR description.
 - Avoid version drift. If your PR intentionally bumps a release, update every version-bearing file in one pass.
 
 ## Documentation Rules

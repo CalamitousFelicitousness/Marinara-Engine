@@ -1,30 +1,40 @@
-import { useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { Download, RefreshCw, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
-import { ADVANCED_MEMORY_SCENE_AUDIENCE as SCENE_AUDIENCE, type AdvancedMemoryRecord } from "@marinara-engine/shared";
 import {
+  ADVANCED_MEMORY_SCENE_AUDIENCE as SCENE_AUDIENCE,
+  ADVANCED_MEMORY_SCENE_AUDIENCE_UNMATCHED as SCENE_AUDIENCE_UNMATCHED,
+  type AdvancedMemoryRecord,
+} from "@marinara-engine/shared";
+import {
+  advancedMemorySceneNumbers,
   useAdvancedMemoryAction,
   useAdvancedMemorySources,
   useAdvancedMemoryStatus,
   useExportAdvancedMemory,
 } from "../../hooks/use-advanced-memory";
+import { useUIStore } from "../../stores/ui.store";
 import { SettingsSwitch } from "../panels/settings/SettingControls";
 import { showConfirmDialog } from "../../lib/app-dialogs";
 import type { MemoryCharacterOption } from "./AdvancedMemorySettings";
 
 const buttonClass =
   "mari-chrome-control inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs disabled:opacity-50";
-const reasonKeys: Record<string, string> = {
+export const reasonKeys: Record<string, string> = {
   "decision-recall": "chat.advancedMemory.reason.decisionRecall",
   "decision-recall-fallback": "chat.advancedMemory.reason.decisionRecallFallback",
   "decision-recall-preview": "chat.advancedMemory.reason.decisionRecallPreview",
   "decision-excerpt-fallback": "chat.advancedMemory.reason.decisionExcerptFallback",
+  "excerpt-no-room": "chat.advancedMemory.reason.excerptNoRoom",
+  "excerpt-no-source": "chat.advancedMemory.reason.excerptNoSource",
   "preparation-needed": "chat.advancedMemory.reason.preparationNeeded",
   "unverified-summary-omitted": "chat.advancedMemory.reason.unverifiedSummaryOmitted",
   "scene-boundary-rollover": "chat.advancedMemory.reason.sceneBoundaryRollover",
   "open-scene-prefix-summary": "chat.advancedMemory.reason.openScenePrefixSummary",
   "no-relevant-recall": "chat.advancedMemory.reason.noRelevantRecall",
+  "no-recall-candidates": "chat.advancedMemory.reason.noRecallCandidates",
+  "no-recall-budget": "chat.advancedMemory.reason.noRecallBudget",
 };
 
 export function AdvancedMemoryInspector({
@@ -42,6 +52,7 @@ export function AdvancedMemoryInspector({
   const fileInput = useRef<HTMLInputElement>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  const [draftTimeline, setDraftTimeline] = useState("");
   const [draftAudience, setDraftAudience] = useState<string[]>([]);
   const [editAudience, setEditAudience] = useState(false);
   const [showSources, setShowSources] = useState(false);
@@ -53,26 +64,29 @@ export function AdvancedMemoryInspector({
       .filter((record) => record.kind !== "excerpt")
       .sort((a, b) => a.startIndex - b.startIndex || a.endIndex - b.endIndex);
   }, [status.data?.records]);
-  const sceneNumbers = new Map(
-    [
-      ...new Set(
-        [...records.filter((record) => record.kind === "scene"), ...(status.data?.unpreparedScenes ?? [])]
-          .sort((a, b) => a.startIndex - b.startIndex)
-          .map((record) => record.sceneId),
-      ),
-    ].map((id, index) => [id, index + 1]),
-  );
+  const sceneNumbers = advancedMemorySceneNumbers(status.data);
   const recordTitle = (record: AdvancedMemoryRecord) =>
     record.kind === "scene"
       ? t("chat.advancedMemory.sceneNumber", { number: sceneNumbers.get(record.sceneId) })
       : t(`chat.advancedMemory.kind.${record.kind}`);
   const selected = records.find((record) => record.id === selectedId);
+  const editableTimeline = selected?.kind === "scene" && selected.id !== selected.sceneId;
+  const timelineChanged = editableTimeline && draftTimeline.trim() !== (selected.timeline ?? "").trim();
   const blockedRecord = records.find((record) => record.id === status.data?.job.reviewRecordId);
+  // Helper-assigned participants Advanced Memory couldn't confirm; the list marks these scenes too.
+  const unconfirmedAudience = (record: AdvancedMemoryRecord) =>
+    record.kind === "scene" &&
+    !!record.content &&
+    !record.manualOverride &&
+    record.dependencies.some((item) => item.id === SCENE_AUDIENCE_UNMATCHED);
+  const generatedScene = selected?.kind === "scene" && !!selected.content && !selected.manualOverride;
+  const unmatchedAudience = !!selected && unconfirmedAudience(selected);
   const reviewAudience =
-    selected?.kind === "scene" &&
-    !!selected.content &&
-    !selected.manualOverride &&
-    !selected.dependencies.some((item) => item.id === SCENE_AUDIENCE.id && item.revision === SCENE_AUDIENCE.revision);
+    unmatchedAudience ||
+    (generatedScene &&
+      !selected.dependencies.some(
+        (item) => item.id === SCENE_AUDIENCE.id && item.revision === SCENE_AUDIENCE.revision,
+      ));
   const reviewCorrection =
     selected?.kind === "scene" &&
     selected.manualOverride &&
@@ -88,7 +102,14 @@ export function AdvancedMemoryInspector({
       : t("chat.advancedMemory.narratorOnly");
   const query = search.trim().toLocaleLowerCase();
   const filteredRecords = records.filter((record) =>
-    [recordTitle(record), record.title, record.content, record.timeline, audience(record)]
+    [
+      recordTitle(record),
+      record.title,
+      record.content,
+      record.timeline,
+      audience(record),
+      unconfirmedAudience(record) ? t("chat.advancedMemory.audienceUnconfirmed") : "",
+    ]
       .join(" ")
       .toLocaleLowerCase()
       .includes(query),
@@ -116,10 +137,42 @@ export function AdvancedMemoryInspector({
   const openRecord = (record: AdvancedMemoryRecord) => {
     setSelectedId(record.id);
     setDraft(record.content);
+    setDraftTimeline(record.timeline ?? "");
     setDraftAudience(record.audienceCharacterIds);
     setEditAudience(false);
     setShowSources(false);
   };
+  // A scene number from the Fix box opens that scene, or its missing-summary card, and moves focus there.
+  const sceneRequest = useUIStore((state) =>
+    state.advancedMemoryRequest?.chatId === chatId ? state.advancedMemoryRequest.sceneId : undefined,
+  );
+  const focusRef = useRef<HTMLElement | null>(null);
+  const setFocusElement = (element: HTMLElement | null) => {
+    focusRef.current = element;
+  };
+  // A new object per request, so asking for the same scene again moves focus again.
+  const [focusScene, setFocusScene] = useState<{ sceneId: string } | null>(null);
+  useEffect(() => {
+    // Read the store, not this render's value: the request is taken once.
+    if (!sceneRequest || !status.data || useUIStore.getState().advancedMemoryRequest?.sceneId !== sceneRequest) return;
+    useUIStore.getState().setAdvancedMemoryRequest(null);
+    const record =
+      records.find((item) => item.kind === "scene" && item.sceneId === sceneRequest && item.id !== item.sceneId) ??
+      records.find((item) => item.kind === "scene" && item.sceneId === sceneRequest);
+    setSearch("");
+    if (record) openRecord(record);
+    else setSelectedId(null);
+    setFocusScene({ sceneId: sceneRequest });
+  }, [records, sceneRequest, status.data]);
+  useEffect(() => {
+    if (!focusScene) return;
+    const frame = window.requestAnimationFrame(() => {
+      focusRef.current?.scrollIntoView({ block: "nearest" });
+      focusRef.current?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [focusScene]);
+  const focusedScene = focusScene?.sceneId;
   const deleteSummary = async (record: AdvancedMemoryRecord) => {
     const confirmed = await showConfirmDialog({
       title: t("chat.advancedMemory.deleteSummary"),
@@ -241,7 +294,9 @@ export function AdvancedMemoryInspector({
           (status.data?.unpreparedScenes ?? []).map((scene) => (
             <div
               key={scene.sceneId}
-              className="space-y-2 rounded-lg border border-[var(--border)] bg-[var(--card)] p-3 text-xs"
+              ref={scene.sceneId === focusedScene ? setFocusElement : undefined}
+              tabIndex={scene.sceneId === focusedScene ? -1 : undefined}
+              className="space-y-2 rounded-lg border border-[var(--border)] bg-[var(--card)] p-3 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
             >
               <p className="font-medium">
                 {t(scene.deleted ? "chat.advancedMemory.deletedScene" : "chat.advancedMemory.missingScene", {
@@ -322,7 +377,13 @@ export function AdvancedMemoryInspector({
           >
             {t("chat.advancedMemory.backToArchive")}
           </button>
-          <h5 className="break-words text-sm font-semibold">{recordTitle(selected)}</h5>
+          <h5
+            ref={selected.sceneId === focusedScene ? setFocusElement : undefined}
+            tabIndex={-1}
+            className="break-words text-sm font-semibold focus-visible:outline-none"
+          >
+            {recordTitle(selected)}
+          </h5>
           {selected.kind === "scene" && (
             <p className="text-xs text-[var(--muted-foreground)]">
               {t(selected.status === "open" ? "chat.advancedMemory.sceneOpen" : "chat.advancedMemory.sceneClosed")}
@@ -332,9 +393,24 @@ export function AdvancedMemoryInspector({
             {t("chat.advancedMemory.range", { start: selected.startIndex, end: selected.endIndex })} ·{" "}
             {audience(selected)}
           </p>
-          <p className="text-xs text-[var(--muted-foreground)]">
-            {t("chat.advancedMemory.timeframe")}: {selected.timeline || t("chat.advancedMemory.timeframeUnknown")}
-          </p>
+          {editableTimeline ? (
+            <label className="block space-y-1 text-xs">
+              <span>{t("chat.advancedMemory.timeframe")}</span>
+              <textarea
+                value={draftTimeline}
+                onChange={(event) => setDraftTimeline(event.target.value)}
+                rows={2}
+                maxLength={2000}
+                disabled={action.isPending}
+                placeholder={t("chat.advancedMemory.timeframeUnknown")}
+                className="mari-chrome-field min-h-11 w-full resize-y rounded-lg px-3 py-2 text-xs leading-relaxed disabled:opacity-50"
+              />
+            </label>
+          ) : (
+            <p className="text-xs text-[var(--muted-foreground)]">
+              {t("chat.advancedMemory.timeframe")}: {selected.timeline || t("chat.advancedMemory.timeframeUnknown")}
+            </p>
+          )}
           <SettingsSwitch
             label={t("chat.advancedMemory.includeInRecall")}
             checked={selected.enabled}
@@ -345,7 +421,11 @@ export function AdvancedMemoryInspector({
           />
           {reviewAudience && (
             <p role="status" className="text-xs text-[var(--muted-foreground)]">
-              {t("chat.advancedMemory.reviewAudienceHelp")}
+              {t(
+                unmatchedAudience
+                  ? "chat.advancedMemory.unmatchedAudienceHelp"
+                  : "chat.advancedMemory.reviewAudienceHelp",
+              )}
             </p>
           )}
           {selected.kind === "scene" && selected.id !== selected.sceneId && (
@@ -411,8 +491,12 @@ export function AdvancedMemoryInspector({
             className={`${buttonClass} w-full`}
             disabled={
               action.isPending ||
-              !draft.trim() ||
-              (draft === selected.content && !audienceChanged && !reviewCorrection && !reviewAudience)
+              (draft !== selected.content && !draft.trim()) ||
+              (draft === selected.content &&
+                !timelineChanged &&
+                !audienceChanged &&
+                !reviewCorrection &&
+                !reviewAudience)
             }
             onClick={() =>
               action.mutate({
@@ -420,6 +504,7 @@ export function AdvancedMemoryInspector({
                 recordId: selected.id,
                 patch: {
                   ...(draft !== selected.content || reviewCorrection ? { content: draft } : {}),
+                  ...(timelineChanged ? { timeline: draftTimeline.trim() } : {}),
                   ...(audienceChanged || reviewAudience ? { audienceCharacterIds: draftAudience } : {}),
                 },
               })
@@ -514,7 +599,18 @@ export function AdvancedMemoryInspector({
                       </>
                     )}
                   </span>
-                  <span className="block text-[0.6875rem] text-[var(--muted-foreground)]">{audience(record)}</span>
+                  <span className="block text-[0.6875rem] text-[var(--muted-foreground)]">
+                    {audience(record)}
+                    {unconfirmedAudience(record) && (
+                      <>
+                        {" "}
+                        ·{" "}
+                        <span className="text-[var(--marinara-app-accent-static)]">
+                          {t("chat.advancedMemory.audienceUnconfirmed")}
+                        </span>
+                      </>
+                    )}
+                  </span>
                   <span className="block text-[0.6875rem] text-[var(--muted-foreground)]">
                     {t("chat.advancedMemory.timeframe")}: {record.timeline || t("chat.advancedMemory.timeframeUnknown")}
                   </span>

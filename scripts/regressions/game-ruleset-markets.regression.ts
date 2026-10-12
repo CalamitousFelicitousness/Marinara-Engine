@@ -9,7 +9,7 @@
  *     with change and put in their bag (a service only pays), or refused and nothing changes.
  *   - The Game Master's MARKET block and instructions, only where the ruleset has a market.
  *   - The server's place before a reply, and a seller's `only` read off the buyer's own sheet.
- *   - A market day (#6934, 1.66): a stay, or a new day the Game Master marks; a seller's stock rolled
+ *   - A market day (#6934, 1.69): a stay, or a new day the Game Master marks; a seller's stock rolled
  *     for the day, how many of a thing a place keeps a day, and selling back out of a place's purse.
  *     The server reads the day and what it saw back off the Game Master's answered tags.
  */
@@ -62,7 +62,7 @@ const { gameMarketDayFor, gamePlaceBefore, gameRepliesBefore, loadGameMarket } =
   await import("../../packages/server/src/services/game/game-market.service.js");
 
 const read = (path: string) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8");
-/** The example as it is, with a market day (#6934, 1.66). */
+/** The example as it is, with a market day (#6934, 1.69). */
 const gravewatchDayText = read("../../docs/examples/rulesets/gravewatch.json");
 /** The example's market as 1.65 had it: no purse, buy-back, stock or limit. Every section before the
  *  market day's own reads this, so what it proves does not move with the day's dice. */
@@ -672,7 +672,7 @@ const manifest = (minor: number) => ({
   );
 }
 
-// ── A market day (#6934, 1.66) ──
+// ── A market day (#6934, 1.69) ──
 {
   // Import.
   const day = (edit: (doc: Record<string, any>) => void, pattern: RegExp, what: string) => {
@@ -750,8 +750,8 @@ const manifest = (minor: number) => ({
   );
   assert.equal(rulesetItemLimit(ruled([{ ...arms, limited: 3 }]), ownPistol), 1, "an item's own limit wins");
 
-  // The 1.66 gate: each key alone.
-  const dayIssue = /keeps stock, limits what a place keeps, buys back or has a purse.*capabilityApi 1\.66/;
+  // The 1.69 gate: each key alone.
+  const dayIssue = /keeps stock, limits what a place keeps, buys back or has a purse.*capabilityApi 1\.69/;
   const issue = (minor: number, doc: Record<string, any>) =>
     getCapabilityPackageInstallIssue(manifest(minor) as any, doc);
   assert.match(issue(65, JSON.parse(gravewatchDayText)) ?? "", dayIssue);

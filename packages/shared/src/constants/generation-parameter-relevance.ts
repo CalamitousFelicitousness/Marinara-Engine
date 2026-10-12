@@ -1,5 +1,7 @@
 import {
   isClaudeAdaptiveOnlyNoSamplingModel,
+  isMistralAdjustableReasoningModel,
+  isMistralGlm53Model,
   isOpenAIGpt56Model,
   isOpenAIGpt6AlwaysReasoningModel,
   isOpenAIGpt6Model,
@@ -105,7 +107,7 @@ const ALL: GenerationParameterKey[] = [
 const SAMPLING: GenerationParameterKey[] = ["temperature", "topP", "topK", "frequencyPenalty", "presencePenalty"];
 
 /** Ids sent through OpenAIProvider under their own provider kind (provider-registry.ts). */
-const OPENAI_COMPATIBLE = new Set(["openai", "openrouter", "nanogpt", "xai", "mistral", "cohere", "arli"]);
+const OPENAI_COMPATIBLE = new Set(["openai", "openrouter", "nanogpt", "xai", "mistral", "cohere", "arli", "deepseek"]);
 const KNOWN_PROVIDERS = new Set([
   ...OPENAI_COMPATIBLE,
   "custom",
@@ -134,7 +136,7 @@ const NEVER_SENT: Record<string, GenerationParameterKey[]> = {
     "assistantReasoningPrefill",
   ],
   anthropic: ["topP", "frequencyPenalty", "presencePenalty", "verbosity", "serviceTier", "assistantReasoningPrefill"],
-  // The ChatGPT Responses wrapper currently omits generation settings from the request body.
+  // The ChatGPT (Codex) Responses wrapper sends only the reasoning effort from the generation settings.
   openai_chatgpt: [
     "temperature",
     "maxTokens",
@@ -143,7 +145,6 @@ const NEVER_SENT: Record<string, GenerationParameterKey[]> = {
     "frequencyPenalty",
     "presencePenalty",
     "serviceTier",
-    "reasoningEffort",
     "verbosity",
     "assistantReasoningPrefill",
     "customParameters",
@@ -169,9 +170,18 @@ const NEVER_SENT: Record<string, GenerationParameterKey[]> = {
   openai: ["topK", "serviceTier"],
   openrouter: ["topK"],
   nanogpt: ["topK"],
-  mistral: ["topK", "serviceTier"],
+  // Mistral has no field for prefilled reasoning.
+  mistral: ["topK", "serviceTier", "assistantReasoningPrefill"],
   cohere: ["topK", "serviceTier"],
   arli: ["topK", "serviceTier"],
+  // DeepSeek documents no verbosity and no top_k/min_p, and marks both penalties
+  // deprecated ("will not take effect"). Temperature is listed, but has no effect
+  // in thinking mode, which is why it is hidden while an effort level is active.
+  // Its reasoning prefill is hidden too: that needs chat prefix completion, which
+  // requires DeepSeek's /beta endpoint and a `prefix: true` flag (see
+  // supportsAssistantReasoningPrefill). A visible prefill control here would build
+  // a request the default /v1 endpoint rejects.
+  deepseek: ["verbosity", "topK", "frequencyPenalty", "presencePenalty", "serviceTier", "assistantReasoningPrefill"],
   custom: ["serviceTier"],
 };
 
@@ -223,7 +233,7 @@ export function relevantGenerationParameters(context: GenerationParameterContext
 
   if (model) {
     // Providers with a built-in catalog send only max tokens and custom parameters for a model they do not know.
-    // OpenRouter still sends effort for unknown models; ChatGPT omits it from the request body.
+    // OpenRouter still sends effort for unknown models.
     if (shouldSuppressUnknownModelParameters(provider, model)) {
       hide(...SAMPLING);
       if (provider !== "openrouter") hide("reasoningEffort");
@@ -236,7 +246,10 @@ export function relevantGenerationParameters(context: GenerationParameterContext
       hide("topP", "topK", "frequencyPenalty", "presencePenalty");
     }
 
-    if (provider === "anthropic" && effortActive) hide("temperature");
+    // Claude thinking rejects temperature and top_k, so the request drops both (anthropic.provider.ts).
+    if (provider === "anthropic" && effortActive) hide("temperature", "topK");
+
+    if (provider === "openai_chatgpt" && !isOpenAIReasoningModel(model)) hide("reasoningEffort");
 
     if (provider === "google" || provider === "google_vertex") {
       if (!/gemini-3/.test(model) && !/gemini-2\.5|gemini-2\.0-flash-thinking/.test(model)) hide("reasoningEffort");
@@ -283,7 +296,23 @@ export function relevantGenerationParameters(context: GenerationParameterContext
         if (!isXaiConfigurableReasoningModel(model) && model !== XAI_MULTI_AGENT_MODEL) hide("reasoningEffort");
       } else {
         const glm = model.includes("glm") && (provider === "nanogpt" || isNativeGlmHost(context.baseUrl));
-        if (provider !== "nanogpt" && !isOpenAIReasoningModel(model) && !glm) hide("reasoningEffort");
+        const mistralReasoning =
+          provider === "mistral" && (isMistralAdjustableReasoningModel(model) || isMistralGlm53Model(model));
+        // DeepSeek takes reasoning_effort for all of its chat models, so effort stays whatever the model id is.
+        const deepseekReasoning = provider === "deepseek";
+        // DeepSeek's samplers are mode-specific: temperature does nothing while thinking runs, and top_p is fixed at
+        // 1.0 once thinking is off. Show the one that is live and hide the one the request drops, so a JSON agent with
+        // reasoning off still gets its low temperature, and a thinking chat still gets top_p.
+        if (deepseekReasoning) hide(effortActive ? "temperature" : "topP");
+        if (
+          provider !== "nanogpt" &&
+          !deepseekReasoning &&
+          !isOpenAIReasoningModel(model) &&
+          !glm &&
+          !mistralReasoning
+        ) {
+          hide("reasoningEffort");
+        }
       }
     }
   }
@@ -318,7 +347,18 @@ export function reasoningEffortChoices(
     .trim()
     .toLowerCase();
   const caps = context.capabilities ?? null;
-  const off: GenerationParameterChoice<null> = { value: null, label: null };
+  // ChatGPT (Codex) has no off level; sending nothing keeps the model's own default.
+  const off: GenerationParameterChoice<null> =
+    provider === "openai_chatgpt"
+      ? {
+          value: null,
+          label: null,
+          kind: "default",
+          ...(caps?.defaultEffort
+            ? { description: `Provider default: ${caps.defaultEffort}`, providerDefault: caps.defaultEffort }
+            : {}),
+        }
+      : { value: null, label: null };
 
   if (caps?.effortLevels && caps.effortLevels.length > 0) {
     const levels = caps.effortLevels.map((level) => ({
@@ -326,18 +366,7 @@ export function reasoningEffortChoices(
       label: caps.effortLabels?.[level] ?? level,
       ...(caps.effortDescriptions?.[level] ? { description: caps.effortDescriptions[level] } : {}),
     }));
-    if (provider === "openai_chatgpt") {
-      // ChatGPT has no off level; sending nothing keeps the model's own default.
-      const providerDefault: GenerationParameterChoice<null> = {
-        value: null,
-        label: null,
-        kind: "default",
-        ...(caps.defaultEffort
-          ? { description: `Provider default: ${caps.defaultEffort}`, providerDefault: caps.defaultEffort }
-          : {}),
-      };
-      return [providerDefault, ...levels];
-    }
+    if (provider === "openai_chatgpt") return [off, ...levels];
     // Adaptive-only Claude models keep thinking on; "off" only works where the model can disable it.
     const offWorks = !caps.adaptiveThinking || supportsClaudeThinkingDisable(model);
     return offWorks ? [off, ...levels] : levels;

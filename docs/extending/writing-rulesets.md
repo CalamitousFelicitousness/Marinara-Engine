@@ -634,7 +634,7 @@ The limits are 12 catalogs per ruleset, 2000 entries per catalog either way, and
 
 ## Items: what a party carries
 
-Armor, weapons, potions, gear, ammunition and money are items. An optional `items` block declares the words every item of your ruleset is written in, and a catalog with `holds: "items"` lists the items themselves. Both need Capability API 1.49; the block's `rarityCaps` and `propose`, which govern the items the Game Master invents, need 1.51, a value that reads the items a character holds (`itemStat`) needs 1.52, what an item does to checks while worn or carried, with the block's `bonus` caps, needs 1.53, what an item asks of its wearer and the abilities it changes need 1.54, a weapon's `attack` needs 1.55, what an item does in a fight needs 1.56, what a weapon shoots and holds loaded needs 1.57, a weapon's modes, off-hand attack, floor and conditions on a hit need 1.58, what using an item does in a fight, with the charges it holds, needs 1.59, a use that restores a pool needs 1.60, charges regained on a rest or an item that breaks when emptied need 1.61, a use that asks a check first (`gate`) needs 1.62, loot tables and a creature's loot need 1.63, a loot line that drops coins or a layer that takes coins out needs 1.64, a market, an item's `sold` place and a `service` need 1.65, a market day (a purse, `buyBack`, a seller's `stock`, a `limited` count, or a `sold` that names no place) needs 1.66, and a rider that fires on held weapons (`weapons`) needs 1.67.
+Armor, weapons, potions, gear, ammunition and money are items. An optional `items` block declares the words every item of your ruleset is written in, and a catalog with `holds: "items"` lists the items themselves. Both need Capability API 1.49; the block's `rarityCaps` and `propose`, which govern the items the Game Master invents, need 1.51, a value that reads the items a character holds (`itemStat`) needs 1.52, what an item does to checks while worn or carried, with the block's `bonus` caps, needs 1.53, what an item asks of its wearer and the abilities it changes need 1.54, a weapon's `attack` needs 1.55, what an item does in a fight needs 1.56, what a weapon shoots and holds loaded needs 1.57, a weapon's modes, off-hand attack, floor and conditions on a hit need 1.58, what using an item does in a fight, with the charges it holds, needs 1.59, a use that restores a pool needs 1.60, charges regained on a rest or an item that breaks when emptied need 1.61, a use that asks a check first (`gate`) needs 1.62, loot tables and a creature's loot need 1.63, a loot line that drops coins or a layer that takes coins out needs 1.64, a market, an item's `sold` place and a `service` need 1.65, a market day (a purse, `buyBack`, a seller's `stock`, a `limited` count, or a `sold` that names no place) needs 1.69, and a rider that fires on held weapons (`weapons`) needs 1.70.
 
 ### The items block
 
@@ -748,7 +748,7 @@ Each entry carries an `item` instead of `rows` or a `creature`:
 - `slots`: how many of each slot the item takes, never more than a character has.
 - `stack`: the most one stack holds, from 1 to 999,999. Without it, a stack holds as many as any Game Mode stack. An item that holds `charges` is one to a stack.
 - `cost`: a whole `amount` of one coin, named by its `unit` id. The picker shows it, and the Game Master sees it beside the item (see Money, below).
-- `sold` (Capability API 1.65): `{ "place": "city" }`, the smallest of your market's places that sells the item, over any rule that would say otherwise; with 1.66 it may instead, or as well, say how many a place keeps on hand in a day (`"limited": 2` or `"limited": "1d3"`) (see Markets, below).
+- `sold` (Capability API 1.65): `{ "place": "city" }`, the smallest of your market's places that sells the item, over any rule that would say otherwise; with 1.69 it may instead, or as well, say how many a place keeps on hand in a day (`"limited": 2` or `"limited": "1d3"`) (see Markets, below).
 - `service` (Capability API 1.65): `true` for lodging, passage, a blessing: bought like an item and never carried. Buying it only pays; nothing else puts one in a bag (an add of one is refused as `service`), and the picker leaves services out. A service has a `cost`, and nothing about carrying or using it (`slots`, `stack`, `binds`, `worn`, `carried`, `requires`, `attack`, `use`, `charges`).
 - `binds`: the item has to be bound before it does anything while worn. `restriction` (optional) says in words who may bind it, and `cursed: true` marks one that will not let go. Only a ruleset with `binding` can have items that bind.
 - `worn` and `carried` (optional, Capability API 1.53): what the item does to its holder's checks and saves while it is worn, and while it is only carried, (1.54) the abilities it sets or raises, and (1.56) what it does in a fight. See [Checks outside a fight](#checks-outside-a-fight) and [Armor and worn effects in a fight](#armor-and-worn-effects-in-a-fight).
@@ -1107,7 +1107,7 @@ A `market` in the `items` block (Capability API 1.65) says what a place sells an
 
 #### A market day
 
-A market day (Capability API 1.66) makes a place's shelves change and run out, and lets the party sell back. Gravewatch's, a little shortened:
+A market day (Capability API 1.69) makes a place's shelves change and run out, and lets the party sell back. Gravewatch's, a little shortened:
 
 ```json
 "places": [
@@ -1732,7 +1732,7 @@ adds one more damage clause to the first qualifying hit of a period, automatical
 `sources` names the attack lists it comes off and `requires` one truthy column of their rows, so a
 rider that only fires with certain weapons says which without the Engine knowing what a weapon is;
 naming neither means any hit its holder lands. A weapon held from the bag is no row, so `weapons`
-(Capability API 1.67) names the item tags it fires on as well: `"weapons": { "tags": ["finesse",
+(Capability API 1.70) names the item tags it fires on as well: `"weapons": { "tags": ["finesse",
 "ranged"] }` fires on a hit with a held weapon carrying either tag, its off-hand strike included.
 Naming only `weapons` fires on no row, and naming only rows fires on no held weapon. `when` is ANY-of: `advantage` is how the attack roll
 finally leaned, and `ally-adjacent` is a standing ally of the attacker who can act, within one cell

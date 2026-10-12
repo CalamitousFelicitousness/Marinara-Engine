@@ -24,6 +24,18 @@ type RateLimitRule = {
 
 const DEFAULT_RULE: RateLimitRule = { key: "default", limit: 600, windowMs: 60_000 };
 
+/** Quick answers call a model per request; a person asks a few per minute, never in a loop. */
+export const PROFESSOR_MARI_QUICK_RATE_LIMIT = {
+  max: 30,
+  timeWindow: 60_000,
+} as const satisfies MarinaraRouteRateLimit;
+
+/** Bulk "skip these agent updates" writes the package catalog; a person clicks it, not a script. */
+export const PACKAGE_UPDATE_DECLINE_RATE_LIMIT = {
+  max: 30,
+  timeWindow: 60_000,
+} as const satisfies MarinaraRouteRateLimit;
+
 export const UPDATE_CHANNEL_RATE_LIMIT = {
   max: 30,
   timeWindow: 60_000,
@@ -72,6 +84,12 @@ export const BEHOLDER_STATE_RATE_LIMIT = {
   timeWindow: 60_000,
 } as const satisfies MarinaraRouteRateLimit;
 
+/** Each greeting-image bake downloads up to ten web images on the server. */
+export const GREETING_IMAGE_BAKE_RATE_LIMIT = {
+  max: 20,
+  timeWindow: 60_000,
+} as const satisfies MarinaraRouteRateLimit;
+
 export const BACKUP_RATE_LIMIT = {
   max: 60,
   timeWindow: 60_000,
@@ -100,7 +118,20 @@ export const DECISION_SIDECAR_RATE_LIMIT = {
   timeWindow: 60_000,
 } as const satisfies MarinaraRouteRateLimit;
 
+/**
+ * The health probe. Launchers, Docker, the Android bootstrap and the open app poll it, so it keeps the
+ * default allowance in a bucket of its own; it now also decides whether to include local model details.
+ */
+export const HEALTH_RATE_LIMIT = {
+  max: 600,
+  timeWindow: 60_000,
+} as const satisfies MarinaraRouteRateLimit;
+
 const ROUTE_RULES: Array<{ pattern: RegExp; rule: RateLimitRule }> = [
+  {
+    pattern: /^\/api\/health(?:\?|$)/,
+    rule: { key: "health", limit: HEALTH_RATE_LIMIT.max, windowMs: HEALTH_RATE_LIMIT.timeWindow },
+  },
   {
     pattern: /^\/api\/multiplayer\/guest-view(?:\?|$)/,
     rule: {
@@ -116,6 +147,14 @@ const ROUTE_RULES: Array<{ pattern: RegExp; rule: RateLimitRule }> = [
     rule: { key: "image-test", limit: 20, windowMs: 60_000 },
   },
   { pattern: /^\/api\/import\/st-bulk(?:\/|$)/, rule: { key: "bulk-import", limit: 20, windowMs: 60_000 } },
+  {
+    pattern: /^\/api\/characters\/[^/]+\/gallery\/bake(?:\?|$)/,
+    rule: {
+      key: "greeting-image-bake",
+      limit: GREETING_IMAGE_BAKE_RATE_LIMIT.max,
+      windowMs: GREETING_IMAGE_BAKE_RATE_LIMIT.timeWindow,
+    },
+  },
   {
     pattern: /^\/api\/backup(?:\/|$)/,
     rule: { key: "backup", limit: BACKUP_RATE_LIMIT.max, windowMs: BACKUP_RATE_LIMIT.timeWindow },
@@ -170,6 +209,22 @@ const ROUTE_RULES: Array<{ pattern: RegExp; rule: RateLimitRule }> = [
     },
   },
   { pattern: /^\/api\/haptic\/command(?:\?|$)/, rule: { key: "haptic-command", limit: 30, windowMs: 60_000 } },
+  {
+    pattern: /^\/api\/professor-mari\/quick\/(?:prompt|proposals\/[^/]+\/apply)(?:\?|$)/,
+    rule: {
+      key: "professor-mari-quick",
+      limit: PROFESSOR_MARI_QUICK_RATE_LIMIT.max,
+      windowMs: PROFESSOR_MARI_QUICK_RATE_LIMIT.timeWindow,
+    },
+  },
+  {
+    pattern: /^\/api\/capability-packages\/updates\/decline(?:\?|$)/,
+    rule: {
+      key: "package-update-decline",
+      limit: PACKAGE_UPDATE_DECLINE_RATE_LIMIT.max,
+      windowMs: PACKAGE_UPDATE_DECLINE_RATE_LIMIT.timeWindow,
+    },
+  },
   // One-shot LLM call per user click; keep it out of the 600/min default
   // class so a runaway loop can't burn API credits.
   {

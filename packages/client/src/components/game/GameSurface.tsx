@@ -10964,7 +10964,7 @@ function GameSurfaceComponent({
       environment: current?.environment ?? "",
       environmentType: accepted.environment ?? null,
       formation: accepted.formation ?? null,
-      battlefield: accepted.battlefield?.brief ?? null,
+      battlefield: accepted.battlefield?.kind === "generated" ? (accepted.battlefield.brief ?? null) : null,
       battlefieldError: null,
       styleNotes: current?.styleNotes ?? null,
     }));

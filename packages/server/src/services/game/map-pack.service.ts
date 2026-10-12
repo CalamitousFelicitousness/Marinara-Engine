@@ -41,7 +41,7 @@ export async function readMapPack(packageId: string): Promise<MapPackRead> {
     if (!world.ok) return { ok: false, reason: `${path} does not read: ${world.issues[0]}` };
     if (!sameJson(world.kit, kit.kit)) return { ok: false, reason: `${path} was made with another kit` };
     if (world.notes.length) return { ok: false, reason: `${path} does not fit its kit: ${world.notes[0]}` };
-    worlds.push({ path, name: world.name, world: world.world });
+    worlds.push({ path, name: world.name, world: world.world, ...(world.story ? { story: world.story } : {}) });
   }
   let tiles: TilePack | null = null;
   if (files.tiles) {
@@ -55,7 +55,11 @@ export async function readMapPack(packageId: string): Promise<MapPackRead> {
 /** Why a new game's kit and world are not the ones its Experience's map pack locks it to, or nothing. */
 export function mapPackLockIssue(
   pack: MapPack,
-  setup: { worldKit?: unknown; world?: { seed: number; grounding?: string; brief: unknown; edits?: unknown } | null },
+  setup: {
+    worldKit?: unknown;
+    world?: { seed: number; grounding?: string; brief: unknown; edits?: unknown } | null;
+    story?: unknown;
+  },
 ): string | null {
   if (!setup.worldKit || !sameJson(setup.worldKit, pack.kit)) {
     return `${pack.name} sets the game's setting kit to its own.`;
@@ -64,11 +68,12 @@ export function mapPackLockIssue(
   const world = setup.world;
   const one = world
     ? pack.worlds.some(
-        ({ world: shipped }) =>
+        ({ world: shipped, story }) =>
           shipped.seed === world.seed &&
           shipped.grounding === (world.grounding ?? "expand") &&
           sameJson(shipped.brief, world.brief) &&
-          sameJson(shipped.edits ?? null, world.edits ?? null),
+          sameJson(shipped.edits ?? null, world.edits ?? null) &&
+          sameJson(story ?? null, setup.story ?? null),
       )
     : false;
   return one ? null : `${pack.name} sets the game's world to one of its own maps.`;

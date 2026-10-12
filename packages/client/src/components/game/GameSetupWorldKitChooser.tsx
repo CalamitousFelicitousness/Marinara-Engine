@@ -27,12 +27,14 @@ import {
   readWorldKitFile,
   worldKitFile,
   type ExperienceMapPack,
+  type StoryScript,
   type WorldFileWorld,
 } from "@marinara-engine/shared";
 import { ApiError, api } from "../../lib/api-client";
 import { downloadJsonFile } from "../../lib/download-json";
 import { cn } from "../../lib/utils";
 import { useUIStore } from "../../stores/ui.store";
+import { useWorldLibrary } from "../../hooks/use-world-library";
 import { GAME_SETUP_GHOST_BUTTON_CLASS, GAME_SETUP_INPUT_CLASS as INPUT } from "./game-setup-classes";
 
 export interface WorldKitWriteRequest {
@@ -150,7 +152,7 @@ export function GameSetupWorldKitChooser({
   kit: WorldKitInput | null;
   onChange: (kit: WorldKitInput | null) => void;
   /** A world file read (worldgen W9d): its kit and world, both taken. */
-  onImportWorld: (kit: WorldKit, world: WorldFileWorld) => void;
+  onImportWorld: (kit: WorldKit, world: WorldFileWorld, story?: StoryScript) => void;
   /** What the model writes a kit for; null until a connection is chosen. */
   writeRequest: WorldKitWriteRequest | null;
 }) {
@@ -178,15 +180,41 @@ export function GameSetupWorldKitChooser({
       onChange(structuredClone(read.kit));
       return setFileNote({ error: false, text: t("game.worldKit.setup.kitImported", { name: read.kit.label }) });
     }
+    takeWorld(text);
+  };
+  /** A world file's text, read in: its kit, world, hand edits and story. */
+  const takeWorld = (text: string) => {
     const read = readWorldFile(text);
     if (!read.ok)
       return setFileNote({ error: true, text: t("game.worldKit.setup.fileRefused", { reason: read.issues[0] }) });
     setWriteError(null);
-    onImportWorld(structuredClone(read.kit), read.world);
+    onImportWorld(structuredClone(read.kit), read.world, read.story);
     setFileNote({
       error: false,
       text: [t("game.worldKit.setup.worldImported", { name: read.name }), ...read.notes.slice(0, 3)].join(" "),
     });
+  };
+  // Worlds made outside any game (worldgen W9f): one picked comes in as a world file does.
+  const library = useWorldLibrary();
+  const pickLibraryWorld = async (id: string) => {
+    if (!id) return;
+    const turn = ++lastRead.current;
+    // The kit as it was asked from: picked or edited meanwhile, the player's choice stands.
+    const asked = latest.current;
+    const current = () => turn === lastRead.current && latest.current === asked;
+    try {
+      const file = await api.get<unknown>(`/game-worlds/${encodeURIComponent(id)}/world/file`);
+      if (current()) takeWorld(JSON.stringify(file));
+    } catch (error) {
+      if (current()) {
+        setFileNote({
+          error: true,
+          text: t("game.worldKit.setup.fileRefused", {
+            reason: error instanceof Error ? error.message : String(error),
+          }),
+        });
+      }
+    }
   };
   const checked = kit ? parseWorldKit(kit) : null;
   // The family its art and music come from: its own, or a kit saved before families its starter's.
@@ -292,6 +320,23 @@ export function GameSetupWorldKitChooser({
           <Download size={13} />
           {t("game.worldKit.setup.downloadKit")}
         </button>
+        {library.data?.length ? (
+          <select
+            aria-label={t("game.worldKit.setup.libraryWorld")}
+            value=""
+            onChange={(event) => void pickLibraryWorld(event.target.value)}
+            className={cn(INPUT, "w-auto")}
+          >
+            <option value="">{t("game.worldKit.setup.libraryWorldPick")}</option>
+            {library.data.map((world) => (
+              <option key={world.id} value={world.id}>
+                {world.kit
+                  ? t("game.worldKit.setup.libraryWorldOption", { name: world.name, kit: world.kit })
+                  : world.name}
+              </option>
+            ))}
+          </select>
+        ) : null}
         <input
           ref={kitFileRef}
           type="file"

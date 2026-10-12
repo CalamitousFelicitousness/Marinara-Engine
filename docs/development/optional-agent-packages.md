@@ -1083,8 +1083,10 @@ hash-pinned asset.
 }
 ```
 
-`worlds` (at most 32) and `tiles` are optional. With the Experience on, a new game is locked to the
-pack's kit; if the pack ships worlds, the player picks one of them and makes no other. Turning the
+`worlds` (at most 32) and `tiles` are optional. A world file may carry its world's story script
+(worldgen W10), which ships with the map as part of it. With the Experience on, a new game is locked
+to the pack's kit; if the pack ships worlds, the player picks one of them (story included) and makes
+no other. Turning the
 Experience off gives the player's own choices back. `POST /api/game/create` holds a game to the same
 lock. The game keeps its kit and world like any game, so it plays on if the package is removed, and
 draws its overworld and towns with the pack's tiles while the package is installed.

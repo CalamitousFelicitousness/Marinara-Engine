@@ -23,6 +23,8 @@ import {
   type WorldKit,
   worldKitPromptText,
   worldOverviewPromptText,
+  storyScriptPromptText,
+  type StoryScript,
 } from "@marinara-engine/shared";
 import type { CharacterSpriteInfo } from "./sprite.service.js";
 
@@ -156,6 +158,11 @@ export interface GmPromptContext {
   world?: GameWorld | null;
   /** Where the party is in that world and where it can go from there (`worldWhereYouAreText`). */
   whereYouAre?: string;
+  /** The world's story script (worldgen W10): what of it is the Game Master's own goes in the cached
+   *  system prompt. */
+  story?: StoryScript | null;
+  /** What the story says this turn (`storyTurnPromptText`). */
+  storyNow?: string;
 }
 
 const MAX_PROMPT_MAP_LOCATIONS = 10;
@@ -666,11 +673,13 @@ export function buildGmSystemPrompt(ctx: GmPromptContext): string {
   sections.push(...gameBlockLines);
   if (ctx.worldKit) sections.push(worldKitPromptText(ctx.worldKit));
   if (ctx.world) sections.push(worldOverviewPromptText(ctx.world));
+  const storyScript = ctx.story ? storyScriptPromptText(ctx.story) : "";
+  if (storyScript) sections.push(`<story_script>`, storyScript, `</story_script>`);
 
   if (ctx.tacticalBattlefieldContext) {
     sections.push(
       `<tactical_battlefield>`,
-      `This is the accepted generated board for the active tactical encounter:`,
+      `This is the accepted board for the active tactical encounter:`,
       ctx.tacticalBattlefieldContext,
       `Keep later combat narration consistent with this resolved board and its terrain.`,
       `</tactical_battlefield>`,
@@ -1201,6 +1210,7 @@ export function buildGmFormatReminder(
     | "inventoryPurses"
     | "market"
     | "whereYouAre"
+    | "storyNow"
     | "rulesetLayerOptions"
     | "language"
     | "rating"
@@ -1693,6 +1703,7 @@ export function buildGmFormatReminder(
   }
 
   if (ctx.whereYouAre) lines.push(``, ctx.whereYouAre);
+  if (ctx.storyNow) lines.push(``, `STORY:`, ctx.storyNow);
   if (ctx.market) lines.push(``, ctx.market);
 
   const specialInstructions = normalizePromptText(ctx.gameSpecialInstructions);

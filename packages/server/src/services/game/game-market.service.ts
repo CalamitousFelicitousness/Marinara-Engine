@@ -21,12 +21,14 @@ import {
   type RulesetLiveStates,
   type RulesetMarketDay,
   type WorldKitItems,
+  type WorldLedgerCarry,
+  worldLedgerCarry,
 } from "@marinara-engine/shared";
 import type { DB } from "../../db/connection.js";
 import { parseExtra } from "../generation/prompt-attachments.js";
 import { createChatsStorage } from "../storage/chats.storage.js";
 import type { ResolvedGameRuleset } from "./ruleset-registry.service.js";
-import { gameRulesetLayerOptions } from "./game-inventory.service.js";
+import { gameRulesetLayerOptions, readMetadata } from "./game-inventory.service.js";
 import { loadGameRulesetSheetContext } from "./ruleset-sheet-turn.service.js";
 
 /** The Game Master's own replies before the telling a regeneration replaces, oldest first. */
@@ -37,20 +39,45 @@ export interface GameRepliesBefore {
   /** All of them: what the world's ledger is read from (worldgen W4), since a conversation start
    *  scopes what the model reads, not what the story did to the world. */
   all: string[];
+  /** What earlier sessions carried in (W10-0), read first in `all` as one reply; null in a first session. */
+  carried: WorldLedgerCarry | null;
+  /** The player's message the reply answers: the last one before it (worldgen W10, a fight's recap). */
+  player: string | null;
+}
+
+/** A Game Master's own reply: an assistant message that is not a party's turn (a tag a party's model
+ *  echoes never counts for the world), as a tag a player types never does. */
+export function isGameMasterReply(message: { role: string; content: unknown }): message is {
+  role: string;
+  content: string;
+} {
+  return (
+    message.role === "assistant" &&
+    typeof message.content === "string" &&
+    !message.content.trimStart().startsWith("[party-turn]")
+  );
 }
 
 export async function gameRepliesBefore(db: DB, chatId: string, replacing?: string | null): Promise<GameRepliesBefore> {
-  const messages = await createChatsStorage(db).listMessages(chatId);
+  const chats = createChatsStorage(db);
+  const [messages, chat] = await Promise.all([chats.listMessages(chatId), chats.getById(chatId)]);
   const end = replacing ? messages.findIndex((message) => message.id === replacing) : -1;
   const before = end >= 0 ? messages.slice(0, end) : messages;
-  // Only the Game Master's own replies: a tag a player types is never answered.
-  const all: string[] = [];
-  let scopedFrom = 0;
+  // Each session is its own chat: what the earlier ones did to the world comes first, as one reply.
+  const carried = worldLedgerCarry(readMetadata(chat?.metadata).gameLedgerCarry);
+  const all: string[] = carried?.tags ? [carried.tags] : [];
+  let scopedFrom = all.length;
+  let player: string | null = null;
   for (const message of before) {
     if (parseExtra(message.extra).isConversationStart === true) scopedFrom = all.length;
-    if (message.role === "assistant" && typeof message.content === "string") all.push(message.content);
+    if (message.role === "user" && typeof message.content === "string") player = message.content;
+    if (isGameMasterReply(message)) {
+      all.push(message.content);
+      // Answered: a later reply answers only what the player writes after it.
+      if (message.content.trim()) player = null;
+    }
   }
-  return { scoped: all.slice(scopedFrom), all };
+  return { scoped: all.slice(scopedFrom), all, carried, player };
 }
 
 /**

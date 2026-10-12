@@ -96,6 +96,7 @@ const FORTUNE_OF: Record<WorldProsperity, number> = { struggling: 20, modest: 50
 
 const WORLD_TAG = /\[world:([^\]]*)\]/gi;
 const LEDGER_TAG = /\[(world|place):([^\]]*)\]/gi;
+const CARRIED_TAG = /\[(world|place|story):[^\]]*\]/gi;
 const pairKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
 const clamp = (value: number) => Math.max(-100, Math.min(100, value));
 
@@ -282,6 +283,44 @@ export function readWorldLedger(replies: readonly string[]): WorldLedgerEntry[] 
     }
   }
   return entries;
+}
+
+/** What a game's earlier sessions carry into the next (each session is its own chat): every ledger tag
+ *  of their Game Master's replies, in order, and how many replies there were. */
+export interface WorldLedgerCarry {
+  replies: number;
+  tags: string;
+  /** The tags of the session's last reply with anything in it: what the Game Master tripped there in a
+   *  story (worldgen W10) arrives at the start of the next session's first reply. */
+  last?: string;
+}
+
+/** A session's carry as stored in its metadata, or null. */
+export function worldLedgerCarry(value: unknown): WorldLedgerCarry | null {
+  if (!value || typeof value !== "object") return null;
+  const { replies, tags, last } = value as Record<string, unknown>;
+  return typeof tags === "string" && typeof replies === "number" && Number.isInteger(replies) && replies >= 0
+    ? { replies, tags, ...(typeof last === "string" && last ? { last } : {}) }
+    : null;
+}
+
+/** The carry into the next session: what this one carried in, then its own Game Master's replies. */
+export function carryWorldLedger(carried: WorldLedgerCarry | null, replies: readonly string[]): WorldLedgerCarry {
+  // The world's tags, and the story's (worldgen W10), which fold the same way.
+  const tags = replies.flatMap((reply) => [...reply.matchAll(CARRIED_TAG)].map((match) => match[0]));
+  const lastReply = [...replies].reverse().find((reply) => reply.trim());
+  const last = lastReply ? [...lastReply.matchAll(CARRIED_TAG)].map((match) => match[0]).join("") : carried?.last;
+  return {
+    replies: (carried?.replies ?? 0) + replies.length,
+    tags: [carried?.tags ?? "", ...tags].filter(Boolean).join("\n"),
+    ...(last ? { last } : {}),
+  };
+}
+
+/** The ledger entries of the Engine's own walk and visit tags (worldgen W8), which go before a reply
+ *  unanswered and are answered with it: read as they will be, for what this turn already knows. */
+export function readToldLedger(tags: string): WorldLedgerEntry[] {
+  return readWorldLedger([tags.replace(/\]/g, ' result="ok"]')]);
 }
 
 // A few folds, by their world and ledger, as the history keeps its runs: a turn folds the same replies

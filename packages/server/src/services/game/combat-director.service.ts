@@ -28,6 +28,8 @@ import {
   type CombatMechanic,
   type CombatItemEffect,
   type TacticalBattlefieldBrief,
+  type TacticalMadeBattlefield,
+  type RulesetCombatBoard,
 } from "@marinara-engine/shared";
 import { chooseClassicAction, estimateClassicAttack } from "./combat-ai.service.js";
 import { resolveCombatRound, rollInitiative, canCombatantAct } from "./combat.service.js";
@@ -123,6 +125,12 @@ function log(
   s.log.push({ id: ++s.serial, text, kind, actorId, source, message });
   s.log = s.log.slice(-240);
 }
+/** What the Game Master is told of a ruleset fight's board: as a tactical one, its scene when painted. */
+function rulesetBoardSummary(board: RulesetCombatBoard | undefined, seed: number): string | undefined {
+  if (!board?.battlefield) return undefined;
+  const scene = board.battlefield.kind === "hand-made" ? board.battlefield.scene : undefined;
+  return summarizeTacticalBattlefield({ ...board, seed, ...(scene ? { environment: scene } : {}) });
+}
 function sync(s: CombatDirectorState) {
   if (s.tactical) {
     const convert = (u: TacticalUnit): Combatant => ({ ...u, side: side(u) === "party" ? "player" : "enemy" });
@@ -141,7 +149,10 @@ function sync(s: CombatDirectorState) {
     s.summary = {
       outcome: s.outcome,
       rounds: s.round,
-      battlefieldSummary: s.tactical ? (summarizeTacticalBattlefield(s.tactical) ?? undefined) : undefined,
+      // The board fought on, either style's: a ruleset's is the tactical style's own board.
+      battlefieldSummary: s.tactical
+        ? (summarizeTacticalBattlefield(s.tactical) ?? undefined)
+        : rulesetBoardSummary(s.rulesetFight?.encounter.board, s.seed),
       party: s.party.map((u) => ({
         name: u.name,
         hp: u.hp,
@@ -213,6 +224,8 @@ export function createCombatDirector(input: {
   environment?: string;
   formation?: string;
   battlefield?: TacticalBattlefieldBrief;
+  /** A board painted for the fight's place (worldgen W9g), fought on as painted. */
+  made?: TacticalMadeBattlefield;
   itemEffects?: CombatItemEffect[];
   mechanics?: CombatMechanic[];
   inventory?: CombatDirectorState["inventory"];
@@ -264,6 +277,7 @@ export function createCombatDirector(input: {
       environment: input.environment,
       formation: input.formation,
       battlefield: input.battlefield,
+      ...(input.made ? { made: input.made } : {}),
     });
   for (const u of directorUnits(s))
     s.budgets[u.id] = { legendary: side(u) === "enemy" ? (u.boss?.points ?? 0) : 0, reaction: 1 };

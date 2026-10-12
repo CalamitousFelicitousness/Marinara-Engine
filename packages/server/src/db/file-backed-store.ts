@@ -421,6 +421,7 @@ const BUILT_IN_FILE_BACKED_TABLES = [
   "game_dice_pools",
   "game_rulesets",
   "game_tile_packs",
+  "game_worlds",
   "regex_scripts",
   "chat_images",
   "character_images",

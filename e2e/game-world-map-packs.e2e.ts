@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import {
   WORLD_GENERATOR_VERSION,
   WORLD_STARTER_KITS,
+  checkStoryScript,
   checkWorldBrief,
   compileGameWorld,
   parseWorldKit,
@@ -36,13 +37,19 @@ const downriver = {
   ...worldOf(10),
   edits: { editsVersion: 1 as const, places: [{ id: renamed.id, name: "Newhaven" }] },
 };
+// Its story (worldgen W10) is part of the map: the game takes it with the world.
+const downriverStory = checkStoryScript(
+  { kit, ...downriver, world: compileGameWorld({ kit, ...downriver }) },
+  { storyVersion: 1, events: [{ id: "home", when: { on: "arrive", place: renamed.id }, do: [{ tell: "Home." }] }] },
+);
+if (!downriverStory.ok) throw new Error(downriverStory.issues.join("; "));
 const pack: ExperienceMapPack = {
   packageId: "mapfixture",
   name: "River Experience",
   kit,
   worlds: [
     { path: "upriver.world.json", name: "Upriver", world: worldOf(9) },
-    { path: "downriver.world.json", name: "Downriver", world: downriver },
+    { path: "downriver.world.json", name: "Downriver", world: downriver, story: downriverStory.story },
   ],
   tiles: {
     tilePackVersion: 1,
@@ -201,12 +208,13 @@ test("an Experience's map pack sets the kit and offers only its maps, and lets g
   for (let step = 0; step < 6 && !(await start.isVisible()); step++) await go("Next");
   await start.click();
   const result = JSON.parse((await page.getByTestId("wizard-result").textContent()) ?? "{}") as {
-    config: { gameExperienceId?: string; worldKit?: unknown; world?: unknown };
+    config: { gameExperienceId?: string; worldKit?: unknown; world?: unknown; story?: unknown };
   };
   // Exactly the pack's kit and world, its hand edits too: what the Engine's lock compares them against.
   expect(result.config.gameExperienceId).toBe("mapfixture");
   expect(result.config.worldKit).toEqual(pack.kit);
   expect(result.config.world).toEqual(downriver);
+  expect(result.config.story).toEqual(downriverStory.story);
 });
 
 test("an Experience whose map pack does not read cannot start a game, and says why", async ({ page }, testInfo) => {

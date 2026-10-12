@@ -34,6 +34,8 @@ A pack only needs the tiles it changes: anything it leaves out is drawn plain. A
 
 When the party is at a settlement, pick it on the overworld and choose **Enter** to see the town. It is laid out from the world: its streets and square, the places the world or the story has in it (named on their buildings), its hall in a bigger place, the workplaces of the trades it is known for, and its homes. Its people are where the hour has them: at work by day, in the square at dusk, at home at night.
 
+A town can also be **laid out by hand** with a maker such as Pixelforge, as part of the world's hand edits: its buildings moved to other lots (a building moved onto another's lot swaps with it, and every building still faces a street), and its ground painted with streets, paving, open ground, trees or a well (never under a building or before its door, in the middle of the square or under a market stall). Who lives and works where never changes, and a walk to a moved building is timed from its new door. The maker refuses a layout that does not fit the town, with the reason; places the story adds in play still find a lot.
+
 Pick a building or the square, or choose from **Places in town**, to see who is there now and how many minutes away it is. **Walk there** takes the party across town: the minutes pass on the clock, and **your next turn tells the Game Master** where the party went and who is there. A visit to a named place, such as an inn the story added, makes it the place the party is in. **Leave town** goes back to the overworld. The game remembers which view you were in.
 
 ## Grid view and node view

@@ -118,8 +118,10 @@ export function TownView({
               ? ["square", PLAIN.square]
               : ["town_ground", PLAIN.ground];
         if (!drawTile(ctx, id, x * T, y * T, pick)) plain(colour, x * T, y * T);
-        // A tree here and there on the open ground away from the streets.
-        if (cell === "." && pick > 0.86) drawTile(ctx, "tree", x * T, y * T);
+        // A tree here and there on the open ground away from the streets, and where a hand layout
+        // (worldgen W9h) planted one or dug a well; "o" is open ground kept clear.
+        if (cell === "t" || (cell === "." && pick > 0.86)) drawTile(ctx, "tree", x * T, y * T);
+        if (cell === "w") drawTile(ctx, "well", x * T, y * T);
       }
     }
     for (const building of town.buildings) {

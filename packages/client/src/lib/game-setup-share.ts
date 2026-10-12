@@ -1,4 +1,10 @@
-import { gameWorldSchema, normalizeGameDifficulty, parseWorldKit, rulesetRefSchema } from "@marinara-engine/shared";
+import {
+  gameWorldSchema,
+  normalizeGameDifficulty,
+  parseWorldKit,
+  rulesetRefSchema,
+  storyScriptSchema,
+} from "@marinara-engine/shared";
 import {
   ANIME_GAME_PROMPT_TEMPLATE_ID,
   COMIC_PAGE_GAME_VIDEO_PROMPT_TEMPLATE_ID,
@@ -344,6 +350,9 @@ function parseShareConfig(value: unknown): GameSetupConfig {
   // And its world: one without a kit, or one that is not one, refuses the file.
   const world = value.world == null ? undefined : gameWorldSchema.safeParse(value.world);
   if (world && (!world.success || !worldKit?.ok)) throw new Error(translate("game.world.setup.invalidImport"));
+  // And its story (worldgen W10), only ever with its world; whether it fits that world is the wizard's check.
+  const story = value.story == null ? undefined : storyScriptSchema.safeParse(value.story);
+  if (story && (!story.success || !world?.success)) throw new Error(translate("game.world.setup.invalidImport"));
   const generationParameters = parseGenerationParameters(value.generationParameters);
   const spatialMapDraftOptions =
     value.spatialMapDraftSize !== undefined || value.spatialMapTargetLocationCount !== undefined
@@ -363,6 +372,7 @@ function parseShareConfig(value: unknown): GameSetupConfig {
     ...(ruleset ? { ruleset: ruleset.data } : {}),
     worldKit: worldKit?.ok ? worldKit.kit : undefined,
     world: world?.success ? world.data : undefined,
+    story: story?.success ? story.data : undefined,
     generationParameters,
     ...(spatialMapDraftOptions
       ? {
@@ -597,6 +607,7 @@ export function resolveGameSetupImport(
     ruleset: _ruleset,
     worldKit: _worldKit,
     world: _world,
+    story: _story,
     ...ordinaryConfig
   } = sourceConfig;
 
@@ -676,7 +687,7 @@ export function resolveGameSetupImport(
       // Like a ruleset, a setting kit is chosen once, for a new game.
       ...(context.isNewGame !== false && sourceConfig.worldKit ? { worldKit: sourceConfig.worldKit } : {}),
       ...(context.isNewGame !== false && sourceConfig.worldKit && sourceConfig.world
-        ? { world: sourceConfig.world }
+        ? { world: sourceConfig.world, ...(sourceConfig.story ? { story: sourceConfig.story } : {}) }
         : {}),
       gmMode,
       gmCharacterId,

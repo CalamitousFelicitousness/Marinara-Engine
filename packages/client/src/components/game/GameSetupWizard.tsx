@@ -92,6 +92,7 @@ import { useCharacterGroups, usePersonas } from "../../hooks/use-characters";
 import { GameSetupRulesChooser, GameSetupRulesetSheetStatus } from "./GameSetupRulesChooser";
 import { GameSetupWorldKitChooser, MapPackLock } from "./GameSetupWorldKitChooser";
 import { useExperienceMapPack } from "../../hooks/use-map-pack";
+import { useOverworldGamesEnabled } from "../../hooks/use-world-library";
 import { GameSetupWorldChooser, worldDraftConfig, worldDraftFromWorld, type WorldDraft } from "./GameSetupWorldChooser";
 import {
   GAME_SETUP_FIELD_LABEL,
@@ -570,7 +571,9 @@ export function GameSetupWizard({
   const mapPackWorld = mapPack
     ? (mapPack.worlds.find((world) => world.path === mapPackWorldPath) ?? mapPack.worlds[0] ?? null)
     : null;
-  const effectiveWorldKit: WorldKitInput | null = mapPack ? mapPack.kit : worldKit;
+  // Overworld games are locked on this server unless it says otherwise: no kit, no world, no map pack.
+  const overworldEnabled = useOverworldGamesEnabled();
+  const effectiveWorldKit: WorldKitInput | null = !overworldEnabled ? null : mapPack ? mapPack.kit : worldKit;
   const checkedWorldKit = isNewGame && effectiveWorldKit ? parseWorldKit(effectiveWorldKit) : null;
   // The world made in that kit's words (worldgen W1): off unless the player asks for one.
   const [worldDraft, setWorldDraft] = useState<WorldDraft | null>(null);
@@ -2226,37 +2229,47 @@ export function GameSetupWizard({
                         {rulesetImportNotice}
                       </p>
                     )}
-                    {isNewGame && (mapPack || mapPackUnreadable) && (
-                      <MapPackLock
-                        name={activeExperience?.manifest.name ?? ""}
-                        pack={mapPack}
-                        error={mapPackQuery.error instanceof Error ? mapPackQuery.error.message : null}
-                        worldPath={mapPackWorld?.path ?? null}
-                        onPickWorld={(path) =>
-                          activeExperience && setMapPackPick({ experienceId: activeExperience.id, path })
-                        }
-                      />
+                    {isNewGame && !overworldEnabled && (
+                      <p role="note" className="text-xs text-[var(--muted-foreground)]">
+                        {localizeUi("game.worldKit.setup.overworldLocked")}
+                      </p>
                     )}
-                    {isNewGame && !mapPack && !mapPackUnreadable && (
-                      <GameSetupWorldKitChooser
-                        kit={worldKit}
-                        onChange={chooseWorldKit}
-                        onImportWorld={(kit, world, story) => {
-                          chooseWorldKit(kit);
-                          setWorldDraft(worldDraftFromWorld(world, story));
-                        }}
-                        writeRequest={worldWriteRequest}
-                      />
-                    )}
-                    {checkedWorldKit?.ok && !mapPackWorld && !mapPackUnreadable && (
-                      <GameSetupWorldChooser
-                        kit={checkedWorldKit.kit}
-                        draft={worldDraft}
-                        onChange={setWorldDraft}
-                        lorebooks={lorebooks}
-                        request={worldWriteRequest && { ...worldWriteRequest, playerGoals: playerGoals || undefined }}
-                      />
-                    )}
+                    <fieldset
+                      disabled={!overworldEnabled}
+                      className={cn("m-0 min-w-0 space-y-4 border-0 p-0", !overworldEnabled && "opacity-50")}
+                    >
+                      {isNewGame && (mapPack || mapPackUnreadable) && (
+                        <MapPackLock
+                          name={activeExperience?.manifest.name ?? ""}
+                          pack={mapPack}
+                          error={mapPackQuery.error instanceof Error ? mapPackQuery.error.message : null}
+                          worldPath={mapPackWorld?.path ?? null}
+                          onPickWorld={(path) =>
+                            activeExperience && setMapPackPick({ experienceId: activeExperience.id, path })
+                          }
+                        />
+                      )}
+                      {isNewGame && !mapPack && !mapPackUnreadable && (
+                        <GameSetupWorldKitChooser
+                          kit={worldKit}
+                          onChange={chooseWorldKit}
+                          onImportWorld={(kit, world, story) => {
+                            chooseWorldKit(kit);
+                            setWorldDraft(worldDraftFromWorld(world, story));
+                          }}
+                          writeRequest={worldWriteRequest}
+                        />
+                      )}
+                      {checkedWorldKit?.ok && !mapPackWorld && !mapPackUnreadable && (
+                        <GameSetupWorldChooser
+                          kit={checkedWorldKit.kit}
+                          draft={worldDraft}
+                          onChange={setWorldDraft}
+                          lorebooks={lorebooks}
+                          request={worldWriteRequest && { ...worldWriteRequest, playerGoals: playerGoals || undefined }}
+                        />
+                      )}
+                    </fieldset>
 
                     {/* Content Rating */}
                     <div>

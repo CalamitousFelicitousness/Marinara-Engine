@@ -709,6 +709,11 @@ export function isCustomToolScriptEnabled() {
   return isEnabledFlag(process.env.CUSTOM_TOOL_SCRIPT_ENABLED);
 }
 
+/** Overworld games (setting kits and generated worlds) are not ready for everyone yet: off unless set. */
+export function isOverworldGamesEnabled() {
+  return isEnabledFlag(process.env.MARINARA_OVERWORLD_GAMES);
+}
+
 export function isCustomAgentRepositoriesEnabled() {
   return isEnabledFlag(process.env.ENABLE_CUSTOM_AGENT_REPOS);
 }

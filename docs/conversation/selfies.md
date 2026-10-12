@@ -49,11 +49,14 @@ To learn more about styles, see [Image Style Profiles](../media/style-profiles.m
 
 ### Send Avatar References
 
-**Send Avatar References** is a toggle that is off by default. When it is on, Marinara sends the character's avatar or sprite to the image service as a reference picture. This helps the selfie look like the character. It only works when the image provider supports reference images.
+**Send Avatar References** is a dropdown that is **Off** by default. It sits below the **Video messages** section, and each choice says what it applies to: **Images only**, **Videos only**, or **Images and videos**.
+
+- For images, Marinara sends the character's avatar or sprite to the image service as a reference picture. This helps the selfie look like the character. It only works when the image provider supports reference images.
+- For videos, a video message whose **First frame** is **Prompt only** starts from the character's avatar or sprite instead of no picture. Video services take a single starting picture, so the other first frames, which already start from a picture of the character, are not affected.
 
 ### Attach Card Appearance
 
-**Attach Card Appearance** is a toggle that is off by default. When it is on, Marinara adds the character card's appearance text to the selfie description. This gives the model more detail about how the character looks.
+**Attach Card Appearance** is a dropdown that is **Off** by default, with the same **Images only**, **Videos only** and **Images and videos** choices. It adds the card's appearance text of each character the prompt names to the selfie prompt, the video prompt, or both. This gives the model more detail about how the character looks.
 
 If the card or persona also has **Image Appearance Override** turned on, Marinara sends that override instead of the **Appearance** text. Turn it on under **Appearance** in the Character or Persona editor when the full **Appearance** description is written for the narrator rather than for an image model.
 

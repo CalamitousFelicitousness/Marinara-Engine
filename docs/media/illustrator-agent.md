@@ -63,7 +63,7 @@ The image connection is the image provider that draws the final picture. You set
 
 Two toggles on the Illustrator card help characters look consistent. Both are off by default.
 
-**Attach Card Appearance** adds each visible character's saved appearance text to the image prompt. Its help text reads: "Append matched character appearance lines to image prompts, using only visible/generated names." Turn it on when you want the picture to match how a character is written.
+**Attach Card Appearance** adds each visible character's saved appearance text to the image prompt. In a Roleplay chat's **Chat Settings**, it is a dropdown: **Images only** (the usual behavior), **Videos only**, **Images and videos**, or **Off**. With videos included, a clip made from the Gallery also gets the appearance lines of the characters its motion direction names. **Send Avatar References** stays images-only in Roleplay, because a Roleplay clip always starts from a picture and video services take only one. Its help text reads: "Append matched character appearance lines to image prompts, using only visible/generated names." Turn it on when you want the picture to match how a character is written.
 
 When **Attach Card Appearance** is on, any card or persona that also has **Image Appearance Override** turned on sends that override instead of its **Appearance** text. Use it when **Appearance** is written for the narrator but reads badly to an image model: leave the full description in **Appearance** and put a shorter, tag-style version in the override. While the override is off, or its box is empty, image prompts keep using **Appearance**. The narrator always sees the full **Appearance** text either way. The switch sits under **Appearance** in the Character and Persona editors.
 

@@ -151,6 +151,7 @@ import {
   AgentSettingsSubsection,
   AgentSettingsTextarea,
   AgentSettingsToggle,
+  MediaScopeSelect,
   GamePromptTemplateSelect,
   GenerationSettingsLink,
 } from "./AgentSettingsControls";
@@ -7394,32 +7395,6 @@ export function ChatSettingsDrawer({
                             {renderIllustratorPromptConnectionSelect()}
                             {renderIllustratorImageStyleSelect()}
                             {renderIllustratorImagesPerGeneration()}
-                            <AgentSettingsToggle
-                              label={localizeUi("ui.chat.agentaddsetupfields.sendAvatarReferences")}
-                              description={localizeUi(
-                                "ui.chat.chatsettingsdrawer.sendTheMatchingCharacterAvatarOrSpriteAsA",
-                              )}
-                              enabled={selfieUseAvatarReferences}
-                              onToggle={() =>
-                                updateMeta.mutate({
-                                  id: chat.id,
-                                  selfieUseAvatarReferences: !selfieUseAvatarReferences,
-                                })
-                              }
-                            />
-                            <AgentSettingsToggle
-                              label={localizeUi("ui.chat.agentaddsetupfields.attachCardAppearance")}
-                              description={localizeUi(
-                                "ui.chat.chatsettingsdrawer.appendTheMatchingCharacterCardAppearanceTextToGenerated",
-                              )}
-                              enabled={selfieIncludeCharacterAppearance}
-                              onToggle={() =>
-                                updateMeta.mutate({
-                                  id: chat.id,
-                                  selfieIncludeCharacterAppearance: !selfieIncludeCharacterAppearance,
-                                })
-                              }
-                            />
                             <p className="text-[0.55rem] text-[var(--muted-foreground)]">
                               {localizeUi(
                                 "ui.chat.chatsettingsdrawer.usedForCharacterSelfiesWhenCommandsAreEnabledThe",
@@ -7534,6 +7509,35 @@ export function ChatSettingsDrawer({
                           <p className="text-[0.55rem] text-[var(--muted-foreground)]">
                             {localizeUi("ui.chat.chatsettingsdrawer.videoMessagesHelp")}
                           </p>
+                        </div>
+
+                        <div className="space-y-2 border-t border-[var(--border)]/60 pt-3">
+                          <MediaScopeSelect
+                            label={localizeUi("ui.chat.agentaddsetupfields.sendAvatarReferences")}
+                            description={localizeUi("ui.chat.chatsettingsdrawer.conversationAvatarReferencesScopeHelp")}
+                            images={selfieUseAvatarReferences}
+                            videos={metadata.selfieVideoUseAvatarReferences === true}
+                            onChange={({ images, videos }) =>
+                              updateMeta.mutate({
+                                id: chat.id,
+                                selfieUseAvatarReferences: images,
+                                selfieVideoUseAvatarReferences: videos,
+                              })
+                            }
+                          />
+                          <MediaScopeSelect
+                            label={localizeUi("ui.chat.agentaddsetupfields.attachCardAppearance")}
+                            description={localizeUi("ui.chat.chatsettingsdrawer.characterAppearanceScopeHelp")}
+                            images={selfieIncludeCharacterAppearance}
+                            videos={metadata.selfieVideoIncludeCharacterAppearance === true}
+                            onChange={({ images, videos }) =>
+                              updateMeta.mutate({
+                                id: chat.id,
+                                selfieIncludeCharacterAppearance: images,
+                                selfieVideoIncludeCharacterAppearance: videos,
+                              })
+                            }
+                          />
                         </div>
                       </AgentSettingsCard>
                     )}
@@ -9060,13 +9064,18 @@ export function ChatSettingsDrawer({
                               "ui.chat.chatsettingsdrawer.usesTheBackgroundResolutionFromSettingsGenerationsTrackerLocations",
                             )}
                           </p>
-                          <AgentSettingsToggle
+                          <MediaScopeSelect
                             label={localizeUi("ui.chat.agentaddsetupfields.attachCardAppearance")}
-                            description={localizeUi(
-                              "ui.chat.agentaddsetupfields.appendMatchedCharacterAppearanceLinesToImagePromptsUsing",
-                            )}
-                            enabled={illustratorIncludeCharacterAppearance}
-                            onToggle={toggleIllustratorCharacterAppearance}
+                            description={localizeUi("ui.chat.chatsettingsdrawer.characterAppearanceScopeHelp")}
+                            images={illustratorIncludeCharacterAppearance}
+                            videos={metadata.illustratorVideoIncludeCharacterAppearance === true}
+                            onChange={({ images, videos }) =>
+                              updateMeta.mutate({
+                                id: chat.id,
+                                illustratorIncludeCharacterAppearance: images,
+                                illustratorVideoIncludeCharacterAppearance: videos,
+                              })
+                            }
                             overridden={typeof metadata.illustratorIncludeCharacterAppearance === "boolean"}
                             onReset={resetIllustratorCharacterAppearance}
                           />

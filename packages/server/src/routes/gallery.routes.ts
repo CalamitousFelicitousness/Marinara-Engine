@@ -830,6 +830,31 @@ export async function galleryRoutes(app: FastifyInstance) {
           "The Roleplay animation Prompt Model returned an empty direction.",
         );
       }
+      if (meta.illustratorVideoIncludeCharacterAppearance === true) {
+        // The characters the direction names get their appearance lines, as Illustrator images do.
+        const chatCharacters = [];
+        for (const id of (await collectChatAssetParticipants(chat)).characterIds) {
+          const row = await characters.getById(id);
+          if (!row) continue;
+          const data = parseJsonRecord(row.data);
+          chatCharacters.push({
+            id,
+            name: readTrimmedString(data.name) ?? "",
+            avatarPath: row.avatarPath ?? null,
+            appearance: getCharacterAppearance(data).appearance,
+          });
+        }
+        const references = await resolveIllustratorCharacterReferences({
+          charactersStore: characters,
+          chatCharacters,
+          persona: null,
+          requestedNames: [],
+          promptText: promptDraft,
+          fallbackToChatCharacters: false,
+          includeReferenceImages: false,
+        });
+        if (references.appearanceBlock) promptDraft = `${promptDraft}\n\n${references.appearanceBlock}`;
+      }
       logDebugOverride(debugOverrideEnabled, "[debug/gallery/roleplay-video-director] final prompt:\n%s", promptDraft);
     } else if (!promptDraft) {
       promptDraft = await loadGameVideoPrompt({

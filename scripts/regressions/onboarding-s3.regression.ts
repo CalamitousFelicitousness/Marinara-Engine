@@ -11,6 +11,7 @@ import {
   canBuildPersona,
   dropUnreadableOnboarding,
   findUnresolvedCardVariableUses,
+  formatTextQuotes,
   getNextCardVariable,
   getRelevantCardVariables,
   hasOnboardingContent,
@@ -768,5 +769,109 @@ assert.equal(listNames(["Raven"]), "Raven", "one participant is named plainly");
 assert.equal(listNames(["Jessica", "Raven"]), "Jessica and Raven", "two are joined with and");
 assert.equal(listNames(["A", "B", "C"]), "A, B and C", "three take the serial form without an Oxford comma");
 assert.equal(listNames([]), "", "an empty list yields no stray text");
+
+// ── Card-tab chips (#7434, S4) ──
+// The Card tab offers the same "Available variables" chips the Onboarding tab
+// does, so an author can insert a card question without leaving the tab. The
+// rule is the Onboarding tab's: EVERY declared name is offered, used or not,
+// because one answer may legitimately be inserted into several fields — and a
+// freshly written question must be insertable before it is used anywhere. The
+// unused warning already covers the "you have not used this" case, so a usage
+// filter here would only hide the chip exactly when the author needs it.
+const chipNamesFor = (block: CharacterOnboarding, on: boolean): string[] =>
+  on ? [...new Set((block.cardVariables ?? []).map((variable) => variable.variableName.trim()).filter(Boolean))] : [];
+
+const chipBlock = onboarding({
+  cardVariables: [
+    { id: "a", variableName: "relationshipToUser", question: "Who?" },
+    { id: "b", variableName: "tone", question: "How?" },
+    { id: "c", variableName: "unusedAnywhere", question: "Unused?" },
+  ],
+}) as CharacterOnboarding;
+
+assert.deepEqual(
+  chipNamesFor(chipBlock, true),
+  ["relationshipToUser", "tone", "unusedAnywhere"],
+  "every declared card question is offered, including one used in no field yet",
+);
+assert.deepEqual(
+  chipNamesFor(chipBlock, false),
+  [],
+  "the onboarding toggle being off offers no chips, so a disabled block is not read",
+);
+assert.deepEqual(
+  chipNamesFor(onboarding({ cardVariables: [] }) as CharacterOnboarding, true),
+  [],
+  "an enabled block with no card questions offers no chips",
+);
+// A blank name would render an unusable `{{}}` chip, and the validator already
+// reports the empty name separately.
+assert.deepEqual(
+  chipNamesFor(
+    onboarding({
+      cardVariables: [
+        { id: "a", variableName: "  ", question: "Blank" },
+        { id: "b", variableName: "kept", question: "Kept" },
+      ],
+    }) as CharacterOnboarding,
+    true,
+  ),
+  ["kept"],
+  "a blank name is not offered as a chip",
+);
+// One name declared twice must produce one chip, not two identical buttons.
+assert.deepEqual(
+  chipNamesFor(
+    onboarding({
+      cardVariables: [
+        { id: "a", variableName: "tone", question: "One" },
+        { id: "b", variableName: "tone", question: "Two" },
+      ],
+    }) as CharacterOnboarding,
+    true,
+  ),
+  ["tone"],
+  "a duplicated name yields a single chip",
+);
+
+// ── A chip click must not re-format the author's text (#7434, S4) ──
+// A card-variable chip writes into a card field. `backstory` and `appearance`
+// live under extensions, whose setter normalises quotes to the user's preferred
+// style — correct while typing, surprising for a chip, because inserting one tag
+// also rewrote every quote already in the field. Probed directly:
+// `formatTextQuotes` maps a field ONTO the active format, so the change lands
+// whenever the text and the setting disagree. That is why it is easy to miss by
+// hand: it is invisible when the text already matches the setting.
+const straight = '- She said "hi" once';
+const curly = "- She said \u201chi\u201d once";
+const possessive = "her mother's life";
+
+assert.equal(
+  formatTextQuotes(possessive, "straight"),
+  possessive,
+  "a possessive apostrophe survives the straight format, so only the mismatch case moves",
+);
+assert.notEqual(
+  formatTextQuotes(possessive, "typographic"),
+  possessive,
+  "the typographic format DOES rewrite an apostrophe, which is the surprise a chip click would cause",
+);
+assert.notEqual(
+  formatTextQuotes(curly, "straight"),
+  curly,
+  "straight mode rewrites curly quotes, so the mismatch is real in both directions",
+);
+assert.equal(
+  formatTextQuotes(straight, "straight"),
+  straight,
+  "matching style is a no-op, which is why a hand test on matching text shows nothing",
+);
+// The chip's own insert is a plain splice; nothing in it touches quotes.
+const spliced = (text: string, start: number, token: string) => text.slice(0, start) + token + text.slice(start);
+assert.equal(
+  spliced(possessive, possessive.length, " {{relationshipToUser}}"),
+  possessive + " {{relationshipToUser}}",
+  "the chip's splice leaves the existing text byte-identical",
+);
 
 console.info("onboarding s3 (card variables) regressions passed.");

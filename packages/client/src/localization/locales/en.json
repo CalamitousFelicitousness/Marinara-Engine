@@ -5258,6 +5258,7 @@
   "ui.characters.onboarding.freeTextAnswer": "Free text answer",
   "ui.characters.onboarding.freeTextAnswerHelp": "With no options, players type their own answer. Add options to offer a choice.",
   "ui.characters.onboarding.hasOnboarding": "Has interactive onboarding",
+  "ui.characters.onboarding.insertCardVariable": "Insert",
   "ui.characters.onboarding.inTheCardFieldsToInsertTheAnswer": "in the card's own fields to insert the answer.",
   "ui.characters.onboarding.inThePersonaFieldsToInsertTheAnswer": "in the persona fields to insert the answer.",
   "ui.characters.onboarding.issueDuplicateName": "Another question already uses this name.",

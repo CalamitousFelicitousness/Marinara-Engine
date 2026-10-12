@@ -248,6 +248,14 @@ const CHARACTER_ONBOARDING_SECTIONS = [
 ] as const;
 
 /**
+ * The Card-tab fields that offer card-variable chips. `description`,
+ * `personality` and `scenario` are top-level character fields; `backstory` and
+ * `appearance` live under `extensions`, which is why inserting into those two
+ * goes through `updateExtension` instead of `updateField`.
+ */
+type CardVariableField = "description" | "personality" | "backstory" | "appearance" | "scenario";
+
+/**
  * The onboarding fields reuse the persona editor's Card copy: what the author
  * writes here becomes the player's persona, not part of this character.
  */
@@ -618,6 +626,19 @@ export function CharacterEditor() {
       markDirty();
     },
     [formatQuotes, markDirty, setExtensionValue],
+  );
+
+  // Same write, WITHOUT the quote normalisation. `formatQuotes` converts a field
+  // to the user's preferred quote style, which is right when they type into it
+  // but wrong for a chip click: inserting `{{name}}` would also rewrite every
+  // quote already in the author's backstory or appearance, an edit they did not
+  // ask for and cannot see why they got. The chip only appends a tag.
+  const updateExtensionVerbatim = useCallback(
+    (key: string, value: unknown) => {
+      setExtensionValue(key, value);
+      markDirty();
+    },
+    [markDirty, setExtensionValue],
   );
 
   const handleGeneratedCharacterSheet = useCallback(
@@ -1381,6 +1402,7 @@ export function CharacterEditor() {
                 formData={formData}
                 updateField={updateField}
                 updateExtension={updateExtension}
+                updateExtensionVerbatim={updateExtensionVerbatim}
                 updateFormData={updateFormData}
               />
             </section>
@@ -1497,14 +1519,86 @@ function CharacterCardTab({
   formData,
   updateField,
   updateExtension,
+  updateExtensionVerbatim,
   updateFormData,
 }: {
   formData: CharacterData;
   updateField: <K extends keyof CharacterData>(key: K, value: CharacterData[K]) => void;
   updateExtension: (key: string, value: unknown) => void;
+  /** `updateExtension` without quote normalisation, for chip inserts. */
+  updateExtensionVerbatim: (key: string, value: unknown) => void;
   updateFormData: (update: (data: CharacterData) => CharacterData) => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
+  // Read from this tab's own draft: the onboarding block is edited on a sibling
+  // tab, and `safeParse` (not `parse`) is what keeps a malformed or null block
+  // from throwing during render — the Onboarding tab reads it the same way, so
+  // the two cannot disagree about what is readable.
+  const parsedOnboarding = useMemo(
+    () => characterOnboardingSchema.safeParse(formData.extensions.onboarding ?? {}),
+    [formData.extensions.onboarding],
+  );
+  const onboarding = parsedOnboarding.success ? parsedOnboarding.data : null;
+  // Same list the Onboarding tab's chips offer, and the same "used or not" rule:
+  // a question may legitimately be inserted in more than one field, and the
+  // unused warning already says so on the Onboarding tab. Offering every
+  // declared name is what makes a freshly written question insertable at all.
+  const chipNames = useMemo(() => {
+    if (!onboarding?.enabled) return [];
+    return [
+      ...new Set((onboarding.cardVariables ?? []).map((variable) => variable.variableName.trim()).filter(Boolean)),
+    ];
+  }, [onboarding]);
+  // Which field last had the caret, so its chips are the ones on screen — the
+  // Onboarding tab's fields behave this way, and the Card tab should not differ.
+  const [activeField, setActiveField] = useState<CardVariableField | null>(null);
+  const fieldRefs = useRef<Partial<Record<CardVariableField, HTMLTextAreaElement | null>>>({});
+
+  const insertVariable = (field: CardVariableField, name: string) => {
+    const token = "{{" + name + "}}";
+    const textarea = fieldRefs.current[field];
+    const current =
+      field === "backstory" || field === "appearance"
+        ? ((formData.extensions[field] as string) ?? "")
+        : String(formData[field] ?? "");
+    const start = textarea?.selectionStart ?? current.length;
+    const end = textarea?.selectionEnd ?? current.length;
+    const next = current.slice(0, start) + token + current.slice(end);
+    if (field === "backstory" || field === "appearance") updateExtensionVerbatim(field, next);
+    else updateField(field, next);
+    requestAnimationFrame(() => {
+      textarea?.focus();
+      textarea?.setSelectionRange(start + token.length, start + token.length);
+    });
+  };
+
+  const chipsFor = (field: CardVariableField) =>
+    activeField === field && chipNames.length > 0 ? (
+      <div className="flex flex-col gap-1">
+        <span className="text-[0.625rem] font-medium text-[var(--muted-foreground)]">
+          {localizeUi("ui.panels.promptoverrideseditorbody.availableVariables")}
+        </span>
+        <div className="flex flex-wrap gap-1.5">
+          {chipNames.map((name) => (
+            <button
+              type="button"
+              key={name}
+              onClick={() => insertVariable(field, name)}
+              title={name}
+              aria-label={localizeUi("ui.characters.onboarding.insertCardVariable") + " {{" + name + "}}"}
+              className={cn(
+                SETTINGS_BUTTON_CLASS,
+                "mari-chrome-control--chip mari-chrome-control--regular-label font-mono text-[0.6rem]",
+              )}
+            >
+              <Code2 size="0.625rem" />
+              {"{{" + name + "}}"}
+            </button>
+          ))}
+        </div>
+      </div>
+    ) : undefined;
+
   return (
     <div>
       <SectionHeader
@@ -1518,7 +1612,15 @@ function CharacterCardTab({
           <CharacterSummaryField formData={formData} updateField={updateField} />
         </EditorSectionAnchor>
         <EditorSectionAnchor id="character-card-description">
-          <CharacterDescriptionTab formData={formData} updateField={updateField} />
+          <CharacterDescriptionTab
+            formData={formData}
+            updateField={updateField}
+            descriptionFooter={chipsFor("description")}
+            descriptionRef={(element) => {
+              fieldRefs.current.description = element;
+            }}
+            onDescriptionFocus={() => setActiveField("description")}
+          />
         </EditorSectionAnchor>
         <EditorSectionAnchor id="character-card-personality">
           <TextareaTab
@@ -1531,6 +1633,11 @@ function CharacterCardTab({
               "ui.characters.charactercardtab.energeticCuriousAndFiercelyLoyalSpeaksInShortBursts",
             )}
             rows={8}
+            textareaRef={(element) => {
+              fieldRefs.current.personality = element;
+            }}
+            onFocus={() => setActiveField("personality")}
+            footer={chipsFor("personality")}
           />
         </EditorSectionAnchor>
         <EditorSectionAnchor id="character-card-backstory">
@@ -1542,6 +1649,11 @@ function CharacterCardTab({
             onChange={(v) => updateExtension("backstory", v)}
             placeholder={localizeUi("ui.characters.charactercardtab.bornInASmallVillageOnTheOutskirtsOf")}
             rows={12}
+            textareaRef={(element) => {
+              fieldRefs.current.backstory = element;
+            }}
+            onFocus={() => setActiveField("backstory")}
+            footer={chipsFor("backstory")}
           />
         </EditorSectionAnchor>
         <EditorSectionAnchor id="character-card-appearance">
@@ -1555,6 +1667,11 @@ function CharacterCardTab({
             onChange={(v) => updateExtension("appearance", v)}
             placeholder={localizeUi("ui.characters.charactercardtab.tallAndWillowyWithSilverStreakedDarkHairWears")}
             rows={8}
+            textareaRef={(element) => {
+              fieldRefs.current.appearance = element;
+            }}
+            onFocus={() => setActiveField("appearance")}
+            footer={chipsFor("appearance")}
           />
           <div className="mt-3">
             <SettingsSwitch
@@ -1594,6 +1711,11 @@ function CharacterCardTab({
             onChange={(v) => updateField("scenario", v)}
             placeholder={localizeUi("ui.characters.charactercardtab.aBustlingPortCityDuringATradeFestivalThe")}
             rows={8}
+            textareaRef={(element) => {
+              fieldRefs.current.scenario = element;
+            }}
+            onFocus={() => setActiveField("scenario")}
+            footer={chipsFor("scenario")}
           />
         </EditorSectionAnchor>
         <EditorSectionAnchor id="character-card-dialogue">
@@ -2163,9 +2285,16 @@ function CharacterSummaryField({
 function CharacterDescriptionTab({
   formData,
   updateField,
+  descriptionFooter,
+  descriptionRef,
+  onDescriptionFocus,
 }: {
   formData: CharacterData;
   updateField: <K extends keyof CharacterData>(key: K, value: CharacterData[K]) => void;
+  /** Card-variable chips for this field, empty when the card declares none. */
+  descriptionFooter?: ReactNode;
+  descriptionRef?: Ref<HTMLTextAreaElement>;
+  onDescriptionFocus?: () => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
   const selfCharacterId = useUIStore((s) => s.characterDetailId);
@@ -2177,6 +2306,8 @@ function CharacterDescriptionTab({
         helpText={CHARACTER_DESCRIPTION_HELP}
       />
       <MacroTextarea
+        textareaRef={descriptionRef}
+        onFocus={onDescriptionFocus}
         showTokenCount
         value={formData.description}
         onChange={(value) => updateField("description", value)}
@@ -2187,6 +2318,7 @@ function CharacterDescriptionTab({
         selfCharacterId={selfCharacterId}
         className="w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--secondary)] p-4 text-sm leading-relaxed outline-none transition-colors placeholder:text-[var(--muted-foreground)]/40 focus:border-[var(--primary)]/40 focus:ring-1 focus:ring-[var(--primary)]/20"
       />
+      {descriptionFooter}
     </div>
   );
 }

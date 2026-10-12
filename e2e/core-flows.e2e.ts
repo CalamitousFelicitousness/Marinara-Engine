@@ -21816,6 +21816,103 @@ test("iPhone Conversation Presence keeps its last activity field reachable", asy
   }
 });
 
+test("phone keyboard keeps a full-screen package editor usable and full height after it closes", async ({
+  page,
+  browserName,
+}, testInfo) => {
+  test.skip(!testInfo.project.name.includes("mobile"), "Software-keyboard viewport behavior is mobile-only.");
+
+  const fullViewport = page.viewportSize()!;
+  // Taller than the phone is wide, so the browser does not treat it as turning sideways.
+  const keyboardViewportHeight = 480;
+  const setVisibleHeight = async (height: number) => {
+    if (browserName === "webkit") {
+      // iPhone keeps the layout viewport and shrinks only the visual viewport.
+      await page.evaluate((visibleHeight) => {
+        (
+          window as typeof window & { __setMarinaraVisualViewport: (height: number, offsetTop: number) => void }
+        ).__setMarinaraVisualViewport(visibleHeight, 0);
+      }, height);
+    } else {
+      // Android Chrome resizes the layout viewport (interactive-widget=resizes-content).
+      await page.setViewportSize({ width: fullViewport.width, height });
+    }
+  };
+  if (browserName === "webkit") await installMockVisualViewport(page);
+  await prepareFreshClient(page);
+  await page.goto("/");
+  await expect(page.locator('[data-component="AppShell"]')).toBeVisible();
+
+  // World Maps opens its map editor like this: a full-screen layer portalled into <body>,
+  // marked as chat floating UI, whose editor shell fills it.
+  await page.evaluate(() => {
+    const layer = document.createElement("div");
+    layer.dataset.chatFloatingPanel = "";
+    layer.dataset.testid = "package-editor-layer";
+    layer.className = "fixed inset-0 flex min-h-0 flex-col overflow-hidden";
+    layer.style.zIndex = "10020";
+    const shell = document.createElement("div");
+    shell.className = "mari-editor-shell flex min-h-0 flex-1 flex-col overflow-hidden";
+    const header = document.createElement("header");
+    header.className = "mari-editor-header";
+    const save = document.createElement("button");
+    save.type = "button";
+    save.textContent = "Save map";
+    header.append(save);
+    // Its place details: a full-height section in the pane under the header, scrolling on its own.
+    const pane = document.createElement("div");
+    pane.className = "min-h-0 flex-1";
+    const details = document.createElement("section");
+    details.className = "flex h-full min-h-0 flex-col";
+    const form = document.createElement("div");
+    form.className = "min-h-0 flex-1 overflow-y-auto";
+    for (let index = 1; index <= 30; index += 1) {
+      const field = document.createElement("input");
+      field.setAttribute("aria-label", `Place ${index}`);
+      field.style.cssText = "display:block;width:100%;height:44px;margin:12px 0";
+      form.append(field);
+    }
+    details.append(form);
+    pane.append(details);
+    shell.append(header, pane);
+    // The package keeps its own styles and toasts beside the editor shell.
+    layer.append(document.createElement("style"), shell, document.createElement("section"));
+    document.body.append(layer);
+  });
+
+  const field = page.getByTestId("package-editor-layer").getByLabel("Place 24");
+  const readLayout = () =>
+    page.evaluate(() => {
+      const layer = document.querySelector('[data-testid="package-editor-layer"]')!.getBoundingClientRect();
+      const save = document.querySelector('[data-testid="package-editor-layer"] button')!.getBoundingClientRect();
+      const focused = document.activeElement!.getBoundingClientRect();
+      return {
+        layerTop: Math.round(layer.top),
+        layerBottom: Math.round(layer.bottom),
+        saveVisible: save.top >= layer.top && save.bottom <= layer.bottom,
+        fieldVisible: focused.top >= save.bottom && focused.bottom <= layer.bottom,
+      };
+    });
+
+  await field.tap();
+  await expect(field).toBeFocused();
+  await setVisibleHeight(keyboardViewportHeight);
+  await expect(page.locator("html")).toHaveAttribute("data-mari-software-keyboard-open", "");
+  // The browser then scrolls the field being typed in into view.
+  await field.evaluate((element) => element.scrollIntoView({ block: "nearest" }));
+  await expect
+    .poll(readLayout)
+    .toEqual({ layerTop: 0, layerBottom: keyboardViewportHeight, saveVisible: true, fieldVisible: true });
+
+  // Closing the keyboard with the back gesture keeps the field focused; the editor fills the screen again.
+  await setVisibleHeight(fullViewport.height);
+  await expect(page.locator("html")).not.toHaveAttribute("data-mari-software-keyboard-open");
+  await expect(field).toBeFocused();
+  await expect
+    .poll(readLayout)
+    .toEqual({ layerTop: 0, layerBottom: fullViewport.height, saveVisible: true, fieldVisible: true });
+});
+
 test("mobile chat composer follows the visual viewport above the software keyboard", async ({ page }, testInfo) => {
   test.skip(!testInfo.project.name.includes("mobile"), "Software-keyboard viewport behavior is mobile-only.");
   test.setTimeout(90_000);

@@ -984,6 +984,8 @@ export function ChatRoleplaySurface({
     trackerPanelOpen &&
     (chatMeta.enableAgents === true || chatMeta.advancedMemory?.enabled === true);
   const phoneSlotOffset = phoneLayout && showTrackerPanelBubble ? 1 : 0;
+  // The Lorebook Reader's bubble follows the connected chat (slot 0), package toolbars and Beholder.
+  const lorebookReaderSlot = conversationToolbarPackages.length + 1 + (enabledAgentTypes.has("beholder") ? 1 : 0);
   useRenderTimer("rp-surface"); // [#3104 diagnostic]
   const isMobileToolbarViewport = useIsMobileToolbarViewport();
   const streamedMessageId = useChatStore((s) => s.streamedMessageIds.get(activeChatId) ?? null);
@@ -2257,8 +2259,8 @@ export function ChatRoleplaySurface({
           characterMap={characterMap}
           chatCharIds={chatCharIds}
           personaInfo={personaInfo}
-          // After the connected chat (slot 0), the package toolbars and Beholder.
-          slot={conversationToolbarPackages.length + 2}
+          slot={lorebookReaderSlot}
+          phoneSlot={phoneSlotOffset + lorebookReaderSlot}
         />
       )}
 

@@ -4,9 +4,13 @@
 // Entries from every lorebook the chat uses, in each book's own order, with macros
 // replaced for display. Pinned entries (saved with the chat) come first, in the
 // order they were pinned; the rest stay grouped by lorebook. Disabled entries,
-// including ones switched off for this chat only, are kept and marked off.
+// including ones in a switched-off folder or switched off for this chat only, are
+// kept and marked off.
 // ──────────────────────────────────────────────
 import type { LorebookEntry } from "@marinara-engine/shared";
+import { createMessageMacroResolver } from "./chat-macros";
+
+type MessageMacroContextInput = Parameters<typeof createMessageMacroResolver>[0];
 
 /** Chat metadata key holding the Reader's pinned entry ids. */
 export const LOREBOOK_PINNED_ENTRY_IDS_KEY = "lorebookPinnedEntryIds";
@@ -18,7 +22,7 @@ export interface LorebookReaderEntry {
   /** Name and content with macros replaced, as the Reader shows them. */
   name: string;
   content: string;
-  /** Off for the model: disabled in its lorebook or for this chat. */
+  /** Off for the model: disabled itself, by its folder, or for this chat. */
   off: boolean;
 }
 
@@ -39,18 +43,29 @@ export function toggleLorebookPinnedEntry(pinnedIds: readonly string[], entryId:
   return pinnedIds.includes(entryId) ? pinnedIds.filter((id) => id !== entryId) : [...pinnedIds, entryId];
 }
 
-/** Every entry of the chat's lorebooks, book by book, as the Reader displays it. */
+/**
+ * Every entry of the chat's lorebooks, book by book, as the Reader displays it, with macros resolved
+ * the way chat messages resolve them. Each text gets a fresh macro context, so a variable macro such
+ * as {{setvar}} or {{incvar}} never carries into another text or into the next build.
+ */
 export function buildLorebookReaderEntries({
   lorebooks,
   entries,
   entryStateOverrides,
-  display,
+  disabledFolderIds,
+  macros,
+  randomSeed,
 }: {
   lorebooks: ReadonlyArray<{ id: string; name: string }>;
   entries: readonly LorebookEntry[];
   entryStateOverrides?: Record<string, { enabled?: boolean } | undefined> | null;
-  display: (text: string) => string;
+  /** Folders whose entries never activate (see collectEffectivelyDisabledFolderIds). */
+  disabledFolderIds?: ReadonlySet<string>;
+  macros: MessageMacroContextInput;
+  randomSeed?: string;
 }): LorebookReaderEntry[] {
+  const display = (text: string) =>
+    createMessageMacroResolver({ ...macros, variables: { ...macros.variables } }, { randomSeed })(text);
   return lorebooks.flatMap((lorebook) =>
     entries
       .filter((entry) => entry.lorebookId === lorebook.id)
@@ -60,7 +75,10 @@ export function buildLorebookReaderEntries({
         lorebookName: lorebook.name,
         name: display(entry.name ?? "").trim(),
         content: display(entry.content ?? ""),
-        off: entry.enabled === false || entryStateOverrides?.[entry.id]?.enabled === false,
+        off:
+          entry.enabled === false ||
+          (!!entry.folderId && !!disabledFolderIds?.has(entry.folderId)) ||
+          entryStateOverrides?.[entry.id]?.enabled === false,
       })),
   );
 }

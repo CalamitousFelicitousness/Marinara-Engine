@@ -10,14 +10,18 @@ import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { BookMarked, BookOpen, ChevronLeft, ChevronRight, Pin, PinOff, Search, SquarePen } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { Chat } from "@marinara-engine/shared";
-import { useEntriesAcrossLorebooks, useLorebooks } from "../../hooks/use-lorebooks";
+import {
+  useDisabledFolderIdsAcrossLorebooks,
+  useEntriesAcrossLorebooks,
+  useLorebooks,
+} from "../../hooks/use-lorebooks";
 import { useUpdateChatMetadata } from "../../hooks/use-chats";
+import { useMessagePresetVariables } from "../../hooks/use-message-preset-variables";
 import {
   deriveActiveLorebookViews,
   getChatActiveLorebookIds,
   getChatExcludedLorebookIds,
 } from "../../lib/chat-lorebooks";
-import { createMessageMacroResolver } from "../../lib/chat-macros";
 import {
   LOREBOOK_PINNED_ENTRY_IDS_KEY,
   buildLorebookReaderEntries,
@@ -46,6 +50,8 @@ interface LorebookReaderWindowProps {
   personaInfo?: PersonaInfo;
   /** Its bubble's place in the default row, counted from the right. */
   slot: number;
+  /** Its bubble's place in the phone row (`slot` otherwise). */
+  phoneSlot?: number;
 }
 
 /** The Lorebook Reader control window; renders nothing while the chat has no lorebook. */
@@ -56,6 +62,7 @@ export function LorebookReaderWindow({
   chatCharIds,
   personaInfo,
   slot,
+  phoneSlot,
 }: LorebookReaderWindowProps) {
   const { t } = useTranslation();
   const { data: allLorebooks } = useLorebooks(undefined, { includeHidden: true });
@@ -77,6 +84,7 @@ export function LorebookReaderWindow({
       title={t("chat.lorebookReader.title")}
       icon={<BookMarked size={14} />}
       slot={slot}
+      phoneSlot={phoneSlot}
       width={340}
       height={460}
       helpTarget="lorebook-reader"
@@ -111,7 +119,11 @@ function LorebookReader({
 }) {
   const { t } = useTranslation();
   const lorebookIds = useMemo(() => lorebooks.map((lorebook) => lorebook.id), [lorebooks]);
-  const { entries: rawEntries, isLoading, isError } = useEntriesAcrossLorebooks(lorebookIds);
+  const { entries: rawEntries, isLoading: entriesLoading, isError } = useEntriesAcrossLorebooks(lorebookIds);
+  const { disabledFolderIds, isLoading: foldersLoading } = useDisabledFolderIdsAcrossLorebooks(lorebookIds);
+  const isLoading = entriesLoading || foldersLoading;
+  const randomSeed = `lorebook-reader:${chatId}`;
+  const presetVariables = useMessagePresetVariables(randomSeed);
   const updateMeta = useUpdateChatMetadata({ serialize: true });
   const [query, setQuery] = useState("");
   const [openEntryId, setOpenEntryId] = useState<string | null>(null);
@@ -121,7 +133,7 @@ function LorebookReader({
   const returnFocusId = useRef<string | null>(null);
 
   // Macros read as they do in this chat's messages (display only; entries are never changed).
-  const display = useMemo(() => {
+  const macros = useMemo(() => {
     const characters = chatCharIds.flatMap((id) => {
       const character = characterMap.get(id);
       return character
@@ -139,16 +151,27 @@ function LorebookReader({
           ]
         : [];
     });
-    return createMessageMacroResolver(
-      { persona: personaInfo, userName: personaInfo?.name, primaryCharacter: characters[0] ?? null, characters },
-      { randomSeed: `lorebook-reader:${chatId}` },
-    );
-  }, [characterMap, chatCharIds, chatId, personaInfo]);
+    return {
+      persona: personaInfo,
+      userName: personaInfo?.name,
+      primaryCharacter: characters[0] ?? null,
+      characters,
+      variables: presetVariables,
+    };
+  }, [characterMap, chatCharIds, personaInfo, presetVariables]);
   const entryStateOverrides = chatMeta.entryStateOverrides as
     Record<string, { enabled?: boolean } | undefined> | undefined;
   const entries = useMemo(
-    () => buildLorebookReaderEntries({ lorebooks, entries: rawEntries ?? [], entryStateOverrides, display }),
-    [display, entryStateOverrides, lorebooks, rawEntries],
+    () =>
+      buildLorebookReaderEntries({
+        lorebooks,
+        entries: rawEntries ?? [],
+        entryStateOverrides,
+        disabledFolderIds,
+        macros,
+        randomSeed,
+      }),
+    [disabledFolderIds, entryStateOverrides, lorebooks, macros, randomSeed, rawEntries],
   );
   const pinnedIds = useMemo(() => readLorebookPinnedEntryIds(chatMeta), [chatMeta]);
   const list = useMemo(() => groupLorebookReaderEntries(entries, pinnedIds, query), [entries, pinnedIds, query]);
